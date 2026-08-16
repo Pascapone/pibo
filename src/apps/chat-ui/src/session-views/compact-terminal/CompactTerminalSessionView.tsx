@@ -37,6 +37,7 @@ export function CompactTerminalSessionView({
 	expandThinking,
 	sessionAgentProfile,
 	sessionActiveModel,
+	sessionRuntimeBinding,
 	selectedSessionStatus,
 	selectedSessionSignal,
 	signals,
@@ -303,6 +304,7 @@ export function CompactTerminalSessionView({
 					onNavigate={navigateToTerminalRow}
 					sessionAgentProfile={sessionAgentProfile}
 					sessionActiveModel={sessionActiveModel}
+					sessionRuntimeBinding={sessionRuntimeBinding}
 					sessionBreadcrumbs={sessionBreadcrumbs}
 					originSession={originSession}
 					derivedSessions={derivedSessions}
@@ -377,6 +379,7 @@ function TerminalHeader({
 	onNavigate,
 	sessionAgentProfile,
 	sessionActiveModel,
+	sessionRuntimeBinding,
 	sessionBreadcrumbs,
 	originSession,
 	derivedSessions,
@@ -388,6 +391,7 @@ function TerminalHeader({
 	onNavigate: (kind: TerminalNavigationKind) => void;
 	sessionAgentProfile?: string;
 	sessionActiveModel?: string;
+	sessionRuntimeBinding?: ChatSessionViewProps["sessionRuntimeBinding"];
 	sessionBreadcrumbs: ChatSessionViewProps["sessionBreadcrumbs"];
 	originSession: ChatSessionViewProps["originSession"];
 	derivedSessions: ChatSessionViewProps["derivedSessions"];
@@ -397,6 +401,14 @@ function TerminalHeader({
 		<div data-pibo-debug="compact-terminal-header" className="border-b border-[#2a2a2a] bg-[#111111] px-4 py-2 text-[11px]">
 			<div className="flex flex-wrap items-center gap-2">
 				{sessionAgentProfile ? <TerminalBadge tone="neutral">{sessionAgentProfile}</TerminalBadge> : null}
+				{sessionRuntimeBinding ? (
+					<TerminalBadge
+						tone={sessionRuntimeBinding.state === "missing" || sessionRuntimeBinding.state === "error" ? "red" : sessionRuntimeBinding.state === "unbound" ? "amber" : "cyan"}
+						label={`Runtime ${sessionRuntimeBinding.runtimeInstanceId} · ${sessionRuntimeBinding.state}`}
+					>
+						{sessionRuntimeBinding.runtimeInstanceId} · {sessionRuntimeBinding.state}
+					</TerminalBadge>
+				) : null}
 				{sessionActiveModel ? <TerminalBadge tone="purple">{sessionActiveModel}</TerminalBadge> : null}
 				{userMessageCount > 0 ? (
 					<TerminalBadge tone="cyan" label={`${userMessageCount} user messages · jump to previous user message`} onClick={() => onNavigate("user")}>

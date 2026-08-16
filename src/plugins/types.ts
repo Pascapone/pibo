@@ -27,10 +27,23 @@ import type {
 	SkillProfile,
 	SubagentProfile,
 	ToolProfile,
+	ToolProfileRegistration,
 } from "../core/profiles.js";
 import type { PiboPiPackageInfo } from "../pi-packages/types.js";
 import type { PiboProviderUsageStatus } from "../auth/openai-codex-usage.js";
 import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
+import type {
+	AgentRuntimeAuthOperationResult,
+	AgentRuntimeAuthStatus,
+	AgentRuntimeDriver,
+	AgentRuntimeInstanceDefinition,
+	AgentRuntimeInstanceInfo,
+	AgentRuntimeModelCatalog,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	StartAgentRuntimeAuthInput,
+} from "../agent-runtime/types.js";
 export type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 /** @deprecated Use PiboLoopStopConditionDefinition. */
 export type PiboRalphStopConditionDefinition = PiboLoopStopConditionDefinition;
@@ -57,6 +70,8 @@ export type PiboProfileInfo = {
 	name: string;
 	description?: string;
 	aliases: string[];
+	runtimeInstanceId: string;
+	runtimeOptions: PiboJsonObject;
 	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];
@@ -84,6 +99,7 @@ export type PiboNativeToolInfo = {
 	description?: string;
 	yieldable: boolean;
 	hasDefinition: boolean;
+	portable: boolean;
 	pluginId?: string;
 	pluginName?: string;
 	providerTool?: ProviderToolProfile;
@@ -140,6 +156,7 @@ export type PiboMcpServerInfo = {
 };
 
 export type PiboCapabilityCatalog = {
+	agentRuntimes: AgentRuntimeInstanceInfo[];
 	nativeTools: PiboNativeToolInfo[];
 	skills: PiboSkillInfo[];
 	subagents: PiboSubagentInfo[];
@@ -171,10 +188,18 @@ export type PiboProductEvent = PiboProductEventInput & {
 
 export type PiboGatewayActionContext = {
 	piboSessionId: string;
+	runtimeInstanceId: string;
+	runtimeAuthRequired: boolean;
 	getStatus(): PiboSessionStatus;
 	getStatusSnapshot(): Promise<PiboSessionStatus>;
 	getContextUsage(): ContextUsage | undefined;
 	getActiveModel(): ModelProfile | undefined;
+	getModelCatalog(): Promise<AgentRuntimeModelCatalog | undefined>;
+	getRuntimeAuthStatus(): Promise<readonly AgentRuntimeAuthStatus[]>;
+	startRuntimeAuth(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	completeRuntimeAuth(input: CompleteAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	cancelRuntimeAuth(input: CancelAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	logoutRuntimeAuth(input: LogoutAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
 	getProviderUsage(): Promise<PiboProviderUsageStatus | undefined>;
 	clearQueue(): number;
 	abort(): Promise<void>;
@@ -194,6 +219,8 @@ export type PiboGatewayActionContext = {
 	setFastMode(enabled: boolean): { mode: "fast" | "normal"; supported: boolean; changed: boolean };
 	setModel(model: ModelProfile): Promise<ModelProfile>;
 	compact(customInstructions?: string): Promise<CompactionResult>;
+	respondToApproval(requestId: string, decision: string): Promise<void>;
+	respondToUserInput(requestId: string, answers: PiboJsonObject): Promise<void>;
 	kill(): Promise<{ killed: string[]; cancelledRuns: string[] }>;
 	killAll(): Promise<{ killed: string[]; cancelledRuns: string[] }>;
 };
@@ -216,8 +243,10 @@ export type PiboPluginEventListener = (event: PiboOutputEvent) => void;
 export type PiboProductEventListener = (event: PiboProductEvent) => void;
 
 export type PiboPluginApi = {
-	registerTool(tool: ToolProfile): void;
-	registerTools(tools: readonly ToolProfile[]): void;
+	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void;
+	registerAgentRuntimeInstance(instance: AgentRuntimeInstanceDefinition): void;
+	registerTool(tool: ToolProfileRegistration): void;
+	registerTools(tools: readonly ToolProfileRegistration[]): void;
 	registerSubagent(subagent: SubagentProfile): void;
 	registerSubagents(subagents: readonly SubagentProfile[]): void;
 	registerSkill(skill: SkillProfile): void;

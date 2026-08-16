@@ -10,6 +10,33 @@ import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 const execFileAsync = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
 
+test("pibo profile exposes native Codex without claiming the codex compatibility alias", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-profile-codex-native-"));
+	const piboHome = join(cwd, "pibo-home");
+	await mkdir(piboHome, { recursive: true });
+	try {
+		const env = { ...process.env, PIBO_HOME: piboHome, HOME: cwd };
+		const result = await execFileAsync("node", [cliPath, "profile", "codex-native"], { cwd, env });
+		const profile = JSON.parse(result.stdout);
+		assert.equal(profile.profileName, "codex-native");
+		assert.equal(profile.runtimeInstanceId, "codex-native");
+		assert.equal(profile.builtinTools, "disabled");
+		assert.deepEqual(profile.builtinToolNames, []);
+		assert.equal(profile.toolPackages.goalControl, true);
+
+		await assert.rejects(
+			() => execFileAsync("node", [cliPath, "profile", "codex"], { cwd, env }),
+			(error) => {
+				assert.match(error.stderr, /Unknown profile "codex"/);
+				assert.match(error.stderr, /codex-native/);
+				return true;
+			},
+		);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo profile resolves active saved Chat custom agents", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-profile-custom-agent-"));
 	const piboHome = join(cwd, "pibo-home");

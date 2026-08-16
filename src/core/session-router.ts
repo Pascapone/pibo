@@ -7,8 +7,11 @@ import {
 } from "./profiles.js";
 import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
-import { createPiboRuntime, type PiboRuntimeOptions, type PiboRuntimeRetryDefaults } from "./runtime.js";
-import { RoutedSession, type PiboMessagePreflight } from "./routed-session.js";
+import type { PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./runtime.js";
+import {
+	RuntimeRoutedSession as RoutedSession,
+	type PiboMessagePreflight,
+} from "../agent-runtime/routed-session.js";
 import { runtimeSessionErrorDetails } from "./session-errors.js";
 import type {
 	PiboAssistantMessageEvent,
@@ -34,6 +37,25 @@ import {
 	type PiboSession,
 	type PiboSessionStore,
 } from "../sessions/store.js";
+import {
+	createLegacyPiRuntimeSessionBinding,
+	RuntimeSessionBindingConflictError,
+	type CreateRuntimeSessionBindingInput,
+	type RuntimeSessionBinding,
+	type RuntimeSessionBindingRebindInput,
+	type RuntimeSessionBindingUpdateOptions,
+} from "../sessions/runtime-binding.js";
+import { AgentRuntimeBindingMissingError, AgentRuntimeUnavailableError } from "../agent-runtime/errors.js";
+import type {
+	AgentRuntimeAuthStatus,
+	AgentRuntimeAuthTargetOperationResult,
+	AgentRuntimeSession,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	StartAgentRuntimeAuthInput,
+} from "../agent-runtime/types.js";
+import { validateAgentRuntimeProfileCapabilities } from "../agent-runtime/profile-validation.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
 import { loadPiboUserSettings } from "./user-settings.js";
@@ -46,6 +68,16 @@ import { PiboRuntimeTelemetryRecorder, type ProviderEventTelemetryMode } from ".
 import { createPiboProviderTelemetryExtension } from "./provider-telemetry.js";
 import type { TelemetryStore } from "../data/telemetry.js";
 import { AsyncTelemetryWriter } from "../data/telemetry-writer.js";
+import type { PayloadStore } from "../data/payload-store.js";
+import { createPiboToolPayloadWriter } from "../tools/payload-writer.js";
+import {
+	PiboPortableToolService,
+	type PiboPortableToolSession,
+} from "../tools/session-service.js";
+import {
+	PiboRuntimeResourceService,
+} from "../agent-runtime/resource-service.js";
+import type { PiboRuntimeResourceSession } from "../agent-runtime/resources.js";
 
 export type {
 	PiboEventListener,
@@ -58,9 +90,11 @@ export type {
 	PiboSessionStatus,
 } from "./events.js";
 
+export type PiboRuntimeBindingRebindInput = RuntimeSessionBindingRebindInput;
+
 export type PiboSessionRouterOptions = Omit<
 	PiboRuntimeOptions,
-	"profile" | "subagentRunner" | "runToolController"
+	"profile" | "subagentRunner" | "runToolController" | "resources"
 > & {
 	profile?: InitialSessionContext;
 	pluginRegistry?: PiboPluginRegistry;
@@ -82,10 +116,13 @@ export type PiboSessionRouterOptions = Omit<
 	runtimeInstanceId?: string;
 	/** Maximum time to await one routed runtime disposal before forcing terminal ownership release. */
 	routedSessionDisposeTimeoutMs?: number;
+	/** Optional resource service override for isolated adapter generation state. */
+	runtimeResourceService?: PiboRuntimeResourceService;
 };
 
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_SUBAGENT_MAX_DEPTH = 3;
+const MAX_SUBAGENT_THREAD_KEY_BYTES = 512;
 const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS = 30 * 1000;
 
@@ -118,16 +155,34 @@ function hasReachedSubagentMaxDepth(subagent: SubagentProfile, depth: number): b
 	return depth >= (subagent.maxDepth ?? DEFAULT_SUBAGENT_MAX_DEPTH);
 }
 
+function resolveSubagentThreadKey(threadKey: string | undefined): string {
+	const normalized = threadKey?.trim();
+	if (!normalized) return randomUUID();
+	if (Buffer.byteLength(normalized, "utf8") > MAX_SUBAGENT_THREAD_KEY_BYTES) {
+		throw new Error(`Subagent thread key exceeds ${MAX_SUBAGENT_THREAD_KEY_BYTES} bytes.`);
+	}
+	return normalized;
+}
+
+function subagentAbortError(): Error {
+	const error = new Error("Subagent request was aborted.");
+	error.name = "AbortError";
+	return error;
+}
+
 function profileForSession(
 	baseProfile: InitialSessionContext,
-	piSessionId: string,
-	parentPiSessionId: string | undefined,
+	runtimeInstanceId: string,
+	nativeSessionId: string | undefined,
+	parentNativeSessionId: string | undefined,
 	subagentDepth: number,
 ): InitialSessionContext {
 	const options: InitialSessionContextOptions = {
 		profileName: baseProfile.profileName,
-		sessionId: piSessionId,
-		parentSessionId: parentPiSessionId,
+		runtimeInstanceId,
+		runtimeOptions: baseProfile.runtimeOptions,
+		sessionId: nativeSessionId,
+		parentSessionId: parentNativeSessionId,
 		model: baseProfile.model,
 		mainModel: baseProfile.mainModel,
 		subagentModel: baseProfile.subagentModel,
@@ -214,8 +269,13 @@ function asJsonObject(value: PiboJsonObject | undefined): PiboJsonObject {
 	return value ?? {};
 }
 
-function shouldResetSessionAfterAction(action: string): boolean {
-	return action === "login.complete" || action === "login.apikey" || action === "logout";
+function shouldResetSessionAfterAction(action: string, output?: PiboOutputEvent): boolean {
+	if (action === "login.apikey" || action === "logout") return true;
+	if (action !== "login.complete") return false;
+	const result = output?.type === "execution_result" && output.result && typeof output.result === "object" && !Array.isArray(output.result)
+		? output.result as Record<string, unknown>
+		: undefined;
+	return result?.state !== "pending";
 }
 
 function piboRoomIdFromMetadata(metadata: PiboJsonObject | undefined): string | undefined {
@@ -223,7 +283,21 @@ function piboRoomIdFromMetadata(metadata: PiboJsonObject | undefined): string | 
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function runtimeBindingsEqual(left: RuntimeSessionBinding, right: RuntimeSessionBinding): boolean {
+	return left.piboSessionId === right.piboSessionId
+		&& left.runtimeInstanceId === right.runtimeInstanceId
+		&& left.adapterId === right.adapterId
+		&& left.nativeSessionId === right.nativeSessionId
+		&& left.state === right.state
+		&& left.protocol === right.protocol
+		&& left.protocolVersion === right.protocolVersion
+		&& left.adapterVersion === right.adapterVersion
+		&& JSON.stringify(left.locator ?? null) === JSON.stringify(right.locator ?? null)
+		&& JSON.stringify(left.metadata ?? {}) === JSON.stringify(right.metadata ?? {});
+}
+
 type TelemetrySessionStore = PiboSessionStore & { getTelemetryStore?: () => TelemetryStore | undefined };
+type PayloadSessionStore = PiboSessionStore & { getPayloadStore?: () => PayloadStore | undefined };
 
 type RuntimeRecoverySessionStore = PiboSessionStore & {
 	recoverInterruptedRuntimeState?: (input: {
@@ -247,6 +321,10 @@ function telemetryStoreFromSessionStore(store: PiboSessionStore): TelemetryStore
 	return (store as TelemetrySessionStore).getTelemetryStore?.();
 }
 
+function payloadStoreFromSessionStore(store: PiboSessionStore): PayloadStore | undefined {
+	return (store as PayloadSessionStore).getPayloadStore?.();
+}
+
 function providerEventTelemetryModeFromEnv(env: NodeJS.ProcessEnv = process.env): ProviderEventTelemetryMode {
 	const value = env.PIBO_TELEMETRY_PROVIDER_EVENTS?.trim().toLowerCase();
 	return value === "1" || value === "true" || value === "detailed" ? "detailed" : "aggregate";
@@ -260,6 +338,12 @@ export class PiboSessionRouter {
 	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
 	private readonly runtimeRegistry: RuntimeSessionRegistry;
+	private readonly portableToolService: PiboPortableToolService;
+	private readonly portableToolSessions = new Map<string, PiboPortableToolSession>();
+	private readonly runtimeResourceService: PiboRuntimeResourceService;
+	private readonly runtimeResourceSessions = new Map<string, PiboRuntimeResourceSession>();
+	private readonly runtimeAuthFingerprints = new Map<string, string>();
+	private readonly activeSubagentChildren = new Map<string, Map<string, number>>();
 	private readonly scheduledRunReminders = new Map<string, ScheduledRunReminder>();
 	private readonly runReminderGenerations = new Map<string, number>();
 	private readonly quiescingSessions = new Set<string>();
@@ -269,6 +353,7 @@ export class PiboSessionRouter {
 	private readonly routedSessionDisposeTimeoutMs: number;
 	private readonly baseProfile: InitialSessionContext;
 	private readonly pluginRegistry: PiboPluginRegistry;
+	private readonly compatibilityRuntimeRegistry?: PiboPluginRegistry;
 	private readonly sessionStore: PiboSessionStore;
 	private readonly reliabilityStore?: PiboReliabilityStore;
 	private readonly telemetryStore?: TelemetryStore;
@@ -279,6 +364,9 @@ export class PiboSessionRouter {
 
 	constructor(private readonly options: PiboSessionRouterOptions = {}) {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+		// Historical custom registries supplied only actions/profiles while runtime creation was implicit.
+		// Preserve that composition contract during the adapter migration without branching on adapter ids.
+		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
 		this.telemetryStore = options.telemetryStore ?? telemetryStoreFromSessionStore(this.sessionStore);
 		this.telemetryWriter = this.telemetryStore ? new AsyncTelemetryWriter(this.telemetryStore) : undefined;
@@ -303,6 +391,11 @@ export class PiboSessionRouter {
 		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore());
 		this.signalRegistry = options.signalRegistry ?? createPiboSignalRegistry();
 		this.runtimeRegistry = new RuntimeSessionRegistry({ cwd: options.cwd ?? getDefaultPiboWorkspace() });
+		const payloadStore = payloadStoreFromSessionStore(this.sessionStore);
+		this.portableToolService = new PiboPortableToolService({
+			...(payloadStore ? { payloadWriter: createPiboToolPayloadWriter(payloadStore) } : {}),
+		});
+		this.runtimeResourceService = options.runtimeResourceService ?? new PiboRuntimeResourceService();
 		this.runRegistry = new PiboRunRegistry({ store: this.reliabilityStore });
 		this.runRegistry.subscribe((event) => this.projectRunRegistryEvent(event));
 		const recoveredRuntimeState = options.recoverInterruptedRuntimeState
@@ -392,12 +485,21 @@ export class PiboSessionRouter {
 				return output;
 			}
 
+			const childAbort = event.action === "abort"
+				? this.abortActiveSubagentSessions(event.piboSessionId)
+				: undefined;
 			const output = await session.executeAction(event);
+			await childAbort;
 			if (event.action === "kill" || event.action === "kill_all") {
 				await this.disposeSessionSubtree(event.piboSessionId, `${event.action} action`, { cancelRuns: event.action === "kill_all" });
 				teardownCompleted = true;
-			} else if (shouldResetSessionAfterAction(event.action)) {
-				await this.resetCachedSession(event.piboSessionId, "provider auth changed");
+			} else if (shouldResetSessionAfterAction(event.action, output)) {
+				const runtimeInstanceId = this.getSessionRuntimeBinding(event.piboSessionId)?.runtimeInstanceId;
+				if (runtimeInstanceId) {
+					await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+				} else {
+					await this.resetCachedSession(event.piboSessionId, "runtime provider auth changed");
+				}
 			}
 			return output;
 		} catch (error) {
@@ -422,6 +524,10 @@ export class PiboSessionRouter {
 		} finally {
 			this.scheduleIdleSessionEvictionIfIdle(event.piboSessionId);
 		}
+	}
+
+	async disposeSession(piboSessionId: string, reason = "session deleted"): Promise<void> {
+		await this.disposeSessionSubtree(piboSessionId, reason, { cancelRuns: true });
 	}
 
 	async killSession(piboSessionId: string, options?: { includeRuns?: boolean }): Promise<{ killed: string[]; cancelledRuns: string[] }> {
@@ -474,6 +580,12 @@ export class PiboSessionRouter {
 			throw error;
 		} finally {
 			if (timeout) clearTimeout(timeout);
+			const portableTools = this.portableToolSessions.get(piboSessionId);
+			portableTools?.dispose();
+			if (this.portableToolSessions.get(piboSessionId) === portableTools) this.portableToolSessions.delete(piboSessionId);
+			const resources = this.runtimeResourceSessions.get(piboSessionId);
+			if (resources) await resources.dispose();
+			if (this.runtimeResourceSessions.get(piboSessionId) === resources) this.runtimeResourceSessions.delete(piboSessionId);
 		}
 	}
 
@@ -563,14 +675,127 @@ export class PiboSessionRouter {
 		return [...this.sessions.keys()];
 	}
 
+	async getAgentRuntimeAuthStatus(runtimeInstanceId: string): Promise<readonly AgentRuntimeAuthStatus[]> {
+		const registry = this.resolveAgentRuntimeRegistry(runtimeInstanceId);
+		const statuses = await registry.getAgentRuntimeAuthStatus(runtimeInstanceId);
+		const fingerprint = statuses
+			.map((status) => `${status.id}:${status.configured}:${status.details?.accountType ?? ""}:${status.details?.planType ?? ""}`)
+			.sort()
+			.join("|");
+		const previous = this.runtimeAuthFingerprints.get(runtimeInstanceId);
+		this.runtimeAuthFingerprints.set(runtimeInstanceId, fingerprint);
+		if (previous !== undefined && previous !== fingerprint) {
+			await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+		}
+		return statuses;
+	}
+
+	async startAgentRuntimeAuth(
+		runtimeInstanceId: string,
+		input: StartAgentRuntimeAuthInput,
+	): Promise<AgentRuntimeAuthTargetOperationResult> {
+		const registry = this.resolveAgentRuntimeRegistry(runtimeInstanceId);
+		const result = await registry.startAgentRuntimeAuth(runtimeInstanceId, input);
+		if (result.state !== "pending") {
+			await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+		}
+		return result;
+	}
+
+	async completeAgentRuntimeAuth(
+		runtimeInstanceId: string,
+		input: CompleteAgentRuntimeAuthInput,
+	): Promise<AgentRuntimeAuthTargetOperationResult> {
+		const registry = this.resolveAgentRuntimeRegistry(runtimeInstanceId);
+		const result = await registry.completeAgentRuntimeAuth(runtimeInstanceId, input);
+		if (result.state !== "pending") {
+			await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+		}
+		return result;
+	}
+
+	async cancelAgentRuntimeAuth(
+		runtimeInstanceId: string,
+		input: CancelAgentRuntimeAuthInput,
+	): Promise<AgentRuntimeAuthTargetOperationResult> {
+		return await this.resolveAgentRuntimeRegistry(runtimeInstanceId)
+			.cancelAgentRuntimeAuth(runtimeInstanceId, input);
+	}
+
+	async logoutAgentRuntimeAuth(
+		runtimeInstanceId: string,
+		input: LogoutAgentRuntimeAuthInput,
+	): Promise<AgentRuntimeAuthTargetOperationResult> {
+		const result = await this.resolveAgentRuntimeRegistry(runtimeInstanceId)
+			.logoutAgentRuntimeAuth(runtimeInstanceId, input);
+		await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+		return result;
+	}
+
+	getSessionRuntimeBinding(piboSessionId: string): RuntimeSessionBinding | undefined {
+		const session = this.sessionStore.get(piboSessionId);
+		return session ? structuredClone(this.resolveSessionRuntimeBinding(session)) : undefined;
+	}
+
+	async rebindSessionRuntime(
+		piboSessionId: string,
+		input: PiboRuntimeBindingRebindInput,
+	): Promise<RuntimeSessionBinding> {
+		const session = this.sessionStore.get(piboSessionId);
+		if (!session) throw new Error(`Unknown Pibo session "${piboSessionId}".`);
+		const current = this.resolveSessionRuntimeBinding(session);
+		const currentRevision = current.revision ?? 1;
+		if (currentRevision !== input.expectedRevision) {
+			throw new RuntimeSessionBindingConflictError(piboSessionId, input.expectedRevision, currentRevision);
+		}
+		const liveStatus = this.sessions.get(piboSessionId)?.getStatus();
+		if (liveStatus && (liveStatus.processing || liveStatus.streaming || liveStatus.queuedMessages > 0)) {
+			throw new Error("A runtime binding can only be repaired or rebound while the session is idle.");
+		}
+		if (this.sessions.has(piboSessionId) || this.pendingSessions.has(piboSessionId)) {
+			await this.resetCachedSession(piboSessionId, "runtime binding rebind");
+		}
+		const registry = this.resolveAgentRuntimeRegistry(input.runtimeInstanceId);
+		const adapter = registry.requireAgentRuntimeAdapter(input.runtimeInstanceId);
+		const requestedState = input.state ?? (input.nativeSessionId ? "bound" : "unbound");
+		let next: RuntimeSessionBinding = {
+			piboSessionId,
+			runtimeInstanceId: input.runtimeInstanceId,
+			adapterId: adapter.descriptor.id,
+			nativeSessionId: input.nativeSessionId,
+			state: requestedState,
+			protocol: adapter.descriptor.protocol?.name,
+			protocolVersion: current.runtimeInstanceId === input.runtimeInstanceId ? current.protocolVersion : undefined,
+			locator: input.locator,
+			metadata: {},
+		};
+		if (next.state === "bound" && adapter.resolveBinding) {
+			next = await adapter.resolveBinding({
+				binding: next,
+				workspace: session.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace(),
+			});
+		}
+		const mode = (current.state === "missing" || current.state === "error")
+			&& current.runtimeInstanceId === next.runtimeInstanceId
+			&& current.adapterId === next.adapterId
+			? "repair"
+			: "rebind";
+		const persisted = this.persistSessionRuntimeBinding(session, next, {
+			expectedRevision: input.expectedRevision,
+			mode,
+		});
+		return structuredClone(persisted);
+	}
+
 	getSessionRuntimeStatus(piboSessionId: string): PiboSessionStatus | undefined {
-		return this.sessions.get(piboSessionId)?.getStatus();
+		const status = this.sessions.get(piboSessionId)?.getStatus();
+		return status ? this.withPersistedRuntimeBinding(status) : undefined;
 	}
 
 	async getSessionStatusSnapshot(piboSessionId: string): Promise<PiboSessionStatus> {
 		const session = await this.getOrCreateSession(piboSessionId);
 		try {
-			return await session.getStatusSnapshot();
+			return this.withPersistedRuntimeBinding(await session.getStatusSnapshot());
 		} finally {
 			this.scheduleIdleSessionEvictionIfIdle(piboSessionId);
 		}
@@ -602,7 +827,7 @@ export class PiboSessionRouter {
 	}
 
 	listSessionRuntimeStatuses(): PiboSessionStatus[] {
-		return [...this.sessions.values()].map((session) => session.getStatus());
+		return [...this.sessions.values()].map((session) => this.withPersistedRuntimeBinding(session.getStatus()));
 	}
 
 	listRuns(options: { includeConsumed?: boolean; includeDetached?: boolean } = {}): PiboRunSnapshot[] {
@@ -639,13 +864,38 @@ export class PiboSessionRouter {
 	async emitMessageAndWaitForReply(
 		event: PiboMessageEvent,
 		timeoutMs = 120000,
+		signal?: AbortSignal,
 	): Promise<PiboAssistantMessageEvent> {
 		const eventWithId: PiboMessageEvent = { ...event, id: event.id ?? randomUUID() };
 
 		return await new Promise<PiboAssistantMessageEvent>((resolve, reject) => {
 			let settled = false;
+			let messageDispatched = false;
 			let lastAssistantMessage: PiboAssistantMessageEvent | undefined;
 			let timeout: NodeJS.Timeout | undefined;
+			const abortChild = () => {
+				if (!messageDispatched) return;
+				void this.emit({
+					type: "execution",
+					piboSessionId: eventWithId.piboSessionId,
+					action: "abort",
+					id: randomUUID(),
+				}).catch(() => {});
+			};
+			const finish = (result: PiboAssistantMessageEvent | Error): boolean => {
+				if (settled) return false;
+				settled = true;
+				if (timeout) clearTimeout(timeout);
+				signal?.removeEventListener("abort", onAbort);
+				unsubscribe();
+				if (result instanceof Error) reject(result);
+				else resolve(result);
+				return true;
+			};
+			const onAbort = () => {
+				if (!finish(subagentAbortError())) return;
+				abortChild();
+			};
 			const unsubscribe = this.subscribe((output) => {
 				if (
 					output.piboSessionId !== eventWithId.piboSessionId ||
@@ -663,32 +913,18 @@ export class PiboSessionRouter {
 				}
 			});
 
-			const finish = (result: PiboAssistantMessageEvent | Error) => {
-				if (settled) return;
-				settled = true;
-				if (timeout) clearTimeout(timeout);
-				unsubscribe();
-				if (result instanceof Error) {
-					reject(result);
-				} else {
-					resolve(result);
-				}
-			};
-
+			if (signal?.aborted) {
+				onAbort();
+				return;
+			}
+			signal?.addEventListener("abort", onAbort, { once: true });
 			timeout = setTimeout(() => {
-				if (settled) return;
-				settled = true;
-				unsubscribe();
 				const timeoutError = new Error(`Timed out waiting for assistant reply from Pibo session "${eventWithId.piboSessionId}"`);
-				reject(timeoutError);
-				void this.emit({
-					type: "execution",
-					piboSessionId: eventWithId.piboSessionId,
-					action: "abort",
-					id: randomUUID(),
-				}).catch(() => {});
+				if (!finish(timeoutError)) return;
+				abortChild();
 			}, timeoutMs);
 
+			messageDispatched = true;
 			this.emit(eventWithId).catch(finish);
 		});
 	}
@@ -722,7 +958,17 @@ export class PiboSessionRouter {
 			];
 			if (failures.length > 0) throw new AggregateError(failures, "Failed to dispose all Pibo sessions");
 		} finally {
+			const authDisposals = await Promise.allSettled([
+				this.pluginRegistry.disposeAgentRuntimeAuth(),
+				...(this.compatibilityRuntimeRegistry ? [this.compatibilityRuntimeRegistry.disposeAgentRuntimeAuth()] : []),
+			]);
+			await this.portableToolService.dispose();
+			await this.runtimeResourceService.dispose();
+			this.runtimeResourceSessions.clear();
+			this.activeSubagentChildren.clear();
 			await this.telemetryWriter?.dispose();
+			const authFailures = authDisposals.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+			if (authFailures.length > 0) throw new AggregateError(authFailures, "Failed to dispose runtime authentication controllers.");
 		}
 	}
 
@@ -799,70 +1045,333 @@ export class PiboSessionRouter {
 		let session: RoutedSession | undefined;
 		this.signalRegistry.project({ type: "session_created", session: piboSession });
 		const profile = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, piboSession.profile);
-		const parentPiSessionId = piboSession.parentId
-			? this.resolvePiboSession(piboSession.parentId).piSessionId
+		let binding = this.resolveSessionRuntimeBinding(piboSession);
+		const parent = piboSession.parentId ? this.resolvePiboSession(piboSession.parentId) : undefined;
+		const parentBinding = parent ? this.resolveSessionRuntimeBinding(parent) : undefined;
+		const parentModelScopeId = parent ? parentBinding?.nativeSessionId ?? parent.id : undefined;
+		const runtimeParentNativeSessionId = parentBinding
+			&& parentBinding.runtimeInstanceId === binding.runtimeInstanceId
+			&& parentBinding.adapterId === binding.adapterId
+			? parentBinding.nativeSessionId
 			: undefined;
 		const modelDefaults = this.resolveModelDefaults();
-		const activeModel = this.ensureSessionActiveModel(piboSession, profile, parentPiSessionId, modelDefaults);
+		const activeModel = this.ensureSessionActiveModel(piboSession, profile, parentModelScopeId, modelDefaults);
 		const initialThinkingLevel = resolvePiboSessionInitialThinkingLevel(piboSession);
 		const sessionProfile = profileForSession(
 			profile,
-			piboSession.piSessionId,
-			parentPiSessionId,
+			binding.runtimeInstanceId,
+			binding.nativeSessionId,
+			runtimeParentNativeSessionId,
 			this.getSubagentDepth(piboSession.id),
 		);
 		const userSettings = loadPiboUserSettings();
 		const telemetryExtension = this.telemetryStore
 			? createPiboProviderTelemetryExtension({ store: this.telemetryStore, writer: this.telemetryWriter, session: piboSession, model: activeModel })
 			: undefined;
-		const runtime = await createPiboRuntime({
-			cwd: piboSession.workspace ?? this.options.cwd,
-			persistSession: this.options.persistSession,
-			thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
-			retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
+		const runtimeRegistry = this.resolveAgentRuntimeRegistry(binding.runtimeInstanceId);
+		const runtimeAdapter = runtimeRegistry.requireAgentRuntimeAdapter(binding.runtimeInstanceId);
+		if (runtimeAdapter.descriptor.id !== binding.adapterId) {
+			throw new AgentRuntimeUnavailableError(
+				binding.runtimeInstanceId,
+				`Runtime binding for Pibo session "${piboSession.id}" expects adapter "${binding.adapterId}", but instance "${binding.runtimeInstanceId}" uses "${runtimeAdapter.descriptor.id}".`,
+			);
+		}
+		const workspace = piboSession.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace();
+		if (binding.state === "bound" && runtimeAdapter.resolveBinding) {
+			const resolved = await runtimeAdapter.resolveBinding({ binding, workspace });
+			if (!runtimeBindingsEqual(binding, resolved)) {
+				binding = this.persistSessionRuntimeBinding(piboSession, resolved, {
+					expectedRevision: binding.revision,
+				});
+			}
+		}
+		this.assertOpenableRuntimeBinding(binding);
+		const profileDiagnostics = [
+			...validateAgentRuntimeProfileCapabilities(sessionProfile, runtimeAdapter.descriptor.capabilities),
+			...runtimeAdapter.validateProfile({
+				profile: sessionProfile,
+				workspace,
+			}),
+		];
+		const invalidProfile = profileDiagnostics.find((diagnostic) => diagnostic.severity === "error");
+		if (invalidProfile) {
+			throw new Error(`Runtime profile validation failed: ${invalidProfile.message}`);
+		}
+		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
+		const subagentRunner = this.createSubagentRunner(piboSession.id);
+		const runToolController = this.createRunToolController(piboSession.id);
+		const codeRuntimeToolController = this.runtimeRegistry.createController(piboSession.id);
+		const sessionGeneration = randomUUID();
+		const previousResources = this.runtimeResourceSessions.get(piboSession.id);
+		if (previousResources) await previousResources.dispose();
+		this.portableToolSessions.get(piboSession.id)?.dispose();
+		const portableTools = this.portableToolService.createSession({
+			piboSessionId: piboSession.id,
+			piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
+			runtimeInstanceId: binding.runtimeInstanceId,
+			adapterId: binding.adapterId,
+			sessionGeneration,
 			profile: sessionProfile,
-			extensionFactories: [
-				...(telemetryExtension ? [telemetryExtension] : []),
-				...(this.options.extensionFactories ?? []),
-			],
-			subagentRunner: this.createSubagentRunner(piboSession.id),
-			runToolController: this.createRunToolController(piboSession.id),
-			runtimeToolController: this.runtimeRegistry.createController(piboSession.id),
-			modelDefaults,
-			activeModel,
-			sessionContext: {
+			cwd: workspace,
+			getActiveMessage: () => session?.getActiveMessage(),
+			subagentRunner,
+			runToolController,
+			runtimeToolController: codeRuntimeToolController,
+		});
+		this.portableToolSessions.set(piboSession.id, portableTools);
+		let resources: PiboRuntimeResourceSession;
+		try {
+			resources = await this.runtimeResourceService.createSession({
 				piboSessionId: piboSession.id,
 				piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
+				runtimeInstanceId: binding.runtimeInstanceId,
+				adapterId: binding.adapterId,
+				sessionGeneration,
+				profile: sessionProfile,
+				cwd: workspace,
 				timezone: userSettings.timezone,
-				getActiveMessage: () => session?.getActiveMessage(),
-			},
-		});
-		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
+				capabilities: runtimeAdapter.descriptor.capabilities,
+			});
+			this.runtimeResourceSessions.set(piboSession.id, resources);
+		} catch (error) {
+			portableTools.dispose();
+			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
+			throw error;
+		}
+		let runtimeSession: AgentRuntimeSession;
+		try {
+			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
+				piboSession: { ...piboSession, runtimeBinding: binding },
+				profile: sessionProfile,
+				binding,
+				workspace,
+				activeModel,
+				productContext: {
+					piboSessionId: piboSession.id,
+					piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
+					timezone: userSettings.timezone,
+					getActiveMessage: () => session?.getActiveMessage(),
+				},
+				services: {
+					subagentRunner,
+					runToolController,
+					codeRuntimeToolController,
+					portableTools,
+					resources,
+					compatibility: {
+						persistSession: this.options.persistSession,
+						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
+						retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
+						extensionFactories: [
+							...(telemetryExtension ? [telemetryExtension] : []),
+							...(this.options.extensionFactories ?? []),
+						],
+						modelDefaults,
+						initialFastMode,
+					},
+				},
+			});
+		} catch (error) {
+			portableTools.dispose();
+			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
+			await resources.dispose();
+			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
+			if (error instanceof AgentRuntimeBindingMissingError && binding.state === "bound") {
+				this.persistSessionRuntimeBinding(piboSession, {
+					...binding,
+					state: "missing",
+					metadata: {
+						...(binding.metadata ?? {}),
+						diagnosticCode: "runtime_binding_missing",
+						diagnosticMessage: "The bound native session is no longer available in the configured runtime instance.",
+					},
+				}, {
+					expectedRevision: binding.revision,
+				});
+			}
+			throw error;
+		}
+		try {
+			const openedBinding = runtimeSession.getBinding();
+			if (openedBinding.runtimeInstanceId !== binding.runtimeInstanceId || openedBinding.adapterId !== binding.adapterId) {
+				throw new AgentRuntimeUnavailableError(
+					binding.runtimeInstanceId,
+					`Runtime instance "${binding.runtimeInstanceId}" opened an inconsistent binding for Pibo session "${piboSession.id}".`,
+				);
+			}
+			if (!runtimeBindingsEqual(binding, openedBinding)) {
+				binding = this.persistSessionRuntimeBinding(piboSession, openedBinding, {
+					expectedRevision: binding.revision,
+				});
+			}
+		} catch (error) {
+			await runtimeSession.dispose().catch(() => {});
+			portableTools.dispose();
+			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
+			await resources.dispose();
+			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
+			throw error;
+		}
 		session = new RoutedSession(
 			piboSession.id,
-			runtime,
+			runtimeSession,
 			this.emitOutput,
 			this.pluginRegistry,
-			this.options.forwardPiEvents ?? false,
-			this.telemetryRecorder
-				? (id, event, context) => this.telemetryRecorder?.recordPiEvent(id, event, { session: this.sessionStore.get(id), status: context.status, activeEventId: context.activeEventId })
-				: undefined,
-			initialFastMode,
-			(result, event) => this.handleSessionOperation(result, event),
-			(id, opts) => this.killChildSessions(id, opts),
-			(state) => {
-				this.signalRegistry.project({ type: "session_processing_changed", piboSessionId: piboSession.id, processing: state.processing, queuedMessages: state.queuedMessages });
-				if (state.disposed || state.processing || state.queuedMessages > 0) this.clearIdleSessionTimer(piboSession.id);
-				else this.scheduleIdleSessionEvictionIfIdle(piboSession.id);
+			{
+				forwardLegacyPiEvents: this.options.forwardPiEvents ?? false,
+				onNativeEventTelemetry: this.telemetryRecorder
+					? (id, event, context) => this.telemetryRecorder?.recordPiEvent(id, event, {
+						session: this.sessionStore.get(id),
+						status: context.status,
+						activeEventId: context.activeEventId,
+					})
+					: undefined,
+				onSessionOperation: (result, event) => this.handleSessionOperation(result, event),
+				onKillChildren: (id, opts) => this.killChildSessions(id, opts),
+				onStateChange: (state) => {
+					this.signalRegistry.project({
+						type: "session_processing_changed",
+						piboSessionId: piboSession.id,
+						processing: state.processing,
+						queuedMessages: state.queuedMessages,
+					});
+					if (!state.processing && state.queuedMessages === 0 && !state.disposed) {
+						this.syncLiveSessionRuntimeBinding(piboSession.id, runtimeSession);
+					}
+					if (state.disposed || state.processing || state.queuedMessages > 0) this.clearIdleSessionTimer(piboSession.id);
+					else this.scheduleIdleSessionEvictionIfIdle(piboSession.id);
+				},
+				onMessagesInterrupted: (messages, reason) => this.telemetryRecorder?.recordMessagesInterrupted(messages, {
+					session: this.sessionStore.get(piboSession.id),
+					status: this.sessions.get(piboSession.id)?.getStatus(),
+				}, reason),
+				messagePreflight: this.options.messagePreflight,
+				getRuntimeAuthStatus: () => runtimeRegistry.getAgentRuntimeAuthStatus(binding.runtimeInstanceId),
+				startRuntimeAuth: async (input) => {
+					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.startAgentRuntimeAuth(binding.runtimeInstanceId, input);
+					return result;
+				},
+				completeRuntimeAuth: async (input) => {
+					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.completeAgentRuntimeAuth(binding.runtimeInstanceId, input);
+					return result;
+				},
+				cancelRuntimeAuth: async (input) => {
+					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.cancelAgentRuntimeAuth(binding.runtimeInstanceId, input);
+					return result;
+				},
+				logoutRuntimeAuth: async (input) => {
+					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.logoutAgentRuntimeAuth(binding.runtimeInstanceId, input);
+					return result;
+				},
 			},
-			(messages, reason) => this.telemetryRecorder?.recordMessagesInterrupted(messages, {
-				session: this.sessionStore.get(piboSession.id),
-				status: this.sessions.get(piboSession.id)?.getStatus(),
-			}, reason),
-			this.options.messagePreflight,
 		);
 		this.sessions.set(piboSession.id, session);
 		return session;
+	}
+
+	private resolveAgentRuntimeRegistry(instanceId: string): PiboPluginRegistry {
+		if (this.pluginRegistry.getAgentRuntimeAdapter(instanceId)) return this.pluginRegistry;
+		if (this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(instanceId)) return this.compatibilityRuntimeRegistry;
+		throw new Error(`Unknown agent runtime instance "${instanceId}".`);
+	}
+
+	private resolveSessionRuntimeBinding(session: PiboSession): RuntimeSessionBinding {
+		return this.sessionStore.getRuntimeBinding?.(session.id)
+			?? session.runtimeBinding
+			?? createLegacyPiRuntimeSessionBinding(session.id, session.piSessionId, session.createdAt);
+	}
+
+	private withPersistedRuntimeBinding(status: PiboSessionStatus): PiboSessionStatus {
+		const session = this.sessionStore.get(status.piboSessionId);
+		if (!session) return status;
+		const binding = this.resolveSessionRuntimeBinding(session);
+		return {
+			...status,
+			runtimeBinding: {
+				runtimeInstanceId: binding.runtimeInstanceId,
+				adapterId: binding.adapterId,
+				nativeSessionId: binding.nativeSessionId,
+				state: binding.state,
+				protocol: binding.protocol,
+				protocolVersion: binding.protocolVersion,
+				adapterVersion: binding.adapterVersion,
+				revision: binding.revision,
+			},
+		};
+	}
+
+	private persistSessionRuntimeBinding(
+		session: PiboSession,
+		binding: RuntimeSessionBinding,
+		options: RuntimeSessionBindingUpdateOptions = {},
+	): RuntimeSessionBinding {
+		const current = this.resolveSessionRuntimeBinding(session);
+		const normalized: RuntimeSessionBinding = { ...structuredClone(binding), piboSessionId: session.id };
+		if (runtimeBindingsEqual(current, normalized)) return current;
+		const persisted = this.sessionStore.updateRuntimeBinding?.(session.id, normalized, options);
+		if (persisted) {
+			const updatedSession = this.sessionStore.get(session.id);
+			if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
+			return persisted;
+		}
+		const now = new Date().toISOString();
+		if (normalized.adapterId === "pi" && normalized.nativeSessionId !== session.piSessionId) {
+			this.sessionStore.update(session.id, { piSessionId: normalized.nativeSessionId ?? "" });
+		}
+		const updatedSession = this.sessionStore.get(session.id);
+		if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
+		return {
+			...normalized,
+			revision: (current.revision ?? 1) + 1,
+			createdAt: current.createdAt ?? session.createdAt,
+			updatedAt: now,
+		};
+	}
+
+	private syncLiveSessionRuntimeBinding(piboSessionId: string, runtimeSession: { getBinding(): RuntimeSessionBinding }): void {
+		const session = this.sessionStore.get(piboSessionId);
+		if (!session) return;
+		try {
+			this.persistSessionRuntimeBinding(session, runtimeSession.getBinding());
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.emitOutput({
+				type: "session_error",
+				piboSessionId,
+				error: `Failed to persist the live runtime binding: ${message}`,
+				errorDetails: runtimeSessionErrorDetails(message),
+			});
+		}
+	}
+
+	private assertOpenableRuntimeBinding(binding: RuntimeSessionBinding): void {
+		if (binding.state === "missing") {
+			throw new AgentRuntimeBindingMissingError(
+				binding.piboSessionId,
+				binding.runtimeInstanceId,
+				binding.nativeSessionId,
+			);
+		}
+		if (binding.state === "error") {
+			const diagnostic = typeof binding.metadata?.diagnosticMessage === "string"
+				? binding.metadata.diagnosticMessage
+				: "The persisted runtime binding is in an error state.";
+			throw new AgentRuntimeUnavailableError(
+				binding.runtimeInstanceId,
+				`Runtime binding for Pibo session "${binding.piboSessionId}" cannot be opened: ${diagnostic}`,
+			);
+		}
+	}
+
+	private createRuntimeBindingInput(profile: InitialSessionContext): CreateRuntimeSessionBindingInput {
+		const registry = this.resolveAgentRuntimeRegistry(profile.runtimeInstanceId);
+		const adapter = registry.requireAgentRuntimeAdapter(profile.runtimeInstanceId);
+		return {
+			runtimeInstanceId: profile.runtimeInstanceId,
+			adapterId: adapter.descriptor.id,
+			state: "unbound",
+			protocol: adapter.descriptor.protocol?.name,
+		};
 	}
 
 	private ensureSessionActiveModel(
@@ -894,24 +1403,39 @@ export class PiboSessionRouter {
 		event: PiboExecutionEvent,
 	): Promise<void> {
 		if (result.cancelled) return;
+		const source = this.resolvePiboSession(event.piboSessionId);
+		const previousBinding = this.resolveSessionRuntimeBinding(source);
+		const liveBinding = this.sessions.get(event.piboSessionId)?.getRuntimeBinding();
+		const currentBinding: RuntimeSessionBinding = {
+			...previousBinding,
+			...liveBinding,
+			piboSessionId: source.id,
+			nativeSessionId: result.current.piSessionId,
+			state: "bound",
+			locator: result.current.sessionFile
+				? { kind: "local-file", value: result.current.sessionFile }
+				: liveBinding?.locator ?? previousBinding.locator,
+		};
 
 		if (event.action === "session.fork" || event.action === "session.clone") {
 			const action = event.action as "session.fork" | "session.clone";
-			const created = this.createDerivedSession(result, action);
+			const created = this.createDerivedSession(result, action, currentBinding);
 			result.piboSessionId = created.id;
 			await this.resetCachedSession(event.piboSessionId);
 			return;
 		}
 
-		this.sessionStore.update(event.piboSessionId, {
-			piSessionId: result.current.piSessionId,
-			workspace: result.current.cwd,
+		this.persistSessionRuntimeBinding(source, currentBinding, {
+			expectedRevision: previousBinding.revision,
+			mode: "rebind",
 		});
+		this.sessionStore.update(event.piboSessionId, { workspace: result.current.cwd });
 	}
 
 	private createDerivedSession(
 		result: PiboSessionOperationResult,
 		action: "session.fork" | "session.clone",
+		currentBinding: RuntimeSessionBinding,
 	): PiboSession {
 		const source = this.resolvePiboSession(result.piboSessionId);
 		return this.sessionStore.create({
@@ -920,16 +1444,53 @@ export class PiboSessionRouter {
 			profile: source.profile,
 			parentId: source.kind === "subagent" ? source.parentId : undefined,
 			originId: source.id,
-			piSessionId: result.current.piSessionId,
+			runtimeBinding: {
+				runtimeInstanceId: currentBinding.runtimeInstanceId,
+				adapterId: currentBinding.adapterId,
+				nativeSessionId: currentBinding.nativeSessionId ?? result.current.piSessionId,
+				state: "bound",
+				protocol: currentBinding.protocol,
+				protocolVersion: currentBinding.protocolVersion,
+				adapterVersion: currentBinding.adapterVersion,
+				locator: currentBinding.locator,
+				metadata: currentBinding.metadata,
+			},
 			workspace: result.current.cwd,
 			title: source.title,
 			activeModel: source.activeModel,
 			metadata: {
 				...asJsonObject(source.metadata),
 				originAction: action,
-				originPiSessionId: result.previous.piSessionId,
+				originRuntimeNativeSessionId: result.previous.piSessionId,
+				...(currentBinding.adapterId === "pi" ? { originPiSessionId: result.previous.piSessionId } : {}),
 			},
 		});
+	}
+
+	private runtimeAuthAffectedInstanceIds(runtimeInstanceId: string): string[] {
+		const registry = this.resolveAgentRuntimeRegistry(runtimeInstanceId);
+		const target = registry.requireAgentRuntimeAdapter(runtimeInstanceId);
+		if (target.descriptor.capabilities.auth.credentialScope === "runtime-instance") return [runtimeInstanceId];
+		return registry.getAgentRuntimeInstanceIds().filter((candidateId) => {
+			const candidate = registry.getAgentRuntimeAdapter(candidateId);
+			return candidate?.descriptor.id === target.descriptor.id
+				&& candidate.descriptor.capabilities.auth.credentialScope === "adapter-shared";
+		});
+	}
+
+	private async resetCachedRuntimeAuthSessions(runtimeInstanceId: string, reason: string): Promise<void> {
+		const affectedInstanceIds = new Set(this.runtimeAuthAffectedInstanceIds(runtimeInstanceId));
+		for (const affectedInstanceId of affectedInstanceIds) this.runtimeAuthFingerprints.delete(affectedInstanceId);
+		const ids = [...new Set([...this.sessions.keys(), ...this.pendingSessions.keys()])]
+			.filter((piboSessionId) => {
+				const boundRuntimeInstanceId = this.getSessionRuntimeBinding(piboSessionId)?.runtimeInstanceId;
+				return boundRuntimeInstanceId !== undefined && affectedInstanceIds.has(boundRuntimeInstanceId);
+			});
+		const results = await Promise.allSettled(ids.map(async (piboSessionId) => await this.resetCachedSession(piboSessionId, reason)));
+		const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+		if (failures.length > 0) {
+			throw new AggregateError(failures, `Failed to reset cached sessions affected by runtime auth target "${runtimeInstanceId}".`);
+		}
 	}
 
 	private async resetCachedSession(piboSessionId: string, reason?: string): Promise<void> {
@@ -976,15 +1537,47 @@ export class PiboSessionRouter {
 			channel: "pibo.runtime",
 			kind: "runtime",
 			profile: this.baseProfile.profileName,
+			runtimeBinding: this.createRuntimeBindingInput(this.baseProfile),
 			workspace: this.options.cwd ?? getDefaultPiboWorkspace(),
 		});
 		this.signalRegistry.project({ type: "session_created", session: created });
 		return created;
 	}
 
+	private trackActiveSubagent(parentPiboSessionId: string, childPiboSessionId: string): () => void {
+		let children = this.activeSubagentChildren.get(parentPiboSessionId);
+		if (!children) {
+			children = new Map();
+			this.activeSubagentChildren.set(parentPiboSessionId, children);
+		}
+		children.set(childPiboSessionId, (children.get(childPiboSessionId) ?? 0) + 1);
+		let active = true;
+		return () => {
+			if (!active) return;
+			active = false;
+			const current = this.activeSubagentChildren.get(parentPiboSessionId);
+			if (!current) return;
+			const remaining = (current.get(childPiboSessionId) ?? 1) - 1;
+			if (remaining > 0) current.set(childPiboSessionId, remaining);
+			else current.delete(childPiboSessionId);
+			if (current.size === 0) this.activeSubagentChildren.delete(parentPiboSessionId);
+		};
+	}
+
+	private async abortActiveSubagentSessions(parentPiboSessionId: string): Promise<void> {
+		const childIds = [...(this.activeSubagentChildren.get(parentPiboSessionId)?.keys() ?? [])];
+		if (childIds.length === 0) return;
+		await Promise.allSettled(childIds.map(async (childPiboSessionId) => await this.emit({
+			type: "execution",
+			piboSessionId: childPiboSessionId,
+			action: "abort",
+			id: randomUUID(),
+		})));
+	}
+
 	private createSubagentRunner(parentPiboSessionId: string): PiboSubagentRunner {
 		return {
-			runSubagent: async ({ subagent, message, threadKey, toolCallId }) => {
+			runSubagent: async ({ subagent, message, threadKey, toolCallId, signal }) => {
 				this.assertSubagentDepth(parentPiboSessionId, subagent);
 				const child = this.resolveSubagentSession(parentPiboSessionId, subagent, threadKey);
 				const toolName = createSubagentToolName(subagent.name);
@@ -1007,11 +1600,17 @@ export class PiboSessionRouter {
 					threadKey: typeof child.metadata?.threadKey === "string" ? child.metadata.threadKey : undefined,
 				});
 
-				const reply = await this.emitMessageAndWaitForReply(
-					event,
-					subagent.timeoutMs ?? DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS,
-				);
-				return { piboSessionId: child.id, eventId: event.id!, reply };
+				const untrack = this.trackActiveSubagent(parentPiboSessionId, child.id);
+				try {
+					const reply = await this.emitMessageAndWaitForReply(
+						event,
+						subagent.timeoutMs ?? DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS,
+						signal,
+					);
+					return { piboSessionId: child.id, eventId: event.id!, reply };
+				} finally {
+					untrack();
+				}
 			},
 		};
 	}
@@ -1112,7 +1711,7 @@ export class PiboSessionRouter {
 	): PiboSession {
 		const targetProfile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, subagent.targetProfile);
 		const parent = this.resolvePiboSession(parentPiboSessionId);
-		const resolvedThreadKey = threadKey?.trim() ? threadKey.trim() : randomUUID();
+		const resolvedThreadKey = resolveSubagentThreadKey(threadKey);
 		const baseMetadata: PiboJsonObject = {
 			subagentName: subagent.name,
 			subagentToolName: createSubagentToolName(subagent.name),
@@ -1155,6 +1754,7 @@ export class PiboSessionRouter {
 			kind: "subagent",
 			profile: targetProfile,
 			parentId: parent.id,
+			runtimeBinding: this.createRuntimeBindingInput(childProfile),
 			workspace: parent.workspace,
 			metadata,
 		});
@@ -1162,7 +1762,7 @@ export class PiboSessionRouter {
 		const activeModel = resolvePiboSessionActiveModel({
 			profile: childProfile,
 			piboSession: childSession,
-			parentPiSessionId: parent.piSessionId,
+			parentPiSessionId: this.resolveSessionRuntimeBinding(parent).nativeSessionId ?? parent.id,
 			modelDefaults: this.resolveModelDefaults(),
 		});
 		return activeModel ? this.sessionStore.update(childSession.id, { activeModel }) ?? childSession : childSession;

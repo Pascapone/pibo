@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, ArrowLeft, CheckCircle, Copy, ExternalLink, Key, Loader2, Lock } from "lucide-react";
 import { postAction } from "../../api";
 import type { CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
@@ -8,7 +8,15 @@ type LoginStep =
 	| { type: "select_provider" }
 	| { type: "select_method"; provider: LoginProvider }
 	| { type: "device_starting"; provider: LoginProvider }
-	| { type: "device_flow"; provider: LoginProvider; url: string; state?: string; userCode?: string; instructions?: string }
+	| {
+		type: "device_flow";
+		provider: LoginProvider;
+		url: string;
+		flowId?: string;
+		completion?: "immediate" | "explicit" | "notification";
+		userCode?: string;
+		instructions?: string;
+	}
 	| { type: "api_key"; provider: LoginProvider }
 	| { type: "success"; provider: LoginProvider; message: string }
 	| { type: "error"; provider?: LoginProvider; message: string };
@@ -16,15 +24,22 @@ type LoginStep =
 type LoginStartResult = {
 	url?: string;
 	state?: string;
+	flowId?: string;
 	userCode?: string;
 	instructions?: string;
-	type?: string;
+	flow?: {
+		flowId?: string;
+		completion?: "immediate" | "explicit" | "notification";
+		verificationUrl?: string;
+		userCode?: string;
+		instructions?: string;
+	};
 };
 
 const METHOD_LABELS: Record<LoginAuthMethod, string> = {
 	device_code: "Device code",
+	browser_oauth: "Browser OAuth",
 	api_key: "API key",
-	oauth: "Browser OAuth",
 };
 
 export function TerminalLoginCard({
@@ -41,6 +56,7 @@ export function TerminalLoginCard({
 	const [apiKey, setApiKey] = useState("");
 	const [code, setCode] = useState("");
 	const [copied, setCopied] = useState<string | null>(null);
+	const polling = useRef(false);
 
 	const reset = useCallback(() => {
 		setStep({ type: "select_provider" });
@@ -58,7 +74,7 @@ export function TerminalLoginCard({
 		}
 	}, []);
 
-	const startDeviceLogin = useCallback(async (provider: LoginProvider) => {
+	const startInteractiveLogin = useCallback(async (provider: LoginProvider, method: Exclude<LoginAuthMethod, "api_key">) => {
 		if (!piboSessionId) {
 			setStep({ type: "error", provider, message: "Select a chat session before starting login." });
 			return;
@@ -66,18 +82,20 @@ export function TerminalLoginCard({
 		setBusy(true);
 		setStep({ type: "device_starting", provider });
 		try {
-			const result = unwrapActionResult(await postAction(piboSessionId, "login.start", { provider: provider.id })) as LoginStartResult;
-			if (!result?.url) {
+			const result = unwrapActionResult(await postAction(piboSessionId, "login.start", { provider: provider.id, method })) as LoginStartResult;
+			const url = result?.url ?? result?.flow?.verificationUrl;
+			if (!url) {
 				setStep({ type: "error", provider, message: "No login URL returned." });
 				return;
 			}
 			setStep({
 				type: "device_flow",
 				provider,
-				url: result.url,
-				state: result.state,
-				userCode: result.userCode,
-				instructions: result.instructions,
+				url,
+				flowId: result.flowId ?? result.state ?? result.flow?.flowId,
+				completion: result.flow?.completion,
+				userCode: result.userCode ?? result.flow?.userCode,
+				instructions: result.instructions ?? result.flow?.instructions,
 			});
 		} catch (caught) {
 			setStep({ type: "error", provider, message: caught instanceof Error ? caught.message : String(caught) });
@@ -86,22 +104,68 @@ export function TerminalLoginCard({
 		}
 	}, [piboSessionId]);
 
-	const completeDeviceLogin = useCallback(async (provider: LoginProvider, state?: string, codeValue?: string) => {
-		if (!piboSessionId) return;
+	const completeDeviceLogin = useCallback(async (provider: LoginProvider, flowId?: string, codeValue?: string) => {
+		if (!piboSessionId || !flowId) return;
 		setBusy(true);
 		try {
-			await postAction(piboSessionId, "login.complete", {
+			const result = unwrapActionResult(await postAction(piboSessionId, "login.complete", {
 				provider: provider.id,
-				state: state ?? "",
+				flowId,
 				...(codeValue ? { code: codeValue } : {}),
-			});
-			setStep({ type: "success", provider, message: `${provider.name} login completed.` });
+			})) as { state?: string };
+			if (result?.state === "pending") return;
+			if (result?.state === "failed") {
+				setStep({ type: "error", provider, message: "Login failed. Start a new runtime login flow." });
+				return;
+			}
+			setStep({ type: "success", provider, message: `${provider.name} login completed for this runtime.` });
 		} catch (caught) {
 			setStep({ type: "error", provider, message: caught instanceof Error ? caught.message : String(caught) });
 		} finally {
 			setBusy(false);
 		}
 	}, [piboSessionId]);
+
+	const cancelDeviceLogin = useCallback(async (provider: LoginProvider, flowId?: string) => {
+		if (!piboSessionId || !flowId) {
+			reset();
+			return;
+		}
+		setBusy(true);
+		try {
+			await postAction(piboSessionId, "login.cancel", { provider: provider.id, flowId });
+			reset();
+		} catch (caught) {
+			setStep({ type: "error", provider, message: caught instanceof Error ? caught.message : String(caught) });
+		} finally {
+			setBusy(false);
+		}
+	}, [piboSessionId, reset]);
+
+	useEffect(() => {
+		if (step.type !== "device_flow" || step.completion !== "notification" || !step.flowId || !piboSessionId) return;
+		const poll = async () => {
+			if (polling.current || step.type !== "device_flow") return;
+			polling.current = true;
+			try {
+				const result = unwrapActionResult(await postAction(piboSessionId, "login.complete", {
+					provider: step.provider.id,
+					flowId: step.flowId,
+				})) as { state?: string };
+				if (result?.state === "connected" || result?.state === "partial") {
+					setStep({ type: "success", provider: step.provider, message: `${step.provider.name} login completed for this runtime.` });
+				} else if (result?.state === "failed") {
+					setStep({ type: "error", provider: step.provider, message: "Login failed. Start a new runtime login flow." });
+				}
+			} catch (caught) {
+				setStep({ type: "error", provider: step.provider, message: caught instanceof Error ? caught.message : String(caught) });
+			} finally {
+				polling.current = false;
+			}
+		};
+		const timer = window.setInterval(() => void poll(), 1_500);
+		return () => window.clearInterval(timer);
+	}, [piboSessionId, step]);
 
 	const saveApiKey = useCallback(async (provider: LoginProvider) => {
 		if (!piboSessionId) return;
@@ -127,7 +191,10 @@ export function TerminalLoginCard({
 		<LoginShell
 			title={step.type === "select_provider" ? "Login" : providerTitle(step)}
 			tone={step.type === "error" ? "red" : step.type === "success" ? "green" : "cyan"}
-			action={step.type === "select_provider" ? undefined : <BackButton onClick={reset} disabled={busy} />}
+			action={step.type === "select_provider" ? undefined : <BackButton onClick={() => {
+				if (step.type === "device_flow") void cancelDeviceLogin(step.provider, step.flowId);
+				else reset();
+			}} disabled={busy} />}
 		>
 			{step.type === "select_provider" ? (
 				<div className="grid gap-2">
@@ -158,7 +225,7 @@ export function TerminalLoginCard({
 							<button
 								key={method}
 								type="button"
-								onClick={() => method === "api_key" ? setStep({ type: "api_key", provider: step.provider }) : void startDeviceLogin(step.provider)}
+								onClick={() => method === "api_key" ? setStep({ type: "api_key", provider: step.provider }) : void startInteractiveLogin(step.provider, method)}
 								className="inline-flex items-center gap-1 border border-[#3a3a3a] bg-transparent px-2 py-1 text-[11px] text-[#d4d4d4] hover:border-[#38bdf8] hover:text-[#38bdf8]"
 							>
 								{method === "api_key" ? <Key size={11} /> : <Lock size={11} />}
@@ -187,14 +254,18 @@ export function TerminalLoginCard({
 								{step.userCode}
 							</button>
 							<span className="text-[#737373]">then</span>
-							<button type="button" disabled={busy} onClick={() => void completeDeviceLogin(step.provider, step.state)} className="inline-flex items-center gap-1 border border-[#3a3a3a] px-2 py-0.5 text-[#d4d4d4] hover:border-[#38bdf8] hover:text-[#38bdf8] disabled:opacity-50">
-								{busy ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Complete
-							</button>
+							{step.completion === "notification" ? (
+								<span className="inline-flex items-center gap-1 text-[#38bdf8]"><Loader2 size={11} className="animate-spin" /> Waiting for runtime</span>
+							) : (
+								<button type="button" disabled={busy || !step.flowId} onClick={() => void completeDeviceLogin(step.provider, step.flowId)} className="inline-flex items-center gap-1 border border-[#3a3a3a] px-2 py-0.5 text-[#d4d4d4] hover:border-[#38bdf8] hover:text-[#38bdf8] disabled:opacity-50">
+									{busy ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Complete
+								</button>
+							)}
 						</div>
 					) : (
 						<div className="flex flex-wrap items-center gap-1.5">
-							<input value={code} onChange={(event) => setCode(event.target.value)} placeholder="authorization code" className="min-w-0 flex-1 border border-[#2a2a2a] bg-[#0b0b0b] px-2 py-1 text-[11px] text-[#d4d4d4] outline-none focus:border-[#38bdf8]" />
-							<button type="button" disabled={busy || !code.trim()} onClick={() => void completeDeviceLogin(step.provider, step.state, code.trim())} className="inline-flex items-center gap-1 border border-[#3a3a3a] px-2 py-1 text-[#d4d4d4] hover:border-[#38bdf8] hover:text-[#38bdf8] disabled:opacity-50">
+							<input value={code} autoComplete="off" spellCheck={false} onChange={(event) => setCode(event.target.value)} placeholder="authorization code" className="min-w-0 flex-1 border border-[#2a2a2a] bg-[#0b0b0b] px-2 py-1 text-[11px] text-[#d4d4d4] outline-none focus:border-[#38bdf8]" />
+							<button type="button" disabled={busy || !code.trim() || !step.flowId} onClick={() => void completeDeviceLogin(step.provider, step.flowId, code.trim())} className="inline-flex items-center gap-1 border border-[#3a3a3a] px-2 py-1 text-[#d4d4d4] hover:border-[#38bdf8] hover:text-[#38bdf8] disabled:opacity-50">
 								{busy ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Complete
 							</button>
 						</div>
@@ -207,6 +278,8 @@ export function TerminalLoginCard({
 					<input
 						type="password"
 						value={apiKey}
+						autoComplete="off"
+						spellCheck={false}
 						onChange={(event) => setApiKey(event.target.value)}
 						onKeyDown={(event) => {
 							if (event.key === "Enter") void saveApiKey(step.provider);

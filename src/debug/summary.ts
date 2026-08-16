@@ -7,6 +7,10 @@ import { inspectDebugTrace } from "./trace.js";
 
 export type DebugSummaryResult = {
 	piboSessionId: string;
+	runtimeInstanceId?: unknown;
+	runtimeAdapterId?: unknown;
+	nativeSessionId?: unknown;
+	runtimeBindingState?: unknown;
 	status?: unknown;
 	traceStatus?: string;
 	roomId?: unknown;
@@ -39,6 +43,10 @@ export async function inspectDebugSummary(input: string, stores: { sessions: Res
 	}, {});
 	return {
 		piboSessionId: parsed.piboSessionId,
+		runtimeInstanceId: session.runtimeBinding?.runtime_instance_id,
+		runtimeAdapterId: session.runtimeBinding?.runtime_adapter_id,
+		nativeSessionId: session.runtimeBinding?.native_session_id,
+		runtimeBindingState: session.runtimeBinding?.binding_state,
 		status: session.session.status,
 		traceStatus,
 		roomId: session.room.sessionRoomId,
@@ -63,6 +71,10 @@ export async function inspectDebugSummary(input: string, stores: { sessions: Res
 export function formatDebugSummary(result: DebugSummaryResult): string {
 	const lines: string[] = [];
 	lines.push(`piboSessionId: ${result.piboSessionId}`);
+	if (result.runtimeInstanceId !== undefined) lines.push(`runtimeInstanceId: ${result.runtimeInstanceId}`);
+	if (result.runtimeAdapterId !== undefined) lines.push(`runtimeAdapterId: ${result.runtimeAdapterId}`);
+	if (result.nativeSessionId !== undefined) lines.push(`nativeSessionId: ${result.nativeSessionId}`);
+	if (result.runtimeBindingState !== undefined) lines.push(`runtimeBindingState: ${result.runtimeBindingState}`);
 	if (result.status !== undefined) lines.push(`status: ${result.status}`);
 	if (result.traceStatus) lines.push(`traceStatus: ${result.traceStatus}`);
 	if (result.roomId) lines.push(`roomId: ${result.roomId}`);

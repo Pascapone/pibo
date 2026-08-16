@@ -9,8 +9,49 @@ import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
+import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
 
 const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
+
+function fakeRuntimeCapabilities() {
+	const unsupported = { support: "unsupported", reason: "Not supported by this fixture runtime." };
+	return {
+		lifecycle: { persistent: true, lazyBinding: true, resume: true, attach: false, listNativeSessions: false, fork: false, clone: false, tree: false },
+		input: { text: true, images: false, audio: false, steering: false, structuredOutput: false },
+		output: { assistantDeltas: true, reasoning: true, toolEvents: true, usage: true, plans: false, diffs: false, rawNativeEvents: false },
+		tools: {
+			piboManaged: { support: "mcp", transports: ["streamable-http"] },
+			nativeToolInspection: { support: "degraded", mode: "observed-runtime-items", reason: "Observed only." },
+			nativeToolYielding: unsupported,
+		},
+		mcp: { externalServers: { support: "native" }, statusInspection: true },
+		skills: { support: "materialized", modes: ["isolated-directory"] },
+		context: { support: "materialized", modes: ["developer-instructions"] },
+		auth: { status: false, methods: [], cancel: false, logout: false, credentialScope: "runtime-instance" },
+		models: { catalog: true, switchInSession: false, optionsSchema: { type: "object" } },
+		reasoning: { supported: true, values: ["low", "high"] },
+		approvals: { supported: true, structuredUserInput: true },
+		maintenance: { compaction: false, contextUsage: true, history: true, health: true },
+	};
+}
+
+function fakeRuntimeInspection(id, overrides = {}) {
+	return {
+		id,
+		adapterId: overrides.adapterId ?? id,
+		displayName: overrides.displayName ?? id,
+		enabled: overrides.enabled ?? true,
+		available: overrides.available ?? true,
+		transport: overrides.transport ?? "stdio-rpc",
+		capabilities: overrides.capabilities ?? fakeRuntimeCapabilities(),
+		configSchema: { type: "object", additionalProperties: false },
+		protocol: { name: overrides.protocol ?? "fixture-protocol" },
+		diagnostics: overrides.diagnostics ?? [],
+		...(overrides.models ? { models: overrides.models } : {}),
+		...(overrides.auth ? { auth: overrides.auth } : {}),
+	};
+}
 
 function createFakeAuthService() {
 	return {
@@ -97,6 +138,7 @@ async function startWebHostChannel(options = {}) {
 		auth: options.auth,
 		emit(event) {
 			emitted.push(event);
+			if (options.emit) return options.emit(event, sessions);
 			return Promise.resolve({
 				type: event.type === "message" ? "message_queued" : "execution_result",
 				piboSessionId: event.piboSessionId,
@@ -122,7 +164,8 @@ async function startWebHostChannel(options = {}) {
 		updateSession(id, input) {
 			return sessions.update(id, input);
 		},
-		deleteSession(id) {
+		async deleteSession(id) {
+			if (options.deleteSession) return await options.deleteSession(id, sessions);
 			return sessions.delete(id);
 		},
 		findSessions(input) {
@@ -130,6 +173,29 @@ async function startWebHostChannel(options = {}) {
 		},
 		listSessions() {
 			return sessions.list();
+		},
+		getSessionRuntimeBinding(id) {
+			return sessions.getRuntimeBinding(id);
+		},
+		...(options.inspectSessionRuntimeHistory ? {
+			inspectSessionRuntimeHistory: options.inspectSessionRuntimeHistory,
+		} : {}),
+		...(options.readSessionRuntimeHistory ? {
+			readSessionRuntimeHistory: options.readSessionRuntimeHistory,
+		} : {}),
+		async rebindSessionRuntime(id, input) {
+			if (options.rebindSessionRuntime) return await options.rebindSessionRuntime(id, input, sessions);
+			const current = sessions.getRuntimeBinding(id);
+			if (!current) throw new Error("Runtime binding not found");
+			const adapterId = input.runtimeInstanceId === "pi" ? "pi" : input.runtimeInstanceId;
+			return sessions.updateRuntimeBinding(id, {
+				...current,
+				runtimeInstanceId: input.runtimeInstanceId,
+				adapterId,
+				nativeSessionId: input.nativeSessionId,
+				state: input.state ?? (input.nativeSessionId ? "bound" : "unbound"),
+				locator: input.locator,
+			}, { expectedRevision: input.expectedRevision, mode: "rebind" });
 		},
 		...(options.getSessionStatusSnapshot ? {
 			getSessionStatusSnapshot: options.getSessionStatusSnapshot,
@@ -140,6 +206,7 @@ async function startWebHostChannel(options = {}) {
 		getProfiles() {
 			return profiles;
 		},
+		...(options.createProfile ? { createProfile: options.createProfile } : {}),
 		getCapabilityCatalog() {
 			return options.capabilityCatalog ?? {
 				nativeTools: [],
@@ -154,6 +221,27 @@ async function startWebHostChannel(options = {}) {
 				mcpServers: [],
 			};
 		},
+		...(options.inspectAgentRuntimeInstances ? {
+			inspectAgentRuntimeInstances: options.inspectAgentRuntimeInstances,
+		} : {}),
+		...(options.getAgentRuntimeAuthStatus ? {
+			getAgentRuntimeAuthStatus: options.getAgentRuntimeAuthStatus,
+		} : {}),
+		...(options.startAgentRuntimeAuth ? {
+			startAgentRuntimeAuth: options.startAgentRuntimeAuth,
+		} : {}),
+		...(options.completeAgentRuntimeAuth ? {
+			completeAgentRuntimeAuth: options.completeAgentRuntimeAuth,
+		} : {}),
+		...(options.cancelAgentRuntimeAuth ? {
+			cancelAgentRuntimeAuth: options.cancelAgentRuntimeAuth,
+		} : {}),
+		...(options.logoutAgentRuntimeAuth ? {
+			logoutAgentRuntimeAuth: options.logoutAgentRuntimeAuth,
+		} : {}),
+		...(options.validateAgentRuntimeProfile ? {
+			validateAgentRuntimeProfile: options.validateAgentRuntimeProfile,
+		} : {}),
 		upsertProfile(profile) {
 			profiles = profiles.filter((item) => item.name !== profile.name);
 			profiles.push({
@@ -650,6 +738,260 @@ test("chat web trace summary is small and cacheable", async () => {
 	}
 });
 
+test("new Chat Web traces use Pibo product history without reading native runtime history", async () => {
+	let inspectHistoryCalls = 0;
+	let readHistoryCalls = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async inspectSessionRuntimeHistory() {
+			inspectHistoryCalls += 1;
+			throw new Error("native history must not be inspected for a new Pibo-routed session");
+		},
+		async readSessionRuntimeHistory() {
+			readHistoryCalls += 1;
+			throw new Error("native history must not be read for a new Pibo-routed session");
+		},
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+		const piboSessionId = sessionPayload.session.id;
+		const messageResponse = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({ piboSessionId, text: "product-owned prompt", clientTxnId: "txn-product-history-web" }),
+		});
+		assert.equal(messageResponse.status, 200);
+		const messagePayload = await messageResponse.json();
+		const eventId = messagePayload.output.eventId;
+		emitOutput({ type: "message_started", piboSessionId, eventId, text: "product-owned prompt", source: "user" });
+		emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "product-owned answer" });
+		emitOutput({ type: "message_finished", piboSessionId, eventId });
+
+		const summaryResponse = await fetch(
+			`${baseURL}/api/chat/trace/summary?piboSessionId=${encodeURIComponent(piboSessionId)}`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(summaryResponse.status, 200);
+		const response = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(response.status, 200);
+		const page = await response.json();
+		const compatibilityResponse = await fetch(
+			`${baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(piboSessionId)}`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(compatibilityResponse.status, 200);
+		assert.equal(inspectHistoryCalls, 0);
+		assert.equal(readHistoryCalls, 0);
+		assert.equal(page.runtimeBinding.runtimeInstanceId, "pi");
+		assert.equal(page.runtimeBinding.adapterId, "pi");
+		assert.match(JSON.stringify(page.nodes), /product-owned prompt/);
+		assert.match(JSON.stringify(page.nodes), /product-owned answer/);
+		assert.ok(page.nodes.some((node) => node.source === "product-history") || page.nodes.some((node) => node.children?.some((child) => child.source === "product-history")));
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("legacy Pi traces use the adapter history provider without direct Chat Web JSONL access", async () => {
+	let inspectHistoryCalls = 0;
+	let readHistoryCalls = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const { channel, baseURL, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async inspectSessionRuntimeHistory(piboSessionId) {
+			inspectHistoryCalls += 1;
+			return {
+				runtimeInstanceId: "pi",
+				adapterId: "pi",
+				bindingState: "bound",
+				available: true,
+				title: "Legacy history",
+				version: "legacy-v1",
+				diagnostics: [],
+			};
+		},
+		async readSessionRuntimeHistory(piboSessionId, input = {}) {
+			readHistoryCalls += 1;
+			if (input.cursor === "provider-error") throw new Error("token=runtime-history-secret-must-not-leak");
+			const older = input.cursor === "provider-page-2";
+			return {
+				runtimeInstanceId: "pi",
+				adapterId: "pi",
+				source: "native",
+				entries: older ? [
+					{ id: "pi:older-user", type: "message", source: "native", createdAt: "2026-08-14T09:00:00.000Z", nativeEntryId: "legacy-older-user", nativeTurnId: "legacy-older-user", role: "user", content: "older legacy prompt" },
+				] : [
+					{ id: "pi:user", type: "message", source: "native", createdAt: "2026-08-14T10:00:00.000Z", nativeEntryId: "legacy-user", nativeTurnId: "legacy-user", role: "user", content: "legacy prompt" },
+					{ id: "pi:assistant", type: "message", source: "native", createdAt: "2026-08-14T10:00:01.000Z", nativeEntryId: "legacy-assistant", nativeTurnId: "legacy-user", role: "assistant", content: [{ type: "text", text: "legacy native answer" }], status: "complete" },
+				],
+				nextCursor: older ? undefined : "provider-page-2",
+				hasMore: !older,
+				inspection: {
+					runtimeInstanceId: "pi", adapterId: "pi", bindingState: "bound", available: true, title: "Legacy history", version: "legacy-v1", diagnostics: [],
+				},
+			};
+		},
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+		const current = sessions.getRuntimeBinding(sessionPayload.session.id);
+		assert.ok(current);
+		sessions.updateRuntimeBinding(sessionPayload.session.id, {
+			...current,
+			metadata: { ...(current.metadata ?? {}), migrationSource: "schema-v4" },
+		}, { expectedRevision: current.revision, mode: "repair" });
+
+		const response = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(response.status, 200);
+		const page = await response.json();
+		assert.equal(inspectHistoryCalls, 1);
+		assert.equal(readHistoryCalls, 1);
+		assert.match(JSON.stringify(page.nodes), /legacy native answer/);
+		assert.ok(page.nodes.some((node) => node.source === "transcript"));
+		assert.match(page.cursor.before, /^runtime-history:/);
+		assert.doesNotMatch(JSON.stringify(page), /sessionPath|PI_CODING_AGENT_DIR/);
+		const cursorPayload = JSON.parse(Buffer.from(page.cursor.before.slice("runtime-history:".length), "base64url").toString("utf8"));
+		const crossSessionCursor = `runtime-history:${Buffer.from(JSON.stringify({ ...cursorPayload, piboSessionId: "ps_other" }), "utf8").toString("base64url")}`;
+		const crossSessionResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(crossSessionCursor)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(crossSessionResponse.status, 409);
+		assert.equal(await crossSessionResponse.text(), '{"error":"Runtime history cursor belongs to a different Pibo session"}');
+		const crossRuntimeCursor = `runtime-history:${Buffer.from(JSON.stringify({ ...cursorPayload, runtimeInstanceId: "other-runtime" }), "utf8").toString("base64url")}`;
+		const crossRuntimeResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(crossRuntimeCursor)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(crossRuntimeResponse.status, 409);
+		assert.equal(await crossRuntimeResponse.text(), '{"error":"Runtime history cursor belongs to a different runtime instance"}');
+		const crossAdapterCursor = `runtime-history:${Buffer.from(JSON.stringify({ ...cursorPayload, adapterId: "other-adapter" }), "utf8").toString("base64url")}`;
+		const crossAdapterResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(crossAdapterCursor)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(crossAdapterResponse.status, 409);
+		assert.equal(await crossAdapterResponse.text(), '{"error":"Runtime history cursor belongs to a different runtime adapter"}');
+		assert.equal(readHistoryCalls, 1);
+		const providerErrorCursor = `runtime-history:${Buffer.from(JSON.stringify({ ...cursorPayload, providerCursor: "provider-error" }), "utf8").toString("base64url")}`;
+		const providerErrorResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(providerErrorCursor)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(providerErrorResponse.status, 502);
+		assert.doesNotMatch(await providerErrorResponse.text(), /runtime-history-secret-must-not-leak|token=/);
+		assert.equal(readHistoryCalls, 2);
+
+		const olderResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}&before=${encodeURIComponent(page.cursor.before)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(olderResponse.status, 200);
+		const olderPage = await olderResponse.json();
+		assert.equal(readHistoryCalls, 3);
+		assert.match(JSON.stringify(olderPage.nodes), /older legacy prompt/);
+		assert.equal(olderPage.cursor.hasOlder, false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("missing legacy native history preserves surviving Pibo product history", async () => {
+	let readHistoryCalls = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async inspectSessionRuntimeHistory() {
+			return {
+				runtimeInstanceId: "pi",
+				adapterId: "pi",
+				bindingState: "missing",
+				available: false,
+				diagnostics: [{ severity: "error", code: "pi_history_not_found", message: "Native history is missing" }],
+			};
+		},
+		async readSessionRuntimeHistory() {
+			readHistoryCalls += 1;
+			return {
+				runtimeInstanceId: "pi",
+				adapterId: "pi",
+				source: "native",
+				entries: [],
+				hasMore: false,
+				inspection: {
+					runtimeInstanceId: "pi",
+					adapterId: "pi",
+					bindingState: "missing",
+					available: false,
+					diagnostics: [{ severity: "error", code: "pi_history_not_found", message: "Native history is missing" }],
+				},
+			};
+		},
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		const sessionPayload = await sessionResponse.json();
+		const piboSessionId = sessionPayload.session.id;
+		const current = sessions.getRuntimeBinding(piboSessionId);
+		assert.ok(current);
+		sessions.updateRuntimeBinding(piboSessionId, {
+			...current,
+			state: "missing",
+			metadata: { ...(current.metadata ?? {}), nativeHistoryFallback: true },
+		}, { expectedRevision: current.revision, mode: "repair" });
+		const messageResponse = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({ piboSessionId, text: "surviving product prompt", clientTxnId: "txn-missing-native-history" }),
+		});
+		assert.equal(messageResponse.status, 200);
+		const messagePayload = await messageResponse.json();
+		const eventId = messagePayload.output.eventId;
+		emitOutput({ type: "message_started", piboSessionId, eventId, text: "surviving product prompt", source: "user" });
+		emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "surviving product answer" });
+		emitOutput({ type: "message_finished", piboSessionId, eventId });
+
+		const response = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(response.status, 200);
+		const page = await response.json();
+		assert.equal(readHistoryCalls, 1);
+		assert.match(JSON.stringify(page.nodes), /surviving product prompt/);
+		assert.match(JSON.stringify(page.nodes), /surviving product answer/);
+		assert.ok(page.nodes.some((node) => node.source === "product-history") || page.nodes.some((node) => node.children?.some((child) => child.source === "product-history")));
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat web trace returns fresh payload when a known trace version changes", async () => {
 	const { channel, baseURL, emitOutput } = await startWebHostChannel({
 		auth: createFakeAuthService(),
@@ -856,6 +1198,39 @@ test("chat web app creates app context sessions", async () => {
 		assert.equal(retiredPartitionField in payload.session, false);
 		assert.equal(payload.session.parentId, undefined);
 		assert.equal(payload.session.workspace, homedir());
+		assert.equal(payload.session.runtimeBinding.runtimeInstanceId, "pi");
+		assert.equal(payload.session.runtimeBinding.adapterId, "pi");
+		assert.equal(payload.session.runtimeBinding.state, "unbound");
+		assert.equal(payload.session.runtimeBinding.nativeSessionId, payload.session.piSessionId);
+
+		const bindingResponse = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(payload.session.id)}/runtime-binding`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(bindingResponse.status, 200);
+		const bindingPayload = await bindingResponse.json();
+		assert.equal(bindingPayload.binding.revision, 1);
+
+		const bindResponse = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(payload.session.id)}/runtime-binding`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({
+				runtimeInstanceId: "pi",
+				nativeSessionId: payload.session.piSessionId,
+				state: "bound",
+				expectedRevision: 1,
+			}),
+		});
+		assert.equal(bindResponse.status, 200);
+		const boundPayload = await bindResponse.json();
+		assert.equal(boundPayload.binding.state, "bound");
+		assert.equal(boundPayload.binding.revision, 2);
+
+		const staleBindResponse = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(payload.session.id)}/runtime-binding`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ runtimeInstanceId: "pi", state: "unbound", expectedRevision: 1 }),
+		});
+		assert.equal(staleBindResponse.status, 409);
 
 		const bootstrap = await fetch(`${baseURL}/api/chat/bootstrap?piboSessionId=${encodeURIComponent(payload.session.id)}`, {
 			headers: { "x-test-user": "user-1" },
@@ -1877,6 +2252,42 @@ test("chat web app makes message sends idempotent by client transaction id", asy
 	}
 });
 
+test("chat web app returns a safe conflict when a bound native session is missing", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		emit(event) {
+			throw new AgentRuntimeBindingMissingError(event.piboSessionId, "codex-native", "thread-missing");
+		},
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+		const response = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({
+				piboSessionId: sessionPayload.session.id,
+				text: "resume missing native thread",
+				clientTxnId: "txn-missing-runtime-1",
+			}),
+		});
+		assert.equal(response.status, 409);
+		const payload = await response.json();
+		assert.match(payload.error, /native session "thread-missing".*is missing/);
+		assert.doesNotMatch(JSON.stringify(payload), /private|rollout|config\.toml/);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat web app writes user messages into the V2 data store", async () => {
 	const { channel, baseURL, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
@@ -2450,6 +2861,181 @@ test("chat web app creates custom agents from the native capability catalog", as
 		const listedPayload = await listed.json();
 		assert.deepEqual(listedPayload.agents.map((agent) => agent.displayName), ["research-agent"]);
 		assert.equal(listedPayload.agents[0].autoContextFiles, false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtime selections", async () => {
+	const runtimes = [
+		fakeRuntimeInspection("pi", { adapterId: "pi", displayName: "Pi", transport: "embedded", protocol: "pi-sdk", diagnostics: [{ severity: "info", code: "pi_runtime_available", message: "Pi is available." }] }),
+		fakeRuntimeInspection("codex-native", {
+			adapterId: "codex",
+			displayName: "Codex Native",
+			protocol: "codex-app-server",
+			models: { runtimeInstanceId: "codex-native", models: [{ id: "gpt-5.6-codex", provider: "openai", displayName: "GPT-5.6 Codex", reasoningOptions: ["low", "high"] }] },
+			auth: [{ id: "openai", displayName: "OpenAI", configured: true }],
+		}),
+		fakeRuntimeInspection("offline-runtime", { enabled: false, available: false, diagnostics: [{ severity: "error", code: "runtime_instance_disabled", message: "Runtime is disabled." }] }),
+	];
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: [] }],
+		capabilityCatalog: {
+			agentRuntimes: runtimes.map(({ available: _available, diagnostics: _diagnostics, ...runtime }) => runtime),
+			nativeTools: [],
+			skills: [],
+			subagents: [],
+			contextFiles: [],
+			packages: [],
+			piboTools: [],
+			mcpServers: [],
+			piPackages: [],
+		},
+		inspectAgentRuntimeInstances: async () => runtimes,
+		validateAgentRuntimeProfile: async (profile) => {
+			const runtime = runtimes.find((candidate) => candidate.id === profile.runtimeInstanceId);
+			if (!runtime) return [{ severity: "error", code: "runtime_instance_unknown", message: `Unknown runtime ${profile.runtimeInstanceId}.` }];
+			if (!runtime.available) return runtime.diagnostics;
+			if (profile.runtimeInstanceId === "codex-native" && profile.runtimeOptions.mode !== "isolated") {
+				return [{ severity: "error", code: "codex_profile_options_invalid", message: "Codex mode must be isolated." }];
+			}
+			return [];
+		},
+	});
+
+	try {
+		const catalogResponse = await fetch(`${baseURL}/api/chat/agent-catalog`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(catalogResponse.status, 200);
+		const catalogPayload = await catalogResponse.json();
+		assert.deepEqual(catalogPayload.catalog.agentRuntimes.map((runtime) => [runtime.id, runtime.available]), [
+			["pi", true],
+			["codex-native", true],
+			["offline-runtime", false],
+		]);
+		assert.equal(catalogPayload.catalog.agentRuntimes[1].models.models[0].id, "gpt-5.6-codex");
+		assert.equal(catalogPayload.catalog.agentRuntimes[1].auth[0].configured, true);
+		assert.equal(catalogPayload.catalog.agentRuntimes[2].diagnostics[0].code, "runtime_instance_disabled");
+
+		const createdResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({
+				displayName: "codex-native-agent",
+				runtimeInstanceId: "codex-native",
+				runtimeOptions: { mode: "isolated", reasoningEffort: "high" },
+			}),
+		});
+		assert.equal(createdResponse.status, 201);
+		const created = await createdResponse.json();
+		assert.equal(created.agent.runtimeInstanceId, "codex-native");
+		assert.deepEqual(created.agent.runtimeOptions, { mode: "isolated", reasoningEffort: "high" });
+
+		const rejectedPatch = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(created.agent.id)}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ runtimeOptions: { mode: "shared" } }),
+		});
+		assert.equal(rejectedPatch.status, 400);
+		assert.match((await rejectedPatch.json()).error, /Codex mode must be isolated/);
+
+		const disabledResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ displayName: "offline-agent", runtimeInstanceId: "offline-runtime" }),
+		});
+		assert.equal(disabledResponse.status, 400);
+		assert.match((await disabledResponse.json()).error, /Runtime is disabled/);
+
+		const unknownResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ displayName: "unknown-runtime-agent", runtimeInstanceId: "missing-runtime" }),
+		});
+		assert.equal(unknownResponse.status, 400);
+		assert.match((await unknownResponse.json()).error, /Unknown runtime missing-runtime/);
+
+		const malformedRuntimeResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ displayName: "malformed-runtime-agent", runtimeInstanceId: "Invalid Runtime", runtimeOptions: [] }),
+		});
+		assert.equal(malformedRuntimeResponse.status, 400);
+		assert.match((await malformedRuntimeResponse.json()).error, /runtimeInstanceId is invalid/);
+
+		const malformedOptionsResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ displayName: "malformed-options-agent", runtimeInstanceId: "codex-native", runtimeOptions: [] }),
+		});
+		assert.equal(malformedOptionsResponse.status, 400);
+		assert.match((await malformedOptionsResponse.json()).error, /runtimeOptions must be a JSON object/);
+
+		const listed = await fetch(`${baseURL}/api/chat/agents`, { headers: { "x-test-user": "user-1" } });
+		const listedPayload = await listed.json();
+		assert.equal(listedPayload.agents.length, 1);
+		assert.deepEqual(listedPayload.agents[0].runtimeOptions, { mode: "isolated", reasoningEffort: "high" });
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat context build uses the frozen non-Pi runtime without rendering Pi startup context", async () => {
+	const runtime = fakeRuntimeInspection("codex-native", {
+		adapterId: "codex",
+		displayName: "Codex Native",
+		protocol: "codex-app-server",
+	});
+	const { channel, baseURL, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "native-context-agent", aliases: [], runtimeInstanceId: "pi", runtimeOptions: {} }],
+		capabilityCatalog: {
+			agentRuntimes: [{ ...runtime, available: undefined, diagnostics: undefined }],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		inspectAgentRuntimeInstances: async () => [runtime],
+		validateAgentRuntimeProfile: async () => [],
+		createProfile: () => new InitialSessionContextBuilder("native-context-agent")
+			.withAgentRuntime("pi", { sandbox: "workspace-write" })
+			.withAutoContextFiles(false)
+			.withToolPackages({ goalControl: false })
+			.addSkill({ name: "review-skill", path: "/tmp/review-skill/SKILL.md" })
+			.addContextFile({ key: "project-context", path: "/tmp/AGENTS.md" })
+			.withMcpServers(["filesystem"])
+			.createSession(),
+	});
+	try {
+		const session = sessions.create({
+			channel: "pibo.chat",
+			kind: "chat",
+			profile: "native-context-agent",
+			runtimeBinding: {
+				runtimeInstanceId: "codex-native",
+				adapterId: "codex",
+				nativeSessionId: "thread_fixture",
+				state: "bound",
+			},
+		});
+		const response = await fetch(`${baseURL}/api/chat/context-build?piboSessionId=${encodeURIComponent(session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(response.status, 200);
+		const payload = await response.json();
+		assert.equal(payload.snapshot.runtime.runtimeInstanceId, "codex-native");
+		assert.equal(payload.snapshot.runtime.adapterId, "codex");
+		assert.equal(payload.snapshot.runtime.bindingState, "bound");
+		assert.equal(payload.snapshot.nodes[0].id, "runtime");
+		const skillNode = payload.snapshot.nodes.find((node) => node.id === "skills").children.find((node) => node.title === "review-skill");
+		const contextNode = payload.snapshot.nodes.find((node) => node.id === "context").children.find((node) => node.title === "project-context");
+		const mcpNode = payload.snapshot.nodes.find((node) => node.id === "mcp").children.find((node) => node.title === "filesystem");
+		assert.equal(skillNode.metadata.deliveryStatus, "failed");
+		assert.equal(contextNode.metadata.deliveryStatus, "failed");
+		assert.equal(mcpNode.metadata.deliveryStatus, "failed");
+		assert.ok(payload.snapshot.summary.errors >= 3);
+		assert.equal(payload.snapshot.nodes.some((node) => node.title === "Base System Prompt"), false);
+		assert.equal(JSON.stringify(payload.snapshot).includes("workspace-write"), false);
 	} finally {
 		await channel.stop?.();
 	}
@@ -6214,9 +6800,15 @@ test("chat web app exposes and updates MCP server descriptions", async () => {
 });
 
 test("chat web app archives and permanently deletes custom agents with their sessions", async () => {
+	const deletionOrder = [];
 	const { channel, baseURL, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+		async deleteSession(id, store) {
+			await new Promise((resolve) => setTimeout(resolve, 25));
+			deletionOrder.push(id);
+			return store.delete(id);
+		},
 	});
 
 	try {
@@ -6322,6 +6914,7 @@ test("chat web app archives and permanently deletes custom agents with their ses
 		assert.equal(deleted.status, 200);
 		const deletedPayload = await deleted.json();
 		assert.deepEqual(new Set(deletedPayload.deletedSessionIds), new Set([sessionPayload.session.id, childSession.id]));
+		assert.deepEqual(deletionOrder, [childSession.id, sessionPayload.session.id]);
 		assert.equal(sessions.get(sessionPayload.session.id), undefined);
 		assert.equal(sessions.get(childSession.id), undefined);
 	} finally {
@@ -6781,6 +7374,16 @@ test("chat web status refresh returns a snapshot without emitting a new executio
 				cwd: "/workspace",
 				disposed: false,
 				contextUsage: { tokens: 250, contextWindow: 1000, percent: 25 },
+				pendingApprovals: [{
+					requestId: "approval-product-id",
+					requestType: "command_execution",
+					title: "Run command",
+				}],
+				pendingUserInputs: [{
+					requestId: "input-product-id",
+					questions: [{ id: "approach", question: "Which approach?" }],
+					blocking: true,
+				}],
 			};
 		},
 	});
@@ -6800,6 +7403,8 @@ test("chat web status refresh returns a snapshot without emitting a new executio
 		const payload = await response.json();
 		assert.equal(payload.piboSessionId, session.id);
 		assert.equal(payload.contextUsage.percent, 25);
+		assert.deepEqual(payload.pendingApprovals.map((request) => request.requestId), ["approval-product-id"]);
+		assert.deepEqual(payload.pendingUserInputs.map((request) => request.requestId), ["input-product-id"]);
 		assert.deepEqual(snapshotCalls, [session.id]);
 		assert.equal(emitted.length, 0, "refreshing status must not append a trace event");
 	} finally {
@@ -6807,7 +7412,59 @@ test("chat web status refresh returns a snapshot without emitting a new executio
 	}
 });
 
-test("chat web app provider auth actions bypass session runtime auth", async () => {
+test("chat web forwards runtime approval and structured-input response actions generically", async () => {
+	const { channel, baseURL, emitted, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const session = sessions.create({
+		channel: "pibo.chat-web",
+		kind: "chat",
+		profile: "base",
+		title: "Runtime request response fixture",
+	});
+
+	try {
+		const approvalResponse = await fetch(`${baseURL}/api/chat/action`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({
+				piboSessionId: session.id,
+				action: "runtime.approval.respond",
+				params: { requestId: "approval-product-id", decision: "accept" },
+			}),
+		});
+		assert.equal(approvalResponse.status, 200);
+		assert.equal((await approvalResponse.json()).action, "runtime.approval.respond");
+
+		const userInputResponse = await fetch(`${baseURL}/api/chat/action`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({
+				piboSessionId: session.id,
+				action: "runtime.user_input.respond",
+				params: { requestId: "input-product-id", answers: { approach: "Safe" } },
+			}),
+		});
+		assert.equal(userInputResponse.status, 200);
+		assert.equal((await userInputResponse.json()).action, "runtime.user_input.respond");
+		assert.deepEqual(emitted.map((event) => ({ action: event.action, params: event.params })), [
+			{ action: "runtime.approval.respond", params: { requestId: "approval-product-id", decision: "accept" } },
+			{ action: "runtime.user_input.respond", params: { requestId: "input-product-id", answers: { approach: "Safe" } } },
+		]);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web provider auth compatibility rejects an arbitrary missing session instead of bypassing runtime targeting", async () => {
 	const { channel, baseURL, emitted } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
@@ -6822,12 +7479,220 @@ test("chat web app provider auth actions bypass session runtime auth", async () 
 			},
 			body: JSON.stringify({ piboSessionId: "ps_missing_auth", action: "login.status", params: {} }),
 		});
-		assert.equal(response.status, 200);
-		const payload = await response.json();
-		assert.equal(payload.type, "execution_result");
-		assert.equal(payload.action, "login.status");
-		assert.ok(Array.isArray(payload.result.providers));
+		assert.equal(response.status, 404);
+		assert.deepEqual(await response.json(), { error: "Session not found" });
 		assert.equal(emitted.length, 0);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web provider auth API aggregates per-runtime state and routes pending, retry, completion, and logout explicitly", async () => {
+	const piCapabilities = fakeRuntimeCapabilities();
+	piCapabilities.auth = {
+		status: true,
+		methods: [
+			{ id: "device_code", completion: "explicit" },
+			{ id: "api_key", completion: "immediate" },
+		],
+		cancel: true,
+		logout: true,
+		credentialScope: "adapter-shared",
+	};
+	const codexCapabilities = fakeRuntimeCapabilities();
+	codexCapabilities.auth = {
+		status: true,
+		methods: [
+			{ id: "device_code", completion: "notification" },
+			{ id: "api_key", completion: "immediate" },
+		],
+		cancel: true,
+		logout: true,
+		credentialScope: "runtime-instance",
+	};
+	const methods = codexCapabilities.auth.methods;
+	const statuses = new Map([
+		["pi", [
+			{ id: "openai-codex", displayName: "OpenAI", state: "connected", configured: true, methods: piCapabilities.auth.methods },
+			{ id: "anthropic", displayName: "Anthropic", state: "disconnected", configured: false, methods: [{ id: "api_key", completion: "immediate" }] },
+		]],
+		["codex-native", [
+			{ id: "openai-codex", displayName: "OpenAI for native Codex", state: "disconnected", configured: false, methods },
+		]],
+	]);
+	const calls = [];
+	let completionReads = 0;
+	const inspections = () => [
+		fakeRuntimeInspection("pi", { adapterId: "pi", displayName: "Pi Coding Agent", capabilities: piCapabilities, auth: statuses.get("pi") }),
+		fakeRuntimeInspection("codex-native", { adapterId: "codex-native", displayName: "Codex App Server", capabilities: codexCapabilities, auth: statuses.get("codex-native") }),
+	];
+	const capabilityCatalog = {
+		agentRuntimes: inspections(),
+		nativeTools: [],
+		skills: [],
+		subagents: [],
+		contextFiles: [],
+		packages: [],
+		piboTools: [],
+		mcpServers: [],
+		piPackages: [],
+		loopStopConditions: [],
+		ralphStopConditions: [],
+	};
+	const { channel, baseURL, emitted, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		capabilityCatalog,
+		inspectAgentRuntimeInstances: async () => inspections(),
+		getAgentRuntimeAuthStatus: async (runtimeInstanceId) => structuredClone(statuses.get(runtimeInstanceId) ?? []),
+		startAgentRuntimeAuth: async (runtimeInstanceId, input) => {
+			calls.push({ operation: "start", runtimeInstanceId, providerId: input.providerId, method: input.method });
+			if (input.method === "api_key") {
+				return {
+					runtimeInstanceId,
+					providerId: input.providerId,
+					state: "connected",
+					configured: true,
+					details: { accountType: "api_key" },
+				};
+			}
+			const flow = {
+				flowId: "flow-codex-web",
+				method: "device_code",
+				completion: "notification",
+				startedAt: "2026-08-16T00:00:00.000Z",
+				verificationUrl: "https://example.invalid/device",
+				userCode: "FAKE-CODE",
+			};
+			statuses.set(runtimeInstanceId, [{
+				id: input.providerId,
+				displayName: "OpenAI for native Codex",
+				state: "pending",
+				configured: false,
+				methods,
+				pending: flow,
+			}]);
+			return { runtimeInstanceId, providerId: input.providerId, state: "pending", configured: false, flow };
+		},
+		completeAgentRuntimeAuth: async (runtimeInstanceId, input) => {
+			completionReads += 1;
+			calls.push({ operation: "complete", runtimeInstanceId, providerId: input.providerId, flowId: input.flowId });
+			if (completionReads === 1) {
+				return {
+					runtimeInstanceId,
+					providerId: input.providerId,
+					state: "pending",
+					configured: false,
+					flow: statuses.get(runtimeInstanceId)[0].pending,
+				};
+			}
+			statuses.set(runtimeInstanceId, [{
+				id: input.providerId,
+				displayName: "OpenAI for native Codex",
+				state: "connected",
+				configured: true,
+				methods,
+				details: { accountType: "chatgpt", planType: "plus" },
+			}]);
+			return { runtimeInstanceId, providerId: input.providerId, state: "connected", configured: true, details: { accountType: "chatgpt", planType: "plus" } };
+		},
+		cancelAgentRuntimeAuth: async (runtimeInstanceId, input) => ({ runtimeInstanceId, providerId: input.providerId, state: "disconnected", configured: false }),
+		logoutAgentRuntimeAuth: async (runtimeInstanceId, input) => {
+			calls.push({ operation: "logout", runtimeInstanceId, providerId: input.providerId });
+			statuses.set(runtimeInstanceId, [{ id: input.providerId, displayName: "OpenAI for native Codex", state: "disconnected", configured: false, methods }]);
+			return { runtimeInstanceId, providerId: input.providerId, state: "disconnected", configured: false };
+		},
+	});
+	const headers = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+
+	try {
+		const catalogResponse = await fetch(`${baseURL}/api/chat/provider-auth`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(catalogResponse.status, 200);
+		const catalog = await catalogResponse.json();
+		assert.equal(catalog.defaultRuntimeInstanceId, "pi");
+		assert.deepEqual(catalog.targets.map((target) => ({
+			id: target.runtimeInstanceId,
+			state: target.state,
+			scope: target.credentialScope,
+			isDefault: target.isDefault,
+		})), [
+			{ id: "pi", state: "partial", scope: "adapter-shared", isDefault: true },
+			{ id: "codex-native", state: "disconnected", scope: "runtime-instance", isDefault: false },
+		]);
+
+		const startedResponse = await fetch(`${baseURL}/api/chat/provider-auth`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ action: "start", runtimeInstanceId: "codex-native", providerId: "openai-codex", method: "device_code" }),
+		});
+		assert.equal(startedResponse.status, 200);
+		const started = (await startedResponse.json()).result;
+		assert.equal(started.runtimeInstanceId, "codex-native");
+		assert.equal(started.state, "pending");
+		assert.equal(started.flow.flowId, "flow-codex-web");
+
+		for (const expectedState of ["pending", "connected"]) {
+			const completedResponse = await fetch(`${baseURL}/api/chat/provider-auth`, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ action: "complete", runtimeInstanceId: "codex-native", providerId: "openai-codex", flowId: "flow-codex-web" }),
+			});
+			assert.equal(completedResponse.status, 200);
+			assert.equal((await completedResponse.json()).result.state, expectedState);
+		}
+
+		const logoutResponse = await fetch(`${baseURL}/api/chat/provider-auth`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ action: "logout", runtimeInstanceId: "codex-native", providerId: "openai-codex" }),
+		});
+		assert.equal(logoutResponse.status, 200);
+		assert.equal((await logoutResponse.json()).result.state, "disconnected");
+
+		const apiKey = "sk-web-fixture-sensitive-value-123456789";
+		const apiKeyResponse = await fetch(`${baseURL}/api/chat/provider-auth`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ action: "api_key", runtimeInstanceId: "codex-native", providerId: "openai-codex", apiKey }),
+		});
+		assert.equal(apiKeyResponse.status, 200);
+		const apiKeyPayload = await apiKeyResponse.json();
+		assert.equal(apiKeyPayload.result.state, "connected");
+		assert.doesNotMatch(JSON.stringify(apiKeyPayload), /sk-web-fixture-sensitive-value/);
+
+		const boundSession = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "codex-native",
+			runtimeBinding: { runtimeInstanceId: "codex-native", adapterId: "codex-native", state: "unbound" },
+		});
+		const compatibilityStatus = await fetch(`${baseURL}/api/chat/action`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ piboSessionId: boundSession.id, action: "login.status", params: {} }),
+		});
+		assert.equal(compatibilityStatus.status, 200);
+		assert.equal((await compatibilityStatus.json()).result.runtimeInstanceId, "codex-native");
+
+		const conflict = await fetch(`${baseURL}/api/chat/action`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ piboSessionId: boundSession.id, action: "login.status", params: { runtimeInstanceId: "pi" } }),
+		});
+		assert.equal(conflict.status, 409);
+		assert.match((await conflict.json()).error, /conflicts with the selected session runtime/);
+
+		assert.deepEqual(calls.map(({ operation, runtimeInstanceId }) => ({ operation, runtimeInstanceId })), [
+			{ operation: "start", runtimeInstanceId: "codex-native" },
+			{ operation: "complete", runtimeInstanceId: "codex-native" },
+			{ operation: "complete", runtimeInstanceId: "codex-native" },
+			{ operation: "logout", runtimeInstanceId: "codex-native" },
+			{ operation: "start", runtimeInstanceId: "codex-native" },
+		]);
+		assert.equal(emitted.length, 0, "product-scoped provider auth must not append session execution events");
 	} finally {
 		await channel.stop?.();
 	}

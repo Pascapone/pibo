@@ -9,11 +9,27 @@ export type ParsedDebugSessionInput = {
 	piboSessionId: string;
 };
 
+export type DebugSessionRuntimeResult = {
+	piboSessionId: string;
+	resultType: "debug.session.runtime";
+	binding: Record<string, unknown>;
+	productHistory: {
+		messages: number;
+		events: number;
+		observations: number;
+		payloadRefs: number;
+		firstEventSequence?: number;
+		lastEventSequence?: number;
+	};
+	nextCommands: string[];
+};
+
 export type DebugSessionSummary = {
 	input: ParsedDebugSessionInput;
 	warnings: string[];
 	session: Record<string, unknown>;
 	metadata: Record<string, unknown>;
+	runtimeBinding?: Record<string, unknown>;
 	room: {
 		urlRoomId?: string;
 		sessionRoomId?: string;
@@ -27,7 +43,7 @@ export type DebugSessionSummary = {
 
 type SessionRow = {
 	id: string;
-	pi_session_id: string;
+	pi_session_id: string | null;
 	channel: string;
 	kind: string;
 	profile: string;
@@ -85,6 +101,7 @@ export function inspectDebugSession(
 			warnings,
 			session: compactSessionRow(session),
 			metadata,
+			runtimeBinding: readRuntimeBinding(sessionsDb, session),
 			room: {
 				urlRoomId: parsed.roomId,
 				sessionRoomId,
@@ -118,6 +135,76 @@ export function inspectDebugSession(
 	}
 }
 
+export function inspectDebugSessionRuntime(
+	input: string,
+	stores: { sessions: ResolvedPiboDebugStore; chat: ResolvedPiboDebugStore },
+): DebugSessionRuntimeResult {
+	const parsed = parseDebugSessionInput(input);
+	if (!stores.sessions.exists) throw new Error(`Debug store "sessions" not found at ${stores.sessions.path}`);
+	const sessionsDb = openReadOnlyDebugDatabase(stores.sessions);
+	const chatDb = stores.chat.exists && stores.chat.path !== stores.sessions.path ? openReadOnlyDebugDatabase(stores.chat) : sessionsDb;
+	try {
+		const session = sessionsDb.prepare("SELECT * FROM sessions WHERE id = ?").get(parsed.piboSessionId) as SessionRow | undefined;
+		if (!session) throw new Error(`Pibo session "${parsed.piboSessionId}" not found`);
+		const binding = readRuntimeBinding(sessionsDb, session);
+		const eventStats = tableExists(chatDb, "event_log")
+			? chatDb.prepare(`
+				SELECT COUNT(*) AS count, COUNT(payload_ref) AS payload_refs,
+					MIN(session_sequence) AS first_sequence, MAX(session_sequence) AS last_sequence
+				FROM event_log WHERE session_id = ?
+			`).get(parsed.piboSessionId) as { count: number; payload_refs: number; first_sequence: number | null; last_sequence: number | null }
+			: { count: 0, payload_refs: 0, first_sequence: null, last_sequence: null };
+		const messages = tableExists(chatDb, "chat_messages")
+			? Number((chatDb.prepare("SELECT COUNT(*) AS count FROM chat_messages WHERE session_id = ?").get(parsed.piboSessionId) as { count: number }).count)
+			: 0;
+		const observations = tableExists(chatDb, "observations")
+			? Number((chatDb.prepare("SELECT COUNT(*) AS count FROM observations WHERE session_id = ?").get(parsed.piboSessionId) as { count: number }).count)
+			: 0;
+		return {
+			piboSessionId: parsed.piboSessionId,
+			resultType: "debug.session.runtime",
+			binding,
+			productHistory: {
+				messages,
+				events: Number(eventStats.count),
+				observations,
+				payloadRefs: Number(eventStats.payload_refs),
+				firstEventSequence: eventStats.first_sequence ?? undefined,
+				lastEventSequence: eventStats.last_sequence ?? undefined,
+			},
+			nextCommands: [
+				`pibo debug trace ${parsed.piboSessionId} --check`,
+				`pibo debug trace ${parsed.piboSessionId} --native-history --check`,
+				`pibo debug events ${parsed.piboSessionId} --limit 20`,
+			],
+		};
+	} catch (error) {
+		throw withStorePath(withStorePath(error, stores.chat), stores.sessions);
+	} finally {
+		sessionsDb.close();
+		if (chatDb !== sessionsDb) chatDb.close();
+	}
+}
+
+export function formatDebugSessionRuntime(result: DebugSessionRuntimeResult): string {
+	const lines = [
+		`piboSessionId: ${result.piboSessionId}`,
+		"",
+		"Runtime binding:",
+		...Object.entries(result.binding).map(([key, value]) => `  ${key}: ${formatValue(value)}`),
+		"",
+		"Product history:",
+		`  messages: ${result.productHistory.messages}`,
+		`  events: ${result.productHistory.events}`,
+		`  observations: ${result.productHistory.observations}`,
+		`  payloadRefs: ${result.productHistory.payloadRefs}`,
+	];
+	if (result.productHistory.firstEventSequence !== undefined) lines.push(`  firstEventSequence: ${result.productHistory.firstEventSequence}`);
+	if (result.productHistory.lastEventSequence !== undefined) lines.push(`  lastEventSequence: ${result.productHistory.lastEventSequence}`);
+	lines.push(...formatNextCommands(result.nextCommands));
+	return lines.join("\n");
+}
+
 export function formatDebugSessionSummary(summary: DebugSessionSummary): string {
 	const lines: string[] = [];
 	lines.push(`piboSessionId: ${summary.input.piboSessionId}`);
@@ -129,6 +216,13 @@ export function formatDebugSessionSummary(summary: DebugSessionSummary): string 
 	lines.push("Session:");
 	for (const [key, value] of Object.entries(summary.session)) {
 		lines.push(`  ${key}: ${formatValue(value)}`);
+	}
+	if (summary.runtimeBinding) {
+		lines.push("");
+		lines.push("Runtime binding:");
+		for (const [key, value] of Object.entries(summary.runtimeBinding)) {
+			lines.push(`  ${key}: ${formatValue(value)}`);
+		}
 	}
 	if (Object.keys(summary.metadata).length) {
 		lines.push("");
@@ -191,6 +285,61 @@ function listChildSessions(db: DatabaseSync, piboSessionId: string, limit: numbe
 			updated_at: row.updated_at,
 		};
 	});
+}
+
+function readRuntimeBinding(db: DatabaseSync, session: SessionRow): Record<string, unknown> {
+	if (!tableExists(db, "session_runtime_bindings")) {
+		return {
+			pibo_session_id: session.id,
+			runtime_instance_id: "pi",
+			runtime_adapter_id: "pi",
+			native_session_id: session.pi_session_id,
+			binding_state: session.pi_session_id ? "bound" : "unbound",
+			source: "legacy-synthesized",
+		};
+	}
+	const row = db.prepare(`
+		SELECT
+			pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
+			binding_state, protocol, protocol_version, adapter_version, locator_json,
+			metadata_json, revision, created_at, updated_at
+		FROM session_runtime_bindings
+		WHERE pibo_session_id = ?
+	`).get(session.id) as (Record<string, unknown> & { locator_json?: string | null; metadata_json?: string | null }) | undefined;
+	if (row) {
+		const { locator_json, metadata_json, ...safe } = row;
+		return {
+			...safe,
+			locator: sanitizeBindingLocator(parseObject(locator_json ?? null)),
+			metadata_keys: Object.keys(parseObject(metadata_json ?? null)).sort(),
+		};
+	}
+	return {
+		pibo_session_id: session.id,
+		runtime_instance_id: "pi",
+		runtime_adapter_id: "pi",
+		native_session_id: session.pi_session_id,
+		binding_state: session.pi_session_id ? "bound" : "unbound",
+		source: "legacy-synthesized",
+	};
+}
+
+function sanitizeBindingLocator(locator: Record<string, unknown>): Record<string, unknown> | undefined {
+	const kind = stringValue(locator.kind);
+	if (!kind) return undefined;
+	const value = stringValue(locator.value);
+	if (!value) return { kind };
+	if (kind === "local-file" || kind === "local-directory") return { kind, value };
+	try {
+		const url = new URL(value);
+		url.username = "";
+		url.password = "";
+		url.search = "";
+		url.hash = "";
+		return { kind, value: url.toString() };
+	} catch {
+		return { kind, value: "[redacted]" };
+	}
 }
 
 function readChatSession(db: DatabaseSync, piboSessionId: string): Record<string, unknown> | undefined {

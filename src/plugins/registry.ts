@@ -5,7 +5,9 @@ import type {
 	SkillProfile,
 	SubagentProfile,
 	ToolProfile,
+	ToolProfileRegistration,
 } from "../core/profiles.js";
+import { normalizeToolProfile } from "../core/profiles.js";
 import type { PiboOutputEvent } from "../core/events.js";
 import type { PiboChannel } from "../channels/types.js";
 import type { PiboAuthService } from "../auth/types.js";
@@ -28,6 +30,18 @@ import type {
 } from "./types.js";
 import { listInstalledCliToolAgentContexts } from "../tools/registry.js";
 import { listPiPackages } from "../pi-packages/store.js";
+import { AgentRuntimeAdapterRegistry } from "../agent-runtime/registry.js";
+import type {
+	AgentRuntimeAdapter,
+	AgentRuntimeDriver,
+	AgentRuntimeInstanceDefinition,
+	AgentRuntimeSession,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	OpenAgentRuntimeSessionInput,
+	StartAgentRuntimeAuthInput,
+} from "../agent-runtime/types.js";
 
 export type PiboPluginRegistryOptions = {
 	plugins?: readonly PiboPlugin[];
@@ -58,7 +72,18 @@ function webRoutesOverlap(left: string, right: string): boolean {
 	return left === right || left === "/" || right === "/" || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
 }
 
+function toolIsPortable(tool: ToolProfile): boolean {
+	if (tool.definition) return tool.definition.portable !== false;
+	if (!tool.createDefinition) return true;
+	try {
+		return tool.createDefinition({}).portable !== false;
+	} catch {
+		return false;
+	}
+}
+
 export class PiboPluginRegistry {
+	private readonly agentRuntimes = new AgentRuntimeAdapterRegistry();
 	private readonly tools = new Map<string, ToolProfile>();
 	private readonly subagents = new Map<string, SubagentProfile>();
 	private readonly skills = new Map<string, SkillProfile>();
@@ -96,11 +121,68 @@ export class PiboPluginRegistry {
 		plugin.register(this.createApi(plugin.id));
 	}
 
-	registerTool(tool: ToolProfile): void {
-		this.addUnique(this.tools, tool.name, tool, "tool");
+	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void {
+		this.agentRuntimes.registerDriver(driver);
 	}
 
-	registerTools(tools: readonly ToolProfile[]): void {
+	registerAgentRuntimeInstance(instance: AgentRuntimeInstanceDefinition): AgentRuntimeAdapter {
+		return this.agentRuntimes.registerInstance(instance);
+	}
+
+	getAgentRuntimeAdapter(instanceId: string): AgentRuntimeAdapter | undefined {
+		return this.agentRuntimes.getInstance(instanceId);
+	}
+
+	requireAgentRuntimeAdapter(instanceId: string): AgentRuntimeAdapter {
+		return this.agentRuntimes.requireInstance(instanceId);
+	}
+
+	openAgentRuntimeSession(instanceId: string, input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
+		return this.agentRuntimes.openSession(instanceId, input);
+	}
+
+	getAgentRuntimeInstanceIds(): string[] {
+		return this.agentRuntimes.getInstanceIds();
+	}
+
+	inspectAgentRuntimeInstances() {
+		return this.agentRuntimes.inspectInstances();
+	}
+
+	getAgentRuntimeAuthStatus(runtimeInstanceId: string) {
+		return this.agentRuntimes.getAuthStatus(runtimeInstanceId);
+	}
+
+	startAgentRuntimeAuth(runtimeInstanceId: string, input: StartAgentRuntimeAuthInput) {
+		return this.agentRuntimes.startAuth(runtimeInstanceId, input);
+	}
+
+	completeAgentRuntimeAuth(runtimeInstanceId: string, input: CompleteAgentRuntimeAuthInput) {
+		return this.agentRuntimes.completeAuth(runtimeInstanceId, input);
+	}
+
+	cancelAgentRuntimeAuth(runtimeInstanceId: string, input: CancelAgentRuntimeAuthInput) {
+		return this.agentRuntimes.cancelAuth(runtimeInstanceId, input);
+	}
+
+	logoutAgentRuntimeAuth(runtimeInstanceId: string, input: LogoutAgentRuntimeAuthInput) {
+		return this.agentRuntimes.logoutAuth(runtimeInstanceId, input);
+	}
+
+	disposeAgentRuntimeAuth() {
+		return this.agentRuntimes.disposeAuth();
+	}
+
+	validateAgentRuntimeProfile(profile: InitialSessionContext, workspace?: string) {
+		return this.agentRuntimes.validateProfile({ profile, workspace });
+	}
+
+	registerTool(tool: ToolProfileRegistration): void {
+		const normalized = normalizeToolProfile(tool);
+		this.addUnique(this.tools, normalized.name, normalized, "tool");
+	}
+
+	registerTools(tools: readonly ToolProfileRegistration[]): void {
 		for (const tool of tools) {
 			this.registerTool(tool);
 		}
@@ -253,6 +335,8 @@ export class PiboPluginRegistry {
 				name: profile.name,
 				description: profile.description,
 				aliases: [...(profile.aliases ?? [])],
+				runtimeInstanceId: sessionContext.runtimeInstanceId,
+				runtimeOptions: structuredClone(sessionContext.runtimeOptions),
 				nativeTools: sessionContext.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.name),
 				skills: sessionContext.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name),
 				contextFiles: sessionContext.contextFiles.filter((contextFile) => contextFile.enabled !== false).map(contextFileKey),
@@ -279,11 +363,13 @@ export class PiboPluginRegistry {
 
 	getCapabilityCatalog(): PiboCapabilityCatalog {
 		return {
+			agentRuntimes: this.agentRuntimes.getInstanceInfos(),
 			nativeTools: [...this.tools.values()].map((tool) => ({
 				name: tool.name,
 				description: tool.description,
 				yieldable: tool.yieldable !== false,
 				hasDefinition: tool.definition !== undefined || tool.createDefinition !== undefined,
+				portable: toolIsPortable(tool),
 				pluginId: tool.pluginId,
 				pluginName: tool.pluginId ? this.pluginNames.get(tool.pluginId) : undefined,
 				...(tool.providerTool ? { providerTool: tool.providerTool } : {}),
@@ -315,7 +401,7 @@ export class PiboPluginRegistry {
 			packages: [
 				{
 					name: "pibo-run-control",
-					description: "Expose pibo_run_* tools as one package for yielded native tools and subagents.",
+					description: "Expose pibo_run_* for Pibo-managed tools and subagents; private harness-native tools require explicit runtime capability.",
 					toolNames: [
 						"pibo_run_start",
 						"pibo_run_list",
@@ -410,7 +496,7 @@ export class PiboPluginRegistry {
 	}
 
 	private createApi(pluginId: string): PiboPluginApi {
-		const withPluginToolContext = (tool: ToolProfile): ToolProfile => ({ ...tool, pluginId: tool.pluginId ?? pluginId });
+		const withPluginToolContext = (tool: ToolProfileRegistration): ToolProfileRegistration => ({ ...tool, pluginId: tool.pluginId ?? pluginId });
 		const withPluginSkillContext = (skill: SkillProfile): SkillProfile => (
 			skill.kind === "user"
 				? skill
@@ -429,6 +515,8 @@ export class PiboPluginRegistry {
 			pluginId: pkg.pluginId ?? pluginId,
 		});
 		return {
+			registerAgentRuntimeDriver: (driver) => this.registerAgentRuntimeDriver(driver),
+			registerAgentRuntimeInstance: (instance) => this.registerAgentRuntimeInstance(instance),
 			registerTool: (tool) => this.registerTool(withPluginToolContext(tool)),
 			registerTools: (tools) => this.registerTools(tools.map(withPluginToolContext)),
 			registerSubagent: (subagent) => this.registerSubagent(subagent),

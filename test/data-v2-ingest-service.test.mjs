@@ -6,6 +6,8 @@ import test from "node:test";
 import { storedPiboEventFromV2Row } from "../dist/apps/chat/data/chat-data-mappers.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { ChatHistoryQueryService } from "../dist/apps/chat/data/history-query-service.js";
+import { ChatTimelineQueryService } from "../dist/apps/chat/data/timeline-query-service.js";
 import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
 
 function makeSession(overrides = {}) {
@@ -374,6 +376,87 @@ test("persisted subagent session fields survive V2 ingest and trace reload", () 
 		assert.equal(view.nodes[0].input.message, "Inspect the persisted path");
 		assert.equal(view.nodes[0].input.threadKey, "persisted");
 		assert.equal(view.nodes[0].input.subagentName, "explorer");
+	} finally {
+		store.close();
+	}
+});
+
+test("product history reconstructs full routed messages without native transcript data", () => {
+	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-product-history-payloads-")) });
+	try {
+		const ingest = new ChatDataIngestService(store);
+		const history = new ChatHistoryQueryService(store);
+		const timeline = new ChatTimelineQueryService(store);
+		const session = makeSession({
+			id: "ps_product_history",
+			piSessionId: "pi_product_history",
+			runtimeBinding: {
+				piboSessionId: "ps_product_history",
+				runtimeInstanceId: "runtime-fixture",
+				adapterId: "fixture",
+				nativeSessionId: "native-product-history",
+				state: "bound",
+				revision: 1,
+				createdAt: "2026-05-08T12:00:00.000Z",
+				updatedAt: "2026-05-08T12:00:00.000Z",
+			},
+		});
+		const userText = `user:${"u".repeat(20_000)}`;
+		const reasoningText = `reasoning:${"r".repeat(18_000)}`;
+		const toolResult = { content: `tool:${"t".repeat(20_000)}`, details: { status: "completed" } };
+		const assistantText = `assistant:${"a".repeat(24_000)}`;
+		ingest.ingestUserMessageAccepted({
+			session,
+			roomId: "room_product_history",
+			actorId: "user:test",
+			text: userText,
+			clientTxnId: "txn-product-history",
+			legacyEvent: { eventId: "accepted-product-history", createdAt: "2026-05-08T12:00:01.000Z" },
+		});
+		for (const [createdAt, event] of [
+			["2026-05-08T12:00:01.100Z", { type: "message_queued", piboSessionId: session.id, eventId: "turn-product-history", queuedMessages: 1, text: userText, source: "user" }],
+			["2026-05-08T12:00:01.200Z", { type: "message_started", piboSessionId: session.id, eventId: "turn-product-history", text: userText, source: "user" }],
+			["2026-05-08T12:00:01.300Z", { type: "thinking_finished", piboSessionId: session.id, eventId: "turn-product-history", thinkingIndex: 0, contentIndex: 0, text: reasoningText }],
+			["2026-05-08T12:00:01.400Z", { type: "tool_call", piboSessionId: session.id, eventId: "turn-product-history", toolCallId: "tool-product-history", toolName: "read", args: { path: "large.txt" }, argsComplete: true }],
+			["2026-05-08T12:00:01.500Z", { type: "tool_execution_finished", piboSessionId: session.id, eventId: "turn-product-history", toolCallId: "tool-product-history", toolName: "read", result: toolResult, isError: false }],
+			["2026-05-08T12:00:02.000Z", { type: "assistant_message", piboSessionId: session.id, eventId: "turn-product-history", assistantIndex: 0, contentIndex: 0, text: assistantText }],
+			["2026-05-08T12:00:02.100Z", { type: "message_finished", piboSessionId: session.id, eventId: "turn-product-history" }],
+		]) {
+			ingest.ingestOutputEvent({ session, roomId: "room_product_history", createdAt, event });
+		}
+
+		const historyEntries = history.listProductHistoryEntries({ piboSessionId: session.id, limit: 20 });
+		const events = timeline.listTraceEvents({ piboSessionId: session.id, limit: 20 });
+		assert.equal(historyEntries.length, 2);
+		assert.equal(historyEntries[0].type, "message");
+		assert.equal(historyEntries[0].content, userText);
+		assert.equal(historyEntries[1].type, "message");
+		assert.equal(historyEntries[1].content, assistantText);
+		assert.equal(events.find((event) => event.type === "thinking_finished")?.payload.text, reasoningText);
+		assert.deepEqual(events.find((event) => event.type === "tool_execution_finished")?.payload.result, toolResult);
+		assert.equal(events.find((event) => event.type === "assistant_message")?.payload.text, assistantText);
+
+		const view = buildTraceViewFromEvents({
+			session: { id: session.id, piSessionId: session.piSessionId, title: "Product history" },
+			historyEntries,
+			events,
+			status: "idle",
+		});
+		const user = view.nodes.find((node) => node.type === "user.message");
+		const turn = view.nodes.find((node) => node.type === "agent.turn");
+		const assistant = turn?.children.find((node) => node.type === "assistant.message")
+			?? view.nodes.find((node) => node.type === "assistant.message");
+		const reasoning = turn?.children.find((node) => node.type === "model.reasoning")
+			?? view.nodes.find((node) => node.type === "model.reasoning");
+		const tool = turn?.children.find((node) => node.type === "tool.call")
+			?? view.nodes.find((node) => node.type === "tool.call");
+		assert.equal(user?.output, userText);
+		assert.equal(user?.source, "product-history");
+		assert.equal(reasoning?.output, reasoningText);
+		assert.deepEqual(tool?.output, toolResult);
+		assert.equal(assistant?.output, assistantText);
+		assert.equal(assistant?.source, "product-history");
+		assert.equal(view.nodes.flatMap((node) => [node, ...node.children]).filter((node) => node.type === "assistant.message").length, 1);
 	} finally {
 		store.close();
 	}

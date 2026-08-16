@@ -54,10 +54,15 @@ export type PiboSessionExecutionAction =
 
 export type PiboThinkingExecutionAction = "thinking";
 
+export type PiboRuntimeRequestExecutionAction =
+	| "runtime.approval.respond"
+	| "runtime.user_input.respond";
+
 export type PiboExecutionAction =
 	| BuiltinPiboExecutionAction
 	| PiboSessionExecutionAction
 	| PiboThinkingExecutionAction
+	| PiboRuntimeRequestExecutionAction
 	| (string & {});
 
 export type PiboSessionForkParams = {
@@ -81,6 +86,16 @@ export type PiboThinkingParams = {
 	level?: PiboThinkingLevel;
 };
 
+export type PiboApprovalResponseParams = {
+	requestId: string;
+	decision: string;
+};
+
+export type PiboUserInputResponseParams = {
+	requestId: string;
+	answers: PiboJsonObject;
+};
+
 export type PiboThinkingResult = {
 	level: PiboThinkingLevel;
 	availableLevels: PiboThinkingLevel[];
@@ -89,6 +104,39 @@ export type PiboThinkingResult = {
 	previousLevel?: PiboThinkingLevel;
 	changed?: boolean;
 };
+
+export type PiboApprovalDecision = {
+	id: string;
+	label: string;
+	description?: string;
+};
+
+export type PiboApprovalRequest = {
+	requestId: string;
+	requestType: string;
+	title?: string;
+	detail?: string;
+	arguments?: PiboJsonValue;
+	decisions?: readonly PiboApprovalDecision[];
+};
+
+export type PiboUserInputQuestion = {
+	id: string;
+	header?: string;
+	question: string;
+	options?: readonly { label: string; description?: string }[];
+	multiSelect?: boolean;
+	allowFreeform?: boolean;
+	secret?: boolean;
+};
+
+export type PiboUserInputRequest = {
+	requestId: string;
+	questions: readonly PiboUserInputQuestion[];
+	blocking?: boolean;
+};
+
+export type PiboRuntimeRequestResolution = "responded" | "cleared" | "aborted" | "expired";
 
 export type PiboExecutionEventBase<TAction extends PiboExecutionAction = PiboExecutionAction> = {
 	type: "execution";
@@ -122,12 +170,22 @@ export type PiboThinkingEvent = PiboExecutionEventBase<"thinking"> & {
 	params?: PiboThinkingParams;
 };
 
+export type PiboApprovalResponseEvent = PiboExecutionEventBase<"runtime.approval.respond"> & {
+	params: PiboApprovalResponseParams;
+};
+
+export type PiboUserInputResponseEvent = PiboExecutionEventBase<"runtime.user_input.respond"> & {
+	params: PiboUserInputResponseParams;
+};
+
 export type PiboKnownExecutionEvent =
 	| PiboNoParamsExecutionEvent
 	| PiboSessionForkEvent
 	| PiboSessionTreeNavigateEvent
 	| PiboSessionSwitchEvent
-	| PiboThinkingEvent;
+	| PiboThinkingEvent
+	| PiboApprovalResponseEvent
+	| PiboUserInputResponseEvent;
 
 export type PiboCustomExecutionEvent = PiboExecutionEventBase<string & {}> & {
 	params?: PiboJsonValue;
@@ -140,6 +198,16 @@ export type PiboInputEvent = PiboMessageEvent | PiboExecutionEvent;
 export type PiboSessionStatus = {
 	piboSessionId: string;
 	activeModel?: { provider: string; id: string };
+	runtimeBinding?: {
+		runtimeInstanceId: string;
+		adapterId: string;
+		nativeSessionId?: string;
+		state: "unbound" | "bound" | "missing" | "error";
+		protocol?: string;
+		protocolVersion?: string;
+		adapterVersion?: string;
+		revision?: number;
+	};
 	queuedMessages: number;
 	processing: boolean;
 	streaming: boolean;
@@ -165,6 +233,8 @@ export type PiboSessionStatus = {
 	} | null;
 	warnings?: readonly string[];
 	errors?: readonly string[];
+	pendingApprovals?: readonly PiboApprovalRequest[];
+	pendingUserInputs?: readonly PiboUserInputRequest[];
 };
 
 export type PiboPiSessionSnapshot = {
@@ -358,6 +428,36 @@ export type PiboCompactionEndEvent = {
 	errorMessage?: string;
 };
 
+export type PiboApprovalRequestedEvent = {
+	type: "approval_requested";
+	piboSessionId: string;
+	eventId?: string;
+	request: PiboApprovalRequest;
+};
+
+export type PiboApprovalResolvedEvent = {
+	type: "approval_resolved";
+	piboSessionId: string;
+	eventId?: string;
+	requestId: string;
+	resolution: PiboRuntimeRequestResolution;
+};
+
+export type PiboUserInputRequestedEvent = {
+	type: "user_input_requested";
+	piboSessionId: string;
+	eventId?: string;
+	request: PiboUserInputRequest;
+};
+
+export type PiboUserInputResolvedEvent = {
+	type: "user_input_resolved";
+	piboSessionId: string;
+	eventId?: string;
+	requestId: string;
+	resolution: PiboRuntimeRequestResolution;
+};
+
 export type PiboSessionErrorClass =
 	| "provider_transport"
 	| "provider_context"
@@ -407,6 +507,10 @@ export type PiboOutputEvent =
 	| PiboAssistantUsageEvent
 	| PiboCompactionStartEvent
 	| PiboCompactionEndEvent
+	| PiboApprovalRequestedEvent
+	| PiboApprovalResolvedEvent
+	| PiboUserInputRequestedEvent
+	| PiboUserInputResolvedEvent
 	| { type: "execution_result"; piboSessionId: string; eventId?: string; action: PiboExecutionAction; result: unknown }
 	| { type: "session_error"; piboSessionId: string; eventId?: string; error: string; errorDetails?: PiboSessionErrorDetails; provenance?: PiboMessageProvenance }
 	| { type: "pi_event"; piboSessionId: string; event: unknown };

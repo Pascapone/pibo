@@ -5,6 +5,7 @@ export type DebugEventRow = {
 	event_id: string | null;
 	type: string;
 	created_at: string;
+	payload_ref?: string | null;
 	preview_text: string | null;
 	attributes_json: string | null;
 };

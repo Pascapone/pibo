@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject } from "../core/events.js";
 import type { PiboSession } from "../sessions/store.js";
+import { createLegacyPiRuntimeSessionBinding } from "../sessions/runtime-binding.js";
 
 export type SessionUpsertInput = {
 	session: PiboSession;
@@ -21,7 +22,7 @@ export class SessionStore {
 		];
 		const values = [
 			input.session.id,
-			input.session.piSessionId,
+			input.session.piSessionId || null,
 			input.roomId,
 			rootSessionId(input.session),
 			input.session.parentId ?? null,
@@ -62,6 +63,42 @@ export class SessionStore {
 			VALUES (${baseColumns.map(() => "?").join(", ")})
 			ON CONFLICT(id) DO UPDATE SET ${assignments.join(", ")}
 		`).run(...values);
+		const binding = input.session.runtimeBinding
+			?? createLegacyPiRuntimeSessionBinding(input.session.id, input.session.piSessionId, input.session.createdAt);
+		this.db.prepare(`
+			INSERT INTO session_runtime_bindings (
+				pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
+				binding_state, protocol, protocol_version, adapter_version, locator_json,
+				metadata_json, revision, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(pibo_session_id) DO UPDATE SET
+				runtime_instance_id = excluded.runtime_instance_id,
+				runtime_adapter_id = excluded.runtime_adapter_id,
+				native_session_id = excluded.native_session_id,
+				binding_state = excluded.binding_state,
+				protocol = excluded.protocol,
+				protocol_version = excluded.protocol_version,
+				adapter_version = excluded.adapter_version,
+				locator_json = excluded.locator_json,
+				metadata_json = excluded.metadata_json,
+				revision = excluded.revision,
+				created_at = excluded.created_at,
+				updated_at = excluded.updated_at
+		`).run(
+			binding.piboSessionId,
+			binding.runtimeInstanceId,
+			binding.adapterId,
+			binding.nativeSessionId ?? null,
+			binding.state,
+			binding.protocol ?? null,
+			binding.protocolVersion ?? null,
+			binding.adapterVersion ?? null,
+			binding.locator ? JSON.stringify(binding.locator) : null,
+			JSON.stringify(binding.metadata ?? {}),
+			binding.revision ?? 1,
+			binding.createdAt ?? input.session.createdAt,
+			binding.updatedAt ?? now,
+		);
 	}
 }
 

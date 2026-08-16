@@ -3,7 +3,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { InitialSessionContext } from "../dist/core/profiles.js";
+import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/capabilities.js";
+import { buildPortableRuntimeContextSnapshot } from "../dist/agent-runtime/context-build.js";
+import { InitialSessionContext, InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
 import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
@@ -25,9 +27,70 @@ function findNode(nodes, predicate) {
 test("default base context build does not select Pibo native tooling context", async () => {
 	const snapshot = await inspectPiboContextBuild({ profile: createDefaultPiboProfile() });
 	const nativeTooling = findNode(snapshot.nodes, (node) => node.path?.endsWith("context/pibo-native-tooling.md"));
+	const goalTool = findNode(snapshot.nodes, (node) => node.id === "tools/get_goal");
+	const goalSchema = findNode([goalTool], (node) => node.id === "tools/get_goal/definition");
 
 	assert.equal(snapshot.profileName, "base");
 	assert.equal(nativeTooling, undefined);
+	assert.equal(goalTool.source, "generated");
+	assert.ok(goalTool.badges.includes("PIBO"));
+	assert.ok(goalSchema.schemaJson.inputSchema);
+});
+
+test("portable runtime context build explains degraded native-tool inspection", () => {
+	const capabilities = createMinimalAgentRuntimeCapabilities("Unavailable by default.");
+	capabilities.tools.nativeToolInspection = {
+		support: "degraded",
+		mode: "observed-runtime-items",
+		reason: "The stable runtime protocol exposes native tool names only after use.",
+	};
+	const snapshot = buildPortableRuntimeContextSnapshot({
+		profile: createDefaultPiboProfile(),
+		cwd: process.cwd(),
+		piboSessionId: "ps_native_tool_inspection",
+		runtime: {
+			runtimeInstanceId: "observed-runtime",
+			adapterId: "observed",
+			available: true,
+			transport: "stdio",
+			capabilities,
+			diagnostics: [],
+		},
+	});
+	const nativeInspection = findNode(snapshot.nodes, (node) => node.id === "tools/native-inspection");
+	assert.equal(nativeInspection.state, "warning");
+	assert.ok(nativeInspection.badges.includes("DEGRADED:OBSERVED-RUNTIME-ITEMS"));
+	assert.ok(nativeInspection.notes.includes("The stable runtime protocol exposes native tool names only after use."));
+});
+
+test("portable runtime context build exposes selected Pibo subagents through MCP delivery", () => {
+	const capabilities = createMinimalAgentRuntimeCapabilities("Unavailable by default.");
+	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
+	const profile = new InitialSessionContextBuilder("codex-subagent-context")
+		.withAgentRuntime("codex-native")
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false, runControl: true })
+		.addSubagent({ name: "reviewer", targetProfile: "pi-reviewer" })
+		.createSession();
+	const snapshot = buildPortableRuntimeContextSnapshot({
+		profile,
+		cwd: process.cwd(),
+		piboSessionId: "ps_codex_subagent_context",
+		runtime: {
+			runtimeInstanceId: "codex-native",
+			adapterId: "codex-native",
+			available: true,
+			transport: "stdio",
+			capabilities,
+			diagnostics: [],
+		},
+	});
+	const tools = findNode(snapshot.nodes, (node) => node.id === "tools");
+	assert.equal(tools.state, "active");
+	assert.ok(tools.badges.includes("MCP:STREAMABLE-HTTP"));
+	assert.ok(tools.children.some((node) => node.title === "subagent:reviewer -> pi-reviewer"));
+	assert.ok(tools.children.some((node) => node.title === "package:pibo-run-control"));
 });
 
 test("context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate", async () => {

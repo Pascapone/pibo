@@ -58,6 +58,7 @@ export function traceTimelinePageFromView(input: {
 	let page: TraceTimelinePage = {
 		piboSessionId: input.trace.piboSessionId,
 		piSessionId: input.trace.piSessionId,
+		runtimeBinding: input.trace.runtimeBinding,
 		title: input.trace.title,
 		version: input.trace.version,
 		latestStreamId: input.trace.latestStreamId,

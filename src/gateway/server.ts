@@ -207,6 +207,7 @@ async function createGatewaySessionStore(options: GatewayServerOptions): Promise
 
 export class PiboGatewayServer {
 	private readonly pluginRegistry: PiboPluginRegistry;
+	private readonly compatibilityRuntimeRegistry?: PiboPluginRegistry;
 	private readonly runtimeInstanceId: string;
 	private sessionStore?: PiboSessionStore;
 	private ownsSessionStore = false;
@@ -221,6 +222,7 @@ export class PiboGatewayServer {
 
 	constructor(private readonly options: GatewayServerOptions = {}) {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
 		this.runtimeInstanceId = options.runtimeInstanceId ?? `gateway:${process.pid}:${randomUUID()}`;
 	}
 
@@ -419,15 +421,86 @@ export class PiboGatewayServer {
 			createSession: (input) => {
 				const profile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, input.profile);
 				const profileContext = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, profile);
+				const runtimeAdapter = this.pluginRegistry.getAgentRuntimeAdapter(profileContext.runtimeInstanceId)
+					?? this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(profileContext.runtimeInstanceId);
+				if (!runtimeAdapter) throw new Error(`Unknown agent runtime instance "${profileContext.runtimeInstanceId}".`);
 				const activeModel = input.activeModel ?? selectRequestedModelProfile(profileContext, loadPiboModelDefaults());
-				return this.requireSessionStore().create({ ...input, profile, activeModel });
+				return this.requireSessionStore().create({
+					...input,
+					profile,
+					activeModel,
+					runtimeBinding: input.runtimeBinding ?? {
+						runtimeInstanceId: profileContext.runtimeInstanceId,
+						adapterId: runtimeAdapter.descriptor.id,
+						state: "unbound",
+						protocol: runtimeAdapter.descriptor.protocol?.name,
+					},
+				});
 			},
 			updateSession: (id, input) => this.requireSessionStore().update(id, input),
 			setLiveSessionActiveModel: (id, model) => this.requireRouter().setLiveSessionActiveModel(id, model),
 			reportSessionError: (id, error, options) => this.requireRouter().reportSessionError(id, error, options),
-			deleteSession: (id) => this.requireSessionStore().delete?.(id) ?? false,
+			deleteSession: async (id) => {
+				await this.requireRouter().disposeSession(id, "session deleted");
+				return this.requireSessionStore().delete?.(id) ?? false;
+			},
 			findSessions: (input) => this.requireSessionStore().find(input),
 			listSessions: () => this.requireSessionStore().list?.() ?? [],
+			getSessionRuntimeBinding: (piboSessionId) => this.requireRouter().getSessionRuntimeBinding(piboSessionId),
+			inspectSessionRuntimeHistory: async (piboSessionId) => {
+				const session = this.requireSessionStore().get(piboSessionId);
+				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
+				const binding = this.requireRouter().getSessionRuntimeBinding(piboSessionId) ?? session.runtimeBinding;
+				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
+				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId)
+					?? this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+				if (!adapter) {
+					return {
+						runtimeInstanceId: binding.runtimeInstanceId,
+						adapterId: binding.adapterId,
+						bindingState: binding.state,
+						available: false,
+						diagnostics: [{
+							severity: "error",
+							code: "runtime_history_instance_unavailable",
+							message: `Agent runtime instance "${binding.runtimeInstanceId}" is not registered in this gateway.`,
+						}],
+					};
+				}
+				if (!adapter.descriptor.capabilities.maintenance.history || !adapter.inspectHistory) {
+					return {
+						runtimeInstanceId: binding.runtimeInstanceId,
+						adapterId: binding.adapterId,
+						bindingState: binding.state,
+						available: false,
+						diagnostics: [{
+							severity: "warning",
+							code: "runtime_history_unsupported",
+							message: `Agent runtime instance "${binding.runtimeInstanceId}" does not provide native history inspection.`,
+						}],
+					};
+				}
+				return await adapter.inspectHistory({ binding, workspace: session.workspace ?? process.cwd() });
+			},
+			readSessionRuntimeHistory: async (piboSessionId, input = {}) => {
+				const session = this.requireSessionStore().get(piboSessionId);
+				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
+				const binding = this.requireRouter().getSessionRuntimeBinding(piboSessionId) ?? session.runtimeBinding;
+				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
+				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId)
+					?? this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+				if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
+					throw new Error(`Agent runtime instance "${binding.runtimeInstanceId}" does not provide native history.`);
+				}
+				return await adapter.readHistory({
+					binding,
+					workspace: session.workspace ?? process.cwd(),
+					cursor: input.cursor,
+					beforeTimestamp: input.beforeTimestamp,
+					limit: input.limit,
+				});
+			},
+			rebindSessionRuntime: (piboSessionId, input) => this.requireRouter().rebindSessionRuntime(piboSessionId, input),
 			getSessionRuntimeStatus: (piboSessionId) => this.requireRouter().getSessionRuntimeStatus(piboSessionId),
 			getSessionStatusSnapshot: (piboSessionId) => this.requireRouter().getSessionStatusSnapshot(piboSessionId),
 			listSessionRuntimeStatuses: () => this.requireRouter().listSessionRuntimeStatuses(),
@@ -441,6 +514,13 @@ export class PiboGatewayServer {
 			getProfiles: () => this.pluginRegistry.getProfileInfos(),
 			createProfile: (name) => this.pluginRegistry.createProfile(name),
 			getCapabilityCatalog: () => this.pluginRegistry.getCapabilityCatalog(),
+			inspectAgentRuntimeInstances: () => this.pluginRegistry.inspectAgentRuntimeInstances(),
+			getAgentRuntimeAuthStatus: (runtimeInstanceId) => this.requireRouter().getAgentRuntimeAuthStatus(runtimeInstanceId),
+			startAgentRuntimeAuth: (runtimeInstanceId, input) => this.requireRouter().startAgentRuntimeAuth(runtimeInstanceId, input),
+			completeAgentRuntimeAuth: (runtimeInstanceId, input) => this.requireRouter().completeAgentRuntimeAuth(runtimeInstanceId, input),
+			cancelAgentRuntimeAuth: (runtimeInstanceId, input) => this.requireRouter().cancelAgentRuntimeAuth(runtimeInstanceId, input),
+			logoutAgentRuntimeAuth: (runtimeInstanceId, input) => this.requireRouter().logoutAgentRuntimeAuth(runtimeInstanceId, input),
+			validateAgentRuntimeProfile: (profile, workspace) => this.pluginRegistry.validateAgentRuntimeProfile(profile, workspace),
 			getLoopStopConditionDefinitions: () => this.pluginRegistry.getLoopStopConditionDefinitions(),
 			getLoopStopConditionInfos: () => this.pluginRegistry.getLoopStopConditionInfos(),
 			getRalphStopConditionDefinitions: () => this.pluginRegistry.getLoopStopConditionDefinitions(),

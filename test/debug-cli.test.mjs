@@ -1402,6 +1402,9 @@ test("pibo debug telemetry lists sessions and drills into session and turn summa
 		const sessionJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "session", "ps_running", "--json"], { cwd });
 		const sessionParsed = JSON.parse(sessionJson.stdout);
 		assert.equal(sessionParsed.available, true);
+		assert.equal(sessionParsed.runtimeInstanceId, "pi");
+		assert.equal(sessionParsed.runtimeAdapterId, "pi");
+		assert.equal(sessionParsed.runtimeBindingState, "unbound");
 		assert.equal(sessionParsed.detail.activeTurn.turnId, "turn_debug_stuck");
 		assert.equal(sessionParsed.detail.providerRequests[0].providerRequestId, "pr_debug_stuck");
 		assert.equal(sessionParsed.detail.toolCalls[0].argsBytes, 18);
@@ -1419,6 +1422,7 @@ test("pibo debug telemetry lists sessions and drills into session and turn summa
 		const turnJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "turn", "evt_running", "--json"], { cwd });
 		const turnParsed = JSON.parse(turnJson.stdout);
 		assert.equal(turnParsed.available, true);
+		assert.equal(turnParsed.runtimeInstanceId, "pi");
 		assert.equal(turnParsed.timeline.turn.turnId, "turn_debug_stuck");
 		assert.equal(turnParsed.timeline.phases.some((phase) => phase.name === "tool_args" && phase.status === "open"), true);
 		assert.equal(turnParsed.openPhases, 2);
@@ -1444,6 +1448,7 @@ test("pibo debug telemetry inspects provider summaries, event pages, and disable
 		const providerJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "provider", "pr_debug_stuck", "--json"], { cwd });
 		const providerParsed = JSON.parse(providerJson.stdout);
 		assert.equal(providerParsed.available, true);
+		assert.equal(providerParsed.runtimeAdapterId, "pi");
 		assert.equal(providerParsed.request.providerRequestId, "pr_debug_stuck");
 		assert.equal(providerParsed.request.rawEventCount, 2);
 		assert.equal(providerParsed.eventTypeRows.some((row) => row.eventType === "provider.experimental.unknown" && row.count === 1), true);
@@ -1493,6 +1498,7 @@ test("pibo debug telemetry inspects tool calls, stale work, stats, and dry-run-f
 		const toolJson = await execFileAsync("node", [cliPath, "debug", "telemetry", "tool", "tool_debug_stuck", "--json"], { cwd });
 		const toolParsed = JSON.parse(toolJson.stdout);
 		assert.equal(toolParsed.available, true);
+		assert.equal(toolParsed.runtimeInstanceId, "pi");
 		assert.equal(toolParsed.tool.toolCallId, "tool_debug_stuck");
 		assert.equal(toolParsed.noExecutionStart, true);
 		assert.deepEqual(Object.keys(toolParsed.tool).includes("args"), false);
@@ -1610,11 +1616,36 @@ test("pibo debug session inspects a Chat URL without event payload dumps", async
 		assert.equal(parsed.input.roomId, "room_one");
 		assert.equal(parsed.input.piboSessionId, "ps_parent");
 		assert.equal(parsed.session.profile, "base");
+		assert.equal(parsed.runtimeBinding.runtime_instance_id, "pi");
+		assert.equal(parsed.runtimeBinding.runtime_adapter_id, "pi");
+		assert.equal(parsed.runtimeBinding.native_session_id, "11111111-1111-4111-8111-111111111111");
+		assert.equal(parsed.runtimeBinding.binding_state, "unbound");
+		assert.deepEqual(parsed.runtimeBinding.metadata_keys, ["apiKey", "safeLabel"]);
+		assert.doesNotMatch(result.stdout, /debug-secret-must-not-leak|"safeLabel":"fixture"/);
 		assert.equal(parsed.room.matches, true);
 		assert.equal(parsed.children[0].id, "ps_child");
 		assert.equal(parsed.children[0].subagentName, "researcher");
 		assert.equal(parsed.chat.status, "idle");
 		assert.deepEqual(Object.keys(parsed.events[0]).sort(), ["created_at", "event_id", "stream_id", "type"]);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug session runtime shows binding-aware product history without secret metadata values", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const result = await execFileAsync("node", [cliPath, "debug", "session", "ps_parent", "runtime", "--json"], { cwd });
+		const parsed = JSON.parse(result.stdout);
+		assert.equal(parsed.resultType, "debug.session.runtime");
+		assert.equal(parsed.binding.runtime_instance_id, "pi");
+		assert.equal(parsed.binding.runtime_adapter_id, "pi");
+		assert.equal(typeof parsed.productHistory.events, "number");
+		assert.equal(typeof parsed.productHistory.messages, "number");
+		assert.ok(parsed.nextCommands.includes("pibo debug trace ps_parent --native-history --check"));
+		assert.deepEqual(parsed.binding.metadata_keys, ["apiKey", "safeLabel"]);
+		assert.equal("metadata_json" in parsed.binding, false);
+		assert.doesNotMatch(result.stdout, /debug-secret-must-not-leak|"safeLabel":"fixture"/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -1648,6 +1679,9 @@ test("pibo debug trace prints rebuilt Chat Web trace nodes", async () => {
 		const parsed = JSON.parse(json.stdout);
 		assert.equal(parsed.status, "running");
 		assert.equal(parsed.statusSource, "event-log");
+		assert.equal(parsed.runtimeInstanceId, "pi");
+		assert.equal(parsed.runtimeAdapterId, "pi");
+		assert.equal(parsed.historySource, "events");
 		assert.equal(parsed.nodes.some((node) => node.status === "running" && node.title === "bash"), true);
 
 		const checked = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--check", "--json"], { cwd });
@@ -1750,6 +1784,35 @@ test("pibo debug messages, final, and events show drill down without SQL", async
 		assert.equal(parsed.message.role, "assistant");
 		assert.equal(parsed.message.streamId, 5);
 		assert.equal(parsed.source.path, "attributes_json.inlinePayload.text");
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug history surfaces hydrate externalized event payloads", async () => {
+	const cwd = await makeDebugFixture();
+	const assistantText = `externalized:${"z".repeat(20_000)}`;
+	const toolText = `tool:${"q".repeat(18_000)}`;
+	try {
+		const message = await execFileAsync("node", [cliPath, "debug", "messages", "ps_payload", "show", "assistant:last", "--full", "--json"], { cwd });
+		const parsedMessage = JSON.parse(message.stdout);
+		assert.equal(parsedMessage.message.content, assistantText);
+		assert.equal(parsedMessage.message.previewOnly, false);
+		assert.equal(parsedMessage.runtimeInstanceId, "pi");
+
+		const event = await execFileAsync("node", [cliPath, "debug", "events", "ps_payload", "show", "9", "--field", "attributes_json.inlinePayload", "--no-truncate"], { cwd });
+		assert.equal(event.stdout.trim(), assistantText);
+
+		const tool = await execFileAsync("node", [cliPath, "debug", "tool", "ps_payload", "tool_payload", "--json"], { cwd });
+		const parsedTool = JSON.parse(tool.stdout);
+		assert.equal(parsedTool.output.details.content, toolText);
+		assert.equal(parsedTool.runtimeAdapterId, "pi");
+
+		const trace = await execFileAsync("node", [cliPath, "debug", "trace", "ps_payload", "--json"], { cwd });
+		const parsedTrace = JSON.parse(trace.stdout);
+		assert.equal(parsedTrace.historySource, "events");
+		assert.equal(parsedTrace.nodes.some((node) => node.type === "assistant.message"), true);
+		assert.equal(parsedTrace.nodes.some((node) => node.type === "tool.call" && node.toolCallId === "tool_payload"), true);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -2036,7 +2099,7 @@ async function makeDebugFixture() {
 	const cwd = await makeEmptyCwd();
 	const piboDir = join(cwd, ".pibo");
 	await mkdir(piboDir, { recursive: true });
-	const data = new PiboDataStore(join(piboDir, "pibo.sqlite"));
+	const data = new PiboDataStore(join(piboDir, "pibo.sqlite"), { payloadRootDir: join(piboDir, "payloads") });
 	try {
 		insertSession(data.db, {
 			id: "ps_parent",
@@ -2054,6 +2117,8 @@ async function makeDebugFixture() {
 			updatedAt: "2026-05-01T10:03:00.000Z",
 			lastActivityAt: "2026-05-01T10:03:00.000Z",
 		});
+		data.db.prepare("UPDATE session_runtime_bindings SET metadata_json = ? WHERE pibo_session_id = ?")
+			.run(JSON.stringify({ apiKey: "debug-secret-must-not-leak", safeLabel: "fixture" }), "ps_parent");
 		insertSession(data.db, {
 			id: "ps_child",
 			piSessionId: "22222222-2222-4222-8222-222222222222",
@@ -2135,6 +2200,21 @@ async function makeDebugFixture() {
 			createdAt: "2026-05-01T10:05:00.000Z",
 			updatedAt: "2026-05-01T10:05:01.000Z",
 			lastActivityAt: "2026-05-01T10:05:01.000Z",
+		});
+		insertSession(data.db, {
+			id: "ps_payload",
+			piSessionId: "88888888-8888-4888-8888-888888888888",
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+			legacyPartition: "user:one",
+			rootSessionId: "ps_payload",
+			title: "Externalized payload fixture",
+			status: "idle",
+			metadata: {},
+			createdAt: "2026-05-01T10:05:30.000Z",
+			updatedAt: "2026-05-01T10:05:32.000Z",
+			lastActivityAt: "2026-05-01T10:05:32.000Z",
 		});
 		insertSession(data.db, {
 			id: "ps_malformed_thinking",
@@ -2238,6 +2318,42 @@ async function makeDebugFixture() {
 			createdAt: "2026-05-01T10:05:01.000Z",
 			payload: "Persisted reasoning delta",
 		});
+		const externalizedAssistantText = `externalized:${"z".repeat(20_000)}`;
+		const externalizedAssistant = data.payloads.writePayload({
+			value: externalizedAssistantText,
+			contentType: "text/plain; charset=utf-8",
+			retentionClass: "trace_event",
+			createdAt: "2026-05-01T10:05:31.000Z",
+		});
+		data.db.prepare(`
+			INSERT INTO event_log (
+				stream_id, session_id, session_sequence, topic, type, source,
+				event_id, retention_class, payload_ref, preview_text, attributes_json, created_at
+			) VALUES (?, ?, ?, 'pibo.output', ?, 'agent', ?, 'trace_event', ?, ?, '{}', ?)
+		`).run(9, "ps_payload", 1, "assistant_message", "evt_payload_assistant", externalizedAssistant.id, "externalized preview", "2026-05-01T10:05:31.000Z");
+		const externalizedToolResult = { details: { status: "completed", content: `tool:${"q".repeat(18_000)}` } };
+		const externalizedTool = data.payloads.writePayload({
+			value: externalizedToolResult,
+			contentType: "application/json",
+			retentionClass: "trace_event",
+			createdAt: "2026-05-01T10:05:32.000Z",
+		});
+		data.db.prepare(`
+			INSERT INTO event_log (
+				stream_id, session_id, session_sequence, topic, type, source,
+				event_id, retention_class, payload_ref, preview_text, attributes_json, created_at
+			) VALUES (?, ?, ?, 'pibo.output', ?, 'agent', ?, 'trace_event', ?, ?, ?, ?)
+		`).run(
+			10,
+			"ps_payload",
+			2,
+			"tool_execution_finished",
+			"evt_payload_tool",
+			externalizedTool.id,
+			"tool preview",
+			JSON.stringify({ toolCallId: "tool_payload", toolName: "read", isError: false }),
+			"2026-05-01T10:05:32.000Z",
+		);
 		insertEvent(data.db, {
 			streamId: 7,
 			sessionId: "ps_malformed_thinking",

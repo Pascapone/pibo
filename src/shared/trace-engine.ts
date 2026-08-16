@@ -1,4 +1,4 @@
-import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { AgentRuntimeHistoryEntry } from "../agent-runtime/history.js";
 import type { PiboOutputEvent } from "../core/events.js";
 import { isRunStartToolNode, reconcileAsyncAgentRunStatuses } from "./trace-async-agent-runs.js";
 import {
@@ -22,7 +22,7 @@ import {
 	mapTraceSubagentSessionLinks,
 	type TraceChildSession,
 } from "./trace-subagent-links.js";
-import { projectTranscriptEntries, traceNodesFromEntries } from "./trace-transcript.js";
+import { projectHistoryEntries, traceNodesFromHistoryEntries } from "./trace-history.js";
 export { isRunStartToolNode } from "./trace-async-agent-runs.js";
 export {
 	assistantMessageNodeId,
@@ -32,7 +32,7 @@ export {
 	thinkingNodeId,
 	traceEventDedupeKey,
 } from "./trace-event-projection.js";
-export { traceNodesFromEntries } from "./trace-transcript.js";
+export { traceNodesFromHistoryEntries } from "./trace-history.js";
 export {
 	compareTraceNodes,
 	flattenTraceNodes,
@@ -53,7 +53,7 @@ type TraceBuildInput = {
 	session: { id: string; piSessionId: string; title?: string | null };
 	events: ChatWebStoredEvent[];
 	turnTimings?: TraceMessageTurnTiming[];
-	transcriptEntries?: SessionEntry[];
+	historyEntries?: readonly AgentRuntimeHistoryEntry[];
 	sessions?: Array<{
 		id: string;
 		parentId?: string | null;
@@ -71,16 +71,24 @@ type TraceBuildInput = {
 export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTraceView {
 	const sessionStatus = input.status ?? "idle";
 	const events = dedupeTraceEvents(input.events);
-	const allEntries = input.transcriptEntries ?? [];
-	const openTranscriptEventIds = findOpenTranscriptEventIds(events, sessionStatus);
+	const allEntries = input.historyEntries ?? [];
+	const openHistoryEventIds = findOpenTranscriptEventIds(events, sessionStatus);
 	const turnTimings = mergeMessageTurnTimings(input.turnTimings ?? [], messageTurnTimingsFromEvents(events));
-	const entries = projectTranscriptEntries(allEntries, sessionStatus, openTranscriptEventIds, turnTimings);
-	const nodes = traceNodesFromEntries(input.session.id, entries, turnTimings);
+	const entries = projectHistoryEntries(allEntries, sessionStatus, openHistoryEventIds, turnTimings);
+	const nodes = traceNodesFromHistoryEntries(input.session.id, entries, turnTimings);
 	reconcileTranscriptUserMessages(nodes, events, turnTimings);
 	const byId = mapTraceNodesById(nodes);
 	const childByParent = mapTraceChildSessionsByParent(input.sessions ?? []);
 	const linkedChildByToolCallId = mapTraceSubagentSessionLinks(events);
-	const hasPersistedTranscript = entries.some((entry) => entry.type === "message");
+	const historyMode = entries.some((entry) => entry.source === "native")
+		? "native" as const
+		: entries.some((entry) => entry.type === "message") ? "product" as const : "none" as const;
+	const historyNodes = flattenTraceNodes(nodes);
+	const historyCoverage = {
+		mode: historyMode,
+		eventIds: new Set(historyNodes.flatMap((node) => node.eventId ? [node.eventId] : [])),
+		toolCallIds: new Set(historyNodes.flatMap((node) => node.toolCallId ? [node.toolCallId] : [])),
+	};
 
 	for (const storedEvent of events) {
 		applySingleEventToNodes(
@@ -90,8 +98,8 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 			storedEvent,
 			childByParent,
 			linkedChildByToolCallId,
-			hasPersistedTranscript,
-			openTranscriptEventIds,
+			historyCoverage,
+			openHistoryEventIds,
 			sessionStatus,
 		);
 	}
@@ -153,6 +161,7 @@ export function patchTraceViewWithEvents(
 	const childByParent = new Map<string, TraceChildSession[]>();
 	const linkedChildByToolCallId = new Map<string, string>();
 	const openTranscriptEventIds = new Set<string>();
+	const emptyHistoryCoverage = { mode: "none" as const, eventIds: new Set<string>(), toolCallIds: new Set<string>() };
 	const appliedEvents: ChatWebStoredEvent[] = [];
 	let contentDeltaChangedNodeIds: Set<string> | undefined = new Set();
 
@@ -170,7 +179,7 @@ export function patchTraceViewWithEvents(
 			event,
 			childByParent,
 			linkedChildByToolCallId,
-			false,
+			emptyHistoryCoverage,
 			openTranscriptEventIds,
 			sessionStatus,
 		);

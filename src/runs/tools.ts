@@ -1,5 +1,6 @@
-import { StringEnum, Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { piboStringEnum } from "../tools/schema.js";
+import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
 import { foregroundServiceWarning, hasMeaningfulTimeoutOutput, isConfiguredTimeoutError, PiboRunExecutionTimeoutError, resolveRunTimeoutMs } from "./lifecycle.js";
 import { PiboRunResourceLimitError, prepareYieldedRunExecution, type PiboRunResourceUsage } from "./resource-isolation.js";
 import type {
@@ -49,7 +50,7 @@ function textFromToolResult(result: { content?: unknown }): string | undefined {
 	return text || undefined;
 }
 
-function requireTool(tools: readonly ToolDefinition[], name: string): ToolDefinition {
+function requireTool(tools: readonly PiboToolDefinition[], name: string): PiboToolDefinition {
 	const tool = tools.find((candidate) => candidate.name === name);
 	if (!tool) {
 		throw new Error(`Unknown or non-yieldable tool "${name}"`);
@@ -58,25 +59,25 @@ function requireTool(tools: readonly ToolDefinition[], name: string): ToolDefini
 }
 
 export function createRunToolDefinitions(
-	yieldableTools: readonly ToolDefinition[],
+	yieldableTools: readonly PiboToolDefinition[],
 	controller: PiboRunToolController,
-): ToolDefinition[] {
+): PiboToolDefinition[] {
 	const toolNames = yieldableTools.map((tool) => tool.name);
 
 	return [
-		defineTool({
+		definePiboTool({
 			name: "pibo_run_start",
-			label: "Pibo Run Start",
+			title: "Pibo Run Start",
 			description:
 				"Start a yieldable tool as a yielded run. The run records its configured timeout and classifies lifetime expiry separately from command failure. Use detached only for intentional fire-and-forget work.",
 			promptSnippet:
 				"Use pibo_run_start to run a yieldable tool in the background. It returns a runId. Use pibo_run_read for completed results and pibo_run_wait/status/list/cancel/ack to manage runs.",
 			executionMode: "parallel",
-			parameters: Type.Object({
-				toolName: StringEnum(toolNames, { description: "Yieldable tool name to start" }),
+			inputSchema: Type.Object({
+				toolName: piboStringEnum(toolNames, { description: "Yieldable tool name to start" }),
 				arguments: Type.Any({ description: "Arguments object for the selected tool" }),
 				completionPolicy: Type.Optional(
-					StringEnum(["tracked", "detached"], {
+					piboStringEnum(["tracked", "detached"], {
 						description:
 							"tracked reminds this agent about completion; detached is fire-and-forget and creates no automatic reminders.",
 						default: "tracked",
@@ -123,13 +124,13 @@ export function createRunToolDefinitions(
 				};
 			},
 		}),
-		defineTool({
+		definePiboTool({
 			name: "pibo_run_list",
-			label: "Pibo Run List",
+			title: "Pibo Run List",
 			description: "List yielded runs owned by this agent session.",
 			promptSnippet: "Use pibo_run_list to inspect yielded runs owned by this session.",
 			executionMode: "parallel",
-			parameters: Type.Object({
+			inputSchema: Type.Object({
 				includeConsumed: Type.Optional(Type.Boolean({ description: "Include already read, cancelled, or acknowledged runs" })),
 				includeDetached: Type.Optional(Type.Boolean({ description: "Include fire-and-forget detached runs" })),
 			}),
@@ -144,13 +145,13 @@ export function createRunToolDefinitions(
 				};
 			},
 		}),
-		defineTool({
+		definePiboTool({
 			name: "pibo_run_status",
-			label: "Pibo Run Status",
+			title: "Pibo Run Status",
 			description: "Read compact status for one yielded run.",
 			promptSnippet: "Use pibo_run_status to inspect one yielded run without reading its full result.",
 			executionMode: "parallel",
-			parameters: Type.Object({
+			inputSchema: Type.Object({
 				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 			}),
 			async execute(_toolCallId, params) {
@@ -161,13 +162,13 @@ export function createRunToolDefinitions(
 				};
 			},
 		}),
-		defineTool({
+		definePiboTool({
 			name: "pibo_run_wait",
-			label: "Pibo Run Wait",
+			title: "Pibo Run Wait",
 			description: "Wait a bounded time for a yielded run. Timeout is normal and does not mean failure.",
 			promptSnippet: "Use pibo_run_wait when blocked on a run. Timeout is normal; call again or continue other work.",
 			executionMode: "parallel",
-			parameters: Type.Object({
+			inputSchema: Type.Object({
 				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 				timeoutMs: Type.Optional(Type.Number({ description: "Maximum wait time in milliseconds, clamped to 300000" })),
 			}),
@@ -189,13 +190,13 @@ export function createRunToolDefinitions(
 				};
 			},
 		}),
-		defineTool({
+		definePiboTool({
 			name: "pibo_run_read",
-			label: "Pibo Run Read",
+			title: "Pibo Run Read",
 			description: "Read the terminal result, timeout reason, or error for a yielded run.",
 			promptSnippet: "Use pibo_run_read to retrieve a completed, failed, or timed_out run result. Reading terminal tracked runs consumes reminders.",
 			executionMode: "parallel",
-			parameters: Type.Object({
+			inputSchema: Type.Object({
 				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 			}),
 			async execute(_toolCallId, params) {
@@ -207,13 +208,13 @@ export function createRunToolDefinitions(
 				};
 			},
 		}),
-		defineTool({
+		definePiboTool({
 			name: "pibo_run_cancel",
-			label: "Pibo Run Cancel",
+			title: "Pibo Run Cancel",
 			description: "Cancel a yielded run if possible and suppress future reminders.",
 			promptSnippet: "Use pibo_run_cancel when a yielded run is no longer needed.",
 			executionMode: "parallel",
-			parameters: Type.Object({
+			inputSchema: Type.Object({
 				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 			}),
 			async execute(_toolCallId, params) {
@@ -224,14 +225,14 @@ export function createRunToolDefinitions(
 				};
 			},
 		}),
-		defineTool({
+		definePiboTool({
 			name: "pibo_run_ack",
-			label: "Pibo Run Ack",
+			title: "Pibo Run Ack",
 			description: "Acknowledge a yielded run update and suppress reminders for its current state.",
 			promptSnippet:
 				"Use pibo_run_ack when you intentionally do not need to read a completed result or do not need more reminders for the current running state.",
 			executionMode: "parallel",
-			parameters: Type.Object({
+			inputSchema: Type.Object({
 				runId: Type.String({ description: "Run id returned by pibo_run_start" }),
 			}),
 			async execute(_toolCallId, params) {

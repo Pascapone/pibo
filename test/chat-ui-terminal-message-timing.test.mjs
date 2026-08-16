@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { messageTurnTimingsFromEvents } from "../dist/shared/trace-event-projection.js";
-import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
+import { buildTraceViewFromEvents } from "./helpers/pi-history.mjs";
 import {
 	buildCompactTerminalRows,
 	findActiveTurnStartedAt,

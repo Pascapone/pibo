@@ -8,6 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const agentsViewSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/AgentsView.tsx"), "utf8");
 const appSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/App.tsx"), "utf8");
 const modelSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/agent-designer-model.ts"), "utf8");
+const designerUiSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/designer-ui.tsx"), "utf8");
 
 test("Agent Designer debounces autosave and serializes overlapping writes", () => {
 	assert.match(agentsViewSource, /const AGENT_AUTOSAVE_DELAY_MS = 900/);
@@ -27,6 +28,33 @@ test("Agent Designer keeps pending edits recoverable and exposes save state inst
 	assert.match(agentsViewSource, /data-agent-autosave-state=\{saveState\}/);
 	assert.match(agentsViewSource, />\s*Retry\s*</);
 	assert.doesNotMatch(agentsViewSource, /title="Save Agent"/);
+});
+
+test("Agent Designer persists runtime selection, validates JSON options, and shows runtime diagnostics", () => {
+	assert.match(modelSource, /runtimeInstanceId: \(draft\.runtimeInstanceId \?\? "pi"\)\.trim\(\) \|\| "pi"/);
+	assert.match(modelSource, /\? structuredClone\(draft\.runtimeOptions\)[\s\S]*: \{\}/);
+	assert.match(agentsViewSource, /<AgentRuntimeSelector/);
+	assert.match(agentsViewSource, /runtimeOptionsErrorRef\.current/);
+	assert.match(designerUiSource, /Agent Runtime/);
+	assert.match(designerUiSource, /Effective runtime capabilities/);
+	assert.match(designerUiSource, /Options are validated by the selected runtime before saving/);
+	assert.match(designerUiSource, /Schema generated runtime options/);
+	assert.match(designerUiSource, /runtimeOptionFields\(schema\)/);
+	assert.match(designerUiSource, /disabled=\{!runtime\.available && runtime\.id !== runtimeInstanceId\}/);
+	assert.match(agentsViewSource, /Existing selections remain visible so they can be removed/);
+	assert.match(agentsViewSource, /unsupportedDeliveryReason/);
+	assert.match(agentsViewSource, /modelCatalogForRuntime\(selectedRuntime, modelCatalog\)/);
+	assert.match(modelSource, /runtime\.models\.models/);
+	assert.match(modelSource, /reasoningOptions = model\.reasoningOptions\?\.filter/);
+	assert.match(modelSource, /export function reasoningValuesForModel/);
+	assert.match(agentsViewSource, /reasoningValuesForModel\(selectedRuntime\?\.capabilities\.reasoning\.values, runtimeModelCatalog, draft\.mainModel\)/);
+	assert.match(agentsViewSource, /reasoningValuesForModel\(selectedRuntime\?\.capabilities\.reasoning\.values, runtimeModelCatalog, draft\.subagentModel\)/);
+});
+
+test("Agent Designer keeps Pibo subagents and yielded subagent runs capability-gated", () => {
+	assert.match(agentsViewSource, /<SubagentDesigner[\s\S]*capabilityUnavailableReason=\{piboToolsUnavailableReason\}/);
+	assert.match(agentsViewSource, /title="pibo-run-control"[\s\S]*Pibo-managed tools and subagents/);
+	assert.match(agentsViewSource, /Private harness-native tools are included only when the runtime declares native-tool yielding/);
 });
 
 test("Agent Designer exposes goal lifecycle tooling as a default-enabled package switch", () => {

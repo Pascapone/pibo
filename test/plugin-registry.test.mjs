@@ -31,11 +31,11 @@ async function withCwd(cwd, run) {
 	}
 }
 
-test("default plugin registry builds capabilities without retired built-in coding agents", () => {
+test("default plugin registry builds core and native Codex capabilities without retired aliases", () => {
 	const registry = createDefaultPiboPluginRegistry();
 	const catalog = registry.getCapabilityCatalog();
 
-	assert.deepEqual(registry.getProfileNames(), ["base"]);
+	assert.deepEqual(registry.getProfileNames(), ["base", "codex-native"]);
 	assert.deepEqual(registry.createProfile("base").builtinToolNames, ["read", "bash", "edit", "write"]);
 	assert.ok(catalog.nativeTools.some((tool) => (
 		tool.name === "web_search" && tool.pluginId === "pibo.core" && tool.hasDefinition === false
@@ -50,7 +50,7 @@ test("default plugin registry builds capabilities without retired built-in codin
 		registry.getCapabilityCatalog().skills
 			.filter((skill) => skill.kind === "builtin")
 			.map((skill) => skill.name),
-		["pi-agent-harness", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "loop", "ralph-loop", "ralph-prd-json", "web-annotations"],
+		["pi-agent-harness", "pibo-agent-runtime-adapter", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "loop", "ralph-loop", "ralph-prd-json", "web-annotations"],
 	);
 	assert.deepEqual(registry.getGatewayActionInfos(), [
 		{
@@ -90,7 +90,7 @@ test("default plugin registry builds capabilities without retired built-in codin
 		},
 		{
 			name: "thinking",
-			description: "Show or set the routed Pi thinking level.",
+			description: "Show or set the active runtime reasoning level.",
 			slashCommands: ["thinking"],
 		},
 		{
@@ -140,37 +140,42 @@ test("default plugin registry builds capabilities without retired built-in codin
 		},
 		{
 			name: "login",
-			description: "Open the interactive provider login menu.",
+			description: "Open the interactive provider login menu for the active runtime.",
 			slashCommands: ["login"],
 		},
 		{
 			name: "model",
-			description: "Open the interactive model selector for authenticated providers.",
+			description: "Open the interactive model selector for the active runtime.",
 			slashCommands: ["model"],
 		},
 		{
 			name: "login.start",
-			description: "Start an OAuth login flow for a provider. Returns a URL to open in a browser.",
+			description: "Start a provider login flow for the active runtime.",
 			slashCommands: [],
 		},
 		{
 			name: "login.complete",
-			description: "Complete an OAuth login flow with the authorization code from the provider callback.",
+			description: "Read or complete a provider login flow for the active runtime.",
 			slashCommands: [],
 		},
 		{
 			name: "login.apikey",
-			description: "Set an API key directly for a provider.",
+			description: "Set an API key for a provider on the active runtime.",
+			slashCommands: [],
+		},
+		{
+			name: "login.cancel",
+			description: "Cancel a pending provider login for the active runtime.",
 			slashCommands: [],
 		},
 		{
 			name: "login.status",
-			description: "Check the authentication status for providers.",
+			description: "Check provider authentication status for the active runtime.",
 			slashCommands: [],
 		},
 		{
 			name: "logout",
-			description: "Remove stored credentials for a provider.",
+			description: "Remove stored credentials for a provider on the active runtime.",
 			slashCommands: [],
 		},
 	]);
@@ -257,7 +262,7 @@ test("capability catalog exposes registered Pi packages without activating them"
 		const catalog = registry.getCapabilityCatalog();
 
 		assert.equal(catalog.piPackages.find((pkg) => pkg.id === "catalog-package")?.installStatus, "registered");
-		assert.deepEqual(registry.getProfileNames(), ["base"]);
+		assert.deepEqual(registry.getProfileNames(), ["base", "codex-native"]);
 	});
 });
 
@@ -326,6 +331,7 @@ test("plugins can register profiles, gateway actions, and event listeners", asyn
 			description: undefined,
 			yieldable: true,
 			hasDefinition: false,
+			portable: true,
 			pluginId: "test.plugin",
 			pluginName: "Test Plugin",
 		},

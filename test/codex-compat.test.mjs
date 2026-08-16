@@ -11,11 +11,11 @@ import {
 	normalizeOpenAiWebSearchConfig,
 } from "../dist/tools/web-search.js";
 
-test("default registry exposes base and not retired built-in coding agents", () => {
+test("default registry exposes base and native Codex without retired compatibility agents", () => {
 	const registry = createDefaultPiboPluginRegistry();
 	const profile = registry.createProfile("base");
 
-	assert.deepEqual(registry.getProfileNames(), ["base"]);
+	assert.deepEqual(registry.getProfileNames(), ["base", "codex-native"]);
 	assert.equal(profile.profileName, "base");
 	assert.equal(profile.builtinTools, "default");
 	assert.deepEqual(profile.builtinToolNames, ["read", "bash", "edit", "write"]);

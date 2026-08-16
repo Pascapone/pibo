@@ -538,7 +538,7 @@ function validateServerConfig(serverName: string, serverConfig: ServerConfig): v
  * Load and merge MCP servers configuration.
  * More specific paths appear first and win server-name conflicts.
  */
-export async function loadConfig(
+export async function loadConfigUnresolved(
   explicitPath?: string,
 ): Promise<McpServersConfig> {
   const explicitOrEnvPath = explicitPath
@@ -572,7 +572,13 @@ export async function loadConfig(
     validateServerConfig(serverName, serverConfig);
   }
 
-  return substituteEnvVarsInObject(merged);
+  return merged;
+}
+
+export async function loadConfig(
+  explicitPath?: string,
+): Promise<McpServersConfig> {
+  return substituteEnvVarsInObject(await loadConfigUnresolved(explicitPath));
 }
 
 export async function getConfigSourceSummaries(

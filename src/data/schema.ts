@@ -1,8 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 3;
+export const PIBO_DATA_SCHEMA_VERSION = 5;
 
 export function applyPiboDataSchema(db: DatabaseSync): void {
+	const previousVersion = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
+	const existingSessionCount = db.prepare("SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'sessions'").get() as { count: number };
+	const hadSessionsBeforeMigration = existingSessionCount.count > 0
+		&& Number((db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number }).count) > 0;
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
@@ -26,6 +30,63 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			updated_at TEXT NOT NULL,
 			last_activity_at TEXT NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS session_runtime_bindings (
+			pibo_session_id TEXT PRIMARY KEY,
+			runtime_instance_id TEXT NOT NULL,
+			runtime_adapter_id TEXT NOT NULL,
+			native_session_id TEXT,
+			binding_state TEXT NOT NULL CHECK(binding_state IN ('unbound', 'bound', 'missing', 'error'))
+				CHECK(binding_state NOT IN ('bound', 'missing') OR native_session_id IS NOT NULL),
+			protocol TEXT,
+			protocol_version TEXT,
+			adapter_version TEXT,
+			locator_json TEXT,
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_session_runtime_bindings_native
+			ON session_runtime_bindings(runtime_adapter_id, native_session_id)
+			WHERE native_session_id IS NOT NULL;
+		CREATE INDEX IF NOT EXISTS idx_session_runtime_bindings_instance_state
+			ON session_runtime_bindings(runtime_instance_id, binding_state, updated_at DESC);
+
+		CREATE TRIGGER IF NOT EXISTS trg_sessions_runtime_binding_insert
+		AFTER INSERT ON sessions
+		WHEN NOT EXISTS (
+			SELECT 1 FROM session_runtime_bindings WHERE pibo_session_id = NEW.id
+		)
+		BEGIN
+			INSERT INTO session_runtime_bindings (
+				pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
+				binding_state, protocol, metadata_json, revision, created_at, updated_at
+			) VALUES (
+				NEW.id, 'pi', 'pi', NULLIF(NEW.pi_session_id, ''),
+				'unbound',
+				'pi-sdk', '{}', 1, NEW.created_at, NEW.updated_at
+			);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS trg_sessions_runtime_binding_pi_update
+		AFTER UPDATE OF pi_session_id ON sessions
+		WHEN EXISTS (
+			SELECT 1 FROM session_runtime_bindings
+			WHERE pibo_session_id = NEW.id
+				AND runtime_adapter_id = 'pi'
+				AND COALESCE(native_session_id, '') <> COALESCE(NEW.pi_session_id, '')
+		)
+		BEGIN
+			UPDATE session_runtime_bindings SET
+				native_session_id = NULLIF(NEW.pi_session_id, ''),
+				binding_state = CASE WHEN NEW.pi_session_id IS NULL OR NEW.pi_session_id = '' THEN 'unbound' ELSE 'bound' END,
+				revision = revision + 1,
+				updated_at = NEW.updated_at
+			WHERE pibo_session_id = NEW.id AND runtime_adapter_id = 'pi';
+		END;
 
 		CREATE TABLE IF NOT EXISTS rooms (
 			id TEXT PRIMARY KEY,
@@ -441,5 +502,47 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_retention_updated
 			ON telemetry_tool_calls(retention_class, updated_at);
 	`);
+	db.exec(`
+		INSERT OR IGNORE INTO session_runtime_bindings (
+			pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
+			binding_state, protocol, metadata_json, revision, created_at, updated_at
+		)
+		SELECT
+			id, 'pi', 'pi', NULLIF(pi_session_id, ''),
+			CASE WHEN pi_session_id IS NULL OR pi_session_id = '' THEN 'unbound' ELSE 'bound' END,
+			'pi-sdk',
+			CASE WHEN EXISTS (SELECT 1 FROM event_log WHERE event_log.session_id = sessions.id LIMIT 1)
+				THEN '{"migrationSource":"schema-v4","nativePresenceExpected":true}'
+				ELSE '{"migrationSource":"schema-v4","nativePresenceExpected":false}'
+			END,
+			1, created_at, updated_at
+		FROM sessions
+		WHERE NOT EXISTS (
+			SELECT 1 FROM session_runtime_bindings existing
+			WHERE existing.pibo_session_id = sessions.id
+		);
+	`);
+	if (previousVersion < PIBO_DATA_SCHEMA_VERSION && hadSessionsBeforeMigration) {
+		const rows = db.prepare("SELECT pibo_session_id, metadata_json FROM session_runtime_bindings").all() as Array<{
+			pibo_session_id: string;
+			metadata_json: string;
+		}>;
+		const update = db.prepare("UPDATE session_runtime_bindings SET metadata_json = ? WHERE pibo_session_id = ?");
+		for (const row of rows) {
+			let metadata: Record<string, unknown> = {};
+			try {
+				const parsed = JSON.parse(row.metadata_json) as unknown;
+				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) metadata = parsed as Record<string, unknown>;
+			} catch {
+				// Preserve a valid object even if legacy metadata was malformed.
+			}
+			if (metadata.nativeHistoryFallback === true) continue;
+			update.run(JSON.stringify({
+				...metadata,
+				nativeHistoryFallback: true,
+				historyMigrationSource: "schema-v5",
+			}), row.pibo_session_id);
+		}
+	}
 	db.exec(`PRAGMA user_version = ${PIBO_DATA_SCHEMA_VERSION}`);
 }

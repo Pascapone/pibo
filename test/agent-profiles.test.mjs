@@ -46,6 +46,41 @@ test("custom agent profiles skip unknown context file references", () => {
 	assert.deepEqual(session.contextFiles.map((file) => file.key), ["Codex Base Prompt"]);
 });
 
+test("custom agent profiles preserve the persisted runtime selection and options", () => {
+	const profile = createCustomAgentProfileDefinition({
+		id: "agent_runtime",
+		profileName: "native-agent",
+		displayName: "native-agent",
+		runtimeInstanceId: "codex-native",
+		runtimeOptions: { reasoningEffort: "high" },
+		nativeTools: [],
+		skills: [],
+		contextFiles: [],
+		subagents: [],
+		mcpServers: [],
+		piPackages: [],
+		builtinTools: "default",
+		builtinToolNames: ["read", "bash", "edit", "write"],
+		autoContextFiles: true,
+		runControl: false,
+		goalControl: true,
+		createdAt: "2026-08-15T00:00:00.000Z",
+		updatedAt: "2026-08-15T00:00:00.000Z",
+	});
+
+	const session = profile.create({
+		getTool() { throw new Error("unexpected tool lookup"); },
+		getTools() { return []; },
+		getSkill() { throw new Error("unexpected skill lookup"); },
+		getContextFile() { throw new Error("unexpected context file lookup"); },
+		getSubagent() { throw new Error("unexpected subagent lookup"); },
+		getSubagents() { return []; },
+	});
+
+	assert.equal(session.runtimeInstanceId, "codex-native");
+	assert.deepEqual(session.runtimeOptions, { reasoningEffort: "high" });
+});
+
 test("custom agent profiles skip unknown skill references", () => {
 	const profile = createCustomAgentProfileDefinition({
 		id: "agent_test",

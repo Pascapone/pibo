@@ -4,11 +4,29 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 ## Core architecture
 
-**Pibo** — The TypeScript product boundary around Pi Coding Agent. Pibo owns profiles, plugins, routing, channels, product data, authentication, web apps, and operator tooling.
+**Pibo** — The product and orchestration layer around agent harnesses. Pibo owns Pibo Sessions, rooms, projects, profiles, Agent Designer, plugins, routing, channels, jobs, workflows, goals, subagents, signals, reliability, product data, authentication, web apps, and operator tooling.
 
-**Pi Coding Agent** — The embedded engine that performs model turns, tool execution, streaming, transcript persistence, and compaction.
+**Agent Harness** — An engine such as Pi Coding Agent or Codex that owns its native model loop, base system prompt, standard tools, native session/transcript, and harness-specific behavior.
 
-**Runtime** — A configured Pi Coding Agent environment created by Pibo for a session.
+**Pi Coding Agent** — The default embedded agent harness. It performs Pi-native model turns, tool execution, streaming, transcript persistence, compaction, and session operations.
+
+**Codex App Server** — The official Codex JSON-RPC server used by Pibo's native `codex-native` adapter, configured runtime instance, and read-only profile. It declares no `codex` alias and remains distinct from explicitly registered or persisted Pi-backed Codex compatibility profiles/bindings.
+
+**Agent Runtime Adapter** — A Pibo-owned integration that maps one agent harness and protocol into Pibo runtime contracts, capabilities, diagnostics, semantic events, lifecycle, history, and portable-capability delivery.
+
+**Configured Runtime Instance** — One registered adapter configuration selected by a profile or Pibo Session. Multiple instances may use the same adapter with isolated configuration and process state.
+
+**Runtime Session** — One live adapter-owned handle bound to a Pibo Session. It accepts prompts, emits normalized semantic events, exposes capability-gated controls, and owns cleanup of its harness resources.
+
+**Runtime Session Binding** — The persisted opaque link from one Pibo Session to a configured runtime instance and optional harness-native session id, locator, protocol metadata, and binding state.
+
+**Runtime Capability** — A declared operation or delivery mechanism supported by an adapter or live runtime session. Generic orchestration dispatches by capability rather than hard-coded adapter name.
+
+**Runtime Instance Inspection** — The runtime catalog view combining configured-instance metadata, enabled/available state, diagnostics, declared capabilities, protocol, model catalog, and auth status. It is safe product metadata and must not expose credentials.
+
+**Runtime Profile Options** — Adapter-specific JSON saved on a profile alongside its configured runtime instance. Options are validated by the selected adapter and are distinct from the adapter instance's operator configuration.
+
+**Portable Pibo Capability** — A Pibo-owned tool, skill, context file, MCP server selection, subagent, or control package delivered through adapter-specific direct, MCP, or materialization mechanisms.
 
 **Profile** — A named runtime configuration selecting models, tools, skills, subagents, context files, MCP servers, and runtime options.
 
@@ -36,11 +54,31 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 ## Capabilities and execution
 
-**Native Tool / Built-In Pi Tool / MCP Server / Curated CLI Tool** — A Native Tool is registered by a Pibo plugin, selected by profiles, and may use a local definition or provider adapter. A Built-In Pi Tool comes from Pi, such as `read` or `bash`. An MCP Server is an external Model Context Protocol integration. A Curated CLI Tool is managed through `pibo tools` and is not a profile tool or MCP server.
+**Pibo Native Tool / Harness-Native Tool / Built-In Pi Tool / MCP Server / Curated CLI Tool** — A Pibo Native Tool is registered by a Pibo plugin, selected by profiles, and delivered directly or through an adapter bridge. A Harness-Native Tool belongs to the harness and remains under harness control. Native-tool inspection reports only inventory the adapter can prove through stable harness surfaces and may be declared degraded or observed-only; it is distinct from native-tool yielding, which would let Pibo wrap a harness-owned tool. A Built-In Pi Tool is a Pi-native tool such as `read` or `bash`. An MCP Server is an external Model Context Protocol integration. A Curated CLI Tool is managed through `pibo tools` and is not a profile tool or MCP server.
+
+**Pibo Tool Definition** — The Pibo-owned JSON-Schema tool contract used at the plugin/runtime boundary. It carries title/description, input and optional output schemas, execution mode, annotations, cancellation, progress, text/image/structured results, errors, correlation metadata, and payload references without importing a harness SDK.
+
+**Portable Tool / Adapter-Private Tool** — A Portable Tool can run from Pibo's own execution context and may be compiled directly or exposed through the session-scoped MCP bridge. An Adapter-Private Tool depends on a harness-native execution context; compatibility wrappers may keep it working in that adapter, but it must not be advertised through portable MCP.
+
+**Session-Scoped Tool MCP Bridge** — Pibo's loopback Streamable HTTP MCP server for exposing only one live Pibo Session generation's selected portable tools to an external harness.
+
+**Tool Capability Credential** — A short-lived bearer capability for the tool MCP bridge. Pibo stores only its hash and binds it to one Pibo Session, runtime instance, adapter, live generation, and selected tool-name set; it is renewed or revoked without broadening scope.
+
+**Runtime Session Generation** — A random live-lifecycle identifier distinct from persisted session and binding ids. Portable-tool credentials and generated runtime resources share this generation and become invalid or are removed when it is disposed, replaced, or otherwise inactive.
+
+**Runtime Resource Session** — The router-owned, adapter-neutral live plan for one runtime generation's selected skills, ordered context contributions, and external MCP servers. It exposes hydrated inputs to the adapter, safe inspection metadata to product surfaces, delivery reports, diagnostics, scoped environment, and deterministic cleanup.
+
+**Runtime Generation Directory** — A private `$PIBO_HOME/agent-runtimes/<runtime-instance>/<pibo-session>/<generation>/` tree containing only generated state for that live runtime generation, such as copied skills, context files, scoped MCP configuration, an isolated home, and protocol artifacts. It is not a user-global harness configuration directory.
+
+**Runtime Delivery Report** — Safe inspection metadata for one portable contribution recording delivered, degraded, unsupported, or failed status; delivery mode; fidelity; target; and a redacted diagnostic when relevant.
+
+**Scoped External MCP Configuration** — A selected-only MCP configuration generated for one runtime generation. Literal or referenced sensitive values are rebound through session-only environment variables; the generated file contains no resolved secret values and is removed with the generation.
+
+**Code Runtime Tool** — The existing persistent Python/Node tool named `runtime`. It is a Pibo tool and is distinct from an Agent Runtime Adapter or Runtime Session.
 
 **Skill / Context File** — A Skill is a selected `SKILL.md` instruction package. A Context File is selected Markdown loaded into runtime context; it may be plugin-provided or Pibo-managed.
 
-**Subagent** — A profile-scoped generated tool that invokes another profile through a created or reused child Pibo Session.
+**Subagent** — A profile-scoped generated Pibo tool that invokes another profile through a created or reused child Pibo Session. The child freezes its target profile's runtime binding independently from the parent, so parent and child may use different adapters. A bounded thread key controls reuse; active child work is cancelled with the parent turn without deleting the reusable child session.
 
 **Input Event / Output Event** — Input Events carry messages or execution requests into the router. Output Events are normalized runtime results emitted by the router.
 
@@ -62,6 +100,10 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Pibo Reliability Store** — `pibo-events.sqlite`, the separate store for reliability streams, durable jobs, replay state, and persisted yielded runs.
 
-**Pi Transcript** — Pi Coding Agent's JSONL conversation history. It remains distinct from Pibo product records and UI projections.
+**Pibo Product History** — The runtime-neutral durable messages and terminal semantic events persisted by Pibo for Pibo-routed turns. It is the primary source for normal product-visible history and does not replace a harness-native transcript as resume state.
 
-**Chat Web Trace View / Chat Session View** — The Trace View is a bounded, read-time reconstruction of session execution from Pibo data, Pi transcripts, and live events. It is a projection, not a source of truth. A Chat Session View is a UI renderer for that projection.
+**Agent Runtime History Provider** — An adapter-owned compatibility and diagnostic interface that inspects and pages a harness's native history into Pibo-owned normalized history entries. Product code never parses a native transcript format directly.
+
+**Pi Transcript** — Pi Coding Agent's JSONL conversation history. It remains Pi-owned resume state and is read through the Pi history provider only for legacy compatibility, import, repair, or explicit debugging.
+
+**Chat Web Trace View / Chat Session View** — The Trace View is a bounded, read-time reconstruction of session execution from Pibo product history, normalized events, optional adapter-provided compatibility history, and live events. It is a projection, not a source of truth. A Chat Session View is a UI renderer for that projection.

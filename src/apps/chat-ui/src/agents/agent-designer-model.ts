@@ -1,5 +1,5 @@
 import type { SaveCustomAgentInput } from "../api-agent-designer";
-import type { AgentCatalog, BootstrapData, CustomAgent, ModelProfile, ThinkingLevel } from "../types";
+import { THINKING_LEVELS, type AgentCatalog, type AgentRuntimeCatalogEntry, type BootstrapData, type CustomAgent, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
 
 export type AgentDraft = SaveCustomAgentInput & {
 	id?: string;
@@ -27,6 +27,10 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 	return {
 		displayName: draft.displayName.trim(),
 		description: (draft.description ?? "").trim() || undefined,
+		runtimeInstanceId: (draft.runtimeInstanceId ?? "pi").trim() || "pi",
+		runtimeOptions: draft.runtimeOptions && typeof draft.runtimeOptions === "object" && !Array.isArray(draft.runtimeOptions)
+			? structuredClone(draft.runtimeOptions)
+			: {},
 		nativeTools: uniqueNames(draft.nativeTools),
 		skills: uniqueNames(draft.skills),
 		contextFiles: uniqueNames(draft.contextFiles),
@@ -64,6 +68,8 @@ export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new
 	return {
 		displayName,
 		description: "",
+		runtimeInstanceId: defaultRuntimeInstanceId(catalog),
+		runtimeOptions: {},
 		nativeTools: [],
 		skills: hasBuiltinSkill(catalog, "pi-agent-harness") ? ["pi-agent-harness"] : [],
 		contextFiles: [],
@@ -87,6 +93,12 @@ export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new
 		hardPinnedModel: undefined,
 		source: "custom",
 	};
+}
+
+function defaultRuntimeInstanceId(catalog?: AgentCatalog): string {
+	return catalog?.agentRuntimes?.find((runtime) => runtime.id === "pi")?.id
+		?? catalog?.agentRuntimes?.find((runtime) => runtime.available)?.id
+		?? "pi";
 }
 
 export function uniqueDraftAgentName(usedNames: Iterable<string>): string {
@@ -118,6 +130,8 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 		profileName: agent.profileName,
 		displayName: agent.displayName,
 		description: agent.description ?? "",
+		runtimeInstanceId: agent.runtimeInstanceId ?? "pi",
+		runtimeOptions: structuredClone(agent.runtimeOptions ?? {}),
 		nativeTools: agent.nativeTools,
 		skills: agent.skills,
 		contextFiles: agent.contextFiles,
@@ -148,6 +162,8 @@ export function profileToDraft(profile: BootstrapData["agents"][number], catalog
 	return {
 		displayName: profile.name,
 		description: profile.description ?? "",
+		runtimeInstanceId: profile.runtimeInstanceId ?? "pi",
+		runtimeOptions: structuredClone(profile.runtimeOptions ?? {}),
 		nativeTools: profile.nativeTools ?? [],
 		skills: profile.skills ?? (hasBuiltinSkill(catalog, "pi-agent-harness") ? ["pi-agent-harness"] : []),
 		contextFiles: profile.contextFiles ?? [],
@@ -196,6 +212,69 @@ export function copyCustomAgentToDraft(agent: CustomAgent): AgentDraft {
 		archivedAt: undefined,
 		source: "custom",
 	};
+}
+
+export function modelCatalogForRuntime(runtime: AgentRuntimeCatalogEntry | undefined, legacyPiCatalog?: ModelCatalog): ModelCatalog | undefined {
+	if (!runtime?.models) return runtime?.adapterId === "pi" || !runtime ? legacyPiCatalog : { providers: [] };
+	const authByProvider = new Map((runtime.auth ?? []).map((status) => [status.id, status]));
+	const runtimeRequiresAuth = runtime.capabilities.auth.status && runtime.capabilities.auth.methods.length > 0;
+	const providers = new Map<string, ModelCatalog["providers"][number]>();
+	for (const model of runtime.models.models) {
+		const providerId = model.provider ?? runtime.adapterId;
+		const auth = authByProvider.get(providerId);
+		const optionAuthConfigured = typeof model.options?.authConfigured === "boolean"
+			? model.options.authConfigured
+			: undefined;
+		const providerLabel = typeof model.options?.providerDisplayName === "string"
+			? model.options.providerDisplayName
+			: auth?.displayName ?? providerId;
+		let provider = providers.get(providerId);
+		if (!provider) {
+			provider = {
+				id: providerId,
+				label: providerLabel,
+				authConfigured: auth?.configured ?? optionAuthConfigured ?? !runtimeRequiresAuth,
+				models: [],
+			};
+			providers.set(providerId, provider);
+		}
+		const reasoningOptions = model.reasoningOptions?.filter(
+			(value): value is ThinkingLevel => THINKING_LEVELS.includes(value as ThinkingLevel),
+		);
+		provider.models.push({
+			provider: providerId,
+			id: model.id,
+			label: model.displayName ?? model.id,
+			authConfigured: provider.authConfigured,
+			supportsReasoning: model.reasoningOptions ? model.reasoningOptions.length > 0 : undefined,
+			...(reasoningOptions ? { reasoningOptions } : {}),
+		});
+	}
+	return {
+		providers: [...providers.values()]
+			.sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id))
+			.map((provider) => ({
+				...provider,
+				models: provider.models.sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id)),
+			})),
+	};
+}
+
+export function reasoningValuesForModel(
+	values: readonly string[] | undefined,
+	catalog: ModelCatalog | undefined,
+	model: ModelProfile | undefined,
+): ThinkingLevel[] | undefined {
+	const runtimeValues = values?.filter(
+		(value): value is ThinkingLevel => THINKING_LEVELS.includes(value as ThinkingLevel),
+	);
+	if (!model) return runtimeValues;
+	const selected = catalog?.providers
+		.find((provider) => provider.id === model.provider)
+		?.models.find((entry) => entry.id === model.id);
+	if (!selected?.reasoningOptions) return runtimeValues;
+	if (!runtimeValues) return [...selected.reasoningOptions];
+	return runtimeValues.filter((value) => selected.reasoningOptions?.includes(value));
 }
 
 export function uniqueProfileOptions(

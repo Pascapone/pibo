@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { createDefaultPiboProfile } from "../plugins/builtin.js";
+import { createDefaultPiboProfile } from "./default-profile.js";
 import { getMcpAgentContextFile } from "../mcp/agent-context.js";
 import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
+import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { createSubagentToolName, type PiboSubagentRunner } from "../subagents/tool.js";
 import { getInstalledCliToolContextFile } from "../tools/registry.js";
 import {
@@ -20,6 +21,8 @@ import { buildCodexCompatSystemPrompt } from "./codex-compat.js";
 import { readPiboBasePrompt } from "./base-prompt.js";
 import { DEFAULT_BUILTIN_TOOL_NAMES, InitialSessionContext, type ModelProfile } from "./profiles.js";
 import type { PiboRuntimeOptions, PiboRuntimeSessionContext } from "./runtime.js";
+import type { AgentRuntimeCapabilities } from "../agent-runtime/capabilities.js";
+import type { AgentRuntimeDiagnostic, AgentRuntimeTransport } from "../agent-runtime/types.js";
 import { createPiboRuntime } from "./runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 
@@ -45,6 +48,7 @@ export type PiboContextBuildNodeSource =
 	| "managed"
 	| "plugin"
 	| "generated"
+	| "pibo"
 	| "pi"
 	| "provider"
 	| "runtime"
@@ -83,6 +87,17 @@ export type PiboContextBuildNode = {
 	approximate?: boolean;
 };
 
+export type PiboContextBuildRuntimeInfo = {
+	runtimeInstanceId: string;
+	adapterId: string;
+	available: boolean;
+	transport: AgentRuntimeTransport;
+	bindingState?: "unbound" | "bound" | "missing" | "error";
+	protocol?: { name: string; supportedRange?: string };
+	capabilities: AgentRuntimeCapabilities;
+	diagnostics: AgentRuntimeDiagnostic[];
+};
+
 export type PiboContextBuildSnapshot = {
 	version: 1;
 	generatedAt: string;
@@ -91,6 +106,7 @@ export type PiboContextBuildSnapshot = {
 	piboRoomId?: string;
 	cwd: string;
 	activeModel?: ModelProfile;
+	runtime?: PiboContextBuildRuntimeInfo;
 	summary: {
 		topLevelNodes: number;
 		totalNodes: number;
@@ -296,6 +312,7 @@ function generatedOriginForTool(name: string, profile: InitialSessionContext): s
 	if (name === "runtime") return "Generated Pibo runtime tool selected by the profile.";
 	if (name.startsWith("pibo_subagent_")) return "Generated subagent tool from the profile's subagent list.";
 	if (name.startsWith("pibo_run_")) return "Generated run-control tool from the pibo-run-control capability package.";
+	if (PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number])) return "Generated goal-control tool from the pibo-goal-control capability package.";
 	if (name === "apply_patch" || name === "view_image") return "Generated Codex-compatible tool from the codex-compat package.";
 	if (profile.builtinToolNames.includes(name) || (DEFAULT_BUILTIN_TOOL_NAMES as readonly string[]).includes(name)) return undefined;
 	return undefined;
@@ -320,6 +337,8 @@ function badgesForSource(source: PiboContextBuildNodeSource): string[] {
 			return ["MANAGED"];
 		case "plugin":
 			return ["PLUGIN"];
+		case "pibo":
+			return ["PIBO"];
 		case "pi":
 			return ["PI"];
 		case "provider":
@@ -419,10 +438,18 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 			if (definition?.promptGuidelines?.length) promptGuidelines.push(...definition.promptGuidelines);
 		}
 
-		const diagnostics: PiboContextBuildDiagnostic[] = runtime.diagnostics.map((diagnostic) => ({
-			type: diagnostic.type,
-			message: diagnostic.message,
-		}));
+		const resourceInspection = options.resources?.getInspection();
+		const resourceDelivery = new Map(resourceInspection?.delivery.map((report) => [report.contributionId, report]) ?? []);
+		const diagnostics: PiboContextBuildDiagnostic[] = [
+			...runtime.diagnostics.map((diagnostic) => ({
+				type: diagnostic.type,
+				message: diagnostic.message,
+			})),
+			...(resourceInspection?.diagnostics ?? []).map((diagnostic) => ({
+				type: diagnostic.severity,
+				message: diagnostic.message,
+			})),
+		];
 
 		if (profile.autoContextFiles === false) {
 			diagnostics.push({ type: "info", message: "Pi automatic context files are disabled for this profile." });
@@ -514,6 +541,15 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 
 		const toolChildren: NodeInput[] = toolNames.map((name) => {
 			const providerTool = providerTools.find((tool) => tool.name === name);
+			const profileTool = profile.tools.find((tool) => tool.name === name);
+			const generatedOrigin = generatedOriginForTool(name, profile);
+			const toolSource: PiboContextBuildNodeSource = providerTool
+				? "provider"
+				: generatedOrigin
+					? "generated"
+					: profileTool
+						? "pibo"
+						: "pi";
 			const definition = runtime.session.getToolDefinition(name);
 			const info = toolInfoByName.get(name);
 			const children: NodeInput[] = [];
@@ -522,7 +558,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					id: `tools/${name}/prompt-snippet`,
 					kind: "tool_prompt_snippet",
 					title: "Prompt Snippet",
-					source: providerTool ? "provider" : "pi",
+					source: toolSource,
 					state: "active",
 					hydratedText: definition.promptSnippet,
 				});
@@ -532,7 +568,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					id: `tools/${name}/prompt-guidelines`,
 					kind: "tool_prompt_guidelines",
 					title: "Prompt Guidelines",
-					source: providerTool ? "provider" : "pi",
+					source: toolSource,
 					state: "active",
 					hydratedText: definition.promptGuidelines.map((guideline) => `- ${guideline}`).join("\n"),
 					metadata: { guidelineCount: definition.promptGuidelines.length },
@@ -544,16 +580,16 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					id: `tools/${name}/definition`,
 					kind: "tool_definition",
 					title: "Tool Definition / Schema",
-					source: providerTool ? "provider" : "pi",
+					source: toolSource,
 					state: "active",
 					schemaJson: {
 						name,
 						description: definition?.description ?? info?.description,
+						inputSchema: schema,
 						parameters: schema,
 					},
 				});
 			}
-			const generatedOrigin = generatedOriginForTool(name, profile);
 			if (generatedOrigin) {
 				children.push({
 					id: `tools/${name}/generated-origin`,
@@ -561,7 +597,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					title: "Generated Origin",
 					source: "generated",
 					state: "active",
-					badges: ["GENERATED"],
+					badges: ["GENERATED", "PIBO"],
 					hydratedText: generatedOrigin,
 				});
 			}
@@ -594,23 +630,24 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					id: `tools/${name}/no-prompt-text`,
 					kind: "metadata",
 					title: "No Prompt Text",
-					source: providerTool ? "provider" : "pi",
+					source: toolSource,
 					state: "active",
-					hydratedText: "This tool has no separate prompt snippet or guideline exposed by Pi. Its callable schema is the model-visible contribution.",
+					hydratedText: "This tool has no separate prompt snippet or guideline. Its callable JSON Schema is the model-visible contribution.",
 					approximate: true,
 				});
 			}
 			const badges = [
 				"ACTIVE",
 				...(providerTool ? ["PROVIDER-BACKED"] : []),
-				...(generatedOrigin ? ["GENERATED"] : []),
+				...(generatedOrigin ? ["GENERATED", "PIBO"] : []),
+				...(toolSource === "pibo" ? ["PIBO"] : []),
 				...(profile.builtinToolNames.includes(name) || (DEFAULT_BUILTIN_TOOL_NAMES as readonly string[]).includes(name) ? ["PI"] : []),
 			];
 			return {
 				id: `tools/${name}`,
 				kind: "tool",
 				title: name,
-				source: providerTool ? "provider" : generatedOrigin ? "generated" : "pi",
+				source: toolSource,
 				state: "active",
 				provider: providerTool?.providerTool.provider,
 				badges,
@@ -618,6 +655,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					registered: Boolean(info || providerTool),
 					hasDefinition: Boolean(definition || info),
 					description: definition?.description ?? info?.description ?? providerTool?.description,
+					...(toolSource === "pibo" || toolSource === "generated" ? { owner: "pibo", deliveryMode: "direct" } : {}),
 				},
 				children,
 			};
@@ -625,23 +663,44 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 
 		const agentsFiles = resourceLoader.getAgentsFiles().agentsFiles;
 		const installedToolContextFile = getInstalledCliToolContextFile();
-		const mcpAgentContextFile = await getMcpAgentContextFile(profile.mcpServers);
+		const mcpAgentContextFile = options.resources
+			? options.resources.getContextContributions().find((contribution) => contribution.id === "context:enabled-mcp-servers")
+			: await getMcpAgentContextFile(profile.mcpServers);
 		const contextChildren: NodeInput[] = agentsFiles.map((contextFile) => {
 			const source = contextFile.path === installedToolContextFile?.path
 				? "generated"
 				: contextFile.path === mcpAgentContextFile?.path
 					? "generated"
 					: sourceForContextFile(contextFile.path, profile, cwd);
+			const contribution = resourceInspection?.context.find((candidate) =>
+				candidate.path === contextFile.path
+				|| candidate.sourcePath === contextFile.path
+				|| candidate.materializedPath === contextFile.path,
+			);
+			const delivery = contribution ? resourceDelivery.get(contribution.id) : undefined;
 			return {
 				id: `context-files/${contextFile.path}`,
 				kind: "context_file",
 				title: contextFile.path.split("/").pop() || contextFile.path,
 				source,
-				state: "active",
+				state: delivery?.status === "failed" || delivery?.status === "unsupported"
+					? "error"
+					: delivery?.status === "degraded"
+						? "warning"
+						: "active",
 				path: contextFile.path,
 				bytes: byteLength(contextFile.content),
-				badges: [...badgesForSource(source), ...(contextFile.path === "pibo://runtime/session-context.md" ? ["LOCKED"] : [])],
-				metadata: { path: contextFile.path },
+				badges: [
+					...badgesForSource(source),
+					...(contextFile.path === "pibo://runtime/session-context.md" ? ["LOCKED"] : []),
+					...(delivery ? [delivery.status.toUpperCase(), delivery.mode.toUpperCase(), delivery.fidelity.toUpperCase()] : []),
+				],
+				metadata: {
+					path: contextFile.path,
+					...(contribution ? { contributionId: contribution.id, intent: contribution.intent, required: contribution.required } : {}),
+					...(delivery ? { deliveryStatus: delivery.status, deliveryMode: delivery.mode, fidelity: delivery.fidelity, target: delivery.target } : {}),
+				},
+				notes: delivery?.diagnostic ? [delivery.diagnostic] : undefined,
 				hydratedText: contextFile.content,
 			};
 		});
@@ -651,6 +710,8 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 		for (const skill of skills) {
 			const markdown = await readSkillMarkdown(skill.filePath);
 			const promptEntry = formatSkillEntryForPrompt(skill);
+			const resourceSkill = resourceInspection?.skills.find((candidate) => candidate.name === skill.name);
+			const delivery = resourceSkill ? resourceDelivery.get(resourceSkill.contributionId) : undefined;
 			// The skill node reports only what is actually part of the model
 			// prompt: the formatted <skill>...</skill> entry. The full
 			// SKILL.md body is loaded lazily by the model via the read tool
@@ -664,20 +725,63 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 				source: "plugin",
 				path: skill.filePath,
 				bytes: byteLength(promptEntry),
-				badges: ["ACTIVE"],
+				badges: [
+					"ACTIVE",
+					...(delivery ? [delivery.status.toUpperCase(), delivery.mode.toUpperCase(), delivery.fidelity.toUpperCase()] : []),
+				],
 				metadata: {
 					description: skill.description,
 					filePath: skill.filePath,
 					disableModelInvocation: skill.disableModelInvocation,
 					fullFileBytes: markdown ? byteLength(markdown) : undefined,
 					fullFileLoadableBy: "read tool, /skill:name command, $skill-name inline expansion",
+					...(resourceSkill ? { contributionId: resourceSkill.contributionId, kind: resourceSkill.kind } : {}),
+					...(delivery ? { deliveryStatus: delivery.status, deliveryMode: delivery.mode, fidelity: delivery.fidelity, target: delivery.target } : {}),
 				},
 				hydratedText: markdown === undefined
 					? `Skill metadata is loaded, but ${skill.filePath} could not be read for inspection.`
 					: promptEntry,
-				state: markdown ? "active" : "warning",
+				state: delivery?.status === "failed" || delivery?.status === "unsupported"
+					? "error"
+					: delivery?.status === "degraded" || markdown === undefined
+						? "warning"
+						: "active",
+				notes: delivery?.diagnostic ? [delivery.diagnostic] : undefined,
 			});
 		}
+
+		const mcpChildren: NodeInput[] = (resourceInspection?.mcpServers ?? []).map((server) => {
+			const delivery = resourceDelivery.get(server.contributionId);
+			return {
+				id: `mcp/${server.name}`,
+				kind: "runtime_extension",
+				title: server.name,
+				source: "profile",
+				state: server.status === "failed" || delivery?.status === "failed" || delivery?.status === "unsupported"
+					? "error"
+					: delivery?.status === "degraded"
+						? "warning"
+						: "active",
+				badges: [
+					server.status.toUpperCase(),
+					...(delivery ? [delivery.mode.toUpperCase(), delivery.fidelity.toUpperCase()] : []),
+				],
+				metadata: {
+					contributionId: server.contributionId,
+					transport: server.transport,
+					serverName: server.serverName,
+					serverVersion: server.serverVersion,
+					protocolVersion: server.protocolVersion,
+					toolNames: server.tools.map((tool) => tool.name),
+					resourceUris: server.resources.map((resource) => resource.uri),
+					resourceTemplates: server.resourceTemplates.map((resource) => resource.uriTemplate),
+					secretEnvironmentKeys: server.secretEnvironmentKeys,
+					...(delivery ? { deliveryStatus: delivery.status, deliveryMode: delivery.mode, fidelity: delivery.fidelity, target: delivery.target } : {}),
+				},
+				hydratedText: server.instructions,
+				notes: [server.diagnostic, delivery?.diagnostic].filter((value): value is string => Boolean(value)),
+			};
+		});
 
 		const extensionChildren: NodeInput[] = [];
 		if (providerTools.length > 0) {
@@ -758,6 +862,23 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 				metadata: { childCount: skillChildren.length },
 				children: skillChildren,
 			},
+			...(mcpChildren.length > 0 ? [{
+				id: "mcp",
+				kind: "runtime_extension" as const,
+				title: "External MCP Servers",
+				source: "runtime" as const,
+				state: mcpChildren.some((node) => node.state === "error")
+					? "error" as const
+					: mcpChildren.some((node) => node.state === "warning")
+						? "warning" as const
+						: "active" as const,
+				badges: [mcpChildren.every((node) => node.state === "active") ? "CONNECTED" : "DIAGNOSTICS"],
+				metadata: {
+					selectedServers: mcpChildren.length,
+					connectedServers: mcpChildren.filter((node) => node.badges?.includes("CONNECTED")).length,
+				},
+				children: mcpChildren,
+			}] : []),
 			{
 				id: "runtime-extensions",
 				kind: "runtime_extension",

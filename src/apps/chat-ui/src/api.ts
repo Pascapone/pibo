@@ -22,6 +22,7 @@ export * from "./api-chat-sessions";
 export * from "./api-context-files";
 export * from "./api-cron";
 export * from "./api-loops";
+export * from "./api-provider-auth";
 export * from "./api-ralph";
 export * from "./api-settings";
 export * from "./api-trace-signals";

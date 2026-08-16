@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, ExternalLink, Power, PowerOff, Trash2 } from "lucide-react";
-import { THINKING_LEVELS, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
+import { THINKING_LEVELS, type AgentRuntimeCapabilityDelivery, type AgentRuntimeCatalogEntry, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
 import { CATALOG_GROUP_RENDER_LIMIT, piPackageMeta, type CatalogGroup, type PiPackageCatalogItem } from "./agent-designer-model";
 
 export function DesignerPanel({ title, children }: { title: string; children: ReactNode }) {
@@ -323,6 +323,276 @@ export function EmptyCatalog({ message = "Agent Designer API unavailable" }: { m
 	return <div className="text-xs text-amber-100 border border-dashed border-[#f59e0b]/50 bg-[#f59e0b]/10 rounded-sm p-3">{message}</div>;
 }
 
+export function AgentRuntimeSelector({
+	runtimes,
+	runtimeInstanceId,
+	runtimeOptions,
+	readOnly,
+	onRuntimeChange,
+	onRuntimeOptionsChange,
+	onRuntimeOptionsError,
+}: {
+	runtimes: AgentRuntimeCatalogEntry[];
+	runtimeInstanceId: string;
+	runtimeOptions: Record<string, unknown>;
+	readOnly: boolean;
+	onRuntimeChange: (runtimeInstanceId: string) => void;
+	onRuntimeOptionsChange: (runtimeOptions: Record<string, unknown>) => void;
+	onRuntimeOptionsError: (message: string | null) => void;
+}) {
+	const canonicalOptions = JSON.stringify(runtimeOptions, null, 2);
+	const [optionsText, setOptionsText] = useState(canonicalOptions);
+	const [optionsError, setOptionsError] = useState<string | null>(null);
+	const [editingOptions, setEditingOptions] = useState(false);
+	const selected = runtimes.find((runtime) => runtime.id === runtimeInstanceId);
+	const diagnostics = selected?.diagnostics ?? [{
+		severity: "error" as const,
+		code: "runtime_instance_unknown",
+		message: `Runtime instance "${runtimeInstanceId}" is not registered.`,
+	}];
+
+	useEffect(() => {
+		if (!editingOptions) setOptionsText(canonicalOptions);
+	}, [canonicalOptions, editingOptions, runtimeInstanceId]);
+
+	const acceptRuntimeOptions = (nextOptions: Record<string, unknown>) => {
+		setOptionsText(JSON.stringify(nextOptions, null, 2));
+		setOptionsError(null);
+		onRuntimeOptionsError(null);
+		onRuntimeOptionsChange(nextOptions);
+	};
+	const updateOptionsText = (text: string) => {
+		setOptionsText(text);
+		try {
+			const parsed = JSON.parse(text) as unknown;
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Runtime options must be a JSON object.");
+			setOptionsError(null);
+			onRuntimeOptionsError(null);
+			onRuntimeOptionsChange(parsed as Record<string, unknown>);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			setOptionsError(message);
+			onRuntimeOptionsError(message);
+		}
+	};
+
+	return (
+		<div className="grid gap-3 border border-slate-800 rounded-sm p-3">
+			<div className="flex items-center justify-between gap-3">
+				<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Agent Runtime</div>
+				<span className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${selected?.available ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200" : "border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100"}`}>
+					{selected?.available ? "available" : selected?.enabled === false ? "disabled" : "unavailable"}
+				</span>
+			</div>
+			<div className="grid gap-2 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)]">
+				<div className="grid gap-2 content-start">
+					<label className="text-[11px] uppercase tracking-wider text-slate-500" htmlFor="agent-runtime-instance">Runtime instance</label>
+					<select
+						id="agent-runtime-instance"
+						value={runtimeInstanceId}
+						disabled={readOnly}
+						onChange={(event) => {
+							setOptionsText("{}");
+							setOptionsError(null);
+							onRuntimeOptionsError(null);
+							onRuntimeChange(event.target.value);
+						}}
+						className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+					>
+						{selected ? null : <option value={runtimeInstanceId}>{runtimeInstanceId} (missing)</option>}
+						{runtimes.map((runtime) => (
+							<option key={runtime.id} value={runtime.id} disabled={!runtime.available && runtime.id !== runtimeInstanceId}>
+								{runtime.displayName} · {runtime.id}{runtime.available ? "" : runtime.enabled ? " (unavailable)" : " (disabled)"}
+							</option>
+						))}
+					</select>
+					{selected ? (
+						<div className="font-mono text-[10px] text-slate-500">
+							adapter {selected.adapterId} · {selected.transport}{selected.protocol ? ` · ${selected.protocol.name}` : ""}
+						</div>
+					) : null}
+				</div>
+				<div className="grid gap-2">
+					<label className="text-[11px] uppercase tracking-wider text-slate-500" htmlFor="agent-runtime-options">Adapter profile options</label>
+					<SchemaRuntimeOptionsFields
+						schema={selected?.capabilities.models.optionsSchema}
+						value={runtimeOptions}
+						readOnly={readOnly}
+						onChange={acceptRuntimeOptions}
+					/>
+					<div className="text-[10px] uppercase tracking-wider text-slate-500">Advanced JSON</div>
+					<textarea
+						id="agent-runtime-options"
+						value={optionsText}
+						disabled={readOnly}
+						onFocus={() => setEditingOptions(true)}
+						onBlur={() => setEditingOptions(false)}
+						onChange={(event) => updateOptionsText(event.target.value)}
+						spellCheck={false}
+						className={`min-h-[88px] bg-[#0e1116] border rounded-sm px-3 py-2 font-mono text-xs outline-none focus:border-[#11a4d4] disabled:opacity-60 ${optionsError ? "border-red-500/70" : "border-slate-700"}`}
+					/>
+					{optionsError ? <div className="text-xs text-red-200">{optionsError}</div> : <div className="text-xs text-slate-500">Options are validated by the selected runtime before saving.</div>}
+					{selected?.capabilities.models.optionsSchema ? (
+						<details className="border border-slate-800 bg-[#151f24] rounded-sm px-2 py-1.5">
+							<summary className="cursor-pointer text-[10px] uppercase tracking-wider text-slate-500">Profile option schema</summary>
+							<pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] text-slate-400">{JSON.stringify(selected.capabilities.models.optionsSchema, null, 2)}</pre>
+						</details>
+					) : null}
+				</div>
+			</div>
+			<div className="grid gap-1">
+				{diagnostics.map((diagnostic, index) => (
+					<div key={`${diagnostic.code}:${index}`} className={`border px-2 py-1 text-xs rounded-sm ${diagnostic.severity === "error" ? "border-red-500/50 bg-red-500/10 text-red-200" : diagnostic.severity === "warning" ? "border-[#f59e0b]/50 bg-[#f59e0b]/10 text-amber-100" : "border-slate-700 bg-[#0e1116] text-slate-400"}`}>
+						<span className="mr-2 font-mono text-[10px] uppercase">{diagnostic.code}</span>{diagnostic.message}
+					</div>
+				))}
+			</div>
+			{selected ? <RuntimeCapabilitySummary runtime={selected} /> : null}
+		</div>
+	);
+}
+
+type RuntimeOptionField = {
+	key: string;
+	title: string;
+	description?: string;
+	type: "string" | "number" | "integer" | "boolean";
+	enumValues?: Array<string | number | boolean>;
+	required: boolean;
+};
+
+function SchemaRuntimeOptionsFields({
+	schema,
+	value,
+	readOnly,
+	onChange,
+}: {
+	schema?: Record<string, unknown>;
+	value: Record<string, unknown>;
+	readOnly: boolean;
+	onChange: (value: Record<string, unknown>) => void;
+}) {
+	const fields = runtimeOptionFields(schema);
+	if (fields.length === 0) return null;
+	const setField = (field: RuntimeOptionField, nextValue: unknown) => {
+		const next = { ...value };
+		if (nextValue === undefined || nextValue === "") delete next[field.key];
+		else next[field.key] = nextValue;
+		onChange(next);
+	};
+	return (
+		<div className="grid gap-2 border border-slate-800 bg-[#151f24] rounded-sm p-2" aria-label="Schema generated runtime options">
+			{fields.map((field) => {
+				const current = value[field.key];
+				return (
+					<label key={field.key} className="grid gap-1">
+						<span className="text-[11px] text-slate-300">{field.title}{field.required ? <span className="text-[#f59e0b]"> *</span> : null}</span>
+						{field.description ? <span className="text-[10px] text-slate-500">{field.description}</span> : null}
+						{field.enumValues ? (
+							<select
+								value={current === undefined ? "" : String(current)}
+								disabled={readOnly}
+								onChange={(event) => {
+									const selected = field.enumValues!.find((candidate) => String(candidate) === event.target.value);
+									setField(field, selected);
+								}}
+								className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1.5 text-xs outline-none focus:border-[#11a4d4] disabled:opacity-60"
+							>
+								<option value="">Default</option>
+								{field.enumValues.map((option) => <option key={String(option)} value={String(option)}>{String(option)}</option>)}
+							</select>
+						) : field.type === "boolean" ? (
+							<select
+								value={typeof current === "boolean" ? String(current) : ""}
+								disabled={readOnly}
+								onChange={(event) => setField(field, event.target.value === "" ? undefined : event.target.value === "true")}
+								className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1.5 text-xs outline-none focus:border-[#11a4d4] disabled:opacity-60"
+							>
+								<option value="">Default</option>
+								<option value="true">true</option>
+								<option value="false">false</option>
+							</select>
+						) : (
+							<input
+								type={field.type === "number" || field.type === "integer" ? "number" : "text"}
+								step={field.type === "integer" ? 1 : undefined}
+								value={typeof current === "string" || typeof current === "number" ? current : ""}
+								disabled={readOnly}
+								onChange={(event) => {
+									if (event.target.value === "") setField(field, undefined);
+									else if (field.type === "number" || field.type === "integer") setField(field, Number(event.target.value));
+									else setField(field, event.target.value);
+								}}
+								className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1.5 text-xs outline-none focus:border-[#11a4d4] disabled:opacity-60"
+							/>
+						)}
+					</label>
+				);
+			})}
+		</div>
+	);
+}
+
+function runtimeOptionFields(schema: Record<string, unknown> | undefined): RuntimeOptionField[] {
+	if (!schema || schema.type !== "object" || !schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties)) return [];
+	const required = new Set(Array.isArray(schema.required) ? schema.required.filter((key): key is string => typeof key === "string") : []);
+	return Object.entries(schema.properties as Record<string, unknown>).flatMap(([key, raw]) => {
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+		const property = raw as Record<string, unknown>;
+		const type = property.type;
+		if (type !== "string" && type !== "number" && type !== "integer" && type !== "boolean") return [];
+		const enumValues = Array.isArray(property.enum)
+			? property.enum.filter((item): item is string | number | boolean => typeof item === "string" || typeof item === "number" || typeof item === "boolean")
+			: undefined;
+		return [{
+			key,
+			title: typeof property.title === "string" ? property.title : key,
+			description: typeof property.description === "string" ? property.description : undefined,
+			type,
+			enumValues: enumValues?.length ? enumValues : undefined,
+			required: required.has(key),
+		}];
+	});
+}
+
+function RuntimeCapabilitySummary({ runtime }: { runtime: AgentRuntimeCatalogEntry }) {
+	const capabilities = runtime.capabilities;
+	const rows: Array<[string, string, boolean]> = [
+		["Sessions", capabilities.lifecycle.persistent ? capabilities.lifecycle.resume ? "persistent + resume" : "persistent" : "ephemeral", capabilities.lifecycle.persistent],
+		["Pibo tools", deliveryLabel(capabilities.tools.piboManaged), deliverySupported(capabilities.tools.piboManaged)],
+		["Native tool inspection", deliveryLabel(capabilities.tools.nativeToolInspection), deliverySupported(capabilities.tools.nativeToolInspection)],
+		["Native tool yielding", deliveryLabel(capabilities.tools.nativeToolYielding), deliverySupported(capabilities.tools.nativeToolYielding)],
+		["External MCP", deliveryLabel(capabilities.mcp.externalServers), deliverySupported(capabilities.mcp.externalServers)],
+		["Skills", deliveryLabel(capabilities.skills), deliverySupported(capabilities.skills)],
+		["Context", deliveryLabel(capabilities.context), deliverySupported(capabilities.context)],
+		["Models", capabilities.models.catalog ? "catalog" : "no catalog", capabilities.models.catalog],
+		["Reasoning", capabilities.reasoning.supported ? "supported" : "unsupported", capabilities.reasoning.supported],
+		["Approvals", capabilities.approvals.supported ? "supported" : "unsupported", capabilities.approvals.supported],
+		["History", capabilities.maintenance.history ? "supported" : "unsupported", capabilities.maintenance.history],
+	];
+	return (
+		<div className="grid grid-cols-3 max-[1100px]:grid-cols-2 max-[700px]:grid-cols-1 gap-1" aria-label="Effective runtime capabilities">
+			{rows.map(([label, value, supported]) => (
+				<div key={label} className="border border-slate-800 bg-[#151f24] px-2 py-1.5 rounded-sm">
+					<div className="text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
+					<div className={`font-mono text-[11px] ${supported ? "text-[#7dd3fc]" : "text-slate-500"}`}>{value}</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function deliverySupported(delivery: AgentRuntimeCapabilityDelivery): boolean {
+	return delivery.support !== "unsupported";
+}
+
+function deliveryLabel(delivery: AgentRuntimeCapabilityDelivery): string {
+	if (delivery.support === "unsupported") return "unsupported";
+	if (delivery.support === "mcp") return `mcp:${delivery.transports.join(",")}`;
+	if (delivery.support === "materialized") return `materialized:${delivery.modes.join(",")}`;
+	if (delivery.support === "degraded") return `degraded:${delivery.mode}`;
+	return delivery.support;
+}
 
 export function AgentRuntimeOptions({
 	title,
@@ -333,6 +603,9 @@ export function AgentRuntimeOptions({
 	modelCatalog,
 	readOnly,
 	modelHint,
+	modelUnavailableReason,
+	thinkingUnavailableReason,
+	thinkingValues,
 	configuredProvidersOnly = false,
 	onModelChange,
 	onThinkingChange,
@@ -346,6 +619,9 @@ export function AgentRuntimeOptions({
 	modelCatalog?: ModelCatalog;
 	readOnly: boolean;
 	modelHint?: string;
+	modelUnavailableReason?: string | null;
+	thinkingUnavailableReason?: string | null;
+	thinkingValues?: ThinkingLevel[];
 	configuredProvidersOnly?: boolean;
 	onModelChange: (value: ModelProfile | undefined) => void;
 	onThinkingChange: (value: ThinkingLevel | undefined) => void;
@@ -362,6 +638,7 @@ export function AgentRuntimeOptions({
 					allowUnset
 					readOnly={readOnly}
 					hint={modelHint}
+					unavailableReason={modelUnavailableReason}
 					emptyProviderLabel="Default"
 					configuredProvidersOnly={configuredProvidersOnly}
 					onChange={onModelChange}
@@ -370,6 +647,8 @@ export function AgentRuntimeOptions({
 					title="Thinking"
 					value={thinking}
 					readOnly={readOnly}
+					unavailableReason={thinkingUnavailableReason}
+					availableValues={thinkingValues}
 					reserveHintSpace
 					onChange={onThinkingChange}
 				/>
@@ -396,6 +675,8 @@ function ThinkingLevelSelector({
 	value,
 	readOnly,
 	hint,
+	unavailableReason,
+	availableValues,
 	reserveHintSpace = false,
 	onChange,
 }: {
@@ -403,9 +684,13 @@ function ThinkingLevelSelector({
 	value?: ThinkingLevel;
 	readOnly: boolean;
 	hint?: string;
+	unavailableReason?: string | null;
+	availableValues?: ThinkingLevel[];
 	reserveHintSpace?: boolean;
 	onChange: (value: ThinkingLevel | undefined) => void;
 }) {
+	const values = availableValues ?? [...THINKING_LEVELS];
+	const staleValue = value && !values.includes(value) ? value : undefined;
 	return (
 		<div className="grid gap-2">
 			<div className="flex items-center justify-between gap-3">
@@ -419,17 +704,18 @@ function ThinkingLevelSelector({
 					Unset
 				</button>
 			</div>
-			{hint ? <div className="text-xs text-slate-500">{hint}</div> : reserveHintSpace ? <div className="h-4" aria-hidden="true" /> : null}
+			{unavailableReason ? <div className="text-xs text-amber-100">{unavailableReason}</div> : hint ? <div className="text-xs text-slate-500">{hint}</div> : reserveHintSpace ? <div className="h-4" aria-hidden="true" /> : null}
 			<select
 				value={value ?? ""}
-				disabled={readOnly}
+				disabled={readOnly || Boolean(unavailableReason)}
 				onChange={(event) => onChange(event.target.value ? (event.target.value as ThinkingLevel) : undefined)}
 				className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
 			>
 				<option value="">Default</option>
-				{THINKING_LEVELS.map((level) => (
+				{values.map((level) => (
 					<option key={level} value={level}>{level}</option>
 				))}
+				{staleValue ? <option value={staleValue}>{staleValue} (unsupported)</option> : null}
 			</select>
 		</div>
 	);
@@ -442,6 +728,7 @@ function ModelSelector({
 	allowUnset,
 	readOnly,
 	hint,
+	unavailableReason,
 	emptyProviderLabel = "Select provider",
 	configuredProvidersOnly = false,
 	onChange,
@@ -452,6 +739,7 @@ function ModelSelector({
 	allowUnset: boolean;
 	readOnly: boolean;
 	hint?: string;
+	unavailableReason?: string | null;
 	emptyProviderLabel?: string;
 	configuredProvidersOnly?: boolean;
 	onChange: (value: ModelProfile | undefined) => void;
@@ -499,8 +787,8 @@ function ModelSelector({
 					</button>
 				) : null}
 			</div>
-			{hint ? <div className="text-xs text-slate-500">{hint}</div> : null}
-			{providers.length === 0 ? (
+			{unavailableReason ? <div className="text-xs text-amber-100">{unavailableReason}</div> : hint ? <div className="text-xs text-slate-500">{hint}</div> : null}
+			{providers.length === 0 && !unavailableReason ? (
 				<div className="text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm p-3">
 					{catalogProviders.length === 0
 						? "Model catalog unavailable."
@@ -510,7 +798,7 @@ function ModelSelector({
 			<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">
 				<select
 					value={providerId}
-					disabled={readOnly}
+					disabled={readOnly || Boolean(unavailableReason)}
 					onChange={(event) => {
 						const nextProviderId = event.target.value;
 						setProviderId(nextProviderId);
@@ -529,7 +817,7 @@ function ModelSelector({
 				</select>
 				<select
 					value={modelId}
-					disabled={readOnly}
+					disabled={readOnly || Boolean(unavailableReason)}
 					onChange={(event) => {
 						const nextModelId = event.target.value;
 						setModelId(nextModelId);

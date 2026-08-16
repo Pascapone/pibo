@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import test from "node:test";
+import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { PiboSteeringUnavailableError } from "../dist/core/events.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
@@ -778,5 +779,182 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 		assert.equal(router.runRegistry.status("ps_parent", parentRun.runId).status, "cancelled");
 	} finally {
 		await router.disposeAll();
+	}
+});
+
+
+test("session router keeps the persisted runtime instance when the profile default changes", async () => {
+	const fakeDriver = createFakeAgentRuntimeDriver({ adapterId: "frozen-fake" });
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: "test.frozen-runtime",
+				register(api) {
+					api.registerAgentRuntimeDriver(fakeDriver);
+					api.registerAgentRuntimeInstance({ id: "frozen-a", adapterId: "frozen-fake" });
+					api.registerAgentRuntimeInstance({ id: "changed-b", adapterId: "frozen-fake" });
+					api.registerProfile({
+						name: "mutable-profile",
+						create() {
+							return new InitialSessionContextBuilder("mutable-profile")
+								.withAgentRuntime("changed-b")
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.createSession();
+						},
+					});
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_frozen_runtime",
+		channel: "test",
+		kind: "chat",
+		profile: "mutable-profile",
+		runtimeBinding: { runtimeInstanceId: "frozen-a", adapterId: "frozen-fake", state: "unbound" },
+	});
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	try {
+		const status = await router.emit({ type: "execution", piboSessionId: "ps_frozen_runtime", action: "status" });
+		assert.equal(status.type, "execution_result");
+		assert.equal(store.get("ps_frozen_runtime").runtimeBinding.runtimeInstanceId, "frozen-a");
+		assert.equal(store.get("ps_frozen_runtime").runtimeBinding.state, "bound");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("session router persists live binding changes after a runtime turn settles", async () => {
+	const fakeDriver = createFakeAgentRuntimeDriver({
+		adapterId: "binding-sync-fake",
+		script: {
+			events: [{ type: "assistant_message", text: "done" }],
+			bindingPatchAfterPrompt: { metadata: { durable: true } },
+		},
+	});
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: "test.binding-sync-runtime",
+				register(api) {
+					api.registerAgentRuntimeDriver(fakeDriver);
+					api.registerAgentRuntimeInstance({ id: "binding-sync", adapterId: "binding-sync-fake" });
+					api.registerProfile({
+						name: "binding-sync-profile",
+						create() {
+							return new InitialSessionContextBuilder("binding-sync-profile")
+								.withAgentRuntime("binding-sync")
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.createSession();
+						},
+					});
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_binding_sync",
+		channel: "test",
+		kind: "chat",
+		profile: "binding-sync-profile",
+		runtimeBinding: { runtimeInstanceId: "binding-sync", adapterId: "binding-sync-fake", state: "unbound" },
+	});
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	try {
+		await router.emit({ type: "message", piboSessionId: "ps_binding_sync", id: "binding-sync-turn", text: "go", source: "user" });
+		await waitFor(() => store.get("ps_binding_sync")?.runtimeBinding?.metadata?.durable === true);
+		const binding = store.get("ps_binding_sync").runtimeBinding;
+		assert.equal(binding.state, "bound");
+		assert.equal(binding.metadata.durable, true);
+		assert.equal(binding.revision, 3);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("session router lazily creates the reserved Pi transcript for an empty migrated session", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-empty-migrated-pi-binding-"));
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_empty_migrated_pi",
+		piSessionId: "67777777-7777-4777-8777-777777777777",
+		channel: "test",
+		kind: "chat",
+		profile: "base",
+		workspace: cwd,
+		runtimeBinding: {
+			runtimeInstanceId: "pi",
+			adapterId: "pi",
+			nativeSessionId: "67777777-7777-4777-8777-777777777777",
+			state: "bound",
+			protocol: "pi-sdk",
+			metadata: { migrationSource: "schema-v4", nativePresenceExpected: false },
+		},
+	});
+	const firstRouter = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
+	let firstLocator;
+	try {
+		const status = await firstRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "status" });
+		assert.equal(status.type, "execution_result");
+		const stored = store.get("ps_empty_migrated_pi");
+		assert.equal(stored.runtimeBinding.state, "bound");
+		assert.equal(stored.runtimeBinding.metadata.nativePresenceExpected, false);
+		assert.equal(stored.runtimeBinding.locator.kind, "local-file");
+		firstLocator = stored.runtimeBinding.locator.value;
+	} finally {
+		await firstRouter.disposeAll();
+	}
+
+	if (firstLocator) await rm(firstLocator, { force: true });
+	const reopenedRouter = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
+	try {
+		const status = await reopenedRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "status" });
+		assert.equal(status.type, "execution_result");
+		assert.equal(store.get("ps_empty_migrated_pi").runtimeBinding.state, "bound");
+	} finally {
+		await reopenedRouter.disposeAll();
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("session router marks a missing bound Pi transcript instead of creating a replacement", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-missing-pi-binding-"));
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_missing_pi",
+		piSessionId: "77777777-7777-4777-8777-777777777777",
+		channel: "test",
+		kind: "chat",
+		profile: "base",
+		workspace: cwd,
+		runtimeBinding: {
+			runtimeInstanceId: "pi",
+			adapterId: "pi",
+			nativeSessionId: "77777777-7777-4777-8777-777777777777",
+			state: "bound",
+			protocol: "pi-sdk",
+		},
+	});
+	const router = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
+	try {
+		await assert.rejects(
+			() => router.emit({ type: "execution", piboSessionId: "ps_missing_pi", action: "status" }),
+			(error) => error?.name === "AgentRuntimeBindingMissingError" && /77777777/.test(error.message),
+		);
+		const stored = store.get("ps_missing_pi");
+		assert.equal(stored.piSessionId, "77777777-7777-4777-8777-777777777777");
+		assert.equal(stored.runtimeBinding.state, "missing");
+		assert.equal(stored.runtimeBinding.metadata.diagnosticCode, "pi_session_missing");
+	} finally {
+		await router.disposeAll();
+		await rm(cwd, { recursive: true, force: true });
 	}
 });

@@ -41,6 +41,7 @@ test("v2 schema migration is idempotent", () => {
 	);
 	for (const table of [
 		"sessions",
+		"session_runtime_bindings",
 		"rooms",
 		"payloads",
 		"event_log",
@@ -61,6 +62,10 @@ test("v2 schema migration is idempotent", () => {
 	);
 	assert.equal(
 		(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'index' AND name = 'idx_event_log_idempotency'").get()).count,
+		1,
+	);
+	assert.equal(
+		(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'index' AND name = 'idx_session_runtime_bindings_native'").get()).count,
 		1,
 	);
 	db.close();
@@ -195,4 +200,92 @@ test("message and observation stores support simple insert and list", () => {
 	assert.deepEqual(store.observations.listSession("ps_1").map((row) => row.id), ["obs_1", "obs_2"]);
 
 	store.close();
+});
+
+
+test("v2 schema backfills legacy Pi bindings and keeps old-writer Pi updates synchronized", () => {
+	const dir = tempDir("pibo-data-v2-binding-migration-");
+	const dbPath = join(dir, "pibo.sqlite");
+	const db = new DatabaseSync(dbPath);
+	db.exec(`
+		CREATE TABLE sessions (
+			id TEXT PRIMARY KEY,
+			pi_session_id TEXT UNIQUE,
+			room_id TEXT,
+			root_session_id TEXT,
+			parent_id TEXT,
+			origin_id TEXT,
+			channel TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			profile TEXT NOT NULL,
+			active_model_json TEXT,
+			workspace TEXT,
+			title TEXT NOT NULL DEFAULT 'Untitled Session',
+			first_message_preview TEXT,
+			status TEXT NOT NULL DEFAULT 'idle',
+			archived_at TEXT,
+			deleted_at TEXT,
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			last_activity_at TEXT NOT NULL
+		);
+	`);
+	db.prepare(`
+		INSERT INTO sessions (
+			id, pi_session_id, channel, kind, profile, title, status,
+			metadata_json, created_at, updated_at, last_activity_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`).run(
+		"ps_legacy", "pi-legacy", "test", "chat", "base", "Legacy", "idle", "{}",
+		"2026-08-14T00:00:00.000Z", "2026-08-14T00:01:00.000Z", "2026-08-14T00:01:00.000Z",
+	);
+
+	applyPiboDataSchema(db);
+	const backfilled = db.prepare("SELECT * FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_legacy");
+	assert.equal(backfilled.runtime_instance_id, "pi");
+	assert.equal(backfilled.runtime_adapter_id, "pi");
+	assert.equal(backfilled.native_session_id, "pi-legacy");
+	assert.equal(backfilled.binding_state, "bound");
+	assert.deepEqual(JSON.parse(backfilled.metadata_json), {
+		migrationSource: "schema-v4",
+		nativePresenceExpected: false,
+		nativeHistoryFallback: true,
+		historyMigrationSource: "schema-v5",
+	});
+	assert.equal(db.prepare("SELECT pi_session_id FROM sessions WHERE id = ?").get("ps_legacy").pi_session_id, "pi-legacy");
+
+	db.prepare(`
+		INSERT INTO sessions (
+			id, pi_session_id, channel, kind, profile, title, status,
+			metadata_json, created_at, updated_at, last_activity_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`).run(
+		"ps_old_writer", "pi-old-writer", "test", "chat", "base", "Old writer", "idle", "{}",
+		"2026-08-15T00:00:00.000Z", "2026-08-15T00:00:00.000Z", "2026-08-15T00:00:00.000Z",
+	);
+	assert.equal(
+		db.prepare("SELECT binding_state FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_old_writer").binding_state,
+		"unbound",
+	);
+	db.prepare("UPDATE sessions SET pi_session_id = ?, updated_at = ? WHERE id = ?")
+		.run("pi-old-writer-moved", "2026-08-15T00:01:00.000Z", "ps_old_writer");
+	const synchronized = db.prepare("SELECT native_session_id, binding_state, metadata_json FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_old_writer");
+	assert.equal(synchronized.native_session_id, "pi-old-writer-moved");
+	assert.equal(synchronized.binding_state, "bound");
+	assert.equal(JSON.parse(synchronized.metadata_json).nativeHistoryFallback, undefined);
+
+	// A rolled-back writer can ignore the additive table and continue using the Pi column.
+	db.exec("PRAGMA user_version = 3");
+	assert.deepEqual(
+		db.prepare("SELECT id, pi_session_id FROM sessions ORDER BY id").all().map((row) => ({ ...row })),
+		[
+			{ id: "ps_legacy", pi_session_id: "pi-legacy" },
+			{ id: "ps_old_writer", pi_session_id: "pi-old-writer-moved" },
+		],
+	);
+	applyPiboDataSchema(db);
+	assert.equal(db.prepare("PRAGMA user_version").get().user_version, PIBO_DATA_SCHEMA_VERSION);
+	assert.equal(db.prepare("SELECT COUNT(*) AS count FROM session_runtime_bindings").get().count, 2);
+	db.close();
 });

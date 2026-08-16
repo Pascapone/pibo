@@ -1,5 +1,5 @@
 import { requestJson } from "./api-http";
-import type { AgentCatalog, CustomAgent, ModelProfile, UserSkill } from "./types";
+import type { AgentCatalog, AgentRuntimeCapabilities, AgentRuntimeDiagnostic, CustomAgent, ModelProfile, UserSkill } from "./types";
 
 export type ContextBuildDiagnostic = {
 	type: "info" | "warning" | "error";
@@ -40,6 +40,16 @@ export type ContextBuildSnapshot = {
 	piboRoomId?: string;
 	cwd: string;
 	activeModel?: ModelProfile;
+	runtime?: {
+		runtimeInstanceId: string;
+		adapterId: string;
+		available: boolean;
+		transport: "embedded" | "stdio-rpc" | "socket-rpc" | "remote";
+		bindingState?: "unbound" | "bound" | "missing" | "error";
+		protocol?: { name: string; supportedRange?: string };
+		capabilities: AgentRuntimeCapabilities;
+		diagnostics: AgentRuntimeDiagnostic[];
+	};
 	summary: {
 		topLevelNodes: number;
 		totalNodes: number;
@@ -54,6 +64,8 @@ export type ContextBuildSnapshot = {
 export type SaveCustomAgentInput = {
 	displayName: string;
 	description?: string;
+	runtimeInstanceId: string;
+	runtimeOptions: Record<string, unknown>;
 	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];

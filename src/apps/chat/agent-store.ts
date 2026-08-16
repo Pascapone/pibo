@@ -3,7 +3,8 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { piboHomePath } from "../../core/pibo-home.js";
 import { DatabaseSync } from "node:sqlite";
-import { DEFAULT_BUILTIN_TOOL_NAMES, type BuiltinToolsMode, type ModelProfile } from "../../core/profiles.js";
+import { DEFAULT_AGENT_RUNTIME_INSTANCE_ID, DEFAULT_BUILTIN_TOOL_NAMES, type BuiltinToolsMode, type ModelProfile } from "../../core/profiles.js";
+import type { PiboJsonObject } from "../../core/events.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
 import { findPiPackage } from "../../pi-packages/store.js";
 
@@ -21,6 +22,8 @@ export type CustomAgentDefinition = {
 	displayName: string;
 	profileAliases: string[];
 	description?: string;
+	runtimeInstanceId: string;
+	runtimeOptions: PiboJsonObject;
 	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];
@@ -50,6 +53,8 @@ const CUSTOM_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 export type CreateCustomAgentInput = {
 	displayName: string;
 	description?: string;
+	runtimeInstanceId?: string;
+	runtimeOptions?: PiboJsonObject;
 	nativeTools?: string[];
 	skills?: string[];
 	contextFiles?: string[];
@@ -78,6 +83,8 @@ type AgentRow = {
 	profile_name: string;
 	display_name: string;
 	description: string | null;
+	runtime_instance_id: string;
+	runtime_options_json: string;
 	native_tools_json: string;
 	skills_json: string;
 	context_files_json: string;
@@ -102,6 +109,80 @@ type AgentRow = {
 	archived_at: string | null;
 };
 
+export function previewCustomAgentCreate(
+	input: CreateCustomAgentInput,
+	options: { id?: string; now?: string } = {},
+): CustomAgentDefinition {
+	const now = options.now ?? new Date().toISOString();
+	const id = options.id ?? `agent_${randomUUID()}`;
+	return {
+		id,
+		profileName: input.displayName,
+		displayName: input.displayName,
+		profileAliases: [],
+		description: input.description,
+		runtimeInstanceId: sanitizeRuntimeInstanceId(input.runtimeInstanceId),
+		runtimeOptions: cloneRuntimeOptions(input.runtimeOptions),
+		nativeTools: [...(input.nativeTools ?? [])],
+		skills: [...(input.skills ?? [])],
+		contextFiles: [...(input.contextFiles ?? [])],
+		subagents: sanitizeSubagents(input.subagents ?? []),
+		mcpServers: uniqueStrings(input.mcpServers ?? []),
+		piPackages: sanitizePiPackages(input.piPackages ?? []),
+		mainModel: sanitizeModelProfile(input.mainModel),
+		subagentModel: sanitizeModelProfile(input.subagentModel),
+		thinkingLevel: sanitizeThinkingLevel(input.thinkingLevel),
+		mainThinkingLevel: sanitizeThinkingLevel(input.mainThinkingLevel),
+		subagentThinkingLevel: sanitizeThinkingLevel(input.subagentThinkingLevel),
+		fast: sanitizeBoolean(input.fast),
+		mainFast: sanitizeBoolean(input.mainFast),
+		subagentFast: sanitizeBoolean(input.subagentFast),
+		builtinTools: input.builtinTools ?? "default",
+		builtinToolNames: sanitizeBuiltinToolNames(input.builtinToolNames),
+		autoContextFiles: input.autoContextFiles ?? true,
+		runControl: input.runControl ?? false,
+		goalControl: input.goalControl ?? true,
+		createdAt: now,
+		updatedAt: now,
+	};
+}
+
+export function previewCustomAgentUpdate(
+	existing: CustomAgentDefinition,
+	input: UpdateCustomAgentInput,
+	options: { now?: string } = {},
+): CustomAgentDefinition {
+	const profileName = input.displayName ?? existing.displayName;
+	return {
+		...existing,
+		profileName,
+		displayName: input.displayName ?? existing.displayName,
+		description: input.description === undefined ? existing.description : input.description,
+		runtimeInstanceId: input.runtimeInstanceId === undefined ? existing.runtimeInstanceId : sanitizeRuntimeInstanceId(input.runtimeInstanceId),
+		runtimeOptions: input.runtimeOptions === undefined ? existing.runtimeOptions : cloneRuntimeOptions(input.runtimeOptions),
+		nativeTools: input.nativeTools ? [...input.nativeTools] : existing.nativeTools,
+		skills: input.skills ? [...input.skills] : existing.skills,
+		contextFiles: input.contextFiles ? [...input.contextFiles] : existing.contextFiles,
+		subagents: input.subagents ? sanitizeSubagents(input.subagents) : existing.subagents,
+		mcpServers: input.mcpServers ? uniqueStrings(input.mcpServers) : existing.mcpServers,
+		piPackages: input.piPackages ? sanitizePiPackages(input.piPackages) : existing.piPackages,
+		mainModel: input.mainModel === undefined ? existing.mainModel : sanitizeModelProfile(input.mainModel),
+		subagentModel: input.subagentModel === undefined ? existing.subagentModel : sanitizeModelProfile(input.subagentModel),
+		thinkingLevel: input.thinkingLevel === undefined ? existing.thinkingLevel : sanitizeThinkingLevel(input.thinkingLevel),
+		mainThinkingLevel: input.mainThinkingLevel === undefined ? existing.mainThinkingLevel : sanitizeThinkingLevel(input.mainThinkingLevel),
+		subagentThinkingLevel: input.subagentThinkingLevel === undefined ? existing.subagentThinkingLevel : sanitizeThinkingLevel(input.subagentThinkingLevel),
+		fast: input.fast === undefined ? existing.fast : sanitizeBoolean(input.fast),
+		mainFast: input.mainFast === undefined ? existing.mainFast : sanitizeBoolean(input.mainFast),
+		subagentFast: input.subagentFast === undefined ? existing.subagentFast : sanitizeBoolean(input.subagentFast),
+		builtinTools: input.builtinTools ?? existing.builtinTools,
+		builtinToolNames: input.builtinToolNames ? sanitizeBuiltinToolNames(input.builtinToolNames) : existing.builtinToolNames,
+		autoContextFiles: input.autoContextFiles ?? existing.autoContextFiles,
+		runControl: input.runControl ?? existing.runControl,
+		goalControl: input.goalControl ?? existing.goalControl,
+		updatedAt: options.now ?? new Date().toISOString(),
+	};
+}
+
 export class CustomAgentStore {
 	private readonly db: DatabaseSync;
 
@@ -118,6 +199,8 @@ export class CustomAgentStore {
 				profile_name TEXT NOT NULL UNIQUE,
 				display_name TEXT NOT NULL,
 				description TEXT,
+				runtime_instance_id TEXT NOT NULL DEFAULT 'pi',
+				runtime_options_json TEXT NOT NULL DEFAULT '{}',
 				native_tools_json TEXT NOT NULL,
 				skills_json TEXT NOT NULL,
 				context_files_json TEXT NOT NULL,
@@ -147,6 +230,7 @@ export class CustomAgentStore {
 		this.migrateArchivedAtColumn();
 		this.migrateAutoContextFilesColumn();
 		this.migrateMcpServersColumn();
+		this.migrateRuntimeColumns();
 		this.migratePiPackagesColumn();
 		this.migrateModelColumns();
 		this.migrateThinkingLevelColumn();
@@ -175,41 +259,11 @@ export class CustomAgentStore {
 
 	create(input: CreateCustomAgentInput): CustomAgentDefinition {
 		this.migrateLegacyProfileNames();
-		const now = new Date().toISOString();
-		const id = `agent_${randomUUID()}`;
-		const profileName = input.displayName;
-		this.requireProfileNameAvailable(profileName);
-		const agent: CustomAgentDefinition = {
-			id,
-			profileName,
-			displayName: input.displayName,
-			profileAliases: [],
-			description: input.description,
-			nativeTools: [...(input.nativeTools ?? [])],
-			skills: [...(input.skills ?? [])],
-			contextFiles: [...(input.contextFiles ?? [])],
-			subagents: sanitizeSubagents(input.subagents ?? []),
-			mcpServers: uniqueStrings(input.mcpServers ?? []),
-			piPackages: sanitizePiPackages(input.piPackages ?? []),
-			mainModel: sanitizeModelProfile(input.mainModel),
-			subagentModel: sanitizeModelProfile(input.subagentModel),
-			thinkingLevel: sanitizeThinkingLevel(input.thinkingLevel),
-			mainThinkingLevel: sanitizeThinkingLevel(input.mainThinkingLevel),
-			subagentThinkingLevel: sanitizeThinkingLevel(input.subagentThinkingLevel),
-			fast: sanitizeBoolean(input.fast),
-			mainFast: sanitizeBoolean(input.mainFast),
-			subagentFast: sanitizeBoolean(input.subagentFast),
-			builtinTools: input.builtinTools ?? "default",
-			builtinToolNames: sanitizeBuiltinToolNames(input.builtinToolNames),
-			autoContextFiles: input.autoContextFiles ?? true,
-			runControl: input.runControl ?? false,
-			goalControl: input.goalControl ?? true,
-			createdAt: now,
-			updatedAt: now,
-		};
+		this.requireProfileNameAvailable(input.displayName);
+		const agent = previewCustomAgentCreate(input);
 		this.insert(agent);
-		const created = this.get(id);
-		if (!created) throw new Error(`Failed to create custom agent "${id}"`);
+		const created = this.get(agent.id);
+		if (!created) throw new Error(`Failed to create custom agent "${agent.id}"`);
 		return created;
 	}
 
@@ -219,38 +273,15 @@ export class CustomAgentStore {
 		if (!existing) return undefined;
 		const profileName = input.displayName ?? existing.displayName;
 		this.requireProfileNameAvailable(profileName, id);
-		const updated: CustomAgentDefinition = {
-			...existing,
-			profileName,
-			displayName: input.displayName ?? existing.displayName,
-			description: input.description === undefined ? existing.description : input.description,
-			nativeTools: input.nativeTools ? [...input.nativeTools] : existing.nativeTools,
-			skills: input.skills ? [...input.skills] : existing.skills,
-			contextFiles: input.contextFiles ? [...input.contextFiles] : existing.contextFiles,
-			subagents: input.subagents ? sanitizeSubagents(input.subagents) : existing.subagents,
-			mcpServers: input.mcpServers ? uniqueStrings(input.mcpServers) : existing.mcpServers,
-			piPackages: input.piPackages ? sanitizePiPackages(input.piPackages) : existing.piPackages,
-			mainModel: input.mainModel === undefined ? existing.mainModel : sanitizeModelProfile(input.mainModel),
-			subagentModel: input.subagentModel === undefined ? existing.subagentModel : sanitizeModelProfile(input.subagentModel),
-			thinkingLevel: input.thinkingLevel === undefined ? existing.thinkingLevel : sanitizeThinkingLevel(input.thinkingLevel),
-			mainThinkingLevel: input.mainThinkingLevel === undefined ? existing.mainThinkingLevel : sanitizeThinkingLevel(input.mainThinkingLevel),
-			subagentThinkingLevel: input.subagentThinkingLevel === undefined ? existing.subagentThinkingLevel : sanitizeThinkingLevel(input.subagentThinkingLevel),
-			fast: input.fast === undefined ? existing.fast : sanitizeBoolean(input.fast),
-			mainFast: input.mainFast === undefined ? existing.mainFast : sanitizeBoolean(input.mainFast),
-			subagentFast: input.subagentFast === undefined ? existing.subagentFast : sanitizeBoolean(input.subagentFast),
-			builtinTools: input.builtinTools ?? existing.builtinTools,
-			builtinToolNames: input.builtinToolNames ? sanitizeBuiltinToolNames(input.builtinToolNames) : existing.builtinToolNames,
-			autoContextFiles: input.autoContextFiles ?? existing.autoContextFiles,
-			runControl: input.runControl ?? existing.runControl,
-			goalControl: input.goalControl ?? existing.goalControl,
-			updatedAt: new Date().toISOString(),
-		};
+		const updated = previewCustomAgentUpdate(existing, input);
 		this.db
 			.prepare(`
 				UPDATE chat_agents SET
 					profile_name = ?,
 					display_name = ?,
 					description = ?,
+					runtime_instance_id = ?,
+					runtime_options_json = ?,
 					native_tools_json = ?,
 					skills_json = ?,
 					context_files_json = ?,
@@ -277,6 +308,8 @@ export class CustomAgentStore {
 				updated.profileName,
 				updated.displayName,
 				updated.description ?? null,
+				updated.runtimeInstanceId,
+				JSON.stringify(updated.runtimeOptions),
 				JSON.stringify(updated.nativeTools),
 				JSON.stringify(updated.skills),
 				JSON.stringify(updated.contextFiles),
@@ -331,6 +364,8 @@ export class CustomAgentStore {
 					profile_name,
 					display_name,
 					description,
+					runtime_instance_id,
+					runtime_options_json,
 					native_tools_json,
 					skills_json,
 					context_files_json,
@@ -353,13 +388,15 @@ export class CustomAgentStore {
 					created_at,
 					updated_at,
 					archived_at
-				) VALUES (${Array.from({ length: 26 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 28 }, () => "?").join(", ")})
 			`)
 			.run(
 				agent.id,
 				agent.profileName,
 				agent.displayName,
 				agent.description ?? null,
+				agent.runtimeInstanceId,
+				JSON.stringify(agent.runtimeOptions),
 				JSON.stringify(agent.nativeTools),
 				JSON.stringify(agent.skills),
 				JSON.stringify(agent.contextFiles),
@@ -513,6 +550,16 @@ export class CustomAgentStore {
 		);
 		if (!columns.has("mcp_servers_json")) {
 			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN mcp_servers_json TEXT NOT NULL DEFAULT '[]'").run();
+		}
+	}
+
+	private migrateRuntimeColumns(): void {
+		const columns = this.tableColumns();
+		if (!columns.has("runtime_instance_id")) {
+			this.db.prepare(`ALTER TABLE chat_agents ADD COLUMN runtime_instance_id TEXT NOT NULL DEFAULT '${DEFAULT_AGENT_RUNTIME_INSTANCE_ID}'`).run();
+		}
+		if (!columns.has("runtime_options_json")) {
+			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN runtime_options_json TEXT NOT NULL DEFAULT '{}'").run();
 		}
 	}
 
@@ -731,6 +778,8 @@ function agentFromRow(row: AgentRow, profileAliases: readonly string[]): CustomA
 		displayName: row.display_name,
 		profileAliases: profileAliases.filter((alias) => alias !== row.profile_name),
 		description: row.description ?? undefined,
+		runtimeInstanceId: sanitizeRuntimeInstanceId(row.runtime_instance_id),
+		runtimeOptions: parseRuntimeOptions(row.runtime_options_json),
 		nativeTools: parseStringArray(row.native_tools_json),
 		skills: parseStringArray(row.skills_json),
 		contextFiles: parseStringArray(row.context_files_json),
@@ -767,6 +816,26 @@ function parseStringArray(value: string): string[] {
 
 function uniqueStrings(value: readonly string[]): string[] {
 	return [...new Set(value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()))];
+}
+
+function sanitizeRuntimeInstanceId(value: unknown): string {
+	if (typeof value !== "string" || !value.trim()) return DEFAULT_AGENT_RUNTIME_INSTANCE_ID;
+	return value.trim();
+}
+
+function cloneRuntimeOptions(value: PiboJsonObject | undefined): PiboJsonObject {
+	return structuredClone(value ?? {});
+}
+
+function parseRuntimeOptions(value: string): PiboJsonObject {
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? structuredClone(parsed as PiboJsonObject)
+			: {};
+	} catch {
+		return {};
+	}
 }
 
 function sanitizePiPackages(value: readonly string[]): string[] {

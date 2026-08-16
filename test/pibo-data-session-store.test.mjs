@@ -54,6 +54,9 @@ test("pibo data session store persists structured session fields", () => {
 		store = new PiboDataSessionStore(dbPath);
 		const reopened = store.get(created.id);
 		assert.equal(reopened?.piSessionId, "pi_one");
+		assert.equal(reopened?.runtimeBinding?.runtimeInstanceId, "pi");
+		assert.equal(reopened?.runtimeBinding?.nativeSessionId, "pi_one");
+		assert.equal(reopened?.runtimeBinding?.state, "unbound");
 		assert.equal(Object.hasOwn(reopened ?? {}, retiredPartitionField), false);
 		assert.equal(reopened?.metadata?.chatRoomId, "room_one");
 		assert.equal(reopened?.activeModel?.id, "gpt-test");
@@ -106,6 +109,9 @@ test("pibo data migrate sessions-to-v2 is idempotent", async () => {
 		const store = new PiboDataSessionStore(dbPath);
 		const migrated = store.get("ps_shared");
 		assert.equal(migrated?.piSessionId, "pi_shared");
+		assert.equal(migrated?.runtimeBinding?.adapterId, "pi");
+		assert.equal(migrated?.runtimeBinding?.nativeSessionId, "pi_shared");
+		assert.equal(migrated?.runtimeBinding?.state, "bound");
 		assert.equal(Object.hasOwn(migrated ?? {}, retiredPartitionField), false);
 		assert.equal(migrated?.workspace, "/tmp");
 		assert.equal(migrated?.title, "Shared");
@@ -114,6 +120,7 @@ test("pibo data migrate sessions-to-v2 is idempotent", async () => {
 
 		const child = store.get("ps_user_child");
 		assert.equal(child?.piSessionId, "pi_user_child");
+		assert.equal(child?.runtimeBinding?.state, "bound");
 		assert.equal(child?.parentId, "ps_shared");
 		assert.equal(child?.originId, "ps_shared");
 		assert.equal(child?.workspace, "/tmp/project");

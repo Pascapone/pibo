@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -11,6 +12,8 @@ import { useQuery } from "@tanstack/react-query";
 import type {
   BootstrapData,
   PiboProjectSession,
+  PiboRuntimeApprovalRequest,
+  PiboRuntimeUserInputRequest,
   PiboSignalSnapshot,
   PiboWebSessionStatus,
   ThinkingLevel,
@@ -32,6 +35,7 @@ import type { LiveTraceOverlay } from "./tracing/live-overlay";
 import { useCurrentSessionTrace } from "./tracing/use-current-session-trace";
 import { useSessionTracePage } from "./tracing/use-session-trace-page";
 import { useSessionTraceLiveStream } from "./tracing/use-session-trace-live-stream";
+import type { RuntimeRequestStreamEvent } from "./tracing/chat-stream-events";
 import { useSessionUploadAttachments } from "./chat-upload-attachments";
 import { useSessionWebAnnotations } from "./use-session-web-annotations";
 import { compactWebAnnotationError } from "./web-annotations";
@@ -61,6 +65,7 @@ import {
   canOpenDesktopPwaSessionWindow,
   openCurrentPwaSessionWindow,
 } from "./pwa-session-window";
+import { RuntimeRequestPanel } from "./runtime-request-panel";
 
 export function SessionTracePane({
   bootstrap,
@@ -180,9 +185,34 @@ export function SessionTracePane({
   }, []);
   const [pendingSendPlan, setPendingSendPlan] =
     useState<ComposerSendPlan | null>(null);
+  const [runtimeApprovals, setRuntimeApprovals] = useState<PiboRuntimeApprovalRequest[]>([]);
+  const [runtimeUserInputs, setRuntimeUserInputs] = useState<PiboRuntimeUserInputRequest[]>([]);
   const deliverySendIdsRef = useRef(new Set<string>());
   const queueButtonRef = useRef<HTMLButtonElement>(null);
   const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
+  useEffect(() => {
+    const status = bootstrap.runtimeStatus?.piboSessionId === selectedBackendPiboSessionId
+      ? bootstrap.runtimeStatus
+      : undefined;
+    setRuntimeApprovals(status?.pendingApprovals ? [...status.pendingApprovals] : []);
+    setRuntimeUserInputs(status?.pendingUserInputs ? [...status.pendingUserInputs] : []);
+  }, [bootstrap.runtimeStatus, selectedBackendPiboSessionId]);
+  const handleRuntimeRequestEvent = useCallback((event: RuntimeRequestStreamEvent) => {
+    if (event.type === "RUNTIME_APPROVAL_REQUESTED") {
+      setRuntimeApprovals((current) => [...current.filter((request) => request.requestId !== event.request.requestId), event.request]);
+      return;
+    }
+    if (event.type === "RUNTIME_USER_INPUT_REQUESTED") {
+      setRuntimeUserInputs((current) => [...current.filter((request) => request.requestId !== event.request.requestId), event.request]);
+      return;
+    }
+    setRuntimeApprovals((current) => current.filter((request) => request.requestId !== event.requestId));
+    setRuntimeUserInputs((current) => current.filter((request) => request.requestId !== event.requestId));
+  }, []);
+  const removeRuntimeRequest = useCallback((requestId: string) => {
+    setRuntimeApprovals((current) => current.filter((request) => request.requestId !== requestId));
+    setRuntimeUserInputs((current) => current.filter((request) => request.requestId !== requestId));
+  }, []);
   const sessionGoalQuery = useQuery({
     queryKey: selectedBackendPiboSessionId
       ? ["chat", "session-goal", selectedBackendPiboSessionId]
@@ -266,6 +296,7 @@ export function SessionTracePane({
     setLiveTraceOverlay,
     onRefreshTrace,
     onRefreshBootstrap,
+    onRuntimeRequestEvent: handleRuntimeRequestEvent,
     onError,
   });
 
@@ -425,6 +456,7 @@ export function SessionTracePane({
     expandThinking,
     selectedSessionProfile,
     sessionActiveModelBadge,
+    sessionRuntimeBinding: bootstrap.session?.id === selectedBackendPiboSessionId ? bootstrap.session.runtimeBinding : undefined,
     selectedSessionStatus,
     selectedSessionSignal,
     signals,
@@ -560,6 +592,15 @@ export function SessionTracePane({
         onCollapse: toggleWebAnnotationsPanelCollapsed,
         onClose: () => setWebAnnotationsPanelVisible(false),
       }}
+      runtimeRequestPanel={selectedBackendPiboSessionId ? (
+        <RuntimeRequestPanel
+          piboSessionId={selectedBackendPiboSessionId}
+          approvals={runtimeApprovals}
+          userInputs={runtimeUserInputs}
+          onResolved={removeRuntimeRequest}
+          onError={onError}
+        />
+      ) : undefined}
       composerProps={{
         sessionId: selectedPiboSessionId,
         disabled: composerDisabled,

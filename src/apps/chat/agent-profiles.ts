@@ -1,4 +1,4 @@
-import { InitialSessionContextBuilder } from "../../core/profiles.js";
+import { InitialSessionContextBuilder, type InitialSessionContext } from "../../core/profiles.js";
 import type { PiboProfileDefinition } from "../../plugins/types.js";
 import type { CustomAgentDefinition } from "./agent-store.js";
 
@@ -13,21 +13,7 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 		aliases: uniqueAliases([agent.id, `custom-agent:${agent.id}`, ...(agent.profileAliases ?? [])], agent.profileName),
 		description: agent.description || agent.displayName,
 		create(context) {
-			const builder = new InitialSessionContextBuilder(agent.profileName)
-				.withBuiltinTools(agent.builtinTools)
-				.withBuiltinToolNames(agent.builtinToolNames)
-				.withAutoContextFiles(agent.autoContextFiles)
-				.withMcpServers(agent.mcpServers)
-				.withPiPackages(agent.piPackages.map((id) => ({ id })))
-				.withToolPackages({ runControl: agent.runControl, goalControl: agent.goalControl ?? true });
-			if (agent.mainModel) builder.withMainModel(agent.mainModel);
-			if (agent.subagentModel) builder.withSubagentModel(agent.subagentModel);
-			if (agent.thinkingLevel) builder.withThinkingLevel(agent.thinkingLevel);
-			if (agent.mainThinkingLevel) builder.withMainThinkingLevel(agent.mainThinkingLevel);
-			if (agent.subagentThinkingLevel) builder.withSubagentThinkingLevel(agent.subagentThinkingLevel);
-			if (agent.fast !== undefined) builder.withFastMode(agent.fast);
-			if (agent.mainFast !== undefined) builder.withMainFastMode(agent.mainFast);
-			if (agent.subagentFast !== undefined) builder.withSubagentFastMode(agent.subagentFast);
+			const builder = createCustomAgentBuilder(agent);
 
 			for (const skillName of agent.skills) {
 				try {
@@ -51,6 +37,35 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 			return builder.createSession();
 		},
 	};
+}
+
+export function createCustomAgentRuntimeValidationProfile(agent: CustomAgentDefinition): InitialSessionContext {
+	const builder = createCustomAgentBuilder(agent);
+	for (const skillName of agent.skills) builder.addSkill({ name: skillName, path: skillName });
+	for (const contextFileKey of agent.contextFiles) builder.addContextFile({ key: contextFileKey, path: contextFileKey });
+	for (const toolName of agent.nativeTools) builder.addTool({ name: toolName });
+	for (const subagent of agent.subagents) builder.addSubagent(subagent);
+	return builder.createSession();
+}
+
+function createCustomAgentBuilder(agent: CustomAgentDefinition): InitialSessionContextBuilder {
+	const builder = new InitialSessionContextBuilder(agent.profileName)
+		.withAgentRuntime(agent.runtimeInstanceId, agent.runtimeOptions)
+		.withBuiltinTools(agent.builtinTools)
+		.withBuiltinToolNames(agent.builtinToolNames)
+		.withAutoContextFiles(agent.autoContextFiles)
+		.withMcpServers(agent.mcpServers)
+		.withPiPackages(agent.piPackages.map((id) => ({ id })))
+		.withToolPackages({ runControl: agent.runControl, goalControl: agent.goalControl ?? true });
+	if (agent.mainModel) builder.withMainModel(agent.mainModel);
+	if (agent.subagentModel) builder.withSubagentModel(agent.subagentModel);
+	if (agent.thinkingLevel) builder.withThinkingLevel(agent.thinkingLevel);
+	if (agent.mainThinkingLevel) builder.withMainThinkingLevel(agent.mainThinkingLevel);
+	if (agent.subagentThinkingLevel) builder.withSubagentThinkingLevel(agent.subagentThinkingLevel);
+	if (agent.fast !== undefined) builder.withFastMode(agent.fast);
+	if (agent.mainFast !== undefined) builder.withMainFastMode(agent.mainFast);
+	if (agent.subagentFast !== undefined) builder.withSubagentFastMode(agent.subagentFast);
+	return builder;
 }
 
 function uniqueAliases(aliases: readonly string[], profileName: string): string[] {

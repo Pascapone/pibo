@@ -1,6 +1,6 @@
-import { StringEnum, Type } from '@earendil-works/pi-ai';
-import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent';
-import type { ToolDefinitionContext } from '../core/profiles.js';
+import { Type } from "typebox";
+import { piboStringEnum } from "../tools/schema.js";
+import { definePiboTool, type PiboToolDefinition, type PiboToolDefinitionContext } from "../tools/contract.js";
 import { goalActiveTimeSeconds, goalCanStartNextTurn, goalElapsedWallClockSeconds, goalRemainingTokens } from './accounting.js';
 import { createDefaultPiboLoopStore, type PiboLoopStore } from './store.js';
 import type { PiboGoalStatus, PiboLoopJob } from './types.js';
@@ -32,7 +32,7 @@ function errorResult(error: unknown) {
 	return toolResult({ ok: false, error: error instanceof Error ? error.message : String(error) }, true);
 }
 
-function requireSessionContext(context: ToolDefinitionContext): { piboSessionId: string; piboRoomId?: string; profileName: string } {
+function requireSessionContext(context: PiboToolDefinitionContext): { piboSessionId: string; piboRoomId?: string; profileName: string } {
 	const piboSessionId = context.piboSessionId?.trim();
 	if (!piboSessionId) throw new Error('Goal tools require the current Pibo Session ID');
 	return {
@@ -42,7 +42,7 @@ function requireSessionContext(context: ToolDefinitionContext): { piboSessionId:
 	};
 }
 
-function resolveGoalForTurn(store: PiboLoopStore, context: ToolDefinitionContext, piboSessionId: string): PiboLoopJob | undefined {
+function resolveGoalForTurn(store: PiboLoopStore, context: PiboToolDefinitionContext, piboSessionId: string): PiboLoopJob | undefined {
 	const activeMessage = context.getActiveMessage?.();
 	const provenance = activeMessage?.provenance;
 	if (provenance?.kind !== 'loop-run') return store.getSessionGoalOwner(piboSessionId) ?? store.getLatestGoalForSession(piboSessionId);
@@ -55,7 +55,7 @@ function resolveGoalForTurn(store: PiboLoopStore, context: ToolDefinitionContext
 	return job;
 }
 
-function requireExplicitGoalCreationAuthority(context: ToolDefinitionContext): void {
+function requireExplicitGoalCreationAuthority(context: PiboToolDefinitionContext): void {
 	const activeMessage = context.getActiveMessage?.();
 	if (!activeMessage) return;
 	if (activeMessage.provenance?.kind === 'loop-run') throw new Error('automatic Loop continuations cannot create replacement goals');
@@ -111,13 +111,13 @@ async function withStore<T>(options: PiboGoalToolOptions, action: (store: PiboLo
 	}
 }
 
-function createGetGoalTool(context: ToolDefinitionContext, options: PiboGoalToolOptions): ToolDefinition {
-	return defineTool({
+function createGetGoalTool(context: PiboToolDefinitionContext, options: PiboGoalToolOptions): PiboToolDefinition {
+	return definePiboTool({
 		name: 'get_goal',
-		label: 'Get Goal',
+		title: 'Get Goal',
 		description: 'Get the current goal for this Pibo Session, including soft-budget risk, per-turn reserve, active agent time, and wall-clock elapsed time.',
 		promptSnippet: 'Use get_goal when you need the authoritative persisted status or accounting for the current Pibo Session goal.',
-		parameters: Type.Object({}),
+		inputSchema: Type.Object({}),
 		async execute() {
 			try {
 				const { piboSessionId } = requireSessionContext(context);
@@ -132,13 +132,13 @@ function createGetGoalTool(context: ToolDefinitionContext, options: PiboGoalTool
 	});
 }
 
-function createCreateGoalTool(context: ToolDefinitionContext, options: PiboGoalToolOptions): ToolDefinition {
-	return defineTool({
+function createCreateGoalTool(context: PiboToolDefinitionContext, options: PiboGoalToolOptions): PiboToolDefinition {
+	return definePiboTool({
 		name: 'create_goal',
-		label: 'Create Goal',
+		title: 'Create Goal',
 		description: 'Create an active persisted Goal Loop for this Pibo Session only when explicitly requested. Fails while this session already has an unfinished goal.',
 		promptSnippet: 'Call create_goal only when the user or system explicitly requests a persistent goal. Do not infer a goal from an ordinary task.',
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			objective: Type.String({ description: 'Concrete objective to pursue across automatic continuations.' }),
 			token_budget: Type.Optional(Type.Number({ description: 'Optional soft token budget. Usage arrives after each model response, so the final turn can overshoot.' })),
 			token_reserve: Type.Optional(Type.Number({ description: 'Optional non-negative minimum remaining tokens required before Pibo starts another turn.' })),
@@ -169,14 +169,14 @@ function createCreateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 	});
 }
 
-function createUpdateGoalTool(context: ToolDefinitionContext, options: PiboGoalToolOptions): ToolDefinition {
-	return defineTool({
+function createUpdateGoalTool(context: PiboToolDefinitionContext, options: PiboGoalToolOptions): PiboToolDefinition {
+	return definePiboTool({
 		name: 'update_goal',
-		label: 'Update Goal',
+		title: 'Update Goal',
 		description: 'Mark the current goal complete or genuinely blocked. Complete requires verified achievement. Blocked requires the same impasse for at least three consecutive goal turns.',
 		promptSnippet: 'Use update_goal only with status complete after a requirement-by-requirement completion audit, or blocked after the strict repeated-blocker audit.',
-		parameters: Type.Object({
-			status: StringEnum(['complete', 'blocked'], { description: 'Terminal status for the current goal.' }),
+		inputSchema: Type.Object({
+			status: piboStringEnum(['complete', 'blocked'], { description: 'Terminal status for the current goal.' }),
 		}),
 		async execute(_toolCallId, params: UpdateGoalParams) {
 			try {
@@ -203,7 +203,7 @@ function createUpdateGoalTool(context: ToolDefinitionContext, options: PiboGoalT
 	});
 }
 
-export function createPiboGoalToolDefinitions(context: ToolDefinitionContext, options: PiboGoalToolOptions = {}): ToolDefinition[] {
+export function createPiboGoalToolDefinitions(context: PiboToolDefinitionContext, options: PiboGoalToolOptions = {}): PiboToolDefinition[] {
 	return [
 		createGetGoalTool(context, options),
 		createCreateGoalTool(context, options),

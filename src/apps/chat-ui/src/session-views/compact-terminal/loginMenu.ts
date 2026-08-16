@@ -1,14 +1,17 @@
-export type LoginAuthMethod = "device_code" | "api_key" | "oauth";
+export type LoginAuthMethod = "device_code" | "browser_oauth" | "api_key";
 
 export type LoginProvider = {
 	id: string;
 	name: string;
 	authMethods: LoginAuthMethod[];
 	configured?: boolean;
+	state?: "connected" | "disconnected" | "pending" | "partial" | "unsupported" | "failed";
+	message?: string;
 };
 
 export type LoginMenuResult = {
 	action: "show_login_menu";
+	runtimeInstanceId?: string;
 	providers: LoginProvider[];
 };
 

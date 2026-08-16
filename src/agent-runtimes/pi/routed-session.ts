@@ -1,0 +1,1669 @@
+import { SessionManager, type AgentSessionRuntime, shouldCompact } from "@earendil-works/pi-coding-agent";
+import type { PiboPluginRegistry } from "../../plugins/registry.js";
+import { PiboSteeringUnavailableError } from "../../core/events.js";
+import type {
+	PiboForkCandidate,
+	PiboJsonObject,
+	PiboEventListener,
+	PiboEventSource,
+	PiboExecutionAction,
+	PiboExecutionEvent,
+	PiboMessageEvent,
+	PiboOutputEvent,
+	PiboPiSessionSnapshot,
+	PiboSessionListItem,
+	PiboSessionOperationResult,
+	PiboSessionStatus,
+	PiboSessionErrorDetails,
+	PiboSessionSwitchParams,
+	PiboSessionTreeNavigateParams,
+	PiboSessionTreeNode,
+	PiboSessionTreeResult,
+	PiboThinkingResult,
+} from "../../core/events.js";
+import type { PiboThinkingLevel } from "../../core/thinking.js";
+import type {
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	StartAgentRuntimeAuthInput,
+} from "../../agent-runtime/types.js";
+import type { CompactionResult } from "@earendil-works/pi-coding-agent";
+import type { ContextUsage } from "@earendil-works/pi-coding-agent";
+import { getOpenAiCodexProviderUsageForActiveModel } from "../../auth/openai-codex-usage.js";
+import { normalizeSessionErrorDetails, runtimeSessionErrorDetails } from "../../core/session-errors.js";
+import { expandInlineSkills } from "../../core/skill-expansion.js";
+import {
+	PIBO_CONTEXT_GUARD_RESUME_MESSAGE_TYPE,
+	PIBO_CONTEXT_GUARD_RESUME_PROMPT,
+	cancelPiboAssistantContextGuardRecovery,
+	claimPiboAssistantContextGuardRecovery,
+	waitForPiboAssistantContextGuardRecovery,
+} from "../../core/context-guard.js";
+import type { ModelProfile } from "../../core/profiles.js";
+import {
+	PIBO_PROVIDER_RECOVERY_MESSAGE_TYPE,
+	PIBO_PROVIDER_RECOVERY_PROMPT,
+	PiboProviderRecoveryCancelledError,
+	isRetryablePiboAssistantError,
+	isRetryablePiboProviderError,
+	resolvePiboProviderRecoverySettings,
+	waitForPiboProviderRecovery,
+} from "../../core/provider-recovery.js";
+import { PiAgentRuntimeAuthController } from "./auth.js";
+import { loadModelCatalog as loadPiModelCatalog } from "./model-catalog.js";
+import {
+	PIBO_TRANSCRIPT_INTEGRITY_RESUME_MESSAGE_TYPE,
+	PIBO_TRANSCRIPT_INTEGRITY_RESUME_PROMPT,
+	PiboTranscriptIntegrityError,
+	claimPiboTranscriptIntegrityContinuation,
+	settlePiboTranscriptIntegrityContinuation,
+} from "../../core/transcript-integrity.js";
+
+type PiSessionTreeNode = ReturnType<SessionManager["getTree"]>[number];
+
+type ProviderRequestModel = {
+	api?: unknown;
+	provider?: unknown;
+};
+
+type ProviderRequestPayload = Record<string, unknown>;
+type ProviderStreamOptions = Record<string, unknown> | undefined;
+type ProviderStreamFunction = (model: ProviderRequestModel, context: unknown, options?: ProviderStreamOptions) => unknown;
+
+type FastModePatchableAgent = {
+	streamFn?: ProviderStreamFunction;
+	onPayload?: (payload: unknown, model: ProviderRequestModel) => unknown | undefined | Promise<unknown | undefined>;
+};
+
+const FAST_SERVICE_TIER = "priority";
+const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
+	"pibo_run_status",
+	"pibo_run_wait",
+	"pibo_run_read",
+	"pibo_run_cancel",
+	"pibo_run_ack",
+]);
+
+function modelSupportsFastServiceTier(model: ProviderRequestModel | undefined): boolean {
+	if (!model) return false;
+	if (model.api === "openai-codex-responses") return true;
+	return model.api === "openai-responses" && (model.provider === "openai" || model.provider === "openai-codex");
+}
+
+function withFastServiceTier(payload: unknown): unknown {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+	return { ...(payload as ProviderRequestPayload), service_tier: FAST_SERVICE_TIER };
+}
+
+function withFastServiceTierOption(options: ProviderStreamOptions): ProviderStreamOptions {
+	return { ...(options ?? {}), serviceTier: FAST_SERVICE_TIER };
+}
+
+type PiboSessionOperationListener = (
+	result: PiboSessionOperationResult,
+	event: PiboExecutionEvent,
+) => void | Promise<void>;
+
+type PiboMessageInterruptionListener = (messages: readonly PiboMessageEvent[], reason: string) => void;
+export type PiboMessagePreflight = (event: PiboMessageEvent) => Promise<{ allowed: boolean; reason?: string; code?: string }> | { allowed: boolean; reason?: string; code?: string };
+
+type PiEventCandidate = {
+	type?: unknown;
+	message?: unknown;
+	assistantMessageEvent?: {
+		type?: unknown;
+		contentIndex?: unknown;
+		delta?: unknown;
+		content?: unknown;
+		toolCall?: { id?: unknown; name?: unknown; arguments?: unknown };
+		item?: unknown;
+		status?: unknown;
+		action?: unknown;
+		query?: unknown;
+		result?: unknown;
+		error?: unknown;
+		sources?: unknown;
+	};
+	item?: unknown;
+	item_id?: unknown;
+	status?: unknown;
+	action?: unknown;
+	query?: unknown;
+	sources?: unknown;
+	error?: unknown;
+	toolCallId?: unknown;
+	toolName?: unknown;
+	args?: unknown;
+	partialResult?: unknown;
+	result?: unknown;
+	isError?: unknown;
+};
+
+type PiToolCall = { id: string; name: string; args: unknown };
+
+type AssistantErrorMessage = {
+	role?: unknown;
+	stopReason?: unknown;
+	errorMessage?: unknown;
+	api?: unknown;
+	provider?: unknown;
+	model?: unknown;
+	usage?: unknown;
+};
+
+type ErrorContext = { contextWindow?: number };
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function isAssistantMessage(message: unknown): message is AssistantErrorMessage {
+	return Boolean(message && typeof message === "object" && (message as AssistantErrorMessage).role === "assistant");
+}
+
+function numberValue(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+export function normalizeAssistantUsageEvent(piboSessionId: string, message: unknown): Extract<PiboOutputEvent, { type: "assistant_usage" }> | undefined {
+	const assistant = message as AssistantErrorMessage | undefined;
+	if (!assistant?.usage || typeof assistant.usage !== "object") return undefined;
+	const usage = assistant.usage as { input?: unknown; output?: unknown; inputTokens?: unknown; outputTokens?: unknown; cacheRead?: unknown; cacheWrite?: unknown; totalTokens?: unknown };
+	const inputTokens = numberValue(usage.inputTokens) ?? numberValue(usage.input);
+	const outputTokens = numberValue(usage.outputTokens) ?? numberValue(usage.output);
+	const cacheReadTokens = numberValue(usage.cacheRead);
+	const cacheWriteTokens = numberValue(usage.cacheWrite);
+	const reportedTotal = numberValue(usage.totalTokens);
+	const normalizedTotal = reportedTotal ?? [inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens]
+		.filter((value): value is number => value !== undefined)
+		.reduce((sum, value) => sum + value, 0);
+	if (normalizedTotal <= 0 && inputTokens === undefined && outputTokens === undefined && cacheReadTokens === undefined && cacheWriteTokens === undefined) return undefined;
+	return {
+		type: "assistant_usage",
+		piboSessionId,
+		...(inputTokens !== undefined ? { inputTokens } : {}),
+		...(outputTokens !== undefined ? { outputTokens } : {}),
+		...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+		...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+		totalTokens: Math.max(0, normalizedTotal),
+	};
+}
+
+function stringValue(value: unknown): string | undefined {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function parseEmbeddedProviderError(message: string): { providerType?: string; providerCode?: string; providerParam?: string; providerMessage?: string } | undefined {
+	const jsonStart = message.indexOf("{");
+	if (jsonStart === -1) return undefined;
+	try {
+		const parsed = JSON.parse(message.slice(jsonStart)) as { error?: { type?: unknown; code?: unknown; param?: unknown; message?: unknown } };
+		const error = parsed.error;
+		if (!error || typeof error !== "object") return undefined;
+		return {
+			providerType: stringValue(error.type),
+			providerCode: stringValue(error.code),
+			providerParam: stringValue(error.param),
+			providerMessage: stringValue(error.message),
+		};
+	} catch {
+		return undefined;
+	}
+}
+
+function assistantErrorDetails(message: AssistantErrorMessage, context?: ErrorContext): PiboSessionErrorDetails | undefined {
+	const rawError = typeof message.errorMessage === "string" ? message.errorMessage : "";
+	const providerError = parseEmbeddedProviderError(rawError);
+	const usage = message.usage && typeof message.usage === "object" ? (message.usage as { totalTokens?: unknown }) : undefined;
+	const contextTokens = numberValue(usage?.totalTokens);
+	const details: PiboSessionErrorDetails = normalizeSessionErrorDetails(rawError, {
+		...(providerError?.providerCode === "context_length_exceeded" ? { category: "context_overflow", errorClass: "provider_context", code: "context_length_exceeded" } : {}),
+		...providerError,
+		api: stringValue(message.api),
+		provider: stringValue(message.provider),
+		model: stringValue(message.model),
+		contextWindow: context?.contextWindow,
+		contextTokens,
+	});
+	return Object.values(details).some((value) => value !== undefined) ? details : undefined;
+}
+
+function formatAssistantError(message: AssistantErrorMessage, context?: ErrorContext): string {
+	const rawError = typeof message.errorMessage === "string" && message.errorMessage.length > 0 ? message.errorMessage : "Assistant message failed.";
+	const details = assistantErrorDetails(message, context);
+	if (details?.category !== "context_overflow") return rawError;
+
+	const lines = ["Context window exceeded while sending the model request."];
+	if (details.providerMessage) lines.push(`Provider message: ${details.providerMessage}`);
+	if (details.providerCode) lines.push(`Provider code: ${details.providerCode}`);
+	if (details.providerParam) lines.push(`Provider param: ${details.providerParam}`);
+	if (details.api || details.provider || details.model) {
+		lines.push(`Model: ${[details.api, details.provider, details.model].filter(Boolean).join(" / ")}`);
+	}
+	if (details.contextTokens !== undefined || details.contextWindow !== undefined) {
+		const usage = details.contextWindow
+			? `${details.contextTokens ?? "unknown"} / ${details.contextWindow} tokens`
+			: `${details.contextTokens} tokens`;
+		lines.push(`Context usage: ${usage}`);
+	}
+	lines.push("Automatic overflow compaction will be attempted if auto-compaction is enabled.");
+	return lines.join("\n");
+}
+
+function messageContentIndex(candidate: PiEventCandidate): number | undefined {
+	return typeof candidate.assistantMessageEvent?.contentIndex === "number"
+		? candidate.assistantMessageEvent.contentIndex
+		: undefined;
+}
+
+function promptSource(source: PiboEventSource | undefined): "interactive" | "rpc" {
+	return source === "user" || source === "ui" ? "interactive" : "rpc";
+}
+
+function lastTextPartFromMessage(message: unknown): { text: string; contentIndex: number } | undefined {
+	if (!message || typeof message !== "object") return undefined;
+
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return undefined;
+
+	for (let index = content.length - 1; index >= 0; index -= 1) {
+		const part = content[index];
+		if (!part || typeof part !== "object") continue;
+		const candidate = part as { type?: unknown; text?: unknown };
+		if (candidate.type === "text" && typeof candidate.text === "string" && candidate.text.length > 0) {
+			return { text: candidate.text, contentIndex: index };
+		}
+	}
+	return undefined;
+}
+
+function toolCallFromMessage(message: unknown, contentIndex: unknown): PiToolCall | undefined {
+	if (!message || typeof message !== "object" || typeof contentIndex !== "number") return undefined;
+
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return undefined;
+
+	const candidate = content[contentIndex];
+	if (!candidate || typeof candidate !== "object") return undefined;
+	const toolCall = candidate as { type?: unknown; id?: unknown; name?: unknown; arguments?: unknown };
+	if (toolCall.type !== "toolCall" || typeof toolCall.id !== "string" || typeof toolCall.name !== "string") {
+		return undefined;
+	}
+
+	return { id: toolCall.id, name: toolCall.name, args: toolCall.arguments ?? {} };
+}
+
+function toolCallFromAssistantEvent(candidate: PiEventCandidate): PiToolCall | undefined {
+	const eventToolCall = candidate.assistantMessageEvent?.toolCall;
+	if (eventToolCall && typeof eventToolCall.id === "string" && typeof eventToolCall.name === "string") {
+		return { id: eventToolCall.id, name: eventToolCall.name, args: eventToolCall.arguments ?? {} };
+	}
+
+	return toolCallFromMessage(candidate.message, candidate.assistantMessageEvent?.contentIndex);
+}
+
+function normalizeToolCallEvent(piboSessionId: string, candidate: PiEventCandidate): PiboOutputEvent | undefined {
+	if (
+		candidate.type === "message_update" &&
+		(candidate.assistantMessageEvent?.type === "toolcall_start" ||
+			candidate.assistantMessageEvent?.type === "toolcall_end")
+	) {
+		const toolCall = toolCallFromAssistantEvent(candidate);
+		if (!toolCall) return undefined;
+
+		return {
+			type: "tool_call",
+			piboSessionId,
+			toolCallId: toolCall.id,
+			toolName: toolCall.name,
+			args: toolCall.args,
+			argsComplete: candidate.assistantMessageEvent.type === "toolcall_end",
+		};
+	}
+
+	return undefined;
+}
+
+function normalizeToolExecutionEvent(piboSessionId: string, candidate: PiEventCandidate): PiboOutputEvent | undefined {
+	if (typeof candidate.toolCallId !== "string" || typeof candidate.toolName !== "string") {
+		return undefined;
+	}
+
+	if (candidate.type === "tool_execution_start") {
+		return {
+			type: "tool_execution_started",
+			piboSessionId,
+			toolCallId: candidate.toolCallId,
+			toolName: candidate.toolName,
+			args: candidate.args,
+		};
+	}
+
+	if (candidate.type === "tool_execution_update") {
+		return {
+			type: "tool_execution_updated",
+			piboSessionId,
+			toolCallId: candidate.toolCallId,
+			toolName: candidate.toolName,
+			args: candidate.args,
+			partialResult: candidate.partialResult,
+		};
+	}
+
+	if (candidate.type === "tool_execution_end") {
+		return {
+			type: "tool_execution_finished",
+			piboSessionId,
+			toolCallId: candidate.toolCallId,
+			toolName: candidate.toolName,
+			result: candidate.result,
+			isError: candidate.isError === true,
+		};
+	}
+
+	return undefined;
+}
+
+type ProviderWebSearchStatus = "running" | "done" | "error";
+
+function normalizeProviderWebSearchEvent(piboSessionId: string, candidate: PiEventCandidate): PiboOutputEvent | undefined {
+	const item = recordValue(candidate.item) ?? recordValue(candidate.assistantMessageEvent?.item);
+	const itemType = stringValue(item?.type);
+	const rawEventType = stringValue(candidate.type) ?? stringValue(candidate.assistantMessageEvent?.type);
+	const rawType = rawEventType?.toLowerCase().includes("web_search") ? rawEventType : itemType;
+	if (!rawType || !rawType.toLowerCase().includes("web_search")) return undefined;
+
+	const action = recordValue(candidate.action) ?? recordValue(candidate.assistantMessageEvent?.action) ?? recordValue(item?.action);
+	const status = providerWebSearchStatus(rawEventType ?? rawType, candidate.status ?? candidate.assistantMessageEvent?.status ?? item?.status);
+	if (!status) return undefined;
+
+	const rawId =
+		stringValue(candidate.toolCallId) ??
+		stringValue(candidate.item_id) ??
+		stringValue(item?.id) ??
+		stringValue((candidate.assistantMessageEvent?.toolCall as { id?: unknown } | undefined)?.id) ??
+		(typeof candidate.assistantMessageEvent?.contentIndex === "number"
+			? `content-${candidate.assistantMessageEvent.contentIndex}`
+			: undefined) ??
+		"active";
+	const toolCallId = rawId.startsWith("provider:web_search:") ? rawId : `provider:web_search:${rawId}`;
+	const query =
+		stringValue(candidate.query) ??
+		stringValue(candidate.assistantMessageEvent?.query) ??
+		stringValue(action?.query) ??
+		stringValue(item?.query) ??
+		stringValue(item?.search_query);
+	const sources = firstArray(candidate.sources, candidate.assistantMessageEvent?.sources, item?.sources, item?.results, item?.citations);
+	const args = { providerTool: "web_search", ...(query ? { query } : {}) };
+
+	if (status === "running") {
+		return {
+			type: "tool_execution_started",
+			piboSessionId,
+			toolCallId,
+			toolName: "web_search",
+			args,
+		};
+	}
+
+	const error = candidate.error ?? candidate.assistantMessageEvent?.error ?? item?.error;
+	return {
+		type: "tool_execution_finished",
+		piboSessionId,
+		toolCallId,
+		toolName: "web_search",
+		result: status === "error"
+			? (error ?? "Web search failed")
+			: {
+					...(query ? { query } : {}),
+					...(sources ? { sources, sourceCount: sources.length } : {}),
+				},
+		isError: status === "error",
+	};
+}
+
+function providerWebSearchStatus(rawType: string, rawStatus: unknown): ProviderWebSearchStatus | undefined {
+	const type = rawType.toLowerCase();
+	const status = stringValue(rawStatus)?.toLowerCase();
+	if (type.includes("failed") || type.includes("error") || status === "failed" || status === "error") return "error";
+	if (type.includes("completed") || type.includes("done") || type.includes("end") || status === "completed" || status === "done") return "done";
+	if (type.includes("started") || type.includes("added") || type.includes("in_progress") || type.includes("searching") || status === "in_progress" || status === "running" || status === "searching") return "running";
+	return undefined;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+	return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function firstArray(...values: unknown[]): unknown[] | undefined {
+	for (const value of values) {
+		if (Array.isArray(value)) return value;
+	}
+	return undefined;
+}
+
+export function normalizePiEvent(piboSessionId: string, event: unknown, context?: ErrorContext): PiboOutputEvent | undefined {
+	if (!event || typeof event !== "object") return undefined;
+
+	const candidate = event as PiEventCandidate;
+
+	const providerToolEvent = normalizeProviderWebSearchEvent(piboSessionId, candidate);
+	if (providerToolEvent) return providerToolEvent;
+
+	if (
+		candidate.type === "message_update" &&
+		candidate.assistantMessageEvent?.type === "text_delta" &&
+		typeof candidate.assistantMessageEvent.delta === "string"
+	) {
+		return {
+			type: "assistant_delta",
+			piboSessionId,
+			contentIndex: messageContentIndex(candidate),
+			text: candidate.assistantMessageEvent.delta,
+		};
+	}
+
+	if (
+		candidate.type === "message_update" &&
+		candidate.assistantMessageEvent?.type === "thinking_start"
+	) {
+		return { type: "thinking_started", piboSessionId, contentIndex: messageContentIndex(candidate) };
+	}
+
+	if (
+		candidate.type === "message_update" &&
+		candidate.assistantMessageEvent?.type === "thinking_delta" &&
+		typeof candidate.assistantMessageEvent.delta === "string"
+	) {
+		return { type: "thinking_delta", piboSessionId, contentIndex: messageContentIndex(candidate), text: candidate.assistantMessageEvent.delta };
+	}
+
+	if (candidate.type === "message_update" && candidate.assistantMessageEvent?.type === "thinking_end") {
+		const text =
+			typeof candidate.assistantMessageEvent.content === "string" ? candidate.assistantMessageEvent.content : undefined;
+		return text === undefined
+			? { type: "thinking_finished", piboSessionId, contentIndex: messageContentIndex(candidate) }
+			: { type: "thinking_finished", piboSessionId, contentIndex: messageContentIndex(candidate), text };
+	}
+
+	const toolCallEvent = normalizeToolCallEvent(piboSessionId, candidate);
+	if (toolCallEvent) return toolCallEvent;
+
+	const toolExecutionEvent = normalizeToolExecutionEvent(piboSessionId, candidate);
+	if (toolExecutionEvent) return toolExecutionEvent;
+
+	if (candidate.type === "message_end") {
+		const message = candidate.message as AssistantErrorMessage | undefined;
+		const role = message?.role;
+		if (role === "assistant") {
+			if (message?.stopReason === "error" || typeof message?.errorMessage === "string") {
+				return {
+					type: "session_error",
+					piboSessionId,
+					error: formatAssistantError(message, context),
+					errorDetails: assistantErrorDetails(message, context),
+				};
+			}
+			const textPart = lastTextPartFromMessage(candidate.message);
+			if (textPart) {
+				return {
+					type: "assistant_message",
+					piboSessionId,
+					contentIndex: textPart.contentIndex,
+					text: textPart.text,
+				};
+			}
+		}
+	}
+
+	return undefined;
+}
+
+/**
+ * Estimate context tokens from agent messages using a simple chars/4 heuristic.
+ * This is a conservative fallback when getContextUsage() returns null because
+ * no post-compaction assistant usage exists yet.
+ */
+type RoutedQueueItem =
+	| { kind: "message"; event: PiboMessageEvent }
+	| { kind: "compact"; event: PiboExecutionEvent };
+
+function estimateContextTokens(messages: unknown[]): number {
+	let chars = 0;
+	for (const msg of messages) {
+		if (!msg || typeof msg !== "object") continue;
+		const message = msg as { role?: unknown; content?: unknown };
+		if (message.role === "user") {
+			const content = message.content;
+			if (typeof content === "string") {
+				chars += content.length;
+			} else if (Array.isArray(content)) {
+				for (const block of content) {
+					if (block && typeof block === "object" && "type" in block && block.type === "text" && "text" in block && typeof block.text === "string") {
+						chars += block.text.length;
+					}
+				}
+			}
+		} else if (message.role === "assistant") {
+			const content = (message as { content?: unknown[] }).content;
+			if (Array.isArray(content)) {
+				for (const block of content) {
+					if (!block || typeof block !== "object") continue;
+					if ("type" in block) {
+						if (block.type === "text" && "text" in block && typeof block.text === "string") chars += block.text.length;
+						if (block.type === "thinking" && "thinking" in block && typeof block.thinking === "string") chars += block.thinking.length;
+						if (block.type === "toolCall" && "name" in block && "arguments" in block) {
+							chars += String(block.name).length + JSON.stringify(block.arguments).length;
+						}
+					}
+				}
+			}
+		} else if (message.role === "toolResult" || message.role === "custom") {
+			const content = message.content;
+			if (typeof content === "string") {
+				chars += content.length;
+			} else if (Array.isArray(content)) {
+				for (const block of content) {
+					if (block && typeof block === "object" && "type" in block && block.type === "text" && "text" in block && typeof block.text === "string") {
+						chars += block.text.length;
+					}
+					if (block && typeof block === "object" && "type" in block && block.type === "image") {
+						chars += 4800; // approximate image size
+					}
+				}
+			}
+		}
+	}
+	return Math.ceil(chars / 4);
+}
+
+export class RoutedSession {
+	private readonly queue: RoutedQueueItem[] = [];
+	private processing = false;
+	private disposed = false;
+	private disposePromise?: Promise<void>;
+	private runtimeDisposePromise?: Promise<void>;
+	private forceDisposalStarted = false;
+	private drainPromise?: Promise<void>;
+	private fastMode = false;
+	private readonly fastModePatchedAgents = new WeakSet<object>();
+	private activeMessage?: PiboMessageEvent;
+	private activeExecutionEvent?: PiboExecutionEvent;
+	private activeAssistantIndex?: number;
+	private nextAssistantIndex = 0;
+	private activeThinkingIndex?: number;
+	private nextThinkingIndex = 0;
+	private pendingAssistantError?: Extract<PiboOutputEvent, { type: "session_error" }>;
+	private pendingAssistantErrorRetryable = false;
+	private activeMessageFailed = false;
+	private providerRecoveryCancelled = false;
+	private providerRecoveryAbortController?: AbortController;
+	private activeCapabilityScope?: {
+		session: AgentSessionRuntime["session"];
+		restoreToolNames: string[];
+	};
+	private unsubscribe?: () => void;
+	private recoverySession?: AgentSessionRuntime["session"];
+	private isContinuePatched = false;
+	private compatibilityAuthController?: PiAgentRuntimeAuthController;
+
+	constructor(
+		private readonly piboSessionId: string,
+		private readonly runtime: AgentSessionRuntime,
+		private readonly emit: PiboEventListener,
+		private readonly pluginRegistry: PiboPluginRegistry,
+		private readonly forwardPiEvents: boolean,
+		private readonly onPiEventTelemetry: ((piboSessionId: string, event: unknown, context: { status?: PiboSessionStatus; activeEventId?: string }) => void) | undefined,
+		initialFastMode: boolean,
+		private readonly onSessionOperation?: PiboSessionOperationListener,
+		private readonly onKillChildren?: (piboSessionId: string, options?: { includeRuns?: boolean }) => Promise<{ killed: string[]; cancelledRuns: string[] }>,
+		private readonly onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean }) => void,
+		private readonly onMessagesInterrupted?: PiboMessageInterruptionListener,
+		private readonly messagePreflight?: PiboMessagePreflight,
+	) {
+		this.fastMode = initialFastMode && this.fastModeSupported();
+		this.bindRuntimeSession();
+		this.patchFastModeProviderRequest();
+		this.patchAgentContinue();
+		this.runtime.setRebindSession(async () => {
+			this.bindRuntimeSession();
+			this.patchFastModeProviderRequest();
+			this.patchAgentContinue();
+		});
+	}
+
+	private patchFastModeProviderRequest(): void {
+		const agent = this.runtime.session.agent as unknown as FastModePatchableAgent | undefined;
+		if (!agent || typeof agent !== "object") return;
+		if (this.fastModePatchedAgents.has(agent)) return;
+		this.fastModePatchedAgents.add(agent);
+
+		const originalStreamFn = typeof agent.streamFn === "function" ? agent.streamFn.bind(agent) : undefined;
+		if (originalStreamFn) {
+			agent.streamFn = (model, context, options) => {
+				const nextOptions = this.shouldUseFastServiceTier(model) ? withFastServiceTierOption(options) : options;
+				return originalStreamFn(model, context, nextOptions);
+			};
+		}
+
+		const originalOnPayload = agent.onPayload?.bind(agent);
+		agent.onPayload = async (payload, model) => {
+			const useFastTier = this.shouldUseFastServiceTier(model);
+			const payloadForHooks = useFastTier ? withFastServiceTier(payload) : payload;
+			const nextPayload = originalOnPayload ? await originalOnPayload(payloadForHooks, model) : payloadForHooks;
+			return useFastTier ? withFastServiceTier(nextPayload) : nextPayload;
+		};
+	}
+
+	private shouldUseFastServiceTier(model: ProviderRequestModel | undefined): boolean {
+		if (this.getFastModeResult().mode !== "fast") return false;
+		return modelSupportsFastServiceTier(model) || modelSupportsFastServiceTier(this.runtime.session.model as ProviderRequestModel | undefined);
+	}
+
+	private patchAgentContinue(): void {
+		if (this.isContinuePatched) return;
+		this.isContinuePatched = true;
+
+		const agent = this.runtime.session.agent;
+		if (!agent) return;
+		const originalContinue = agent.continue.bind(agent);
+		const session = this.runtime.session;
+
+		agent.continue = async () => {
+			const model = session.model;
+			if (!model) return originalContinue();
+
+			const contextWindow = model.contextWindow ?? 0;
+			const settings = session.settingsManager.getCompactionSettings();
+			if (!settings.enabled) return originalContinue();
+
+			let contextTokens: number | null = null;
+			const contextUsage = session.getContextUsage();
+			if (contextUsage && contextUsage.tokens !== null) {
+				contextTokens = contextUsage.tokens;
+			} else {
+				// Fallback: estimate tokens from current messages when no post-compaction
+				// assistant usage is available yet. This prevents context overflow between
+				// tool calls after a compaction.
+				contextTokens = estimateContextTokens(session.messages);
+			}
+			if (contextTokens === null) return originalContinue();
+
+			if (shouldCompact(contextTokens, contextWindow, settings)) {
+				await session.compact();
+			}
+
+			return originalContinue();
+		};
+	}
+
+	private bindRuntimeSession(): void {
+		this.unsubscribe?.();
+		const session = this.runtime.session;
+		if (this.recoverySession && this.recoverySession !== session) {
+			this.cancelProviderRecovery();
+			cancelPiboAssistantContextGuardRecovery(
+				this.recoverySession,
+				new Error("Context guard recovery cancelled because the Pi session changed"),
+			);
+		}
+		this.recoverySession = session;
+		claimPiboAssistantContextGuardRecovery(session);
+		this.unsubscribe = session.subscribe((event) => {
+			this.onPiEventTelemetry?.(this.piboSessionId, event, { status: this.getStatus(), activeEventId: this.activeMessage?.id ?? this.activeExecutionEvent?.id });
+			const model = this.runtime.session.model as { contextWindow?: unknown } | undefined;
+			const normalized = normalizePiEvent(this.piboSessionId, event, { contextWindow: numberValue(model?.contextWindow) });
+			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
+			const assistantMessageEnded = candidate?.type === "message_end" && isAssistantMessage(candidate.message);
+			const usageEvent = assistantMessageEnded ? normalizeAssistantUsageEvent(this.piboSessionId, candidate?.message as AssistantErrorMessage) : undefined;
+			if (usageEvent) this.emit(this.withActiveMessage(usageEvent));
+			// Pi gets the first chance to recover through its short retry/compaction loop.
+			// Keep the final error pending so the routed turn can continue durable recovery.
+			if (assistantMessageEnded && normalized?.type === "session_error") {
+				this.pendingAssistantError = this.withActiveMessage(normalized) as Extract<PiboOutputEvent, { type: "session_error" }>;
+				this.pendingAssistantErrorRetryable = isRetryablePiboAssistantError(candidate.message);
+			} else {
+				if (assistantMessageEnded) {
+					this.pendingAssistantError = undefined;
+					this.pendingAssistantErrorRetryable = false;
+				}
+				if (normalized) this.emit(this.withActiveMessage(normalized));
+			}
+			if (this.forwardPiEvents) {
+				this.emit({ type: "pi_event", piboSessionId: this.piboSessionId, event });
+			}
+			this.handleCompactionEvent(event);
+		});
+	}
+
+	private flushPendingAssistantError(): void {
+		if (!this.pendingAssistantError) return;
+		this.activeMessageFailed = true;
+		this.emit(this.pendingAssistantError);
+		this.pendingAssistantError = undefined;
+		this.pendingAssistantErrorRetryable = false;
+	}
+
+	private takePendingAssistantError(): Extract<PiboOutputEvent, { type: "session_error" }> | undefined {
+		const pending = this.pendingAssistantError;
+		this.pendingAssistantError = undefined;
+		this.pendingAssistantErrorRetryable = false;
+		return pending;
+	}
+
+	private cancelProviderRecovery(): void {
+		this.providerRecoveryCancelled = true;
+		this.providerRecoveryAbortController?.abort();
+		this.providerRecoveryAbortController = undefined;
+	}
+
+	private async waitForPiAgentSettlement(session: AgentSessionRuntime["session"]): Promise<void> {
+		const waitForIdle = (session as AgentSessionRuntime["session"] & { waitForIdle?: () => Promise<void> }).waitForIdle;
+		if (waitForIdle) await waitForIdle.call(session);
+	}
+
+	private async resumeTranscriptIntegrityRecovery(session: AgentSessionRuntime["session"]): Promise<void> {
+		const reports = claimPiboTranscriptIntegrityContinuation(session);
+		if (reports.length === 0) return;
+		try {
+			this.pendingAssistantError = undefined;
+			this.pendingAssistantErrorRetryable = false;
+			await session.sendCustomMessage({
+				customType: PIBO_TRANSCRIPT_INTEGRITY_RESUME_MESSAGE_TYPE,
+				content: [{ type: "text", text: PIBO_TRANSCRIPT_INTEGRITY_RESUME_PROMPT }],
+				display: false,
+				details: { repairIds: reports.map((report) => report.repairId) },
+			}, { triggerTurn: true });
+			await this.waitForPiAgentSettlement(session);
+			await this.resumeContextGuardRecovery(session);
+			const pendingError = this.takePendingAssistantError();
+			if (pendingError) {
+				throw new PiboTranscriptIntegrityError(
+					`Transcript integrity continuation failed: ${pendingError.error}`,
+				);
+			}
+			settlePiboTranscriptIntegrityContinuation(session, "completed");
+		} catch (error) {
+			settlePiboTranscriptIntegrityContinuation(session, "failed", error);
+			throw error instanceof PiboTranscriptIntegrityError
+				? error
+				: new PiboTranscriptIntegrityError(`Transcript integrity continuation failed: ${errorMessage(error)}`);
+		}
+	}
+
+	private async resumeContextGuardRecovery(session: AgentSessionRuntime["session"]): Promise<void> {
+		while (await waitForPiboAssistantContextGuardRecovery(session)) {
+			try {
+				await session.sendCustomMessage({
+					customType: PIBO_CONTEXT_GUARD_RESUME_MESSAGE_TYPE,
+					content: [{ type: "text", text: PIBO_CONTEXT_GUARD_RESUME_PROMPT }],
+					display: false,
+				}, { triggerTurn: true });
+				await this.waitForPiAgentSettlement(session);
+			} catch (error) {
+				const resumeError = error instanceof Error ? error : new Error(String(error));
+				cancelPiboAssistantContextGuardRecovery(session, resumeError);
+				throw resumeError;
+			}
+		}
+	}
+
+	private async recoverTransientProviderErrors(session: AgentSessionRuntime["session"]): Promise<void> {
+		let attempt = 0;
+		while (this.pendingAssistantError && this.pendingAssistantErrorRetryable) {
+			if (this.providerRecoveryCancelled) throw new PiboProviderRecoveryCancelledError();
+			const settings = resolvePiboProviderRecoverySettings(session.settingsManager);
+			if (!settings.enabled) return;
+
+			attempt += 1;
+			this.pendingAssistantError = undefined;
+			this.pendingAssistantErrorRetryable = false;
+			const controller = new AbortController();
+			this.providerRecoveryAbortController = controller;
+			try {
+				await waitForPiboProviderRecovery(attempt, settings, controller.signal);
+			} finally {
+				if (this.providerRecoveryAbortController === controller) {
+					this.providerRecoveryAbortController = undefined;
+				}
+			}
+
+			if (this.providerRecoveryCancelled || this.disposed || this.runtime.session !== session || !this.activeMessage) {
+				throw new PiboProviderRecoveryCancelledError();
+			}
+
+			try {
+				await session.sendCustomMessage({
+					customType: PIBO_PROVIDER_RECOVERY_MESSAGE_TYPE,
+					content: [{ type: "text", text: PIBO_PROVIDER_RECOVERY_PROMPT }],
+					display: false,
+					details: { attempt },
+				}, { triggerTurn: true });
+				await this.resumeContextGuardRecovery(session);
+				if (this.providerRecoveryCancelled) throw new PiboProviderRecoveryCancelledError();
+			} catch (error) {
+				if (error instanceof PiboProviderRecoveryCancelledError) throw error;
+				if (!isRetryablePiboProviderError(error)) throw error;
+				const message = errorMessage(error);
+				this.pendingAssistantError = {
+					type: "session_error",
+					piboSessionId: this.piboSessionId,
+					eventId: this.activeMessage.id,
+					error: message,
+					errorDetails: runtimeSessionErrorDetails(message),
+				};
+				this.pendingAssistantErrorRetryable = true;
+			}
+		}
+	}
+
+	private handleCompactionEvent(event: unknown): void {
+		if (!event || typeof event !== "object") return;
+		const candidate = event as { type?: unknown; reason?: unknown; result?: unknown; aborted?: unknown; errorMessage?: unknown };
+		const eventId = this.activeMessage?.id ?? this.activeExecutionEvent?.id;
+		if (candidate.type === "compaction_start") {
+			this.emit(this.withActiveMessage({
+				type: "compaction_start",
+				piboSessionId: this.piboSessionId,
+				eventId,
+				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
+			}));
+		}
+		if (candidate.type === "compaction_end") {
+			if (candidate.result && candidate.aborted !== true) {
+				// Reset assistant message indices so the next assistant response starts
+				// fresh after compaction, matching the reduced agent context.
+				this.activeAssistantIndex = undefined;
+				this.nextAssistantIndex = 0;
+				this.activeThinkingIndex = undefined;
+				this.nextThinkingIndex = 0;
+			}
+			this.emit(this.withActiveMessage({
+				type: "compaction_end",
+				piboSessionId: this.piboSessionId,
+				eventId,
+				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
+				result: candidate.result,
+				aborted: candidate.aborted === true,
+				errorMessage: typeof candidate.errorMessage === "string" ? candidate.errorMessage : undefined,
+			}));
+		}
+	}
+
+	enqueueMessage(event: PiboMessageEvent): PiboOutputEvent {
+		this.assertActive();
+		this.queue.push({ kind: "message", event });
+
+		const output: PiboOutputEvent = {
+			type: "message_queued",
+			piboSessionId: this.piboSessionId,
+			eventId: event.id,
+			queuedMessages: this.queue.length,
+			text: event.text,
+			source: event.source,
+			provenance: event.provenance,
+		};
+		this.emit(output);
+		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
+		this.startDrain();
+		return output;
+	}
+
+	async steerMessage(event: PiboMessageEvent): Promise<PiboOutputEvent> {
+		this.assertActive();
+		const activeMessage = this.activeMessage;
+		if (!activeMessage || !this.processing || !this.runtime.session.isStreaming) {
+			throw new PiboSteeringUnavailableError();
+		}
+
+		const session = this.runtime.session;
+		const expandedText = expandInlineSkills(
+			event.text,
+			session.resourceLoader.getSkills().skills,
+		);
+		try {
+			await session.steer(expandedText);
+		} catch (error) {
+			throw new PiboSteeringUnavailableError(
+				`The active session could not accept steering: ${errorMessage(error)}`,
+				{ cause: error },
+			);
+		}
+
+		const output: PiboOutputEvent = {
+			type: "message_steered",
+			piboSessionId: this.piboSessionId,
+			eventId: event.id,
+			activeEventId: activeMessage.id,
+			text: event.text,
+			source: event.source,
+		};
+		this.emit(output);
+		return output;
+	}
+
+	async executeAction(event: PiboExecutionEvent): Promise<PiboOutputEvent> {
+		this.assertActive();
+
+		if (event.action === "compact") {
+			return this.enqueueCompactAction(event);
+		}
+
+		const result = await this.runAction(event);
+		if (isSessionOperationResult(result)) await this.onSessionOperation?.(result, event);
+		const output: PiboOutputEvent = {
+			type: "execution_result",
+			piboSessionId: this.piboSessionId,
+			eventId: event.id,
+			action: event.action,
+			result,
+		};
+		this.emit(output);
+		return output;
+	}
+
+	getActiveMessage(): Pick<PiboMessageEvent, "id" | "source" | "provenance"> | undefined {
+		if (!this.activeMessage) return undefined;
+		return { id: this.activeMessage.id, source: this.activeMessage.source, provenance: this.activeMessage.provenance };
+	}
+
+	getStatus(): PiboSessionStatus {
+		const enabledTools = this.runtime.session.getActiveToolNames();
+		const thinkingLevel = this.runtime.session.thinkingLevel as PiboThinkingLevel;
+		const settingsManager = this.runtime.session.settingsManager as typeof this.runtime.session.settingsManager | undefined;
+		return {
+			piboSessionId: this.piboSessionId,
+			queuedMessages: this.queue.length,
+			processing: this.disposed ? false : this.processing,
+			streaming: this.disposed ? false : this.runtime.session.isStreaming,
+			activeTools: enabledTools,
+			enabledTools,
+			cwd: this.runtime.cwd,
+			disposed: this.disposed,
+			thinkingLevel,
+			fastMode: this.getFastModeResult().mode === "fast",
+			...(settingsManager ? {
+				retry: {
+					...settingsManager.getRetrySettings(),
+					provider: settingsManager.getProviderRetrySettings(),
+				},
+			} : {}),
+		};
+	}
+
+	async getStatusSnapshot(): Promise<PiboSessionStatus> {
+		const contextUsage = this.getContextUsage();
+		const providerUsage = await this.getProviderUsage();
+		return {
+			...this.getStatus(),
+			activeModel: this.getActiveModel(),
+			contextUsage: contextUsage
+				? {
+						tokens: contextUsage.tokens ?? undefined,
+						contextWindow: contextUsage.contextWindow ?? undefined,
+						percent: contextUsage.percent ?? undefined,
+					}
+				: contextUsage,
+			...(providerUsage ? { providerUsage } : {}),
+		};
+	}
+
+	getContextUsage(): ContextUsage | undefined {
+		return this.runtime.session.getContextUsage();
+	}
+
+	getActiveModel(): { provider: string; id: string } | undefined {
+		const model = this.runtime.session.model;
+		return model ? { provider: model.provider, id: model.id } : undefined;
+	}
+
+	async getProviderUsage() {
+		try {
+			return await getOpenAiCodexProviderUsageForActiveModel(this.getActiveModel());
+		} catch {
+			return undefined;
+		}
+	}
+
+	removeQueuedMessages(predicate: (event: PiboMessageEvent) => boolean): number {
+		this.assertActive();
+
+		const removedMessages: PiboMessageEvent[] = [];
+		for (let index = this.queue.length - 1; index >= 0; index -= 1) {
+			const item = this.queue[index];
+			if (item.kind !== "message" || !predicate(item.event)) continue;
+			this.queue.splice(index, 1);
+			removedMessages.push(item.event);
+		}
+		removedMessages.reverse();
+		this.notifyMessagesInterrupted(removedMessages, "queued message removed");
+		return removedMessages.length;
+	}
+
+	private restoreMessageCapabilityScope(): void {
+		const active = this.activeCapabilityScope;
+		if (!active) return;
+		this.activeCapabilityScope = undefined;
+		active.session.setActiveToolsByName(active.restoreToolNames);
+	}
+
+	getCurrentSession(): PiboPiSessionSnapshot {
+		return this.createSessionSnapshot();
+	}
+
+	async listSessions(): Promise<PiboSessionListItem[]> {
+		const manager = this.runtime.session.sessionManager;
+		const sessions = await SessionManager.list(this.runtime.cwd, manager.getSessionDir());
+		return sessions.map((session) => ({
+			path: session.path,
+			id: session.id,
+			cwd: session.cwd,
+			name: session.name,
+			parentSessionPath: session.parentSessionPath,
+			created: session.created.toISOString(),
+			modified: session.modified.toISOString(),
+			messageCount: session.messageCount,
+			firstMessage: session.firstMessage,
+		}));
+	}
+
+	getForkCandidates(): PiboForkCandidate[] {
+		return this.runtime.session.getUserMessagesForForking();
+	}
+
+	async forkSession(entryId: string): Promise<PiboSessionOperationResult> {
+		this.assertActive();
+		const previous = this.createSessionSnapshot();
+		const result = await this.runtime.fork(entryId);
+		return {
+			piboSessionId: this.piboSessionId,
+			previous,
+			current: this.createSessionSnapshot(),
+			cancelled: result.cancelled,
+			selectedText: result.selectedText,
+		};
+	}
+
+	async cloneSession(): Promise<PiboSessionOperationResult> {
+		this.assertActive();
+		const leafId = this.runtime.session.sessionManager.getLeafId();
+		if (!leafId) {
+			throw new Error("Cannot clone session: no current entry selected");
+		}
+		const previous = this.createSessionSnapshot();
+		const result = await this.runtime.fork(leafId, { position: "at" });
+		return {
+			piboSessionId: this.piboSessionId,
+			previous,
+			current: this.createSessionSnapshot(),
+			cancelled: result.cancelled,
+		};
+	}
+
+	getSessionTree(): PiboSessionTreeResult {
+		this.assertActive();
+		return {
+			current: this.createSessionSnapshot(),
+			tree: normalizeSessionTree(this.runtime.session.sessionManager.getTree()),
+		};
+	}
+
+	async navigateSessionTree(params: PiboSessionTreeNavigateParams): Promise<PiboSessionOperationResult> {
+		this.assertActive();
+		const previous = this.createSessionSnapshot();
+		const result = await this.runtime.session.navigateTree(params.entryId, {
+			summarize: params.summarize,
+			customInstructions: params.customInstructions,
+			replaceInstructions: params.replaceInstructions,
+			label: params.label,
+		});
+		return {
+			piboSessionId: this.piboSessionId,
+			previous,
+			current: this.createSessionSnapshot(),
+			cancelled: result.cancelled,
+			editorText: result.editorText,
+			summaryEntryId: result.summaryEntry?.id,
+		};
+	}
+
+	async switchSession(params: PiboSessionSwitchParams): Promise<PiboSessionOperationResult> {
+		this.assertActive();
+		const previous = this.createSessionSnapshot();
+		const result = await this.runtime.switchSession(params.sessionFile, { cwdOverride: params.cwdOverride });
+		return {
+			piboSessionId: this.piboSessionId,
+			previous,
+			current: this.createSessionSnapshot(),
+			cancelled: result.cancelled,
+		};
+	}
+
+	async setModel(model: ModelProfile): Promise<ModelProfile> {
+		this.assertActive();
+		const resolved = this.runtime.session.modelRegistry.find(model.provider, model.id);
+		if (!resolved) throw new Error(`Unknown model ${model.provider}/${model.id}`);
+		await this.runtime.session.setModel(resolved);
+		return { provider: resolved.provider, id: resolved.id };
+	}
+
+	setThinkingLevel(level: PiboThinkingLevel): PiboThinkingResult {
+		this.assertActive();
+		this.runtime.session.setThinkingLevel(level);
+		return this.getThinkingResult();
+	}
+
+	cycleThinkingLevel(): PiboThinkingResult {
+		this.assertActive();
+		this.runtime.session.cycleThinkingLevel();
+		return this.getThinkingResult();
+	}
+
+	getFastMode(): { mode: "fast" | "normal"; supported: boolean } {
+		this.assertActive();
+		return this.getFastModeResult();
+	}
+
+	setFastMode(enabled: boolean): { mode: "fast" | "normal"; supported: boolean; changed: boolean } {
+		this.assertActive();
+		const before = this.getFastModeResult().mode;
+		if (this.fastModeSupported()) this.fastMode = enabled;
+		const current = this.getFastModeResult();
+		return { ...current, changed: before !== current.mode };
+	}
+
+	async compact(customInstructions?: string): Promise<CompactionResult> {
+		this.assertActive();
+		return await this.runtime.session.compact(customInstructions);
+	}
+
+	async dispose(): Promise<void> {
+		if (this.disposePromise) return this.disposePromise;
+		this.disposePromise = this.disposeUnsafe();
+		return this.disposePromise;
+	}
+
+	forceDispose(reason = "session disposal timed out"): void {
+		this.transitionToDisposed(reason);
+		if (this.forceDisposalStarted) return;
+		this.forceDisposalStarted = true;
+		const abort = (this.runtime.session as { abort?: () => Promise<void> | void }).abort;
+		if (abort) {
+			try {
+				void Promise.resolve(abort.call(this.runtime.session)).catch(() => {});
+			} catch {
+				// Forced runtime disposal must still run when abort throws synchronously.
+			}
+		}
+		void this.disposeRuntime().catch(() => {});
+	}
+
+	private transitionToDisposed(reason: string): boolean {
+		if (this.disposed) return false;
+		void this.compatibilityAuthController?.dispose();
+		const activeMessage = this.activeMessage;
+		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), reason);
+		if (activeMessage) {
+			const error = `Session disposed while a message was active: ${reason}`;
+			this.emit({
+				type: "session_error",
+				piboSessionId: this.piboSessionId,
+				eventId: activeMessage.id,
+				error,
+				errorDetails: runtimeSessionErrorDetails(error),
+			});
+		}
+		this.cancelProviderRecovery();
+		this.queue.length = 0;
+		this.onStateChange?.({ processing: false, queuedMessages: this.queue.length, disposed: true });
+		this.unsubscribe?.();
+		this.unsubscribe = undefined;
+		if (this.recoverySession) {
+			this.cancelContextGuardRecovery(`Context guard recovery cancelled because ${reason}`);
+			this.recoverySession = undefined;
+		}
+		this.disposed = true;
+		return true;
+	}
+
+	private disposeRuntime(): Promise<void> {
+		if (!this.runtimeDisposePromise) {
+			try {
+				this.runtimeDisposePromise = Promise.resolve(this.runtime.dispose());
+			} catch (error) {
+				this.runtimeDisposePromise = Promise.reject(error);
+			}
+		}
+		return this.runtimeDisposePromise;
+	}
+
+	private async disposeUnsafe(): Promise<void> {
+		if (!this.transitionToDisposed("session disposed")) return;
+		const abort = (this.runtime.session as { abort?: () => Promise<void> | void }).abort;
+		try {
+			if (abort) await Promise.allSettled([Promise.resolve().then(() => abort.call(this.runtime.session))]);
+			await this.drainPromise;
+		} finally {
+			await this.disposeRuntime();
+		}
+	}
+
+	async kill(): Promise<string> {
+		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), "session killed");
+		this.cancelProviderRecovery();
+		this.queue.length = 0;
+		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
+		this.cancelContextGuardRecovery("Context guard recovery cancelled because the routed session was killed");
+		await this.runtime.session.abort();
+		return this.piboSessionId;
+	}
+
+	async cancelMessage(eventId: string): Promise<boolean> {
+		this.assertActive();
+
+		const queuedIndex = this.queue.findIndex((item) => item.event.id === eventId);
+		if (queuedIndex >= 0) {
+			const [removed] = this.queue.splice(queuedIndex, 1);
+			if (removed?.kind === "message") this.notifyMessagesInterrupted([removed.event], "message cancelled");
+			this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
+			return true;
+		}
+
+		if (this.activeMessage?.id === eventId) {
+			this.notifyMessagesInterrupted([this.activeMessage], "message cancelled");
+			this.cancelProviderRecovery();
+			this.cancelContextGuardRecovery("Context guard recovery cancelled with the active message");
+			await this.runtime.session.abort();
+			return true;
+		}
+
+		return false;
+	}
+
+	private startDrain(): void {
+		if (this.drainPromise) return;
+		const drain = this.drain();
+		this.drainPromise = drain;
+		void drain.finally(() => {
+			if (this.drainPromise === drain) this.drainPromise = undefined;
+		});
+	}
+
+	private async drain(): Promise<void> {
+		if (this.processing || this.disposed) return;
+
+		this.processing = true;
+		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
+		try {
+			while (this.queue.length > 0 && !this.disposed) {
+				const item = this.queue.shift()!;
+				this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
+				if (item.kind === "compact") {
+					await this.processQueuedCompact(item.event);
+				} else {
+					await this.processQueuedMessage(item.event);
+				}
+			}
+		} finally {
+			this.processing = false;
+			this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
+		}
+	}
+
+	private async processQueuedMessage(event: PiboMessageEvent): Promise<void> {
+		try {
+			const preflight = await this.messagePreflight?.(event);
+			if (this.disposed) return;
+			if (preflight && !preflight.allowed) {
+				this.emit({
+					type: "session_error",
+					piboSessionId: this.piboSessionId,
+					eventId: event.id,
+					error: preflight.reason ?? "Queued message is no longer authorized",
+					errorDetails: {
+						category: "loop_lifecycle",
+						errorClass: "runtime_abort",
+						code: preflight.code ?? "message_preflight_rejected",
+						origin: "runtime",
+						retryable: false,
+					},
+					provenance: event.provenance,
+				});
+				return;
+			}
+			const session = this.runtime.session;
+			await this.resumeTranscriptIntegrityRecovery(session);
+			if (this.disposed) return;
+			this.emit({
+				type: "message_started",
+				piboSessionId: this.piboSessionId,
+				eventId: event.id,
+				text: event.text,
+				source: event.source,
+				provenance: event.provenance,
+			});
+
+			this.activeMessage = event;
+			this.providerRecoveryCancelled = false;
+			this.pendingAssistantError = undefined;
+			this.pendingAssistantErrorRetryable = false;
+			this.activeMessageFailed = false;
+			this.activeAssistantIndex = undefined;
+			this.nextAssistantIndex = 0;
+			this.activeThinkingIndex = undefined;
+			this.nextThinkingIndex = 0;
+			this.applyMessageCapabilityScope(event, session);
+			const expandedText = expandInlineSkills(
+				event.text,
+				session.resourceLoader.getSkills().skills,
+			);
+			await session.prompt(expandedText, { source: promptSource(event.source) });
+			if (this.disposed) return;
+			await this.waitForPiAgentSettlement(session);
+			if (this.disposed) return;
+			await this.resumeContextGuardRecovery(session);
+			if (this.disposed) return;
+			await this.recoverTransientProviderErrors(session);
+			if (this.disposed) return;
+			this.flushPendingAssistantError();
+			if (!this.activeMessageFailed) {
+				this.emit({
+					type: "message_finished",
+					piboSessionId: this.piboSessionId,
+					eventId: event.id,
+					source: event.source,
+					provenance: event.provenance,
+				});
+			}
+		} catch (error) {
+			if (error instanceof PiboProviderRecoveryCancelledError || this.disposed) return;
+			const message = errorMessage(error);
+			this.emit({
+				type: "session_error",
+				piboSessionId: this.piboSessionId,
+				eventId: event.id,
+				error: message,
+				errorDetails: runtimeSessionErrorDetails(message),
+				provenance: event.provenance,
+			});
+		} finally {
+			this.restoreMessageCapabilityScope();
+			this.activeMessage = undefined;
+			this.providerRecoveryCancelled = false;
+			this.pendingAssistantError = undefined;
+			this.pendingAssistantErrorRetryable = false;
+			this.activeMessageFailed = false;
+			this.activeAssistantIndex = undefined;
+			this.nextAssistantIndex = 0;
+			this.activeThinkingIndex = undefined;
+			this.nextThinkingIndex = 0;
+		}
+	}
+
+	private applyMessageCapabilityScope(event: PiboMessageEvent, session: AgentSessionRuntime["session"]): void {
+		if (event.capabilityScope !== "run-reminder") return;
+		const restoreToolNames = session.getActiveToolNames();
+		const scopedToolNames = restoreToolNames.filter((name) => RUN_REMINDER_CAPABILITY_TOOLS.has(name));
+		this.activeCapabilityScope = { session, restoreToolNames };
+		session.setActiveToolsByName(scopedToolNames);
+	}
+
+	private async processQueuedCompact(event: PiboExecutionEvent): Promise<void> {
+		this.activeExecutionEvent = event;
+		try {
+			await this.resumeTranscriptIntegrityRecovery(this.runtime.session);
+			const result = await this.runAction(event);
+			if (this.disposed) return;
+			this.emit({
+				type: "execution_result",
+				piboSessionId: this.piboSessionId,
+				eventId: event.id,
+				action: event.action,
+				result,
+			});
+		} catch (error) {
+			if (this.disposed) return;
+			const message = errorMessage(error);
+			this.emit({
+				type: "session_error",
+				piboSessionId: this.piboSessionId,
+				eventId: event.id,
+				error: message,
+				errorDetails: runtimeSessionErrorDetails(message),
+			});
+		} finally {
+			this.activeExecutionEvent = undefined;
+		}
+	}
+
+	private enqueueCompactAction(event: PiboExecutionEvent): PiboOutputEvent {
+		this.queue.push({ kind: "compact", event });
+		const output: PiboOutputEvent = {
+			type: "execution_result",
+			piboSessionId: this.piboSessionId,
+			eventId: event.id,
+			action: event.action,
+			result: { queued: true, queuedMessages: this.queue.length },
+		};
+		this.emit(output);
+		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
+		this.startDrain();
+		return output;
+	}
+
+	private getCompatibilityAuthController(): PiAgentRuntimeAuthController {
+		this.compatibilityAuthController ??= new PiAgentRuntimeAuthController(
+			() => loadPiModelCatalog(process.cwd()),
+			() => {},
+		);
+		return this.compatibilityAuthController;
+	}
+
+	private async runAction(event: PiboExecutionEvent): Promise<unknown> {
+		const action = event.action;
+		const gatewayAction = this.pluginRegistry.getGatewayAction(action);
+		if (!gatewayAction) {
+			throw new Error(`Unknown execution action "${action}"`);
+		}
+
+		return await gatewayAction.execute(
+			{
+				piboSessionId: this.piboSessionId,
+				runtimeInstanceId: "pi",
+				runtimeAuthRequired: true,
+				getStatus: () => this.getStatus(),
+				getStatusSnapshot: () => this.getStatusSnapshot(),
+				getContextUsage: () => this.getContextUsage(),
+				getActiveModel: () => this.getActiveModel(),
+				getModelCatalog: async () => undefined,
+				getRuntimeAuthStatus: async () => await this.getCompatibilityAuthController().getStatus(),
+				startRuntimeAuth: async (input: StartAgentRuntimeAuthInput) => await this.getCompatibilityAuthController().start(input),
+				completeRuntimeAuth: async (input: CompleteAgentRuntimeAuthInput) => await this.getCompatibilityAuthController().complete(input),
+				cancelRuntimeAuth: async (input: CancelAgentRuntimeAuthInput) => await this.getCompatibilityAuthController().cancel(input),
+				logoutRuntimeAuth: async (input: LogoutAgentRuntimeAuthInput) => await this.getCompatibilityAuthController().logout(input),
+				getProviderUsage: () => this.getProviderUsage(),
+				clearQueue: () => this.clearQueue(),
+				abort: async () => {
+					if (this.activeMessage) this.notifyMessagesInterrupted([this.activeMessage], "abort requested");
+					this.cancelContextGuardRecovery("Context guard recovery cancelled by abort");
+					await this.runtime.session.abort();
+				},
+				dispose: () => this.dispose(),
+				getCurrentSession: () => this.getCurrentSession(),
+				listSessions: () => this.listSessions(),
+				getForkCandidates: () => this.getForkCandidates(),
+				forkSession: (entryId) => this.forkSession(entryId),
+				cloneSession: () => this.cloneSession(),
+				getSessionTree: () => this.getSessionTree(),
+				navigateSessionTree: (params) => this.navigateSessionTree(params),
+				switchSession: (params) => this.switchSession(params),
+				getThinkingLevel: () => this.getThinkingResult(),
+				setThinkingLevel: (level) => this.setThinkingLevel(level),
+				cycleThinkingLevel: () => this.cycleThinkingLevel(),
+				getFastMode: () => this.getFastMode(),
+				setFastMode: (enabled) => this.setFastMode(enabled),
+				setModel: (model) => this.setModel(model),
+				compact: (customInstructions) => this.compact(customInstructions),
+				respondToApproval: async () => { throw new Error("Pi does not expose runtime approval responses."); },
+				respondToUserInput: async () => { throw new Error("Pi does not expose structured runtime user input."); },
+				kill: async () => {
+					const killed = [await this.kill()];
+					let cancelledRuns: string[] = [];
+					if (this.onKillChildren) {
+						const children = await this.onKillChildren(this.piboSessionId);
+						killed.push(...children.killed);
+						cancelledRuns = children.cancelledRuns;
+					}
+					return { killed, cancelledRuns };
+				},
+				killAll: async () => {
+					const killed = [await this.kill()];
+					let cancelledRuns: string[] = [];
+					if (this.onKillChildren) {
+						const children = await this.onKillChildren(this.piboSessionId, { includeRuns: true });
+						killed.push(...children.killed);
+						cancelledRuns = children.cancelledRuns;
+					}
+					return { killed, cancelledRuns };
+				},
+			},
+			event,
+		);
+	}
+
+	private cancelContextGuardRecovery(message: string): void {
+		const session = this.recoverySession ?? this.runtime.session;
+		cancelPiboAssistantContextGuardRecovery(session, new Error(message));
+		(session as { abortCompaction?: () => void }).abortCompaction?.();
+	}
+
+	private assertActive(): void {
+		if (this.disposed) {
+			throw new Error(`Session "${this.piboSessionId}" has been disposed`);
+		}
+	}
+
+	private getThinkingResult(): PiboThinkingResult {
+		return {
+			level: this.runtime.session.thinkingLevel as PiboThinkingLevel,
+			availableLevels: this.runtime.session.getAvailableThinkingLevels() as PiboThinkingLevel[],
+			supported: this.runtime.session.supportsThinking(),
+		};
+	}
+
+	private getFastModeResult(): { mode: "fast" | "normal"; supported: boolean } {
+		const supported = this.fastModeSupported();
+		return { mode: supported && this.fastMode ? "fast" : "normal", supported };
+	}
+
+	private fastModeSupported(): boolean {
+		return this.runtime.session.supportsThinking() && modelSupportsFastServiceTier(this.runtime.session.model);
+	}
+
+	private clearQueue(): number {
+		const cleared = this.queue.length;
+		const removedMessages = this.queue.flatMap((item) => item.kind === "message" ? [item.event] : []);
+		this.queue.length = 0;
+		this.notifyMessagesInterrupted(removedMessages, "queue cleared");
+		this.onStateChange?.({ processing: this.processing, queuedMessages: this.queue.length, disposed: this.disposed });
+		return cleared;
+	}
+
+	private activeAndQueuedMessages(): PiboMessageEvent[] {
+		const messages = this.queue.flatMap((item) => item.kind === "message" ? [item.event] : []);
+		return this.activeMessage ? [this.activeMessage, ...messages] : messages;
+	}
+
+	private notifyMessagesInterrupted(messages: readonly PiboMessageEvent[], reason: string): void {
+		if (messages.length === 0) return;
+		this.onMessagesInterrupted?.(messages, reason);
+	}
+
+	private createSessionSnapshot(): PiboPiSessionSnapshot {
+		const session = this.runtime.session;
+		const manager = session.sessionManager;
+		return {
+			piSessionId: session.sessionId,
+			sessionFile: session.sessionFile,
+			leafId: manager.getLeafId(),
+			cwd: this.runtime.cwd,
+			sessionName: session.sessionName,
+			parentSessionFile: manager.getHeader()?.parentSession,
+		};
+	}
+
+	private withActiveMessage(event: PiboOutputEvent): PiboOutputEvent {
+		if (this.activeMessage?.id && event.type === "assistant_delta") {
+			const assistantIndex = this.activeAssistantIndex ?? this.nextAssistantIndex;
+			if (this.activeAssistantIndex === undefined) {
+				this.nextAssistantIndex += 1;
+				this.activeAssistantIndex = assistantIndex;
+			}
+			return { ...event, eventId: this.activeMessage.id, assistantIndex };
+		}
+
+		if (this.activeMessage?.id && event.type === "assistant_message") {
+			const assistantIndex = this.activeAssistantIndex ?? this.nextAssistantIndex;
+			if (this.activeAssistantIndex === undefined) {
+				this.nextAssistantIndex += 1;
+			}
+			this.activeAssistantIndex = undefined;
+			return { ...event, eventId: this.activeMessage.id, assistantIndex };
+		}
+
+		if (this.activeMessage?.id && event.type === "thinking_started") {
+			const thinkingIndex = this.nextThinkingIndex;
+			this.nextThinkingIndex += 1;
+			this.activeThinkingIndex = thinkingIndex;
+			return { ...event, eventId: this.activeMessage.id, thinkingIndex };
+		}
+
+		if (this.activeMessage?.id && (event.type === "thinking_delta" || event.type === "thinking_finished")) {
+			const thinkingIndex = this.activeThinkingIndex ?? this.nextThinkingIndex;
+			if (this.activeThinkingIndex === undefined) {
+				this.nextThinkingIndex += 1;
+				this.activeThinkingIndex = thinkingIndex;
+			}
+			const output = { ...event, eventId: this.activeMessage.id, thinkingIndex };
+			if (event.type === "thinking_finished") this.activeThinkingIndex = undefined;
+			return output;
+		}
+
+		if (
+			this.activeMessage?.id &&
+			(event.type === "assistant_usage" ||
+				event.type === "compaction_start" ||
+				event.type === "compaction_end" ||
+				event.type === "tool_call" ||
+				event.type === "tool_execution_started" ||
+				event.type === "tool_execution_updated" ||
+				event.type === "tool_execution_finished" ||
+				event.type === "session_error" ||
+				event.type === "execution_result")
+		) {
+			return { ...event, eventId: this.activeMessage.id };
+		}
+
+		return event;
+	}
+}
+
+function normalizeSessionTree(nodes: PiSessionTreeNode[]): PiboSessionTreeNode[] {
+	return nodes.map((node) => ({
+		entry: JSON.parse(JSON.stringify(node.entry)) as PiboJsonObject,
+		children: normalizeSessionTree(node.children),
+		label: node.label,
+		labelTimestamp: node.labelTimestamp,
+	}));
+}
+
+function isSessionOperationResult(value: unknown): value is PiboSessionOperationResult {
+	if (!value || typeof value !== "object") return false;
+	const candidate = value as { piboSessionId?: unknown; current?: { piSessionId?: unknown } };
+	return (
+		typeof candidate.piboSessionId === "string" &&
+		Boolean(candidate.current) &&
+		typeof candidate.current?.piSessionId === "string"
+	);
+}

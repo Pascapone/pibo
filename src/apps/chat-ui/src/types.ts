@@ -33,6 +33,10 @@ export type PiboWorkflowSessionKind = "main_workflow" | "nested_workflow" | "age
 export type PiboWebSessionNode = {
 	piboSessionId: string;
 	piSessionId: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
+	nativeSessionId?: string;
 	parentId?: string;
 	originId?: string;
 	profile: string;
@@ -52,6 +56,9 @@ export type PiboWebSessionNode = {
 export type PiboWebDerivedSessionNode = {
 	piboSessionId: string;
 	profile: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
 	activeModel?: ModelProfile;
 	subagentName?: string;
 	workflowSessionKind?: PiboWorkflowSessionKind;
@@ -208,9 +215,26 @@ export type WorkflowLifecycleEventRecord = {
 	createdAt: string;
 };
 
+export type RuntimeSessionBinding = {
+	piboSessionId: string;
+	runtimeInstanceId: string;
+	adapterId: string;
+	nativeSessionId?: string;
+	state: "unbound" | "bound" | "missing" | "error";
+	protocol?: string;
+	protocolVersion?: string;
+	adapterVersion?: string;
+	locator?: { kind: string; value?: string };
+	metadata?: Record<string, unknown>;
+	revision?: number;
+	createdAt?: string;
+	updatedAt?: string;
+};
+
 export type PiboSession = {
 	id: string;
 	piSessionId: string;
+	runtimeBinding?: RuntimeSessionBinding;
 	channel: string;
 	kind: string;
 	profile: string;
@@ -266,6 +290,10 @@ export type PiboSignalNode = {
 export type PiboSessionSignalSnapshot = {
 	piboSessionId: string;
 	piSessionId?: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
+	nativeSessionId?: string;
 	parentPiboSessionId?: string;
 	rootPiboSessionId: string;
 	version: number;
@@ -342,10 +370,43 @@ export type ChatSessionPage = {
 	version?: string;
 };
 
+export type PiboRuntimeApprovalDecision = {
+	id: string;
+	label: string;
+	description?: string;
+};
+
+export type PiboRuntimeApprovalRequest = {
+	requestId: string;
+	requestType: string;
+	title?: string;
+	detail?: string;
+	arguments?: unknown;
+	decisions?: readonly PiboRuntimeApprovalDecision[];
+};
+
+export type PiboRuntimeUserInputQuestion = {
+	id: string;
+	header?: string;
+	question: string;
+	options?: readonly { label: string; description?: string }[];
+	multiSelect?: boolean;
+	allowFreeform?: boolean;
+	secret?: boolean;
+};
+
+export type PiboRuntimeUserInputRequest = {
+	requestId: string;
+	questions: readonly PiboRuntimeUserInputQuestion[];
+	blocking?: boolean;
+};
+
 export type PiboRuntimeStatus = {
 	piboSessionId: string;
 	thinkingLevel?: ThinkingLevel;
 	fastMode?: boolean;
+	pendingApprovals?: readonly PiboRuntimeApprovalRequest[];
+	pendingUserInputs?: readonly PiboRuntimeUserInputRequest[];
 };
 
 export type NavigationData = {
@@ -488,12 +549,15 @@ export type ModelCatalogEntry = {
 	label: string;
 	authConfigured?: boolean;
 	supportsReasoning?: boolean;
+	reasoningOptions?: ThinkingLevel[];
 };
 
 export type AgentProfile = {
 	name: string;
 	description?: string;
 	aliases: string[];
+	runtimeInstanceId?: string;
+	runtimeOptions?: Record<string, unknown>;
 	nativeTools?: string[];
 	skills?: string[];
 	contextFiles?: string[];
@@ -529,8 +593,136 @@ export type UserSkill = {
 	updatedAt: string;
 };
 
+export type AgentRuntimeDiagnostic = {
+	severity: "info" | "warning" | "error";
+	code: string;
+	message: string;
+	path?: string;
+	details?: Record<string, unknown>;
+};
+
+export type AgentRuntimeCapabilityDelivery =
+	| { support: "unsupported"; reason: string }
+	| { support: "native" }
+	| { support: "direct" }
+	| { support: "mcp"; transports: Array<"streamable-http" | "stdio"> }
+	| { support: "materialized"; modes: string[] }
+	| { support: "degraded"; mode: string; reason: string };
+
+export type AgentRuntimeCapabilities = {
+	lifecycle: { persistent: boolean; lazyBinding: boolean; resume: boolean; attach: boolean; listNativeSessions: boolean; fork: boolean; clone: boolean; tree: boolean };
+	input: { text: boolean; images: boolean; audio: boolean; steering: boolean; structuredOutput: boolean };
+	output: { assistantDeltas: boolean; reasoning: boolean; toolEvents: boolean; usage: boolean; plans: boolean; diffs: boolean; rawNativeEvents: boolean };
+	tools: {
+		piboManaged: AgentRuntimeCapabilityDelivery;
+		nativeToolInspection: AgentRuntimeCapabilityDelivery;
+		nativeToolYielding: AgentRuntimeCapabilityDelivery;
+	};
+	mcp: { externalServers: AgentRuntimeCapabilityDelivery; statusInspection: boolean };
+	skills: AgentRuntimeCapabilityDelivery;
+	context: AgentRuntimeCapabilityDelivery;
+	auth: {
+		status: boolean;
+		methods: Array<{ id: "device_code" | "browser_oauth" | "api_key"; completion: "immediate" | "explicit" | "notification" }>;
+		cancel: boolean;
+		logout: boolean;
+		credentialScope: "runtime-instance" | "adapter-shared";
+	};
+	models: { catalog: boolean; switchInSession: boolean; optionsSchema?: Record<string, unknown> };
+	reasoning: { supported: boolean; values?: string[] };
+	approvals: { supported: boolean; structuredUserInput: boolean };
+	maintenance: { compaction: boolean; contextUsage: boolean; history: boolean; health: boolean };
+};
+
+export type AgentRuntimeAuthMethodId = "device_code" | "browser_oauth" | "api_key";
+export type AgentRuntimeAuthCompletionMode = "immediate" | "explicit" | "notification";
+export type AgentRuntimeAuthState = "connected" | "disconnected" | "pending" | "partial" | "unsupported" | "failed";
+
+export type AgentRuntimeAuthMethod = {
+	id: AgentRuntimeAuthMethodId;
+	completion: AgentRuntimeAuthCompletionMode;
+};
+
+export type AgentRuntimeAuthFlow = {
+	flowId: string;
+	method: AgentRuntimeAuthMethodId;
+	completion: AgentRuntimeAuthCompletionMode;
+	startedAt: string;
+	expiresAt?: string;
+	verificationUrl?: string;
+	userCode?: string;
+	instructions?: string;
+};
+
+export type AgentRuntimeAuthStatus = {
+	id: string;
+	displayName?: string;
+	state: AgentRuntimeAuthState;
+	configured: boolean;
+	methods: AgentRuntimeAuthMethod[];
+	pending?: AgentRuntimeAuthFlow;
+	message?: string;
+	details?: { accountType?: "api_key" | "oauth" | "chatgpt" | "unknown"; planType?: string };
+};
+
+export type AgentRuntimeAuthTarget = {
+	runtimeInstanceId: string;
+	adapterId: string;
+	displayName: string;
+	enabled: boolean;
+	available: boolean;
+	isDefault: boolean;
+	credentialScope: "runtime-instance" | "adapter-shared";
+	cancelSupported: boolean;
+	logoutSupported: boolean;
+	state: AgentRuntimeAuthState;
+	providers: AgentRuntimeAuthStatus[];
+	diagnostics: Array<{ severity: "info" | "warning" | "error"; code: string; message: string }>;
+};
+
+export type AgentRuntimeAuthCatalog = {
+	defaultRuntimeInstanceId?: string;
+	targets: AgentRuntimeAuthTarget[];
+};
+
+export type AgentRuntimeAuthOperationResult = {
+	runtimeInstanceId: string;
+	providerId: string;
+	state: AgentRuntimeAuthState;
+	configured: boolean;
+	flow?: AgentRuntimeAuthFlow;
+	message?: string;
+	details?: { accountType?: "api_key" | "oauth" | "chatgpt" | "unknown"; planType?: string };
+};
+
+export type AgentRuntimeCatalogEntry = {
+	id: string;
+	adapterId: string;
+	displayName: string;
+	enabled: boolean;
+	available: boolean;
+	transport: "embedded" | "stdio-rpc" | "socket-rpc" | "remote";
+	capabilities: AgentRuntimeCapabilities;
+	configSchema: Record<string, unknown>;
+	protocol?: { name: string; supportedRange?: string };
+	diagnostics: AgentRuntimeDiagnostic[];
+	models?: {
+		runtimeInstanceId: string;
+		models: Array<{
+			id: string;
+			provider?: string;
+			displayName?: string;
+			reasoningOptions?: string[];
+			options?: Record<string, unknown>;
+		}>;
+		diagnostics?: AgentRuntimeDiagnostic[];
+	};
+	auth?: AgentRuntimeAuthStatus[];
+};
+
 export type AgentCatalog = {
-	nativeTools: Array<{ name: string; description?: string; yieldable: boolean; hasDefinition: boolean; pluginId?: string; pluginName?: string }>;
+	agentRuntimes: AgentRuntimeCatalogEntry[];
+	nativeTools: Array<{ name: string; description?: string; yieldable: boolean; hasDefinition: boolean; portable: boolean; pluginId?: string; pluginName?: string }>;
 	skills: Array<{ name: string; path: string; kind: "builtin" | "plugin" | "user"; pluginId?: string; pluginName?: string }>;
 	subagents: Array<{
 		name: string;
@@ -597,6 +789,8 @@ export type CustomAgent = {
 	profileAliases?: string[];
 	displayName: string;
 	description?: string;
+	runtimeInstanceId: string;
+	runtimeOptions: Record<string, unknown>;
 	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];

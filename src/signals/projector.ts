@@ -51,7 +51,19 @@ export const sessionLifecycleSignalProducer: PiboSignalProducer = {
 			const session = data.session;
 			const existing = context.getNode(`session:${session.id}`);
 			const rootPiboSessionId = session.parentId ? context.getSessionRoot(session.parentId) : session.id;
-			if (existing && existing.parentPiboSessionId === session.parentId && existing.rootPiboSessionId === rootPiboSessionId) return [];
+			const binding = session.runtimeBinding;
+			if (
+				existing
+				&& existing.parentPiboSessionId === session.parentId
+				&& existing.rootPiboSessionId === rootPiboSessionId
+				&& existing.metadata?.kind === session.kind
+				&& existing.metadata?.channel === session.channel
+				&& existing.metadata?.profile === session.profile
+				&& existing.metadata?.runtimeInstanceId === binding?.runtimeInstanceId
+				&& existing.metadata?.runtimeAdapterId === binding?.adapterId
+				&& existing.metadata?.runtimeBindingState === binding?.state
+				&& existing.metadata?.nativeSessionId === binding?.nativeSessionId
+			) return [];
 			return [{ type: "upsert_node", node: node({
 				id: `session:${session.id}`,
 				kind: "session",
@@ -59,7 +71,15 @@ export const sessionLifecycleSignalProducer: PiboSignalProducer = {
 				rootPiboSessionId,
 				piboSessionId: session.id,
 				parentPiboSessionId: session.parentId,
-				metadata: { kind: session.kind, channel: session.channel, profile: session.profile },
+				metadata: {
+					kind: session.kind,
+					channel: session.channel,
+					profile: session.profile,
+					runtimeInstanceId: session.runtimeBinding?.runtimeInstanceId,
+					runtimeAdapterId: session.runtimeBinding?.adapterId,
+					runtimeBindingState: session.runtimeBinding?.state,
+					nativeSessionId: session.runtimeBinding?.nativeSessionId,
+				},
 			}, context) }];
 		}
 		if (data.type === "message_accepted") {
