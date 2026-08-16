@@ -172,6 +172,11 @@ export function applySingleEventToNodes(
 				existing.parentId = node.parentId ?? existing.parentId;
 				existing.summary = node.summary ?? existing.summary;
 				existing.output = node.output ?? existing.output;
+			} else if (node.type === "execution.command") {
+				existing.status = node.status;
+				existing.output = node.output ?? existing.output;
+				existing.error = node.error ?? existing.error;
+				existing.completedAt = node.completedAt ?? existing.completedAt;
 			}
 			return;
 		}
