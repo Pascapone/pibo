@@ -134,7 +134,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 9.6 Implement command/file approvals and explicitly enabled structured user-input requests through normalized Pibo status/events/actions/SSE and Chat Web controls; deterministic, full-suite, authenticated-browser-shell, and exact Codex `0.147.0` Pibo2 evidence are recorded in `docs/reports/codex-native-request-lifecycle-validation-2026-08-15.md`.
 - [x] 9.7 Implement native model/reasoning/service-tier/options catalog and context usage; deterministic, full-suite, authenticated-browser, and exact Codex `0.147.0` Pibo2 evidence are recorded in `docs/reports/codex-native-model-options-validation-2026-08-15.md`.
 - [x] 9.8 Deliver Pibo MCP tools, selected external HTTP/stdio MCP, selected skills, explicit context, and native project context without Pi prompt injection; deterministic, full-suite, and exact Codex `0.147.0` Pibo2 evidence are recorded in `docs/reports/codex-native-resource-delivery-validation-2026-08-16.md`.
-- [ ] 9.9 Verify native Codex tools remain unchanged and inspectable.
+- [x] 9.9 Verify native Codex tools remain unchanged and inspectable; stable-protocol limits, runtime-neutral capability/status behavior, deterministic coverage, authenticated Designer evidence, and exact Codex `0.147.0` provider/tool proof are recorded in `docs/reports/codex-native-tool-inventory-validation-2026-08-16.md`.
 - [ ] 9.10 Integrate Pibo-managed subagents and cross-runtime child sessions.
 - [ ] 9.11 Add `codex-native`; assert it does not claim `codex` and that any explicitly registered/persisted `codex` alias remains Pi compatibility.
 - [ ] 9.12 Add deterministic protocol fixtures, malformed/crash/overload/approval/input/abort/missing/history tests, and shared contract suite.

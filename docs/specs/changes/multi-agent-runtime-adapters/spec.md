@@ -225,6 +225,9 @@ An adapter MUST preserve its harness's native base prompt and standard native to
 - Pibo product context is injected only through official adapter-supported channels such as developer instructions, project instructions, skills, or MCP.
 - The adapter reports the delivery mode and fidelity of each context contribution.
 - Pibo does not mutate the user's global harness configuration to start a session.
+- Native-tool inspection and native-tool yielding are separate capabilities. If the stable harness protocol cannot enumerate a complete pre-turn inventory, the adapter declares an evidence-backed degraded inspection mode instead of hard-coding or inventing tools.
+- Runtime status reports selected portable/MCP tools immediately and may add harness-native names only after stable native events prove they are active; the inventory is bounded and never changes tool ownership or execution.
+- Exact native-harness validation compares a no-resource baseline with selected portable resources and proves every baseline native tool remains present with unchanged fixed structure while selected tools are additive.
 
 #### Scenario: Native Codex startup
 
@@ -486,12 +489,12 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-007 Bindings | Persistence | Migration/uniqueness/CAS/missing tests | Local + Pibo2 pass |
 | REQ-008 Frozen runtime selection | Profiles/Persistence | Profile edit and existing-session tests | Local + Pibo2 pass |
 | REQ-009 Agent Designer | Designer | API/UI save/disabled/inspection tests | Local + Pibo2 pass; Codex 9.8 resource capabilities now validate as selectable, with public native profile interaction pending 9.11 |
-| REQ-010 Native behavior | Pi/Codex | Prompt/tool/context inspection | Pi pass; Codex 9.8 exact provider inspection proves the native prompt remains, Pi/MCP-CLI prompt text is absent, and selected context/skills/MCP are additive; standard native-tool inventory regression proof remains 9.9 |
+| REQ-010 Native behavior | Pi/Codex | Prompt/tool/context inspection | Pass: Pi preserves exact native behavior; Codex 9.8 proves native prompt preservation and additive resources, while 9.9 proves every baseline native tool remains present with unchanged fixed structure, selected MCP tools are additive through Codex's native code-mode inventory, and stable-protocol inventory limits are declared rather than hidden |
 | REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Local + exact-candidate Pibo2 pass; see `portable-pibo-tools-mcp-validation-2026-08-15.md` |
 | REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, restart, Context Build, and Pi-scoped CLI tests | Runtime-neutral materialization and Pi pass; Codex 9.8 exact Pibo MCP, external HTTP/stdio MCP, selected skill/context, native project discovery, active renewal, process handoff, restart, and cleanup pass; see `runtime-resource-materialization-validation-2026-08-15.md` and `codex-native-resource-delivery-validation-2026-08-16.md` |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pibo-owned + Pi exact-candidate pass; Codex 9.4 normalized/redacted native provider plus 9.5 exact completed-turn child-process restart/resume and fork-candidate reconciliation pass; public service/Chat Web trace pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Local + exact-candidate Pibo2 pass; 20/20 with skill versus 9/20 baseline |
-| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema, 9.2 typed stdio client, 9.3 process/private-home isolation, 9.4 thread/binding/history, 9.5 stable turn lifecycle/output/failure, 9.6 approval/input, 9.7 model/reasoning/tier/options/context usage, and 9.8 Pibo MCP/external HTTP+stdio MCP/skills/context/credential handoff pass on exact Pibo2 `0.147.0`; native-tool inventory, subagents, profile registration, and public native flows pending |
+| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema, 9.2 typed stdio client, 9.3 process/private-home isolation, 9.4 thread/binding/history, 9.5 stable turn lifecycle/output/failure, 9.6 approval/input, 9.7 model/reasoning/tier/options/context usage, 9.8 portable resources, and 9.9 native-tool preservation/inspection pass on exact Pibo2 `0.147.0`; Pibo-managed subagents, profile registration, and public native flows pending |
 | REQ-016 Compatibility alias | Profiles | Existing profile tests | Local pass; native profile pending |
-| REQ-017 Verification | All | Local and Pibo2 evidence reports | Runtime foundation through Codex 9.8 has focused/full/exact evidence; remaining Codex integrations and final cross-runtime audit pending |
+| REQ-017 Verification | All | Local and Pibo2 evidence reports | Runtime foundation through Codex 9.9 has focused/full/exact evidence; remaining Codex integrations and final cross-runtime audit pending |
 | REQ-018 Delivery | All | Branch/commit/PR/final audit | Implementing |
