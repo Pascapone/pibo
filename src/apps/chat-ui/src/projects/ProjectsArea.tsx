@@ -174,6 +174,11 @@ export function ProjectsArea({
   }, [routePiboSessionId]);
 
   const selectedProject = data?.project;
+  const selectedProjectDisplayName = selectedProject
+    ? selectedProject.metadata?.default === true
+      ? "Project Manager"
+      : selectedProject.name
+    : "Unknown project";
   const selectedPiboSessionId = data?.selectedPiboSessionId ?? null;
   const selectedSessionNode =
     selectedPiboSessionId && data
@@ -467,6 +472,8 @@ export function ProjectsArea({
         bootstrap={traceBootstrap}
         selectedPiboSessionId={selectedPiboSessionId}
         selectedRoomId={null}
+        contextKind="project"
+        contextLabel={selectedProjectDisplayName}
         selectedRoomArchived={Boolean(selectedProject?.archivedAt)}
         selectedSessionProfile={selectedSessionProfile}
         selectedSessionActiveModel={resolveSessionActiveModelLabel(
