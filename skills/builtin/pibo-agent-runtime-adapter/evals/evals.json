@@ -1,0 +1,45 @@
+{
+  "skill_name": "pibo-agent-runtime-adapter",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Using the supplied Orion App Server 2.4.1 fixture, assess whether Orion can be a full Pibo Agent Runtime Adapter and produce a review-ready implementation scaffold. Include the capability matrix, driver/config/adapter/session boundaries, binding and event maps, Agent Designer behavior, portable delivery, history/debug/security, tests, migration, and exact Pibo2 validation. Do not assume methods that are not in the fixture.",
+      "expected_output": "A complete evidence-based full-adapter assessment and scaffold that preserves Orion's native prompt/tools, uses Pibo's existing scoped tool/resource services, leaves undocumented clone/tree/audio/structured-output capabilities disabled, and names concrete tests and Pibo2 evidence.",
+      "files": [
+        "evals/fixtures/orion-full-harness.md"
+      ],
+      "expectations": [
+        "Separates the driver, configured runtime instance, adapter, live session, and Pibo routed session responsibilities.",
+        "Builds a complete capability matrix and does not claim clone, native tree navigation, audio input, or structured output.",
+        "Uses a frozen Pibo runtime binding with stable Orion thread id, CAS binding, exact resume, and visible missing-thread behavior.",
+        "Maps documented Orion turn, assistant, reasoning, tool, usage, plan, diff, approval, user-input, compaction, and history surfaces to Pibo contracts.",
+        "Preserves Orion's base prompt and native tools, leaves preserveNativeTools enabled, and uses additive instruction fields only.",
+        "Uses Pibo's session-scoped MCP bridge for selected Pibo tools and the runtime resource session for external MCP, skills, context, scoped environment, and cleanup.",
+        "Explains Agent Designer support, delivery modes, remaining disabled controls, model/auth/reasoning options, and save/start validation.",
+        "Defines adapter-owned process correlation, bounded messages/backpressure, graceful shutdown, crash handling, abort, and idempotent disposal.",
+        "Implements native history only through inspectHistory and readHistory while keeping Pibo product history primary.",
+        "Names shared contract, deterministic protocol, import-boundary, migration, product integration, full-suite, package, exact Pibo2 restart/resume, browser, failure, and cleanup evidence."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The product manager insists that Relay Agent 0.9.0 must be presented as a full Pibo runtime. Use the supplied fixture to assess and scaffold the truthful integration. Explain exactly what can ship, what Agent Designer must disable or reject, and what evidence would be required to add the missing capabilities later.",
+      "expected_output": "An explicitly partial adapter assessment that refuses invented support, terminal-log history scraping, global config credential writes, and Pi prompt replacement; provides the smallest useful text/final-output adapter; and turns every missing capability into a visible reason plus negative tests.",
+      "files": [
+        "evals/fixtures/relay-partial-harness.md"
+      ],
+      "expectations": [
+        "Explicitly classifies Relay as partial rather than yielding to the request to call it full.",
+        "Rejects debug-log history scraping, writes to user-global Relay config, Pibo credential persistence, and replacing Relay's native prompt with the Pi prompt.",
+        "Declares text input and one final assistant message only, with assistant deltas, reasoning, tools, usage, plans, diffs, images, audio, and structured output unsupported.",
+        "Keeps lifecycle persistence, resume, attach, native session listing, fork, clone, tree, and native history unsupported and does not treat invocationId as a native session id.",
+        "Uses an unbound Pibo binding and explains that independent Relay invocations do not provide native conversation continuity.",
+        "Does not claim a model catalog, model switching, reasoning controls, auth status, approvals, structured input, compaction, or context usage from the arbitrary --model flag.",
+        "Marks Pibo-managed tools, external MCP, skills, context, and Pibo subagents unsupported because no safe delivery surface exists.",
+        "Maps unsupported selections to visible Agent Designer disabled reasons and save/start validation errors instead of silently dropping them.",
+        "Uses Pibo product history for visible turns and refuses to fabricate native history.",
+        "Defines session-owned process termination for abort/disposal, negative capability tests, exact package/Pibo2 checks for the supported path, and specific official surfaces needed before capabilities can be enabled."
+      ]
+    }
+  ]
+}

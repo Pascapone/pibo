@@ -116,13 +116,13 @@ Target branch: `feature/agent-runtime-foundation`
 
 ## 8. Built-in adapter-authoring skill PR
 
-- [ ] 8.1 Create `skills/builtin/pibo-agent-runtime-adapter/SKILL.md`.
-- [ ] 8.2 Add progressive references for interfaces, capabilities, lifecycle/bindings, events, portable delivery, Designer, security, history/debug, and validation.
-- [ ] 8.3 Register the skill in the core plugin and package output.
-- [ ] 8.4 Add concise implementation checklist and extension-point map.
-- [ ] 8.5 Add eval fixtures for a fully capable harness and an explicitly partial harness.
-- [ ] 8.6 Test that the skill refuses to invent unsupported capabilities and names required evidence.
-- [ ] 8.7 Commit, push, and open authoring-skill PR.
+- [x] 8.1 Create `skills/builtin/pibo-agent-runtime-adapter/SKILL.md`.
+- [x] 8.2 Add progressive references for interfaces, capabilities, lifecycle/bindings, events, portable delivery, Designer, security, history/debug, and validation.
+- [x] 8.3 Register the skill in the core plugin and package output.
+- [x] 8.4 Add concise implementation checklist and extension-point map.
+- [x] 8.5 Add realistic Orion full-adapter and Relay explicitly partial-adapter eval fixtures with objective expectations.
+- [x] 8.6 Add deterministic anti-invention tests and run full/partial GPT-5.6 Sol evals: with-skill outputs passed 20/20 assertions versus 9/20 without the skill; benchmark is `docs/reports/runtime-adapter-authoring-skill-eval-2026-08-15.json`.
+- [x] 8.7 Commit, push, and open authoring-skill PR #488.
 
 ## 9. Native Codex adapter PR(s), only after Pi parity
 
