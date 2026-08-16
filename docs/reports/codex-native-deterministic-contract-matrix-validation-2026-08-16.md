@@ -2,7 +2,7 @@
 
 ## Scope
 
-This report closes native Codex tasks 9.12 and 9.13 at shared-contract implementation commit `b5aaf4f8` on the branch stacked above native-profile PR #501.
+This report closes native Codex tasks 9.12 and 9.13 at shared-contract implementation commit `b5aaf4f8`, delivered in PR #502 stacked above native-profile PR #501.
 
 The checkpoint consolidates the deterministic fixture evidence accumulated across Codex checkpoints 9.1–9.11 and strengthens the reusable runtime-adapter contract so a nominally successful adapter cannot pass while unhealthy, terminally failed, out of order, or changing product routing identity.
 
