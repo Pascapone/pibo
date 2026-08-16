@@ -13,6 +13,13 @@ import {
 	type PiboSessionStore,
 	type UpdatePiboSessionInput,
 } from "./store.js";
+import {
+	createLegacyPiRuntimeSessionBinding,
+	nextRuntimeSessionBinding,
+	RuntimeSessionBindingConflictError,
+	type RuntimeSessionBinding,
+	type RuntimeSessionBindingUpdateOptions,
+} from "./runtime-binding.js";
 
 export type PiboRuntimeRecoveryResult = {
 	turnId: string;
@@ -37,7 +44,40 @@ type SessionRow = {
 	metadata_json: string;
 	created_at: string;
 	updated_at: string;
+	binding_pibo_session_id: string | null;
+	binding_runtime_instance_id: string | null;
+	binding_runtime_adapter_id: string | null;
+	binding_native_session_id: string | null;
+	binding_state: string | null;
+	binding_protocol: string | null;
+	binding_protocol_version: string | null;
+	binding_adapter_version: string | null;
+	binding_locator_json: string | null;
+	binding_metadata_json: string | null;
+	binding_revision: number | null;
+	binding_created_at: string | null;
+	binding_updated_at: string | null;
 };
+
+const SESSION_SELECT = `
+	SELECT
+		s.*,
+		b.pibo_session_id AS binding_pibo_session_id,
+		b.runtime_instance_id AS binding_runtime_instance_id,
+		b.runtime_adapter_id AS binding_runtime_adapter_id,
+		b.native_session_id AS binding_native_session_id,
+		b.binding_state AS binding_state,
+		b.protocol AS binding_protocol,
+		b.protocol_version AS binding_protocol_version,
+		b.adapter_version AS binding_adapter_version,
+		b.locator_json AS binding_locator_json,
+		b.metadata_json AS binding_metadata_json,
+		b.revision AS binding_revision,
+		b.created_at AS binding_created_at,
+		b.updated_at AS binding_updated_at
+	FROM sessions s
+	LEFT JOIN session_runtime_bindings b ON b.pibo_session_id = s.id
+`;
 
 export class PiboDataSessionStore implements PiboSessionStore {
 	private readonly dataStore: PiboDataStore;
@@ -56,17 +96,17 @@ export class PiboDataSessionStore implements PiboSessionStore {
 	}
 
 	get(id: string): PiboSession | undefined {
-		const row = this.db.prepare("SELECT * FROM sessions WHERE id = ? AND deleted_at IS NULL").get(id) as SessionRow | undefined;
+		const row = this.db.prepare(`${SESSION_SELECT} WHERE s.id = ? AND s.deleted_at IS NULL`).get(id) as SessionRow | undefined;
 		return row ? sessionFromRow(row) : undefined;
 	}
 
 	list(): PiboSession[] {
-		return (this.db.prepare("SELECT * FROM sessions WHERE deleted_at IS NULL ORDER BY updated_at DESC").all() as SessionRow[]).map(sessionFromRow);
+		return (this.db.prepare(`${SESSION_SELECT} WHERE s.deleted_at IS NULL ORDER BY s.updated_at DESC`).all() as SessionRow[]).map(sessionFromRow);
 	}
 
 	create(input: CreatePiboSessionInput): PiboSession {
 		const session = createPiboSession(input);
-		this.insertSession(session);
+		this.dataStore.transaction(() => this.insertSession(session));
 		const created = this.get(session.id);
 		if (!created) throw new Error(`Failed to create Pibo session "${session.id}"`);
 		return created;
@@ -108,7 +148,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 				last_activity_at = MAX(last_activity_at, ?)
 			WHERE id = ? AND deleted_at IS NULL
 		`).run(
-			updated.piSessionId,
+			updated.piSessionId || null,
 			rootSessionId(updated),
 			updated.parentId ?? null,
 			updated.originId ?? null,
@@ -130,27 +170,88 @@ export class PiboDataSessionStore implements PiboSessionStore {
 	}
 
 	find(input: FindPiboSessionsInput): PiboSession[] {
-		const clauses = ["deleted_at IS NULL"];
+		const clauses = ["s.deleted_at IS NULL"];
 		const values: Array<string | null> = [];
 		if (input.ids !== undefined) {
 			if (input.ids.length === 0) return [];
-			clauses.push(`id IN (${input.ids.map(() => "?").join(", ")})`);
+			clauses.push(`s.id IN (${input.ids.map(() => "?").join(", ")})`);
 			values.push(...input.ids);
 		}
-		if (input.channel !== undefined) { clauses.push("channel = ?"); values.push(input.channel); }
-		if (input.kind !== undefined) { clauses.push("kind = ?"); values.push(input.kind); }
+		if (input.channel !== undefined) { clauses.push("s.channel = ?"); values.push(input.channel); }
+		if (input.kind !== undefined) { clauses.push("s.kind = ?"); values.push(input.kind); }
 		if (input.parentId !== undefined) {
-			if (input.parentId === null) clauses.push("parent_id IS NULL");
-			else { clauses.push("parent_id = ?"); values.push(input.parentId); }
+			if (input.parentId === null) clauses.push("s.parent_id IS NULL");
+			else { clauses.push("s.parent_id = ?"); values.push(input.parentId); }
 		}
-		if (input.originId !== undefined) { clauses.push("origin_id = ?"); values.push(input.originId); }
-		if (input.profile !== undefined) { clauses.push("profile = ?"); values.push(input.profile); }
+		if (input.originId !== undefined) { clauses.push("s.origin_id = ?"); values.push(input.originId); }
+		if (input.profile !== undefined) { clauses.push("s.profile = ?"); values.push(input.profile); }
 		if (input.activeModel !== undefined) {
-			if (input.activeModel === null) clauses.push("active_model_json IS NULL");
-			else clauses.push("active_model_json IS NOT NULL");
+			if (input.activeModel === null) clauses.push("s.active_model_json IS NULL");
+			else clauses.push("s.active_model_json IS NOT NULL");
 		}
-		const rows = this.db.prepare(`SELECT * FROM sessions WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC`).all(...values) as SessionRow[];
+		const rows = this.db.prepare(`${SESSION_SELECT} WHERE ${clauses.join(" AND ")} ORDER BY s.updated_at DESC`).all(...values) as SessionRow[];
 		return rows.map(sessionFromRow).filter((session) => matchesFindInput(session, input));
+	}
+
+	getRuntimeBinding(id: string): RuntimeSessionBinding | undefined {
+		const session = this.get(id);
+		return session?.runtimeBinding ? structuredClone(session.runtimeBinding) : undefined;
+	}
+
+	updateRuntimeBinding(
+		id: string,
+		binding: RuntimeSessionBinding,
+		options: RuntimeSessionBindingUpdateOptions = {},
+	): RuntimeSessionBinding | undefined {
+		return this.dataStore.transaction(() => {
+			const current = this.getRuntimeBinding(id);
+			if (!current) return undefined;
+			const currentRevision = current.revision ?? 1;
+			const updated = nextRuntimeSessionBinding(current, { ...structuredClone(binding), piboSessionId: id }, options);
+			const result = this.db.prepare(`
+				UPDATE session_runtime_bindings SET
+					runtime_instance_id = ?,
+					runtime_adapter_id = ?,
+					native_session_id = ?,
+					binding_state = ?,
+					protocol = ?,
+					protocol_version = ?,
+					adapter_version = ?,
+					locator_json = ?,
+					metadata_json = ?,
+					revision = ?,
+					updated_at = ?
+				WHERE pibo_session_id = ? AND revision = ?
+			`).run(
+				updated.runtimeInstanceId,
+				updated.adapterId,
+				updated.nativeSessionId ?? null,
+				updated.state,
+				updated.protocol ?? null,
+				updated.protocolVersion ?? null,
+				updated.adapterVersion ?? null,
+				updated.locator ? JSON.stringify(updated.locator) : null,
+				JSON.stringify(updated.metadata ?? {}),
+				updated.revision,
+				updated.updatedAt,
+				id,
+				currentRevision,
+			);
+			if (Number(result.changes ?? 0) === 0) {
+				const actual = this.getRuntimeBinding(id);
+				throw new RuntimeSessionBindingConflictError(id, currentRevision, actual?.revision ?? 0);
+			}
+			this.db.prepare(`
+				UPDATE sessions SET pi_session_id = ?, updated_at = ?, last_activity_at = MAX(last_activity_at, ?)
+				WHERE id = ? AND deleted_at IS NULL
+			`).run(
+				updated.adapterId === "pi" ? updated.nativeSessionId ?? null : null,
+				updated.updatedAt,
+				updated.updatedAt,
+				id,
+			);
+			return this.getRuntimeBinding(id);
+		});
 	}
 
 	getTelemetryStore() {
@@ -237,7 +338,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			INSERT INTO sessions (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})
 		`).run(
 			session.id,
-			session.piSessionId,
+			session.piSessionId || null,
 			roomIdFromMetadata(session.metadata),
 			rootSessionId(session),
 			session.parentId ?? null,
@@ -254,6 +355,46 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			session.createdAt,
 			session.updatedAt,
 			session.updatedAt,
+		);
+		this.upsertRuntimeBinding(
+			session.runtimeBinding ?? createLegacyPiRuntimeSessionBinding(session.id, session.piSessionId, session.createdAt),
+		);
+	}
+
+	private upsertRuntimeBinding(binding: RuntimeSessionBinding): void {
+		this.db.prepare(`
+			INSERT INTO session_runtime_bindings (
+				pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
+				binding_state, protocol, protocol_version, adapter_version, locator_json,
+				metadata_json, revision, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(pibo_session_id) DO UPDATE SET
+				runtime_instance_id = excluded.runtime_instance_id,
+				runtime_adapter_id = excluded.runtime_adapter_id,
+				native_session_id = excluded.native_session_id,
+				binding_state = excluded.binding_state,
+				protocol = excluded.protocol,
+				protocol_version = excluded.protocol_version,
+				adapter_version = excluded.adapter_version,
+				locator_json = excluded.locator_json,
+				metadata_json = excluded.metadata_json,
+				revision = excluded.revision,
+				created_at = excluded.created_at,
+				updated_at = excluded.updated_at
+		`).run(
+			binding.piboSessionId,
+			binding.runtimeInstanceId,
+			binding.adapterId,
+			binding.nativeSessionId ?? null,
+			binding.state,
+			binding.protocol ?? null,
+			binding.protocolVersion ?? null,
+			binding.adapterVersion ?? null,
+			binding.locator ? JSON.stringify(binding.locator) : null,
+			JSON.stringify(binding.metadata ?? {}),
+			binding.revision ?? 1,
+			binding.createdAt ?? new Date().toISOString(),
+			binding.updatedAt ?? binding.createdAt ?? new Date().toISOString(),
 		);
 	}
 }
@@ -316,6 +457,7 @@ function sessionFromRow(row: SessionRow): PiboSession {
 	return {
 		id: row.id,
 		piSessionId: row.pi_session_id ?? "",
+		runtimeBinding: runtimeBindingFromRow(row),
 		channel: row.channel,
 		kind: row.kind,
 		profile: row.profile,
@@ -328,6 +470,33 @@ function sessionFromRow(row: SessionRow): PiboSession {
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
+}
+
+function runtimeBindingFromRow(row: SessionRow): RuntimeSessionBinding {
+	if (!row.binding_runtime_instance_id || !row.binding_runtime_adapter_id || !row.binding_state) {
+		return createLegacyPiRuntimeSessionBinding(row.id, row.pi_session_id ?? undefined, row.created_at);
+	}
+	return {
+		piboSessionId: row.binding_pibo_session_id ?? row.id,
+		runtimeInstanceId: row.binding_runtime_instance_id,
+		adapterId: row.binding_runtime_adapter_id,
+		nativeSessionId: row.binding_native_session_id ?? undefined,
+		state: isRuntimeBindingState(row.binding_state) ? row.binding_state : "error",
+		protocol: row.binding_protocol ?? undefined,
+		protocolVersion: row.binding_protocol_version ?? undefined,
+		adapterVersion: row.binding_adapter_version ?? undefined,
+		locator: row.binding_locator_json
+			? parseJsonObject(row.binding_locator_json) as RuntimeSessionBinding["locator"]
+			: undefined,
+		metadata: parseJsonObject(row.binding_metadata_json),
+		revision: row.binding_revision ?? 1,
+		createdAt: row.binding_created_at ?? row.created_at,
+		updatedAt: row.binding_updated_at ?? row.updated_at,
+	};
+}
+
+function isRuntimeBindingState(value: string): value is RuntimeSessionBinding["state"] {
+	return value === "unbound" || value === "bound" || value === "missing" || value === "error";
 }
 
 function parseJsonObject(json: string | null | undefined): PiboJsonObject {

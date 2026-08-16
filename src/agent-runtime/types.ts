@@ -1,6 +1,20 @@
 import type { PiboJsonObject, PiboJsonValue } from "../core/events.js";
 import type { InitialSessionContext, ModelProfile } from "../core/profiles.js";
 import type { PiboSession } from "../sessions/store.js";
+import type {
+	AgentRuntimeAdapterId,
+	AgentRuntimeBindingLocator,
+	AgentRuntimeBindingState,
+	AgentRuntimeInstanceId,
+	RuntimeSessionBinding,
+} from "../sessions/runtime-binding.js";
+export type {
+	AgentRuntimeAdapterId,
+	AgentRuntimeBindingLocator,
+	AgentRuntimeBindingState,
+	AgentRuntimeInstanceId,
+	RuntimeSessionBinding,
+} from "../sessions/runtime-binding.js";
 import type { AgentRuntimeCapabilities, AgentRuntimeSessionCapabilities } from "./capabilities.js";
 import type {
 	AgentRuntimeApprovalRequest,
@@ -9,33 +23,7 @@ import type {
 	AgentRuntimeUserInputRequest,
 } from "./events.js";
 
-export type AgentRuntimeAdapterId = string;
-export type AgentRuntimeInstanceId = string;
-
 export type AgentRuntimeTransport = "embedded" | "stdio-rpc" | "socket-rpc" | "remote";
-
-export type AgentRuntimeBindingState = "unbound" | "bound" | "missing" | "error";
-
-export type AgentRuntimeBindingLocator = {
-	kind: "local-file" | "local-directory" | "uri" | "remote" | "adapter-resolved";
-	value?: string;
-};
-
-export type RuntimeSessionBinding = {
-	piboSessionId: string;
-	runtimeInstanceId: AgentRuntimeInstanceId;
-	adapterId: AgentRuntimeAdapterId;
-	nativeSessionId?: string;
-	state: AgentRuntimeBindingState;
-	protocol?: string;
-	protocolVersion?: string;
-	adapterVersion?: string;
-	locator?: AgentRuntimeBindingLocator;
-	metadata?: PiboJsonObject;
-	revision?: number;
-	createdAt?: string;
-	updatedAt?: string;
-};
 
 export type AgentRuntimeDiagnosticSeverity = "info" | "warning" | "error";
 

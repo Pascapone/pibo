@@ -175,6 +175,7 @@ async function runSessionTraceViewPropsScenario() {
 			expandThinking: false,
 			selectedSessionProfile: "worker-profile",
 			sessionActiveModelBadge: "gpt-test xhigh fast",
+			sessionRuntimeBinding: { piboSessionId: "ps-child", runtimeInstanceId: "pi", adapterId: "pi", nativeSessionId: "pi-child", state: "bound", revision: 2 },
 			selectedSessionStatus: "running",
 			sessionNodes: sessions,
 			sessionLinks: links,
@@ -192,6 +193,8 @@ async function runSessionTraceViewPropsScenario() {
 		assert.equal(props.selectedTrace.id, "ps-root");
 		assert.deepEqual(props.selectedTrace.spans.map((span) => span.name), ["thinking", "fast_mode"]);
 		assert.equal(props.sessionActiveModel, "gpt-test xhigh fast");
+		assert.equal(props.sessionRuntimeBinding.runtimeInstanceId, "pi");
+		assert.equal(props.sessionRuntimeBinding.state, "bound");
 		assert.equal(props.sessionBreadcrumbs, links.sessionBreadcrumbs);
 		assert.equal(props.originSession, links.originSession);
 		assert.equal(props.derivedSessions, links.derivedSessions);

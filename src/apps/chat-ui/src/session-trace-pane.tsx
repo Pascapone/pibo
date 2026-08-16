@@ -425,6 +425,7 @@ export function SessionTracePane({
     expandThinking,
     selectedSessionProfile,
     sessionActiveModelBadge,
+    sessionRuntimeBinding: bootstrap.session?.id === selectedBackendPiboSessionId ? bootstrap.session.runtimeBinding : undefined,
     selectedSessionStatus,
     selectedSessionSignal,
     signals,

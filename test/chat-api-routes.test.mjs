@@ -13,6 +13,7 @@ async function runChatApiRoutesScenario() {
 		assert.deepEqual(sessionActionResource("/api/chat/sessions/ps_1/read"), { piboSessionId: "ps_1", action: "read" });
 		assert.deepEqual(sessionActionResource("/api/chat/sessions/ps%201/kill"), { piboSessionId: "ps 1", action: "kill" });
 		assert.deepEqual(sessionActionResource("/api/chat/sessions/ps_1/kill-all"), { piboSessionId: "ps_1", action: "kill-all" });
+		assert.deepEqual(sessionActionResource("/api/chat/sessions/ps_1/runtime-binding"), { piboSessionId: "ps_1", action: "runtime-binding" });
 		assert.equal(sessionActionResource("/api/chat/sessions/ps_1"), undefined);
 		assert.equal(sessionActionResource("/api/chat/sessions/ps_1/rename"), undefined);
 		assert.equal(sessionResourceId("/api/chat/sessions/ps_1/read"), undefined);

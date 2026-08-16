@@ -13,6 +13,10 @@ export type ChatWebSessionBootstrapIndexResult = {
 export type ChatWebSessionIndexItem = {
 	piboSessionId: string;
 	piSessionId: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
+	nativeSessionId?: string;
 	parentId?: string;
 	profile: string;
 	channel: string;

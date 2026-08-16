@@ -207,6 +207,7 @@ async function createGatewaySessionStore(options: GatewayServerOptions): Promise
 
 export class PiboGatewayServer {
 	private readonly pluginRegistry: PiboPluginRegistry;
+	private readonly compatibilityRuntimeRegistry?: PiboPluginRegistry;
 	private readonly runtimeInstanceId: string;
 	private sessionStore?: PiboSessionStore;
 	private ownsSessionStore = false;
@@ -221,6 +222,7 @@ export class PiboGatewayServer {
 
 	constructor(private readonly options: GatewayServerOptions = {}) {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
 		this.runtimeInstanceId = options.runtimeInstanceId ?? `gateway:${process.pid}:${randomUUID()}`;
 	}
 
@@ -419,8 +421,21 @@ export class PiboGatewayServer {
 			createSession: (input) => {
 				const profile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, input.profile);
 				const profileContext = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, profile);
+				const runtimeAdapter = this.pluginRegistry.getAgentRuntimeAdapter(profileContext.runtimeInstanceId)
+					?? this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(profileContext.runtimeInstanceId);
+				if (!runtimeAdapter) throw new Error(`Unknown agent runtime instance "${profileContext.runtimeInstanceId}".`);
 				const activeModel = input.activeModel ?? selectRequestedModelProfile(profileContext, loadPiboModelDefaults());
-				return this.requireSessionStore().create({ ...input, profile, activeModel });
+				return this.requireSessionStore().create({
+					...input,
+					profile,
+					activeModel,
+					runtimeBinding: input.runtimeBinding ?? {
+						runtimeInstanceId: profileContext.runtimeInstanceId,
+						adapterId: runtimeAdapter.descriptor.id,
+						state: "unbound",
+						protocol: runtimeAdapter.descriptor.protocol?.name,
+					},
+				});
 			},
 			updateSession: (id, input) => this.requireSessionStore().update(id, input),
 			setLiveSessionActiveModel: (id, model) => this.requireRouter().setLiveSessionActiveModel(id, model),
@@ -428,6 +443,8 @@ export class PiboGatewayServer {
 			deleteSession: (id) => this.requireSessionStore().delete?.(id) ?? false,
 			findSessions: (input) => this.requireSessionStore().find(input),
 			listSessions: () => this.requireSessionStore().list?.() ?? [],
+			getSessionRuntimeBinding: (piboSessionId) => this.requireRouter().getSessionRuntimeBinding(piboSessionId),
+			rebindSessionRuntime: (piboSessionId, input) => this.requireRouter().rebindSessionRuntime(piboSessionId, input),
 			getSessionRuntimeStatus: (piboSessionId) => this.requireRouter().getSessionRuntimeStatus(piboSessionId),
 			getSessionStatusSnapshot: (piboSessionId) => this.requireRouter().getSessionStatusSnapshot(piboSessionId),
 			listSessionRuntimeStatuses: () => this.requireRouter().listSessionRuntimeStatuses(),

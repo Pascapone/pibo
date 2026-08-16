@@ -1610,6 +1610,11 @@ test("pibo debug session inspects a Chat URL without event payload dumps", async
 		assert.equal(parsed.input.roomId, "room_one");
 		assert.equal(parsed.input.piboSessionId, "ps_parent");
 		assert.equal(parsed.session.profile, "base");
+		assert.equal(parsed.runtimeBinding.runtime_instance_id, "pi");
+		assert.equal(parsed.runtimeBinding.runtime_adapter_id, "pi");
+		assert.equal(parsed.runtimeBinding.native_session_id, "11111111-1111-4111-8111-111111111111");
+		assert.equal(parsed.runtimeBinding.binding_state, "unbound");
+		assert.deepEqual(parsed.runtimeBinding.metadata_keys, []);
 		assert.equal(parsed.room.matches, true);
 		assert.equal(parsed.children[0].id, "ps_child");
 		assert.equal(parsed.children[0].subagentName, "researcher");

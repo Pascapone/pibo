@@ -35,12 +35,23 @@ export class ChatSessionQueryService {
 	}
 
 	listSessions(): ChatWebSessionIndexItem[] {
-		const rows = this.store.db.prepare("SELECT * FROM sessions WHERE deleted_at IS NULL ORDER BY last_activity_at DESC, created_at DESC").all() as SessionRow[];
+		const rows = this.store.db.prepare(`
+			SELECT s.*, b.runtime_instance_id, b.runtime_adapter_id, b.native_session_id, b.binding_state
+			FROM sessions s
+			LEFT JOIN session_runtime_bindings b ON b.pibo_session_id = s.id
+			WHERE s.deleted_at IS NULL
+			ORDER BY s.last_activity_at DESC, s.created_at DESC
+		`).all() as SessionRow[];
 		return rows.map(sessionFromRow);
 	}
 
 	getSession(piboSessionId: string): ChatWebSessionIndexItem | undefined {
-		const row = this.store.db.prepare("SELECT * FROM sessions WHERE id = ? AND deleted_at IS NULL").get(piboSessionId) as SessionRow | undefined;
+		const row = this.store.db.prepare(`
+			SELECT s.*, b.runtime_instance_id, b.runtime_adapter_id, b.native_session_id, b.binding_state
+			FROM sessions s
+			LEFT JOIN session_runtime_bindings b ON b.pibo_session_id = s.id
+			WHERE s.id = ? AND s.deleted_at IS NULL
+		`).get(piboSessionId) as SessionRow | undefined;
 		return row ? sessionFromRow(row) : undefined;
 	}
 
@@ -85,15 +96,20 @@ export class ChatSessionQueryService {
 				s.created_at,
 				s.updated_at,
 				s.last_activity_at,
+				b.runtime_instance_id,
+				b.runtime_adapter_id,
+				b.native_session_id,
+				b.binding_state,
 				n.status AS navigation_status,
 				n.title AS navigation_title,
 				n.sort_key AS navigation_sort_key,
 				n.updated_at AS navigation_updated_at
 			FROM sessions s
+			LEFT JOIN session_runtime_bindings b ON b.pibo_session_id = s.id
 			LEFT JOIN session_navigation n ON n.session_id = s.id
 			WHERE s.id = ? AND s.deleted_at IS NULL
 		`).get(session.id) as {
-			pi_session_id: string;
+			pi_session_id: string | null;
 			room_id: string | null;
 			root_session_id: string | null;
 			parent_id: string | null;
@@ -109,13 +125,22 @@ export class ChatSessionQueryService {
 			created_at: string;
 			updated_at: string;
 			last_activity_at: string;
+			runtime_instance_id: string | null;
+			runtime_adapter_id: string | null;
+			native_session_id: string | null;
+			binding_state: string | null;
 			navigation_status: string | null;
 			navigation_title: string | null;
 			navigation_sort_key: string | null;
 			navigation_updated_at: string | null;
 		} | undefined;
 		if (!row) return false;
-		return row.pi_session_id === session.piSessionId
+		const binding = session.runtimeBinding;
+		return row.pi_session_id === (session.piSessionId || null)
+			&& row.runtime_instance_id === (binding?.runtimeInstanceId ?? "pi")
+			&& row.runtime_adapter_id === (binding?.adapterId ?? "pi")
+			&& row.native_session_id === (binding?.nativeSessionId ?? (session.piSessionId || null))
+			&& row.binding_state === (binding?.state ?? (session.piSessionId ? "bound" : "unbound"))
 			&& row.room_id === roomId
 			&& row.root_session_id === rootSessionId(session)
 			&& row.parent_id === (session.parentId ?? null)

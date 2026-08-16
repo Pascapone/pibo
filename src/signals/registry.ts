@@ -198,6 +198,10 @@ function runSummaryEqual(a: RunSignalSummary, b: RunSignalSummary): boolean {
 		&& a.updatedAt === b.updatedAt;
 }
 
+function isRuntimeBindingState(value: unknown): value is NonNullable<PiboSessionSignalSnapshot["runtimeBindingState"]> {
+	return value === "unbound" || value === "bound" || value === "missing" || value === "error";
+}
+
 function childSummaryEqual(a: ChildSessionSignalSummary, b: ChildSessionSignalSummary): boolean {
 	return a.nodeId === b.nodeId
 		&& a.piboSessionId === b.piboSessionId
@@ -211,6 +215,10 @@ function sessionSnapshotSemanticallyEqual(a: PiboSessionSignalSnapshot | undefin
 	if (!a) return false;
 	return a.piboSessionId === b.piboSessionId
 		&& a.piSessionId === b.piSessionId
+		&& a.runtimeInstanceId === b.runtimeInstanceId
+		&& a.runtimeAdapterId === b.runtimeAdapterId
+		&& a.runtimeBindingState === b.runtimeBindingState
+		&& a.nativeSessionId === b.nativeSessionId
 		&& a.parentPiboSessionId === b.parentPiboSessionId
 		&& a.rootPiboSessionId === b.rootPiboSessionId
 		&& a.localStatus === b.localStatus
@@ -543,6 +551,10 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		const hasActiveDescendant = childSnapshots.some((snapshot) => snapshot.isTreeActive);
 		return {
 			piboSessionId,
+			runtimeInstanceId: typeof sessionNode?.metadata?.runtimeInstanceId === "string" ? sessionNode.metadata.runtimeInstanceId : undefined,
+			runtimeAdapterId: typeof sessionNode?.metadata?.runtimeAdapterId === "string" ? sessionNode.metadata.runtimeAdapterId : undefined,
+			runtimeBindingState: isRuntimeBindingState(sessionNode?.metadata?.runtimeBindingState) ? sessionNode.metadata.runtimeBindingState : undefined,
+			nativeSessionId: typeof sessionNode?.metadata?.nativeSessionId === "string" ? sessionNode.metadata.nativeSessionId : undefined,
 			parentPiboSessionId: this.parentSessionIdByChildId.get(piboSessionId),
 			rootPiboSessionId,
 			version,

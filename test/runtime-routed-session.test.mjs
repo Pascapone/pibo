@@ -53,7 +53,7 @@ function createFakeRuntimeFixture() {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
 		id: "ps_router_fake",
-		piSessionId: "99999999-9999-4999-8999-999999999999",
+		runtimeBinding: { runtimeInstanceId: "router-fake", adapterId: "router-fake", state: "unbound" },
 		channel: "test",
 		kind: "chat",
 		profile: "router-fake-profile",

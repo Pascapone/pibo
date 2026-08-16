@@ -29,6 +29,7 @@ import type {
 	AgentRuntimeNativeSessionSnapshot,
 	AgentRuntimeSession,
 	AgentRuntimeSessionOperationResult,
+	RuntimeSessionBinding,
 } from "./types.js";
 
 const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
@@ -252,11 +253,22 @@ export class RuntimeRoutedSession {
 
 	getStatus(): PiboSessionStatus {
 		const status = this.runtimeSession.getStatus();
+		const binding = this.runtimeSession.getBinding();
 		const thinkingLevel = status.reasoning?.value && isPiboThinkingLevel(status.reasoning.value)
 			? status.reasoning.value
 			: undefined;
 		return {
 			piboSessionId: this.piboSessionId,
+			runtimeBinding: {
+				runtimeInstanceId: binding.runtimeInstanceId,
+				adapterId: binding.adapterId,
+				nativeSessionId: binding.nativeSessionId,
+				state: binding.state,
+				protocol: binding.protocol,
+				protocolVersion: binding.protocolVersion,
+				adapterVersion: binding.adapterVersion,
+				revision: binding.revision,
+			},
 			queuedMessages: this.queue.length,
 			processing: this.disposed ? false : this.processing,
 			streaming: this.disposed ? false : status.streaming,
@@ -292,6 +304,10 @@ export class RuntimeRoutedSession {
 
 	getActiveModel(): ModelProfile | undefined {
 		return this.runtimeSession.getStatus().activeModel;
+	}
+
+	getRuntimeBinding(): RuntimeSessionBinding {
+		return this.runtimeSession.getBinding();
 	}
 
 	async getProviderUsage(): Promise<PiboSessionStatus["providerUsage"]> {

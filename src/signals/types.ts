@@ -114,6 +114,10 @@ export type PiboActiveTelemetrySignalHint = {
 export type PiboSessionSignalSnapshot = {
 	piboSessionId: string;
 	piSessionId?: string;
+	runtimeInstanceId?: string;
+	runtimeAdapterId?: string;
+	runtimeBindingState?: "unbound" | "bound" | "missing" | "error";
+	nativeSessionId?: string;
 	parentPiboSessionId?: string;
 	rootPiboSessionId: string;
 	version: number;

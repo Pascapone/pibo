@@ -342,7 +342,7 @@ CREATE TABLE session_runtime_bindings (
 );
 
 CREATE UNIQUE INDEX session_runtime_bindings_native_unique
-ON session_runtime_bindings(runtime_instance_id, native_session_id)
+ON session_runtime_bindings(runtime_adapter_id, native_session_id)
 WHERE native_session_id IS NOT NULL;
 ```
 
@@ -352,7 +352,7 @@ Binding state transitions:
 
 ```text
 (no row legacy) -> synthesized/backfilled pi bound
-new session -> unbound
+new session -> unbound (a Pi compatibility row may already reserve its native id)
 unbound -> bound       native session created and CAS persisted
 bound -> bound         resume/reopen; metadata/version may update
 bound -> missing       adapter proves native session absent
@@ -360,7 +360,7 @@ bound -> error         binding exists but cannot currently open
 missing/error -> bound only through explicit repair/attach/rebind action
 ```
 
-The store uses revision-based compare-and-set for `unbound -> bound` so two gateways cannot create competing native sessions. Credentials never enter the binding.
+The store uses revision-based compare-and-set for `unbound -> bound` so two gateways cannot create competing native sessions. `bound` and `missing` require a native session id. Native-session uniqueness is adapter-scoped, including across multiple configured instances of the same adapter. Credentials never enter the binding.
 
 Compatibility:
 

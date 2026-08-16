@@ -18,9 +18,9 @@ type StoreInventory = {
 };
 
 const INVENTORY_STORES = [
-	{ name: "v2", file: "pibo.sqlite", tables: ["sessions", "rooms", "chat_messages", "event_log", "observations", "payloads", "session_navigation"] },
-	{ name: "v2-shadow", file: "pibo-chat-v2.sqlite", tables: ["sessions", "rooms", "chat_messages", "event_log", "observations", "payloads", "session_navigation"] },
-	{ name: "legacy-sessions", file: "pibo-sessions.sqlite", tables: ["pibo_sessions"] },
+	{ name: "v2", file: "pibo.sqlite", tables: ["sessions", "session_runtime_bindings", "rooms", "chat_messages", "event_log", "observations", "payloads", "session_navigation"] },
+	{ name: "v2-shadow", file: "pibo-chat-v2.sqlite", tables: ["sessions", "session_runtime_bindings", "rooms", "chat_messages", "event_log", "observations", "payloads", "session_navigation"] },
+	{ name: "legacy-sessions", file: "pibo-sessions.sqlite", tables: ["pibo_sessions", "pibo_session_runtime_bindings"] },
 	{ name: "legacy-chat", file: "web-chat.sqlite", tables: ["chat_events", "web_chat_events", "web_chat_sessions", "pibo_rooms", "chat_session_reads"] },
 	{ name: "reliability", file: "pibo-events.sqlite", tables: ["pibo_event_stream", "pibo_jobs", "pibo_runs"] },
 	{ name: "auth", file: "auth.sqlite", tables: [] },
@@ -189,6 +189,23 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 			} else {
 				report.skipped++;
 			}
+			target.db.prepare(`
+				INSERT INTO session_runtime_bindings (
+					pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
+					binding_state, protocol, metadata_json, revision, created_at, updated_at
+				) VALUES (?, 'pi', 'pi', ?, 'bound', 'pi-sdk', '{"migrationSource":"legacy-session-import","nativePresenceExpected":false}', 1, ?, ?)
+				ON CONFLICT(pibo_session_id) DO UPDATE SET
+					native_session_id = excluded.native_session_id,
+					binding_state = 'bound',
+					protocol = COALESCE(session_runtime_bindings.protocol, excluded.protocol),
+					revision = session_runtime_bindings.revision + 1,
+					updated_at = excluded.updated_at
+				WHERE session_runtime_bindings.runtime_adapter_id = 'pi'
+					AND (
+						session_runtime_bindings.native_session_id IS NOT excluded.native_session_id
+						OR session_runtime_bindings.binding_state <> 'bound'
+					)
+			`).run(row.id, row.pi_session_id, row.created_at, row.updated_at);
 		}
 	} finally {
 		source.close();

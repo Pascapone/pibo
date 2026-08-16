@@ -32,6 +32,10 @@ export type SessionRow = {
 	updated_at: string;
 	last_activity_at: string;
 	status: string;
+	runtime_instance_id?: string | null;
+	runtime_adapter_id?: string | null;
+	native_session_id?: string | null;
+	binding_state?: string | null;
 };
 
 export type RoomRow = {
@@ -108,7 +112,7 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject): P
 	return { ...base, type: row.type } as PiboOutputEvent;
 }
 
-export function sessionFromRow(row: SessionRow): ChatWebSessionIndexItem { return { piboSessionId: row.id, piSessionId: row.pi_session_id ?? row.id, parentId: row.parent_id ?? undefined, profile: row.profile, channel: row.channel, kind: row.kind, createdAt: row.created_at, updatedAt: row.updated_at, lastActivityAt: row.last_activity_at, status: row.status === "running" || row.status === "error" ? row.status : "idle" }; }
+export function sessionFromRow(row: SessionRow): ChatWebSessionIndexItem { return { piboSessionId: row.id, piSessionId: row.pi_session_id ?? "", runtimeInstanceId: row.runtime_instance_id ?? undefined, runtimeAdapterId: row.runtime_adapter_id ?? undefined, runtimeBindingState: isRuntimeBindingState(row.binding_state) ? row.binding_state : undefined, nativeSessionId: row.native_session_id ?? undefined, parentId: row.parent_id ?? undefined, profile: row.profile, channel: row.channel, kind: row.kind, createdAt: row.created_at, updatedAt: row.updated_at, lastActivityAt: row.last_activity_at, status: row.status === "running" || row.status === "error" ? row.status : "idle" }; }
 export function roomFromRow(row: RoomRow): PiboRoom { const metadata = parseJsonObject(row.metadata_json); return { id: row.id, name: row.name, topic: row.topic ?? undefined, workspace: row.workspace ?? roomWorkspaceFromMetadata(metadata), type: row.type, parentRoomId: row.parent_room_id ?? undefined, createdAt: row.created_at, updatedAt: row.updated_at, retentionPolicyId: row.retention_policy_id ?? undefined, metadata }; }
 export function parseJsonObject(value: string): PiboJsonObject { try { const parsed = JSON.parse(value) as unknown; return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as PiboJsonObject : {}; } catch { return {}; } }
 export function stringAttribute(attributes: PiboJsonObject, key: string): string | undefined { const value = attributes[key]; return typeof value === "string" ? value : undefined; }
@@ -119,5 +123,6 @@ export function nextSessionSequence(store: PiboDataStore, sessionId: string): nu
 export function compactObject(value: Record<string, unknown>): PiboJsonObject { return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as PiboJsonObject; }
 export function previewForPayload(payload: unknown): string | undefined { if (typeof payload === "object" && payload && "text" in payload && typeof payload.text === "string") return payload.text.slice(0, 512); if (typeof payload === "string") return payload.slice(0, 512); return undefined; }
 export function statusFromOutputEvent(event: PiboOutputEvent): ChatWebSessionIndexItem["status"] { if (event.type === "session_error") return "error"; if (event.type === "message_finished") return "idle"; return "running"; }
+function isRuntimeBindingState(value: string | null | undefined): value is NonNullable<ChatWebSessionIndexItem["runtimeBindingState"]> { return value === "unbound" || value === "bound" || value === "missing" || value === "error"; }
 function actorTypeValue(value: string | null): "user" | "assistant" | "system" | "agent" | undefined { return value === "user" || value === "assistant" || value === "system" || value === "agent" ? value : undefined; }
 function retentionClassValue(value: string): "live_delta" | "trace_event" | "chat_message" | "audit_event" { return value === "live_delta" || value === "chat_message" || value === "audit_event" ? value : "trace_event"; }

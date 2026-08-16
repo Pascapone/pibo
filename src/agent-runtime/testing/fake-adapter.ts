@@ -19,6 +19,7 @@ export type FakeAgentRuntimeScript = {
 	failWith?: string;
 	waitForAbort?: boolean;
 	missingNativeSession?: boolean;
+	bindingPatchAfterPrompt?: Partial<RuntimeSessionBinding>;
 };
 
 export type FakeAgentRuntimeConfig = PiboJsonObject & {
@@ -98,6 +99,15 @@ export class FakeAgentRuntimeSession implements AgentRuntimeSession {
 			if (script.failWith) {
 				this.emit({ type: "turn_failed", turnId, message: script.failWith });
 				throw new Error(script.failWith);
+			}
+			if (script.bindingPatchAfterPrompt) {
+				this.binding = {
+					...this.binding,
+					...structuredClone(script.bindingPatchAfterPrompt),
+					piboSessionId: this.binding.piboSessionId,
+					runtimeInstanceId: this.binding.runtimeInstanceId,
+					adapterId: this.binding.adapterId,
+				};
 			}
 			this.emit({ type: "turn_completed", turnId, status: "completed" });
 		} finally {

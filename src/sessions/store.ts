@@ -1,10 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { PiboJsonObject } from "../core/events.js";
 import type { ModelProfile } from "../core/profiles.js";
+import {
+	createInitialRuntimeSessionBinding,
+	createLegacyPiRuntimeSessionBinding,
+	nextRuntimeSessionBinding,
+	type CreateRuntimeSessionBindingInput,
+	type RuntimeSessionBinding,
+	type RuntimeSessionBindingUpdateOptions,
+} from "./runtime-binding.js";
 
 export type PiboSession = {
 	id: string;
+	/** @deprecated Use runtimeBinding.nativeSessionId for runtime routing. Empty for non-Pi sessions. */
 	piSessionId: string;
+	runtimeBinding?: RuntimeSessionBinding;
 	channel: string;
 	kind: string;
 	profile: string;
@@ -26,6 +36,7 @@ export type CreatePiboSessionInput = {
 	parentId?: string;
 	originId?: string;
 	piSessionId?: string;
+	runtimeBinding?: CreateRuntimeSessionBindingInput;
 	workspace?: string;
 	title?: string;
 	metadata?: PiboJsonObject;
@@ -61,6 +72,12 @@ export type PiboSessionStore = {
 	update(id: string, input: UpdatePiboSessionInput): PiboSession | undefined;
 	delete?(id: string): boolean;
 	find(input: FindPiboSessionsInput): PiboSession[];
+	getRuntimeBinding?(id: string): RuntimeSessionBinding | undefined;
+	updateRuntimeBinding?(
+		id: string,
+		binding: RuntimeSessionBinding,
+		options?: RuntimeSessionBindingUpdateOptions,
+	): RuntimeSessionBinding | undefined;
 	close?(): void;
 };
 
@@ -73,9 +90,30 @@ export function createPiSessionId(): string {
 }
 
 export function createPiboSession(input: CreatePiboSessionInput, now = new Date().toISOString()): PiboSession {
+	const id = input.id ?? createPiboSessionId();
+	const requestedBinding = input.runtimeBinding ?? {
+		runtimeInstanceId: "pi",
+		adapterId: "pi",
+		state: "unbound" as const,
+		protocol: "pi-sdk",
+	};
+	let piSessionId = input.piSessionId?.trim() ?? "";
+	let nativeSessionId = requestedBinding.nativeSessionId?.trim() || undefined;
+	if (requestedBinding.adapterId === "pi") {
+		if (piSessionId && nativeSessionId && piSessionId !== nativeSessionId) {
+			throw new Error(`Pi session "${piSessionId}" does not match runtime binding native session "${nativeSessionId}"`);
+		}
+		nativeSessionId = nativeSessionId ?? (piSessionId || createPiSessionId());
+		piSessionId = nativeSessionId;
+	}
+	const runtimeBinding = createInitialRuntimeSessionBinding(id, {
+		...requestedBinding,
+		nativeSessionId,
+	}, now);
 	return {
-		id: input.id ?? createPiboSessionId(),
-		piSessionId: input.piSessionId ?? createPiSessionId(),
+		id,
+		piSessionId,
+		runtimeBinding,
 		channel: input.channel,
 		kind: input.kind,
 		profile: input.profile,
@@ -93,6 +131,7 @@ export function createPiboSession(input: CreatePiboSessionInput, now = new Date(
 export class InMemoryPiboSessionStore implements PiboSessionStore {
 	private readonly byId = new Map<string, PiboSession>();
 	private readonly byPiSessionId = new Map<string, PiboSession>();
+	private readonly byNativeSession = new Map<string, PiboSession>();
 
 	get(id: string): PiboSession | undefined {
 		return this.byId.get(id);
@@ -107,9 +146,10 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		if (this.byId.has(session.id)) {
 			throw new Error(`Pibo session "${session.id}" already exists`);
 		}
-		if (this.byPiSessionId.has(session.piSessionId)) {
+		if (session.piSessionId && this.byPiSessionId.has(session.piSessionId)) {
 			throw new Error(`Pi session "${session.piSessionId}" is already attached to a Pibo session`);
 		}
+		this.assertNativeSessionAvailable(session.runtimeBinding, session.id);
 		this.set(session);
 		return session;
 	}
@@ -124,9 +164,18 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 			}
 		}
 
+		let runtimeBinding = existing.runtimeBinding ?? createLegacyPiRuntimeSessionBinding(existing.id, existing.piSessionId, existing.createdAt);
+		if (input.piSessionId !== undefined && input.piSessionId !== existing.piSessionId && runtimeBinding.adapterId === "pi") {
+			runtimeBinding = nextRuntimeSessionBinding(runtimeBinding, {
+				...runtimeBinding,
+				nativeSessionId: input.piSessionId,
+				state: input.piSessionId ? "bound" : "unbound",
+			}, { mode: "rebind", expectedRevision: runtimeBinding.revision });
+		}
 		const updated: PiboSession = {
 			...existing,
 			piSessionId: input.piSessionId ?? existing.piSessionId,
+			runtimeBinding,
 			profile: input.profile ?? existing.profile,
 			parentId: input.parentId === null ? undefined : input.parentId ?? existing.parentId,
 			originId: input.originId === null ? undefined : input.originId ?? existing.originId,
@@ -136,15 +185,44 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 			activeModel: input.activeModel === null ? undefined : input.activeModel ? { ...input.activeModel } : existing.activeModel,
 			updatedAt: new Date().toISOString(),
 		};
-		this.set(updated, existing.piSessionId);
+		this.assertNativeSessionAvailable(updated.runtimeBinding, id);
+		this.set(updated, existing.piSessionId, existing.runtimeBinding);
 		return updated;
+	}
+
+	getRuntimeBinding(id: string): RuntimeSessionBinding | undefined {
+		const session = this.byId.get(id);
+		if (!session) return undefined;
+		return structuredClone(session.runtimeBinding ?? createLegacyPiRuntimeSessionBinding(session.id, session.piSessionId, session.createdAt));
+	}
+
+	updateRuntimeBinding(
+		id: string,
+		binding: RuntimeSessionBinding,
+		options: RuntimeSessionBindingUpdateOptions = {},
+	): RuntimeSessionBinding | undefined {
+		const existing = this.byId.get(id);
+		if (!existing) return undefined;
+		const current = existing.runtimeBinding ?? createLegacyPiRuntimeSessionBinding(existing.id, existing.piSessionId, existing.createdAt);
+		const updatedBinding = nextRuntimeSessionBinding(current, { ...structuredClone(binding), piboSessionId: id }, options);
+		this.assertNativeSessionAvailable(updatedBinding, id);
+		const updatedSession: PiboSession = {
+			...existing,
+			piSessionId: updatedBinding.adapterId === "pi" ? updatedBinding.nativeSessionId ?? "" : "",
+			runtimeBinding: updatedBinding,
+			updatedAt: updatedBinding.updatedAt,
+		};
+		this.set(updatedSession, existing.piSessionId, current);
+		return structuredClone(updatedBinding);
 	}
 
 	delete(id: string): boolean {
 		const existing = this.byId.get(id);
 		if (!existing) return false;
 		this.byId.delete(id);
-		this.byPiSessionId.delete(existing.piSessionId);
+		if (existing.piSessionId) this.byPiSessionId.delete(existing.piSessionId);
+		const nativeKey = runtimeBindingNativeKey(existing.runtimeBinding);
+		if (nativeKey) this.byNativeSession.delete(nativeKey);
 		return true;
 	}
 
@@ -152,12 +230,31 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		return this.sort([...this.byId.values()].filter((session) => matchesFindInput(session, input)));
 	}
 
-	private set(session: PiboSession, previousPiSessionId?: string): void {
+	private set(
+		session: PiboSession,
+		previousPiSessionId?: string,
+		previousBinding?: RuntimeSessionBinding,
+	): void {
 		this.byId.set(session.id, session);
 		if (previousPiSessionId && previousPiSessionId !== session.piSessionId) {
 			this.byPiSessionId.delete(previousPiSessionId);
 		}
-		this.byPiSessionId.set(session.piSessionId, session);
+		if (session.piSessionId) this.byPiSessionId.set(session.piSessionId, session);
+		const previousNativeKey = runtimeBindingNativeKey(previousBinding);
+		const nativeKey = runtimeBindingNativeKey(session.runtimeBinding);
+		if (previousNativeKey && previousNativeKey !== nativeKey) this.byNativeSession.delete(previousNativeKey);
+		if (nativeKey) this.byNativeSession.set(nativeKey, session);
+	}
+
+	private assertNativeSessionAvailable(binding: RuntimeSessionBinding | undefined, piboSessionId: string): void {
+		const key = runtimeBindingNativeKey(binding);
+		if (!key) return;
+		const attached = this.byNativeSession.get(key);
+		if (attached && attached.id !== piboSessionId) {
+			throw new Error(
+				`Native session "${binding?.nativeSessionId}" for adapter "${binding?.adapterId}" is already attached to Pibo session "${attached.id}"`,
+			);
+		}
 	}
 
 	private sort(sessions: PiboSession[]): PiboSession[] {
@@ -187,6 +284,10 @@ export function matchesFindInput(session: PiboSession, input: FindPiboSessionsIn
 	}
 	if (input.metadata && !metadataMatches(session.metadata, input.metadata)) return false;
 	return true;
+}
+
+function runtimeBindingNativeKey(binding: RuntimeSessionBinding | undefined): string | undefined {
+	return binding?.nativeSessionId ? `${binding.adapterId}\0${binding.nativeSessionId}` : undefined;
 }
 
 function metadataMatches(metadata: PiboJsonObject | undefined, expected: PiboJsonObject): boolean {
