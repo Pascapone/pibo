@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import readline from "node:readline";
 
@@ -10,7 +10,9 @@ if (args[0] === "--version") {
 	const statePath = join(process.env.CODEX_HOME, "fake-thread-state.json");
 	const loadedThreads = {};
 	const activeTurns = {};
+	const threadConfigs = {};
 	const pendingServerRequests = new Map();
+	let skillRoots = [];
 	const serverResponseSummaries = [];
 	let nextServerRequest = 1;
 	const load = () => existsSync(statePath)
@@ -23,6 +25,8 @@ if (args[0] === "--version") {
 			threadSettings: {},
 			threadTokenUsage: {},
 			turnRequests: [],
+			resourceRequests: [],
+			skillRequests: [],
 		};
 	const save = (state) => writeFileSync(statePath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
 	const nextTimestamp = (state) => state.clock++;
@@ -119,6 +123,45 @@ if (args[0] === "--version") {
 		},
 	];
 	const defaultEffortForModel = (modelId) => models.find((model) => model.id === modelId)?.defaultReasoningEffort ?? "high";
+	const skillMetadata = () => skillRoots.flatMap((root) => {
+		const candidates = [];
+		if (existsSync(join(root, "SKILL.md"))) candidates.push(root);
+		if (existsSync(root)) {
+			for (const entry of readdirSync(root, { withFileTypes: true })) {
+				if (entry.isDirectory() && existsSync(join(root, entry.name, "SKILL.md"))) candidates.push(join(root, entry.name));
+			}
+		}
+		return candidates.map((directory) => {
+			const path = join(directory, "SKILL.md");
+			const source = readFileSync(path, "utf8");
+			const name = /^name:\s*([^\r\n]+)$/m.exec(source)?.[1]?.trim() ?? directory.split(/[\\/]/).at(-1);
+			const description = /^description:\s*([^\r\n]+)$/m.exec(source)?.[1]?.trim() ?? "Fixture skill";
+			return { name, description, enabled: true, path, scope: "user", dependencies: null, interface: null, shortDescription: null };
+		});
+	});
+	const summarizeResources = (params) => {
+		const servers = params.config?.mcp_servers && typeof params.config.mcp_servers === "object"
+			? Object.entries(params.config.mcp_servers).map(([name, config]) => ({
+				name,
+				enabledTools: Array.isArray(config?.enabled_tools) ? [...config.enabled_tools] : [],
+				httpHeaderNames: config?.http_headers && typeof config.http_headers === "object" ? Object.keys(config.http_headers) : [],
+				envHttpHeaderNames: config?.env_http_headers && typeof config.env_http_headers === "object" ? Object.keys(config.env_http_headers) : [],
+				hasBearerTokenEnvironment: typeof config?.bearer_token_env_var === "string",
+				stdio: typeof config?.command === "string",
+				stdioEnvironmentCount: Array.isArray(config?.env_vars) ? config.env_vars.length : 0,
+				required: config?.required === true,
+			}))
+			: [];
+		const instructions = typeof params.developerInstructions === "string" ? params.developerInstructions : "";
+		return {
+			mcpServers: servers,
+			developerInstructionBytes: Buffer.byteLength(instructions, "utf8"),
+			developerInstructionHeadings: [...instructions.matchAll(/^##\s+([^\r\n]+)$/gm)].map((match) => match[1]),
+			containsPiboSelectedContext: instructions.includes("# Pibo-Selected Context"),
+			containsPiboMcpCliInstructions: instructions.includes("Use the MCP CLI for discovery and calls."),
+			containsPiBasePrompt: instructions.includes("You are Pibo, a helpful AI coding agent") || instructions.includes("Pi Coding Agent"),
+		};
+	};
 	const missing = (id, threadId) => ({ id, error: { code: -32600, message: `no rollout found for thread id ${threadId}` } });
 	const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 	const notify = (method, params) => send({ method, params });
@@ -574,6 +617,22 @@ if (args[0] === "--version") {
 			return;
 		}
 		if (message.method === "initialized") return;
+		if (message.method === "skills/extraRoots/set") {
+			skillRoots = Array.isArray(message.params?.extraRoots) ? [...message.params.extraRoots] : [];
+			send({ id: message.id, result: {} });
+			return;
+		}
+		if (message.method === "skills/list") {
+			const skills = skillMetadata();
+			const state = load();
+			state.skillRequests ??= [];
+			state.skillRequests.push({ rootCount: skillRoots.length, skillNames: skills.map((skill) => skill.name) });
+			save(state);
+			send({ id: message.id, result: {
+				data: (message.params?.cwds?.length ? message.params.cwds : [process.cwd()]).map((cwd) => ({ cwd, skills: clone(skills), errors: [] })),
+			} });
+			return;
+		}
 		if (message.method === "model/list") {
 			const offset = typeof message.params?.cursor === "string" && message.params.cursor.startsWith("model-offset:")
 				? Number(message.params.cursor.slice("model-offset:".length))
@@ -596,10 +655,34 @@ if (args[0] === "--version") {
 		state.threadSettings ??= {};
 		state.threadTokenUsage ??= {};
 		state.turnRequests ??= [];
+		state.resourceRequests ??= [];
 		const params = message.params ?? {};
+		if (message.method === "mcpServerStatus/list") {
+			const servers = threadConfigs[params.threadId]?.mcp_servers;
+			const data = process.env.PIBO_CODEX_FIXTURE_RESOURCE_MODE === "omit-mcp"
+				? []
+				: servers && typeof servers === "object"
+				? Object.entries(servers).map(([name, config]) => ({
+					name,
+					tools: Object.fromEntries((Array.isArray(config?.enabled_tools) ? config.enabled_tools : []).map((toolName) => [toolName, {
+						name: toolName,
+						description: `Fixture ${toolName}`,
+						inputSchema: { type: "object", properties: {} },
+					}])),
+					resources: [],
+					resourceTemplates: [],
+					authStatus: typeof config?.bearer_token_env_var === "string" ? "bearerToken" : "unsupported",
+					serverInfo: { name: `fixture-${name}`, version: "1.0.0" },
+				}))
+				: [];
+			send({ id: message.id, result: { data, nextCursor: null } });
+			return;
+		}
 		if (message.method === "thread/start") {
 			const threadId = `thread-${state.nextThread++}`;
 			const thread = makeThread(state, threadId, params.cwd ?? process.cwd(), { path: null });
+			threadConfigs[threadId] = clone(params.config ?? {});
+			state.resourceRequests.push({ threadId, method: "thread/start", ...summarizeResources(params) });
 			state.threadSettings[threadId] = {
 				...defaultThreadSettings(),
 				...(typeof params.model === "string" ? { model: params.model } : {}),
@@ -618,6 +701,8 @@ if (args[0] === "--version") {
 				return;
 			}
 			if (params.cwd) thread.cwd = params.cwd;
+			threadConfigs[params.threadId] = clone(params.config ?? {});
+			state.resourceRequests.push({ threadId: params.threadId, method: "thread/resume", ...summarizeResources(params) });
 			const settings = state.threadSettings[params.threadId] ?? defaultThreadSettings();
 			if (typeof params.model === "string") settings.model = params.model;
 			settings.effort = defaultEffortForModel(settings.model);
@@ -694,6 +779,8 @@ if (args[0] === "--version") {
 			});
 			state.threads[threadId] = forked;
 			state.threadSettings[threadId] = clone(state.threadSettings[source.id] ?? defaultThreadSettings());
+			threadConfigs[threadId] = clone(params.config ?? threadConfigs[source.id] ?? {});
+			state.resourceRequests.push({ threadId, method: "thread/fork", ...summarizeResources(params) });
 			if (state.threadTokenUsage[source.id]) state.threadTokenUsage[threadId] = clone(state.threadTokenUsage[source.id]);
 			loadedThreads[threadId] = forked;
 			save(state);
@@ -791,6 +878,7 @@ if (args[0] === "--version") {
 			delete state.threads[params.threadId];
 			delete state.threadSettings[params.threadId];
 			delete state.threadTokenUsage[params.threadId];
+			delete threadConfigs[params.threadId];
 			save(state);
 			send({ id: message.id, result: {} });
 			return;

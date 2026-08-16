@@ -68,13 +68,15 @@ test("Codex native protocol checkpoint stores unmodified stable generated schema
 		"ThreadSettingsUpdatedNotification",
 		"ModelReroutedNotification",
 		"SkillsExtraRootsSetParams",
+		"SkillsListParams",
 		"ListMcpServerStatusParams",
+		"McpServerToolCallParams",
 		"ThreadTokenUsageUpdatedNotification",
 		"ServerRequestResolvedNotification",
 	]) {
 		assert.ok(v2.definitions[definition], `missing v2 protocol definition ${definition}`);
 	}
-	for (const field of ["model", "serviceTier", "personality"]) {
+	for (const field of ["model", "serviceTier", "personality", "config", "developerInstructions"]) {
 		assert.ok(v2.definitions.ThreadStartParams.properties[field], `thread/start is missing ${field}`);
 		assert.ok(v2.definitions.ThreadResumeParams.properties[field], `thread/resume is missing ${field}`);
 	}

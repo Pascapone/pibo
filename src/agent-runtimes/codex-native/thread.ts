@@ -10,6 +10,7 @@ import {
 } from "./client.js";
 import { redactCodexNativeSensitiveText } from "./redaction.js";
 import type {
+	CodexAppServerJson,
 	CodexAppServerThread,
 	CodexAppServerThreadForkParams,
 	CodexAppServerThreadItem,
@@ -166,6 +167,8 @@ export type CodexNativeThreadSelection = {
 	model?: string;
 	serviceTier?: string | null;
 	personality?: string | null;
+	config?: Record<string, CodexAppServerJson>;
+	developerInstructions?: string;
 };
 
 function threadSessionFromResponse(value: unknown, operation: string): {
@@ -268,6 +271,7 @@ export class CodexNativeThreadController {
 		readonly client: CodexAppServerClient,
 		private currentThread: CodexAppServerThread,
 		private currentConfiguration: CodexNativeThreadConfiguration,
+		private readonly resourceSelection: Pick<CodexNativeThreadSelection, "config" | "developerInstructions">,
 	) {
 		this.knownThreads.set(currentThread.id, structuredClone(currentThread));
 	}
@@ -283,9 +287,14 @@ export class CodexNativeThreadController {
 			...(selection.model ? { model: selection.model } : {}),
 			...(selection.serviceTier !== undefined ? { serviceTier: selection.serviceTier } : {}),
 			...(selection.personality !== undefined ? { personality: selection.personality } : {}),
+			...(selection.config ? { config: selection.config } : {}),
+			...(selection.developerInstructions ? { developerInstructions: selection.developerInstructions } : {}),
 		});
 		const selected = threadSessionFromResponse(response, "thread/start");
-		return new CodexNativeThreadController(client, selected.thread, selected.configuration);
+		return new CodexNativeThreadController(client, selected.thread, selected.configuration, {
+			...(selection.config ? { config: structuredClone(selection.config) } : {}),
+			...(selection.developerInstructions ? { developerInstructions: selection.developerInstructions } : {}),
+		});
 	}
 
 	static async resume(
@@ -301,11 +310,16 @@ export class CodexNativeThreadController {
 				...(selection.model ? { model: selection.model } : {}),
 				...(selection.serviceTier !== undefined ? { serviceTier: selection.serviceTier } : {}),
 				...(selection.personality !== undefined ? { personality: selection.personality } : {}),
+				...(selection.config ? { config: selection.config } : {}),
+				...(selection.developerInstructions ? { developerInstructions: selection.developerInstructions } : {}),
 			});
 			const selected = threadSessionFromResponse(response, "thread/resume");
 			const thread = selected.thread;
 			if (thread.id !== threadId) throw new CodexNativeThreadProtocolError("Codex resumed a different thread than requested.");
-			return new CodexNativeThreadController(client, thread, selected.configuration);
+			return new CodexNativeThreadController(client, thread, selected.configuration, {
+				...(selection.config ? { config: structuredClone(selection.config) } : {}),
+				...(selection.developerInstructions ? { developerInstructions: selection.developerInstructions } : {}),
+			});
 		} catch (error) {
 			return normalizeThreadError(error, threadId);
 		}
@@ -392,19 +406,29 @@ export class CodexNativeThreadController {
 			.map((thread) => codexThreadInfo(runtimeInstanceId, thread));
 	}
 
-	async fork(runtimeInstanceId: string, workspace: string, lastTurnId: string): Promise<AgentRuntimeSessionOperationResult> {
+	async fork(
+		runtimeInstanceId: string,
+		workspace: string,
+		lastTurnId: string,
+		validateThread?: (threadId: string) => Promise<void>,
+	): Promise<AgentRuntimeSessionOperationResult> {
 		if (!lastTurnId.trim()) throw new Error("Codex thread fork requires a native turn id.");
-		return await this.forkAt(runtimeInstanceId, workspace, lastTurnId);
+		return await this.forkAt(runtimeInstanceId, workspace, lastTurnId, validateThread);
 	}
 
-	async clone(runtimeInstanceId: string, workspace: string): Promise<AgentRuntimeSessionOperationResult> {
-		return await this.forkAt(runtimeInstanceId, workspace);
+	async clone(
+		runtimeInstanceId: string,
+		workspace: string,
+		validateThread?: (threadId: string) => Promise<void>,
+	): Promise<AgentRuntimeSessionOperationResult> {
+		return await this.forkAt(runtimeInstanceId, workspace, undefined, validateThread);
 	}
 
 	private async forkAt(
 		runtimeInstanceId: string,
 		workspace: string,
 		lastTurnId?: string,
+		validateThread?: (threadId: string) => Promise<void>,
 	): Promise<AgentRuntimeSessionOperationResult> {
 		const previousThread = this.currentThread;
 		const previous = codexThreadSnapshot(runtimeInstanceId, previousThread);
@@ -413,6 +437,10 @@ export class CodexNativeThreadController {
 			...(lastTurnId ? { lastTurnId } : {}),
 			cwd: workspace,
 			ephemeral: false,
+			...(this.resourceSelection.config ? { config: structuredClone(this.resourceSelection.config) } : {}),
+			...(this.resourceSelection.developerInstructions
+				? { developerInstructions: this.resourceSelection.developerInstructions }
+				: {}),
 		};
 		try {
 			const response = await this.client.request<CodexAppServerThreadResponse>("thread/fork", params);
@@ -421,6 +449,7 @@ export class CodexNativeThreadController {
 			if (forked.id === previousThread.id) {
 				throw new CodexNativeThreadProtocolError("Codex thread/fork returned the source thread id.");
 			}
+			await validateThread?.(forked.id);
 			const selectedText = lastTurnId
 				? codexThreadForkCandidates(previousThread).find((candidate) => candidate.entryId === lastTurnId)?.text
 				: undefined;
