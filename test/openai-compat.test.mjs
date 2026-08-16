@@ -81,7 +81,7 @@ test("buildOpenAiCompatConfig without base models returns only custom models", (
 
 	assert.equal(config.api, OPENAI_COMPLETIONS_API);
 	assert.equal(config.baseUrl, BASE_MINIMAX);
-	assert.equal(config.apiKey, MINIMAX_KEY_ENV);
+	assert.equal(config.apiKey, `$${MINIMAX_KEY_ENV}`);
 	assert.deepEqual(
 		config.models.map((m) => m.id),
 		["MiniMax-M3"],

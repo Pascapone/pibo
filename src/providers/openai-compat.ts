@@ -9,6 +9,8 @@ export type OpenAiCompatModelSpec = {
 	id: string;
 	name: string;
 	reasoning?: boolean;
+	thinkingLevelMap?: Model<any>["thinkingLevelMap"];
+	compat?: Model<any>["compat"];
 	contextWindow: number;
 	maxTokens: number;
 	cost: {
@@ -26,6 +28,8 @@ export type OpenAiCompatModelEntry = {
 	api: typeof OPENAI_COMPLETIONS_API;
 	baseUrl: string;
 	reasoning: boolean;
+	thinkingLevelMap?: Model<any>["thinkingLevelMap"];
+	compat?: Model<any>["compat"];
 	input: OpenAiCompatInputModality[];
 	cost: {
 		input: number;
@@ -39,12 +43,14 @@ export type OpenAiCompatModelEntry = {
 
 export type OpenAiCompatProviderSpec = {
 	id: string;
+	name?: string;
 	baseUrl: string;
 	apiKeyEnv: string;
 	models: readonly OpenAiCompatModelSpec[];
 };
 
 export type OpenAiCompatProviderConfig = {
+	name?: string;
 	baseUrl: string;
 	api: typeof OPENAI_COMPLETIONS_API;
 	apiKey: string;
@@ -63,6 +69,8 @@ export function buildOpenAiCompatConfig(
 			api: OPENAI_COMPLETIONS_API,
 			baseUrl: spec.baseUrl,
 			reasoning: Boolean(model.reasoning),
+			thinkingLevelMap: model.thinkingLevelMap ? { ...model.thinkingLevelMap } : undefined,
+			compat: model.compat ? { ...model.compat } : undefined,
 			input: [...model.input],
 			cost: { ...model.cost },
 			contextWindow: model.contextWindow,
@@ -75,6 +83,8 @@ export function buildOpenAiCompatConfig(
 		api: OPENAI_COMPLETIONS_API,
 		baseUrl: spec.baseUrl,
 		reasoning: model.reasoning ?? false,
+		thinkingLevelMap: model.thinkingLevelMap ? { ...model.thinkingLevelMap } : undefined,
+		compat: model.compat ? { ...model.compat } : undefined,
 		input: [...model.input],
 		cost: { ...model.cost },
 		contextWindow: model.contextWindow,
@@ -86,9 +96,10 @@ export function buildOpenAiCompatConfig(
 	for (const entry of customEntries) byId.set(entry.id, entry);
 
 	return {
+		name: spec.name,
 		baseUrl: spec.baseUrl,
 		api: OPENAI_COMPLETIONS_API,
-		apiKey: spec.apiKeyEnv,
+		apiKey: `$${spec.apiKeyEnv}`,
 		models: [...byId.values()],
 	};
 }
