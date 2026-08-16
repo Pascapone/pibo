@@ -66,6 +66,8 @@ export function SessionTracePane({
   bootstrap,
   selectedPiboSessionId,
   selectedRoomId,
+  contextKind = "room",
+  contextLabel,
   selectedRoomArchived,
   roomNavigationPending,
   sessionNavigationPending,
@@ -114,6 +116,8 @@ export function SessionTracePane({
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
   selectedRoomId: string | null;
+  contextKind?: "room" | "project";
+  contextLabel?: string;
   selectedRoomArchived: boolean;
   roomNavigationPending?: boolean;
   sessionNavigationPending?: boolean;
@@ -509,7 +513,8 @@ export function SessionTracePane({
           traceTitle: currentTraceView?.title,
           fallback: bootstrap.room?.name ?? selectedRoomId ?? undefined,
         }),
-        roomLabel: bootstrap.room?.name ?? selectedRoomId ?? "Room",
+        contextKind,
+        contextLabel: contextLabel ?? bootstrap.room?.name ?? selectedRoomId ?? "Unknown room",
         headerPiboSessionId,
         piboSessionId: selectedPiboSessionId,
         piboRoomId: selectedRoomId ?? bootstrap.selectedRoomId ?? undefined,

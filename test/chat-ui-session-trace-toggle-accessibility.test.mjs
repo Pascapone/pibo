@@ -14,7 +14,8 @@ async function renderSessionTraceHeader({ showRawEvents, showThinking, expandThi
 		const noop = () => {};
 		const markup = renderToStaticMarkup(React.createElement(SessionTraceHeader, {
 			title: "Test session",
-			roomLabel: "Test room",
+			contextKind: "room",
+			contextLabel: "Test room",
 			headerPiboSessionId: "ps-test",
 			piboSessionId: "ps-test",
 			webAnnotationsDisabled: true,
@@ -58,6 +59,10 @@ test("trace header toggle names stay stable across false and true states", async
 		expandThinking: false,
 	});
 	assert.match(collapsed, /max-\[980px\]:flex-wrap/);
+	assert.match(collapsed, /data-pibo-debug="session-context"/);
+	assert.match(collapsed, /data-pibo-context-kind="room"/);
+	assert.match(collapsed, />Room</);
+	assert.match(collapsed, />Test room</);
 	assertToggle(collapsed, { name: "Raw Events", pressed: false, title: "Show Raw Events" });
 	assertToggle(collapsed, { name: "Thinking", pressed: true, title: "Hide Thinking" });
 	assertToggle(collapsed, { name: "Thinking expansion", pressed: false, title: "Expand Thinking" });
