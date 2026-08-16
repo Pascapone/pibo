@@ -114,6 +114,7 @@ export type PiboSessionRouterOptions = Omit<
 
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_SUBAGENT_MAX_DEPTH = 3;
+const MAX_SUBAGENT_THREAD_KEY_BYTES = 512;
 const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS = 30 * 1000;
 
@@ -144,6 +145,21 @@ export function resolvePiboSessionInitialFastMode(session: Pick<PiboSession, "me
 
 function hasReachedSubagentMaxDepth(subagent: SubagentProfile, depth: number): boolean {
 	return depth >= (subagent.maxDepth ?? DEFAULT_SUBAGENT_MAX_DEPTH);
+}
+
+function resolveSubagentThreadKey(threadKey: string | undefined): string {
+	const normalized = threadKey?.trim();
+	if (!normalized) return randomUUID();
+	if (Buffer.byteLength(normalized, "utf8") > MAX_SUBAGENT_THREAD_KEY_BYTES) {
+		throw new Error(`Subagent thread key exceeds ${MAX_SUBAGENT_THREAD_KEY_BYTES} bytes.`);
+	}
+	return normalized;
+}
+
+function subagentAbortError(): Error {
+	const error = new Error("Subagent request was aborted.");
+	error.name = "AbortError";
+	return error;
 }
 
 function profileForSession(
@@ -313,6 +329,7 @@ export class PiboSessionRouter {
 	private readonly portableToolSessions = new Map<string, PiboPortableToolSession>();
 	private readonly runtimeResourceService: PiboRuntimeResourceService;
 	private readonly runtimeResourceSessions = new Map<string, PiboRuntimeResourceSession>();
+	private readonly activeSubagentChildren = new Map<string, Map<string, number>>();
 	private readonly scheduledRunReminders = new Map<string, ScheduledRunReminder>();
 	private readonly runReminderGenerations = new Map<string, number>();
 	private readonly quiescingSessions = new Set<string>();
@@ -454,7 +471,11 @@ export class PiboSessionRouter {
 				return output;
 			}
 
+			const childAbort = event.action === "abort"
+				? this.abortActiveSubagentSessions(event.piboSessionId)
+				: undefined;
 			const output = await session.executeAction(event);
+			await childAbort;
 			if (event.action === "kill" || event.action === "kill_all") {
 				await this.disposeSessionSubtree(event.piboSessionId, `${event.action} action`, { cancelRuns: event.action === "kill_all" });
 				teardownCompleted = true;
@@ -767,13 +788,38 @@ export class PiboSessionRouter {
 	async emitMessageAndWaitForReply(
 		event: PiboMessageEvent,
 		timeoutMs = 120000,
+		signal?: AbortSignal,
 	): Promise<PiboAssistantMessageEvent> {
 		const eventWithId: PiboMessageEvent = { ...event, id: event.id ?? randomUUID() };
 
 		return await new Promise<PiboAssistantMessageEvent>((resolve, reject) => {
 			let settled = false;
+			let messageDispatched = false;
 			let lastAssistantMessage: PiboAssistantMessageEvent | undefined;
 			let timeout: NodeJS.Timeout | undefined;
+			const abortChild = () => {
+				if (!messageDispatched) return;
+				void this.emit({
+					type: "execution",
+					piboSessionId: eventWithId.piboSessionId,
+					action: "abort",
+					id: randomUUID(),
+				}).catch(() => {});
+			};
+			const finish = (result: PiboAssistantMessageEvent | Error): boolean => {
+				if (settled) return false;
+				settled = true;
+				if (timeout) clearTimeout(timeout);
+				signal?.removeEventListener("abort", onAbort);
+				unsubscribe();
+				if (result instanceof Error) reject(result);
+				else resolve(result);
+				return true;
+			};
+			const onAbort = () => {
+				if (!finish(subagentAbortError())) return;
+				abortChild();
+			};
 			const unsubscribe = this.subscribe((output) => {
 				if (
 					output.piboSessionId !== eventWithId.piboSessionId ||
@@ -791,32 +837,18 @@ export class PiboSessionRouter {
 				}
 			});
 
-			const finish = (result: PiboAssistantMessageEvent | Error) => {
-				if (settled) return;
-				settled = true;
-				if (timeout) clearTimeout(timeout);
-				unsubscribe();
-				if (result instanceof Error) {
-					reject(result);
-				} else {
-					resolve(result);
-				}
-			};
-
+			if (signal?.aborted) {
+				onAbort();
+				return;
+			}
+			signal?.addEventListener("abort", onAbort, { once: true });
 			timeout = setTimeout(() => {
-				if (settled) return;
-				settled = true;
-				unsubscribe();
 				const timeoutError = new Error(`Timed out waiting for assistant reply from Pibo session "${eventWithId.piboSessionId}"`);
-				reject(timeoutError);
-				void this.emit({
-					type: "execution",
-					piboSessionId: eventWithId.piboSessionId,
-					action: "abort",
-					id: randomUUID(),
-				}).catch(() => {});
+				if (!finish(timeoutError)) return;
+				abortChild();
 			}, timeoutMs);
 
+			messageDispatched = true;
 			this.emit(eventWithId).catch(finish);
 		});
 	}
@@ -853,6 +885,7 @@ export class PiboSessionRouter {
 			await this.portableToolService.dispose();
 			await this.runtimeResourceService.dispose();
 			this.runtimeResourceSessions.clear();
+			this.activeSubagentChildren.clear();
 			await this.telemetryWriter?.dispose();
 		}
 	}
@@ -1373,9 +1406,40 @@ export class PiboSessionRouter {
 		return created;
 	}
 
+	private trackActiveSubagent(parentPiboSessionId: string, childPiboSessionId: string): () => void {
+		let children = this.activeSubagentChildren.get(parentPiboSessionId);
+		if (!children) {
+			children = new Map();
+			this.activeSubagentChildren.set(parentPiboSessionId, children);
+		}
+		children.set(childPiboSessionId, (children.get(childPiboSessionId) ?? 0) + 1);
+		let active = true;
+		return () => {
+			if (!active) return;
+			active = false;
+			const current = this.activeSubagentChildren.get(parentPiboSessionId);
+			if (!current) return;
+			const remaining = (current.get(childPiboSessionId) ?? 1) - 1;
+			if (remaining > 0) current.set(childPiboSessionId, remaining);
+			else current.delete(childPiboSessionId);
+			if (current.size === 0) this.activeSubagentChildren.delete(parentPiboSessionId);
+		};
+	}
+
+	private async abortActiveSubagentSessions(parentPiboSessionId: string): Promise<void> {
+		const childIds = [...(this.activeSubagentChildren.get(parentPiboSessionId)?.keys() ?? [])];
+		if (childIds.length === 0) return;
+		await Promise.allSettled(childIds.map(async (childPiboSessionId) => await this.emit({
+			type: "execution",
+			piboSessionId: childPiboSessionId,
+			action: "abort",
+			id: randomUUID(),
+		})));
+	}
+
 	private createSubagentRunner(parentPiboSessionId: string): PiboSubagentRunner {
 		return {
-			runSubagent: async ({ subagent, message, threadKey, toolCallId }) => {
+			runSubagent: async ({ subagent, message, threadKey, toolCallId, signal }) => {
 				this.assertSubagentDepth(parentPiboSessionId, subagent);
 				const child = this.resolveSubagentSession(parentPiboSessionId, subagent, threadKey);
 				const toolName = createSubagentToolName(subagent.name);
@@ -1398,11 +1462,17 @@ export class PiboSessionRouter {
 					threadKey: typeof child.metadata?.threadKey === "string" ? child.metadata.threadKey : undefined,
 				});
 
-				const reply = await this.emitMessageAndWaitForReply(
-					event,
-					subagent.timeoutMs ?? DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS,
-				);
-				return { piboSessionId: child.id, eventId: event.id!, reply };
+				const untrack = this.trackActiveSubagent(parentPiboSessionId, child.id);
+				try {
+					const reply = await this.emitMessageAndWaitForReply(
+						event,
+						subagent.timeoutMs ?? DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS,
+						signal,
+					);
+					return { piboSessionId: child.id, eventId: event.id!, reply };
+				} finally {
+					untrack();
+				}
 			},
 		};
 	}
@@ -1503,7 +1573,7 @@ export class PiboSessionRouter {
 	): PiboSession {
 		const targetProfile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, subagent.targetProfile);
 		const parent = this.resolvePiboSession(parentPiboSessionId);
-		const resolvedThreadKey = threadKey?.trim() ? threadKey.trim() : randomUUID();
+		const resolvedThreadKey = resolveSubagentThreadKey(threadKey);
 		const baseMetadata: PiboJsonObject = {
 			subagentName: subagent.name,
 			subagentToolName: createSubagentToolName(subagent.name),

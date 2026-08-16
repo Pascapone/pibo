@@ -352,6 +352,10 @@ export class CodexNativeResourceDelivery {
 					enabled: true,
 					required: true,
 					enabled_tools: [...mcpAccess.allowedToolNames],
+					// These are explicitly selected, session-scoped Pibo tools. Codex's native
+					// prompt path otherwise rejects model-initiated MCP calls when no MCP
+					// approval UI is active for the turn.
+					default_tools_approval_mode: "approve",
 				};
 				expectedMcpServers.push({ name: serverName, toolNames: [...mcpAccess.allowedToolNames] });
 			}

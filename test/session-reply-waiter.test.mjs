@@ -56,6 +56,52 @@ test("session reply waiter rejects terminal session errors", async () => {
 	});
 });
 
+test("session reply waiter propagates caller cancellation and aborts the dispatched child", async () => {
+	await withRouter(async (router) => {
+		const emitted = [];
+		router.emit = async (event) => {
+			emitted.push(event);
+			return event.type === "message"
+				? { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source }
+				: { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: "aborted" };
+		};
+		const controller = new AbortController();
+		const waiting = router.emitMessageAndWaitForReply({
+			type: "message",
+			piboSessionId: "ps_waiter",
+			id: "message-cancelled",
+			text: "work",
+			source: "actor",
+		}, 30_000, controller.signal);
+		await new Promise((resolve) => setImmediate(resolve));
+		controller.abort();
+		await assert.rejects(waiting, (error) => error instanceof Error && error.name === "AbortError" && error.message === "Subagent request was aborted.");
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(emitted.some((event) => event.type === "message" && event.id === "message-cancelled"), true);
+		assert.equal(emitted.some((event) => event.type === "execution" && event.action === "abort" && event.piboSessionId === "ps_waiter"), true);
+	});
+});
+
+test("session reply waiter does not dispatch an already-aborted request", async () => {
+	await withRouter(async (router) => {
+		const emitted = [];
+		router.emit = async (event) => {
+			emitted.push(event);
+			return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source };
+		};
+		const controller = new AbortController();
+		controller.abort();
+		await assert.rejects(router.emitMessageAndWaitForReply({
+			type: "message",
+			piboSessionId: "ps_waiter",
+			id: "message-pre-aborted",
+			text: "work",
+			source: "actor",
+		}, 30_000, controller.signal), (error) => error instanceof Error && error.name === "AbortError");
+		assert.deepEqual(emitted, []);
+	});
+});
+
 test("session reply waiter aborts the child session when its timeout expires", async () => {
 	await withRouter(async (router) => {
 		const emitted = [];
