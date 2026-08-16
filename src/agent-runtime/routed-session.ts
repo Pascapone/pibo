@@ -25,11 +25,17 @@ import type { PiboGatewayActionContext } from "../plugins/types.js";
 import { AgentRuntimeCapabilityUnavailableError } from "./errors.js";
 import type { AgentRuntimeSemanticEvent } from "./events.js";
 import type {
+	AgentRuntimeAuthOperationResult,
+	AgentRuntimeAuthStatus,
 	AgentRuntimeNativeSessionInfo,
 	AgentRuntimeNativeSessionSnapshot,
 	AgentRuntimeSession,
 	AgentRuntimeSessionOperationResult,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
 	RuntimeSessionBinding,
+	StartAgentRuntimeAuthInput,
 } from "./types.js";
 
 const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
@@ -70,6 +76,11 @@ export type RuntimeRoutedSessionOptions = {
 	onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean }) => void;
 	onMessagesInterrupted?: PiboMessageInterruptionListener;
 	messagePreflight?: PiboMessagePreflight;
+	getRuntimeAuthStatus?: () => Promise<readonly AgentRuntimeAuthStatus[]>;
+	startRuntimeAuth?: (input: StartAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
+	completeRuntimeAuth?: (input: CompleteAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
+	cancelRuntimeAuth?: (input: CancelAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
+	logoutRuntimeAuth?: (input: LogoutAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
 };
 
 function errorMessage(error: unknown): string {
@@ -802,6 +813,9 @@ export class RuntimeRoutedSession {
 		return await gatewayAction.execute(
 			{
 				piboSessionId: this.piboSessionId,
+				runtimeInstanceId: this.runtimeSession.runtimeInstanceId,
+				runtimeAuthRequired: this.runtimeSession.capabilities.auth.status
+					&& this.runtimeSession.capabilities.auth.methods.length > 0,
 				getStatus: () => this.getStatus(),
 				getStatusSnapshot: () => this.getStatusSnapshot(),
 				getContextUsage: () => this.getActionContextUsage(),
@@ -812,6 +826,21 @@ export class RuntimeRoutedSession {
 						? await adapter.listModels()
 						: { runtimeInstanceId: this.runtimeSession.runtimeInstanceId, models: [] };
 				},
+				getRuntimeAuthStatus: async () => this.options.getRuntimeAuthStatus
+					? await this.options.getRuntimeAuthStatus()
+					: await this.pluginRegistry.getAgentRuntimeAuthStatus(this.runtimeSession.runtimeInstanceId),
+				startRuntimeAuth: async (input) => this.options.startRuntimeAuth
+					? await this.options.startRuntimeAuth(input)
+					: await this.pluginRegistry.startAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
+				completeRuntimeAuth: async (input) => this.options.completeRuntimeAuth
+					? await this.options.completeRuntimeAuth(input)
+					: await this.pluginRegistry.completeAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
+				cancelRuntimeAuth: async (input) => this.options.cancelRuntimeAuth
+					? await this.options.cancelRuntimeAuth(input)
+					: await this.pluginRegistry.cancelAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
+				logoutRuntimeAuth: async (input) => this.options.logoutRuntimeAuth
+					? await this.options.logoutRuntimeAuth(input)
+					: await this.pluginRegistry.logoutAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
 				getProviderUsage: () => this.getActionProviderUsage(),
 				clearQueue: () => this.clearQueue(),
 				abort: async () => {

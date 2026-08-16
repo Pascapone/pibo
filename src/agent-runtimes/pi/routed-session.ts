@@ -22,6 +22,12 @@ import type {
 	PiboThinkingResult,
 } from "../../core/events.js";
 import type { PiboThinkingLevel } from "../../core/thinking.js";
+import type {
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	StartAgentRuntimeAuthInput,
+} from "../../agent-runtime/types.js";
 import type { CompactionResult } from "@earendil-works/pi-coding-agent";
 import type { ContextUsage } from "@earendil-works/pi-coding-agent";
 import { getOpenAiCodexProviderUsageForActiveModel } from "../../auth/openai-codex-usage.js";
@@ -44,6 +50,8 @@ import {
 	resolvePiboProviderRecoverySettings,
 	waitForPiboProviderRecovery,
 } from "../../core/provider-recovery.js";
+import { PiAgentRuntimeAuthController } from "./auth.js";
+import { loadModelCatalog as loadPiModelCatalog } from "./model-catalog.js";
 import {
 	PIBO_TRANSCRIPT_INTEGRITY_RESUME_MESSAGE_TYPE,
 	PIBO_TRANSCRIPT_INTEGRITY_RESUME_PROMPT,
@@ -598,6 +606,7 @@ export class RoutedSession {
 	private unsubscribe?: () => void;
 	private recoverySession?: AgentSessionRuntime["session"];
 	private isContinuePatched = false;
+	private compatibilityAuthController?: PiAgentRuntimeAuthController;
 
 	constructor(
 		private readonly piboSessionId: string,
@@ -1192,6 +1201,7 @@ export class RoutedSession {
 
 	private transitionToDisposed(reason: string): boolean {
 		if (this.disposed) return false;
+		void this.compatibilityAuthController?.dispose();
 		const activeMessage = this.activeMessage;
 		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), reason);
 		if (activeMessage) {
@@ -1442,6 +1452,14 @@ export class RoutedSession {
 		return output;
 	}
 
+	private getCompatibilityAuthController(): PiAgentRuntimeAuthController {
+		this.compatibilityAuthController ??= new PiAgentRuntimeAuthController(
+			() => loadPiModelCatalog(process.cwd()),
+			() => {},
+		);
+		return this.compatibilityAuthController;
+	}
+
 	private async runAction(event: PiboExecutionEvent): Promise<unknown> {
 		const action = event.action;
 		const gatewayAction = this.pluginRegistry.getGatewayAction(action);
@@ -1452,11 +1470,18 @@ export class RoutedSession {
 		return await gatewayAction.execute(
 			{
 				piboSessionId: this.piboSessionId,
+				runtimeInstanceId: "pi",
+				runtimeAuthRequired: true,
 				getStatus: () => this.getStatus(),
 				getStatusSnapshot: () => this.getStatusSnapshot(),
 				getContextUsage: () => this.getContextUsage(),
 				getActiveModel: () => this.getActiveModel(),
 				getModelCatalog: async () => undefined,
+				getRuntimeAuthStatus: async () => await this.getCompatibilityAuthController().getStatus(),
+				startRuntimeAuth: async (input: StartAgentRuntimeAuthInput) => await this.getCompatibilityAuthController().start(input),
+				completeRuntimeAuth: async (input: CompleteAgentRuntimeAuthInput) => await this.getCompatibilityAuthController().complete(input),
+				cancelRuntimeAuth: async (input: CancelAgentRuntimeAuthInput) => await this.getCompatibilityAuthController().cancel(input),
+				logoutRuntimeAuth: async (input: LogoutAgentRuntimeAuthInput) => await this.getCompatibilityAuthController().logout(input),
 				getProviderUsage: () => this.getProviderUsage(),
 				clearQueue: () => this.clearQueue(),
 				abort: async () => {

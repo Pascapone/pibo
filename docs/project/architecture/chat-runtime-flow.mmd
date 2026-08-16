@@ -1,4 +1,13 @@
 flowchart TD
+  AUTHUI["Settings > Providers"] --> AUTHAPI["GET/POST /api/chat/provider-auth"]
+  AUTHAPI --> AUTHTARGET["Explicit configured runtime + provider"]
+  AUTHTARGET --> AUTHREG["Capability dispatch through runtime registry/router"]
+  AUTHREG -->|pi| PIAUTH["Pi adapter-owned AuthStorage flow"]
+  AUTHREG -->|codex-native| CODEXAUTH["Private App Server account/* JSON-RPC"]
+  PIAUTH --> AUTHRESULT["Pibo-owned per-runtime status/flow/result"]
+  CODEXAUTH --> AUTHRESULT
+  AUTHRESULT --> AUTHUI
+
   U["User types in Composer"] --> C{"Slash command?"}
   C -->|yes| ACTION["POST /api/chat/action"]
   C -->|no| MESSAGE["POST /api/chat/message"]

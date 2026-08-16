@@ -167,3 +167,188 @@ test("generic routed controls reject unadvertised adapter capabilities explicitl
 		await fixture.router.disposeAll();
 	}
 });
+
+test("adapter-shared auth mutations recycle every affected configured runtime session", async () => {
+	const baseDriver = createFakeAgentRuntimeDriver({ adapterId: "router-shared-auth-fake" });
+	baseDriver.descriptor.capabilities.auth = {
+		status: true,
+		methods: [{ id: "api_key", completion: "immediate" }],
+		cancel: false,
+		logout: true,
+		credentialScope: "adapter-shared",
+	};
+	const adapters = new Map();
+	const createBase = baseDriver.create.bind(baseDriver);
+	const authDriver = {
+		...baseDriver,
+		create(input) {
+			const adapter = Object.assign(createBase(input), {
+				async getAuthStatus() {
+					return [{
+						id: "fixture-provider",
+						state: "disconnected",
+						configured: false,
+						methods: [{ id: "api_key", completion: "immediate" }],
+					}];
+				},
+				async startAuth(authInput) {
+					return { providerId: authInput.providerId, state: "connected", configured: true };
+				},
+				async logoutAuth(authInput) {
+					return { providerId: authInput.providerId, state: "disconnected", configured: false };
+				},
+			});
+			adapters.set(input.instanceId, adapter);
+			return adapter;
+		},
+	};
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: "test.router-shared-auth-fake",
+				register(api) {
+					api.registerAgentRuntimeDriver(authDriver);
+					for (const runtimeInstanceId of ["router-shared-a", "router-shared-b"]) {
+						api.registerAgentRuntimeInstance({ id: runtimeInstanceId, adapterId: "router-shared-auth-fake" });
+						api.registerProfile({
+							name: `${runtimeInstanceId}-profile`,
+							create() {
+								return new InitialSessionContextBuilder(`${runtimeInstanceId}-profile`)
+									.withAgentRuntime(runtimeInstanceId)
+									.withBuiltinTools("disabled")
+									.withAutoContextFiles(false)
+									.withToolPackages({ goalControl: false })
+									.createSession();
+							},
+						});
+					}
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	for (const suffix of ["a", "b"]) {
+		store.create({
+			id: `ps_router_shared_${suffix}`,
+			runtimeBinding: {
+				runtimeInstanceId: `router-shared-${suffix}`,
+				adapterId: "router-shared-auth-fake",
+				nativeSessionId: `router-shared-${suffix}-native`,
+				state: "bound",
+			},
+			channel: "test",
+			kind: "chat",
+			profile: `router-shared-${suffix}-profile`,
+			workspace: process.cwd(),
+		});
+	}
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	try {
+		await router.getSessionStatusSnapshot("ps_router_shared_a");
+		await router.getSessionStatusSnapshot("ps_router_shared_b");
+		assert.equal(adapters.get("router-shared-a").sessions[0].disposeCalls, 0);
+		assert.equal(adapters.get("router-shared-b").sessions[0].disposeCalls, 0);
+
+		await router.startAgentRuntimeAuth("router-shared-a", {
+			providerId: "fixture-provider",
+			method: "api_key",
+			apiKey: "deterministic-fixture-key",
+		});
+
+		assert.equal(adapters.get("router-shared-a").sessions[0].disposeCalls, 1);
+		assert.equal(adapters.get("router-shared-b").sessions[0].disposeCalls, 1);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("runtime login and model menus use the active adapter's real auth status without hiding unauthenticated models", async () => {
+	const baseDriver = createFakeAgentRuntimeDriver({ adapterId: "router-auth-fake" });
+	let authStatusFails = false;
+	baseDriver.descriptor.capabilities.models.catalog = true;
+	baseDriver.descriptor.capabilities.auth = {
+		status: true,
+		methods: [{ id: "api_key", completion: "immediate" }],
+		cancel: false,
+		logout: true,
+		credentialScope: "runtime-instance",
+	};
+	const createBase = baseDriver.create.bind(baseDriver);
+	const authDriver = {
+		...baseDriver,
+		create(input) {
+			return Object.assign(createBase(input), {
+				async listModels() {
+					return {
+						runtimeInstanceId: input.instanceId,
+						models: [{ id: "fixture-model", provider: "fixture-provider", displayName: "Fixture Model" }],
+					};
+				},
+				async getAuthStatus() {
+					if (authStatusFails) throw new Error("deterministic auth status failure");
+					return [{
+						id: "fixture-provider",
+						displayName: "Fixture Provider",
+						state: "disconnected",
+						configured: false,
+						methods: [{ id: "api_key", completion: "immediate" }],
+					}];
+				},
+				async startAuth(authInput) {
+					return { providerId: authInput.providerId, state: "connected", configured: true, details: { accountType: "api_key" } };
+				},
+				async logoutAuth(authInput) {
+					return { providerId: authInput.providerId, state: "disconnected", configured: false };
+				},
+			});
+		},
+	};
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: "test.router-auth-fake",
+				register(api) {
+					api.registerAgentRuntimeDriver(authDriver);
+					api.registerAgentRuntimeInstance({ id: "router-auth-fake", adapterId: "router-auth-fake" });
+					api.registerProfile({
+						name: "router-auth-profile",
+						create() {
+							return new InitialSessionContextBuilder("router-auth-profile")
+								.withAgentRuntime("router-auth-fake")
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.createSession();
+						},
+					});
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_router_auth_fake",
+		runtimeBinding: { runtimeInstanceId: "router-auth-fake", adapterId: "router-auth-fake", state: "unbound" },
+		channel: "test",
+		kind: "chat",
+		profile: "router-auth-profile",
+		workspace: process.cwd(),
+	});
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	try {
+		const login = await router.emit({ type: "execution", piboSessionId: "ps_router_auth_fake", action: "login" });
+		assert.equal(login.result.runtimeInstanceId, "router-auth-fake");
+		assert.deepEqual(login.result.providers.map(({ id, configured, authMethods }) => ({ id, configured, authMethods })), [
+			{ id: "fixture-provider", configured: false, authMethods: ["api_key"] },
+		]);
+
+		authStatusFails = true;
+		const model = await router.emit({ type: "execution", piboSessionId: "ps_router_auth_fake", action: "model" });
+		assert.equal(model.result.providers[0].authConfigured, false);
+		assert.deepEqual(model.result.providers[0].models.map(({ id }) => id), ["fixture-model"]);
+	} finally {
+		await router.disposeAll();
+	}
+});

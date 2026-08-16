@@ -3,6 +3,7 @@ import type { PiboJsonObject } from "../../core/events.js";
 import { piboHomePath } from "../../core/pibo-home.js";
 
 const MAX_TIMEOUT_MS = 10 * 60 * 1_000;
+const MAX_AUTH_LOGIN_TIMEOUT_MS = 30 * 60 * 1_000;
 const ENVIRONMENT_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RESERVED_ENVIRONMENT_KEYS = new Set([
 	"CODEX_HOME",
@@ -53,6 +54,7 @@ export type CodexNativeRuntimeConfig = PiboJsonObject & {
 	diagnosticTimeoutMs: number;
 	startupTimeoutMs: number;
 	requestTimeoutMs: number;
+	authLoginTimeoutMs: number;
 	shutdownTimeoutMs: number;
 	killTimeoutMs: number;
 };
@@ -72,6 +74,7 @@ export const CODEX_NATIVE_RUNTIME_CONFIG_SCHEMA: PiboJsonObject = {
 		diagnosticTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 5_000 },
 		startupTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 10_000 },
 		requestTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 120_000 },
+		authLoginTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_AUTH_LOGIN_TIMEOUT_MS, default: 15 * 60 * 1_000 },
 		shutdownTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 2_000 },
 		killTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 500 },
 	},
@@ -86,15 +89,16 @@ export function defaultCodexNativeRuntimeConfig(): CodexNativeRuntimeConfig {
 		diagnosticTimeoutMs: 5_000,
 		startupTimeoutMs: 10_000,
 		requestTimeoutMs: 120_000,
+		authLoginTimeoutMs: 15 * 60 * 1_000,
 		shutdownTimeoutMs: 2_000,
 		killTimeoutMs: 500,
 	};
 }
 
-function timeout(value: unknown, fallback: number, label: string): number {
+function timeout(value: unknown, fallback: number, label: string, maximum = MAX_TIMEOUT_MS): number {
 	const selected = value ?? fallback;
-	if (!Number.isSafeInteger(selected) || Number(selected) <= 0 || Number(selected) > MAX_TIMEOUT_MS) {
-		throw new Error(`${label} must be a positive integer no greater than ${MAX_TIMEOUT_MS}`);
+	if (!Number.isSafeInteger(selected) || Number(selected) <= 0 || Number(selected) > maximum) {
+		throw new Error(`${label} must be a positive integer no greater than ${maximum}`);
 	}
 	return Number(selected);
 }
@@ -129,6 +133,7 @@ export function parseCodexNativeRuntimeConfig(value: PiboJsonObject): CodexNativ
 		"diagnosticTimeoutMs",
 		"startupTimeoutMs",
 		"requestTimeoutMs",
+		"authLoginTimeoutMs",
 		"shutdownTimeoutMs",
 		"killTimeoutMs",
 	]);
@@ -155,6 +160,7 @@ export function parseCodexNativeRuntimeConfig(value: PiboJsonObject): CodexNativ
 		diagnosticTimeoutMs: timeout(value.diagnosticTimeoutMs, defaults.diagnosticTimeoutMs, "diagnosticTimeoutMs"),
 		startupTimeoutMs: timeout(value.startupTimeoutMs, defaults.startupTimeoutMs, "startupTimeoutMs"),
 		requestTimeoutMs: timeout(value.requestTimeoutMs, defaults.requestTimeoutMs, "requestTimeoutMs"),
+		authLoginTimeoutMs: timeout(value.authLoginTimeoutMs, defaults.authLoginTimeoutMs, "authLoginTimeoutMs", MAX_AUTH_LOGIN_TIMEOUT_MS),
 		shutdownTimeoutMs: timeout(value.shutdownTimeoutMs, defaults.shutdownTimeoutMs, "shutdownTimeoutMs"),
 		killTimeoutMs: timeout(value.killTimeoutMs, defaults.killTimeoutMs, "killTimeoutMs"),
 	};

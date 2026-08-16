@@ -167,3 +167,18 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 11.7 Produce `docs/reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md`, mapping REQ-001 through REQ-018 to code, tests, PRs, and Pibo2 evidence.
 - [ ] 11.8 Confirm no known regression or material unreported uncertainty invalidates completion. The deterministic/product matrix is clean, but official native-Codex provider authentication remains an explicit external evidence blocker.
 - [ ] 11.9 Mark the Pibo Loop goal complete only after the full audit passes.
+
+## 12. Runtime-neutral provider-auth correction
+
+The August 16 final review found that Chat Web still intercepted provider auth before runtime resolution and wrote Pi `AuthStorage` directly. The earlier claim that only external native-Codex authentication remained was therefore incomplete. Detailed tasks live in `../runtime-auth-control-plane/tasks.md`.
+
+- [x] 12.1 Add evidence-backed auth capabilities and adapter status/start/complete/cancel/logout operations with Pibo-owned secret-safe types.
+- [x] 12.2 Route registry, router, channel, gateway actions, and product-scoped Web API by explicit configured runtime instance.
+- [x] 12.3 Preserve Pi device/browser/API-key/status/logout compatibility behind the Pi adapter and declare its shared credential scope.
+- [x] 12.4 Implement stable Codex App Server `0.147.0` account status, device notification, API-key, cancel, logout, timeout, failure, cleanup, and private-home isolation.
+- [x] 12.5 Replace the hard-coded provider settings list and false-auth model defaults with per-runtime catalog state and disabled missing-auth models.
+- [x] 12.6 Add deterministic contract, Pi, Codex, isolation, restart, redaction, Web targeting/aggregation/pending/logout, and model-menu tests.
+- [x] 12.7 Complete full-suite/typecheck/build/package verification and canonical documentation synchronization; 1,752/1,752 tests across 12 suites pass.
+- [ ] 12.8 Push the focused stacked PR without merge/release/publication.
+- [ ] 12.9 Install the exact candidate on Pibo2 and validate the public provider-settings path while leaving native Codex unauthenticated.
+- [ ] 12.10 After authorized user login, verify safe `account/read` metadata and one bounded public native-Codex production-provider turn before closing 10.12/11.8/11.9.

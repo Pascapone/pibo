@@ -46,7 +46,15 @@ import {
 	type RuntimeSessionBindingUpdateOptions,
 } from "../sessions/runtime-binding.js";
 import { AgentRuntimeBindingMissingError, AgentRuntimeUnavailableError } from "../agent-runtime/errors.js";
-import type { AgentRuntimeSession } from "../agent-runtime/types.js";
+import type {
+	AgentRuntimeAuthStatus,
+	AgentRuntimeAuthTargetOperationResult,
+	AgentRuntimeSession,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	StartAgentRuntimeAuthInput,
+} from "../agent-runtime/types.js";
 import { validateAgentRuntimeProfileCapabilities } from "../agent-runtime/profile-validation.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
@@ -261,8 +269,13 @@ function asJsonObject(value: PiboJsonObject | undefined): PiboJsonObject {
 	return value ?? {};
 }
 
-function shouldResetSessionAfterAction(action: string): boolean {
-	return action === "login.complete" || action === "login.apikey" || action === "logout";
+function shouldResetSessionAfterAction(action: string, output?: PiboOutputEvent): boolean {
+	if (action === "login.apikey" || action === "logout") return true;
+	if (action !== "login.complete") return false;
+	const result = output?.type === "execution_result" && output.result && typeof output.result === "object" && !Array.isArray(output.result)
+		? output.result as Record<string, unknown>
+		: undefined;
+	return result?.state !== "pending";
 }
 
 function piboRoomIdFromMetadata(metadata: PiboJsonObject | undefined): string | undefined {
@@ -329,6 +342,7 @@ export class PiboSessionRouter {
 	private readonly portableToolSessions = new Map<string, PiboPortableToolSession>();
 	private readonly runtimeResourceService: PiboRuntimeResourceService;
 	private readonly runtimeResourceSessions = new Map<string, PiboRuntimeResourceSession>();
+	private readonly runtimeAuthFingerprints = new Map<string, string>();
 	private readonly activeSubagentChildren = new Map<string, Map<string, number>>();
 	private readonly scheduledRunReminders = new Map<string, ScheduledRunReminder>();
 	private readonly runReminderGenerations = new Map<string, number>();
@@ -479,8 +493,13 @@ export class PiboSessionRouter {
 			if (event.action === "kill" || event.action === "kill_all") {
 				await this.disposeSessionSubtree(event.piboSessionId, `${event.action} action`, { cancelRuns: event.action === "kill_all" });
 				teardownCompleted = true;
-			} else if (shouldResetSessionAfterAction(event.action)) {
-				await this.resetCachedSession(event.piboSessionId, "provider auth changed");
+			} else if (shouldResetSessionAfterAction(event.action, output)) {
+				const runtimeInstanceId = this.getSessionRuntimeBinding(event.piboSessionId)?.runtimeInstanceId;
+				if (runtimeInstanceId) {
+					await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+				} else {
+					await this.resetCachedSession(event.piboSessionId, "runtime provider auth changed");
+				}
 			}
 			return output;
 		} catch (error) {
@@ -654,6 +673,63 @@ export class PiboSessionRouter {
 
 	getPiboSessionIds(): string[] {
 		return [...this.sessions.keys()];
+	}
+
+	async getAgentRuntimeAuthStatus(runtimeInstanceId: string): Promise<readonly AgentRuntimeAuthStatus[]> {
+		const registry = this.resolveAgentRuntimeRegistry(runtimeInstanceId);
+		const statuses = await registry.getAgentRuntimeAuthStatus(runtimeInstanceId);
+		const fingerprint = statuses
+			.map((status) => `${status.id}:${status.configured}:${status.details?.accountType ?? ""}:${status.details?.planType ?? ""}`)
+			.sort()
+			.join("|");
+		const previous = this.runtimeAuthFingerprints.get(runtimeInstanceId);
+		this.runtimeAuthFingerprints.set(runtimeInstanceId, fingerprint);
+		if (previous !== undefined && previous !== fingerprint) {
+			await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+		}
+		return statuses;
+	}
+
+	async startAgentRuntimeAuth(
+		runtimeInstanceId: string,
+		input: StartAgentRuntimeAuthInput,
+	): Promise<AgentRuntimeAuthTargetOperationResult> {
+		const registry = this.resolveAgentRuntimeRegistry(runtimeInstanceId);
+		const result = await registry.startAgentRuntimeAuth(runtimeInstanceId, input);
+		if (result.state !== "pending") {
+			await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+		}
+		return result;
+	}
+
+	async completeAgentRuntimeAuth(
+		runtimeInstanceId: string,
+		input: CompleteAgentRuntimeAuthInput,
+	): Promise<AgentRuntimeAuthTargetOperationResult> {
+		const registry = this.resolveAgentRuntimeRegistry(runtimeInstanceId);
+		const result = await registry.completeAgentRuntimeAuth(runtimeInstanceId, input);
+		if (result.state !== "pending") {
+			await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+		}
+		return result;
+	}
+
+	async cancelAgentRuntimeAuth(
+		runtimeInstanceId: string,
+		input: CancelAgentRuntimeAuthInput,
+	): Promise<AgentRuntimeAuthTargetOperationResult> {
+		return await this.resolveAgentRuntimeRegistry(runtimeInstanceId)
+			.cancelAgentRuntimeAuth(runtimeInstanceId, input);
+	}
+
+	async logoutAgentRuntimeAuth(
+		runtimeInstanceId: string,
+		input: LogoutAgentRuntimeAuthInput,
+	): Promise<AgentRuntimeAuthTargetOperationResult> {
+		const result = await this.resolveAgentRuntimeRegistry(runtimeInstanceId)
+			.logoutAgentRuntimeAuth(runtimeInstanceId, input);
+		await this.resetCachedRuntimeAuthSessions(runtimeInstanceId, "runtime provider auth changed");
+		return result;
 	}
 
 	getSessionRuntimeBinding(piboSessionId: string): RuntimeSessionBinding | undefined {
@@ -882,11 +958,17 @@ export class PiboSessionRouter {
 			];
 			if (failures.length > 0) throw new AggregateError(failures, "Failed to dispose all Pibo sessions");
 		} finally {
+			const authDisposals = await Promise.allSettled([
+				this.pluginRegistry.disposeAgentRuntimeAuth(),
+				...(this.compatibilityRuntimeRegistry ? [this.compatibilityRuntimeRegistry.disposeAgentRuntimeAuth()] : []),
+			]);
 			await this.portableToolService.dispose();
 			await this.runtimeResourceService.dispose();
 			this.runtimeResourceSessions.clear();
 			this.activeSubagentChildren.clear();
 			await this.telemetryWriter?.dispose();
+			const authFailures = authDisposals.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+			if (authFailures.length > 0) throw new AggregateError(authFailures, "Failed to dispose runtime authentication controllers.");
 		}
 	}
 
@@ -1164,6 +1246,23 @@ export class PiboSessionRouter {
 					status: this.sessions.get(piboSession.id)?.getStatus(),
 				}, reason),
 				messagePreflight: this.options.messagePreflight,
+				getRuntimeAuthStatus: () => runtimeRegistry.getAgentRuntimeAuthStatus(binding.runtimeInstanceId),
+				startRuntimeAuth: async (input) => {
+					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.startAgentRuntimeAuth(binding.runtimeInstanceId, input);
+					return result;
+				},
+				completeRuntimeAuth: async (input) => {
+					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.completeAgentRuntimeAuth(binding.runtimeInstanceId, input);
+					return result;
+				},
+				cancelRuntimeAuth: async (input) => {
+					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.cancelAgentRuntimeAuth(binding.runtimeInstanceId, input);
+					return result;
+				},
+				logoutRuntimeAuth: async (input) => {
+					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.logoutAgentRuntimeAuth(binding.runtimeInstanceId, input);
+					return result;
+				},
 			},
 		);
 		this.sessions.set(piboSession.id, session);
@@ -1366,6 +1465,32 @@ export class PiboSessionRouter {
 				...(currentBinding.adapterId === "pi" ? { originPiSessionId: result.previous.piSessionId } : {}),
 			},
 		});
+	}
+
+	private runtimeAuthAffectedInstanceIds(runtimeInstanceId: string): string[] {
+		const registry = this.resolveAgentRuntimeRegistry(runtimeInstanceId);
+		const target = registry.requireAgentRuntimeAdapter(runtimeInstanceId);
+		if (target.descriptor.capabilities.auth.credentialScope === "runtime-instance") return [runtimeInstanceId];
+		return registry.getAgentRuntimeInstanceIds().filter((candidateId) => {
+			const candidate = registry.getAgentRuntimeAdapter(candidateId);
+			return candidate?.descriptor.id === target.descriptor.id
+				&& candidate.descriptor.capabilities.auth.credentialScope === "adapter-shared";
+		});
+	}
+
+	private async resetCachedRuntimeAuthSessions(runtimeInstanceId: string, reason: string): Promise<void> {
+		const affectedInstanceIds = new Set(this.runtimeAuthAffectedInstanceIds(runtimeInstanceId));
+		for (const affectedInstanceId of affectedInstanceIds) this.runtimeAuthFingerprints.delete(affectedInstanceId);
+		const ids = [...new Set([...this.sessions.keys(), ...this.pendingSessions.keys()])]
+			.filter((piboSessionId) => {
+				const boundRuntimeInstanceId = this.getSessionRuntimeBinding(piboSessionId)?.runtimeInstanceId;
+				return boundRuntimeInstanceId !== undefined && affectedInstanceIds.has(boundRuntimeInstanceId);
+			});
+		const results = await Promise.allSettled(ids.map(async (piboSessionId) => await this.resetCachedSession(piboSessionId, reason)));
+		const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+		if (failures.length > 0) {
+			throw new AggregateError(failures, `Failed to reset cached sessions affected by runtime auth target "${runtimeInstanceId}".`);
+		}
 	}
 
 	private async resetCachedSession(piboSessionId: string, reason?: string): Promise<void> {

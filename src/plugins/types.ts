@@ -33,10 +33,16 @@ import type { PiboPiPackageInfo } from "../pi-packages/types.js";
 import type { PiboProviderUsageStatus } from "../auth/openai-codex-usage.js";
 import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 import type {
+	AgentRuntimeAuthOperationResult,
+	AgentRuntimeAuthStatus,
 	AgentRuntimeDriver,
 	AgentRuntimeInstanceDefinition,
 	AgentRuntimeInstanceInfo,
 	AgentRuntimeModelCatalog,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	StartAgentRuntimeAuthInput,
 } from "../agent-runtime/types.js";
 export type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 /** @deprecated Use PiboLoopStopConditionDefinition. */
@@ -182,11 +188,18 @@ export type PiboProductEvent = PiboProductEventInput & {
 
 export type PiboGatewayActionContext = {
 	piboSessionId: string;
+	runtimeInstanceId: string;
+	runtimeAuthRequired: boolean;
 	getStatus(): PiboSessionStatus;
 	getStatusSnapshot(): Promise<PiboSessionStatus>;
 	getContextUsage(): ContextUsage | undefined;
 	getActiveModel(): ModelProfile | undefined;
 	getModelCatalog(): Promise<AgentRuntimeModelCatalog | undefined>;
+	getRuntimeAuthStatus(): Promise<readonly AgentRuntimeAuthStatus[]>;
+	startRuntimeAuth(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	completeRuntimeAuth(input: CompleteAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	cancelRuntimeAuth(input: CancelAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	logoutRuntimeAuth(input: LogoutAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
 	getProviderUsage(): Promise<PiboProviderUsageStatus | undefined>;
 	clearQueue(): number;
 	abort(): Promise<void>;

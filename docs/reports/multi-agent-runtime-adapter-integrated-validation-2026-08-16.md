@@ -3,7 +3,7 @@
 **Date:** 2026-08-16
 
 **Environment:** Pibo2 development server
-**Result:** Deterministic two-adapter product matrix passed; final native-Codex production-provider proof remains blocked on interactive Pibo2-managed authentication.
+**Result:** Deterministic two-adapter product matrix passed for the recorded candidate. A later August 16 audit found a separate Chat Web provider-auth routing gap; the focused correction is documented in `runtime-auth-control-plane-validation-2026-08-16.md` and still requires exact Pibo2 activation.
 
 ## Exact artifacts
 
@@ -170,7 +170,7 @@ Pibo2 has no approved native-Codex credential:
 - `Continue with Google` reached Google sign-in, but the browser had no reusable Google session and required interactive account verification;
 - the App Server reported unsuccessful completion (`managed_login_rejected`).
 
-No local OAuth/API credential, Pi auth record, browser cookie, access token, device code, or account metadata was copied or exposed. This external interactive authentication requirement is the only remaining blocker to a production-provider native-Codex turn through the public Pibo2 path.
+No local OAuth/API credential, Pi auth record, browser cookie, access token, device code, or account metadata was copied or exposed. For this recorded candidate, interactive authentication blocked a production-provider native-Codex turn. The later final-audit review additionally found that Chat Web provider settings still targeted Pi globally; that product gap is corrected on the focused runtime-auth branch rather than being hidden by this evidence.
 
 ## Cleanup proof
 
@@ -186,6 +186,10 @@ Cleanup completed before this report was finalized:
 - confirmed zero files under global `/root/.codex`;
 - restarted the exact candidate and revalidated the authenticated Chat Web shell.
 
+## Follow-up provider-auth correction
+
+The focused runtime-auth control-plane change moves Pi credential operations behind the Pi adapter, adds official native-Codex account operations in the private configured-instance home, routes product mutations by explicit runtime target, and makes Provider Settings/Designer/model menus consume truthful runtime status. Its deterministic local matrix and 1,752-test full suite pass; exact package/Pibo2 evidence is recorded separately after activation.
+
 ## Conclusion
 
-The implementation and deterministic integrated product matrix pass. Pi behavior remains intact, and native Codex works end to end through the official App Server across sessions, restart, resources, tools, subagents, jobs, workflows, trace/debug, approvals, failures, interruption, and cleanup. The goal must remain blocked rather than complete until an authorized human finishes Pibo2-managed Codex authentication and one public real-provider native-Codex turn is recorded.
+The recorded integrated product matrix passes, but it did not prove that Chat Web could authenticate the selected native runtime. The focused correction closes that implementation/specification gap. The overall goal must remain blocked until the corrected exact candidate is validated on Pibo2 and an authorized human subsequently completes Pibo2-managed Codex authentication for one bounded public real-provider turn.

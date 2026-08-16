@@ -35,6 +35,46 @@ export type CodexAppServerInitializeResponse = {
 	userAgent: string;
 };
 
+/** Stable Codex App Server 0.147.0 account/read contract. */
+export type CodexAppServerAccount =
+	| { type: "apiKey" }
+	| { type: "chatgpt"; email: string | null; planType: string }
+	| { type: "amazonBedrock"; usesCodexManagedCredentials?: boolean };
+
+export type CodexAppServerAccountReadParams = {
+	refreshToken?: boolean;
+};
+
+export type CodexAppServerAccountReadResponse = {
+	account?: CodexAppServerAccount | null;
+	requiresOpenaiAuth: boolean;
+};
+
+/** Only the stable managed login modes Pibo supports. */
+export type CodexAppServerAccountLoginStartParams =
+	| { type: "apiKey"; apiKey: string }
+	| { type: "chatgptDeviceCode" };
+
+export type CodexAppServerAccountLoginStartResponse =
+	| { type: "apiKey" }
+	| { type: "chatgptDeviceCode"; loginId: string; userCode: string; verificationUrl: string };
+
+export type CodexAppServerAccountLoginCompletedNotification = {
+	success: boolean;
+	loginId?: string | null;
+	error?: string | null;
+};
+
+export type CodexAppServerAccountLoginCancelParams = {
+	loginId: string;
+};
+
+export type CodexAppServerAccountLoginCancelResponse = {
+	status: "canceled" | "notFound";
+};
+
+export type CodexAppServerAccountLogoutResponse = Record<string, never>;
+
 export type CodexAppServerRpcError = {
 	code: number;
 	message: string;

@@ -4,13 +4,13 @@
 
 Pibo supports multiple agent harnesses through a Pibo-owned runtime adapter boundary. Pibo remains the product and orchestration layer; Pi Coding Agent and Codex own their native model loops, prompts, tools, and resume state.
 
-This document is the canonical implementation overview. Runtime-history details live in [`../agent-runtime-history-and-debug.md`](../agent-runtime-history-and-debug.md), and the message call flow lives in [`chat-runtime-call-stack.md`](./chat-runtime-call-stack.md). Exact Pibo2 evidence is recorded in [`../../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`](../../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md), with requirement status in the [`final audit`](../../reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md).
+This document is the canonical implementation overview. Runtime-history details live in [`../agent-runtime-history-and-debug.md`](../agent-runtime-history-and-debug.md), and the message call flow lives in [`chat-runtime-call-stack.md`](./chat-runtime-call-stack.md). Exact integrated evidence is recorded in [`../../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`](../../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md) and the focused [`runtime auth validation`](../../reports/runtime-auth-control-plane-validation-2026-08-16.md), with requirement status in the [`final audit`](../../reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md).
 
 ## Ownership boundary
 
 | Pibo owns | Runtime adapters own |
 |---|---|
-| Pibo Sessions, rooms, projects, profiles, Agent Designer, routing, queues, workflows, Cron, Loops, goals, subagents, signals, product history, trace/debug, and durable product data | Native process or SDK lifecycle, native prompt and standard tools, native session/thread identity, native protocol messages, native history/resume state, and harness-specific controls |
+| Pibo Sessions, rooms, projects, profiles, Agent Designer, routing, queues, workflows, Cron, Loops, goals, subagents, signals, product history, trace/debug, provider-auth UX/intent/targeting, and durable product data | Native process or SDK lifecycle, native prompt and standard tools, native session/thread identity, native protocol messages, native history/resume state, harness-specific controls, provider login protocol, and credential persistence/isolation |
 
 Generic orchestration does not import Pi or Codex packages and does not branch on an adapter id when capability dispatch is sufficient.
 
@@ -46,6 +46,14 @@ A profile supplies the default only when a Pibo Session is created. The selected
 
 Each live router generation receives a random generation id. Portable-tool credentials, generated resource files, adapter environment, and child process state are scoped to that generation and are revoked or deleted together.
 
+### Runtime provider authentication
+
+Provider authentication is configured-runtime state, not Pibo Session state. `capabilities.auth` declares status support, Pibo-owned method ids and completion modes, cancellation/logout, and whether credentials are `runtime-instance` or `adapter-shared` scoped. Registration rejects a declaration that lacks the matching adapter operation.
+
+Chat Web's product-scoped provider settings API requires an explicit runtime instance for every mutation. Legacy `login.*` actions remain available for Terminal/TUI clients, but they target the active Pibo Session's frozen runtime binding and reject a conflicting explicit target. Public status and flow objects contain only Pibo ids and safe metadata. An active interactive flow may include its bounded authorization URL and one-time code; native login ids, separate OAuth state/verifier fields, tokens, API keys, account identifiers, credential paths, and credential-file content remain adapter-private, and ephemeral flow URLs/codes are not captured in product history or validation evidence.
+
+The settings catalog groups providers by configured runtime, identifies the default runtime, explains credential scope, and aggregates connected, disconnected, pending, partial, unsupported, and failed states. Models are joined to auth for the same runtime instance. Missing status for an auth-requiring runtime is never interpreted as authenticated. A terminal auth mutation recycles cached sessions across the declared credential scope: one instance for `runtime-instance`, or every configured instance of the same adapter for `adapter-shared`.
+
 ## Registration and startup flow
 
 1. Plugins register adapter drivers and configured instances.
@@ -78,12 +86,12 @@ A runtime session implements generic operations for text prompt, subscription, s
 The Pi adapter wraps the existing embedded Pi behavior rather than reimplementing it. It owns:
 
 - Pi service/runtime assembly and `SessionManager` persistence;
-- auth and model registry integration;
+- Pi `AuthStorage`, OAuth/device/browser flows, API keys, logout, and model registry integration;
 - built-in Pi tools, packages, skills, context, extensions, compaction, and recovery;
 - Pi transcript history, fork/clone/tree/session operations;
 - Pi event normalization and compatibility projections.
 
-Pibo's Pi base prompt remains Pi-only behavior. Existing Pi session ids and JSONL files are not rewritten. The deprecated `pi_session_id` compatibility field is dual-written for Pi bindings during the compatibility period.
+Pibo's Pi base prompt remains Pi-only behavior. Existing Pi session ids and JSONL files are not rewritten. The deprecated `pi_session_id` compatibility field is dual-written for Pi bindings during the compatibility period. Pi's existing provider store is truthfully declared `adapter-shared`; Pibo does not emulate per-instance accounts on top of it.
 
 ## Native Codex adapter
 
@@ -92,6 +100,7 @@ Pibo's Pi base prompt remains Pi-only behavior. Existing Pi session ids and JSON
 The adapter owns:
 
 - exact executable/version diagnostics and a private configured-instance Codex home;
+- stable `account/read`, managed device-code/API-key `account/login/start`, completion notification, cancellation, and logout operations in that private home;
 - bounded stdio RPC, initialization, correlation, backpressure, retries, stderr, timeout, abort, and shutdown;
 - stable thread start/resume/read/list/fork and missing-thread handling;
 - turn start/steer/interrupt and native item/event normalization;
@@ -148,7 +157,9 @@ Default output includes safe runtime identity and binding state. It does not exp
 ## Security and cleanup invariants
 
 - Runtime homes and generation directories are private and selected-only.
-- Runtime credentials and resolved external MCP secrets exist only in adapter-owned process state/environment.
+- Runtime credentials and resolved external MCP secrets exist only in adapter-owned stores/process state/environment.
+- Native Codex account state persists only in the selected configured instance's private `CODEX_HOME`; Pi and separate Codex instances are never credential-copy sources.
+- Pending provider-login processes are bounded and closed on completion, cancellation, timeout, failure, or adapter disposal.
 - Pibo MCP credentials are scoped, short-lived, renewed only for active work, and revoked on every terminal path.
 - Pending requests are bounded, redacted, turn/thread scoped, resolved at most once, and cleared on interruption, crash, disposal, or restart.
 - Adapters bound message, pending-request, stderr, native-event, history, retry, and shutdown resources.
@@ -173,6 +184,7 @@ A new adapter must prove, not infer:
 6. Designer save validation and disabled explanations;
 7. Pibo tools, selected MCP, skills, context, and subagent delivery where claimed;
 8. product history, native history, trace, and debug integration;
-9. deterministic contract coverage and exact-binary integrated validation.
+9. auth capability/operation consistency, explicit target routing, credential scope/isolation, timeout/cancel/restart/redaction evidence;
+10. deterministic contract coverage and exact-binary integrated validation.
 
 The built-in `pibo-agent-runtime-adapter` skill contains the detailed authoring procedure and evidence checklist.

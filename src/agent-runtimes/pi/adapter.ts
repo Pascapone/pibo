@@ -29,7 +29,10 @@ import {
 import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
 import type {
 	AgentRuntimeAdapter,
+	AgentRuntimeAuthOperationResult,
 	AgentRuntimeAuthStatus,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
 	AgentRuntimeDiagnostic,
 	AgentRuntimeDriver,
 	AgentRuntimeHistoryInspection,
@@ -42,15 +45,16 @@ import type {
 	AgentRuntimeSessionOperationResult,
 	AgentRuntimeStatus,
 	InspectAgentRuntimeHistoryInput,
+	LogoutAgentRuntimeAuthInput,
 	OpenAgentRuntimeSessionInput,
 	ReadAgentRuntimeHistoryInput,
 	RuntimeSessionBinding,
+	StartAgentRuntimeAuthInput,
 	ValidateAgentRuntimeProfileInput,
 } from "../../agent-runtime/types.js";
 import { RoutedSession as PiRoutedSession } from "./routed-session.js";
 import {
 	loadModelCatalog as loadPiModelCatalog,
-	piAgentRuntimeAuthStatus,
 	piAgentRuntimeModelCatalog,
 	type ModelCatalog as PiModelCatalog,
 } from "./model-catalog.js";
@@ -58,6 +62,7 @@ import {
 	inspectPiAgentRuntimeHistory,
 	readPiAgentRuntimeHistory,
 } from "./history.js";
+import { PiAgentRuntimeAuthController } from "./auth.js";
 
 const PI_ADAPTER_ID = "pi";
 const PI_PROTOCOL_VERSION = "0.80.6";
@@ -100,6 +105,17 @@ export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 	},
 	skills: { support: "native" },
 	context: { support: "native" },
+	auth: {
+		status: true,
+		methods: [
+			{ id: "device_code", completion: "explicit" },
+			{ id: "browser_oauth", completion: "explicit" },
+			{ id: "api_key", completion: "immediate" },
+		],
+		cancel: true,
+		logout: true,
+		credentialScope: "adapter-shared",
+	},
 	models: {
 		catalog: true,
 		switchInSession: true,
@@ -543,6 +559,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly config: PiboJsonObject;
 	readonly displayName: string;
 	private modelCatalogCache?: { expiresAt: number; value: Promise<PiModelCatalog> };
+	private readonly authController: PiAgentRuntimeAuthController;
 
 	constructor(
 		readonly instanceId: string,
@@ -552,6 +569,12 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	) {
 		this.config = structuredClone(config);
 		this.displayName = displayName ?? this.descriptor.displayName;
+		this.authController = new PiAgentRuntimeAuthController(
+			() => this.loadModelCatalog(),
+			() => {
+				this.modelCatalogCache = undefined;
+			},
+		);
 	}
 
 	async diagnose(): Promise<readonly AgentRuntimeDiagnostic[]> {
@@ -567,7 +590,27 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async getAuthStatus(): Promise<readonly AgentRuntimeAuthStatus[]> {
-		return piAgentRuntimeAuthStatus(await this.loadModelCatalog());
+		return await this.authController.getStatus();
+	}
+
+	async startAuth(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return await this.authController.start(input);
+	}
+
+	async completeAuth(input: CompleteAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return await this.authController.complete(input);
+	}
+
+	async cancelAuth(input: CancelAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return await this.authController.cancel(input);
+	}
+
+	async logoutAuth(input: LogoutAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return await this.authController.logout(input);
+	}
+
+	async disposeAuth(): Promise<void> {
+		await this.authController.dispose();
 	}
 
 	async inspectHistory(input: InspectAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryInspection> {

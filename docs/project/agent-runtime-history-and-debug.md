@@ -16,6 +16,8 @@ Pibo product history is the normal source for Chat Web and local trace reconstru
 
 A harness-native transcript or thread remains adapter-owned resume state. It is not the primary mutable product-history store.
 
+Provider authentication is product/account-scoped configuration, not conversation history. The dedicated Chat Web provider-auth API does not emit Pibo Session execution events. Legacy session-bound `login.*` action results may render a bounded verification/authorization URL, one-time user code, and opaque Pibo flow id for compatibility. Native login ids, separate OAuth state/verifier fields, tokens, API keys, account identifiers, credential paths, and credential-file content never enter product history or bindings; ephemeral user-facing flow URLs/codes are excluded from screenshots and evidence.
+
 ## Adapter history provider
 
 A runtime adapter that declares `capabilities.maintenance.history = true` must implement both methods:
@@ -75,7 +77,7 @@ pibo debug trace <ps_...> --native-history --check
 
 Session-scoped message, event, tool, failure, trace, summary, and telemetry detail outputs include runtime instance, adapter, native session id where useful, and binding state. `session runtime` reports bounded product-history counts and sanitized binding fields.
 
-Debug output must not expose runtime config, locator values, binding metadata values, bearer credentials, cookies, environment secrets, or raw provider bodies. Externalized payloads are hydrated for explicitly requested full message/event/tool inspection; default text remains byte-bounded.
+Debug output must not expose runtime config, locator values, binding metadata values, provider-auth flow internals, bearer credentials, API keys, cookies, account identifiers, environment secrets, credential paths/content, or raw provider bodies. Externalized payloads are hydrated for explicitly requested full message/event/tool inspection; default text remains byte-bounded.
 
 ## Validation
 

@@ -1,513 +1,500 @@
-import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, CheckCircle, Copy, ExternalLink, Eye, EyeOff, Key, Loader2, Lock, Trash2 } from "lucide-react";
-import { postAction } from "../api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	AlertCircle,
+	CheckCircle,
+	Clock3,
+	Copy,
+	ExternalLink,
+	Eye,
+	EyeOff,
+	Key,
+	Loader2,
+	Lock,
+	RefreshCw,
+	Server,
+	Trash2,
+	XCircle,
+} from "lucide-react";
+import { getProviderAuthCatalog, postProviderAuthAction } from "../api";
+import type {
+	AgentRuntimeAuthCatalog,
+	AgentRuntimeAuthMethodId,
+	AgentRuntimeAuthState,
+	AgentRuntimeAuthStatus,
+	AgentRuntimeAuthTarget,
+} from "../types";
 
-type AuthMethod = "oauth" | "api_key";
-
-type ProviderDef = {
-	id: string;
-	name: string;
-	authMethod: AuthMethod;
-};
-
-const PROVIDERS: ProviderDef[] = [
-	{ id: "openai-codex", name: "OpenAI (ChatGPT Plus/Pro)", authMethod: "oauth" },
-	{ id: "openai", name: "OpenAI (API Key)", authMethod: "api_key" },
-	{ id: "anthropic", name: "Anthropic (Claude)", authMethod: "api_key" },
-	{ id: "qwen-token-plan", name: "Qwen Token Plan", authMethod: "api_key" },
-	{ id: "github-copilot", name: "GitHub Copilot", authMethod: "oauth" },
-	{ id: "kimi-coding", name: "Kimi for Coding", authMethod: "api_key" },
-	{ id: "google", name: "Google (Gemini)", authMethod: "api_key" },
-	{ id: "groq", name: "Groq", authMethod: "api_key" },
-	{ id: "ollama", name: "Ollama", authMethod: "api_key" },
-	{ id: "minimax", name: "MiniMax", authMethod: "api_key" },
-	{ id: "minimax-cn", name: "MiniMax (China)", authMethod: "api_key" },
-	{ id: "glm", name: "GLM (Z.ai)", authMethod: "api_key" },
-];
-
-type ProviderStatus = {
-	id?: string;
-	provider?: string;
-	configured: boolean;
-};
-
-type ActionEnvelope = {
-	type?: string;
-	result?: unknown;
-};
-
-type ProviderRowState =
-	| { type: "collapsed" }
-	| { type: "oauth_starting" }
-	| { type: "oauth_flow"; url: string; state?: string; userCode?: string; instructions?: string; flow?: string }
-	| { type: "api_key" };
+type ProviderRowState = "collapsed" | "api_key";
 
 export function ProviderSettingsView({
-	piboSessionId,
+	piboSessionId: _piboSessionId,
 	onProviderAuthChanged,
 }: {
 	piboSessionId?: string | null;
 	onProviderAuthChanged?: () => void | Promise<void>;
 }) {
-	const [statuses, setStatuses] = useState<Record<string, boolean>>({});
-	const [loading, setLoading] = useState(false);
+	const [catalog, setCatalog] = useState<AgentRuntimeAuthCatalog | null>(null);
+	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
 	const [rowStates, setRowStates] = useState<Record<string, ProviderRowState>>({});
 	const [codes, setCodes] = useState<Record<string, string>>({});
 	const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
 	const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-	const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-	const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+	const [copied, setCopied] = useState<string | null>(null);
+	const [busy, setBusy] = useState<Record<string, boolean>>({});
+	const polling = useRef(false);
 
-	const refreshStatus = useCallback(async () => {
-		if (!piboSessionId) return;
-		setLoading(true);
-		setError(null);
+	const refreshStatus = useCallback(async (showLoading = false) => {
+		if (showLoading) setLoading(true);
 		try {
-			const result = unwrapActionResult(await postAction(piboSessionId, "login.status", {})) as {
-				providers?: ProviderStatus[];
-			};
-			const map: Record<string, boolean> = {};
-			if (Array.isArray(result?.providers)) {
-				for (const p of result.providers) {
-					const id = p.id ?? p.provider;
-					if (id) map[id] = p.configured;
-				}
-			}
-			setStatuses(map);
+			setCatalog(await getProviderAuthCatalog());
+			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
 		} finally {
 			setLoading(false);
 		}
-	}, [piboSessionId]);
+	}, []);
 
 	useEffect(() => {
-		void refreshStatus();
+		void refreshStatus(true);
 	}, [refreshStatus]);
 
-	const startOAuth = useCallback(
-		async (provider: string) => {
-			if (!piboSessionId) return;
-			setActionLoading((prev) => ({ ...prev, [provider]: true }));
-			setError(null);
-			setSuccess(null);
-			setRowStates((prev) => ({ ...prev, [provider]: { type: "oauth_starting" } }));
+	const notificationFlows = useMemo(() => catalog?.targets.flatMap((target) =>
+		target.providers.flatMap((provider) => provider.pending?.completion === "notification"
+			? [{ target, provider, flowId: provider.pending.flowId }]
+			: [])) ?? [], [catalog]);
+
+	useEffect(() => {
+		if (notificationFlows.length === 0) return;
+		const poll = async () => {
+			if (polling.current) return;
+			polling.current = true;
 			try {
-				const result = unwrapActionResult(await postAction(piboSessionId, "login.start", { provider })) as {
-					url?: string;
-					state?: string;
-					userCode?: string;
-					instructions?: string;
-					type?: string;
-				};
-				const url = result.url;
-				const state = result.state;
-				if (url) {
-					setRowStates((prev) => ({
-						...prev,
-						[provider]: {
-							type: "oauth_flow",
-							url,
-							state,
-							userCode: result.userCode,
-							instructions: result.instructions,
-							flow: result.type,
-						},
-					}));
-				} else {
-					setError("No URL returned from login start.");
-					setRowStates((prev) => ({ ...prev, [provider]: { type: "collapsed" } }));
+				for (const { target, provider, flowId } of notificationFlows) {
+					const result = await postProviderAuthAction({
+						action: "complete",
+						runtimeInstanceId: target.runtimeInstanceId,
+						providerId: provider.id,
+						flowId,
+					});
+					if (result.state === "connected" || result.state === "partial") {
+						showSuccess(setSuccess, `${target.displayName} / ${provider.displayName ?? provider.id} is ${stateLabel(result.state).toLowerCase()}.`);
+						await onProviderAuthChanged?.();
+					}
 				}
+				await refreshStatus();
 			} catch (caught) {
 				setError(caught instanceof Error ? caught.message : String(caught));
-				setRowStates((prev) => ({ ...prev, [provider]: { type: "collapsed" } }));
+				await refreshStatus();
 			} finally {
-				setActionLoading((prev) => ({ ...prev, [provider]: false }));
+				polling.current = false;
 			}
-		},
-		[piboSessionId],
-	);
+		};
+		const timer = window.setInterval(() => void poll(), 1_500);
+		return () => window.clearInterval(timer);
+	}, [notificationFlows, onProviderAuthChanged, refreshStatus]);
 
-	const completeOAuth = useCallback(
-		async (provider: string, code: string | undefined, state?: string) => {
-			if (!piboSessionId) return;
-			setActionLoading((prev) => ({ ...prev, [provider]: true }));
-			setError(null);
-			setSuccess(null);
-			try {
-				await postAction(piboSessionId, "login.complete", { provider, ...(code ? { code } : {}), state: state ?? "" });
-				const name = getProviderName(provider);
-				setSuccess(`${name} login completed.`);
-				setStatuses((prev) => ({ ...prev, [provider]: true }));
-				setRowStates((prev) => ({ ...prev, [provider]: { type: "collapsed" } }));
-				setCodes((prev) => ({ ...prev, [provider]: "" }));
-				await onProviderAuthChanged?.();
-				window.setTimeout(() => setSuccess((current) => (current === `${name} login completed.` ? null : current)), 5000);
-			} catch (caught) {
-				setError(caught instanceof Error ? caught.message : String(caught));
-			} finally {
-				setActionLoading((prev) => ({ ...prev, [provider]: false }));
-			}
-		},
-		[onProviderAuthChanged, piboSessionId],
-	);
-
-	const saveApiKey = useCallback(
-		async (provider: string, key: string) => {
-			if (!piboSessionId) return;
-			setActionLoading((prev) => ({ ...prev, [provider]: true }));
-			setError(null);
-			setSuccess(null);
-			try {
-				await postAction(piboSessionId, "login.apikey", { provider, apiKey: key });
-				const name = getProviderName(provider);
-				setSuccess(`${name} API key saved.`);
-				setStatuses((prev) => ({ ...prev, [provider]: true }));
-				setRowStates((prev) => ({ ...prev, [provider]: { type: "collapsed" } }));
-				setApiKeys((prev) => ({ ...prev, [provider]: "" }));
-				await onProviderAuthChanged?.();
-				window.setTimeout(() => setSuccess((current) => (current === `${name} API key saved.` ? null : current)), 5000);
-			} catch (caught) {
-				setError(caught instanceof Error ? caught.message : String(caught));
-			} finally {
-				setActionLoading((prev) => ({ ...prev, [provider]: false }));
-			}
-		},
-		[onProviderAuthChanged, piboSessionId],
-	);
-
-	const removeProvider = useCallback(
-		async (provider: string) => {
-			if (!piboSessionId) return;
-			setActionLoading((prev) => ({ ...prev, [provider]: true }));
-			setError(null);
-			setSuccess(null);
-			try {
-				await postAction(piboSessionId, "logout", { provider });
-				setStatuses((prev) => ({ ...prev, [provider]: false }));
-				await onProviderAuthChanged?.();
-			} catch (caught) {
-				setError(caught instanceof Error ? caught.message : String(caught));
-			} finally {
-				setActionLoading((prev) => ({ ...prev, [provider]: false }));
-			}
-		},
-		[onProviderAuthChanged, piboSessionId],
-	);
-
-	const copyUrl = async (url: string) => {
+	const run = useCallback(async <T,>(key: string, operation: () => Promise<T>): Promise<T | undefined> => {
+		setBusy((current) => ({ ...current, [key]: true }));
+		setError(null);
+		setSuccess(null);
 		try {
-			await navigator.clipboard.writeText(url);
-			setCopiedUrl(url);
-			setTimeout(() => setCopiedUrl(null), 2000);
-		} catch {
-			/* ignore */
+			return await operation();
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+			return undefined;
+		} finally {
+			setBusy((current) => ({ ...current, [key]: false }));
 		}
-	};
+	}, []);
 
-	if (!piboSessionId) {
-		return (
-			<div className="border border-slate-700 bg-[#1a262b] rounded-sm p-4 text-sm text-slate-400">
-				Select a chat session to manage provider authentication.
-			</div>
-		);
-	}
+	const startInteractive = useCallback(async (
+		target: AgentRuntimeAuthTarget,
+		provider: AgentRuntimeAuthStatus,
+		method: Exclude<AgentRuntimeAuthMethodId, "api_key">,
+	) => {
+		const key = rowKey(target, provider);
+		const result = await run(key, async () => await postProviderAuthAction({
+			action: "start",
+			runtimeInstanceId: target.runtimeInstanceId,
+			providerId: provider.id,
+			method,
+		}));
+		if (!result) return;
+		await refreshStatus();
+	}, [refreshStatus, run]);
+
+	const completeFlow = useCallback(async (
+		target: AgentRuntimeAuthTarget,
+		provider: AgentRuntimeAuthStatus,
+		code?: string,
+	) => {
+		if (!provider.pending) return;
+		const key = rowKey(target, provider);
+		const result = await run(key, async () => await postProviderAuthAction({
+			action: "complete",
+			runtimeInstanceId: target.runtimeInstanceId,
+			providerId: provider.id,
+			flowId: provider.pending!.flowId,
+			...(code ? { code } : {}),
+		}));
+		if (!result) return;
+		if (result.state === "connected" || result.state === "partial") {
+			showSuccess(setSuccess, `${target.displayName} / ${provider.displayName ?? provider.id} is ${stateLabel(result.state).toLowerCase()}.`);
+			setCodes((current) => ({ ...current, [key]: "" }));
+			await onProviderAuthChanged?.();
+		}
+		await refreshStatus();
+	}, [onProviderAuthChanged, refreshStatus, run]);
+
+	const cancelFlow = useCallback(async (target: AgentRuntimeAuthTarget, provider: AgentRuntimeAuthStatus) => {
+		if (!provider.pending) return;
+		const key = rowKey(target, provider);
+		const result = await run(key, async () => await postProviderAuthAction({
+			action: "cancel",
+			runtimeInstanceId: target.runtimeInstanceId,
+			providerId: provider.id,
+			flowId: provider.pending!.flowId,
+		}));
+		if (!result) return;
+		await refreshStatus();
+	}, [refreshStatus, run]);
+
+	const saveApiKey = useCallback(async (target: AgentRuntimeAuthTarget, provider: AgentRuntimeAuthStatus) => {
+		const key = rowKey(target, provider);
+		const apiKey = apiKeys[key]?.trim();
+		if (!apiKey) return;
+		const result = await run(key, async () => await postProviderAuthAction({
+			action: "api_key",
+			runtimeInstanceId: target.runtimeInstanceId,
+			providerId: provider.id,
+			apiKey,
+		}));
+		if (!result) return;
+		setApiKeys((current) => ({ ...current, [key]: "" }));
+		setShowKeys((current) => ({ ...current, [key]: false }));
+		setRowStates((current) => ({ ...current, [key]: "collapsed" }));
+		showSuccess(setSuccess, `${target.displayName} / ${provider.displayName ?? provider.id} API key is configured.`);
+		await onProviderAuthChanged?.();
+		await refreshStatus();
+	}, [apiKeys, onProviderAuthChanged, refreshStatus, run]);
+
+	const logout = useCallback(async (target: AgentRuntimeAuthTarget, provider: AgentRuntimeAuthStatus) => {
+		const key = rowKey(target, provider);
+		const result = await run(key, async () => await postProviderAuthAction({
+			action: "logout",
+			runtimeInstanceId: target.runtimeInstanceId,
+			providerId: provider.id,
+		}));
+		if (!result) return;
+		showSuccess(setSuccess, `${target.displayName} / ${provider.displayName ?? provider.id} is disconnected.`);
+		await onProviderAuthChanged?.();
+		await refreshStatus();
+	}, [onProviderAuthChanged, refreshStatus, run]);
+
+	const copyText = useCallback(async (key: string, value: string) => {
+		try {
+			await navigator.clipboard.writeText(value);
+			setCopied(key);
+			window.setTimeout(() => setCopied((current) => current === key ? null : current), 1_800);
+		} catch {
+			// Clipboard availability is browser-controlled.
+		}
+	}, []);
 
 	return (
 		<div className="grid gap-4">
-			{error ? (
-				<div className="flex items-center gap-2 rounded-sm border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-					<AlertCircle size={14} />
-					{error}
+			<div className="flex items-start justify-between gap-3 border border-slate-700 bg-[#1a262b] p-3">
+				<div>
+					<div className="text-xs font-bold uppercase tracking-wider text-slate-300">Runtime authentication targets</div>
+					<div className="mt-1 text-[11px] leading-relaxed text-slate-500">
+						Each target owns its effective account. The default runtime is marked below; credentials are never copied between runtimes.
+					</div>
 				</div>
-			) : null}
-			{success ? (
-				<div className="flex items-center gap-2 rounded-sm border border-[#0bda57]/30 bg-[#0bda57]/10 px-3 py-2 text-xs text-[#7cf2a2]">
-					<CheckCircle size={14} />
-					{success}
-				</div>
-			) : null}
-			{loading ? (
-				<div className="flex items-center gap-2 text-xs text-[#11a4d4]">
-					<Loader2 size={14} className="animate-spin" />
-					Loading provider status...
-				</div>
-			) : null}
-			{PROVIDERS.map((provider) => {
-				const configured = statuses[provider.id] ?? false;
-				const rowState = rowStates[provider.id] ?? { type: "collapsed" };
-				const busy = actionLoading[provider.id] ?? false;
-				return (
-					<div
-						key={provider.id}
-						className={`border rounded-sm ${
-							rowState.type !== "collapsed"
-								? "border-[#11a4d4]/50 bg-[#151f24]"
-								: configured
-									? "border-[#0bda57]/20 bg-[#151f24]"
-									: "border-[#334155] bg-[#151f24] hover:border-slate-600"
-						}`}
-					>
-						<div className="flex items-center justify-between gap-3 p-3">
-							<div className="min-w-0 flex-1">
-								<div className="flex items-center gap-2">
-									<span className="text-sm font-medium text-slate-200">{provider.name}</span>
-									<span
-										className={`shrink-0 border px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider ${
-											provider.authMethod === "oauth"
-												? "border-purple-500/40 text-purple-300"
-												: "border-amber-500/40 text-amber-300"
-										}`}
-									>
-										{provider.authMethod === "oauth" ? "OAuth" : "API Key"}
-									</span>
-								</div>
-								<div className="mt-1 flex items-center gap-1.5 text-xs">
-									{configured ? (
-										<>
-											<CheckCircle size={12} className="text-[#0bda57]" />
-											<span className="text-[#0bda57]">Configured</span>
-										</>
-									) : (
-										<>
-											<Lock size={12} className="text-slate-500" />
-											<span className="text-slate-500">Not configured</span>
-										</>
-									)}
-								</div>
+				<button
+					type="button"
+					disabled={loading}
+					onClick={() => void refreshStatus(true)}
+					className="inline-flex shrink-0 items-center gap-1 border border-slate-700 bg-[#0e1116] px-2 py-1 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
+				>
+					<RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
+				</button>
+			</div>
+
+			{error ? <Notice tone="red" icon={<AlertCircle size={14} />}>{error}</Notice> : null}
+			{success ? <Notice tone="green" icon={<CheckCircle size={14} />}>{success}</Notice> : null}
+			{loading && !catalog ? <Notice tone="cyan" icon={<Loader2 size={14} className="animate-spin" />}>Loading runtime authentication status...</Notice> : null}
+
+			{catalog?.targets.map((target) => (
+				<section key={target.runtimeInstanceId} className="border border-[#334155] bg-[#151f24]">
+					<header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 px-3 py-2.5">
+						<div className="min-w-0">
+							<div className="flex flex-wrap items-center gap-2">
+								<Server size={14} className="text-[#11a4d4]" />
+								<span className="text-sm font-medium text-slate-200">{target.displayName}</span>
+								<span className="font-mono text-[10px] text-slate-500">{target.runtimeInstanceId}</span>
+								{target.isDefault ? <Badge tone="cyan">Default runtime</Badge> : null}
+								<StateBadge state={target.state} />
 							</div>
-							<div className="flex items-center gap-2">
-								{configured ? (
-									<>
-										<button
-											type="button"
-											disabled={busy}
-											onClick={() =>
-												setRowStates((prev) => ({
-													...prev,
-													[provider.id]:
-														prev[provider.id]?.type === "collapsed"
-															? provider.authMethod === "oauth"
-																? { type: "oauth_starting" }
-																: { type: "api_key" }
-														: { type: "collapsed" },
-												}))
-											}
-											className="inline-flex items-center gap-1 rounded-sm border border-slate-700 bg-[#0e1116] px-2.5 py-1.5 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
-										>
-											{busy ? <Loader2 size={12} className="animate-spin" /> : <Key size={12} />}
-											Reconfigure
-										</button>
-										<button
-											type="button"
-											disabled={busy}
-											onClick={() => void removeProvider(provider.id)}
-											className="inline-flex items-center gap-1 rounded-sm border border-slate-700 bg-[#0e1116] px-2.5 py-1.5 text-[11px] text-slate-300 hover:border-red-500 hover:text-red-300 disabled:opacity-50"
-										>
-											<Trash2 size={12} />
-											Remove
-										</button>
-									</>
-								) : (
-									<button
-										type="button"
-										disabled={busy}
-										onClick={() =>
-											provider.authMethod === "oauth"
-												? void startOAuth(provider.id)
-												: setRowStates((prev) => ({
-														...prev,
-														[provider.id]: { type: "api_key" },
-													}))
-										}
-										className="inline-flex items-center gap-1 rounded-sm border border-slate-700 bg-[#0e1116] px-2.5 py-1.5 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
-									>
-										{busy ? <Loader2 size={12} className="animate-spin" /> : <Key size={12} />}
-										Configure
-									</button>
-								)}
+							<div className="mt-1 text-[11px] text-slate-500">
+								{target.credentialScope === "runtime-instance"
+									? "Private account for this configured runtime instance."
+									: "Shared adapter credential store; changes apply to Pi instances using this adapter."}
 							</div>
 						</div>
+						<div className="font-mono text-[10px] uppercase tracking-wider text-slate-600">{target.adapterId}</div>
+					</header>
 
-						{rowState.type !== "collapsed" ? (
-							<div className="border-t border-slate-800 p-3">
-								{rowState.type === "oauth_starting" ? (
-									<div className="flex items-center gap-2 text-xs text-[#11a4d4]">
-										<Loader2 size={14} className="animate-spin" />
-										Starting OAuth flow...
-									</div>
-								) : rowState.type === "oauth_flow" ? (
-									<div className="grid gap-3">
-										<div className="grid gap-2">
-											<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-												Step 1: Open URL
-											</div>
-											<div className="break-all rounded-sm border border-slate-700 bg-[#0e1116] p-2 font-mono text-[11px] text-slate-300">
-												{rowState.url}
-											</div>
-											<div className="flex gap-2">
-												<button
-													type="button"
-													onClick={() => void copyUrl(rowState.url)}
-													className="inline-flex items-center gap-1 rounded-sm border border-slate-700 bg-[#0e1116] px-2 py-1 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-												>
-													{copiedUrl === rowState.url ? <CheckCircle size={12} /> : <Copy size={12} />}
-													{copiedUrl === rowState.url ? "Copied" : "Copy URL"}
-												</button>
-												<a
-													href={rowState.url}
-													target="_blank"
-													rel="noreferrer"
-													className="inline-flex items-center gap-1 rounded-sm border border-slate-700 bg-[#0e1116] px-2 py-1 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-												>
-													<ExternalLink size={12} />
-													Open in Browser
-												</a>
-											</div>
+					{target.providers.length === 0 ? (
+						<div className="px-3 py-3 text-xs text-slate-500">
+							{target.state === "unsupported"
+								? "This runtime does not expose provider authentication controls."
+								: "Provider authentication status is unavailable for this runtime."}
+						</div>
+					) : target.providers.map((provider) => {
+						const key = rowKey(target, provider);
+						const rowState = rowStates[key] ?? "collapsed";
+						const isBusy = busy[key] ?? false;
+						const pending = provider.pending;
+						return (
+							<div key={provider.id} className="border-b border-slate-800 last:border-b-0">
+								<div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+									<div className="min-w-0 flex-1">
+										<div className="flex flex-wrap items-center gap-2">
+											<span className="text-sm text-slate-200">{provider.displayName ?? provider.id}</span>
+											<span className="font-mono text-[10px] text-slate-600">{provider.id}</span>
+											{provider.methods.map((method) => <Badge key={method.id} tone={method.id === "api_key" ? "amber" : "purple"}>{methodLabel(method.id)}</Badge>)}
 										</div>
-										{rowState.userCode ? (
-											<div className="grid gap-2">
-												<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-													Step 2: Enter Code
-												</div>
-												<div className="rounded-sm border border-slate-700 bg-[#0e1116] p-3 text-center font-mono text-[20px] font-bold tracking-widest text-[#11a4d4]">
-													{rowState.userCode}
-												</div>
-												{rowState.instructions ? (
-													<div className="text-[11px] leading-relaxed text-slate-500">
-														{rowState.instructions}
-													</div>
-												) : null}
-												<button
-													type="button"
-													disabled={busy}
-													onClick={() => void completeOAuth(provider.id, undefined, rowState.state)}
-													className="inline-flex items-center gap-1 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-1.5 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
-												>
-													{busy ? <Loader2 size={12} className="animate-spin" /> : <Lock size={12} />}
-													Complete Login
-												</button>
-											</div>
+										<div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+											<StateIcon state={provider.state} />
+											<span className={stateTextClass(provider.state)}>{stateLabel(provider.state)}</span>
+											{provider.details?.accountType ? <span className="text-slate-600">{accountLabel(provider.details.accountType)}</span> : null}
+											{provider.details?.planType ? <span className="text-slate-600">plan: {provider.details.planType}</span> : null}
+										</div>
+										{provider.message ? <div className="mt-1 text-[11px] text-slate-500">{provider.message}</div> : null}
+									</div>
+									<div className="flex flex-wrap items-center gap-1.5">
+										{provider.state !== "pending" && provider.methods.map((method) => method.id === "api_key" ? (
+											<button key={method.id} type="button" disabled={isBusy || !target.available} onClick={() => {
+												const closing = rowState === "api_key";
+												setRowStates((current) => ({ ...current, [key]: closing ? "collapsed" : "api_key" }));
+												if (closing) {
+													setApiKeys((current) => ({ ...current, [key]: "" }));
+													setShowKeys((current) => ({ ...current, [key]: false }));
+												}
+											}} className={secondaryButtonClass}>
+												<Key size={12} /> {provider.configured ? "Replace key" : "API key"}
+											</button>
 										) : (
-											<div className="grid gap-2">
-												<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-													Step 2: Paste Code
-												</div>
-												<input
-													type="text"
-													value={codes[provider.id] ?? ""}
-													onChange={(e) =>
-														setCodes((prev) => ({ ...prev, [provider.id]: e.target.value }))
-													}
-													onKeyDown={(e) => {
-														if (e.key === "Enter" && (codes[provider.id] ?? "").trim()) {
-															void completeOAuth(
-																provider.id,
-																codes[provider.id]!.trim(),
-																rowState.state,
-															);
-														}
-													}}
-													placeholder="Paste authorization code..."
-													className="w-full rounded-sm border border-slate-700 bg-[#0e1116] px-2 py-1.5 font-mono text-[12px] text-slate-300 placeholder-slate-600 outline-none focus:border-[#11a4d4]"
-												/>
-												<button
-													type="button"
-													disabled={busy || !(codes[provider.id] ?? "").trim()}
-													onClick={() =>
-														void completeOAuth(
-															provider.id,
-															codes[provider.id]!.trim(),
-															rowState.state,
-														)
-													}
-													className="inline-flex items-center gap-1 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-1.5 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
-												>
-													{busy ? <Loader2 size={12} className="animate-spin" /> : <Lock size={12} />}
-													Complete Login
-												</button>
-											</div>
-										)}
-										<button
-											type="button"
-											onClick={() => setRowStates((prev) => ({ ...prev, [provider.id]: { type: "collapsed" } }))}
-											className="text-[11px] text-slate-500 hover:text-[#11a4d4]"
-										>
-											← Cancel
-										</button>
+											<button key={method.id} type="button" disabled={isBusy || !target.available} onClick={() => void startInteractive(target, provider, method.id as "device_code" | "browser_oauth")} className={secondaryButtonClass}>
+												{isBusy ? <Loader2 size={12} className="animate-spin" /> : <Lock size={12} />} {provider.configured ? "Reconnect" : methodLabel(method.id)}
+											</button>
+										))}
+										{(provider.configured || provider.state === "failed") && target.logoutSupported ? (
+											<button type="button" disabled={isBusy} onClick={() => void logout(target, provider)} className={`${secondaryButtonClass} hover:!border-red-500 hover:!text-red-300`}>
+												<Trash2 size={12} /> {provider.configured ? "Disconnect" : "Reset auth"}
+											</button>
+										) : null}
 									</div>
-								) : rowState.type === "api_key" ? (
-									<div className="grid gap-3">
-										<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-											Enter API Key
-										</div>
+								</div>
+
+								{pending ? (
+									<AuthFlowPanel
+										flow={pending}
+										rowKey={key}
+										busy={isBusy}
+										code={codes[key] ?? ""}
+										onCodeChange={(value) => setCodes((current) => ({ ...current, [key]: value }))}
+										onComplete={(code) => void completeFlow(target, provider, code)}
+										onCancel={target.cancelSupported ? () => void cancelFlow(target, provider) : undefined}
+										copied={copied}
+										onCopy={copyText}
+									/>
+								) : rowState === "api_key" ? (
+									<div className="grid gap-2 border-t border-slate-800 bg-[#10191d] px-3 py-3">
+										<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">API key for {target.runtimeInstanceId}</div>
 										<div className="relative">
 											<input
-												type={showKeys[provider.id] ? "text" : "password"}
-												value={apiKeys[provider.id] ?? ""}
-												onChange={(e) =>
-													setApiKeys((prev) => ({ ...prev, [provider.id]: e.target.value }))
-												}
-												onKeyDown={(e) => {
-													if (e.key === "Enter" && (apiKeys[provider.id] ?? "").trim()) {
-														void saveApiKey(provider.id, apiKeys[provider.id]!.trim());
-													}
-												}}
-												placeholder="sk-..."
-												className="w-full rounded-sm border border-slate-700 bg-[#0e1116] px-2 py-1.5 pr-8 font-mono text-[12px] text-slate-300 placeholder-slate-600 outline-none focus:border-[#11a4d4]"
+												type={showKeys[key] ? "text" : "password"}
+												value={apiKeys[key] ?? ""}
+												autoComplete="off"
+												spellCheck={false}
+												onChange={(event) => setApiKeys((current) => ({ ...current, [key]: event.target.value }))}
+												onKeyDown={(event) => { if (event.key === "Enter") void saveApiKey(target, provider); }}
+												placeholder="Enter provider API key"
+												className="w-full border border-slate-700 bg-[#0e1116] px-2 py-1.5 pr-8 font-mono text-[12px] text-slate-300 outline-none placeholder:text-slate-600 focus:border-[#11a4d4]"
 											/>
-											<button
-												type="button"
-												onClick={() =>
-													setShowKeys((prev) => ({
-														...prev,
-														[provider.id]: !prev[provider.id],
-													}))
-												}
-												className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-[#11a4d4]"
-												title={showKeys[provider.id] ? "Hide" : "Show"}
-											>
-												{showKeys[provider.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+											<button type="button" onClick={() => setShowKeys((current) => ({ ...current, [key]: !current[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-[#11a4d4]" aria-label={showKeys[key] ? "Hide API key" : "Show API key"}>
+												{showKeys[key] ? <EyeOff size={14} /> : <Eye size={14} />}
 											</button>
 										</div>
-										<button
-											type="button"
-											disabled={busy || !(apiKeys[provider.id] ?? "").trim()}
-											onClick={() => void saveApiKey(provider.id, apiKeys[provider.id]!.trim())}
-											className="inline-flex items-center gap-1 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-1.5 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
-										>
-											{busy ? <Loader2 size={12} className="animate-spin" /> : <Lock size={12} />}
-											Save API Key
-										</button>
-										<button
-											type="button"
-											onClick={() => setRowStates((prev) => ({ ...prev, [provider.id]: { type: "collapsed" } }))}
-											className="text-[11px] text-slate-500 hover:text-[#11a4d4]"
-										>
-											← Cancel
-										</button>
+										<div className="flex gap-2">
+											<button type="button" disabled={isBusy || !(apiKeys[key] ?? "").trim()} onClick={() => void saveApiKey(target, provider)} className={secondaryButtonClass}>
+												{isBusy ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Save for this target
+											</button>
+											<button type="button" onClick={() => {
+												setApiKeys((current) => ({ ...current, [key]: "" }));
+												setShowKeys((current) => ({ ...current, [key]: false }));
+												setRowStates((current) => ({ ...current, [key]: "collapsed" }));
+											}} className="text-[11px] text-slate-500 hover:text-[#11a4d4]">Cancel</button>
+										</div>
 									</div>
 								) : null}
 							</div>
-						) : null}
-					</div>
-				);
-			})}
+						);
+					})}
+
+					{target.diagnostics.some((diagnostic) => diagnostic.severity !== "info") ? (
+						<div className="border-t border-slate-800 px-3 py-2 text-[11px] text-slate-500">
+							{target.diagnostics.find((diagnostic) => diagnostic.severity === "error")?.message
+								?? target.diagnostics.find((diagnostic) => diagnostic.severity === "warning")?.message}
+						</div>
+					) : null}
+				</section>
+			))}
+
+			{catalog && catalog.targets.length === 0 ? (
+				<div className="border border-slate-700 bg-[#1a262b] p-4 text-sm text-slate-500">No configured runtime authentication targets are available.</div>
+			) : null}
 		</div>
 	);
 }
 
-function unwrapActionResult(value: unknown): unknown {
-	if (isActionEnvelope(value)) return value.result;
-	return value;
+function AuthFlowPanel({
+	flow,
+	rowKey,
+	busy,
+	code,
+	onCodeChange,
+	onComplete,
+	onCancel,
+	copied,
+	onCopy,
+}: {
+	flow: NonNullable<AgentRuntimeAuthStatus["pending"]>;
+	rowKey: string;
+	busy: boolean;
+	code: string;
+	onCodeChange: (value: string) => void;
+	onComplete: (code?: string) => void;
+	onCancel?: () => void;
+	copied: string | null;
+	onCopy: (key: string, value: string) => Promise<void>;
+}) {
+	const needsCodeInput = flow.method === "browser_oauth" && !flow.userCode;
+	return (
+		<div className="grid gap-3 border-t border-slate-800 bg-[#10191d] px-3 py-3 text-[11px]">
+			<div className="flex items-center gap-2 text-[#11a4d4]">
+				{flow.completion === "notification" ? <Loader2 size={13} className="animate-spin" /> : <Clock3 size={13} />}
+				{flow.completion === "notification" ? "Waiting for the runtime's completion notification..." : "Login flow is pending."}
+			</div>
+			{flow.verificationUrl ? (
+				<div className="grid gap-1.5">
+					<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Verification URL</div>
+					<div className="break-all border border-slate-700 bg-[#0e1116] p-2 font-mono text-slate-300">{flow.verificationUrl}</div>
+					<div className="flex flex-wrap gap-2">
+						<button type="button" onClick={() => void onCopy(`${rowKey}:url`, flow.verificationUrl!)} className={secondaryButtonClass}>
+							{copied === `${rowKey}:url` ? <CheckCircle size={12} /> : <Copy size={12} />} {copied === `${rowKey}:url` ? "Copied" : "Copy URL"}
+						</button>
+						<a href={flow.verificationUrl} target="_blank" rel="noreferrer" className={secondaryButtonClass}><ExternalLink size={12} /> Open in browser</a>
+					</div>
+				</div>
+			) : null}
+			{flow.userCode ? (
+				<div className="grid gap-1.5">
+					<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">One-time code</div>
+					<button type="button" onClick={() => void onCopy(`${rowKey}:code`, flow.userCode!)} className="w-fit border border-[#1f4960] bg-[#0e1116] px-3 py-2 font-mono text-lg font-bold tracking-[0.2em] text-[#11a4d4] hover:border-[#11a4d4]">
+						{flow.userCode} {copied === `${rowKey}:code` ? <CheckCircle size={12} className="inline" /> : null}
+					</button>
+				</div>
+			) : null}
+			{flow.instructions ? <div className="text-slate-500">{flow.instructions}</div> : null}
+			{needsCodeInput ? (
+				<input value={code} autoComplete="off" spellCheck={false} onChange={(event) => onCodeChange(event.target.value)} placeholder="Paste authorization code" className="border border-slate-700 bg-[#0e1116] px-2 py-1.5 font-mono text-slate-300 outline-none placeholder:text-slate-600 focus:border-[#11a4d4]" />
+			) : null}
+			<div className="flex flex-wrap gap-2">
+				{flow.completion === "explicit" ? (
+					<button type="button" disabled={busy || (needsCodeInput && !code.trim())} onClick={() => onComplete(needsCodeInput ? code.trim() : undefined)} className={secondaryButtonClass}>
+						{busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Complete login
+					</button>
+				) : null}
+				{onCancel ? <button type="button" disabled={busy} onClick={onCancel} className={`${secondaryButtonClass} hover:!border-red-500 hover:!text-red-300`}><XCircle size={12} /> Cancel flow</button> : null}
+			</div>
+		</div>
+	);
 }
 
-function isActionEnvelope(value: unknown): value is ActionEnvelope {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value) && (value as ActionEnvelope).type === "execution_result";
+const secondaryButtonClass = "inline-flex items-center gap-1 border border-slate-700 bg-[#0e1116] px-2 py-1 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50";
+
+function rowKey(target: AgentRuntimeAuthTarget, provider: AgentRuntimeAuthStatus): string {
+	return `${target.runtimeInstanceId}:${provider.id}`;
 }
 
-function getProviderName(providerId: string): string {
-	return PROVIDERS.find((provider) => provider.id === providerId)?.name ?? providerId;
+function methodLabel(method: AgentRuntimeAuthMethodId): string {
+	if (method === "api_key") return "API key";
+	if (method === "browser_oauth") return "Browser OAuth";
+	return "Device code";
+}
+
+function stateLabel(state: AgentRuntimeAuthState): string {
+	return state.charAt(0).toUpperCase() + state.slice(1);
+}
+
+function stateTextClass(state: AgentRuntimeAuthState): string {
+	if (state === "connected") return "text-[#0bda57]";
+	if (state === "pending") return "text-[#11a4d4]";
+	if (state === "partial") return "text-amber-300";
+	if (state === "failed") return "text-red-300";
+	return "text-slate-500";
+}
+
+function StateIcon({ state }: { state: AgentRuntimeAuthState }) {
+	if (state === "connected") return <CheckCircle size={12} className="text-[#0bda57]" />;
+	if (state === "pending") return <Loader2 size={12} className="animate-spin text-[#11a4d4]" />;
+	if (state === "failed") return <AlertCircle size={12} className="text-red-400" />;
+	if (state === "partial") return <AlertCircle size={12} className="text-amber-300" />;
+	return <Lock size={12} className="text-slate-500" />;
+}
+
+function StateBadge({ state }: { state: AgentRuntimeAuthState }) {
+	const tone = state === "connected" ? "green" : state === "pending" ? "cyan" : state === "partial" ? "amber" : state === "failed" ? "red" : "neutral";
+	return <Badge tone={tone}>{stateLabel(state)}</Badge>;
+}
+
+function Badge({ tone, children }: { tone: "cyan" | "green" | "amber" | "purple" | "red" | "neutral"; children: React.ReactNode }) {
+	const classes = tone === "cyan"
+		? "border-[#11a4d4]/40 text-[#6dd7f6]"
+		: tone === "green"
+			? "border-[#0bda57]/40 text-[#7cf2a2]"
+			: tone === "amber"
+				? "border-amber-500/40 text-amber-300"
+				: tone === "purple"
+					? "border-purple-500/40 text-purple-300"
+					: tone === "red"
+						? "border-red-500/40 text-red-300"
+						: "border-slate-700 text-slate-500";
+	return <span className={`border px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider ${classes}`}>{children}</span>;
+}
+
+function Notice({ tone, icon, children }: { tone: "red" | "green" | "cyan"; icon: React.ReactNode; children: React.ReactNode }) {
+	const classes = tone === "red"
+		? "border-red-500/30 bg-red-500/10 text-red-300"
+		: tone === "green"
+			? "border-[#0bda57]/30 bg-[#0bda57]/10 text-[#7cf2a2]"
+			: "border-[#11a4d4]/30 bg-[#11a4d4]/10 text-[#6dd7f6]";
+	return <div className={`flex items-center gap-2 border px-3 py-2 text-xs ${classes}`}>{icon}{children}</div>;
+}
+
+function accountLabel(accountType: NonNullable<AgentRuntimeAuthStatus["details"]>["accountType"]): string {
+	if (accountType === "api_key") return "API key account";
+	if (accountType === "chatgpt") return "ChatGPT account";
+	if (accountType === "oauth") return "OAuth account";
+	return "Managed account";
+}
+
+function showSuccess(setter: React.Dispatch<React.SetStateAction<string | null>>, message: string): void {
+	setter(message);
+	window.setTimeout(() => setter((current) => current === message ? null : current), 5_000);
 }

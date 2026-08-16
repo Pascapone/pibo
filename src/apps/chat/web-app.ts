@@ -108,7 +108,12 @@ import { handleChatLoopApiRequest } from "./loop-api.js";
 import { prepareWebAnnotationMessageAttachments, type PreparedWebAnnotationAttachments } from "../../web-annotations/attachments.js";
 import { createDefaultWebAnnotationStore, type WebAnnotationStore } from "../../web-annotations/store.js";
 import { CHAT_WEB_MOUNT_PATH, isChatAppPath, responseBuiltChatAsset, responseBuiltChatPublicFile, responseChatAppShell, CHAT_VSCODE_MOUNT_PATH, isVscodeAppPath, responseBuiltVscodeAsset, responseVscodeAppShell } from "./static-assets.js";
-import { executeProviderAuthAction, isProviderAuthAction, providerAuthActionResponse } from "./provider-auth-actions.js";
+import {
+	executeProviderAuthAction,
+	isProviderAuthAction,
+	providerAuthActionResponse,
+	readProviderAuthCatalog,
+} from "./provider-auth-actions.js";
 import { prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, saveUploadedChatFiles } from "./chat-files.js";
 import {
 	chatSettingsRoute,
@@ -3094,6 +3099,29 @@ function requireSharedSession(context: PiboWebAppContext, piboSessionId: string)
 		throw new PiboWebHttpError("Session not found", 404);
 	}
 	return canonicalizeSessionProfile(context, session);
+}
+
+function defaultRuntimeInstanceId(context: PiboWebAppContext, defaultProfile: string): string | undefined {
+	if (context.channelContext.createProfile) {
+		try {
+			return context.channelContext.createProfile(defaultProfile).runtimeInstanceId;
+		} catch {
+			// Fall through to the registered runtime order when the profile is unavailable.
+		}
+	}
+	return context.channelContext.getCapabilityCatalog?.().agentRuntimes?.[0]?.id;
+}
+
+function sessionRuntimeInstanceId(context: PiboWebAppContext, session: PiboSession): string | undefined {
+	return context.channelContext.getSessionRuntimeBinding?.(session.id)?.runtimeInstanceId
+		?? session.runtimeBinding?.runtimeInstanceId
+		?? (() => {
+			try {
+				return context.channelContext.createProfile?.(session.profile).runtimeInstanceId;
+			} catch {
+				return undefined;
+			}
+		})();
 }
 
 function resolveRequestedSession(
@@ -6139,6 +6167,41 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return sendChatMessage({ state, context, webSession, defaultProfile, body });
 			}
 
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/provider-auth` && request.method === "GET") {
+				await requireSession(request, context);
+				return responseJson(
+					await readProviderAuthCatalog(
+						context.channelContext,
+						defaultRuntimeInstanceId(context, defaultProfile),
+					),
+					{ headers: { "cache-control": "no-store" } },
+				);
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/provider-auth` && request.method === "POST") {
+				requireSameOriginJsonRequest(request);
+				await requireSession(request, context);
+				const body = await readJsonBody<Record<string, unknown>>(request);
+				const action = typeof body.action === "string" ? body.action : "";
+				const mappedAction = action === "start"
+					? "login.start"
+					: action === "complete"
+						? "login.complete"
+						: action === "api_key"
+							? "login.apikey"
+							: action === "cancel"
+								? "login.cancel"
+								: action === "logout"
+									? "logout"
+									: isProviderAuthAction(action) && action !== "login.status"
+										? action
+										: undefined;
+				if (!mappedAction) throw new PiboWebHttpError("Unsupported provider authentication action", 400);
+				const result = await executeProviderAuthAction(context.channelContext, mappedAction, body);
+				invalidateBootstrapCatalogCache(state);
+				return responseJson({ result }, { headers: { "cache-control": "no-store" } });
+			}
+
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/status` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
 				const selectedSession = resolveRequestedSession(
@@ -6169,7 +6232,29 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				}
 				const piboSessionId = typeof body.piboSessionId === "string" ? body.piboSessionId : undefined;
 				if (isProviderAuthAction(body.action)) {
-					return providerAuthActionResponse({ piboSessionId, action: body.action, result: await executeProviderAuthAction(body.action, body.params) });
+					const authParams = isJsonObject(body.params) ? { ...body.params } : {};
+					const explicitRuntimeInstanceId = typeof authParams.runtimeInstanceId === "string" && authParams.runtimeInstanceId.trim()
+						? authParams.runtimeInstanceId.trim()
+						: undefined;
+					const selectedSession = piboSessionId
+						? resolveRequestedSession(state, context, webSession, defaultProfile, piboSessionId)
+						: undefined;
+					const boundRuntimeInstanceId = selectedSession ? sessionRuntimeInstanceId(context, selectedSession) : undefined;
+					if (explicitRuntimeInstanceId && boundRuntimeInstanceId && explicitRuntimeInstanceId !== boundRuntimeInstanceId) {
+						throw new PiboWebHttpError("Provider authentication target conflicts with the selected session runtime", 409);
+					}
+					const selectedRuntimeInstanceId = explicitRuntimeInstanceId ?? boundRuntimeInstanceId;
+					if (!selectedRuntimeInstanceId) {
+						throw new PiboWebHttpError("Provider authentication requires an explicit runtimeInstanceId or a valid bound Pibo Session", 400);
+					}
+					authParams.runtimeInstanceId = selectedRuntimeInstanceId;
+					const result = await executeProviderAuthAction(context.channelContext, body.action, authParams);
+					if (body.action !== "login.status") invalidateBootstrapCatalogCache(state);
+					return providerAuthActionResponse({
+						piboSessionId: selectedSession?.id,
+						action: body.action,
+						result,
+					});
 				}
 				const selectedSession = resolveRequestedSession(
 					state,

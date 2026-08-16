@@ -140,7 +140,7 @@ test("default plugin registry builds core and native Codex capabilities without 
 		},
 		{
 			name: "login",
-			description: "Open the interactive provider login menu.",
+			description: "Open the interactive provider login menu for the active runtime.",
 			slashCommands: ["login"],
 		},
 		{
@@ -150,27 +150,32 @@ test("default plugin registry builds core and native Codex capabilities without 
 		},
 		{
 			name: "login.start",
-			description: "Start an OAuth login flow for a provider. Returns a URL to open in a browser.",
+			description: "Start a provider login flow for the active runtime.",
 			slashCommands: [],
 		},
 		{
 			name: "login.complete",
-			description: "Complete an OAuth login flow with the authorization code from the provider callback.",
+			description: "Read or complete a provider login flow for the active runtime.",
 			slashCommands: [],
 		},
 		{
 			name: "login.apikey",
-			description: "Set an API key directly for a provider.",
+			description: "Set an API key for a provider on the active runtime.",
+			slashCommands: [],
+		},
+		{
+			name: "login.cancel",
+			description: "Cancel a pending provider login for the active runtime.",
 			slashCommands: [],
 		},
 		{
 			name: "login.status",
-			description: "Check the authentication status for providers.",
+			description: "Check provider authentication status for the active runtime.",
 			slashCommands: [],
 		},
 		{
 			name: "logout",
-			description: "Remove stored credentials for a provider.",
+			description: "Remove stored credentials for a provider on the active runtime.",
 			slashCommands: [],
 		},
 	]);
