@@ -51,6 +51,12 @@ test("Agent Designer persists runtime selection, validates JSON options, and sho
 	assert.match(agentsViewSource, /reasoningValuesForModel\(selectedRuntime\?\.capabilities\.reasoning\.values, runtimeModelCatalog, draft\.subagentModel\)/);
 });
 
+test("Agent Designer keeps Pibo subagents and yielded subagent runs capability-gated", () => {
+	assert.match(agentsViewSource, /<SubagentDesigner[\s\S]*capabilityUnavailableReason=\{piboToolsUnavailableReason\}/);
+	assert.match(agentsViewSource, /title="pibo-run-control"[\s\S]*Pibo-managed tools and subagents/);
+	assert.match(agentsViewSource, /Private harness-native tools are included only when the runtime declares native-tool yielding/);
+});
+
 test("Agent Designer exposes goal lifecycle tooling as a default-enabled package switch", () => {
 	assert.match(agentsViewSource, /title="pibo-goal-control"/);
 	assert.match(agentsViewSource, /checked=\{draft\.goalControl\}/);

@@ -2,6 +2,8 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import readline from "node:readline";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const args = process.argv.slice(2);
 if (args[0] === "--version") {
@@ -147,6 +149,7 @@ if (args[0] === "--version") {
 				httpHeaderNames: config?.http_headers && typeof config.http_headers === "object" ? Object.keys(config.http_headers) : [],
 				envHttpHeaderNames: config?.env_http_headers && typeof config.env_http_headers === "object" ? Object.keys(config.env_http_headers) : [],
 				hasBearerTokenEnvironment: typeof config?.bearer_token_env_var === "string",
+				defaultToolsApprovalMode: typeof config?.default_tools_approval_mode === "string" ? config.default_tools_approval_mode : null,
 				stdio: typeof config?.command === "string",
 				stdioEnvironmentCount: Array.isArray(config?.env_vars) ? config.env_vars.length : 0,
 				required: config?.required === true,
@@ -659,6 +662,40 @@ if (args[0] === "--version") {
 		state.turnRequests ??= [];
 		state.resourceRequests ??= [];
 		const params = message.params ?? {};
+		if (message.method === "test/callMcpTool") {
+			const server = threadConfigs[params.threadId]?.mcp_servers?.[params.server];
+			if (!server || typeof server.url !== "string" || typeof params.tool !== "string") {
+				send({ id: message.id, error: { code: -32602, message: "fixture MCP server or tool is unavailable" } });
+				return;
+			}
+			const headers = {
+				accept: "application/json, text/event-stream",
+				"content-type": "application/json",
+				...(server.http_headers && typeof server.http_headers === "object" ? server.http_headers : {}),
+			};
+			if (server.env_http_headers && typeof server.env_http_headers === "object") {
+				for (const [name, environmentName] of Object.entries(server.env_http_headers)) {
+					if (typeof environmentName === "string" && process.env[environmentName] !== undefined) headers[name] = process.env[environmentName];
+				}
+			}
+			if (typeof server.bearer_token_env_var === "string" && process.env[server.bearer_token_env_var] !== undefined) {
+				headers.authorization = `Bearer ${process.env[server.bearer_token_env_var]}`;
+			}
+			void (async () => {
+				const transport = new StreamableHTTPClientTransport(new URL(server.url), { requestInit: { headers } });
+				const client = new Client({ name: "codex-app-server-thread-fixture", version: "1" });
+				try {
+					await client.connect(transport);
+					const result = await client.callTool({ name: params.tool, arguments: params.arguments ?? {} });
+					send({ id: message.id, result });
+				} catch {
+					send({ id: message.id, error: { code: -32603, message: "fixture MCP call failed" } });
+				} finally {
+					await transport.close().catch(() => {});
+				}
+			})();
+			return;
+		}
 		if (message.method === "mcpServerStatus/list") {
 			const servers = threadConfigs[params.threadId]?.mcp_servers;
 			const data = process.env.PIBO_CODEX_FIXTURE_RESOURCE_MODE === "omit-mcp"

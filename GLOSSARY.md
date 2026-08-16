@@ -78,7 +78,7 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Skill / Context File** — A Skill is a selected `SKILL.md` instruction package. A Context File is selected Markdown loaded into runtime context; it may be plugin-provided or Pibo-managed.
 
-**Subagent** — A profile-scoped generated tool that invokes another profile through a created or reused child Pibo Session.
+**Subagent** — A profile-scoped generated Pibo tool that invokes another profile through a created or reused child Pibo Session. The child freezes its target profile's runtime binding independently from the parent, so parent and child may use different adapters. A bounded thread key controls reuse; active child work is cancelled with the parent turn without deleting the reusable child session.
 
 **Input Event / Output Event** — Input Events carry messages or execution requests into the router. Output Events are normalized runtime results emitted by the router.
 

@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
@@ -177,14 +178,17 @@ test("subagent tool definitions delegate execution to the provided runner", asyn
 	assert.equal(tool.name, "pibo_subagent_helper");
 	assert.equal(tool.executionMode, "parallel");
 
+	const controller = new AbortController();
 	const result = await tool.execute("tool-call-1", {
 		message: "Find the relevant files.",
 		threadKey: "files",
-	});
+	}, controller.signal);
 
 	assert.equal(observed.message, "Find the relevant files.");
 	assert.equal(observed.threadKey, "files");
 	assert.equal(observed.toolCallId, "tool-call-1");
+	assert.equal(observed.signal, controller.signal);
+	assert.equal(tool.inputSchema.properties.threadKey.maxLength, 256);
 	assert.equal(result.details.piboSessionId, "ps_child");
 	assert.equal(result.content[0].text, "helper result for helper");
 });
@@ -369,6 +373,97 @@ test("subagent runner emits a parent link event before waiting for the child rep
 		assert.equal(Object.hasOwn(store.get(result.piboSessionId), retiredPartitionField), false);
 		assert.equal(store.get(result.piboSessionId).metadata.chatRoomId, "room_parent");
 		assert.equal(store.get(result.piboSessionId).metadata.workflowSessionKind, "subagent");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("subagent runner rejects oversized thread keys before creating a child session", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_parent",
+		piSessionId: "parent-session",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		await assert.rejects(router.createSubagentRunner("ps_parent").runSubagent({
+			subagent: { name: "explorer", targetProfile: "base" },
+			message: "must not create a child",
+			threadKey: "é".repeat(257),
+		}), /Subagent thread key exceeds 512 bytes/);
+		assert.equal(store.list().length, 1);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("aborting a parent turn interrupts its active subagent child", async () => {
+	const childDriver = createFakeAgentRuntimeDriver({
+		adapterId: "subagent-abort-child",
+		script: { waitForAbort: true },
+	});
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: "test.subagent-parent-abort",
+				register(api) {
+					api.registerAgentRuntimeDriver(childDriver);
+					api.registerAgentRuntimeInstance({ id: "subagent-abort-child", adapterId: "subagent-abort-child" });
+					api.registerProfile({
+						name: "subagent-abort-parent",
+						create() {
+							return new InitialSessionContextBuilder("subagent-abort-parent")
+								.withAgentRuntime("pi")
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.addSubagent({ name: "worker", targetProfile: "subagent-abort-child-profile" })
+								.createSession();
+						},
+					});
+					api.registerProfile({
+						name: "subagent-abort-child-profile",
+						create() {
+							return new InitialSessionContextBuilder("subagent-abort-child-profile")
+								.withAgentRuntime("subagent-abort-child")
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.createSession();
+						},
+					});
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_abort_parent",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "subagent-abort-parent",
+		runtimeBinding: { piboSessionId: "ps_abort_parent", runtimeInstanceId: "pi", adapterId: "pi", state: "unbound" },
+	});
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "status" });
+		const runtime = router.sessions.get("ps_abort_parent").runtime;
+		const tool = runtime.session.getToolDefinition("pibo_subagent_worker");
+		const execution = tool.execute("subagent-abort-tool", { message: "hold until parent abort", threadKey: "hold" });
+		const childAdapter = registry.requireAgentRuntimeAdapter("subagent-abort-child");
+		const deadline = Date.now() + 2_000;
+		while (!childAdapter.sessions.some((session) => session.getStatus().streaming)) {
+			if (Date.now() >= deadline) throw new Error("Timed out waiting for active subagent child");
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "abort" });
+		await assert.rejects(execution, /finished without an assistant reply/);
+		assert.equal(childAdapter.sessions[0].abortCalls > 0, true);
+		assert.equal(childAdapter.sessions[0].getStatus().streaming, false);
 	} finally {
 		await router.disposeAll();
 	}

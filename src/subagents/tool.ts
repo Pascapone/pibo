@@ -9,6 +9,7 @@ export type PiboSubagentRunInput = {
 	message: string;
 	threadKey?: string;
 	toolCallId?: string;
+	signal?: AbortSignal;
 };
 
 export type PiboSubagentRunResult = {
@@ -77,15 +78,17 @@ function createSubagentToolDefinition(
 				Type.String({
 					description:
 						"Stable key for continuing a previous subagent conversation. Omit it to create a new subagent session.",
+					maxLength: 256,
 				}),
 			),
 		}),
-		async execute(toolCallId, params) {
+		async execute(toolCallId, params, signal) {
 			const result = await runner.runSubagent({
 				subagent,
 				message: params.message,
 				threadKey: params.threadKey,
 				toolCallId,
+				signal,
 			});
 
 			return {

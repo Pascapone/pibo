@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/capabilities.js";
 import { buildPortableRuntimeContextSnapshot } from "../dist/agent-runtime/context-build.js";
-import { InitialSessionContext } from "../dist/core/profiles.js";
+import { InitialSessionContext, InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
 import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
@@ -61,6 +61,36 @@ test("portable runtime context build explains degraded native-tool inspection", 
 	assert.equal(nativeInspection.state, "warning");
 	assert.ok(nativeInspection.badges.includes("DEGRADED:OBSERVED-RUNTIME-ITEMS"));
 	assert.ok(nativeInspection.notes.includes("The stable runtime protocol exposes native tool names only after use."));
+});
+
+test("portable runtime context build exposes selected Pibo subagents through MCP delivery", () => {
+	const capabilities = createMinimalAgentRuntimeCapabilities("Unavailable by default.");
+	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
+	const profile = new InitialSessionContextBuilder("codex-subagent-context")
+		.withAgentRuntime("codex-native")
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false, runControl: true })
+		.addSubagent({ name: "reviewer", targetProfile: "pi-reviewer" })
+		.createSession();
+	const snapshot = buildPortableRuntimeContextSnapshot({
+		profile,
+		cwd: process.cwd(),
+		piboSessionId: "ps_codex_subagent_context",
+		runtime: {
+			runtimeInstanceId: "codex-native",
+			adapterId: "codex-native",
+			available: true,
+			transport: "stdio",
+			capabilities,
+			diagnostics: [],
+		},
+	});
+	const tools = findNode(snapshot.nodes, (node) => node.id === "tools");
+	assert.equal(tools.state, "active");
+	assert.ok(tools.badges.includes("MCP:STREAMABLE-HTTP"));
+	assert.ok(tools.children.some((node) => node.title === "subagent:reviewer -> pi-reviewer"));
+	assert.ok(tools.children.some((node) => node.title === "package:pibo-run-control"));
 });
 
 test("context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate", async () => {

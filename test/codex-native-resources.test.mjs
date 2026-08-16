@@ -333,6 +333,7 @@ test("Codex native delivers selected Pibo tools, HTTP MCP, skills, and context w
 		assert.deepEqual(external.enabledTools, ["external_lookup"]);
 		assert.deepEqual(external.envHttpHeaderNames, ["Authorization"]);
 		assert.equal(external.hasBearerTokenEnvironment, false);
+		assert.equal(external.defaultToolsApprovalMode, null);
 		assert.equal(external.stdio, false);
 		const stdio = delivered.mcpServers.find((server) => server.name === "external-stdio");
 		assert.deepEqual(stdio.enabledTools, ["stdio_lookup"]);
@@ -343,6 +344,7 @@ test("Codex native delivers selected Pibo tools, HTTP MCP, skills, and context w
 		const pibo = delivered.mcpServers.find((server) => server.name === "pibo-session-tools");
 		assert.deepEqual(pibo.enabledTools, ["alpha"]);
 		assert.equal(pibo.hasBearerTokenEnvironment, true);
+		assert.equal(pibo.defaultToolsApprovalMode, "approve");
 		assert.doesNotMatch(JSON.stringify(state), /external-session-secret|stdio-argument-secret|stdio-environment-secret|unselected-secret|selected delivery marker/);
 
 		if (index === 0) {
