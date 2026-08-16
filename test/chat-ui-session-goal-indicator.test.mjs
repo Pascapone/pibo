@@ -15,7 +15,7 @@ const renderScript = `
 	console.log(renderToStaticMarkup(React.createElement(SessionGoalIndicatorView, { goal, nowMs })));
 `;
 
-function goal(status) {
+function goal(status, state = {}) {
 	return {
 		id: "loop_goal",
 		mode: "goal",
@@ -27,6 +27,8 @@ function goal(status) {
 		state: {
 			goalStatus: status,
 			goalStartedAt: "2026-08-10T10:00:00.000Z",
+			activeTimeSeconds: 125,
+			...state,
 		},
 		createdAt: "2026-08-10T10:00:00.000Z",
 		updatedAt: "2026-08-10T10:05:57.000Z",
@@ -45,19 +47,21 @@ async function render(goalValue) {
 	return stdout;
 }
 
-test("session Goal indicator shows active Goals with screenshot-style elapsed time", async () => {
-	const markup = await render(goal("active"));
+test("session Goal indicator shows recorded active time plus the running Goal run", async () => {
+	const markup = await render(goal("active", { runningAt: "2026-08-10T10:04:00.000Z" }));
 	assert.match(markup, /data-pibo-debug="session-goal-indicator"/);
 	assert.match(markup, /data-goal-status="active"/);
 	assert.match(markup, /Pursuing Goal:/);
-	assert.match(markup, />5:57</);
+	assert.match(markup, />4:02</);
+	assert.doesNotMatch(markup, />5:57</);
 });
 
-test("session Goal indicator remains visible while the Goal is paused", async () => {
+test("session Goal indicator keeps active time frozen while the Goal is paused", async () => {
 	const markup = await render(goal("paused"));
 	assert.match(markup, /data-goal-status="paused"/);
 	assert.match(markup, /Goal Paused:/);
-	assert.match(markup, />5:57</);
+	assert.match(markup, />2:05</);
+	assert.doesNotMatch(markup, />5:57</);
 });
 
 test("session Goal indicator hides terminal Goals", async () => {
