@@ -1,6 +1,6 @@
 # Tasks: Runtime-Neutral Provider Authentication Control Plane
 
-**Status:** Implementing
+**Status:** Ready for review
 **Updated:** 2026-08-16
 
 ## 0. Evidence and setup
@@ -72,7 +72,7 @@
 - [x] 8.1 Run focused runtime/Codex/Web/UI tests.
 - [x] 8.2 Run typecheck, build, and canonical full suite: 1,752/1,752 across 12 suites.
 - [x] 8.3 Verify package contents and clean focused diff.
-- [ ] 8.4 Commit, push, and open a focused stacked PR against `dev` without merging.
+- [x] 8.4 Commit, push, and open focused stacked PR #518 against `dev` without merging.
 
 ## 9. Pibo2 candidate and user handoff
 

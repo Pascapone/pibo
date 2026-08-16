@@ -3,7 +3,7 @@
 **Date:** 2026-08-16  
 **Branch:** `feature/agent-runtime-auth-control-plane`  
 **Dependency:** `feature/agent-runtime-integrated-validation` / PR #503  
-**Result:** **PASS for implementation, local verification, exact-candidate Pibo2 activation, and public-Web login readiness.** Native Codex remains intentionally disconnected; the remaining gate is the authorized user's managed login and subsequent bounded production-provider turn.
+**Result:** **PASS for implementation, local verification, focused PR #518, exact-candidate Pibo2 activation, and public-Web login readiness.** Native Codex remains intentionally disconnected; the remaining gate is the authorized user's managed login and subsequent bounded production-provider turn.
 
 ## Exact candidate
 
@@ -140,7 +140,8 @@ No login flow was started. Native Codex is ready for the user but remains unauth
 
 ## Remaining validation
 
-1. Push the focused branch and open its stacked PR without merge, release, publication, or production deployment.
-2. The authorized user opens `/apps/chat/settings/providers`, selects **Native Codex App Server**, and clicks **Device code** (or supplies an API key intentionally).
-3. After managed login, verify safe `account/read` metadata without account identifiers and run one bounded public native-Codex production-provider turn.
-4. Only then close REQ-015/REQ-017 and mark the overall multi-runtime goal complete.
+Focused stacked PR #518 is open and intentionally unmerged. The remaining steps belong to the overall multi-runtime evidence gate:
+
+1. The authorized user opens `/apps/chat/settings/providers`, selects **Native Codex App Server**, and clicks **Device code** (or supplies an API key intentionally).
+2. After managed login, verify safe `account/read` metadata without account identifiers and run one bounded public native-Codex production-provider turn.
+3. Only then close REQ-015/REQ-017 and mark the overall multi-runtime goal complete.

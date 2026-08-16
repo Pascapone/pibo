@@ -163,8 +163,8 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 11.3 Document migration, rollback, Pi adapter, Codex adapter, portable capabilities, security, and operator diagnostics.
 - [x] 11.4 Add progressively discoverable runtime CLI docs for implemented commands only.
 - [x] 11.5 Synchronize canonical docs and evidence on the final stacked branch.
-- [x] 11.6 Ensure every branch is clean, pushed, and represented by a reviewable PR to `upstream/dev`. Final stacked PR: #503.
-- [x] 11.7 Produce `docs/reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md`, mapping REQ-001 through REQ-018 to code, tests, PRs, and Pibo2 evidence.
+- [x] 11.6 Ensure every branch is clean, pushed, and represented by a reviewable PR to `upstream/dev`. Integrated PR #503 and focused auth correction PR #518 are open.
+- [x] 11.7 Produce `docs/reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md`, mapping REQ-001 through REQ-019 to code, tests, PRs, and Pibo2 evidence.
 - [ ] 11.8 Confirm no known regression or material unreported uncertainty invalidates completion. The deterministic/product matrix is clean, but official native-Codex provider authentication remains an explicit external evidence blocker.
 - [ ] 11.9 Mark the Pibo Loop goal complete only after the full audit passes.
 
@@ -179,6 +179,6 @@ The August 16 final review found that Chat Web still intercepted provider auth b
 - [x] 12.5 Replace the hard-coded provider settings list and false-auth model defaults with per-runtime catalog state and disabled missing-auth models.
 - [x] 12.6 Add deterministic contract, Pi, Codex, isolation, restart, redaction, Web targeting/aggregation/pending/logout, and model-menu tests.
 - [x] 12.7 Complete full-suite/typecheck/build/package verification and canonical documentation synchronization; 1,752/1,752 tests across 12 suites pass.
-- [ ] 12.8 Push the focused stacked PR without merge/release/publication.
+- [x] 12.8 Push focused stacked PR #518 without merge/release/publication.
 - [x] 12.9 Install exact candidate `cc0dcde6616dcec6a8dcf7cd0f78e70478a8ab1c` on Pibo2 and validate the public provider-settings path while leaving native Codex unauthenticated.
 - [ ] 12.10 After authorized user login, verify safe `account/read` metadata and one bounded public native-Codex production-provider turn before closing 10.12/11.8/11.9.

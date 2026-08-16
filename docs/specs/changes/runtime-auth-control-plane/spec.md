@@ -1,6 +1,6 @@
 # Spec: Runtime-Neutral Provider Authentication Control Plane
 
-**Status:** Implementing
+**Status:** Ready for review
 **Created:** 2026-08-16
 **Requester / Source:** Active multi-agent runtime adapter goal
 **Related docs:** `proposal.md`, `design.md`, `tasks.md`, `../../capabilities/runtime-provider-authentication.md`, `../multi-agent-runtime-adapters/spec.md`
@@ -108,7 +108,7 @@ Focused tests, typecheck, build, and the canonical full suite MUST pass. A focus
 - [x] SC-003: Native Codex official auth matrix passes deterministically with isolation and restart persistence.
 - [x] SC-004: Web settings and model surfaces are truthful for unauthenticated native Codex.
 - [x] SC-005: Full local verification and exact Pibo2 provider-settings UI readiness pass.
-- [ ] SC-006: The focused PR remains to be opened; after that, the overall goal is blocked only on the user's managed login and production-provider turn.
+- [x] SC-006: Focused PR #518 is open; the overall goal is now blocked only on the user's managed login and production-provider turn.
 
 ## Traceability
 
@@ -121,4 +121,4 @@ Focused tests, typecheck, build, and the canonical full suite MUST pass. A focus
 | REQ-005 | REQ-AUTH-005 | 4.1-4.8 | Pass deterministically: stable App Server account matrix, persistence, isolation, cleanup, and failure paths. |
 | REQ-006 | REQ-AUTH-006, REQ-AUTH-007 | 6.1-6.4 | Pass locally: private Codex homes, Pi shared scope, redaction, no global-store mutation. |
 | REQ-007 | REQ-AUTH-008 | 5.5-5.7 | Pass: Terminal and Designer missing/failed status remains unauthenticated. |
-| REQ-008 | all | 7.1-9.5 | Local and exact Pibo2 readiness pass; focused PR and later human production-provider evidence remain. |
+| REQ-008 | all | 7.1-9.5 | Pass for this change: local/full/Pibo2 evidence and focused PR #518 are complete; later human production-provider evidence belongs to the overall goal. |

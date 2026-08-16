@@ -1,6 +1,6 @@
 # Proposal: Runtime-Neutral Provider Authentication Control Plane
 
-**Status:** Implementing
+**Status:** Ready for review
 **Created:** 2026-08-16
 **Requester / Source:** Active multi-agent runtime adapter goal
 **Related docs:** `spec.md`, `design.md`, `tasks.md`, `../../capabilities/runtime-provider-authentication.md`, `../../../reports/runtime-auth-control-plane-validation-2026-08-16.md`

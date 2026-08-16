@@ -1,6 +1,6 @@
 # Design: Runtime-Neutral Provider Authentication Control Plane
 
-**Status:** Implementing
+**Status:** Ready for review
 **Created:** 2026-08-16
 **Related docs:** `proposal.md`, `spec.md`, `tasks.md`
 
