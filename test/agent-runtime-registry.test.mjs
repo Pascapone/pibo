@@ -371,6 +371,42 @@ test("runtime registry requires declared native history providers to implement i
 	);
 });
 
+test("shared runtime adapter contract rejects unhealthy diagnostics and failed happy paths", async () => {
+	const unhealthyRegistry = new AgentRuntimeAdapterRegistry();
+	unhealthyRegistry.registerDriver(createFakeAgentRuntimeDriver({
+		adapterId: "unhealthy-contract",
+		diagnostics: [{ severity: "error", code: "fixture_unhealthy", message: "Fixture runtime is unhealthy." }],
+	}));
+	unhealthyRegistry.registerInstance({ id: "unhealthy-contract", adapterId: "unhealthy-contract" });
+	const unhealthyProfile = new InitialSessionContextBuilder("unhealthy-contract-profile")
+		.withAgentRuntime("unhealthy-contract")
+		.createSession();
+	await assert.rejects(
+		() => exerciseAgentRuntimeAdapterContract(
+			unhealthyRegistry.requireInstance("unhealthy-contract"),
+			openInput(unhealthyProfile),
+		),
+		/enabled adapter diagnostics returned an error/,
+	);
+
+	const failedRegistry = new AgentRuntimeAdapterRegistry();
+	failedRegistry.registerDriver(createFakeAgentRuntimeDriver({
+		adapterId: "failed-contract",
+		script: { failWith: "fixture happy path failed" },
+	}));
+	failedRegistry.registerInstance({ id: "failed-contract", adapterId: "failed-contract" });
+	const failedProfile = new InitialSessionContextBuilder("failed-contract-profile")
+		.withAgentRuntime("failed-contract")
+		.createSession();
+	await assert.rejects(
+		() => exerciseAgentRuntimeAdapterContract(
+			failedRegistry.requireInstance("failed-contract"),
+			openInput(failedProfile),
+		),
+		/fixture happy path failed/,
+	);
+});
+
 test("deterministic fake adapter passes the reusable lifecycle contract", async () => {
 	const registry = new AgentRuntimeAdapterRegistry();
 	registry.registerDriver(createFakeAgentRuntimeDriver({
