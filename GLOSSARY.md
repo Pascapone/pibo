@@ -10,7 +10,7 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Pi Coding Agent** — The default embedded agent harness. It performs Pi-native model turns, tool execution, streaming, transcript persistence, compaction, and session operations.
 
-**Codex App Server** — The official Codex JSON-RPC server used by Pibo's native Codex adapter. It is distinct from Pibo's Pi-backed Codex compatibility profile.
+**Codex App Server** — The official Codex JSON-RPC server used by Pibo's native `codex-native` adapter, configured runtime instance, and read-only profile. It declares no `codex` alias and remains distinct from explicitly registered or persisted Pi-backed Codex compatibility profiles/bindings.
 
 **Agent Runtime Adapter** — A Pibo-owned integration that maps one agent harness and protocol into Pibo runtime contracts, capabilities, diagnostics, semantic events, lifecycle, history, and portable-capability delivery.
 
