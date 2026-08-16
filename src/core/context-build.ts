@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { createDefaultPiboProfile } from "../plugins/builtin.js";
+import { createDefaultPiboProfile } from "./default-profile.js";
 import { getMcpAgentContextFile } from "../mcp/agent-context.js";
 import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
 import { createSubagentToolName, type PiboSubagentRunner } from "../subagents/tool.js";

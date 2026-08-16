@@ -1,0 +1,224 @@
+# Multi-Agent Runtime Adapter Implementation Plan
+
+**Status:** Active
+**Date:** 2026-08-14
+**Change spec:** `docs/specs/changes/multi-agent-runtime-adapters/`
+**Source investigation:** `docs/reports/multi-agent-runtime-adapter-architecture-investigation-2026-08-14.md`
+
+## Objective
+
+Deliver a real Pibo-owned runtime adapter architecture, prove complete Pi parity through it, migrate session persistence to opaque runtime bindings, deliver portable Pibo capabilities, and then ship a native Codex App Server adapter with exact Pibo2 evidence.
+
+## Branch and PR sequence
+
+The sequence is intentionally compatibility-first. Later branches may stack while earlier PRs are under review, but their dependency must be explicit.
+
+| Order | Branch topic | Reviewable outcome | Gate before next phase |
+|---|---|---|---|
+| 1 | `feature/agent-runtime-foundation` | SPI, configured-instance registry, fake adapter, Pi facade, router resolution seam | Full local build/test and contract basics |
+| 2 | Pi extraction | Generic routed queue; all Pi-native behavior behind Pi adapter | Full suite plus authenticated Pibo2 Pi parity |
+| 3 | Runtime bindings | Additive table, backfill, dual read/write, unbound/missing/CAS | Existing-data migration proof |
+| 4 | Runtime profiles/Designer | Frozen runtime selection, options, diagnostics, disabled states | Existing custom-agent compatibility and UI tests |
+| 5 | Portable tools/MCP | Pibo tool IR, Pi compiler, scoped MCP bridge | Security/isolation tests and Pi/MCP parity |
+| 6 | Skills/context/MCP materialization | Isolated selected resources and delivery reports | No leakage/global mutation; connection proof |
+| 7 | History/debug | Runtime-neutral normal trace path; adapter history providers | New-turn no-native-read and old Pi compatibility |
+| 8 | Adapter-authoring skill | Built-in skill plus full/partial adapter evals | Registration and eval pass |
+| 9 | Native Codex | Official app-server adapter and `codex-native` profile | Local fixtures/contracts/full suite |
+| 10 | Pibo2 integration/docs | Exact candidate validation and final audit | Every completion requirement proven |
+
+## Working rules
+
+- Source every topic from current `upstream/dev` or the required reviewed/stacked predecessor.
+- Never edit or commit from `/root/code/pibo`; it contains unrelated changes.
+- Commit only validated milestones.
+- Do not merge, publish, release, or deploy production as part of this goal.
+- Install candidates only on disposable Pibo2 for integrated validation.
+- Preserve compatibility facades until their replacement paths and consumers are proven.
+- Do not start native Codex implementation while a known Pi parity regression remains.
+
+## Milestone 1: Foundation
+
+### Build
+
+1. Add runtime-neutral descriptor, capability, diagnostic, semantic-event, adapter, session, and registry types.
+2. Add deterministic fake adapter and reusable contract harness.
+3. Add runtime selection to profiles with default `pi`.
+4. Register the configured Pi instance through the core plugin.
+5. Make `PiboSessionRouter` resolve/open through the runtime registry.
+6. Preserve `createPiboRuntime()` and direct Pi callers.
+
+### Verify
+
+- Registry duplicate/config/capability tests.
+- Fake adapter lifecycle/queue/correlation/disposal tests.
+- Pi facade opens the same in-memory runtime and exposes compatibility handle.
+- Existing profile/capability catalog snapshots are additive only.
+- `npm run typecheck`.
+- `npm test`.
+
+### Exit evidence
+
+- Clean diff.
+- Baseline and post-change test summaries.
+- Commit SHA and PR URL.
+
+## Milestone 2: Pi extraction and parity
+
+### Build
+
+1. Move event normalization and all Pi-specific turn/recovery behavior into Pi session code.
+2. Move fast mode, model/thinking, context usage, compaction, native session operations, and provider usage into capability controls.
+3. Keep generic queueing, correlation, lifecycle, product actions, and distribution in `RoutedSession`.
+4. Add forbidden-import checks.
+5. Move Pi history parsing behind Pi adapter where it blocks generic boundaries, retaining compatibility.
+
+### Verify
+
+- Focused recovery/compaction/steering/actions/session-tree/transcript tests after each move.
+- Full test/build/typecheck.
+- Old transcript fixture reopens with byte-identical header/id/path.
+- Authenticated Pibo2: fresh/resumed session, tool calls, subagents, run reminders, Loop, TUI, Chat Web streaming/trace, restart, debug, telemetry.
+- Compare startup, first delta, terminal completion, trace load, and browser rendering with baseline.
+
+### Exit rule
+
+No native Codex code starts until all known Pi regressions are resolved and evidence is recorded.
+
+## Milestone 3: Persistence
+
+### Build
+
+1. Add runtime binding schema/store/API.
+2. Backfill Pi rows and dual-write compatibility fields.
+3. Support unbound, bound, missing, and error states with CAS.
+4. Make session creation freeze configured runtime instance.
+5. Update debug/read models/Chat metadata.
+
+### Verify
+
+- Fresh and old database fixtures.
+- Duplicate native id per instance rejected; same native id across different instances allowed.
+- Concurrent bind race produces one winner and disposes loser resources.
+- Missing native session does not auto-create.
+- Pibo2 existing-data migration count/id/path comparison.
+
+## Milestone 4: Portable control plane
+
+### Build
+
+1. Add Designer runtime selection and adapter options.
+2. Add Pibo tool IR and direct Pi compiler.
+3. Add scoped MCP credential registry and bridge.
+4. Add isolated skills/context/external-MCP materializers and delivery reports.
+5. Add model/auth/reasoning catalog aggregation.
+6. Add cross-runtime subagent selection and validation.
+
+### Verify
+
+- Invalid saves fail clearly.
+- Disabled states explain genuine limitations.
+- Cross-session tool access is denied.
+- Selected skill/context/MCP is visible; unselected content is absent.
+- Pi direct and MCP fixture produce equivalent Pibo tool results.
+- No user-global harness config changes.
+
+## Milestone 5: Runtime-neutral history/debug
+
+### Build
+
+1. Persist terminal semantic history for every new routed turn.
+2. Build generic trace/history input model.
+3. Keep Pi JSONL only in Pi history provider/import/repair paths.
+4. Add binding and adapter diagnostics to debug surfaces.
+
+### Verify
+
+- New Pi turn renders with native transcript reads disabled in normal path.
+- Old Pi sessions still render.
+- Missing native transcript keeps product history/session visible.
+- Debug output includes adapter/instance/binding without secrets.
+
+## Milestone 6: Adapter-authoring skill
+
+### Build
+
+Create and register `pibo-agent-runtime-adapter` with progressive references and checklist.
+
+### Verify
+
+- Full harness eval yields descriptor, capabilities, lifecycle, delivery, tests, and Pibo2 plan.
+- Partial harness eval declares unsupported features and Designer behavior instead of inventing support.
+- Package contents include the skill.
+
+## Milestone 7: Native Codex
+
+### Protocol preparation
+
+1. Read exact Pibo2 `codex --version` and availability.
+2. Run `codex app-server generate-ts` and `generate-json-schema` from that binary.
+3. Store fixtures and compatibility metadata.
+4. Classify stable versus experimental methods and unsupported Designer capabilities.
+
+### Build
+
+1. Typed stdio JSON-RPC lifecycle and initialize handshake.
+2. Thread start/resume/read/list/fork where supported.
+3. Turn start/steer/interrupt and event normalization.
+4. Approvals and structured user input.
+5. Model/reasoning/options/usage.
+6. Scoped Pibo MCP bridge plus selected external MCP.
+7. Isolated selected skills and context.
+8. Pibo subagents and product jobs/loops/workflows.
+9. `codex-native` profile; compatibility alias guard.
+
+### Verify locally
+
+- Deterministic protocol fixtures.
+- Shared contract suite.
+- Process cleanup/start failure/crash/malformed/overload/missing-thread tests.
+- Approval/user input/abort/history/model/reasoning/tool events.
+- Full build/typecheck/test.
+
+## Milestone 8: Exact Pibo2 integrated validation
+
+Follow the `pibo-v2-server-development` skill and record:
+
+- installed candidate and commit;
+- Pibo home, ports, process/binary versions;
+- migration before/after counts and sampled ids/locators;
+- fresh/resumed Pi and Codex scenarios;
+- service restart continuity;
+- native plus Pibo MCP tools;
+- selected skills/context/external MCP;
+- Pibo and cross-runtime subagents;
+- Loop/Cron/workflow compatibility;
+- approval/user input, abort, process failure, missing binding;
+- Designer diagnostics and disabled states;
+- Chat Web screenshots/traces/network/console;
+- startup/first-delta/completion/trace timings and resource state;
+- remaining uncertainty and issue links for unrelated defects.
+
+## Durable progress ledger
+
+Update this table after each meaningful milestone so continuations do not need to re-derive state.
+
+| Date | Milestone | Branch / commit / PR | Verification | Remaining dependency |
+|---|---|---|---|---|
+| 2026-08-14 | Discovery/spec complete | `feature/agent-runtime-foundation` based on `54176105` | Required project/T3/Codex references inspected; clean-base suite 1,598/1,598 passing | Foundation verification and PR |
+| 2026-08-14 | Runtime foundation PR opened | `feature/agent-runtime-foundation`, implementation `a69a0a27`, PR #476 | Full workspace typecheck passed; focused routed Pi 73/73; full suite 1,605/1,605 | Stacked Pi extraction and authenticated Pibo2 parity |
+
+## Completion audit
+
+Before marking the goal complete, produce `docs/reports/multi-agent-runtime-adapter-final-audit-<date>.md` with one row per spec requirement and these columns:
+
+- requirement;
+- implemented code paths;
+- focused tests;
+- full-suite/build evidence;
+- migration evidence;
+- Pibo2/API/browser evidence;
+- PR(s);
+- known limitations/uncertainty;
+- pass/fail.
+
+Any missing, stale, indirect, or unverified evidence is a failed row, not an assumption of completion.

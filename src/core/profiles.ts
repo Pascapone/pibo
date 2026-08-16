@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { PiboMessageEvent } from "./events.js";
+import type { PiboJsonObject, PiboMessageEvent } from "./events.js";
 import type { PiboThinkingLevel } from "./thinking.js";
 
 export type ToolDefinitionContext = {
@@ -68,6 +68,7 @@ export type ContextFileProfile = {
 };
 
 export type BuiltinToolsMode = "default" | "disabled";
+export const DEFAULT_AGENT_RUNTIME_INSTANCE_ID = "pi";
 export const DEFAULT_BUILTIN_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
 export type BuiltinToolName = (typeof DEFAULT_BUILTIN_TOOL_NAMES)[number];
 
@@ -100,6 +101,8 @@ export type WebSearchProviderUserLocation = {
 
 export type InitialSessionContextOptions = {
 	profileName: string;
+	runtimeInstanceId?: string;
+	runtimeOptions?: PiboJsonObject;
 	sessionId?: string;
 	parentSessionId?: string;
 	model?: ModelProfile;
@@ -125,6 +128,8 @@ export type InitialSessionContextOptions = {
 
 export class InitialSessionContext {
 	readonly profileName: string;
+	readonly runtimeInstanceId: string;
+	readonly runtimeOptions: PiboJsonObject;
 	readonly sessionId?: string;
 	readonly parentSessionId?: string;
 	readonly model?: ModelProfile;
@@ -149,6 +154,8 @@ export class InitialSessionContext {
 
 	constructor(options: InitialSessionContextOptions) {
 		this.profileName = options.profileName;
+		this.runtimeInstanceId = options.runtimeInstanceId ?? DEFAULT_AGENT_RUNTIME_INSTANCE_ID;
+		this.runtimeOptions = structuredClone(options.runtimeOptions ?? {});
 		this.sessionId = options.sessionId;
 		this.parentSessionId = options.parentSessionId;
 		this.model = options.model ? { ...options.model } : undefined;
@@ -175,6 +182,8 @@ export class InitialSessionContext {
 
 export class InitialSessionContextBuilder {
 	private readonly profileName: string;
+	private runtimeInstanceId = DEFAULT_AGENT_RUNTIME_INSTANCE_ID;
+	private runtimeOptions: PiboJsonObject = {};
 	private sessionId?: string;
 	private parentSessionId?: string;
 	private model?: ModelProfile;
@@ -199,6 +208,12 @@ export class InitialSessionContextBuilder {
 
 	constructor(profileName: string) {
 		this.profileName = profileName;
+	}
+
+	withAgentRuntime(instanceId: string, options: PiboJsonObject = {}): this {
+		this.runtimeInstanceId = instanceId;
+		this.runtimeOptions = structuredClone(options);
+		return this;
 	}
 
 	withSessionId(sessionId: string): this {
@@ -339,6 +354,8 @@ export class InitialSessionContextBuilder {
 	createSession(): InitialSessionContext {
 		return new InitialSessionContext({
 			profileName: this.profileName,
+			runtimeInstanceId: this.runtimeInstanceId,
+			runtimeOptions: this.runtimeOptions,
 			sessionId: this.sessionId,
 			parentSessionId: this.parentSessionId,
 			model: this.model,

@@ -1,0 +1,646 @@
+# Design: Multi-Agent Runtime Adapters
+
+**Status:** Implementing
+**Created:** 2026-08-14
+**Related docs:** `proposal.md`, `spec.md`, `tasks.md`
+
+## Context
+
+Pibo's current product/runtime boundary is centered on `createPiboRuntime()` returning Pi's `AgentSessionRuntime`. `RoutedSession` combines reusable queue/correlation/lifecycle behavior with Pi event parsing, Pi model/settings access, Pi tools, Pi session trees, Pi compaction, fast mode, context guard, provider recovery, and transcript-integrity recovery. Session stores require a Pi session id, plugin tool definitions use Pi types, and trace code reads Pi JSONL directly.
+
+The target must not make Pi, Codex, ACP, or any upstream protocol the core abstraction. It must be a Pibo-owned SPI that is rich enough for Pi parity and explicit enough to describe partial external adapters.
+
+## Reference inspection
+
+The design was checked on 2026-08-14 against:
+
+- Pibo investigation: `docs/reports/multi-agent-runtime-adapter-architecture-investigation-2026-08-14.md`.
+- T3 Code commit `e25021af767b10c560862fcec714cf67fb22cfae`:
+  - `docs/internals/providers.md`
+  - `apps/server/src/provider/ProviderDriver.ts`
+  - `apps/server/src/provider/Services/ProviderAdapter.ts`
+  - `apps/server/src/provider/Drivers/CodexDriver.ts`
+  - `apps/server/src/provider/Layers/CodexAdapter.ts`
+  - `apps/server/src/mcp/McpProviderSession.ts`
+  - `apps/server/src/mcp/McpSessionRegistry.ts`
+  - `apps/server/src/mcp/McpHttpServer.ts`
+- OpenAI Codex commit `a186f5484dc8b89f103859a7c9bd632881fba54b`:
+  - `codex-rs/app-server/README.md`
+  - `codex-rs/app-server-protocol/src/protocol/common.rs`
+  - generated v2 JSON schemas under `codex-rs/app-server-protocol/schema/json/v2/`.
+
+Useful ideas retained from T3 Code:
+
+- Driver configuration is decoded before instance creation.
+- Configured instances are isolated closures/resources.
+- Configured-instance registry and live session directory are separate.
+- Provider-native events become canonical events before orchestration consumes them.
+- Process/session scope owns cleanup.
+- MCP credentials are issued per session and injected without exposing the product's normal web auth credential.
+
+Ideas not copied:
+
+- Effect services/layers are not introduced into Pibo.
+- T3's provider/thread domain model is not used as Pibo's product model.
+- T3's canonical event algebra is not copied wholesale.
+- T3's 24-hour MCP liveness window is too broad for Pibo's selected-tool capability model; Pibo credentials use shorter leases and explicit renewal/revocation.
+
+## Goals
+
+- Keep product orchestration independent of any harness.
+- Preserve Pi behavior and compatibility before adding Codex.
+- Make every optional behavior capability-driven.
+- Keep configured runtime instances separate from live session handles.
+- Keep native prompts, tools, sessions, and transcripts adapter-owned.
+- Provide real portable paths for Pibo tools, skills, context, MCP, and subagents.
+- Make persistence, history, debug, and Agent Designer runtime-aware.
+
+## Non-Goals
+
+- A lowest-common-denominator interface that hides rich adapter features.
+- A generic ACP core.
+- Replacing Pibo Sessions with native thread ids.
+- Copying user-global Codex or Pi homes for each turn.
+- Starting native Codex before Pi parity evidence is clean.
+
+## Architecture
+
+```text
+Channels / Chat Web / CLI / Cron / Loop / Workflow / Subagent
+                              |
+                              v
+                       PiboSessionRouter
+                              |
+                    Generic RoutedSession
+                 queue / correlation / lifecycle
+                              |
+                  configured runtime instance id
+                              v
+                AgentRuntimeAdapterRegistry
+             descriptors + configured instances only
+                              |
+                              v
+                   AgentRuntimeAdapter.openSession
+                              |
+                  adapter-owned AgentRuntimeSession
+           +------------------+-------------------+
+           |                                      |
+           v                                      v
+      Pi adapter                             Codex adapter
+   embedded Pi SDK                    official app-server v2
+           |                                      |
+           +---------- semantic events -----------+
+                              |
+                              v
+                   PiboOutputEvent projection
+                              |
+       signals / reliability / telemetry / trace / UI
+
+Portable Pibo tools -> Pi direct compiler OR session-scoped MCP bridge
+Skills/context      -> adapter materialization plan and fidelity report
+External MCP        -> adapter-scoped config plus connection verification
+Native history      -> adapter history provider for resume/import/debug
+```
+
+## Decision: Naming
+
+Use `agentRuntime` and `runtimeAdapter` in code. The existing persistent Python/Node `runtime` tool keeps its current name. This avoids conflating the code-execution tool with the harness runtime.
+
+## Decision: Descriptor, configured instance, and live session are separate types
+
+### Descriptor
+
+```ts
+export type AgentRuntimeAdapterDescriptor = {
+  id: string;
+  displayName: string;
+  transport: "embedded" | "stdio-rpc" | "socket-rpc" | "remote";
+  configSchema: PiboJsonSchema;
+  capabilities: AgentRuntimeCapabilities;
+  protocol?: { name: string; supportedRange?: string };
+};
+```
+
+The descriptor is static and stable. It does not contain mutable process state.
+
+### Configured instance
+
+```ts
+export interface AgentRuntimeAdapter {
+  readonly instanceId: string;
+  readonly descriptor: AgentRuntimeAdapterDescriptor;
+  readonly config: PiboJsonObject;
+
+  diagnose(): Promise<AgentRuntimeDiagnostic[]>;
+  validateProfile(input: ValidateAgentRuntimeProfileInput): AgentRuntimeDiagnostic[];
+  openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession>;
+
+  inspectProfile?(input: InspectAgentRuntimeProfileInput): Promise<AgentRuntimeAssemblyInspection>;
+  listModels?(): Promise<AgentRuntimeModelCatalog>;
+  getAuthStatus?(): Promise<AgentRuntimeAuthStatus[]>;
+  readHistory?(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage>;
+  resolveBinding?(input: ResolveAgentRuntimeBindingInput): Promise<RuntimeSessionBinding>;
+}
+```
+
+A configured instance owns validated config such as binary path, isolated home root, environment allowlist, or remote endpoint. Multiple instances of one adapter are allowed unless the descriptor says otherwise.
+
+### Live session
+
+```ts
+export interface AgentRuntimeSession {
+  readonly adapterId: string;
+  readonly runtimeInstanceId: string;
+  readonly cwd: string;
+  readonly capabilities: AgentRuntimeSessionCapabilities;
+
+  getBinding(): RuntimeSessionBinding;
+  subscribe(listener: (event: AgentRuntimeSemanticEvent) => void): () => void;
+  prompt(input: AgentRuntimePromptInput): Promise<void>;
+  steer?(input: AgentRuntimePromptInput): Promise<void>;
+  abort(): Promise<void>;
+  dispose(): Promise<void>;
+  getStatus(): AgentRuntimeStatus;
+  getStatusSnapshot?(): Promise<AgentRuntimeStatus>;
+
+  controls?: AgentRuntimeControls;
+  compatibility?: unknown;
+}
+```
+
+The router owns the map from Pibo Session id to generic `RoutedSession`. Each `RoutedSession` owns exactly one live `AgentRuntimeSession`. The adapter instance registry never stores live sessions.
+
+## Decision: Registry ownership
+
+`PiboPluginRegistry` receives `registerAgentRuntimeAdapter(adapter)` and stores configured adapter instances in an internal `AgentRuntimeAdapterRegistry`. It exposes:
+
+- `getAgentRuntimeAdapter(instanceId)`
+- `getAgentRuntimeAdapterDescriptors()`
+- `getAgentRuntimeInstanceInfos()`
+- runtime entries in `PiboCapabilityCatalog`.
+
+The registry validates:
+
+- adapter id format and uniqueness rules;
+- configured instance id uniqueness;
+- descriptor/config consistency;
+- config JSON shape before registration;
+- capability/method consistency where it can be checked statically.
+
+The core plugin registers the default configured `pi` instance. Native Codex later registers `codex-native` as an instance backed by adapter id `codex`. The instance id and profile name may match for the default native profile but are separate concepts.
+
+## Decision: Profile and session runtime selection
+
+`InitialSessionContext` gains additive fields:
+
+```ts
+runtime: {
+  instanceId: string;       // default "pi"
+  options?: PiboJsonObject;
+};
+```
+
+Compatibility accessors may expose `runtimeAdapterId` while migration proceeds, but configured instance id is the routing key. `PiboProfileInfo` and custom-agent rows expose the selection and options.
+
+At Pibo Session creation:
+
+1. Resolve the requested profile.
+2. Resolve explicit session runtime override if present, otherwise profile default.
+3. Validate the configured instance and portable selections.
+4. Persist an `unbound` runtime binding before runtime creation.
+5. Freeze that instance for the session.
+
+Existing sessions without a binding resolve to a backfilled/default Pi binding. Editing a profile never changes an existing binding.
+
+## Decision: Capability model
+
+Capabilities are structured instead of a flat string list so Designer and generic dispatch can explain delivery and limitations.
+
+```ts
+type CapabilitySupport =
+  | { support: "unsupported"; reason: string }
+  | { support: "native" }
+  | { support: "direct" }
+  | { support: "mcp"; transports: ("streamable-http" | "stdio")[] }
+  | { support: "materialized"; modes: string[] }
+  | { support: "degraded"; reason: string; mode: string };
+
+type AgentRuntimeCapabilities = {
+  lifecycle: {
+    persistent: boolean;
+    lazyBinding: boolean;
+    resume: boolean;
+    attach: boolean;
+    listNativeSessions: boolean;
+    fork: boolean;
+    clone: boolean;
+    tree: boolean;
+  };
+  input: { text: boolean; images: boolean; audio: boolean; steering: boolean; structuredOutput: boolean };
+  output: { assistantDeltas: boolean; reasoning: boolean; tools: boolean; usage: boolean; plans: boolean; diffs: boolean };
+  tools: { piboManaged: CapabilitySupport; nativeToolYielding: CapabilitySupport };
+  mcp: { externalServers: CapabilitySupport; statusInspection: boolean };
+  skills: CapabilitySupport;
+  context: CapabilitySupport;
+  models: { catalog: boolean; switchInSession: boolean; optionsSchema?: PiboJsonSchema };
+  reasoning: { supported: boolean; values?: string[] };
+  approvals: { supported: boolean; structuredUserInput: boolean };
+  maintenance: { compaction: boolean; contextUsage: boolean; history: boolean; health: boolean };
+};
+```
+
+Session capabilities may narrow descriptor capabilities after launch/negotiation. Generic callers use the live capability snapshot and optional method presence. A mismatch is an adapter contract failure, not an excuse for silent fallback.
+
+## Decision: Generic semantic event model
+
+Adapters emit Pibo-owned events without Pibo Session routing fields:
+
+```ts
+type AgentRuntimeSemanticEvent =
+  | { type: "assistant_delta"; text: string; contentIndex?: number }
+  | { type: "assistant_message"; text: string; contentIndex?: number }
+  | { type: "reasoning_started"; contentIndex?: number }
+  | { type: "reasoning_delta"; text: string; contentIndex?: number }
+  | { type: "reasoning_finished"; text?: string; contentIndex?: number }
+  | { type: "tool_call"; callId: string; name: string; args: unknown; complete: boolean }
+  | { type: "tool_started"; callId: string; name: string; args: unknown }
+  | { type: "tool_updated"; callId: string; name: string; update: unknown }
+  | { type: "tool_finished"; callId: string; name: string; result: unknown; isError: boolean }
+  | { type: "usage"; usage: AgentRuntimeUsage }
+  | { type: "compaction_started"; reason: string }
+  | { type: "compaction_finished"; reason: string; result?: unknown; aborted: boolean; error?: string }
+  | { type: "approval_requested"; request: AgentRuntimeApprovalRequest }
+  | { type: "user_input_requested"; request: AgentRuntimeUserInputRequest }
+  | { type: "warning"; message: string; details?: PiboJsonObject }
+  | { type: "error"; message: string; details?: AgentRuntimeErrorDetails }
+  | { type: "native_event"; event: unknown; redacted?: boolean };
+```
+
+`RoutedSession` owns Pibo Session id, input event id correlation, assistant/reasoning indices, queue lifecycle, and conversion to `PiboOutputEvent`. The adapter owns native event parsing, native retry/recovery, and native turn settlement.
+
+A future output-contract phase adds `runtime_event` with adapter/instance metadata. `pi_event` remains a compatibility projection produced only for Pi when requested.
+
+## Decision: Pi extraction shape
+
+Source layout:
+
+```text
+src/agent-runtime/
+  capabilities.ts
+  errors.ts
+  events.ts
+  registry.ts
+  types.ts
+  history.ts
+  testing/fake-adapter.ts
+  testing/contract.ts
+
+src/agent-runtimes/pi/
+  adapter.ts
+  session.ts
+  runtime.ts
+  event-normalizer.ts
+  recovery.ts
+  controls.ts
+  history.ts
+  inspection.ts
+  compatibility.ts
+```
+
+Migration order:
+
+1. Add contracts, registry, fake adapter, and descriptor catalog.
+2. Wrap existing `createPiboRuntime()` in `PiAgentRuntimeAdapter`.
+3. Move Pi event normalization and runtime session behavior into `PiAgentRuntimeSession`.
+4. Make generic `RoutedSession` depend only on `AgentRuntimeSession`.
+5. Move Pi controls and recovery into the Pi session implementation.
+6. Keep `createPiboRuntime()` and direct TUI as Pi compatibility facades.
+7. Add an import-boundary test forbidding Pi dependencies in `src/agent-runtime/`, generic router modules, and generic history modules.
+
+Tests that intentionally inspect the underlying Pi runtime use a documented Pi compatibility handle, not generic router internals. The compatibility handle is not consumed by generic orchestration.
+
+## Decision: Runtime binding data model
+
+Add to `pibo.sqlite`:
+
+```sql
+CREATE TABLE session_runtime_bindings (
+  pibo_session_id TEXT PRIMARY KEY,
+  runtime_instance_id TEXT NOT NULL,
+  runtime_adapter_id TEXT NOT NULL,
+  native_session_id TEXT,
+  binding_state TEXT NOT NULL,
+  protocol TEXT,
+  protocol_version TEXT,
+  adapter_version TEXT,
+  locator_json TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX session_runtime_bindings_native_unique
+ON session_runtime_bindings(runtime_instance_id, native_session_id)
+WHERE native_session_id IS NOT NULL;
+```
+
+A similar additive table is added to the legacy store if that store remains writable during the compatibility window.
+
+Binding state transitions:
+
+```text
+(no row legacy) -> synthesized/backfilled pi bound
+new session -> unbound
+unbound -> bound       native session created and CAS persisted
+bound -> bound         resume/reopen; metadata/version may update
+bound -> missing       adapter proves native session absent
+bound -> error         binding exists but cannot currently open
+missing/error -> bound only through explicit repair/attach/rebind action
+```
+
+The store uses revision-based compare-and-set for `unbound -> bound` so two gateways cannot create competing native sessions. Credentials never enter the binding.
+
+Compatibility:
+
+- Existing `sessions.pi_session_id` stays unchanged and unique for Pi rows.
+- Pi binding writes dual-write the old field and binding table.
+- Reads prefer binding table, synthesize from `piSessionId` when absent, and opportunistically backfill where safe.
+- Non-Pi sessions allow `pi_session_id IS NULL` in v2 storage.
+- No removal occurs in this goal.
+
+Rollback:
+
+- Old binaries ignore the additive table and continue reading Pi rows.
+- Rollback is safe only while all newly created sessions are Pi-backed or the operator accepts that old binaries cannot operate non-Pi sessions.
+- Migration documentation requires database backup before rolling back after native Codex sessions exist.
+
+## Decision: Portable Pibo tool contract
+
+```ts
+type PiboToolDefinition = {
+  name: string;
+  title?: string;
+  description: string;
+  promptSnippet?: string;
+  promptGuidelines?: string[];
+  inputSchema: PiboJsonSchema;
+  annotations?: {
+    readOnly?: boolean;
+    destructive?: boolean;
+    idempotent?: boolean;
+    openWorld?: boolean;
+  };
+  execute(context: PiboToolExecutionContext, input: unknown): Promise<PiboToolResult>;
+};
+
+type PiboToolResult = {
+  content: Array<
+    | { type: "text"; text: string }
+    | { type: "image"; data?: string; mimeType: string; payloadRef?: string }
+  >;
+  structuredContent?: PiboJsonValue;
+  isError?: boolean;
+  payloadRefs?: string[];
+};
+```
+
+Execution context includes Pibo Session id, Room id, profile, active message correlation, abort signal, progress emitter, and selected capability scope. It does not expose adapter credentials.
+
+The Pi compiler converts JSON Schema to Pi's accepted schema/tool shape and preserves direct in-process execution. Existing Pi-native tool factories receive compatibility wrappers until converted.
+
+## Decision: Session-scoped MCP bridge
+
+The first bridge is loopback Streamable HTTP because official Codex supports MCP server URLs plus bearer-token environment variables without editing global config.
+
+Credential record:
+
+```ts
+type RuntimeToolCredentialScope = {
+  tokenHash: string;
+  piboSessionId: string;
+  runtimeInstanceId: string;
+  adapterId: string;
+  sessionGeneration: string;
+  allowedToolNames: ReadonlySet<string>;
+  issuedAt: string;
+  expiresAt: string;
+  lastAliveAt: string;
+};
+```
+
+Rules:
+
+- Raw token is generated with at least 256 bits and returned once to the adapter launch materializer.
+- Only a hash is kept by the registry.
+- The bridge authenticates every list/call/resource request and constructs `PiboToolExecutionContext` from the bound scope.
+- Tool discovery returns only allowed Pibo-managed tools for that session.
+- Each call checks session generation and current selection again.
+- Abort/cancellation propagates through MCP to the Pibo tool signal.
+- Progress maps to MCP progress/logging and Pibo tool updates.
+- Large results use the existing payload store and bounded previews.
+- Credentials expire quickly when inactive, are renewed by live session heartbeat, and are revoked on dispose/rebind/router shutdown.
+- Tests attempt cross-session list/call, stale token, revoked token, wrong instance, and removed-tool access.
+
+The bridge does not reuse Better Auth cookies, machine keys, gateway bearer tokens, or Codex auth.
+
+## Decision: Skills and context materialization
+
+Canonical plan:
+
+```ts
+type RuntimeContextContribution = {
+  id: string;
+  source: "pibo-product" | "profile" | "plugin" | "managed";
+  intent: "developer" | "project" | "session" | "skill" | "user-visible";
+  content?: string;
+  sourcePath?: string;
+  required: boolean;
+  order: number;
+};
+
+type RuntimeDeliveryReport = {
+  contributionId: string;
+  status: "delivered" | "degraded" | "unsupported" | "failed";
+  mode: string;
+  fidelity: "exact" | "equivalent" | "lossy" | "none";
+  target?: string;
+  diagnostic?: string;
+};
+```
+
+State root:
+
+```text
+$PIBO_HOME/agent-runtimes/<runtime-instance-id>/<pibo-session-id>/<generation>/
+  home/
+  skills/
+  context/
+  config/
+  protocol/
+```
+
+Materialization uses symlinks only when ownership/platform semantics are safe; otherwise copy-on-start. Generated state is adapter-owned and removed according to adapter retention policy. Selected resources are allowlisted; directory scanning never pulls in unselected Pibo skills.
+
+Pi uses its current resource loader and reports equivalent delivery. Codex uses process-scoped extra skill roots and developer/project instruction channels supported by the exact app-server version. Pibo's Pi base prompt is never part of the Codex plan.
+
+## Decision: External MCP delivery
+
+Pibo compiles selected external MCP definitions plus the Pibo tool bridge into adapter launch/session configuration. Secrets are referenced through scoped environment variables or secure adapter config indirection, never serialized into binding metadata or inspection output.
+
+A server is considered delivered only after the adapter reports startup/connection status and, when available, tool/resource discovery. Context Build shows configured, connecting, connected, failed, and unsupported states.
+
+## Decision: History and trace
+
+Introduce `AgentRuntimeHistoryEntry`, a Pibo-owned normalized input to trace materialization. New routed turns persist enough terminal semantic data in Pibo's event/message stores to render normal Chat Web without native history.
+
+Adapters may provide:
+
+- `readHistory` for import/debug;
+- `resolveHistoryLocator` for diagnostics;
+- `importHistory` for old or externally created sessions.
+
+Pi JSONL parsing moves to `src/agent-runtimes/pi/history.ts`. Existing trace callers receive a compatibility provider for old Pi sessions. Codex uses `thread/read` or paginated official history methods. Native transcripts remain resume state, not co-equal mutable product history.
+
+## Decision: Approvals and user input
+
+Add normalized runtime request records and output events. Requests are persisted with:
+
+- Pibo Session id;
+- runtime instance/adapter;
+- native request id (opaque/redacted in normal UI);
+- turn/message correlation;
+- request type and safe summary;
+- structured fields/options;
+- status and timestamps.
+
+Generic execution actions respond through capability-gated `controls.respondToApproval` and `controls.respondToUserInput`. Chat Web presents pending requests in the active session. Abort/disposal resolves or rejects outstanding requests deterministically. Pi may initially advertise unsupported if no equivalent request surface exists.
+
+## Decision: Native Codex adapter
+
+Transport and schema:
+
+- Spawn configured `codex app-server --stdio` (or the exact equivalent supported by the validated binary).
+- Use newline-delimited JSON request/response/notification framing; never parse human terminal output.
+- Send `initialize` once, then `initialized`.
+- Generate TypeScript/JSON schema from the exact candidate binary and store deterministic fixtures/version metadata.
+- Prefer stable v2 methods. Experimental methods require explicit initialization capability and adapter capability flags.
+- Treat `-32001` overload as retryable with bounded exponential backoff and jitter.
+
+Lifecycle:
+
+1. Create isolated generation directory and process environment.
+2. Materialize selected skills/context/MCP configuration.
+3. Issue Pibo MCP bridge credential.
+4. Spawn app-server and initialize.
+5. For `unbound`, call `thread/start`, persist returned thread id using binding CAS.
+6. For `bound`, call `thread/resume` for the exact thread id.
+7. If resume proves missing, mark binding `missing`; do not call `thread/start` automatically.
+8. `turn/start` sends text/images and selected model/reasoning/options.
+9. Normalize notifications and server requests.
+10. `turn/interrupt` aborts active work.
+11. Disposal unsubscribes, rejects requests, stops child process, revokes credentials, and cleans generation state.
+
+Official surfaces currently identified in the inspected schema include thread start/resume/fork/read/list, turn start/steer/interrupt, model list, reasoning effort, thread token usage, compaction, skills list/extra roots, MCP startup/status/tool APIs, approvals, and structured user input. Final capability claims depend on the exact Pibo2 binary and generated schema.
+
+Profile compatibility:
+
+- Persisted/custom `codex-compat-openai-web` and `codex` references remain Pi-backed; native Codex does not claim the retired built-in alias that is absent from the August 14, 2026 baseline registry.
+- Add `codex-native` selecting runtime instance `codex-native`.
+- Native Codex does not load `context/codex-base-prompt.md` or the Pi Codex-compatibility extension.
+
+## Decision: Diagnostics and CLI discovery
+
+Capability catalog and profile inspection are the primary programmatic surfaces. Add compact CLI discovery only when implementation is ready, for example:
+
+```text
+pibo runtimes
+pibo runtimes show <instance>
+pibo runtimes schema <instance>
+pibo runtimes doctor <instance>
+pibo debug session <ps_...> runtime
+```
+
+Top-level help lists only immediate commands. Schema, full capabilities, environment requirements, and protocol details stay behind deeper commands.
+
+Debug output redacts:
+
+- MCP bearer tokens and hashes;
+- Codex/Pi auth material;
+- environment secret values;
+- web cookies/machine keys;
+- raw config values marked secret.
+
+## Decision: Adapter contract suite
+
+`runAgentRuntimeAdapterContract(factory, expectations)` is reusable by fake, Pi, and Codex fixture tests. It checks:
+
+- descriptor/config/diagnostic validity;
+- unique isolated sessions;
+- new binding and resume;
+- prompt, assistant stream, final message, usage;
+- reasoning/tool events only when advertised;
+- abort and idempotent disposal;
+- missing native session behavior;
+- process crash and malformed event normalization;
+- every advertised control;
+- no unadvertised method/capability mismatch;
+- no events after terminal disposal;
+- credential/session isolation where MCP is supported.
+
+The deterministic fake adapter supports scripted events, delayed prompt, failure, crash, missing binding, and cleanup assertions. Generic router tests use it instead of Pi unless the test specifically protects Pi compatibility.
+
+## Decision: Import boundaries
+
+An architectural test scans imports and fails if:
+
+- `src/agent-runtime/**` imports `@earendil-works/pi-*`, Codex client/schema modules, or adapter implementation directories;
+- generic `src/core/routed-session.ts` or its replacement imports Pi/Codex packages;
+- generic history/trace modules import Pi/Codex packages;
+- product orchestration branches on literal adapter names when a capability dispatch is available.
+
+Adapter directories may import their native dependencies. Compatibility facade files are explicitly allowlisted and documented.
+
+## Risks and mitigations
+
+### Pi behavior changes during extraction
+
+Mitigation: move behavior before redesigning it; retain compatibility facade; run focused tests after each move; full suite and real Pibo2 parity gate before Codex.
+
+### Interface becomes a Pi-shaped abstraction
+
+Mitigation: fake adapter first, normalized semantic events, optional controls, no Pi types in generic modules, and Codex design review before freezing v1 interfaces.
+
+### Capability claims exceed real delivery
+
+Mitigation: save/start validation, delivery reports, contract assertions, exact-binary integration, and visible unsupported states.
+
+### Native prompt damage
+
+Mitigation: context plan separates Pibo product contributions from harness base prompt. Codex adapter never imports Pi prompt assembly.
+
+### Credential leakage
+
+Mitigation: one-time raw tokens, hashed registry, bounded debug, no binding persistence, per-session allowlists, explicit revocation, cross-session tests.
+
+### Dual source of history
+
+Mitigation: normalized Pibo history is product-visible source for new turns; native history is resume/import/debug source only.
+
+### Migration rollback after Codex data exists
+
+Mitigation: additive schema, documented backup/rollback boundary, and old-binary limitation called out explicitly.
+
+## Migration and rollback sequence
+
+1. Land contracts/registry/fake adapter with no persistence change.
+2. Extract Pi and prove parity.
+3. Add binding table/backfill/dual writes.
+4. Add profile runtime selection defaulting to Pi.
+5. Add portable tools/MCP/materialization and runtime-neutral history.
+6. Add Designer/debug surfaces and authoring skill.
+7. Add native Codex.
+8. Validate exact integrated candidate on Pibo2.
+
+A rollback before step 7 is transparent to old Pi behavior because compatibility columns and APIs remain. After native Codex sessions exist, rollback requires retaining the new binary or accepting that old binaries cannot run those sessions; no automatic conversion to Pi is permitted.

@@ -18,6 +18,7 @@ export { createBetterAuthService } from "./auth/better-auth.js";
 export type { BetterAuthServiceOptions } from "./auth/better-auth.js";
 export type { PiboAuthIdentity, PiboAuthService, PiboAuthSession } from "./auth/types.js";
 export {
+	DEFAULT_AGENT_RUNTIME_INSTANCE_ID,
 	InitialSessionContext,
 	InitialSessionContextBuilder,
 } from "./core/profiles.js";
@@ -30,6 +31,66 @@ export type {
 	ToolProfile,
 	ToolPackageProfile,
 } from "./core/profiles.js";
+export { AgentRuntimeAdapterRegistry } from "./agent-runtime/registry.js";
+export {
+	assertAgentRuntimeSessionContract,
+	validateAgentRuntimeSessionContract,
+} from "./agent-runtime/contract.js";
+export {
+	AgentRuntimeBindingMissingError,
+	AgentRuntimeContractError,
+	AgentRuntimeCapabilityUnavailableError,
+	AgentRuntimeRegistrationError,
+	AgentRuntimeUnavailableError,
+} from "./agent-runtime/errors.js";
+export {
+	createMinimalAgentRuntimeCapabilities,
+	unsupportedAgentRuntimeCapability,
+	validateAgentRuntimeCapabilities,
+} from "./agent-runtime/capabilities.js";
+export type {
+	AgentRuntimeCapabilities,
+	AgentRuntimeCapabilityDelivery,
+	AgentRuntimeSessionCapabilities,
+} from "./agent-runtime/capabilities.js";
+export type {
+	AgentRuntimeApprovalRequest,
+	AgentRuntimeEventListener,
+	AgentRuntimeSemanticEvent,
+	AgentRuntimeUsage,
+	AgentRuntimeUserInputQuestion,
+	AgentRuntimeUserInputRequest,
+} from "./agent-runtime/events.js";
+export type {
+	AgentRuntimeAdapter,
+	AgentRuntimeAdapterDescriptor,
+	AgentRuntimeAdapterId,
+	AgentRuntimeAssemblyInspection,
+	AgentRuntimeAuthStatus,
+	AgentRuntimeBindingLocator,
+	AgentRuntimeBindingState,
+	AgentRuntimeControls,
+	AgentRuntimeDiagnostic,
+	AgentRuntimeDiagnosticSeverity,
+	AgentRuntimeDriver,
+	AgentRuntimeDriverCreateInput,
+	AgentRuntimeHistoryEntry,
+	AgentRuntimeHistoryPage,
+	AgentRuntimeInstanceDefinition,
+	AgentRuntimeInstanceId,
+	AgentRuntimeInstanceInfo,
+	AgentRuntimeModelCatalog,
+	AgentRuntimeModelInfo,
+	AgentRuntimeOpenServices,
+	AgentRuntimeProductContext,
+	AgentRuntimePromptInput,
+	AgentRuntimePromptSource,
+	AgentRuntimeSession,
+	AgentRuntimeStatus,
+	OpenAgentRuntimeSessionInput,
+	RuntimeSessionBinding,
+} from "./agent-runtime/types.js";
+export { PI_AGENT_RUNTIME_DRIVER, PI_AGENT_RUNTIME_CAPABILITIES, getPiAgentRuntimeCompatibilityHandle } from "./agent-runtimes/pi/adapter.js";
 export { definePiboPlugin, PiboPluginRegistry } from "./plugins/registry.js";
 export type { PiboPluginRegistryOptions } from "./plugins/registry.js";
 export type {
