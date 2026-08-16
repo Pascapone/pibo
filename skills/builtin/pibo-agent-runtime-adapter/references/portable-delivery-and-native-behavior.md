@@ -64,6 +64,8 @@ The returned URL/token are sensitive session-owned process state:
 
 Pibo's bridge is loopback Streamable HTTP, validates schemas, propagates cancellation/progress, supports text/images/structured content, and offloads large results. Do not build a second adapter-specific bridge.
 
+Account for the harness's native MCP approval policy. A server that connects and lists tools is not usable if every model-initiated call is silently rejected. When the product has already selected a Pibo-owned tool set and the credential independently enforces that exact session/generation/allowlist, an adapter may mark only that generated Pibo MCP server as pre-approved through an official harness setting. Do not apply the same policy globally or automatically to unrelated external MCP servers. Prove a model-initiated call, not only a direct protocol call.
+
 ### Native tool yielding
 
 `tools.nativeToolYielding` is separate. `pibo_run_start` can yield Pibo-managed tool work. It cannot wrap a private native harness tool unless the adapter provides an explicit native-tool-yielding mechanism. Keep that limitation visible.
@@ -177,13 +179,15 @@ Never reuse Chat Web cookies, machine keys, Pibo tool tokens, or another harness
 
 Subagents remain Pibo product orchestration:
 
-- a subagent tool creates or reuses a child Pibo Session;
-- the child profile selects its own configured runtime instance;
+- a subagent tool creates or reuses a child Pibo Session using a bounded stable thread key;
+- the child profile selects and freezes its own configured runtime instance and binding;
 - parent and child may use different adapters;
 - hierarchy/correlation remains in Pibo data and events;
-- child tools/resources receive their own generation and credentials.
+- child tools/resources receive their own generation and credentials;
+- parent interruption and tool cancellation abort active child work without deleting the reusable child session;
+- `pibo_run_start` may yield selected Pibo subagent tools even when private harness-native tool yielding is unsupported.
 
-An adapter does not need native harness subagents to support Pibo-managed subagents. It does need a working Pibo-managed tool delivery path.
+An adapter does not need native harness subagents to support Pibo-managed subagents. It does need a working Pibo-managed tool delivery path, model-call approval semantics that actually permit the selected Pibo tool, and restart/resume evidence for the parent and child bindings.
 
 Do not flatten a child session into an undocumented native tool call and then claim cross-runtime subagent support.
 

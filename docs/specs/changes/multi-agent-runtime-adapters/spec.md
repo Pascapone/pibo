@@ -50,6 +50,8 @@ Pibo MUST remain authoritative for Pibo Sessions, rooms, projects, profiles, Age
 - Product APIs and routing use `PiboSession.id`, never a native harness id.
 - Cross-runtime parent/child relationships use Pibo `parentId` and `originId`.
 - Harness-native schedulers, goals, and subagents do not silently replace Pibo-owned equivalents.
+- Each Pibo-managed child freezes the target profile's configured runtime binding independently from the parent runtime.
+- Stable subagent thread keys are bounded; parent interruption and tool cancellation abort active child work without deleting the reusable child Pibo Session.
 
 #### Scenario: Cross-runtime child
 
@@ -451,7 +453,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 - [x] SC-002: Pi runs entirely through the adapter boundary with full local and approved-auth Pibo2 parity.
 - [x] SC-003: Runtime bindings migrate existing data without id or transcript rewrite.
 - [x] SC-004: Agent Designer and profile inspection are runtime-aware and reject unsupported selections.
-- [ ] SC-005: Pibo tools, MCP, skills, context, and Pibo subagents have proven cross-runtime delivery and isolation.
+- [x] SC-005: Pibo tools, MCP, skills, context, and Pibo subagents have proven cross-runtime delivery and isolation.
 - [x] SC-006: New product history, trace, debug, telemetry, and binding inspection are runtime neutral.
 - [x] SC-007: The built-in adapter-authoring skill is registered and passes full/partial-adapter evals.
 - [ ] SC-008: Native Codex passes real Pibo2 restart/resume, tool, context, skill, MCP, subagent, approval/user-input, abort/failure, trace, and Designer scenarios.
@@ -480,21 +482,21 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 
 | Requirement | Primary phase | Verification | Status |
 |---|---|---|---|
-| REQ-001 Product authority | All | Cross-runtime subagent/workflow/loop scenarios | Pending |
+| REQ-001 Product authority | All | Cross-runtime subagent/workflow/loop scenarios | Pibo-managed subagent authority passes locally and on exact Pibo2 `0.147.0`: Codex-parent model calls and yielded runs create/reuse child Pibo Sessions, Pi parents create native Codex children, bindings remain independent across restart, and parent abort propagates to active child work; workflow/loop integrated audit remains milestone 10 |
 | REQ-002 Registry | Foundation | Registry unit tests, catalog tests | Pi + Designer local pass |
-| REQ-003 Session lifecycle | Foundation/Pi/Codex | Shared adapter contract | Pi local + approved-auth Pibo2 restart/resume pass; Codex 9.4 lifecycle/history and 9.5 shared-contract prompt/abort/disposal plus exact completed-turn child-process restart/resume pass; public service restart pending 10.4 |
+| REQ-003 Session lifecycle | Foundation/Pi/Codex | Shared adapter contract | Pi local + approved-auth Pibo2 restart/resume pass; Codex 9.4 lifecycle/history and 9.5 shared-contract prompt/abort/disposal plus exact completed-turn child-process restart/resume pass; 9.10 adds cross-runtime parent/child binding reuse and parent-abort propagation; public service restart pending 10.4 |
 | REQ-004 Capabilities | Foundation/Designer | Capability consistency and save-validation tests | Designer local pass |
 | REQ-005 Events | Pi/Codex/History | Event fixtures and trace tests | Pi local + real-model Pibo2 text/tool/SSE pass; Codex 9.5 assistant/reasoning/tool/usage/compaction/warning/completion/interruption/failure normalization and 9.6 approval/input request/resolution normalization pass locally and on exact `0.147.0` |
 | REQ-006 Pi parity | Pi extraction | Full suite, old-session fixtures, Pibo2 parity | Pass: approved Pibo2-managed OAuth, baseline/candidate text and Bash parity, public-Web streaming, unchanged binding across restart, prior-tool-history recovery, controls, trace, and browser evidence; see `pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md` |
 | REQ-007 Bindings | Persistence | Migration/uniqueness/CAS/missing tests | Local + Pibo2 pass |
 | REQ-008 Frozen runtime selection | Profiles/Persistence | Profile edit and existing-session tests | Local + Pibo2 pass |
-| REQ-009 Agent Designer | Designer | API/UI save/disabled/inspection tests | Local + Pibo2 pass; Codex 9.8 resource capabilities now validate as selectable, with public native profile interaction pending 9.11 |
+| REQ-009 Agent Designer | Designer | API/UI save/disabled/inspection tests | Local + Pibo2 pass; 9.10 proves subagent and run-control surfaces remain capability-gated and visible, with public native profile interaction pending 9.11 |
 | REQ-010 Native behavior | Pi/Codex | Prompt/tool/context inspection | Pass: Pi preserves exact native behavior; Codex 9.8 proves native prompt preservation and additive resources, while 9.9 proves every baseline native tool remains present with unchanged fixed structure, selected MCP tools are additive through Codex's native code-mode inventory, and stable-protocol inventory limits are declared rather than hidden |
-| REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Local + exact-candidate Pibo2 pass; see `portable-pibo-tools-mcp-validation-2026-08-15.md` |
+| REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Local + exact-candidate Pibo2 pass; 9.10 additionally proves model-initiated selected Pibo MCP calls, yielded subagents, scoped Pibo-server approval, cancellation, restart, and cross-runtime child isolation; see `portable-pibo-tools-mcp-validation-2026-08-15.md` and `codex-native-subagent-validation-2026-08-16.md` |
 | REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, restart, Context Build, and Pi-scoped CLI tests | Runtime-neutral materialization and Pi pass; Codex 9.8 exact Pibo MCP, external HTTP/stdio MCP, selected skill/context, native project discovery, active renewal, process handoff, restart, and cleanup pass; see `runtime-resource-materialization-validation-2026-08-15.md` and `codex-native-resource-delivery-validation-2026-08-16.md` |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pibo-owned + Pi exact-candidate pass; Codex 9.4 normalized/redacted native provider plus 9.5 exact completed-turn child-process restart/resume and fork-candidate reconciliation pass; public service/Chat Web trace pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Local + exact-candidate Pibo2 pass; 20/20 with skill versus 9/20 baseline |
-| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema, 9.2 typed stdio client, 9.3 process/private-home isolation, 9.4 thread/binding/history, 9.5 stable turn lifecycle/output/failure, 9.6 approval/input, 9.7 model/reasoning/tier/options/context usage, 9.8 portable resources, and 9.9 native-tool preservation/inspection pass on exact Pibo2 `0.147.0`; Pibo-managed subagents, profile registration, and public native flows pending |
+| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema, 9.2 typed stdio client, 9.3 process/private-home isolation, 9.4 thread/binding/history, 9.5 stable turn lifecycle/output/failure, 9.6 approval/input, 9.7 model/reasoning/tier/options/context usage, 9.8 portable resources, 9.9 native-tool preservation/inspection, and 9.10 Pibo-managed/cross-runtime subagents pass on exact Pibo2 `0.147.0`; profile registration and public native flows pending |
 | REQ-016 Compatibility alias | Profiles | Existing profile tests | Local pass; native profile pending |
-| REQ-017 Verification | All | Local and Pibo2 evidence reports | Runtime foundation through Codex 9.9 has focused/full/exact evidence; remaining Codex integrations and final cross-runtime audit pending |
+| REQ-017 Verification | All | Local and Pibo2 evidence reports | Runtime foundation through Codex 9.10 has focused/full/exact evidence; remaining Codex profile/fixture integrations and final cross-runtime audit pending |
 | REQ-018 Delivery | All | Branch/commit/PR/final audit | Implementing |
