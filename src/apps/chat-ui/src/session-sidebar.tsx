@@ -674,9 +674,11 @@ function RoomNode({
 						</button>
 						<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
 							{personal ? (
-								<span title="Shared Chat is locked" aria-label="Shared Chat is locked" className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-[#0bda57]/50 rounded-sm text-[#0bda57]">
-									<Lock size={12} className="max-[980px]:h-4 max-[980px]:w-4" />
-								</span>
+								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={48}>
+									<ActionMenuItem onSelect={() => onReadAll(room.id)}>
+										<CheckCheck size={16} /> Read All
+									</ActionMenuItem>
+								</ActionMenu>
 							) : (
 								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={archived ? 144 : 192}>
 									{archived ? (
