@@ -583,6 +583,8 @@ Lifecycle:
 10. `turn/interrupt` aborts active work.
 11. Disposal unsubscribes, rejects requests, stops child process, revokes credentials, and cleans generation state.
 
+Task 9.3 fixes the filesystem/process boundary as follows: each configured instance owns one private persistent `CODEX_HOME` for native authentication and thread state, while every live Pibo Session generation receives a distinct disposable process `HOME`, XDG directories, temporary directory, allowlisted environment, and official CLI config overrides. Separate configured instances never share Codex homes. Closing or failed startup removes generation state without deleting durable native threads; explicit instance removal owns durable-home deletion. The App Server-reported home must match Pibo's prepared home or startup fails closed.
+
 Official surfaces currently identified in the inspected schema include thread start/resume/fork/read/list, turn start/steer/interrupt, model list, reasoning effort, thread token usage, compaction, skills list/extra roots, MCP startup/status/tool APIs, approvals, and structured user input. Final capability claims depend on the exact Pibo2 binary and generated schema.
 
 Profile compatibility:

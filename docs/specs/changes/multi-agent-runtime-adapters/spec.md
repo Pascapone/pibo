@@ -453,7 +453,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, restart, Context Build, and Pi-scoped CLI tests | Local + exact-candidate Pibo2 pass; see `runtime-resource-materialization-validation-2026-08-15.md` |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pibo-owned + Pi exact-candidate pass; native Codex provider pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Local + exact-candidate Pibo2 pass; 20/20 with skill versus 9/20 baseline |
-| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 exact App Server 0.147.0 schema checkpoint + 9.2 typed stdio client pass; exact binary initialize/model-list handshake verified; runtime/session integration pending |
+| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema checkpoint, 9.2 typed stdio client, and 9.3 process/version/private-home isolation pass; exact Pibo2 0.147.0 two-instance initialize/model-list/cleanup verified; thread/runtime integration pending |
 | REQ-016 Compatibility alias | Profiles | Existing profile tests | Local pass; native profile pending |
 | REQ-017 Verification | All | Local and Pibo2 evidence reports | Pending |
 | REQ-018 Delivery | All | Branch/commit/PR/final audit | Implementing |
