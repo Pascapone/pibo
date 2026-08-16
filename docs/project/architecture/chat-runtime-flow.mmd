@@ -1,98 +1,74 @@
 flowchart TD
-  U["User types in Composer textarea"] --> C1["Composer.submit"]
-  C1 --> C2{"Text starts with / ?"}
+  U["User types in Composer"] --> C{"Slash command?"}
+  C -->|yes| ACTION["POST /api/chat/action"]
+  C -->|no| MESSAGE["POST /api/chat/message"]
 
-  C2 -->|yes| A1["postAction: POST /api/chat/action"]
-  A1 --> G0["WebHostChannel HTTP gateway"]
-  G0 --> RAction["PiboSessionRouter.emit execution"]
-  RAction --> RSAction["RoutedSession.executeAction"]
-  RSAction --> GA["GatewayAction.execute"]
-  GA --> OUT0["execution_result"]
-
-  C2 -->|no| C3["handleComposerSend"]
-  C3 --> C4["Optimistic message_queued in UI"]
-  C4 --> C5["postMessage: POST /api/chat/message"]
-
-  C5 --> WH["WebHostChannel.handleRequest"]
-  WH --> AUTH["requireWebSession / auth"]
-  AUTH --> APP["ChatWebApp.handleRequest"]
-  APP --> IDX["ensureEventIndexing subscribes to Router"]
-  IDX --> MSG["sendChatMessage"]
-
-  MSG --> S1["Normalize text, clientTxnId, roomId"]
-  S1 --> S2["resolveRequestedSession + ensureSessionRoom"]
-  S2 --> S3{"Duplicate clientTxnId?"}
-  S3 -->|yes| DUP["Return duplicate event"]
-  S3 -->|no| S4["Prepare web annotations"]
-  S4 --> S5["Prepare file attachments"]
-
-  S5 --> DB1[("pibo.sqlite: event_log")]
-  S5 --> DB2[("pibo.sqlite: chat_messages, sessions, navigation")]
-  S5 --> LIVE1["Notify Chat liveListeners"]
-  S5 --> EMIT["channelContext.emit message"]
-
+  ACTION --> WEB["Authenticated Chat Web API"]
+  MESSAGE --> WEB
+  WEB --> ACCEPT["Persist user.message.accepted and durable user message"]
+  ACCEPT --> EMIT["channelContext.emit"]
   EMIT --> ROUTER["PiboSessionRouter.emit"]
-  ROUTER --> R1["getOrCreateSession"]
-  R1 --> R2{"RoutedSession exists?"}
-  R2 -->|no| CR["createRoutedSession"]
-  CR --> PROF["pluginRegistry.createProfile"]
-  PROF --> RT["createPiboRuntime"]
-  RT --> SM["Pi SessionManager open/create JSONL"]
-  RT --> SV["createAgentSessionServices"]
-  SV --> CF["Load context files, skills, tools, extensions"]
-  CF --> AS["createAgentSessionFromServices"]
-  AS --> AR["AgentSessionRuntime"]
-  AR --> RS["RoutedSession"]
 
-  R2 -->|yes| RS
-  RS --> Q["RoutedSession.enqueueMessage"]
-  Q --> OQ["Emit message_queued"]
-  Q --> DRAIN["drain queue async"]
-  OQ --> HTTPRESP["HTTP POST returns queued output"]
+  ROUTER --> ROUTED{"RoutedSession active?"}
+  ROUTED -->|yes| QUEUE["enqueueMessage"]
+  ROUTED -->|no| CREATE["createRoutedSession"]
 
+  CREATE --> SESSION["Resolve Pibo Session + profile"]
+  SESSION --> BINDING["Read/create frozen RuntimeSessionBinding"]
+  BINDING --> INSTANCE["Resolve configured runtime instance"]
+  INSTANCE --> GENERATION["Create live generation id"]
+  GENERATION --> PTOOLS["Prepare selected portable Pibo tools"]
+  GENERATION --> RESOURCES["Prepare selected skills, context, external MCP"]
+  PTOOLS --> OPEN["AgentRuntimeDriver.openSession"]
+  RESOURCES --> OPEN
+  OPEN --> LIVE["AgentRuntimeSession + effective capabilities"]
+  LIVE --> CAS["Persist native id/state with binding CAS"]
+  CAS --> QUEUE
+
+  QUEUE --> MQ["Emit message_queued"]
+  QUEUE --> DRAIN["Drain one active message"]
   DRAIN --> MS["Emit message_started"]
-  MS --> EXP["Expand inline skills"]
-  EXP --> PROMPT["AgentSession.prompt"]
+  MS --> PROMPT["AgentRuntimeSession.prompt"]
 
-  PROMPT --> P1["Extension commands/input handlers"]
-  P1 --> P2["Skill/template expansion"]
-  P2 --> P3["Model + auth check"]
-  P3 --> P4["Optional compaction pre-check"]
-  P4 --> P5["before_agent_start extensions"]
-  P5 --> CORE["Pi Agent Core: Agent.prompt"]
+  PROMPT --> ADAPTER{"Frozen adapter"}
+  ADAPTER -->|pi| PI["Pi adapter"]
+  PI --> PISDK["Pi AgentSession.prompt / native Pi loop"]
+  PISDK --> PIPROVIDER["Pi provider stream + Pi/native direct tools"]
 
-  CORE --> LOOP["runAgentLoop"]
-  LOOP --> LLM["streamAssistantResponse"]
-  LLM --> PROV["pi-ai provider stream: OpenAI, Bedrock, etc."]
-  PROV --> EV["Agent events: text, thinking, tool deltas"]
-  EV --> SUB["RoutedSession runtime.session.subscribe"]
-  SUB --> NORM["normalizePiEvent"]
-  NORM --> PO["PiboOutputEvent"]
+  ADAPTER -->|codex-native| CODEX["Codex-native adapter"]
+  CODEX --> APP["Private Codex App Server 0.147.x"]
+  APP --> TURN["turn/start JSON-RPC"]
+  TURN --> CODEXLOOP["Native Codex model loop + standard tools"]
+  CODEXLOOP --> MCP["Selected Pibo/external MCP + isolated skills/context"]
 
-  PO --> ROUTOUT["PiboSessionRouter.emitOutput"]
-  ROUTOUT --> TEL[("pibo.sqlite: telemetry tables")]
-  ROUTOUT --> SIG["SignalRegistry projection"]
-  ROUTOUT --> PLUG["pluginRegistry.notifyEvent"]
-  ROUTOUT --> SUBS["Router subscribers"]
+  PIPROVIDER --> SEMANTIC["AgentRuntimeSemanticEvent"]
+  MCP --> SEMANTIC
+  SEMANTIC --> CORRELATE["RoutedSession correlates Pibo ids, indices, requests, terminal state"]
+  CORRELATE --> OUTPUT["PiboOutputEvent"]
 
-  SUBS --> CHATIDX["ChatWeb ensureEventIndexing listener"]
-  CHATIDX --> COMP["OutputCompactor"]
-  COMP --> DB3[("pibo.sqlite: event_log, observations, messages")]
-  COMP --> REL[("pibo-events.sqlite: reliability stream")]
-  COMP --> LIVE2["Chat liveListeners"]
+  OUTPUT --> ROUTOUT["PiboSessionRouter.emitOutput"]
+  ROUTOUT --> HISTORY[("pibo.sqlite: messages, events, payload refs")]
+  ROUTOUT --> TELEMETRY[("telemetry + signals")]
+  ROUTOUT --> RELIABILITY[("reliability state")]
+  ROUTOUT --> SSE["/api/chat/events SSE"]
+  SSE --> UI["Chat UI reconciles live trace"]
 
-  LIVE2 --> SSE["/api/chat/events SSE"]
-  SSE --> UIEV["Chat UI EventSource"]
-  UIEV --> UITRACE["traceLiveReducer / live overlay"]
-  UIEV --> REFRESH["Optional GET /api/chat/trace"]
-  REFRESH --> TRACE["buildTraceView from event_log"]
-  TRACE --> UI["UI renders answer, tools, status"]
+  CODEXLOOP --> SUBAGENT{"pibo_subagent tool?"}
+  PIPROVIDER --> SUBAGENT
+  SUBAGENT -->|yes| CHILD["Create/reuse child Pibo Session"]
+  CHILD --> CHILDBIND["Child freezes target profile binding"]
+  CHILDBIND --> ROUTER
 
-  LOOP --> TC{"Tool call?"}
-  TC -->|yes| TOOL["execute tool"]
-  TOOL --> TOOLDB["tool_execution events"]
-  TOOLDB --> LOOP
-  TC -->|no| END["message_end"]
-  END --> AM["assistant_message"]
-  AM --> MF["message_finished"]
-  MF --> REM["Maybe schedule run reminders"]
+  PROMPT --> REQUEST{"Approval / structured input?"}
+  REQUEST -->|supported| PENDING["Bounded pending request in API/UI"]
+  PENDING --> RESOLVE["Resolve at most once"]
+  RESOLVE --> PROMPT
+
+  PROMPT --> FAILURE{"Abort, crash, or missing native state?"}
+  FAILURE -->|abort| INTERRUPT["Interrupt + bounded cleanup; Codex recycles App Server"]
+  FAILURE -->|provider/protocol| ERROR["Normalized session_error; one terminal outcome"]
+  FAILURE -->|missing| MISSING["Persist missing binding; keep product history; no replacement"]
+
+  INTERRUPT --> CLEANUP["Revoke credentials, cancel active child work, remove generation files"]
+  ERROR --> CLEANUP
+  MISSING --> CLEANUP

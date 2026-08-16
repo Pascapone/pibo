@@ -143,26 +143,27 @@ Target branch: `feature/agent-runtime-foundation`
 
 ## 10. Exact Pibo2 integrated validation
 
-- [ ] 10.1 Build and install the exact candidate(s) on disposable Pibo2.
-- [ ] 10.2 Validate existing-data migration and rollback boundary.
-- [ ] 10.3 Validate fresh/resumed Pi sessions, restart, tools, user skills, context, MCP, subagents, loops, trace/debug, TUI, Chat Web, and performance parity.
-- [ ] 10.4 Validate fresh/resumed Codex threads across `pibo-web.service` restart.
-- [ ] 10.5 Validate native Codex tools and Pibo MCP tools in one session.
-- [ ] 10.6 Validate selected Codex skills, context files, and external MCP connectivity.
-- [ ] 10.7 Validate Pibo-managed and cross-runtime subagents.
-- [ ] 10.8 Validate approvals/user input when supported by the installed protocol.
-- [ ] 10.9 Validate abort, process failure, missing thread, invalid selection, and disabled-capability explanations.
-- [ ] 10.10 Capture authenticated browser screenshots/traces, API/debug evidence, telemetry, process state, and timings under `docs/reports/`.
-- [ ] 10.11 Investigate and report any regression rather than weakening tests.
+- [x] 10.1 Build and install the exact candidate(s) on disposable Pibo2. Final exact candidate: commit `2404ca5d6466486c1a1c525964c24770be6b06b9`, package SHA-256 `dd0966a2712ee2d78d6e9da0cdf72ea78592f6b9c113884ee9a62163f332936b`, Codex `0.147.0`.
+- [x] 10.2 Validate existing-data migration and rollback boundary.
+- [x] 10.3 Validate fresh/resumed Pi sessions, restart, tools, user skills, context, MCP, subagents, loops, trace/debug, TUI, Chat Web, and performance parity.
+- [x] 10.4 Validate fresh/resumed Codex threads across `pibo-web.service` restart through the exact official App Server process/protocol.
+- [x] 10.5 Validate native Codex tools and Pibo MCP tools in one session.
+- [x] 10.6 Validate selected Codex skills, context files, and external MCP connectivity.
+- [x] 10.7 Validate Pibo-managed and cross-runtime subagents.
+- [x] 10.8 Validate stable command/file approvals; keep experimental structured input disabled unless explicitly enabled. Authenticated Chat Web approval evidence is recorded.
+- [x] 10.9 Validate abort, process failure, missing thread, invalid selection, and disabled-capability explanations. Interrupt/process recycling and missing-binding defects were fixed in `59b7dc53`.
+- [x] 10.10 Capture authenticated browser screenshots/traces, API/debug evidence, telemetry, process state, timings, and cleanup evidence in `docs/reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`.
+- [x] 10.11 Investigate and report regressions rather than weakening tests. The stale CLI session PTY scenario was fixed in `2404ca5d` and now has a PTY-backed regression test.
+- [ ] 10.12 Complete Pibo2-managed native-Codex production-provider authentication and record one bounded public real-provider turn. Official App Server login reached Google sign-in but requires interactive account verification; no credential shortcut is permitted.
 
 ## 11. Documentation, PR synchronization, and final audit
 
-- [ ] 11.1 Update canonical capability specs to implemented behavior.
-- [ ] 11.2 Add architecture and call-flow docs under `docs/project/architecture/`.
-- [ ] 11.3 Document migration, rollback, Pi adapter, Codex adapter, portable capabilities, security, and operator diagnostics.
-- [ ] 11.4 Add progressively discoverable runtime CLI docs for implemented commands only.
-- [ ] 11.5 Synchronize docs and evidence across stacked PRs.
+- [x] 11.1 Update canonical capability specs to implemented behavior.
+- [x] 11.2 Add architecture and call-flow docs under `docs/project/architecture/`.
+- [x] 11.3 Document migration, rollback, Pi adapter, Codex adapter, portable capabilities, security, and operator diagnostics.
+- [x] 11.4 Add progressively discoverable runtime CLI docs for implemented commands only.
+- [x] 11.5 Synchronize canonical docs and evidence on the final stacked branch.
 - [ ] 11.6 Ensure every branch is clean, pushed, and represented by a reviewable PR to `upstream/dev`.
-- [ ] 11.7 Produce final audit mapping REQ-001 through REQ-018 to code, tests, PRs, and Pibo2 evidence.
-- [ ] 11.8 Confirm no known regression or material unreported uncertainty invalidates completion.
+- [x] 11.7 Produce `docs/reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md`, mapping REQ-001 through REQ-018 to code, tests, PRs, and Pibo2 evidence.
+- [ ] 11.8 Confirm no known regression or material unreported uncertainty invalidates completion. The deterministic/product matrix is clean, but official native-Codex provider authentication remains an explicit external evidence blocker.
 - [ ] 11.9 Mark the Pibo Loop goal complete only after the full audit passes.
