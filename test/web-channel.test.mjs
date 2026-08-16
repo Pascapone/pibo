@@ -10,6 +10,7 @@ import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
 
 const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
 
@@ -136,6 +137,7 @@ async function startWebHostChannel(options = {}) {
 		auth: options.auth,
 		emit(event) {
 			emitted.push(event);
+			if (options.emit) return options.emit(event, sessions);
 			return Promise.resolve({
 				type: event.type === "message" ? "message_queued" : "execution_result",
 				piboSessionId: event.piboSessionId,
@@ -2229,6 +2231,42 @@ test("chat web app makes message sends idempotent by client transaction id", asy
 		assert.equal(emitted.length, 1);
 		assert.equal(duplicate.duplicate, true);
 		assert.equal(duplicate.event.clientTxnId, "txn-retry-1");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app returns a safe conflict when a bound native session is missing", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		emit(event) {
+			throw new AgentRuntimeBindingMissingError(event.piboSessionId, "codex-native", "thread-missing");
+		},
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const sessionPayload = await sessionResponse.json();
+		const response = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({
+				piboSessionId: sessionPayload.session.id,
+				text: "resume missing native thread",
+				clientTxnId: "txn-missing-runtime-1",
+			}),
+		});
+		assert.equal(response.status, 409);
+		const payload = await response.json();
+		assert.match(payload.error, /native session "thread-missing".*is missing/);
+		assert.doesNotMatch(JSON.stringify(payload), /private|rollout|config\.toml/);
 	} finally {
 		await channel.stop?.();
 	}

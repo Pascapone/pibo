@@ -38,7 +38,7 @@ const THREAD_LIST_SOURCE_KINDS: CodexAppServerThreadSourceKind[] = [
 	"subAgentOther",
 	"unknown",
 ];
-const THREAD_MISSING_PATTERN = /\b(?:thread(?:\s+\S+)?\s+(?:not found|not loaded)|no rollout found for (?:thread|conversation) id)\b/i;
+const THREAD_MISSING_PATTERN = /\b(?:thread(?:\s+\S+)?\s+(?:not found|not loaded)|no rollout found for (?:thread|conversation) id|failed to resolve rollout path[^\r\n]{0,2048}(?:file does not exist|no such file or directory))\b/i;
 const TURN_STATUSES = new Set<CodexAppServerTurnStatus>(["completed", "interrupted", "failed", "inProgress"]);
 const THREAD_STATUS_TYPES = new Set<CodexAppServerThreadStatus["type"]>(["notLoaded", "idle", "systemError", "active"]);
 

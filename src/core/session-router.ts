@@ -1094,6 +1094,19 @@ export class PiboSessionRouter {
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			await resources.dispose();
 			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
+			if (error instanceof AgentRuntimeBindingMissingError && binding.state === "bound") {
+				this.persistSessionRuntimeBinding(piboSession, {
+					...binding,
+					state: "missing",
+					metadata: {
+						...(binding.metadata ?? {}),
+						diagnosticCode: "runtime_binding_missing",
+						diagnosticMessage: "The bound native session is no longer available in the configured runtime instance.",
+					},
+				}, {
+					expectedRevision: binding.revision,
+				});
+			}
 			throw error;
 		}
 		try {

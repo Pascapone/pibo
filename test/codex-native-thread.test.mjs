@@ -169,6 +169,13 @@ test("Codex native missing-thread detection covers exact stable App Server error
 	]) {
 		assert.equal(isCodexNativeThreadMissingError(new CodexAppServerRpcResponseError({ code: -32600, message })), true);
 	}
+	const missingRollout = new CodexAppServerRpcResponseError({
+		code: -32600,
+		message: "failed to resolve rollout path `/private/fake-codex/thread-missing.jsonl`: file does not exist",
+	});
+	assert.equal(isCodexNativeThreadMissingError(missingRollout), true);
+	assert.match(missingRollout.message, /\[redacted path\]/);
+	assert.doesNotMatch(missingRollout.message, /private\/fake-codex|thread-missing\.jsonl/);
 	assert.equal(
 		isCodexNativeThreadMissingError(new CodexAppServerRpcResponseError({ code: -32600, message: "last turn not found" })),
 		false,
@@ -400,6 +407,7 @@ test("Codex native router resumes a durable binding after restart and marks dele
 	const instanceId = "codex-native-router";
 	const profileName = "codex-native-router-profile";
 	const piboSessionId = "ps_codex_router";
+	const stalePiboSessionId = "ps_codex_router_stale_rollout";
 	const config = runtimeConfig(root);
 	await seedThread(config, {
 		runtimeInstanceId: instanceId,
@@ -407,6 +415,14 @@ test("Codex native router resumes a durable binding after restart and marks dele
 		workspace: root,
 		cwd: root,
 		preview: "router durable thread",
+		turns: seededTurns(),
+	});
+	await seedThread(config, {
+		runtimeInstanceId: instanceId,
+		threadId: "thread-stale-rollout",
+		workspace: root,
+		cwd: root,
+		preview: "stale rollout index",
 		turns: seededTurns(),
 	});
 	const pluginRegistry = PiboPluginRegistry.create({
@@ -441,6 +457,14 @@ test("Codex native router resumes a durable binding after restart and marks dele
 		profile: profileName,
 		workspace: root,
 		runtimeBinding: boundBinding(instanceId, piboSessionId, "thread-router"),
+	});
+	store.create({
+		id: stalePiboSessionId,
+		channel: "test",
+		kind: "chat",
+		profile: profileName,
+		workspace: root,
+		runtimeBinding: boundBinding(instanceId, stalePiboSessionId, "thread-stale-rollout"),
 	});
 	const resources = new PiboRuntimeResourceService({ rootDir: join(root, "resources") });
 	const firstRouter = new PiboSessionRouter({
@@ -478,6 +502,7 @@ test("Codex native router resumes a durable binding after restart and marks dele
 		clientVersion: "thread-test",
 	});
 	await maintenance.client.request("test/deleteThread", { threadId: firstBinding.nativeSessionId });
+	await maintenance.client.request("test/markThreadRolloutMissing", { threadId: "thread-stale-rollout" });
 	await maintenance.close();
 
 	const thirdRouter = new PiboSessionRouter({
@@ -494,6 +519,19 @@ test("Codex native router resumes a durable binding after restart and marks dele
 	assert.equal(missing.state, "missing");
 	assert.equal(missing.nativeSessionId, firstBinding.nativeSessionId);
 	assert.equal(missing.metadata.diagnosticCode, "codex_native_thread_missing");
+	await assert.rejects(
+		thirdRouter.emit({ type: "execution", piboSessionId: stalePiboSessionId, action: "status" }),
+		(error) => {
+			assert.equal(error instanceof AgentRuntimeBindingMissingError, true);
+			assert.doesNotMatch(error.message, /private\/fake-codex|thread-stale-rollout\.jsonl/);
+			return true;
+		},
+	);
+	const staleMissing = store.getRuntimeBinding(stalePiboSessionId);
+	assert.equal(staleMissing.state, "missing");
+	assert.equal(staleMissing.nativeSessionId, "thread-stale-rollout");
+	assert.equal(staleMissing.metadata.diagnosticCode, "runtime_binding_missing");
+	assert.doesNotMatch(JSON.stringify(staleMissing), /private\/fake-codex|thread-stale-rollout\.jsonl/);
 	await thirdRouter.disposeAll();
 
 	const inspection = await startCodexNativeAppServer({
@@ -505,7 +543,9 @@ test("Codex native router resumes a durable binding after restart and marks dele
 		clientVersion: "thread-test",
 	});
 	const state = await inspection.client.request("test/getState", {});
-	assert.deepEqual(Object.keys(state.threads), []);
+	assert.deepEqual(Object.keys(state.threads), ["thread-stale-rollout"]);
+	assert.deepEqual(state.missingRollouts, ["thread-stale-rollout"]);
+	await inspection.client.request("test/deleteThread", { threadId: "thread-stale-rollout" });
 	await inspection.close();
 });
 
