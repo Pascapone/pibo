@@ -2,7 +2,7 @@
 
 ## Scope
 
-This report records native Codex checkpoint 9.11 for `@pasko70/pibo@1.7.2` at profile implementation commit `6c969f68ccc58e572b7c5948196f9667f9ce1868` and final isolation fix commit `3a52d1acbbb01302f40534a42b664ba902e87f03`, stacked on subagent PR #499.
+This report records native Codex checkpoint 9.11 for `@pasko70/pibo@1.7.2` at profile implementation commit `6c969f68ccc58e572b7c5948196f9667f9ce1868` and final isolation fix commit `3a52d1acbbb01302f40534a42b664ba902e87f03`, delivered in PR #501 stacked on subagent PR #499.
 
 The checkpoint adds a built-in `codex-native` profile and configured runtime instance while preserving the established compatibility boundary: native Codex does not claim `codex`, and an explicitly registered or persisted `codex` reference can remain a Pi-backed compatibility instance/profile.
 
