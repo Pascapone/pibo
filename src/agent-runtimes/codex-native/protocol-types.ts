@@ -214,6 +214,42 @@ export type CodexAppServerModelReroutedNotification = {
 	reason: unknown;
 };
 
+export type CodexAppServerSkillsExtraRootsSetParams = {
+	extraRoots: string[];
+};
+
+export type CodexAppServerSkillsExtraRootsSetResponse = Record<string, never>;
+
+export type CodexAppServerSkillMetadata = {
+	name: string;
+	description: string;
+	enabled: boolean;
+	path: string;
+	scope: string;
+};
+
+export type CodexAppServerSkillsListResponse = {
+	data: Array<{
+		cwd: string;
+		skills: CodexAppServerSkillMetadata[];
+		errors: unknown[];
+	}>;
+};
+
+export type CodexAppServerMcpServerStatus = {
+	name: string;
+	tools: Record<string, unknown>;
+	resources: unknown[];
+	resourceTemplates: unknown[];
+	authStatus: unknown;
+	serverInfo?: unknown;
+};
+
+export type CodexAppServerListMcpServerStatusResponse = {
+	data: CodexAppServerMcpServerStatus[];
+	nextCursor?: string | null;
+};
+
 export type CodexAppServerApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
 
 export type CodexAppServerCommandApprovalParams = {
@@ -325,11 +361,11 @@ export type CodexAppServerThreadStartParams = {
 	modelProvider?: string | null;
 	serviceTier?: string | null;
 	personality?: string | null;
-	approvalPolicy?: string | null;
-	sandbox?: string | null;
 	config?: Record<string, CodexAppServerJson> | null;
 	baseInstructions?: string | null;
 	developerInstructions?: string | null;
+	approvalPolicy?: string | null;
+	sandbox?: string | null;
 };
 
 export type CodexAppServerThreadResumeParams = Omit<CodexAppServerThreadStartParams, "ephemeral"> & {

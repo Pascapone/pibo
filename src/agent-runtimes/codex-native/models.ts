@@ -438,7 +438,7 @@ export class CodexNativeSessionSettingsController {
 	private readonly pendingContextUsage = new Map<string, AgentRuntimeContextUsage>();
 	private readonly pendingThreadSettings = new Map<string, CodexAppServerThreadSettingsUpdatedNotification>();
 	private readonly pendingModelReroutes = new Map<string, CodexAppServerModelReroutedNotification>();
-	private readonly unsubscribe: () => void;
+	private unsubscribe: () => void = () => {};
 
 	constructor(
 		client: CodexAppServerClient,
@@ -460,6 +460,11 @@ export class CodexNativeSessionSettingsController {
 		this.serviceTier = validateServiceTier(this.currentModel, selectedTier);
 		this.personality = initial.profileOptions.personality;
 		this.reasoningSummary = initial.profileOptions.reasoningSummary;
+		this.bindClient(client);
+	}
+
+	bindClient(client: CodexAppServerClient): void {
+		this.unsubscribe();
 		this.unsubscribe = client.subscribeNotifications((notification) => this.handleNotification(notification));
 	}
 

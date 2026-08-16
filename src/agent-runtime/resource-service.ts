@@ -45,6 +45,7 @@ const DEFAULT_MCP_VERIFY_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_SKILL_FILES = 2_048;
 const DEFAULT_MAX_SKILL_BYTES = 64 * 1024 * 1024;
 const MCP_CONFIG_FILE = "mcp-servers.json";
+const ENABLED_MCP_CONTEXT_ID = "context:enabled-mcp-servers";
 export type PiboRuntimeResourceServiceOptions = {
 	rootDir?: string;
 	mcpConfigPath?: string;
@@ -362,7 +363,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 		});
 		if (mcpContext) {
 			this.context.push({
-				id: "context:enabled-mcp-servers",
+				id: ENABLED_MCP_CONTEXT_ID,
 				kind: "generated",
 				source: "generated",
 				intent: "developer",
@@ -554,6 +555,9 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 		if (!shouldVerify) return;
 		for (const server of this.mcpServers) {
 			if (!server.scoped || server.error) continue;
+			const delivery = this.input.capabilities.mcp.externalServers;
+			const transport = server.transport === "http" ? "streamable-http" : "stdio";
+			if (delivery.support === "mcp" && !delivery.transports.includes(transport)) continue;
 			try {
 				const result = await this.options.verifyMcpServer(server.name, server.scoped.resolved, {
 					timeoutMs: this.options.mcpVerifyTimeoutMs,
@@ -584,6 +588,20 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 		}
 		for (const contribution of this.context) {
 			const failure = this.diagnosticFor(contribution.id);
+			if (
+				contribution.id === ENABLED_MCP_CONTEXT_ID
+				&& this.input.capabilities.mcp.externalServers.support === "mcp"
+			) {
+				this.delivery.push({
+					contributionId: contribution.id,
+					status: failure ? "failed" : "delivered",
+					mode: "native-mcp-inventory",
+					fidelity: failure ? "none" : "equivalent",
+					...(this.getMcpConfigPath() ? { target: this.getMcpConfigPath() } : {}),
+					...(failure ? { diagnostic: failure } : {}),
+				});
+				continue;
+			}
 			if (contribution.kind === "automatic" && this.input.capabilities.context.support === "materialized") {
 				const supportsNativeDiscovery = this.input.capabilities.context.modes.includes("native-project-discovery");
 				this.delivery.push(supportsNativeDiscovery
@@ -615,13 +633,32 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 			}));
 		}
 		for (const server of this.mcpServers) {
+			const delivery = this.input.capabilities.mcp.externalServers;
+			const transport = server.transport === "http" ? "streamable-http" : "stdio";
+			if (delivery.support === "mcp" && !delivery.transports.includes(transport)) {
+				const diagnostic = `This runtime does not support selected MCP transport "${transport}".`;
+				this.diagnostics.push({
+					severity: "error",
+					code: "runtime_mcp_transport_unsupported",
+					message: diagnostic,
+					contributionId: server.contributionId,
+				});
+				this.delivery.push({
+					contributionId: server.contributionId,
+					status: "unsupported",
+					mode: `unsupported:mcp:${transport}`,
+					fidelity: "none",
+					diagnostic,
+				});
+				continue;
+			}
 			const requiresInspection = this.input.verifyMcp !== false;
 			const unverified = requiresInspection && server.inspection.status !== "connected" && !server.error
 				? `MCP server "${server.name}" was not verified as connected.`
 				: undefined;
 			this.delivery.push(deliveryFor({
 				contributionId: server.contributionId,
-				delivery: this.input.capabilities.mcp.externalServers,
+				delivery,
 				target: this.getMcpConfigPath(),
 				failure: server.error ?? unverified,
 				fidelity: "exact",

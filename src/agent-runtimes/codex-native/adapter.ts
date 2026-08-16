@@ -61,6 +61,7 @@ import {
 } from "./protocol-version.js";
 import { CodexNativeTurnController } from "./turn.js";
 import { CodexNativeRequestController } from "./requests.js";
+import { CodexNativeResourceDelivery } from "./resource-delivery.js";
 import {
 	CODEX_NATIVE_MODEL_OPTIONS_SCHEMA,
 	CODEX_NATIVE_MODEL_PROVIDER_ID,
@@ -76,10 +77,6 @@ import {
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
 export const CODEX_NATIVE_ADAPTER_VERSION = "1.0.0";
-
-const unavailableUntilResourceIntegration = unsupportedAgentRuntimeCapability(
-	"This capability has not yet been delivered through the native Codex runtime adapter.",
-);
 
 function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapabilities {
 	return {
@@ -110,17 +107,17 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 			rawNativeEvents: false,
 		},
 		tools: {
-			piboManaged: unavailableUntilResourceIntegration,
+			piboManaged: { support: "mcp", transports: ["streamable-http"] },
 			nativeToolYielding: unsupportedAgentRuntimeCapability(
 				"Codex native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
 			),
 		},
 		mcp: {
-			externalServers: unavailableUntilResourceIntegration,
-			statusInspection: false,
+			externalServers: { support: "mcp", transports: ["streamable-http", "stdio"] },
+			statusInspection: true,
 		},
-		skills: unavailableUntilResourceIntegration,
-		context: unavailableUntilResourceIntegration,
+		skills: { support: "materialized", modes: ["codex-extra-roots"] },
+		context: { support: "materialized", modes: ["native-project-discovery", "codex-developer-instructions"] },
 		models: {
 			catalog: true,
 			switchInSession: true,
@@ -226,55 +223,78 @@ function validateOpenBinding(
 	return binding;
 }
 
+type CodexNativeProcessBundle = {
+	process: CodexNativeAppServerProcess;
+	resourceDelivery: CodexNativeResourceDelivery;
+};
+
+type CodexNativeProcessReloader = () => Promise<CodexNativeProcessBundle>;
+
+const RESOURCE_MAINTENANCE_RETRY_MS = 5_000;
+
 export class CodexNativeThreadSession implements AgentRuntimeSession {
 	readonly adapterId = CODEX_NATIVE_ADAPTER_ID;
 	readonly cwd: string;
 	readonly capabilities: AgentRuntimeCapabilities;
 	readonly controls: NonNullable<AgentRuntimeSession["controls"]>;
 	private readonly listeners = new Set<(event: AgentRuntimeSemanticEvent) => void>();
-	private readonly turns: CodexNativeTurnController;
-	private readonly requests: CodexNativeRequestController;
+	private turns: CodexNativeTurnController;
+	private requests: CodexNativeRequestController;
+	private process: CodexNativeAppServerProcess;
+	private threads: CodexNativeThreadController;
+	private resourceDelivery: CodexNativeResourceDelivery;
 	private binding: RuntimeSessionBinding;
 	private disposed = false;
+	private operationInFlight = false;
+	private resourceMaintenanceTimer?: ReturnType<typeof setTimeout>;
+	private resourceRefresh?: Promise<void>;
+	private resourceWarning?: string;
+	private resourceProcessUnavailable = false;
 
 	constructor(
 		readonly runtimeInstanceId: string,
-		private readonly process: CodexNativeAppServerProcess,
-		private readonly threads: CodexNativeThreadController,
+		process: CodexNativeAppServerProcess,
+		threads: CodexNativeThreadController,
 		private readonly settings: CodexNativeSessionSettingsController,
+		resourceDelivery: CodexNativeResourceDelivery,
 		binding: RuntimeSessionBinding,
-		structuredUserInput: boolean,
+		private readonly structuredUserInput: boolean,
+		private readonly reloadProcess: CodexNativeProcessReloader,
 		private readonly productContext?: AgentRuntimeProductContext,
 	) {
+		this.process = process;
+		this.threads = threads;
+		this.resourceDelivery = resourceDelivery;
 		this.cwd = threads.thread.cwd;
 		this.binding = structuredClone(binding);
 		this.capabilities = codexNativeCapabilities(structuredUserInput);
 		this.turns = new CodexNativeTurnController(process.client, threads, (event) => this.emit(event));
-		this.requests = new CodexNativeRequestController(
-			process.client,
-			() => this.threads.thread.id,
-			() => this.turns.activeTurnId,
-			structuredUserInput,
-			(event) => this.emit(event),
-		);
+		this.requests = this.createRequestController(process);
 		this.controls = {
 			getCurrentSession: () => this.threads.getSnapshot(this.runtimeInstanceId),
 			listSessions: () => this.threads.list(this.runtimeInstanceId, this.cwd),
 			getForkCandidates: () => this.threads.getForkCandidates(),
-			forkSession: async (entryId) => {
-				this.assertIdle();
-				const result = await this.threads.fork(this.runtimeInstanceId, this.cwd, entryId);
+			forkSession: async (entryId) => await this.runIdleOperation(async () => {
+				const result = await this.threads.fork(
+					this.runtimeInstanceId,
+					this.cwd,
+					entryId,
+					async (threadId) => await this.resourceDelivery.verifyThread(this.process.client, threadId),
+				);
 				this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
 				this.updateBindingFromCurrentThread();
 				return result;
-			},
-			cloneSession: async () => {
-				this.assertIdle();
-				const result = await this.threads.clone(this.runtimeInstanceId, this.cwd);
+			}),
+			cloneSession: async () => await this.runIdleOperation(async () => {
+				const result = await this.threads.clone(
+					this.runtimeInstanceId,
+					this.cwd,
+					async (threadId) => await this.resourceDelivery.verifyThread(this.process.client, threadId),
+				);
 				this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
 				this.updateBindingFromCurrentThread();
 				return result;
-			},
+			}),
 			getReasoning: () => this.settings.reasoning,
 			setReasoning: (value) => {
 				this.assertIdle();
@@ -296,6 +316,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			respondToApproval: (requestId, decision) => this.requests.respondToApproval(requestId, decision),
 			respondToUserInput: (requestId, answers) => this.requests.respondToUserInput(requestId, answers),
 		};
+		this.scheduleResourceMaintenance();
 	}
 
 	get pendingApproval() {
@@ -327,12 +348,19 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 
 	async prompt(input: AgentRuntimePromptInput): Promise<void> {
 		this.assertActive();
-		await this.turns.start(
-			input.text,
-			this.productContext?.getActiveMessage?.()?.id ?? randomUUID(),
-			this.settings.turnOptions,
-		);
-		this.updateBindingFromCurrentThread();
+		await this.ensureFreshResourcesForTurn();
+		this.operationInFlight = true;
+		try {
+			await this.turns.start(
+				input.text,
+				this.productContext?.getActiveMessage?.()?.id ?? randomUUID(),
+				this.settings.turnOptions,
+			);
+			this.updateBindingFromCurrentThread();
+		} finally {
+			this.operationInFlight = false;
+			this.scheduleResourceMaintenance();
+		}
 	}
 
 	async steer(input: AgentRuntimePromptInput): Promise<void> {
@@ -348,11 +376,18 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	async dispose(): Promise<void> {
 		if (this.disposed) return;
 		this.disposed = true;
+		if (this.resourceMaintenanceTimer) clearTimeout(this.resourceMaintenanceTimer);
+		this.resourceMaintenanceTimer = undefined;
+		await this.resourceRefresh?.catch(() => {});
 		this.requests.dispose();
 		this.turns.dispose();
 		this.settings.dispose();
 		this.listeners.clear();
-		await this.process.close();
+		try {
+			await this.process.close();
+		} finally {
+			this.resourceDelivery.dispose();
+		}
 	}
 
 	getStatus(): AgentRuntimeStatus {
@@ -365,13 +400,177 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			reasoning: this.settings.reasoning,
 			fastMode: this.settings.fastMode,
 			contextUsage: this.settings.currentContextUsage,
-			warnings: diagnostics.filter((entry) => entry.level === "warning").map((entry) => entry.message),
-			errors: diagnostics.filter((entry) => entry.level === "error").map((entry) => entry.message),
+			warnings: [
+				...diagnostics.filter((entry) => entry.level === "warning").map((entry) => entry.message),
+				...(this.resourceWarning ? [this.resourceWarning] : []),
+			],
+			errors: [
+				...diagnostics.filter((entry) => entry.level === "error").map((entry) => entry.message),
+				...(this.resourceProcessUnavailable
+					? ["Native Codex resource process is unavailable pending a bounded retry."]
+					: []),
+			],
 		};
 	}
 
 	getNativeCompatibilityHandle(): unknown {
 		return this.process.client;
+	}
+
+	private createRequestController(process: CodexNativeAppServerProcess): CodexNativeRequestController {
+		return new CodexNativeRequestController(
+			process.client,
+			() => this.threads.thread.id,
+			() => this.turns.activeTurnId,
+			this.structuredUserInput,
+			(event) => this.emit(event),
+		);
+	}
+
+	private async runIdleOperation<T>(operation: () => Promise<T>): Promise<T> {
+		await this.resourceRefresh;
+		this.assertIdle();
+		this.operationInFlight = true;
+		try {
+			return await operation();
+		} finally {
+			this.operationInFlight = false;
+			this.scheduleResourceMaintenance();
+		}
+	}
+
+	private scheduleResourceMaintenance(delayMs?: number): void {
+		if (this.resourceMaintenanceTimer) clearTimeout(this.resourceMaintenanceTimer);
+		this.resourceMaintenanceTimer = undefined;
+		if (this.disposed) return;
+		const maintenanceAt = this.resourceDelivery.nextCredentialMaintenanceAt;
+		if (maintenanceAt === undefined && delayMs === undefined) return;
+		const delay = delayMs ?? Math.max(25, maintenanceAt! - Date.now());
+		this.resourceMaintenanceTimer = setTimeout(() => {
+			this.resourceMaintenanceTimer = undefined;
+			void this.maintainResourceCredential();
+		}, Math.max(25, delay));
+		this.resourceMaintenanceTimer.unref?.();
+	}
+
+	private async maintainResourceCredential(): Promise<void> {
+		if (this.disposed) return;
+		if (this.operationInFlight || this.turns.streaming || this.requests.pendingApprovals.length > 0 || this.requests.pendingUserInputs.length > 0) {
+			this.scheduleResourceMaintenance(RESOURCE_MAINTENANCE_RETRY_MS);
+			return;
+		}
+		try {
+			if (this.resourceProcessUnavailable || this.resourceDelivery.shouldRolloverCredential()) {
+				await this.rolloverResourceProcess();
+			} else {
+				try {
+					this.resourceDelivery.renewCredential();
+				} catch {
+					await this.rolloverResourceProcess();
+				}
+			}
+			this.resourceWarning = undefined;
+			this.scheduleResourceMaintenance();
+		} catch (error) {
+			this.resourceWarning = error instanceof Error
+				? error.message
+				: "Native Codex portable-resource credentials could not be refreshed; Pibo will retry while the session remains idle.";
+			this.scheduleResourceMaintenance(RESOURCE_MAINTENANCE_RETRY_MS);
+		}
+	}
+
+	private async ensureFreshResourcesForTurn(): Promise<void> {
+		await this.resourceRefresh;
+		this.assertActive();
+		if (this.resourceProcessUnavailable || this.resourceDelivery.needsCredentialRolloverForTurn()) {
+			await this.rolloverResourceProcess();
+			return;
+		}
+		const maintenanceAt = this.resourceDelivery.nextCredentialMaintenanceAt;
+		if (maintenanceAt !== undefined && maintenanceAt <= Date.now()) {
+			try {
+				this.resourceDelivery.renewCredential();
+				this.resourceWarning = undefined;
+			} catch {
+				await this.rolloverResourceProcess();
+			}
+		}
+		this.scheduleResourceMaintenance();
+	}
+
+	private async rolloverResourceProcess(): Promise<void> {
+		if (this.resourceRefresh) return await this.resourceRefresh;
+		const refresh = this.performResourceProcessRollover();
+		this.resourceRefresh = refresh;
+		try {
+			await refresh;
+		} finally {
+			if (this.resourceRefresh === refresh) this.resourceRefresh = undefined;
+		}
+	}
+
+	private async performResourceProcessRollover(): Promise<void> {
+		this.assertActive();
+		if (this.operationInFlight || this.turns.streaming || this.requests.pendingApprovals.length > 0 || this.requests.pendingUserInputs.length > 0) {
+			throw new Error("Native Codex portable resources can only be refreshed while the session is idle.");
+		}
+		const previousProcess = this.process;
+		const previousThreads = this.threads;
+		const previousTurns = this.turns;
+		const previousRequests = this.requests;
+		const previousDelivery = this.resourceDelivery;
+		const previousThread = previousThreads.thread;
+		let next: CodexNativeProcessBundle | undefined;
+		let reboundSettings = false;
+		let phase = "stopping the previous process";
+		try {
+			await previousProcess.close();
+			this.resourceProcessUnavailable = true;
+			phase = "starting the replacement process";
+			next = await this.reloadProcess();
+			phase = "resuming the native thread";
+			this.assertActive();
+			this.settings.bindClient(next.process.client);
+			reboundSettings = true;
+			const selection = {
+				...this.settings.threadSelection,
+				...(next.resourceDelivery.threadConfig ? { config: next.resourceDelivery.threadConfig } : {}),
+				...(next.resourceDelivery.developerInstructions
+					? { developerInstructions: next.resourceDelivery.developerInstructions }
+					: {}),
+			};
+			const nextThreads = previousThread.turns.length === 0 && !previousThread.path
+				? await CodexNativeThreadController.start(next.process.client, this.cwd, selection)
+				: await CodexNativeThreadController.resume(next.process.client, previousThread.id, this.cwd, selection);
+			this.settings.attachThread(nextThreads.thread.id, nextThreads.configuration);
+			phase = "verifying portable resources";
+			await next.resourceDelivery.verifyThread(next.process.client, nextThreads.thread.id);
+			phase = "activating the replacement process";
+			this.assertActive();
+			const nextTurns = new CodexNativeTurnController(next.process.client, nextThreads, (event) => this.emit(event));
+			this.process = next.process;
+			this.threads = nextThreads;
+			this.resourceDelivery = next.resourceDelivery;
+			this.turns = nextTurns;
+			this.requests = this.createRequestController(next.process);
+			previousRequests.dispose();
+			previousTurns.dispose();
+			this.updateBindingFromCurrentThread();
+			this.resourceProcessUnavailable = false;
+			this.resourceWarning = undefined;
+			next = undefined;
+			previousDelivery.dispose();
+		} catch {
+			if (reboundSettings) {
+				this.settings.bindClient(previousProcess.client);
+				this.settings.attachThread(previousThread.id, previousThreads.configuration);
+			}
+			if (next) {
+				await next.process.close().catch(() => {});
+				next.resourceDelivery.dispose();
+			}
+			throw new Error(`Native Codex portable-resource credential refresh failed while ${phase}; Pibo will retry while the session remains idle.`);
+		}
 	}
 
 	private emit(event: AgentRuntimeSemanticEvent): void {
@@ -401,7 +600,9 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 
 	private assertIdle(): void {
 		this.assertActive();
-		if (this.turns.streaming) throw new Error("Codex runtime controls can only change while the session is idle.");
+		if (this.turns.streaming || this.resourceRefresh || this.resourceProcessUnavailable) {
+			throw new Error("Codex runtime controls can only change while the session is idle.");
+		}
 	}
 }
 
@@ -524,17 +725,40 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		const sessionGeneration = input.services?.resources?.sessionGeneration
 			?? input.services?.portableTools?.sessionGeneration
 			?? randomUUID();
-		const process = await startCodexNativeAppServer({
-			config: this.config,
-			runtimeInstanceId: this.instanceId,
-			piboSessionId: input.piboSession.id,
-			sessionGeneration,
+		const resourceInput = {
 			workspace: input.workspace,
-			clientVersion: CODEX_NATIVE_ADAPTER_VERSION,
-			resourceEnvironment: input.services?.resources?.getAdapterEnvironment(),
-		});
+			portableTools: input.services?.portableTools,
+			resources: input.services?.resources,
+		};
+		const startProcessBundle = async (processGeneration: string): Promise<CodexNativeProcessBundle> => {
+			let delivery: CodexNativeResourceDelivery | undefined;
+			let ownedProcess: CodexNativeAppServerProcess | undefined;
+			try {
+				delivery = await CodexNativeResourceDelivery.prepare(resourceInput);
+				ownedProcess = await startCodexNativeAppServer({
+					config: this.config,
+					runtimeInstanceId: this.instanceId,
+					piboSessionId: input.piboSession.id,
+					sessionGeneration: processGeneration,
+					workspace: input.workspace,
+					clientVersion: CODEX_NATIVE_ADAPTER_VERSION,
+					resourceEnvironment: delivery.environment,
+				});
+				await delivery.configureProcess(ownedProcess.client, input.workspace);
+				return { process: ownedProcess, resourceDelivery: delivery };
+			} catch (error) {
+				await ownedProcess?.close().catch(() => {});
+				delivery?.dispose();
+				throw error;
+			}
+		};
+		let resourceDelivery: CodexNativeResourceDelivery | undefined;
+		let process: CodexNativeAppServerProcess | undefined;
 		let settings: CodexNativeSessionSettingsController | undefined;
 		try {
+			const initial = await startProcessBundle(sessionGeneration);
+			resourceDelivery = initial.resourceDelivery;
+			process = initial.process;
 			const compatibility = input.services?.compatibility as CodexNativeCompatibilityServices | undefined;
 			const catalog = await this.loadModelCatalog(process.client);
 			const profileOptions = parseCodexNativeProfileOptions(input.profile.runtimeOptions);
@@ -564,20 +788,35 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 						: profileOptions.reasoningSummary,
 				},
 			});
-			const threads = binding.state === "bound"
-				? await CodexNativeThreadController.resume(
-					process.client,
-					binding.nativeSessionId!,
-					input.workspace,
-					settings.threadSelection,
-				)
-				: await CodexNativeThreadController.start(process.client, input.workspace, settings.threadSelection);
+			const threadSelection = {
+				...settings.threadSelection,
+				...(resourceDelivery.threadConfig ? { config: resourceDelivery.threadConfig } : {}),
+				...(resourceDelivery.developerInstructions
+					? { developerInstructions: resourceDelivery.developerInstructions }
+					: {}),
+			};
+			let threads: CodexNativeThreadController;
+			try {
+				threads = binding.state === "bound"
+					? await CodexNativeThreadController.resume(
+						process.client,
+						binding.nativeSessionId!,
+						input.workspace,
+						threadSelection,
+					)
+					: await CodexNativeThreadController.start(process.client, input.workspace, threadSelection);
+			} catch (error) {
+				if (error instanceof CodexNativeThreadMissingError || !resourceDelivery.hasMcpServers) throw error;
+				throw new Error("Codex could not initialize every selected MCP server.");
+			}
 			settings.attachThread(threads.thread.id, threads.configuration);
+			await resourceDelivery.verifyThread(process.client, threads.thread.id);
 			return new CodexNativeThreadSession(
 				this.instanceId,
 				process,
 				threads,
 				settings,
+				resourceDelivery,
 				bindingForThread({
 					piboSessionId: input.piboSession.id,
 					runtimeInstanceId: this.instanceId,
@@ -586,11 +825,13 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					settings: settings.bindingMetadata,
 				}),
 				this.config.experimentalUserInput,
+				async () => await startProcessBundle(`${sessionGeneration}-credential-${randomUUID()}`),
 				input.productContext,
 			);
 		} catch (error) {
 			settings?.dispose();
-			await process.close().catch(() => {});
+			await process?.close().catch(() => {});
+			resourceDelivery?.dispose();
 			if (error instanceof CodexNativeThreadMissingError) {
 				throw new AgentRuntimeBindingMissingError(input.piboSession.id, this.instanceId, binding.nativeSessionId);
 			}

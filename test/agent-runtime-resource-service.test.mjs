@@ -285,6 +285,43 @@ test("runtime resources reject missing secret references and symlinks that escap
 	assert.equal(entries.some((entry) => entry.includes("generation-invalid")), false);
 });
 
+test("runtime resources reject selected MCP transports that the adapter cannot deliver", async (t) => {
+	const fixture = await createFixture();
+	t.after(async () => rm(fixture.root, { recursive: true, force: true }));
+	const capabilities = createMinimalAgentRuntimeCapabilities();
+	capabilities.mcp.externalServers = { support: "mcp", transports: ["streamable-http"] };
+	const profile = new InitialSessionContextBuilder("http-only-runtime")
+		.withAgentRuntime("http-only-runtime")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.withMcpServers(["selected"])
+		.createSession();
+	const service = new PiboRuntimeResourceService({
+		rootDir: join(fixture.root, "http-only-generations"),
+		mcpConfigPath: fixture.configPath,
+		environment: { ...process.env, SOURCE_SECRET: "session-secret" },
+		async verifyMcpServer() {
+			throw new Error("unsupported stdio transport must not be started for verification");
+		},
+	});
+	t.after(async () => service.dispose());
+	await assert.rejects(
+		() => service.createSession({
+			piboSessionId: "ps_http_only",
+			runtimeInstanceId: "http-only-runtime",
+			adapterId: "external",
+			sessionGeneration: "generation-http-only",
+			profile,
+			cwd: fixture.workspace,
+			capabilities,
+			strict: true,
+		}),
+		(error) => error instanceof PiboRuntimeResourceError
+			&& /does not support selected MCP transport "stdio"/.test(error.message)
+			&& error.diagnostics.some((diagnostic) => diagnostic.code === "runtime_mcp_transport_unsupported"),
+	);
+});
+
 test("Pi Bash inherits only the router-owned adapter environment without process-global mutation", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-resource-pi-bash-"));
 	t.after(async () => rm(root, { recursive: true, force: true }));
