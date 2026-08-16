@@ -607,12 +607,16 @@ Task 9.10 routes Pibo-managed subagents through the existing portable tool and P
 
 The Pibo router remains authoritative for child creation and reuse. The child profile freezes its own configured runtime binding, generation, resources, and credentials; parent and child adapter ids may differ. Thread keys are capped at 256 schema characters and 512 UTF-8 bytes before persistence. Direct subagent tools propagate their request signal, and the router counts active child invocations per parent/child pair. Parent abort starts bounded recursive abort actions for active children while preserving idle/reusable child sessions and bindings. Selected subagents remain yieldable through `pibo_run_start` even when private harness-native yielding is unsupported. Exact `0.147.0` validation proves Codex-parent model invocation, yielded invocation, restart/reuse, cancellation, and a Pi-parent/native-Codex-child flow with independent bindings.
 
+Task 9.11 registers `codex-native` through a dedicated `piboCodexNativePlugin`, not through the core Pi plugin. The default registry gains one configured `codex-native` instance and one read-only profile with no aliases, Pi built-ins disabled, portable goal control enabled, and native project discovery retained. CLI, API, session creation, Context Build, debug, and Agent Designer all resolve the same runtime/profile identity. The default registry still rejects `codex`; an explicitly registered `codex` runtime/profile alias may remain Pi-backed, and persisted Pi bindings are not rewritten.
+
+Normal catalog inspection invokes the bounded Codex version probe, so it must obey the same isolation boundary as App Server processes. The probe now receives a disposable private generation with protected `CODEX_HOME`, `HOME`, `USERPROFILE`, XDG, and temp paths, then removes that generation on every terminal result. Exact validation caught and removed the prior launcher's global `/root/.codex/tmp/arg0` side effect before checkpoint completion and proves the final candidate leaves global Codex state unchanged.
+
 Official surfaces currently identified in the inspected schema include thread start/resume/fork/read/list, turn start/steer/interrupt, model list, reasoning effort, thread token usage, compaction, skills list/extra roots, MCP startup/status/tool APIs, approvals, and structured user input. Final capability claims depend on the exact Pibo2 binary and generated schema.
 
 Profile compatibility:
 
 - Persisted/custom `codex-compat-openai-web` and `codex` references remain Pi-backed; native Codex does not claim the retired built-in alias that is absent from the August 14, 2026 baseline registry.
-- Add `codex-native` selecting runtime instance `codex-native`.
+- `codex-native` selects only configured runtime instance `codex-native` and declares no aliases.
 - Native Codex does not load `context/codex-base-prompt.md` or the Pi Codex-compatibility extension.
 
 ## Decision: Diagnostics and CLI discovery

@@ -1,11 +1,33 @@
 #!/usr/bin/env node
+import { writeFileSync } from "node:fs";
 import readline from "node:readline";
 
 const args = process.argv.slice(2);
 const scenario = process.env.PIBO_CODEX_RUNTIME_FAKE_SCENARIO ?? "happy";
 
 if (args[0] === "--version") {
-	if (scenario === "version-timeout") {
+	if (scenario === "version-require-isolation") {
+		const protectedKeys = [
+			"CODEX_HOME",
+			"HOME",
+			"USERPROFILE",
+			"XDG_CACHE_HOME",
+			"XDG_CONFIG_HOME",
+			"XDG_DATA_HOME",
+			"XDG_STATE_HOME",
+			"TMPDIR",
+			"TMP",
+			"TEMP",
+		];
+		if (protectedKeys.some((key) => !process.env[key])) {
+			if (process.env.PIBO_CODEX_RUNTIME_FAKE_SENTINEL) {
+				writeFileSync(process.env.PIBO_CODEX_RUNTIME_FAKE_SENTINEL, "version probe escaped private runtime state");
+			}
+			process.exitCode = 9;
+		} else {
+			process.stdout.write("codex-cli 0.147.0\n");
+		}
+	} else if (scenario === "version-timeout") {
 		setInterval(() => {}, 60_000);
 	} else if (scenario === "version-too-large") {
 		process.stdout.write(`codex-cli 0.147.0 ${"x".repeat(70 * 1024)}\n`);

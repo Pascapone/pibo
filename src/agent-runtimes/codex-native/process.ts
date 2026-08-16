@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
 	chmod,
 	lstat,
@@ -293,17 +293,11 @@ type VersionProbeResult =
 
 async function probeCodexVersion(
 	config: CodexNativeRuntimeConfig,
-	baseEnvironment: NodeJS.ProcessEnv,
+	environment: NodeJS.ProcessEnv,
 ): Promise<VersionProbeResult> {
 	return await new Promise<VersionProbeResult>((resolveProbe) => {
 		let child;
 		try {
-			const lookup = environmentLookup(baseEnvironment);
-			const environment: NodeJS.ProcessEnv = {};
-			for (const configuredKey of config.environmentAllowlist) {
-				const selected = lookup.get(configuredKey.toUpperCase());
-				if (selected) environment[selected[0]] = selected[1];
-			}
 			child = spawn(config.executable, ["--version"], { env: environment, stdio: ["ignore", "pipe", "pipe"] });
 		} catch (error) {
 			resolveProbe({ status: "failed", errorCode: nodeErrorCode(error) });
@@ -377,29 +371,45 @@ export async function diagnoseCodexNativeRuntime(
 	options: DiagnoseCodexNativeRuntimeOptions = {},
 ): Promise<readonly AgentRuntimeDiagnostic[]> {
 	const diagnostics: AgentRuntimeDiagnostic[] = [];
-	const [probe, home] = await Promise.all([
-		probeCodexVersion(config, options.baseEnvironment ?? process.env),
-		prepareCodexNativeInstancePaths(config, runtimeInstanceId).then(
-			() => ({ ok: true as const }),
-			(error: unknown) => ({ ok: false as const, errorCode: nodeErrorCode(error) }),
-		),
-	]);
-
-	if (!home.ok) {
+	let paths: CodexNativeSessionPaths;
+	try {
+		paths = await prepareCodexNativeSessionPaths({
+			config,
+			runtimeInstanceId,
+			piboSessionId: "runtime-diagnostics",
+			sessionGeneration: `version-probe-${randomUUID()}`,
+		});
+	} catch (error) {
+		const errorCode = nodeErrorCode(error);
 		diagnostics.push({
 			severity: "error",
 			code: "codex_native_home_unavailable",
 			message: `Private Codex state is unavailable for runtime instance "${runtimeInstanceId}".`,
 			path: "config.homeRoot",
-			...(home.errorCode ? { details: { errorCode: home.errorCode } } : {}),
+			...(errorCode ? { details: { errorCode } } : {}),
 		});
-	} else {
-		diagnostics.push({
-			severity: "info",
-			code: "codex_native_home_ready",
-			message: `Private Codex state is ready for runtime instance "${runtimeInstanceId}".`,
-			details: { scope: "configured-instance", private: true },
-		});
+		return diagnostics;
+	}
+
+	diagnostics.push({
+		severity: "info",
+		code: "codex_native_home_ready",
+		message: `Private Codex state is ready for runtime instance "${runtimeInstanceId}".`,
+		details: { scope: "configured-instance", private: true },
+	});
+
+	let probe: VersionProbeResult;
+	try {
+		probe = await probeCodexVersion(
+			config,
+			buildCodexNativeProcessEnvironment({
+				config,
+				paths,
+				baseEnvironment: options.baseEnvironment ?? process.env,
+			}),
+		);
+	} finally {
+		await disposeCodexNativeSessionPaths(paths);
 	}
 
 	if (probe.status === "missing") {
