@@ -20,7 +20,11 @@ export async function exerciseAgentRuntimeAdapterContract(
 	invariant(adapter.descriptor.id.length > 0, "adapter id is required");
 	invariant(adapter.descriptor.displayName.length > 0, "adapter display name is required");
 	invariant(adapter.enabled, `instance "${adapter.instanceId}" must be enabled for the contract run`);
-	await adapter.diagnose();
+	const diagnostics = await adapter.diagnose();
+	invariant(
+		diagnostics.every((diagnostic) => diagnostic.severity !== "error"),
+		"enabled adapter diagnostics returned an error",
+	);
 	const validation = adapter.validateProfile({ profile: input.profile, workspace: input.workspace });
 	invariant(validation.every((diagnostic) => diagnostic.severity !== "error"), "profile validation returned an error");
 
@@ -41,12 +45,22 @@ export async function exerciseAgentRuntimeAdapterContract(
 		const status = session.getStatus();
 		invariant(status.cwd === input.workspace, "status cwd does not match session cwd");
 		invariant(status.streaming === false, "session remained streaming after prompt settled");
-		invariant(events.some((event) => event.type === "turn_started"), "prompt emitted no turn_started event");
+		const startedEvents = events.filter((event) => event.type === "turn_started");
+		const completedEvents = events.filter((event) => event.type === "turn_completed");
+		const failedEvents = events.filter((event) => event.type === "turn_failed");
+		invariant(startedEvents.length === 1, "successful prompt must emit exactly one turn_started event");
+		invariant(completedEvents.length === 1, "successful prompt must emit exactly one turn_completed event");
+		invariant(failedEvents.length === 0, "successful prompt emitted turn_failed");
 		invariant(
-			events.some((event) => event.type === "turn_completed" || event.type === "turn_failed"),
-			"prompt emitted no terminal turn event",
+			events.indexOf(startedEvents[0]!) < events.indexOf(completedEvents[0]!),
+			"turn_completed preceded turn_started",
 		);
+		const settledBinding = session.getBinding();
+		invariant(settledBinding.piboSessionId === binding.piboSessionId, "prompt changed the binding Pibo Session id");
+		invariant(settledBinding.runtimeInstanceId === binding.runtimeInstanceId, "prompt changed the binding runtime instance");
+		invariant(settledBinding.adapterId === binding.adapterId, "prompt changed the binding adapter");
 		await session.abort();
+		invariant(session.getStatus().streaming === false, "idle abort left the session streaming");
 	} finally {
 		unsubscribe();
 		await session.dispose();
