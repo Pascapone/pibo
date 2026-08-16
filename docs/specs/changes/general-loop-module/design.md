@@ -45,7 +45,7 @@ Pibo emits a normalized assistant-usage event for every completed assistant mode
 
 Accounting is exact for usage reported by Pi/provider messages. The budget is therefore explicitly soft: it cannot stop a provider request before that request returns usage. Each run snapshots remaining tokens before the turn and persists turn usage plus overshoot. An optional pre-turn reserve prevents another run when remaining tokens do not exceed the configured minimum.
 
-Active agent time accumulates run execution. Wall-clock elapsed time begins on first activation and includes waits and paused periods; a never-started paused Goal reports zero elapsed wall-clock time.
+Active agent time accumulates run execution. Wall-clock elapsed time begins on first activation and includes waits and paused periods; a never-started paused Goal reports zero elapsed wall-clock time. Chat Web presents only active Goal time and adds the live duration of the current run to the persisted completed-run total. Wall-clock remains available through explicit CLI and goal-tool diagnostics.
 
 ### Decision: Goal mode uses structured status; Ralph keeps the marker
 

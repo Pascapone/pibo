@@ -67,7 +67,7 @@ Custom agents MUST expose one Agent Designer capability switch for goal tools. T
 
 A goal MUST persist status, an optional positive soft token budget, an optional non-negative pre-turn token reserve, consumed model tokens, active agent time, wall-clock elapsed time, and remaining tokens. Goal creation through CLI, API, UI, or native tooling MUST accept the budget and reserve. Before each turn Pibo MUST expose and persist remaining budget, MUST refuse to start when remaining tokens do not exceed the reserve, and MUST record per-turn usage and overshoot. CLI and Web surfaces MUST identify the budget as soft because provider usage is available only after a response.
 
-Active agent time MUST accumulate Goal-run execution time. Wall-clock elapsed time MUST begin at first activation and include waiting and paused periods; a Goal created paused MUST report zero wall-clock elapsed time until first activation. CLI, Web UI, and `get_goal` MUST label both metrics unambiguously.
+Active agent time MUST accumulate Goal-run execution time. Wall-clock elapsed time MUST begin at first activation and include waiting and paused periods; a Goal created paused MUST report zero wall-clock elapsed time until first activation. CLI and `get_goal` MUST label both metrics unambiguously for diagnostics. Chat Web MUST display only active Goal time, including the current running Goal run, and MUST NOT present wall-clock or paused duration as Goal working time.
 
 ### REQ-004D: Completion and blocked lifecycle
 
