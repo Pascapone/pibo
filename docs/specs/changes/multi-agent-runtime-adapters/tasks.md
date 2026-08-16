@@ -137,8 +137,8 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 9.9 Verify native Codex tools remain unchanged and inspectable; stable-protocol limits, runtime-neutral capability/status behavior, deterministic coverage, authenticated Designer evidence, and exact Codex `0.147.0` provider/tool proof are recorded in `docs/reports/codex-native-tool-inventory-validation-2026-08-16.md`.
 - [x] 9.10 Integrate Pibo-managed subagents and cross-runtime child sessions; model-initiated and yielded Pibo subagents, Pi-to-Codex children, frozen child bindings, restart/reuse, bounded thread keys, parent-abort propagation, Designer/Context Build surfaces, deterministic coverage, and exact Codex `0.147.0` Pibo2 evidence are recorded in `docs/reports/codex-native-subagent-validation-2026-08-16.md`.
 - [x] 9.11 Add `codex-native`; default plugin/instance/profile registration, absent implicit `codex`, explicit and persisted Pi compatibility, private version-probe isolation, CLI/API/session/Context Build/debug/Designer evidence, deterministic coverage, and exact packaged Codex `0.147.0` Pibo2 validation are recorded in `docs/reports/codex-native-profile-registration-validation-2026-08-16.md`.
-- [ ] 9.12 Add deterministic protocol fixtures, malformed/crash/overload/approval/input/abort/missing/history tests, and shared contract suite.
-- [ ] 9.13 Run full suite/typecheck/build and import-boundary tests.
+- [x] 9.12 Add deterministic protocol fixtures, malformed/crash/overload/approval/input/abort/missing/history tests, and shared contract suite; the consolidated matrix and stricter shared happy-path contract are recorded in `docs/reports/codex-native-deterministic-contract-matrix-validation-2026-08-16.md`.
+- [x] 9.13 Run full suite/typecheck/build and import-boundary tests; focused Codex matrix 76/76, import boundaries 2/2, full suite 1,734/1,734, typecheck, build, and diff checks passed as recorded in the same report.
 - [ ] 9.14 Commit, push, and open focused/stacked Codex PRs.
 
 ## 10. Exact Pibo2 integrated validation

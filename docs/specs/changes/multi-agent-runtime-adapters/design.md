@@ -611,6 +611,8 @@ Task 9.11 registers `codex-native` through a dedicated `piboCodexNativePlugin`, 
 
 Normal catalog inspection invokes the bounded Codex version probe, so it must obey the same isolation boundary as App Server processes. The probe now receives a disposable private generation with protected `CODEX_HOME`, `HOME`, `USERPROFILE`, XDG, and temp paths, then removes that generation on every terminal result. Exact validation caught and removed the prior launcher's global `/root/.codex/tmp/arg0` side effect before checkpoint completion and proves the final candidate leaves global Codex state unchanged.
 
+Tasks 9.12 and 9.13 consolidate deterministic coverage across the pinned protocol, stdio client, process isolation, threads/history/missing state, turn output/abort/failure, approvals/input, models/usage, resources, subagents, and generic import boundaries. The reusable adapter contract no longer treats a terminally failed prompt as a valid happy path: an enabled fixture must diagnose without errors, emit exactly one ordered start/completion pair with no failure, preserve Pibo/runtime/adapter binding identity, settle idle, and tolerate repeated cleanup. Both the fake adapter and exact-protocol native Codex fixture pass this contract, while negative fixtures prove unhealthy diagnostics and failed prompts are rejected.
+
 Official surfaces currently identified in the inspected schema include thread start/resume/fork/read/list, turn start/steer/interrupt, model list, reasoning effort, thread token usage, compaction, skills list/extra roots, MCP startup/status/tool APIs, approvals, and structured user input. Final capability claims depend on the exact Pibo2 binary and generated schema.
 
 Profile compatibility:
