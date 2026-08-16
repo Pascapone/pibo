@@ -2,7 +2,7 @@
 
 ## Scope
 
-This report records native Codex checkpoint 9.10 for `@pasko70/pibo@1.7.2` at implementation commit `54d0192896ec7956db58a14a829bd6189941fb08`, stacked on native-tool inspection PR #498.
+This report records native Codex checkpoint 9.10 for `@pasko70/pibo@1.7.2` at implementation commit `54d0192896ec7956db58a14a829bd6189941fb08`, delivered in PR #499 stacked on native-tool inspection PR #498.
 
 The checkpoint proves that Pibo-managed subagents remain Pibo product orchestration while a native Codex parent can invoke them through the official App Server and generation-scoped MCP path. It also proves the reverse cross-runtime direction: a Pi parent can create and reuse a child Pibo Session whose frozen runtime binding is native Codex.
 
