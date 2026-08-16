@@ -180,5 +180,5 @@ The August 16 final review found that Chat Web still intercepted provider auth b
 - [x] 12.6 Add deterministic contract, Pi, Codex, isolation, restart, redaction, Web targeting/aggregation/pending/logout, and model-menu tests.
 - [x] 12.7 Complete full-suite/typecheck/build/package verification and canonical documentation synchronization; 1,752/1,752 tests across 12 suites pass.
 - [ ] 12.8 Push the focused stacked PR without merge/release/publication.
-- [ ] 12.9 Install the exact candidate on Pibo2 and validate the public provider-settings path while leaving native Codex unauthenticated.
+- [x] 12.9 Install exact candidate `cc0dcde6616dcec6a8dcf7cd0f78e70478a8ab1c` on Pibo2 and validate the public provider-settings path while leaving native Codex unauthenticated.
 - [ ] 12.10 After authorized user login, verify safe `account/read` metadata and one bounded public native-Codex production-provider turn before closing 10.12/11.8/11.9.

@@ -76,8 +76,8 @@
 
 ## 9. Pibo2 candidate and user handoff
 
-- [ ] 9.1 Build and checksum the exact candidate.
-- [ ] 9.2 Install/activate it on disposable Pibo2 and verify service/public HTTP.
-- [ ] 9.3 Validate authenticated provider settings API and public Web UI through the real path.
-- [ ] 9.4 Verify Pi and native-Codex status are independent using safe metadata only.
-- [ ] 9.5 Leave native Codex unauthenticated, report `/apps/chat/settings/providers`, and block only on the user's managed login.
+- [x] 9.1 Build and checksum exact candidate `cc0dcde6616dcec6a8dcf7cd0f78e70478a8ab1c`, SHA-256 `4cabc5f1687381fa1b5be8c094b5893d71686309d45c2195c34968af8fb117f5`.
+- [x] 9.2 Install/activate it on disposable Pibo2 and verify active service/local health/public HTTP.
+- [x] 9.3 Validate authenticated provider settings API and public headful Web UI through the real path.
+- [x] 9.4 Verify Pi shared scope and native-Codex private disconnected status independently using safe metadata only.
+- [x] 9.5 Leave native Codex unauthenticated and ready at `/apps/chat/settings/providers`; no active login flow or credential shortcut was used.

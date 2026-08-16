@@ -199,7 +199,7 @@ Provider usage MUST be returned only when the active provider and credential typ
 - [x] SC-004: Native Codex device/API-key/cancel/logout/restart/isolation/error/redaction matrix passes.
 - [x] SC-005: Agent Designer and Terminal model/login surfaces are truthful for disconnected runtimes in local tests/builds.
 - [x] SC-006: Session active-model freezing and runtime validation pass in the canonical suite.
-- [ ] SC-007: Exact-candidate Pibo2 provider settings are ready for managed native-Codex login.
+- [x] SC-007: Exact-candidate Pibo2 provider settings are ready for managed native-Codex login while the private native runtime remains disconnected.
 
 ## Verification Coverage
 

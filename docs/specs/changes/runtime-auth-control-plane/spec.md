@@ -107,8 +107,8 @@ Focused tests, typecheck, build, and the canonical full suite MUST pass. A focus
 - [x] SC-002: Pi behavior remains compatible, including device, browser-PKCE, API-key, status, and logout paths.
 - [x] SC-003: Native Codex official auth matrix passes deterministically with isolation and restart persistence.
 - [x] SC-004: Web settings and model surfaces are truthful for unauthenticated native Codex.
-- [ ] SC-005: Full local verification passes; exact Pibo2 UI readiness remains pending.
-- [ ] SC-006: Overall goal remains blocked only on the user's subsequent managed login and production-provider turn after Pibo2 readiness is proven.
+- [x] SC-005: Full local verification and exact Pibo2 provider-settings UI readiness pass.
+- [ ] SC-006: The focused PR remains to be opened; after that, the overall goal is blocked only on the user's managed login and production-provider turn.
 
 ## Traceability
 
@@ -116,9 +116,9 @@ Focused tests, typecheck, build, and the canonical full suite MUST pass. A focus
 |---|---|---|---|
 | REQ-001 | REQ-AUTH-001 | 1.1-1.4 | Pass: capability/method/disposal consistency, bounds, unsupported and malformed-result tests. |
 | REQ-002 | REQ-AUTH-002 | 2.1-2.4 | Pass: explicit Web targets and frozen-session conflict/missing-session tests. |
-| REQ-003 | REQ-AUTH-003 | 5.1-5.4 | Pass locally: catalog aggregation and all six states are runtime-scoped; Pibo2 render pending. |
+| REQ-003 | REQ-AUTH-003 | 5.1-5.4 | Pass: catalog aggregation/all six states are runtime-scoped; exact Pibo2 render shows Pi shared scope and native Codex private disconnected state. |
 | REQ-004 | REQ-AUTH-004 | 3.1-3.5 | Pass: Pi device/browser/API-key/status/logout/shared-scope matrix. |
 | REQ-005 | REQ-AUTH-005 | 4.1-4.8 | Pass deterministically: stable App Server account matrix, persistence, isolation, cleanup, and failure paths. |
 | REQ-006 | REQ-AUTH-006, REQ-AUTH-007 | 6.1-6.4 | Pass locally: private Codex homes, Pi shared scope, redaction, no global-store mutation. |
 | REQ-007 | REQ-AUTH-008 | 5.5-5.7 | Pass: Terminal and Designer missing/failed status remains unauthenticated. |
-| REQ-008 | all | 7.1-9.5 | Local pass (1,752/1,752); PR and exact Pibo2 readiness pending. |
+| REQ-008 | all | 7.1-9.5 | Local and exact Pibo2 readiness pass; focused PR and later human production-provider evidence remain. |

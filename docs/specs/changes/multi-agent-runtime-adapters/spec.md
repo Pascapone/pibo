@@ -496,7 +496,7 @@ Provider authentication configured from Pibo product surfaces MUST route through
 - [ ] SC-008: Native Codex passes real Pibo2 restart/resume, tool, context, skill, MCP, subagent, approval/user-input, abort/failure, trace, and Designer scenarios. The exact deterministic product matrix passes; one Pibo2-managed production-provider turn remains blocked on interactive Google verification.
 - [x] SC-009: Existing `codex` compatibility semantics remain unchanged.
 - [ ] SC-010: Full tests, typechecks, builds, migrations, candidate validation, docs, PRs, and final requirement audit are complete with no known invalidating regression. All code/product checks pass, but the required native-Codex production-provider evidence is still external and unavailable.
-- [ ] SC-011: Runtime-neutral provider auth passes contract, Pi compatibility, native-Codex protocol/isolation, Web targeting/aggregation, truthful model rendering, and exact Pibo2 UI-readiness validation.
+- [x] SC-011: Runtime-neutral provider auth passes contract, Pi compatibility, native-Codex protocol/isolation, Web targeting/aggregation, truthful model rendering, and exact Pibo2 UI-readiness validation.
 
 ## Assumptions and Open Questions
 
@@ -538,4 +538,4 @@ Provider authentication configured from Pibo product surfaces MUST route through
 | REQ-016 Compatibility alias | Profiles | Existing profile tests | Pass: `codex-native` has no aliases; implicit `codex` is rejected; explicit/persisted Pi-backed `codex` semantics remain unchanged. |
 | REQ-017 Verification | All | Local and Pibo2 evidence reports | **Blocked externally:** all deterministic, migration, real-Pi, exact-candidate, browser, TUI, security, cleanup, build, typecheck, and full-suite evidence passes; the required authenticated native-Codex provider run is absent. |
 | REQ-018 Delivery | All | Branch/commit/PR/final audit | Implementing: PR #503 remains the dependency; the focused runtime-auth correction is delivered as a separate stacked PR. |
-| REQ-019 Runtime provider auth | Auth correction | `agent-runtime-auth`, `codex-native-auth`, Pi login, Web/API, runtime menu, UI source/typecheck/browser tests | Local pass: typecheck/build and 1,752/1,752 tests pass; exact-candidate Pibo2 provider-settings readiness and focused PR evidence remain. |
+| REQ-019 Runtime provider auth | Auth correction | `agent-runtime-auth`, `codex-native-auth`, Pi login, Web/API, runtime menu, UI source/typecheck/browser tests | Pass except PR bookkeeping: typecheck/build and 1,752/1,752 tests pass; exact candidate is active and public Pibo2 Provider Settings show private native Codex disconnected with Device code/API-key controls. |

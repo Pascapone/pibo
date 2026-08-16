@@ -3,7 +3,18 @@
 **Date:** 2026-08-16  
 **Branch:** `feature/agent-runtime-auth-control-plane`  
 **Dependency:** `feature/agent-runtime-integrated-validation` / PR #503  
-**Result:** Local implementation and deterministic verification pass. Exact Pibo2 candidate activation and public-Web readiness remain pending in this report revision.
+**Result:** **PASS for implementation, local verification, exact-candidate Pibo2 activation, and public-Web login readiness.** Native Codex remains intentionally disconnected; the remaining gate is the authorized user's managed login and subsequent bounded production-provider turn.
+
+## Exact candidate
+
+| Artifact | Exact value |
+|---|---|
+| Code commit | `cc0dcde6616dcec6a8dcf7cd0f78e70478a8ab1c` |
+| Package | `@pasko70/pibo@1.7.2` |
+| Package SHA-256 | `4cabc5f1687381fa1b5be8c094b5893d71686309d45c2195c34968af8fb117f5` |
+| Package size / entries | 3,300,194 bytes / 789 entries |
+| Pibo2 candidate | `agent-runtime-auth-control-plane` |
+| Codex App Server | `0.147.0` |
 
 ## Defect correction
 
@@ -101,11 +112,35 @@ Final local checks on 2026-08-16:
 - Pi credentials retain their existing adapter-shared store; Pibo does not copy them into Codex.
 - Auth mutations preserve Pibo Session identity/bindings and recycle only sessions affected by the declared credential scope.
 
+## Exact Pibo2 readiness validation
+
+The exact package checksum was installed under the versioned Pibo2 candidate directory and activated through `pibo-web.service`. Post-activation evidence:
+
+- service active on the exact candidate commit with zero restart count;
+- local health returned `ok`; public `/apps/chat` returned HTTP 200 in approximately 34 ms total;
+- authenticated `GET /api/chat/provider-auth` returned HTTP 200 in 224.1 ms;
+- default `pi` target reported `adapter-shared` and partial aggregate state (36 discovered providers, two configured) without exposing account identifiers;
+- `codex-native` reported `runtime-instance`, one `openai-codex` provider, `disconnected`, zero configured providers, Device code (`notification`) and API key (`immediate`) methods;
+- rendered Provider Settings showed the private native-Codex target, disconnected state, and enabled Device code/API key controls;
+- the Refresh control completed and retained the same disconnected state and controls;
+- browser console contained zero warnings/errors;
+- [`assets/runtime-auth-provider-settings-ready-2026-08-16.png`](./assets/runtime-auth-provider-settings-ready-2026-08-16.png) captures only the safe disconnected native-Codex target/card—no account identity, URL, one-time code, or credential material.
+
+The provider-status read exercised official App Server `account/read` in the private runtime home. Cleanup/state checks after repeated UI/API reads showed:
+
+- zero active Codex App Server processes;
+- zero generated runtime-auth session entries;
+- no private native-Codex auth file;
+- private runtime home mode `0700`;
+- no `OPENAI_API_KEY` or `CODEX_ACCESS_TOKEN` service environment keys;
+- zero files in global Codex state;
+- database inventory remained 473 sessions / 473 runtime bindings with integrity `ok`.
+
+No login flow was started. Native Codex is ready for the user but remains unauthenticated.
+
 ## Remaining validation
 
-1. Commit the focused candidate and record its exact SHA/package SHA-256.
-2. Install that exact package on disposable Pibo2.
-3. Verify the authenticated public Provider Settings API/UI reports Pi and `codex-native` independently.
-4. Confirm native Codex remains disconnected and the Device code/API key controls are ready without starting or capturing an active login flow.
-5. Open the focused stacked PR without merge, release, publication, or production deployment.
-6. Leave the overall multi-runtime goal blocked on the authorized user's managed native-Codex login and subsequent bounded production-provider turn.
+1. Push the focused branch and open its stacked PR without merge, release, publication, or production deployment.
+2. The authorized user opens `/apps/chat/settings/providers`, selects **Native Codex App Server**, and clicks **Device code** (or supplies an API key intentionally).
+3. After managed login, verify safe `account/read` metadata without account identifiers and run one bounded public native-Codex production-provider turn.
+4. Only then close REQ-015/REQ-017 and mark the overall multi-runtime goal complete.

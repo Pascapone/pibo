@@ -188,7 +188,7 @@ Cleanup completed before this report was finalized:
 
 ## Follow-up provider-auth correction
 
-The focused runtime-auth control-plane change moves Pi credential operations behind the Pi adapter, adds official native-Codex account operations in the private configured-instance home, routes product mutations by explicit runtime target, and makes Provider Settings/Designer/model menus consume truthful runtime status. Its deterministic local matrix and 1,752-test full suite pass; exact package/Pibo2 evidence is recorded separately after activation.
+The focused runtime-auth control-plane change moves Pi credential operations behind the Pi adapter, adds official native-Codex account operations in the private configured-instance home, routes product mutations by explicit runtime target, and makes Provider Settings/Designer/model menus consume truthful runtime status. Its deterministic local matrix and 1,752-test full suite pass. Exact commit `cc0dcde6616dcec6a8dcf7cd0f78e70478a8ab1c` (package SHA-256 `4cabc5f1687381fa1b5be8c094b5893d71686309d45c2195c34968af8fb117f5`) is active on Pibo2; the public Provider Settings page reports private native Codex disconnected with Device code/API-key controls and no residual auth process/generation.
 
 ## Conclusion
 

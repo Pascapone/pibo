@@ -124,7 +124,7 @@ Agent Designer and model menus MUST combine a runtime's model catalog with that 
 - [x] SC-AUTH-002: Pi device/browser/API-key/status/logout compatibility tests pass through the Pi adapter.
 - [x] SC-AUTH-003: Deterministic Codex account read, device completion, API key, cancel, logout, malformed response, process failure, timeout, restart persistence, and isolation tests pass.
 - [x] SC-AUTH-004: Chat Web settings and model surfaces show truthful per-runtime states in local typecheck/build/source/API tests.
-- [ ] SC-AUTH-005: The exact candidate is active on Pibo2 and the public provider settings page is ready to start native-Codex device login while native Codex remains unauthenticated.
+- [x] SC-AUTH-005: Exact candidate `cc0dcde6616dcec6a8dcf7cd0f78e70478a8ab1c` is active on Pibo2 and the public provider settings page is ready to start native-Codex device login while native Codex remains unauthenticated.
 
 ## Assumptions and Open Questions
 
