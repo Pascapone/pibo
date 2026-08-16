@@ -38,6 +38,7 @@ function config(root, overrides = {}) {
 			"PATH",
 			"PIBO_ALLOWED_VALUE",
 			"PIBO_CODEX_RUNTIME_FAKE_SCENARIO",
+			"PIBO_CODEX_RUNTIME_FAKE_SENTINEL",
 			"PIBO_CODEX_RUNTIME_FAKE_VERSION",
 		],
 		diagnosticTimeoutMs: 250,
@@ -109,6 +110,18 @@ test("Codex native diagnostics report exact, compatible, unsupported, missing, f
 		supportedRange: ">=0.147.0 <0.148.0",
 		protocol: "codex-app-server-v2",
 	});
+
+	const isolationSentinel = join(root, "escaped-version-probe");
+	const isolated = await diagnoseCodexNativeRuntime(exactConfig, "codex-isolated-probe", {
+		baseEnvironment: fakeEnvironment({
+			PIBO_CODEX_RUNTIME_FAKE_SCENARIO: "version-require-isolation",
+			PIBO_CODEX_RUNTIME_FAKE_SENTINEL: isolationSentinel,
+		}),
+	});
+	assert.ok(isolated.some((diagnostic) => diagnostic.code === "codex_native_available"));
+	assert.equal(existsSync(isolationSentinel), false);
+	const isolatedPaths = await prepareCodexNativeInstancePaths(exactConfig, "codex-isolated-probe");
+	assert.deepEqual(await readdir(isolatedPaths.sessions), []);
 
 	const compatible = await diagnoseCodexNativeRuntime(exactConfig, "codex-compatible", {
 		baseEnvironment: fakeEnvironment({ PIBO_CODEX_RUNTIME_FAKE_VERSION: "0.147.9" }),
