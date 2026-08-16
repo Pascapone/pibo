@@ -1,6 +1,6 @@
 # Spec: Multi-Agent Runtime Adapters
 
-**Status:** Implementing
+**Status:** Ready for review
 **Created:** 2026-08-14
 **Requester / Source:** Active Pibo Loop goal
 **Related docs:** `proposal.md`, `design.md`, `tasks.md`, `GLOSSARY.md`, `docs/specs/capabilities/pibo-session-routing.md`, `docs/specs/capabilities/pibo-runtime-assembly-and-inspection.md`, `docs/specs/capabilities/custom-agents.md`, `docs/specs/capabilities/pibo-event-contract.md`, `docs/specs/capabilities/chat-web-trace-and-terminal-view.md`

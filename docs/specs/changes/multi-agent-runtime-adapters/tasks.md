@@ -1,7 +1,7 @@
 # Tasks: Multi-Agent Runtime Adapters
 
-**Status:** Implementing
-**Updated:** 2026-08-15
+**Status:** Ready for review
+**Updated:** 2026-08-16
 
 Each milestone must be committed only after its listed verification passes. Codex implementation may not begin while a known Pi parity regression remains.
 

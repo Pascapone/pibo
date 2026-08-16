@@ -1,6 +1,6 @@
 # Design: Multi-Agent Runtime Adapters
 
-**Status:** Implementing
+**Status:** Ready for review
 **Created:** 2026-08-14
 **Related docs:** `proposal.md`, `spec.md`, `tasks.md`
 

@@ -1,6 +1,6 @@
 # Proposal: Multi-Agent Runtime Adapters
 
-**Status:** Implementing
+**Status:** Ready for review
 **Created:** 2026-08-14
 **Requester / Source:** Active Pibo Loop goal
 **Related docs:** `spec.md`, `design.md`, `tasks.md`, `docs/reports/multi-agent-runtime-adapter-architecture-investigation-2026-08-14.md`
