@@ -62,7 +62,7 @@ test("registerGlmProvider uses z.ai coding base URL and GLM_API_KEY env", () => 
 	assert.equal(fake.registrations[0].name, GLM_PROVIDER_ID);
 	assert.equal(fake.registrations[0].config.baseUrl, GLM_DEFAULT_BASE_URL);
 	assert.equal(fake.registrations[0].config.baseUrl, "https://api.z.ai/api/coding/paas/v4");
-	assert.equal(fake.registrations[0].config.apiKey, GLM_API_KEY_ENV);
+	assert.equal(fake.registrations[0].config.apiKey, `$${GLM_API_KEY_ENV}`);
 	assert.deepEqual(
 		fake.registrations[0].config.models.map((m) => m.id),
 		["GLM-5.2"],
