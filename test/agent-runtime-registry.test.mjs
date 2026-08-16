@@ -5,7 +5,11 @@ import { exerciseAgentRuntimeAdapterContract } from "../dist/agent-runtime/testi
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
-import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
+import {
+	CODEX_NATIVE_PROFILE_NAME,
+	CODEX_NATIVE_RUNTIME_INSTANCE_ID,
+	createDefaultPiboPluginRegistry,
+} from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 
@@ -27,7 +31,7 @@ function openInput(profile, overrides = {}) {
 	};
 }
 
-test("default profiles and capability catalog expose the configured Pi runtime", () => {
+test("default profiles expose configured Pi and distinct native Codex runtimes", () => {
 	const registry = createDefaultPiboPluginRegistry();
 	const profile = registry.createProfile("base");
 	const runtime = registry.requireAgentRuntimeAdapter("pi");
@@ -46,8 +50,23 @@ test("default profiles and capability catalog expose the configured Pi runtime",
 	assert.deepEqual(catalogEntry.capabilities.mcp.externalServers.modes, ["isolated-pibo-mcp-config"]);
 	assert.equal(catalogEntry.capabilities.mcp.statusInspection, true);
 
-	// Current upstream/dev intentionally has no built-in `codex` profile alias. Native Codex
-	// must remain on a distinct profile and must not claim this retired name implicitly.
+	const nativeProfile = registry.createProfile(CODEX_NATIVE_PROFILE_NAME);
+	const nativeRuntime = registry.requireAgentRuntimeAdapter(CODEX_NATIVE_RUNTIME_INSTANCE_ID);
+	const nativeCatalogEntry = registry.getCapabilityCatalog().agentRuntimes.find((entry) => entry.id === CODEX_NATIVE_RUNTIME_INSTANCE_ID);
+	assert.equal(nativeProfile.profileName, CODEX_NATIVE_PROFILE_NAME);
+	assert.equal(nativeProfile.runtimeInstanceId, CODEX_NATIVE_RUNTIME_INSTANCE_ID);
+	assert.deepEqual(nativeProfile.runtimeOptions, {});
+	assert.equal(nativeProfile.builtinTools, "disabled");
+	assert.deepEqual(nativeProfile.builtinToolNames, []);
+	assert.equal(nativeProfile.toolPackages.goalControl, true);
+	assert.equal(nativeRuntime.descriptor.id, "codex-native");
+	assert.notEqual(nativeRuntime.descriptor.id, "codex");
+	assert.equal(nativeCatalogEntry.adapterId, "codex-native");
+	assert.equal(nativeCatalogEntry.transport, "stdio-rpc");
+	assert.deepEqual(registry.getProfileInfos().find((entry) => entry.name === CODEX_NATIVE_PROFILE_NAME).aliases, []);
+
+	// Native Codex must remain on a distinct profile and must not claim the retired
+	// `codex` compatibility name implicitly.
 	assert.throws(() => registry.createProfile("codex"), /Unknown profile "codex"/);
 });
 
@@ -267,6 +286,25 @@ test("custom Pi-backed runtime instance ids preserve persisted codex references 
 	assert.equal(diagnostics.some((diagnostic) => diagnostic.severity === "error"), false);
 	assert.equal(registry.requireAgentRuntimeAdapter("codex").descriptor.id, "pi");
 	assert.throws(() => registry.createProfile("codex"), /Unknown profile "codex"/);
+});
+
+test("an explicitly registered codex profile alias remains Pi compatibility", () => {
+	const registry = createDefaultPiboPluginRegistry();
+	registry.registerProfile({
+		name: "codex-compat-openai-web",
+		aliases: ["codex"],
+		create() {
+			return new InitialSessionContextBuilder("codex-compat-openai-web")
+				.withAgentRuntime("pi")
+				.withToolPackages({ codexCompat: true, goalControl: true })
+				.createSession();
+		},
+	});
+
+	assert.equal(registry.resolveProfileName("codex"), "codex-compat-openai-web");
+	assert.equal(registry.createProfile("codex").runtimeInstanceId, "pi");
+	assert.equal(registry.requireAgentRuntimeAdapter(registry.createProfile("codex").runtimeInstanceId).descriptor.id, "pi");
+	assert.equal(registry.createProfile(CODEX_NATIVE_PROFILE_NAME).runtimeInstanceId, CODEX_NATIVE_RUNTIME_INSTANCE_ID);
 });
 
 test("runtime registry rejects duplicate, unknown, invalid, and disabled instances", () => {

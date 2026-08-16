@@ -20,6 +20,7 @@ import { createRuntimeToolProfile } from "../tools/runtime/tool.js";
 import { completeLogin, getLoginStatus, removeLogin, setApiKey, startLogin } from "../auth/login-actions.js";
 import { loadModelCatalog } from "../apps/chat/model-catalog.js";
 import { piboCodexCompatPlugin } from "./codex-compat.js";
+import { piboCodexNativePlugin } from "./codex-native.js";
 import { addPiboNativeToolingContext, registerPiboNativeTooling } from "./native-tooling.js";
 import { piboWebAnnotationsPlugin } from "./web-annotations.js";
 import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
@@ -27,6 +28,11 @@ import type { PiboPlugin, PiboProfileBuildContext } from "./types.js";
 import { PI_AGENT_RUNTIME_DRIVER } from "../agent-runtimes/pi/adapter.js";
 
 export { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
+export {
+	CODEX_NATIVE_PROFILE_NAME,
+	CODEX_NATIVE_RUNTIME_INSTANCE_ID,
+	piboCodexNativePlugin,
+} from "./codex-native.js";
 
 const GATEWAY_PROFILE_TOOLS = ["pibo_gateway_send"] as const;
 const PIBO_PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -551,12 +557,12 @@ export const piboGatewayProducerPlugin = definePiboPlugin({
 });
 
 export function createDefaultPiboPlugins(): PiboPlugin[] {
-	return [piboCorePlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin];
+	return [piboCorePlugin, piboCodexNativePlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin];
 }
 
 export function createGatewayProducerPiboPluginRegistry(): PiboPluginRegistry {
 	return PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, piboGatewayProducerPlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin],
+		plugins: [piboCorePlugin, piboCodexNativePlugin, piboGatewayProducerPlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin],
 	});
 }
 

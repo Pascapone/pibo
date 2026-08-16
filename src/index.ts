@@ -4,6 +4,9 @@ export {
 	createDefaultPiboPlugins,
 	createGatewayProducerPiboPluginRegistry,
 	createGatewayProducerPiboProfile,
+	CODEX_NATIVE_PROFILE_NAME,
+	CODEX_NATIVE_RUNTIME_INSTANCE_ID,
+	piboCodexNativePlugin,
 	piboCorePlugin,
 	piboGatewayProducerPlugin,
 } from "./plugins/builtin.js";
