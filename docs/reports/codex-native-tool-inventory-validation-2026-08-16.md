@@ -2,7 +2,7 @@
 
 ## Scope
 
-This report records native Codex checkpoint 9.9 for `@pasko70/pibo@1.7.2` at implementation commit `4a53c6b0e32f2c42650b6ad99565a11e32012b3f`, stacked on resource-delivery PR #497.
+This report records native Codex checkpoint 9.9 for `@pasko70/pibo@1.7.2` at implementation commit `4a53c6b0e32f2c42650b6ad99565a11e32012b3f`, delivered in PR #498 stacked on resource-delivery PR #497.
 
 The checkpoint proves that selected Pibo resources do not replace or silently redefine Codex-owned standard tools, and adds a truthful runtime-neutral inspection surface without claiming that Pibo owns or can yield those tools.
 
