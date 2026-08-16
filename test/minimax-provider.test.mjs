@@ -88,7 +88,7 @@ test("registerMiniMaxProvider merges built-in models with MiniMax-M3", () => {
 	assert.equal(fake.registrations.length, 1);
 	assert.equal(fake.registrations[0].name, MINIMAX_PROVIDER_ID);
 	assert.equal(fake.registrations[0].config.baseUrl, MINIMAX_DEFAULT_BASE_URL);
-	assert.equal(fake.registrations[0].config.apiKey, MINIMAX_API_KEY_ENV);
+	assert.equal(fake.registrations[0].config.apiKey, `$${MINIMAX_API_KEY_ENV}`);
 	assert.deepEqual(
 		fake.registrations[0].config.models.map((m) => m.id).sort(),
 		["MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M3"],

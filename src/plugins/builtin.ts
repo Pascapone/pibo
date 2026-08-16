@@ -35,6 +35,7 @@ const LOGIN_PROVIDERS = [
 	{ id: "openai-codex", name: "OpenAI (ChatGPT Plus/Pro)", authMethods: ["device_code"] },
 	{ id: "openai", name: "OpenAI API", authMethods: ["api_key"] },
 	{ id: "anthropic", name: "Anthropic", authMethods: ["api_key"] },
+	{ id: "qwen-token-plan", name: "Qwen Token Plan", authMethods: ["api_key"] },
 	{ id: "kimi-coding", name: "Kimi for Coding", authMethods: ["api_key"] },
 	{ id: "google", name: "Google Gemini", authMethods: ["api_key"] },
 	{ id: "groq", name: "Groq", authMethods: ["api_key"] },
