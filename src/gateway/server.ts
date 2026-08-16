@@ -458,6 +458,8 @@ export class PiboGatewayServer {
 			getProfiles: () => this.pluginRegistry.getProfileInfos(),
 			createProfile: (name) => this.pluginRegistry.createProfile(name),
 			getCapabilityCatalog: () => this.pluginRegistry.getCapabilityCatalog(),
+			inspectAgentRuntimeInstances: () => this.pluginRegistry.inspectAgentRuntimeInstances(),
+			validateAgentRuntimeProfile: (profile, workspace) => this.pluginRegistry.validateAgentRuntimeProfile(profile, workspace),
 			getLoopStopConditionDefinitions: () => this.pluginRegistry.getLoopStopConditionDefinitions(),
 			getLoopStopConditionInfos: () => this.pluginRegistry.getLoopStopConditionInfos(),
 			getRalphStopConditionDefinitions: () => this.pluginRegistry.getLoopStopConditionDefinitions(),

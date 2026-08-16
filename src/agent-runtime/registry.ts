@@ -1,15 +1,19 @@
 import type { PiboJsonObject } from "../core/events.js";
 import { validateAgentRuntimeCapabilities } from "./capabilities.js";
 import { assertAgentRuntimeSessionContract } from "./contract.js";
+import { validateAgentRuntimeProfileCapabilities } from "./profile-validation.js";
 import { AgentRuntimeRegistrationError, AgentRuntimeUnavailableError } from "./errors.js";
 import type {
 	AgentRuntimeAdapter,
 	AgentRuntimeAdapterDescriptor,
+	AgentRuntimeDiagnostic,
 	AgentRuntimeDriver,
 	AgentRuntimeInstanceDefinition,
 	AgentRuntimeInstanceInfo,
+	AgentRuntimeInstanceInspection,
 	AgentRuntimeSession,
 	OpenAgentRuntimeSessionInput,
+	ValidateAgentRuntimeProfileInput,
 } from "./types.js";
 
 const RUNTIME_ID_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
@@ -151,7 +155,109 @@ export class AgentRuntimeAdapterRegistry {
 	}
 
 	getInstanceInfos(): AgentRuntimeInstanceInfo[] {
-		return [...this.instances.values()].map((adapter) => ({
+		return [...this.instances.values()].map((adapter) => this.instanceInfo(adapter));
+	}
+
+	async inspectInstances(): Promise<AgentRuntimeInstanceInspection[]> {
+		return await Promise.all([...this.instances.values()].map(async (adapter) => {
+			const diagnostics = await this.diagnoseAdapter(adapter);
+			let models: AgentRuntimeInstanceInspection["models"];
+			let auth: AgentRuntimeInstanceInspection["auth"];
+			if (!adapter.enabled) {
+				diagnostics.unshift({
+					severity: "error",
+					code: "runtime_instance_disabled",
+					message: `Agent runtime instance "${adapter.instanceId}" is disabled.`,
+				});
+			} else {
+				if (adapter.descriptor.capabilities.models.catalog) {
+					if (!adapter.listModels) {
+						diagnostics.push({
+							severity: "error",
+							code: "runtime_model_catalog_contract_missing",
+							message: `Agent runtime instance "${adapter.instanceId}" declares a model catalog but does not implement listModels().`,
+						});
+					} else {
+						try {
+							models = structuredClone(await adapter.listModels());
+							if (models.runtimeInstanceId !== adapter.instanceId) {
+								diagnostics.push({
+									severity: "error",
+									code: "runtime_model_catalog_instance_mismatch",
+									message: `Runtime model catalog reported instance "${models.runtimeInstanceId}" instead of "${adapter.instanceId}".`,
+								});
+							}
+							diagnostics.push(...(models.diagnostics ?? []));
+						} catch (error) {
+							diagnostics.push({
+								severity: "error",
+								code: "runtime_model_catalog_failed",
+								message: error instanceof Error ? error.message : String(error),
+							});
+						}
+					}
+				}
+				if (adapter.getAuthStatus) {
+					try {
+						auth = structuredClone([...(await adapter.getAuthStatus())]);
+					} catch (error) {
+						diagnostics.push({
+							severity: "warning",
+							code: "runtime_auth_status_failed",
+							message: error instanceof Error ? error.message : String(error),
+						});
+					}
+				}
+			}
+			return {
+				...this.instanceInfo(adapter),
+				available: adapter.enabled && !diagnostics.some((diagnostic) => diagnostic.severity === "error"),
+				diagnostics,
+				...(models ? { models } : {}),
+				...(auth ? { auth } : {}),
+			};
+		}));
+	}
+
+	async validateProfile(input: ValidateAgentRuntimeProfileInput): Promise<readonly AgentRuntimeDiagnostic[]> {
+		const adapter = this.instances.get(input.profile.runtimeInstanceId);
+		if (!adapter) {
+			return [{
+				severity: "error",
+				code: "runtime_instance_unknown",
+				message: `Profile "${input.profile.profileName}" selects unknown agent runtime instance "${input.profile.runtimeInstanceId}".`,
+			}];
+		}
+		const diagnostics = await this.diagnoseAdapter(adapter);
+		if (!adapter.enabled) {
+			diagnostics.unshift({
+				severity: "error",
+				code: "runtime_instance_disabled",
+				message: `Profile "${input.profile.profileName}" selects disabled agent runtime instance "${adapter.instanceId}".`,
+			});
+		}
+		diagnostics.push(...validateAgentRuntimeProfileCapabilities(input.profile, adapter.descriptor.capabilities));
+		try {
+			diagnostics.push(...adapter.validateProfile(input));
+		} catch (error) {
+			diagnostics.push({
+				severity: "error",
+				code: "runtime_profile_validation_failed",
+				message: error instanceof Error ? error.message : String(error),
+			});
+		}
+		return diagnostics;
+	}
+
+	getInstanceDefinition(instanceId: string): AgentRuntimeInstanceDefinition | undefined {
+		const definition = this.definitions.get(instanceId);
+		return definition
+			? { ...definition, ...(definition.config ? { config: cloneConfig(definition.config) } : {}) }
+			: undefined;
+	}
+
+	private instanceInfo(adapter: AgentRuntimeAdapter): AgentRuntimeInstanceInfo {
+		return {
 			id: adapter.instanceId,
 			adapterId: adapter.descriptor.id,
 			displayName: adapter.displayName,
@@ -160,13 +266,18 @@ export class AgentRuntimeAdapterRegistry {
 			capabilities: structuredClone(adapter.descriptor.capabilities),
 			configSchema: cloneConfig(adapter.descriptor.configSchema),
 			...(adapter.descriptor.protocol ? { protocol: { ...adapter.descriptor.protocol } } : {}),
-		}));
+		};
 	}
 
-	getInstanceDefinition(instanceId: string): AgentRuntimeInstanceDefinition | undefined {
-		const definition = this.definitions.get(instanceId);
-		return definition
-			? { ...definition, ...(definition.config ? { config: cloneConfig(definition.config) } : {}) }
-			: undefined;
+	private async diagnoseAdapter(adapter: AgentRuntimeAdapter): Promise<AgentRuntimeDiagnostic[]> {
+		try {
+			return structuredClone([...(await adapter.diagnose())]);
+		} catch (error) {
+			return [{
+				severity: "error",
+				code: "runtime_diagnostics_failed",
+				message: error instanceof Error ? error.message : String(error),
+			}];
+		}
 	}
 }

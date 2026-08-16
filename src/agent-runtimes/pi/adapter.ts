@@ -29,9 +29,11 @@ import {
 import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
 import type {
 	AgentRuntimeAdapter,
+	AgentRuntimeAuthStatus,
 	AgentRuntimeDiagnostic,
 	AgentRuntimeDriver,
 	AgentRuntimeNativeSessionInfo,
+	AgentRuntimeModelCatalog,
 	AgentRuntimeNativeSessionSnapshot,
 	AgentRuntimePromptInput,
 	AgentRuntimeSession,
@@ -42,6 +44,12 @@ import type {
 	ValidateAgentRuntimeProfileInput,
 } from "../../agent-runtime/types.js";
 import { RoutedSession as PiRoutedSession } from "./routed-session.js";
+import {
+	loadModelCatalog as loadPiModelCatalog,
+	piAgentRuntimeAuthStatus,
+	piAgentRuntimeModelCatalog,
+	type ModelCatalog as PiModelCatalog,
+} from "./model-catalog.js";
 
 const PI_ADAPTER_ID = "pi";
 const PI_PROTOCOL_VERSION = "0.80.6";
@@ -525,6 +533,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly descriptor = PI_AGENT_RUNTIME_DRIVER.descriptor;
 	readonly config: PiboJsonObject;
 	readonly displayName: string;
+	private modelCatalogCache?: { expiresAt: number; value: Promise<PiModelCatalog> };
 
 	constructor(
 		readonly instanceId: string,
@@ -544,15 +553,32 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		}];
 	}
 
+	async listModels(): Promise<AgentRuntimeModelCatalog> {
+		return piAgentRuntimeModelCatalog(this.instanceId, await this.loadModelCatalog());
+	}
+
+	async getAuthStatus(): Promise<readonly AgentRuntimeAuthStatus[]> {
+		return piAgentRuntimeAuthStatus(await this.loadModelCatalog());
+	}
+
 	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] {
+		const diagnostics: AgentRuntimeDiagnostic[] = [];
 		if (input.profile.runtimeInstanceId !== this.instanceId) {
-			return [{
+			diagnostics.push({
 				severity: "error",
 				code: "runtime_instance_mismatch",
 				message: `Profile "${input.profile.profileName}" selects runtime instance "${input.profile.runtimeInstanceId}", not "${this.instanceId}".`,
-			}];
+			});
 		}
-		return [];
+		if (Object.keys(input.profile.runtimeOptions).length > 0) {
+			diagnostics.push({
+				severity: "error",
+				code: "pi_runtime_options_unsupported",
+				message: "The Pi runtime does not accept adapter-specific profile options.",
+				path: "runtimeOptions",
+			});
+		}
+		return diagnostics;
 	}
 
 	async resolveBinding(input: { binding: RuntimeSessionBinding; workspace: string }): Promise<RuntimeSessionBinding> {
@@ -641,6 +667,17 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			binding,
 			compatibility?.initialFastMode ?? false,
 		);
+	}
+
+	private loadModelCatalog(): Promise<PiModelCatalog> {
+		const now = Date.now();
+		if (this.modelCatalogCache && this.modelCatalogCache.expiresAt > now) return this.modelCatalogCache.value;
+		const value = loadPiModelCatalog(process.cwd());
+		this.modelCatalogCache = { expiresAt: now + 5_000, value };
+		value.catch(() => {
+			if (this.modelCatalogCache?.value === value) this.modelCatalogCache = undefined;
+		});
+		return value;
 	}
 }
 

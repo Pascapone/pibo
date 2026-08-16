@@ -67,6 +67,13 @@ export type AgentRuntimeInstanceInfo = {
 	protocol?: AgentRuntimeAdapterDescriptor["protocol"];
 };
 
+export type AgentRuntimeInstanceInspection = AgentRuntimeInstanceInfo & {
+	available: boolean;
+	diagnostics: AgentRuntimeDiagnostic[];
+	models?: AgentRuntimeModelCatalog;
+	auth?: AgentRuntimeAuthStatus[];
+};
+
 export type AgentRuntimeProductContext = {
 	piboSessionId: string;
 	piboRoomId?: string;

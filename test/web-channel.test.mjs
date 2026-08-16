@@ -9,8 +9,43 @@ import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
+import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 
 const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
+
+function fakeRuntimeCapabilities() {
+	const unsupported = { support: "unsupported", reason: "Not supported by this fixture runtime." };
+	return {
+		lifecycle: { persistent: true, lazyBinding: true, resume: true, attach: false, listNativeSessions: false, fork: false, clone: false, tree: false },
+		input: { text: true, images: false, audio: false, steering: false, structuredOutput: false },
+		output: { assistantDeltas: true, reasoning: true, toolEvents: true, usage: true, plans: false, diffs: false, rawNativeEvents: false },
+		tools: { piboManaged: { support: "mcp", transports: ["streamable-http"] }, nativeToolYielding: unsupported },
+		mcp: { externalServers: { support: "native" }, statusInspection: true },
+		skills: { support: "materialized", modes: ["isolated-directory"] },
+		context: { support: "materialized", modes: ["developer-instructions"] },
+		models: { catalog: true, switchInSession: false, optionsSchema: { type: "object" } },
+		reasoning: { supported: true, values: ["low", "high"] },
+		approvals: { supported: true, structuredUserInput: true },
+		maintenance: { compaction: false, contextUsage: true, history: true, health: true },
+	};
+}
+
+function fakeRuntimeInspection(id, overrides = {}) {
+	return {
+		id,
+		adapterId: overrides.adapterId ?? id,
+		displayName: overrides.displayName ?? id,
+		enabled: overrides.enabled ?? true,
+		available: overrides.available ?? true,
+		transport: overrides.transport ?? "stdio-rpc",
+		capabilities: overrides.capabilities ?? fakeRuntimeCapabilities(),
+		configSchema: { type: "object", additionalProperties: false },
+		protocol: { name: overrides.protocol ?? "fixture-protocol" },
+		diagnostics: overrides.diagnostics ?? [],
+		...(overrides.models ? { models: overrides.models } : {}),
+		...(overrides.auth ? { auth: overrides.auth } : {}),
+	};
+}
 
 function createFakeAuthService() {
 	return {
@@ -157,6 +192,7 @@ async function startWebHostChannel(options = {}) {
 		getProfiles() {
 			return profiles;
 		},
+		...(options.createProfile ? { createProfile: options.createProfile } : {}),
 		getCapabilityCatalog() {
 			return options.capabilityCatalog ?? {
 				nativeTools: [],
@@ -171,6 +207,12 @@ async function startWebHostChannel(options = {}) {
 				mcpServers: [],
 			};
 		},
+		...(options.inspectAgentRuntimeInstances ? {
+			inspectAgentRuntimeInstances: options.inspectAgentRuntimeInstances,
+		} : {}),
+		...(options.validateAgentRuntimeProfile ? {
+			validateAgentRuntimeProfile: options.validateAgentRuntimeProfile,
+		} : {}),
 		upsertProfile(profile) {
 			profiles = profiles.filter((item) => item.name !== profile.name);
 			profiles.push({
@@ -2500,6 +2542,176 @@ test("chat web app creates custom agents from the native capability catalog", as
 		const listedPayload = await listed.json();
 		assert.deepEqual(listedPayload.agents.map((agent) => agent.displayName), ["research-agent"]);
 		assert.equal(listedPayload.agents[0].autoContextFiles, false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtime selections", async () => {
+	const runtimes = [
+		fakeRuntimeInspection("pi", { adapterId: "pi", displayName: "Pi", transport: "embedded", protocol: "pi-sdk", diagnostics: [{ severity: "info", code: "pi_runtime_available", message: "Pi is available." }] }),
+		fakeRuntimeInspection("codex-native", {
+			adapterId: "codex",
+			displayName: "Codex Native",
+			protocol: "codex-app-server",
+			models: { runtimeInstanceId: "codex-native", models: [{ id: "gpt-5.6-codex", provider: "openai", displayName: "GPT-5.6 Codex", reasoningOptions: ["low", "high"] }] },
+			auth: [{ id: "openai", displayName: "OpenAI", configured: true }],
+		}),
+		fakeRuntimeInspection("offline-runtime", { enabled: false, available: false, diagnostics: [{ severity: "error", code: "runtime_instance_disabled", message: "Runtime is disabled." }] }),
+	];
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: [] }],
+		capabilityCatalog: {
+			agentRuntimes: runtimes.map(({ available: _available, diagnostics: _diagnostics, ...runtime }) => runtime),
+			nativeTools: [],
+			skills: [],
+			subagents: [],
+			contextFiles: [],
+			packages: [],
+			piboTools: [],
+			mcpServers: [],
+			piPackages: [],
+		},
+		inspectAgentRuntimeInstances: async () => runtimes,
+		validateAgentRuntimeProfile: async (profile) => {
+			const runtime = runtimes.find((candidate) => candidate.id === profile.runtimeInstanceId);
+			if (!runtime) return [{ severity: "error", code: "runtime_instance_unknown", message: `Unknown runtime ${profile.runtimeInstanceId}.` }];
+			if (!runtime.available) return runtime.diagnostics;
+			if (profile.runtimeInstanceId === "codex-native" && profile.runtimeOptions.mode !== "isolated") {
+				return [{ severity: "error", code: "codex_profile_options_invalid", message: "Codex mode must be isolated." }];
+			}
+			return [];
+		},
+	});
+
+	try {
+		const catalogResponse = await fetch(`${baseURL}/api/chat/agent-catalog`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(catalogResponse.status, 200);
+		const catalogPayload = await catalogResponse.json();
+		assert.deepEqual(catalogPayload.catalog.agentRuntimes.map((runtime) => [runtime.id, runtime.available]), [
+			["pi", true],
+			["codex-native", true],
+			["offline-runtime", false],
+		]);
+		assert.equal(catalogPayload.catalog.agentRuntimes[1].models.models[0].id, "gpt-5.6-codex");
+		assert.equal(catalogPayload.catalog.agentRuntimes[1].auth[0].configured, true);
+		assert.equal(catalogPayload.catalog.agentRuntimes[2].diagnostics[0].code, "runtime_instance_disabled");
+
+		const createdResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({
+				displayName: "codex-native-agent",
+				runtimeInstanceId: "codex-native",
+				runtimeOptions: { mode: "isolated", reasoningEffort: "high" },
+			}),
+		});
+		assert.equal(createdResponse.status, 201);
+		const created = await createdResponse.json();
+		assert.equal(created.agent.runtimeInstanceId, "codex-native");
+		assert.deepEqual(created.agent.runtimeOptions, { mode: "isolated", reasoningEffort: "high" });
+
+		const rejectedPatch = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(created.agent.id)}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ runtimeOptions: { mode: "shared" } }),
+		});
+		assert.equal(rejectedPatch.status, 400);
+		assert.match((await rejectedPatch.json()).error, /Codex mode must be isolated/);
+
+		const disabledResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ displayName: "offline-agent", runtimeInstanceId: "offline-runtime" }),
+		});
+		assert.equal(disabledResponse.status, 400);
+		assert.match((await disabledResponse.json()).error, /Runtime is disabled/);
+
+		const unknownResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ displayName: "unknown-runtime-agent", runtimeInstanceId: "missing-runtime" }),
+		});
+		assert.equal(unknownResponse.status, 400);
+		assert.match((await unknownResponse.json()).error, /Unknown runtime missing-runtime/);
+
+		const malformedRuntimeResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ displayName: "malformed-runtime-agent", runtimeInstanceId: "Invalid Runtime", runtimeOptions: [] }),
+		});
+		assert.equal(malformedRuntimeResponse.status, 400);
+		assert.match((await malformedRuntimeResponse.json()).error, /runtimeInstanceId is invalid/);
+
+		const malformedOptionsResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ displayName: "malformed-options-agent", runtimeInstanceId: "codex-native", runtimeOptions: [] }),
+		});
+		assert.equal(malformedOptionsResponse.status, 400);
+		assert.match((await malformedOptionsResponse.json()).error, /runtimeOptions must be a JSON object/);
+
+		const listed = await fetch(`${baseURL}/api/chat/agents`, { headers: { "x-test-user": "user-1" } });
+		const listedPayload = await listed.json();
+		assert.equal(listedPayload.agents.length, 1);
+		assert.deepEqual(listedPayload.agents[0].runtimeOptions, { mode: "isolated", reasoningEffort: "high" });
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat context build uses the frozen non-Pi runtime without rendering Pi startup context", async () => {
+	const runtime = fakeRuntimeInspection("codex-native", {
+		adapterId: "codex",
+		displayName: "Codex Native",
+		protocol: "codex-app-server",
+	});
+	const { channel, baseURL, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "native-context-agent", aliases: [], runtimeInstanceId: "pi", runtimeOptions: {} }],
+		capabilityCatalog: {
+			agentRuntimes: [{ ...runtime, available: undefined, diagnostics: undefined }],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		inspectAgentRuntimeInstances: async () => [runtime],
+		validateAgentRuntimeProfile: async () => [],
+		createProfile: () => new InitialSessionContextBuilder("native-context-agent")
+			.withAgentRuntime("pi", { sandbox: "workspace-write" })
+			.withAutoContextFiles(false)
+			.withToolPackages({ goalControl: false })
+			.addSkill({ name: "review-skill", path: "/tmp/review-skill/SKILL.md" })
+			.addContextFile({ key: "project-context", path: "/tmp/AGENTS.md" })
+			.withMcpServers(["filesystem"])
+			.createSession(),
+	});
+	try {
+		const session = sessions.create({
+			channel: "pibo.chat",
+			kind: "chat",
+			profile: "native-context-agent",
+			runtimeBinding: {
+				runtimeInstanceId: "codex-native",
+				adapterId: "codex",
+				nativeSessionId: "thread_fixture",
+				state: "bound",
+			},
+		});
+		const response = await fetch(`${baseURL}/api/chat/context-build?piboSessionId=${encodeURIComponent(session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(response.status, 200);
+		const payload = await response.json();
+		assert.equal(payload.snapshot.runtime.runtimeInstanceId, "codex-native");
+		assert.equal(payload.snapshot.runtime.adapterId, "codex");
+		assert.equal(payload.snapshot.runtime.bindingState, "bound");
+		assert.equal(payload.snapshot.nodes[0].id, "runtime");
+		assert.ok(payload.snapshot.nodes.find((node) => node.id === "skills").children.some((node) => node.title === "review-skill"));
+		assert.ok(payload.snapshot.nodes.find((node) => node.id === "context").children.some((node) => node.title === "project-context"));
+		assert.equal(payload.snapshot.nodes.some((node) => node.title === "Base System Prompt"), false);
+		assert.equal(JSON.stringify(payload.snapshot).includes("workspace-write"), false);
 	} finally {
 		await channel.stop?.();
 	}

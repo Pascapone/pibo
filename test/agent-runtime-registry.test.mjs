@@ -47,6 +47,80 @@ test("default profiles and capability catalog expose the configured Pi runtime",
 	assert.throws(() => registry.createProfile("codex"), /Unknown profile "codex"/);
 });
 
+test("runtime registry reports availability diagnostics and validates profile options", async () => {
+	const registry = createDefaultPiboPluginRegistry();
+	const inspections = await registry.inspectAgentRuntimeInstances();
+	const pi = inspections.find((runtime) => runtime.id === "pi");
+	assert.equal(pi.available, true);
+	assert.ok(pi.diagnostics.some((diagnostic) => diagnostic.code === "pi_runtime_available"));
+	assert.equal(pi.models.runtimeInstanceId, "pi");
+	assert.ok(pi.models.models.length > 0);
+	assert.ok(pi.auth.length > 0);
+
+	const valid = await registry.validateAgentRuntimeProfile(
+		new InitialSessionContextBuilder("valid-pi").withAgentRuntime("pi").createSession(),
+	);
+	assert.equal(valid.some((diagnostic) => diagnostic.severity === "error"), false);
+
+	const invalid = await registry.validateAgentRuntimeProfile(
+		new InitialSessionContextBuilder("invalid-pi").withAgentRuntime("pi", { unexpected: true }).createSession(),
+	);
+	assert.ok(invalid.some((diagnostic) => diagnostic.code === "pi_runtime_options_unsupported"));
+
+	const unknown = await registry.validateAgentRuntimeProfile(
+		new InitialSessionContextBuilder("unknown-runtime").withAgentRuntime("missing-runtime").createSession(),
+	);
+	assert.ok(unknown.some((diagnostic) => diagnostic.code === "runtime_instance_unknown"));
+});
+
+test("runtime inspection rejects a declared model catalog without a listModels implementation", async () => {
+	const capabilities = createFakeAgentRuntimeDriver({ adapterId: "catalog-template" }).descriptor.capabilities;
+	capabilities.models.catalog = true;
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(createFakeAgentRuntimeDriver({ adapterId: "catalog-missing", capabilities }));
+	registry.registerInstance({ id: "catalog-missing", adapterId: "catalog-missing" });
+	const [inspection] = await registry.inspectInstances();
+	assert.equal(inspection.available, false);
+	assert.ok(inspection.diagnostics.some((diagnostic) => diagnostic.code === "runtime_model_catalog_contract_missing"));
+});
+
+test("runtime registry rejects profile selections that declared capabilities cannot deliver", async () => {
+	const fakeDriver = createFakeAgentRuntimeDriver({ adapterId: "partial-runtime" });
+	const registry = PiboPluginRegistry.create({
+		plugins: [definePiboPlugin({
+			id: "test.partial-runtime",
+			register(api) {
+				api.registerAgentRuntimeDriver(fakeDriver);
+				api.registerAgentRuntimeInstance({ id: "partial-runtime", adapterId: "partial-runtime" });
+			},
+		})],
+	});
+	const invalidProfile = new InitialSessionContextBuilder("partial-profile")
+		.withAgentRuntime("partial-runtime")
+		.addTool({ name: "pibo-tool" })
+		.addSkill({ name: "portable-skill", path: "/tmp/SKILL.md" })
+		.addContextFile({ key: "project-context", path: "/tmp/AGENTS.md" })
+		.withMcpServers(["filesystem"])
+		.withThinkingLevel("high")
+		.createSession();
+	const diagnostics = await registry.validateAgentRuntimeProfile(invalidProfile);
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.code === "runtime_pibo_tools_unsupported"));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.code === "runtime_external_mcp_unsupported"));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.code === "runtime_skills_unsupported"));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.code === "runtime_context_unsupported"));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.code === "runtime_reasoning_unsupported"));
+
+	const validPartialProfile = new InitialSessionContextBuilder("partial-profile")
+		.withAgentRuntime("partial-runtime")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.createSession();
+	assert.equal(
+		(await registry.validateAgentRuntimeProfile(validPartialProfile)).some((diagnostic) => diagnostic.severity === "error"),
+		false,
+	);
+});
+
 test("plugins register typed runtime drivers and configured instances", () => {
 	const fakeDriver = createFakeAgentRuntimeDriver({ adapterId: "fixture-runtime" });
 	const registry = PiboPluginRegistry.create({
@@ -79,6 +153,18 @@ test("plugins register typed runtime drivers and configured instances", () => {
 	assert.deepEqual(registry.getAgentRuntimeInstanceIds(), ["fixture-primary"]);
 	assert.equal(registry.requireAgentRuntimeAdapter("fixture-primary").descriptor.id, "fixture-runtime");
 	assert.equal(registry.getProfileInfos()[0].runtimeInstanceId, "fixture-primary");
+});
+
+test("custom Pi-backed runtime instance ids preserve persisted codex references without creating a profile alias", async () => {
+	const registry = createDefaultPiboPluginRegistry();
+	registry.registerAgentRuntimeInstance({ id: "codex", adapterId: "pi", displayName: "Persisted Pi Codex Instance" });
+	const profile = new InitialSessionContextBuilder("persisted-custom-profile")
+		.withAgentRuntime("codex")
+		.createSession();
+	const diagnostics = await registry.validateAgentRuntimeProfile(profile);
+	assert.equal(diagnostics.some((diagnostic) => diagnostic.severity === "error"), false);
+	assert.equal(registry.requireAgentRuntimeAdapter("codex").descriptor.id, "pi");
+	assert.throws(() => registry.createProfile("codex"), /Unknown profile "codex"/);
 });
 
 test("runtime registry rejects duplicate, unknown, invalid, and disabled instances", () => {

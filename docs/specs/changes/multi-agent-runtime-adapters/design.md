@@ -191,16 +191,14 @@ The core plugin registers the default configured `pi` instance. Native Codex lat
 
 ## Decision: Profile and session runtime selection
 
-`InitialSessionContext` gains additive fields:
+`InitialSessionContext` has additive runtime fields:
 
 ```ts
-runtime: {
-  instanceId: string;       // default "pi"
-  options?: PiboJsonObject;
-};
+runtimeInstanceId: string;      // default "pi"
+runtimeOptions: PiboJsonObject; // default {}
 ```
 
-Compatibility accessors may expose `runtimeAdapterId` while migration proceeds, but configured instance id is the routing key. `PiboProfileInfo` and custom-agent rows expose the selection and options.
+Configured instance id is the routing key. `PiboProfileInfo` and custom-agent rows expose the same selection and options. Custom-agent SQLite migration adds `runtime_instance_id` and `runtime_options_json` with Pi-compatible defaults, so existing agents remain Pi-backed without rewriting their identities.
 
 At Pibo Session creation:
 
@@ -211,6 +209,19 @@ At Pibo Session creation:
 5. Freeze that instance for the session.
 
 Existing sessions without a binding resolve to a backfilled/default Pi binding. Editing a profile never changes an existing binding.
+
+## Implemented Designer and profile-inspection flow
+
+The runtime-aware Designer path is additive:
+
+1. `AgentRuntimeAdapterRegistry.inspectInstances()` combines descriptor data, enabled state, adapter diagnostics, runtime-scoped model catalogs, and auth status.
+2. Chat bootstrap and `/api/chat/agent-catalog` expose every configured instance, including disabled or unavailable entries, with diagnostics and declared capability delivery modes.
+3. Custom-agent create/update requests normalize the runtime id and JSON options, build a non-persisted candidate profile, and reject adapter or capability errors before writing the row.
+4. Agent Designer renders a configured-instance selector, schema-generated primitive option controls, an advanced JSON editor, runtime diagnostics, effective capabilities, and disabled portable controls with explanations. Persisted unsupported selections remain removable.
+5. Context Build reads the session's frozen binding. Pi sessions retain the detailed Pi startup-context inspector; non-Pi sessions use a runtime-neutral contribution snapshot and never render the Pi base prompt.
+6. Session startup repeats capability and adapter validation, so non-Web profiles cannot bypass save-time checks.
+
+The legacy top-level Pi model catalog remains for old clients during the compatibility window. Runtime entries now also carry their own model and auth catalogs, and Agent Designer prefers the selected runtime's catalog.
 
 ## Decision: Capability model
 

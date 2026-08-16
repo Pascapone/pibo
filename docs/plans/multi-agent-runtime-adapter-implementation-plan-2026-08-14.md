@@ -207,6 +207,8 @@ Update this table after each meaningful milestone so continuations do not need t
 | 2026-08-14 | Discovery/spec complete | `feature/agent-runtime-foundation` based on `54176105` | Required project/T3/Codex references inspected; clean-base suite 1,598/1,598 passing | Foundation verification and PR |
 | 2026-08-14 | Runtime foundation PR opened | `feature/agent-runtime-foundation`, implementation `a69a0a27`, PR #476 | Full workspace typecheck passed; focused routed Pi 73/73; full suite 1,605/1,605 | Stacked Pi extraction and authenticated Pibo2 parity |
 | 2026-08-14 | Pi extraction locally validated | `feature/agent-runtime-pi-parity` at `af90539e` | Generic fake routing and boundaries pass; focused parity 99/99; full suite 1,609/1,609 | Exact candidate install and authenticated Pibo2 Pi parity |
+| 2026-08-15 | Runtime bindings validated and PR opened | `feature/agent-runtime-bindings` at `2318a725`, PR #478 | Full suite 1,622/1,622; existing-data migration, restart, stale CAS, debug, signals, UI badge, and rollback validated on Pibo2 | Runtime-aware profiles and Agent Designer |
+| 2026-08-15 | Runtime-aware profiles and Designer locally validated | `feature/agent-runtime-designer` (commit pending) | Typecheck passed; full suite 1,632/1,632; store/API/profile/catalog/context-build/disabled-state/model-scope coverage added | Exact candidate Pibo2 API/browser validation, commit, and stacked PR |
 
 ## Completion audit
 

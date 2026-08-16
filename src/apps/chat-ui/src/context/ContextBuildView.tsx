@@ -78,7 +78,7 @@ export function ContextBuildView({ piboSessionId }: ContextBuildViewProps) {
 					<h2 className="truncate text-base font-semibold text-slate-100">Build Context</h2>
 					<div className="truncate font-mono text-[11px] text-slate-500">
 						{snapshot
-							? `${snapshot.profileName} · ${snapshot.piboSessionId ?? "session"} · ${snapshot.generatedAt}`
+							? `${snapshot.profileName} · ${snapshot.runtime ? `${snapshot.runtime.runtimeInstanceId}/${snapshot.runtime.adapterId}` : "runtime unknown"} · ${snapshot.piboSessionId ?? "session"} · ${snapshot.generatedAt}`
 							: piboSessionId ? `session ${piboSessionId}` : "no session selected"}
 					</div>
 				</div>
@@ -110,6 +110,14 @@ export function ContextBuildView({ piboSessionId }: ContextBuildViewProps) {
 					<div className="grid gap-3">
 						<div className="border border-slate-800 bg-[#151f24] px-4 py-3 text-sm text-slate-400">
 							Read-only startup context snapshot. Token counts are approximate estimates per contribution; no duplicate final prompt block is rendered.
+							{snapshot.runtime ? (
+								<div className="mt-2 flex flex-wrap gap-2 font-mono text-[10px] uppercase tracking-wider">
+									<span className={snapshot.runtime.available ? "text-emerald-300" : "text-amber-100"}>{snapshot.runtime.available ? "runtime available" : "runtime unavailable"}</span>
+									<span>{snapshot.runtime.transport}</span>
+									{snapshot.runtime.protocol ? <span>{snapshot.runtime.protocol.name}</span> : null}
+									{snapshot.runtime.bindingState ? <span>binding {snapshot.runtime.bindingState}</span> : null}
+								</div>
+							) : null}
 						</div>
 						<div className="grid min-w-0 gap-2">
 							{snapshot.nodes.map((node) => (

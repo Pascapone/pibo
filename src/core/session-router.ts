@@ -46,6 +46,7 @@ import {
 	type RuntimeSessionBindingUpdateOptions,
 } from "../sessions/runtime-binding.js";
 import { AgentRuntimeBindingMissingError, AgentRuntimeUnavailableError } from "../agent-runtime/errors.js";
+import { validateAgentRuntimeProfileCapabilities } from "../agent-runtime/profile-validation.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
 import { loadPiboUserSettings } from "./user-settings.js";
@@ -930,10 +931,13 @@ export class PiboSessionRouter {
 			}
 		}
 		this.assertOpenableRuntimeBinding(binding);
-		const profileDiagnostics = runtimeAdapter.validateProfile({
-			profile: sessionProfile,
-			workspace,
-		});
+		const profileDiagnostics = [
+			...validateAgentRuntimeProfileCapabilities(sessionProfile, runtimeAdapter.descriptor.capabilities),
+			...runtimeAdapter.validateProfile({
+				profile: sessionProfile,
+				workspace,
+			}),
+		];
 		const invalidProfile = profileDiagnostics.find((diagnostic) => diagnostic.severity === "error");
 		if (invalidProfile) {
 			throw new Error(`Runtime profile validation failed: ${invalidProfile.message}`);

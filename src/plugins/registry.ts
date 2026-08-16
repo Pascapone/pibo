@@ -129,6 +129,14 @@ export class PiboPluginRegistry {
 		return this.agentRuntimes.getInstanceIds();
 	}
 
+	inspectAgentRuntimeInstances() {
+		return this.agentRuntimes.inspectInstances();
+	}
+
+	validateAgentRuntimeProfile(profile: InitialSessionContext, workspace?: string) {
+		return this.agentRuntimes.validateProfile({ profile, workspace });
+	}
+
 	registerTool(tool: ToolProfile): void {
 		this.addUnique(this.tools, tool.name, tool, "tool");
 	}

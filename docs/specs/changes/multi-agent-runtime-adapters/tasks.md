@@ -64,17 +64,17 @@ Target branch: `feature/agent-runtime-foundation`
 
 ## 4. Portable profiles and Agent Designer PR
 
-- [ ] 4.1 Persist custom-agent runtime instance and adapter options with Pi defaults.
-- [ ] 4.2 Freeze runtime selection on new sessions; prove profile edits do not move existing sessions.
-- [ ] 4.3 Add runtime descriptors/instances/diagnostics/effective capabilities to catalog and context build.
-- [ ] 4.4 Add Agent Designer runtime selector and adapter-native options generated from schema.
-- [ ] 4.5 Map portable capability selections to support/delivery diagnostics.
-- [ ] 4.6 Reject invalid saved selections and render disabled controls with reasons.
-- [ ] 4.7 Scope model/reasoning/auth catalogs by runtime instance.
-- [ ] 4.8 Keep plugin profiles read-only and preserve persisted/custom Pi-backed `codex` references without claiming the retired built-in alias.
-- [ ] 4.9 Add API/store/profile/UI/accessibility/autosave tests.
-- [ ] 4.10 Validate fresh Pi custom agents and existing custom-agent defaults on Pibo2.
-- [ ] 4.11 Commit, push, and open Designer/profile PR.
+- [x] 4.1 Persist custom-agent runtime instance and adapter options with Pi defaults.
+- [x] 4.2 Freeze runtime selection on new sessions; prove profile edits do not move existing sessions.
+- [x] 4.3 Add runtime descriptors/instances/diagnostics/effective capabilities to catalog and context build.
+- [x] 4.4 Add Agent Designer runtime selector and schema-generated plus advanced JSON adapter options.
+- [x] 4.5 Map portable capability selections to support/delivery diagnostics.
+- [x] 4.6 Reject invalid saved selections and render disabled controls with reasons while allowing stale selections to be removed.
+- [x] 4.7 Scope model/reasoning/auth catalogs by runtime instance.
+- [x] 4.8 Keep plugin profiles read-only and preserve persisted/custom Pi-backed `codex` references without claiming the retired built-in alias.
+- [x] 4.9 Add API/store/profile/UI/accessibility/autosave tests; local typecheck and full suite pass 1,632/1,632.
+- [x] 4.10 Validate fresh Pi custom-agent create/edit/copy, invalid options, frozen binding, Context Build, existing custom-agent defaults, browser rendering, and cleanup on Pibo2; evidence is in `docs/reports/runtime-aware-agent-designer-validation-2026-08-15.md`.
+- [x] 4.11 Commit, push, and open Designer/profile PR #479.
 
 ## 5. Portable Pibo tools and MCP bridge PR
 
