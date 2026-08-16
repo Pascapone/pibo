@@ -353,6 +353,81 @@ test("Codex native delivers selected Pibo tools, HTTP MCP, skills, and context w
 	assert.equal(await readFile(mcpConfigPath, "utf8"), sourceMcpConfig);
 });
 
+test("Codex native renews its scoped Pibo tool lease while a turn remains active", async (t) => {
+	const root = await fixtureRoot(t);
+	const workspace = join(root, "workspace");
+	await mkdir(workspace, { recursive: true });
+	const alpha = definePiboTool({
+		name: "alpha",
+		title: "Alpha",
+		description: "Portable active-renewal fixture",
+		inputSchema: Type.Object({ value: Type.String() }),
+		async execute(_toolCallId, input) {
+			return { content: [{ type: "text", text: `active:${input.value}` }] };
+		},
+	});
+	const instanceId = "codex-native-resource-active-renewal";
+	const profile = new InitialSessionContextBuilder("codex-native-resource-active-renewal-profile")
+		.withAgentRuntime(instanceId)
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addTool({ name: "alpha", definition: alpha })
+		.createSession();
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
+	registry.registerInstance({ id: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, config: runtimeConfig(root) });
+	const portableService = new PiboPortableToolService();
+	t.after(async () => portableService.dispose());
+	const base = portableService.createSession({
+		piboSessionId: "ps_codex_resource_active_renewal",
+		runtimeInstanceId: instanceId,
+		adapterId: CODEX_NATIVE_ADAPTER_ID,
+		sessionGeneration: "generation-active-renewal",
+		profile,
+		cwd: workspace,
+	});
+	const accesses = [];
+	const tracked = trackedPortableSession(base, accesses);
+	let renewals = 0;
+	const portable = {
+		...tracked,
+		async issueMcpAccess(options) {
+			const access = await tracked.issueMcpAccess(options);
+			return { ...access, expiresAt: new Date(Date.now() + 100).toISOString() };
+		},
+		renewMcpAccess(token, ttlMs) {
+			renewals += 1;
+			return tracked.renewMcpAccess(token, ttlMs);
+		},
+	};
+	const runtimeBinding = binding(instanceId, "ps_codex_resource_active_renewal");
+	const session = await registry.openSession(instanceId, openInput({
+		instanceId,
+		piboSessionId: "ps_codex_resource_active_renewal",
+		workspace,
+		profile,
+		runtimeBinding,
+		portableTools: portable,
+		resources: undefined,
+	}));
+	t.after(async () => session.dispose());
+	const client = getCodexNativeClient(session);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	const prompt = session.prompt({ text: "[hold] keep the native turn active", source: "rpc" });
+	await waitFor(() => events.some((event) => event.type === "turn_started"));
+	await waitFor(() => renewals > 0);
+	assert.equal(getCodexNativeClient(session), client);
+	assert.equal(accesses.length, 1);
+	assert.equal(await callAlpha(accesses[0], "lease"), "active:lease");
+	await session.abort();
+	await prompt;
+	await session.dispose();
+	await expectCredentialRevoked(accesses[0]);
+	portable.dispose();
+});
+
 test("Codex native renews bounded tool credentials by rolling an idle App Server process", async (t) => {
 	const root = await fixtureRoot(t);
 	const workspace = join(root, "workspace");

@@ -455,17 +455,30 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 
 	private async maintainResourceCredential(): Promise<void> {
 		if (this.disposed) return;
-		if (this.operationInFlight || this.turns.streaming || this.requests.pendingApprovals.length > 0 || this.requests.pendingUserInputs.length > 0) {
-			this.scheduleResourceMaintenance(RESOURCE_MAINTENANCE_RETRY_MS);
-			return;
-		}
+		const busy = this.operationInFlight
+			|| this.turns.streaming
+			|| this.requests.pendingApprovals.length > 0
+			|| this.requests.pendingUserInputs.length > 0;
 		try {
-			if (this.resourceProcessUnavailable || this.resourceDelivery.shouldRolloverCredential()) {
+			if (this.resourceProcessUnavailable) {
+				if (busy) {
+					this.scheduleResourceMaintenance(RESOURCE_MAINTENANCE_RETRY_MS);
+					return;
+				}
+				await this.rolloverResourceProcess();
+			} else if (this.resourceDelivery.shouldRolloverCredential()) {
+				if (busy) {
+					this.resourceDelivery.renewCredential();
+					this.resourceWarning = undefined;
+					this.scheduleResourceMaintenance(RESOURCE_MAINTENANCE_RETRY_MS);
+					return;
+				}
 				await this.rolloverResourceProcess();
 			} else {
 				try {
 					this.resourceDelivery.renewCredential();
 				} catch {
+					if (busy) throw new Error("Native Codex portable-resource credentials could not be renewed during the active turn.");
 					await this.rolloverResourceProcess();
 				}
 			}
