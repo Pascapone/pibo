@@ -163,7 +163,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 11.3 Document migration, rollback, Pi adapter, Codex adapter, portable capabilities, security, and operator diagnostics.
 - [x] 11.4 Add progressively discoverable runtime CLI docs for implemented commands only.
 - [x] 11.5 Synchronize canonical docs and evidence on the final stacked branch.
-- [ ] 11.6 Ensure every branch is clean, pushed, and represented by a reviewable PR to `upstream/dev`.
+- [x] 11.6 Ensure every branch is clean, pushed, and represented by a reviewable PR to `upstream/dev`. Final stacked PR: #503.
 - [x] 11.7 Produce `docs/reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md`, mapping REQ-001 through REQ-018 to code, tests, PRs, and Pibo2 evidence.
 - [ ] 11.8 Confirm no known regression or material unreported uncertainty invalidates completion. The deterministic/product matrix is clean, but official native-Codex provider authentication remains an explicit external evidence blocker.
 - [ ] 11.9 Mark the Pibo Loop goal complete only after the full audit passes.
