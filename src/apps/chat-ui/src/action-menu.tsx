@@ -217,7 +217,7 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 				aria-haspopup="menu"
 				aria-expanded={open}
 				aria-controls={menuId}
-				className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+				className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center rounded-sm text-slate-400 hover:text-[#11a4d4]"
 			>
 				<MoreVertical size={12} className="max-[980px]:h-4 max-[980px]:w-4" />
 			</button>
