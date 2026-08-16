@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { piboStringEnum } from "./schema.js";
+import { definePiboTool, type PiboToolDefinition } from "./contract.js";
 import type { ToolProfile } from "../core/profiles.js";
 import { CdpClient, connectCdpTarget, listCdpTargets, type CdpTarget } from "./cdp-client.js";
 import { browserPoolPaths, releaseBrowserPoolLease } from "./browser-pool.js";
@@ -307,27 +308,27 @@ export function createCodexBrowserToolProfiles(): ToolProfile[] {
 export function createCodexBrowserToolDefinitions(
 	controller: CodexBrowserToolController,
 	enabledNames: readonly CodexBrowserToolName[] = CODEX_BROWSER_TOOL_NAMES,
-): ToolDefinition[] {
+): PiboToolDefinition[] {
 	const enabled = new Set(enabledNames);
-	const tools: Array<[CodexBrowserToolName, ToolDefinition]> = [
-		[BROWSER_USE_OPEN_TABS_TOOL_NAME, defineTool({
+	const tools: Array<[CodexBrowserToolName, PiboToolDefinition]> = [
+		[BROWSER_USE_OPEN_TABS_TOOL_NAME, definePiboTool({
 			name: BROWSER_USE_OPEN_TABS_TOOL_NAME,
-			label: "browser_use.open_tabs",
+			title: "browser_use.open_tabs",
 			description: "List open tabs in the persistent Browser Use session. Returns stable target IDs, short tab IDs, titles, URLs, and tab indices.",
 			promptSnippet: "Use browser_use_open_tabs (browser_use.open_tabs) to discover tabs before targeting a screenshot or tab-specific action.",
 			executionMode: "parallel",
-			parameters: Type.Object({}),
+			inputSchema: Type.Object({}),
 			async execute() {
 				return toolResult(await controller.openTabs());
 			},
 		})],
-		[BROWSER_USE_TAKE_SCREENSHOT_TOOL_NAME, defineTool({
+		[BROWSER_USE_TAKE_SCREENSHOT_TOOL_NAME, definePiboTool({
 			name: BROWSER_USE_TAKE_SCREENSHOT_TOOL_NAME,
-			label: "browser_use.take_screenshot",
+			title: "browser_use.take_screenshot",
 			description: "Take a PNG screenshot from the persistent Browser Use session. Omit tabId to capture the first attachable page tab.",
 			promptSnippet: "Use browser_use_take_screenshot (browser_use.take_screenshot) when visual page state matters.",
 			executionMode: "parallel",
-			parameters: Type.Object({
+			inputSchema: Type.Object({
 				tabId: Type.Optional(Type.String({ description: "Full target ID or short tab ID returned by browser_use_open_tabs." })),
 				fullPage: Type.Optional(Type.Boolean({ description: "Capture the full scrollable page instead of only the viewport." })),
 				timeoutMs: Type.Optional(Type.Number({ description: "Screenshot timeout in milliseconds." })),
@@ -344,20 +345,20 @@ export function createCodexBrowserToolDefinitions(
 				};
 			},
 		})],
-		[BROWSER_USE_TOOL_NAME, defineTool({
+		[BROWSER_USE_TOOL_NAME, definePiboTool({
 			name: BROWSER_USE_TOOL_NAME,
-			label: "browser_use.browser_use",
+			title: "browser_use.browser_use",
 			description: "Control one persistent Browser Use session with a structured action. State and element indices persist through the same Pibo session and managed browser-pool lease.",
 			promptSnippet: "Use browser_use_browser_use (browser_use.browser_use) for structured navigation and interaction; call state before index-based clicks or input.",
 			executionMode: "sequential",
-			parameters: Type.Object({
-				action: StringEnum(["navigate", "state", "click", "input", "type", "scroll", "back", "switch_tab", "close_tab", "keys", "evaluate", "wait_selector", "wait_text"], { description: "Browser action." }),
+			inputSchema: Type.Object({
+				action: piboStringEnum(["navigate", "state", "click", "input", "type", "scroll", "back", "switch_tab", "close_tab", "keys", "evaluate", "wait_selector", "wait_text"], { description: "Browser action." }),
 				url: Type.Optional(Type.String({ description: "URL for navigate." })),
 				index: Type.Optional(Type.Number({ description: "Interactive element index for click or input." })),
 				coordinateX: Type.Optional(Type.Number({ description: "Viewport X coordinate for click; use with coordinateY." })),
 				coordinateY: Type.Optional(Type.Number({ description: "Viewport Y coordinate for click; use with coordinateX." })),
 				text: Type.Optional(Type.String({ description: "Text for input, type, or wait_text." })),
-				direction: Type.Optional(StringEnum(["up", "down"], { description: "Scroll direction." })),
+				direction: Type.Optional(piboStringEnum(["up", "down"], { description: "Scroll direction." })),
 				amount: Type.Optional(Type.Number({ description: "Scroll amount in pixels." })),
 				tab: Type.Optional(Type.Number({ description: "Browser Use tab index for switch_tab or close_tab." })),
 				keys: Type.Optional(Type.String({ description: "Keys to send, such as Enter or Control+a." })),
@@ -369,13 +370,13 @@ export function createCodexBrowserToolDefinitions(
 				return toolResult(await controller.use(params as BrowserUseInput, signal));
 			},
 		})],
-		[NODE_REPL_JS_TOOL_NAME, defineTool({
+		[NODE_REPL_JS_TOOL_NAME, definePiboTool({
 			name: NODE_REPL_JS_TOOL_NAME,
-			label: "node_repl.js",
+			title: "node_repl.js",
 			description: "Execute JavaScript in a persistent, session-scoped Node REPL with top-level await. Top-level bindings persist. The sandbox omits require and process, and exposes browser.openTabs() plus browser.use(action, params) for the same Browser Use session.",
 			promptSnippet: "Use node_repl_js (node_repl.js) for persistent JavaScript state and browser-bound analysis. Top-level await and reusable top-level bindings are supported.",
 			executionMode: "sequential",
-			parameters: Type.Object({
+			inputSchema: Type.Object({
 				code: Type.String({ description: "JavaScript to execute. Top-level declarations persist across calls." }),
 				timeoutMs: Type.Optional(Type.Number({ description: "Execution timeout in milliseconds." })),
 			}),
@@ -383,13 +384,13 @@ export function createCodexBrowserToolDefinitions(
 				return nodeReplToolResult(await controller.js(params.code, params.timeoutMs));
 			},
 		})],
-		[NODE_REPL_JS_RESET_TOOL_NAME, defineTool({
+		[NODE_REPL_JS_RESET_TOOL_NAME, definePiboTool({
 			name: NODE_REPL_JS_RESET_TOOL_NAME,
-			label: "node_repl.js_reset",
+			title: "node_repl.js_reset",
 			description: "Reset the persistent node_repl.js namespace for the current Pibo session.",
 			promptSnippet: "Use node_repl_js_reset (node_repl.js_reset) only when persistent JavaScript state should be discarded.",
 			executionMode: "sequential",
-			parameters: Type.Object({}),
+			inputSchema: Type.Object({}),
 			async execute() {
 				return nodeReplToolResult(await controller.jsReset());
 			},

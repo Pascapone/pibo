@@ -800,6 +800,7 @@ test("session router keeps the persisted runtime instance when the profile defau
 							return new InitialSessionContextBuilder("mutable-profile")
 								.withAgentRuntime("changed-b")
 								.withBuiltinTools("disabled")
+								.withToolPackages({ goalControl: false })
 								.createSession();
 						},
 					});
@@ -848,6 +849,7 @@ test("session router persists live binding changes after a runtime turn settles"
 							return new InitialSessionContextBuilder("binding-sync-profile")
 								.withAgentRuntime("binding-sync")
 								.withBuiltinTools("disabled")
+								.withToolPackages({ goalControl: false })
 								.createSession();
 						},
 					});

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
 import type { PiboAssistantMessageEvent } from "../core/events.js";
 import type { SubagentProfile } from "../core/profiles.js";
 
@@ -37,9 +37,9 @@ export function createSubagentToolName(subagentName: string): string {
 export function createSubagentToolDefinitions(
 	subagents: readonly SubagentProfile[],
 	runner: PiboSubagentRunner,
-): ToolDefinition[] {
+): PiboToolDefinition[] {
 	const seen = new Set<string>();
-	const definitions: ToolDefinition[] = [];
+	const definitions: PiboToolDefinition[] = [];
 
 	for (const subagent of subagents) {
 		if (subagent.enabled === false) continue;
@@ -58,12 +58,12 @@ export function createSubagentToolDefinitions(
 function createSubagentToolDefinition(
 	subagent: SubagentProfile,
 	runner: PiboSubagentRunner,
-): ToolDefinition {
+): PiboToolDefinition {
 	const name = createSubagentToolName(subagent.name);
 
-	return defineTool({
+	return definePiboTool({
 		name,
-		label: `Pibo Subagent ${subagent.name}`,
+		title: `Pibo Subagent ${subagent.name}`,
 		description:
 			subagent.description ??
 			`Send a message to the ${subagent.name} subagent. Use threadKey to continue the same subagent session.`,
@@ -71,7 +71,7 @@ function createSubagentToolDefinition(
 			subagent.description ??
 			`Send a message to the ${subagent.name} subagent. Pass the same threadKey when you want to continue the same subagent session.`,
 		executionMode: "parallel",
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			message: Type.String({ description: "Message to send to the subagent" }),
 			threadKey: Type.Optional(
 				Type.String({

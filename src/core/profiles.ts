@@ -1,13 +1,14 @@
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { PiboJsonObject, PiboMessageEvent } from "./events.js";
+import type { PiboJsonObject } from "./events.js";
 import type { PiboThinkingLevel } from "./thinking.js";
+import {
+	normalizePiboToolDefinition,
+	type LegacyPiToolDefinitionLike,
+	type PiboToolDefinition,
+	type PiboToolDefinitionContext,
+} from "../tools/contract.js";
 
-export type ToolDefinitionContext = {
-	piboSessionId?: string;
-	piboRoomId?: string;
-	profileName?: string;
-	getActiveMessage?: () => Pick<PiboMessageEvent, "id" | "source" | "provenance"> | undefined;
-};
+/** @deprecated Use PiboToolDefinitionContext from tools/contract. */
+export type ToolDefinitionContext = PiboToolDefinitionContext;
 
 export type ToolProfile = {
 	name: string;
@@ -15,11 +16,32 @@ export type ToolProfile = {
 	enabled?: boolean;
 	yieldable?: boolean;
 	pluginId?: string;
-	definition?: ToolDefinition;
-	createDefinition?: (context: ToolDefinitionContext) => ToolDefinition;
+	definition?: PiboToolDefinition;
+	createDefinition?: (context: ToolDefinitionContext) => PiboToolDefinition;
 	providerTool?: ProviderToolProfile;
 	builtInPiboTool?: "runtime" | "codex_browser";
 };
+
+/** Compatibility input accepted from plugins that still register Pi-shaped definitions. */
+export type ToolProfileRegistration = Omit<ToolProfile, "definition" | "createDefinition"> & {
+	definition?: PiboToolDefinition | LegacyPiToolDefinitionLike;
+	createDefinition?: (
+		context: ToolDefinitionContext,
+	) => PiboToolDefinition | LegacyPiToolDefinitionLike;
+};
+
+export function normalizeToolProfile(tool: ToolProfileRegistration): ToolProfile {
+	const { definition, createDefinition, ...profile } = tool;
+	return {
+		...profile,
+		...(definition ? { definition: normalizePiboToolDefinition(definition) } : {}),
+		...(createDefinition
+			? {
+				createDefinition: (context: ToolDefinitionContext) => normalizePiboToolDefinition(createDefinition(context)),
+			}
+			: {}),
+	};
+}
 
 export type ProviderToolProfile = WebSearchProviderToolProfile;
 
@@ -115,7 +137,7 @@ export type InitialSessionContextOptions = {
 	mainFast?: boolean;
 	subagentFast?: boolean;
 	skills?: readonly SkillProfile[];
-	tools?: readonly ToolProfile[];
+	tools?: readonly ToolProfileRegistration[];
 	subagents?: readonly SubagentProfile[];
 	mcpServers?: readonly string[];
 	piPackages?: readonly PiPackageProfile[];
@@ -168,7 +190,7 @@ export class InitialSessionContext {
 		this.mainFast = options.mainFast;
 		this.subagentFast = options.subagentFast;
 		this.skills = [...(options.skills ?? [])];
-		this.tools = [...(options.tools ?? [])];
+		this.tools = (options.tools ?? []).map(normalizeToolProfile);
 		this.subagents = [...(options.subagents ?? [])];
 		this.mcpServers = [...(options.mcpServers ?? [])];
 		this.piPackages = [...(options.piPackages ?? [])];
@@ -301,13 +323,13 @@ export class InitialSessionContextBuilder {
 		return this;
 	}
 
-	addTool(tool: ToolProfile): this {
-		this.tools.push(tool);
+	addTool(tool: ToolProfileRegistration): this {
+		this.tools.push(normalizeToolProfile(tool));
 		return this;
 	}
 
-	addTools(tools: readonly ToolProfile[]): this {
-		this.tools.push(...tools);
+	addTools(tools: readonly ToolProfileRegistration[]): this {
+		this.tools.push(...tools.map(normalizeToolProfile));
 		return this;
 	}
 

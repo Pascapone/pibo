@@ -1,6 +1,7 @@
-import { StringEnum, Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { ToolDefinitionContext, ToolProfile } from "../core/profiles.js";
+import { Type } from "typebox";
+import { piboStringEnum } from "../tools/schema.js";
+import { definePiboTool, type PiboToolDefinition, type PiboToolDefinitionContext } from "../tools/contract.js";
+import type { ToolProfile } from "../core/profiles.js";
 import {
 	WEB_ANNOTATION_STATUSES,
 	type WebAnnotation,
@@ -71,7 +72,7 @@ function truncate(value: string | undefined, max = TEXT_LIMIT): string | undefin
 	return sanitizeWebAnnotationText(value, { max, field: "web annotation tool output" });
 }
 
-function requireContext(context: ToolDefinitionContext, params: ToolParams): RequiredToolContext {
+function requireContext(context: PiboToolDefinitionContext, params: ToolParams): RequiredToolContext {
 	const piboSessionId = params.piboSessionId?.trim() || context.piboSessionId?.trim();
 	if (!piboSessionId) throw new Error("Web Annotation tools require a Pibo Session ID from runtime context or piboSessionId input");
 	return {
@@ -208,15 +209,15 @@ function assertLifecycleTransition(annotation: WebAnnotation, action: "acknowled
 	assertWebAnnotationStatusTransition(annotation.status, nextStatus);
 }
 
-function createListTool(store: WebAnnotationStore, context: ToolDefinitionContext): ToolDefinition {
-	return defineTool({
+function createListTool(store: WebAnnotationStore, context: PiboToolDefinitionContext): PiboToolDefinition {
+	return definePiboTool({
 		name: "web_annotations_list",
-		label: "Web Annotations List",
+		title: "Web Annotations List",
 		description: "List bounded web annotations for the current Pibo session or an explicitly authorized session.",
 		promptSnippet: "List web annotations for this Pibo session. Use status and limit to keep output compact.",
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			piboSessionId: Type.Optional(Type.String({ description: "Optional Pibo Session ID; defaults to current runtime session." })),
-			status: Type.Optional(StringEnum([...WEB_ANNOTATION_STATUSES], { description: "Optional annotation status filter." })),
+			status: Type.Optional(piboStringEnum([...WEB_ANNOTATION_STATUSES], { description: "Optional annotation status filter." })),
 			limit: Type.Optional(Type.Number({ description: "Maximum annotations to return; capped." })),
 		}),
 		async execute(_toolCallId, params: ToolParams) {
@@ -235,13 +236,13 @@ function createListTool(store: WebAnnotationStore, context: ToolDefinitionContex
 	});
 }
 
-function createGetTool(store: WebAnnotationStore, context: ToolDefinitionContext): ToolDefinition {
-	return defineTool({
+function createGetTool(store: WebAnnotationStore, context: PiboToolDefinitionContext): PiboToolDefinition {
+	return definePiboTool({
 		name: "web_annotations_get",
-		label: "Web Annotations Get",
+		title: "Web Annotations Get",
 		description: "Get one authorized web annotation with bounded target metadata.",
 		promptSnippet: "Get one web annotation by id to inspect target metadata, source hints, note, status, and thread summary.",
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			annotationId: Type.String({ description: "Web annotation id." }),
 			piboSessionId: Type.Optional(Type.String({ description: "Optional Pibo Session ID; defaults to current runtime session." })),
 		}),
@@ -263,15 +264,15 @@ function createGetTool(store: WebAnnotationStore, context: ToolDefinitionContext
 function createLifecycleTool(
 	name: "web_annotations_acknowledge" | "web_annotations_resolve" | "web_annotations_dismiss",
 	store: WebAnnotationStore,
-	context: ToolDefinitionContext,
-): ToolDefinition {
+	context: PiboToolDefinitionContext,
+): PiboToolDefinition {
 	const action = name === "web_annotations_acknowledge" ? "acknowledge" : name === "web_annotations_resolve" ? "resolve" : "dismiss";
-	return defineTool({
+	return definePiboTool({
 		name,
-		label: name.replaceAll("_", " "),
+		title: name.replaceAll("_", " "),
 		description: `${action[0].toUpperCase()}${action.slice(1)} an authorized web annotation.`,
 		promptSnippet: `${action[0].toUpperCase()}${action.slice(1)} a web annotation after inspecting it and deciding the lifecycle update is appropriate.`,
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			annotationId: Type.String({ description: "Web annotation id." }),
 			piboSessionId: Type.Optional(Type.String({ description: "Optional Pibo Session ID; defaults to current runtime session." })),
 			summary: Type.Optional(Type.String({ description: "Optional work summary. Used by acknowledge/resolve." })),
@@ -300,15 +301,15 @@ function createLifecycleTool(
 	});
 }
 
-function createWatchTool(store: WebAnnotationStore, context: ToolDefinitionContext): ToolDefinition {
-	return defineTool({
+function createWatchTool(store: WebAnnotationStore, context: PiboToolDefinitionContext): PiboToolDefinition {
+	return definePiboTool({
 		name: "web_annotations_watch",
-		label: "Web Annotations Watch",
+		title: "Web Annotations Watch",
 		description: "Wait briefly for new web annotations in the current or authorized Pibo session.",
 		promptSnippet: "Wait briefly for new web annotations. Keep timeout bounded; use run-control if a longer background wait is needed.",
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			piboSessionId: Type.Optional(Type.String({ description: "Optional Pibo Session ID; defaults to current runtime session." })),
-			status: Type.Optional(StringEnum([...WEB_ANNOTATION_STATUSES], { description: "Optional annotation status filter." })),
+			status: Type.Optional(piboStringEnum([...WEB_ANNOTATION_STATUSES], { description: "Optional annotation status filter." })),
 			afterCreatedAt: Type.Optional(Type.String({ description: "Only return annotations created after this ISO timestamp." })),
 			limit: Type.Optional(Type.Number({ description: "Maximum annotations to return; capped." })),
 			timeoutMs: Type.Optional(Type.Number({ description: "Bounded wait timeout in milliseconds; capped." })),

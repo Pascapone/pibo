@@ -1,5 +1,6 @@
-import { StringEnum, Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { piboStringEnum } from "../schema.js";
+import { definePiboTool, type PiboToolDefinition } from "../contract.js";
 import type { ToolProfile } from "../../core/profiles.js";
 import type {
 	RuntimeCloseInput,
@@ -119,25 +120,25 @@ function formatRuntimeResult(result: unknown): string {
 	return lines.join("\n");
 }
 
-export function createRuntimeToolDefinition(controller: PiboRuntimeToolController): ToolDefinition {
-	return defineTool({
+export function createRuntimeToolDefinition(controller: PiboRuntimeToolController): PiboToolDefinition {
+	return definePiboTool({
 		name: "runtime",
-		label: "Runtime",
+		title: "Runtime",
 		description: "Run Python/Node code in persistent sessions. Use this instead of bash for Python/Node execution except trivial one-line shell checks.",
 		promptSnippet: "Use runtime for Python/Node execution, especially longer snippets (~20+ lines), uncertain code, or objects/state to inspect. Prefer runtime over bash for Python/Node except trivial one-line shell checks. Auto-starts on exec; print values you need. Runtime keeps variables and processes alive between calls; reuse sessionId to inspect or continue from that state after partial failures. This saves output tokens and keeps your mental model tied to live state. Use read for file contents; use bash for shell commands and package installs.",
 		executionMode: "parallel",
-		parameters: Type.Object({
-			action: StringEnum(["exec", "inspect", "vars", "interrupt", "list"], { description: "Runtime action to perform." }),
-			runtime: Type.Optional(StringEnum(["python", "node"], { description: "Runtime kind; default python." })),
+		inputSchema: Type.Object({
+			action: piboStringEnum(["exec", "inspect", "vars", "interrupt", "list"], { description: "Runtime action to perform." }),
+			runtime: Type.Optional(piboStringEnum(["python", "node"], { description: "Runtime kind; default python." })),
 			name: Type.Optional(Type.String({ description: "Optional human-readable runtime name." })),
 			target: Type.Optional(Type.Any({ description: "Auto-start target options such as { type: 'local', cwd, executable, args, env }." })),
 			sessionId: Type.Optional(Type.String({ description: "Existing runtime session id; omit to use auto runtime." })),
 			code: Type.Optional(Type.String({ description: "Code to execute for exec." })),
 			timeoutMs: Type.Optional(Type.Number({ description: "Action timeout in milliseconds." })),
-			mode: Type.Optional(StringEnum(["exec", "eval", "auto"], { description: "For exec: execution mode. Use eval when you need an expression result." })),
+			mode: Type.Optional(piboStringEnum(["exec", "eval", "auto"], { description: "For exec: execution mode. Use eval when you need an expression result." })),
 			closeOnSuccess: Type.Optional(Type.Boolean({ description: "For exec: close the runtime only if execution succeeds." })),
 			expression: Type.Optional(Type.String({ description: "Expression to inspect." })),
-			what: Type.Optional(StringEnum(["summary", "signature", "members", "source", "doc", "all"], { description: "Inspection detail to return." })),
+			what: Type.Optional(piboStringEnum(["summary", "signature", "members", "source", "doc", "all"], { description: "Inspection detail to return." })),
 			maxBytes: Type.Optional(Type.Number({ description: "Maximum bytes for summaries or inspect fields." })),
 			includePrivate: Type.Optional(Type.Boolean({ description: "For vars: include private names." })),
 			maxItems: Type.Optional(Type.Number({ description: "For vars: maximum variables to return." })),

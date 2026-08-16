@@ -1,5 +1,5 @@
-import { Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
 import type { ToolProfile } from "../core/profiles.js";
 import type { GatewayResponseFrame } from "./protocol.js";
 import { sendGatewayMessageAndWaitForReply, type GatewayReplyResult } from "./request.js";
@@ -16,15 +16,15 @@ type SendGatewayMessage = typeof sendGatewayMessageAndWaitForReply;
 
 export function createPiboGatewaySendTool(
 	sendGatewayMessage: SendGatewayMessage = sendGatewayMessageAndWaitForReply,
-): ToolDefinition {
-	return defineTool({
+): PiboToolDefinition {
+	return definePiboTool({
 		name: "pibo_gateway_send",
-		label: "Pibo Gateway Send",
+		title: "Pibo Gateway Send",
 		description:
 			"Send a message through the local pibo gateway to a target session and return the target assistant reply.",
 		promptSnippet:
 			"Send a message through the local pibo gateway to a target session and return the final assistant reply from that session.",
-		parameters: Type.Object({
+		inputSchema: Type.Object({
 			piboSessionId: Type.String({ description: "Target Pibo gateway session id" }),
 			message: Type.String({ description: "Message to enqueue for the target session" }),
 		}),
@@ -86,7 +86,7 @@ export function createPiboGatewayToolProfiles(): ToolProfile[] {
 	return [createToolProfile(piboGatewaySendTool)];
 }
 
-function createToolProfile(definition: ToolDefinition): ToolProfile {
+function createToolProfile(definition: PiboToolDefinition): ToolProfile {
 	return {
 		name: definition.name,
 		description: definition.description,

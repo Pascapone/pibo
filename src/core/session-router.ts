@@ -46,6 +46,7 @@ import {
 	type RuntimeSessionBindingUpdateOptions,
 } from "../sessions/runtime-binding.js";
 import { AgentRuntimeBindingMissingError, AgentRuntimeUnavailableError } from "../agent-runtime/errors.js";
+import type { AgentRuntimeSession } from "../agent-runtime/types.js";
 import { validateAgentRuntimeProfileCapabilities } from "../agent-runtime/profile-validation.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
@@ -59,6 +60,12 @@ import { PiboRuntimeTelemetryRecorder, type ProviderEventTelemetryMode } from ".
 import { createPiboProviderTelemetryExtension } from "./provider-telemetry.js";
 import type { TelemetryStore } from "../data/telemetry.js";
 import { AsyncTelemetryWriter } from "../data/telemetry-writer.js";
+import type { PayloadStore } from "../data/payload-store.js";
+import { createPiboToolPayloadWriter } from "../tools/payload-writer.js";
+import {
+	PiboPortableToolService,
+	type PiboPortableToolSession,
+} from "../tools/session-service.js";
 
 export type {
 	PiboEventListener,
@@ -255,6 +262,7 @@ function runtimeBindingsEqual(left: RuntimeSessionBinding, right: RuntimeSession
 }
 
 type TelemetrySessionStore = PiboSessionStore & { getTelemetryStore?: () => TelemetryStore | undefined };
+type PayloadSessionStore = PiboSessionStore & { getPayloadStore?: () => PayloadStore | undefined };
 
 type RuntimeRecoverySessionStore = PiboSessionStore & {
 	recoverInterruptedRuntimeState?: (input: {
@@ -278,6 +286,10 @@ function telemetryStoreFromSessionStore(store: PiboSessionStore): TelemetryStore
 	return (store as TelemetrySessionStore).getTelemetryStore?.();
 }
 
+function payloadStoreFromSessionStore(store: PiboSessionStore): PayloadStore | undefined {
+	return (store as PayloadSessionStore).getPayloadStore?.();
+}
+
 function providerEventTelemetryModeFromEnv(env: NodeJS.ProcessEnv = process.env): ProviderEventTelemetryMode {
 	const value = env.PIBO_TELEMETRY_PROVIDER_EVENTS?.trim().toLowerCase();
 	return value === "1" || value === "true" || value === "detailed" ? "detailed" : "aggregate";
@@ -291,6 +303,8 @@ export class PiboSessionRouter {
 	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
 	private readonly runtimeRegistry: RuntimeSessionRegistry;
+	private readonly portableToolService: PiboPortableToolService;
+	private readonly portableToolSessions = new Map<string, PiboPortableToolSession>();
 	private readonly scheduledRunReminders = new Map<string, ScheduledRunReminder>();
 	private readonly runReminderGenerations = new Map<string, number>();
 	private readonly quiescingSessions = new Set<string>();
@@ -338,6 +352,10 @@ export class PiboSessionRouter {
 		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore());
 		this.signalRegistry = options.signalRegistry ?? createPiboSignalRegistry();
 		this.runtimeRegistry = new RuntimeSessionRegistry({ cwd: options.cwd ?? getDefaultPiboWorkspace() });
+		const payloadStore = payloadStoreFromSessionStore(this.sessionStore);
+		this.portableToolService = new PiboPortableToolService({
+			...(payloadStore ? { payloadWriter: createPiboToolPayloadWriter(payloadStore) } : {}),
+		});
 		this.runRegistry = new PiboRunRegistry({ store: this.reliabilityStore });
 		this.runRegistry.subscribe((event) => this.projectRunRegistryEvent(event));
 		const recoveredRuntimeState = options.recoverInterruptedRuntimeState
@@ -509,6 +527,9 @@ export class PiboSessionRouter {
 			throw error;
 		} finally {
 			if (timeout) clearTimeout(timeout);
+			const portableTools = this.portableToolSessions.get(piboSessionId);
+			portableTools?.dispose();
+			if (this.portableToolSessions.get(piboSessionId) === portableTools) this.portableToolSessions.delete(piboSessionId);
 		}
 	}
 
@@ -813,6 +834,7 @@ export class PiboSessionRouter {
 			];
 			if (failures.length > 0) throw new AggregateError(failures, "Failed to dispose all Pibo sessions");
 		} finally {
+			await this.portableToolService.dispose();
 			await this.telemetryWriter?.dispose();
 		}
 	}
@@ -943,35 +965,60 @@ export class PiboSessionRouter {
 			throw new Error(`Runtime profile validation failed: ${invalidProfile.message}`);
 		}
 		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
-		const runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
-			piboSession: { ...piboSession, runtimeBinding: binding },
+		const subagentRunner = this.createSubagentRunner(piboSession.id);
+		const runToolController = this.createRunToolController(piboSession.id);
+		const codeRuntimeToolController = this.runtimeRegistry.createController(piboSession.id);
+		this.portableToolSessions.get(piboSession.id)?.dispose();
+		const portableTools = this.portableToolService.createSession({
+			piboSessionId: piboSession.id,
+			piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
+			runtimeInstanceId: binding.runtimeInstanceId,
+			adapterId: binding.adapterId,
 			profile: sessionProfile,
-			binding,
-			workspace,
-			activeModel,
-			productContext: {
-				piboSessionId: piboSession.id,
-				piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
-				timezone: userSettings.timezone,
-				getActiveMessage: () => session?.getActiveMessage(),
-			},
-			services: {
-				subagentRunner: this.createSubagentRunner(piboSession.id),
-				runToolController: this.createRunToolController(piboSession.id),
-				codeRuntimeToolController: this.runtimeRegistry.createController(piboSession.id),
-				compatibility: {
-					persistSession: this.options.persistSession,
-					thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
-					retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
-					extensionFactories: [
-						...(telemetryExtension ? [telemetryExtension] : []),
-						...(this.options.extensionFactories ?? []),
-					],
-					modelDefaults,
-					initialFastMode,
-				},
-			},
+			cwd: workspace,
+			getActiveMessage: () => session?.getActiveMessage(),
+			subagentRunner,
+			runToolController,
+			runtimeToolController: codeRuntimeToolController,
 		});
+		this.portableToolSessions.set(piboSession.id, portableTools);
+		let runtimeSession: AgentRuntimeSession;
+		try {
+			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
+				piboSession: { ...piboSession, runtimeBinding: binding },
+				profile: sessionProfile,
+				binding,
+				workspace,
+				activeModel,
+				productContext: {
+					piboSessionId: piboSession.id,
+					piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
+					timezone: userSettings.timezone,
+					getActiveMessage: () => session?.getActiveMessage(),
+				},
+				services: {
+					subagentRunner,
+					runToolController,
+					codeRuntimeToolController,
+					portableTools,
+					compatibility: {
+						persistSession: this.options.persistSession,
+						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
+						retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
+						extensionFactories: [
+							...(telemetryExtension ? [telemetryExtension] : []),
+							...(this.options.extensionFactories ?? []),
+						],
+						modelDefaults,
+						initialFastMode,
+					},
+				},
+			});
+		} catch (error) {
+			portableTools.dispose();
+			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
+			throw error;
+		}
 		try {
 			const openedBinding = runtimeSession.getBinding();
 			if (openedBinding.runtimeInstanceId !== binding.runtimeInstanceId || openedBinding.adapterId !== binding.adapterId) {
@@ -987,6 +1034,8 @@ export class PiboSessionRouter {
 			}
 		} catch (error) {
 			await runtimeSession.dispose().catch(() => {});
+			portableTools.dispose();
+			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			throw error;
 		}
 		session = new RoutedSession(

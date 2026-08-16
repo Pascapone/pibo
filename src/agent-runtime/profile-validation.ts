@@ -14,7 +14,7 @@ export function validateAgentRuntimeProfileCapabilities(
 	const usesPiboManagedTools = enabledTools.length > 0
 		|| enabledSubagents.length > 0
 		|| profile.toolPackages.runControl === true
-		|| profile.toolPackages.goalControl === true;
+		|| profile.toolPackages.goalControl !== false;
 
 	if (usesPiboManagedTools) {
 		pushUnsupportedDeliveryDiagnostic(
@@ -24,6 +24,42 @@ export function validateAgentRuntimeProfileCapabilities(
 			"tools",
 			`Profile "${profile.profileName}" selects Pibo-managed tools or subagents`,
 		);
+		if (capabilities.tools.piboManaged.support === "mcp") {
+			if (!capabilities.tools.piboManaged.transports.includes("streamable-http")) {
+				diagnostics.push({
+					severity: "error",
+					code: "runtime_pibo_tools_streamable_http_required",
+					message: `Profile "${profile.profileName}" requires Pibo-managed tools, but this runtime does not accept the session-scoped Streamable HTTP MCP bridge.`,
+					path: "tools",
+				});
+			}
+			for (const tool of enabledTools) {
+				let portable = tool.definition?.portable !== false;
+				if (!tool.definition && tool.createDefinition) {
+					try {
+						portable = tool.createDefinition({ profileName: profile.profileName }).portable !== false;
+					} catch {
+						portable = false;
+					}
+				}
+				if (portable) continue;
+				diagnostics.push({
+					severity: "error",
+					code: "runtime_pibo_tool_not_portable",
+					message: `Tool "${tool.name}" uses an adapter-private compatibility definition and cannot be delivered through session-scoped MCP.`,
+					path: "tools",
+					details: { toolName: tool.name },
+				});
+			}
+		}
+	}
+	if (profile.toolPackages.runControl === true && capabilities.tools.nativeToolYielding.support === "unsupported") {
+		diagnostics.push({
+			severity: "warning",
+			code: "runtime_native_tool_yielding_unsupported",
+			message: `Runtime "${profile.runtimeInstanceId}" can yield Pibo-managed tools through pibo_run_start, but cannot wrap private harness-native tools: ${capabilities.tools.nativeToolYielding.reason}`,
+			path: "toolPackages.runControl",
+		});
 	}
 	if (profile.mcpServers.length > 0) {
 		pushUnsupportedDeliveryDiagnostic(

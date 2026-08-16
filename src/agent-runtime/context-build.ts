@@ -78,9 +78,12 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	addRuntimeContributionGroup(nodes, "tools", "Pibo Tools and Subagents", [
 		...profile.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.name),
 		...profile.subagents.filter((subagent) => subagent.enabled !== false).map((subagent) => `subagent:${subagent.name} -> ${subagent.targetProfile}`),
-		...(profile.toolPackages.goalControl === true ? ["package:pibo-goal-control"] : []),
+		...(profile.toolPackages.goalControl !== false ? ["package:pibo-goal-control"] : []),
 		...(profile.toolPackages.runControl === true ? ["package:pibo-run-control"] : []),
 	], input.runtime.capabilities.tools.piboManaged);
+	if (profile.toolPackages.runControl === true) {
+		addNativeToolYieldingNode(nodes, input.runtime.capabilities.tools.nativeToolYielding);
+	}
 	addRuntimeContributionGroup(nodes, "skills", "Skills", profile.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name), input.runtime.capabilities.skills);
 	addRuntimeContributionGroup(nodes, "context", "Context", [
 		...(profile.autoContextFiles ? ["automatic:AGENTS.md/CLAUDE.md"] : []),
@@ -150,6 +153,29 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		nodes,
 		diagnostics: input.runtime.diagnostics.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
 	};
+}
+
+function addNativeToolYieldingNode(
+	nodes: PiboContextBuildNode[],
+	delivery: AgentRuntimeCapabilityDelivery,
+): void {
+	const supported = delivery.support !== "unsupported";
+	const mode = runtimeDeliveryMode(delivery);
+	const reason = delivery.support === "unsupported" || delivery.support === "degraded" ? delivery.reason : undefined;
+	nodes.push({
+		id: "tools/native-yielding",
+		order: nodes.length,
+		kind: "runtime_extension",
+		title: "Private Harness-Native Tool Yielding",
+		source: "runtime",
+		state: supported ? delivery.support === "degraded" ? "warning" : "active" : "warning",
+		badges: [mode.toUpperCase()],
+		metadata: { deliveryMode: mode, piboManagedToolYieldingUnaffected: true },
+		notes: [
+			"pibo_run_start can always wrap selected Pibo-managed tools when Pibo tool delivery is supported.",
+			...(reason ? [reason] : []),
+		],
+	});
 }
 
 function addRuntimeContributionGroup(

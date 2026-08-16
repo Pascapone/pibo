@@ -10,7 +10,22 @@ const GENERIC_RUNTIME_FILES = [
 	"src/agent-runtime/registry.ts",
 	"src/agent-runtime/routed-session.ts",
 	"src/agent-runtime/types.ts",
+	"src/core/profiles.ts",
 	"src/core/session-router.ts",
+	"src/tools/contract.ts",
+	"src/tools/credential-registry.ts",
+	"src/tools/mcp-bridge.ts",
+	"src/tools/session-service.ts",
+	"src/tools/session-tool-set.ts",
+	"src/tools/schema.ts",
+	"src/gateway/tool.ts",
+	"src/loops/tools.ts",
+	"src/runs/tools.ts",
+	"src/subagents/tool.ts",
+	"src/tools/codex-browser.ts",
+	"src/tools/codex-compat.ts",
+	"src/tools/runtime/tool.ts",
+	"src/web-annotations/tools.ts",
 ];
 
 const FORBIDDEN_IMPORTS = [

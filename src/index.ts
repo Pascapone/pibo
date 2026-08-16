@@ -21,6 +21,7 @@ export {
 	DEFAULT_AGENT_RUNTIME_INSTANCE_ID,
 	InitialSessionContext,
 	InitialSessionContextBuilder,
+	normalizeToolProfile,
 } from "./core/profiles.js";
 export type {
 	BuiltinToolsMode,
@@ -29,6 +30,7 @@ export type {
 	SkillProfile,
 	SubagentProfile,
 	ToolProfile,
+	ToolProfileRegistration,
 	ToolPackageProfile,
 } from "./core/profiles.js";
 export { AgentRuntimeAdapterRegistry } from "./agent-runtime/registry.js";
@@ -101,6 +103,71 @@ export type {
 	RuntimeSessionBinding,
 } from "./agent-runtime/types.js";
 export { PI_AGENT_RUNTIME_DRIVER, PI_AGENT_RUNTIME_CAPABILITIES, getPiAgentRuntimeCompatibilityHandle } from "./agent-runtimes/pi/adapter.js";
+export { compilePiboToolForPi, piboToolResultToPi } from "./agent-runtimes/pi/tool-compiler.js";
+export type { CompilePiboToolForPiOptions } from "./agent-runtimes/pi/tool-compiler.js";
+export {
+	definePiboTool,
+	isPiboToolDefinition,
+	normalizePiboToolDefinition,
+	normalizePiboToolResult,
+} from "./tools/contract.js";
+export type {
+	LegacyPiToolDefinitionLike,
+	LegacyPiToolResultLike,
+	PiboToolAnnotations,
+	PiboToolContent,
+	PiboToolDefinition,
+	PiboToolDefinitionContext,
+	PiboToolExecutionContext,
+	PiboToolImageContent,
+	PiboToolInputSchema,
+	PiboToolProgress,
+	PiboToolResult,
+	PiboToolTextContent,
+	PiboToolUpdateCallback,
+} from "./tools/contract.js";
+export {
+	PiboToolCredentialError,
+	PiboToolCredentialRegistry,
+} from "./tools/credential-registry.js";
+export type {
+	IssuedPiboToolCredential,
+	PiboToolCredentialErrorCode,
+	PiboToolCredentialInfo,
+	PiboToolCredentialRegistryOptions,
+	PiboToolCredentialScope,
+} from "./tools/credential-registry.js";
+export {
+	PiboToolMcpBridge,
+	PiboToolMcpBridgeAuthorizationError,
+} from "./tools/mcp-bridge.js";
+export type {
+	PiboToolMcpBridgeAddress,
+	PiboToolMcpBridgeOptions,
+	PiboToolPayloadWriteInput,
+	PiboToolPayloadWriteResult,
+	PiboToolPayloadWriter,
+} from "./tools/mcp-bridge.js";
+export { createPiboToolPayloadWriter } from "./tools/payload-writer.js";
+export {
+	createPiboSessionToolDefinitions,
+	isCodexBrowserToolProfile,
+	isEnabledCodexBrowserToolProfile,
+	isEnabledRuntimeToolProfile,
+	isGeneratedPiboTool,
+	isRuntimeToolProfile,
+} from "./tools/session-tool-set.js";
+export type { CreatePiboSessionToolDefinitionsOptions } from "./tools/session-tool-set.js";
+export { piboStringEnum } from "./tools/schema.js";
+export { PiboPortableToolService } from "./tools/session-service.js";
+export type {
+	CreatePiboPortableToolSessionInput,
+	PiboPortableToolDefinitionOptions,
+	PiboPortableToolServiceOptions,
+	PiboPortableToolSession,
+	PiboPortableToolSessionControllers,
+	PiboToolMcpAccess,
+} from "./tools/session-service.js";
 export { definePiboPlugin, PiboPluginRegistry } from "./plugins/registry.js";
 export type { PiboPluginRegistryOptions } from "./plugins/registry.js";
 export type {

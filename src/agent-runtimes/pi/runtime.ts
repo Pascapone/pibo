@@ -16,7 +16,6 @@ import {
 	type ExtensionFactory,
 	type ResourceDiagnostic,
 	type RetrySettings,
-	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { PiboJsonObject } from "../../core/events.js";
 import {
@@ -25,19 +24,16 @@ import {
 	type ContextFileProfile,
 	type ModelProfile,
 	type ToolDefinitionContext,
-	type ToolProfile,
 } from "../../core/profiles.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "../../core/model-defaults.js";
 import { createDefaultPiboProfile } from "../../core/default-profile.js";
 import {
-	createSubagentToolDefinitions,
 	createSubagentToolName,
 	type PiboSubagentRunner,
 } from "../../subagents/tool.js";
-import { createRunToolDefinitions, type PiboRunToolController } from "../../runs/tools.js";
+import type { PiboRunToolController } from "../../runs/tools.js";
 import type { PiboThinkingLevel } from "../../core/thinking.js";
 import { getInstalledCliToolContextFile } from "../../tools/registry.js";
-import { createCodexCompatToolDefinitions } from "../../tools/codex-compat.js";
 import { createCodexCompatExtension } from "../../core/codex-compat.js";
 import { createWebSearchProviderExtension, isWebSearchProviderTool } from "../../tools/web-search.js";
 import { getMcpAgentContextFile } from "../../mcp/agent-context.js";
@@ -54,24 +50,32 @@ import {
 } from "../../core/context-guard.js";
 import { getPiPackageRuntimeOptions } from "../../pi-packages/runtime.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
-import { createPiboGoalToolDefinitions, PIBO_GOAL_TOOL_NAMES } from "../../loops/tools.js";
 import { DEFAULT_USER_TIMEZONE } from "../../core/user-settings.js";
 import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../../providers/minimax.js";
 import { registerGlmProvider, type GlmModelRegistryLike } from "../../providers/glm.js";
 import { registerQwenTokenPlanProvider, type QwenTokenPlanModelRegistryLike } from "../../providers/qwen-token-plan.js";
 import { registerOpenAiGpt56Models, type OpenAiGpt56ModelRegistryLike } from "../../providers/openai-gpt56.js";
 import { PIBO_APP_CONTEXT } from "../../app-context.js";
-import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "../../tools/runtime/tool.js";
+import type { PiboRuntimeToolController } from "../../tools/runtime/tool.js";
 import { RuntimeSessionRegistry } from "../../tools/runtime/registry.js";
-import {
-	CODEX_BROWSER_TOOL_NAMES,
-	CodexBrowserSessionController,
-	createCodexBrowserToolDefinitions,
-	type CodexBrowserToolController,
-	type CodexBrowserToolName,
-} from "../../tools/codex-browser.js";
+import { CodexBrowserSessionController } from "../../tools/codex-browser.js";
 import { compactValidationToolResultForContext } from "../../core/test-output-compaction.js";
 import { installPiboTranscriptIntegrity } from "../../core/transcript-integrity.js";
+import {
+	normalizePiboToolDefinition,
+	type LegacyPiToolDefinitionLike,
+	type PiboToolDefinition,
+} from "../../tools/contract.js";
+import { compilePiboToolForPi } from "./tool-compiler.js";
+import type { PiboPortableToolSession } from "../../tools/session-service.js";
+import {
+	createPiboSessionToolDefinitions,
+	isCodexBrowserToolProfile as isCodexBrowserTool,
+	isEnabledCodexBrowserToolProfile as isEnabledCodexBrowserTool,
+	isEnabledRuntimeToolProfile as isEnabledRuntimeTool,
+	isGeneratedPiboTool,
+	isRuntimeToolProfile as isRuntimeTool,
+} from "../../tools/session-tool-set.js";
 
 export type PiboRuntimeRetryDefaults = Readonly<Pick<RetrySettings, "enabled" | "maxRetries" | "baseDelayMs">>;
 
@@ -111,6 +115,8 @@ export type PiboRuntimeOptions = {
 	subagentRunner?: PiboSubagentRunner;
 	runToolController?: PiboRunToolController;
 	runtimeToolController?: PiboRuntimeToolController;
+	/** Router-owned portable tool scope shared with external-harness MCP delivery. */
+	portableTools?: PiboPortableToolSession;
 	/** Product-level model defaults selected outside the workspace, e.g. Chat Web settings. */
 	modelDefaults?: PiboModelDefaults;
 	/** SessionStore-persisted model. Routed sessions must prefer this over current defaults. */
@@ -223,104 +229,7 @@ function getEnabledSkillPaths(cwd: string, profile: InitialSessionContext): stri
 		.map((skill) => resolveProfilePath(cwd, skill.path));
 }
 
-function getEnabledToolDefinitions(
-	profile: InitialSessionContext,
-	options: {
-		runtimeCwd: string;
-		shellCommandPrefix?: string;
-		shellPath?: string;
-		toolContext?: ToolDefinitionContext;
-	},
-	subagentRunner?: PiboSubagentRunner,
-	runToolController?: PiboRunToolController,
-	runtimeToolController?: PiboRuntimeToolController,
-	codexBrowserController?: CodexBrowserToolController,
-): ToolDefinition[] {
-	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeTool);
-	const runtimeTool = runtimeProfileTool && runtimeToolController
-		? createRuntimeToolDefinition(runtimeToolController)
-		: undefined;
-	const selectedCodexBrowserToolNames = profile.tools
-		.filter(isEnabledCodexBrowserTool)
-		.map((tool) => tool.name as CodexBrowserToolName);
-	const codexBrowserTools = codexBrowserController
-		? createCodexBrowserToolDefinitions(codexBrowserController, selectedCodexBrowserToolNames)
-		: [];
-	const profileTools = profile.tools.filter((tool) => !isRuntimeTool(tool) && !isCodexBrowserTool(tool)).filter(hasEnabledToolDefinition);
-	const profileToolDefinitions = profileTools.map((tool) => getToolDefinition(tool, options.toolContext));
-	const codexCompatEnabled = profile.toolPackages.codexCompat === true;
-	const runControlEnabled = profile.toolPackages.runControl === true;
-	const goalControlEnabled = profile.toolPackages.goalControl !== false;
-	const goalTools = goalControlEnabled ? createPiboGoalToolDefinitions(options.toolContext ?? {}) : [];
-	const runControlBashTool: ToolDefinition | undefined = runControlEnabled && runToolController
-		? createBashToolDefinition(options.runtimeCwd, {
-				commandPrefix: options.shellCommandPrefix,
-				shellPath: options.shellPath,
-			}) as unknown as ToolDefinition
-		: undefined;
-	const subagentTools = subagentRunner
-		? createSubagentToolDefinitions(profile.subagents, subagentRunner)
-		: [];
-	const codexCompatTools = codexCompatEnabled
-		? createCodexCompatToolDefinitions()
-		: [];
-	const yieldableTools = [
-		...(runControlBashTool ? [runControlBashTool] : []),
-		...profileTools.filter((tool) => tool.yieldable !== false).map((tool) => getToolDefinition(tool, options.toolContext)),
-		...(runtimeTool && runtimeProfileTool?.yieldable !== false ? [runtimeTool] : []),
-		...codexBrowserTools.filter((definition) => profile.tools.find((tool) => tool.name === definition.name)?.yieldable !== false),
-		...subagentTools,
-		...codexCompatTools,
-	];
-	const runTools = runControlEnabled && runToolController && yieldableTools.length > 0
-		? createRunToolDefinitions(yieldableTools, runToolController)
-		: [];
-
-	return [
-		...(runControlBashTool ? [runControlBashTool] : []),
-		...profileToolDefinitions,
-		...(runtimeTool ? [runtimeTool] : []),
-		...codexBrowserTools,
-		...subagentTools,
-		...codexCompatTools,
-		...goalTools,
-		...runTools,
-	];
-}
-
-function hasEnabledToolDefinition(tool: ToolProfile): tool is ToolProfile & ({ definition: ToolDefinition } | { createDefinition: (context: ToolDefinitionContext) => ToolDefinition }) {
-	return tool.enabled !== false && (tool.definition !== undefined || tool.createDefinition !== undefined);
-}
-
-function getToolDefinition(
-	tool: ToolProfile & ({ definition: ToolDefinition } | { createDefinition: (context: ToolDefinitionContext) => ToolDefinition }),
-	context: ToolDefinitionContext = {},
-): ToolDefinition {
-	if (tool.definition) return tool.definition;
-	return tool.createDefinition!(context);
-}
-
-function isRuntimeTool(tool: ToolProfile): boolean {
-	return tool.builtInPiboTool === "runtime" || tool.name === "runtime";
-}
-
-function isEnabledRuntimeTool(tool: ToolProfile): boolean {
-	return tool.enabled !== false && isRuntimeTool(tool);
-}
-
-function isCodexBrowserTool(tool: ToolProfile): boolean {
-	return tool.builtInPiboTool === "codex_browser" || CODEX_BROWSER_TOOL_NAMES.includes(tool.name as CodexBrowserToolName);
-}
-
-function isEnabledCodexBrowserTool(tool: ToolProfile): boolean {
-	return tool.enabled !== false && isCodexBrowserTool(tool);
-}
-
-function isGeneratedPiboTool(name: string): boolean {
-	return name === "runtime" || name.startsWith("pibo_subagent_") || name.startsWith("pibo_run_") || PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number]);
-}
-
-function getBuiltinToolAllowlist(profile: InitialSessionContext, customTools: readonly ToolDefinition[]): string[] | undefined {
+function getBuiltinToolAllowlist(profile: InitialSessionContext, customTools: readonly PiboToolDefinition[]): string[] | undefined {
 	if (profile.builtinTools === "disabled") return undefined;
 	const defaultBuiltinTools = new Set<string>(DEFAULT_BUILTIN_TOOL_NAMES);
 	const selectedBuiltinTools = profile.builtinToolNames.filter((name) => defaultBuiltinTools.has(name));
@@ -473,24 +382,37 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				piboSessionId: options.sessionContext?.piboSessionId ?? profile.sessionId ?? runtimeSessionManager.getSessionId(),
 			})
 			: undefined;
-		const customTools = getEnabledToolDefinitions(
-			profile,
-			{
-				runtimeCwd,
-				shellCommandPrefix: services.settingsManager.getShellCommandPrefix(),
+		const toolContext: ToolDefinitionContext = {
+			piboSessionId: options.sessionContext?.piboSessionId ?? profile.sessionId,
+			piboRoomId: options.sessionContext?.piboRoomId,
+			profileName: profile.profileName,
+			cwd: runtimeCwd,
+			getActiveMessage: options.sessionContext?.getActiveMessage,
+			getConversationEntries: () => runtimeSessionManager.getBranch(),
+		};
+		const piNativeYieldableTools = profile.toolPackages.runControl === true && options.runToolController
+			? [normalizePiboToolDefinition(createBashToolDefinition(runtimeCwd, {
+				commandPrefix: services.settingsManager.getShellCommandPrefix(),
 				shellPath: services.settingsManager.getShellPath(),
-				toolContext: {
-					piboSessionId: options.sessionContext?.piboSessionId ?? profile.sessionId,
-					piboRoomId: options.sessionContext?.piboRoomId,
-					profileName: profile.profileName,
-					getActiveMessage: options.sessionContext?.getActiveMessage,
-				},
-			},
-			options.subagentRunner,
-			options.runToolController,
-			runtimeToolController,
-			codexBrowserController,
-		);
+			}) as unknown as LegacyPiToolDefinitionLike)]
+			: [];
+		options.portableTools?.configureControllers({ codexBrowserController });
+		options.portableTools?.setConversationEntriesProvider(() => runtimeSessionManager.getBranch());
+		const piboToolDefinitions = options.portableTools
+			? options.portableTools.createDefinitions({ nativeYieldableTools: piNativeYieldableTools })
+			: createPiboSessionToolDefinitions({
+				profile,
+				toolContext,
+				subagentRunner: options.subagentRunner,
+				runToolController: options.runToolController,
+				runtimeToolController,
+				codexBrowserController,
+				nativeYieldableTools: piNativeYieldableTools,
+			});
+		const customTools = piboToolDefinitions.map((definition) => compilePiboToolForPi(definition, {
+			...toolContext,
+			runtimeInstanceId: profile.runtimeInstanceId,
+		}));
 		const modelDefaults = options.modelDefaults ?? loadPiboModelDefaults(runtimeCwd);
 
 		const created = await createAgentSessionFromServices({
@@ -501,7 +423,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			thinkingLevel: options.thinkingLevel ?? selectRequestedThinkingLevel(profile, modelDefaults),
 			customTools,
 			noTools: profile.builtinTools === "disabled" ? "builtin" : undefined,
-			tools: getBuiltinToolAllowlist(profile, customTools),
+			tools: getBuiltinToolAllowlist(profile, piboToolDefinitions),
 		});
 
 		installPiboTranscriptIntegrity(created.session);

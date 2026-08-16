@@ -448,6 +448,10 @@ export function AgentsView({
 			: selectedRuntime.diagnostics.find((diagnostic) => diagnostic.severity === "error")?.message ?? "The selected runtime is unavailable."
 		: `Runtime instance "${draft.runtimeInstanceId}" is not registered.`;
 	const piboToolsUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.tools.piboManaged, "Pibo-managed tools");
+	const piboToolsUseMcp = selectedRuntime?.capabilities.tools.piboManaged.support === "mcp";
+	const nativeToolYieldingUnavailableReason = selectedRuntime?.capabilities.tools.nativeToolYielding.support === "unsupported"
+		? `Private harness-native tools cannot be yielded by pibo_run_start: ${selectedRuntime.capabilities.tools.nativeToolYielding.reason}`
+		: null;
 	const skillsUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.skills, "Skills");
 	const contextUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.context, "Context delivery");
 	const mcpUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.mcp.externalServers, "External MCP servers");
@@ -776,17 +780,21 @@ export function AgentsView({
 						<CatalogGroupGrid
 							groups={nativeToolGroups}
 							empty={catalog ? <EmptyCatalog message="No native tools registered" /> : <EmptyCatalog />}
-							renderItem={(tool) => (
-								<CatalogToggle
+							renderItem={(tool) => {
+								const portabilityReason = piboToolsUseMcp && tool.portable === false
+									? "Legacy Pi-native definition; unavailable through the session-scoped MCP bridge."
+									: null;
+								const unavailableReason = piboToolsUnavailableReason ?? portabilityReason;
+								return <CatalogToggle
 									key={tool.name}
-									disabled={readOnly || Boolean(piboToolsUnavailableReason && !draft.nativeTools.includes(tool.name))}
+									disabled={readOnly || Boolean(unavailableReason && !draft.nativeTools.includes(tool.name))}
 									checked={draft.nativeTools.includes(tool.name)}
 									title={tool.name}
 									description={tool.description}
-									meta={piboToolsUnavailableReason ?? (tool.yieldable ? "yieldable" : "direct only")}
+									meta={unavailableReason ?? (tool.yieldable ? "portable / yieldable" : "portable / direct only")}
 									onToggle={() => setDraft((current) => ({ ...current, nativeTools: toggleName(current.nativeTools, tool.name) }))}
-								/>
-							)}
+								/>;
+							}}
 						/>
 					</DesignerPanel>
 					<DesignerPanel title="Skills">
@@ -810,8 +818,9 @@ export function AgentsView({
 					</DesignerPanel>
 					<CatalogSection title="Packages">
 						{piboToolsUnavailableReason ? <div className="col-span-full"><RuntimeCapabilityNotice reason={piboToolsUnavailableReason} /></div> : null}
-						<CatalogToggle disabled={readOnly || Boolean(piboToolsUnavailableReason && !draft.goalControl)} checked={draft.goalControl} title="pibo-goal-control" description="Expose get_goal, create_goal, and update_goal for persisted Goal Loop lifecycle and accounting." meta={piboToolsUnavailableReason ?? "native package"} onToggle={() => setDraft((current) => ({ ...current, goalControl: !current.goalControl }))} />
-						<CatalogToggle disabled={readOnly || Boolean(piboToolsUnavailableReason && !draft.runControl)} checked={draft.runControl} title="pibo-run-control" description="Expose pibo_run_* as one package for yielded native tools and subagents." meta={piboToolsUnavailableReason ?? "package"} onToggle={() => setDraft((current) => ({ ...current, runControl: !current.runControl }))} />
+						{draft.runControl && nativeToolYieldingUnavailableReason ? <div className="col-span-full"><RuntimeCapabilityNotice reason={nativeToolYieldingUnavailableReason} /></div> : null}
+						<CatalogToggle disabled={readOnly || Boolean(piboToolsUnavailableReason && !draft.goalControl)} checked={draft.goalControl} title="pibo-goal-control" description="Expose get_goal, create_goal, and update_goal for persisted Goal Loop lifecycle and accounting." meta={piboToolsUnavailableReason ?? "portable package"} onToggle={() => setDraft((current) => ({ ...current, goalControl: !current.goalControl }))} />
+						<CatalogToggle disabled={readOnly || Boolean(piboToolsUnavailableReason && !draft.runControl)} checked={draft.runControl} title="pibo-run-control" description="Expose pibo_run_* for Pibo-managed tools and subagents. Private harness-native tools are included only when the runtime declares native-tool yielding." meta={piboToolsUnavailableReason ?? nativeToolYieldingUnavailableReason ?? "portable + runtime-native"} onToggle={() => setDraft((current) => ({ ...current, runControl: !current.runControl }))} />
 					</CatalogSection>
 					<PiPackagesDesigner
 						packages={catalog?.piPackages}

@@ -616,7 +616,7 @@ export type AgentRuntimeCatalogEntry = {
 
 export type AgentCatalog = {
 	agentRuntimes: AgentRuntimeCatalogEntry[];
-	nativeTools: Array<{ name: string; description?: string; yieldable: boolean; hasDefinition: boolean; pluginId?: string; pluginName?: string }>;
+	nativeTools: Array<{ name: string; description?: string; yieldable: boolean; hasDefinition: boolean; portable: boolean; pluginId?: string; pluginName?: string }>;
 	skills: Array<{ name: string; path: string; kind: "builtin" | "plugin" | "user"; pluginId?: string; pluginName?: string }>;
 	subagents: Array<{
 		name: string;

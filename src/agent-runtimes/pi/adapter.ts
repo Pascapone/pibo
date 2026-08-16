@@ -630,6 +630,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			subagentRunner: input.services?.subagentRunner as PiboSubagentRunner | undefined,
 			runToolController: input.services?.runToolController as PiboRunToolController | undefined,
 			runtimeToolController: input.services?.codeRuntimeToolController as PiboRuntimeToolController | undefined,
+			portableTools: input.services?.portableTools,
 			modelDefaults: compatibility?.modelDefaults,
 			activeModel: input.activeModel,
 			sessionContext: {
