@@ -36,7 +36,7 @@ const DEEPSEEK_COMPAT: NonNullable<OpenAiCompatModelSpec["compat"]> = {
 	maxTokensField: "max_tokens",
 };
 
-const DASHSCOPE_COMPAT: NonNullable<OpenAiCompatModelSpec["compat"]> = {
+const GLM_COMPAT: NonNullable<OpenAiCompatModelSpec["compat"]> = {
 	supportsStore: false,
 	supportsDeveloperRole: false,
 	maxTokensField: "max_tokens",
@@ -75,51 +75,29 @@ function deepseekModel(
 	return model(id, name, DEEPSEEK_COMPAT, contextWindow, maxTokens, ["text"]);
 }
 
-function thirdPartyModel(
+function glmModel(
 	id: string,
 	name: string,
 	contextWindow: number,
 	maxTokens: number,
-	input: OpenAiCompatModelSpec["input"],
-	reasoning = true,
 ): OpenAiCompatModelSpec {
-	return model(id, name, DASHSCOPE_COMPAT, contextWindow, maxTokens, input, reasoning);
+	return model(id, name, GLM_COMPAT, contextWindow, maxTokens, ["text"]);
 }
 
 export const QWEN_TOKEN_PLAN_MODELS: readonly OpenAiCompatModelSpec[] = [
-	// Qwen Max family
-	qwenModel("qwen-max", "Qwen Max", ["text", "image"]),
-	qwenModel("qwen3.7-max", "Qwen3.7 Max", ["text"]),
-	qwenModel("qwen3-max", "Qwen3 Max", ["text"]),
-	qwenModel("qwen3.6-max-preview", "Qwen3.6 Max Preview", ["text", "image"]),
-
-	// Qwen Plus family
+	// Qwen models (Token Plan)
+	qwenModel("qwen3.8-max", "Qwen3.8 Max", ["text", "image"]),
 	qwenModel("qwen3.7-plus", "Qwen3.7 Plus", ["text", "image"]),
-	qwenModel("qwen3.6-plus", "Qwen3.6 Plus", ["text", "image"]),
-	qwenModel("qwen3.5-plus", "Qwen3.5 Plus", ["text", "image"]),
-	qwenModel("qwen-plus", "Qwen Plus", ["text", "image"]),
-
-	// Qwen Flash family
+	qwenModel("qwen3.7-max", "Qwen3.7 Max", ["text"]),
 	qwenModel("qwen3.6-flash", "Qwen3.6 Flash", ["text", "image"]),
-	qwenModel("qwen3.5-flash", "Qwen3.5 Flash", ["text", "image"]),
-	qwenModel("qwen-flash", "Qwen Flash", ["text", "image"]),
 
-	// Qwen Coder family
-	qwenModel("qwen-coder-plus", "Qwen Coder Plus", ["text"], 131_072, 65_536),
-	qwenModel("qwen-coder-turbo", "Qwen Coder Turbo", ["text"], 131_072, 65_536),
-
-	// DeepSeek
-	deepseekModel("deepseek-v4-flash", "DeepSeek V4 Flash", 1_000_000, 384_000),
+	// DeepSeek models (Token Plan)
+	deepseekModel("deepseek-v4-pro-0813", "DeepSeek V4 Pro 0813", 1_000_000, 384_000),
 	deepseekModel("deepseek-v4-pro", "DeepSeek V4 Pro", 1_000_000, 384_000),
-	deepseekModel("deepseek-v3.2", "DeepSeek V3.2", 163_840, 65_536),
-	deepseekModel("deepseek-r1", "DeepSeek R1", 128_000, 32_768),
+	deepseekModel("deepseek-v4-flash-0731", "DeepSeek V4 Flash 0731", 1_000_000, 384_000),
 
-	// Kimi (Moonshot AI)
-	thirdPartyModel("kimi-k2.7-code", "Kimi K2.7 Code", 262_144, 65_536, ["text", "image"]),
-	thirdPartyModel("kimi-k2.6", "Kimi K2.6", 262_144, 65_536, ["text", "image"]),
-
-	// GLM (Z.ai)
-	thirdPartyModel("glm-5.2", "GLM 5.2", 1_000_000, 131_072, ["text"]),
+	// GLM models (Token Plan)
+	glmModel("glm-5.2", "GLM 5.2", 1_000_000, 131_072),
 ];
 
 function resolveBaseUrl(): string {

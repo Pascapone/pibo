@@ -41,12 +41,8 @@ function makeFakeRegistry() {
 }
 
 const EXPECTED_MODEL_IDS = [
-	"qwen-max", "qwen3.7-max", "qwen3-max", "qwen3.6-max-preview",
-	"qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "qwen-plus",
-	"qwen3.6-flash", "qwen3.5-flash", "qwen-flash",
-	"qwen-coder-plus", "qwen-coder-turbo",
-	"deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v3.2", "deepseek-r1",
-	"kimi-k2.7-code", "kimi-k2.6",
+	"qwen3.8-max", "qwen3.7-plus", "qwen3.7-max", "qwen3.6-flash",
+	"deepseek-v4-pro-0813", "deepseek-v4-pro", "deepseek-v4-flash-0731",
 	"glm-5.2",
 ];
 
@@ -54,12 +50,12 @@ test.beforeEach(() => {
 	resetQwenTokenPlanProviderRegistration();
 });
 
-test("Qwen Token Plan exposes all expected models across families", () => {
+test("Qwen Token Plan exposes only the models available in the Token Plan", () => {
 	assert.deepEqual(
 		QWEN_TOKEN_PLAN_MODELS.map((model) => model.id),
 		EXPECTED_MODEL_IDS,
 	);
-	assert.equal(QWEN_TOKEN_PLAN_MODELS.length, 20);
+	assert.equal(QWEN_TOKEN_PLAN_MODELS.length, 8);
 	for (const model of QWEN_TOKEN_PLAN_MODELS) {
 		assert.equal(model.reasoning, true);
 		assert.ok(model.contextWindow > 0, `${model.id} contextWindow`);
@@ -72,7 +68,7 @@ test("Qwen Token Plan exposes all expected models across families", () => {
 
 test("Qwen models use the qwen thinking format", () => {
 	const qwenModels = QWEN_TOKEN_PLAN_MODELS.filter((m) => m.id.startsWith("qwen"));
-	assert.ok(qwenModels.length >= 13);
+	assert.equal(qwenModels.length, 4);
 	for (const model of qwenModels) {
 		assert.equal(model.compat?.thinkingFormat, "qwen", `${model.id} thinkingFormat`);
 	}
@@ -80,23 +76,22 @@ test("Qwen models use the qwen thinking format", () => {
 
 test("DeepSeek models use the deepseek thinking format", () => {
 	const deepseekModels = QWEN_TOKEN_PLAN_MODELS.filter((m) => m.id.startsWith("deepseek"));
-	assert.equal(deepseekModels.length, 4);
+	assert.equal(deepseekModels.length, 3);
 	for (const model of deepseekModels) {
 		assert.equal(model.compat?.thinkingFormat, "deepseek", `${model.id} thinkingFormat`);
 	}
-	assert.equal(deepseekModels.find((m) => m.id === "deepseek-v4-flash")?.contextWindow, 1_000_000);
-	assert.equal(deepseekModels.find((m) => m.id === "deepseek-v4-flash")?.maxTokens, 384_000);
+	assert.equal(deepseekModels.find((m) => m.id === "deepseek-v4-flash-0731")?.contextWindow, 1_000_000);
+	assert.equal(deepseekModels.find((m) => m.id === "deepseek-v4-flash-0731")?.maxTokens, 384_000);
 });
 
-test("Third-party models use the DashScope compatible format without special thinking", () => {
-	const thirdParty = QWEN_TOKEN_PLAN_MODELS.filter((m) => m.id.startsWith("kimi") || m.id.startsWith("glm"));
-	assert.equal(thirdParty.length, 3);
-	for (const model of thirdParty) {
+test("GLM models use the GLM compatible format without special thinking", () => {
+	const glmModels = QWEN_TOKEN_PLAN_MODELS.filter((m) => m.id.startsWith("glm"));
+	assert.equal(glmModels.length, 1);
+	for (const model of glmModels) {
 		assert.equal(model.compat?.thinkingFormat, undefined, `${model.id} should not have a thinking format`);
 	}
-	assert.equal(thirdParty.find((m) => m.id === "glm-5.2")?.contextWindow, 1_000_000);
-	assert.equal(thirdParty.find((m) => m.id === "glm-5.2")?.maxTokens, 131_072);
-	assert.equal(thirdParty.find((m) => m.id === "kimi-k2.7-code")?.contextWindow, 262_144);
+	assert.equal(glmModels.find((m) => m.id === "glm-5.2")?.contextWindow, 1_000_000);
+	assert.equal(glmModels.find((m) => m.id === "glm-5.2")?.maxTokens, 131_072);
 });
 
 test("registerQwenTokenPlanProvider uses the dedicated Token Plan endpoint and API key", () => {
@@ -104,7 +99,7 @@ test("registerQwenTokenPlanProvider uses the dedicated Token Plan endpoint and A
 	const result = registerQwenTokenPlanProvider(fake.api);
 
 	assert.equal(result.registered, true);
-	assert.equal(result.models, 20);
+	assert.equal(result.models, 8);
 	assert.equal(fake.registrations.length, 1);
 	assert.equal(fake.registrations[0].name, QWEN_TOKEN_PLAN_PROVIDER_ID);
 	assert.equal(fake.registrations[0].config.name, "Qwen Token Plan");
@@ -135,11 +130,11 @@ test("Qwen Token Plan provider can find and unregister its models", () => {
 
 	const found = findQwenTokenPlanModel(fake.api, {
 		provider: QWEN_TOKEN_PLAN_PROVIDER_ID,
-		id: "deepseek-v4-flash",
+		id: "deepseek-v4-flash-0731",
 	});
 	assert.ok(found);
 	assert.equal(found.provider, QWEN_TOKEN_PLAN_PROVIDER_ID);
-	assert.equal(found.id, "deepseek-v4-flash");
+	assert.equal(found.id, "deepseek-v4-flash-0731");
 	assert.equal(isQwenTokenPlanProvider(QWEN_TOKEN_PLAN_PROVIDER_ID), true);
 	assert.equal(isQwenTokenPlanProvider("openai"), false);
 	assert.equal(findQwenTokenPlanModel(fake.api, { provider: "openai", id: "qwen3.7-plus" }), undefined);
