@@ -26,6 +26,7 @@ if (args[0] === "--version") {
 			threads: {},
 			threadSettings: {},
 			threadTokenUsage: {},
+			missingRollouts: [],
 			turnRequests: [],
 			resourceRequests: [],
 			skillRequests: [],
@@ -734,6 +735,13 @@ if (args[0] === "--version") {
 			return;
 		}
 		if (message.method === "thread/resume") {
+			if ((state.missingRollouts ?? []).includes(params.threadId)) {
+				send({ id: message.id, error: {
+					code: -32600,
+					message: `failed to resolve rollout path \`/private/fake-codex/${params.threadId}.jsonl\`: file does not exist`,
+				} });
+				return;
+			}
 			const thread = loadedThreads[params.threadId] ?? state.threads[params.threadId];
 			if (!thread) {
 				send(missing(message.id, params.threadId));
@@ -910,6 +918,18 @@ if (args[0] === "--version") {
 			setImmediate(() => completeActive(active, "interrupted"));
 			return;
 		}
+		if (message.method === "test/markThreadRolloutMissing") {
+			if (!state.threads[params.threadId]) {
+				send(missing(message.id, params.threadId));
+				return;
+			}
+			state.missingRollouts ??= [];
+			if (!state.missingRollouts.includes(params.threadId)) state.missingRollouts.push(params.threadId);
+			delete loadedThreads[params.threadId];
+			save(state);
+			send({ id: message.id, result: {} });
+			return;
+		}
 		if (message.method === "thread/delete" || message.method === "test/deleteThread") {
 			if (activeTurns[params.threadId]) clearServerRequests(activeTurns[params.threadId]);
 			delete loadedThreads[params.threadId];
@@ -917,6 +937,7 @@ if (args[0] === "--version") {
 			delete state.threads[params.threadId];
 			delete state.threadSettings[params.threadId];
 			delete state.threadTokenUsage[params.threadId];
+			state.missingRollouts = (state.missingRollouts ?? []).filter((threadId) => threadId !== params.threadId);
 			delete threadConfigs[params.threadId];
 			save(state);
 			send({ id: message.id, result: {} });

@@ -257,6 +257,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	private resourceRefresh?: Promise<void>;
 	private resourceWarning?: string;
 	private resourceProcessUnavailable = false;
+	private recycleProcessAfterInterruptedTurn = false;
 	private selectedToolNames = new Set<string>();
 	private readonly observedToolNames = new Set<string>();
 	private toolInventoryWarning?: string;
@@ -370,6 +371,16 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			this.updateBindingFromCurrentThread();
 		} finally {
 			this.operationInFlight = false;
+			if (this.recycleProcessAfterInterruptedTurn && !this.disposed) {
+				this.recycleProcessAfterInterruptedTurn = false;
+				try {
+					await this.rolloverResourceProcess();
+				} catch (error) {
+					this.resourceWarning = error instanceof Error
+						? error.message
+						: "Native Codex process recycling failed after turn interruption; Pibo will retry while the session remains idle.";
+				}
+			}
 			this.scheduleResourceMaintenance();
 		}
 	}
@@ -381,7 +392,17 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 
 	async abort(): Promise<void> {
 		this.assertActive();
-		await this.turns.interrupt();
+		if (!this.turns.streaming) {
+			await this.turns.interrupt();
+			return;
+		}
+		this.recycleProcessAfterInterruptedTurn = true;
+		try {
+			await this.turns.interrupt();
+		} catch (error) {
+			this.recycleProcessAfterInterruptedTurn = false;
+			throw error;
+		}
 	}
 
 	async dispose(): Promise<void> {

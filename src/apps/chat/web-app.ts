@@ -3,6 +3,7 @@ import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
 import { PI_AGENT_RUNTIME_CAPABILITIES } from "../../agent-runtimes/pi/adapter.js";
+import { AgentRuntimeBindingMissingError } from "../../agent-runtime/errors.js";
 import {
 	buildPortableRuntimeContextSnapshot,
 	profileWithRuntimeInstance,
@@ -4044,7 +4045,7 @@ async function sendProjectMessage(input: {
 		});
 		return responseJson({ accepted, output });
 	} catch (error) {
-		if (error instanceof PiboSteeringUnavailableError) {
+		if (error instanceof PiboSteeringUnavailableError || error instanceof AgentRuntimeBindingMissingError) {
 			throw new PiboWebHttpError(error.message, 409);
 		}
 		throw error;
@@ -4269,7 +4270,7 @@ async function sendChatMessage(input: {
 			},
 		});
 		for (const listener of input.state.liveListeners) listener(failed);
-		if (error instanceof PiboSteeringUnavailableError) {
+		if (error instanceof PiboSteeringUnavailableError || error instanceof AgentRuntimeBindingMissingError) {
 			throw new PiboWebHttpError(error.message, 409);
 		}
 		throw error;

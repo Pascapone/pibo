@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -103,6 +103,40 @@ test("pibo debug pty scenario types input through an interactive PTY", { skip: !
 		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
 		assert.match(clean, /ready/);
 		assert.match(clean, /got:abc/);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("built-in mocked CLI session scenario follows the room and session picker flow", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const binDir = join(dir, "bin");
+		const artifactDir = join(dir, "artifacts");
+		await mkdir(binDir, { recursive: true });
+		const piboWrapper = join(binDir, "pibo");
+		await writeFile(piboWrapper, `#!/bin/sh\nexec "${process.execPath}" "${cliPath}" "$@"\n`);
+		await chmod(piboWrapper, 0o755);
+		const result = await execFileAsync("node", [
+			cliPath,
+			"debug",
+			"pty",
+			"scenario",
+			"--builtin",
+			"cli-session-ui-mocked-e2e",
+			"--artifact",
+			"--artifact-dir",
+			artifactDir,
+		], { env: { PATH: `${binDir}:${process.env.PATH ?? ""}` } });
+		assert.match(result.stdout, /PTY passed: cli-session-ui-mocked-e2e/);
+		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+		assert.match(clean, /select room/);
+		assert.match(clean, /Created session/);
+		assert.match(clean, /Mocked PTY assistant response/);
+		assert.match(clean, /Runtime: local/);
+		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+		assert.equal(metadata.ok, true);
+		assert.equal(metadata.exitCode, 0);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}

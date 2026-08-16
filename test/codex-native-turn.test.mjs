@@ -228,10 +228,15 @@ test("Codex native uses stable turn/steer and turn/interrupt against the active 
 	assert.equal(events.filter((event) => event.type === "turn_completed").length, 1);
 	assert.deepEqual(events.filter((event) => event.type === "assistant_message").map((event) => event.text), ["Steered answer."]);
 
+	const processBeforeInterrupt = getCodexNativeClient(session).snapshot.pid;
 	const interruptedPrompt = session.prompt({ text: "[hold] interrupt me", source: "rpc" });
 	await waitFor(() => events.filter((event) => event.type === "turn_started").length === 2);
 	await session.abort();
 	await interruptedPrompt;
+	const processAfterInterrupt = getCodexNativeClient(session).snapshot.pid;
+	assert.ok(processBeforeInterrupt);
+	assert.ok(processAfterInterrupt);
+	assert.notEqual(processAfterInterrupt, processBeforeInterrupt);
 	assert.equal(events.filter((event) => event.type === "turn_completed" && event.status === "interrupted").length, 1);
 	assert.equal(events.filter((event) => event.type === "turn_failed").length, 0);
 	assert.equal(session.getStatus().streaming, false);

@@ -11,8 +11,11 @@ The current system baseline after the V2 data migration:
 
 Current canonical docs:
 
-- [Chat Runtime Call Stack](./architecture/chat-runtime-call-stack.md) — Chat Web to routed runtime to Pi Coding Agent, including storage points and pseudo-code.
-- [Chat Runtime Flow Diagram](./architecture/chat-runtime-flow.mmd) — Mermaid source for the same end-to-end flow.
+- [Agent Runtime Adapter Architecture](./architecture/agent-runtime-adapters.md) — Pibo-owned runtime SPI, Pi and native Codex boundaries, bindings, portable capabilities, security, migration, and extension checklist.
+- [Agent Runtime Operations](./agent-runtime-operations.md) — runtime selection, diagnostics, binding states, restart checks, rollback, cleanup, and failure triage.
+- [Agent Runtime History and Debug](./agent-runtime-history-and-debug.md) — product-history ownership, adapter history providers, trace reconstruction, and safe runtime-aware inspection.
+- [Chat Runtime Call Stack](./architecture/chat-runtime-call-stack.md) — Chat Web through the runtime-neutral router to Pi or native Codex and back.
+- [Chat Runtime Flow Diagram](./architecture/chat-runtime-flow.mmd) — Mermaid source for the same multi-runtime flow.
 - [Pibo Workflows](./workflows.md) — current Workflow System V1 capability contract, boundaries, persistence, inspection, and security rules.
 - [Web Annotations V1](./web-annotations.md) — Chat Web, CDP overlay, annotation attachment, lifecycle, privacy, and troubleshooting guide.
 - [Web Annotations Rollout Checklist](./web-annotations-rollout-checklist.md) — worker validation, browser checks, security gates, and deployment gates.

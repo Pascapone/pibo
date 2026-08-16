@@ -1,6 +1,8 @@
 # Agent Runtime History and Debug
 
-**Updated:** 2026-08-15
+**Updated:** 2026-08-16
+
+Architecture and operating procedures are documented in [`architecture/agent-runtime-adapters.md`](./architecture/agent-runtime-adapters.md) and [`agent-runtime-operations.md`](./agent-runtime-operations.md).
 
 ## Product-history ownership
 

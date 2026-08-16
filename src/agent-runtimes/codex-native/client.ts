@@ -215,6 +215,8 @@ function redactCodexAppServerDiagnostic(value: string): string {
 		.replace(/\b(?:sk|pk|ghp|github_pat|pibo)[-_][A-Za-z0-9_-]{8,}\b/g, "[redacted]")
 		.replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted]")
 		.replace(/\b(access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|token|secret|password)\b(\s*["']?\s*[:=]\s*["']?)([^\s"'&,}]+)/gi, "$1$2[redacted]")
+		.replace(/`(?:\/|[A-Za-z]:[\\/])[^`\r\n]+`/g, "`[redacted path]`")
+		.replace(/\bfile:\/\/\/?[^\s"'`,)]+/gi, "file://[redacted path]")
 		.slice(0, 4_000);
 }
 
