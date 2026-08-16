@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadPiSessionFastMetadata, readTailEntries } from "../dist/apps/chat/trace.js";
-import { buildTraceViewFromEvents, flattenTraceNodes } from "../dist/shared/trace-engine.js";
+import { flattenTraceNodes } from "../dist/shared/trace-engine.js";
+import { buildTraceViewFromEvents } from "./helpers/pi-history.mjs";
 
 function messageEntry(id, role, content, timestamp) {
 	return {

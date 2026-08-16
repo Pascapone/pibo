@@ -10,6 +10,14 @@ import {
 } from "./trace-subagent-links.js";
 import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus } from "./trace-types.js";
 
+export type PersistedHistoryMode = "none" | "product" | "native";
+
+export type PersistedHistoryCoverage = {
+	mode: PersistedHistoryMode;
+	eventIds: ReadonlySet<string>;
+	toolCallIds: ReadonlySet<string>;
+};
+
 export function applySingleEventToNodes(
 	nodes: PiboTraceNode[],
 	byId: Map<string, PiboTraceNode>,
@@ -17,12 +25,12 @@ export function applySingleEventToNodes(
 	storedEvent: ChatWebStoredEvent,
 	childByParent: Map<string, TraceChildSession[]>,
 	linkedChildByToolCallId: Map<string, string>,
-	hasPersistedTranscript: boolean,
+	historyCoverage: PersistedHistoryCoverage,
 	openTranscriptEventIds: ReadonlySet<string>,
 	sessionStatus: PiboWebSessionStatus,
 ): void {
 	const payload = storedEvent.payload as PiboOutputEvent;
-	const confirmedUserMessage = hasPersistedTranscript ? confirmedUserMessageEchoNode(nodes, storedEvent) : undefined;
+	const confirmedUserMessage = historyCoverage.mode !== "none" ? confirmedUserMessageEchoNode(nodes, storedEvent) : undefined;
 	if (confirmedUserMessage) {
 		if (payload.type === "message_steered" && payload.activeEventId) {
 			confirmedUserMessage.parentId = messageTurnNodeId(payload.activeEventId);
@@ -30,13 +38,14 @@ export function applySingleEventToNodes(
 		return;
 	}
 	if (
-		hasPersistedTranscript &&
-		isTranscriptEchoEvent(payload) &&
+		((historyCoverage.mode === "native" && isTranscriptEchoEvent(payload))
+			|| (historyCoverage.mode === "product" && isProductHistoryEchoEvent(payload))) &&
+		historyCoversEvent(payload, historyCoverage) &&
 		!shouldKeepTranscriptEchoEvent(payload, openTranscriptEventIds)
 	) {
 		return;
 	}
-	if (hasPersistedTranscript && isStaleToolCallEchoEvent(payload, sessionStatus)) {
+	if (isNativeHistoryToolEchoEvent(payload, historyCoverage, sessionStatus)) {
 		return;
 	}
 	if (payload.type === "assistant_delta") {
@@ -279,17 +288,17 @@ export function reconcileTranscriptUserMessages(
 	events: readonly ChatWebStoredEvent[],
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): void {
-	const transcriptUsers = nodes.filter((node) => node.type === "user.message" && node.source === "transcript");
+	const transcriptUsers = nodes.filter((node) => node.type === "user.message" && isPersistedHistorySource(node.source));
 	const timingByEventId = new Map(turnTimings.map((timing) => [timing.eventId, timing]));
 	let latestTranscriptUser: PiboTraceNode | undefined;
 	for (const node of nodes) {
-		if (node.type === "user.message" && node.source === "transcript") {
+		if (node.type === "user.message" && isPersistedHistorySource(node.source)) {
 			latestTranscriptUser = node;
 			continue;
 		}
 		if (
 			node.type !== "assistant.message" ||
-			node.source !== "transcript" ||
+			!isPersistedHistorySource(node.source) ||
 			!node.eventId ||
 			!latestTranscriptUser ||
 			transcriptUserMessageHasCanonicalIdentity(latestTranscriptUser)
@@ -371,7 +380,7 @@ function confirmedUserMessageEchoNode(nodes: readonly PiboTraceNode[], event: Ch
 	const stableKey = eventStableKey(payload);
 	const text = typeof payload.text === "string" ? payload.text : undefined;
 	const transcriptUsers = flattenTraceNodes([...nodes]).filter(
-		(node) => node.type === "user.message" && node.source === "transcript",
+		(node) => node.type === "user.message" && isPersistedHistorySource(node.source),
 	);
 	const identityMatch = transcriptUsers.find((node) =>
 		transcriptUserMessageMatchesIdentity(node, canonicalId, stableKey, eventId),
@@ -380,6 +389,10 @@ function confirmedUserMessageEchoNode(nodes: readonly PiboTraceNode[], event: Ch
 	return transcriptUsers.find((node) =>
 		!transcriptUserMessageHasCanonicalIdentity(node) && Boolean(text && traceNodeText(node) === text),
 	);
+}
+
+function isPersistedHistorySource(source: PiboTraceNode["source"]): boolean {
+	return source === "transcript" || source === "product-history";
 }
 
 function transcriptUserMessageMatchesIdentity(
@@ -803,6 +816,10 @@ function isInternalSessionOperation(action: string): boolean {
 	return action === "session.fork" || action === "session.clone" || action === "session.switch";
 }
 
+function isProductHistoryEchoEvent(event: PiboOutputEvent): boolean {
+	return event.type === "assistant_delta" || event.type === "assistant_message";
+}
+
 function isTranscriptEchoEvent(event: PiboOutputEvent): boolean {
 	return (
 		event.type === "message_queued" ||
@@ -824,8 +841,24 @@ function shouldKeepTranscriptEchoEvent(
 	return Boolean(eventId && openTranscriptEventIds.has(eventId));
 }
 
-function isStaleToolCallEchoEvent(event: PiboOutputEvent, sessionStatus: PiboWebSessionStatus): boolean {
-	return sessionStatus !== "running" && event.type === "tool_call";
+function historyCoversEvent(event: PiboOutputEvent, coverage: PersistedHistoryCoverage): boolean {
+	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
+	return eventId === undefined || coverage.eventIds.has(eventId);
+}
+
+function isNativeHistoryToolEchoEvent(
+	event: PiboOutputEvent,
+	coverage: PersistedHistoryCoverage,
+	sessionStatus: PiboWebSessionStatus,
+): boolean {
+	if (coverage.mode !== "native" || sessionStatus === "running") return false;
+	if (
+		event.type !== "tool_call" &&
+		event.type !== "tool_execution_started" &&
+		event.type !== "tool_execution_updated" &&
+		event.type !== "tool_execution_finished"
+	) return false;
+	return coverage.toolCallIds.has(event.toolCallId) || historyCoversEvent(event, coverage);
 }
 
 export type TraceMessageTurnTiming = {

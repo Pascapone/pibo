@@ -4,6 +4,8 @@ import { DEFAULT_TOOL_BYTES, formatTruncationFooter, sliceTextByBytes, type Debu
 import { formatNextCommands } from "./next-commands.js";
 import { compactOneLine, eventAttributes, eventPayload, stringifyPayloadValue, type DebugEventRow } from "./payloads.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
+import { createDebugPayloadStore, hydrateDebugEventRow } from "./persisted-payloads.js";
+import { readDebugRuntimeIdentity, type DebugRuntimeIdentity } from "./runtime-binding.js";
 
 export type DebugToolEventSummary = {
 	streamId: number;
@@ -12,7 +14,7 @@ export type DebugToolEventSummary = {
 	createdAt: string;
 };
 
-export type DebugToolInspection = {
+export type DebugToolInspection = DebugRuntimeIdentity & {
 	piboSessionId: string;
 	resultType: "debug.tool";
 	selector: string;
@@ -42,12 +44,13 @@ export function inspectDebugTool(
 	const db = openReadOnlyDebugDatabase(store);
 	try {
 		if (!tableExists(db, "event_log")) return emptyTool(piboSessionId, selector);
-		const rows = db.prepare(`
-			SELECT stream_id, session_id, session_sequence, event_id, type, created_at, preview_text, attributes_json
+		const payloadStore = createDebugPayloadStore(db, store);
+		const rows = (db.prepare(`
+			SELECT stream_id, session_id, session_sequence, event_id, type, created_at, payload_ref, preview_text, attributes_json
 			FROM event_log
 			WHERE session_id = ? AND type IN ('tool_call', 'tool_execution_started', 'tool_execution_updated', 'tool_execution_finished')
 			ORDER BY stream_id ASC
-		`).all(piboSessionId) as DebugEventRow[];
+		`).all(piboSessionId) as DebugEventRow[]).map((row) => hydrateDebugEventRow(row, payloadStore));
 		const matching = rows.filter((row) => toolCallIdFromRow(row)?.includes(selector) || row.event_id === selector);
 		if (matching.length === 0) return emptyTool(piboSessionId, selector);
 		const toolCallId = toolCallIdFromRow(matching[0]) ?? selector;
@@ -62,6 +65,7 @@ export function inspectDebugTool(
 		const outputSlice = output !== undefined ? sliceTextByBytes(stringifyPayloadValue(options.error ? (error ?? output) : output), options, DEFAULT_TOOL_BYTES) : undefined;
 		return {
 			piboSessionId,
+			...readDebugRuntimeIdentity(db, piboSessionId),
 			resultType: "debug.tool",
 			selector,
 			toolCallId,
@@ -93,6 +97,9 @@ export function inspectDebugTool(
 export function formatDebugTool(result: DebugToolInspection, options: { args?: boolean; output?: boolean; error?: boolean } = {}): string {
 	if (!result.toolCallId) return [`tool: not found`, ...formatNextCommands(result.nextCommands)].join("\n");
 	const lines: string[] = [];
+	if (result.runtimeInstanceId) lines.push(`runtimeInstanceId: ${result.runtimeInstanceId}`);
+	if (result.runtimeAdapterId) lines.push(`runtimeAdapterId: ${result.runtimeAdapterId}`);
+	if (result.runtimeBindingState) lines.push(`runtimeBindingState: ${result.runtimeBindingState}`);
 	lines.push(`toolCallId: ${result.toolCallId}`);
 	if (result.toolName) lines.push(`toolName: ${result.toolName}`);
 	if (result.status) lines.push(`status: ${result.status}`);

@@ -234,7 +234,9 @@ test("live overlay trimming preserves bounded-page omissions until exact confirm
 async function runPersistedAssistantReconciliationScenario() {
 	const script = `
 		import assert from "node:assert/strict";
-		const { patchTraceViewWithEvents, traceNodesFromEntries } = await import("./src/shared/trace-engine.ts");
+		const { patchTraceViewWithEvents, traceNodesFromHistoryEntries } = await import("./src/shared/trace-engine.ts");
+		const { piSessionEntriesToAgentRuntimeHistoryEntries } = await import("./src/agent-runtimes/pi/history.ts");
+		const traceNodesFromEntries = (sessionId, entries, timings) => traceNodesFromHistoryEntries(sessionId, piSessionEntriesToAgentRuntimeHistoryEntries(entries), timings);
 		const { buildCompactTerminalRows } = await import("./src/session-ui/terminalRows.ts");
 
 		const piboSessionId = "ps-test";
@@ -328,7 +330,9 @@ test("Compact Terminal reconciles persisted assistants with completed event proj
 async function runPersistedContentIdentityScenario() {
 	const script = `
 		import assert from "node:assert/strict";
-		const { patchTraceViewWithEvents, traceNodesFromEntries } = await import("./src/shared/trace-engine.ts");
+		const { patchTraceViewWithEvents, traceNodesFromHistoryEntries } = await import("./src/shared/trace-engine.ts");
+		const { piSessionEntriesToAgentRuntimeHistoryEntries } = await import("./src/agent-runtimes/pi/history.ts");
+		const traceNodesFromEntries = (sessionId, entries, timings) => traceNodesFromHistoryEntries(sessionId, piSessionEntriesToAgentRuntimeHistoryEntries(entries), timings);
 
 		const piboSessionId = "ps-test";
 		const eventId = "turn-content-identity";

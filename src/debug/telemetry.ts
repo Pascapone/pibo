@@ -19,6 +19,7 @@ import type {
 } from "../data/telemetry.js";
 import { TelemetryStore as PiboTelemetryStore } from "../data/telemetry.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
+import { readDebugRuntimeIdentity, type DebugRuntimeIdentity } from "./runtime-binding.js";
 import { formatRows, openReadOnlyDebugDatabase } from "./sql.js";
 
 export type DebugTelemetryListOptions = {
@@ -78,7 +79,7 @@ export type DebugTelemetrySessionsResult = {
 	nextCommands: string[];
 } | DebugTelemetryUnavailable;
 
-export type DebugTelemetrySessionResult = {
+export type DebugTelemetrySessionResult = (DebugRuntimeIdentity & {
 	available: true;
 	command: "session";
 	piboSessionId: string;
@@ -90,9 +91,9 @@ export type DebugTelemetrySessionResult = {
 	};
 	detail: TelemetrySessionDetail;
 	nextCommands: string[];
-} | DebugTelemetryUnavailable;
+}) | DebugTelemetryUnavailable;
 
-export type DebugTelemetryTurnResult = {
+export type DebugTelemetryTurnResult = (DebugRuntimeIdentity & {
 	available: true;
 	command: "turn";
 	turnIdOrEventId: string;
@@ -107,18 +108,18 @@ export type DebugTelemetryTurnResult = {
 	openPhases: number;
 	missingTerminalEvent: boolean;
 	nextCommands: string[];
-} | DebugTelemetryUnavailable;
+}) | DebugTelemetryUnavailable;
 
-export type DebugTelemetryProviderResult = {
+export type DebugTelemetryProviderResult = (DebugRuntimeIdentity & {
 	available: true;
 	command: "provider";
 	providerRequestId: string;
 	request: StoredTelemetryProviderRequest;
 	eventTypeRows: Array<{ eventType: string; count: number }>;
 	nextCommands: string[];
-} | DebugTelemetryUnavailable;
+}) | DebugTelemetryUnavailable;
 
-export type DebugTelemetryProviderEventsResult = {
+export type DebugTelemetryProviderEventsResult = (DebugRuntimeIdentity & {
 	available: true;
 	command: "provider events";
 	providerRequestId: string;
@@ -128,25 +129,25 @@ export type DebugTelemetryProviderEventsResult = {
 	page: TelemetryProviderEventsPage;
 	rows: Array<StoredTelemetryProviderEvent & { selectedSafeFields: Record<string, string | number | boolean | null> }>;
 	nextCommands: string[];
-} | DebugTelemetryUnavailable;
+}) | DebugTelemetryUnavailable;
 
-export type DebugTelemetryProviderPayloadResult = {
+export type DebugTelemetryProviderPayloadResult = (DebugRuntimeIdentity & {
 	available: true;
 	command: "provider payload";
 	providerRequestId: string;
 	payloadRef: string;
 	preview: TelemetryPreviewUnavailableResult;
 	nextCommands: string[];
-} | DebugTelemetryUnavailable;
+}) | DebugTelemetryUnavailable;
 
-export type DebugTelemetryToolResult = {
+export type DebugTelemetryToolResult = (DebugRuntimeIdentity & {
 	available: true;
 	command: "tool";
 	toolCallId: string;
 	tool: StoredTelemetryToolCall;
 	noExecutionStart: boolean;
 	nextCommands: string[];
-} | DebugTelemetryUnavailable;
+}) | DebugTelemetryUnavailable;
 
 export type DebugTelemetryStaleResult = {
 	available: true;
@@ -207,6 +208,7 @@ export function inspectTelemetrySession(store: ResolvedPiboDebugStore, piboSessi
 		if (!detail) return notFound(`No telemetry found for Pibo Session ${piboSessionId}.`, piboSessionId);
 		return {
 			available: true,
+			...readTelemetryRuntimeIdentity(store, piboSessionId),
 			command: "session",
 			piboSessionId,
 			limit,
@@ -230,6 +232,7 @@ export function inspectTelemetryTurn(store: ResolvedPiboDebugStore, turnIdOrEven
 		const missingTerminalEvent = timeline.turn.status === "running" && !timeline.phases.some((phase) => phase.name === "finish" && phase.status === "ok");
 		return {
 			available: true,
+			...readTelemetryRuntimeIdentity(store, timeline.turn.piboSessionId),
 			command: "turn",
 			turnIdOrEventId,
 			limit,
@@ -253,6 +256,7 @@ export function inspectTelemetryProvider(store: ResolvedPiboDebugStore, provider
 		if (!request) return notFound(`No telemetry found for provider request ${providerRequestId}.`);
 		return {
 			available: true,
+			...readTelemetryRuntimeIdentity(store, request.piboSessionId),
 			command: "provider",
 			providerRequestId,
 			request,
@@ -276,6 +280,7 @@ export function inspectTelemetryProviderEvents(store: ResolvedPiboDebugStore, pr
 		}));
 		return {
 			available: true,
+			...readTelemetryRuntimeIdentity(store, request.piboSessionId),
 			command: "provider events",
 			providerRequestId,
 			limit,
@@ -294,6 +299,7 @@ export function inspectTelemetryProviderPayload(store: ResolvedPiboDebugStore, p
 		if (!request) return notFound(`No telemetry found for provider request ${providerRequestId}.`);
 		return {
 			available: true,
+			...readTelemetryRuntimeIdentity(store, request.piboSessionId),
 			command: "provider payload",
 			providerRequestId,
 			payloadRef,
@@ -309,6 +315,7 @@ export function inspectTelemetryTool(store: ResolvedPiboDebugStore, toolCallId: 
 		if (!tool) return notFound(`No telemetry found for tool call ${toolCallId}.`);
 		return {
 			available: true,
+			...readTelemetryRuntimeIdentity(store, tool.piboSessionId),
 			command: "tool",
 			toolCallId,
 			tool,
@@ -408,6 +415,7 @@ export function formatTelemetrySession(result: DebugTelemetrySessionResult): str
 	const toolCallId = firstId(detail.toolCalls, "toolCallId");
 	return [
 		`pibo debug telemetry session ${result.piboSessionId}`,
+		...formatTelemetryRuntimeIdentity(result),
 		`status\t${activeTurn?.status ?? "idle"}`,
 		`queueDepth\t${activeTurn?.queueDepth ?? "-"}`,
 		`activeTurn\t${activeTurn?.turnId ?? "-"}`,
@@ -435,6 +443,7 @@ export function formatTelemetryTurn(result: DebugTelemetryTurnResult): string {
 	return [
 		`pibo debug telemetry turn ${timeline.turn.turnId}`,
 		`session\t${timeline.turn.piboSessionId}`,
+		...formatTelemetryRuntimeIdentity(result),
 		`status\t${timeline.turn.status}`,
 		`currentPhase\t${timeline.turn.currentPhase ?? "-"}`,
 		`openPhases\t${result.openPhases}`,
@@ -457,6 +466,7 @@ export function formatTelemetryProvider(result: DebugTelemetryProviderResult): s
 	return [
 		`pibo debug telemetry provider ${result.providerRequestId}`,
 		`session\t${request.piboSessionId}`,
+		...formatTelemetryRuntimeIdentity(result),
 		`turn\t${request.turnId}`,
 		`phase\t${request.phaseId ?? "-"}`,
 		`status\t${request.status}`,
@@ -586,6 +596,16 @@ export function formatTelemetryPrune(result: DebugTelemetryPruneResult): string 
 	].join("\n");
 }
 
+function readTelemetryRuntimeIdentity(store: ResolvedPiboDebugStore, piboSessionId: string): DebugRuntimeIdentity {
+	if (!store.exists) return {};
+	const db = openReadOnlyDebugDatabase(store);
+	try {
+		return readDebugRuntimeIdentity(db, piboSessionId);
+	} finally {
+		db.close();
+	}
+}
+
 function withTelemetryStore<T>(store: ResolvedPiboDebugStore, action: (telemetry: TelemetryStore) => T, options: { readOnly?: boolean } = {}): T | DebugTelemetryUnavailable {
 	if (!store.exists) {
 		return {
@@ -654,6 +674,14 @@ function notFound(message: string, piboSessionId?: string, turnId?: string): Deb
 			"pibo debug events <pibo-session-id> --limit 20",
 		].filter((command): command is string => typeof command === "string"),
 	};
+}
+
+function formatTelemetryRuntimeIdentity(result: DebugRuntimeIdentity): string[] {
+	return [
+		result.runtimeInstanceId ? `runtimeInstanceId\t${result.runtimeInstanceId}` : undefined,
+		result.runtimeAdapterId ? `runtimeAdapterId\t${result.runtimeAdapterId}` : undefined,
+		result.runtimeBindingState ? `runtimeBindingState\t${result.runtimeBindingState}` : undefined,
+	].filter((value): value is string => Boolean(value));
 }
 
 function formatUnavailable(result: DebugTelemetryUnavailable): string {

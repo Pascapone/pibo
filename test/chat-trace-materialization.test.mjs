@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
+import { buildTraceViewFromEvents } from "./helpers/pi-history.mjs";
 import { storedPiboEventFromV2Row } from "../dist/apps/chat/data/chat-data-mappers.js";
 import { createTraceViewVersion } from "../dist/apps/chat/trace.js";
 

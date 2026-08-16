@@ -101,6 +101,12 @@ export class AgentRuntimeAdapterRegistry {
 				`Agent runtime instance "${definition.id}" was created by adapter "${adapter.descriptor.id}" instead of "${definition.adapterId}".`,
 			);
 		}
+		const historyDeclared = adapter.descriptor.capabilities.maintenance.history;
+		if (historyDeclared && (!adapter.inspectHistory || !adapter.readHistory)) {
+			throw new AgentRuntimeRegistrationError(
+				`Agent runtime instance "${definition.id}" declares maintenance.history but must implement inspectHistory() and readHistory().`,
+			);
+		}
 		this.instances.set(definition.id, adapter);
 		this.definitions.set(definition.id, {
 			...definition,

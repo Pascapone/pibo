@@ -250,6 +250,8 @@ test("v2 schema backfills legacy Pi bindings and keeps old-writer Pi updates syn
 	assert.deepEqual(JSON.parse(backfilled.metadata_json), {
 		migrationSource: "schema-v4",
 		nativePresenceExpected: false,
+		nativeHistoryFallback: true,
+		historyMigrationSource: "schema-v5",
 	});
 	assert.equal(db.prepare("SELECT pi_session_id FROM sessions WHERE id = ?").get("ps_legacy").pi_session_id, "pi-legacy");
 
@@ -268,9 +270,10 @@ test("v2 schema backfills legacy Pi bindings and keeps old-writer Pi updates syn
 	);
 	db.prepare("UPDATE sessions SET pi_session_id = ?, updated_at = ? WHERE id = ?")
 		.run("pi-old-writer-moved", "2026-08-15T00:01:00.000Z", "ps_old_writer");
-	const synchronized = db.prepare("SELECT native_session_id, binding_state FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_old_writer");
+	const synchronized = db.prepare("SELECT native_session_id, binding_state, metadata_json FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_old_writer");
 	assert.equal(synchronized.native_session_id, "pi-old-writer-moved");
 	assert.equal(synchronized.binding_state, "bound");
+	assert.equal(JSON.parse(synchronized.metadata_json).nativeHistoryFallback, undefined);
 
 	// A rolled-back writer can ignore the additive table and continue using the Pi column.
 	db.exec("PRAGMA user_version = 3");

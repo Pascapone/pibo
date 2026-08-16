@@ -321,6 +321,17 @@ test("runtime registry validates descriptor and live-session capability claims",
 	);
 });
 
+test("runtime registry requires declared native history providers to implement inspection and reads", () => {
+	const registry = new AgentRuntimeAdapterRegistry();
+	const capabilities = createFakeAgentRuntimeDriver({ adapterId: "history-contract-template" }).descriptor.capabilities;
+	capabilities.maintenance.history = true;
+	registry.registerDriver(createFakeAgentRuntimeDriver({ adapterId: "history-contract", capabilities }));
+	assert.throws(
+		() => registry.registerInstance({ id: "history-contract", adapterId: "history-contract" }),
+		/declares maintenance\.history.*inspectHistory\(\).*readHistory\(\)/,
+	);
+});
+
 test("deterministic fake adapter passes the reusable lifecycle contract", async () => {
 	const registry = new AgentRuntimeAdapterRegistry();
 	registry.registerDriver(createFakeAgentRuntimeDriver({

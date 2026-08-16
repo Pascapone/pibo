@@ -23,6 +23,7 @@ import {
 } from "../apps/chat/data/chat-data-mappers.js";
 import { ChatDataIngestService } from "../data/ingest-service.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
+import { ChatHistoryQueryService } from "../apps/chat/data/history-query-service.js";
 import type { StoredPiboEventLogRow } from "../data/event-log.js";
 import type { PiboDataStore } from "../data/pibo-store.js";
 import {
@@ -976,13 +977,18 @@ export class LocalCliSessionSource implements CliSessionSource {
       limit: 500,
     });
     const events = rows
-      .map((row) => storedPiboEventFromV2Row(eventLogRowToV2MapperRow(row)))
+      .map((row) => storedPiboEventFromV2Row(eventLogRowToV2MapperRow(row), this.dataStore?.payloads))
       .filter((event) => event !== undefined)
       .map(normalizeStoredEventForCliTrace);
+    const historyEntries = new ChatHistoryQueryService(this.dataStore).listProductHistoryEntries({
+      piboSessionId: session.id,
+      limit: 500,
+    });
     return await buildTraceView({
       session,
       sessions: this.readSessions(),
       events,
+      historyEntries,
       status:
         statusFromSession(session) === "running"
           ? "running"
@@ -1251,6 +1257,7 @@ function eventLogRowToV2MapperRow(row: StoredPiboEventLogRow): EventLogRow {
     event_id: row.eventId ?? null,
     idempotency_key: row.idempotencyKey ?? null,
     retention_class: row.retentionClass,
+    payload_ref: row.payloadRef ?? null,
     preview_text: row.previewText ?? null,
     attributes_json: JSON.stringify(row.attributes ?? {}),
     created_at: row.createdAt,

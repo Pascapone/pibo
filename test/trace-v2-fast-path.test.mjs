@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
+import { buildTraceViewFromEvents } from "./helpers/pi-history.mjs";
 import {
 	TRACE_V2_INLINE_TRANSCRIPT_PAYLOAD_MAX_BYTES,
 	TRACE_V2_PAYLOAD_DEFAULT_LIMIT_BYTES,

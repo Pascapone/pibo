@@ -8,7 +8,12 @@ import {
 	profileWithRuntimeInstance,
 	uniqueRuntimeDiagnostics,
 } from "../../agent-runtime/context-build.js";
-import type { AgentRuntimeDiagnostic, AgentRuntimeInstanceInspection } from "../../agent-runtime/types.js";
+import type {
+	AgentRuntimeDiagnostic,
+	AgentRuntimeHistoryInspection,
+	AgentRuntimeHistoryPage,
+	AgentRuntimeInstanceInspection,
+} from "../../agent-runtime/types.js";
 import { PiboRuntimeResourceService } from "../../agent-runtime/resource-service.js";
 import { summarizeSessionSignalStatus } from "../../signals/status.js";
 import type { PiboSessionSignalStatus, PiboSignalPatch, PiboSignalStatusPatch } from "../../signals/types.js";
@@ -32,7 +37,7 @@ import {
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
-import { buildSessionNodes, buildTraceView, createTraceViewVersion, loadPiSessionFastMetadata, loadPiSessionMetadata, readTailEntries, readTranscriptHistoryPage, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
+import { buildSessionNodes, buildTraceView, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
 import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { ChatWebStoredEvent, PiboSessionTraceSummary, PiboTraceNode, TraceTimelinePage } from "../../shared/trace-types.js";
 import {
@@ -92,6 +97,7 @@ import { ChatReadStateService } from "./data/read-state-service.js";
 import { ChatRoomService } from "./data/room-service.js";
 import { ChatSessionQueryService } from "./data/session-query-service.js";
 import { ChatTimelineQueryService } from "./data/timeline-query-service.js";
+import { ChatHistoryQueryService, type ChatProductHistoryCoverage } from "./data/history-query-service.js";
 import { ChatProjectService, type PiboProject, type PiboProjectSession, type PiboProjectWorkflowSessionConfiguration, type PiboProjectWorkflowSessionSnapshot } from "./data/project-service.js";
 import { PiboDataStore } from "../../data/pibo-store.js";
 import { createDefaultPiboCronStore, type PiboCronStore } from "../../cron/store.js";
@@ -344,6 +350,11 @@ type ChatTimelineQuery = {
 	getLatestStreamId(input?: { roomId?: string; piboSessionId?: string }): number | undefined;
 };
 
+type ChatHistoryQuery = {
+	listProductHistoryEntries(input: { piboSessionId: string; limit?: number; beforeSequence?: number }): import("../../agent-runtime/history.js").AgentRuntimeHistoryEntry[];
+	getProductHistoryCoverage(piboSessionId: string): ChatProductHistoryCoverage;
+};
+
 type ChatEventCommands = {
 	appendEvent(input: ChatEventAppendInput): StoredChatEvent;
 	appendOutputEvent(event: PiboOutputEvent, input?: { roomId?: string; actorId?: string }): StoredChatEvent | undefined;
@@ -374,6 +385,7 @@ type ChatRoomActions = {
 type ChatWebAppState = {
 	sessionQuery: ChatSessionQuery;
 	timelineQuery: ChatTimelineQuery;
+	historyQuery: ChatHistoryQuery;
 	eventCommands: ChatEventCommands;
 	readState: ChatReadState;
 	roomService: ChatRoomActions;
@@ -878,11 +890,8 @@ function createFastTraceV2Version(input: {
 	lastActivityAt?: string;
 	status?: PiboWebSessionStatus;
 	latestStreamId?: number;
-	transcript?: {
-		sessionSize?: number;
-		sessionMtimeMs?: number;
-		modified?: string;
-	};
+	productHistory?: ChatProductHistoryCoverage;
+	nativeHistoryVersion?: string;
 }): string {
 	const relevantSessions = input.sessions
 		.map((session) => ({
@@ -902,6 +911,7 @@ function createFastTraceV2Version(input: {
 				profile: input.session.profile,
 				title: input.session.title ?? null,
 				updatedAt: input.session.updatedAt,
+				runtimeBinding: traceRuntimeBindingFromSession(input.session),
 			},
 			status: input.status ?? "idle",
 			events: {
@@ -909,11 +919,13 @@ function createFastTraceV2Version(input: {
 				lastActivityAt: input.lastActivityAt ?? null,
 				latestStreamId: input.latestStreamId ?? null,
 			},
-			transcript: {
-				sessionSize: input.transcript?.sessionSize ?? null,
-				sessionMtimeMs: input.transcript?.sessionMtimeMs ?? null,
-				modified: input.transcript?.modified ?? null,
+			productHistory: {
+				messageCount: input.productHistory?.messageCount ?? 0,
+				firstEventSequence: input.productHistory?.firstEventSequence ?? null,
+				lastEventSequence: input.productHistory?.lastEventSequence ?? null,
+				lastCreatedAt: input.productHistory?.lastCreatedAt ?? null,
 			},
+			nativeHistoryVersion: input.nativeHistoryVersion ?? null,
 			sessions: relevantSessions,
 		}))
 		.digest("hex");
@@ -3436,43 +3448,119 @@ function recordTransientReplayEvent(state: ChatWebAppState, event: Omit<Transien
 	return recorded;
 }
 
+type RuntimeHistoryCursorPayload = {
+	v: 1;
+	piboSessionId?: string;
+	runtimeInstanceId?: string;
+	adapterId?: string;
+	providerCursor?: string;
+	beforeTimestamp?: string;
+};
+
 type TraceTimelineCursor =
 	| { kind: "tail" }
 	| { kind: "event"; beforeSequence: number; raw: string }
-	| { kind: "transcript"; beforeByte: number; beforeTimestamp?: string; raw: string };
+	| { kind: "history"; piboSessionId?: string; providerCursor?: string; beforeTimestamp?: string; runtimeInstanceId?: string; adapterId?: string; raw: string };
 
 function parseTimelineBeforeCursor(url: URL): TraceTimelineCursor {
 	const before = parseOptionalPositiveIntSearchParam(url, "beforeSequence");
 	if (before !== undefined) return { kind: "event", beforeSequence: before, raw: String(before) };
 	const cursor = url.searchParams.get("before") ?? url.searchParams.get("cursor");
 	if (!cursor || cursor === "tail") return { kind: "tail" };
-	const transcript = parseTranscriptTimelineCursor(cursor);
-	if (transcript) return transcript;
+	const history = parseRuntimeHistoryTimelineCursor(cursor);
+	if (history) return history;
 	const parsed = Number.parseInt(cursor, 10);
-	if (!Number.isFinite(parsed) || parsed <= 0) throw new PiboWebHttpError("Trace cursor must be tail, transcript, or a positive sequence", 400);
+	if (!Number.isFinite(parsed) || parsed <= 0) throw new PiboWebHttpError("Trace cursor must be tail, runtime-history, or a positive sequence", 400);
 	return { kind: "event", beforeSequence: parsed, raw: String(parsed) };
 }
 
-function parseTranscriptTimelineCursor(cursor: string): TraceTimelineCursor | undefined {
-	if (!cursor.startsWith("transcript:")) return undefined;
-	const [, byteValue, encodedTimestamp] = cursor.split(":");
-	const beforeByte = Number.parseInt(byteValue ?? "", 10);
-	if (!Number.isFinite(beforeByte) || beforeByte < 0) throw new PiboWebHttpError("Invalid transcript trace cursor", 400);
-	let beforeTimestamp: string | undefined;
-	if (encodedTimestamp) {
+function parseRuntimeHistoryTimelineCursor(cursor: string): Extract<TraceTimelineCursor, { kind: "history" }> | undefined {
+	if (cursor.startsWith("transcript:")) {
+		const [, , encodedTimestamp] = cursor.split(":");
+		let beforeTimestamp: string | undefined;
 		try {
-			const decoded = Buffer.from(encodedTimestamp, "base64url").toString("utf8");
-			if (decoded) beforeTimestamp = decoded;
+			beforeTimestamp = encodedTimestamp ? Buffer.from(encodedTimestamp, "base64url").toString("utf8") || undefined : undefined;
 		} catch {
-			throw new PiboWebHttpError("Invalid transcript trace cursor", 400);
+			throw new PiboWebHttpError("Invalid legacy transcript trace cursor", 400);
 		}
+		return { kind: "history", providerCursor: cursor, beforeTimestamp, raw: cursor };
 	}
-	return { kind: "transcript", beforeByte, beforeTimestamp, raw: cursor };
+	if (!cursor.startsWith("runtime-history:")) return undefined;
+	try {
+		const payload = JSON.parse(Buffer.from(cursor.slice("runtime-history:".length), "base64url").toString("utf8")) as RuntimeHistoryCursorPayload;
+		if (payload.v !== 1) throw new Error("unsupported version");
+		for (const value of [payload.piboSessionId, payload.runtimeInstanceId, payload.adapterId, payload.providerCursor, payload.beforeTimestamp]) {
+			if (value !== undefined && typeof value !== "string") throw new Error("invalid field");
+		}
+		return { kind: "history", ...payload, raw: cursor };
+	} catch (error) {
+		throw new PiboWebHttpError(`Invalid runtime history trace cursor: ${error instanceof Error ? error.message : String(error)}`, 400);
+	}
 }
 
-function encodeTranscriptTimelineCursor(beforeByte: number, beforeTimestamp?: string): string {
-	const encodedTimestamp = beforeTimestamp ? Buffer.from(beforeTimestamp, "utf8").toString("base64url") : "";
-	return `transcript:${Math.max(0, Math.floor(beforeByte))}:${encodedTimestamp}`;
+function encodeRuntimeHistoryTimelineCursor(
+	session: PiboSession,
+	input: { providerCursor?: string; beforeTimestamp?: string } = {},
+): string {
+	const binding = session.runtimeBinding;
+	const payload: RuntimeHistoryCursorPayload = {
+		v: 1,
+		piboSessionId: session.id,
+		runtimeInstanceId: binding?.runtimeInstanceId,
+		adapterId: binding?.adapterId,
+		providerCursor: input.providerCursor,
+		beforeTimestamp: input.beforeTimestamp,
+	};
+	return `runtime-history:${Buffer.from(JSON.stringify(payload), "utf8").toString("base64url")}`;
+}
+
+function validateRuntimeHistoryCursor(session: PiboSession, cursor: Extract<TraceTimelineCursor, { kind: "history" }>): void {
+	const binding = session.runtimeBinding;
+	if (cursor.piboSessionId && cursor.piboSessionId !== session.id) {
+		throw new PiboWebHttpError("Runtime history cursor belongs to a different Pibo session", 409);
+	}
+	if (cursor.runtimeInstanceId && cursor.runtimeInstanceId !== binding?.runtimeInstanceId) {
+		throw new PiboWebHttpError("Runtime history cursor belongs to a different runtime instance", 409);
+	}
+	if (cursor.adapterId && cursor.adapterId !== binding?.adapterId) {
+		throw new PiboWebHttpError("Runtime history cursor belongs to a different runtime adapter", 409);
+	}
+}
+
+function traceRuntimeBindingFromSession(session: PiboSession): PiboSessionTraceSummary["runtimeBinding"] {
+	const binding = session.runtimeBinding;
+	return binding ? {
+		runtimeInstanceId: binding.runtimeInstanceId,
+		adapterId: binding.adapterId,
+		nativeSessionId: binding.nativeSessionId,
+		state: binding.state,
+		protocol: binding.protocol,
+		protocolVersion: binding.protocolVersion,
+		adapterVersion: binding.adapterVersion,
+		revision: binding.revision,
+	} : undefined;
+}
+
+function requiresNativeHistoryCompatibility(session: PiboSession): boolean {
+	const metadata = session.runtimeBinding?.metadata;
+	return session.originId !== undefined
+		|| metadata?.nativeHistoryFallback === true
+		|| typeof metadata?.migrationSource === "string";
+}
+
+function sessionNodeHistoryOptions(context: PiboWebAppContext): Parameters<typeof buildSessionNodes>[4] {
+	return {
+		loadHistoryInspection: async (session) => requiresNativeHistoryCompatibility(session) && context.channelContext.inspectSessionRuntimeHistory
+			? await context.channelContext.inspectSessionRuntimeHistory(session.id).catch(() => undefined)
+			: undefined,
+	};
+}
+
+function runtimeHistorySupported(context: PiboWebAppContext, session: PiboSession): boolean {
+	if (!context.channelContext.readSessionRuntimeHistory) return false;
+	const runtimeInstanceId = session.runtimeBinding?.runtimeInstanceId;
+	if (!runtimeInstanceId) return false;
+	return context.channelContext.getCapabilityCatalog?.().agentRuntimes.find((runtime) => runtime.id === runtimeInstanceId)?.capabilities.maintenance.history === true;
 }
 
 function compactionCutoffTimestamp(events: ChatWebStoredPiboEvent[]): string | undefined {
@@ -3481,28 +3569,7 @@ function compactionCutoffTimestamp(events: ChatWebStoredPiboEvent[]): string | u
 	return compaction?.createdAt;
 }
 
-function originTranscriptTailCursor(input: {
-	session: PiboSession;
-	trace: PiboSessionTraceView;
-	metadata?: { sessionPath?: string; sessionSize?: number };
-	limit: number;
-}): string | undefined {
-	if (!input.session.originId) return undefined;
-	const sessionPath = input.metadata?.sessionPath;
-	const sessionSize = input.metadata?.sessionSize;
-	if (!sessionPath || !sessionSize || sessionSize <= 0) return undefined;
-	const firstVisibleTranscript = firstVisibleTailTranscriptNode(input.trace.nodes, input.limit);
-	if (!firstVisibleTranscript?.startedAt) return undefined;
-	const probe = readTranscriptHistoryPage(sessionPath, {
-		beforeByte: sessionSize,
-		beforeTimestamp: firstVisibleTranscript.startedAt,
-		limit: 1,
-	});
-	if (probe.entries.length === 0) return undefined;
-	return encodeTranscriptTimelineCursor(sessionSize, firstVisibleTranscript.startedAt);
-}
-
-function firstVisibleTailTranscriptNode(nodes: readonly PiboTraceNode[], limit: number): PiboTraceNode | undefined {
+function firstVisibleTailHistoryNode(nodes: readonly PiboTraceNode[], limit: number): PiboTraceNode | undefined {
 	const flat: PiboTraceNode[] = [];
 	const visit = (items: readonly PiboTraceNode[]): void => {
 		for (const item of items) {
@@ -3511,7 +3578,7 @@ function firstVisibleTailTranscriptNode(nodes: readonly PiboTraceNode[], limit: 
 		}
 	};
 	visit(nodes);
-	return flat.slice(-Math.max(1, limit)).find((node) => node.source === "transcript" && node.startedAt);
+	return flat.slice(-Math.max(1, limit)).find((node) => (node.source === "transcript" || node.source === "product-history") && node.startedAt);
 }
 
 function transientReplayScopeKeys(input: { roomId?: string; piboSessionId?: string }): string[] {
@@ -4220,6 +4287,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 	const state: ChatWebAppState = {
 		sessionQuery: new ChatSessionQueryService(dataStore),
 		timelineQuery: new ChatTimelineQueryService(dataStore),
+		historyQuery: new ChatHistoryQueryService(dataStore),
 		eventCommands: new ChatEventCommandService(dataStore),
 		readState: new ChatReadStateService(dataStore),
 		roomService: new ChatRoomService(dataStore),
@@ -4412,6 +4480,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						sessionIndexItemsWithSignalState(context, roomSessions, state.sessionQuery.listSessions(), sessionUnreadCounts),
 						process.cwd(),
 						sessionUnreadCounts,
+						sessionNodeHistoryOptions(context),
 					),
 					loadBootstrapCatalog(state, context, webSession),
 				]);
@@ -5318,6 +5387,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					state.sessionQuery.listSessions(),
 					process.cwd(),
 					new Map(),
+					sessionNodeHistoryOptions(context),
 				);
 				if (!wantsPage) return responseJson(nodes);
 				const page = paginateSessionNodes(nodes, { archived: archivedPage, cursor, limit });
@@ -5387,6 +5457,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						state.sessionQuery.listSessions(),
 						process.cwd(),
 						new Map(),
+						sessionNodeHistoryOptions(context),
 					),
 				});
 			}
@@ -5596,27 +5667,30 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				);
 				state.sessionQuery.upsertSession(selectedSession);
 				const indexedSession = state.sessionQuery.getSession(selectedSession.id);
-				const metadataStartedAt = performance.now();
-				const metadata = await loadPiSessionFastMetadata(selectedSession, selectedSession.workspace ?? process.cwd());
-				const metadataMs = performance.now() - metadataStartedAt;
+				const historyStartedAt = performance.now();
+				const productHistory = state.historyQuery.getProductHistoryCoverage(selectedSession.id);
+				const historyInspection = requiresNativeHistoryCompatibility(selectedSession) && context.channelContext.inspectSessionRuntimeHistory
+					? await context.channelContext.inspectSessionRuntimeHistory(selectedSession.id).catch(() => undefined)
+					: undefined;
+				const historyMs = performance.now() - historyStartedAt;
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
-				const version = createTraceViewVersion({
+				const version = createFastTraceV2Version({
 					session: selectedSession,
 					sessions: listSharedSessions(context),
-					events: lastEventSequence > 0
-						? [{ id: `seq:${lastEventSequence}`, eventSequence: lastEventSequence, createdAt: indexedSession?.lastActivityAt ?? "" }]
-						: [],
+					lastEventSequence,
+					lastActivityAt: indexedSession?.lastActivityAt,
 					status: indexedSession?.status,
-					metadata,
 					latestStreamId,
+					productHistory,
+					nativeHistoryVersion: historyInspection?.version,
 				});
 				const headers = {
 					etag: etagForVersion(version),
 					"x-pibo-trace-version": version,
 					"server-timing": [
 						`trace_summary;dur=${(performance.now() - startedAt).toFixed(1)}`,
-						`trace_metadata;dur=${metadataMs.toFixed(1)}`,
+						`trace_history;dur=${historyMs.toFixed(1)}`,
 						`trace_events;desc="${lastEventSequence}"`,
 					].join(", "),
 				};
@@ -5626,7 +5700,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const summary: PiboSessionTraceSummary = {
 					piboSessionId: selectedSession.id,
 					piSessionId: selectedSession.piSessionId,
-					title: selectedSession.title ?? "Untitled Session",
+					runtimeBinding: traceRuntimeBindingFromSession(selectedSession),
+					title: selectedSession.title ?? historyInspection?.title ?? historyInspection?.firstMessage ?? "Untitled Session",
 					version,
 					latestStreamId,
 					eventCount: lastEventSequence,
@@ -5648,10 +5723,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					defaultProfile,
 					url.searchParams.get("piboSessionId") || undefined,
 				);
+				if (timelineCursor.kind === "history") validateRuntimeHistoryCursor(selectedSession, timelineCursor);
 				state.sessionQuery.upsertSession(selectedSession);
 				const ownedSessions = listSharedSessions(context);
 				const indexedSession = state.sessionQuery.getSession(selectedSession.id);
-				let metadataMs = 0;
+				let historyMs = 0;
+				const productHistory = state.historyQuery.getProductHistoryCoverage(selectedSession.id);
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
@@ -5660,11 +5737,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					? context.channelContext.getSessionRuntimeStatus(selectedSession.id) ?? null
 					: undefined;
 				const traceStatus = traceProjectionStatus(liveSnapshots, indexedSession?.status, turnTimings, runtimeStatus);
-				const metadataStartedAt = performance.now();
-				const transcriptMetadata = timelineCursor.kind === "tail" || timelineCursor.kind === "transcript"
-					? await loadPiSessionFastMetadata(selectedSession, selectedSession.workspace ?? process.cwd())
-					: undefined;
-				metadataMs += performance.now() - metadataStartedAt;
+				let historyInspection: AgentRuntimeHistoryInspection | undefined;
+				if (timelineCursor.kind === "tail" && requiresNativeHistoryCompatibility(selectedSession) && context.channelContext.inspectSessionRuntimeHistory) {
+					const historyStartedAt = performance.now();
+					historyInspection = await context.channelContext.inspectSessionRuntimeHistory(selectedSession.id).catch(() => undefined);
+					historyMs += performance.now() - historyStartedAt;
+				}
 				const baseVersion = createFastTraceV2Version({
 					session: selectedSession,
 					sessions: ownedSessions,
@@ -5672,7 +5750,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					lastActivityAt: indexedSession?.lastActivityAt,
 					status: traceStatus,
 					latestStreamId,
-					transcript: transcriptMetadata,
+					productHistory,
+					nativeHistoryVersion: historyInspection?.version,
 				});
 				const snapshotVersion = liveSnapshotVersion(liveSnapshots);
 				const version = snapshotVersion ? `${baseVersion}:live:${snapshotVersion}` : baseVersion;
@@ -5695,7 +5774,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							...baseHeaders,
 							"server-timing": [
 								`trace_timeline;dur=${(performance.now() - startedAt).toFixed(1)}`,
-								`trace_metadata;dur=${metadataMs.toFixed(1)}`,
+								`trace_history;dur=${historyMs.toFixed(1)}`,
 								`trace_events;desc="0"`,
 								`trace_cache;desc="page-hit"`,
 							].join(", "),
@@ -5705,22 +5784,31 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				let trace = cached;
 				let eventCount = 0;
 				if (!trace) {
-					if (timelineCursor.kind === "transcript") {
-						const history = transcriptMetadata?.sessionPath
-							? readTranscriptHistoryPage(transcriptMetadata.sessionPath, {
-								beforeByte: timelineCursor.beforeByte,
+					if (timelineCursor.kind === "history") {
+						if (!context.channelContext.readSessionRuntimeHistory) {
+							throw new PiboWebHttpError("Runtime history is unavailable for this gateway", 501);
+						}
+						const historyStartedAt = performance.now();
+						let history: AgentRuntimeHistoryPage;
+						try {
+							history = await context.channelContext.readSessionRuntimeHistory(selectedSession.id, {
+								cursor: timelineCursor.providerCursor,
 								beforeTimestamp: timelineCursor.beforeTimestamp,
 								limit,
-							})
-							: { entries: [], hasOlder: false, scannedBytes: 0, startByte: 0, endByte: 0 };
+							});
+						} catch {
+							throw new PiboWebHttpError("Runtime history could not be read for this page", 502);
+						}
+						historyMs += performance.now() - historyStartedAt;
+						historyInspection = history.inspection;
 						trace = await buildTraceView({
 							session: selectedSession,
 							sessions: ownedSessions,
 							events: [],
 							status: traceStatus,
-							metadata: transcriptMetadata ?? {},
-							transcriptEntries: history.entries,
-							transcriptOrderOffset: history.startByte,
+							historyEntries: history.entries,
+							historyInspection: history.inspection,
+							historyOrderOffset: history.orderOffset,
 							turnTimings,
 							includeRawEvents: false,
 							latestStreamId,
@@ -5731,10 +5819,13 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							eventLimit: limit,
 							pageSize: limit,
 							beforeCursor: timelineCursor.raw,
-							nextBeforeCursor: history.hasOlder && history.nextBeforeByte !== undefined
-								? encodeTranscriptTimelineCursor(history.nextBeforeByte, timelineCursor.beforeTimestamp)
+							nextBeforeCursor: history.hasMore
+								? encodeRuntimeHistoryTimelineCursor(selectedSession, {
+									providerCursor: history.nextCursor,
+									beforeTimestamp: timelineCursor.beforeTimestamp,
+								})
 								: undefined,
-							hasOlderEvents: history.hasOlder,
+							hasOlderEvents: history.hasMore,
 						};
 					} else {
 						const events = state.timelineQuery.listTraceEvents({
@@ -5742,17 +5833,34 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							limit,
 							...(beforeSequence !== undefined ? { beforeSequence } : {}),
 						});
-						const transcriptEntries = timelineCursor.kind === "tail" && transcriptMetadata?.sessionPath
-							? readTailEntries(transcriptMetadata.sessionPath)
-							: [];
 						eventCount = events.length;
+						let nativeHistory: AgentRuntimeHistoryPage | undefined;
+						if (
+							timelineCursor.kind === "tail"
+							&& requiresNativeHistoryCompatibility(selectedSession)
+							&& runtimeHistorySupported(context, selectedSession)
+							&& context.channelContext.readSessionRuntimeHistory
+						) {
+							const historyStartedAt = performance.now();
+							nativeHistory = await context.channelContext.readSessionRuntimeHistory(selectedSession.id, { limit: Math.min(limit * 4, 500) }).catch(() => undefined);
+							historyMs += performance.now() - historyStartedAt;
+							historyInspection = nativeHistory?.inspection ?? historyInspection;
+						}
+						const historyEntries = nativeHistory?.entries.length
+							? nativeHistory.entries
+							: state.historyQuery.listProductHistoryEntries({
+								piboSessionId: selectedSession.id,
+								limit: Math.min(limit * 2, 500),
+								...(beforeSequence !== undefined ? { beforeSequence } : {}),
+							});
 						trace = await buildTraceView({
 							session: selectedSession,
 							sessions: ownedSessions,
 							events,
 							status: traceStatus,
-							metadata: transcriptMetadata ?? {},
-							transcriptEntries,
+							historyEntries,
+							historyInspection,
+							historyOrderOffset: nativeHistory?.orderOffset,
 							turnTimings,
 							includeRawEvents: false,
 							latestStreamId,
@@ -5763,19 +5871,23 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							beforeSequence,
 							beforeCursor: timelineCursor.kind === "event" ? timelineCursor.raw : undefined,
 						});
-						if (trace.hasOlderEvents !== true && events.length > 0) {
-							const cutoff = compactionCutoffTimestamp(events);
+						if (trace.hasOlderEvents !== true && nativeHistory?.hasMore) {
+							trace = {
+								...trace,
+								nextBeforeCursor: encodeRuntimeHistoryTimelineCursor(selectedSession, {
+									providerCursor: nativeHistory.nextCursor,
+								}),
+								hasOlderEvents: true,
+							};
+						} else if (trace.hasOlderEvents !== true && events.length > 0 && runtimeHistorySupported(context, selectedSession)) {
+							const cutoff = compactionCutoffTimestamp(events)
+								?? (requiresNativeHistoryCompatibility(selectedSession) ? events[0]?.createdAt : undefined);
 							if (cutoff) {
-								const metadataStartedAt = performance.now();
-								const metadata = transcriptMetadata ?? await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd());
-								metadataMs += performance.now() - metadataStartedAt;
-								if (metadata.sessionPath && metadata.sessionSize && metadata.sessionSize > 0) {
-									trace = {
-										...trace,
-										nextBeforeCursor: encodeTranscriptTimelineCursor(metadata.sessionSize, cutoff),
-										hasOlderEvents: true,
-									};
-								}
+								trace = {
+									...trace,
+									nextBeforeCursor: encodeRuntimeHistoryTimelineCursor(selectedSession, { beforeTimestamp: cutoff }),
+									hasOlderEvents: true,
+								};
 							}
 						}
 					}
@@ -5787,21 +5899,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					status: traceStatus,
 				});
 				trace = { ...trace, version };
-				const transcriptTailCursor = timelineCursor.kind === "tail"
-					? originTranscriptTailCursor({
-						session: selectedSession,
-						trace,
-						metadata: transcriptMetadata,
-						limit,
-					})
-					: undefined;
 				const page = traceTimelinePageFromView({
 					trace,
 					payloadStore: state.dataStore.payloads,
 					limit,
 					byteLimit: TRACE_V2_TIMELINE_HARD_BYTES,
 					fromTail: timelineCursor.kind === "tail",
-					transcriptTailCursor,
 				});
 				setTraceTimelinePageCache(state.traceTimelinePageCache, pageCacheKey, page);
 				return responseJson(page, {
@@ -5809,7 +5912,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						...baseHeaders,
 						"server-timing": [
 							`trace_timeline;dur=${(performance.now() - startedAt).toFixed(1)}`,
-							`trace_metadata;dur=${metadataMs.toFixed(1)}`,
+							`trace_history;dur=${historyMs.toFixed(1)}`,
 							`trace_events;desc="${eventCount}"`,
 							`trace_cache;desc="${cached ? "hit" : "miss"}"`,
 						].join(", "),
@@ -5833,7 +5936,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace/raw-events` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
 				const rawCursor = parseTimelineBeforeCursor(url);
-				if (rawCursor.kind === "transcript") throw new PiboWebHttpError("Raw event cursor must be tail or a positive sequence", 400);
+				if (rawCursor.kind === "history") throw new PiboWebHttpError("Raw event cursor must be tail or a positive sequence", 400);
 				const beforeSequence = rawCursor.kind === "event" ? rawCursor.beforeSequence : undefined;
 				const limit = parsePositiveIntSearchParam(url, "limit", TRACE_V2_RAW_EVENTS_DEFAULT_LIMIT, TRACE_V2_RAW_EVENTS_MAX_LIMIT);
 				const selectedSession = resolveRequestedSession(
@@ -5875,9 +5978,19 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				state.sessionQuery.upsertSession(selectedSession);
 				const ownedSessions = listSharedSessions(context);
 				const indexedSession = state.sessionQuery.getSession(selectedSession.id);
-				const metadataStartedAt = performance.now();
-				const metadata = await loadPiSessionMetadata(selectedSession, selectedSession.workspace ?? process.cwd());
-				const metadataMs = performance.now() - metadataStartedAt;
+				let historyMs = 0;
+				const productHistory = state.historyQuery.getProductHistoryCoverage(selectedSession.id);
+				let nativeHistory: AgentRuntimeHistoryPage | undefined;
+				if (
+					beforeSequence === undefined
+					&& requiresNativeHistoryCompatibility(selectedSession)
+					&& runtimeHistorySupported(context, selectedSession)
+					&& context.channelContext.readSessionRuntimeHistory
+				) {
+					const historyStartedAt = performance.now();
+					nativeHistory = await context.channelContext.readSessionRuntimeHistory(selectedSession.id, { limit: Math.min(eventLimit * 4, 500) }).catch(() => undefined);
+					historyMs += performance.now() - historyStartedAt;
+				}
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
 				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
@@ -5886,15 +5999,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					? context.channelContext.getSessionRuntimeStatus(selectedSession.id) ?? null
 					: undefined;
 				const traceStatus = traceProjectionStatus(liveSnapshots, indexedSession?.status, turnTimings, runtimeStatus);
-				const baseVersion = createTraceViewVersion({
+				const baseVersion = createFastTraceV2Version({
 					session: selectedSession,
 					sessions: ownedSessions,
-					events: lastEventSequence > 0
-						? [{ id: `seq:${lastEventSequence}`, eventSequence: lastEventSequence, createdAt: indexedSession?.lastActivityAt ?? "" }]
-						: [],
+					lastEventSequence,
+					lastActivityAt: indexedSession?.lastActivityAt,
 					status: traceStatus,
-					metadata,
 					latestStreamId,
+					productHistory,
+					nativeHistoryVersion: nativeHistory?.inspection?.version,
 				});
 				const snapshotVersion = liveSnapshotVersion(liveSnapshots);
 				const version = snapshotVersion ? `${baseVersion}:live:${snapshotVersion}` : baseVersion;
@@ -5904,7 +6017,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const serverTiming = (cacheState: "hit" | "miss", eventCount = 0) => ({
 					"server-timing": [
 						`trace;dur=${(performance.now() - startedAt).toFixed(1)}`,
-						`trace_metadata;dur=${metadataMs.toFixed(1)}`,
+						`trace_history;dur=${historyMs.toFixed(1)}`,
 						`trace_events;desc="${eventCount}"`,
 						`trace_cache;desc="${cacheState}"`,
 					].join(", "),
@@ -5922,12 +6035,21 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						...(beforeSequence !== undefined ? { beforeSequence } : {}),
 					});
 					eventCount = events.length;
+					const historyEntries = nativeHistory?.entries.length
+						? nativeHistory.entries
+						: state.historyQuery.listProductHistoryEntries({
+							piboSessionId: selectedSession.id,
+							limit: Math.min(eventLimit * 2, 1000),
+							...(beforeSequence !== undefined ? { beforeSequence } : {}),
+						});
 					trace = await buildTraceView({
 						session: selectedSession,
 						sessions: ownedSessions,
 						events,
 						status: traceStatus,
-						metadata,
+						historyEntries,
+						historyInspection: nativeHistory?.inspection,
+						historyOrderOffset: nativeHistory?.orderOffset,
 						turnTimings,
 						includeRawEvents: false,
 						latestStreamId,
@@ -5991,6 +6113,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					session,
 					sessions: ownedSessions,
 					events: state.timelineQuery.listTraceEvents({ piboSessionId, beforeOrAtSequence: eventSequence, limit: DEFAULT_TRACE_EVENTS_PAGE_SIZE }),
+					historyEntries: state.historyQuery.listProductHistoryEntries({
+						piboSessionId,
+						limit: DEFAULT_TRACE_EVENTS_PAGE_SIZE,
+						beforeSequence: eventSequence + 1,
+					}),
 					status: indexedSession?.status,
 					turnTimings: state.timelineQuery.listMessageTurnTimings(piboSessionId),
 				});

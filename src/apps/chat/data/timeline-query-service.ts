@@ -16,7 +16,7 @@ export class ChatTimelineQueryService {
 		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 		const limit = Math.max(1, Math.min(input.limit ?? 1000, 5000));
 		const rows = this.store.db.prepare(`SELECT * FROM event_log ${where} ORDER BY stream_id ASC LIMIT ?`).all(...values, limit) as EventLogRow[];
-		return rows.map(storedChatEventFromV2Row);
+		return rows.map((row) => storedChatEventFromV2Row(row, this.store.payloads));
 	}
 
 	listSessionEvents(piboSessionId: string, limit = 1000): ChatWebStoredPiboEvent[] {
@@ -34,7 +34,7 @@ export class ChatTimelineQueryService {
 				AND type IN ('message_queued', 'message_steered', 'message_started', 'message_finished', 'session_error', 'thinking_finished', 'assistant_message')
 			ORDER BY session_sequence ASC, stream_id ASC
 		`).all(piboSessionId) as EventLogRow[];
-		const events = rows.map(storedPiboEventFromV2Row).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		const events = rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
 		return messageTurnTimingsFromEvents(events);
 	}
 
@@ -63,7 +63,7 @@ export class ChatTimelineQueryService {
 			)
 			ORDER BY session_sequence ASC, stream_id ASC
 		`).all(...values, limit) as EventLogRow[];
-		return rows.map(storedPiboEventFromV2Row).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		return rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
 	}
 
 	countEventsByType(input: { piboSessionId?: string; eventTypes?: string[] } = {}): Array<{ eventType: string; count: number }> {

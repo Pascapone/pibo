@@ -282,20 +282,31 @@ Normal Chat Web history for new Pibo-routed turns MUST be reconstructable from n
 
 #### Acceptance
 
-- Generic trace code consumes Pibo-owned history entries and product events.
-- Pi transcript parsing moves behind the Pi history provider.
+- Generic trace code consumes Pibo-owned history entries and product events without importing Pi or Codex packages.
+- Pibo product history preserves full externalized message, reasoning, and tool payloads rather than preview-only content.
+- An adapter that declares native history implements inspection and paginated reads with opaque provider cursors.
+- Pi transcript discovery and parsing move behind the Pi history provider.
 - Codex history uses official thread read/list APIs or adapter-owned imports.
-- Old Pi sessions continue rendering through the Pi history compatibility path.
+- Old Pi sessions continue rendering through the Pi history compatibility path without changing Pibo ids, native ids, or transcript paths.
+- Fresh sessions do not read native history on normal trace summary, timeline, or compatibility trace requests.
 - Missing native transcripts do not remove Pibo Session records or normalized product history.
+- Runtime history cursors are bound to the Pibo Session, configured runtime instance, and adapter.
 - Debug session, events, failures, tools, signals, telemetry, trace, and binding diagnostics work for all adapters and redact credentials.
 - Runtime-specific drill-down is namespaced and bounded.
 
-#### Scenario: New Codex trace after restart
+#### Scenario: New routed trace after restart
 
-- GIVEN a Codex turn completed through Pibo and the gateway restarts
+- GIVEN a Pi or Codex turn completed through Pibo and the gateway restarts
 - WHEN Chat Web reloads the session
 - THEN the terminal reconstructs the product-visible turn from Pibo data
-- AND Codex native history remains available for resume/debug without becoming the normal UI dependency.
+- AND native harness history remains available for resume/debug without becoming the normal UI dependency.
+
+#### Scenario: Legacy Pi history fallback
+
+- GIVEN a migrated Pi session predates complete Pibo product history
+- WHEN Chat Web loads its trace or requests an older runtime-history page
+- THEN Pibo asks the frozen Pi adapter binding for normalized native history
+- AND no generic trace or debug module reads Pi JSONL directly.
 
 ### REQ-014: The adapter-authoring skill is built in and tested
 

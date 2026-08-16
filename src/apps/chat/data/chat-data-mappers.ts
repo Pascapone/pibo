@@ -4,6 +4,9 @@ import type { StoredChatEvent } from "../types/event-store.js";
 import { roomWorkspaceFromMetadata, type PiboRoom } from "../types/rooms.js";
 import type { ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
+import type { PayloadStore } from "../../../data/payload-store.js";
+
+type PiboPayloadReader = Pick<PayloadStore, "getPayload" | "readPayloadText" | "readPayloadJson">;
 
 export type EventLogRow = {
 	stream_id: number;
@@ -16,6 +19,7 @@ export type EventLogRow = {
 	event_id: string | null;
 	idempotency_key: string | null;
 	retention_class: string;
+	payload_ref?: string | null;
 	preview_text: string | null;
 	attributes_json: string;
 	created_at: string;
@@ -52,20 +56,20 @@ export type RoomRow = {
 	updated_at: string;
 };
 
-export function storedPiboEventFromV2Row(row: EventLogRow): ChatWebStoredPiboEvent | undefined {
+export function storedPiboEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader): ChatWebStoredPiboEvent | undefined {
 	const attributes = parseJsonObject(row.attributes_json);
-	const payload = outputPayloadFromV2Row(row, attributes);
+	const payload = outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore));
 	if (!payload) return undefined;
 	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, eventId: row.event_id ?? undefined, streamId: row.stream_id, type: row.type, createdAt: row.created_at, payload };
 }
 
-export function storedChatEventFromV2Row(row: EventLogRow): StoredChatEvent {
+export function storedChatEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader): StoredChatEvent {
 	const attributes = parseJsonObject(row.attributes_json);
-	return { streamId: row.stream_id, roomId: row.room_id ?? undefined, piboSessionId: row.session_id ?? undefined, eventId: row.event_id ?? `evt_${row.stream_id}`, eventType: row.type, actorType: actorTypeValue(row.actor_type), actorId: row.actor_id ?? undefined, clientTxnId: typeof attributes.clientTxnId === "string" ? attributes.clientTxnId : undefined, createdAt: row.created_at, retentionClass: retentionClassValue(row.retention_class), payload: (outputPayloadFromV2Row(row, attributes) ?? null) as PiboJsonValue };
+	return { streamId: row.stream_id, roomId: row.room_id ?? undefined, piboSessionId: row.session_id ?? undefined, eventId: row.event_id ?? `evt_${row.stream_id}`, eventType: row.type, actorType: actorTypeValue(row.actor_type), actorId: row.actor_id ?? undefined, clientTxnId: typeof attributes.clientTxnId === "string" ? attributes.clientTxnId : undefined, createdAt: row.created_at, retentionClass: retentionClassValue(row.retention_class), payload: (outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore)) ?? null) as PiboJsonValue };
 }
 
-function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject): PiboOutputEvent | undefined {
-	const inlinePayload = attributes.inlinePayload;
+function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, persistedPayload?: PiboJsonValue | string): PiboOutputEvent | undefined {
+	const inlinePayload = attributes.inlinePayload ?? persistedPayload;
 	if (inlinePayload && typeof inlinePayload === "object" && !Array.isArray(inlinePayload) && typeof inlinePayload.type === "string") return inlinePayload as PiboOutputEvent;
 	const piboSessionId = row.session_id;
 	if (!piboSessionId) return undefined;
@@ -76,7 +80,7 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject): P
 			type: row.type,
 			assistantIndex: numberAttribute(attributes, "assistantIndex"),
 			contentIndex: numberAttribute(attributes, "contentIndex"),
-			text: row.preview_text ?? "",
+			text: typeof inlinePayload === "string" ? inlinePayload : row.preview_text ?? "",
 		}) as PiboOutputEvent;
 	}
 	if (row.type === "message_queued") return { ...base, type: "message_queued", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", queuedMessages: numberAttribute(attributes, "queuedMessages") ?? 1 } as PiboOutputEvent;
@@ -89,7 +93,7 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject): P
 			type: row.type,
 			thinkingIndex: numberAttribute(attributes, "thinkingIndex"),
 			contentIndex: numberAttribute(attributes, "contentIndex"),
-			...(row.type === "thinking_started" ? {} : { text: row.preview_text ?? "" }),
+			...(row.type === "thinking_started" ? {} : { text: typeof inlinePayload === "string" ? inlinePayload : row.preview_text ?? "" }),
 		}) as PiboOutputEvent;
 	}
 	if (row.type === "tool_call") return { ...base, type: "tool_call", toolCallId: stringAttribute(attributes, "toolCallId") ?? row.event_id ?? `tool_${row.stream_id}`, toolName: row.preview_text ?? stringAttribute(attributes, "toolName") ?? "tool", args: inlinePayload ?? null, argsComplete: booleanAttribute(attributes, "argsComplete") ?? true };
@@ -110,6 +114,19 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject): P
 	}
 	if (row.type === "user.message.accepted") return { type: "user.message.accepted", piboSessionId, roomId: row.room_id ?? undefined, text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", clientTxnId: stringAttribute(attributes, "clientTxnId") } as unknown as PiboOutputEvent;
 	return { ...base, type: row.type } as PiboOutputEvent;
+}
+
+function readPersistedPayload(row: EventLogRow, payloadStore: PiboPayloadReader | undefined): PiboJsonValue | string | undefined {
+	if (!row.payload_ref || !payloadStore) return undefined;
+	try {
+		const metadata = payloadStore.getPayload(row.payload_ref);
+		if (!metadata) return undefined;
+		return metadata.contentType.includes("json")
+			? payloadStore.readPayloadJson(row.payload_ref)
+			: payloadStore.readPayloadText(row.payload_ref);
+	} catch {
+		return undefined;
+	}
 }
 
 export function sessionFromRow(row: SessionRow): ChatWebSessionIndexItem { return { piboSessionId: row.id, piSessionId: row.pi_session_id ?? "", runtimeInstanceId: row.runtime_instance_id ?? undefined, runtimeAdapterId: row.runtime_adapter_id ?? undefined, runtimeBindingState: isRuntimeBindingState(row.binding_state) ? row.binding_state : undefined, nativeSessionId: row.native_session_id ?? undefined, parentId: row.parent_id ?? undefined, profile: row.profile, channel: row.channel, kind: row.kind, createdAt: row.created_at, updatedAt: row.updated_at, lastActivityAt: row.last_activity_at, status: row.status === "running" || row.status === "error" ? row.status : "idle" }; }

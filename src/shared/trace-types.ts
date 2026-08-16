@@ -88,6 +88,7 @@ export type TraceTimelineNode = {
 export type TraceTimelinePage = {
 	piboSessionId: string;
 	piSessionId: string;
+	runtimeBinding?: PiboTraceRuntimeBinding;
 	title: string;
 	version: string;
 	latestStreamId?: number;
@@ -152,9 +153,21 @@ export type ChatWebStoredEvent<T = unknown> = {
 
 export type PiboWebSessionStatus = "idle" | "running" | "error";
 
+export type PiboTraceRuntimeBinding = {
+	runtimeInstanceId: string;
+	adapterId: string;
+	nativeSessionId?: string;
+	state: "unbound" | "bound" | "missing" | "error";
+	protocol?: string;
+	protocolVersion?: string;
+	adapterVersion?: string;
+	revision?: number;
+};
+
 export type PiboSessionTraceSummary = {
 	piboSessionId: string;
 	piSessionId: string;
+	runtimeBinding?: PiboTraceRuntimeBinding;
 	title: string;
 	version: string;
 	latestStreamId?: number;
@@ -165,6 +178,7 @@ export type PiboSessionTraceSummary = {
 export type PiboSessionTraceView = {
 	piboSessionId: string;
 	piSessionId: string;
+	runtimeBinding?: PiboTraceRuntimeBinding;
 	title: string;
 	version: string;
 	latestStreamId?: number;

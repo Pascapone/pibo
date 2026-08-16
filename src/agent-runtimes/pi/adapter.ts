@@ -32,6 +32,8 @@ import type {
 	AgentRuntimeAuthStatus,
 	AgentRuntimeDiagnostic,
 	AgentRuntimeDriver,
+	AgentRuntimeHistoryInspection,
+	AgentRuntimeHistoryPage,
 	AgentRuntimeNativeSessionInfo,
 	AgentRuntimeModelCatalog,
 	AgentRuntimeNativeSessionSnapshot,
@@ -39,7 +41,9 @@ import type {
 	AgentRuntimeSession,
 	AgentRuntimeSessionOperationResult,
 	AgentRuntimeStatus,
+	InspectAgentRuntimeHistoryInput,
 	OpenAgentRuntimeSessionInput,
+	ReadAgentRuntimeHistoryInput,
 	RuntimeSessionBinding,
 	ValidateAgentRuntimeProfileInput,
 } from "../../agent-runtime/types.js";
@@ -50,6 +54,10 @@ import {
 	piAgentRuntimeModelCatalog,
 	type ModelCatalog as PiModelCatalog,
 } from "./model-catalog.js";
+import {
+	inspectPiAgentRuntimeHistory,
+	readPiAgentRuntimeHistory,
+} from "./history.js";
 
 const PI_ADAPTER_ID = "pi";
 const PI_PROTOCOL_VERSION = "0.80.6";
@@ -559,6 +567,14 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	async getAuthStatus(): Promise<readonly AgentRuntimeAuthStatus[]> {
 		return piAgentRuntimeAuthStatus(await this.loadModelCatalog());
+	}
+
+	async inspectHistory(input: InspectAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryInspection> {
+		return await inspectPiAgentRuntimeHistory(this.instanceId, input);
+	}
+
+	async readHistory(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage> {
+		return await readPiAgentRuntimeHistory(this.instanceId, input);
 	}
 
 	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] {
