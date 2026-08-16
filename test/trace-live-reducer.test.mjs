@@ -144,3 +144,53 @@ test("late replay keeps the server event timestamp and stable terminal order", (
 		"entry:final:response",
 	]);
 });
+
+test("execution_result event updates existing node output for model menu", () => {
+	let sequence = 1;
+	// First, create a node without output (simulating a transcript echo)
+	const baseEvents = applyTraceLiveEvents({
+		currentEvents: [],
+		streamEvents: [
+			{ type: "RAW_EVENT", streamId: 1, streamFrameIndex: 0, createdAt: "2026-08-16T15:00:00.000Z", event: { type: "message_started", piboSessionId: "ps-live", eventId: "turn-model", text: "/model" } },
+			{ type: "RAW_EVENT", streamId: 2, streamFrameIndex: 0, createdAt: "2026-08-16T15:00:01.000Z", event: { type: "execution_result", piboSessionId: "ps-live", eventId: "model-result", action: "model", result: undefined } },
+		],
+		piboSessionId: "ps-live",
+		nextSequence: () => sequence++,
+		now: () => "2026-08-16T15:00:02.000Z",
+	});
+
+	const baseView = buildTraceViewFromEvents({
+		session: { id: "ps-live", piSessionId: "pi-live" },
+		events: baseEvents,
+		status: "running",
+		includeRawEvents: true,
+	});
+
+	const modelNode = baseView.nodes.flatMap((node) => [node, ...node.children]).find((node) => node.id === "event:execution_result:model-result");
+	assert.ok(modelNode, "model node should exist");
+	assert.equal(modelNode.output, undefined, "initial output should be undefined");
+
+	// Now, simulate the actual execution_result event with show_model_menu
+	const updatedEvents = applyTraceLiveEvents({
+		currentEvents: baseEvents,
+		streamEvents: [
+			{ type: "RAW_EVENT", streamId: 3, streamFrameIndex: 0, createdAt: "2026-08-16T15:00:01.500Z", event: { type: "execution_result", piboSessionId: "ps-live", eventId: "model-result", action: "model", result: { action: "show_model_menu", providers: [{ id: "openai", label: "OpenAI", models: [{ id: "gpt-4", label: "GPT-4" }] }] } } },
+		],
+		piboSessionId: "ps-live",
+		nextSequence: () => sequence++,
+		now: () => "2026-08-16T15:00:02.000Z",
+	});
+
+	const updatedView = buildTraceViewFromEvents({
+		session: { id: "ps-live", piSessionId: "pi-live" },
+		events: updatedEvents,
+		status: "running",
+		includeRawEvents: true,
+	});
+
+	const updatedModelNode = updatedView.nodes.flatMap((node) => [node, ...node.children]).find((node) => node.id === "event:execution_result:model-result");
+	assert.ok(updatedModelNode, "updated model node should exist");
+	assert.ok(updatedModelNode.output, "output should be defined after update");
+	assert.equal(updatedModelNode.output.action, "show_model_menu", "output should have show_model_menu action");
+	assert.ok(Array.isArray(updatedModelNode.output.providers), "output should have providers array");
+});
