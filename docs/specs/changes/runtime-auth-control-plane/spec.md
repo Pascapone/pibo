@@ -108,7 +108,7 @@ Focused tests, typecheck, build, and the canonical full suite MUST pass. A focus
 - [x] SC-003: Native Codex official auth matrix passes deterministically with isolation and restart persistence.
 - [x] SC-004: Web settings and model surfaces are truthful for unauthenticated native Codex.
 - [x] SC-005: Full local verification and exact Pibo2 provider-settings UI readiness pass.
-- [x] SC-006: Focused PR #518 is open; the overall goal is now blocked only on the user's managed login and production-provider turn.
+- [x] SC-006: Focused PR #518 is open; subsequent authorized managed login, safe connected status, one bounded production-provider turn, trace validation, and cleanup also pass.
 
 ## Traceability
 
@@ -116,9 +116,9 @@ Focused tests, typecheck, build, and the canonical full suite MUST pass. A focus
 |---|---|---|---|
 | REQ-001 | REQ-AUTH-001 | 1.1-1.4 | Pass: capability/method/disposal consistency, bounds, unsupported and malformed-result tests. |
 | REQ-002 | REQ-AUTH-002 | 2.1-2.4 | Pass: explicit Web targets and frozen-session conflict/missing-session tests. |
-| REQ-003 | REQ-AUTH-003 | 5.1-5.4 | Pass: catalog aggregation/all six states are runtime-scoped; exact Pibo2 render shows Pi shared scope and native Codex private disconnected state. |
+| REQ-003 | REQ-AUTH-003 | 5.1-5.4 | Pass: catalog aggregation/all six states are runtime-scoped; exact Pibo2 renders prove Pi shared scope plus native Codex private disconnected and connected states. |
 | REQ-004 | REQ-AUTH-004 | 3.1-3.5 | Pass: Pi device/browser/API-key/status/logout/shared-scope matrix. |
-| REQ-005 | REQ-AUTH-005 | 4.1-4.8 | Pass deterministically: stable App Server account matrix, persistence, isolation, cleanup, and failure paths. |
-| REQ-006 | REQ-AUTH-006, REQ-AUTH-007 | 6.1-6.4 | Pass locally: private Codex homes, Pi shared scope, redaction, no global-store mutation. |
-| REQ-007 | REQ-AUTH-008 | 5.5-5.7 | Pass: Terminal and Designer missing/failed status remains unauthenticated. |
-| REQ-008 | all | 7.1-9.5 | Pass for this change: local/full/Pibo2 evidence and focused PR #518 are complete; later human production-provider evidence belongs to the overall goal. |
+| REQ-005 | REQ-AUTH-005 | 4.1-4.8 | Pass: stable App Server account matrix, persistence, isolation, cleanup, failure paths, managed Device code authentication, and a real provider turn. |
+| REQ-006 | REQ-AUTH-006, REQ-AUTH-007 | 6.1-6.4 | Pass: private Codex home/auth modes, Pi shared scope, redaction, no global-store mutation, and validation-rollout cleanup. |
+| REQ-007 | REQ-AUTH-008 | 5.5-5.7 | Pass: missing/failed state remains unauthenticated, while the bound connected runtime renders its actual provider/model. |
+| REQ-008 | all | 7.1-9.5 | Pass: local/full/Pibo2 evidence, focused PR #518, managed login, bounded production-provider turn, trace, and cleanup are complete. |

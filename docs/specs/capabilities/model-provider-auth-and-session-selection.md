@@ -199,7 +199,7 @@ Provider usage MUST be returned only when the active provider and credential typ
 - [x] SC-004: Native Codex device/API-key/cancel/logout/restart/isolation/error/redaction matrix passes.
 - [x] SC-005: Agent Designer and Terminal model/login surfaces are truthful for disconnected runtimes in local tests/builds.
 - [x] SC-006: Session active-model freezing and runtime validation pass in the canonical suite.
-- [x] SC-007: Exact-candidate Pibo2 provider settings are ready for managed native-Codex login while the private native runtime remains disconnected.
+- [x] SC-007: Exact-candidate Pibo2 provider settings passed both disconnected login readiness and subsequent private native-Codex connected/model rendering during a bounded public production-provider turn.
 
 ## Verification Coverage
 
@@ -227,5 +227,5 @@ Provider usage MUST be returned only when the active provider and credential typ
 
 ## Change Log
 
-- 2026-08-16: Replaced the Pi-global provider-auth model with explicit runtime-adapter auth capabilities, per-runtime Web settings, native Codex App Server account operations, and truthful model rendering.
+- 2026-08-16: Replaced the Pi-global provider-auth model with explicit runtime-adapter auth capabilities, per-runtime Web settings, native Codex App Server account operations, truthful model rendering, and exact Pibo2 managed-auth/production-provider evidence.
 - 2026-05-11: Added Pi provider login, model defaults, Terminal cards, usage, and verification notes from the then-current Pi-only implementation.

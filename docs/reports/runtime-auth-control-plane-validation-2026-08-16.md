@@ -3,7 +3,7 @@
 **Date:** 2026-08-16  
 **Branch:** `feature/agent-runtime-auth-control-plane`  
 **Dependency:** `feature/agent-runtime-integrated-validation` / PR #503  
-**Result:** **PASS for implementation, local verification, focused PR #518, exact-candidate Pibo2 activation, and public-Web login readiness.** Native Codex remains intentionally disconnected; the remaining gate is the authorized user's managed login and subsequent bounded production-provider turn.
+**Result:** **PASS.** Implementation, local/full verification, focused PR #518, exact-candidate Pibo2 activation, managed native-Codex authentication, and one bounded public production-provider turn all pass.
 
 ## Exact candidate
 
@@ -112,7 +112,7 @@ Final local checks on 2026-08-16:
 - Pi credentials retain their existing adapter-shared store; Pibo does not copy them into Codex.
 - Auth mutations preserve Pibo Session identity/bindings and recycle only sessions affected by the declared credential scope.
 
-## Exact Pibo2 readiness validation
+## Exact Pibo2 pre-authentication readiness validation
 
 The exact package checksum was installed under the versioned Pibo2 candidate directory and activated through `pibo-web.service`. Post-activation evidence:
 
@@ -136,12 +136,40 @@ The provider-status read exercised official App Server `account/read` in the pri
 - zero files in global Codex state;
 - database inventory remained 473 sessions / 473 runtime bindings with integrity `ok`.
 
-No login flow was started. Native Codex is ready for the user but remains unauthenticated.
+No login flow was started during this readiness phase; native Codex remained unauthenticated until the authorized user completed the managed flow.
 
-## Remaining validation
+## Authorized production-provider completion
 
-Focused stacked PR #518 is open and intentionally unmerged. The remaining steps belong to the overall multi-runtime evidence gate:
+The authorized user completed the Device code login from public Provider Settings. Subsequent safe `account/read` projection through authenticated `GET /api/chat/provider-auth` returned:
 
-1. The authorized user opens `/apps/chat/settings/providers`, selects **Native Codex App Server**, and clicks **Device code** (or supplies an API key intentionally).
-2. After managed login, verify safe `account/read` metadata without account identifiers and run one bounded public native-Codex production-provider turn.
-3. Only then close REQ-015/REQ-017 and mark the overall multi-runtime goal complete.
+- HTTP 200;
+- configured runtime target `codex-native`, credential scope `runtime-instance`, aggregate state `connected`;
+- provider `openai-codex`, state `connected`, account type `chatgpt`, plan type `pro`, and no pending flow;
+- no account identifier, token, cookie, authorization header, credential content, native login id, OAuth verifier, or provider protocol object.
+
+The official App Server persisted the account only in the selected private runtime home. The home remained mode `0700`, the private auth file remained mode `0600`, and no credential content was read. Global Codex state remained empty.
+
+A fresh public Chat Web session created with profile `codex-native` then proved the production-provider path:
+
+- the persisted binding reported adapter/runtime `codex-native`, state `bound`, an opaque native session present, and no Pi session id;
+- Terminal View rendered `openai-codex/gpt-5.6-sol high`;
+- bounded prompt: `Production validation. Do not call tools. Reply with exactly: NATIVE CODEX READY`;
+- assistant response: `NATIVE CODEX READY`;
+- the assistant message completed approximately 2.62 seconds after turn start;
+- `pibo debug trace ... --check` reconstructed user, agent-turn, and assistant nodes with `checks: ok` and zero issues;
+- `pibo debug failures` returned zero failures;
+- [`assets/native-codex-production-provider-turn-2026-08-16.png`](./assets/native-codex-production-provider-turn-2026-08-16.png) captures only the safe main transcript panel.
+
+Post-turn cleanup archived and deleted the validation Pibo Session through the public product API, disposed the cached App Server, and removed the generated native rollout while retaining only private auth and configuration. Final checks showed:
+
+- zero active Codex App Server processes;
+- no validation session or binding rows;
+- 473 sessions / 473 runtime bindings and database integrity `ok`;
+- zero files in global Codex state;
+- a new provider-status process still reported native Codex connected after cleanup, then exited cleanly;
+- Provider Settings rendered the private target as connected with no browser warning/error;
+- [`assets/native-codex-provider-connected-2026-08-16.png`](./assets/native-codex-provider-connected-2026-08-16.png) contains only bounded non-identifying account type/plan metadata and no credential or flow material.
+
+## Completion decision
+
+The runtime-auth change and the overall native-Codex production-provider gate are complete. PR #518 remains intentionally open and unmerged; no release, npm publication, or production deployment was performed.
