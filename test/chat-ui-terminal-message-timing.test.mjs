@@ -269,7 +269,7 @@ test("duration formatting does not wrap after 24 hours", () => {
 	assert.equal(formatTerminalDuration(27 * 60 * 60 * 1000 + 5_000), "27:00:05");
 });
 
-test("Compact Terminal renders timing only on message rows and keeps live updates silent", () => {
+test("Compact Terminal preserves message timing and the animated working footer layout", () => {
 	const source = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"), "utf8");
 	assert.match(source, /Footer: isStreaming \|\| showGoalIndicator[\s\S]*TerminalStreamingFooter startedAt=\{activeTurnStartedAt\} isWorking=\{isStreaming\} goal=\{sessionGoal\}/);
 	assert.match(source, /components=\{virtuosoComponents\}/);
@@ -280,13 +280,19 @@ test("Compact Terminal renders timing only on message rows and keeps live update
 	assert.doesNotMatch(source, /useStableActiveTurn|findLatestActiveTurnTerminal|selectedTrace\?\.status/);
 	assert.match(source, /data-pibo-component="TerminalStreamingFooter"/);
 	assert.match(source, /aria-label=\{footerAriaLabel\}[\s\S]*aria-hidden="true"/);
-	assert.match(source, /justify-between[\s\S]*compact-terminal-working-label[\s\S]*SessionGoalIndicator/, "Working and Goal status should share the same right-aligned footer div");
-	assert.match(source, /const WORKING_LABEL = "Working\.\.\."/);
-	assert.match(source, /<span className="compact-terminal-working-label">\{WORKING_LABEL\}<\/span>/);
-	assert.doesNotMatch(source, /useWorkingScramble|WORKING_SCRAMBLE|randomAsciiChar/);
+	assert.match(source, /justify-between[\s\S]*compact-terminal-working-scramble[\s\S]*SessionGoalIndicator/, "Working and Goal status should share the same right-aligned footer div");
+	assert.match(source, /const WORKING_SCRAMBLE_TARGET = "Working\.\.\."/);
+	assert.match(source, /const \{ chars, activeIndex \} = useWorkingScramble\(WORKING_SCRAMBLE_TARGET, isWorking\)/);
+	assert.match(source, /if \(!enabled \|\| window\.matchMedia/, "The scramble interval should run only for a visible working state");
+	assert.match(source, /\{elapsed \? <span[\s\S]*\{elapsed\}<\/span> : null\}[\s\S]*compact-terminal-working-scramble/, "The existing elapsed timer should stay before the animated label");
+	assert.match(source, /className=\{index === activeIndex \? "compact-terminal-working-scramble-active" : undefined\}/);
+	assert.match(source, /function useWorkingScramble/);
+	assert.match(source, /window\.matchMedia\("\(prefers-reduced-motion: reduce\)"\)/);
 	const styles = fs.readFileSync(path.resolve("src/apps/chat-ui/src/styles.css"), "utf8");
-	assert.match(styles, /\.compact-terminal-working-label/);
-	assert.doesNotMatch(styles, /compact-terminal-working-scramble/);
+	assert.match(styles, /\.compact-terminal-working-scramble/);
+	assert.match(styles, /\.compact-terminal-working-scramble-active/);
+	assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+	assert.doesNotMatch(styles, /\.compact-terminal-working-label/);
 	assert.match(source, /row\.kind === "message\.assistant"[\s\S]*TerminalMessageMetadata/);
 	assert.match(source, /row\.kind === "message\.user"[\s\S]*TerminalMessageMetadata/);
 	assert.equal((source.match(/<TerminalMessageMetadata/g) ?? []).length, 2);
