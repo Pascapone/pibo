@@ -8,7 +8,10 @@ import {
 import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import type { PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./runtime.js";
-import { RoutedSession, type PiboMessagePreflight } from "./routed-session.js";
+import {
+	RuntimeRoutedSession as RoutedSession,
+	type PiboMessagePreflight,
+} from "../agent-runtime/routed-session.js";
 import { runtimeSessionErrorDetails } from "./session-errors.js";
 import type {
 	PiboAssistantMessageEvent,
@@ -252,14 +255,6 @@ function telemetryStoreFromSessionStore(store: PiboSessionStore): TelemetryStore
 function providerEventTelemetryModeFromEnv(env: NodeJS.ProcessEnv = process.env): ProviderEventTelemetryMode {
 	const value = env.PIBO_TELEMETRY_PROVIDER_EVENTS?.trim().toLowerCase();
 	return value === "1" || value === "true" || value === "detailed" ? "detailed" : "aggregate";
-}
-
-function isRoutedSessionCompatibilityRuntime(value: unknown): value is ConstructorParameters<typeof RoutedSession>[1] {
-	if (!value || typeof value !== "object") return false;
-	const candidate = value as { session?: unknown; dispose?: unknown; setRebindSession?: unknown };
-	return candidate.session !== undefined
-		&& typeof candidate.dispose === "function"
-		&& typeof candidate.setRebindSession === "function";
 }
 
 export class PiboSessionRouter {
@@ -839,6 +834,7 @@ export class PiboSessionRouter {
 		if (invalidProfile) {
 			throw new Error(`Runtime profile validation failed: ${invalidProfile.message}`);
 		}
+		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
 		const runtimeSession = await runtimeRegistry.openAgentRuntimeSession(sessionProfile.runtimeInstanceId, {
 			piboSession,
 			profile: sessionProfile,
@@ -863,39 +859,42 @@ export class PiboSessionRouter {
 						...(this.options.extensionFactories ?? []),
 					],
 					modelDefaults,
+					initialFastMode,
 				},
 			},
 		});
-		const runtime = runtimeSession.getNativeCompatibilityHandle?.();
-		if (!isRoutedSessionCompatibilityRuntime(runtime)) {
-			await runtimeSession.dispose();
-			throw new Error(
-				`Runtime adapter "${runtimeAdapter.descriptor.id}" does not expose the transitional routed-session compatibility handle.`,
-			);
-		}
-		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
 		session = new RoutedSession(
 			piboSession.id,
-			runtime,
+			runtimeSession,
 			this.emitOutput,
 			this.pluginRegistry,
-			this.options.forwardPiEvents ?? false,
-			this.telemetryRecorder
-				? (id, event, context) => this.telemetryRecorder?.recordPiEvent(id, event, { session: this.sessionStore.get(id), status: context.status, activeEventId: context.activeEventId })
-				: undefined,
-			initialFastMode,
-			(result, event) => this.handleSessionOperation(result, event),
-			(id, opts) => this.killChildSessions(id, opts),
-			(state) => {
-				this.signalRegistry.project({ type: "session_processing_changed", piboSessionId: piboSession.id, processing: state.processing, queuedMessages: state.queuedMessages });
-				if (state.disposed || state.processing || state.queuedMessages > 0) this.clearIdleSessionTimer(piboSession.id);
-				else this.scheduleIdleSessionEvictionIfIdle(piboSession.id);
+			{
+				forwardLegacyPiEvents: this.options.forwardPiEvents ?? false,
+				onNativeEventTelemetry: this.telemetryRecorder
+					? (id, event, context) => this.telemetryRecorder?.recordPiEvent(id, event, {
+						session: this.sessionStore.get(id),
+						status: context.status,
+						activeEventId: context.activeEventId,
+					})
+					: undefined,
+				onSessionOperation: (result, event) => this.handleSessionOperation(result, event),
+				onKillChildren: (id, opts) => this.killChildSessions(id, opts),
+				onStateChange: (state) => {
+					this.signalRegistry.project({
+						type: "session_processing_changed",
+						piboSessionId: piboSession.id,
+						processing: state.processing,
+						queuedMessages: state.queuedMessages,
+					});
+					if (state.disposed || state.processing || state.queuedMessages > 0) this.clearIdleSessionTimer(piboSession.id);
+					else this.scheduleIdleSessionEvictionIfIdle(piboSession.id);
+				},
+				onMessagesInterrupted: (messages, reason) => this.telemetryRecorder?.recordMessagesInterrupted(messages, {
+					session: this.sessionStore.get(piboSession.id),
+					status: this.sessions.get(piboSession.id)?.getStatus(),
+				}, reason),
+				messagePreflight: this.options.messagePreflight,
 			},
-			(messages, reason) => this.telemetryRecorder?.recordMessagesInterrupted(messages, {
-				session: this.sessionStore.get(piboSession.id),
-				status: this.sessions.get(piboSession.id)?.getStatus(),
-			}, reason),
-			this.options.messagePreflight,
 		);
 		this.sessions.set(piboSession.id, session);
 		return session;
