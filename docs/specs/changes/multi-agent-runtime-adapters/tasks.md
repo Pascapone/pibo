@@ -166,7 +166,7 @@ Target branch: `feature/agent-runtime-foundation`
 - [x] 11.6 Ensure every branch is clean, pushed, and represented by a reviewable PR to `upstream/dev`. Integrated PR #503 and focused auth correction PR #518 are open.
 - [x] 11.7 Produce `docs/reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md`, mapping REQ-001 through REQ-019 to code, tests, PRs, and Pibo2 evidence.
 - [x] 11.8 Confirm no known regression or material unreported uncertainty invalidates completion. Deterministic, real-Pi, exact-candidate, managed-auth, native production-provider, browser, trace, security, and cleanup evidence is clean.
-- [ ] 11.9 Mark the Pibo Loop goal complete only after the full audit passes.
+- [x] 11.9 Mark Pibo Loop goal `loop_a1e9ef46-4af8-4451-a532-28b806c7f1a0` complete only after the full audit passes.
 
 ## 12. Runtime-neutral provider-auth correction
 
