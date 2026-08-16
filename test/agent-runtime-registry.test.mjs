@@ -41,6 +41,7 @@ test("default profiles and capability catalog expose the configured Pi runtime",
 	assert.equal(catalogEntry.transport, "embedded");
 	assert.equal(catalogEntry.capabilities.lifecycle.resume, true);
 	assert.equal(catalogEntry.capabilities.tools.piboManaged.support, "direct");
+	assert.equal(catalogEntry.capabilities.tools.nativeToolInspection.support, "native");
 	assert.equal(catalogEntry.capabilities.mcp.externalServers.support, "materialized");
 	assert.deepEqual(catalogEntry.capabilities.mcp.externalServers.modes, ["isolated-pibo-mcp-config"]);
 	assert.equal(catalogEntry.capabilities.mcp.statusInspection, true);

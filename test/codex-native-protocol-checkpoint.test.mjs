@@ -83,4 +83,11 @@ test("Codex native protocol checkpoint stores unmodified stable generated schema
 	for (const field of ["model", "effort", "summary", "serviceTier", "personality"]) {
 		assert.ok(v2.definitions.TurnStartParams.properties[field], `turn/start is missing ${field}`);
 	}
+	const clientRequestMethods = v2.definitions.ClientRequest.oneOf
+		.map((entry) => entry.properties?.method?.enum?.[0])
+		.filter(Boolean);
+	assert.ok(clientRequestMethods.includes("mcpServerStatus/list"));
+	for (const unsupportedInventoryMethod of ["tool/list", "tools/list", "nativeTool/list", "nativeTools/list"]) {
+		assert.equal(clientRequestMethods.includes(unsupportedInventoryMethod), false);
+	}
 });

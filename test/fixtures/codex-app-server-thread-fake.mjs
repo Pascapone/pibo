@@ -155,6 +155,8 @@ if (args[0] === "--version") {
 		const instructions = typeof params.developerInstructions === "string" ? params.developerInstructions : "";
 		return {
 			mcpServers: servers,
+			hasBaseInstructions: typeof params.baseInstructions === "string" && params.baseInstructions.length > 0,
+			hasNativeToolOverrides: Boolean(params.config?.tools || params.config?.web_search || params.config?.features),
 			developerInstructionBytes: Buffer.byteLength(instructions, "utf8"),
 			developerInstructionHeadings: [...instructions.matchAll(/^##\s+([^\r\n]+)$/gm)].map((match) => match[1]),
 			containsPiboSelectedContext: instructions.includes("# Pibo-Selected Context"),

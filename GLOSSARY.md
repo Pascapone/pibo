@@ -54,7 +54,7 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 ## Capabilities and execution
 
-**Pibo Native Tool / Harness-Native Tool / Built-In Pi Tool / MCP Server / Curated CLI Tool** — A Pibo Native Tool is registered by a Pibo plugin, selected by profiles, and delivered directly or through an adapter bridge. A Harness-Native Tool belongs to the harness and remains under harness control. A Built-In Pi Tool is a Pi-native tool such as `read` or `bash`. An MCP Server is an external Model Context Protocol integration. A Curated CLI Tool is managed through `pibo tools` and is not a profile tool or MCP server.
+**Pibo Native Tool / Harness-Native Tool / Built-In Pi Tool / MCP Server / Curated CLI Tool** — A Pibo Native Tool is registered by a Pibo plugin, selected by profiles, and delivered directly or through an adapter bridge. A Harness-Native Tool belongs to the harness and remains under harness control. Native-tool inspection reports only inventory the adapter can prove through stable harness surfaces and may be declared degraded or observed-only; it is distinct from native-tool yielding, which would let Pibo wrap a harness-owned tool. A Built-In Pi Tool is a Pi-native tool such as `read` or `bash`. An MCP Server is an external Model Context Protocol integration. A Curated CLI Tool is managed through `pibo tools` and is not a profile tool or MCP server.
 
 **Pibo Tool Definition** — The Pibo-owned JSON-Schema tool contract used at the plugin/runtime boundary. It carries title/description, input and optional output schemas, execution mode, annotations, cancellation, progress, text/image/structured results, errors, correlation metadata, and payload references without importing a harness SDK.
 

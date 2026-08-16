@@ -560,6 +560,7 @@ function RuntimeCapabilitySummary({ runtime }: { runtime: AgentRuntimeCatalogEnt
 	const rows: Array<[string, string, boolean]> = [
 		["Sessions", capabilities.lifecycle.persistent ? capabilities.lifecycle.resume ? "persistent + resume" : "persistent" : "ephemeral", capabilities.lifecycle.persistent],
 		["Pibo tools", deliveryLabel(capabilities.tools.piboManaged), deliverySupported(capabilities.tools.piboManaged)],
+		["Native tool inspection", deliveryLabel(capabilities.tools.nativeToolInspection), deliverySupported(capabilities.tools.nativeToolInspection)],
 		["Native tool yielding", deliveryLabel(capabilities.tools.nativeToolYielding), deliverySupported(capabilities.tools.nativeToolYielding)],
 		["External MCP", deliveryLabel(capabilities.mcp.externalServers), deliverySupported(capabilities.mcp.externalServers)],
 		["Skills", deliveryLabel(capabilities.skills), deliverySupported(capabilities.skills)],

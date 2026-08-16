@@ -83,6 +83,7 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		...(profile.toolPackages.goalControl !== false ? ["package:pibo-goal-control"] : []),
 		...(profile.toolPackages.runControl === true ? ["package:pibo-run-control"] : []),
 	], input.runtime.capabilities.tools.piboManaged);
+	addNativeToolInspectionNode(nodes, input.runtime.capabilities.tools.nativeToolInspection);
 	if (profile.toolPackages.runControl === true) {
 		addNativeToolYieldingNode(nodes, input.runtime.capabilities.tools.nativeToolYielding);
 	}
@@ -206,6 +207,29 @@ export function buildPortableRuntimeContextSnapshot(input: {
 			...resourceDiagnostics.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
 		],
 	};
+}
+
+function addNativeToolInspectionNode(
+	nodes: PiboContextBuildNode[],
+	delivery: AgentRuntimeCapabilityDelivery,
+): void {
+	const supported = delivery.support !== "unsupported";
+	const mode = runtimeDeliveryMode(delivery);
+	const reason = delivery.support === "unsupported" || delivery.support === "degraded" ? delivery.reason : undefined;
+	nodes.push({
+		id: "tools/native-inspection",
+		order: nodes.length,
+		kind: "runtime_extension",
+		title: "Harness-Native Tool Inspection",
+		source: "runtime",
+		state: supported ? delivery.support === "degraded" ? "warning" : "active" : "warning",
+		badges: [mode.toUpperCase()],
+		metadata: { deliveryMode: mode },
+		notes: [
+			"Harness-native tools remain owned and executed by the selected runtime.",
+			...(reason ? [reason] : []),
+		],
+	});
 }
 
 function addNativeToolYieldingNode(
