@@ -157,7 +157,8 @@ async function startWebHostChannel(options = {}) {
 		updateSession(id, input) {
 			return sessions.update(id, input);
 		},
-		deleteSession(id) {
+		async deleteSession(id) {
+			if (options.deleteSession) return await options.deleteSession(id, sessions);
 			return sessions.delete(id);
 		},
 		findSessions(input) {
@@ -2708,8 +2709,13 @@ test("chat context build uses the frozen non-Pi runtime without rendering Pi sta
 		assert.equal(payload.snapshot.runtime.adapterId, "codex");
 		assert.equal(payload.snapshot.runtime.bindingState, "bound");
 		assert.equal(payload.snapshot.nodes[0].id, "runtime");
-		assert.ok(payload.snapshot.nodes.find((node) => node.id === "skills").children.some((node) => node.title === "review-skill"));
-		assert.ok(payload.snapshot.nodes.find((node) => node.id === "context").children.some((node) => node.title === "project-context"));
+		const skillNode = payload.snapshot.nodes.find((node) => node.id === "skills").children.find((node) => node.title === "review-skill");
+		const contextNode = payload.snapshot.nodes.find((node) => node.id === "context").children.find((node) => node.title === "project-context");
+		const mcpNode = payload.snapshot.nodes.find((node) => node.id === "mcp").children.find((node) => node.title === "filesystem");
+		assert.equal(skillNode.metadata.deliveryStatus, "failed");
+		assert.equal(contextNode.metadata.deliveryStatus, "failed");
+		assert.equal(mcpNode.metadata.deliveryStatus, "failed");
+		assert.ok(payload.snapshot.summary.errors >= 3);
 		assert.equal(payload.snapshot.nodes.some((node) => node.title === "Base System Prompt"), false);
 		assert.equal(JSON.stringify(payload.snapshot).includes("workspace-write"), false);
 	} finally {
@@ -6476,9 +6482,15 @@ test("chat web app exposes and updates MCP server descriptions", async () => {
 });
 
 test("chat web app archives and permanently deletes custom agents with their sessions", async () => {
+	const deletionOrder = [];
 	const { channel, baseURL, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+		async deleteSession(id, store) {
+			await new Promise((resolve) => setTimeout(resolve, 25));
+			deletionOrder.push(id);
+			return store.delete(id);
+		},
 	});
 
 	try {
@@ -6584,6 +6596,7 @@ test("chat web app archives and permanently deletes custom agents with their ses
 		assert.equal(deleted.status, 200);
 		const deletedPayload = await deleted.json();
 		assert.deepEqual(new Set(deletedPayload.deletedSessionIds), new Set([sessionPayload.session.id, childSession.id]));
+		assert.deepEqual(deletionOrder, [childSession.id, sessionPayload.session.id]);
 		assert.equal(sessions.get(sessionPayload.session.id), undefined);
 		assert.equal(sessions.get(childSession.id), undefined);
 	} finally {

@@ -210,6 +210,7 @@ Update this table after each meaningful milestone so continuations do not need t
 | 2026-08-15 | Runtime bindings validated and PR opened | `feature/agent-runtime-bindings` at `2318a725`, PR #478 | Full suite 1,622/1,622; existing-data migration, restart, stale CAS, debug, signals, UI badge, and rollback validated on Pibo2 | Runtime-aware profiles and Agent Designer |
 | 2026-08-15 | Runtime-aware profiles and Designer validated | `feature/agent-runtime-designer` at `5f6277f1`, PR #479 | Typecheck and full suite 1,632/1,632; exact-candidate Pibo2 persistence, API rejection, frozen binding, Context Build, and browser checks passed | Portable capability delivery |
 | 2026-08-15 | Portable Pibo tools and MCP bridge validated | `feature/agent-runtime-portable-tools` at `20c3d82d`, PR #483 | Final typecheck and full suite 1,639/1,639; exact-candidate Pibo2 scoped MCP, hijack denial, cancellation, progress, payload, revocation, catalog, Context Build, and browser checks passed | Skills/context/external-MCP materialization |
+| 2026-08-15 | Runtime resources materialized and validated | `feature/agent-runtime-materialization`, implementation `25347408`, PR #486 | Final typecheck and full suite 1,645/1,645; exact-candidate selected skill/context/MCP isolation, secret rebinding, protocol inventory, Pi-scoped CLI, restart/resume, Context Build, browser, and awaited deletion cleanup passed on Pibo2 | Runtime-neutral history, trace, and debug |
 
 ## Completion audit
 

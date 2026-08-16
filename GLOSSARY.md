@@ -64,7 +64,15 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Tool Capability Credential** — A short-lived bearer capability for the tool MCP bridge. Pibo stores only its hash and binds it to one Pibo Session, runtime instance, adapter, live generation, and selected tool-name set; it is renewed or revoked without broadening scope.
 
-**Runtime Session Generation** — A random live-lifecycle identifier distinct from persisted session and binding ids. Tool credentials become invalid when their owning generation is disposed, replaced, or otherwise inactive.
+**Runtime Session Generation** — A random live-lifecycle identifier distinct from persisted session and binding ids. Portable-tool credentials and generated runtime resources share this generation and become invalid or are removed when it is disposed, replaced, or otherwise inactive.
+
+**Runtime Resource Session** — The router-owned, adapter-neutral live plan for one runtime generation's selected skills, ordered context contributions, and external MCP servers. It exposes hydrated inputs to the adapter, safe inspection metadata to product surfaces, delivery reports, diagnostics, scoped environment, and deterministic cleanup.
+
+**Runtime Generation Directory** — A private `$PIBO_HOME/agent-runtimes/<runtime-instance>/<pibo-session>/<generation>/` tree containing only generated state for that live runtime generation, such as copied skills, context files, scoped MCP configuration, an isolated home, and protocol artifacts. It is not a user-global harness configuration directory.
+
+**Runtime Delivery Report** — Safe inspection metadata for one portable contribution recording delivered, degraded, unsupported, or failed status; delivery mode; fidelity; target; and a redacted diagnostic when relevant.
+
+**Scoped External MCP Configuration** — A selected-only MCP configuration generated for one runtime generation. Literal or referenced sensitive values are rebound through session-only environment variables; the generated file contains no resolved secret values and is removed with the generation.
 
 **Code Runtime Tool** — The existing persistent Python/Node tool named `runtime`. It is a Pibo tool and is distinct from an Agent Runtime Adapter or Runtime Session.
 

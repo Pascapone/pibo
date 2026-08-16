@@ -1,6 +1,11 @@
 import type { PiboJsonObject, PiboJsonValue } from "../core/events.js";
 import type { InitialSessionContext, ModelProfile } from "../core/profiles.js";
 import type { PiboPortableToolSession } from "../tools/session-service.js";
+import type {
+	AgentRuntimeDeliveryReport,
+	PiboRuntimeResourceSession,
+} from "./resources.js";
+export type { AgentRuntimeDeliveryReport } from "./resources.js";
 import type { PiboSession } from "../sessions/store.js";
 import type {
 	AgentRuntimeAdapterId,
@@ -87,6 +92,7 @@ export type AgentRuntimeOpenServices = {
 	runToolController?: unknown;
 	codeRuntimeToolController?: unknown;
 	portableTools?: PiboPortableToolSession;
+	resources?: PiboRuntimeResourceSession;
 	telemetry?: unknown;
 	compatibility?: unknown;
 };
@@ -108,15 +114,6 @@ export type ValidateAgentRuntimeProfileInput = {
 
 export type InspectAgentRuntimeProfileInput = ValidateAgentRuntimeProfileInput & {
 	productContext?: AgentRuntimeProductContext;
-};
-
-export type AgentRuntimeDeliveryReport = {
-	contributionId: string;
-	status: "delivered" | "degraded" | "unsupported" | "failed";
-	mode: string;
-	fidelity: "exact" | "equivalent" | "lossy" | "none";
-	target?: string;
-	diagnostic?: string;
 };
 
 export type AgentRuntimeAssemblyInspection = {

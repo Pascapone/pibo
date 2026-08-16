@@ -24,6 +24,8 @@ export type CreatePiboPortableToolSessionInput = PiboPortableToolSessionControll
 	piboRoomId?: string;
 	runtimeInstanceId: string;
 	adapterId: string;
+	/** Shared live runtime generation used by tool credentials and resource isolation. */
+	sessionGeneration?: string;
 	profile: InitialSessionContext;
 	cwd: string;
 	getActiveMessage?: PiboToolDefinitionContext["getActiveMessage"];
@@ -112,7 +114,9 @@ export class PiboPortableToolService {
 		const runtimeInstanceId = assertIdentifier(input.runtimeInstanceId, "runtimeInstanceId");
 		const adapterId = assertIdentifier(input.adapterId, "adapterId");
 		const cwd = assertIdentifier(input.cwd, "cwd");
-		const sessionGeneration = randomUUID();
+		const sessionGeneration = input.sessionGeneration
+			? assertIdentifier(input.sessionGeneration, "sessionGeneration")
+			: randomUUID();
 		const key = sessionKey(piboSessionId, sessionGeneration);
 		const record: SessionRecord = {
 			key,

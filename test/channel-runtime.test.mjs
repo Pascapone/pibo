@@ -61,6 +61,44 @@ test("gateway starts plugin channels with router and session session context", a
 	assert.equal(stopped, true);
 });
 
+test("gateway session deletion awaits live runtime disposal before removing persistence", async () => {
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const store = new InMemoryPiboSessionStore();
+	let channelContext;
+	registry.registerPlugin(
+		definePiboPlugin({
+			id: "test.channel-delete-runtime",
+			register(api) {
+				api.registerChannel({
+					name: "delete-runtime-channel",
+					kind: "local",
+					auth: { mode: "trusted-local" },
+					start(context) {
+						channelContext = context;
+					},
+				});
+			},
+		}),
+	);
+	const server = new PiboGatewayServer({
+		port: 0,
+		persistSession: false,
+		pluginRegistry: registry,
+		sessionStore: store,
+	});
+	try {
+		await server.start();
+		channelContext.createSession({ id: "ps_delete_live_runtime", channel: "test", kind: "chat", profile: "base" });
+		await channelContext.emit({ type: "execution", piboSessionId: "ps_delete_live_runtime", action: "status" });
+		assert.equal(channelContext.getSessionRuntimeStatus("ps_delete_live_runtime").disposed, false);
+		assert.equal(await channelContext.deleteSession("ps_delete_live_runtime"), true);
+		assert.equal(store.get("ps_delete_live_runtime"), undefined);
+		assert.equal(channelContext.getSessionRuntimeStatus("ps_delete_live_runtime"), undefined);
+	} finally {
+		await server.stop();
+	}
+});
+
 test("gateway stops plugin channels in reverse start order", async () => {
 	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
 	const events = [];

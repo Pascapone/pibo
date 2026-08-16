@@ -440,7 +440,10 @@ export class PiboGatewayServer {
 			updateSession: (id, input) => this.requireSessionStore().update(id, input),
 			setLiveSessionActiveModel: (id, model) => this.requireRouter().setLiveSessionActiveModel(id, model),
 			reportSessionError: (id, error, options) => this.requireRouter().reportSessionError(id, error, options),
-			deleteSession: (id) => this.requireSessionStore().delete?.(id) ?? false,
+			deleteSession: async (id) => {
+				await this.requireRouter().disposeSession(id, "session deleted");
+				return this.requireSessionStore().delete?.(id) ?? false;
+			},
 			findSessions: (input) => this.requireSessionStore().find(input),
 			listSessions: () => this.requireSessionStore().list?.() ?? [],
 			getSessionRuntimeBinding: (piboSessionId) => this.requireRouter().getSessionRuntimeBinding(piboSessionId),

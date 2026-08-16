@@ -41,6 +41,9 @@ test("default profiles and capability catalog expose the configured Pi runtime",
 	assert.equal(catalogEntry.transport, "embedded");
 	assert.equal(catalogEntry.capabilities.lifecycle.resume, true);
 	assert.equal(catalogEntry.capabilities.tools.piboManaged.support, "direct");
+	assert.equal(catalogEntry.capabilities.mcp.externalServers.support, "materialized");
+	assert.deepEqual(catalogEntry.capabilities.mcp.externalServers.modes, ["isolated-pibo-mcp-config"]);
+	assert.equal(catalogEntry.capabilities.mcp.statusInspection, true);
 
 	// Current upstream/dev intentionally has no built-in `codex` profile alias. Native Codex
 	// must remain on a distinct profile and must not claim this retired name implicitly.
@@ -71,6 +74,15 @@ test("runtime registry reports availability diagnostics and validates profile op
 		new InitialSessionContextBuilder("unknown-runtime").withAgentRuntime("missing-runtime").createSession(),
 	);
 	assert.ok(unknown.some((diagnostic) => diagnostic.code === "runtime_instance_unknown"));
+
+	const mcpWithoutBash = await registry.validateAgentRuntimeProfile(
+		new InitialSessionContextBuilder("pi-mcp-without-bash")
+			.withAgentRuntime("pi")
+			.withBuiltinTools("disabled")
+			.withMcpServers(["filesystem"])
+			.createSession(),
+	);
+	assert.ok(mcpWithoutBash.some((diagnostic) => diagnostic.code === "pi_mcp_bash_required"));
 });
 
 test("runtime inspection rejects a declared model catalog without a listModels implementation", async () => {
@@ -166,6 +178,47 @@ test("MCP-delivered runtimes reject legacy private tools and explain native-tool
 	const runDiagnostics = await registry.validateAgentRuntimeProfile(runControlProfile);
 	assert.equal(runDiagnostics.some((diagnostic) => diagnostic.severity === "error"), false);
 	assert.ok(runDiagnostics.some((diagnostic) => diagnostic.code === "runtime_native_tool_yielding_unsupported"));
+});
+
+test("materialized context requires an explicit automatic project-discovery mode", async () => {
+	const capabilities = createFakeAgentRuntimeDriver({ adapterId: "context-template" }).descriptor.capabilities;
+	capabilities.context = { support: "materialized", modes: ["isolated-context-files"] };
+	const registry = PiboPluginRegistry.create({
+		plugins: [definePiboPlugin({
+			id: "test.context-runtime",
+			register(api) {
+				api.registerAgentRuntimeDriver(createFakeAgentRuntimeDriver({ adapterId: "context-runtime", capabilities }));
+				api.registerAgentRuntimeInstance({ id: "context-runtime", adapterId: "context-runtime" });
+			},
+		})],
+	});
+	const automaticProfile = new InitialSessionContextBuilder("automatic-context-profile")
+		.withAgentRuntime("context-runtime")
+		.withBuiltinTools("disabled")
+		.withToolPackages({ goalControl: false })
+		.createSession();
+	const automaticDiagnostics = await registry.validateAgentRuntimeProfile(automaticProfile);
+	assert.ok(automaticDiagnostics.some((diagnostic) => diagnostic.code === "runtime_auto_context_discovery_unsupported"));
+
+	capabilities.context = { support: "materialized", modes: ["isolated-context-files", "native-project-discovery"] };
+	const supportedRegistry = PiboPluginRegistry.create({
+		plugins: [definePiboPlugin({
+			id: "test.context-runtime-supported",
+			register(api) {
+				api.registerAgentRuntimeDriver(createFakeAgentRuntimeDriver({ adapterId: "context-runtime-supported", capabilities }));
+				api.registerAgentRuntimeInstance({ id: "context-runtime-supported", adapterId: "context-runtime-supported" });
+			},
+		})],
+	});
+	const supportedProfile = new InitialSessionContextBuilder("supported-auto-context-profile")
+		.withAgentRuntime("context-runtime-supported")
+		.withBuiltinTools("disabled")
+		.withToolPackages({ goalControl: false })
+		.createSession();
+	assert.equal(
+		(await supportedRegistry.validateAgentRuntimeProfile(supportedProfile)).some((diagnostic) => diagnostic.severity === "error"),
+		false,
+	);
 });
 
 

@@ -68,6 +68,11 @@ import {
 } from "../../tools/contract.js";
 import { compilePiboToolForPi } from "./tool-compiler.js";
 import type { PiboPortableToolSession } from "../../tools/session-service.js";
+import type {
+	AgentRuntimeDeliveryReport,
+	AgentRuntimeExternalMcpServerInspection,
+	PiboRuntimeResourceSession,
+} from "../../agent-runtime/resources.js";
 import {
 	createPiboSessionToolDefinitions,
 	isCodexBrowserToolProfile as isCodexBrowserTool,
@@ -117,6 +122,8 @@ export type PiboRuntimeOptions = {
 	runtimeToolController?: PiboRuntimeToolController;
 	/** Router-owned portable tool scope shared with external-harness MCP delivery. */
 	portableTools?: PiboPortableToolSession;
+	/** Router-owned selected skills, context, and external MCP generation scope. */
+	resources?: PiboRuntimeResourceSession;
 	/** Product-level model defaults selected outside the workspace, e.g. Chat Web settings. */
 	modelDefaults?: PiboModelDefaults;
 	/** SessionStore-persisted model. Routed sessions must prefer this over current defaults. */
@@ -155,6 +162,8 @@ export type PiboProfileInspection = {
 	tools: Array<{ name: string; hasDefinition: boolean; registered: boolean; active: boolean }>;
 	subagents: Array<{ name: string; targetProfile: string; active: boolean }>;
 	mcpServers: string[];
+	mcpStatus: AgentRuntimeExternalMcpServerInspection[];
+	resourceDelivery: AgentRuntimeDeliveryReport[];
 	piPackages: Array<{ id: string; active: boolean }>;
 	contextFiles: Array<{ path: string; bytes: number }>;
 	diagnostics: AgentSessionRuntimeDiagnostic[];
@@ -327,11 +336,20 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		sessionStartEvent,
 	}) => {
 		const contextGuardRecovery = createPiboAssistantContextGuardRecovery();
-		const contextFiles = await loadContextFiles(runtimeCwd, profile.contextFiles);
-		const sessionContextFile = createSessionContextFile({ piboSessionId: profile.sessionId, ...options.sessionContext });
-		const installedToolContextFile = getInstalledCliToolContextFile();
-		const mcpAgentContextFile = await getMcpAgentContextFile(profile.mcpServers);
-		const skillPaths = getEnabledSkillPaths(runtimeCwd, profile);
+		const resourceContextFiles = options.resources?.getContextContributions()
+			.flatMap((contribution) => contribution.content === undefined ? [] : [{
+				path: contribution.path ?? contribution.sourcePath ?? contribution.materializedPath ?? contribution.id,
+				content: contribution.content,
+			}]);
+		const contextFiles = resourceContextFiles ?? await loadContextFiles(runtimeCwd, profile.contextFiles);
+		const sessionContextFile = options.resources
+			? undefined
+			: createSessionContextFile({ piboSessionId: profile.sessionId, ...options.sessionContext });
+		const installedToolContextFile = options.resources ? undefined : getInstalledCliToolContextFile();
+		const mcpAgentContextFile = options.resources ? undefined : await getMcpAgentContextFile(profile.mcpServers);
+		const skillPaths = options.resources
+			? [...options.resources.getSkillPaths("source")]
+			: getEnabledSkillPaths(runtimeCwd, profile);
 		const piPackageOptions = getPiPackageRuntimeOptions(runtimeCwd, profile);
 		let runtimeSettingsManager: SettingsManager | undefined;
 		const services = await createAgentSessionServices({
@@ -357,7 +375,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 					agentsFiles: mergeContextFiles(
 						base.agentsFiles,
 						[
-							sessionContextFile,
+							...(sessionContextFile ? [sessionContextFile] : []),
 							...contextFiles,
 							...(installedToolContextFile ? [installedToolContextFile] : []),
 							...(mcpAgentContextFile ? [mcpAgentContextFile] : []),
@@ -390,10 +408,24 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			getActiveMessage: options.sessionContext?.getActiveMessage,
 			getConversationEntries: () => runtimeSessionManager.getBranch(),
 		};
-		const piNativeYieldableTools = profile.toolPackages.runControl === true && options.runToolController
+		const adapterEnvironment = options.resources?.getAdapterEnvironment() ?? {};
+		const hasAdapterEnvironment = Object.keys(adapterEnvironment).length > 0;
+		const profileEnablesBash = profile.builtinTools !== "disabled" && profile.builtinToolNames.includes("bash");
+		const needsPiBashOverride = (
+			profile.toolPackages.runControl === true && options.runToolController !== undefined
+		) || (hasAdapterEnvironment && profileEnablesBash);
+		const piNativeYieldableTools = needsPiBashOverride
 			? [normalizePiboToolDefinition(createBashToolDefinition(runtimeCwd, {
 				commandPrefix: services.settingsManager.getShellCommandPrefix(),
 				shellPath: services.settingsManager.getShellPath(),
+				...(hasAdapterEnvironment
+					? {
+						spawnHook: (context) => ({
+							...context,
+							env: { ...context.env, ...adapterEnvironment },
+						}),
+					}
+					: {}),
 			}) as unknown as LegacyPiToolDefinitionLike)]
 			: [];
 		options.portableTools?.configureControllers({ codexBrowserController });
@@ -412,6 +444,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		const customTools = piboToolDefinitions.map((definition) => compilePiboToolForPi(definition, {
 			...toolContext,
 			runtimeInstanceId: profile.runtimeInstanceId,
+			sessionGeneration: options.resources?.sessionGeneration ?? options.portableTools?.sessionGeneration,
 		}));
 		const modelDefaults = options.modelDefaults ?? loadPiboModelDefaults(runtimeCwd);
 
@@ -618,6 +651,8 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 				};
 			}),
 			mcpServers: [...profile.mcpServers],
+			mcpStatus: options.resources?.getInspection().mcpServers.map((server) => structuredClone(server)) ?? [],
+			resourceDelivery: options.resources?.getInspection().delivery.map((report) => ({ ...report })) ?? [],
 			piPackages: profile.piPackages.map((pkg) => ({
 				id: pkg.id,
 				active: pkg.enabled !== false,

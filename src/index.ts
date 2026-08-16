@@ -43,6 +43,29 @@ export {
 export { RuntimeRoutedSession } from "./agent-runtime/routed-session.js";
 export type { PiboMessagePreflight, RuntimeRoutedSessionOptions } from "./agent-runtime/routed-session.js";
 export {
+	PiboRuntimeResourceError,
+	PiboRuntimeResourceService,
+} from "./agent-runtime/resource-service.js";
+export type {
+	CreatePiboRuntimeResourceSessionInput,
+	PiboRuntimeResourceServiceOptions,
+} from "./agent-runtime/resource-service.js";
+export type {
+	AgentRuntimeContextContribution,
+	AgentRuntimeDeliveryReport,
+	AgentRuntimeExternalMcpServerInspection,
+	AgentRuntimeMcpResourceInfo,
+	AgentRuntimeMcpResourceTemplateInfo,
+	AgentRuntimeMcpToolInfo,
+	AgentRuntimeResourceDiagnostic,
+	AgentRuntimeResourceInspection,
+	AgentRuntimeResourcePaths,
+	AgentRuntimeSkillResource,
+	PiboRuntimeMcpVerificationResult,
+	PiboRuntimeMcpVerifier,
+	PiboRuntimeResourceSession,
+} from "./agent-runtime/resources.js";
+export {
 	assertAgentRuntimeSessionContract,
 	validateAgentRuntimeSessionContract,
 } from "./agent-runtime/contract.js";

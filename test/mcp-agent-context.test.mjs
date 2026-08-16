@@ -105,6 +105,7 @@ async function writeConfig(configPath) {
 			filesystem: {
 				command: "node",
 				args: ["server.js"],
+				env: { MCP_FIXTURE_TOKEN: "${MCP_FIXTURE_TOKEN}" },
 				pibo: {
 					description: "Access project files through MCP.",
 					descriptionSource: "user",

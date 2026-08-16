@@ -43,6 +43,7 @@ function createFakeRuntimeFixture() {
 							return new InitialSessionContextBuilder("router-fake-profile")
 								.withAgentRuntime("router-fake")
 								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
 								.withToolPackages({ goalControl: false })
 								.createSession();
 						},
