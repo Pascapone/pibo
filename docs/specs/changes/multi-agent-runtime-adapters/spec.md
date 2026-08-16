@@ -441,7 +441,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 |---|---|---|---|
 | REQ-001 Product authority | All | Cross-runtime subagent/workflow/loop scenarios | Pending |
 | REQ-002 Registry | Foundation | Registry unit tests, catalog tests | Pi + Designer local pass |
-| REQ-003 Session lifecycle | Foundation/Pi/Codex | Shared adapter contract | Pi local + approved-auth Pibo2 restart/resume pass; Codex pending |
+| REQ-003 Session lifecycle | Foundation/Pi/Codex | Shared adapter contract | Pi local + approved-auth Pibo2 restart/resume pass; Codex 9.4 start/bind/resume/missing/fork/clone local + exact-binary pass; completed-turn service restart pending 9.5/10.4 |
 | REQ-004 Capabilities | Foundation/Designer | Capability consistency and save-validation tests | Designer local pass |
 | REQ-005 Events | Pi/Codex/History | Event fixtures and trace tests | Pi local + real-model Pibo2 text/tool/SSE pass; Codex pending |
 | REQ-006 Pi parity | Pi extraction | Full suite, old-session fixtures, Pibo2 parity | Pass: approved Pibo2-managed OAuth, baseline/candidate text and Bash parity, public-Web streaming, unchanged binding across restart, prior-tool-history recovery, controls, trace, and browser evidence; see `pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md` |
@@ -451,9 +451,9 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-010 Native behavior | Pi/Codex | Prompt/tool/context inspection | Pending |
 | REQ-011 Portable tools | Tool bridge | Pi compiler/MCP/security tests | Local + exact-candidate Pibo2 pass; see `portable-pibo-tools-mcp-validation-2026-08-15.md` |
 | REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, restart, Context Build, and Pi-scoped CLI tests | Local + exact-candidate Pibo2 pass; see `runtime-resource-materialization-validation-2026-08-15.md` |
-| REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pibo-owned + Pi exact-candidate pass; native Codex provider pending |
+| REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pibo-owned + Pi exact-candidate pass; Codex 9.4 normalized/redacted native provider local + exact deterministic-rollout pass; live-turn restart pending |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Local + exact-candidate Pibo2 pass; 20/20 with skill versus 9/20 baseline |
-| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema checkpoint, 9.2 typed stdio client, and 9.3 process/version/private-home isolation pass; exact Pibo2 0.147.0 two-instance initialize/model-list/cleanup verified; thread/runtime integration pending |
+| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | 9.1 schema, 9.2 typed stdio client, 9.3 process/private-home isolation, and 9.4 thread/binding/history pass; exact Pibo2 0.147.0 start/list/resume/read/fork/clone/restart/missing cleanup verified; turns and later integrations pending |
 | REQ-016 Compatibility alias | Profiles | Existing profile tests | Local pass; native profile pending |
 | REQ-017 Verification | All | Local and Pibo2 evidence reports | Pending |
 | REQ-018 Delivery | All | Branch/commit/PR/final audit | Implementing |
