@@ -166,14 +166,34 @@ Add tests that fail if Pibo injects Pi-specific prompt text or removes native to
 The selected configured runtime owns these surfaces:
 
 - `listModels()` returns only models valid for that runtime instance;
-- `getAuthStatus()` reports configured/present state without credentials;
 - `models.optionsSchema` describes persisted adapter-native options;
 - reasoning values match exact harness values;
 - live model switching is advertised only when the native protocol supports it.
 
+Provider auth is an explicit configured-instance capability, not a global Pi service. Declare `capabilities.auth` with:
+
+- `status` support;
+- Pibo method ids (`device_code`, `browser_oauth`, or `api_key`) and each method's `immediate`, `explicit`, or `notification` completion mode;
+- cancellation and logout support;
+- credential scope: `runtime-instance` or `adapter-shared`.
+
+The capability declaration and methods must match exactly:
+
+- `getAuthStatus()` returns every known provider with connected, disconnected, pending, partial, unsupported, or failed state;
+- `startAuth()` starts only declared methods;
+- `completeAuth()` reads explicit/notification flow progress and terminal outcome;
+- `cancelAuth()` and `logoutAuth()` exist only when claimed;
+- `disposeAuth()` is required for non-immediate methods, closes pending adapter-owned processes/transient state, and leaves the configured adapter reusable after router restart.
+
+Use only Pibo-owned provider ids, method ids, status, flow, and result types at the boundary. Generate an opaque Pibo flow id and keep native login ids, separate OAuth state/verifier fields, account identifiers, and protocol payloads inside the adapter. An interactive flow may return only the bounded verification/authorization URL, optional one-time user code, bounded instructions, and Pibo flow metadata needed by the user; never persist that ephemeral URL/code in bindings, normalized product history, screenshots, or reports.
+
+Pibo product settings require an explicit configured-runtime target. A legacy session-bound action may target the active session's frozen runtime binding, but a random Pibo Session id must never be ignored or treated as global auth scope. Multiple configured instances may intentionally use different accounts. If the harness uses one existing shared store, declare `adapter-shared`, prevent conflicting same-provider flows across that scope, cancel scoped pending flows on logout, and recycle cached sessions for every affected instance rather than pretending the instances are isolated.
+
+Join model providers to auth status for the same runtime instance. If that runtime declares auth but status is missing or failed, never default models to authenticated. Keep models visible with disabled/missing-auth explanation when the product spec requires discoverability.
+
 Validate adapter options at save and start boundaries. Do not pass unknown arbitrary JSON to a process without schema validation and filtering.
 
-Never reuse Chat Web cookies, machine keys, Pibo tool tokens, or another harness's auth as model-provider credentials.
+Never reuse Chat Web cookies, machine keys, Pibo tool tokens, another harness's auth, local OAuth files, or browser cookies as model-provider credentials. Never use unstable token-injection protocol variants merely because they appear in generated schemas. Tests must prove target routing, timeout/cancellation, restart persistence, same-adapter instance isolation where claimed, and redaction from events, bindings, logs, diagnostics, snapshots, and reports.
 
 ## Pibo-managed subagents
 

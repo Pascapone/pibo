@@ -5,6 +5,7 @@ import { registerGlmProvider, type GlmModelRegistryLike } from "../../providers/
 import { registerQwenTokenPlanProvider, type QwenTokenPlanModelRegistryLike } from "../../providers/qwen-token-plan.js";
 import { registerOpenAiGpt56Models, type OpenAiGpt56ModelRegistryLike } from "../../providers/openai-gpt56.js";
 import type { AgentRuntimeAuthStatus, AgentRuntimeModelCatalog } from "../../agent-runtime/types.js";
+import { piAuthMethodsForProvider } from "./auth.js";
 
 export type ModelCatalog = {
 	providers: ProviderCatalogEntry[];
@@ -127,6 +128,8 @@ export function piAgentRuntimeAuthStatus(catalog: ModelCatalog): AgentRuntimeAut
 	return catalog.providers.map((provider) => ({
 		id: provider.id,
 		displayName: provider.label,
+		state: provider.authConfigured ? "connected" : "disconnected",
 		configured: provider.authConfigured,
+		methods: [...piAuthMethodsForProvider(provider.id)],
 	}));
 }

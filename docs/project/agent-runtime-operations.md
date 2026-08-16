@@ -2,7 +2,7 @@
 
 **Updated:** 2026-08-16
 
-This guide covers runtime selection, diagnostics, migration boundaries, private state, and safe troubleshooting for the built-in `pi` and `codex-native` runtimes. Architecture details live in [`architecture/agent-runtime-adapters.md`](./architecture/agent-runtime-adapters.md); exact integrated evidence and the remaining authentication gate are recorded in [`../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`](../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md).
+This guide covers runtime selection, diagnostics, migration boundaries, private state, and safe troubleshooting for the built-in `pi` and `codex-native` runtimes. Architecture details live in [`architecture/agent-runtime-adapters.md`](./architecture/agent-runtime-adapters.md); exact integrated evidence and the runtime-auth correction are recorded in [`../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`](../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md) and [`../reports/runtime-auth-control-plane-validation-2026-08-16.md`](../reports/runtime-auth-control-plane-validation-2026-08-16.md).
 
 ## Discover runtime support
 
@@ -14,7 +14,7 @@ pibo debug session <ps_...>
 pibo debug trace <ps_...> --check
 ```
 
-Agent Designer and authenticated `/api/chat/agent-catalog` expose configured runtime instances, availability, protocol/version diagnostics, model catalogs, option schemas, and effective capabilities. Disabled or degraded controls include an explanation; invalid selections are rejected when the agent is saved and again when a session starts.
+Agent Designer and authenticated `/api/chat/agent-catalog` expose configured runtime instances, availability, protocol/version diagnostics, model catalogs, option schemas, effective capabilities, and per-runtime provider status. Disabled or degraded controls include an explanation; invalid selections are rejected when the agent is saved and again when a session starts.
 
 Existing Pibo Sessions retain their frozen runtime binding when a profile default changes.
 
@@ -68,7 +68,30 @@ Do not rename or rewrite legacy Pi transcripts to fit the runtime schema.
 
 `codex-native` requires an official supported Codex App Server executable. The configured instance reports its validated version range and diagnostics. Pibo starts the App Server with a private Codex home and per-generation environment; it does not scrape terminal output.
 
-Native Codex authentication must be established through a supported Pibo2-managed Codex login flow. Do not copy a developer's local OAuth files, Pi auth records, browser cookies, or ad hoc access tokens into the runtime home.
+Native Codex authentication must be established through the Pibo-managed provider settings control plane. Do not copy a developer's local OAuth files, Pi auth records, browser cookies, or ad hoc access tokens into the runtime home.
+
+## Manage runtime provider authentication
+
+Open the authenticated Chat Web path:
+
+```text
+/apps/chat/settings/providers
+```
+
+The page groups providers by configured runtime instance. Confirm the target id before changing credentials:
+
+- **Default runtime** marks the runtime selected for new default-profile sessions; it is not a global credential alias.
+- **Private account for this configured runtime instance** means login/logout affects only that instance's private store.
+- **Shared adapter credential store** currently describes Pi compatibility; another Pi configured instance observes the same Pi provider store.
+- Connected, disconnected, pending, partial, unsupported, and failed are explicit states. A missing status is not connected.
+
+The product API is `GET /api/chat/provider-auth` for the catalog and same-origin authenticated `POST /api/chat/provider-auth` for `start`, `api_key`, `complete`, `cancel`, or `logout`. Every mutation includes `runtimeInstanceId` and `providerId`. Provider settings do not require or silently derive an arbitrary Pibo Session id.
+
+Legacy Terminal/TUI `login.*` actions remain session-bound. They target the active session's frozen runtime binding and reject a conflicting explicit runtime target.
+
+For `codex-native`, **Device code** starts official App Server `account/login/start` with `chatgptDeviceCode` in that instance's private `CODEX_HOME`. Open the displayed URL, enter the one-time code, and finish sign-in. Chat Web polls the Pibo flow while the adapter consumes `account/login/completed`; cancellation and timeout close the owned App Server process. API-key setup and logout likewise use stable App Server account methods. Pibo never uses `chatgptAuthTokens`.
+
+After completion, refresh the page and verify safe metadata only: runtime instance, provider, state, account type, and optional plan type. Never inspect or print `auth.json` to prove success.
 
 A fresh Codex `0.147.0` thread may remain live but not durable until its first native turn. After a durable thread exists, a missing rollout is reported as `missing` with a safe conflict response; it is never replaced through `thread/start`.
 
@@ -155,7 +178,8 @@ The scenario follows the current room picker, creates a session, sends a mocked 
 
 ## Security rules
 
-- Do not print or copy auth files, cookies, machine keys, bearer tokens, environment secrets, device codes, or private locator/config values.
+- Do not print or copy auth files, cookies, machine keys, bearer tokens, environment secrets, device codes, account identifiers, or private locator/config values.
+- Do not move Pi credentials, local Codex credentials, or one Codex instance's credentials into another runtime home.
 - Do not mutate global Codex or Pi configuration merely to run one Pibo Session.
 - Do not broaden generated Pibo MCP credentials beyond the selected generation and tool allowlist.
 - Do not pre-approve external MCP servers globally.

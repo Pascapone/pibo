@@ -17,7 +17,6 @@ import { parsePiboThinkingLevel } from "../core/thinking.js";
 import { createWebSearchToolProfile } from "../tools/web-search.js";
 import { CODEX_BROWSER_TOOL_NAMES, createCodexBrowserToolProfiles } from "../tools/codex-browser.js";
 import { createRuntimeToolProfile } from "../tools/runtime/tool.js";
-import { completeLogin, getLoginStatus, removeLogin, setApiKey, startLogin } from "../auth/login-actions.js";
 import { loadModelCatalog } from "../apps/chat/model-catalog.js";
 import { piboCodexCompatPlugin } from "./codex-compat.js";
 import { piboCodexNativePlugin } from "./codex-native.js";
@@ -40,17 +39,6 @@ const PIBO_PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../.
 function builtinSkillPath(name: string): string {
 	return resolve(PIBO_PACKAGE_ROOT, "skills", "builtin", name, "SKILL.md");
 }
-
-const LOGIN_PROVIDERS = [
-	{ id: "openai-codex", name: "OpenAI (ChatGPT Plus/Pro)", authMethods: ["device_code"] },
-	{ id: "openai", name: "OpenAI API", authMethods: ["api_key"] },
-	{ id: "anthropic", name: "Anthropic", authMethods: ["api_key"] },
-	{ id: "qwen-token-plan", name: "Qwen Token Plan", authMethods: ["api_key"] },
-	{ id: "kimi-coding", name: "Kimi for Coding", authMethods: ["api_key"] },
-	{ id: "google", name: "Google Gemini", authMethods: ["api_key"] },
-	{ id: "groq", name: "Groq", authMethods: ["api_key"] },
-	{ id: "ollama", name: "Ollama", authMethods: ["api_key"] },
-] as const;
 
 function getObjectParams(event: PiboExecutionEvent): PiboJsonObject | undefined {
 	const params = "params" in event ? event.params : undefined;
@@ -120,15 +108,21 @@ function requireUserInputResponseParams(event: PiboExecutionEvent): PiboUserInpu
 	return { requestId: params.requestId, answers: params.answers as PiboJsonObject };
 }
 
-function requireLoginStartParams(event: PiboExecutionEvent): { provider: string } {
+function requireLoginStartParams(event: PiboExecutionEvent): {
+	provider: string;
+	method?: "device_code" | "browser_oauth";
+} {
 	const params = getObjectParams(event);
 	if (!params || typeof params.provider !== "string" || params.provider.length === 0) {
 		throw new Error("login.start requires params.provider");
 	}
-	return { provider: params.provider };
+	if (params.method !== undefined && params.method !== "device_code" && params.method !== "browser_oauth") {
+		throw new Error("login.start params.method must be device_code or browser_oauth");
+	}
+	return { provider: params.provider, method: params.method };
 }
 
-function requireLoginCompleteParams(event: PiboExecutionEvent): { provider: string; code?: string; state: string } {
+function requireLoginCompleteParams(event: PiboExecutionEvent): { provider: string; code?: string; flowId: string } {
 	const params = getObjectParams(event);
 	if (!params || typeof params.provider !== "string" || params.provider.length === 0) {
 		throw new Error("login.complete requires params.provider");
@@ -136,10 +130,27 @@ function requireLoginCompleteParams(event: PiboExecutionEvent): { provider: stri
 	if (params.code !== undefined && typeof params.code !== "string") {
 		throw new Error("login.complete params.code must be a string when provided");
 	}
-	if (typeof params.state !== "string" || params.state.length === 0) {
-		throw new Error("login.complete requires params.state");
+	const flowId = typeof params.flowId === "string" && params.flowId.length > 0
+		? params.flowId
+		: typeof params.state === "string" && params.state.length > 0
+			? params.state
+			: undefined;
+	if (!flowId) throw new Error("login.complete requires params.flowId");
+	return { provider: params.provider, code: params.code, flowId };
+}
+
+function requireLoginCancelParams(event: PiboExecutionEvent): { provider: string; flowId: string } {
+	const params = getObjectParams(event);
+	if (!params || typeof params.provider !== "string" || params.provider.length === 0) {
+		throw new Error("login.cancel requires params.provider");
 	}
-	return { provider: params.provider, code: params.code, state: params.state };
+	const flowId = typeof params.flowId === "string" && params.flowId.length > 0
+		? params.flowId
+		: typeof params.state === "string" && params.state.length > 0
+			? params.state
+			: undefined;
+	if (!flowId) throw new Error("login.cancel requires params.flowId");
+	return { provider: params.provider, flowId };
 }
 
 function requireLoginApiKeyParams(event: PiboExecutionEvent): { provider: string; apiKey: string } {
@@ -427,16 +438,20 @@ export const piboCorePlugin = definePiboPlugin({
 		});
 		api.registerGatewayAction({
 			name: "login",
-			description: "Open the interactive provider login menu.",
+			description: "Open the interactive provider login menu for the active runtime.",
 			slashCommands: ["login"],
-			execute() {
-				const statuses = new Map(getLoginStatus().map((status) => [status.id, status.configured]));
+			async execute(context) {
+				const statuses = await context.getRuntimeAuthStatus();
 				return {
 					action: "show_login_menu",
-					providers: LOGIN_PROVIDERS.map((provider) => ({
-						...provider,
-						authMethods: [...provider.authMethods],
-						configured: statuses.get(provider.id) ?? false,
+					runtimeInstanceId: context.runtimeInstanceId,
+					providers: statuses.map((status) => ({
+						id: status.id,
+						name: status.displayName ?? status.id,
+						authMethods: status.methods.map((method) => method.id),
+						configured: status.configured,
+						state: status.state,
+						message: status.message,
 					})),
 				};
 			},
@@ -448,6 +463,15 @@ export const piboCorePlugin = definePiboPlugin({
 			async execute(context) {
 				const runtimeCatalog = await context.getModelCatalog();
 				if (runtimeCatalog) {
+					let authStatusAvailable = false;
+					let authStatuses = new Map<string, boolean>();
+					try {
+						const statuses = await context.getRuntimeAuthStatus();
+						authStatusAvailable = true;
+						authStatuses = new Map(statuses.map((status) => [status.id, status.configured]));
+					} catch {
+						// Runtimes that do not declare auth may use model-catalog compatibility metadata.
+					}
 					const providers = new Map<string, {
 						id: string;
 						label: string;
@@ -459,13 +483,15 @@ export const piboCorePlugin = definePiboPlugin({
 						const providerLabel = typeof model.options?.providerDisplayName === "string"
 							? model.options.providerDisplayName
 							: providerId;
-						const authConfigured = typeof model.options?.authConfigured === "boolean"
-							? model.options.authConfigured
-							: true;
-						if (!authConfigured) continue;
+						const authConfigured = authStatuses.get(providerId)
+							?? (authStatusAvailable
+								? false
+								: typeof model.options?.authConfigured === "boolean"
+									? model.options.authConfigured
+									: !context.runtimeAuthRequired);
 						let provider = providers.get(providerId);
 						if (!provider) {
-							provider = { id: providerId, label: providerLabel, authConfigured: true, models: [] };
+							provider = { id: providerId, label: providerLabel, authConfigured, models: [] };
 							providers.set(providerId, provider);
 						}
 						provider.models.push({
@@ -480,59 +506,100 @@ export const piboCorePlugin = definePiboPlugin({
 				const catalog = await loadModelCatalog(process.cwd());
 				return {
 					action: "show_model_menu",
-					providers: catalog.providers
-						.filter((provider) => provider.authConfigured)
-						.map((provider) => ({
-							...provider,
-							models: provider.models.filter((model) => model.authConfigured !== false),
-						})),
+					providers: catalog.providers.map((provider) => ({
+						...provider,
+						models: provider.models,
+					})),
 				};
 			},
 		});
 		api.registerGatewayAction({
 			name: "login.start",
-			description: "Start an OAuth login flow for a provider. Returns a URL to open in a browser.",
+			description: "Start a provider login flow for the active runtime.",
 			slashCommands: [],
-			async execute(_context, event) {
+			async execute(context, event) {
 				const params = requireLoginStartParams(event);
-				return await startLogin(params.provider);
+				const status = (await context.getRuntimeAuthStatus()).find((candidate) => candidate.id === params.provider);
+				const method = params.method ?? status?.methods.find((candidate) => candidate.id !== "api_key")?.id;
+				if (method !== "device_code" && method !== "browser_oauth") {
+					throw new Error(`Provider "${params.provider}" does not expose an interactive login method.`);
+				}
+				const result = await context.startRuntimeAuth({ providerId: params.provider, method });
+				return {
+					...result,
+					runtimeInstanceId: context.runtimeInstanceId,
+					...(result.flow ? {
+						type: result.flow.method,
+						url: result.flow.verificationUrl,
+						verificationUrl: result.flow.verificationUrl,
+						userCode: result.flow.userCode,
+						instructions: result.flow.instructions,
+						flowId: result.flow.flowId,
+						state: result.flow.flowId,
+					} : {}),
+				};
 			},
 		});
 		api.registerGatewayAction({
 			name: "login.complete",
-			description: "Complete an OAuth login flow with the authorization code from the provider callback.",
+			description: "Read or complete a provider login flow for the active runtime.",
 			slashCommands: [],
-			async execute(_context, event) {
+			async execute(context, event) {
 				const params = requireLoginCompleteParams(event);
-				return await completeLogin(params.provider, params.code, params.state);
+				return {
+					...(await context.completeRuntimeAuth({ providerId: params.provider, flowId: params.flowId, code: params.code })),
+					runtimeInstanceId: context.runtimeInstanceId,
+				};
 			},
 		});
 		api.registerGatewayAction({
 			name: "login.apikey",
-			description: "Set an API key directly for a provider.",
+			description: "Set an API key for a provider on the active runtime.",
 			slashCommands: [],
-			execute(_context, event) {
+			async execute(context, event) {
 				const params = requireLoginApiKeyParams(event);
-				return setApiKey(params.provider, params.apiKey);
+				return {
+					...(await context.startRuntimeAuth({ providerId: params.provider, method: "api_key", apiKey: params.apiKey })),
+					runtimeInstanceId: context.runtimeInstanceId,
+				};
+			},
+		});
+		api.registerGatewayAction({
+			name: "login.cancel",
+			description: "Cancel a pending provider login for the active runtime.",
+			slashCommands: [],
+			async execute(context, event) {
+				const params = requireLoginCancelParams(event);
+				return {
+					...(await context.cancelRuntimeAuth({ providerId: params.provider, flowId: params.flowId })),
+					runtimeInstanceId: context.runtimeInstanceId,
+				};
 			},
 		});
 		api.registerGatewayAction({
 			name: "login.status",
-			description: "Check the authentication status for providers.",
+			description: "Check provider authentication status for the active runtime.",
 			slashCommands: [],
-			execute(_context, event) {
+			async execute(context, event) {
 				const params = getObjectParams(event);
 				const provider = typeof params?.provider === "string" ? params.provider : undefined;
-				return { providers: getLoginStatus(provider) };
+				const providers = await context.getRuntimeAuthStatus();
+				return {
+					runtimeInstanceId: context.runtimeInstanceId,
+					providers: provider ? providers.filter((status) => status.id === provider) : providers,
+				};
 			},
 		});
 		api.registerGatewayAction({
 			name: "logout",
-			description: "Remove stored credentials for a provider.",
+			description: "Remove stored credentials for a provider on the active runtime.",
 			slashCommands: [],
-			execute(_context, event) {
+			async execute(context, event) {
 				const params = requireLogoutParams(event);
-				return removeLogin(params.provider);
+				return {
+					...(await context.logoutRuntimeAuth({ providerId: params.provider })),
+					runtimeInstanceId: context.runtimeInstanceId,
+				};
 			},
 		});
 	},

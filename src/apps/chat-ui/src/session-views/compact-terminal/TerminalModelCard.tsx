@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, Search } from "lucide-react";
+import { Check, Lock, Search } from "lucide-react";
 import { patchSession } from "../../api";
 import type { CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 import { isModelMenuResult, unwrapActionResult, type ModelMenuModel } from "./loginMenu";
@@ -17,7 +17,11 @@ export function TerminalModelCard({
 	const menu = isModelMenuResult(output) ? output : undefined;
 	const providers = menu?.providers ?? [];
 	const models = useMemo(
-		() => providers.flatMap((provider) => provider.models.map((model) => ({ ...model, providerLabel: provider.label }))),
+		() => providers.flatMap((provider) => provider.models.map((model) => ({
+			...model,
+			providerLabel: provider.label,
+			authConfigured: provider.authConfigured,
+		}))),
 		[providers],
 	);
 	const [query, setQuery] = useState("");
@@ -31,8 +35,8 @@ export function TerminalModelCard({
 		return models.filter((model) => `${model.providerLabel} ${model.provider} ${model.label} ${model.id}`.toLowerCase().includes(normalized));
 	}, [models, query]);
 
-	const selectModel = async (model: ModelMenuModel) => {
-		if (!piboSessionId || busy) return;
+	const selectModel = async (model: ModelMenuModel & { authConfigured?: boolean }) => {
+		if (!piboSessionId || busy || model.authConfigured === false) return;
 		setBusy(true);
 		setSelected(model);
 		setMessage(null);
@@ -72,16 +76,20 @@ export function TerminalModelCard({
 								<button
 									key={`${model.provider}:${model.id}`}
 									type="button"
-									disabled={busy}
+									disabled={busy || model.authConfigured === false}
 									onClick={() => void selectModel(model)}
-									className="grid w-full grid-cols-[150px_1fr_auto] gap-2 border-b border-[#1f1f1f] px-3 py-2 text-left hover:bg-[#38bdf8]/10 disabled:opacity-50"
+									className="grid w-full grid-cols-[150px_1fr_auto] gap-2 border-b border-[#1f1f1f] px-3 py-2 text-left hover:bg-[#38bdf8]/10 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<span className="truncate text-[#737373]">{model.providerLabel}</span>
 									<span className="min-w-0">
 										<span className="block truncate text-[#d4d4d4]">{model.label}</span>
 										<span className="block truncate text-[11px] text-[#737373]">{model.provider}/{model.id}</span>
 									</span>
-									{selected?.provider === model.provider && selected?.id === model.id ? <Check size={14} className="text-[#22c55e]" /> : null}
+									{model.authConfigured === false
+										? <Lock size={13} className="text-[#737373]" aria-label="Provider authentication missing" />
+										: selected?.provider === model.provider && selected?.id === model.id
+											? <Check size={14} className="text-[#22c55e]" />
+											: null}
 								</button>
 							)) : <div className="px-3 py-2 text-[#737373]">No matching models.</div>}
 						</div>

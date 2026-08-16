@@ -107,14 +107,15 @@ AgentRuntimeDriver
 
 AgentRuntimeAdapter (configured instance)
   -> diagnose / validateProfile / openSession
-  -> optional models, auth, profile inspection, history, binding resolution
+  -> optional models, profile inspection, history, binding resolution
+  -> capability-backed auth status/start/complete/cancel/logout
 
 AgentRuntimeSession (one live Pibo Session)
   -> getBinding / subscribe / prompt / abort / dispose / getStatus
   -> optional steer and capability-gated controls
 ```
 
-Do not let the configured adapter hold mutable state that belongs to one live session unless it is keyed, isolated, and disposed by session generation.
+Do not let the configured adapter hold mutable state that belongs to one live session unless it is keyed, isolated, and disposed by session generation. Provider-login flow state is configured-instance state: keep native ids/verifiers adapter-private, expose only Pibo flow ids, bound it by timeout, and close owned processes on every terminal path.
 
 ## Partial-adapter decision pattern
 
@@ -166,6 +167,10 @@ Do not scrape terminal output, inject Pi's prompt, expose global MCP config, or 
 
 - [ ] Agent Designer shows truthful support, modes, diagnostics, and disabled reasons.
 - [ ] Model/auth/reasoning/options come from the selected runtime instance.
+- [ ] Auth capabilities name methods, completion mode, cancellation/logout, and credential scope.
+- [ ] Product auth mutations require an explicit configured-runtime target; session compatibility uses the frozen binding.
+- [ ] Missing required auth status is unauthenticated/failed, never implicitly connected.
+- [ ] Public auth results use opaque Pibo flow ids and omit native login ids, separate OAuth state/verifier fields, tokens, API keys, account identifiers, and credential paths/content; ephemeral authorization URLs/codes are never captured as evidence.
 - [ ] Product history, trace, debug, telemetry, Cron, Loop, workflow, and TUI behavior are assessed.
 
 ### Verification

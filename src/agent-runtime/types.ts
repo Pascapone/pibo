@@ -23,6 +23,32 @@ export type {
 } from "../sessions/runtime-binding.js";
 import type { AgentRuntimeCapabilities, AgentRuntimeSessionCapabilities } from "./capabilities.js";
 import type {
+	AgentRuntimeAuthOperationResult,
+	AgentRuntimeAuthStatus,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	StartAgentRuntimeAuthInput,
+} from "./auth.js";
+export type {
+	AgentRuntimeAuthCatalog,
+	AgentRuntimeAuthCompletionMode,
+	AgentRuntimeAuthCredentialScope,
+	AgentRuntimeAuthDetails,
+	AgentRuntimeAuthMethodCapability,
+	AgentRuntimeAuthMethodId,
+	AgentRuntimeAuthOperationResult,
+	AgentRuntimeAuthPendingFlow,
+	AgentRuntimeAuthState,
+	AgentRuntimeAuthStatus,
+	AgentRuntimeAuthTarget,
+	AgentRuntimeAuthTargetOperationResult,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	StartAgentRuntimeAuthInput,
+} from "./auth.js";
+import type {
 	AgentRuntimeApprovalRequest,
 	AgentRuntimeEventListener,
 	AgentRuntimeSemanticEvent,
@@ -154,13 +180,6 @@ export type AgentRuntimeModelCatalog = {
 	diagnostics?: readonly AgentRuntimeDiagnostic[];
 };
 
-export type AgentRuntimeAuthStatus = {
-	id: string;
-	displayName?: string;
-	configured: boolean;
-	details?: PiboJsonObject;
-};
-
 export type ResolveAgentRuntimeBindingInput = {
 	binding: RuntimeSessionBinding;
 	workspace: string;
@@ -179,6 +198,11 @@ export interface AgentRuntimeAdapter {
 	inspectProfile?(input: InspectAgentRuntimeProfileInput): Promise<AgentRuntimeAssemblyInspection>;
 	listModels?(): Promise<AgentRuntimeModelCatalog>;
 	getAuthStatus?(): Promise<readonly AgentRuntimeAuthStatus[]>;
+	startAuth?(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	completeAuth?(input: CompleteAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	cancelAuth?(input: CancelAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	logoutAuth?(input: LogoutAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+	disposeAuth?(): Promise<void>;
 	inspectHistory?(input: InspectAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryInspection>;
 	readHistory?(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage>;
 	resolveBinding?(input: ResolveAgentRuntimeBindingInput): Promise<RuntimeSessionBinding>;

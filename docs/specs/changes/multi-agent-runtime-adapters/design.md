@@ -1,6 +1,6 @@
 # Design: Multi-Agent Runtime Adapters
 
-**Status:** Implementing
+**Status:** Ready for review
 **Created:** 2026-08-14
 **Related docs:** `proposal.md`, `spec.md`, `tasks.md`
 
@@ -138,6 +138,11 @@ export interface AgentRuntimeAdapter {
   inspectProfile?(input: InspectAgentRuntimeProfileInput): Promise<AgentRuntimeAssemblyInspection>;
   listModels?(): Promise<AgentRuntimeModelCatalog>;
   getAuthStatus?(): Promise<AgentRuntimeAuthStatus[]>;
+  startAuth?(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+  completeAuth?(input: CompleteAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+  cancelAuth?(input: CancelAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+  logoutAuth?(input: LogoutAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+  disposeAuth?(): Promise<void>;
   readHistory?(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage>;
   resolveBinding?(input: ResolveAgentRuntimeBindingInput): Promise<RuntimeSessionBinding>;
 }
@@ -187,7 +192,7 @@ The registry validates:
 - config JSON shape before registration;
 - capability/method consistency where it can be checked statically.
 
-The core plugin registers the default configured `pi` instance. Native Codex later registers `codex-native` as an instance backed by adapter id `codex`. The instance id and profile name may match for the default native profile but are separate concepts.
+The core plugin registers the default configured `pi` instance. Native Codex registers `codex-native` as an instance backed by adapter id `codex-native`. The instance id and profile name may match for the default native profile but are separate concepts.
 
 ## Decision: Profile and session runtime selection
 
@@ -223,6 +228,14 @@ The runtime-aware Designer path is additive:
 
 The legacy top-level Pi model catalog remains for old clients during the compatibility window. Runtime entries now also carry their own model and auth catalogs, and Agent Designer prefers the selected runtime's catalog.
 
+## Decision: Runtime-neutral provider-auth control plane
+
+`capabilities.auth` declares status support, Pibo-owned auth methods and their completion modes, cancellation/logout, and credential scope. Registry registration rejects capability/method mismatch. Product auth calls route by configured runtime instance; they never import Pi/Codex credential code or branch by adapter id.
+
+Chat Web exposes a product-scoped provider-auth catalog and explicit-target mutation API. Legacy `login.*` actions resolve the active session's frozen runtime binding. Pibo flow ids are public and opaque; adapter-native login ids, OAuth state/verifiers, tokens, API keys, account identifiers, credential paths, and protocol objects remain private.
+
+Pi preserves its existing shared `AuthStorage` and declares `adapter-shared`. Native Codex declares `runtime-instance` and uses stable App Server `account/read`, managed device/API-key `account/login/start`, completion notification, cancellation, and logout in its private `CODEX_HOME`. No credential is copied between them. Detailed behavior is specified in `../runtime-auth-control-plane/` and `../../capabilities/runtime-provider-authentication.md`.
+
 ## Decision: Capability model
 
 Capabilities are structured instead of a flat string list so Designer and generic dispatch can explain delivery and limitations.
@@ -253,6 +266,13 @@ type AgentRuntimeCapabilities = {
   mcp: { externalServers: CapabilitySupport; statusInspection: boolean };
   skills: CapabilitySupport;
   context: CapabilitySupport;
+  auth: {
+    status: boolean;
+    methods: { id: "device_code" | "browser_oauth" | "api_key"; completion: "immediate" | "explicit" | "notification" }[];
+    cancel: boolean;
+    logout: boolean;
+    credentialScope: "runtime-instance" | "adapter-shared";
+  };
   models: { catalog: boolean; switchInSession: boolean; optionsSchema?: PiboJsonSchema };
   reasoning: { supported: boolean; values?: string[] };
   approvals: { supported: boolean; structuredUserInput: boolean };

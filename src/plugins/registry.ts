@@ -36,7 +36,11 @@ import type {
 	AgentRuntimeDriver,
 	AgentRuntimeInstanceDefinition,
 	AgentRuntimeSession,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
 	OpenAgentRuntimeSessionInput,
+	StartAgentRuntimeAuthInput,
 } from "../agent-runtime/types.js";
 
 export type PiboPluginRegistryOptions = {
@@ -143,6 +147,30 @@ export class PiboPluginRegistry {
 
 	inspectAgentRuntimeInstances() {
 		return this.agentRuntimes.inspectInstances();
+	}
+
+	getAgentRuntimeAuthStatus(runtimeInstanceId: string) {
+		return this.agentRuntimes.getAuthStatus(runtimeInstanceId);
+	}
+
+	startAgentRuntimeAuth(runtimeInstanceId: string, input: StartAgentRuntimeAuthInput) {
+		return this.agentRuntimes.startAuth(runtimeInstanceId, input);
+	}
+
+	completeAgentRuntimeAuth(runtimeInstanceId: string, input: CompleteAgentRuntimeAuthInput) {
+		return this.agentRuntimes.completeAuth(runtimeInstanceId, input);
+	}
+
+	cancelAgentRuntimeAuth(runtimeInstanceId: string, input: CancelAgentRuntimeAuthInput) {
+		return this.agentRuntimes.cancelAuth(runtimeInstanceId, input);
+	}
+
+	logoutAgentRuntimeAuth(runtimeInstanceId: string, input: LogoutAgentRuntimeAuthInput) {
+		return this.agentRuntimes.logoutAuth(runtimeInstanceId, input);
+	}
+
+	disposeAgentRuntimeAuth() {
+		return this.agentRuntimes.disposeAuth();
 	}
 
 	validateAgentRuntimeProfile(profile: InitialSessionContext, workspace?: string) {

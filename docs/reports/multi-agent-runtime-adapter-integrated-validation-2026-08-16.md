@@ -3,7 +3,7 @@
 **Date:** 2026-08-16
 
 **Environment:** Pibo2 development server
-**Result:** Deterministic two-adapter product matrix passed; final native-Codex production-provider proof remains blocked on interactive Pibo2-managed authentication.
+**Result:** Deterministic two-adapter product matrix passed for the recorded candidate. A later August 16 audit found and corrected a separate Chat Web provider-auth routing gap; the exact focused candidate subsequently passed Pibo2 managed authentication and one bounded native-Codex production-provider turn, documented in `runtime-auth-control-plane-validation-2026-08-16.md`.
 
 ## Exact artifacts
 
@@ -159,7 +159,7 @@ The integrated branch passed:
 - the complete canonical suite: **1,736/1,736 tests**, 12 suites, zero failures/skips/cancellations;
 - `git diff --check`.
 
-## Official native-Codex authentication blocker
+## Historical native-Codex authentication blocker
 
 Pibo2 has no approved native-Codex credential:
 
@@ -170,7 +170,7 @@ Pibo2 has no approved native-Codex credential:
 - `Continue with Google` reached Google sign-in, but the browser had no reusable Google session and required interactive account verification;
 - the App Server reported unsuccessful completion (`managed_login_rejected`).
 
-No local OAuth/API credential, Pi auth record, browser cookie, access token, device code, or account metadata was copied or exposed. This external interactive authentication requirement is the only remaining blocker to a production-provider native-Codex turn through the public Pibo2 path.
+No local OAuth/API credential, Pi auth record, browser cookie, access token, device code, or account metadata was copied or exposed. For this recorded candidate, interactive authentication blocked a production-provider native-Codex turn. The later final-audit review additionally found that Chat Web provider settings still targeted Pi globally; that product gap is corrected on the focused runtime-auth branch rather than being hidden by this evidence.
 
 ## Cleanup proof
 
@@ -186,6 +186,12 @@ Cleanup completed before this report was finalized:
 - confirmed zero files under global `/root/.codex`;
 - restarted the exact candidate and revalidated the authenticated Chat Web shell.
 
+## Follow-up provider-auth correction
+
+The focused runtime-auth control-plane change moves Pi credential operations behind the Pi adapter, adds official native-Codex account operations in the private configured-instance home, routes product mutations by explicit runtime target, and makes Provider Settings/Designer/model menus consume truthful runtime status. Its deterministic local matrix and 1,752-test full suite pass. Exact commit `cc0dcde6616dcec6a8dcf7cd0f78e70478a8ab1c` (package SHA-256 `4cabc5f1687381fa1b5be8c094b5893d71686309d45c2195c34968af8fb117f5`) is active on Pibo2.
+
+After the authorized user completed the managed Device code flow, safe Provider Settings/API projection reported the private target connected (`chatgpt`, plan `pro`) without account identity or credential material. A fresh public `codex-native` session bound to the official App Server and `openai-codex/gpt-5.6-sol high`, returned `NATIVE CODEX READY` for the bounded validation prompt, passed `debug trace --check` with zero issues, and reported zero failures. The validation session/native rollout was then removed while private auth/configuration remained; final database integrity, process, global-state, and connected-status checks passed. Safe screenshots are linked from the focused validation report.
+
 ## Conclusion
 
-The implementation and deterministic integrated product matrix pass. Pi behavior remains intact, and native Codex works end to end through the official App Server across sessions, restart, resources, tools, subagents, jobs, workflows, trace/debug, approvals, failures, interruption, and cleanup. The goal must remain blocked rather than complete until an authorized human finishes Pibo2-managed Codex authentication and one public real-provider native-Codex turn is recorded.
+The recorded integrated product matrix and focused runtime-auth correction now form a complete evidence chain: deterministic and real-Pi behavior, exact-candidate Pibo2 activation, runtime-neutral managed authentication, one bounded native-Codex production-provider turn, trace validation, and cleanup all pass. No known invalidating regression remains.

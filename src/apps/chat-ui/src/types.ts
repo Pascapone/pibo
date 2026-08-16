@@ -621,10 +621,78 @@ export type AgentRuntimeCapabilities = {
 	mcp: { externalServers: AgentRuntimeCapabilityDelivery; statusInspection: boolean };
 	skills: AgentRuntimeCapabilityDelivery;
 	context: AgentRuntimeCapabilityDelivery;
+	auth: {
+		status: boolean;
+		methods: Array<{ id: "device_code" | "browser_oauth" | "api_key"; completion: "immediate" | "explicit" | "notification" }>;
+		cancel: boolean;
+		logout: boolean;
+		credentialScope: "runtime-instance" | "adapter-shared";
+	};
 	models: { catalog: boolean; switchInSession: boolean; optionsSchema?: Record<string, unknown> };
 	reasoning: { supported: boolean; values?: string[] };
 	approvals: { supported: boolean; structuredUserInput: boolean };
 	maintenance: { compaction: boolean; contextUsage: boolean; history: boolean; health: boolean };
+};
+
+export type AgentRuntimeAuthMethodId = "device_code" | "browser_oauth" | "api_key";
+export type AgentRuntimeAuthCompletionMode = "immediate" | "explicit" | "notification";
+export type AgentRuntimeAuthState = "connected" | "disconnected" | "pending" | "partial" | "unsupported" | "failed";
+
+export type AgentRuntimeAuthMethod = {
+	id: AgentRuntimeAuthMethodId;
+	completion: AgentRuntimeAuthCompletionMode;
+};
+
+export type AgentRuntimeAuthFlow = {
+	flowId: string;
+	method: AgentRuntimeAuthMethodId;
+	completion: AgentRuntimeAuthCompletionMode;
+	startedAt: string;
+	expiresAt?: string;
+	verificationUrl?: string;
+	userCode?: string;
+	instructions?: string;
+};
+
+export type AgentRuntimeAuthStatus = {
+	id: string;
+	displayName?: string;
+	state: AgentRuntimeAuthState;
+	configured: boolean;
+	methods: AgentRuntimeAuthMethod[];
+	pending?: AgentRuntimeAuthFlow;
+	message?: string;
+	details?: { accountType?: "api_key" | "oauth" | "chatgpt" | "unknown"; planType?: string };
+};
+
+export type AgentRuntimeAuthTarget = {
+	runtimeInstanceId: string;
+	adapterId: string;
+	displayName: string;
+	enabled: boolean;
+	available: boolean;
+	isDefault: boolean;
+	credentialScope: "runtime-instance" | "adapter-shared";
+	cancelSupported: boolean;
+	logoutSupported: boolean;
+	state: AgentRuntimeAuthState;
+	providers: AgentRuntimeAuthStatus[];
+	diagnostics: Array<{ severity: "info" | "warning" | "error"; code: string; message: string }>;
+};
+
+export type AgentRuntimeAuthCatalog = {
+	defaultRuntimeInstanceId?: string;
+	targets: AgentRuntimeAuthTarget[];
+};
+
+export type AgentRuntimeAuthOperationResult = {
+	runtimeInstanceId: string;
+	providerId: string;
+	state: AgentRuntimeAuthState;
+	configured: boolean;
+	flow?: AgentRuntimeAuthFlow;
+	message?: string;
+	details?: { accountType?: "api_key" | "oauth" | "chatgpt" | "unknown"; planType?: string };
 };
 
 export type AgentRuntimeCatalogEntry = {
@@ -649,7 +717,7 @@ export type AgentRuntimeCatalogEntry = {
 		}>;
 		diagnostics?: AgentRuntimeDiagnostic[];
 	};
-	auth?: Array<{ id: string; displayName?: string; configured: boolean; details?: Record<string, unknown> }>;
+	auth?: AgentRuntimeAuthStatus[];
 };
 
 export type AgentCatalog = {

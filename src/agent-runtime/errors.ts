@@ -32,6 +32,18 @@ export class AgentRuntimeCapabilityUnavailableError extends Error {
 	}
 }
 
+export class AgentRuntimeAuthError extends Error {
+	constructor(
+		readonly code: string,
+		message: string,
+		readonly retryable = false,
+		options?: ErrorOptions,
+	) {
+		super(message, options);
+		this.name = "AgentRuntimeAuthError";
+	}
+}
+
 export class AgentRuntimeBindingMissingError extends Error {
 	constructor(readonly piboSessionId: string, readonly runtimeInstanceId: string, readonly nativeSessionId?: string, options?: ErrorOptions) {
 		super(

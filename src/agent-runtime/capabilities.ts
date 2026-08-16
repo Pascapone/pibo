@@ -1,4 +1,10 @@
 import type { PiboJsonObject } from "../core/events.js";
+import {
+	AGENT_RUNTIME_AUTH_COMPLETION_MODES,
+	AGENT_RUNTIME_AUTH_METHOD_IDS,
+	type AgentRuntimeAuthCredentialScope,
+	type AgentRuntimeAuthMethodCapability,
+} from "./auth.js";
 
 export type AgentRuntimeCapabilityDelivery =
 	| { support: "unsupported"; reason: string }
@@ -46,6 +52,13 @@ export type AgentRuntimeCapabilities = {
 	};
 	skills: AgentRuntimeCapabilityDelivery;
 	context: AgentRuntimeCapabilityDelivery;
+	auth: {
+		status: boolean;
+		methods: readonly AgentRuntimeAuthMethodCapability[];
+		cancel: boolean;
+		logout: boolean;
+		credentialScope: AgentRuntimeAuthCredentialScope;
+	};
 	models: {
 		catalog: boolean;
 		switchInSession: boolean;
@@ -91,6 +104,9 @@ const BOOLEAN_CAPABILITY_PATHS = [
 	"output.diffs",
 	"output.rawNativeEvents",
 	"mcp.statusInspection",
+	"auth.status",
+	"auth.cancel",
+	"auth.logout",
 	"models.catalog",
 	"models.switchInSession",
 	"reasoning.supported",
@@ -174,6 +190,40 @@ export function validateAgentRuntimeCapabilities(value: unknown): string[] {
 	if (reasoningSupported === false && Array.isArray(reasoningValues) && reasoningValues.length > 0) {
 		errors.push("reasoning.values must be omitted or empty when reasoning is unsupported");
 	}
+	const authMethods = readPath(value, "auth.methods");
+	if (!Array.isArray(authMethods)) {
+		errors.push("auth.methods must be an array");
+	} else {
+		const seen = new Set<string>();
+		for (const [index, method] of authMethods.entries()) {
+			if (!method || typeof method !== "object" || Array.isArray(method)) {
+				errors.push(`auth.methods[${index}] must be an auth-method object`);
+				continue;
+			}
+			const record = method as Record<string, unknown>;
+			if (!AGENT_RUNTIME_AUTH_METHOD_IDS.includes(record.id as never)) {
+				errors.push(`auth.methods[${index}].id is invalid`);
+			} else if (seen.has(String(record.id))) {
+				errors.push(`auth.methods contains duplicate method "${String(record.id)}"`);
+			} else {
+				seen.add(String(record.id));
+			}
+			if (!AGENT_RUNTIME_AUTH_COMPLETION_MODES.includes(record.completion as never)) {
+				errors.push(`auth.methods[${index}].completion is invalid`);
+			}
+		}
+	}
+	const authScope = readPath(value, "auth.credentialScope");
+	if (authScope !== "runtime-instance" && authScope !== "adapter-shared") {
+		errors.push("auth.credentialScope must be runtime-instance or adapter-shared");
+	}
+	const authStatus = readPath(value, "auth.status");
+	if (Array.isArray(authMethods) && authMethods.length > 0 && authStatus !== true) {
+		errors.push("auth.methods requires auth.status");
+	}
+	if ((readPath(value, "auth.cancel") === true || readPath(value, "auth.logout") === true) && authStatus !== true) {
+		errors.push("auth.cancel and auth.logout require auth.status");
+	}
 	const optionsSchema = readPath(value, "models.optionsSchema");
 	if (optionsSchema !== undefined && (!optionsSchema || typeof optionsSchema !== "object" || Array.isArray(optionsSchema))) {
 		errors.push("models.optionsSchema must be a JSON Schema object");
@@ -225,6 +275,13 @@ export function createMinimalAgentRuntimeCapabilities(): AgentRuntimeCapabilitie
 		},
 		skills: unavailable,
 		context: unavailable,
+		auth: {
+			status: false,
+			methods: [],
+			cancel: false,
+			logout: false,
+			credentialScope: "runtime-instance",
+		},
 		models: {
 			catalog: false,
 			switchInSession: false,

@@ -1,6 +1,6 @@
 # Spec: Multi-Agent Runtime Adapters
 
-**Status:** Implementing
+**Status:** Ready for review
 **Created:** 2026-08-14
 **Requester / Source:** Active Pibo Loop goal
 **Related docs:** `proposal.md`, `design.md`, `tasks.md`, `GLOSSARY.md`, `docs/specs/capabilities/pibo-session-routing.md`, `docs/specs/capabilities/pibo-runtime-assembly-and-inspection.md`, `docs/specs/capabilities/custom-agents.md`, `docs/specs/capabilities/pibo-event-contract.md`, `docs/specs/capabilities/chat-web-trace-and-terminal-view.md`
@@ -437,6 +437,28 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 - No production deployment, release, package publication, or merge occurs solely because tests pass.
 - A final audit maps every requirement to code, tests, PRs, and Pibo2 evidence.
 
+### REQ-019: Provider authentication is a runtime-neutral control plane
+
+Provider authentication configured from Pibo product surfaces MUST route through explicit configured-runtime adapter capabilities rather than a Pi-global credential path.
+
+#### Acceptance
+
+- `capabilities.auth` declares status, method/completion modes, cancellation/logout, and credential scope; registry registration rejects mismatched methods.
+- Chat Web provider settings derive targets/providers/methods from runtime catalogs and require an explicit runtime instance for mutations.
+- Session-bound compatibility actions target the active session's frozen runtime and reject unknown/conflicting sessions or targets.
+- Pi SDK auth behavior remains behind the Pi adapter and keeps its existing shared-store semantics.
+- Native Codex uses stable official App Server `account/read`, managed device/API-key login, completion notification, cancellation, and logout in the selected instance's private `CODEX_HOME`.
+- Two private configured instances remain credential-isolated; Pi and global Codex state are not mutated.
+- Agent Designer and model menus treat missing required auth as false and keep unauthenticated choices visibly disabled rather than authenticated.
+- Public events/results/diagnostics omit native login ids, OAuth state/verifiers, tokens, API keys, cookies, account identifiers, authorization headers, and credential paths/content.
+
+#### Scenario: Native Codex login target is explicit
+
+- GIVEN Pi and native Codex are both configured
+- WHEN the user starts device login for `codex-native` from Chat Web provider settings
+- THEN only the `codex-native` adapter starts the official account flow in its private home
+- AND Pi provider status remains independent.
+
 ## Edge Cases
 
 - A profile points to a configured runtime instance that is disabled or unavailable.
@@ -456,7 +478,7 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 ## Constraints
 
 - **Compatibility:** Pi behavior and ids are the parity baseline. Compatibility fields remain additive during this goal.
-- **Security:** No raw auth tokens, cookies, machine keys, or MCP credentials appear in bindings, logs, debug output, traces, screenshots, or reports.
+- **Security:** No raw auth tokens, API keys, cookies, account identifiers, authorization headers, credential files/paths, machine keys, or MCP credentials appear in bindings, product events, logs, debug output, traces, screenshots, reports, or test snapshots.
 - **Isolation:** External adapters use per-instance/per-session homes or official scoped configuration. One session's cleanup cannot terminate another session's process.
 - **Performance:** Pi parity requires no material regression in startup, first-delta, streaming, trace loading, or browser rendering on Pibo2.
 - **Protocol:** Codex integration uses stable v2 methods generated from and tested against the installed binary. Experimental methods require explicit capability flags and may not be claimed as stable.
@@ -471,9 +493,10 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 - [x] SC-005: Pibo tools, MCP, skills, context, and Pibo subagents have proven cross-runtime delivery and isolation.
 - [x] SC-006: New product history, trace, debug, telemetry, and binding inspection are runtime neutral.
 - [x] SC-007: The built-in adapter-authoring skill is registered and passes full/partial-adapter evals.
-- [ ] SC-008: Native Codex passes real Pibo2 restart/resume, tool, context, skill, MCP, subagent, approval/user-input, abort/failure, trace, and Designer scenarios. The exact deterministic product matrix passes; one Pibo2-managed production-provider turn remains blocked on interactive Google verification.
+- [x] SC-008: Native Codex passes the exact Pibo2 restart/resume, tool, context, skill, MCP, subagent, approval/user-input, abort/failure, trace, Designer, managed-auth, and bounded production-provider scenarios.
 - [x] SC-009: Existing `codex` compatibility semantics remain unchanged.
-- [ ] SC-010: Full tests, typechecks, builds, migrations, candidate validation, docs, PRs, and final requirement audit are complete with no known invalidating regression. All code/product checks pass, but the required native-Codex production-provider evidence is still external and unavailable.
+- [x] SC-010: Full tests, typechecks, builds, migrations, candidate validation, docs, PRs, production-provider evidence, cleanup, and final requirement audit are complete with no known invalidating regression.
+- [x] SC-011: Runtime-neutral provider auth passes contract, Pi compatibility, native-Codex protocol/isolation, Web targeting/aggregation, truthful model rendering, and exact Pibo2 UI-readiness validation.
 
 ## Assumptions and Open Questions
 
@@ -511,7 +534,8 @@ Implementation MUST be split into focused or explicitly stacked branches/PRs to 
 | REQ-012 Skills/context/MCP | Materialization | Isolation, secret rebinding, connected inventory, failure, cleanup, restart, Context Build, and Pi-scoped CLI tests | Pass: selected-only Pi/Codex skills, context, native project instructions, external HTTP/stdio MCP, connected inventory, secret-safe environment rebinding, restart, and cleanup are proven. |
 | REQ-013 History/debug | History | New-turn no-native-read, old Pi, Codex restart tests | Pass: product history is primary; native compatibility history is scoped/redacted; public `debug session`, `events`, `final`, `failures`, telemetry, and `trace --check` passed with captured trace evidence. |
 | REQ-014 Authoring skill | Skill | Registration plus full/partial evals | Pass: built-in skill is packaged/registered; focused 25/25 and Orion/Relay evals score 20/20 with the skill versus 9/20 baseline. |
-| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | **Blocked externally:** official App Server `0.147.0` passes the full deterministic product matrix, but Pibo2-managed production-provider authentication requires interactive Google verification before a real-provider native turn can be recorded. |
+| REQ-015 Native Codex | Codex | Fixtures, exact binary, Pibo2 integrated flows | Pass: official App Server `0.147.0` passes the full deterministic matrix, private managed authentication, safe connected status, one bound public `gpt-5.6-sol` production-provider turn, trace checks, and cleanup. |
 | REQ-016 Compatibility alias | Profiles | Existing profile tests | Pass: `codex-native` has no aliases; implicit `codex` is rejected; explicit/persisted Pi-backed `codex` semantics remain unchanged. |
-| REQ-017 Verification | All | Local and Pibo2 evidence reports | **Blocked externally:** all deterministic, migration, real-Pi, exact-candidate, browser, TUI, security, cleanup, build, typecheck, and full-suite evidence passes; the required authenticated native-Codex provider run is absent. |
-| REQ-018 Delivery | All | Branch/commit/PR/final audit | Pass: PR #503 adds canonical architecture/operations/call-flow docs, integrated evidence, the final requirement audit, exact assets, and clean Pibo2 restoration to the reviewable stack through PR #502. |
+| REQ-017 Verification | All | Local and Pibo2 evidence reports | Pass: all deterministic, migration, real-Pi, exact-candidate, browser, TUI, security, build, typecheck, full-suite, native production-provider, trace, and cleanup evidence passes. |
+| REQ-018 Delivery | All | Branch/commit/PR/final audit | Pass for current stack: PR #503 remains the dependency and focused runtime-auth correction PR #518 is open, validated, and intentionally unmerged. |
+| REQ-019 Runtime provider auth | Auth correction | `agent-runtime-auth`, `codex-native-auth`, Pi login, Web/API, runtime menu, UI source/typecheck/browser tests | Pass: typecheck/build and 1,752/1,752 tests pass; exact candidate is active, private native Codex is connected through Provider Settings, one public production turn passes, and focused PR #518 is open. |

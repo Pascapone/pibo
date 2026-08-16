@@ -10,6 +10,10 @@ import {
 import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
 import type {
 	AgentRuntimeAdapter,
+	AgentRuntimeAuthOperationResult,
+	AgentRuntimeAuthStatus,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
 	AgentRuntimeDiagnostic,
 	AgentRuntimeDriver,
 	AgentRuntimeHistoryInspection,
@@ -20,9 +24,11 @@ import type {
 	AgentRuntimeSession,
 	AgentRuntimeStatus,
 	InspectAgentRuntimeHistoryInput,
+	LogoutAgentRuntimeAuthInput,
 	OpenAgentRuntimeSessionInput,
 	ReadAgentRuntimeHistoryInput,
 	RuntimeSessionBinding,
+	StartAgentRuntimeAuthInput,
 	ValidateAgentRuntimeProfileInput,
 } from "../../agent-runtime/types.js";
 import type { PiboJsonObject } from "../../core/events.js";
@@ -73,6 +79,7 @@ import {
 	toAgentRuntimeModelCatalog,
 	type CodexNativeModelCatalog,
 } from "./models.js";
+import { CodexNativeAuthController } from "./auth.js";
 
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
@@ -123,6 +130,16 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 		},
 		skills: { support: "materialized", modes: ["codex-extra-roots"] },
 		context: { support: "materialized", modes: ["native-project-discovery", "codex-developer-instructions"] },
+		auth: {
+			status: true,
+			methods: [
+				{ id: "device_code", completion: "notification" },
+				{ id: "api_key", completion: "immediate" },
+			],
+			cancel: true,
+			logout: true,
+			credentialScope: "runtime-instance",
+		},
 		models: {
 			catalog: true,
 			switchInSession: true,
@@ -681,6 +698,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly displayName: string;
 	readonly enabled: boolean;
 	private modelCatalogCache?: { expiresAt: number; value: Promise<CodexNativeModelCatalog> };
+	private readonly authController: CodexNativeAuthController;
 
 	constructor(
 		readonly instanceId: string,
@@ -695,6 +713,17 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		};
 		this.displayName = displayName ?? this.descriptor.displayName;
 		this.enabled = enabled;
+		this.authController = new CodexNativeAuthController({
+			config: this.config,
+			startProcess: async (sessionGeneration) => await startCodexNativeAppServer({
+				config: this.config,
+				runtimeInstanceId: this.instanceId,
+				piboSessionId: "runtime-auth",
+				sessionGeneration,
+				workspace: process.cwd(),
+				clientVersion: CODEX_NATIVE_ADAPTER_VERSION,
+			}),
+		});
 	}
 
 	diagnose(): Promise<readonly AgentRuntimeDiagnostic[]> {
@@ -703,6 +732,30 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	async listModels(): Promise<AgentRuntimeModelCatalog> {
 		return toAgentRuntimeModelCatalog(this.instanceId, await this.loadModelCatalog());
+	}
+
+	async getAuthStatus(): Promise<readonly AgentRuntimeAuthStatus[]> {
+		return await this.authController.getStatus();
+	}
+
+	async startAuth(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return await this.authController.start(input);
+	}
+
+	async completeAuth(input: CompleteAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return await this.authController.complete(input);
+	}
+
+	async cancelAuth(input: CancelAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return await this.authController.cancel(input);
+	}
+
+	async logoutAuth(input: LogoutAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return await this.authController.logout(input);
+	}
+
+	async disposeAuth(): Promise<void> {
+		await this.authController.dispose();
 	}
 
 	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] {

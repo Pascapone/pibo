@@ -28,6 +28,7 @@ function fakeRuntimeCapabilities() {
 		mcp: { externalServers: { support: "native" }, statusInspection: true },
 		skills: { support: "materialized", modes: ["isolated-directory"] },
 		context: { support: "materialized", modes: ["developer-instructions"] },
+		auth: { status: false, methods: [], cancel: false, logout: false, credentialScope: "runtime-instance" },
 		models: { catalog: true, switchInSession: false, optionsSchema: { type: "object" } },
 		reasoning: { supported: true, values: ["low", "high"] },
 		approvals: { supported: true, structuredUserInput: true },
@@ -222,6 +223,21 @@ async function startWebHostChannel(options = {}) {
 		},
 		...(options.inspectAgentRuntimeInstances ? {
 			inspectAgentRuntimeInstances: options.inspectAgentRuntimeInstances,
+		} : {}),
+		...(options.getAgentRuntimeAuthStatus ? {
+			getAgentRuntimeAuthStatus: options.getAgentRuntimeAuthStatus,
+		} : {}),
+		...(options.startAgentRuntimeAuth ? {
+			startAgentRuntimeAuth: options.startAgentRuntimeAuth,
+		} : {}),
+		...(options.completeAgentRuntimeAuth ? {
+			completeAgentRuntimeAuth: options.completeAgentRuntimeAuth,
+		} : {}),
+		...(options.cancelAgentRuntimeAuth ? {
+			cancelAgentRuntimeAuth: options.cancelAgentRuntimeAuth,
+		} : {}),
+		...(options.logoutAgentRuntimeAuth ? {
+			logoutAgentRuntimeAuth: options.logoutAgentRuntimeAuth,
 		} : {}),
 		...(options.validateAgentRuntimeProfile ? {
 			validateAgentRuntimeProfile: options.validateAgentRuntimeProfile,
@@ -7448,7 +7464,7 @@ test("chat web forwards runtime approval and structured-input response actions g
 	}
 });
 
-test("chat web app provider auth actions bypass session runtime auth", async () => {
+test("chat web provider auth compatibility rejects an arbitrary missing session instead of bypassing runtime targeting", async () => {
 	const { channel, baseURL, emitted } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
@@ -7463,12 +7479,220 @@ test("chat web app provider auth actions bypass session runtime auth", async () 
 			},
 			body: JSON.stringify({ piboSessionId: "ps_missing_auth", action: "login.status", params: {} }),
 		});
-		assert.equal(response.status, 200);
-		const payload = await response.json();
-		assert.equal(payload.type, "execution_result");
-		assert.equal(payload.action, "login.status");
-		assert.ok(Array.isArray(payload.result.providers));
+		assert.equal(response.status, 404);
+		assert.deepEqual(await response.json(), { error: "Session not found" });
 		assert.equal(emitted.length, 0);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web provider auth API aggregates per-runtime state and routes pending, retry, completion, and logout explicitly", async () => {
+	const piCapabilities = fakeRuntimeCapabilities();
+	piCapabilities.auth = {
+		status: true,
+		methods: [
+			{ id: "device_code", completion: "explicit" },
+			{ id: "api_key", completion: "immediate" },
+		],
+		cancel: true,
+		logout: true,
+		credentialScope: "adapter-shared",
+	};
+	const codexCapabilities = fakeRuntimeCapabilities();
+	codexCapabilities.auth = {
+		status: true,
+		methods: [
+			{ id: "device_code", completion: "notification" },
+			{ id: "api_key", completion: "immediate" },
+		],
+		cancel: true,
+		logout: true,
+		credentialScope: "runtime-instance",
+	};
+	const methods = codexCapabilities.auth.methods;
+	const statuses = new Map([
+		["pi", [
+			{ id: "openai-codex", displayName: "OpenAI", state: "connected", configured: true, methods: piCapabilities.auth.methods },
+			{ id: "anthropic", displayName: "Anthropic", state: "disconnected", configured: false, methods: [{ id: "api_key", completion: "immediate" }] },
+		]],
+		["codex-native", [
+			{ id: "openai-codex", displayName: "OpenAI for native Codex", state: "disconnected", configured: false, methods },
+		]],
+	]);
+	const calls = [];
+	let completionReads = 0;
+	const inspections = () => [
+		fakeRuntimeInspection("pi", { adapterId: "pi", displayName: "Pi Coding Agent", capabilities: piCapabilities, auth: statuses.get("pi") }),
+		fakeRuntimeInspection("codex-native", { adapterId: "codex-native", displayName: "Codex App Server", capabilities: codexCapabilities, auth: statuses.get("codex-native") }),
+	];
+	const capabilityCatalog = {
+		agentRuntimes: inspections(),
+		nativeTools: [],
+		skills: [],
+		subagents: [],
+		contextFiles: [],
+		packages: [],
+		piboTools: [],
+		mcpServers: [],
+		piPackages: [],
+		loopStopConditions: [],
+		ralphStopConditions: [],
+	};
+	const { channel, baseURL, emitted, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		capabilityCatalog,
+		inspectAgentRuntimeInstances: async () => inspections(),
+		getAgentRuntimeAuthStatus: async (runtimeInstanceId) => structuredClone(statuses.get(runtimeInstanceId) ?? []),
+		startAgentRuntimeAuth: async (runtimeInstanceId, input) => {
+			calls.push({ operation: "start", runtimeInstanceId, providerId: input.providerId, method: input.method });
+			if (input.method === "api_key") {
+				return {
+					runtimeInstanceId,
+					providerId: input.providerId,
+					state: "connected",
+					configured: true,
+					details: { accountType: "api_key" },
+				};
+			}
+			const flow = {
+				flowId: "flow-codex-web",
+				method: "device_code",
+				completion: "notification",
+				startedAt: "2026-08-16T00:00:00.000Z",
+				verificationUrl: "https://example.invalid/device",
+				userCode: "FAKE-CODE",
+			};
+			statuses.set(runtimeInstanceId, [{
+				id: input.providerId,
+				displayName: "OpenAI for native Codex",
+				state: "pending",
+				configured: false,
+				methods,
+				pending: flow,
+			}]);
+			return { runtimeInstanceId, providerId: input.providerId, state: "pending", configured: false, flow };
+		},
+		completeAgentRuntimeAuth: async (runtimeInstanceId, input) => {
+			completionReads += 1;
+			calls.push({ operation: "complete", runtimeInstanceId, providerId: input.providerId, flowId: input.flowId });
+			if (completionReads === 1) {
+				return {
+					runtimeInstanceId,
+					providerId: input.providerId,
+					state: "pending",
+					configured: false,
+					flow: statuses.get(runtimeInstanceId)[0].pending,
+				};
+			}
+			statuses.set(runtimeInstanceId, [{
+				id: input.providerId,
+				displayName: "OpenAI for native Codex",
+				state: "connected",
+				configured: true,
+				methods,
+				details: { accountType: "chatgpt", planType: "plus" },
+			}]);
+			return { runtimeInstanceId, providerId: input.providerId, state: "connected", configured: true, details: { accountType: "chatgpt", planType: "plus" } };
+		},
+		cancelAgentRuntimeAuth: async (runtimeInstanceId, input) => ({ runtimeInstanceId, providerId: input.providerId, state: "disconnected", configured: false }),
+		logoutAgentRuntimeAuth: async (runtimeInstanceId, input) => {
+			calls.push({ operation: "logout", runtimeInstanceId, providerId: input.providerId });
+			statuses.set(runtimeInstanceId, [{ id: input.providerId, displayName: "OpenAI for native Codex", state: "disconnected", configured: false, methods }]);
+			return { runtimeInstanceId, providerId: input.providerId, state: "disconnected", configured: false };
+		},
+	});
+	const headers = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+
+	try {
+		const catalogResponse = await fetch(`${baseURL}/api/chat/provider-auth`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(catalogResponse.status, 200);
+		const catalog = await catalogResponse.json();
+		assert.equal(catalog.defaultRuntimeInstanceId, "pi");
+		assert.deepEqual(catalog.targets.map((target) => ({
+			id: target.runtimeInstanceId,
+			state: target.state,
+			scope: target.credentialScope,
+			isDefault: target.isDefault,
+		})), [
+			{ id: "pi", state: "partial", scope: "adapter-shared", isDefault: true },
+			{ id: "codex-native", state: "disconnected", scope: "runtime-instance", isDefault: false },
+		]);
+
+		const startedResponse = await fetch(`${baseURL}/api/chat/provider-auth`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ action: "start", runtimeInstanceId: "codex-native", providerId: "openai-codex", method: "device_code" }),
+		});
+		assert.equal(startedResponse.status, 200);
+		const started = (await startedResponse.json()).result;
+		assert.equal(started.runtimeInstanceId, "codex-native");
+		assert.equal(started.state, "pending");
+		assert.equal(started.flow.flowId, "flow-codex-web");
+
+		for (const expectedState of ["pending", "connected"]) {
+			const completedResponse = await fetch(`${baseURL}/api/chat/provider-auth`, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ action: "complete", runtimeInstanceId: "codex-native", providerId: "openai-codex", flowId: "flow-codex-web" }),
+			});
+			assert.equal(completedResponse.status, 200);
+			assert.equal((await completedResponse.json()).result.state, expectedState);
+		}
+
+		const logoutResponse = await fetch(`${baseURL}/api/chat/provider-auth`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ action: "logout", runtimeInstanceId: "codex-native", providerId: "openai-codex" }),
+		});
+		assert.equal(logoutResponse.status, 200);
+		assert.equal((await logoutResponse.json()).result.state, "disconnected");
+
+		const apiKey = "sk-web-fixture-sensitive-value-123456789";
+		const apiKeyResponse = await fetch(`${baseURL}/api/chat/provider-auth`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ action: "api_key", runtimeInstanceId: "codex-native", providerId: "openai-codex", apiKey }),
+		});
+		assert.equal(apiKeyResponse.status, 200);
+		const apiKeyPayload = await apiKeyResponse.json();
+		assert.equal(apiKeyPayload.result.state, "connected");
+		assert.doesNotMatch(JSON.stringify(apiKeyPayload), /sk-web-fixture-sensitive-value/);
+
+		const boundSession = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "codex-native",
+			runtimeBinding: { runtimeInstanceId: "codex-native", adapterId: "codex-native", state: "unbound" },
+		});
+		const compatibilityStatus = await fetch(`${baseURL}/api/chat/action`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ piboSessionId: boundSession.id, action: "login.status", params: {} }),
+		});
+		assert.equal(compatibilityStatus.status, 200);
+		assert.equal((await compatibilityStatus.json()).result.runtimeInstanceId, "codex-native");
+
+		const conflict = await fetch(`${baseURL}/api/chat/action`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ piboSessionId: boundSession.id, action: "login.status", params: { runtimeInstanceId: "pi" } }),
+		});
+		assert.equal(conflict.status, 409);
+		assert.match((await conflict.json()).error, /conflicts with the selected session runtime/);
+
+		assert.deepEqual(calls.map(({ operation, runtimeInstanceId }) => ({ operation, runtimeInstanceId })), [
+			{ operation: "start", runtimeInstanceId: "codex-native" },
+			{ operation: "complete", runtimeInstanceId: "codex-native" },
+			{ operation: "complete", runtimeInstanceId: "codex-native" },
+			{ operation: "logout", runtimeInstanceId: "codex-native" },
+			{ operation: "start", runtimeInstanceId: "codex-native" },
+		]);
+		assert.equal(emitted.length, 0, "product-scoped provider auth must not append session execution events");
 	} finally {
 		await channel.stop?.();
 	}

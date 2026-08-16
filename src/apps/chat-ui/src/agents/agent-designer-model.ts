@@ -217,6 +217,7 @@ export function copyCustomAgentToDraft(agent: CustomAgent): AgentDraft {
 export function modelCatalogForRuntime(runtime: AgentRuntimeCatalogEntry | undefined, legacyPiCatalog?: ModelCatalog): ModelCatalog | undefined {
 	if (!runtime?.models) return runtime?.adapterId === "pi" || !runtime ? legacyPiCatalog : { providers: [] };
 	const authByProvider = new Map((runtime.auth ?? []).map((status) => [status.id, status]));
+	const runtimeRequiresAuth = runtime.capabilities.auth.status && runtime.capabilities.auth.methods.length > 0;
 	const providers = new Map<string, ModelCatalog["providers"][number]>();
 	for (const model of runtime.models.models) {
 		const providerId = model.provider ?? runtime.adapterId;
@@ -232,7 +233,7 @@ export function modelCatalogForRuntime(runtime: AgentRuntimeCatalogEntry | undef
 			provider = {
 				id: providerId,
 				label: providerLabel,
-				authConfigured: auth?.configured ?? optionAuthConfigured ?? true,
+				authConfigured: auth?.configured ?? optionAuthConfigured ?? !runtimeRequiresAuth,
 				models: [],
 			};
 			providers.set(providerId, provider);

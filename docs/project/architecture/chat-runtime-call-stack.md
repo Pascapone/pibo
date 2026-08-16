@@ -84,6 +84,21 @@ One native turn produces at most one product terminal outcome. Late or duplicate
 
 Native Pi transcripts and Codex threads remain resume state. Product-visible history for new routed turns does not require parsing native history.
 
+## Provider-auth control path
+
+```text
+Settings > Providers
+  -> GET/POST /api/chat/provider-auth
+  -> explicit configured runtimeInstanceId + providerId
+  -> PiboSessionRouter / AgentRuntimeAdapterRegistry capability dispatch
+     -> Pi adapter: Pi AuthStorage and compatible OAuth/API-key operations
+     -> codex-native adapter: private App Server account/* JSON-RPC
+  -> Pibo-owned status/flow/result (no native ids or credentials)
+  -> target-specific UI state and runtime-session cache invalidation
+```
+
+Provider settings are product/account scoped and do not emit conversation execution events. Legacy Terminal/TUI `login.*` actions enter through `/api/chat/action`, but Pibo resolves the supplied valid session's frozen runtime binding and rejects a conflicting target instead of bypassing routing.
+
 ## Pi branch
 
 ```text
@@ -142,7 +157,7 @@ Parent interruption cancels active child work recursively but does not delete re
 
 - `src/agent-runtime/` — Pibo-owned contracts, capabilities, registry, errors, history, and testing support.
 - `src/agent-runtimes/pi/` — Pi adapter and Pi-native concerns.
-- `src/agent-runtimes/codex-native/` — official Codex App Server protocol, process, thread, turn, requests, models, history, and resource delivery.
+- `src/agent-runtimes/codex-native/` — official Codex App Server protocol, process, account auth, thread, turn, requests, models, history, and resource delivery.
 - `src/core/session-router.ts` / `src/core/routed-session.ts` — product routing, queues, generation lifecycle, semantic-event correlation, controls, and output.
 - `src/tools/` — portable Pibo tool contracts and session-scoped MCP bridge.
-- `src/apps/chat/` — authenticated API, product history, runtime-aware read models, workflows, and integration surfaces.
+- `src/apps/chat/` — authenticated API, provider-auth control plane, product history, runtime-aware read models, workflows, and integration surfaces.

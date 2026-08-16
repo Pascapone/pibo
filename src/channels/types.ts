@@ -16,10 +16,16 @@ import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from 
 import type { ContextFileProfile, InitialSessionContext, ModelProfile, SkillProfile } from "../core/profiles.js";
 import type { RuntimeSessionBinding, RuntimeSessionBindingRebindInput } from "../sessions/runtime-binding.js";
 import type {
+	AgentRuntimeAuthStatus,
+	AgentRuntimeAuthTargetOperationResult,
 	AgentRuntimeDiagnostic,
 	AgentRuntimeHistoryInspection,
 	AgentRuntimeHistoryPage,
 	AgentRuntimeInstanceInspection,
+	CancelAgentRuntimeAuthInput,
+	CompleteAgentRuntimeAuthInput,
+	LogoutAgentRuntimeAuthInput,
+	StartAgentRuntimeAuthInput,
 } from "../agent-runtime/types.js";
 import type {
 	CreatePiboSessionInput,
@@ -65,6 +71,11 @@ export type PiboChannelContext = {
 	createProfile?(name: string): InitialSessionContext;
 	getCapabilityCatalog?(): PiboCapabilityCatalog;
 	inspectAgentRuntimeInstances?(): Promise<AgentRuntimeInstanceInspection[]>;
+	getAgentRuntimeAuthStatus?(runtimeInstanceId: string): Promise<readonly AgentRuntimeAuthStatus[]>;
+	startAgentRuntimeAuth?(runtimeInstanceId: string, input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthTargetOperationResult>;
+	completeAgentRuntimeAuth?(runtimeInstanceId: string, input: CompleteAgentRuntimeAuthInput): Promise<AgentRuntimeAuthTargetOperationResult>;
+	cancelAgentRuntimeAuth?(runtimeInstanceId: string, input: CancelAgentRuntimeAuthInput): Promise<AgentRuntimeAuthTargetOperationResult>;
+	logoutAgentRuntimeAuth?(runtimeInstanceId: string, input: LogoutAgentRuntimeAuthInput): Promise<AgentRuntimeAuthTargetOperationResult>;
 	validateAgentRuntimeProfile?(profile: InitialSessionContext, workspace?: string): Promise<readonly AgentRuntimeDiagnostic[]>;
 	getLoopStopConditionDefinitions?(): PiboLoopStopConditionDefinition[];
 	getLoopStopConditionInfos?(): PiboLoopStopConditionInfo[];
