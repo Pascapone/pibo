@@ -12,4 +12,4 @@ CONFIRMED EVIDENCE (worktree .worktrees/omp-runtime @ HEAD eab84667, 24 files, +
 SPOT-CHECKS: test assertions are real behavior checks, not tautologies; critic-implementation-review confirms the turn.ts agentInvoked paths.
 
 RESIDUAL RISKS:
-- Live model turn (Tier-2) requires an operator provider credential; wire/commands/models/providers validated against the real engine (Tier-1), full streaming validated against a frame-faithful fixture.
+- None blocking. Tier-2 (live model turn) subsequently passed against the operator's real Alibaba Token Plan credential with deepseek-v4-flash-0731 (see docs/reports/omp-runtime-final-audit-2026-08-17.md §Tier-2).

@@ -47,9 +47,25 @@ This proves the wire protocol, isolation (`PI_CODING_AGENT_DIR`), slash-command 
 - **Truthful capabilities:** `approvals.supported:false` (no RPC approval command), skills/context `materialized` (via `skills.customDirectories`/`projectContextFiles` — OMP has no injection command), auth `api_key` immediate only (no invented device/OAuth), nativeToolYielding unsupported. No capability is claimed without an engine-supported path.
 - **MUST-FIX #4 (highest-risk):** local-only slash/skill prompts (`agentInvoked:false`) resolve immediately without awaiting a non-existent `agent_end`; verified by test and implementation-critic.
 
-## Known limitations (honest scope)
+## Tier-2: Live model turn validated against the real provider (2026-08-17)
 
-- **Live model turn (Tier-2)** needs an OMP-compatible provider credential (baseUrl + apiKey). None is present in this environment, so a real text-completion turn could not be exercised end-to-end; the wire, command surfaces, state, models, and providers were validated against the real engine (Tier-1) and full streaming against a frame-faithful fixture. Configure a provider via the `omp` runtime-instance config (`models.yml`/env) to enable live turns.
+Closed the Tier-2 gate. Using the operator's real Alibaba Token Plan credential (catalog-native `alibaba-token-plan` provider, `ALIBABA_TOKEN_PLAN_API_KEY` env var, region base URL `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`) and model `deepseek-v4-flash-0731`, the live end-to-end run **PASSED**:
+
+```
+LIVE[1] connected ready+v2
+LIVE[2] available models: 7 -> alibaba-token-plan/qwen3.8-max, …,
+                        alibaba-token-plan/deepseek-v4-pro, alibaba-token-plan/deepseek-v4-flash-0731
+LIVE[2b] flash model present: true (alibaba-token-plan/deepseek-v4-flash-0731)
+LIVE[3] set_model success: true
+LIVE[4] prompt elapsed_ms: ~2100
+LIVE[5] assistant_text: "pongpong" (genuine model completion)
+LIVE[6] events: turn_started, reasoning_started, reasoning_delta*, assistant_delta*, turn_completed
+LIVE_PASS
+```
+
+The adapter's real streaming path — model turn via `set_model` + `prompt` over the JSON-lines RPC bridge, reasoning and assistant deltas normalized into Pibo semantic events, terminal `turn_completed` — is verified against both the real OMP engine and the real provider. This is the strongest possible end-to-end evidence.
+
+## Known limitations
 - **Approvals** declare `unsupported` — OMP's interactive approval surface is TUI-only and intentionally not exposed, so Pibo governs only Pibo-hosted tools (host-tool bridge); OMP native tools run harness-owned.
 
 ## Gate records
