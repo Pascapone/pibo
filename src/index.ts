@@ -7,6 +7,9 @@ export {
 	CODEX_NATIVE_PROFILE_NAME,
 	CODEX_NATIVE_RUNTIME_INSTANCE_ID,
 	piboCodexNativePlugin,
+	OMP_PROFILE_NAME,
+	OMP_RUNTIME_INSTANCE_ID,
+	piboOmpPlugin,
 	piboCorePlugin,
 	piboGatewayProducerPlugin,
 } from "./plugins/builtin.js";
