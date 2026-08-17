@@ -109,7 +109,11 @@ function ompCapabilities(): AgentRuntimeCapabilities {
 			statusInspection: false,
 		},
 		skills: { support: "materialized", modes: ["omp-custom-directories"] },
-		context: { support: "materialized", modes: ["omp-project-context-files"] },
+		context: {
+			support: "unsupported",
+			reason:
+				"OMP loads project context via its own AGENTS.md/rules discovery in the session cwd; Pibo has no injection seam and does not mutate the user's workspace.",
+		},
 		auth: {
 			status: true,
 			methods: OMP_AUTH_METHODS,

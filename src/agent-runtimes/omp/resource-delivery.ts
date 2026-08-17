@@ -30,12 +30,15 @@ function commonParent(paths: readonly string[]): string | undefined {
 }
 
 /**
- * Materializes Pibo-selected skills and context into the isolated OMP agent
- * dir (`PI_CODING_AGENT_DIR`) and writes the OMP `config.yml` including
+ * Materializes Pibo-selected skills into the isolated OMP agent dir
+ * (`PI_CODING_AGENT_DIR`) and writes the OMP `config.yml` including
  * `skills.customDirectories` (pointing at the directory the resource-service
  * populated with `<skillName>/SKILL.md` entries OMP actually discovers) plus
- * provider/model defaults. The real project's `.omp/skills`, `AGENTS.md` are
- * untouched — OMP keeps discovering them natively.
+ * provider/model defaults. Project context is copied under the isolating
+ * context dir for diagnostics only and reported `unsupported` — OMP loads its
+ * own project context via AGENTS.md discovery and Pibo has no injection seam.
+ * The real project's `.omp/skills`, `AGENTS.md` are untouched — OMP keeps
+ * discovering them natively.
  *
  * Called BEFORE spawning OMP: OMP reads config.yml at startup, and
  * `skills.customDirectories` dirs are scanned for `<skill>/SKILL.md` subdirs on
@@ -77,11 +80,12 @@ export class OmpResourceDelivery {
 		const reports: AgentRuntimeDeliveryReport[] = [];
 		const diagnostics: AgentRuntimeResourceDiagnostic[] = [];
 
-		// Context contributions are surfaced for debug/diagnostics. OMP does not
-		// read a `projectContextFiles` config key; project context arrives via its
-		// own AGENTS.md/rules discovery in the session cwd, so there is no engine
-		// injection seam here. We materialize them under the adapter context dir
-		// and report delivery.
+		// Context contributions are surfaced for debug traceability only. OMP
+		// does not read a `projectContextFiles` config key or any Pibo-injected
+		// file — project context arrives via its own AGENTS.md/rules discovery in
+		// the session cwd (the user's workspace, which we must not mutate). We
+		// write copies under the isolated context dir for diagnostics, but report
+		// them unsupported so callers never mistake them for engine-delivered.
 		const contributions = this.resources?.getContextContributions() ?? [];
 		const totalBytes = contributions.reduce((sum, c) => sum + (c.byteSize ?? c.content?.length ?? 0), 0);
 		if (contributions.length > MAX_CONTEXT_CONTRIBUTIONS || totalBytes > MAX_CONTEXT_BYTES) {
@@ -102,10 +106,12 @@ export class OmpResourceDelivery {
 				await writeFile(target, contribution.content ?? "", "utf8");
 				reports.push({
 					contributionId: contribution.id,
-					status: "delivered",
-					mode: "materialized",
-					fidelity: "equivalent",
+					status: "unsupported",
+					mode: "omp-native-agents-md-discovery",
+					fidelity: "none",
 					target,
+					diagnostic:
+						"OMP loads project context via its own AGENTS.md discovery; Pibo context is copied here for diagnostics only and not consumed by OMP.",
 				});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

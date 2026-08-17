@@ -54,16 +54,22 @@ test("OMP resource-delivery writes config.yml with skills.customDirectories and 
 	const { reports, diagnostics } = await delivery.prepare();
 	assert.ok(diagnostics.length === 0, `expected no diagnostics, got ${JSON.stringify(diagnostics)}`);
 	assert.ok(reports.length >= 1);
-	assert.equal(reports[0].status, "delivered");
-	assert.equal(reports[0].mode, "materialized");
+	const contextReport = reports.find((r) => r.contributionId === "context:1");
+	assert.ok(contextReport, "expected a context report");
+	assert.equal(
+		contextReport.status,
+		"unsupported",
+		"OMP has no context injection seam -> context must be reported unsupported, not delivered",
+	);
+	assert.notEqual(contextReport.mode, "materialized", "context mode must not claim materialized delivery");
+	assert.ok(
+		contextReport.diagnostic?.includes("AGENTS.md"),
+		"context diagnostic should explain OMP-native discovery",
+	);
 
 	const configYaml = await readFile(paths.config, "utf8");
 	assert.ok(configYaml.includes("skills:"), "config.yml must declare skills");
 	assert.ok(configYaml.includes("customDirectories:"), "config.yml must set skills.customDirectories");
-	// projectContextFiles is NOT an OMP config key (context arrives via OMP's
-	// native AGENTS.md/rules discovery in the session cwd); assert the context
-	// was instead materialized as an AGENTS.md in the project dir it belongs to.
-	assert.ok(reports.some((r) => r.status === "delivered"), "expected a delivered report");
 });
 
 test("OMP resource-delivery writes provider/model defaults into config.yml", async (t) => {
@@ -105,7 +111,11 @@ test("OMP adapter driver descriptor declares truthful capabilities", async (t) =
 	const caps = OMP_RUNTIME_CAPABILITIES;
 	assert.equal(caps.approvals.supported, false, "no RPC approval command -> approvals unsupported (truthful)");
 	assert.equal(caps.skills.support, "materialized", "skills delivered via isolated customDirectories");
-	assert.equal(caps.context.support, "materialized", "context delivered via project context files");
+	assert.equal(
+		caps.context.support,
+		"unsupported",
+		"OMP loads context via its own AGENTS.md discovery; no Pibo seam -> unsupported (truthful)",
+	);
 	assert.equal(caps.models.catalog, true);
 	assert.equal(caps.models.switchInSession, true);
 	assert.equal(caps.maintenance.compaction, true);
