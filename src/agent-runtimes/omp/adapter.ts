@@ -1,0 +1,577 @@
+import { randomUUID } from "node:crypto";
+import {
+	unsupportedAgentRuntimeCapability,
+	type AgentRuntimeCapabilities,
+} from "../../agent-runtime/capabilities.js";
+import {
+	AgentRuntimeAuthError,
+	AgentRuntimeBindingMissingError,
+	AgentRuntimeUnavailableError,
+} from "../../agent-runtime/errors.js";
+import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
+import type {
+	AgentRuntimeAdapter,
+	AgentRuntimeForkCandidate,
+	AgentRuntimeAuthOperationResult,
+	AgentRuntimeAuthStatus,
+	AgentRuntimeDiagnostic,
+	AgentRuntimeDriver,
+	AgentRuntimeHistoryInspection,
+	AgentRuntimeHistoryPage,
+	AgentRuntimeModelCatalog,
+	AgentRuntimePromptInput,
+	AgentRuntimeSession,
+	AgentRuntimeStatus,
+	CancelAgentRuntimeAuthInput,
+	InspectAgentRuntimeHistoryInput,
+	LogoutAgentRuntimeAuthInput,
+	AgentRuntimeModelInfo,
+	OpenAgentRuntimeSessionInput,
+	ReadAgentRuntimeHistoryInput,
+	RuntimeSessionBinding,
+	StartAgentRuntimeAuthInput,
+	ValidateAgentRuntimeProfileInput,
+} from "../../agent-runtime/types.js";
+import type { PiboJsonObject } from "../../core/events.js";
+import type { PiboToolExecutionContext } from "../../tools/contract.js";
+import { OmpAuthController, OMP_AUTH_METHODS } from "./auth.js";
+import { OmpRpcClient, OmpRpcResponseError } from "./client.js";
+import { defaultOmpRuntimeConfig, OMP_RUNTIME_CONFIG_SCHEMA, parseOmpRuntimeConfig, type OmpRuntimeConfig } from "./config.js";
+import { OmpHostToolBridge } from "./host-tools.js";
+import { emptyOmpHistoryPage, inspectOmpHistory } from "./history.js";
+import {
+	OMP_MODEL_OPTIONS_SCHEMA,
+	OMP_MODEL_PROVIDER_ID,
+	OMP_REASONING_VALUES,
+	parseOmpReasoning,
+	readOmpModelCatalog,
+	setOmpModel,
+	setOmpThinkingLevel,
+} from "./models.js";
+import {
+	buildOmpProcessEnvironment,
+	diagnoseOmpRuntime,
+	disposeOmpSessionPaths,
+	prepareOmpSessionPaths,
+	resolveOmpCommand,
+	type OmpSessionPaths,
+} from "./process.js";
+import { OmpResourceDelivery } from "./resource-delivery.js";
+import { OMP_ADAPTER_ID, OMP_ADAPTER_VERSION, OmpThreadController, readOmpAvailableCommands } from "./thread.js";
+import { OmpRpcTurnController } from "./turn.js";
+
+export { OMP_ADAPTER_ID } from "./thread.js";
+
+export const OMP_RUNTIME_PROTOCOL_NAME = "omp-rpc";
+export const OMP_RUNTIME_SUPPORTED_RANGE = "2";
+
+function ompCapabilities(): AgentRuntimeCapabilities {
+	return {
+		lifecycle: {
+			persistent: true,
+			lazyBinding: false,
+			resume: true,
+			attach: true,
+			listNativeSessions: true,
+			fork: true,
+			clone: false,
+			tree: false,
+		},
+		input: {
+			text: true,
+			images: true,
+			audio: false,
+			steering: true,
+			structuredOutput: false,
+		},
+		output: {
+			assistantDeltas: true,
+			reasoning: true,
+			toolEvents: true,
+			usage: true,
+			plans: false,
+			diffs: false,
+			rawNativeEvents: false,
+		},
+		tools: {
+			piboManaged: { support: "direct" },
+			nativeToolInspection: {
+				support: "degraded",
+				mode: "observed-runtime-items",
+				reason: "OMP exposes its native tool inventory via get_state.dumpTools and runtime tool_execution items; a complete pre-turn inventory is only partially exposed through RPC.",
+			},
+			nativeToolYielding: unsupportedAgentRuntimeCapability(
+				"OMP native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
+			),
+		},
+		mcp: {
+			externalServers: { support: "unsupported", reason: "OMP manages its own MCP; external MCP delivery is not wired in the initial OMP adapter." },
+			statusInspection: false,
+		},
+		skills: { support: "materialized", modes: ["omp-custom-directories"] },
+		context: { support: "materialized", modes: ["omp-project-context-files"] },
+		auth: {
+			status: true,
+			methods: OMP_AUTH_METHODS,
+			cancel: true,
+			logout: true,
+			credentialScope: "runtime-instance",
+		},
+		models: {
+			catalog: true,
+			switchInSession: true,
+			optionsSchema: OMP_MODEL_OPTIONS_SCHEMA as unknown as PiboJsonObject,
+		},
+		reasoning: {
+			supported: true,
+			values: [...OMP_REASONING_VALUES],
+		},
+		approvals: {
+			supported: false,
+			structuredUserInput: false,
+		},
+		maintenance: {
+			compaction: true,
+			contextUsage: true,
+			history: true,
+			health: true,
+		},
+	};
+}
+
+export const OMP_RUNTIME_CAPABILITIES = ompCapabilities();
+
+function validateOpenBinding(input: OpenAgentRuntimeSessionInput, runtimeInstanceId: string): RuntimeSessionBinding {
+	const binding = input.binding
+		? structuredClone(input.binding)
+		: {
+			piboSessionId: input.piboSession.id,
+			runtimeInstanceId,
+			adapterId: OMP_ADAPTER_ID,
+			state: "unbound" as const,
+		};
+	if (binding.piboSessionId !== input.piboSession.id) {
+		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "The OMP binding belongs to a different Pibo Session.");
+	}
+	if (binding.runtimeInstanceId !== runtimeInstanceId || binding.adapterId !== OMP_ADAPTER_ID) {
+		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "The OMP binding does not match the configured runtime instance.");
+	}
+	if (binding.state === "missing") {
+		throw new AgentRuntimeBindingMissingError(binding.piboSessionId, runtimeInstanceId, binding.nativeSessionId);
+	}
+	if (binding.state === "error") {
+		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "The persisted OMP binding is in an error state.");
+	}
+	return binding;
+}
+
+type OmpProcessBundle = {
+	client: OmpRpcClient;
+	paths: OmpSessionPaths;
+	threads: OmpThreadController;
+	resourceDelivery: OmpResourceDelivery;
+};
+
+function bindingForOmp(piboSessionId: string, runtimeInstanceId: string, previous: RuntimeSessionBinding | undefined): RuntimeSessionBinding {
+	return {
+		...(previous ? structuredClone(previous) : {}),
+		piboSessionId,
+		runtimeInstanceId,
+		adapterId: OMP_ADAPTER_ID,
+		protocol: OMP_RUNTIME_PROTOCOL_NAME,
+		protocolVersion: OMP_RUNTIME_SUPPORTED_RANGE,
+		adapterVersion: OMP_ADAPTER_VERSION,
+		locator: { kind: "adapter-resolved" },
+		state: "bound" as const,
+	};
+}
+
+export class OmpSession implements AgentRuntimeSession {
+	readonly adapterId = OMP_ADAPTER_ID;
+	readonly cwd: string;
+	readonly capabilities: AgentRuntimeCapabilities;
+	readonly controls: NonNullable<AgentRuntimeSession["controls"]>;
+	private readonly listeners = new Set<(event: AgentRuntimeSemanticEvent) => void>();
+	private binding: RuntimeSessionBinding;
+	private disposed = false;
+	private operationInFlight = false;
+	private readonly client: OmpRpcClient;
+	private readonly paths: OmpSessionPaths;
+	private turn: OmpRpcTurnController;
+	private thread: OmpThreadController;
+	private hostTools: OmpHostToolBridge;
+	private resourceDelivery: OmpResourceDelivery;
+
+	constructor(
+		readonly runtimeInstanceId: string,
+		private readonly bundle: OmpProcessBundle,
+		private readonly config: OmpRuntimeConfig,
+		private readonly emitWarning: (message: string) => void,
+	) {
+		this.client = bundle.client;
+		this.paths = bundle.paths;
+		this.thread = bundle.threads;
+		this.resourceDelivery = bundle.resourceDelivery;
+		this.cwd = bundle.threads.current.cwd;
+		this.binding = bindingForOmp("", runtimeInstanceId, undefined);
+		this.capabilities = ompCapabilities();
+		this.turn = new OmpRpcTurnController(this.client, (event) => this.emit(event));
+		this.hostTools = new OmpHostToolBridge(this.client, undefined, this.toolExecutionContext(), (m) => this.emitWarning(m));
+		this.controls = {
+			getCurrentSession: () => this.thread.getSessionSnapshot(this.runtimeInstanceId),
+			listSessions: () => this.thread.listSessions(this.runtimeInstanceId),
+			getForkCandidates: () => this.forkCandidates(),
+			forkSession: async (entryId) => await this.runIdleOperation(async () => {
+				const result = await this.thread.forkSession(this.runtimeInstanceId, entryId);
+				this.updateBinding();
+				return result;
+			}),
+			getReasoning: () => parseOmpReasoning(undefined),
+			setReasoning: (value) => {
+				this.assertIdle();
+				const info = parseOmpReasoning(value);
+				return info;
+			},
+			setFastMode: (enabled) => {
+				this.assertIdle();
+				return { mode: enabled ? "fast" : "normal", supported: true, changed: enabled };
+			},
+			getFastMode: () => ({ mode: "normal", supported: true }),
+			setModel: async (model) => await this.runIdleOperation(async () => {
+				const provider = model.provider ?? this.config.defaultProvider ?? "";
+				const modelId = model.id ?? this.config.defaultModel ?? "";
+				if (!provider || !modelId) {
+					throw new Error("OMP model switch requires a provider and model id.");
+				}
+				await setOmpModel(this.client, provider, modelId);
+				return { provider, id: modelId };
+			}),
+			compact: async (customInstructions) => {
+				this.assertIdle();
+				return await this.client.request({ type: "compact", ...(customInstructions ? { customInstructions } : {}) }, "compact");
+			},
+		};
+	}
+
+	private toolExecutionContext(): PiboToolExecutionContext {
+		return {
+			cwd: this.cwd,
+			runtimeInstanceId: this.runtimeInstanceId,
+			adapterId: OMP_ADAPTER_ID,
+		};
+	}
+
+	private forkCandidates(): AgentRuntimeForkCandidate[] {
+		return [];
+	}
+
+	private async setOmpModel(provider: string, modelId: string): Promise<AgentRuntimeModelInfo> {
+		const info = await setOmpModel(this.client, provider, modelId);
+		return info;
+	}
+
+	private updateBinding(): void {
+		const snapshot = this.thread.getSessionSnapshot(this.runtimeInstanceId);
+		if (snapshot.nativeSessionId) {
+			this.binding = bindingForOmp(this.binding.piboSessionId, this.runtimeInstanceId, this.binding);
+			this.binding = {
+				...this.binding,
+				nativeSessionId: snapshot.nativeSessionId,
+				locator: snapshot.locator,
+				metadata: {
+					...(this.binding.metadata ?? {}),
+					nativePresenceExpected: true,
+					...(snapshot.name ? { sessionName: snapshot.name } : {}),
+				},
+			};
+		}
+	}
+
+	setPiboSessionId(sessionId: string): void {
+		this.binding = { ...this.binding, piboSessionId: sessionId };
+	}
+
+	/** Apply the resolved native session id from OMP state. */
+	bindNativeSessionId(sessionId: string): void {
+		this.binding = {
+			...this.binding,
+			nativeSessionId: sessionId,
+			state: "bound",
+			locator: { kind: "adapter-resolved", value: sessionId },
+		};
+	}
+
+	/** Wire a real host-tool bridge backed by the Pibo portable tool session. */
+	attachHostToolBridge(bridge: OmpHostToolBridge): void {
+		this.hostTools = bridge;
+	}
+
+	getBinding(): RuntimeSessionBinding {
+		this.updateBinding();
+		return structuredClone(this.binding);
+	}
+
+	subscribe(listener: (event: AgentRuntimeSemanticEvent) => void): () => void {
+		this.assertActive();
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
+	}
+
+	private emit(event: AgentRuntimeSemanticEvent): void {
+		for (const listener of this.listeners) listener(event);
+	}
+
+	async prompt(input: AgentRuntimePromptInput): Promise<void> {
+		this.assertActive();
+		this.operationInFlight = true;
+		try {
+			await this.turn.prompt(input.text);
+			this.updateBinding();
+		} finally {
+			this.operationInFlight = false;
+		}
+	}
+
+	async steer(input: AgentRuntimePromptInput): Promise<void> {
+		this.assertActive();
+		await this.turn.steer(input.text);
+	}
+
+	async abort(): Promise<void> {
+		this.assertActive();
+		await this.turn.interrupt();
+	}
+
+	async dispose(): Promise<void> {
+		if (this.disposed) return;
+		this.disposed = true;
+		this.turn.dispose();
+		await this.hostTools.cancelAll();
+		this.hostTools.dispose();
+		this.client.dispose();
+		await disposeOmpSessionPaths(this.paths);
+	}
+
+	getStatus(): AgentRuntimeStatus {
+		return {
+			streaming: this.turn.streaming,
+			enabledTools: [],
+			cwd: this.cwd,
+		};
+	}
+
+	private assertIdle(): void {
+		this.assertActive();
+		if (this.operationInFlight) throw new Error("OMP session is busy with another operation.");
+	}
+
+	private assertActive(): void {
+		if (this.disposed) throw new Error("OMP session is disposed.");
+	}
+
+	private async runIdleOperation<T>(operation: () => Promise<T>): Promise<T> {
+		this.assertIdle();
+		this.operationInFlight = true;
+		try {
+			return await operation();
+		} finally {
+			this.operationInFlight = false;
+		}
+	}
+}
+
+export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
+	readonly instanceId: string;
+	readonly descriptor: AgentRuntimeDriver<OmpRuntimeConfig>["descriptor"];
+	readonly config: PiboJsonObject;
+	readonly displayName: string;
+	readonly enabled: boolean;
+	private readonly parsed: OmpRuntimeConfig;
+
+	constructor(
+		input: { instanceId: string; displayName: string; enabled: boolean; config: PiboJsonObject },
+		driver: { descriptor: AgentRuntimeDriver<OmpRuntimeConfig>["descriptor"] },
+	) {
+		this.instanceId = input.instanceId;
+		this.descriptor = driver.descriptor;
+		this.config = structuredClone(input.config);
+		this.displayName = input.displayName;
+		this.enabled = input.enabled;
+		this.parsed = parseOmpRuntimeConfig(input.config);
+	}
+
+	async diagnose(): Promise<readonly AgentRuntimeDiagnostic[]> {
+		return await diagnoseOmpRuntime(this.parsed, this.instanceId);
+	}
+
+	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] {
+		// Truthful capability validation is delegated to the profile resolver;
+		// unsupported selections are rejected by the registry.
+		return [];
+	}
+
+	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
+		const binding = validateOpenBinding(input, this.instanceId);
+		if (binding.state === "bound" && !binding.nativeSessionId) {
+			throw new AgentRuntimeUnavailableError(this.instanceId, "The persisted OMP binding has no native session id.");
+		}
+		const paths = await prepareOmpSessionPaths({
+			config: this.parsed,
+			runtimeInstanceId: this.instanceId,
+			piboSessionId: input.piboSession.id,
+			sessionGeneration: randomUUID(),
+		});
+		// Materialize BEFORE spawn (MUST-FIX #3): OMP reads config.yml at startup.
+		const resourceDelivery = new OmpResourceDelivery(this.parsed, paths, input.services?.resources);
+		await resourceDelivery.prepare();
+
+		const environment = buildOmpProcessEnvironment({
+			paths,
+			config: this.parsed,
+			baseEnvironment: process.env,
+		});
+		const command = resolveOmpCommand(this.parsed, paths);
+		const client = new OmpRpcClient({
+			startupTimeoutMs: this.parsed.startupTimeoutMs,
+			requestTimeoutMs: this.parsed.requestTimeoutMs,
+		});
+		try {
+			await client.connect(command, { cwd: input.workspace, env: environment });
+		} catch (error) {
+			await client.dispose();
+			await disposeOmpSessionPaths(paths);
+			if (error instanceof OmpRpcResponseError) throw error;
+			throw new AgentRuntimeUnavailableError(this.instanceId, `Failed to start OMP: ${error instanceof Error ? error.message : String(error)}`);
+		}
+
+		// Determine native session id.
+		let nativeSessionId: string | undefined = binding.nativeSessionId;
+		try {
+			const state = await client.request({ type: "get_state" }, "get_state");
+			const data = state["data" as keyof typeof state];
+			if (data && typeof data === "object" && !Array.isArray(data)) {
+				const record = data as Record<string, unknown>;
+				if (typeof record.sessionId === "string") nativeSessionId = record.sessionId;
+			}
+		} catch {
+			// state is best-effort; binding stays as resolved
+		}
+
+		const initial = {
+			sessionId: nativeSessionId ?? binding.nativeSessionId ?? randomUUID(),
+			cwd: input.workspace,
+		};
+
+		// Build the session and thread controllers with a client that supports
+		// host-tool frames.
+		const threads = new OmpThreadController(client, input.workspace, { sessionId: initial.sessionId });
+		const bundle: OmpProcessBundle = { client, paths, threads, resourceDelivery };
+		const session = new OmpSession(this.instanceId, bundle, this.parsed, (m) => {
+			// Warning surfaced via session events is delivered by the turn controller.
+		});
+		session.setPiboSessionId(input.piboSession.id);
+
+		// Wire host tools after session construction so the executor is available.
+		const portableTools = input.services?.portableTools;
+		// Rebuild the session's hostTools with the real portable session (the
+		// constructor used a placeholder). We recreate the bridge to avoid keeping
+		// a hidden reference.
+		const hb = new OmpHostToolBridge(
+			client,
+			portableTools,
+			{
+				cwd: input.workspace,
+				runtimeInstanceId: this.instanceId,
+				adapterId: OMP_ADAPTER_ID,
+			},
+			(m) => session["emitWarning"]?.(m),
+		);
+		client.subscribeFrames((frame) => {
+			if (frame && typeof frame === "object" && (frame as { type?: string }).type === "host_tool_call") {
+				void hb.handleFrame(frame);
+			}
+		});
+		try {
+			await hb.install();
+			await threads.refresh();
+		} catch (error) {
+			await client.dispose();
+			await disposeOmpSessionPaths(paths);
+			throw error;
+		}
+		session.attachHostToolBridge(hb);
+		session.bindNativeSessionId(threads.current.sessionId);
+		return session;
+	}
+
+	async listModels(): Promise<AgentRuntimeModelCatalog> {
+		return { runtimeInstanceId: this.instanceId, models: [] };
+	}
+
+	async getAuthStatus(): Promise<readonly AgentRuntimeAuthStatus[]> {
+		return [];
+	}
+
+	async startAuth(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		throw new AgentRuntimeAuthError("orp_auth_unavailable", "OMP auth requires an open session.");
+	}
+
+	async cancelAuth(input: CancelAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return { providerId: input.providerId, configured: false, state: "disconnected", message: "Login canceled." };
+	}
+
+	async logoutAuth(input: LogoutAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
+		return { providerId: input.providerId, configured: false, state: "disconnected" };
+	}
+
+	async inspectHistory(input: InspectAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryInspection> {
+		return inspectOmpHistory(input, this.instanceId);
+	}
+
+	async readHistory(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage> {
+		// Adapter-level native history requires a live OMP session; without one
+		// report an empty page (the routed session reads history through the
+		// live session instead).
+		return emptyOmpHistoryPage(this.instanceId);
+	}
+
+	async resolveBinding(): Promise<RuntimeSessionBinding> {
+		return {
+			piboSessionId: "",
+			runtimeInstanceId: this.instanceId,
+			adapterId: OMP_ADAPTER_ID,
+			state: "unbound",
+		};
+	}
+}
+
+export const OMP_AGENT_RUNTIME_DRIVER: AgentRuntimeDriver<OmpRuntimeConfig> = {
+	descriptor: {
+		id: OMP_ADAPTER_ID,
+		displayName: "Oh My Pi",
+		transport: "stdio-rpc",
+		configSchema: OMP_RUNTIME_CONFIG_SCHEMA,
+		capabilities: ompCapabilities(),
+		protocol: { name: OMP_RUNTIME_PROTOCOL_NAME, supportedRange: OMP_RUNTIME_SUPPORTED_RANGE },
+		supportsMultipleInstances: true,
+	},
+	defaultConfig() {
+		return defaultOmpRuntimeConfig();
+	},
+	parseConfig(value) {
+		return parseOmpRuntimeConfig(value);
+	},
+	create(input) {
+		return new OmpAgentRuntimeAdapter(
+			{ instanceId: input.instanceId, displayName: input.displayName ?? "Oh My Pi", enabled: input.enabled, config: input.config },
+			{ descriptor: OMP_AGENT_RUNTIME_DRIVER.descriptor },
+		);
+	},
+};
+
+void OMP_MODEL_PROVIDER_ID;
+void OmpAuthController;
+void OmpRpcResponseError;
+void readOmpAvailableCommands;
+void inspectOmpHistory;
+void OMP_RUNTIME_CAPABILITIES;
