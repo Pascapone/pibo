@@ -34,11 +34,11 @@ import type {
 } from "../../agent-runtime/types.js";
 import type { PiboJsonObject } from "../../core/events.js";
 import type { PiboToolExecutionContext } from "../../tools/contract.js";
-import { OmpAuthController, OMP_AUTH_METHODS } from "./auth.js";
+import { OmpAuthController, OMP_AUTH_METHODS, unknownOmpStatusForAdapter } from "./auth.js";
 import { OmpRpcClient, OmpRpcResponseError } from "./client.js";
 import { defaultOmpRuntimeConfig, OMP_RUNTIME_CONFIG_SCHEMA, parseOmpRuntimeConfig, type OmpRuntimeConfig } from "./config.js";
 import { OmpHostToolBridge } from "./host-tools.js";
-import { emptyOmpHistoryPage, inspectOmpHistory } from "./history.js";
+import { emptyOmpHistoryPage, inspectOmpHistory, readOmpHistory } from "./history.js";
 import {
 	OMP_MODEL_OPTIONS_SCHEMA,
 	OMP_MODEL_PROVIDER_ID,
@@ -207,6 +207,7 @@ export class OmpSession implements AgentRuntimeSession {
 		private readonly bundle: OmpProcessBundle,
 		private readonly config: OmpRuntimeConfig,
 		private readonly emitWarning: (message: string) => void,
+		private readonly adapter?: { detachLiveSession(session: OmpSession): void },
 	) {
 		this.client = bundle.client;
 		this.paths = bundle.paths;
@@ -222,19 +223,28 @@ export class OmpSession implements AgentRuntimeSession {
 			listSessions: () => this.thread.listSessions(this.runtimeInstanceId),
 			getForkCandidates: () => this.forkCandidates(),
 			forkSession: async (entryId) => await this.runIdleOperation(async () => {
+				const previous = this.thread.getSessionSnapshot(this.runtimeInstanceId);
 				const result = await this.thread.forkSession(this.runtimeInstanceId, entryId);
 				this.updateBinding();
-				return result;
+				return { previous, current: result.current, cancelled: result.cancelled };
 			}),
 			getReasoning: () => parseOmpReasoning(undefined),
 			setReasoning: (value) => {
 				this.assertIdle();
 				const info = parseOmpReasoning(value);
+				// Send the real OMP thinking-level change (best-effort; contract is sync).
+				const level = info.value ?? "medium";
+				void this.client.request({ type: "set_thinking_level", level }, "set_thinking_level").catch((error) => {
+					this.emitWarning("OMP set_thinking_level failed: " + (error instanceof Error ? error.message : String(error)));
+				});
 				return info;
 			},
 			setFastMode: (enabled) => {
 				this.assertIdle();
-				return { mode: enabled ? "fast" : "normal", supported: true, changed: enabled };
+				void this.client.request({ type: "set_fast_mode", enabled }, "set_fast_mode").catch((error) => {
+					this.emitWarning("OMP set_fast_mode failed: " + (error instanceof Error ? error.message : String(error)));
+				});
+				return { mode: enabled ? "fast" : "normal", supported: true, changed: true };
 			},
 			getFastMode: () => ({ mode: "normal", supported: true }),
 			setModel: async (model) => await this.runIdleOperation(async () => {
@@ -262,7 +272,7 @@ export class OmpSession implements AgentRuntimeSession {
 	}
 
 	private forkCandidates(): AgentRuntimeForkCandidate[] {
-		return [];
+		return this.thread.cachedForkCandidates();
 	}
 
 	private async setOmpModel(provider: string, modelId: string): Promise<AgentRuntimeModelInfo> {
@@ -301,9 +311,27 @@ export class OmpSession implements AgentRuntimeSession {
 		};
 	}
 
+	/**
+	 * Persist the on-disk OMP transcript path so a later `openSession` can pass
+	 * it to `switch_session` (which expects the .jsonl file path, NOT the
+	 * nativeSessionId UUID) to resume the same transcript.
+	 */
+	bindNativeSessionFile(sessionFile: string | undefined): void {
+		if (!sessionFile) return;
+		this.binding = {
+			...this.binding,
+			metadata: { ...(this.binding.metadata ?? {}), nativeSessionFile: sessionFile },
+		};
+	}
+
 	/** Wire a real host-tool bridge backed by the Pibo portable tool session. */
 	attachHostToolBridge(bridge: OmpHostToolBridge): void {
 		this.hostTools = bridge;
+	}
+
+	/** Adapter-level reads route history/models/auth through the live client. */
+	getClient(): OmpRpcClient {
+		return this.client;
 	}
 
 	getBinding(): RuntimeSessionBinding {
@@ -350,13 +378,23 @@ export class OmpSession implements AgentRuntimeSession {
 		this.hostTools.dispose();
 		this.client.dispose();
 		await disposeOmpSessionPaths(this.paths);
+		// Notify the owning adapter so adapter-level reads stop routing to us.
+		this.adapter?.detachLiveSession(this);
 	}
 
 	getStatus(): AgentRuntimeStatus {
+		const hostInstalled = this.hostTools?.installedNames ?? [];
+		// Report the tools Pibo actually mounted (host-tool bridge). OMP's own
+		// native tools (bash/edit/…) remain engine-owned and are intentionally
+		// not exported here — we do not claim an inventory we do not observe.
 		return {
 			streaming: this.turn.streaming,
-			enabledTools: [],
+			enabledTools: hostInstalled,
 			cwd: this.cwd,
+			reasoning: {
+				supported: true,
+				availableValues: [...OMP_REASONING_VALUES],
+			},
 		};
 	}
 
@@ -387,6 +425,8 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly displayName: string;
 	readonly enabled: boolean;
 	private readonly parsed: OmpRuntimeConfig;
+	/** Handle to the currently-open session so history/auth/models route to it. */
+	private live?: OmpSession;
 
 	constructor(
 		input: { instanceId: string; displayName: string; enabled: boolean; config: PiboJsonObject },
@@ -444,14 +484,16 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			throw new AgentRuntimeUnavailableError(this.instanceId, `Failed to start OMP: ${error instanceof Error ? error.message : String(error)}`);
 		}
 
-		// Determine native session id.
+		// Determine native session id (+ transcript file path for later resume).
 		let nativeSessionId: string | undefined = binding.nativeSessionId;
+		let nativeSessionFile: string | undefined;
 		try {
 			const state = await client.request({ type: "get_state" }, "get_state");
 			const data = state["data" as keyof typeof state];
 			if (data && typeof data === "object" && !Array.isArray(data)) {
 				const record = data as Record<string, unknown>;
 				if (typeof record.sessionId === "string") nativeSessionId = record.sessionId;
+				if (typeof record.sessionFile === "string") nativeSessionFile = record.sessionFile;
 			}
 		} catch {
 			// state is best-effort; binding stays as resolved
@@ -468,7 +510,7 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		const bundle: OmpProcessBundle = { client, paths, threads, resourceDelivery };
 		const session = new OmpSession(this.instanceId, bundle, this.parsed, (m) => {
 			// Warning surfaced via session events is delivered by the turn controller.
-		});
+		}, this);
 		session.setPiboSessionId(input.piboSession.id);
 
 		// Wire host tools after session construction so the executor is available.
@@ -494,6 +536,38 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		try {
 			await hb.install();
 			await threads.refresh();
+
+			// Resume/F4: if this Pibo Session was previously bound to an OMP
+			// native session, switch the new child into that persisted transcript
+			// so history/context carry over instead of starting a fresh session.
+			if (binding.state === "bound" && binding.nativeSessionId) {
+				// switch_session takes the .jsonl transcript PATH, not the session
+				// id UUID. Prefer the persisted transcript file (F4); fall back to
+				// the id only when no file was recorded.
+				const resumePath =
+					(binding.metadata && typeof binding.metadata.nativeSessionFile === "string"
+						? binding.metadata.nativeSessionFile
+						: undefined) ?? binding.nativeSessionId;
+				try {
+					await client.request({ type: "switch_session", sessionPath: resumePath }, "switch_session");
+					await threads.refresh();
+					// OMP regenerates the session id on switch but restores the
+					// transcript FILE. Re-read state so we persist the RESUMED
+					// transcript path (not the fresh pre-switch session's file).
+					const resumed = await client.request({ type: "get_state" }, "get_state");
+					const resumedData = resumed["data" as keyof typeof resumed];
+					if (resumedData && typeof resumedData === "object" && !Array.isArray(resumedData)) {
+						const rr = resumedData as Record<string, unknown>;
+						if (typeof rr.sessionFile === "string") nativeSessionFile = rr.sessionFile;
+					}
+				} catch (resumeError) {
+					// Keep the fresh session; a failed switch is not fatal.
+					// (bindNativeSessionId below still sets the binding.)
+				}
+			}
+
+			// Prime fork candidates (get_branch_messages) for the sync SPI.
+			void threads.loadForkCandidates(this.instanceId);
 		} catch (error) {
 			await client.dispose();
 			await disposeOmpSessionPaths(paths);
@@ -501,15 +575,41 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		}
 		session.attachHostToolBridge(hb);
 		session.bindNativeSessionId(threads.current.sessionId);
+		session.bindNativeSessionFile(nativeSessionFile);
+		this.attachLiveSession(session);
 		return session;
 	}
 
+	/** Record the live session so adapter-level reads can route to it. */
+	attachLiveSession(session: OmpSession): void {
+		this.live = session;
+	}
+
+	detachLiveSession(session: OmpSession): void {
+		if (this.live === session) this.live = undefined;
+	}
+
 	async listModels(): Promise<AgentRuntimeModelCatalog> {
+		if (this.live) {
+			try {
+				return await readOmpModelCatalog(this.live.getClient(), this.instanceId);
+			} catch {
+				// fall through to empty on transient engine error
+			}
+		}
 		return { runtimeInstanceId: this.instanceId, models: [] };
 	}
 
 	async getAuthStatus(): Promise<readonly AgentRuntimeAuthStatus[]> {
-		return [];
+		if (this.live) {
+			try {
+				const controller = new OmpAuthController(this.live.getClient());
+				return await controller.getStatus();
+			} catch {
+				// fall through to unknown on transient engine error
+			}
+		}
+		return [unknownOmpStatusForAdapter()];
 	}
 
 	async startAuth(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
@@ -529,9 +629,9 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async readHistory(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage> {
-		// Adapter-level native history requires a live OMP session; without one
-		// report an empty page (the routed session reads history through the
-		// live session instead).
+		if (this.live) {
+			return await readOmpHistory(this.live.getClient(), input, this.instanceId, input.binding);
+		}
 		return emptyOmpHistoryPage(this.instanceId);
 	}
 

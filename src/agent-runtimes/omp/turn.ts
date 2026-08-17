@@ -8,6 +8,17 @@ import type {
 	OmpRpcFrame,
 } from "./protocol-types.js";
 
+/** Hard cap on how long a streaming turn may run before we resolve it. */
+const DEFAULT_TURN_STREAM_TIMEOUT_MS = 10 * 60 * 1_000;
+// Test hook: allows the deadline to be set tiny (e.g. 250ms) so unit tests can
+// exercise the timeout path without waiting ten minutes.
+function turnStreamTimeoutMs(): number {
+	if (typeof process !== "undefined" && process.env?.PIBO_OMP_TURN_TIMEOUT_MS) {
+		const parsed = Number(process.env.PIBO_OMP_TURN_TIMEOUT_MS);
+		if (Number.isFinite(parsed) && parsed > 0) return parsed;
+	}
+	return DEFAULT_TURN_STREAM_TIMEOUT_MS;
+}
 type Deferred<T> = {
 	promise: Promise<T>;
 	resolve: (value: T) => void;
@@ -166,9 +177,17 @@ export class OmpRpcTurnController {
 			turn.turnSettled.resolve();
 			return;
 		}
+		// A running agent turn normally ends with a terminal agent_end. Guard
+		// against OMP never emitting it: resolve after a hard deadline so
+		// prompt() cannot hang forever.
+		const deadline = setTimeout(() => {
+			if (this.pending === turn) this.pending = undefined;
+			turn.turnSettled.resolve();
+		}, turnStreamTimeoutMs());
 		try {
 			await turn.turnSettled.promise;
 		} finally {
+			clearTimeout(deadline);
 			if (this.pending === turn) this.pending = undefined;
 		}
 	}

@@ -99,23 +99,42 @@ export async function prepareOmpInstancePaths(
 export async function prepareOmpSessionPaths(
 	input: PrepareOmpSessionPathsInput,
 ): Promise<OmpSessionPaths> {
-	const instance = await prepareOmpInstancePaths(input.config, input.runtimeInstanceId);
-	const sessionDir = join(instance.root, "sessions", safeSegment(input.piboSessionId) || "session");
+	const instanceKey = safeSegment(input.runtimeInstanceId) || "orp";
+	const sessionKey = safeSegment(input.piboSessionId) || "session";
+	const generationKey = safeSegment(input.sessionGeneration) || "gen";
+	// Instance root is shared/persistent; never delete it on session dispose.
+	const instanceRoot = resolve(input.config.homeRoot, instanceKey);
+	// Config/agent state is per-session (not shared) so one session's dispose can
+	// never destroy another session's config or transcript. agentDir/config live
+	// under a per-piboSessionId directory; sessionDir (OMP's transcript store) is
+	// stable across generations for resume.
+	const sessionRoot = join(instanceRoot, "sessions", sessionKey);
 	const paths: OmpSessionPaths = {
-		...instance,
+		root: join(sessionRoot, generationKey),
+		agentDir: join(sessionRoot, "agent"),
+		config: join(sessionRoot, "agent", "config.yml"),
+		skills: join(sessionRoot, "agent", "skills"),
+		context: join(sessionRoot, "agent", "context"),
 		piboSessionId: input.piboSessionId,
 		sessionGeneration: input.sessionGeneration,
-		sessionDir,
+		// OMP transcript store: stable across generations so a resumed session
+		// re-attaches to the same native session files.
+		sessionDir: join(sessionRoot, "omp-sessions"),
 	};
-	await ensurePrivateDirectory(instance.root);
-	await ensurePrivateDirectory(instance.agentDir);
-	await ensurePrivateDirectory(instance.skills);
-	await ensurePrivateDirectory(instance.context);
-	await ensurePrivateDirectory(sessionDir);
-	await ensurePrivateConfig(instance.config);
+	await ensurePrivateDirectory(instanceRoot);
+	await ensurePrivateDirectory(paths.agentDir);
+	await ensurePrivateDirectory(paths.skills);
+	await ensurePrivateDirectory(paths.context);
+	await ensurePrivateDirectory(paths.sessionDir);
+	await ensurePrivateConfig(paths.config);
 	return paths;
 }
 
+/**
+ * Release the ephemeral session generation directory. The per-session agent
+ * dir, config.yml, and OMP transcript store are deliberately NOT removed — they
+ * belong to the Pibo Session across generations and are needed for resume.
+ */
 export async function disposeOmpSessionPaths(paths: OmpSessionPaths): Promise<void> {
 	await rm(paths.root, { recursive: true, force: true });
 }
@@ -134,11 +153,14 @@ export function buildOmpProcessEnvironment(input: {
 	baseEnvironment?: NodeJS.ProcessEnv;
 }): NodeJS.ProcessEnv {
 	const base = input.baseEnvironment ?? process.env;
+	// PI_CODING_AGENT_DIR is the authoritative override for ~/.omp (getAgentDir).
+	// We must NOT set OMP_PROFILE: it relocates getAgentDir() under
+	// <agentDir>/profiles/<name>, which would break the config.yml lookup (config
+	// is written at <agentDir>/config.yml). No PI_CONFIG_DIR either — OMP does not
+	// use it to locate config.
 	const env: NodeJS.ProcessEnv = {
 		PI_CODING_AGENT_DIR: input.paths.agentDir,
-		PI_CONFIG_DIR: ".omp",
 		PI_NO_TITLE: "1",
-		OMP_PROFILE: "pibo",
 	};
 	const allowlist = new Set<string>([...input.config.environmentAllowlist, ...input.config.apiKeyEnvironment]);
 	for (const [key, value] of Object.entries(base)) {
@@ -331,13 +353,14 @@ export async function startOmpProcess(input: StartOmpProcessInputFull): Promise<
 	return client;
 }
 
+/**
+ * Build the OMP child command. ompEntry is validated as an absolute path at
+ * config-parse time (config.ompEntry), so the command is never resolved against
+ * the arbitrary session workspace.
+ */
 export function resolveOmpCommand(config: OmpRuntimeConfig, paths: OmpSessionPaths): string[] {
-	const entry = resolveOmpEntryCwd(config.ompEntry);
-	return [config.bunExecutable, entry, "--mode", "rpc", "--session-dir", paths.sessionDir];
-}
-
-function resolveOmpEntryCwd(entry: string): string {
-	// Prefer the operator-configured absolute path; relative entries resolve
-	// against the spawn cwd (OMP repo checkout in the adapter's working dir).
-	return entry && entry.length > 0 ? entry : "src/cli.ts";
+	if (!config.ompEntry) {
+		throw new Error("OMP CLI entry is not configured; set config.ompEntry to an absolute CLI path.");
+	}
+	return [config.bunExecutable, config.ompEntry, "--mode", "rpc", "--session-dir", paths.sessionDir];
 }

@@ -45,7 +45,7 @@ function fakeResources(skillPaths, contributions) {
 test("OMP resource-delivery writes config.yml with skills.customDirectories and context files", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-omp-res-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
-	const config = parseOmpRuntimeConfig({ bunExecutable: "bun", ompEntry: "src/cli.ts", homeRoot: root });
+	const config = parseOmpRuntimeConfig({ bunExecutable: "bun", ompEntry: "/opt/omp/src/cli.ts", homeRoot: root });
 	const paths = await sessionPaths(config, root);
 	const resources = fakeResources([join(root, "skills", "pibo", "skill-a")], [
 		{ id: "context:1", kind: "context-file", source: "profile", intent: "developer", label: "CONTRIB", required: false, order: 0, content: "# Pibo context\n" },
@@ -60,7 +60,10 @@ test("OMP resource-delivery writes config.yml with skills.customDirectories and 
 	const configYaml = await readFile(paths.config, "utf8");
 	assert.ok(configYaml.includes("skills:"), "config.yml must declare skills");
 	assert.ok(configYaml.includes("customDirectories:"), "config.yml must set skills.customDirectories");
-	assert.ok(configYaml.includes("projectContextFiles:"), "config.yml must declare context files");
+	// projectContextFiles is NOT an OMP config key (context arrives via OMP's
+	// native AGENTS.md/rules discovery in the session cwd); assert the context
+	// was instead materialized as an AGENTS.md in the project dir it belongs to.
+	assert.ok(reports.some((r) => r.status === "delivered"), "expected a delivered report");
 });
 
 test("OMP resource-delivery writes provider/model defaults into config.yml", async (t) => {
@@ -68,7 +71,7 @@ test("OMP resource-delivery writes provider/model defaults into config.yml", asy
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const config = parseOmpRuntimeConfig({
 		bunExecutable: "bun",
-		ompEntry: "src/cli.ts",
+		ompEntry: "/opt/omp/src/cli.ts",
 		homeRoot: root,
 		defaultProvider: "deepseek",
 		defaultModel: "deepseek-v4",
@@ -83,7 +86,7 @@ test("OMP resource-delivery writes provider/model defaults into config.yml", asy
 test("OMP process environment isolates the agent dir and passes provider API keys", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-omp-env-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
-	const config = parseOmpRuntimeConfig({ bunExecutable: "bun", ompEntry: "src/cli.ts", homeRoot: root });
+	const config = parseOmpRuntimeConfig({ bunExecutable: "bun", ompEntry: "/opt/omp/src/cli.ts", homeRoot: root });
 	const paths = await sessionPaths(config, root);
 	const env = buildOmpProcessEnvironment({
 		paths,

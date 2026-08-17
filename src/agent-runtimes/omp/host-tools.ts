@@ -12,7 +12,15 @@ import type {
 	OmpRpcHostToolResult,
 } from "./protocol-types.js";
 
-const MAX_TOOL_CALL_TIMEOUT_MS = 5 * 60_000;
+const DEFAULT_MAX_TOOL_CALL_TIMEOUT_MS = 5 * 60_000;
+// Test hook: lets unit tests exercise the abort-on-timeout path quickly.
+function maxToolCallTimeoutMs(): number {
+	if (typeof process !== "undefined" && process.env?.PIBO_OMP_TOOL_TIMEOUT_MS) {
+		const parsed = Number(process.env.PIBO_OMP_TOOL_TIMEOUT_MS);
+		if (Number.isFinite(parsed) && parsed > 0) return parsed;
+	}
+	return DEFAULT_MAX_TOOL_CALL_TIMEOUT_MS;
+}
 const MAX_RESULT_BYTES = 8 * 1024 * 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -139,6 +147,14 @@ export class OmpHostToolBridge {
 		}
 		const controller = new AbortController();
 		this.activeCalls.set(toolCallId, controller);
+		let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+		// Forward incremental Pibo tool progress as host_tool_update when the tool
+		// callback provides it.
+		const onUpdate = definition.portable === false ? undefined : (update: unknown) => {
+			void this.client
+				.sendSideChannel({ type: "host_tool_update", toolCallId, partialResult: update }, "host_tool_update")
+				.catch(() => {});
+		};
 		try {
 			const prepared = definition.prepareInput ? definition.prepareInput(frame.arguments) : frame.arguments;
 			const result = await Promise.race([
@@ -146,13 +162,19 @@ export class OmpHostToolBridge {
 					toolCallId,
 					prepared,
 					controller.signal,
-					undefined,
+					onUpdate,
 					this.executionContext,
 				),
-				new Promise<never>((_, reject) =>
-					setTimeout(() => reject(new Error(`OMP host tool "${toolName}" timed out.`)), MAX_TOOL_CALL_TIMEOUT_MS),
-				),
+				new Promise<never>((_, reject) => {
+					timeoutHandle = setTimeout(() => {
+						// Abort the underlying Pibo tool so timeout doesn't leak a
+						// still-running background execution.
+						controller.abort();
+						reject(new Error(`OMP host tool "${toolName}" timed out.`));
+					}, maxToolCallTimeoutMs());
+				}),
 			]);
+			clearTimeout(timeoutHandle);
 			const wire = this.sanitize(flattenToolResult(result));
 			await this.client.sendSideChannel({ type: "host_tool_result", toolCallId, result: wire }, "host_tool_result");
 		} catch (error) {
@@ -167,6 +189,7 @@ export class OmpHostToolBridge {
 				// best-effort; the client may already be closing
 			}
 		} finally {
+			if (timeoutHandle) clearTimeout(timeoutHandle);
 			this.activeCalls.delete(toolCallId);
 		}
 	}

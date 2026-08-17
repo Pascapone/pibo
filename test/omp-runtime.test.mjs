@@ -141,10 +141,74 @@ test("OMP runtime config parses and validates provider defaults", async (t) => {
 
 	const minimal = parseOmpRuntimeConfig({
 		bunExecutable: "bun",
-		ompEntry: "src/cli.ts",
+		ompEntry: "/opt/omp/src/cli.ts",
 	});
 	assert.equal(minimal.defaultProvider, undefined);
 	assert.equal(minimal.defaultModel, undefined);
 	assert.ok(minimal.environmentAllowlist.length > 0);
 	assert.ok(minimal.apiKeyEnvironment.includes("OPENAI_API_KEY"));
+});
+
+test("OMP turn controller resolves a stalled stream via the deadline", async (t) => {
+	const root = await testRoot(t, "deadline");
+	// Spawn a fixture that never emits agent_end and set an aggressive deadline.
+	const client = new OmpRpcClient({ startupTimeoutMs: 10_000, requestTimeoutMs: 5_000 });
+	await client.connect([process.execPath, fixturePath], {
+		cwd: root,
+		env: { ...process.env, PI_CODING_AGENT_DIR: join(root, "agent"), OMP_FAKE_HANG_AFTER_PROMPT: "1", PIBO_OMP_TURN_TIMEOUT_MS: "300" },
+	});
+	registerCleanup(t, root, client);
+	const turn = new OmpRpcTurnController(client, () => {});
+	// Deadline is read from the TEST process env (the turn controller lives
+	// here), so set it on process.env around the call.
+	const had = process.env.PIBO_OMP_TURN_TIMEOUT_MS;
+	process.env.PIBO_OMP_TURN_TIMEOUT_MS = "300";
+	const started = Date.now();
+	try {
+		await turn.prompt("stall forever");
+	} finally {
+		if (had === undefined) delete process.env.PIBO_OMP_TURN_TIMEOUT_MS;
+		else process.env.PIBO_OMP_TURN_TIMEOUT_MS = had;
+	}
+	assert.ok(Date.now() - started < 3000, `expected deadline to resolve <3s, took ${Date.now() - started}ms`);
+	assert.equal(turn.streaming, false);
+	turn.dispose();
+});
+
+test("OMP turn/prompt resolves immediately for local-only slash commands", async (t) => {
+	const client = await startClient(t, "slash");
+	const turn = new OmpRpcTurnController(client, () => {});
+	await turn.prompt("/compact");
+	assert.equal(turn.streaming, false);
+	turn.dispose();
+});
+
+test("OMP RPC client redacts credential material from diagnostics", async (t) => {
+	const secret = "sk-abc123XYZsecret99223344";
+	const seen = [];
+	const client = new OmpRpcClient({ startupTimeoutMs: 10_000, requestTimeoutMs: 5_000 });
+	const root = await testRoot(t, "redact");
+	const off = client.subscribeDiagnostics((m) => seen.push(m));
+	await client.connect([process.execPath, fixturePath], {
+		cwd: root,
+		env: { ...process.env, PI_CODING_AGENT_DIR: join(root, "agent"), OMP_FAKE_SECRET_ECHO: secret },
+	});
+	// Allow the stderr echo to flush through the diagnostic pipe.
+	await new Promise((r) => setTimeout(r, 400));
+	off();
+	assert.ok(seen.length > 0, `expected stderr diagnostics, got ${JSON.stringify(seen)}`);
+	for (const line of seen) {
+		assert.ok(!line.includes(secret), `diagnostic leaked secret: ${line}`);
+		assert.ok(line.includes("[redacted]"), `expected redaction marker in: ${line}`);
+	}
+	registerCleanup(t, root, client);
+});
+
+test("OMP client sends set_fast_mode and set_thinking_level wire frames", async (t) => {
+	const client = await startClient(t, "ctrl");
+	await client.request({ type: "set_fast_mode", enabled: true }, "set_fast_mode");
+	await client.request({ type: "set_thinking_level", level: "high" }, "set_thinking_level");
+	// Success responses are returned; if the wire shape were wrong the fixture
+	// would have replied with an error and these requests would have thrown.
+	assert.ok(true);
 });

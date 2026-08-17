@@ -21,6 +21,13 @@ if (args.includes("--version")) {
 }
 
 const rl = readline.createInterface({ input: process.stdin, terminal: false });
+
+// Test hook: emit a credential-looking line on stderr so the client's
+// diagnostic redaction can be observed end-to-end.
+if (process.env.OMP_FAKE_SECRET_ECHO) {
+	process.stderr.write(`provider key: ${process.env.OMP_FAKE_SECRET_ECHO}\n`);
+	process.stderr.write(`Bearer ${process.env.OMP_FAKE_SECRET_ECHO}\n`);
+}
 const write = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
 // Startup handshake
@@ -33,10 +40,23 @@ write({
 });
 
 let streaming = false;
+const hangAfterPrompt = process.env.OMP_FAKE_HANG_AFTER_PROMPT === "1";
 let turnStarted = false;
 const emitTurn = (message) => {
 	if (streaming) return;
 	streaming = true;
+	if (hangAfterPrompt) {
+		// Emit a non-terminal agent_start-ish stream and never conclude, so the
+		// client's stream deadline is the only thing that can resolve the turn.
+		write({ type: "turn_start" });
+		write({ type: "message_start", message: { role: "assistant", content: "" } });
+		write({
+			type: "message_update",
+			message: { role: "assistant", content: "stalled" },
+			assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "stalled", partial: { role: "assistant", content: "stalled" } },
+		});
+		return; // never emit agent_end
+	}
 	// user msg
 	write({ type: "message_start", message: { role: "user", content: message } });
 	write({ type: "turn_start" });
@@ -148,6 +168,26 @@ rl.on("line", (line) => {
 			break;
 		case "set_thinking_level":
 			write({ id, type: "response", command: "set_thinking_level", success: true });
+			break;
+		case "set_fast_mode":
+			write({ id, type: "response", command: "set_fast_mode", success: true, data: { enabled: Boolean(cmd.enabled), active: Boolean(cmd.enabled) } });
+			break;
+		case "switch_session":
+			write({ id, type: "response", command: "switch_session", success: true, data: { cancelled: false, sessionPath: cmd.sessionPath } });
+			break;
+		case "get_branch_messages":
+			write({
+				id,
+				type: "response",
+				command: "get_branch_messages",
+				success: true,
+				data: {
+					messages: [
+						{ entryId: "fork-1", text: "hi" },
+						{ entryId: "fork-2", text: "hello" },
+					],
+				},
+			});
 			break;
 		case "get_login_providers":
 			write({

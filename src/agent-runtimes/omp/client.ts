@@ -183,8 +183,19 @@ export class OmpRpcClient {
 		return () => this.diagnosticListeners.delete(listener);
 	}
 
+	/**
+	 * Redact likely credential material before surfacing a diagnostic, so OMP
+	 * stderr (which may echo prompts or provider keys) cannot leak secrets.
+	 */
+	private static redactDiagnostic(message: string): string {
+		return message
+			.replace(/\b(?:sk|rk|pk|ghp|github_pat)[-_][A-Za-z0-9._~+/-]{8,}\b/g, "[redacted]")
+			.replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+			.replace(/\b(?:api[_-]?key|secret|token|password)\b(?=[:=]\s*)\s*[^\s,;]+/gi, "$1 [redacted]");
+	}
+
 	private emitDiagnostic(message: string): void {
-		for (const listener of this.diagnosticListeners) listener(message);
+		for (const listener of this.diagnosticListeners) listener(OmpRpcClient.redactDiagnostic(message));
 	}
 
 	/**
@@ -329,6 +340,27 @@ export class OmpRpcClient {
 	}
 
 	private consumeChunk(frame: OmpRpcChunkFrame): string | undefined {
+		// Validate frame bounds first so an out-of-range index can never create a
+		// sparse array that Buffer.concat later turns into an uncaught TypeError.
+		if (!Number.isSafeInteger(frame.index) || frame.index < 0 || frame.index >= frame.count) {
+			this.chunks.delete(frame.chunkId);
+			this.emitDiagnostic(`OMP chunk frame has an invalid index ${frame.index} (dropped).`);
+			return undefined;
+		}
+		let decoded: Buffer;
+		try {
+			decoded = Buffer.from(frame.data, "base64");
+			// Reject invalid base64 (empty/garbage) before it becomes a hole.
+			if (frame.data.length === 0 && frame.byteLength > 0) {
+				this.chunks.delete(frame.chunkId);
+				this.emitDiagnostic(`OMP chunk frame carries empty base64 payload (dropped).`);
+				return undefined;
+			}
+		} catch {
+			this.chunks.delete(frame.chunkId);
+			this.emitDiagnostic(`OMP chunk frame base64 decode failed (dropped).`);
+			return undefined;
+		}
 		const existing = this.chunks.get(frame.chunkId);
 		if (existing) {
 			if (existing.count !== frame.count || existing.byteLength !== frame.byteLength) {
@@ -336,15 +368,19 @@ export class OmpRpcClient {
 				this.emitDiagnostic(`OMP chunk frame metadata mismatch (dropped).`);
 				return undefined;
 			}
-			existing.parts[frame.index] = Buffer.from(frame.data, "base64");
+			// Must be the next in-order chunk; reject duplicates/holes/out-of-order.
+			if (frame.index !== existing.parts.length) {
+				this.chunks.delete(frame.chunkId);
+				this.emitDiagnostic(`OMP chunk frame arrived out of order (expected index ${existing.parts.length}, got ${frame.index}); dropped.`);
+				return undefined;
+			}
+			existing.parts.push(decoded);
 		} else {
 			if (frame.index !== 0) {
 				this.emitDiagnostic(`OMP chunk frame sequence did not start at index 0 (dropped).`);
 				return undefined;
 			}
-			const parts: Buffer[] = [];
-			parts[0] = Buffer.from(frame.data, "base64");
-			this.chunks.set(frame.chunkId, { count: frame.count, byteLength: frame.byteLength, parts });
+			this.chunks.set(frame.chunkId, { count: frame.count, byteLength: frame.byteLength, parts: [decoded] });
 		}
 		const acc = this.chunks.get(frame.chunkId)!;
 		if (acc.parts.length < acc.count) return undefined;

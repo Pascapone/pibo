@@ -121,3 +121,14 @@ function unknownOmpStatus(): AgentRuntimeAuthStatus {
 }
 
 export type { AgentRuntimeAuthPendingFlow as OmpAuthPendingFlow };
+/** Product-safe fallback status when the engine is unavailable. */
+export function unknownOmpStatusForAdapter(): AgentRuntimeAuthStatus {
+	return {
+		id: "orp",
+		displayName: "OMP providers",
+		state: "unsupported" as AgentRuntimeAuthState,
+		configured: false,
+		methods: OMP_AUTH_METHODS,
+		details: { accountType: "api_key" },
+	};
+}

@@ -27,6 +27,7 @@ export type OmpSessionSnapshot = {
  */
 export class OmpThreadController {
 	private snapshot: OmpSessionSnapshot;
+	private forkCandidatesCache: AgentRuntimeForkCandidate[] = [];
 
 	constructor(
 		private readonly client: OmpRpcClient,
@@ -79,7 +80,8 @@ export class OmpThreadController {
 		return [{ ...snapshot, messageCount: this.snapshot.messageCount, name: this.snapshot.sessionName }];
 	}
 
-	async getForkCandidates(runtimeInstanceId: string): Promise<AgentRuntimeForkCandidate[]> {
+	/** Fetch branch candidates from OMP and cache them for the sync SPI. */
+	async loadForkCandidates(runtimeInstanceId: string): Promise<AgentRuntimeForkCandidate[]> {
 		try {
 			const result = await this.client.request({ type: "get_branch_messages" }, "get_branch_messages");
 			const data = result["data" as keyof typeof result];
@@ -98,13 +100,20 @@ export class OmpThreadController {
 							}
 						}
 					}
+					this.forkCandidatesCache = candidates;
 					return candidates;
 				}
 			}
 		} catch {
 			// Branch candidates are optional; fall through to empty.
 		}
+		this.forkCandidatesCache = [];
 		return [];
+	}
+
+	/** Sync accessor for the SPI (get_available_commands via a warm-up load). */
+	cachedForkCandidates(): AgentRuntimeForkCandidate[] {
+		return this.forkCandidatesCache;
 	}
 
 	async forkSession(

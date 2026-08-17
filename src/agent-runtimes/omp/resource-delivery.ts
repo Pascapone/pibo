@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type {
 	AgentRuntimeContextContribution,
 	AgentRuntimeDeliveryReport,
@@ -20,12 +20,27 @@ function boundedString(value: unknown, label: string): string {
 	return typeof value === "string" ? value.slice(0, 4096) : label;
 }
 
+/** Longest common ancestor (dir) of a set of absolute file/dir paths. */
+function commonParent(paths: readonly string[]): string | undefined {
+	if (paths.length === 0) return undefined;
+	const segs = paths.map((p) => resolve(p).split(/[\\/]/));
+	let i = 0;
+	while (segs[0][i] !== undefined && segs.every((s) => s[i] === segs[0][i])) i++;
+	return segs[0].slice(0, i).join("/");
+}
+
 /**
  * Materializes Pibo-selected skills and context into the isolated OMP agent
- * dir (`PI_CODING_AGENT_DIR`), and writes the OMP `config.yml` including the
- * `skills.customDirectories` pointer plus provider/model defaults. The real
- * project's `.omp/skills`, `AGENTS.md` are untouched — OMP keeps discovering
- * them natively.
+ * dir (`PI_CODING_AGENT_DIR`) and writes the OMP `config.yml` including
+ * `skills.customDirectories` (pointing at the directory the resource-service
+ * populated with `<skillName>/SKILL.md` entries OMP actually discovers) plus
+ * provider/model defaults. The real project's `.omp/skills`, `AGENTS.md` are
+ * untouched — OMP keeps discovering them natively.
+ *
+ * Called BEFORE spawning OMP: OMP reads config.yml at startup, and
+ * `skills.customDirectories` dirs are scanned for `<skill>/SKILL.md` subdirs on
+ * every session start. The resource-service materializes shared content before
+ * `openSession` returns, so `getSkillPaths("materialized")` are already valid.
  */
 export class OmpResourceDelivery {
 	constructor(
@@ -38,9 +53,19 @@ export class OmpResourceDelivery {
 		return this.paths.config;
 	}
 
-	get skillPaths(): readonly string[] {
+	/**
+	 * Skill directories OMP should scan, derived from the materialized paths.
+	 * `copyAgentRuntimeSkillDirectory` yields `<skillsRoot>/<skillName>/SKILL.md`;
+	 * OMP's `scanSkillsFromDir` scans a dir containing `<skill>/SKILL.md`
+	 * subdirs, which is the common parent of every materialized SKILL.md.
+	 */
+	get customSkillDirectories(): readonly string[] {
 		if (!this.resources) return [];
-		return this.resources.getSkillPaths("materialized");
+		const materialized = this.resources.getSkillPaths("materialized");
+		if (materialized.length === 0) return [];
+		const dirs = materialized.map((p) => dirname(resolve(p)));
+		const shared = commonParent(dirs);
+		return shared ? [shared] : dirs;
 	}
 
 	/**
@@ -52,27 +77,29 @@ export class OmpResourceDelivery {
 		const reports: AgentRuntimeDeliveryReport[] = [];
 		const diagnostics: AgentRuntimeResourceDiagnostic[] = [];
 
+		// Context contributions are surfaced for debug/diagnostics. OMP does not
+		// read a `projectContextFiles` config key; project context arrives via its
+		// own AGENTS.md/rules discovery in the session cwd, so there is no engine
+		// injection seam here. We materialize them under the adapter context dir
+		// and report delivery.
 		const contributions = this.resources?.getContextContributions() ?? [];
 		const totalBytes = contributions.reduce((sum, c) => sum + (c.byteSize ?? c.content?.length ?? 0), 0);
 		if (contributions.length > MAX_CONTEXT_CONTRIBUTIONS || totalBytes > MAX_CONTEXT_BYTES) {
 			diagnostics.push({
 				severity: "warning",
-				code: "omp_context_exceeds_limit",
+				code: "orp_context_exceeds_limit",
 				message: "Pibo context contributions exceed the OMP materialization limit; excess is omitted.",
 			});
 		}
-
-		// Context: write Pibo context contributions into the isolated context dir.
 		await mkdir(this.paths.context, { recursive: true });
-		const contextRefs: string[] = [];
 		for (const contribution of contributions.slice(0, MAX_CONTEXT_CONTRIBUTIONS)) {
-			const safeName = relative(this.paths.root, contribution.id) || `contribution-${reports.length}`;
-			const fileName = safeName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "contribution.md";
-			const target = join(this.paths.context, `${reports.length}-${fileName}`);
+			const safeName = (contribution.label || `contribution-${reports.length}`)
+				.replace(/[^A-Za-z0-9._-]+/g, "-")
+				.replace(/^-+|-+$/g, "")
+				.slice(0, 64) || "contribution.md";
+			const target = join(this.paths.context, `${reports.length}-${safeName}.md`);
 			try {
-				const content = contribution.content ?? "";
-				await writeFile(target, content, "utf8");
-				contextRefs.push(target);
+				await writeFile(target, contribution.content ?? "", "utf8");
 				reports.push({
 					contributionId: contribution.id,
 					status: "delivered",
@@ -98,21 +125,14 @@ export class OmpResourceDelivery {
 			}
 		}
 
-		// Skills: OMP discovers selected Pibo skills via skills.customDirectories.
-		const skillsDir = this.paths.skills;
-		await mkdir(dirname(skillsDir), { recursive: true });
-		const customDirectories: readonly string[] = this.skillPaths.length > 0 ? [resolve(skillsDir)] : [];
-
-		// Write config.yml.
-		await this.writeConfig({ contextRefs, customDirectories });
+		// Skills: point OMP at directories populated with <skillName>/SKILL.md.
+		const customDirectories: readonly string[] = this.customSkillDirectories;
+		await this.writeConfig({ customDirectories });
 
 		return { reports, diagnostics };
 	}
 
-	private async writeConfig(opts: {
-		contextRefs: readonly string[];
-		customDirectories: readonly string[];
-	}): Promise<void> {
+	private async writeConfig(opts: { customDirectories: readonly string[] }): Promise<void> {
 		const lines: string[] = [];
 		lines.push("setupVersion: 1");
 		if (this.config.defaultProvider && this.config.defaultModel) {
@@ -124,12 +144,6 @@ export class OmpResourceDelivery {
 			lines.push(`  customDirectories:`);
 			for (const dir of opts.customDirectories) {
 				lines.push(`    - ${JSON.stringify(dir)}`);
-			}
-		}
-		if (opts.contextRefs.length > 0) {
-			lines.push(`projectContextFiles:`);
-			for (const ref of opts.contextRefs) {
-				lines.push(`  - ${JSON.stringify(ref)}`);
 			}
 		}
 		await mkdir(dirname(this.paths.config), { recursive: true });

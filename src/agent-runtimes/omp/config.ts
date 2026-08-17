@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { piboHomePath } from "../../core/pibo-home.js";
 import type { PiboJsonObject } from "../../core/events.js";
 
@@ -180,13 +179,31 @@ function nonEmptyString(value: unknown, fallback: string, label: string): string
 	return selected.trim();
 }
 
+
+/**
+ * Resolve the OMP CLI entry. An empty value means "not yet configured" (the
+ * operator supplies it via runtime-instance config); diagnose() surfaces that.
+ * A non-empty value MUST be an absolute path — resolving it against the session
+ * workspace would silently target the wrong executable.
+ */
+function absolutePathOrEmpty(value: unknown, label: string): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		return "";
+	}
+	const candidate = value.trim();
+	if (!(candidate.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(candidate))) {
+		throw new Error(label + " must be an absolute path to the OMP CLI entry; got \"" + candidate + "\"");
+	}
+	return candidate;
+}
+
 export function parseOmpRuntimeConfig(value: PiboJsonObject): OmpRuntimeConfig {
 	const record = value ?? {};
 	const provider = optionalString(record.defaultProvider);
 	const model = optionalString(record.defaultModel);
 	const config: OmpRuntimeConfig = {
 		bunExecutable: nonEmptyString(record.bunExecutable, "bun", "bunExecutable"),
-		ompEntry: nonEmptyString(record.ompEntry, "", "ompEntry"),
+		ompEntry: absolutePathOrEmpty(record.ompEntry, "ompEntry"),
 		homeRoot: nonEmptyString(record.homeRoot, piboHomePath("agent-runtimes", "omp"), "homeRoot"),
 		environmentAllowlist: stringAllowlist(
 			record.environmentAllowlist,
@@ -221,7 +238,3 @@ function optionalString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-export function resolveOmpEntry(cwd: string, entry: string): string {
-	if (!entry) return "";
-	return resolve(cwd, entry);
-}
