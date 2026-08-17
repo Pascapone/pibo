@@ -63,7 +63,7 @@ test("default registry catalogs Web Annotation tools without selecting them in a
 		assert.equal(toolInfo.hasDefinition, true);
 	}
 
-	assert.deepEqual(registry.getProfileNames(), ["base", "codex-native"]);
+	assert.deepEqual(registry.getProfileNames(), ["base", "codex-native", "orp"]);
 	const base = registry.createProfile("base");
 	for (const name of WEB_ANNOTATION_TOOL_NAMES) {
 		assert.equal(base.tools.some((tool) => tool.name === name), false, `${name} should not be selected by base`);
