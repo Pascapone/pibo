@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import {
@@ -157,6 +158,7 @@ export type PiboProfileInspection = {
 	builtinTools: InitialSessionContext["builtinTools"];
 	builtinToolNames: readonly string[];
 	autoContextFiles: boolean;
+	nativeSubagents?: boolean;
 	toolPackages: InitialSessionContext["toolPackages"];
 	skills: Array<{ name: string; path: string }>;
 	tools: Array<{ name: string; hasDefinition: boolean; registered: boolean; active: boolean }>;
@@ -209,6 +211,17 @@ function createSessionContextFile(context: PiboRuntimeSessionContext | undefined
 	};
 }
 
+function contextFileIdentity(path: string): string {
+	if (path.includes("://")) return path;
+	let canonical: string;
+	try {
+		canonical = realpathSync(path);
+	} catch {
+		canonical = resolve(path);
+	}
+	return process.platform === "win32" ? canonical.toLowerCase() : canonical;
+}
+
 function mergeContextFiles(
 	base: Array<{ path: string; content: string }>,
 	additional: Array<{ path: string; content: string }>,
@@ -217,8 +230,9 @@ function mergeContextFiles(
 	const merged: Array<{ path: string; content: string }> = [];
 
 	for (const contextFile of [...base, ...additional]) {
-		if (seen.has(contextFile.path)) continue;
-		seen.add(contextFile.path);
+		const identity = contextFileIdentity(contextFile.path);
+		if (seen.has(identity)) continue;
+		seen.add(identity);
 		merged.push(contextFile);
 	}
 
@@ -337,8 +351,8 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 	}) => {
 		const contextGuardRecovery = createPiboAssistantContextGuardRecovery();
 		const resourceContextFiles = options.resources?.getContextContributions()
-			.flatMap((contribution) => contribution.content === undefined ? [] : [{
-				path: contribution.path ?? contribution.sourcePath ?? contribution.materializedPath ?? contribution.id,
+			.flatMap((contribution) => contribution.content === undefined || contribution.nativeDiscovered ? [] : [{
+				path: contribution.sourcePath ?? contribution.path ?? contribution.materializedPath ?? contribution.id,
 				content: contribution.content,
 			}]);
 		const contextFiles = resourceContextFiles ?? await loadContextFiles(runtimeCwd, profile.contextFiles);
@@ -581,6 +595,7 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,
+		nativeSubagents: profile.nativeSubagents,
 		toolPackages: profile.toolPackages,
 	});
 	const hasEnabledSubagents = profile.subagents.some((subagent) => subagent.enabled !== false);
@@ -631,6 +646,7 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 			builtinTools: profile.builtinTools,
 			builtinToolNames: [...profile.builtinToolNames],
 			autoContextFiles: profile.autoContextFiles,
+			nativeSubagents: profile.nativeSubagents,
 			toolPackages: { ...profile.toolPackages },
 			skills: resourceLoader.getSkills().skills.map((skill) => ({
 				name: skill.name,

@@ -254,6 +254,10 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		});
 	}
 
+	getDataStore(): PiboDataStore {
+		return this.dataStore;
+	}
+
 	getTelemetryStore() {
 		return this.dataStore.telemetry;
 	}

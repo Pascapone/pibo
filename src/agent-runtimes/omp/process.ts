@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
 import { OmpRpcClient } from "./client.js";
@@ -71,15 +71,17 @@ function nodeErrorCode(error: unknown): string | undefined {
 
 async function ensurePrivateDirectory(path: string): Promise<void> {
 	await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+	await chmod(path, PRIVATE_DIRECTORY_MODE);
 }
 
 async function ensurePrivateConfig(path: string): Promise<void> {
-	await mkdir(dirname(path), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+	await ensurePrivateDirectory(dirname(path));
 	try {
 		await stat(path);
 	} catch {
 		await writeFile(path, "", { mode: PRIVATE_FILE_MODE });
 	}
+	await chmod(path, PRIVATE_FILE_MODE);
 }
 
 export async function prepareOmpInstancePaths(
@@ -137,6 +139,18 @@ export async function prepareOmpSessionPaths(
  */
 export async function disposeOmpSessionPaths(paths: OmpSessionPaths): Promise<void> {
 	await rm(paths.root, { recursive: true, force: true });
+}
+
+/** Ensure an unbound/start-fresh Pibo binding cannot inherit an older OMP transcript or portable handoff. */
+export async function resetOmpNativeSession(paths: OmpSessionPaths): Promise<void> {
+	await Promise.all([
+		rm(paths.sessionDir, { recursive: true, force: true }),
+		rm(paths.context, { recursive: true, force: true }),
+	]);
+	await Promise.all([
+		ensurePrivateDirectory(paths.sessionDir),
+		ensurePrivateDirectory(paths.context),
+	]);
 }
 
 /**
@@ -358,9 +372,21 @@ export async function startOmpProcess(input: StartOmpProcessInputFull): Promise<
  * config-parse time (config.ompEntry), so the command is never resolved against
  * the arbitrary session workspace.
  */
-export function resolveOmpCommand(config: OmpRuntimeConfig, paths: OmpSessionPaths): string[] {
+export function resolveOmpCommand(
+	config: OmpRuntimeConfig,
+	paths: OmpSessionPaths,
+	appendSystemPromptPath?: string,
+): string[] {
 	if (!config.ompEntry) {
 		throw new Error("OMP CLI entry is not configured; set config.ompEntry to an absolute CLI path.");
 	}
-	return [config.bunExecutable, config.ompEntry, "--mode", "rpc", "--session-dir", paths.sessionDir];
+	return [
+		config.bunExecutable,
+		config.ompEntry,
+		"--mode",
+		"rpc",
+		"--session-dir",
+		paths.sessionDir,
+		...(appendSystemPromptPath ? ["--append-system-prompt", appendSystemPromptPath] : []),
+	];
 }

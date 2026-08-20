@@ -76,7 +76,9 @@ import {
 	createDefaultCustomAgentStore,
 	previewCustomAgentCreate,
 	previewCustomAgentUpdate,
+	type CreateCustomAgentInput,
 	type CustomAgentDefinition,
+	type UpdateCustomAgentInput,
 } from "./agent-store.js";
 import {
 	loadPiboModelDefaults,
@@ -1570,6 +1572,7 @@ function serializeCustomAgents(agents: readonly CustomAgentDefinition[], context
 const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
 	"runtimeInstanceId",
 	"runtimeOptions",
+	"nativeSubagents",
 	"nativeTools",
 	"skills",
 	"contextFiles",
@@ -1593,6 +1596,39 @@ const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
 
 function customAgentUpdateAffectsRuntime(update: object): boolean {
 	return Object.keys(update).some((field) => RUNTIME_PROFILE_UPDATE_FIELDS.has(field));
+}
+
+function normalizeCreateRuntimeFeatureOverrides(
+	input: CreateCustomAgentInput,
+	context: PiboWebAppContext,
+): CreateCustomAgentInput {
+	const runtime = context.channelContext.getCapabilityCatalog?.().agentRuntimes
+		?.find((candidate) => candidate.id === input.runtimeInstanceId);
+	if (!runtime) return input;
+	return {
+		...input,
+		...(runtime.capabilities.contextDiscovery.configurable
+			? { autoContextFiles: input.autoContextFiles }
+			: { autoContextFiles: true }),
+		...(runtime.capabilities.nativeSubagents.configurable
+			? { nativeSubagents: input.nativeSubagents }
+			: { nativeSubagents: undefined }),
+	};
+}
+
+function normalizeUpdateRuntimeFeatureOverrides(
+	input: UpdateCustomAgentInput,
+	runtimeInstanceId: string,
+	context: PiboWebAppContext,
+): UpdateCustomAgentInput {
+	const runtime = context.channelContext.getCapabilityCatalog?.().agentRuntimes
+		?.find((candidate) => candidate.id === runtimeInstanceId);
+	if (!runtime) return input;
+	return {
+		...input,
+		...(runtime.capabilities.contextDiscovery.configurable ? {} : { autoContextFiles: true }),
+		...(runtime.capabilities.nativeSubagents.configurable ? {} : { nativeSubagents: null }),
+	};
 }
 
 async function requireValidCustomAgentRuntime(agent: CustomAgentDefinition, context: PiboWebAppContext): Promise<void> {
@@ -5317,7 +5353,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const input = createAgentInput(body);
+				const input = normalizeCreateRuntimeFeatureOverrides(createAgentInput(body), context);
 				requireAgentProfileNameAvailable(state, context, input.displayName);
 				await requireValidCustomAgentRuntime(previewCustomAgentCreate(input), context);
 				const agent = state.agentStore.create(input);
@@ -5332,7 +5368,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const existing = requireSharedAgent(state.agentStore.get(patchAgentId));
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const update = createAgentUpdate(body);
+				const rawUpdate = createAgentUpdate(body);
+				const update = normalizeUpdateRuntimeFeatureOverrides(
+					rawUpdate,
+					rawUpdate.runtimeInstanceId ?? existing.runtimeInstanceId,
+					context,
+				);
 				const archived = normalizeAgentArchived(body.archived);
 				if (update.displayName) requireAgentProfileNameAvailable(state, context, update.displayName, existing.id);
 				if (customAgentUpdateAffectsRuntime(update)) {
@@ -5592,6 +5633,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (body.state !== undefined && body.state !== "unbound" && body.state !== "bound") {
 					throw new PiboWebHttpError("state must be unbound or bound", 400);
 				}
+				if (body.startFresh !== undefined && typeof body.startFresh !== "boolean") {
+					throw new PiboWebHttpError("startFresh must be a boolean", 400);
+				}
 				const locator = body.locator;
 				const locatorKinds = new Set(["local-file", "local-directory", "uri", "remote", "adapter-resolved"]);
 				if (
@@ -5611,6 +5655,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						nativeSessionId: typeof body.nativeSessionId === "string" && body.nativeSessionId.trim() ? body.nativeSessionId.trim() : undefined,
 						state: body.state as "unbound" | "bound" | undefined,
 						locator: locator as { kind: "local-file" | "local-directory" | "uri" | "remote" | "adapter-resolved"; value?: string } | undefined,
+						startFresh: body.startFresh === true,
 						expectedRevision: Number(body.expectedRevision),
 					});
 					const updated = context.channelContext.getSession(selectedSession.id);
@@ -5618,7 +5663,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					return responseJson({ binding });
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					const status = /concurrently|idle/i.test(message) ? 409 : 400;
+					const status = /concurrently|idle|quiescing/i.test(message) ? 409 : 400;
 					throw new PiboWebHttpError(message, status);
 				}
 			}

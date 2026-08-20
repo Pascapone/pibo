@@ -24,6 +24,7 @@ export type CustomAgentDefinition = {
 	description?: string;
 	runtimeInstanceId: string;
 	runtimeOptions: PiboJsonObject;
+	nativeSubagents?: boolean;
 	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];
@@ -55,6 +56,7 @@ export type CreateCustomAgentInput = {
 	description?: string;
 	runtimeInstanceId?: string;
 	runtimeOptions?: PiboJsonObject;
+	nativeSubagents?: boolean;
 	nativeTools?: string[];
 	skills?: string[];
 	contextFiles?: string[];
@@ -76,7 +78,10 @@ export type CreateCustomAgentInput = {
 	goalControl?: boolean;
 };
 
-export type UpdateCustomAgentInput = Partial<CreateCustomAgentInput>;
+export type UpdateCustomAgentInput = Omit<Partial<CreateCustomAgentInput>, "nativeSubagents" | "autoContextFiles"> & {
+	nativeSubagents?: boolean | null;
+	autoContextFiles?: boolean | null;
+};
 
 type AgentRow = {
 	id: string;
@@ -85,6 +90,7 @@ type AgentRow = {
 	description: string | null;
 	runtime_instance_id: string;
 	runtime_options_json: string;
+	native_subagents: 0 | 1 | null;
 	native_tools_json: string;
 	skills_json: string;
 	context_files_json: string;
@@ -123,6 +129,7 @@ export function previewCustomAgentCreate(
 		description: input.description,
 		runtimeInstanceId: sanitizeRuntimeInstanceId(input.runtimeInstanceId),
 		runtimeOptions: cloneRuntimeOptions(input.runtimeOptions),
+		nativeSubagents: sanitizeBoolean(input.nativeSubagents),
 		nativeTools: [...(input.nativeTools ?? [])],
 		skills: [...(input.skills ?? [])],
 		contextFiles: [...(input.contextFiles ?? [])],
@@ -139,7 +146,7 @@ export function previewCustomAgentCreate(
 		subagentFast: sanitizeBoolean(input.subagentFast),
 		builtinTools: input.builtinTools ?? "default",
 		builtinToolNames: sanitizeBuiltinToolNames(input.builtinToolNames),
-		autoContextFiles: input.autoContextFiles ?? true,
+		autoContextFiles: sanitizeBoolean(input.autoContextFiles) ?? true,
 		runControl: input.runControl ?? false,
 		goalControl: input.goalControl ?? true,
 		createdAt: now,
@@ -160,6 +167,7 @@ export function previewCustomAgentUpdate(
 		description: input.description === undefined ? existing.description : input.description,
 		runtimeInstanceId: input.runtimeInstanceId === undefined ? existing.runtimeInstanceId : sanitizeRuntimeInstanceId(input.runtimeInstanceId),
 		runtimeOptions: input.runtimeOptions === undefined ? existing.runtimeOptions : cloneRuntimeOptions(input.runtimeOptions),
+		nativeSubagents: input.nativeSubagents === undefined ? existing.nativeSubagents : sanitizeBoolean(input.nativeSubagents),
 		nativeTools: input.nativeTools ? [...input.nativeTools] : existing.nativeTools,
 		skills: input.skills ? [...input.skills] : existing.skills,
 		contextFiles: input.contextFiles ? [...input.contextFiles] : existing.contextFiles,
@@ -176,7 +184,9 @@ export function previewCustomAgentUpdate(
 		subagentFast: input.subagentFast === undefined ? existing.subagentFast : sanitizeBoolean(input.subagentFast),
 		builtinTools: input.builtinTools ?? existing.builtinTools,
 		builtinToolNames: input.builtinToolNames ? sanitizeBuiltinToolNames(input.builtinToolNames) : existing.builtinToolNames,
-		autoContextFiles: input.autoContextFiles ?? existing.autoContextFiles,
+		autoContextFiles: input.autoContextFiles === undefined
+			? existing.autoContextFiles
+			: sanitizeBoolean(input.autoContextFiles) ?? true,
 		runControl: input.runControl ?? existing.runControl,
 		goalControl: input.goalControl ?? existing.goalControl,
 		updatedAt: options.now ?? new Date().toISOString(),
@@ -201,6 +211,7 @@ export class CustomAgentStore {
 				description TEXT,
 				runtime_instance_id TEXT NOT NULL DEFAULT 'pi',
 				runtime_options_json TEXT NOT NULL DEFAULT '{}',
+				native_subagents INTEGER,
 				native_tools_json TEXT NOT NULL,
 				skills_json TEXT NOT NULL,
 				context_files_json TEXT NOT NULL,
@@ -229,6 +240,7 @@ export class CustomAgentStore {
 		this.migrateProfileAliasTable();
 		this.migrateArchivedAtColumn();
 		this.migrateAutoContextFilesColumn();
+		this.migrateNativeSubagentsColumn();
 		this.migrateMcpServersColumn();
 		this.migrateRuntimeColumns();
 		this.migratePiPackagesColumn();
@@ -282,6 +294,7 @@ export class CustomAgentStore {
 					description = ?,
 					runtime_instance_id = ?,
 					runtime_options_json = ?,
+					native_subagents = ?,
 					native_tools_json = ?,
 					skills_json = ?,
 					context_files_json = ?,
@@ -310,6 +323,7 @@ export class CustomAgentStore {
 				updated.description ?? null,
 				updated.runtimeInstanceId,
 				JSON.stringify(updated.runtimeOptions),
+				serializeBoolean(updated.nativeSubagents),
 				JSON.stringify(updated.nativeTools),
 				JSON.stringify(updated.skills),
 				JSON.stringify(updated.contextFiles),
@@ -366,6 +380,7 @@ export class CustomAgentStore {
 					description,
 					runtime_instance_id,
 					runtime_options_json,
+					native_subagents,
 					native_tools_json,
 					skills_json,
 					context_files_json,
@@ -388,7 +403,7 @@ export class CustomAgentStore {
 					created_at,
 					updated_at,
 					archived_at
-				) VALUES (${Array.from({ length: 28 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 29 }, () => "?").join(", ")})
 			`)
 			.run(
 				agent.id,
@@ -397,6 +412,7 @@ export class CustomAgentStore {
 				agent.description ?? null,
 				agent.runtimeInstanceId,
 				JSON.stringify(agent.runtimeOptions),
+				serializeBoolean(agent.nativeSubagents),
 				JSON.stringify(agent.nativeTools),
 				JSON.stringify(agent.skills),
 				JSON.stringify(agent.contextFiles),
@@ -536,11 +552,14 @@ export class CustomAgentStore {
 	}
 
 	private migrateAutoContextFilesColumn(): void {
-		const columns = new Set(
-			(this.db.prepare("PRAGMA table_info(chat_agents)").all() as Array<{ name: string }>).map((column) => column.name),
-		);
-		if (!columns.has("auto_context_files")) {
+		if (!this.tableColumns().has("auto_context_files")) {
 			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN auto_context_files INTEGER NOT NULL DEFAULT 1").run();
+		}
+	}
+
+	private migrateNativeSubagentsColumn(): void {
+		if (!this.tableColumns().has("native_subagents")) {
+			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN native_subagents INTEGER").run();
 		}
 	}
 
@@ -780,6 +799,7 @@ function agentFromRow(row: AgentRow, profileAliases: readonly string[]): CustomA
 		description: row.description ?? undefined,
 		runtimeInstanceId: sanitizeRuntimeInstanceId(row.runtime_instance_id),
 		runtimeOptions: parseRuntimeOptions(row.runtime_options_json),
+		nativeSubagents: parseBoolean(row.native_subagents),
 		nativeTools: parseStringArray(row.native_tools_json),
 		skills: parseStringArray(row.skills_json),
 		contextFiles: parseStringArray(row.context_files_json),

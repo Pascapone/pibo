@@ -440,6 +440,19 @@ export type CodexAppServerThreadReadResponse = {
 	thread: CodexAppServerThread;
 };
 
+export type CodexAppServerThreadInjectItemsParams = {
+	threadId: string;
+	items: CodexAppServerJson[];
+};
+
+export type CodexAppServerThreadInjectItemsResponse = Record<string, never>;
+
+export type CodexAppServerThreadCompactStartParams = {
+	threadId: string;
+};
+
+export type CodexAppServerThreadCompactStartResponse = Record<string, never>;
+
 export type CodexAppServerThreadSourceKind =
 	| "cli"
 	| "vscode"

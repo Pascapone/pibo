@@ -72,7 +72,7 @@ function unboundBinding(instanceId, piboSessionId) {
 	};
 }
 
-function openInput(instanceId, workspace, binding, activeMessageId = "pibo-message-1") {
+function openInput(instanceId, workspace, binding, activeMessageId = "pibo-message-1", historyHandoff) {
 	const selectedProfile = profile(instanceId);
 	const piboSession = createPiboSession({
 		id: binding.piboSessionId,
@@ -87,6 +87,7 @@ function openInput(instanceId, workspace, binding, activeMessageId = "pibo-messa
 		profile: selectedProfile,
 		binding,
 		workspace,
+		...(historyHandoff ? { historyHandoff } : {}),
 		productContext: {
 			piboSessionId: piboSession.id,
 			getActiveMessage: () => ({ id: activeMessageId, source: "user" }),
@@ -184,6 +185,87 @@ test("Codex native normalizes assistant, reasoning, usage, terminal ordering, an
 	assert.equal(resumedState.threads[firstBinding.nativeSessionId].turns.length, 2);
 	assert.equal(resumed.controls.getForkCandidates().length, 2);
 	await resumed.dispose();
+});
+
+test("Codex native imports portable history with thread/inject_items before the first prompt", async (t) => {
+	const root = await testRoot(t);
+	const { registry, instanceId } = createAdapter(root, "codex-native-history-import");
+	const binding = unboundBinding(instanceId, "ps_codex_history_import");
+	const historyHandoff = {
+		mode: "import",
+		history: {
+			version: 1,
+			piboSessionId: binding.piboSessionId,
+			sourceRuntimeInstanceId: "pi",
+			sourceAdapterId: "pi",
+			checkpoint: { maxSessionSequence: 4, createdAt: "2026-08-20T00:00:00.000Z" },
+			entries: [
+				{ id: "u1", type: "message", source: "product", createdAt: "2026-08-20T00:00:00.000Z", role: "user", content: "Portable question", status: "complete" },
+				{ id: "a1", type: "message", source: "product", createdAt: "2026-08-20T00:00:01.000Z", role: "assistant", content: [{ type: "tool_call", toolCallId: "call-1", toolName: "lookup", input: { query: "portable" } }], status: "complete" },
+				{ id: "t1", type: "message", source: "product", createdAt: "2026-08-20T00:00:02.000Z", role: "tool", content: "portable result", toolCallId: "call-1", toolName: "lookup", result: { answer: "portable" }, status: "complete" },
+				{ id: "a2", type: "message", source: "product", createdAt: "2026-08-20T00:00:03.000Z", role: "assistant", content: "Portable answer", status: "complete" },
+			],
+			truncated: false,
+			omittedEntries: 0,
+		},
+	};
+	const session = await registry.openSession(
+		instanceId,
+		openInput(instanceId, root, binding, "history-message", historyHandoff),
+	);
+	t.after(() => session.dispose());
+	const state = await getCodexNativeClient(session).request("test/getState", {});
+	assert.equal(state.injectedItems.length, 1);
+	assert.equal(state.injectedItems[0].threadId, session.getBinding().nativeSessionId);
+	assert.deepEqual(state.injectedItems[0].items.map((item) => item.type), [
+		"message",
+		"function_call",
+		"function_call_output",
+		"message",
+	]);
+	assert.equal(state.turnRequests.length, 0, "history injection must not fabricate a model turn");
+	await session.prompt({ text: "Continue", source: "rpc" });
+	assert.equal((await getCodexNativeClient(session).request("test/getState", {})).turnRequests.length, 1);
+});
+
+test("Codex native manual compaction uses thread/compact/start and emits balanced Pibo compaction events", async (t) => {
+	const root = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "compaction");
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	const result = await session.controls.compact("Preserve the active implementation plan.");
+	assert.deepEqual(result, {
+		native: true,
+		method: "thread/compact/start",
+		customInstructionsApplied: false,
+	});
+	assert.equal(events.filter((event) => event.type === "warning").length, 1);
+	assert.match(events.find((event) => event.type === "warning").message, /cannot apply custom Pibo compaction instructions/);
+	assert.equal(events.filter((event) => event.type === "compaction_start").length, 1);
+	assert.equal(events.filter((event) => event.type === "compaction_end").length, 1);
+	assert.equal(events.find((event) => event.type === "compaction_end").aborted, false);
+	assert.ok(events.findIndex((event) => event.type === "compaction_start") < events.findIndex((event) => event.type === "compaction_end"));
+	const state = await getCodexNativeClient(session).request("test/getState", {});
+	assert.equal(state.compactionRequests.length, 1);
+	assert.equal(state.compactionRequests[0].threadId, session.getBinding().nativeSessionId);
+});
+
+test("Codex native compaction start failures still emit one balanced terminal lifecycle", async (t) => {
+	const root = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "compaction-failure");
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await getCodexNativeClient(session).request("test/failNextCompaction", {});
+	await assert.rejects(() => session.controls.compact(), /fixture compaction failure/);
+	assert.equal(events.filter((event) => event.type === "compaction_start").length, 1);
+	assert.equal(events.filter((event) => event.type === "compaction_end").length, 1);
+	const terminal = events.find((event) => event.type === "compaction_end");
+	assert.equal(terminal.aborted, false);
+	assert.match(terminal.errorMessage, /fixture compaction failure/);
+	assert.equal(session.getStatus().streaming, false);
+	await session.controls.compact();
+	assert.equal(events.filter((event) => event.type === "compaction_start").length, 2, "the controller must be reusable after a start failure");
+	assert.equal(events.filter((event) => event.type === "compaction_end").length, 2);
 });
 
 test("Codex native maps native command, file, and MCP item lifecycles with bounded secret redaction", async (t) => {

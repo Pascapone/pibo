@@ -1,11 +1,13 @@
 import {
 	chmod,
 	readFile,
+	realpath,
 	rm,
 	stat,
 	writeFile,
 } from "node:fs/promises";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { PIBO_APP_CONTEXT } from "../app-context.js";
 import type { InitialSessionContext } from "../core/profiles.js";
 import { piboHomePath } from "../core/pibo-home.js";
@@ -24,7 +26,11 @@ import {
 } from "../mcp/runtime-session.js";
 import { getMcpAgentContextFileFromConfig } from "../mcp/agent-context.js";
 import { getInstalledCliToolContextFile } from "../tools/registry.js";
-import type { AgentRuntimeCapabilities, AgentRuntimeCapabilityDelivery } from "./capabilities.js";
+import type {
+	AgentRuntimeCapabilities,
+	AgentRuntimeCapabilityDelivery,
+	AgentRuntimeContextDiscoveryStrategy,
+} from "./capabilities.js";
 import {
 	copyAgentRuntimeSkillDirectory,
 	createAgentRuntimeResourcePaths,
@@ -114,6 +120,160 @@ function slug(value: string): string {
 
 function resolveProfilePath(cwd: string, path: string): string {
 	return isAbsolute(path) ? path : resolve(cwd, path);
+}
+
+function comparablePath(path: string): string {
+	const normalized = resolve(path);
+	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function comparableFileName(path: string): string {
+	const name = basename(path);
+	return process.platform === "win32" ? name.toLowerCase() : name;
+}
+
+function samePath(left: string, right: string): boolean {
+	return comparablePath(left) === comparablePath(right);
+}
+
+function isWithin(parent: string, child: string): boolean {
+	const selected = relative(comparablePath(parent), comparablePath(child));
+	return selected === "" || (!selected.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)
+		&& selected !== ".."
+		&& !isAbsolute(selected));
+}
+
+async function canonicalPath(path: string): Promise<string> {
+	return await realpath(path).catch(() => resolve(path));
+}
+
+function ancestorDirectories(cwd: string, boundary?: string, includeBoundary = true): string[] {
+	const directories: string[] = [];
+	let current = cwd;
+	while (true) {
+		const atBoundary = boundary !== undefined && samePath(current, boundary);
+		if (!atBoundary || includeBoundary) directories.push(current);
+		if (atBoundary) break;
+		const parent = dirname(current);
+		if (parent === current) break;
+		current = parent;
+	}
+	return directories;
+}
+
+async function findNearestGitRoot(cwd: string): Promise<string | undefined> {
+	for (const directory of ancestorDirectories(cwd)) {
+		const marker = join(directory, ".git");
+		const markerStat = await stat(marker).catch(() => undefined);
+		if (markerStat) return directory;
+	}
+	return undefined;
+}
+
+async function contextFileAncestorDirectories(
+	cwd: string,
+	strategy: AgentRuntimeContextDiscoveryStrategy | undefined,
+): Promise<string[]> {
+	if (strategy === "codex-project") {
+		const projectRoot = await findNearestGitRoot(cwd);
+		return projectRoot ? ancestorDirectories(cwd, projectRoot) : [cwd];
+	}
+	if (strategy === "omp-project") {
+		const home = resolve(homedir());
+		const projectRoot = await findNearestGitRoot(cwd);
+		const cwdUnderHome = isWithin(home, cwd);
+		const projectUnderHome = projectRoot !== undefined && isWithin(home, projectRoot);
+		if (projectRoot && !(cwdUnderHome && projectUnderHome)) return ancestorDirectories(cwd, projectRoot);
+		if (cwdUnderHome) return ancestorDirectories(cwd, home, false);
+		return ancestorDirectories(cwd);
+	}
+	return ancestorDirectories(cwd);
+}
+
+async function nearestRelativeAncestorDirectories(
+	cwd: string,
+	strategy: AgentRuntimeContextDiscoveryStrategy | undefined,
+): Promise<string[]> {
+	if (strategy !== "omp-project") return ancestorDirectories(cwd);
+	const projectRoot = await findNearestGitRoot(cwd);
+	return projectRoot ? ancestorDirectories(cwd, projectRoot) : ancestorDirectories(cwd);
+}
+
+async function everyRelativeAncestorDirectories(
+	cwd: string,
+	strategy: AgentRuntimeContextDiscoveryStrategy | undefined,
+): Promise<string[]> {
+	if (strategy !== "omp-project") return ancestorDirectories(cwd);
+	const projectRoot = await findNearestGitRoot(cwd);
+	if (projectRoot) return ancestorDirectories(cwd, projectRoot);
+	const home = resolve(homedir());
+	return isWithin(home, cwd) ? ancestorDirectories(cwd, home, false) : ancestorDirectories(cwd);
+}
+
+async function realFilePath(path: string): Promise<string | undefined> {
+	const candidate = await realpath(path).catch(() => undefined);
+	if (!candidate) return undefined;
+	const metadata = await stat(candidate).catch(() => undefined);
+	return metadata?.isFile() ? candidate : undefined;
+}
+
+async function firstExistingPath(directories: readonly string[], relativePath: string): Promise<string | undefined> {
+	for (const directory of directories) {
+		const candidate = await realFilePath(join(directory, relativePath));
+		if (candidate) return candidate;
+	}
+	return undefined;
+}
+
+async function isKnownNativeDiscoveredContextFile(
+	sourcePath: string,
+	cwdInput: string,
+	strategy: AgentRuntimeContextDiscoveryStrategy | undefined,
+	knownFileNames: readonly string[],
+	knownUserRelativePaths: readonly string[],
+	knownCwdRelativePaths: readonly string[],
+	knownRelativePaths: readonly string[],
+	knownAncestorRelativePaths: readonly string[],
+): Promise<boolean> {
+	const cwd = resolve(cwdInput);
+	const sourceRealPath = await canonicalPath(sourcePath);
+	for (const relativePath of knownUserRelativePaths) {
+		const candidate = await realFilePath(join(homedir(), relativePath));
+		if (candidate && samePath(candidate, sourceRealPath)) return true;
+	}
+	for (const relativePath of knownCwdRelativePaths) {
+		const candidate = await realFilePath(join(cwd, relativePath));
+		if (candidate && samePath(candidate, sourceRealPath)) return true;
+	}
+	const nearestDirectories = await nearestRelativeAncestorDirectories(cwd, strategy);
+	for (const relativePath of knownRelativePaths) {
+		const candidate = await firstExistingPath(nearestDirectories, relativePath);
+		if (candidate && samePath(candidate, sourceRealPath)) return true;
+	}
+	const everyDirectories = await everyRelativeAncestorDirectories(cwd, strategy);
+	for (const relativePath of knownAncestorRelativePaths) {
+		for (const directory of everyDirectories) {
+			const candidate = await realFilePath(join(directory, relativePath));
+			if (candidate && samePath(candidate, sourceRealPath)) return true;
+		}
+		if (strategy === "omp-project") {
+			const userCandidate = await realFilePath(join(homedir(), relativePath));
+			if (userCandidate && samePath(userCandidate, sourceRealPath)) return true;
+		}
+	}
+	const sourceName = comparableFileName(sourceRealPath);
+	if (!knownFileNames.some((name) => comparableFileName(name) === sourceName)) return false;
+	const sourceDirectory = dirname(sourceRealPath);
+	for (const directory of await contextFileAncestorDirectories(cwd, strategy)) {
+		if (!samePath(directory, sourceDirectory)) continue;
+		if (strategy === "omp-project" && basename(directory).startsWith(".")) return false;
+		for (const fileName of knownFileNames) {
+			const candidate = await realFilePath(join(directory, fileName));
+			if (candidate) return samePath(candidate, sourceRealPath);
+		}
+		return false;
+	}
+	return false;
 }
 
 function deliveryMode(delivery: AgentRuntimeCapabilityDelivery): string {
@@ -288,6 +448,26 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 		return structuredClone(this.resolvedMcpConfigs);
 	}
 
+	recordAdapterDelivery(
+		reports: readonly AgentRuntimeDeliveryReport[],
+		diagnostics: readonly AgentRuntimeResourceDiagnostic[] = [],
+	): void {
+		this.assertActive();
+		const replacements = new Map<string, AgentRuntimeDeliveryReport>();
+		for (const report of reports) {
+			if (replacements.has(report.contributionId)) {
+				throw new Error(`Adapter reported runtime resource contribution "${report.contributionId}" more than once.`);
+			}
+			replacements.set(report.contributionId, { ...report });
+		}
+		this.delivery = this.delivery.map((report) => replacements.get(report.contributionId) ?? report);
+		const known = new Set(this.delivery.map((report) => report.contributionId));
+		for (const report of replacements.values()) {
+			if (!known.has(report.contributionId)) this.delivery.push(report);
+		}
+		this.diagnostics.push(...diagnostics.map((diagnostic) => ({ ...diagnostic })));
+	}
+
 	getInspection(): AgentRuntimeResourceInspection {
 		this.assertActive();
 		return {
@@ -399,7 +579,11 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 	}
 
 	private async prepareContext(): Promise<void> {
-		if (this.input.profile.autoContextFiles) {
+		const automaticContextEnabled = this.input.capabilities.contextDiscovery.supported
+			&& (this.input.capabilities.contextDiscovery.configurable
+				? this.input.profile.autoContextFiles
+				: this.input.capabilities.contextDiscovery.enabledByDefault);
+		if (automaticContextEnabled) {
 			this.requiredContributionIds.add("context:automatic-project-files");
 			this.context.push({
 				id: "context:automatic-project-files",
@@ -419,6 +603,17 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 			const sourcePath = resolveProfilePath(this.input.cwd, file.path);
 			try {
 				const content = await readFile(sourcePath, "utf8");
+				const nativeDiscovered = automaticContextEnabled
+					&& await isKnownNativeDiscoveredContextFile(
+						sourcePath,
+						this.input.cwd,
+						this.input.capabilities.contextDiscovery.strategy,
+						this.input.capabilities.contextDiscovery.knownFileNames ?? [],
+						this.input.capabilities.contextDiscovery.knownUserRelativePaths ?? [],
+						this.input.capabilities.contextDiscovery.knownCwdRelativePaths ?? [],
+						this.input.capabilities.contextDiscovery.knownRelativePaths ?? [],
+						this.input.capabilities.contextDiscovery.knownAncestorRelativePaths ?? [],
+					);
 				this.context.push({
 					id,
 					kind: "context-file",
@@ -430,6 +625,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 					path: sourcePath,
 					sourcePath,
 					content,
+					...(nativeDiscovered ? { nativeDiscovered: true } : {}),
 				});
 			} catch (error) {
 				const message = `Context file "${file.key ?? file.path}" could not be loaded: ${redactResourceError(error)}`;
@@ -493,7 +689,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 
 	private async materialize(): Promise<void> {
 		const materializeSkills = this.input.capabilities.skills.support === "materialized" && this.skills.length > 0;
-		const materializeContext = this.input.capabilities.context.support === "materialized" && this.context.some((item) => item.content !== undefined);
+		const materializeContext = this.input.capabilities.context.support === "materialized" && this.context.some((item) => item.content !== undefined && !item.nativeDiscovered);
 		const materializeMcp = this.mcpServers.some((server) => server.scoped !== undefined);
 		if (!materializeSkills && !materializeContext && !materializeMcp) return;
 		this.paths = await createAgentRuntimeResourcePaths(this.options.rootDir, this.input);
@@ -516,7 +712,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 		if (materializeContext) {
 			let materializedIndex = 0;
 			for (const contribution of this.context) {
-				if (contribution.content === undefined) continue;
+				if (contribution.content === undefined || contribution.nativeDiscovered) continue;
 				const target = join(
 					this.paths.context,
 					`${String(materializedIndex++).padStart(3, "0")}-${slug(contribution.label)}.md`,
@@ -588,6 +784,17 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 		}
 		for (const contribution of this.context) {
 			const failure = this.diagnosticFor(contribution.id);
+			if (contribution.nativeDiscovered) {
+				this.delivery.push({
+					contributionId: contribution.id,
+					status: failure ? "failed" : "delivered",
+					mode: "native-project-discovery",
+					fidelity: failure ? "none" : "exact",
+					target: contribution.sourcePath ?? contribution.path,
+					...(failure ? { diagnostic: failure } : {}),
+				});
+				continue;
+			}
 			if (
 				contribution.id === ENABLED_MCP_CONTEXT_ID
 				&& this.input.capabilities.mcp.externalServers.support === "mcp"
@@ -602,8 +809,8 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 				});
 				continue;
 			}
-			if (contribution.kind === "automatic" && this.input.capabilities.context.support === "materialized") {
-				const supportsNativeDiscovery = this.input.capabilities.context.modes.includes("native-project-discovery");
+			if (contribution.kind === "automatic") {
+				const supportsNativeDiscovery = this.input.capabilities.contextDiscovery.supported;
 				this.delivery.push(supportsNativeDiscovery
 					? {
 						contributionId: contribution.id,
@@ -617,7 +824,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 						status: "unsupported",
 						mode: "unsupported:auto-context-discovery",
 						fidelity: "none",
-						diagnostic: "This runtime materializes explicit context but does not declare native-project-discovery for automatic AGENTS.md / CLAUDE.md context.",
+						diagnostic: "This runtime does not declare automatic native project-context discovery.",
 					});
 				continue;
 			}
@@ -628,8 +835,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 					? contribution.materializedPath
 					: contribution.path ?? contribution.sourcePath ?? this.input.cwd,
 				failure,
-				fidelity: contribution.kind === "automatic" ? "equivalent" : "exact",
-				modeOverride: contribution.kind === "automatic" ? "native-discovery" : undefined,
+				fidelity: "exact",
 			}));
 		}
 		for (const server of this.mcpServers) {

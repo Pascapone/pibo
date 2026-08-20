@@ -13,7 +13,7 @@ Operators and agents also need a safe way to inspect a profile before running it
 
 ## Goal
 
-Pibo MUST assemble Pi Coding Agent runtimes from Pibo profiles in a deterministic, profile-gated, inspectable way while preserving Pibo Session identity, model selection, context-file ordering, generated tools, and diagnostics.
+Pibo MUST assemble configured agent runtimes from Pibo profiles in a deterministic, profile-gated, inspectable way while preserving exact Pi compatibility, Pibo Session identity, model selection, context-file ordering, generated tools, and diagnostics.
 
 ## Background / Current State
 
@@ -289,6 +289,31 @@ The system MUST expose an inspection snapshot that explains startup context asse
 - THEN the response contains ordered prompt, tool, context-file, skill, extension, and diagnostic nodes
 - AND no new transcript or visible session is created.
 
+### Requirement: Runtime resources follow adapter capabilities and native discovery
+
+The system MUST prepare selected skills, context files, tools, MCP servers, and runtime-owned controls through the selected adapter's declared capabilities. The core MUST NOT guess behavior from adapter identifiers.
+
+#### Current
+
+`RuntimeResourceService` creates isolated resource generations and asks adapters to inspect native discovery and verify delivered resources. Context deduplication removes only exact canonical files that the adapter declares native discovery will load. Native Codex and OMP use private adapter-specific delivery without receiving Pi prompt overlays.
+
+#### Acceptance
+
+- Resource generations are isolated to one runtime instance/session and disposed after their lease ends.
+- Selected resources that an adapter cannot deliver or verify fail explicitly.
+- Exact native context duplicates are removed only when native discovery is enabled and covers the selected path.
+- Same-basename files at other paths remain selected.
+- Selected skills take precedence over ambient native skills or produce an explicit collision error.
+- Inspection returns redacted status, fidelity, targets, and diagnostics without exposing generated prompt content or credentials.
+
+#### Scenario: Selected context equals a native file
+
+- GIVEN the selected runtime natively discovers the canonical workspace `AGENTS.md`
+- AND the profile explicitly selects that exact file
+- WHEN Pibo prepares resources
+- THEN it is delivered once through native discovery
+- AND a different selected `AGENTS.md` outside that native discovery scope remains selected.
+
 ### Requirement: Direct TUI refuses profiles that need routed services
 
 The system MUST prevent direct Pi TUI startup for profiles that require routed Pibo services not available in direct mode.
@@ -333,7 +358,8 @@ The system MUST prevent direct Pi TUI startup for profiles that require routed P
 - [ ] SC-004: Unknown or unauthenticated requested models fail runtime creation before the agent starts work.
 - [ ] SC-005: `pibo profile [profile]` emits JSON covering skills, tools, generated tools, subagents, packages, context files, and diagnostics without executing delegated work.
 - [ ] SC-006: Build Context inspection emits a redacted ordered snapshot for an managed session without mutating session or transcript state.
-- [ ] SC-007: Direct TUI startup rejects profiles that need subagent routing and points to `tui:routed`.
+- [ ] SC-007: Runtime resource delivery follows advertised capabilities, deduplicates only exact native context paths, and rejects unverifiable skill collisions.
+- [ ] SC-008: Direct TUI startup rejects profiles that need subagent routing and points to `tui:routed`.
 
 ## Assumptions and Open Questions
 
@@ -363,7 +389,8 @@ The system MUST prevent direct Pi TUI startup for profiles that require routed P
 | REQ-009 Diagnostics are returned | Broken extension package | `src/core/runtime.ts` | Implemented |
 | REQ-010 Profile inspection is non-executing | Inspect profile with subagent | `src/core/runtime.ts`, `src/cli.ts`, `test/subagents.test.mjs` | Implemented |
 | REQ-011 Build Context snapshots are read-only, ordered, and redacted | Inspect managed session startup context | `src/core/context-build.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/context/ContextBuildView.tsx`, `test/context-build-inspector.test.mjs` | Implemented |
-| REQ-012 Direct TUI refuses routed-only profiles | Subagent profile in direct TUI | `src/core/runtime.ts` | Implemented |
+| REQ-012 Runtime resources follow adapter capabilities and native discovery | Selected context equals a native file | `src/agent-runtime/resource-service.ts`, `src/agent-runtime/context-build.ts`, `src/agent-runtimes/codex-native/resource-delivery.ts`, `src/agent-runtimes/omp/resource-delivery.ts`, `test/agent-runtime-resource-service.test.mjs` | Implemented |
+| REQ-013 Direct TUI refuses routed-only profiles | Subagent profile in direct TUI | `src/core/runtime.ts` | Implemented |
 
 ## Verification Basis
 

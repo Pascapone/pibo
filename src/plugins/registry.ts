@@ -355,6 +355,7 @@ export class PiboPluginRegistry {
 				builtinTools: sessionContext.builtinTools,
 				builtinToolNames: [...sessionContext.builtinToolNames],
 				autoContextFiles: sessionContext.autoContextFiles,
+				nativeSubagents: sessionContext.nativeSubagents,
 				runControl: sessionContext.toolPackages.runControl === true,
 				goalControl: sessionContext.toolPackages.goalControl !== false,
 			};

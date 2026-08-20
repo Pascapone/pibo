@@ -8,6 +8,8 @@ import {
 } from "./client.js";
 import type { CodexNativeTurnModelOptions } from "./models.js";
 import type {
+	CodexAppServerThreadCompactStartParams,
+	CodexAppServerThreadCompactStartResponse,
 	CodexAppServerThreadItem,
 	CodexAppServerThreadTokenUsage,
 	CodexAppServerTurn,
@@ -57,6 +59,7 @@ type ToolDescriptor = {
 };
 
 type PendingTurn = {
+	kind: "turn" | "compaction";
 	completion: Deferred<CodexAppServerTurn>;
 	turnIdReady: Deferred<string | undefined>;
 	turnIdReadySettled: boolean;
@@ -74,6 +77,8 @@ type PendingTurn = {
 	reasoningSummaryParts: Map<string, Map<number, string>>;
 	reasoningContentParts: Map<string, Map<number, string>>;
 	completedReasoningItems: Set<string>;
+	compactionStarted: boolean;
+	compactionEnded: boolean;
 	startedTools: Map<string, ToolDescriptor>;
 	completedTools: Set<string>;
 	usage?: AgentRuntimeUsage;
@@ -280,11 +285,12 @@ function toolFailed(item: CodexAppServerThreadItem): boolean {
 	return ["declined", "failed", "error"].includes(item.status.toLowerCase());
 }
 
-function newPendingTurn(): PendingTurn {
+function newPendingTurn(kind: PendingTurn["kind"] = "turn"): PendingTurn {
 	const completion = deferred<CodexAppServerTurn>();
 	const turnIdReady = deferred<string | undefined>();
 	void completion.promise.catch(() => {});
 	return {
+		kind,
 		completion,
 		turnIdReady,
 		turnIdReadySettled: false,
@@ -301,6 +307,8 @@ function newPendingTurn(): PendingTurn {
 		reasoningSummaryParts: new Map(),
 		reasoningContentParts: new Map(),
 		completedReasoningItems: new Set(),
+		compactionStarted: false,
+		compactionEnded: false,
 		startedTools: new Map(),
 		completedTools: new Set(),
 	};
@@ -371,6 +379,36 @@ export class CodexNativeTurnController {
 		}
 	}
 
+	async compact(): Promise<void> {
+		if (this.disposed) throw new Error("Codex native turn controller is disposed.");
+		if (this.pending) throw new Error("Codex native session already has an active turn.");
+		const pending = newPendingTurn("compaction");
+		this.pending = pending;
+		this.ensureCompactionStarted(pending);
+		try {
+			await this.client.request<CodexAppServerThreadCompactStartResponse, CodexAppServerThreadCompactStartParams>(
+				"thread/compact/start",
+				{ threadId: this.threads.thread.id },
+			);
+			await pending.completion.promise;
+		} catch (error) {
+			if (!pending.terminal && this.pending === pending) {
+				const normalized = error instanceof Error ? error : new Error("Codex compaction could not be completed.");
+				if (pending.started || pending.turnId) {
+					this.failActiveTurn(pending, normalized, runtimeSessionErrorDetails(safeDiagnosticText(normalized.message)));
+				} else {
+					this.finishCompaction(pending, {
+						aborted: false,
+						errorMessage: safeDiagnosticText(normalized.message),
+					});
+					this.pending = undefined;
+					this.resolveTurnId(pending, undefined);
+				}
+			}
+			throw error;
+		}
+	}
+
 	async steer(text: string, clientUserMessageId?: string): Promise<void> {
 		const pending = this.pending;
 		if (!pending || pending.terminal) throw new Error("Codex native steering requires an active turn.");
@@ -406,6 +444,12 @@ export class CodexNativeTurnController {
 		const pending = this.pending;
 		this.pending = undefined;
 		if (pending && !pending.terminal) {
+			if ((pending.kind === "compaction" || pending.compactionStarted) && !pending.compactionEnded) {
+				this.finishCompaction(pending, {
+					aborted: true,
+					errorMessage: "Codex native compaction was interrupted because the session was disposed.",
+				});
+			}
 			pending.terminal = true;
 			this.resolveTurnId(pending, undefined);
 			pending.completion.reject(new CodexAppServerClientError("closed", "Codex native turn controller was disposed"));
@@ -683,7 +727,7 @@ export class CodexNativeTurnController {
 		this.ensureTurnStarted(pending);
 		if (item.type === "reasoning") this.ensureReasoningStarted(pending, item.id);
 		else if (item.type === "contextCompaction") {
-			this.emit({ type: "compaction_start", reason: "codex_context_compaction" });
+			this.ensureCompactionStarted(pending);
 		} else {
 			this.ensureToolStarted(pending, item);
 		}
@@ -718,9 +762,7 @@ export class CodexNativeTurnController {
 			return;
 		}
 		if (item.type === "contextCompaction") {
-			this.emit({
-				type: "compaction_end",
-				reason: "codex_context_compaction",
+			this.finishCompaction(pending, {
 				result: redactCodexNativeValue(item),
 				aborted: false,
 			});
@@ -735,6 +777,28 @@ export class CodexNativeTurnController {
 			toolName: descriptor.name,
 			result: toolResult(item),
 			isError: toolFailed(item),
+		});
+	}
+
+	private ensureCompactionStarted(pending: PendingTurn): void {
+		if (pending.compactionStarted) return;
+		pending.compactionStarted = true;
+		this.emit({ type: "compaction_start", reason: "codex_context_compaction" });
+	}
+
+	private finishCompaction(
+		pending: PendingTurn,
+		input: { result?: unknown; aborted: boolean; errorMessage?: string },
+	): void {
+		this.ensureCompactionStarted(pending);
+		if (pending.compactionEnded) return;
+		pending.compactionEnded = true;
+		this.emit({
+			type: "compaction_end",
+			reason: "codex_context_compaction",
+			...(input.result !== undefined ? { result: input.result } : {}),
+			aborted: input.aborted,
+			...(input.errorMessage ? { errorMessage: input.errorMessage } : {}),
 		});
 	}
 
@@ -824,6 +888,13 @@ export class CodexNativeTurnController {
 	}
 
 	private finishIncompleteItems(pending: PendingTurn, status: CodexAppServerTurn["status"]): void {
+		if ((pending.kind === "compaction" || pending.compactionStarted) && !pending.compactionEnded) {
+			this.finishCompaction(pending, {
+				aborted: status === "interrupted",
+				...(status === "failed" ? { errorMessage: "Codex compaction ended before item/completed." } : {}),
+				result: { status },
+			});
+		}
 		for (const [itemId, text] of pending.assistantBuffers) {
 			if (pending.completedAssistantItems.has(itemId) || !text) continue;
 			pending.completedAssistantItems.add(itemId);

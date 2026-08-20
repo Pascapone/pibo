@@ -28,6 +28,9 @@ function fakeRuntimeCapabilities() {
 		mcp: { externalServers: { support: "native" }, statusInspection: true },
 		skills: { support: "materialized", modes: ["isolated-directory"] },
 		context: { support: "materialized", modes: ["developer-instructions"] },
+		contextDiscovery: { supported: false, configurable: false, enabledByDefault: false },
+		nativeSubagents: { supported: false, configurable: false, enabledByDefault: false },
+		historyImport: false,
 		auth: { status: false, methods: [], cancel: false, logout: false, credentialScope: "runtime-instance" },
 		models: { catalog: true, switchInSession: false, optionsSchema: { type: "object" } },
 		reasoning: { supported: true, values: ["low", "high"] },
@@ -2867,12 +2870,19 @@ test("chat web app creates custom agents from the native capability catalog", as
 });
 
 test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtime selections", async () => {
+	const piCapabilities = fakeRuntimeCapabilities();
+	piCapabilities.contextDiscovery = { supported: true, configurable: true, enabledByDefault: true, knownFileNames: ["AGENTS.md", "CLAUDE.md"] };
+	const codexCapabilities = fakeRuntimeCapabilities();
+	codexCapabilities.contextDiscovery = { supported: true, configurable: false, enabledByDefault: true, knownFileNames: ["AGENTS.override.md", "AGENTS.md"] };
+	codexCapabilities.nativeSubagents = { supported: true, configurable: true, enabledByDefault: true };
+	codexCapabilities.historyImport = true;
 	const runtimes = [
-		fakeRuntimeInspection("pi", { adapterId: "pi", displayName: "Pi", transport: "embedded", protocol: "pi-sdk", diagnostics: [{ severity: "info", code: "pi_runtime_available", message: "Pi is available." }] }),
+		fakeRuntimeInspection("pi", { adapterId: "pi", displayName: "Pi", transport: "embedded", protocol: "pi-sdk", capabilities: piCapabilities, diagnostics: [{ severity: "info", code: "pi_runtime_available", message: "Pi is available." }] }),
 		fakeRuntimeInspection("codex-native", {
 			adapterId: "codex",
 			displayName: "Codex Native",
 			protocol: "codex-app-server",
+			capabilities: codexCapabilities,
 			models: { runtimeInstanceId: "codex-native", models: [{ id: "gpt-5.6-codex", provider: "openai", displayName: "GPT-5.6 Codex", reasoningOptions: ["low", "high"] }] },
 			auth: [{ id: "openai", displayName: "OpenAI", configured: true }],
 		}),
@@ -2926,12 +2936,17 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 				displayName: "codex-native-agent",
 				runtimeInstanceId: "codex-native",
 				runtimeOptions: { mode: "isolated", reasoningEffort: "high" },
+				autoContextFiles: false,
+				nativeSubagents: false,
 			}),
 		});
 		assert.equal(createdResponse.status, 201);
 		const created = await createdResponse.json();
 		assert.equal(created.agent.runtimeInstanceId, "codex-native");
 		assert.deepEqual(created.agent.runtimeOptions, { mode: "isolated", reasoningEffort: "high" });
+		assert.equal(created.agent.autoContextFiles, true, "non-configurable discovery must remain at the runtime default");
+		assert.equal(created.agent.nativeSubagents, false);
+		assert.equal("autoContextFilesOverride" in created.agent, false);
 
 		const rejectedPatch = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(created.agent.id)}`, {
 			method: "PATCH",
@@ -2940,6 +2955,14 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 		});
 		assert.equal(rejectedPatch.status, 400);
 		assert.match((await rejectedPatch.json()).error, /Codex mode must be isolated/);
+
+		const clearedOverrideResponse = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(created.agent.id)}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ nativeSubagents: null }),
+		});
+		assert.equal(clearedOverrideResponse.status, 200);
+		assert.equal((await clearedOverrideResponse.json()).agent.nativeSubagents, undefined, "an explicit null clears a runtime-specific native-subagent override");
 
 		const disabledResponse = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
@@ -2973,10 +2996,23 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 		assert.equal(malformedOptionsResponse.status, 400);
 		assert.match((await malformedOptionsResponse.json()).error, /runtimeOptions must be a JSON object/);
 
+		const switchedResponse = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(created.agent.id)}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ runtimeInstanceId: "pi", runtimeOptions: {}, autoContextFiles: false, nativeSubagents: false }),
+		});
+		assert.equal(switchedResponse.status, 200);
+		const switched = await switchedResponse.json();
+		assert.equal(switched.agent.runtimeInstanceId, "pi");
+		assert.equal(switched.agent.autoContextFiles, false);
+		assert.equal(switched.agent.nativeSubagents, undefined, "stale native-subagent overrides must be removed for Pi");
+
 		const listed = await fetch(`${baseURL}/api/chat/agents`, { headers: { "x-test-user": "user-1" } });
 		const listedPayload = await listed.json();
 		assert.equal(listedPayload.agents.length, 1);
-		assert.deepEqual(listedPayload.agents[0].runtimeOptions, { mode: "isolated", reasoningEffort: "high" });
+		assert.deepEqual(listedPayload.agents[0].runtimeOptions, {});
+		assert.equal(listedPayload.agents[0].autoContextFiles, false);
+		assert.equal("autoContextFilesOverride" in listedPayload.agents[0], false);
 	} finally {
 		await channel.stop?.();
 	}
