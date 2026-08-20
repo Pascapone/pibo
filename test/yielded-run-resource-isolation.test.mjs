@@ -96,6 +96,37 @@ test("real yielded Bash smoke runs in the bounded transient cgroup and records p
 	assert.equal(prepared.resources.limitReason, undefined);
 });
 
+test("explicit cancellation terminates the isolated process tree", { skip: !hasSystemd }, async () => {
+	const unitName = `pibo-yielded-cancel-cleanup-${process.pid}.service`;
+	const prepared = prepareYieldedRunExecution("bash", { command: "printf started; sleep 30" }, {
+		env: safePolicyEnv(),
+		unitName,
+	});
+	try {
+		const execution = prepared.execute(async () => {
+			await execFileAsync("/bin/bash", ["-lc", prepared.params.command], { timeout: 30_000 });
+		});
+		let active = false;
+		for (let attempt = 0; attempt < 50; attempt += 1) {
+			active = await execFileAsync("systemctl", ["is-active", unitName], { timeout: 5_000 })
+				.then(({ stdout }) => stdout.trim() === "active")
+				.catch(() => false);
+			if (active) break;
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		assert.equal(active, true);
+		await prepared.cancel();
+		await assert.rejects(execution);
+		const activeState = await execFileAsync("systemctl", ["is-active", unitName], { timeout: 5_000 })
+			.then(({ stdout }) => stdout.trim())
+			.catch((error) => String(error.stdout ?? "").trim());
+		assert.notEqual(activeState, "active");
+	} finally {
+		await execFileAsync("systemctl", ["stop", unitName], { timeout: 5_000 }).catch(() => undefined);
+		await execFileAsync("systemctl", ["reset-failed", unitName], { timeout: 5_000 }).catch(() => undefined);
+	}
+});
+
 test("outer execution failure terminates the isolated process tree", { skip: !hasSystemd }, async () => {
 	const unitName = `pibo-yielded-timeout-cleanup-${process.pid}.service`;
 	const prepared = prepareYieldedRunExecution("bash", { command: "sleep 30" }, {

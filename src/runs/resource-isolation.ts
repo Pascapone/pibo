@@ -72,6 +72,7 @@ export type PreparedYieldedRunExecution = {
 	params: unknown;
 	resources: PiboRunResourceUsage;
 	execute<T>(operation: () => Promise<T>): Promise<T>;
+	cancel(): Promise<void>;
 };
 
 export class PiboRunResourceLimitError extends Error {
@@ -168,6 +169,9 @@ export function prepareYieldedRunExecution(
 	return {
 		params: preparedParams,
 		resources,
+		async cancel(): Promise<void> {
+			if (shouldIsolate && unitName) await terminateSystemdUnit(unitName);
+		},
 		async execute<T>(operation: () => Promise<T>): Promise<T> {
 			if (!shouldIsolate || !unitName) return await operation();
 			if (process.platform !== "linux" || !existsSync("/run/systemd/system")) {

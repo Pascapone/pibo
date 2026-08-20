@@ -21,6 +21,7 @@ export type PiboRunStartToolInput = {
 	serviceWarning?: string;
 	resources?: PiboRunResourceUsage;
 	execute(): Promise<PiboToolRunResult>;
+	cancel?(): Promise<void>;
 };
 
 export type PiboRunToolController = {
@@ -58,6 +59,21 @@ function requireTool(tools: readonly PiboToolDefinition[], name: string): PiboTo
 	return tool;
 }
 
+async function waitForRunCancellationSettlement(settled: Promise<void>, timeoutMs = 15_000): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		await Promise.race([
+			settled,
+			new Promise<never>((_resolve, reject) => {
+				timer = setTimeout(() => reject(new Error(`Yielded run did not settle within ${timeoutMs}ms after cancellation.`)), timeoutMs);
+				timer.unref?.();
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
 export function createRunToolDefinitions(
 	yieldableTools: readonly PiboToolDefinition[],
 	controller: PiboRunToolController,
@@ -89,6 +105,13 @@ export function createRunToolDefinitions(
 				const timeoutMs = resolveRunTimeoutMs(tool.name, params.arguments);
 				const serviceWarning = foregroundServiceWarning(tool.name, params.arguments, timeoutMs);
 				const prepared = prepareYieldedRunExecution(tool.name, params.arguments);
+				const runAbortController = new AbortController();
+				const runSignal = signal ? AbortSignal.any([signal, runAbortController.signal]) : runAbortController.signal;
+				let executionStarted = false;
+				let resolveExecutionSettled: (() => void) | undefined;
+				const executionSettled = new Promise<void>((resolve) => {
+					resolveExecutionSettled = resolve;
+				});
 				let observedOutput = false;
 				const run = controller.startToolRun({
 					toolName: tool.name,
@@ -97,9 +120,15 @@ export function createRunToolDefinitions(
 					timeoutMs,
 					serviceWarning,
 					resources: prepared.resources,
+					async cancel() {
+						runAbortController.abort(new Error("Yielded run was cancelled."));
+							await prepared.cancel();
+							if (executionStarted) await waitForRunCancellationSettlement(executionSettled);
+					},
 					async execute() {
+						executionStarted = true;
 						try {
-							const result = await prepared.execute(() => tool.execute(toolCallId, prepared.params, signal, (update) => {
+							const result = await prepared.execute(() => tool.execute(toolCallId, prepared.params, runSignal, (update) => {
 								observedOutput ||= hasMeaningfulTimeoutOutput(update);
 								onUpdate?.(update);
 							}, ctx));
@@ -114,6 +143,8 @@ export function createRunToolDefinitions(
 							if (error instanceof PiboRunExecutionTimeoutError || error instanceof PiboRunResourceLimitError) throw error;
 							if (timeoutMs !== undefined && isConfiguredTimeoutError(error)) throw new PiboRunExecutionTimeoutError(error instanceof Error ? error.message : String(error), observedOutput ? "lifetime" : "startup");
 							throw error;
+						} finally {
+							resolveExecutionSettled?.();
 						}
 					},
 				});

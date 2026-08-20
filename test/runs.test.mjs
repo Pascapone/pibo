@@ -369,6 +369,38 @@ test("run tools start yieldable tools with explicit completion policy", async ()
 	assert.equal(result.details.runId, "run_1");
 });
 
+test("run start cancellation aborts the yieldable tool execution", async () => {
+	let started;
+	let observedSignal;
+	const [startTool] = createRunToolDefinitions(
+		[{
+			name: "helper",
+			async execute(_toolCallId, _params, signal) {
+				observedSignal = signal;
+				return await new Promise((_resolve, reject) => {
+					signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+				});
+			},
+		}],
+		{
+			startToolRun(input) { started = input; return runSnapshot(undefined, { toolName: input.toolName }); },
+			listRuns() { return []; },
+			getRunStatus() { throw new Error("not used"); },
+			waitForRun() { throw new Error("not used"); },
+			readRun() { throw new Error("not used"); },
+			cancelRun() { throw new Error("not used"); },
+			ackRun() { throw new Error("not used"); },
+		},
+	);
+
+	await startTool.execute("tool-call-cancel", { toolName: "helper", arguments: {} });
+	const execution = started.execute();
+	await new Promise((resolve) => setImmediate(resolve));
+	await started.cancel();
+	await assert.rejects(execution, /Yielded run was cancelled/);
+	assert.equal(observedSignal.aborted, true);
+});
+
 test("run start records inferred Bash timeout, warns for foreground services, and classifies lifetime expiry", async () => {
 	let started;
 	const [startTool] = createRunToolDefinitions(
@@ -696,6 +728,58 @@ test("router rejects concurrent yielded runs until the active execution settles"
 		});
 		await new Promise((resolve) => setImmediate(resolve));
 		assert.equal(router.runRegistry.status("parent", next.runId).status, "completed");
+	} finally {
+		if (previousMode === undefined) delete process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+		else process.env.PIBO_GATEWAY_RESOURCE_GUARD = previousMode;
+		if (previousFree === undefined) delete process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+		else process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = previousFree;
+		if (previousReservation === undefined) delete process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+		else process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = previousReservation;
+		if (previousMax === undefined) delete process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = previousMax;
+	}
+});
+
+test("pibo_run_cancel aborts the active tool and releases admission before returning", async () => {
+	const previousMode = process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+	const previousFree = process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+	const previousReservation = process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+	const previousMax = process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+	process.env.PIBO_GATEWAY_RESOURCE_GUARD = "block";
+	process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = "0";
+	process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = "0";
+	process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = "1";
+	try {
+		const router = new PiboSessionRouter({ persistSession: false });
+		let activeSignal;
+		const tools = Object.fromEntries(createRunToolDefinitions([{
+			name: "helper",
+			async execute(_toolCallId, params, signal) {
+				if (!params.wait) return { content: [{ type: "text", text: "done" }] };
+				activeSignal = signal;
+				return await new Promise((_resolve, reject) => {
+					signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+				});
+			},
+		}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+
+		const started = await tools.pibo_run_start.execute("start-cancelled", {
+			toolName: "helper",
+			arguments: { wait: true },
+			completionPolicy: "tracked",
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		const cancelled = await tools.pibo_run_cancel.execute("cancel-active", { runId: started.details.runId });
+		assert.equal(cancelled.details.status, "cancelled");
+		assert.equal(activeSignal.aborted, true);
+
+		const next = await tools.pibo_run_start.execute("start-next", {
+			toolName: "helper",
+			arguments: { wait: false },
+			completionPolicy: "detached",
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(router.runRegistry.status("parent", next.details.runId).status, "completed");
 	} finally {
 		if (previousMode === undefined) delete process.env.PIBO_GATEWAY_RESOURCE_GUARD;
 		else process.env.PIBO_GATEWAY_RESOURCE_GUARD = previousMode;
