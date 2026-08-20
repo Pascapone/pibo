@@ -3,6 +3,7 @@
 **Status:** PASS for focused, canonical, packed-install, and exact Pibo2 installed-artifact validation.
 **Branch:** `fix/yielded-run-cancellation`
 **Base:** `upstream/dev` at `a399dcd7`
+**Pull request:** #528
 
 ## Finding
 
