@@ -97,6 +97,32 @@ Better Auth requires `auth.baseURL`, `auth.secret`, `auth.googleClientId`, `auth
 - WHEN the web gateway starts
 - THEN the local auth service is registered and the gateway accepts loopback sign-ins
 
+### Requirement: Better Auth SQLite startup is recoverable
+
+The Better Auth service MUST NOT leave the gateway permanently unstartable when SQLite rejects a required-column migration for the configured auth database.
+
+#### Current
+
+Pibo inspects Better Auth's pending migration metadata before execution. Required timestamps and literal-default fields are backfilled transactionally when their semantics are deterministic. If a populated auth schema requires identity, token, provider, or relationship data that Pibo cannot invent safely, Pibo creates a protected consistent backup, replaces only the auth database with the validated fresh schema, and requires users to sign in again. If fresh-schema creation fails, Pibo restores the original database. Valid auth databases remain unchanged except that the database file is owner-only where POSIX permissions apply.
+
+#### Acceptance
+
+- A populated table missing `createdAt`, `updatedAt`, or a required literal-default field is repaired without losing rows.
+- An unsafe incompatible auth schema produces one protected backup and a fresh valid auth database.
+- Recovery names are Windows-safe and collision-safe.
+- A second start is idempotent and creates no additional backup.
+- Product, reliability, project, workflow, and agent stores are not read or changed by auth recovery.
+- Logs identify the backup and reauthentication requirement without printing auth records, tokens, cookies, OAuth values, or configured secrets.
+
+#### Scenario: SQLite rejects an unsafe required-column migration
+
+- GIVEN `auth.sqlite` contains a populated Better Auth table missing a required identity field
+- WHEN `pibo gateway:web` starts
+- THEN Pibo preserves a protected SQLite backup
+- AND creates a fresh Better Auth schema
+- AND reaches gateway readiness
+- AND explains that existing browser sessions were reset
+
 ### Requirement: Better Auth authorizes only allowed emails
 
 The Better Auth service MUST return a Pibo auth session only for signed-in users whose email appears in the allowed email set.
@@ -379,6 +405,7 @@ This layer catches: a reverse proxy on the same host that rewrites both `Host` a
 - [ ] SC-007: `pibo gateway:web --auth=local --web-host=0.0.0.0` is refused before the gateway module is loaded, as covered by `test/local-auth.test.mjs`.
 - [ ] SC-008: `pibo config set auth.mode local` persists the value and round-trips, and `pibo config set auth.mode bogus` is rejected, as covered by `test/auth-mode-config.test.mjs`.
 - [x] SC-009: Web host shutdown cancels active SSE responses, drains ordinary responses within policy, and force-closes overdue sockets, as covered by `test/web-channel-shutdown.test.mjs` and integrated gateway restart validation.
+- [x] SC-010: Populated Better Auth schemas that reproduce SQLite's required-column failure are repaired in place when safe or recovered through a protected auth-only backup, as covered by `test/better-auth-sqlite-migration.test.mjs` and exact gateway smoke tests.
 
 ## Verification Coverage
 
@@ -387,6 +414,7 @@ This section records which parts of the web-auth and same-origin host contract a
 ### Directly Tested
 
 - Better Auth configuration rejects empty `allowedEmails`, rejects secrets shorter than 32 characters, and preserves trusted origin expansion. Verified by `test/better-auth-config.test.mjs`.
+- Better Auth SQLite startup reproduces the raw required-column failure, preserves safe rows through deterministic backfill, protects incompatible originals before auth-only recovery, keeps product data untouched, and remains idempotent across restart. Verified by `test/better-auth-sqlite-migration.test.mjs`.
 - Legacy host dev-auth activation fails closed: `PIBO_DEV_AUTH=1` does not enable `gateway:web`, and the default auth mode remains Better Auth. Verified by `test/web-gateway.test.mjs`.
 - Dev-auth route access is loopback-gated by both `Host` and `X-Forwarded-Host`; public forwarded host values are rejected by the loopback predicate. Verified by `test/dev-auth.test.mjs`.
 - Authenticated Chat Web requests receive app context product context while preserving auth errors; forbidden auth errors surface as `403`, cross-origin mutations are rejected, local reverse-proxy same-origin mutations are accepted, and oversized bodies return `413`. Verified by `test/web-auth-app-context-context.test.mjs` and `test/web-channel.test.mjs`.
@@ -428,9 +456,10 @@ This section records which parts of the web-auth and same-origin host contract a
 | REQ-009 HTTP request and response handling is bounded and explicit | Oversized API body | `src/web/http.ts`, `src/web/channel.ts` | `test/web-channel.test.mjs`, `test/web-http.test.mjs` | Component-tested |
 | REQ-010 Local auth enforces three independent request-time safety layers | Reverse proxy rewrites both headers | `src/web/channel.ts`, `src/plugins/dev-auth.ts` | `test/local-auth.test.mjs`, `test/dev-auth.test.mjs` | Component-tested |
 | REQ-011 Local auth grants a session to loopback callers without a cookie | VS Code extension lists rooms without a cookie | `src/web/channel.ts`, `src/plugins/dev-auth.ts` | `test/local-auth.test.mjs`, `test/dev-auth.test.mjs` | Component-tested |
+| REQ-012 Better Auth SQLite startup is recoverable | Populated schema needs an unsafe required column | `src/auth/better-auth.ts` | `test/better-auth-sqlite-migration.test.mjs`, exact gateway smoke tests | Integration-tested |
 
 ## Verification Basis
 
 This spec was derived from the current implementation in `src/web/*`, `src/auth/*`, `src/plugins/better-auth.ts`, `src/plugins/dev-auth.ts`, `src/plugins/web.ts`, `src/plugins/registry.ts`, `src/gateway/web.ts`, `src/config/config.ts`, and web app integration points in `src/apps/chat/web-app.ts`.
 
-Verification coverage was updated from `test/better-auth-config.test.mjs`, `test/dev-auth.test.mjs`, `test/web-gateway.test.mjs`, `test/web-channel.test.mjs`, `test/plugin-registry.test.mjs`, `test/web-http.test.mjs`, `test/local-auth.test.mjs`, and `test/auth-mode-config.test.mjs`.
+Verification coverage was updated from `test/better-auth-config.test.mjs`, `test/better-auth-sqlite-migration.test.mjs`, `test/dev-auth.test.mjs`, `test/web-gateway.test.mjs`, `test/web-channel.test.mjs`, `test/plugin-registry.test.mjs`, `test/web-http.test.mjs`, `test/local-auth.test.mjs`, and `test/auth-mode-config.test.mjs`.
