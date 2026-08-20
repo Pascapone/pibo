@@ -116,4 +116,4 @@ The checksum-verified archive was activated on Pibo2 as `runtime-portability-v4-
 
 ## Remaining external gate
 
-Direct Windows validation remains required for the Better Auth SQLite migration on an actual Windows/NTFS host. Linux/POSIX validation does not prove Windows startup, NTFS ACL behavior, recovery naming, rollback, restart idempotence, or packed global-install behavior. No configured host in this environment provides Windows.
+Direct Windows validation remains required for the Better Auth SQLite migration on an active Windows/NTFS host. Linux/POSIX validation does not prove Windows startup, NTFS ACL behavior, recovery naming, rollback, restart idempotence, or packed global-install behavior. A previously authorized Windows Server build host exists, but its owner had powered it off; SSH, RDP, and WinRM were unreachable during the final attempt.
