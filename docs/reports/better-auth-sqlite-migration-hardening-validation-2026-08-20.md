@@ -24,6 +24,7 @@ The failure occurs when Better Auth asks SQLite to add a required column without
 | Archive size | 3,336,791 bytes |
 | Archive entries | 803 |
 | Pibo2 candidate | `windows-better-auth-migration/a52ccb036dacb997f80a838c6950f4483b40f191` |
+| Focused review | PR #523 to `dev` |
 | Resolved Better Auth | exactly `1.6.30` |
 
 No merge, npm publication, release, or global package replacement was performed.

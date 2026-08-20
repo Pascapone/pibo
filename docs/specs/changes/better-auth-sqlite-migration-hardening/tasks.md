@@ -33,7 +33,7 @@
 - [x] 4.3 Pack commit `a52ccb03`, verify SHA-256 `af2f89ba754d80355b7832854b464cd340a420905cefc34614d4cc20e74b9df5`, and prove a global-install-shaped directory resolves Better Auth `1.6.30` exactly.
 - [x] 4.4 Start `pibo gateway:web --web-port 3700` from source and the packed global-style install against safely repairable and fallback-recovery homes.
 - [x] 4.5 Validate the exact candidate on Pibo2 without merging, publishing, or releasing, including isolated repair/recovery/rollback, two production restarts, database integrity, public health/Chat, and machine authentication.
-- [ ] 4.6 Record evidence under `docs/reports/` and open a focused PR to `dev`: report recorded; PR creation follows the evidence commit.
+- [x] 4.6 Record evidence under `docs/reports/` and open focused PR #523 to `dev`.
 
 ## Remaining release gate
 
