@@ -80,6 +80,7 @@ import {
 import type { PiboRuntimeResourceSession } from "../agent-runtime/resources.js";
 import {
 	PORTABLE_HISTORY_HANDOFF_METADATA_KEY,
+	PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY,
 	PiboDataPortableHistoryProvider,
 	createPortableHistoryHandoffMetadata,
 	readPortableHistoryHandoffMetadata,
@@ -309,6 +310,21 @@ function runtimeBindingsEqual(left: RuntimeSessionBinding, right: RuntimeSession
 		&& left.adapterVersion === right.adapterVersion
 		&& JSON.stringify(left.locator ?? null) === JSON.stringify(right.locator ?? null)
 		&& JSON.stringify(left.metadata ?? {}) === JSON.stringify(right.metadata ?? {});
+}
+
+function withPersistedPortableHistoryAuditMetadata(
+	persisted: RuntimeSessionBinding,
+	live: RuntimeSessionBinding,
+): RuntimeSessionBinding {
+	const metadata: PiboJsonObject = { ...(live.metadata ?? {}) };
+	for (const key of [PORTABLE_HISTORY_HANDOFF_METADATA_KEY, PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY]) {
+		if (Object.prototype.hasOwnProperty.call(persisted.metadata ?? {}, key)) {
+			metadata[key] = structuredClone(persisted.metadata![key]!);
+		} else {
+			delete metadata[key];
+		}
+	}
+	return { ...live, metadata };
 }
 
 type TelemetrySessionStore = PiboSessionStore & { getTelemetryStore?: () => TelemetryStore | undefined };
@@ -1490,7 +1506,11 @@ export class PiboSessionRouter {
 		const session = this.sessionStore.get(piboSessionId);
 		if (!session) return;
 		try {
-			this.persistSessionRuntimeBinding(session, runtimeSession.getBinding());
+			const persisted = this.resolveSessionRuntimeBinding(session);
+			this.persistSessionRuntimeBinding(
+				session,
+				withPersistedPortableHistoryAuditMetadata(persisted, runtimeSession.getBinding()),
+			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			this.emitOutput({

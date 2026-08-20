@@ -450,6 +450,15 @@ test("runtime rebind persists a retry-safe handoff and imports it before opening
 	);
 	assert.ok(completed.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].entryCount > 0);
 
+	router.syncLiveSessionRuntimeBinding(created.id, target.sessions[0]);
+	const completedAfterLiveSync = sessionStore.getRuntimeBinding(created.id);
+	assert.equal(completedAfterLiveSync.metadata[PORTABLE_HISTORY_HANDOFF_METADATA_KEY], undefined);
+	assert.equal(completedAfterLiveSync.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].status, "completed");
+	assert.deepEqual(
+		completedAfterLiveSync.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].checkpoint,
+		pending.metadata[PORTABLE_HISTORY_HANDOFF_METADATA_KEY].checkpoint,
+	);
+
 	await assert.rejects(
 		() => router.rebindSessionRuntime(created.id, {
 			runtimeInstanceId: "unsupported-runtime",
