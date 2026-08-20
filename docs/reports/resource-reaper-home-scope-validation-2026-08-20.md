@@ -30,13 +30,13 @@ The tests cover in-home cleanup selection, out-of-home retention, exact profile 
 
 ## Integrated candidate
 
-The fix was included without changing focused branch history in final disposable integration commit `100f063d47a3501e6d350babb390ce091e59913d`.
+The fix was included without changing focused branch history in final disposable integration commit `e0fd14fb8c050c28cb7c9d7096317482d211edff`.
 
 Integrated validation passed:
 
 - typecheck and production build;
-- **204/204** final focused tests;
-- **1,814/1,814** canonical tests across 312 files;
+- **241/241** final focused tests;
+- **1,817/1,817** canonical tests across 312 files;
 - packed local gateway smoke;
 - installed production audit with zero advisories.
 
