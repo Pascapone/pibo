@@ -1,4 +1,8 @@
-import { createAgentSessionServices } from "@earendil-works/pi-coding-agent";
+import {
+	ModelRegistry,
+	createAgentSessionServices,
+	type ModelRuntime,
+} from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../../providers/minimax.js";
 import { registerGlmProvider, type GlmModelRegistryLike } from "../../providers/glm.js";
@@ -33,7 +37,8 @@ type ModelCatalogRegistry = {
 };
 
 type ModelCatalogServices = {
-	modelRegistry: ModelCatalogRegistry;
+	modelRegistry?: ModelCatalogRegistry;
+	modelRuntime?: ModelRuntime;
 };
 
 type ModelCatalogServicesFactory = (options: { cwd: string }) => Promise<ModelCatalogServices>;
@@ -85,8 +90,11 @@ export async function loadModelCatalogWithServices(
 ): Promise<ModelCatalog> {
 	try {
 		const services = await createServices({ cwd });
-		extensionHook?.(services.modelRegistry as unknown as MiniMaxModelRegistryLike & GlmModelRegistryLike & OpenAiGpt56ModelRegistryLike);
-		return buildModelCatalogFromRegistry(services.modelRegistry);
+		const registry = services.modelRegistry
+			?? (services.modelRuntime ? new ModelRegistry(services.modelRuntime) : undefined);
+		if (!registry) throw new Error("Pi model services did not provide a model runtime.");
+		extensionHook?.(registry as unknown as MiniMaxModelRegistryLike & GlmModelRegistryLike & OpenAiGpt56ModelRegistryLike);
+		return buildModelCatalogFromRegistry(registry);
 	} catch {
 		return { providers: [] };
 	}

@@ -1,6 +1,5 @@
 import type { Model } from "@earendil-works/pi-ai";
 import { getModels } from "@earendil-works/pi-ai/compat";
-import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 
 export const OPENAI_PROVIDER_ID = "openai";
@@ -124,13 +123,10 @@ export function registerOpenAiGpt56Models(
 	const baseOpenAiCodexModels = options.baseOpenAiCodexModels ?? getBuiltInOpenAiCodexModels();
 	const openAiCodexModels = buildOpenAiCodexGpt56Models(baseOpenAiCodexModels);
 	const openAiCodexAdded = countMissingGpt56Models(baseOpenAiCodexModels, OPENAI_CODEX_PROVIDER_ID);
-	const openAiCodexOAuth = getOpenAiCodexOAuthConfig();
 
 	modelRegistry.registerProvider(OPENAI_CODEX_PROVIDER_ID, {
-		name: openAiCodexOAuth.name,
 		baseUrl: OPENAI_CODEX_BASE_URL,
 		api: OPENAI_CODEX_RESPONSES_API,
-		oauth: openAiCodexOAuth,
 		models: openAiCodexModels,
 	});
 
@@ -219,11 +215,4 @@ function openAiGpt56ModelToRegistryModel(
 		contextWindow: options.contextWindow,
 		maxTokens: GPT_56_MAX_TOKENS,
 	};
-}
-
-function getOpenAiCodexOAuthConfig() {
-	const provider = getOAuthProvider(OPENAI_CODEX_PROVIDER_ID);
-	if (!provider) throw new Error("OpenAI Codex OAuth provider is unavailable.");
-	const { id: _id, ...oauth } = provider;
-	return oauth;
 }

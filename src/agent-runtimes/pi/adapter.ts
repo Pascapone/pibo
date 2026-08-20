@@ -65,7 +65,7 @@ import {
 import { PiAgentRuntimeAuthController } from "./auth.js";
 
 const PI_ADAPTER_ID = "pi";
-const PI_PROTOCOL_VERSION = "0.80.6";
+export const PI_PROTOCOL_VERSION = "0.84.2";
 
 export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 	lifecycle: {

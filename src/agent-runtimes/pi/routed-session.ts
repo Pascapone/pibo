@@ -1142,7 +1142,7 @@ export class RoutedSession {
 
 	async setModel(model: ModelProfile): Promise<ModelProfile> {
 		this.assertActive();
-		const resolved = this.runtime.session.modelRegistry.find(model.provider, model.id);
+		const resolved = this.runtime.session.modelRuntime.getModel(model.provider, model.id);
 		if (!resolved) throw new Error(`Unknown model ${model.provider}/${model.id}`);
 		await this.runtime.session.setModel(resolved);
 		return { provider: resolved.provider, id: resolved.id };

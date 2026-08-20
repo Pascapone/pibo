@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import { writePiCredential } from "../dist/agent-runtimes/pi/credentials.js";
 import {
 	createCodexImageGenerationToolDefinition,
 	resolveCodexImageUrl,
@@ -94,7 +94,7 @@ async function withCodexAuth(run) {
 	const piAgentDir = join(root, "pi-agent");
 	mkdirSync(piAgentDir, { recursive: true });
 	return await withEnv({ PIBO_HOME: piboHome, PI_CODING_AGENT_DIR: piAgentDir }, async () => {
-		AuthStorage.create().set("openai-codex", {
+		await writePiCredential("openai-codex", {
 			type: "oauth",
 			access: fakeJwt("acct_codex"),
 			refresh: "refresh-token",

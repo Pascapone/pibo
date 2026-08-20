@@ -552,7 +552,17 @@ test("real yielded Pi bash timeout preserves startup output classification", asy
 	const runtime = await createPiboRuntime({ profile, persistSession: false, subagentRunner: noopSubagentRunner, runToolController: controller });
 	try {
 		const startTool = runtime.session.getToolDefinition("pibo_run_start");
-		await startTool.execute("tool-call-real-timeout", { toolName: "bash", arguments: { command: "printf 'service ready\\n'; sleep 2", timeout: 1 } }, new AbortController().signal, () => {}, {});
+		await startTool.execute(
+			"tool-call-real-timeout",
+			{ toolName: "bash", arguments: { command: "printf 'service ready\\n'; sleep 2", timeout: 1 } },
+			new AbortController().signal,
+			() => {},
+			{
+				sessionManager: runtime.session.sessionManager,
+				model: runtime.session.model,
+				thinkingLevel: runtime.session.thinkingLevel,
+			},
+		);
 		assert.equal(started.timeoutMs, 1000);
 		await assert.rejects(started.execute(), (error) => error instanceof PiboRunExecutionTimeoutError && error.timeoutPhase === "lifetime");
 	} finally {

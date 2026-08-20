@@ -1,13 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import {
-	AuthStorage,
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 	createBashToolDefinition,
 	getAgentDir,
 	InteractiveMode,
+	ModelRegistry,
+	type ModelRuntime,
 	SessionManager,
 	SettingsManager,
 	type AgentSessionRuntime,
@@ -116,6 +117,8 @@ export type PiboRuntimeOptions = {
 	thinkingLevel?: PiboThinkingLevel;
 	/** Runtime-only retry defaults. Explicit Pi global or project settings take precedence. */
 	retryDefaults?: PiboRuntimeRetryDefaults;
+	/** Optional Pi model runtime override for embedded callers and deterministic tests. */
+	modelRuntime?: ModelRuntime;
 	extensionFactories?: ExtensionFactory[];
 	subagentRunner?: PiboSubagentRunner;
 	runToolController?: PiboRunToolController;
@@ -327,7 +330,6 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 	const profile = options.profile ?? createDefaultPiboProfile();
 	const agentDir = getAgentDir();
 	const sessionManager = await createSessionManager(cwd, profile, options.persistSession !== false);
-	const authStorage = AuthStorage.create();
 
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
 		cwd: runtimeCwd,
@@ -355,7 +357,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		const services = await createAgentSessionServices({
 			cwd: runtimeCwd,
 			agentDir: runtimeAgentDir,
-			authStorage,
+			modelRuntime: options.modelRuntime,
 			resourceLoaderOptions: {
 				...piPackageOptions.resourceLoaderOptions,
 				additionalSkillPaths: skillPaths,
@@ -386,10 +388,11 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		});
 		runtimeSettingsManager = services.settingsManager;
 		applyPiboRuntimeRetryDefaults(services.settingsManager, options.retryDefaults);
-		registerOpenAiGpt56Models(services.modelRegistry as OpenAiGpt56ModelRegistryLike);
-		registerMiniMaxProvider(services.modelRegistry as MiniMaxModelRegistryLike);
-		registerGlmProvider(services.modelRegistry as GlmModelRegistryLike);
-		registerQwenTokenPlanProvider(services.modelRegistry as QwenTokenPlanModelRegistryLike);
+		const modelRegistry = new ModelRegistry(services.modelRuntime);
+		registerOpenAiGpt56Models(modelRegistry as OpenAiGpt56ModelRegistryLike);
+		registerMiniMaxProvider(modelRegistry as MiniMaxModelRegistryLike);
+		registerGlmProvider(modelRegistry as GlmModelRegistryLike);
+		registerQwenTokenPlanProvider(modelRegistry as QwenTokenPlanModelRegistryLike);
 		const ownsLocalRuntimeRegistry = options.runtimeToolController === undefined && profile.tools.some(isEnabledRuntimeTool);
 		const localRuntimeRegistry = ownsLocalRuntimeRegistry ? new RuntimeSessionRegistry({ cwd: runtimeCwd }) : undefined;
 		const runtimeToolController = options.runtimeToolController
@@ -452,7 +455,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			services,
 			sessionManager: runtimeSessionManager,
 			sessionStartEvent,
-			model: resolveProfileModel(profile, services, runtimeCwd, modelDefaults, options.activeModel),
+			model: resolveProfileModel(profile, modelRegistry, runtimeCwd, modelDefaults, options.activeModel),
 			thinkingLevel: options.thinkingLevel ?? selectRequestedThinkingLevel(profile, modelDefaults),
 			customTools,
 			noTools: profile.builtinTools === "disabled" ? "builtin" : undefined,
@@ -539,7 +542,7 @@ function mergePriorAfterToolCallResult(
 
 function resolveProfileModel(
 	profile: InitialSessionContext,
-	services: Awaited<ReturnType<typeof createAgentSessionServices>>,
+	modelRegistry: ModelRegistry,
 	cwd: string,
 	modelDefaults?: PiboModelDefaults,
 	activeModel?: ModelProfile,
@@ -547,14 +550,14 @@ function resolveProfileModel(
 	const requestedModel = activeModel ? { ...activeModel } : selectRequestedModelProfile(profile, modelDefaults ?? loadPiboModelDefaults(cwd));
 	if (!requestedModel) return undefined;
 
-	const model = services.modelRegistry.find(requestedModel.provider, requestedModel.id);
+	const model = modelRegistry.find(requestedModel.provider, requestedModel.id);
 	if (!model) {
 		throw new Error(
 			`Profile "${profile.profileName}" requests unknown model ${requestedModel.provider}/${requestedModel.id}.`,
 		);
 	}
 
-	if (!services.modelRegistry.hasConfiguredAuth(model)) {
+	if (!modelRegistry.hasConfiguredAuth(model)) {
 		throw new Error(
 			`Profile "${profile.profileName}" requires configured auth for ${requestedModel.provider}/${requestedModel.id}.`,
 		);

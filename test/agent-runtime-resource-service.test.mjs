@@ -229,7 +229,11 @@ test("runtime resources isolate selected skills, context, MCP config, secrets, a
 		{ command: `${JSON.stringify(process.execPath)} ${JSON.stringify(resolve("dist/bin/pibo.js"))} mcp` },
 		undefined,
 		undefined,
-		{},
+		{
+			sessionManager: piRuntime.session.sessionManager,
+			model: piRuntime.session.model,
+			thinkingLevel: piRuntime.session.thinkingLevel,
+		},
 	);
 	await piRuntime.dispose();
 	assert.match(scopedCliResult.content[0].text, /selected/);
@@ -359,7 +363,11 @@ test("Pi Bash inherits only the router-owned adapter environment without process
 		{ command: `${JSON.stringify(process.execPath)} -e 'process.stdout.write(process.env.PIBO_SCOPE_PROOF || "missing")'` },
 		undefined,
 		undefined,
-		{},
+		{
+			sessionManager: runtime.session.sessionManager,
+			model: runtime.session.model,
+			thinkingLevel: runtime.session.thinkingLevel,
+		},
 	);
 	assert.equal(result.content[0].text, "scoped-value");
 	assert.equal(process.env.PIBO_SCOPE_PROOF, undefined);
