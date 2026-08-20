@@ -99,14 +99,14 @@ The corrected working tree was then repacked and installed into an isolated pref
 
 ## Integrated deployment validation
 
-The focused branch was assembled with Runtime Portability v4.1, the Windows Better Auth migration branch, and the resource-reaper home-scope fix in disposable integration commit `b01becb068619e43ab3dcbafd894bbb6944d5b4d`.
+The focused branch was assembled with Runtime Portability v4.1, the Windows Better Auth migration branch, the resource-reaper home-scope fix, and private upload-storage hardening in disposable integration commit `100f063d47a3501e6d350babb390ce091e59913d`.
 
 The exact integrated archive:
 
-- had SHA-256 `eb6b18c72c5a9ac8489e24c32d3abf77967931b722616c752140c96043a38a84`;
+- had SHA-256 `3457f109ab7be9011639224ad1d18aa7abbd9d6cd8b3f5c4e4c23c14d8c608d3`;
 - passed typecheck and production build;
-- passed **216/216** focused tests;
-- passed **1,813/1,813** canonical tests across 311 files;
+- passed **204/204** final focused tests;
+- passed **1,814/1,814** canonical tests across 312 files;
 - passed packed credential-store and local Chat gateway smoke checks;
 - installed with **0 production advisories**;
 - omitted `@mdxeditor/editor` from the production installation;
