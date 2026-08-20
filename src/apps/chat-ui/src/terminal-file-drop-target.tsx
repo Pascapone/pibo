@@ -121,7 +121,7 @@ export function TerminalFileDropOverlay({ uploadingFileCount }: { uploadingFileC
         </span>
         <span className="mt-1 text-xs leading-5 text-slate-400">
           {uploading
-            ? "Saving to ~/.pibo/uploads"
+            ? "Saving to the Pibo uploads directory"
             : "Images and other files will be attached to your next message."}
         </span>
       </div>

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
@@ -366,7 +366,10 @@ test("chat web app serves shell metadata, favicon, and built assets", async () =
 	}
 });
 
-test("chat web app uploads multipart files to the Pibo uploads directory", async () => {
+test("chat web app uploads multipart files to the private Pibo uploads directory", async () => {
+	const uploadDir = join(homedir(), ".pibo", "uploads");
+	mkdirSync(uploadDir, { recursive: true });
+	if (process.platform !== "win32") chmodSync(uploadDir, 0o755);
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
@@ -389,11 +392,13 @@ test("chat web app uploads multipart files to the Pibo uploads directory", async
 		});
 		assert.equal(response.status, 201);
 		const payload = await response.json();
-		assert.equal(payload.uploadDir, join(homedir(), ".pibo", "uploads"));
+		assert.equal(payload.uploadDir, uploadDir);
 		assert.equal(payload.files.length, 2);
+		if (process.platform !== "win32") assert.equal(statSync(payload.uploadDir).mode & 0o777, 0o700);
 		for (const file of payload.files) {
 			uploadedPaths.push(file.path);
 			assert.equal(dirname(file.path), payload.uploadDir);
+			if (process.platform !== "win32") assert.equal(statSync(file.path).mode & 0o777, 0o600);
 		}
 		assert.equal(basename(uploadedPaths[0]), filename);
 		assert.equal(basename(uploadedPaths[1]), suffixedFilename);

@@ -1,10 +1,10 @@
-import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
-import os from "node:os";
 import { Readable } from "node:stream";
+import { piboHomePath } from "../../core/pibo-home.js";
 import { PiboWebHttpError } from "../../web/http.js";
 
-export const CHAT_UPLOAD_DIR = resolve(os.homedir(), ".pibo", "uploads");
+export const CHAT_UPLOAD_DIR = piboHomePath("uploads");
 const CHAT_FILE_ATTACHMENT_LIMIT = 10;
 
 export type ChatFileMessageAttachment = {
@@ -36,6 +36,12 @@ export function prepareChatFileAttachments(input: {
 	};
 }
 
+export function ensurePrivateChatUploadDirectory(): string {
+	mkdirSync(CHAT_UPLOAD_DIR, { recursive: true, mode: 0o700 });
+	if (process.platform !== "win32") chmodSync(CHAT_UPLOAD_DIR, 0o700);
+	return CHAT_UPLOAD_DIR;
+}
+
 export async function saveUploadedChatFiles(request: Request): Promise<{ uploadDir: string; files: Array<{ name: string; path: string; bytes: number }> }> {
 	const form = await request.formData();
 	const files: UploadedChatFile[] = [];
@@ -44,7 +50,7 @@ export async function saveUploadedChatFiles(request: Request): Promise<{ uploadD
 	}
 	if (!files.length) throw new PiboWebHttpError("No files were uploaded", 400);
 
-	mkdirSync(CHAT_UPLOAD_DIR, { recursive: true });
+	ensurePrivateChatUploadDirectory();
 	const saved = [];
 	for (const file of files) {
 		const name = sanitizeUploadFilename(file.name);
@@ -88,7 +94,7 @@ function normalizeChatFileAttachmentPaths(value: unknown): string[] {
 		const absolutePath = resolve(item.trim());
 		if (!item.trim()) throw new PiboWebHttpError("fileAttachmentPaths entries must be non-empty strings", 400);
 		if (absolutePath.length > 4096) throw new PiboWebHttpError("uploaded file path is too long", 400);
-		if (!isPathInsideUploadDir(absolutePath)) throw new PiboWebHttpError("Attached uploads must be under ~/.pibo/uploads", 400);
+		if (!isPathInsideUploadDir(absolutePath)) throw new PiboWebHttpError("Attached uploads must be under the configured Pibo uploads directory", 400);
 		if (!seen.has(absolutePath)) {
 			seen.add(absolutePath);
 			paths.push(absolutePath);
@@ -151,7 +157,7 @@ function writeUploadedChatFile(filename: string, bytes: Buffer): string {
 	for (let index = 0; index < 10_000; index += 1) {
 		const targetPath = uploadPathForIndex(filename, index);
 		try {
-			writeFileSync(targetPath, bytes, { flag: "wx" });
+			writeFileSync(targetPath, bytes, { flag: "wx", mode: 0o600 });
 			return targetPath;
 		} catch (error) {
 			if (isNodeError(error) && error.code === "EEXIST") continue;

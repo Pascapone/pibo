@@ -114,7 +114,7 @@ import {
 	providerAuthActionResponse,
 	readProviderAuthCatalog,
 } from "./provider-auth-actions.js";
-import { prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, saveUploadedChatFiles } from "./chat-files.js";
+import { ensurePrivateChatUploadDirectory, prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, saveUploadedChatFiles } from "./chat-files.js";
 import {
 	chatSettingsRoute,
 	chatSettingsRouteInvalidatesBootstrapCatalog,
@@ -4309,6 +4309,7 @@ async function sendChatMessage(input: {
 
 
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
+	ensurePrivateChatUploadDirectory();
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
 	const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
