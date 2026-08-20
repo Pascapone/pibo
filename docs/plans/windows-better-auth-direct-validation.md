@@ -16,11 +16,11 @@ Prove the Better Auth SQLite recovery path through the actual packed/global Wind
 
 ## Artifact
 
-Use the integrated archive built from commit `e0fd14fb8c050c28cb7c9d7096317482d211edff`:
+Use the integrated archive built from commit `64fb3d954285d8de5acb53ed8dfd8236be9e66f9`:
 
 ```text
 pasko70-pibo-1.7.2.tgz
-SHA-256 63f5af4f364755da9c6cc10e6fd62287308cf72ad10f180639c0d7959643b8aa
+SHA-256 1955fc3665fffd701bd65a00d6a1935bbdecdb603f2c2112c6de230c33accad9
 ```
 
 Verify the checksum on Windows before installation:

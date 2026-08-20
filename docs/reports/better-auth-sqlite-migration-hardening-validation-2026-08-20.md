@@ -106,7 +106,7 @@ The SQLite failure class, packed/global install shape, Windows-safe filename gen
 
 ### Production dependency audit
 
-The original focused migration tree reported 24 production advisories that were not introduced by this change. They are now resolved in the separate `fix/production-dependency-hardening` branch. The final disposable integrated package at commit `e0fd14fb8c050c28cb7c9d7096317482d211edff` installed with zero production advisories while retaining Better Auth exactly at `1.6.30` and this migration implementation. The migration branch remains focused and does not absorb that dependency work.
+The original focused migration tree reported 24 production advisories that were not introduced by this change. They are now resolved in the separate `fix/production-dependency-hardening` branch. The final disposable integrated package at commit `64fb3d954285d8de5acb53ed8dfd8236be9e66f9` installed with zero production advisories while retaining Better Auth exactly at `1.6.30`, this migration implementation, and private Pibo Home hardening. The migration branch remains focused and does not absorb that dependency or storage-boundary work.
 
 ## Decision
 
