@@ -40,14 +40,14 @@ The canonical manifest contained 309 unique test files and ran in 16 isolated se
 
 ## Integrated validation
 
-The fix was included only in disposable integration commit `e0fd14fb8c050c28cb7c9d7096317482d211edff` with the portability, auth, dependency, resource-reaper, and private-upload branches.
+The fix was included only in disposable integration commit `64fb3d954285d8de5acb53ed8dfd8236be9e66f9` with the portability, auth, dependency, resource-reaper, private-upload, and private Pibo Home branches.
 
 - Integrated typecheck and production build: passed.
-- Integrated focused suite: **241/241 passed**.
-- Integrated canonical suite: **1,817/1,817 passed across 312 files**.
-- Packed archive SHA-256: `63f5af4f364755da9c6cc10e6fd62287308cf72ad10f180639c0d7959643b8aa`.
+- Integrated targeted suite: **175/175 passed**.
+- Integrated canonical suite: **1,823/1,823 passed across 313 files**.
+- Packed archive SHA-256: `1955fc3665fffd701bd65a00d6a1935bbdecdb603f2c2112c6de230c33accad9`.
 - Packed production audit: zero advisories.
-- Packed cancellation smoke: cancelled status, isolated unit inactive, and immediate replacement run completed.
+- Exact Pibo2 cancellation smoke: cancelled status, isolated unit inactive, and immediate replacement run completed.
 
 The checksum-verified archive was activated on Pibo2. A direct script imported the installed package, started a 30-second isolated Bash run through the generated `pibo_run_start` tool, waited for its systemd unit to become active, cancelled it through generated `pibo_run_cancel`, verified the unit was inactive, and immediately completed a replacement yielded run under a one-run admission limit. Zero active `pibo-yielded-*` services remained afterward. Machine-authenticated bootstrap, portable-history metadata, dependency audit, upload permissions, browser/CDP, and zero provider-failure checks remained healthy. No provider turn was used for this deterministic process-lifecycle proof.
 
