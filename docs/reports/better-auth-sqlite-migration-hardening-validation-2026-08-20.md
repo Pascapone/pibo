@@ -102,11 +102,11 @@ The production gateway was then restarted twice through `pibo gateway web restar
 
 ### Direct Windows validation
 
-The SQLite failure class, packed/global install shape, Windows-safe filename generation, restart behavior, and rollback are covered deterministically. This environment did not provide an actual Windows host, so NTFS ACL inheritance, owner-only protection, and the exact `pibo gateway:web --web-port 3700` upgrade path still require one direct Windows run before release. The implementation deliberately avoids POSIX `chmod` on Windows.
+The SQLite failure class, packed/global install shape, Windows-safe filename generation, restart behavior, and rollback are covered deterministically. This environment does not provide an actual Windows host: every configured SSH target reports Linux, and no local PowerShell, Wine, or Windows VM runtime is installed. NTFS ACL inheritance, owner-only protection, and the exact `pibo gateway:web --web-port 3700` upgrade path therefore still require one direct Windows run before release. The implementation deliberately avoids POSIX `chmod` on Windows.
 
 ### Production dependency audit
 
-`npm audit --omit=dev` currently reports 24 advisories: 1 critical, 10 high, 10 moderate, and 3 low. They are not introduced by this focused migration change, but they remain release-blocking security debt for the broader Pibo 2 stability objective and must be resolved or explicitly dispositioned in separate focused work.
+The original focused migration tree reported 24 production advisories that were not introduced by this change. They are now resolved in the separate `fix/production-dependency-hardening` branch. The final disposable integrated package at commit `b01becb068619e43ab3dcbafd894bbb6944d5b4d` installed with zero production advisories while retaining Better Auth exactly at `1.6.30` and this migration implementation. The migration branch remains focused and does not absorb that dependency work.
 
 ## Decision
 
