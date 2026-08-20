@@ -35,12 +35,13 @@ The canonical manifest contained 310 unique test files and ran in 16 isolated se
 
 ## Integrated validation
 
-The fix was merged only into the disposable integration branch at commit `e0fd14fb8c050c28cb7c9d7096317482d211edff`, together with Runtime Portability v4.1, Better Auth migration hardening, resource-reaper home scoping, production dependency hardening, and yielded-run cancellation hardening.
+The fix was merged only into the disposable integration branch at commit `64fb3d954285d8de5acb53ed8dfd8236be9e66f9`, together with Runtime Portability v4.1, Better Auth migration hardening, resource-reaper home scoping, production dependency hardening, yielded-run cancellation hardening, and private Pibo Home hardening.
 
 - Integrated typecheck and production build: passed.
-- Integrated focused suite: **241/241 passed**.
-- Integrated canonical suite: **1,817/1,817 passed across 312 files** with zero failures, skips, or cancellations.
-- Packed archive SHA-256: `63f5af4f364755da9c6cc10e6fd62287308cf72ad10f180639c0d7959643b8aa`.
+- Integrated targeted suite: **175/175 passed**.
+- Integrated canonical suite: **1,823/1,823 passed across 313 files** with zero failures, skips, or cancellations.
+- Packed archive SHA-256: `1955fc3665fffd701bd65a00d6a1935bbdecdb603f2c2112c6de230c33accad9`.
+- The exact Pibo2 package saved a benign upload with directory mode `0700` and file mode `0600`.
 - Packed production audit: zero advisories.
 - Packed upload probe: directory `0700`, file `0600`.
 - Local Chat shell and bootstrap: HTTP 200.
