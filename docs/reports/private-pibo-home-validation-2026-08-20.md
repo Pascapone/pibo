@@ -2,7 +2,7 @@
 
 **Branch:** `fix/private-pibo-home`
 **Base:** `upstream/dev` at `a399dcd7`
-**Status:** Focused implementation validation passed; integrated and direct Windows/NTFS validation pending
+**Status:** PASS for focused, integrated, packed-install, and Pibo2 POSIX validation; direct Windows/NTFS validation pending
 
 ## Confirmed defect
 
@@ -37,8 +37,32 @@ This made local confidentiality depend on the parent account home being non-trav
 | TypeScript/typecheck and production build | Passed |
 | Focused security/config suite | **10/10 passed** |
 | Canonical suite | **1,786/1,786 passed across 310 files**; zero failures, skips, or cancellations |
-| Disposable integrated package and Pibo2 | Pending integration |
+| Disposable integrated package | **175/175 focused; 1,823/1,823 canonical across 313 files** |
+| Packed installed artifact | Zero production advisories; private-home/config/gateway smoke passed |
+| Exact Pibo2 candidate | Private home `0700`; cross-account read denied; authenticated bootstrap and browser passed |
 | Windows/NTFS ACL inheritance | Blocked on powered-off authorized Windows host |
+
+## Integrated and packed evidence
+
+The focused fix was included in disposable integration commit `64fb3d954285d8de5acb53ed8dfd8236be9e66f9` with Runtime Portability v4.1, Better Auth migration hardening, production dependency hardening, resource-reaper home scoping, private upload storage, and yielded-run cancellation.
+
+- Integrated typecheck and production build passed.
+- Integrated focused suite: **175/175 passed**.
+- Integrated canonical suite: **1,823/1,823 passed across 313 files**, with zero failures, skips, or cancellations.
+- Packed archive SHA-256: `1955fc3665fffd701bd65a00d6a1935bbdecdb603f2c2112c6de230c33accad9`.
+- An isolated production install reported zero advisories, Pi `0.84.2`, Better Auth `1.6.30`, `js-yaml@4.3.1`, and no MDX Editor production dependency.
+- The installed CLI left Pibo Home absent for `--version`, created it as `0700` for stateful use, repaired a widened home, wrote config as `0600`, protected direct default-store use, and started/stopped a local-auth gateway with Chat and bootstrap HTTP 200.
+
+## Exact Pibo2 evidence
+
+The checksum-verified package was activated as candidate `runtime-portability-v4-1-secure` at commit `64fb3d954285d8de5acb53ed8dfd8236be9e66f9`.
+
+- Live Pibo Home remained `0700`; live configuration remained `0600`.
+- An isolated exact-package test under a public `0755` parent created Pibo Home as `0700`; the unprivileged browser account could not read through it.
+- `pibo.sqlite`, `auth.sqlite`, `pibo-events.sqlite`, and `chat-agents.sqlite` each passed SQLite `PRAGMA integrity_check`.
+- Machine-key bootstrap returned HTTP 200 with an authenticated session, 13 agents, and 43 rooms.
+- The existing authenticated headful browser retained PID `1023085`, restart count `4`, one Chat target, and no browser-console warnings or errors.
+- The gateway started cleanly with no journal warnings/errors, no active yielded units, and no provider turn.
 
 ## Security boundary
 
