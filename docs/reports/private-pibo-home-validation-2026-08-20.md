@@ -63,7 +63,10 @@ The checksum-verified package was activated as candidate `runtime-portability-v4
 - `pibo.sqlite`, `auth.sqlite`, `pibo-events.sqlite`, and `chat-agents.sqlite` each passed SQLite `PRAGMA integrity_check`.
 - Machine-key bootstrap returned HTTP 200 with an authenticated session, 13 agents, and 43 rooms.
 - The existing authenticated headful browser retained PID `1023085`, restart count `4`, one Chat target, and no browser-console warnings or errors.
-- The gateway started cleanly with no journal warnings/errors, no active yielded units, and no provider turn.
+- The gateway started at 2026-08-20 16:15:56 UTC and retained PID `1054421` with restart count `0` through an eight-sample soak ending at 16:31:55 UTC. Every sample returned local unauthenticated HTTP 302, public HTTP 200, and exactly one browser page; four reaper cycles completed with no journal warnings/errors or active yielded units.
+- The exact installed package cancelled a live 30-second isolated Bash run, left its systemd unit inactive, immediately completed a replacement run under a one-run admission limit, and left zero yielded units.
+- The exact installed package saved a benign upload with directory mode `0700` and file mode `0600`.
+- No provider turn was used.
 
 ## Security boundary
 
