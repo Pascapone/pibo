@@ -26,3 +26,10 @@ test("Pi runtime packages use one exact compatible version", async () => {
 		assert.deepEqual(lockedCopies, lockedCopies.map(() => "0.84.2"));
 	}
 });
+
+test("browser-only MDX editor dependencies stay out of the production install", async () => {
+	const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+	assert.equal(packageJson.dependencies["@mdxeditor/editor"], undefined);
+	assert.equal(packageJson.devDependencies["@mdxeditor/editor"], "^3.55.0");
+	assert.equal(packageJson.overrides["js-yaml"], "4.3.1");
+});

@@ -48,7 +48,8 @@ The migration also updated:
 ### Other dependency changes
 
 - `better-auth` is exactly pinned at `1.6.30`, matching the migration-hardening branch requirement.
-- `js-yaml` is overridden to `4.3.1` without requiring an MDX Editor major upgrade.
+- `@mdxeditor/editor` is classified as a build-only development dependency, so the prebuilt production package does not install the editor or its exact vulnerable YAML dependency.
+- The source/build tree overrides `js-yaml` to `4.3.1` without requiring an MDX Editor major upgrade.
 - `esbuild` is upgraded to `0.28.2`.
 - The lockfile resolves compatible patched releases for the affected Hono, TanStack, Babel, body parser, serializer, parser, networking, and WebSocket paths.
 
@@ -69,17 +70,23 @@ Completed on the final source tree represented by this report:
 
 - TypeScript typecheck: passed.
 - Production build: passed.
-- Focused Pi/auth/provider/runtime suite: **94/94 passed**.
-- Canonical partitioned suite: **1,781/1,781 passed across 309 files**, with zero failures, skips, or cancellations.
+- Focused Pi/auth/provider/runtime suite: **95/95 passed**.
+- Canonical partitioned suite: **1,782/1,782 passed across 309 files**, with zero failures, skips, or cancellations.
 - Canonical manifest uniqueness and aggregate accounting were asserted.
 - `test/fixtures/omp-rpc-fake.mjs` was restored to mode `0644` after test execution.
 
 ## Packed-install validation
 
-The exact working tree was packed and installed into an isolated prefix:
+An initial packed-install audit exposed a packaging-specific issue that source-tree `npm audit` could not prove: npm ignores `overrides` declared by an installed dependency package. The first candidate therefore installed MDX Editor's exact `js-yaml@4.1.1` dependency and reported three production advisories.
+
+The dependency boundary was corrected by moving `@mdxeditor/editor` to `devDependencies`; Pibo publishes prebuilt UI assets and does not require the editor package at runtime. A regression test now enforces this classification.
+
+The corrected working tree was then repacked and installed into an isolated prefix:
 
 - package: `pasko70-pibo-1.7.2.tgz`;
-- SHA-256: `a453557a9313335b7003e37f934c9eb6f1eb41f3841bb72b3e60096063e12470`;
+- SHA-256: `cb58d7fb797e5763a8828df7f3294705ce7f0001c1fe1ed871e87ada5526b76d`;
+- installed production audit: **0 advisories**;
+- MDX Editor present in production install: **no**;
 - installed Pi Coding Agent: `0.84.2`;
 - installed Better Auth: `1.6.30`;
 - packed Pi credential-store write/read/delete round trip: passed;
