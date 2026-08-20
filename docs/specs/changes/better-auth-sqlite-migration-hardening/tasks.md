@@ -1,6 +1,6 @@
 # Tasks: Better Auth SQLite Migration Hardening
 
-**Status:** Implementing
+**Status:** Ready for review; direct Windows-host validation remains a release gate
 **Updated:** 2026-08-20
 
 ## 1. Evidence and fixtures
@@ -29,8 +29,12 @@
 ## 4. Installation and release-candidate validation
 
 - [x] 4.1 Run focused auth and gateway tests: 20/20 focused tests pass, and both safe-repair and fallback gateway smokes reach readiness on port 3700.
-- [x] 4.2 Run typecheck, build, and canonical test suite: build passes and 1,784/1,784 tests pass.
-- [x] 4.3 Pack commit `e599969f`, verify the archive, and prove a global-install-shaped directory resolves Better Auth `1.6.30` exactly.
+- [x] 4.2 Run typecheck, build, and canonical test suite: build passes and 1,785/1,785 tests pass.
+- [x] 4.3 Pack commit `a52ccb03`, verify SHA-256 `af2f89ba754d80355b7832854b464cd340a420905cefc34614d4cc20e74b9df5`, and prove a global-install-shaped directory resolves Better Auth `1.6.30` exactly.
 - [x] 4.4 Start `pibo gateway:web --web-port 3700` from source and the packed global-style install against safely repairable and fallback-recovery homes.
-- [ ] 4.5 Validate the exact candidate on Pibo2 without merging, publishing, or releasing.
-- [ ] 4.6 Record evidence under `docs/reports/` and open a focused PR to `dev`.
+- [x] 4.5 Validate the exact candidate on Pibo2 without merging, publishing, or releasing, including isolated repair/recovery/rollback, two production restarts, database integrity, public health/Chat, and machine authentication.
+- [ ] 4.6 Record evidence under `docs/reports/` and open a focused PR to `dev`: report recorded; PR creation follows the evidence commit.
+
+## Remaining release gate
+
+- [ ] 5.1 Run the exact packed candidate on an actual Windows host and verify malformed-schema upgrade, second-start idempotence, Windows backup naming, NTFS ACL protection, and rollback.

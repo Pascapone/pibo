@@ -1,6 +1,6 @@
 # Design: Better Auth SQLite Migration Hardening
 
-**Status:** Implementing
+**Status:** Ready for review; direct Windows-host validation remains a release gate
 **Created:** 2026-08-20
 
 ## Context

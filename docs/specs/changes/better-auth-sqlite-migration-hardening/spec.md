@@ -1,6 +1,6 @@
 # Spec: Better Auth SQLite Migration Hardening
 
-**Status:** Implementing
+**Status:** Ready for review; direct Windows-host validation remains a release gate
 **Created:** 2026-08-20
 **Requester / Source:** Windows startup failure reported after Pibo 2.x installation
 **Related docs:** `proposal.md`, `design.md`, `tasks.md`, `../../capabilities/web-auth-and-same-origin-host.md`, `../bootstrap-host-installation/spec.md`
@@ -111,8 +111,9 @@ The exact packed candidate MUST start through a global-install-shaped path with 
 - [x] SC-001: The reported SQLite exception is reproduced by a deterministic populated-schema fixture.
 - [x] SC-002: Safe missing fields are repaired in place with rows preserved.
 - [x] SC-003: Unsafe missing fields trigger protected auth-only backup/recovery and a successful second start.
-- [ ] SC-004: Exact dependency and packed-install checks pass.
-- [ ] SC-005: Focused tests, typecheck, build, canonical suite, and exact-candidate gateway smoke tests pass.
+- [x] SC-004: Exact dependency and packed-install checks pass.
+- [x] SC-005: Focused tests, typecheck, build, canonical suite, and exact-candidate Pibo2 gateway smoke tests pass.
+- [ ] SC-006: The exact packed candidate passes the malformed-schema upgrade and NTFS ACL checks on an actual Windows host.
 
 ## Assumptions and Open Questions
 
@@ -129,10 +130,10 @@ The exact packed candidate MUST start through a global-install-shaped path with 
 
 | Requirement | Tasks | Status |
 |---|---|---|
-| REQ-001 | 2.1, 4.3 | Implemented; packed-install check pending |
+| REQ-001 | 2.1, 4.3 | Pass: source, lockfile, packed install, and Pibo2 candidate resolve exactly `1.6.30` |
 | REQ-002 | 1.1-1.3, 2.2 | Pass |
-| REQ-003 | 1.4, 2.3, 3.1 | Pass |
+| REQ-003 | 1.4, 2.3, 3.1 | Pass on POSIX/Pibo2; direct NTFS ACL proof remains under task 5.1 |
 | REQ-004 | 2.4, 3.2, 3.5 | Pass: injected replacement failure restores the original auth database |
-| REQ-005 | 3.3 | Pass |
-| REQ-006 | 2.5, 3.4 | Pass |
-| REQ-007 | 4.1-4.5 | Local source validation passes; exact package/Pibo2 pending |
+| REQ-005 | 3.3, 4.5 | Pass locally and across two production gateway restarts |
+| REQ-006 | 2.5, 3.4, 4.5 | Pass |
+| REQ-007 | 4.1-4.5 | Pass for exact source, packed/global-style, and Pibo2 candidate paths; actual Windows-host execution remains task 5.1 |
