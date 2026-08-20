@@ -3,6 +3,7 @@
 **Status:** PASS for focused, canonical, packed-install, and authenticated Pibo2 validation.
 **Branch:** `fix/private-upload-storage`
 **Base:** `upstream/dev` at `a399dcd7`
+**Pull request:** #527
 
 ## Finding
 
