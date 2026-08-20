@@ -23,6 +23,8 @@ pasko70-pibo-1.7.2.tgz
 SHA-256 1955fc3665fffd701bd65a00d6a1935bbdecdb603f2c2112c6de230c33accad9
 ```
 
+As of 2026-08-20, npm and `upstream/main` identify the latest release as `2.1.1`. This development archive retains the `upstream/dev` package metadata `1.7.2`; the commit and SHA-256 above, not the archive filename, are authoritative. The only `upstream/dev..upstream/main` differences are release-version metadata.
+
 Verify the checksum on Windows before installation:
 
 ```powershell
