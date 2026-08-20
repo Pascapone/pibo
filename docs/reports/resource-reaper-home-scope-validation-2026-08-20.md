@@ -30,13 +30,13 @@ The tests cover in-home cleanup selection, out-of-home retention, exact profile 
 
 ## Integrated candidate
 
-The fix was included without changing focused branch history in final disposable integration commit `e0fd14fb8c050c28cb7c9d7096317482d211edff`.
+The fix was included without changing focused branch history in final disposable integration commit `64fb3d954285d8de5acb53ed8dfd8236be9e66f9`, together with private Pibo Home hardening.
 
 Integrated validation passed:
 
 - typecheck and production build;
-- **241/241** final focused tests;
-- **1,817/1,817** canonical tests across 312 files;
+- **175/175** targeted integration tests;
+- **1,823/1,823** canonical tests across 313 files;
 - packed local gateway smoke;
 - installed production audit with zero advisories.
 
