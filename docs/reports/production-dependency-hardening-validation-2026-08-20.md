@@ -1,5 +1,7 @@
 # Production Dependency Hardening Validation — 2026-08-20
 
+**Status:** PASS for source, packed-install, integrated, and deployed production-audit validation. Direct Windows/NTFS validation remains an external gate for the separately scoped Better Auth migration.
+
 ## Scope
 
 This report records the focused dependency-hardening work performed on `fix/production-dependency-hardening`. The branch is based on `upstream/dev` and is intentionally separate from Runtime Portability v4.1, the Better Auth SQLite migration branch, and the resource-reaper fix.
@@ -94,10 +96,23 @@ The corrected working tree was then repacked and installed into an isolated pref
 - isolated bootstrap endpoint: HTTP 200;
 - graceful shutdown: passed.
 
-## Deployment validation
+## Integrated deployment validation
 
-The combined Pibo2 validation results will be appended after the focused branch is committed and assembled into the disposable integration candidate. No package has been published and no branch has been merged.
+The focused branch was assembled with Runtime Portability v4.1, the Windows Better Auth migration branch, and the resource-reaper home-scope fix in disposable integration commit `b01becb068619e43ab3dcbafd894bbb6944d5b4d`.
+
+The exact integrated archive:
+
+- had SHA-256 `eb6b18c72c5a9ac8489e24c32d3abf77967931b722616c752140c96043a38a84`;
+- passed typecheck and production build;
+- passed **216/216** focused tests;
+- passed **1,813/1,813** canonical tests across 311 files;
+- passed packed credential-store and local Chat gateway smoke checks;
+- installed with **0 production advisories**;
+- omitted `@mdxeditor/editor` from the production installation;
+- resolved Pi Coding Agent `0.84.2`, Better Auth `1.6.30`, and `js-yaml@4.3.1`.
+
+The checksum-verified archive was activated on Pibo2 as `runtime-portability-v4-1-secure` at that exact commit. The installed candidate's own `npm audit --omit=dev` remained zero, machine-key bootstrap authenticated successfully, and the public Chat UI rendered through the real browser path with no console warnings or errors. No package was published and no branch was merged.
 
 ## Remaining external gate
 
-Direct Windows validation remains required for the Better Auth SQLite migration on an actual Windows/NTFS host. Linux/POSIX validation does not prove Windows startup, NTFS ACL behavior, recovery naming, rollback, restart idempotence, or packed global-install behavior.
+Direct Windows validation remains required for the Better Auth SQLite migration on an actual Windows/NTFS host. Linux/POSIX validation does not prove Windows startup, NTFS ACL behavior, recovery naming, rollback, restart idempotence, or packed global-install behavior. No configured host in this environment provides Windows.
