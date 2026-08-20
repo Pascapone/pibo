@@ -139,10 +139,10 @@ A real OMP RPC session exposed one ambient native skill and one Pibo-selected cu
 
 ### Packed integrated artifact
 
-The focused portability package above was superseded for deployment validation by a disposable integration of this branch, PR #523, the resource-reaper home-scope fix, dependency hardening, private upload-storage hardening, and yielded-run cancellation hardening. The final integrated artifact was built from commit `e0fd14fb8c050c28cb7c9d7096317482d211edff`.
+The focused portability package above was superseded for deployment validation by a disposable integration of this branch, PR #523, the resource-reaper home-scope fix, dependency hardening, private upload-storage hardening, yielded-run cancellation hardening, and private Pibo Home hardening. The final integrated artifact was built from commit `64fb3d954285d8de5acb53ed8dfd8236be9e66f9`.
 
 - Archive: `/tmp/pibo-final-integrated-candidate-package-private-uploads/pasko70-pibo-1.7.2.tgz`
-- SHA-256: `63f5af4f364755da9c6cc10e6fd62287308cf72ad10f180639c0d7959643b8aa`
+- SHA-256: `1955fc3665fffd701bd65a00d6a1935bbdecdb603f2c2112c6de230c33accad9`
 - Installed production audit: **0 advisories**
 - Installed Pi Coding Agent: `0.84.2`
 - Installed Better Auth: `1.6.30`
@@ -161,12 +161,12 @@ The focused portability branch intentionally does not mix dependency migration i
 The checksum-verified integrated archive was activated as:
 
 - candidate: `runtime-portability-v4-1-secure`;
-- commit: `e0fd14fb8c050c28cb7c9d7096317482d211edff`;
+- commit: `64fb3d954285d8de5acb53ed8dfd8236be9e66f9`;
 - gateway process: the immutable candidate path under `/opt/pibo-candidates`;
 - public Chat shell and machine-authenticated bootstrap: HTTP 200;
 - machine identity: authenticated, with 13 agents and 43 rooms visible to bootstrap.
 
-Integrated local validation passed typecheck, production build, **241/241** final focused tests, and **1,817/1,817** canonical tests across 312 files with zero failures, skips, or cancellations. The private-upload focused branch independently passed 134/134 focused tests and 1,781/1,781 canonical tests across 310 files; yielded-run cancellation independently passed 37/37 focused tests and 1,783/1,783 canonical tests across 309 files.
+Integrated local validation passed typecheck, production build, **175/175** targeted integration tests, and **1,823/1,823** canonical tests across 313 files with zero failures, skips, or cancellations. The private-upload focused branch independently passed 134/134 focused tests and 1,781/1,781 canonical tests across 310 files; yielded-run cancellation independently passed 37/37 focused tests and 1,783/1,783 canonical tests across 309 files; private Pibo Home hardening independently passed 10/10 focused tests and 1,786/1,786 canonical tests across 310 files.
 
 The authenticated `/api/chat/context-build` path reported Codex Native available and bound, `historyImport: true`, configurable native subagents, non-configurable native project context discovery, and `maintenance.compaction: true`, with zero snapshot warnings or errors. In the real headful Agent Designer, the selected Codex agent rendered the Native Subagents control enabled and off (`aria-pressed=false`), while automatic context discovery rendered checked but disabled with the explanation that Codex owns native discovery. The persisted agent record retained `nativeSubagents: false`.
 
