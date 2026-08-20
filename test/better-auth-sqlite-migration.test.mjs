@@ -5,7 +5,7 @@ import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { getMigrations } from "better-auth/db/migration";
-import { createBetterAuthService } from "../dist/auth/better-auth.js";
+import { createBetterAuthService, recoverBetterAuthSqliteDatabase } from "../dist/auth/better-auth.js";
 
 function testRoot(name) {
 	return mkdtempSync(join(tmpdir(), `pibo-${name}-`));
@@ -177,6 +177,38 @@ test("Pibo backs up and replaces an auth schema that cannot be repaired safely",
 	await restarted.start();
 	restarted.stop();
 	assert.deepEqual(recoveryBackups(root, databasePath), backups);
+});
+
+test("Pibo restores the original auth database when fresh-schema recovery fails", async () => {
+	const root = testRoot("better-auth-recovery-rollback");
+	const databasePath = join(root, "auth.sqlite");
+	createUserTableMissingEmail(databasePath);
+	const failedRuntime = { database: new DatabaseSync(databasePath) };
+
+	await assert.rejects(
+		recoverBetterAuthSqliteDatabase({
+			databasePath,
+			failedRuntime,
+			createRuntime: () => ({ database: new DatabaseSync(databasePath) }),
+			migrateRuntime: async (replacement) => {
+				replacement.database.exec('CREATE TABLE "replacement" ("id" TEXT NOT NULL)');
+				throw new Error("injected fresh-schema failure");
+			},
+		}),
+		/original was restored/,
+	);
+
+	const backups = recoveryBackups(root, databasePath);
+	assert.equal(backups.length, 1);
+	const restored = new DatabaseSync(databasePath, { readOnly: true });
+	try {
+		assert.equal(restored.prepare('SELECT COUNT(*) AS count FROM "user"').get().count, 1);
+		assert.equal(restored.prepare('SELECT COUNT(*) AS count FROM sqlite_master WHERE type = ? AND name = ?').get("table", "replacement").count, 0);
+		const columns = new Set(restored.prepare('PRAGMA table_info("user")').all().map((column) => column.name));
+		assert.equal(columns.has("email"), false);
+	} finally {
+		restored.close();
+	}
 });
 
 test("Pibo pins Better Auth exactly for packaged installations", async () => {

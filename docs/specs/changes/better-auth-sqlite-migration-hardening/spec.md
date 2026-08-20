@@ -132,7 +132,7 @@ The exact packed candidate MUST start through a global-install-shaped path with 
 | REQ-001 | 2.1, 4.3 | Implemented; packed-install check pending |
 | REQ-002 | 1.1-1.3, 2.2 | Pass |
 | REQ-003 | 1.4, 2.3, 3.1 | Pass |
-| REQ-004 | 2.4, 3.2 | Implemented; failure-injection evidence pending |
+| REQ-004 | 2.4, 3.2, 3.5 | Pass: injected replacement failure restores the original auth database |
 | REQ-005 | 3.3 | Pass |
 | REQ-006 | 2.5, 3.4 | Pass |
 | REQ-007 | 4.1-4.5 | Local source validation passes; exact package/Pibo2 pending |

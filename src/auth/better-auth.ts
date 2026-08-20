@@ -205,6 +205,49 @@ function makePrivateFile(path: string): void {
 	if (process.platform !== "win32") chmodSync(path, 0o600);
 }
 
+/** @internal Exported for deterministic recovery failure injection. */
+export async function recoverBetterAuthSqliteDatabase<T extends { database: DatabaseSync }>(input: {
+	databasePath: string;
+	failedRuntime: T;
+	createRuntime: () => T;
+	migrateRuntime: (runtime: T) => Promise<void>;
+}): Promise<{ runtime: T; backupPath: string }> {
+	if (input.databasePath === ":memory:") {
+		throw new Error("Better Auth SQLite schema requires recovery, but an in-memory database cannot be preserved");
+	}
+	const backupPath = nextRecoveryBackupPath(input.databasePath);
+	await backup(input.failedRuntime.database, backupPath);
+	makePrivateFile(backupPath);
+	input.failedRuntime.database.close();
+	removeSqliteDatabaseFiles(input.databasePath);
+
+	let replacement: T | undefined;
+	try {
+		replacement = input.createRuntime();
+		await input.migrateRuntime(replacement);
+		makePrivateFile(input.databasePath);
+		return { runtime: replacement, backupPath };
+	} catch (recoveryError) {
+		try {
+			replacement?.database.close();
+		} catch {}
+		removeSqliteDatabaseFiles(input.databasePath);
+		try {
+			copyFileSync(backupPath, input.databasePath);
+			makePrivateFile(input.databasePath);
+		} catch (restoreError) {
+			throw new AggregateError(
+				[recoveryError, restoreError],
+				`Pibo could not create a fresh Better Auth database or restore the original. The protected recovery backup remains at "${backupPath}".`,
+			);
+		}
+		throw new Error(
+			`Pibo could not create a fresh Better Auth database. The original was restored and the protected recovery backup remains at "${backupPath}".`,
+			{ cause: recoveryError },
+		);
+	}
+}
+
 function requiredAllowedEmails(options: BetterAuthServiceOptions, configAllowedEmails: string[] | undefined): Set<string> {
 	const allowedEmails =
 		options.allowedEmails !== undefined
@@ -263,47 +306,21 @@ export function createBetterAuthService(options: BetterAuthServiceOptions = {}):
 	};
 	let runtime = createRuntime();
 	const recoverAuthDatabase = async (failedRuntime: BetterAuthRuntime): Promise<BetterAuthRuntime> => {
-		if (databasePath === ":memory:") {
-			throw new Error("Better Auth SQLite schema requires recovery, but an in-memory database cannot be preserved");
-		}
-		const backupPath = nextRecoveryBackupPath(databasePath);
-		await backup(failedRuntime.database, backupPath);
-		makePrivateFile(backupPath);
-		failedRuntime.database.close();
-		removeSqliteDatabaseFiles(databasePath);
-
-		let replacement: BetterAuthRuntime | undefined;
-		try {
-			replacement = createRuntime();
-			const migrations = await getMigrations(replacement.authOptions);
-			await migrations.runMigrations();
-			makePrivateFile(databasePath);
-		} catch (recoveryError) {
-			try {
-				replacement?.database.close();
-			} catch {}
-			removeSqliteDatabaseFiles(databasePath);
-			try {
-				copyFileSync(backupPath, databasePath);
-				makePrivateFile(databasePath);
-			} catch (restoreError) {
-				throw new AggregateError(
-					[recoveryError, restoreError],
-					`Pibo could not create a fresh Better Auth database or restore the original. The protected recovery backup remains at "${backupPath}".`,
-				);
-			}
-			throw new Error(
-				`Pibo could not create a fresh Better Auth database. The original was restored and the protected recovery backup remains at "${backupPath}".`,
-				{ cause: recoveryError },
-			);
-		}
-
+		const recovered = await recoverBetterAuthSqliteDatabase({
+			databasePath,
+			failedRuntime,
+			createRuntime,
+			migrateRuntime: async (replacement) => {
+				const migrations = await getMigrations(replacement.authOptions);
+				await migrations.runMigrations();
+			},
+		});
 		console.warn(
 			`[pibo] Better Auth SQLite schema was incompatible with a safe in-place migration. `
-			+ `Pibo preserved a protected backup at "${backupPath}", created a fresh authentication database, `
+			+ `Pibo preserved a protected backup at "${recovered.backupPath}", created a fresh authentication database, `
 			+ "and reset existing browser sessions. Sign in again.",
 		);
-		return replacement;
+		return recovered.runtime;
 	};
 	const requireAllowedMachineSession = (session: PiboAuthSession): PiboAuthSession => {
 		const email = session.identity.email?.toLowerCase();
