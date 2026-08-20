@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { piboHomePath } from "../core/pibo-home.js";
+import { ensurePrivatePiboHomeForPath, piboHomePath } from "../core/pibo-home.js";
 import { sqliteTableColumns } from "../data/sqlite-schema.js";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { PiboJsonValue } from "../core/events.js";
@@ -261,6 +261,7 @@ export class PiboReliabilityStore {
 
 	constructor(path = piboHomePath("pibo-events.sqlite")) {
 		const resolvedPath = path === ":memory:" ? path : resolve(path);
+		ensurePrivatePiboHomeForPath(resolvedPath);
 		if (resolvedPath !== ":memory:") mkdirSync(dirname(resolvedPath), { recursive: true });
 
 		this.db = new DatabaseSync(resolvedPath);

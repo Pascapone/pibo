@@ -12,7 +12,7 @@ import {
 } from "./config/config.js";
 import type { PiboRuntimeOptions } from "./core/runtime.js";
 import { parsePiboThinkingLevel } from "./core/thinking.js";
-import { piboHomePath } from "./core/pibo-home.js";
+import { ensurePrivatePiboHome, piboHomePath } from "./core/pibo-home.js";
 
 async function createCliProfile(profileName?: string) {
 	const { createDefaultPiboPluginRegistry, createGatewayProducerPiboProfile, createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
@@ -104,6 +104,8 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		printPiboVersion();
 		return;
 	}
+
+	if (argv.length > 2) ensurePrivatePiboHome();
 
 	if (argv[2] === "auth") {
 		const { runAuthCli } = await import("./auth/cli.js");

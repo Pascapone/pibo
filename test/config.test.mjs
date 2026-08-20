@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -37,6 +37,21 @@ test("pibo config stores and reads supported keys", () => {
 		assert.equal(getPiboConfigValue(withoutBaseURL, "auth.baseURL"), undefined);
 		const withoutDatabasePath = deletePiboConfigValue(loaded, "auth.databasePath");
 		assert.equal(getPiboConfigValue(withoutDatabasePath, "auth.databasePath"), undefined);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("pibo config files remain private when rewritten", { skip: process.platform === "win32" }, () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-config-mode-"));
+	const path = join(dir, "config.json");
+
+	try {
+		savePiboConfig({ auth: { secret: "a".repeat(32) } }, path);
+		assert.equal(statSync(path).mode & 0o777, 0o600);
+		chmodSync(path, 0o644);
+		savePiboConfig({ auth: { secret: "b".repeat(32) } }, path);
+		assert.equal(statSync(path).mode & 0o777, 0o600);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

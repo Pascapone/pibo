@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { piboHomePath } from "../core/pibo-home.js";
+import { ensurePrivatePiboHomeForPath, piboHomePath } from "../core/pibo-home.js";
 
 export const DEFAULT_PIBO_CONFIG_PATH = "config.json";
 
@@ -138,8 +138,10 @@ export function loadPiboConfig(path?: string): PiboConfig {
 
 export function savePiboConfig(config: PiboConfig, path?: string): void {
 	const resolvedPath = resolve(path ?? getDefaultPiboConfigPath());
-	mkdirSync(dirname(resolvedPath), { recursive: true });
-	writeFileSync(resolvedPath, `${JSON.stringify(config, null, 2)}\n`);
+	ensurePrivatePiboHomeForPath(resolvedPath);
+	mkdirSync(dirname(resolvedPath), { recursive: true, mode: 0o700 });
+	writeFileSync(resolvedPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+	if (process.platform !== "win32") chmodSync(resolvedPath, 0o600);
 }
 
 export function getPiboConfigValue(config: PiboConfig, key: string): unknown {
