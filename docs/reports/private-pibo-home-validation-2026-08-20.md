@@ -2,6 +2,7 @@
 
 **Branch:** `fix/private-pibo-home`
 **Base:** `upstream/dev` at `a399dcd7`
+**Pull request:** #529
 **Status:** PASS for focused, integrated, packed-install, and Pibo2 POSIX validation; direct Windows/NTFS validation pending
 
 ## Confirmed defect
