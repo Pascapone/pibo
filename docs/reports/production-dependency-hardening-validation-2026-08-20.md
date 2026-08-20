@@ -1,6 +1,7 @@
 # Production Dependency Hardening Validation — 2026-08-20
 
 **Status:** PASS for source, packed-install, integrated, and deployed production-audit validation. Direct Windows/NTFS validation remains an external gate for the separately scoped Better Auth migration.
+**Pull request:** #526
 
 ## Scope
 
