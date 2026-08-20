@@ -4,6 +4,7 @@
 **Status:** PASS for implementation, focused/integrated validation, packaged deployment, and authenticated Pibo2 behavior. Direct Windows/NTFS validation remains an external release gate for the separately scoped Better Auth migration.
 **Branch:** `feature/runtime-portability-v4-1`
 **Base:** `upstream/dev` at `a399dcd7`
+**Pull request:** #525
 
 ## Scope
 
