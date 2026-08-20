@@ -195,6 +195,6 @@ On the final candidate, a zero-grace dry-run classified the supervised profile `
 
 ## External release gates
 
-- Direct Windows startup, compatible/unsafe SQLite recovery, rollback, restart idempotence, Windows-safe backup naming, and NTFS ACL behavior still require an actual Windows host for the separately scoped Better Auth migration. No configured host in this environment provides Windows.
+- Direct Windows startup, compatible/unsafe SQLite recovery, rollback, restart idempotence, Windows-safe backup naming, and NTFS ACL behavior still require an active Windows host for the separately scoped Better Auth migration. A previously authorized Windows Server build host was discovered, but its owner had powered it off; SSH, RDP, and WinRM were all unreachable during the final attempt.
 - Focused branches remain unmerged. No npm package was published and no release was created.
 - Merge, publication, release, or permanent production replacement still require explicit authorization.
