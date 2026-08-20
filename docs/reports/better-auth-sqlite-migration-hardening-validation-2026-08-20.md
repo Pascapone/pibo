@@ -102,7 +102,7 @@ The production gateway was then restarted twice through `pibo gateway web restar
 
 ### Direct Windows validation
 
-The SQLite failure class, packed/global install shape, Windows-safe filename generation, restart behavior, and rollback are covered deterministically. This environment does not provide an actual Windows host: every configured SSH target reports Linux, and no local PowerShell, Wine, or Windows VM runtime is installed. NTFS ACL inheritance, owner-only protection, and the exact `pibo gateway:web --web-port 3700` upgrade path therefore still require one direct Windows run before release. The implementation deliberately avoids POSIX `chmod` on Windows.
+The SQLite failure class, packed/global install shape, Windows-safe filename generation, restart behavior, and rollback are covered deterministically. A previously authorized Windows Server build host and its dedicated SSH key were recovered from the Pibo session history, but the owner had explicitly powered the instance off. A direct probe on 2026-08-20 found SSH, RDP, and WinRM unreachable; the local environment also has no PowerShell, Wine, or Windows VM runtime. NTFS ACL inheritance, owner-only protection, and the exact `pibo gateway:web --web-port 3700` upgrade path therefore still require one direct Windows run after that host is started again. The implementation deliberately avoids POSIX `chmod` on Windows.
 
 ### Production dependency audit
 
