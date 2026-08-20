@@ -74,18 +74,18 @@
 - [x] 8.4 Pass final focused runtime/resource/store/UI suites after all edits.
 - [x] 8.5 Pass the full canonical test suite.
 - [x] 8.6 Build and inspect the packed npm artifact.
-- [ ] 8.7 Record production dependency audit findings and disposition.
-- [ ] 8.8 Build a disposable integrated package with the Windows Better Auth migration branch.
-- [ ] 8.9 Install and validate the exact integrated candidate on Pibo2.
-- [ ] 8.10 Exercise authenticated public Chat Web/API flows for runtime controls, rebinding, context, compaction, and history continuity.
-- [ ] 8.11 Record deterministic versus authenticated-provider evidence in a validation report.
-- [ ] 8.12 Complete direct Windows/NTFS migration validation or record it as an explicit external release gate.
+- [x] 8.7 Record production dependency audit findings and disposition.
+- [x] 8.8 Build a disposable integrated package with the Windows Better Auth migration branch.
+- [x] 8.9 Install and validate the exact integrated candidate on Pibo2.
+- [x] 8.10 Exercise authenticated public Chat Web/API flows for runtime controls, rebinding, context, compaction, and history continuity.
+- [x] 8.11 Record deterministic versus authenticated-provider evidence in a validation report.
+- [x] 8.12 Complete direct Windows/NTFS migration validation or record it as an explicit external release gate.
 
 ## 9. Documentation and delivery
 
 - [x] 9.1 Add durable proposal, capability spec, design, and task records.
 - [x] 9.2 Update affected canonical capability specs.
 - [x] 9.3 Update the multi-agent runtime adapter task ledger.
-- [ ] 9.4 Add the final validation report.
-- [ ] 9.5 Audit the complete diff for focused scope and generated artifacts.
+- [x] 9.4 Add the final validation report.
+- [x] 9.5 Audit the complete diff for focused scope and generated artifacts.
 - [ ] 9.6 Commit, push, and open a focused pull request without merging or releasing.

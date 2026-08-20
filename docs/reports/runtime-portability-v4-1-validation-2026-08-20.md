@@ -1,7 +1,7 @@
 # Runtime Portability v4.1 Validation Report
 
 **Date:** 2026-08-20
-**Status:** In progress
+**Status:** PASS for implementation, focused/integrated validation, packaged deployment, and authenticated Pibo2 behavior. Direct Windows/NTFS validation remains an external release gate for the separately scoped Better Auth migration.
 **Branch:** `feature/runtime-portability-v4-1`
 **Base:** `upstream/dev` at `a399dcd7`
 
@@ -136,32 +136,64 @@ A real OMP RPC session exposed one ambient native skill and one Pibo-selected cu
 - Private OMP files use owner-only permissions and are removed/replaced on reset or stale-input cleanup.
 - Runtime switches reject caller-supplied native target identifiers/locators.
 
-### Packed artifact
+### Packed integrated artifact
 
-`npm pack` rebuilt the exact final tree and produced an 807-file archive with no credential/config/database paths detected in its manifest. The installed archive passed CLI version discovery, fresh-home local gateway startup, public Chat shell HTTP 200, and clean SIGTERM shutdown.
+The focused portability package above was superseded for deployment validation by a disposable integration of this branch, PR #523, the resource-reaper home-scope fix, and the dependency-hardening branch. The final integrated artifact was built from commit `b01becb068619e43ab3dcbafd894bbb6944d5b4d`.
 
-- Archive: `/tmp/pibo-portability-final-package/pasko70-pibo-1.7.2.tgz`
-- Size: 3,344,607 bytes
-- Unpacked size: 12,760,908 bytes
-- SHA-256: `688582d556908ac96db60d948b43eea76e3c71612b4017f3e6546c64326d0d71`
+- Archive: `/tmp/pibo-final-integrated-candidate-package-secure/pasko70-pibo-1.7.2.tgz`
+- SHA-256: `eb6b18c72c5a9ac8489e24c32d3abf77967931b722616c752140c96043a38a84`
+- Installed production audit: **0 advisories**
+- Installed Pi Coding Agent: `0.84.2`
+- Installed Better Auth: `1.6.30`
+- Installed `js-yaml`: `4.3.1`
+- MDX Editor present in production install: **no**
+- Packed Pi credential-store write/read/delete round trip: passed
+- Local Chat shell and bootstrap: HTTP 200
 - CLI mode: executable
 
-### Production dependency audit
+### Production dependency disposition
 
-The portability dependency tree currently reports **25 production advisories: 2 critical, 10 high, 10 moderate, and 3 low**. One critical/high cluster is the pre-migration Better Auth version and is removed by the separate exactly pinned Better Auth 1.6.30 branch. Remaining advisories require a separate dependency-hardening change because they span TanStack/Seroval, Pi/Undici, MCP/Hono/Express transitive packages, editor YAML, and build tooling. They are not silently treated as closed by this feature branch.
+The focused portability branch intentionally does not mix dependency migration into its history. The separate `fix/production-dependency-hardening` branch resolves the original production advisory set without `npm audit fix --force`, migrates Pi to `0.84.2`, and keeps the browser-only MDX editor out of production installs. Both source-tree audits and the exact installed integrated artifact report zero advisories.
 
 ## Pibo2 integrated candidate
 
-Pending:
+The checksum-verified integrated archive was activated as:
 
-- combine this branch with the exact PR #523 code in a disposable worktree;
-- build and checksum the packed npm artifact;
-- install that exact artifact on Pibo2 without merging either branch;
-- validate public health/auth, Agent Designer controls, history rebinding, native Codex compaction/import, OMP context/skill/task behavior, restart continuity, and cleanup;
-- retain sanitized browser/API/debug evidence.
+- candidate: `runtime-portability-v4-1-secure`;
+- commit: `b01becb068619e43ab3dcbafd894bbb6944d5b4d`;
+- gateway process: the immutable candidate path under `/opt/pibo-candidates`;
+- public Chat shell and machine-authenticated bootstrap: HTTP 200;
+- machine identity: authenticated, with 13 agents and 43 rooms visible to bootstrap.
+
+Integrated local validation passed typecheck, production build, **216/216** focused tests, and **1,813/1,813** canonical tests across 311 files with zero failures, skips, or cancellations.
+
+The authenticated `/api/chat/context-build` path reported Codex Native available and bound, `historyImport: true`, configurable native subagents, non-configurable native project context discovery, and `maintenance.compaction: true`, with zero snapshot warnings or errors. In the real headful Agent Designer, the selected Codex agent rendered the Native Subagents control enabled and off (`aria-pressed=false`), while automatic context discovery rendered checked but disabled with the explanation that Codex owns native discovery. The persisted agent record retained `nativeSubagents: false`.
+
+### Runtime rebinding and persistence
+
+Pibo2 session `ps_d37e43d8-4d8f-49b9-888e-bf698a9ab104` exercised portable rebinding in both directions. Its final Pi → Codex Native import remained persisted after live status synchronization and later gateway deployments:
+
+- binding state: `bound`;
+- runtime/adapter: `codex-native` / `codex-native`;
+- protocol: `codex-app-server-v2` `0.147.0`;
+- `portableHistoryLastImport.status`: `completed`;
+- source runtime/adapter: `pi` / `pi`;
+- target runtime/adapter: `codex-native` / `codex-native`.
+
+The final candidate's debug trace contained six nodes, zero consistency diagnostics, and zero recorded failures. This directly covers the regression where a live binding refresh previously restored stale `pending` handoff metadata over the persisted completed audit state.
+
+### Authenticated browser and provider evidence
+
+The authenticated non-headless Pibo2 browser rendered the session in the real public Chat UI with a composer, Send control, runtime marker, and no console warnings or errors. CDP reported exactly one Chat page. Chrome remained on PID `1023085` with restart count `4` from `2026-08-20 11:07:47 UTC` through the final checks, providing more than three hours of continuous dwell evidence.
+
+Exactly one bounded authenticated native-provider turn was performed during combined-candidate validation. It returned the expected `NATIVE CODEX READY` response through Codex Native, and its trace/failure checks were clean. The later dependency-packaging refresh changed no provider or runtime behavior, so the turn was deliberately not repeated solely for redeployment verification.
+
+### Resource isolation
+
+On the final candidate, a zero-grace dry-run classified the supervised profile `/dev/shm/pibo2-headful-browser/profile` as outside the active Pibo browser-use home and skipped it. The explicit profile exemption independently produced `action: skip` with reason `explicitly exempted browser user-data-dir`. Automatic reaper cycles from `2026-08-20 13:52:51 UTC` through `14:04:05 UTC` reported zero unmanaged browsers without changing the Chrome PID or restart count.
 
 ## External release gates
 
-- Direct Windows startup, compatible/unsafe SQLite recovery, rollback, restart idempotence, Windows-safe backup naming, and NTFS ACL behavior still require an actual Windows host.
-- Remaining production dependency advisories require a focused dependency-hardening disposition.
-- Merge, publication, release, and production-candidate replacement require explicit user authorization.
+- Direct Windows startup, compatible/unsafe SQLite recovery, rollback, restart idempotence, Windows-safe backup naming, and NTFS ACL behavior still require an actual Windows host for the separately scoped Better Auth migration. No configured host in this environment provides Windows.
+- Focused branches remain unmerged. No npm package was published and no release was created.
+- Merge, publication, release, or permanent production replacement still require explicit authorization.
