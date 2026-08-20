@@ -1,6 +1,7 @@
 # Resource Reaper Home-Scope Validation — 2026-08-20
 
 **Status:** PASS for focused implementation, integrated deployment, and sustained Pibo2 browser stability.
+**Pull request:** #524
 
 ## Scope
 
