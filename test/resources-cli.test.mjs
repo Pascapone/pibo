@@ -247,24 +247,30 @@ test('resource reap apply rechecks fixtures, removes only confirmed stale pid/po
 	}
 });
 
-test('unmanaged Chromium planning honors grace and explicit exemptions and apply terminates selected process groups', async () => {
+test('unmanaged Chromium planning honors home scope, grace, and explicit exemptions before terminating process groups', async () => {
 	const details = [
-		{ pid: 101, ppid: 1, pgid: 101, commandName: 'chromium', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
-		{ pid: 102, ppid: 1, pgid: 102, commandName: 'chromium', elapsedSeconds: 30, argsPreview: 'chromium', nextCommands: [] },
-		{ pid: 103, ppid: 1, pgid: 103, commandName: 'chromium', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
+		{ pid: 101, ppid: 1, pgid: 101, commandName: 'chromium', userDataDir: '/tmp/pibo-browser-use/profiles/101', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
+		{ pid: 102, ppid: 1, pgid: 102, commandName: 'chromium', userDataDir: '/tmp/pibo-browser-use/profiles/102', elapsedSeconds: 30, argsPreview: 'chromium', nextCommands: [] },
+		{ pid: 103, ppid: 1, pgid: 103, commandName: 'chromium', userDataDir: '/tmp/pibo-browser-use/profiles/103', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
 		{ pid: 104, ppid: 1, pgid: 104, commandName: 'chromium', userDataDir: '/tmp/pibo-persistent-profile', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
 		{ pid: 105, ppid: 1, pgid: 105, commandName: 'chromium', userDataDir: '/tmp/pibo-persistent-profile/child', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
+		{ pid: 106, ppid: 1, pgid: 106, commandName: 'chromium', userDataDir: '/tmp/other-pibo-home/tools/browser-use/profile', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
+		{ pid: 107, ppid: 1, pgid: 107, commandName: 'chromium', elapsedSeconds: 1200, argsPreview: 'chromium', nextCommands: [] },
 	];
 	const unmanagedBrowsers = buildUnmanagedBrowserPlanItems(
 		details,
 		10,
 		new Set([103]),
 		new Set(['/tmp/pibo-persistent-profile']),
+		'/tmp/pibo-browser-use',
 	);
-	assert.deepEqual(unmanagedBrowsers.map((item) => item.action), ['terminate', 'skip', 'skip', 'skip', 'terminate']);
+	assert.deepEqual(unmanagedBrowsers.map((item) => item.action), ['terminate', 'skip', 'skip', 'skip', 'skip', 'skip', 'skip']);
 	assert.match(unmanagedBrowsers[1].reason, /grace period/);
 	assert.match(unmanagedBrowsers[2].reason, /pid or process group/);
 	assert.match(unmanagedBrowsers[3].reason, /user-data-dir/);
+	assert.match(unmanagedBrowsers[4].reason, /outside this Pibo browser-use home/);
+	assert.match(unmanagedBrowsers[5].reason, /outside this Pibo browser-use home/);
+	assert.match(unmanagedBrowsers[6].reason, /outside this Pibo browser-use home/);
 
 	const now = new Date('2026-07-14T00:00:00.000Z');
 	const plan = buildResourceReapPlan({
@@ -275,7 +281,7 @@ test('unmanaged Chromium planning honors grace and explicit exemptions and apply
 			idleTimeoutMinutes: 10,
 			unmanagedBrowserGraceMinutes: 10,
 			browserPoolRoot: '/fixture/pools',
-			browserUseHome: '/fixture/browser-use',
+			browserUseHome: '/tmp/pibo-browser-use',
 			exemptBrowserPids: [103],
 			exemptBrowserUserDataDirs: ['/tmp/pibo-persistent-profile'],
 		},
@@ -290,9 +296,9 @@ test('unmanaged Chromium planning honors grace and explicit exemptions and apply
 		terminateUnmanagedBrowser: async (item) => { terminated.push(item.processGroupId); return true; },
 		applyCompute: async () => [],
 	});
-	assert.deepEqual(terminated, [101, 105]);
-	assert.deepEqual(result.terminatedUnmanagedBrowsers, [101, 105]);
-	assert.equal(result.plan.unmanagedBrowsers.selected, 2);
+	assert.deepEqual(terminated, [101]);
+	assert.deepEqual(result.terminatedUnmanagedBrowsers, [101]);
+	assert.equal(result.plan.unmanagedBrowsers.selected, 1);
 });
 
 test('resource reaper keeps browser cleanup active when Docker compute planning fails', async () => {

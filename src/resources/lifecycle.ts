@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
 	applyComputeWorkerReapPlan,
@@ -194,6 +194,7 @@ export async function planResourceReap(options: PlanResourceReapOptions = {}): P
 		resolved.unmanagedBrowserGraceMinutes,
 		new Set(resolved.exemptBrowserPids),
 		new Set(resolved.exemptBrowserUserDataDirs),
+		resolved.browserUseHome,
 	);
 	return buildResourceReapPlan({ now, options: resolved, records, staleFiles, unmanagedBrowsers, compute });
 }
@@ -278,8 +279,9 @@ function resolveReapOptions(options: PlanResourceReapOptions): ResourceReapPlan[
 export function buildUnmanagedBrowserPlanItems(
 	processes: ResourceHealthUnassignedBrowserProcessInfo[],
 	graceMinutes: number,
-	exemptPids = new Set<number>(),
-	exemptUserDataDirs = new Set<string>(),
+	exemptPids: Set<number>,
+	exemptUserDataDirs: Set<string>,
+	browserUseHome: string,
 ): ResourceUnmanagedBrowserPlanItem[] {
 	const graceSeconds = graceMinutes * 60;
 	return processes.map((process) => {
@@ -294,6 +296,9 @@ export function buildUnmanagedBrowserPlanItems(
 		} else if (browserUserDataDirIsExempt(process.userDataDir, exemptUserDataDirs)) {
 			action = "skip";
 			reason = "explicitly exempted browser user-data-dir";
+		} else if (!browserUserDataDirIsWithinHome(process.userDataDir, browserUseHome)) {
+			action = "skip";
+			reason = "browser user-data-dir is outside this Pibo browser-use home";
 		} else if (process.elapsedSeconds !== undefined && process.elapsedSeconds < graceSeconds) {
 			action = "skip";
 			reason = `process age ${process.elapsedSeconds}s is within ${graceSeconds}s grace period`;
@@ -374,6 +379,12 @@ function normalizeBrowserUserDataDirs(values: Iterable<string>): string[] {
 function browserUserDataDirIsExempt(userDataDir: string | undefined, exemptions: Set<string>): boolean {
 	if (!userDataDir || !isAbsolute(userDataDir)) return false;
 	return exemptions.has(resolve(userDataDir));
+}
+
+function browserUserDataDirIsWithinHome(userDataDir: string | undefined, browserUseHome: string): boolean {
+	if (!userDataDir || !isAbsolute(userDataDir) || !isAbsolute(browserUseHome)) return false;
+	const pathFromHome = relative(resolve(browserUseHome), resolve(userDataDir));
+	return pathFromHome === "" || (!pathFromHome.startsWith("..") && !isAbsolute(pathFromHome));
 }
 
 function buildBrowserReapPlanItem(record: ManagedBrowserPoolRecord, now: Date, idleTimeoutMinutes: number): ResourceBrowserReapPlanItem {
