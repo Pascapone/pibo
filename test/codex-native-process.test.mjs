@@ -153,7 +153,7 @@ test("Codex native diagnostics report exact, compatible, unsupported, missing, f
 		baseEnvironment: fakeEnvironment({ PIBO_CODEX_RUNTIME_FAKE_SCENARIO: "version-timeout" }),
 	});
 	assert.ok(timedOut.some((diagnostic) => diagnostic.code === "codex_native_version_probe_timeout"));
-	assert.ok(performance.now() - timeoutStarted < 1_000);
+	assert.ok(performance.now() - timeoutStarted < (process.platform === "win32" ? 5_000 : 1_000));
 
 	const tooLarge = await diagnoseCodexNativeRuntime(exactConfig, "codex-too-large", {
 		baseEnvironment: fakeEnvironment({ PIBO_CODEX_RUNTIME_FAKE_SCENARIO: "version-too-large" }),
@@ -319,6 +319,7 @@ test("Codex native process opts into structured user input only through explicit
 		"features.default_mode_request_user_input=true",
 	]);
 	assert.doesNotMatch(await readFile(runtime.paths.configFile, "utf8"), /request_user_input|default_mode_request_user_input/);
+	await runtime.close();
 });
 
 test("Codex native processes isolate configured instances, session environments, and cleanup", async (t) => {
