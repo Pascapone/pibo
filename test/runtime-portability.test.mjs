@@ -379,12 +379,12 @@ test("Pi portable-history import appends role-aware native messages without fabr
 
 test("runtime rebind persists a retry-safe handoff and imports it before opening the target session", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-rebind-"));
-	t.after(() => rm(root, { recursive: true, force: true }));
 	const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
 	const sessionStore = new PiboDataSessionStore(dataStore);
-	t.after(() => {
+	t.after(async () => {
 		sessionStore.close();
 		dataStore.close();
+		await rm(root, { recursive: true, force: true });
 	});
 	const created = sessionStore.create({
 		...sessionRecord("ps_runtime_rebind"),
@@ -495,12 +495,12 @@ test("runtime rebind persists a retry-safe handoff and imports it before opening
 
 test("runtime rebind quiesces the source before taking its portable-history checkpoint", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-rebind-quiescence-"));
-	t.after(() => rm(root, { recursive: true, force: true }));
 	const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
 	const sessionStore = new PiboDataSessionStore(dataStore);
-	t.after(() => {
+	t.after(async () => {
 		sessionStore.close();
 		dataStore.close();
+		await rm(root, { recursive: true, force: true });
 	});
 	const created = sessionStore.create({
 		...sessionRecord("ps_runtime_rebind_quiescence"),
@@ -542,12 +542,12 @@ test("runtime rebind quiesces the source before taking its portable-history chec
 
 test("runtime rebind retries the same persisted handoff checkpoint after target startup failure", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-rebind-retry-"));
-	t.after(() => rm(root, { recursive: true, force: true }));
 	const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
 	const sessionStore = new PiboDataSessionStore(dataStore);
-	t.after(() => {
+	t.after(async () => {
 		sessionStore.close();
 		dataStore.close();
+		await rm(root, { recursive: true, force: true });
 	});
 	const created = sessionStore.create({
 		...sessionRecord("ps_runtime_rebind_retry"),

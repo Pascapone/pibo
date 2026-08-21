@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
 import {
 	InitialSessionContextBuilder,
@@ -164,7 +164,7 @@ test("runtime resources isolate selected skills, context, MCP config, secrets, a
 	assert.equal(inspection.skills[0].name, "selected");
 	assert.ok(inspection.skills[0].materializedPath);
 	assert.equal(await readFile(inspection.skills[0].materializedPath, "utf8"), "---\nname: selected\ndescription: selected skill\n---\n\n# Selected\n");
-	assert.equal(await readFile(join(inspection.paths.skills, inspection.skills[0].materializedPath.split("/").at(-2), "references", "guide.md"), "utf8"), "selected reference\n");
+	assert.equal(await readFile(join(inspection.paths.skills, basename(dirname(inspection.skills[0].materializedPath)), "references", "guide.md"), "utf8"), "selected reference\n");
 	assert.equal(JSON.stringify(inspection).includes("unselected"), false);
 
 	const context = session.getContextContributions();
@@ -603,7 +603,11 @@ test("runtime resources reject missing secret references and symlinks that escap
 	const escapingSkillDir = join(fixture.workspace, "skills", "escaping");
 	await mkdir(escapingSkillDir, { recursive: true });
 	await writeFile(join(escapingSkillDir, "SKILL.md"), "# Escaping\n");
-	await symlink(join(fixture.workspace, "unselected-context.md"), join(escapingSkillDir, "outside.md"));
+	if (process.platform === "win32") {
+		await symlink(fixture.workspace, join(escapingSkillDir, "outside"), "junction");
+	} else {
+		await symlink(join(fixture.workspace, "unselected-context.md"), join(escapingSkillDir, "outside.md"));
+	}
 	const config = JSON.parse(await readFile(fixture.configPath, "utf8"));
 	config.mcpServers.selected.env.FIXTURE_SECRET = "${MISSING_SECRET}";
 	await writeFile(fixture.configPath, JSON.stringify(config));

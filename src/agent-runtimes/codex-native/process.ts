@@ -9,7 +9,7 @@ import {
 	rmdir,
 	writeFile,
 } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
 import { CodexAppServerClient, type CodexAppServerDiagnostic } from "./client.js";
 import type { CodexAppServerInitializeCapabilities } from "./protocol-types.js";
@@ -144,6 +144,13 @@ async function ensurePrivateConfig(path: string): Promise<void> {
 function nodeErrorCode(error: unknown): string | undefined {
 	const code = (error as NodeJS.ErrnoException | undefined)?.code;
 	return typeof code === "string" && /^[A-Z0-9_]+$/.test(code) ? code : undefined;
+}
+
+function codexExecutableInvocation(executable: string, args: readonly string[]): { command: string; args: string[] } {
+	if (process.platform === "win32" && isAbsolute(executable) && [".js", ".cjs", ".mjs"].includes(extname(executable).toLowerCase())) {
+		return { command: process.execPath, args: [executable, ...args] };
+	}
+	return { command: executable, args: [...args] };
 }
 
 export async function prepareCodexNativeInstancePaths(
@@ -298,7 +305,8 @@ async function probeCodexVersion(
 	return await new Promise<VersionProbeResult>((resolveProbe) => {
 		let child;
 		try {
-			child = spawn(config.executable, ["--version"], { env: environment, stdio: ["ignore", "pipe", "pipe"] });
+			const invocation = codexExecutableInvocation(config.executable, ["--version"]);
+			child = spawn(invocation.command, invocation.args, { env: environment, stdio: ["ignore", "pipe", "pipe"] });
 		} catch (error) {
 			resolveProbe({ status: "failed", errorCode: nodeErrorCode(error) });
 			return;
@@ -520,18 +528,19 @@ export async function startCodexNativeAppServer(
 	let client: CodexAppServerClient | undefined;
 	try {
 		const capabilities: CodexAppServerInitializeCapabilities = { experimentalApi: false };
+		const invocation = codexExecutableInvocation(input.config.executable, [
+			"app-server",
+			"--stdio",
+			"--strict-config",
+			"-c",
+			`tools.experimental_request_user_input.enabled=${input.config.experimentalUserInput}`,
+			"-c",
+			`features.default_mode_request_user_input=${input.config.experimentalUserInput}`,
+		]);
 		client = await CodexAppServerClient.start({
-			command: input.config.executable,
+			command: invocation.command,
 			fileCreationMask: 0o077,
-			args: [
-				"app-server",
-				"--stdio",
-				"--strict-config",
-				"-c",
-				`tools.experimental_request_user_input.enabled=${input.config.experimentalUserInput}`,
-				"-c",
-				`features.default_mode_request_user_input=${input.config.experimentalUserInput}`,
-			],
+			args: invocation.args,
 			cwd: resolve(input.workspace),
 			env: buildCodexNativeProcessEnvironment({
 				config: input.config,
