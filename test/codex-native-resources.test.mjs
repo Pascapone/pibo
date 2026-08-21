@@ -26,7 +26,7 @@ function delay(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitFor(predicate, timeoutMs = 3_000) {
+async function waitFor(predicate, timeoutMs = process.platform === "win32" ? 10_000 : 3_000) {
 	const deadline = Date.now() + timeoutMs;
 	while (!predicate()) {
 		if (Date.now() >= deadline) throw new Error("Timed out waiting for native Codex resource maintenance");
@@ -402,6 +402,7 @@ test("Codex native leaves existing runtime subagent configuration untouched when
 	assert.equal(start.multiAgentV2Enabled, null);
 	assert.equal(start.agentsEnabled, null);
 	assert.equal(start.hasNativeToolOverrides, false);
+	await session.dispose();
 });
 
 test("Codex native disables only harness-native multi-agent tools when the profile turns native subagents off", async (t) => {
@@ -437,6 +438,7 @@ test("Codex native disables only harness-native multi-agent tools when the profi
 	assert.equal(start.agentsEnabled, false, "model-catalog multi-agent hints must not re-enable native subagents");
 	assert.equal(start.hasNativeToolOverrides, true);
 	assert.equal(session.capabilities.nativeSubagents.configurable, true);
+	await session.dispose();
 });
 
 test("Codex native renews its scoped Pibo tool lease while a turn remains active", async (t) => {
