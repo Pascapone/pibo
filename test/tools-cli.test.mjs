@@ -12,6 +12,7 @@ import { createPiboXvfbServiceUnit, PIBO_XVFB_SERVICE_PATH, PIBO_XVFB_SERVICE_NA
 
 const execFileAsync = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
+const posixWrapperTest = process.platform === "win32" ? { skip: "requires POSIX browser wrapper semantics" } : {};
 
 function shellQuote(value) {
 	return `'${value.replaceAll("'", "'\\''")}'`;
@@ -151,11 +152,11 @@ test("pibo tools exposes Graphify as a curated CLI tool", async () => {
 
 		const install = await execFileAsync("node", [cliPath, "tools", "install", "graphify", "--no-setup"], { cwd, env });
 		assert.match(install.stdout, /Install target graphify/);
-		assert.match(install.stdout, /pibo-home\/tools\/graphify/);
+		assert.match(install.stdout, /pibo-home[\\/]tools[\\/]graphify/);
 		assert.match(install.stdout, /env: pibo tools env graphify/);
 
 		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "graphify"], { cwd, env });
-		assert.match(envOutput.stdout, /tools\/graphify\/.venv\/bin/);
+		assert.match(envOutput.stdout, process.platform === "win32" ? /tools\\graphify\\.venv\\Scripts/ : /tools\/graphify\/.venv\/bin/);
 		assert.doesNotMatch(envOutput.stdout, /browser-use/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
@@ -251,7 +252,7 @@ test("pibo tools install supports a no-setup dry target", async () => {
 		const result = await execFileAsync("node", [cliPath, "tools", "install", "browser-use", "--no-setup"], { cwd, env });
 
 		assert.match(result.stdout, /Install target browser-use/);
-		assert.match(result.stdout, /pibo-home\/tools\/browser-use/);
+		assert.match(result.stdout, /pibo-home[\\/]tools[\\/]browser-use/);
 		assert.match(result.stdout, /desktop: /);
 		if (process.platform === "linux" && /desktop: not detected/.test(result.stdout)) {
 			assert.match(result.stdout, /linux headed browser hint:/);
@@ -264,7 +265,7 @@ test("pibo tools install supports a no-setup dry target", async () => {
 	}
 });
 
-test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers", async () => {
+test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers", posixWrapperTest, async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-agent-browser-"));
 	try {
 		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
@@ -327,7 +328,7 @@ test("pibo browser-use virtual display service unit uses a stable Linux xvfb set
 	assert.equal(PIBO_XVFB_SERVICE_PATH, "/etc/systemd/system/pibo-xvfb.service");
 });
 
-test("pibo tools env wraps browser-use with the PIBo default profile", async () => {
+test("pibo tools env wraps browser-use with the PIBo default profile", posixWrapperTest, async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-env-"));
 	try {
 		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
@@ -517,7 +518,7 @@ test("pibo tools env wraps browser-use with the PIBo default profile", async () 
 	}
 });
 
-test("pibo browser-use wrapper terminates stale managed process trees and stale CDP files safely", async () => {
+test("pibo browser-use wrapper terminates stale managed process trees and stale CDP files safely", posixWrapperTest, async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-env-tree-cleanup-"));
 	try {
 		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
@@ -746,7 +747,7 @@ test("pibo tools browser-use pool reap reports JSON counts and dirty next comman
 	}
 });
 
-test("pibo tools browser-use manages isolated authenticated leases", async () => {
+test("pibo tools browser-use manages isolated authenticated leases", posixWrapperTest, async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-leases-"));
 	try {
 		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
@@ -825,7 +826,7 @@ test("pibo tools browser-use manages isolated authenticated leases", async () =>
 	}
 });
 
-test("pibo tools browser-use auth leases coordinate managed browser-pool leases", async () => {
+test("pibo tools browser-use auth leases coordinate managed browser-pool leases", posixWrapperTest, async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-managed-leases-"));
 	const children = [];
 	try {

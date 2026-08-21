@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 
 const sourcePath = path.resolve("src/apps/chat-ui/src/components/useStickyVirtuoso.ts");
-const source = fs.readFileSync(sourcePath, "utf8");
+const source = fs.readFileSync(sourcePath, "utf8").replaceAll("\r\n", "\n");
 
 test("useStickyVirtuoso detaches synchronously for upward intent and permits explicit bottom reattachment", () => {
 	assert.match(source, /if \(direction === "away"\) \{\n\t\t\tbottomReattachArmedRef\.current = false;\n\t\t\tclearScheduledScroll\(\);\n\t\t\tsetSticky\(false\);/);
