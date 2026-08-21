@@ -79,7 +79,7 @@ test("OMP resource-delivery writes additive context and passes it through --appe
 	assert.ok(configYaml.includes("skills:"), "config.yml must declare skills");
 	assert.ok(configYaml.includes("customDirectories:"), "config.yml must set skills.customDirectories");
 	const parsedConfig = load(configYaml);
-	assert.deepEqual(parsedConfig.skills.customDirectories, [join(root, "skills", "pibo")], "OMP must scan the parent that contains the selected skill directory");
+	assert.deepEqual(parsedConfig.skills.customDirectories, [join(root, "skills", "pibo").replaceAll("\\", "/")], "OMP must scan the parent that contains the selected skill directory");
 });
 
 test("OMP resource-delivery persists portable history and blocks every native task entry point", async (t) => {
