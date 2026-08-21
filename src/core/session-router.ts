@@ -553,6 +553,11 @@ export class PiboSessionRouter {
 			if (options?.includeRuns) {
 				const runs = this.runRegistry.cancelControllerRuns(id);
 				cancelledRuns.push(...runs.map((run) => run.runId));
+				try {
+					await this.invokeRunCancellationHandlers(runs);
+				} catch (error) {
+					failures.push(error);
+				}
 			}
 		}
 		try {
@@ -596,9 +601,6 @@ export class PiboSessionRouter {
 		if (existingDisposals.length > 0) await Promise.all(existingDisposals);
 
 		this.beginSessionQuiescence(ids);
-		if (options.cancelRuns) {
-			for (const id of ids) this.runRegistry.cancelControllerRuns(id);
-		}
 
 		let releaseStart: (() => void) | undefined;
 		const startGate = new Promise<void>((resolve) => {
@@ -606,13 +608,19 @@ export class PiboSessionRouter {
 		});
 		const operation = (async () => {
 			await startGate;
+			const runCancellationResults = options.cancelRuns
+				? await Promise.allSettled(ids.map(async (id) => {
+					const runs = this.runRegistry.cancelControllerRuns(id);
+					await this.invokeRunCancellationHandlers(runs);
+				}))
+				: [];
 			const pending = ids.map((id) => this.pendingSessions.get(id)).filter((value): value is Promise<RoutedSession> => Boolean(value));
 			if (pending.length > 0) await Promise.allSettled(pending);
 			const sessions = ids.flatMap((id) => {
 				const session = this.sessions.get(id);
 				return session ? [{ id, session }] : [];
 			});
-			const failures: unknown[] = [];
+			const failures: unknown[] = runCancellationResults.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
 			const closeResults = await Promise.allSettled(ids.map((id) => this.runtimeRegistry.closeControllerSessions(id, { force: true })));
 			for (const result of closeResults) {
 				if (result.status === "rejected") failures.push(result.reason);
@@ -663,6 +671,7 @@ export class PiboSessionRouter {
 				if (options?.includeRuns) {
 					const runs = this.runRegistry.cancelControllerRuns(session.id);
 					cancelledRuns.push(...runs.map((r) => r.runId));
+					await this.invokeRunCancellationHandlers(runs);
 				}
 				const nested = await this.killChildSessions(session.id, options);
 				killed.push(...nested.killed);
@@ -945,7 +954,8 @@ export class PiboSessionRouter {
 			const sessions = [...this.sessions.entries()];
 			for (const timer of this.idleSessionTimers.values()) clearTimeout(timer);
 			this.idleSessionTimers.clear();
-			this.runRegistry.cancelAll("Pibo session router was disposed.");
+			const cancelledRuns = this.runRegistry.cancelAll("Pibo session router was disposed.");
+			const runCancellationResult = await Promise.allSettled([this.invokeRunCancellationHandlers(cancelledRuns)]);
 			this.scheduledRunReminders.clear();
 			const closeResult = await Promise.allSettled([this.runtimeRegistry.closeAll({ force: true })]);
 			const disposeResults = await Promise.allSettled(sessions.map(([id, session]) => this.disposeRoutedSession(id, session, "router disposed")));
@@ -954,6 +964,7 @@ export class PiboSessionRouter {
 				this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason: "router disposed" });
 			}
 			const failures = [
+				...runCancellationResult.filter((result): result is PromiseRejectedResult => result.status === "rejected").map((result) => result.reason),
 				...closeResult.filter((result): result is PromiseRejectedResult => result.status === "rejected").map((result) => result.reason),
 				...disposeResults.filter((result): result is PromiseRejectedResult => result.status === "rejected").map((result) => result.reason),
 			];
@@ -1616,6 +1627,17 @@ export class PiboSessionRouter {
 		};
 	}
 
+	private async invokeRunCancellationHandlers(runs: readonly PiboRunSnapshot[]): Promise<void> {
+		const results = await Promise.allSettled(runs.map(async (run) => {
+			const cancel = this.runCancellationHandlers.get(run.runId);
+			if (!cancel) return;
+			this.runCancellationHandlers.delete(run.runId);
+			await cancel();
+		}));
+		const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+		if (failures.length > 0) throw new AggregateError(failures, "Failed to terminate cancelled yielded runs.");
+	}
+
 	private createRunToolController(parentPiboSessionId: string): PiboRunToolController {
 		return {
 			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, timeoutMs, serviceWarning, resources, execute, cancel }) => {
@@ -1674,11 +1696,9 @@ export class PiboSessionRouter {
 			},
 			cancelRun: async (runId) => {
 				const cancelled = this.runRegistry.cancel(parentPiboSessionId, runId);
-				const cancel = this.runCancellationHandlers.get(runId);
 				try {
-					await cancel?.();
+					await this.invokeRunCancellationHandlers([cancelled]);
 				} finally {
-					this.runCancellationHandlers.delete(runId);
 					this.refreshQueuedRunReminders(parentPiboSessionId);
 				}
 				return cancelled;

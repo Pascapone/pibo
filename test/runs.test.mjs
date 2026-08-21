@@ -796,6 +796,31 @@ test("pibo_run_cancel aborts the active tool and releases admission before retur
 	}
 });
 
+test("session disposal terminates active yielded execution before returning", async () => {
+	const router = new PiboSessionRouter({ persistSession: false });
+	let activeSignal;
+	const tools = Object.fromEntries(createRunToolDefinitions([{
+		name: "helper",
+		async execute(_toolCallId, _params, signal) {
+			activeSignal = signal;
+			return await new Promise((_resolve, reject) => {
+				signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+			});
+		},
+	}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+
+	const started = await tools.pibo_run_start.execute("start-dispose-cancelled", {
+		toolName: "helper",
+		arguments: {},
+		completionPolicy: "tracked",
+	});
+	await new Promise((resolve) => setImmediate(resolve));
+	await router.disposeSession("parent", "test disposal");
+
+	assert.equal(activeSignal.aborted, true);
+	assert.equal(router.runRegistry.status("parent", started.details.runId).status, "cancelled");
+});
+
 test("router converts yielded tool errors into failed run notifications", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
 	const messages = [];
