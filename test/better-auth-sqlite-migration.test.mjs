@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { getMigrations } from "better-auth/db/migration";
 import { createBetterAuthService, recoverBetterAuthSqliteDatabase } from "../dist/auth/better-auth.js";
+import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 
 function testRoot(name) {
 	return mkdtempSync(join(tmpdir(), `pibo-${name}-`));
@@ -115,7 +116,8 @@ test("Pibo repairs deterministic required Better Auth columns without losing row
 		database.close();
 	}
 	assert.deepEqual(recoveryBackups(root, databasePath), []);
-	if (process.platform !== "win32") assert.equal(statSync(databasePath).mode & 0o777, 0o600);
+	if (process.platform === "win32") assertPrivateWindowsAcl(databasePath, "file");
+	else assert.equal(statSync(databasePath).mode & 0o777, 0o600);
 
 	const restarted = createBetterAuthService(options(root, databasePath));
 	await restarted.start();
@@ -151,7 +153,10 @@ test("Pibo backs up and replaces an auth schema that cannot be repaired safely",
 	assert.match(recoveryWarnings[0], new RegExp(backups[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 	assert.doesNotMatch(recoveryWarnings[0], /google-client-secret|user@example\.test|x{32}/);
 
-	if (process.platform !== "win32") {
+	if (process.platform === "win32") {
+		assertPrivateWindowsAcl(join(root, backups[0]), "file");
+		assertPrivateWindowsAcl(databasePath, "file");
+	} else {
 		assert.equal(statSync(join(root, backups[0])).mode & 0o777, 0o600);
 	}
 

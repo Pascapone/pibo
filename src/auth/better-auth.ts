@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
@@ -205,7 +205,7 @@ function removeSqliteDatabaseFiles(databasePath: string): void {
 }
 
 function makePrivateFile(path: string): void {
-	if (process.platform !== "win32") chmodSync(path, 0o600);
+	protectPrivateFileSync(path, { force: true });
 }
 
 /** @internal Exported for deterministic recovery failure injection. */
