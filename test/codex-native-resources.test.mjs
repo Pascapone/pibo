@@ -560,7 +560,7 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 			const access = await tracked.issueMcpAccess(options);
 			issued += 1;
 			if (issued === 1) return { ...access, expiresAt: new Date(Date.now() + 100).toISOString() };
-			if (issued === 2) return { ...access, expiresAt: new Date(Date.now() + 60_500).toISOString() };
+			if (issued === 2) return { ...access, expiresAt: new Date(Date.now() + (process.platform === "win32" ? 65_000 : 60_500)).toISOString() };
 			return access;
 		},
 		renewMcpAccess(token, ttlMs) {
