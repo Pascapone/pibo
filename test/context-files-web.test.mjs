@@ -101,6 +101,9 @@ async function startContextFilesHost(setup, createContextFilesPlugin = createPib
 	return {
 		channel,
 		baseURL: `http://${address.host}:${address.port}`,
+		async dispose() {
+			for (const app of registry.getWebApps()) await app.dispose?.();
+		},
 	};
 }
 
@@ -128,6 +131,7 @@ test("context files web app serves its packaged UI independently of the process 
 	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-ui-cwd-"));
 	const originalCwd = process.cwd();
 	let channel;
+	let dispose;
 	try {
 		process.chdir(dir);
 		const moduleUrl = new URL(`../dist/plugins/context-files.js?cwd-test=${Date.now()}`, import.meta.url);
@@ -139,6 +143,7 @@ test("context files web app serves its packaged UI independently of the process 
 			metadataPath: join(dir, "managed", "context-files.sqlite"),
 		}, module.createPiboContextFilesPlugin);
 		channel = started.channel;
+		dispose = started.dispose;
 
 		const response = await fetch(`${started.baseURL}/apps/context-files`, {
 			headers: { "x-test-user": "user-1" },
@@ -150,6 +155,7 @@ test("context files web app serves its packaged UI independently of the process 
 		assert.doesNotMatch(html, /Context Files UI has not been built/);
 	} finally {
 		await channel?.stop?.();
+		await dispose?.();
 		process.chdir(originalCwd);
 		rmSync(dir, { recursive: true, force: true });
 	}
@@ -161,7 +167,7 @@ test("context files autosave working content but create named revisions only on 
 	const agentWorkspaceRoot = join(dir, "agent-workspaces");
 	const pluginFilePath = join(dir, "plugin-doc.md");
 	writeFileSync(pluginFilePath, "# Plugin V1\n", "utf8");
-	const { channel, baseURL } = await startContextFilesHost({
+	const { channel, baseURL, dispose } = await startContextFilesHost({
 		pluginFilePath,
 		managedRoot,
 		agentWorkspaceRoot,
@@ -305,6 +311,7 @@ test("context files autosave working content but create named revisions only on 
 		assert.ok(diff.data.chunks.some((chunk) => chunk.type === "add"));
 	} finally {
 		await channel.stop?.();
+		await dispose();
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
@@ -317,7 +324,7 @@ test("context files web app creates one catalog entry per global managed file", 
 	const pluginFilePath = join(dir, "plugin-doc.md");
 	writeFileSync(pluginFilePath, "# Plugin Source\n", "utf8");
 
-	const { channel, baseURL } = await startContextFilesHost({
+	const { channel, baseURL, dispose } = await startContextFilesHost({
 		pluginFilePath,
 		managedRoot,
 		globalDir,
@@ -351,6 +358,7 @@ test("context files web app creates one catalog entry per global managed file", 
 		assert.equal(listed.data.files.filter((file) => file.path === linked.data.file.path).length, 1);
 	} finally {
 		await channel.stop?.();
+		await dispose();
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
@@ -366,7 +374,7 @@ test("context files polling reports persistent storage failures once without cra
 	const messages = [];
 	const originalConsoleError = console.error;
 
-	const { channel, baseURL } = await startContextFilesHost({
+	const { channel, baseURL, dispose } = await startContextFilesHost({
 		pluginFilePath,
 		managedRoot,
 		globalDir,
@@ -410,6 +418,7 @@ test("context files polling reports persistent storage failures once without cra
 	} finally {
 		console.error = originalConsoleError;
 		await channel.stop?.();
+		await dispose();
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
@@ -424,7 +433,7 @@ test("context files web app auto-registers markdown files dropped into the globa
 	writeFileSync(pluginFilePath, "# Plugin Source\n", "utf8");
 	writeFileSync(join(globalDir, "docker-system.md"), "# Docker System\n", "utf8");
 
-	const { channel, baseURL } = await startContextFilesHost({
+	const { channel, baseURL, dispose } = await startContextFilesHost({
 		pluginFilePath,
 		managedRoot,
 		globalDir,
@@ -458,6 +467,7 @@ test("context files web app auto-registers markdown files dropped into the globa
 		assert.ok(relisted.data.files.find((file) => file.key === "ctx:operator-notes"));
 	} finally {
 		await channel.stop?.();
+		await dispose();
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
@@ -608,7 +618,7 @@ test("context files revision migration preserves current content and old-writer 
 	);
 	database.close();
 
-	const { channel, baseURL } = await startContextFilesHost({
+	const { channel, baseURL, dispose } = await startContextFilesHost({
 		pluginFilePath,
 		managedRoot,
 		agentWorkspaceRoot,
@@ -672,6 +682,7 @@ test("context files revision migration preserves current content and old-writer 
 		assert.deepEqual(revisionsAfterLegacyWrite.data.revisions.map((revision) => revision.name), ["Migration checkpoint"]);
 	} finally {
 		await channel.stop?.();
+		await dispose();
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
@@ -841,7 +852,7 @@ test("context files web app migrates legacy managed files and preserves orphaned
 		],
 	}, null, 2));
 
-	const { channel, baseURL } = await startContextFilesHost({
+	const { channel, baseURL, dispose } = await startContextFilesHost({
 		pluginFilePath,
 		managedRoot,
 		agentWorkspaceRoot,
@@ -873,6 +884,7 @@ test("context files web app migrates legacy managed files and preserves orphaned
 		assert.equal(orphaned.data.file.markdown, "# Plugin Source\n");
 	} finally {
 		await channel.stop?.();
+		await dispose();
 		rmSync(dir, { recursive: true, force: true });
 	}
 });

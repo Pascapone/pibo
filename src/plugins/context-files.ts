@@ -453,6 +453,7 @@ class ContextFileService {
 	private readonly snapshots = new Map<string, WatchSnapshot>();
 	private pollTimer: ReturnType<typeof setInterval> | undefined;
 	private pollFailureReported = false;
+	private disposed = false;
 
 	constructor(
 		private readonly paths: ResolvedContextFilesPaths,
@@ -716,6 +717,13 @@ class ContextFileService {
 			});
 		}, POLL_INTERVAL_MS);
 		this.pollTimer.unref?.();
+	}
+
+	dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
+		this.stopWatcher();
+		this.store.close();
 	}
 
 	stopWatcher(): void {
@@ -1069,6 +1077,9 @@ function createContextFilesWebApp(service: ContextFileService) {
 		name: CONTEXT_FILES_APP_NAME,
 		mountPath: CONTEXT_FILES_MOUNT_PATH,
 		apiPrefix: CONTEXT_FILES_API_PREFIX,
+		dispose() {
+			service.dispose();
+		},
 		async handleRequest(request: Request, context: PiboWebAppContext): Promise<Response | undefined> {
 			const url = new URL(request.url);
 			const asset = builtAsset(url.pathname);

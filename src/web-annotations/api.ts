@@ -88,13 +88,21 @@ function createSameOriginBinding(store: WebAnnotationStore, request: Request, co
 }
 
 export function createWebAnnotationsWebApp(options: WebAnnotationsWebAppOptions = {}): PiboWebApp {
+	const ownsStore = options.store === undefined;
 	const store = options.store ?? getDefaultStore();
 	const baseService = options.cdpService ?? createWebAnnotationCdpService({ store });
+	let disposed = false;
 
 	return {
 		name: "web-annotations",
 		mountPath: WEB_ANNOTATIONS_APP_MOUNT,
 		apiPrefix: WEB_ANNOTATIONS_API_PREFIX,
+		dispose() {
+			if (disposed || !ownsStore) return;
+			disposed = true;
+			store.close();
+			if (defaultStore === store) defaultStore = undefined;
+		},
 		async handleRequest(request, context) {
 			const url = new URL(request.url);
 			if (url.pathname === `${WEB_ANNOTATIONS_APP_MOUNT}/overlay.js` && request.method === "GET") {

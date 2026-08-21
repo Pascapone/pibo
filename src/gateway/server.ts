@@ -208,6 +208,7 @@ async function createGatewaySessionStore(options: GatewayServerOptions): Promise
 export class PiboGatewayServer {
 	private readonly pluginRegistry: PiboPluginRegistry;
 	private readonly compatibilityRuntimeRegistry?: PiboPluginRegistry;
+	private readonly ownsPluginRegistry: boolean;
 	private readonly runtimeInstanceId: string;
 	private sessionStore?: PiboSessionStore;
 	private ownsSessionStore = false;
@@ -221,6 +222,7 @@ export class PiboGatewayServer {
 	private resourceReaper?: ResourceReaperService;
 
 	constructor(private readonly options: GatewayServerOptions = {}) {
+		this.ownsPluginRegistry = options.pluginRegistry === undefined;
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
 		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
 		this.runtimeInstanceId = options.runtimeInstanceId ?? `gateway:${process.pid}:${randomUUID()}`;
@@ -287,6 +289,13 @@ export class PiboGatewayServer {
 
 		await this.router?.disposeAll();
 		this.router = undefined;
+
+		const ownedPluginRegistries = this.ownsPluginRegistry
+			? [this.pluginRegistry]
+			: this.compatibilityRuntimeRegistry ? [this.compatibilityRuntimeRegistry] : [];
+		for (const registry of ownedPluginRegistries) {
+			for (const app of registry.getWebApps()) await app.dispose?.();
+		}
 
 		if (this.ownsSessionStore) {
 			this.sessionStore?.close?.();
