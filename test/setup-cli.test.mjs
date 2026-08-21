@@ -132,7 +132,7 @@ test("setup plan can write generated files to a staging directory", () => {
 		const wrapperPath = join(dir, "usr/local/bin/pibo-web-dev-start.mjs");
 		assert.match(readFileSync(servicePath, "utf8"), /\/root\/code\/pibo\/dist\/bin\/pibo\.js gateway:web/);
 		assert.match(readFileSync(wrapperPath, "utf8"), /port: 4809/);
-		assert.equal(statSync(wrapperPath).mode & 0o777, 0o755);
+		if (process.platform !== "win32") assert.equal(statSync(wrapperPath).mode & 0o777, 0o755);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
