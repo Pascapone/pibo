@@ -5,6 +5,8 @@ import * as path from "node:path";
 import { canonicalizePath, resolveRoomForWorkspace } from "../../src/apps/chat-vscode/extension/src/room-resolver.ts";
 import { describe, test } from "node:test";
 
+const fixtureWorkspace = (name) => path.join(path.parse(process.cwd()).root, "tmp", name);
+
 describe("chat-vscode/room-resolver", () => {
 	test("canonicalizePath returns an absolute path", async () => {
 		const result = await canonicalizePath(".");
@@ -42,7 +44,7 @@ describe("chat-vscode/room-resolver", () => {
 	});
 
 	test("2 rooms → kind: multiple, no picker call, no create call", async () => {
-		const tmp = "/tmp/test-multi";
+		const tmp = fixtureWorkspace("test-multi");
 		const calls = [];
 		const fetchImpl = async (url) => {
 			calls.push(url);
@@ -67,7 +69,7 @@ describe("chat-vscode/room-resolver", () => {
 	});
 
 	test("1 room → kind: single, no create call", async () => {
-		const tmp = "/tmp/test-single";
+		const tmp = fixtureWorkspace("test-single");
 		const calls = [];
 		const fetchImpl = async (url) => {
 			calls.push(url);
@@ -114,12 +116,13 @@ describe("chat-vscode/room-resolver", () => {
 			}
 			throw new Error("unexpected fetch: " + url);
 		};
-		await resolveRoomForWorkspace("http://localhost", "/tmp/CaseSensitive", { fetchImpl });
-		assert.equal(requestedWorkspace, "/tmp/CaseSensitive");
+		const workspace = fixtureWorkspace("CaseSensitive");
+		await resolveRoomForWorkspace("http://localhost", workspace, { fetchImpl });
+		assert.equal(requestedWorkspace, workspace);
 	});
 
 	test("attaches the dev-auth cookie from a CookieSource to the list and create requests", async () => {
-		const tmp = "/tmp/test-cookie";
+		const tmp = fixtureWorkspace("test-cookie");
 		const seen = [];
 		const cookieSource = {
 			getCookieHeader: async () => {
@@ -166,7 +169,7 @@ describe("chat-vscode/room-resolver", () => {
 		// user may not have minted a session yet. The resolver must still
 		// send the request; the gateway can then return its real status
 		// (401, 403, etc.) and the extension can surface that to the user.
-		const tmp = "/tmp/test-no-cookie";
+		const tmp = fixtureWorkspace("test-no-cookie");
 		const seen = [];
 		const cookieSource = {
 			getCookieHeader: async () => {
@@ -189,7 +192,7 @@ describe("chat-vscode/room-resolver", () => {
 	});
 
 	test("does not call the CookieSource when none is supplied (back-compat)", async () => {
-		const tmp = "/tmp/test-nocookie";
+		const tmp = fixtureWorkspace("test-nocookie");
 		const fetchImpl = async (url) => {
 			if (url.includes(`/api/chat/rooms?workspace=${encodeURIComponent(tmp)}`)) {
 				return new Response(JSON.stringify({ rooms: [] }), { status: 200 });

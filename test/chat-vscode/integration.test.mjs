@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -7,7 +8,7 @@ import { describe, test } from "node:test";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const tsxBin = resolve(root, "node_modules/.bin/tsx");
+const tsxCli = createRequire(import.meta.url).resolve("tsx/cli");
 
 describe("chat-vscode/integration", () => {
 	test("inliner produces ~800 KB of HTML for the real chat-vscode bundle", async () => {
@@ -33,7 +34,7 @@ process.stdout.write("PIBO_INTEGRATION_RESULT::" + JSON.stringify({
 	hasMetaCsp: out.html.includes('http-equiv="Content-Security-Policy"'),
 }) + "\\n");
 `;
-		const result = await execFileAsync(tsxBin, ["--eval", script], { cwd: root });
+		const result = await execFileAsync(process.execPath, [tsxCli, "--eval", script], { cwd: root });
 		const match = result.stdout.match(/PIBO_INTEGRATION_RESULT::(.+)/);
 		const out = JSON.parse(match[1]);
 		assert.ok(out.size > 500_000, `expected at least 500 KB of HTML; got ${out.size}`);
