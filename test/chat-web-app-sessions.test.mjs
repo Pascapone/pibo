@@ -75,7 +75,10 @@ function createHarness(options = {}) {
 		sessions,
 		emitted,
 		request,
-		cleanup() { rmSync(storageDir, { recursive: true, force: true }); },
+		cleanup() {
+			app.dispose?.();
+			rmSync(storageDir, { recursive: true, force: true });
+		},
 	};
 }
 

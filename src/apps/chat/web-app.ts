@@ -4353,6 +4353,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		telemetryRetentionMaintenance: {},
 	};
 
+	let disposed = false;
 	const requireSession = (request: Request, context: PiboWebAppContext): Promise<PiboWebSession> =>
 		context.requireSession({
 			request,
@@ -4362,6 +4363,17 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		name: CHAT_WEB_APP_NAME,
 		mountPath: CHAT_WEB_MOUNT_PATH,
 		apiPrefix: CHAT_WEB_API_PREFIX,
+		dispose() {
+			if (disposed) return;
+			disposed = true;
+			state.eventLoopDelay.disable();
+			state.projectService.close();
+			state.agentStore.close();
+			state.reliabilityStore.close();
+			state.cronStore.close();
+			state.loopStore.close();
+			state.dataStore.close();
+		},
 		async handleRequest(request, context) {
 			const url = new URL(request.url);
 			if (isTelemetryRetentionMaintenanceDue({ state: state.telemetryRetentionMaintenance })) {

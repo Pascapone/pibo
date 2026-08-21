@@ -26,6 +26,13 @@ function createFakeAuthService() {
 async function startChatHost(storageDir) {
 	const sessions = new InMemoryPiboSessionStore();
 	const channel = createWebHostChannel({ port: 0, announce: false });
+	const app = createChatWebApp({
+		dataStorePath: join(storageDir, "chat.sqlite"),
+		agentStorePath: join(storageDir, "agents.sqlite"),
+		cronStorePath: join(storageDir, "cron.sqlite"),
+		ralphStorePath: join(storageDir, "ralph.sqlite"),
+		reliabilityStorePath: join(storageDir, "reliability.sqlite"),
+	});
 	await channel.start({
 		auth: createFakeAuthService(),
 		emit() { throw new Error("not used"); },
@@ -40,17 +47,15 @@ async function startChatHost(storageDir) {
 		getProfiles: () => [{ name: "test-profile", description: "Test", aliases: [] }],
 		getCapabilityCatalog: () => ({ nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [] }),
 		getWebApps() {
-			return [createChatWebApp({
-				dataStorePath: join(storageDir, "chat.sqlite"),
-				agentStorePath: join(storageDir, "agents.sqlite"),
-				cronStorePath: join(storageDir, "cron.sqlite"),
-				ralphStorePath: join(storageDir, "ralph.sqlite"),
-				reliabilityStorePath: join(storageDir, "reliability.sqlite"),
-			})];
+			return [app];
 		},
 	});
 	const address = channel.getAddress();
-	return { channel, baseURL: `http://${address.host}:${address.port}` };
+	return {
+		channel,
+		baseURL: `http://${address.host}:${address.port}`,
+		dispose: () => app.dispose?.(),
+	};
 }
 
 function authHeaders(baseURL) {
@@ -76,7 +81,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 	writeFileSync(join(piboHome, "user-settings.json"), `${JSON.stringify({
 		settings: { telemetryRetention: { enabled: true, days: 30, lastPrunedAt } },
 	}, null, 2)}\n`);
-	const { channel, baseURL } = await startChatHost(dir);
+	const { channel, baseURL, dispose } = await startChatHost(dir);
 	try {
 		const current = await fetchJson(`${baseURL}/api/chat/user-settings`, {
 			headers: { "x-test-user": "user-1" },
@@ -134,6 +139,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal("users" in persisted, false);
 	} finally {
 		await channel.stop?.();
+		dispose();
 		if (originalPiboHome === undefined) delete process.env.PIBO_HOME;
 		else process.env.PIBO_HOME = originalPiboHome;
 		rmSync(dir, { recursive: true, force: true });
@@ -144,7 +150,7 @@ test("chat base-prompt API validates same-origin mutations and accepts empty cus
 	const originalCwd = process.cwd();
 	const dir = mkdtempSync(join(tmpdir(), "pibo-base-prompt-web-"));
 	process.chdir(dir);
-	const { channel, baseURL } = await startChatHost(dir);
+	const { channel, baseURL, dispose } = await startChatHost(dir);
 	try {
 		const current = await fetchJson(`${baseURL}/api/chat/base-prompt`, {
 			headers: { "x-test-user": "user-1" },
@@ -179,6 +185,7 @@ test("chat base-prompt API validates same-origin mutations and accepts empty cus
 		assert.equal(saved.data.basePrompt.custom.markdown, "");
 	} finally {
 		await channel.stop?.();
+		dispose();
 		process.chdir(originalCwd);
 		rmSync(dir, { recursive: true, force: true });
 	}

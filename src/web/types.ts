@@ -18,5 +18,6 @@ export type PiboWebApp = {
 	name: string;
 	mountPath: string;
 	apiPrefix: string;
+	dispose?(): Promise<void> | void;
 	handleRequest(request: Request, context: PiboWebAppContext): Promise<Response | undefined> | Response | undefined;
 };
