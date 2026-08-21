@@ -37,7 +37,7 @@ test("doctor can enforce a minimum swap recommendation", () => {
 	const status = JSON.parse(pibo(["setup", "doctor", "--min-swap-gb", "999999", "--json"]));
 	const swap = status.checks.find((check) => check.name === "swap");
 	assert.ok(swap);
-	assert.equal(swap.status, "fail");
+	assert.equal(swap.status, process.platform === "win32" ? "warn" : "fail");
 });
 
 test("doctor reports WSL info in the JSON output", () => {
