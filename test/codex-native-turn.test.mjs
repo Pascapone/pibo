@@ -46,7 +46,7 @@ function runtimeConfig(root) {
 		homeRoot: join(root, "runtime-state"),
 		environmentAllowlist: ["PATH"],
 		diagnosticTimeoutMs: 1_000,
-		startupTimeoutMs: 2_000,
+		startupTimeoutMs: process.platform === "win32" ? 5_000 : 2_000,
 		requestTimeoutMs: 2_000,
 		shutdownTimeoutMs: 100,
 		killTimeoutMs: 100,
