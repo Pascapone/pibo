@@ -184,6 +184,37 @@ test("Pibo backs up and replaces an auth schema that cannot be repaired safely",
 	assert.deepEqual(recoveryBackups(root, databasePath), backups);
 });
 
+test("Pibo refuses destructive recovery when the configured database contains non-auth tables", async () => {
+	const root = testRoot("better-auth-shared-database");
+	const databasePath = join(root, "shared.sqlite");
+	createUserTableMissingEmail(databasePath);
+	const fixture = new DatabaseSync(databasePath);
+	fixture.exec('CREATE TABLE "product_record" ("id" TEXT NOT NULL PRIMARY KEY, "value" TEXT NOT NULL)');
+	fixture.prepare('INSERT INTO "product_record" (id, value) VALUES (?, ?)').run("product-1", "preserved");
+	fixture.close();
+
+	const service = createBetterAuthService(options(root, databasePath));
+	try {
+		await assert.rejects(
+			service.start(),
+			/non-auth tables/,
+		);
+	} finally {
+		service.stop();
+	}
+
+	assert.deepEqual(recoveryBackups(root, databasePath), []);
+	const preserved = new DatabaseSync(databasePath, { readOnly: true });
+	try {
+		assert.equal(preserved.prepare('SELECT COUNT(*) AS count FROM "user"').get().count, 1);
+		const product = preserved.prepare('SELECT id, value FROM "product_record"').get();
+		assert.equal(product.id, "product-1");
+		assert.equal(product.value, "preserved");
+	} finally {
+		preserved.close();
+	}
+});
+
 test("Pibo restores the original auth database when fresh-schema recovery fails", async () => {
 	const root = testRoot("better-auth-recovery-rollback");
 	const databasePath = join(root, "auth.sqlite");

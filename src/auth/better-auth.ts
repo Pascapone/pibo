@@ -89,6 +89,8 @@ type BetterAuthRuntime = {
 	auth: ReturnType<typeof betterAuth>;
 };
 
+const BETTER_AUTH_SQLITE_TABLES = new Set(["user", "session", "account", "verification"]);
+
 function quoteSqlIdentifier(value: string): string {
 	return `"${value.replaceAll('"', '""')}"`;
 }
@@ -208,6 +210,17 @@ function makePrivateFile(path: string): void {
 	protectPrivateFileSync(path, { force: true });
 }
 
+function assertAuthOnlyRecoveryDatabase(database: DatabaseSync): void {
+	const tables = database.prepare(`
+		SELECT name
+		FROM sqlite_master
+		WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+	`).all() as Array<{ name: string }>;
+	if (tables.some((table) => !BETTER_AUTH_SQLITE_TABLES.has(table.name))) {
+		throw new Error("Better Auth SQLite recovery refused to replace a database that contains non-auth tables.");
+	}
+}
+
 /** @internal Exported for deterministic recovery failure injection. */
 export async function recoverBetterAuthSqliteDatabase<T extends { database: DatabaseSync }>(input: {
 	databasePath: string;
@@ -218,6 +231,7 @@ export async function recoverBetterAuthSqliteDatabase<T extends { database: Data
 	if (input.databasePath === ":memory:") {
 		throw new Error("Better Auth SQLite schema requires recovery, but an in-memory database cannot be preserved");
 	}
+	assertAuthOnlyRecoveryDatabase(input.failedRuntime.database);
 	const backupPath = nextRecoveryBackupPath(input.databasePath);
 	await backup(input.failedRuntime.database, backupPath);
 	makePrivateFile(backupPath);
