@@ -579,6 +579,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 	}
 
 	private async prepareContext(): Promise<void> {
+		const contextCwd = await canonicalPath(this.input.cwd);
 		const automaticContextEnabled = this.input.capabilities.contextDiscovery.supported
 			&& (this.input.capabilities.contextDiscovery.configurable
 				? this.input.profile.autoContextFiles
@@ -600,13 +601,13 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 			if (file.enabled === false) continue;
 			const id = `context:${file.key ?? file.path}`;
 			this.requiredContributionIds.add(id);
-			const sourcePath = resolveProfilePath(this.input.cwd, file.path);
+			const sourcePath = resolveProfilePath(contextCwd, file.path);
 			try {
 				const content = await readFile(sourcePath, "utf8");
 				const nativeDiscovered = automaticContextEnabled
 					&& await isKnownNativeDiscoveredContextFile(
 						sourcePath,
-						this.input.cwd,
+						contextCwd,
 						this.input.capabilities.contextDiscovery.strategy,
 						this.input.capabilities.contextDiscovery.knownFileNames ?? [],
 						this.input.capabilities.contextDiscovery.knownUserRelativePaths ?? [],

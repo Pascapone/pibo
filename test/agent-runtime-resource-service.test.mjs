@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -422,6 +422,7 @@ test("runtime resources deduplicate native context through a symlinked workspace
 	const contribution = resources.getContextContributions().find((entry) => entry.id === "context:agents");
 	assert.equal(contribution?.nativeDiscovered, true);
 	assert.equal(contribution?.materializedPath, undefined);
+	assert.equal(contribution?.sourcePath, await realpath(join(workspace, "AGENTS.md")));
 });
 
 test("runtime resources deduplicate only the exact native context file selected by runtime precedence", async (t) => {
