@@ -1,5 +1,6 @@
 import {
 	readFile,
+	readlink,
 	realpath,
 	rm,
 	stat,
@@ -143,8 +144,28 @@ function isWithin(parent: string, child: string): boolean {
 		&& !isAbsolute(selected));
 }
 
+async function linkedAncestorPath(path: string): Promise<string | undefined> {
+	const suffix: string[] = [];
+	let current = resolve(path);
+	while (true) {
+		const target = await readlink(current).catch(() => undefined);
+		if (target) {
+			const targetPath = isAbsolute(target) ? target : resolve(dirname(current), target);
+			return resolve(targetPath, ...suffix);
+		}
+		const parent = dirname(current);
+		if (parent === current) return undefined;
+		suffix.unshift(basename(current));
+		current = parent;
+	}
+}
+
 async function canonicalPath(path: string): Promise<string> {
-	return await realpath(path).catch(() => resolve(path));
+	const resolved = resolve(path);
+	const canonical = await realpath(resolved).catch(() => undefined);
+	if (canonical) return canonical;
+	const linked = await linkedAncestorPath(resolved);
+	return linked ? await realpath(linked).catch(() => linked) : resolved;
 }
 
 function ancestorDirectories(cwd: string, boundary?: string, includeBoundary = true): string[] {

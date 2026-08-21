@@ -398,11 +398,13 @@ test("Pi consumes an explicitly selected native context file only through native
 test("runtime resources deduplicate native context through a symlinked workspace", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-symlinked-context-dedup-"));
 	t.after(async () => rm(root, { recursive: true, force: true }));
-	const workspace = join(root, "workspace");
-	const linkedWorkspace = join(root, "linked-workspace");
+	const workspaceRoot = join(root, "workspace");
+	const workspace = join(workspaceRoot, "nested");
+	const linkedWorkspaceRoot = join(root, "linked-workspace");
+	const linkedWorkspace = join(linkedWorkspaceRoot, "nested");
 	await mkdir(workspace, { recursive: true });
 	await writeFile(join(workspace, "AGENTS.md"), "# Native context through a linked workspace\n");
-	await symlink(workspace, linkedWorkspace, process.platform === "win32" ? "junction" : "dir");
+	await symlink(workspaceRoot, linkedWorkspaceRoot, process.platform === "win32" ? "junction" : "dir");
 	const profile = new InitialSessionContextBuilder("linked-context-dedup")
 		.withAgentRuntime("pi")
 		.withToolPackages({ goalControl: false })
