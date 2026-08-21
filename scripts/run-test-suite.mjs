@@ -48,6 +48,7 @@ const args = process.argv.slice(2);
 const childEnv = {
 	...process.env,
 	NODE_ENV: "test",
+	TZ: process.env.TZ ?? "UTC",
 	HOME: isolatedHome,
 	USERPROFILE: isolatedHome,
 	PIBO_HOME: isolatedPiboHome,
