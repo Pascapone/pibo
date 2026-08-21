@@ -10,6 +10,7 @@ import {
 	prepareYieldedRunExecution,
 	resolveYieldedRunResourcePolicy,
 	systemdRunCommand,
+	windowsProcessTreeCommand,
 } from "../dist/runs/resource-isolation.js";
 
 const execFileAsync = promisify(execFile);
@@ -69,6 +70,14 @@ test("systemd wrapper places Bash in a dedicated bounded transient service", () 
 	assert.match(command, /IOWeight=50/);
 	assert.match(command, /KillMode=control-group/);
 	assert.match(command, /printf/);
+});
+
+test("Windows process-tree wrapper records the native Bash PID before user work", () => {
+	const command = windowsProcessTreeCommand("printf 'ok'", "C:\\Temp\\pibo yielded.pid");
+	assert.match(command, /ps -W/);
+	assert.match(command, /awk -v p=\$\$/);
+	assert.match(command, /C:\/Temp\/pibo yielded\.pid/);
+	assert.match(command, /printf 'ok'/);
 });
 
 test("non-process yielded tools remain in-process and preserve their arguments", async () => {
