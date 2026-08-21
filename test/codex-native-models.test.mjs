@@ -36,9 +36,8 @@ async function waitFor(predicate, timeoutMs = 2_000) {
 	}
 }
 
-async function testRoot(t) {
+async function testRoot() {
 	const root = await mkdtemp(join(tmpdir(), "pibo-codex-native-models-"));
-	t.after(() => rm(root, { recursive: true, force: true }));
 	await chmod(fixturePath, 0o755);
 	return root;
 }
@@ -130,7 +129,8 @@ function unboundBinding(instanceId, piboSessionId) {
 }
 
 test("Codex native advertises and validates its stable model, reasoning, service-tier, and option catalog", async (t) => {
-	const root = await testRoot(t);
+	const root = await testRoot();
+	t.after(() => rm(root, { recursive: true, force: true }));
 	const instanceId = "codex-native-model-catalog";
 	const { adapter } = createAdapter(root, instanceId);
 
@@ -165,7 +165,7 @@ test("Codex native advertises and validates its stable model, reasoning, service
 });
 
 test("Codex native applies profile options and exposes cumulative context usage", async (t) => {
-	const root = await testRoot(t);
+	const root = await testRoot();
 	const instanceId = "codex-native-model-options";
 	const { registry } = createAdapter(root, instanceId);
 	const selectedProfile = profile(instanceId, {
@@ -177,7 +177,10 @@ test("Codex native applies profile options and exposes cumulative context usage"
 		.withThinkingLevel("max"));
 	const binding = unboundBinding(instanceId, "ps_codex_model_options");
 	const session = await registry.openSession(instanceId, openInput(instanceId, root, selectedProfile, binding));
-	t.after(() => session.dispose());
+	t.after(async () => {
+		await session.dispose();
+		await rm(root, { recursive: true, force: true });
+	});
 
 	assert.deepEqual(session.getStatus().activeModel, { provider: "openai-codex", id: "gpt-5.6-sol" });
 	assert.deepEqual(session.getStatus().reasoning, {
@@ -209,7 +212,7 @@ test("Codex native applies profile options and exposes cumulative context usage"
 });
 
 test("Codex native model, reasoning, and Fast Mode controls are model-aware and survive native resume", async (t) => {
-	const root = await testRoot(t);
+	const root = await testRoot();
 	const instanceId = "codex-native-model-controls";
 	const { registry } = createAdapter(root, instanceId);
 	const selectedProfile = profile(instanceId, {}, (builder) => builder
@@ -217,6 +220,12 @@ test("Codex native model, reasoning, and Fast Mode controls are model-aware and 
 		.withThinkingLevel("high"));
 	const binding = unboundBinding(instanceId, "ps_codex_model_controls");
 	const first = await registry.openSession(instanceId, openInput(instanceId, root, selectedProfile, binding));
+	let resumed;
+	t.after(async () => {
+		await resumed?.dispose();
+		await first.dispose();
+		await rm(root, { recursive: true, force: true });
+	});
 
 	assert.deepEqual(first.controls.setReasoning("low"), {
 		value: "low",
@@ -250,14 +259,13 @@ test("Codex native model, reasoning, and Fast Mode controls are model-aware and 
 	assert.equal(resumedBinding.metadata.codexNativeServiceTier, null);
 	await first.dispose();
 
-	const resumed = await registry.openSession(instanceId, openInput(
+	resumed = await registry.openSession(instanceId, openInput(
 		instanceId,
 		root,
 		selectedProfile,
 		resumedBinding,
 		{ provider: "openai-codex", id: "gpt-5.2" },
 	));
-	t.after(() => resumed.dispose());
 	await waitFor(() => resumed.getStatus().contextUsage?.tokens === 20);
 	assert.deepEqual(resumed.getStatus().activeModel, { provider: "openai-codex", id: "gpt-5.2" });
 	assert.equal(resumed.getStatus().reasoning.value, "low");
@@ -276,7 +284,7 @@ test("Codex native model, reasoning, and Fast Mode controls are model-aware and 
 });
 
 test("Codex native model catalog and controls flow through routed status and gateway actions", async (t) => {
-	const root = await testRoot(t);
+	const root = await testRoot();
 	const instanceId = "codex-native-model-router";
 	const profileName = "codex-native-model-router-profile";
 	const piboSessionId = "ps_codex_model_router";
@@ -313,7 +321,10 @@ test("Codex native model catalog and controls flow through routed status and gat
 		sessionStore: store,
 		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
 	});
-	t.after(() => router.disposeAll());
+	t.after(async () => {
+		await router.disposeAll();
+		await rm(root, { recursive: true, force: true });
+	});
 
 	const modelMenu = await router.emit({
 		type: "execution",
