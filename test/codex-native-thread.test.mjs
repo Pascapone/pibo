@@ -27,12 +27,24 @@ import { startCodexNativeAppServer } from "../dist/agent-runtimes/codex-native/p
 import { isCodexNativeThreadMissingError } from "../dist/agent-runtimes/codex-native/thread.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/codex-app-server-thread-fake.mjs", import.meta.url));
+const testDisposers = new WeakMap();
 
 async function testRoot(t) {
 	const root = await mkdtemp(join(tmpdir(), "pibo-codex-native-thread-"));
-	t.after(() => rm(root, { recursive: true, force: true }));
+	const disposers = [];
+	testDisposers.set(t, disposers);
+	t.after(async () => {
+		for (const dispose of disposers.reverse()) await dispose();
+		await rm(root, { recursive: true, force: true });
+	});
 	await chmod(fixturePath, 0o755);
 	return root;
+}
+
+function registerTestDisposer(t, dispose) {
+	const disposers = testDisposers.get(t);
+	if (!disposers) throw new Error("Codex native thread test root is not initialized");
+	disposers.push(dispose);
 }
 
 function runtimeConfig(root) {
@@ -347,7 +359,7 @@ test("Codex native thread controls list and fork through stable App Server metho
 	});
 	const sourceBinding = boundBinding(instanceId, "ps_codex_fork", "thread-source");
 	const session = await registry.openSession(instanceId, openInput(instanceId, root, sourceBinding));
-	t.after(() => session.dispose());
+	registerTestDisposer(t, () => session.dispose());
 	const listed = await session.controls.listSessions();
 	assert.ok(listed.some((thread) => thread.nativeSessionId === "thread-source"));
 	assert.ok(listed.some((thread) => thread.nativeSessionId === "thread-other"));
@@ -570,7 +582,7 @@ test("Codex native unbound thread creation participates in revisioned binding CA
 	assert.equal(initial.revision, 1);
 	const first = await registry.openSession(instanceId, openInput(instanceId, root, initial));
 	const second = await registry.openSession(instanceId, openInput(instanceId, root, initial));
-	t.after(() => Promise.allSettled([first.dispose(), second.dispose()]));
+	registerTestDisposer(t, () => Promise.allSettled([first.dispose(), second.dispose()]));
 	assert.notEqual(first.getBinding().nativeSessionId, second.getBinding().nativeSessionId);
 	const persisted = store.updateRuntimeBinding(piboSessionId, first.getBinding(), { expectedRevision: 1 });
 	assert.equal(persisted.revision, 2);
