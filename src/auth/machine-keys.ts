@@ -159,7 +159,7 @@ function parseMachineKeyStore(value: unknown): MachineKeyStoreFile {
 
 function assertPrivateStoreFile(path: string): void {
 	if (process.platform === "win32") {
-		protectPrivateFileSync(path);
+		protectPrivateFileSync(path, { force: true });
 		return;
 	}
 	const stat = statSync(path);
