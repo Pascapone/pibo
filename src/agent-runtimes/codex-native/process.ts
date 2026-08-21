@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
-import { protectPrivateFileSync, protectPrivatePathsSync } from "../../core/private-path.js";
+import { protectPrivatePathsSync } from "../../core/private-path.js";
 import { CodexAppServerClient, type CodexAppServerDiagnostic } from "./client.js";
 import type { CodexAppServerInitializeCapabilities } from "./protocol-types.js";
 import type { CodexNativeRuntimeConfig } from "./config.js";
@@ -129,7 +129,6 @@ async function ensurePrivateDirectories(paths: readonly string[]): Promise<void>
 		const metadata = await lstat(path);
 		if (metadata.isSymbolicLink() || !metadata.isDirectory()) throw new Error("runtime path is not a private directory");
 	}
-	protectPrivatePathsSync(paths.map((path) => ({ path, kind: "directory" })));
 }
 
 async function ensurePrivateConfig(path: string): Promise<void> {
@@ -140,7 +139,6 @@ async function ensurePrivateConfig(path: string): Promise<void> {
 	}
 	const metadata = await lstat(path);
 	if (metadata.isSymbolicLink() || !metadata.isFile()) throw new Error("runtime config is not a private regular file");
-	protectPrivateFileSync(path);
 }
 
 function nodeErrorCode(error: unknown): string | undefined {
@@ -174,6 +172,10 @@ export async function prepareCodexNativeInstancePaths(
 		}
 		const configFile = join(codexHome, "config.toml");
 		await ensurePrivateConfig(configFile);
+		protectPrivatePathsSync([
+			...([canonicalHomeRoot, root, codexHome, sessions].map((path) => ({ path, kind: "directory" as const }))),
+			{ path: configFile, kind: "file" },
+		]);
 		return { root: canonicalRoot, codexHome: await realpath(codexHome), configFile, sessions: await realpath(sessions) };
 	} catch {
 		throw new CodexNativeProcessError(
@@ -200,7 +202,9 @@ export async function prepareCodexNativeSessionPaths(
 		const xdgConfig = join(processHome, ".config");
 		const xdgData = join(processHome, ".local", "share");
 		const xdgState = join(processHome, ".local", "state");
-		await ensurePrivateDirectories([sessionRoot, generationRoot, processHome, temp, xdgCache, xdgConfig, xdgData, xdgState]);
+		const privateDirectories = [sessionRoot, generationRoot, processHome, temp, xdgCache, xdgConfig, xdgData, xdgState];
+		await ensurePrivateDirectories(privateDirectories);
+		protectPrivatePathsSync(privateDirectories.map((path) => ({ path, kind: "directory" })));
 		sessionDirectoryReady = true;
 		const canonicalGenerationRoot = await realpath(generationRoot);
 		if (!isInside(instance.sessions, canonicalGenerationRoot)) throw new Error("runtime generation escaped its session root");
