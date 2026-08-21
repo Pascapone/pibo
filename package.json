@@ -3,8 +3,7 @@
   "version": "1.7.2",
   "type": "module",
   "workspaces": [
-    "packages/workflows",
-    "src/apps/chat-vscode/extension/vscode-shim"
+    "packages/workflows"
   ],
   "description": "Minimal TypeScript wrapper around Pi Coding Agent.",
   "files": [
@@ -103,6 +102,6 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
     "vite-tsconfig-paths": "^5.1.4",
-    "vscode": "0.0.0-pibo-test-shim"
+    "vscode": "file:src/apps/chat-vscode/extension/vscode-shim"
   }
 }
