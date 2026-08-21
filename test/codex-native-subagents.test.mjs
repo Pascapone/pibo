@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
@@ -68,7 +68,7 @@ function createRegistry(root, registerProfiles, childDriver) {
 		plugins: [
 			piboCorePlugin,
 			definePiboPlugin({
-				id: `test.codex-subagents.${root.split("/").at(-1)}`,
+				id: `test.codex-subagents.${basename(root)}`,
 				register(api) {
 					api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
 					api.registerAgentRuntimeInstance({
