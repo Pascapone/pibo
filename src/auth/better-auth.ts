@@ -5,7 +5,8 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { getMigrations } from "better-auth/db/migration";
 import { bearer } from "better-auth/plugins";
 import { loadPiboConfig } from "../config/config.js";
-import { piboHomePath } from "../core/pibo-home.js";
+import { ensurePrivatePiboHomeForPath, piboHomePath } from "../core/pibo-home.js";
+import { protectPrivateFileSync } from "../core/private-path.js";
 import { createMachineKeyAuthenticator } from "./machine-keys.js";
 import { createMachineSessionManager } from "./machine-session.js";
 import type { PiboAuthService, PiboAuthSession } from "./types.js";
@@ -60,10 +61,12 @@ function createAllowedEmailSet(emails: string[]): Set<string> {
 
 function createDatabase(path: string): DatabaseSync {
 	const resolvedPath = path === ":memory:" ? path : resolve(path);
-	if (resolvedPath !== ":memory:") {
-		mkdirSync(dirname(resolvedPath), { recursive: true });
-	}
-	return new DatabaseSync(resolvedPath);
+	if (resolvedPath === ":memory:") return new DatabaseSync(resolvedPath);
+	ensurePrivatePiboHomeForPath(resolvedPath);
+	mkdirSync(dirname(resolvedPath), { recursive: true });
+	const database = new DatabaseSync(resolvedPath);
+	protectPrivateFileSync(resolvedPath);
+	return database;
 }
 
 type BetterAuthMigrationField = {
