@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
@@ -15,6 +15,7 @@ test("normal test workers receive only the isolated suite home", () => {
 		home: process.env.HOME,
 		userProfile: process.env.USERPROFILE,
 		homedir: homedir(),
+		tmpdir: tmpdir(),
 		piboHome: process.env.PIBO_HOME,
 		nodeEnv: process.env.NODE_ENV,
 	}), "utf8");

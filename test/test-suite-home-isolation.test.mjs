@@ -9,9 +9,11 @@ test("the canonical test runner cannot read from or write to the invoking Pibo h
 	const root = mkdtempSync(join(tmpdir(), "pibo-test-runner-regression-"));
 	const callerHome = join(root, "operator-home");
 	const callerPiboHome = join(callerHome, ".pibo");
+	const callerTemp = join(root, "operator-temp");
 	const sentinelPath = join(callerPiboHome, "operator-sentinel.txt");
 	const probePath = join(root, "probe.json");
 	mkdirSync(callerPiboHome, { recursive: true });
+	mkdirSync(callerTemp, { recursive: true });
 	writeFileSync(sentinelPath, "operator-state-must-not-change\n", "utf8");
 
 	try {
@@ -26,6 +28,8 @@ test("the canonical test runner cannot read from or write to the invoking Pibo h
 				HOME: callerHome,
 				USERPROFILE: callerHome,
 				PIBO_HOME: callerPiboHome,
+				TEMP: callerTemp,
+				TMP: callerTemp,
 				PIBO_TEST_PROBE_PATH: probePath,
 			},
 		});
@@ -38,6 +42,7 @@ test("the canonical test runner cannot read from or write to the invoking Pibo h
 		assert.notEqual(resolve(probe.home), resolve(callerHome));
 		assert.notEqual(resolve(probe.userProfile), resolve(callerHome));
 		assert.equal(resolve(probe.homedir), resolve(probe.userProfile));
+		if (process.platform === "win32") assert.notEqual(resolve(probe.tmpdir), resolve(callerTemp));
 		assert.notEqual(resolve(probe.piboHome), resolve(callerPiboHome));
 		assert.equal(probe.nodeEnv, "test");
 	} finally {

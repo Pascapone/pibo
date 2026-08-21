@@ -27,10 +27,12 @@ function defaultTestFiles() {
 const testRoot = mkdtempSync(join(tmpdir(), "pibo-test-suite-"));
 const isolatedHome = join(testRoot, "home");
 const isolatedPiboHome = join(isolatedHome, ".pibo");
+const isolatedTemp = join(testRoot, "tmp");
 const callerHome = canonical(process.env.HOME ?? homedir());
 const callerPiboHome = canonical(process.env.PIBO_HOME ?? join(callerHome, ".pibo"));
 
 mkdirSync(isolatedPiboHome, { recursive: true });
+mkdirSync(isolatedTemp, { recursive: true });
 
 const resolvedTestRoot = canonical(testRoot);
 const resolvedHome = canonical(isolatedHome);
@@ -49,6 +51,7 @@ const childEnv = {
 	HOME: isolatedHome,
 	USERPROFILE: isolatedHome,
 	PIBO_HOME: isolatedPiboHome,
+	...(process.platform === "win32" ? { TEMP: isolatedTemp, TMP: isolatedTemp } : {}),
 	XDG_CACHE_HOME: join(testRoot, "xdg", "cache"),
 	XDG_CONFIG_HOME: join(testRoot, "xdg", "config"),
 	XDG_DATA_HOME: join(testRoot, "xdg", "data"),
