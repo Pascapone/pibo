@@ -57,7 +57,8 @@ const childEnv = {
 delete childEnv.NODE_TEST_CONTEXT;
 delete childEnv.NODE_TEST_WORKER_ID;
 
-const child = spawn(process.execPath, ["--test", ...(args.length > 0 ? args : defaultTestFiles())], {
+const platformArgs = process.platform === "win32" ? ["--test-concurrency=4"] : [];
+const child = spawn(process.execPath, ["--test", ...platformArgs, ...(args.length > 0 ? args : defaultTestFiles())], {
 	cwd: process.cwd(),
 	env: childEnv,
 	stdio: "inherit",
