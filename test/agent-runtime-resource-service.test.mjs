@@ -395,6 +395,35 @@ test("Pi consumes an explicitly selected native context file only through native
 	assert.equal(matching[0]?.content, "# Native Pi context\n");
 });
 
+test("runtime resources deduplicate native context through a symlinked workspace", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-symlinked-context-dedup-"));
+	t.after(async () => rm(root, { recursive: true, force: true }));
+	const workspace = join(root, "workspace");
+	const linkedWorkspace = join(root, "linked-workspace");
+	await mkdir(workspace, { recursive: true });
+	await writeFile(join(workspace, "AGENTS.md"), "# Native context through a linked workspace\n");
+	await symlink(workspace, linkedWorkspace, process.platform === "win32" ? "junction" : "dir");
+	const profile = new InitialSessionContextBuilder("linked-context-dedup")
+		.withAgentRuntime("pi")
+		.withToolPackages({ goalControl: false })
+		.addContextFile({ key: "agents", path: "AGENTS.md" })
+		.createSession();
+	const service = new PiboRuntimeResourceService({ rootDir: join(root, "generations") });
+	t.after(async () => service.dispose());
+	const resources = await service.createSession({
+		piboSessionId: "ps_linked_context_dedup",
+		runtimeInstanceId: "pi",
+		adapterId: "pi",
+		sessionGeneration: "generation-one",
+		profile,
+		cwd: linkedWorkspace,
+		capabilities: PI_AGENT_RUNTIME_CAPABILITIES,
+	});
+	const contribution = resources.getContextContributions().find((entry) => entry.id === "context:agents");
+	assert.equal(contribution?.nativeDiscovered, true);
+	assert.equal(contribution?.materializedPath, undefined);
+});
+
 test("runtime resources deduplicate only the exact native context file selected by runtime precedence", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-context-dedup-"));
 	t.after(async () => rm(root, { recursive: true, force: true }));

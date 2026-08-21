@@ -235,7 +235,7 @@ async function isKnownNativeDiscoveredContextFile(
 	knownRelativePaths: readonly string[],
 	knownAncestorRelativePaths: readonly string[],
 ): Promise<boolean> {
-	const cwd = resolve(cwdInput);
+	const cwd = await canonicalPath(cwdInput);
 	const sourceRealPath = await canonicalPath(sourcePath);
 	for (const relativePath of knownUserRelativePaths) {
 		const candidate = await realFilePath(join(homedir(), relativePath));
