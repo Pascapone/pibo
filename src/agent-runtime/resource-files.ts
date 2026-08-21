@@ -8,7 +8,7 @@ import {
 	realpath,
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { protectPrivateDirectorySync, protectPrivateFileSync } from "../core/private-path.js";
+import { protectPrivatePathsSync } from "../core/private-path.js";
 import type {
 	AgentRuntimeResourcePaths,
 	AgentRuntimeSkillResource,
@@ -20,6 +20,7 @@ type SkillCopyBudget = {
 	maxFiles: number;
 	maxBytes: number;
 	activeDirectories: Set<string>;
+	privateWindowsPaths: Array<{ path: string; kind: "directory" | "file" }>;
 };
 
 function safeSegment(value: string): string {
@@ -33,9 +34,9 @@ function isInside(root: string, candidate: string): boolean {
 	return child === "" || (!child.startsWith(`..${sep}`) && child !== ".." && !isAbsolute(child));
 }
 
-async function ensurePrivateDirectory(path: string): Promise<void> {
-	await mkdir(path, { recursive: true, mode: 0o700 });
-	protectPrivateDirectorySync(path);
+async function ensurePrivateDirectories(paths: readonly string[]): Promise<void> {
+	for (const path of paths) await mkdir(path, { recursive: true, mode: 0o700 });
+	protectPrivatePathsSync(paths.map((path) => ({ path, kind: "directory" })));
 }
 
 export async function createAgentRuntimeResourcePaths(
@@ -60,7 +61,7 @@ export async function createAgentRuntimeResourcePaths(
 		config: join(root, "config"),
 		protocol: join(root, "protocol"),
 	};
-	for (const path of Object.values(paths)) await ensurePrivateDirectory(path);
+	await ensurePrivateDirectories(Object.values(paths));
 	return paths;
 }
 
@@ -78,7 +79,8 @@ async function copySkillEntry(source: string, destination: string, sourceRoot: s
 		budget.activeDirectories.add(canonical);
 		try {
 			await mkdir(destination, { recursive: true, mode: metadata.mode & 0o777 });
-			protectPrivateDirectorySync(destination);
+			if (process.platform === "win32") budget.privateWindowsPaths.push({ path: destination, kind: "directory" });
+			else await chmod(destination, 0o700);
 			for (const entry of await readdir(source)) {
 				await copySkillEntry(join(source, entry), join(destination, entry), sourceRoot, budget);
 			}
@@ -94,8 +96,12 @@ async function copySkillEntry(source: string, destination: string, sourceRoot: s
 	if (budget.bytes > budget.maxBytes) throw new Error(`Skill exceeds the ${budget.maxBytes}-byte materialization limit.`);
 	await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
 	await copyFile(source, destination);
-	if (process.platform === "win32") protectPrivateFileSync(destination);
-	else await chmod(destination, metadata.mode & 0o777);
+	if (process.platform === "win32") {
+		budget.privateWindowsPaths.push({ path: dirname(destination), kind: "directory" }, { path: destination, kind: "file" });
+	} else {
+		await chmod(dirname(destination), 0o700);
+		await chmod(destination, metadata.mode & 0o777);
+	}
 }
 
 export async function copyAgentRuntimeSkillDirectory(
@@ -112,13 +118,16 @@ export async function copyAgentRuntimeSkillDirectory(
 		maxFiles: limits.maxFiles,
 		maxBytes: limits.maxBytes,
 		activeDirectories: new Set(),
+		privateWindowsPaths: [],
 	};
+	let target: string;
 	if (basename(sourceFile).toUpperCase() === "SKILL.MD") {
 		await copySkillEntry(sourceRoot, destination, sourceRoot, budget);
-		return join(destination, relative(sourceRoot, sourceFile));
+		target = join(destination, relative(sourceRoot, sourceFile));
+	} else {
+		target = join(destination, "SKILL.md");
+		await copySkillEntry(sourceFile, target, sourceRoot, budget);
 	}
-	await ensurePrivateDirectory(destination);
-	const target = join(destination, "SKILL.md");
-	await copySkillEntry(sourceFile, target, sourceRoot, budget);
+	if (process.platform === "win32") protectPrivatePathsSync(budget.privateWindowsPaths);
 	return target;
 }

@@ -10,7 +10,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { PIBO_APP_CONTEXT } from "../app-context.js";
 import type { InitialSessionContext } from "../core/profiles.js";
 import { piboHomePath } from "../core/pibo-home.js";
-import { protectPrivateFileSync } from "../core/private-path.js";
+import { protectPrivatePathsSync } from "../core/private-path.js";
 import { DEFAULT_USER_TIMEZONE } from "../core/user-settings.js";
 import {
 	isHttpServer,
@@ -688,6 +688,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 	}
 
 	private async materialize(): Promise<void> {
+		const privateFiles: string[] = [];
 		const materializeSkills = this.input.capabilities.skills.support === "materialized" && this.skills.length > 0;
 		const materializeContext = this.input.capabilities.context.support === "materialized" && this.context.some((item) => item.content !== undefined && !item.nativeDiscovered);
 		const materializeMcp = this.mcpServers.some((server) => server.scoped !== undefined);
@@ -719,7 +720,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 				);
 				try {
 					await writeFile(target, contribution.content, { encoding: "utf8", mode: 0o600 });
-					protectPrivateFileSync(target);
+					privateFiles.push(target);
 					contribution.materializedPath = target;
 				} catch (error) {
 					const message = `Context contribution "${contribution.label}" could not be materialized: ${redactResourceError(error)}`;
@@ -738,12 +739,13 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 			}
 			const configPath = join(this.paths.config, MCP_CONFIG_FILE);
 			await writeFile(configPath, `${JSON.stringify({ mcpServers: materializedConfigs }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-			protectPrivateFileSync(configPath);
+			privateFiles.push(configPath);
 			this.adapterEnvironment.MCP_CONFIG_PATH = configPath;
 			this.adapterEnvironment.MCP_NO_DAEMON = "1";
 			this.adapterEnvironment.MCP_STRICT_ENV = "true";
 			this.adapterEnvironment.PIBO_MCP_ISOLATED_ENV = "1";
 		}
+		protectPrivatePathsSync(privateFiles.map((path) => ({ path, kind: "file" })));
 	}
 
 	private async verifyMcpServers(): Promise<void> {

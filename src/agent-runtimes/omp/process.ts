@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
-import { protectPrivateDirectorySync, protectPrivateFileSync } from "../../core/private-path.js";
+import { protectPrivateFileSync, protectPrivatePathsSync } from "../../core/private-path.js";
 import { OmpRpcClient } from "./client.js";
 import type { OmpRuntimeConfig } from "./config.js";
 
@@ -70,13 +70,13 @@ function nodeErrorCode(error: unknown): string | undefined {
 		: undefined;
 }
 
-async function ensurePrivateDirectory(path: string): Promise<void> {
-	await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
-	protectPrivateDirectorySync(path);
+async function ensurePrivateDirectories(paths: readonly string[]): Promise<void> {
+	for (const path of paths) await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+	protectPrivatePathsSync(paths.map((path) => ({ path, kind: "directory" })));
 }
 
 async function ensurePrivateConfig(path: string): Promise<void> {
-	await ensurePrivateDirectory(dirname(path));
+	await ensurePrivateDirectories([dirname(path)]);
 	try {
 		await stat(path);
 	} catch {
@@ -124,11 +124,7 @@ export async function prepareOmpSessionPaths(
 		// re-attaches to the same native session files.
 		sessionDir: join(sessionRoot, "omp-sessions"),
 	};
-	await ensurePrivateDirectory(instanceRoot);
-	await ensurePrivateDirectory(paths.agentDir);
-	await ensurePrivateDirectory(paths.skills);
-	await ensurePrivateDirectory(paths.context);
-	await ensurePrivateDirectory(paths.sessionDir);
+	await ensurePrivateDirectories([instanceRoot, paths.agentDir, paths.skills, paths.context, paths.sessionDir]);
 	await ensurePrivateConfig(paths.config);
 	return paths;
 }
@@ -148,10 +144,7 @@ export async function resetOmpNativeSession(paths: OmpSessionPaths): Promise<voi
 		rm(paths.sessionDir, { recursive: true, force: true }),
 		rm(paths.context, { recursive: true, force: true }),
 	]);
-	await Promise.all([
-		ensurePrivateDirectory(paths.sessionDir),
-		ensurePrivateDirectory(paths.context),
-	]);
+	await ensurePrivateDirectories([paths.sessionDir, paths.context]);
 }
 
 /**
