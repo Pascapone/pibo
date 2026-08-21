@@ -16,6 +16,7 @@ test("MCP config loading merges local and global files with specific entries win
 
 	const previousCwd = process.cwd();
 	const previousHome = process.env.HOME;
+	const previousUserProfile = process.env.USERPROFILE;
 	const previousConfigPath = process.env.MCP_CONFIG_PATH;
 	try {
 		await writeFile(
@@ -48,6 +49,7 @@ test("MCP config loading merges local and global files with specific entries win
 
 		process.chdir(project);
 		process.env.HOME = home;
+		process.env.USERPROFILE = home;
 		delete process.env.MCP_CONFIG_PATH;
 
 		const config = await loadConfig();
@@ -59,6 +61,8 @@ test("MCP config loading merges local and global files with specific entries win
 		process.chdir(previousCwd);
 		if (previousHome === undefined) delete process.env.HOME;
 		else process.env.HOME = previousHome;
+		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+		else process.env.USERPROFILE = previousUserProfile;
 		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
 		else process.env.MCP_CONFIG_PATH = previousConfigPath;
 		await rm(root, { recursive: true, force: true });
