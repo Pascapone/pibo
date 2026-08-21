@@ -1,7 +1,8 @@
-import { chmodSync, createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { piboHomePath } from "../../core/pibo-home.js";
+import { protectPrivateDirectorySync, protectPrivateFileSync } from "../../core/private-path.js";
 import { PiboWebHttpError } from "../../web/http.js";
 
 export const CHAT_UPLOAD_DIR = piboHomePath("uploads");
@@ -38,7 +39,7 @@ export function prepareChatFileAttachments(input: {
 
 export function ensurePrivateChatUploadDirectory(): string {
 	mkdirSync(CHAT_UPLOAD_DIR, { recursive: true, mode: 0o700 });
-	if (process.platform !== "win32") chmodSync(CHAT_UPLOAD_DIR, 0o700);
+	protectPrivateDirectorySync(CHAT_UPLOAD_DIR);
 	return CHAT_UPLOAD_DIR;
 }
 
@@ -158,6 +159,12 @@ function writeUploadedChatFile(filename: string, bytes: Buffer): string {
 		const targetPath = uploadPathForIndex(filename, index);
 		try {
 			writeFileSync(targetPath, bytes, { flag: "wx", mode: 0o600 });
+			try {
+				protectPrivateFileSync(targetPath);
+			} catch (error) {
+				rmSync(targetPath, { force: true });
+				throw error;
+			}
 			return targetPath;
 		} catch (error) {
 			if (isNodeError(error) && error.code === "EEXIST") continue;
