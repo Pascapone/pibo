@@ -24,6 +24,7 @@ test("the canonical test runner cannot read from or write to the invoking Pibo h
 			env: {
 				...process.env,
 				HOME: callerHome,
+				USERPROFILE: callerHome,
 				PIBO_HOME: callerPiboHome,
 				PIBO_TEST_PROBE_PATH: probePath,
 			},
@@ -35,6 +36,8 @@ test("the canonical test runner cannot read from or write to the invoking Pibo h
 
 		const probe = JSON.parse(readFileSync(probePath, "utf8"));
 		assert.notEqual(resolve(probe.home), resolve(callerHome));
+		assert.notEqual(resolve(probe.userProfile), resolve(callerHome));
+		assert.equal(resolve(probe.homedir), resolve(probe.userProfile));
 		assert.notEqual(resolve(probe.piboHome), resolve(callerPiboHome));
 		assert.equal(probe.nodeEnv, "test");
 	} finally {

@@ -47,6 +47,7 @@ const childEnv = {
 	...process.env,
 	NODE_ENV: "test",
 	HOME: isolatedHome,
+	USERPROFILE: isolatedHome,
 	PIBO_HOME: isolatedPiboHome,
 	XDG_CACHE_HOME: join(testRoot, "xdg", "cache"),
 	XDG_CONFIG_HOME: join(testRoot, "xdg", "config"),
