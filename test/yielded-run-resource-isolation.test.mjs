@@ -17,7 +17,7 @@ const hasSystemd = process.platform === "linux" && existsSync("/run/systemd/syst
 
 function safePolicyEnv(overrides = {}) {
 	return {
-		PIBO_YIELDED_RUN_ISOLATION: "systemd",
+		PIBO_YIELDED_RUN_ISOLATION: process.platform === "win32" ? "windows-process-tree" : "systemd",
 		PIBO_YIELDED_RUN_MEMORY_HIGH_BYTES: String(128 * 1024 * 1024),
 		PIBO_YIELDED_RUN_MEMORY_MAX_BYTES: String(256 * 1024 * 1024),
 		PIBO_YIELDED_RUN_TASKS_MAX: "32",
@@ -33,7 +33,7 @@ function safePolicyEnv(overrides = {}) {
 
 test("yielded-run resource policy resolves enforced cgroup defaults and overrides", () => {
 	const defaults = resolveYieldedRunResourcePolicy({});
-	assert.equal(defaults.mode, "systemd");
+	assert.equal(defaults.mode, process.platform === "win32" ? "windows-process-tree" : "systemd");
 	assert.equal(defaults.memoryHighBytes, 1280 * 1024 * 1024);
 	assert.equal(defaults.memoryMaxBytes, 1792 * 1024 * 1024);
 	assert.equal(defaults.tasksMax, 128);
@@ -58,7 +58,7 @@ test("Linux MemAvailable and pressure parsers expose lifetime admission inputs",
 });
 
 test("systemd wrapper places Bash in a dedicated bounded transient service", () => {
-	const policy = resolveYieldedRunResourcePolicy(safePolicyEnv());
+	const policy = resolveYieldedRunResourcePolicy({ ...safePolicyEnv(), PIBO_YIELDED_RUN_ISOLATION: "systemd" });
 	const command = systemdRunCommand("printf 'ok'", "pibo-yielded-test.service", policy, "/tmp/pibo-yielded-test.metrics");
 	assert.match(command, /systemd-run/);
 	assert.match(command, /--slice=pibo-yielded\.slice/);

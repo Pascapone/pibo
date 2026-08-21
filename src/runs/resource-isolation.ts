@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-export type YieldedRunIsolationMode = "off" | "systemd";
+export type YieldedRunIsolationMode = "off" | "systemd" | "windows-process-tree";
 
 export type YieldedRunResourcePolicy = {
 	mode: YieldedRunIsolationMode;
@@ -83,7 +83,7 @@ export class PiboRunResourceLimitError extends Error {
 }
 
 const DEFAULT_POLICY: YieldedRunResourcePolicy = Object.freeze({
-	mode: "systemd",
+	mode: process.platform === "win32" ? "windows-process-tree" : "systemd",
 	memoryHighBytes: 1280 * 1024 * 1024,
 	memoryMaxBytes: 1792 * 1024 * 1024,
 	tasksMax: 128,
@@ -153,16 +153,17 @@ export function prepareYieldedRunExecution(
 ): PreparedYieldedRunExecution {
 	const policy = resolveYieldedRunResourcePolicy(options.env);
 	const command = bashCommand(params);
-	const shouldIsolate = policy.mode === "systemd" && toolName === "bash" && command !== undefined;
-	const unitName = shouldIsolate ? options.unitName ?? yieldedRunUnitName() : undefined;
+	const shouldUseSystemd = policy.mode === "systemd" && toolName === "bash" && command !== undefined;
+	const shouldUseWindowsProcessTree = policy.mode === "windows-process-tree" && toolName === "bash" && command !== undefined;
+	const unitName = shouldUseSystemd ? options.unitName ?? yieldedRunUnitName() : undefined;
 	const metricsPath = unitName ? `/tmp/${unitName}.metrics` : undefined;
 	const resources: PiboRunResourceUsage = {
-		isolationMode: shouldIsolate ? "systemd" : "off",
+		isolationMode: shouldUseSystemd ? "systemd" : shouldUseWindowsProcessTree ? "windows-process-tree" : "off",
 		...(unitName ? { unitName } : {}),
 		policy,
 		admission: collectYieldedRunHostResourceSnapshot({ now: options.now }),
 	};
-	const preparedParams = shouldIsolate
+	const preparedParams = shouldUseSystemd
 		? { ...(params as Record<string, unknown>), command: systemdRunCommand(command, unitName!, policy, metricsPath) }
 		: params;
 
@@ -170,10 +171,10 @@ export function prepareYieldedRunExecution(
 		params: preparedParams,
 		resources,
 		async cancel(): Promise<void> {
-			if (shouldIsolate && unitName) await terminateSystemdUnit(unitName);
+			if (shouldUseSystemd && unitName) await terminateSystemdUnit(unitName);
 		},
 		async execute<T>(operation: () => Promise<T>): Promise<T> {
-			if (!shouldIsolate || !unitName) return await operation();
+			if (!shouldUseSystemd || !unitName) return await operation();
 			if (process.platform !== "linux" || !existsSync("/run/systemd/system")) {
 				resources.limitReason = "systemd isolation is unavailable on this host";
 				throw new PiboRunResourceLimitError("resource_limited: systemd isolation is unavailable for yielded Bash execution", resources);
@@ -498,8 +499,10 @@ function finiteNumber(value: string | undefined): number | undefined {
 
 function parseIsolationMode(value: string | undefined, fallback: YieldedRunIsolationMode): YieldedRunIsolationMode {
 	const normalized = value?.trim().toLowerCase();
+	if (normalized === "off" || normalized === "0" || normalized === "false") return "off";
+	if (process.platform === "win32") return "windows-process-tree";
 	if (!normalized) return fallback;
-	return normalized === "off" || normalized === "0" || normalized === "false" ? "off" : "systemd";
+	return "systemd";
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
