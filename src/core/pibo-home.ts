@@ -1,6 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { protectPrivateDirectorySync } from "./private-path.js";
 
 export function getPiboHome(): string {
 	return process.env.PIBO_HOME || join(homedir(), ".pibo");
@@ -16,22 +17,17 @@ export function ensurePrivatePiboHome(path = getPiboHome()): string {
 		throw new Error(`Pibo Home must be a directory: ${resolvedPath}`);
 	}
 	mkdirSync(resolvedPath, { recursive: true, mode: 0o700 });
-
-	if (process.platform !== "win32") {
-		chmodSync(resolvedPath, 0o700);
-		if ((statSync(resolvedPath).mode & 0o077) !== 0) {
-			throw new Error(`Pibo Home must not be accessible by group or other users: ${resolvedPath}`);
-		}
-	}
-
+	protectPrivateDirectorySync(resolvedPath);
 	return resolvedPath;
 }
 
-export function ensurePrivatePiboHomeForPath(path: string): void {
-	if (path === ":memory:") return;
+export function ensurePrivatePiboHomeForPath(path: string): boolean {
+	if (path === ":memory:") return false;
 	const home = resolve(getPiboHome());
 	const target = resolve(path);
 	const relativePath = relative(home, target);
 	const outsideHome = relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
-	if (!outsideHome) ensurePrivatePiboHome(home);
+	if (outsideHome) return false;
+	ensurePrivatePiboHome(home);
+	return true;
 }

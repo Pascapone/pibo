@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -12,6 +12,7 @@ import {
 	savePiboConfig,
 	setPiboConfigValue,
 } from "../dist/config/config.js";
+import { assertPrivateWindowsAcl, grantBuiltinUsersModify } from "./fixtures/windows-acl.mjs";
 
 test("pibo config stores and reads supported keys", () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-config-"));
@@ -42,16 +43,37 @@ test("pibo config stores and reads supported keys", () => {
 	}
 });
 
-test("pibo config files remain private when rewritten", { skip: process.platform === "win32" }, () => {
+test("pibo config files remain private when rewritten", () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-config-mode-"));
 	const path = join(dir, "config.json");
 
 	try {
 		savePiboConfig({ auth: { secret: "a".repeat(32) } }, path);
-		assert.equal(statSync(path).mode & 0o777, 0o600);
-		chmodSync(path, 0o644);
+		if (process.platform === "win32") {
+			assertPrivateWindowsAcl(path, "file");
+			grantBuiltinUsersModify(path);
+		} else {
+			assert.equal(statSync(path).mode & 0o777, 0o600);
+			chmodSync(path, 0o644);
+		}
 		savePiboConfig({ auth: { secret: "b".repeat(32) } }, path);
-		assert.equal(statSync(path).mode & 0o777, 0o600);
+		if (process.platform === "win32") assertPrivateWindowsAcl(path, "file");
+		else assert.equal(statSync(path).mode & 0o777, 0o600);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("pibo config accepts a leading UTF-8 BOM from Windows PowerShell 5.1", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-config-bom-"));
+	const path = join(dir, "config.json");
+	try {
+		writeFileSync(path, Buffer.concat([
+			Buffer.from([0xef, 0xbb, 0xbf]),
+			Buffer.from(`${JSON.stringify({ auth: { baseURL: "http://localhost:4788" } })}\r\n`, "utf8"),
+		]));
+		assert.equal(loadPiboConfig(path).auth?.baseURL, "http://localhost:4788");
+		if (process.platform === "win32") assertPrivateWindowsAcl(path, "file");
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

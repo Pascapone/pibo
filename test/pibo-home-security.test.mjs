@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { ensurePrivatePiboHome } from "../dist/core/pibo-home.js";
+import { assertPrivateWindowsAcl, grantBuiltinUsersModify, readWindowsAcl } from "./fixtures/windows-acl.mjs";
 
 const isWindows = process.platform === "win32";
 
@@ -12,27 +13,37 @@ function mode(path) {
 	return statSync(path).mode & 0o777;
 }
 
-test("ensurePrivatePiboHome creates a private POSIX directory", { skip: isWindows }, () => {
+function assertPrivateDirectory(path) {
+	if (isWindows) assertPrivateWindowsAcl(path, "directory");
+	else assert.equal(mode(path), 0o700);
+}
+
+test("ensurePrivatePiboHome creates a private directory", () => {
 	const root = mkdtempSync(join(tmpdir(), "pibo-private-home-create-"));
 	const home = join(root, "state");
 	try {
 		assert.equal(ensurePrivatePiboHome(home), home);
-		assert.equal(mode(home), 0o700);
+		assertPrivateDirectory(home);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
 });
 
-test("ensurePrivatePiboHome tightens an existing POSIX directory", { skip: isWindows }, () => {
+test("ensurePrivatePiboHome tightens an existing directory", () => {
 	const root = mkdtempSync(join(tmpdir(), "pibo-private-home-tighten-"));
 	const home = join(root, "state");
 	try {
 		mkdirSync(home, { mode: 0o755 });
-		chmodSync(home, 0o755);
 		writeFileSync(join(home, "preserved.txt"), "preserved");
-		assert.equal(mode(home), 0o755);
+		if (isWindows) {
+			grantBuiltinUsersModify(home);
+			assert.ok(readWindowsAcl(home).rules.some((rule) => rule.sid === "S-1-5-32-545"));
+		} else {
+			chmodSync(home, 0o755);
+			assert.equal(mode(home), 0o755);
+		}
 		ensurePrivatePiboHome(home);
-		assert.equal(mode(home), 0o700);
+		assertPrivateDirectory(home);
 		assert.equal(readFileSync(join(home, "preserved.txt"), "utf8"), "preserved");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
@@ -50,7 +61,7 @@ test("ensurePrivatePiboHome rejects a file path", () => {
 	}
 });
 
-test("default data stores protect Pibo Home outside the CLI", { skip: isWindows }, () => {
+test("default data stores protect Pibo Home outside the CLI", () => {
 	const root = mkdtempSync(join(tmpdir(), "pibo-private-home-store-"));
 	const home = join(root, "state");
 	try {
@@ -66,13 +77,14 @@ test("default data stores protect Pibo Home outside the CLI", { skip: isWindows 
 			{ cwd: process.cwd(), encoding: "utf8", env: { ...process.env, PIBO_HOME: home } },
 		);
 		assert.equal(result.status, 0, result.stderr);
-		assert.equal(mode(home), 0o700);
+		assertPrivateDirectory(home);
+		if (isWindows) assertPrivateWindowsAcl(join(home, "pibo.sqlite"), "file");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
 });
 
-test("the CLI protects Pibo Home before stateful commands without changing discovery commands", { skip: isWindows }, () => {
+test("the CLI protects Pibo Home before stateful commands without changing discovery commands", () => {
 	const root = mkdtempSync(join(tmpdir(), "pibo-private-home-cli-"));
 	const home = join(root, "state");
 	const cli = join(process.cwd(), "dist", "bin", "pibo.js");
@@ -84,7 +96,7 @@ test("the CLI protects Pibo Home before stateful commands without changing disco
 
 		const show = spawnSync(process.execPath, [cli, "config", "show"], { encoding: "utf8", env });
 		assert.equal(show.status, 0, show.stderr);
-		assert.equal(mode(home), 0o700);
+		assertPrivateDirectory(home);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

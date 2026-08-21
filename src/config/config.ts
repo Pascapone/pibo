@@ -1,6 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { ensurePrivatePiboHomeForPath, piboHomePath } from "../core/pibo-home.js";
+import { protectPrivateFileSync } from "../core/private-path.js";
 
 export const DEFAULT_PIBO_CONFIG_PATH = "config.json";
 
@@ -132,7 +133,9 @@ function assertObject(value: unknown): Record<string, unknown> {
 export function loadPiboConfig(path?: string): PiboConfig {
 	const resolvedPath = resolve(path ?? getDefaultPiboConfigPath());
 	if (!existsSync(resolvedPath)) return {};
-	const parsed = JSON.parse(readFileSync(resolvedPath, "utf-8")) as unknown;
+	protectPrivateFileSync(resolvedPath);
+	const source = readFileSync(resolvedPath, "utf-8").replace(/^\uFEFF/, "");
+	const parsed = JSON.parse(source) as unknown;
 	return assertObject(parsed) as PiboConfig;
 }
 
@@ -141,7 +144,7 @@ export function savePiboConfig(config: PiboConfig, path?: string): void {
 	ensurePrivatePiboHomeForPath(resolvedPath);
 	mkdirSync(dirname(resolvedPath), { recursive: true, mode: 0o700 });
 	writeFileSync(resolvedPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-	if (process.platform !== "win32") chmodSync(resolvedPath, 0o600);
+	protectPrivateFileSync(resolvedPath, { force: true });
 }
 
 export function getPiboConfigValue(config: PiboConfig, key: string): unknown {
