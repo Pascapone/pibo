@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
-import { protectPrivateFileSync, protectPrivatePathsSync } from "../../core/private-path.js";
+import { protectPrivateFileSync, protectPrivatePathsSync, protectPrivateTreeSync } from "../../core/private-path.js";
 import { CodexAppServerClient, type CodexAppServerDiagnostic } from "./client.js";
 import type { CodexAppServerInitializeCapabilities } from "./protocol-types.js";
 import type { CodexNativeRuntimeConfig } from "./config.js";
@@ -505,6 +505,7 @@ export class CodexNativeAppServerProcess {
 			this.closePromise = (async () => {
 				try {
 					await this.client.close();
+					protectPrivateTreeSync(this.paths.codexHome);
 				} finally {
 					await disposeCodexNativeSessionPaths(this.paths);
 				}

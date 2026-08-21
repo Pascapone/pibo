@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, statSync } from "node:fs";
+import { chmodSync, lstatSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 export type PrivatePathKind = "directory" | "file";
@@ -74,7 +74,7 @@ foreach ($entry in $entries) {
 
 const WINDOWS_PRIVATE_ACL_COMMAND = Buffer.from(WINDOWS_PRIVATE_ACL_SCRIPT, "utf16le").toString("base64");
 
-function protectWindowsPathsSync(paths: readonly PrivatePathDescriptor[]): void {
+function protectWindowsPathBatchSync(paths: readonly PrivatePathDescriptor[]): void {
 	const result = spawnSync(
 		"powershell.exe",
 		["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", WINDOWS_PRIVATE_ACL_COMMAND],
@@ -91,6 +91,22 @@ function protectWindowsPathsSync(paths: readonly PrivatePathDescriptor[]): void 
 			: "";
 		throw new Error(`Could not apply a private Windows ACL${reason}`);
 	}
+}
+
+function protectWindowsPathsSync(paths: readonly PrivatePathDescriptor[]): void {
+	let batch: PrivatePathDescriptor[] = [];
+	let batchCharacters = 2;
+	for (const descriptor of paths) {
+		const characters = JSON.stringify(descriptor).length + 1;
+		if (batch.length > 0 && batchCharacters + characters > 24_000) {
+			protectWindowsPathBatchSync(batch);
+			batch = [];
+			batchCharacters = 2;
+		}
+		batch.push(descriptor);
+		batchCharacters += characters;
+	}
+	if (batch.length > 0) protectWindowsPathBatchSync(batch);
 }
 
 function protectPosixPathSync(path: string, kind: PrivatePathKind): void {
@@ -125,4 +141,21 @@ export function protectPrivateDirectorySync(path: string, options?: ProtectPriva
 
 export function protectPrivateFileSync(path: string, options?: ProtectPrivatePathOptions): void {
 	protectPrivatePathsSync([{ path, kind: "file" }], options);
+}
+
+export function protectPrivateTreeSync(root: string): void {
+	if (process.platform !== "win32") return;
+	const paths: PrivatePathDescriptor[] = [];
+	const visit = (path: string): void => {
+		const metadata = lstatSync(path);
+		if (metadata.isSymbolicLink()) throw new Error(`Private path tree contains a symbolic link: ${path}`);
+		if (metadata.isDirectory()) {
+			paths.push({ path, kind: "directory" });
+			for (const entry of readdirSync(path)) visit(resolve(path, entry));
+			return;
+		}
+		if (metadata.isFile()) paths.push({ path, kind: "file" });
+	};
+	visit(resolve(root));
+	protectPrivatePathsSync(paths, { force: true });
 }
