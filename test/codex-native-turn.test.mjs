@@ -226,6 +226,7 @@ test("Codex native imports portable history with thread/inject_items before the 
 	assert.equal(state.turnRequests.length, 0, "history injection must not fabricate a model turn");
 	await session.prompt({ text: "Continue", source: "rpc" });
 	assert.equal((await getCodexNativeClient(session).request("test/getState", {})).turnRequests.length, 1);
+	await session.dispose();
 });
 
 test("Codex native manual compaction uses thread/compact/start and emits balanced Pibo compaction events", async (t) => {
@@ -248,6 +249,7 @@ test("Codex native manual compaction uses thread/compact/start and emits balance
 	const state = await getCodexNativeClient(session).request("test/getState", {});
 	assert.equal(state.compactionRequests.length, 1);
 	assert.equal(state.compactionRequests[0].threadId, session.getBinding().nativeSessionId);
+	await session.dispose();
 });
 
 test("Codex native compaction start failures still emit one balanced terminal lifecycle", async (t) => {
@@ -266,6 +268,7 @@ test("Codex native compaction start failures still emit one balanced terminal li
 	await session.controls.compact();
 	assert.equal(events.filter((event) => event.type === "compaction_start").length, 2, "the controller must be reusable after a start failure");
 	assert.equal(events.filter((event) => event.type === "compaction_end").length, 2);
+	await session.dispose();
 });
 
 test("Codex native maps native command, file, and MCP item lifecycles with bounded secret redaction", async (t) => {
@@ -291,6 +294,7 @@ test("Codex native maps native command, file, and MCP item lifecycles with bound
 	assert.equal(calls[2].args.arguments.apiKey, "[redacted]");
 	assert.equal(finishes[2].result.result.accessToken, "[redacted]");
 	assert.doesNotMatch(JSON.stringify(events), /sk-fixture-secret|fixture-token/);
+	await session.dispose();
 });
 
 test("Codex native uses stable turn/steer and turn/interrupt against the active native turn", async (t) => {
@@ -323,6 +327,7 @@ test("Codex native uses stable turn/steer and turn/interrupt against the active 
 	assert.equal(events.filter((event) => event.type === "turn_failed").length, 0);
 	assert.equal(session.getStatus().streaming, false);
 	await assert.rejects(session.steer({ text: "too late", source: "rpc" }), /requires an active turn/);
+	await session.dispose();
 });
 
 test("Codex native emits one redacted terminal failure for provider failure, malformed protocol, and process crash", async (t) => {
@@ -351,6 +356,9 @@ test("Codex native emits one redacted terminal failure for provider failure, mal
 	await assert.rejects(crash.session.prompt({ text: "[crash]", source: "rpc" }), /exited|closed/i);
 	assert.equal(crashEvents.filter((event) => event.type === "turn_failed").length, 1);
 	assert.equal(crashEvents.filter((event) => event.type === "turn_completed").length, 0);
+	await provider.session.dispose();
+	await malformed.session.dispose();
+	await crash.session.dispose();
 });
 
 test("Codex native ignores foreign and duplicate notifications without duplicating terminal or item completion", async (t) => {
@@ -362,6 +370,7 @@ test("Codex native ignores foreign and duplicate notifications without duplicati
 	assert.equal(events.filter((event) => event.type === "turn_started").length, 1);
 	assert.equal(events.filter((event) => event.type === "assistant_message").length, 1);
 	assert.equal(events.filter((event) => event.type === "turn_completed").length, 1);
+	await session.dispose();
 });
 
 test("Codex native events flow through generic routed orchestration with correlation and restart continuity", async (t) => {
