@@ -58,6 +58,7 @@ const childEnv = {
 	XDG_DATA_HOME: join(testRoot, "xdg", "data"),
 	XDG_STATE_HOME: join(testRoot, "xdg", "state"),
 };
+delete childEnv.MCP_CONFIG_PATH;
 delete childEnv.NODE_TEST_CONTEXT;
 delete childEnv.NODE_TEST_WORKER_ID;
 
