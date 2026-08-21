@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,7 +8,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const cliPath = new URL("../dist/bin/pibo.js", import.meta.url).pathname;
+const cliPath = fileURLToPath(new URL("../dist/bin/pibo.js", import.meta.url));
 
 test("pibo data inventory is read-only and reports missing stores", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-data-inventory-"));

@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 
 const execFileAsync = promisify(execFile);
@@ -92,7 +93,7 @@ function makeWebviewView() {
 function resolveDirname() {
 	// The test file lives at <repo>/test/chat-vscode/webview-host.test.mjs
 	// and the repo root is two parents up.
-	return path.resolve(new URL(".", import.meta.url).pathname, "..", "..");
+	return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
 function makeBundleFixture(extensionPath) {
