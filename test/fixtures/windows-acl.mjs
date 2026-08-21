@@ -27,8 +27,14 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $path = [System.IO.Path]::GetFullPath($env:PIBO_TEST_ACL_PATH)
 $users = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
-$acl = Get-Acl -LiteralPath $path
-$inheritance = if ((Get-Item -LiteralPath $path).PSIsContainer) {
+$isDirectory = (Get-Item -LiteralPath $path).PSIsContainer
+$sections = [System.Security.AccessControl.AccessControlSections]::Access
+$acl = if ($isDirectory) {
+	[System.IO.Directory]::GetAccessControl($path, $sections)
+} else {
+	[System.IO.File]::GetAccessControl($path, $sections)
+}
+$inheritance = if ($isDirectory) {
 	[System.Security.AccessControl.InheritanceFlags]([int][System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [int][System.Security.AccessControl.InheritanceFlags]::ObjectInherit)
 } else {
 	[System.Security.AccessControl.InheritanceFlags]::None
@@ -42,7 +48,11 @@ $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
 )
 $acl.SetAccessRuleProtection($true, $false)
 $acl.AddAccessRule($rule) | Out-Null
-Set-Acl -LiteralPath $path -AclObject $acl
+if ($isDirectory) {
+	[System.IO.Directory]::SetAccessControl($path, $acl)
+} else {
+	[System.IO.File]::SetAccessControl($path, $acl)
+}
 `, "utf16le").toString("base64");
 
 function runPowerShell(encodedCommand, path) {

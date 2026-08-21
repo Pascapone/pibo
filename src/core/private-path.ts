@@ -27,19 +27,23 @@ $inheritBoth = [System.Security.AccessControl.InheritanceFlags]([int][System.Sec
 foreach ($entry in $entries) {
 	$path = [System.IO.Path]::GetFullPath([string]$entry.path)
 	$kind = [string]$entry.kind
+	$sections = [System.Security.AccessControl.AccessControlSections]([int][System.Security.AccessControl.AccessControlSections]::Access -bor [int][System.Security.AccessControl.AccessControlSections]::Owner)
 	if ($kind -eq 'directory') {
 		if (-not [System.IO.Directory]::Exists($path)) { throw "Private directory does not exist" }
-		$security = New-Object System.Security.AccessControl.DirectorySecurity
+		$security = [System.IO.Directory]::GetAccessControl($path, $sections)
 		$inheritance = $inheritBoth
 	} elseif ($kind -eq 'file') {
 		if (-not [System.IO.File]::Exists($path)) { throw "Private file does not exist" }
-		$security = New-Object System.Security.AccessControl.FileSecurity
+		$security = [System.IO.File]::GetAccessControl($path, $sections)
 		$inheritance = [System.Security.AccessControl.InheritanceFlags]::None
 	} else {
 		throw "Unsupported private path kind"
 	}
-	$security.SetOwner($current)
+	if ($security.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $current.Value) { throw "Private path owner is not the current user" }
 	$security.SetAccessRuleProtection($true, $false)
+	foreach ($rule in @($security.GetAccessRules($true, $false, [System.Security.Principal.SecurityIdentifier]))) {
+		$security.RemoveAccessRuleAll($rule)
+	}
 	foreach ($sid in @($current, $system, $administrators)) {
 		$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
 			$sid,
