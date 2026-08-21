@@ -1,6 +1,7 @@
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { AgentRuntimeHistoryEntry } from "../../agent-runtime/history.js";
+import { protectPrivateFileSync } from "../../core/private-path.js";
 import type { AgentRuntimeHistoryHandoff } from "../../agent-runtime/portable-history.js";
 import type {
 	AgentRuntimeContextContribution,
@@ -143,7 +144,7 @@ export class OmpResourceDelivery {
 		const portableHistory = renderPortableHistory(this.historyHandoff);
 		if (portableHistory) {
 			await writeFile(portableHistoryPath, `${portableHistory}\n`, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
-			await chmod(portableHistoryPath, PRIVATE_FILE_MODE);
+			protectPrivateFileSync(portableHistoryPath);
 		}
 		const selectedContext = renderSelectedContext(contributions);
 		const persistedPortableHistory = portableHistory
@@ -156,7 +157,7 @@ export class OmpResourceDelivery {
 				encoding: "utf8",
 				mode: PRIVATE_FILE_MODE,
 			});
-			await chmod(appendPromptPath, PRIVATE_FILE_MODE);
+			protectPrivateFileSync(appendPromptPath);
 		} else {
 			await rm(appendPromptPath, { force: true });
 		}
@@ -216,7 +217,7 @@ export class OmpResourceDelivery {
 		}
 		await mkdir(dirname(this.paths.config), { recursive: true });
 		await writeFile(this.paths.config, `${lines.join("\n")}\n`, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
-		await chmod(this.paths.config, PRIVATE_FILE_MODE);
+		protectPrivateFileSync(this.paths.config);
 	}
 
 	async readConfig(): Promise<string> {

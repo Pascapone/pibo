@@ -20,6 +20,7 @@ import {
 	removeCodexNativeInstanceState,
 	startCodexNativeAppServer,
 } from "../dist/agent-runtimes/codex-native/process.js";
+import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/codex-runtime-process-fake.mjs", import.meta.url));
 
@@ -60,8 +61,9 @@ function fakeEnvironment(overrides = {}) {
 	};
 }
 
-async function mode(path) {
-	return (await stat(path)).mode & 0o777;
+async function assertPrivatePath(path, kind) {
+	if (process.platform === "win32") assertPrivateWindowsAcl(path, kind);
+	else assert.equal((await stat(path)).mode & 0o777, kind === "directory" ? 0o700 : 0o600);
 }
 
 test("Codex native config has safe defaults and rejects unknown, relative, or protected values", async (t) => {
@@ -174,9 +176,9 @@ test("Codex native homes are private, configured-instance scoped, and generation
 	const secondInstance = await prepareCodexNativeInstancePaths(runtimeConfig, "codex-personal");
 	assert.notEqual(firstInstance.root, secondInstance.root);
 	assert.notEqual(firstInstance.codexHome, secondInstance.codexHome);
-	assert.equal(await mode(firstInstance.root), 0o700);
-	assert.equal(await mode(firstInstance.codexHome), 0o700);
-	assert.equal(await mode(firstInstance.configFile), 0o600);
+	await assertPrivatePath(firstInstance.root, "directory");
+	await assertPrivatePath(firstInstance.codexHome, "directory");
+	await assertPrivatePath(firstInstance.configFile, "file");
 	assert.equal(await readFile(firstInstance.configFile, "utf8"), "# Managed by Pibo for this configured Codex runtime instance.\n# Session-specific settings are supplied through process-scoped official overrides.\n[analytics]\nenabled = false\n");
 
 	const first = await prepareCodexNativeSessionPaths({
@@ -195,7 +197,7 @@ test("Codex native homes are private, configured-instance scoped, and generation
 	assert.notEqual(first.processHome, second.processHome);
 	assert.notEqual(first.temp, second.temp);
 	for (const path of [first.sessionRoot, first.generationRoot, first.processHome, first.temp, first.xdgConfig]) {
-		assert.equal(await mode(path), 0o700);
+		await assertPrivatePath(path, "directory");
 	}
 
 	await disposeCodexNativeSessionPaths(first);

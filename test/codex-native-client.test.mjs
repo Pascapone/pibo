@@ -37,7 +37,7 @@ function isClientError(code) {
 	return (error) => error instanceof CodexAppServerClientError && error.code === code;
 }
 
-test("Codex App Server client applies a private child file-creation mask without changing the parent mask", async (t) => {
+test("Codex App Server client applies a private POSIX child file-creation mask without changing the parent mask", { skip: process.platform === "win32" }, async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-codex-client-umask-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const created = join(root, "created");

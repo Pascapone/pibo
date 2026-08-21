@@ -19,6 +19,7 @@ import {
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { PI_AGENT_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/pi/adapter.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
+import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 
 const fixtureServerSource = String.raw`
 if (process.env.FIXTURE_SECRET !== "session-secret") {
@@ -188,8 +189,13 @@ test("runtime resources isolate selected skills, context, MCP config, secrets, a
 	assert.ok(Object.values(adapterEnvironment).includes("session-secret"));
 	assert.equal(JSON.stringify(inspection).includes("session-secret"), false);
 	for (const key of inspection.mcpServers[0].secretEnvironmentKeys) assert.equal(process.env[key], undefined);
-	assert.equal((await stat(inspection.paths.root)).mode & 0o777, 0o700);
-	assert.equal((await stat(scopedConfigPath)).mode & 0o777, 0o600);
+	if (process.platform === "win32") {
+		assertPrivateWindowsAcl(inspection.paths.root, "directory");
+		assertPrivateWindowsAcl(scopedConfigPath, "file");
+	} else {
+		assert.equal((await stat(inspection.paths.root)).mode & 0o777, 0o700);
+		assert.equal((await stat(scopedConfigPath)).mode & 0o777, 0o600);
+	}
 
 	assert.deepEqual(inspection.mcpServers.map((server) => server.name), ["selected"]);
 	assert.equal(inspection.mcpServers[0].status, "connected");

@@ -8,6 +8,7 @@ import {
 	realpath,
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { protectPrivateDirectorySync, protectPrivateFileSync } from "../core/private-path.js";
 import type {
 	AgentRuntimeResourcePaths,
 	AgentRuntimeSkillResource,
@@ -34,7 +35,7 @@ function isInside(root: string, candidate: string): boolean {
 
 async function ensurePrivateDirectory(path: string): Promise<void> {
 	await mkdir(path, { recursive: true, mode: 0o700 });
-	await chmod(path, 0o700);
+	protectPrivateDirectorySync(path);
 }
 
 export async function createAgentRuntimeResourcePaths(
@@ -77,6 +78,7 @@ async function copySkillEntry(source: string, destination: string, sourceRoot: s
 		budget.activeDirectories.add(canonical);
 		try {
 			await mkdir(destination, { recursive: true, mode: metadata.mode & 0o777 });
+			protectPrivateDirectorySync(destination);
 			for (const entry of await readdir(source)) {
 				await copySkillEntry(join(source, entry), join(destination, entry), sourceRoot, budget);
 			}
@@ -92,7 +94,8 @@ async function copySkillEntry(source: string, destination: string, sourceRoot: s
 	if (budget.bytes > budget.maxBytes) throw new Error(`Skill exceeds the ${budget.maxBytes}-byte materialization limit.`);
 	await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
 	await copyFile(source, destination);
-	await chmod(destination, metadata.mode & 0o777);
+	if (process.platform === "win32") protectPrivateFileSync(destination);
+	else await chmod(destination, metadata.mode & 0o777);
 }
 
 export async function copyAgentRuntimeSkillDirectory(

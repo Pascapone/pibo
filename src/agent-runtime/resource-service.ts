@@ -1,5 +1,4 @@
 import {
-	chmod,
 	readFile,
 	realpath,
 	rm,
@@ -11,6 +10,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { PIBO_APP_CONTEXT } from "../app-context.js";
 import type { InitialSessionContext } from "../core/profiles.js";
 import { piboHomePath } from "../core/pibo-home.js";
+import { protectPrivateFileSync } from "../core/private-path.js";
 import { DEFAULT_USER_TIMEZONE } from "../core/user-settings.js";
 import {
 	isHttpServer,
@@ -719,7 +719,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 				);
 				try {
 					await writeFile(target, contribution.content, { encoding: "utf8", mode: 0o600 });
-					await chmod(target, 0o600);
+					protectPrivateFileSync(target);
 					contribution.materializedPath = target;
 				} catch (error) {
 					const message = `Context contribution "${contribution.label}" could not be materialized: ${redactResourceError(error)}`;
@@ -738,7 +738,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 			}
 			const configPath = join(this.paths.config, MCP_CONFIG_FILE);
 			await writeFile(configPath, `${JSON.stringify({ mcpServers: materializedConfigs }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-			await chmod(configPath, 0o600);
+			protectPrivateFileSync(configPath);
 			this.adapterEnvironment.MCP_CONFIG_PATH = configPath;
 			this.adapterEnvironment.MCP_NO_DAEMON = "1";
 			this.adapterEnvironment.MCP_STRICT_ENV = "true";

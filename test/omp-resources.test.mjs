@@ -7,6 +7,7 @@ import { parseOmpRuntimeConfig } from "../dist/agent-runtimes/omp/config.js";
 import { prepareOmpSessionPaths, buildOmpProcessEnvironment, resetOmpNativeSession, resolveOmpCommand } from "../dist/agent-runtimes/omp/process.js";
 import { OmpResourceDelivery } from "../dist/agent-runtimes/omp/resource-delivery.js";
 import { OMP_AGENT_RUNTIME_DRIVER, OMP_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/omp/adapter.js";
+import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 
 function sessionPaths(config, agentDir) {
 	return prepareOmpSessionPaths({ config, runtimeInstanceId: "omp-native", piboSessionId: "sess", sessionGeneration: "gen" });
@@ -69,7 +70,8 @@ test("OMP resource-delivery writes additive context and passes it through --appe
 		resolveOmpCommand(config, paths, delivery.appendSystemPromptPath).slice(-2),
 		["--append-system-prompt", delivery.appendSystemPromptPath],
 	);
-	assert.equal((await stat(delivery.appendSystemPromptPath)).mode & 0o777, 0o600);
+	if (process.platform === "win32") assertPrivateWindowsAcl(delivery.appendSystemPromptPath, "file");
+	else assert.equal((await stat(delivery.appendSystemPromptPath)).mode & 0o777, 0o600);
 	assert.deepEqual(await readdir(workspace), ["existing.txt"], "OMP delivery must not write into the user workspace");
 
 	const configYaml = await readFile(paths.config, "utf8");

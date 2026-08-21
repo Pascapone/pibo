@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
+import { protectPrivateDirectorySync, protectPrivateFileSync } from "../../core/private-path.js";
 import { OmpRpcClient } from "./client.js";
 import type { OmpRuntimeConfig } from "./config.js";
 
@@ -71,7 +72,7 @@ function nodeErrorCode(error: unknown): string | undefined {
 
 async function ensurePrivateDirectory(path: string): Promise<void> {
 	await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
-	await chmod(path, PRIVATE_DIRECTORY_MODE);
+	protectPrivateDirectorySync(path);
 }
 
 async function ensurePrivateConfig(path: string): Promise<void> {
@@ -81,7 +82,7 @@ async function ensurePrivateConfig(path: string): Promise<void> {
 	} catch {
 		await writeFile(path, "", { mode: PRIVATE_FILE_MODE });
 	}
-	await chmod(path, PRIVATE_FILE_MODE);
+	protectPrivateFileSync(path);
 }
 
 export async function prepareOmpInstancePaths(

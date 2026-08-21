@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
-	chmod,
 	lstat,
 	mkdir,
 	realpath,
@@ -11,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
+import { protectPrivateDirectorySync, protectPrivateFileSync } from "../../core/private-path.js";
 import { CodexAppServerClient, type CodexAppServerDiagnostic } from "./client.js";
 import type { CodexAppServerInitializeCapabilities } from "./protocol-types.js";
 import type { CodexNativeRuntimeConfig } from "./config.js";
@@ -127,7 +127,7 @@ async function ensurePrivateDirectory(path: string): Promise<void> {
 	await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
 	const metadata = await lstat(path);
 	if (metadata.isSymbolicLink() || !metadata.isDirectory()) throw new Error("runtime path is not a private directory");
-	await chmod(path, PRIVATE_DIRECTORY_MODE);
+	protectPrivateDirectorySync(path);
 }
 
 async function ensurePrivateConfig(path: string): Promise<void> {
@@ -138,7 +138,7 @@ async function ensurePrivateConfig(path: string): Promise<void> {
 	}
 	const metadata = await lstat(path);
 	if (metadata.isSymbolicLink() || !metadata.isFile()) throw new Error("runtime config is not a private regular file");
-	await chmod(path, PRIVATE_FILE_MODE);
+	protectPrivateFileSync(path);
 }
 
 function nodeErrorCode(error: unknown): string | undefined {
