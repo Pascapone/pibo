@@ -586,10 +586,10 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 	const initialThreadId = session.getBinding().nativeSessionId;
 	await waitFor(() => accesses.length === 2 && getCodexNativeClient(session) !== initialClient);
 	assert.notEqual(session.getBinding().nativeSessionId, initialThreadId);
+	const secondClient = getCodexNativeClient(session);
 	await session.prompt({ text: "materialize rollover thread", source: "rpc" });
 	await expectCredentialRevoked(accesses[0]);
 	const durableThreadId = session.getBinding().nativeSessionId;
-	const secondClient = getCodexNativeClient(session);
 	await waitFor(() => accesses.length === 3 && getCodexNativeClient(session) !== secondClient);
 	await session.prompt({ text: "verify resumed rollover thread", source: "rpc" });
 	assert.equal(session.getBinding().nativeSessionId, durableThreadId);
