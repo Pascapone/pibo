@@ -121,9 +121,16 @@ export function createRunToolDefinitions(
 					serviceWarning,
 					resources: prepared.resources,
 					async cancel() {
-						runAbortController.abort(new Error("Yielded run was cancelled."));
+						let processCancellationError: unknown;
+						try {
 							await prepared.cancel();
-							if (executionStarted) await waitForRunCancellationSettlement(executionSettled);
+						} catch (error) {
+							processCancellationError = error;
+						} finally {
+							runAbortController.abort(new Error("Yielded run was cancelled."));
+						}
+						if (processCancellationError) throw processCancellationError;
+						if (executionStarted) await waitForRunCancellationSettlement(executionSettled);
 					},
 					async execute() {
 						executionStarted = true;
