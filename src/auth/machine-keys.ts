@@ -1,6 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
-	chmodSync,
 	existsSync,
 	mkdirSync,
 	readFileSync,
@@ -10,7 +9,8 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { piboHomePath } from "../core/pibo-home.js";
+import { ensurePrivatePiboHomeForPath, piboHomePath } from "../core/pibo-home.js";
+import { protectPrivateFileSync } from "../core/private-path.js";
 import type { PiboAuthIdentity, PiboAuthSession } from "./types.js";
 
 export const PIBO_MACHINE_KEY_HEADER = "x-pibo-machine-key";
@@ -158,7 +158,10 @@ function parseMachineKeyStore(value: unknown): MachineKeyStoreFile {
 }
 
 function assertPrivateStoreFile(path: string): void {
-	if (process.platform === "win32") return;
+	if (process.platform === "win32") {
+		protectPrivateFileSync(path);
+		return;
+	}
 	const stat = statSync(path);
 	if ((stat.mode & 0o077) !== 0) {
 		throw new Error(`Machine-key store must not be accessible by group or other users: ${path}`);
@@ -178,12 +181,13 @@ export function readMachineKeyStore(path = getDefaultMachineKeyStorePath()): Mac
 
 function writeMachineKeyStore(store: MachineKeyStoreFile, path: string): void {
 	const resolvedPath = resolve(path);
+	ensurePrivatePiboHomeForPath(resolvedPath);
 	mkdirSync(dirname(resolvedPath), { recursive: true, mode: 0o700 });
 	const temporaryPath = `${resolvedPath}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
 	try {
 		writeFileSync(temporaryPath, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
 		renameSync(temporaryPath, resolvedPath);
-		chmodSync(resolvedPath, 0o600);
+		protectPrivateFileSync(resolvedPath, { force: true });
 	} finally {
 		if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
 	}

@@ -13,6 +13,7 @@ import {
 	readMachineKeyStore,
 	revokeMachineKey,
 } from "../dist/auth/machine-keys.js";
+import { assertPrivateWindowsAcl, grantBuiltinUsersModify } from "./fixtures/windows-acl.mjs";
 
 function temporaryStore(t) {
 	const directory = mkdtempSync(join(tmpdir(), "pibo-machine-key-test-"));
@@ -41,7 +42,8 @@ test("machine-key store imports private records and lists only redacted metadata
 	const generated = generateMachineKey({ label: "browser", identity: testIdentity() });
 	importMachineKeyRecord(generated.record, storePath);
 
-	assert.equal(statSync(storePath).mode & 0o777, 0o600);
+	if (process.platform === "win32") assertPrivateWindowsAcl(storePath, "file");
+	else assert.equal(statSync(storePath).mode & 0o777, 0o600);
 	assert.equal(readMachineKeyStore(storePath).keys[0].hash, generated.record.hash);
 	const listed = listMachineKeys(storePath);
 	assert.equal(listed.length, 1);
@@ -50,12 +52,18 @@ test("machine-key store imports private records and lists only redacted metadata
 	assert.equal(JSON.stringify(listed).includes(generated.token), false);
 });
 
-test("machine-key store rejects group- or world-readable record files", (t) => {
+test("machine-key store rejects or repairs broad record-file access", (t) => {
 	const storePath = temporaryStore(t);
 	const generated = generateMachineKey({ label: "browser", identity: testIdentity() });
 	importMachineKeyRecord(generated.record, storePath);
-	chmodSync(storePath, 0o644);
-	assert.throws(() => readMachineKeyStore(storePath), /must not be accessible by group or other users/);
+	if (process.platform === "win32") {
+		grantBuiltinUsersModify(storePath);
+		assert.equal(readMachineKeyStore(storePath).keys.length, 1);
+		assertPrivateWindowsAcl(storePath, "file");
+	} else {
+		chmodSync(storePath, 0o644);
+		assert.throws(() => readMachineKeyStore(storePath), /must not be accessible by group or other users/);
+	}
 });
 
 test("machine-key authenticator accepts valid keys and rejects malformed or altered keys", (t) => {
