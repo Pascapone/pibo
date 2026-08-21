@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { load } from "js-yaml";
 import { parseOmpRuntimeConfig } from "../dist/agent-runtimes/omp/config.js";
 import { prepareOmpSessionPaths, buildOmpProcessEnvironment, resetOmpNativeSession, resolveOmpCommand } from "../dist/agent-runtimes/omp/process.js";
 import { OmpResourceDelivery } from "../dist/agent-runtimes/omp/resource-delivery.js";
@@ -77,7 +78,8 @@ test("OMP resource-delivery writes additive context and passes it through --appe
 	const configYaml = await readFile(paths.config, "utf8");
 	assert.ok(configYaml.includes("skills:"), "config.yml must declare skills");
 	assert.ok(configYaml.includes("customDirectories:"), "config.yml must set skills.customDirectories");
-	assert.ok(configYaml.includes(JSON.stringify(join(root, "skills", "pibo"))), "OMP must scan the parent that contains the selected skill directory");
+	const parsedConfig = load(configYaml);
+	assert.deepEqual(parsedConfig.skills.customDirectories, [join(root, "skills", "pibo")], "OMP must scan the parent that contains the selected skill directory");
 });
 
 test("OMP resource-delivery persists portable history and blocks every native task entry point", async (t) => {
