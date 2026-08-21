@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { mkdtemp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 import { buildComputeResourceHealth } from '../dist/compute/resource-health.js';
 import { buildComputeDiskDiagnostics } from '../dist/compute/docker.js';
@@ -20,7 +21,7 @@ import { ResourceReaperService } from '../dist/resources/reaper.js';
 import { readResourceReaperTimerStatus, writeResourceReaperState } from '../dist/resources/reaper-state.js';
 
 const execFileAsync = promisify(execFile);
-const cliPath = new URL('../dist/bin/pibo.js', import.meta.url).pathname;
+const cliPath = fileURLToPath(new URL('../dist/bin/pibo.js', import.meta.url));
 
 function emptyComputePlan(now = new Date('2026-07-14T00:00:00.000Z')) {
 	return {
