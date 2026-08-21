@@ -4366,6 +4366,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		dispose() {
 			if (disposed) return;
 			disposed = true;
+			state.unsubscribe?.();
+			state.unsubscribe = undefined;
+			state.subscribedContext = undefined;
 			state.eventLoopDelay.disable();
 			state.projectService.close();
 			state.agentStore.close();
