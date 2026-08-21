@@ -19,6 +19,7 @@ import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.j
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/codex-app-server-thread-fake.mjs", import.meta.url));
+const testDisposers = new WeakMap();
 
 function delay(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,9 +35,20 @@ async function waitFor(predicate, label, timeoutMs = 3_000) {
 
 async function testRoot(t) {
 	const root = await mkdtemp(join(tmpdir(), "pibo-codex-native-requests-"));
-	t.after(() => rm(root, { recursive: true, force: true }));
+	const disposers = [];
+	testDisposers.set(t, disposers);
+	t.after(async () => {
+		for (const dispose of disposers.reverse()) await dispose();
+		await rm(root, { recursive: true, force: true });
+	});
 	await chmod(fixturePath, 0o755);
 	return root;
+}
+
+function registerTestDisposer(t, dispose) {
+	const disposers = testDisposers.get(t);
+	if (!disposers) throw new Error("Codex native request test root is not initialized");
+	disposers.push(dispose);
 }
 
 function runtimeConfig(root, experimentalUserInput = false) {
@@ -113,7 +125,7 @@ async function openFreshSession(t, root, suffix, experimentalUserInput = false) 
 		fixture.instanceId,
 		openInput(fixture.instanceId, root, binding),
 	);
-	t.after(() => session.dispose());
+	registerTestDisposer(t, () => session.dispose());
 	return { ...fixture, binding, session };
 }
 
@@ -343,7 +355,7 @@ test("Codex approval and structured-input requests flow through generic routed s
 		sessionStore: store,
 		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
 	});
-	t.after(() => router.disposeAll());
+	registerTestDisposer(t, () => router.disposeAll());
 	const events = [];
 	router.subscribe((event) => events.push(event));
 
