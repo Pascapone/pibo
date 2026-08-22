@@ -83,7 +83,7 @@ const emitTurn = (message) => {
 		toolCallId: "tool-intent-1",
 		toolName: "read",
 		args: { path: "README.md" },
-		intent: "Reviewing project documentation",
+		intent: "  Reviewing project documentation  ",
 	});
 	write({ type: "tool_execution_end", toolCallId: "tool-intent-1", toolName: "read", result: "ok", isError: false });
 	write({ type: "turn_end", message: { role: "assistant", content: "Hello there" }, toolResults: [] });

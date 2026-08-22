@@ -4,6 +4,8 @@ import type { PiboJsonObject } from "../../core/events.js";
 
 export const PI_TOOL_INTENT_FIELD = "i";
 
+const intentTracingSessions = new WeakSet<AgentSession>();
+
 const PI_TOOL_INTENT_SCHEMA = {
 	type: "string",
 	minLength: 1,
@@ -31,6 +33,9 @@ export function injectPiToolIntentSchema(schema: unknown): unknown {
 	const properties = record.properties && typeof record.properties === "object" && !Array.isArray(record.properties)
 		? record.properties as Record<string, unknown>
 		: {};
+	if (Object.prototype.hasOwnProperty.call(properties, PI_TOOL_INTENT_FIELD)) {
+		throw new Error(`Pi intent tracing cannot wrap a tool whose schema already defines "${PI_TOOL_INTENT_FIELD}".`);
+	}
 	const required = Array.isArray(record.required)
 		? record.required.filter((name): name is string => typeof name === "string" && name !== PI_TOOL_INTENT_FIELD)
 		: [];
@@ -44,7 +49,12 @@ export function injectPiToolIntentSchema(schema: unknown): unknown {
 	};
 }
 
+export function piIntentTracingInstalled(session: AgentSession): boolean {
+	return intentTracingSessions.has(session);
+}
+
 export function installPiIntentTracing(session: AgentSession): void {
+	if (intentTracingSessions.has(session)) return;
 	const wrappedTools = new WeakMap<AgentTool, AgentTool>();
 	const wrapActiveTools = () => {
 		session.agent.state.tools = session.agent.state.tools.map((tool) => {
@@ -61,6 +71,7 @@ export function installPiIntentTracing(session: AgentSession): void {
 		wrapActiveTools();
 	};
 	wrapActiveTools();
+	intentTracingSessions.add(session);
 }
 
 function wrapPiToolWithIntent(tool: AgentTool): AgentTool {

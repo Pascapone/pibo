@@ -484,6 +484,50 @@ test("tool display modes preserve default output and support hide, slim, and int
 	);
 });
 
+test("tool display modes include shell tools rendered as command rows", () => {
+	const view = traceView([
+		traceNode("tool.call", "tool-shell", {
+			toolCallId: "shell-call",
+			title: "bash",
+			intent: "Wait briefly to validate live intent projection",
+			input: { command: "sleep 5" },
+			output: "completed output",
+		}),
+	]);
+
+	assert.equal(buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "default" })[0]?.kind, "execution.command");
+	assert.deepEqual(buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "hide" }), []);
+
+	const slimRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "slim" });
+	assert.equal(slimRows.length, 1);
+	assert.equal(slimRows[0].singleLine, true);
+	assert.equal(slimRows[0].output, undefined);
+	assert.doesNotMatch(rowText(slimRows[0]), /completed output/);
+
+	const intentRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "intent" });
+	assert.equal(intentRows.length, 1);
+	assert.equal(rowText(intentRows[0]), "Wait briefly to validate live intent projection");
+});
+
+test("intent mode preserves intent when a later conceptual tool row omits it", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "tool-start", {
+			order: 1,
+			toolCallId: "shared-tool",
+			intent: "Reviewing project documentation",
+			input: { path: "README.md" },
+		}),
+		traceNode("tool.result", "tool-result", {
+			order: 2,
+			toolCallId: "shared-tool",
+			output: "ok",
+		}),
+	]), { showThinking: false, toolDisplayMode: "intent" });
+
+	assert.equal(rows.length, 1);
+	assert.equal(rowText(rows[0]), "Reviewing project documentation");
+});
+
 test("compact terminal identity does not collapse repeated compactions or unresolved subagents", () => {
 	const rows = buildCompactTerminalRows(traceView([
 		traceNode("execution.compaction", "compaction-1", { order: 1, stableKey: "compaction:active" }),

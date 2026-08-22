@@ -26,12 +26,15 @@ async function renderSessionTraceHeader({ showRawEvents, showThinking, expandThi
 			showRawEvents: ${JSON.stringify(showRawEvents)},
 			showThinking: ${JSON.stringify(showThinking)},
 			expandThinking: ${JSON.stringify(expandThinking)},
+			toolDisplayMode: "default",
+			toolIntentSupported: false,
 			onShowWebAnnotationsPanel: noop,
 			onHideWebAnnotationsPanel: noop,
 			onSelectSessionView: noop,
 			onToggleRawEvents: noop,
 			onToggleThinking: noop,
 			onToggleExpandThinking: noop,
+			onToolDisplayModeChange: noop,
 			onError: noop,
 		}));
 		console.log(markup);

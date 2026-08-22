@@ -6,7 +6,8 @@ import { commandActionParams, normalizeDownloadCommandPath } from "../../../chat
 import { downloadChatFile } from "../../../chat-ui/src/api-chat-files";
 import { createClientTxnId, resolveSessionActiveModelLabel } from "../../../chat-ui/src/app-session-model";
 import { listChatSessionViews, getChatSessionView } from "../../../chat-ui/src/session-views/registry";
-import { DEFAULT_CHAT_SESSION_VIEW_ID } from "../../../chat-ui/src/session-views/types";
+import { DEFAULT_CHAT_SESSION_VIEW_ID, type ToolDisplayMode } from "../../../chat-ui/src/session-views/types";
+import { readStoredToolDisplayMode, writeStoredToolDisplayMode } from "../../../chat-ui/src/app-storage";
 import { SessionTracePane } from "../../../chat-ui/src/session-trace-pane";
 import { errorMessage } from "../../../chat-ui/src/error-message";
 import { SessionSelector, type SessionSelectorMode } from "./SessionSelector";
@@ -57,6 +58,7 @@ export function ChatTerminalApp() {
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [error, setError] = useState<string | null>(null);
 	const [showThinking, setShowThinking] = useState(false);
+	const [toolDisplayMode, setToolDisplayMode] = useState<ToolDisplayMode>(readStoredToolDisplayMode);
 
 	const sessionNodes = useMemo<readonly PiboWebSessionNode[]>(() => {
 		const nodes = (bootstrap as unknown as { sessionNodes?: readonly PiboWebSessionNode[] } | null)?.sessionNodes;
@@ -344,6 +346,7 @@ export function ChatTerminalApp() {
 					showRawEvents={false}
 					showThinking={showThinking}
 					expandThinking={false}
+					toolDisplayMode={toolDisplayMode}
 					commands={slashCommands}
 					skills={skills}
 					composerText={composerText}
@@ -352,6 +355,10 @@ export function ChatTerminalApp() {
 					onToggleRawEvents={() => undefined}
 					onToggleThinking={() => setShowThinking((v) => !v)}
 					onToggleExpandThinking={() => undefined}
+					onToolDisplayModeChange={(mode) => {
+						setToolDisplayMode(mode);
+						writeStoredToolDisplayMode(mode);
+					}}
 					onSessionAgentProfileChange={() => undefined}
 					onFork={() => undefined}
 					onOpenSession={(id) => setSelectedPiboSessionId(id)}

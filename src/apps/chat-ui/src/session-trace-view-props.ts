@@ -22,6 +22,9 @@ export function sessionSupportsToolIntent(
 	const capability = runtime?.capabilities.tools.intentTracing;
 	if (!capability?.supported) return false;
 	if (!capability.configurable) return true;
+	const activeBinding = bootstrap.session?.id === piboSessionId ? bootstrap.session.runtimeBinding : undefined;
+	const boundConfiguration = activeBinding?.metadata?.intentTracing;
+	if (typeof boundConfiguration === "boolean") return boundConfiguration;
 	const configured = profile?.runtimeOptions?.intentTracing;
 	return typeof configured === "boolean" ? configured : capability.enabledByDefault;
 }

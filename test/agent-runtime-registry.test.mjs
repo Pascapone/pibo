@@ -574,7 +574,7 @@ test("Pi adapter opens the existing Pi runtime without rewriting the requested s
 	const registry = createDefaultPiboPluginRegistry();
 	const adapter = registry.requireAgentRuntimeAdapter("pi");
 	const profile = new InitialSessionContextBuilder("pi-contract")
-		.withAgentRuntime("pi")
+		.withAgentRuntime("pi", { intentTracing: true })
 		.withSessionId("22222222-2222-4222-8222-222222222222")
 		.createSession();
 	const session = await adapter.openSession({
@@ -586,6 +586,7 @@ test("Pi adapter opens the existing Pi runtime without rewriting the requested s
 		assert.equal(session.runtimeInstanceId, "pi");
 		assert.equal(session.getBinding().nativeSessionId, "22222222-2222-4222-8222-222222222222");
 		assert.equal(session.getBinding().state, "bound");
+		assert.equal(session.getBinding().metadata.intentTracing, true);
 		assert.equal(session.getNativeCompatibilityHandle().session.sessionId, "22222222-2222-4222-8222-222222222222");
 	} finally {
 		await session.dispose();

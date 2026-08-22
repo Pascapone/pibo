@@ -133,6 +133,21 @@ async function runSessionTraceViewPropsScenario() {
 
 		assert.equal(sessionSupportsToolIntent(bootstrap, "ps-child", "worker-profile"), true);
 		assert.equal(sessionSupportsToolIntent({ ...bootstrap, customAgents: [{ ...bootstrap.customAgents[0], runtimeOptions: {} }] }, "ps-child", "worker-profile"), false);
+		assert.equal(sessionSupportsToolIntent({
+			...bootstrap,
+			session: {
+				...bootstrap.session,
+				runtimeBinding: { piboSessionId: "ps-child", runtimeInstanceId: "pi", adapterId: "pi", state: "bound", metadata: { intentTracing: false } },
+			},
+		}, "ps-child", "worker-profile"), false);
+		assert.equal(sessionSupportsToolIntent({
+			...bootstrap,
+			session: {
+				...bootstrap.session,
+				runtimeBinding: { piboSessionId: "ps-child", runtimeInstanceId: "pi", adapterId: "pi", state: "bound", metadata: { intentTracing: true } },
+			},
+			customAgents: [{ ...bootstrap.customAgents[0], runtimeOptions: {} }],
+		}, "ps-child", "worker-profile"), true);
 
 		assert.equal(resolveSessionTraceModelBadge({
 			bootstrap,

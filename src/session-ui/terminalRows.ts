@@ -172,7 +172,8 @@ function applyToolDisplayMode(rows: CompactTerminalRow[], mode: ToolDisplayMode)
 }
 
 function isToolDisplayRow(row: CompactTerminalRow): boolean {
-	return row.kind === "tool.call"
+	return row.id.startsWith("terminal:tool:")
+		|| row.kind === "tool.call"
 		|| row.kind === "tool.image"
 		|| row.kind === "tool.group.exploring"
 		|| row.kind === "tool.group.images"
@@ -325,6 +326,7 @@ function reconcileConceptualRowCandidates(candidates: readonly RowCandidate[]): 
 				...existing.row,
 				...candidate.row,
 				sourceNodeIds: [...new Set([...existing.row.sourceNodeIds, ...candidate.row.sourceNodeIds])],
+				intent: candidate.row.intent ?? existing.row.intent,
 				input: candidate.row.input ?? existing.row.input,
 				output: candidate.row.output ?? existing.row.output,
 				error: candidate.row.error ?? existing.row.error,

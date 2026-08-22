@@ -10,6 +10,7 @@ import {
 	splitPiToolIntentArguments,
 } from "../dist/agent-runtimes/pi/intent-tracing.js";
 import { normalizePiEvent } from "../dist/agent-runtimes/pi/routed-session.js";
+import { semanticEventFromPibo } from "../dist/agent-runtimes/pi/adapter.js";
 import { createPiboRuntime } from "../dist/agent-runtimes/pi/runtime.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 
@@ -37,7 +38,7 @@ test("Pi intent tracing is disabled by default and enabled only by a boolean pro
 	assert.equal(piIntentTracingEnabled({ intentTracing: "true" }), false);
 });
 
-test("Pi intent schema injects the required intent as the first property", () => {
+test("Pi intent schema injects the required intent as the first property and rejects collisions", () => {
 	const schema = injectPiToolIntentSchema({
 		type: "object",
 		properties: { path: { type: "string" } },
@@ -46,6 +47,10 @@ test("Pi intent schema injects the required intent as the first property", () =>
 	assert.deepEqual(Object.keys(schema.properties), ["i", "path"]);
 	assert.deepEqual(schema.required, ["i", "path"]);
 	assert.match(schema.properties.i.description, /present-participle intent/);
+	assert.throws(
+		() => injectPiToolIntentSchema({ type: "object", properties: { i: { type: "integer" } } }),
+		/schema already defines "i"/,
+	);
 });
 
 test("Pi intent wrapper strips intent before executing every active tool", async () => {
@@ -85,18 +90,43 @@ test("Pi runtime wraps every active built-in tool when the profile toggle is ena
 	}
 });
 
-test("Pi event normalization exposes intent metadata without leaking it into tool arguments", () => {
-	const event = normalizePiEvent("ps-intent", {
+test("Pi event normalization extracts configured intents without corrupting default tool arguments", () => {
+	const rawEvent = {
 		type: "tool_execution_start",
 		toolCallId: "call-1",
 		toolName: "read",
 		args: { i: "Reviewing runtime configuration", path: "src/runtime.ts" },
-	});
+	};
+	const defaultEvent = normalizePiEvent("ps-default", rawEvent);
+	assert.equal(defaultEvent.type, "tool_execution_started");
+	assert.equal(defaultEvent.intent, undefined);
+	assert.deepEqual(defaultEvent.args, rawEvent.args);
+
+	const event = normalizePiEvent("ps-intent", rawEvent, { intentTracing: true });
 	assert.equal(event.type, "tool_execution_started");
 	assert.equal(event.intent, "Reviewing runtime configuration");
 	assert.deepEqual(event.args, { path: "src/runtime.ts" });
 	assert.deepEqual(splitPiToolIntentArguments({ i: "  Inspecting tests  ", path: "test" }), {
 		intent: "Inspecting tests",
 		args: { path: "test" },
+	});
+});
+
+test("Pi semantic event conversion preserves tool call intent", () => {
+	assert.deepEqual(semanticEventFromPibo({
+		type: "tool_call",
+		piboSessionId: "ps-intent",
+		toolCallId: "call-1",
+		toolName: "read",
+		args: { path: "README.md" },
+		argsComplete: true,
+		intent: "Reviewing project documentation",
+	}), {
+		type: "tool_call",
+		toolCallId: "call-1",
+		toolName: "read",
+		args: { path: "README.md" },
+		argsComplete: true,
+		intent: "Reviewing project documentation",
 	});
 });

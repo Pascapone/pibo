@@ -312,9 +312,9 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 				}`}
 				onDoubleClick={handleCardDoubleClick}
 				onKeyDown={handleCardKeyDown}
-				role="button"
-				tabIndex={0}
-				aria-expanded={compactToolDisplay ? false : contentExpanded}
+				role={compactToolDisplay ? undefined : "button"}
+				tabIndex={compactToolDisplay ? undefined : 0}
+				aria-expanded={compactToolDisplay ? undefined : contentExpanded}
 			>
 				<SpanHeader
 					span={span}

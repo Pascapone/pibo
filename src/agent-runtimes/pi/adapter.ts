@@ -65,6 +65,7 @@ import {
 } from "./history.js";
 import { PiAgentRuntimeAuthController } from "./auth.js";
 import { importPortableHistoryIntoPi } from "./portable-history.js";
+import { piIntentTracingEnabled } from "./intent-tracing.js";
 
 const PI_ADAPTER_ID = "pi";
 export const PI_PROTOCOL_VERSION = "0.84.2";
@@ -258,7 +259,7 @@ function nativeSessionInfoFromPi(
 	};
 }
 
-function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSemanticEvent | undefined {
+export function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSemanticEvent | undefined {
 	switch (event.type) {
 		case "message_started":
 			return { type: "turn_started", turnId: event.eventId };
@@ -281,6 +282,7 @@ function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSemanticEven
 				toolName: event.toolName,
 				args: event.args,
 				argsComplete: event.argsComplete,
+				...(event.intent ? { intent: event.intent } : {}),
 			};
 		case "tool_execution_started":
 			return { ...event, type: "tool_execution_started" };
@@ -724,10 +726,12 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			throw new Error("Pi portable history import requires a new native session.");
 		}
 		const compatibility = input.services?.compatibility as PiAgentRuntimeCompatibilityServices | undefined;
+		const profile = cloneProfileForPiSession(input);
+		const intentTracing = piIntentTracingEnabled(profile.runtimeOptions);
 		const runtime = await createPiboRuntime({
 			cwd: input.workspace,
 			persistSession: compatibility?.persistSession,
-			profile: cloneProfileForPiSession(input),
+			profile,
 			thinkingLevel: compatibility?.thinkingLevel,
 			retryDefaults: compatibility?.retryDefaults,
 			extensionFactories: compatibility?.extensionFactories,
@@ -771,6 +775,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			metadata: {
 				...(input.binding?.metadata ?? {}),
 				persistent: compatibility?.persistSession !== false,
+				intentTracing,
 				nativePresenceExpected:
 					compatibility?.persistSession !== false
 					&& runtime.session.sessionManager.buildSessionContext().messages.length > 0,

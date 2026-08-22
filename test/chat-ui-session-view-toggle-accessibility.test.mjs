@@ -34,12 +34,15 @@ async function runSessionViewToggleAccessibilityScenario() {
 				showRawEvents: false,
 				showThinking: false,
 				expandThinking: false,
+				toolDisplayMode: "default",
+				toolIntentSupported: false,
 				onShowWebAnnotationsPanel() {},
 				onHideWebAnnotationsPanel() {},
 				onSelectSessionView() {},
 				onToggleRawEvents() {},
 				onToggleThinking() {},
 				onToggleExpandThinking() {},
+				onToolDisplayModeChange() {},
 				onError() {},
 				...overrides,
 			}));
@@ -58,10 +61,16 @@ async function runSessionViewToggleAccessibilityScenario() {
 
 		const normal = render();
 		assert.match(normal, /role="group" aria-label="Session views"/);
+		assert.match(normal, /aria-label="Tool display mode"/);
+		assert.match(normal, /<option value="intent" disabled="">Tools: Intent/);
 		assert.match(buttonOpeningTag(normal, "Switch to Terminal view"), /aria-pressed="true"/);
 		assert.match(buttonOpeningTag(normal, "Switch to Workflow view"), /aria-pressed="false"/);
 		assert.equal(normal.includes('aria-label="Enter Terminal fullscreen"'), false);
 		assert.equal(normal.includes('aria-label="Open selected session in new window"'), false);
+
+		const intentAvailable = render({ toolDisplayMode: "intent", toolIntentSupported: true });
+		assert.match(intentAvailable, /<option value="intent" selected="">Tools: Intent/);
+		assert.doesNotMatch(intentAvailable, /<option value="intent" disabled=""/);
 
 		const pwaWindowAvailable = render({ onOpenSessionWindow() {} });
 		assert.match(buttonOpeningTag(pwaWindowAvailable, "Open selected session in new window"), /data-pibo-debug="open-session-window"/);

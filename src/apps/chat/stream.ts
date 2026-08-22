@@ -118,9 +118,20 @@ export function chatStreamFramesFromOutputEvent(
 				sourceEventType: "tool_call",
 			});
 			break;
-		case "tool_execution_started":
-			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, event.intent, eventId);
+		case "tool_execution_started": {
+			const started = ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, event.intent, eventId);
+			if (!started && event.intent) {
+				frames.push({
+					type: "TOOL_CALL_START",
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					args: event.args,
+					intent: event.intent,
+					runId: eventId,
+				});
+			}
 			break;
+		}
 		case "tool_execution_updated":
 			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, event.intent, eventId);
 			frames.push({
@@ -211,8 +222,9 @@ function ensureToolCallStarted(
 	args: unknown,
 	intent?: string,
 	runId?: string,
-): void {
-	if (state.toolCallIds.has(toolCallId)) return;
+): boolean {
+	if (state.toolCallIds.has(toolCallId)) return false;
 	state.toolCallIds.add(toolCallId);
 	frames.push({ type: "TOOL_CALL_START", toolCallId, toolName, args, ...(intent ? { intent } : {}), runId });
+	return true;
 }

@@ -859,6 +859,7 @@ function isNativeHistoryToolEchoEvent(
 		event.type !== "tool_execution_updated" &&
 		event.type !== "tool_execution_finished"
 	) return false;
+	if (typeof event.intent === "string" && event.intent.trim()) return false;
 	return coverage.toolCallIds.has(event.toolCallId) || historyCoversEvent(event, coverage);
 }
 
