@@ -159,6 +159,10 @@ test("custom agent store migrates old app-context tables with stable defaults", 
 	assert.equal(agent.subagentFast, undefined);
 	assert.equal(agent.archivedAt, undefined);
 	assert.equal(agent.runControl, false);
+	assert.equal(agent.folderId, undefined);
+
+	const migratedFolder = store.createFolder("Migrated");
+	assert.equal(store.update(agent.id, { folderId: migratedFolder.id }).folderId, migratedFolder.id);
 
 	store.close();
 });

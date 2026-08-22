@@ -669,6 +669,7 @@ export function AgentsView({
 				archivedAgents={archivedCustomAgents}
 				pluginProfiles={pluginProfiles}
 				draft={draft}
+				error={localError}
 				unsavedAgentDraftVisible={unsavedAgentDraftVisible}
 				showArchivedAgents={showArchivedAgents}
 				creatingSession={creatingSession}
@@ -756,7 +757,7 @@ export function AgentsView({
 				{noAgentSelected ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">Select an existing agent or use New Agent to create one.</div> : null}
 				{draft.source === "profile" ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">This profile is registered by a plugin. Copy it to create an editable custom agent.</div> : null}
 				{archivedDraft ? <div className="mb-3 border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">This agent is archived. Restore it before editing or starting new sessions.</div> : null}
-				{localError ? <div className="mb-3 border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{localError}</div> : null}
+				{localError ? <div role="alert" className="mb-3 border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{localError}</div> : null}
 				<div className="grid gap-4">
 					<DesignerPanel title="Identity">
 						<label className="grid gap-1" htmlFor="agent-designer-name">

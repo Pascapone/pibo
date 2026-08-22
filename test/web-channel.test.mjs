@@ -2912,12 +2912,25 @@ test("chat Agent Designer manages app-wide agent folders and folder assignments"
 		const createdFolder = (await createdFolderResponse.json()).folder;
 		assert.equal(createdFolder.name, "Research");
 
+		const listedFoldersResponse = await fetch(`${baseURL}/api/chat/agent-folders`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(listedFoldersResponse.status, 200);
+		assert.deepEqual((await listedFoldersResponse.json()).folders.map((folder) => folder.id), [createdFolder.id]);
+
 		const duplicateFolderResponse = await fetch(`${baseURL}/api/chat/agent-folders`, {
 			method: "POST",
 			headers: mutationHeaders,
 			body: JSON.stringify({ name: "research" }),
 		});
 		assert.equal(duplicateFolderResponse.status, 409);
+
+		const missingFolderAgentResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: mutationHeaders,
+			body: JSON.stringify({ displayName: "missing-folder-agent", folderId: "agent_folder_missing" }),
+		});
+		assert.equal(missingFolderAgentResponse.status, 404);
 
 		const createdAgentResponse = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",

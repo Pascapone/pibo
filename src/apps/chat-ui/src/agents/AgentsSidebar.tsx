@@ -26,6 +26,7 @@ type AgentsSidebarProps = {
 	archivedAgents: CustomAgent[];
 	pluginProfiles: BootstrapData["agents"];
 	draft: AgentDraft;
+	error: string | null;
 	unsavedAgentDraftVisible: boolean;
 	showArchivedAgents: boolean;
 	creatingSession: boolean;
@@ -53,6 +54,7 @@ export function AgentsSidebar({
 	archivedAgents,
 	pluginProfiles,
 	draft,
+	error,
 	unsavedAgentDraftVisible,
 	showArchivedAgents,
 	creatingSession,
@@ -128,6 +130,11 @@ export function AgentsSidebar({
 				</div>
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto p-2">
+				{error && isMobileSidebarViewport ? (
+					<div role="alert" className="mb-3 border border-red-500/60 bg-red-500/10 px-3 py-2 text-sm text-red-200 rounded-sm">
+						{error}
+					</div>
+				) : null}
 				{creatingFolder ? (
 					<form
 						className="mb-3 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-1 border border-[#11a4d4]/50 bg-[#11a4d4]/5 p-1.5 rounded-sm"
@@ -143,6 +150,7 @@ export function AgentsSidebar({
 							onChange={(event) => setFolderName(event.target.value)}
 							placeholder="Folder name"
 							aria-label="Folder name"
+							maxLength={80}
 							autoFocus
 							className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm font-normal normal-case tracking-normal outline-none focus:border-[#11a4d4]"
 						/>
@@ -191,7 +199,6 @@ export function AgentsSidebar({
 						onMoveAgent={onMoveAgent}
 						onCreateSession={onCreateAgentSession}
 					/>
-					{activeAgents.length === 0 && !unsavedAgentDraftVisible && folders.length === 0 ? <EmptySidebarState label="No custom agents" /> : null}
 				</div>
 
 				{showArchivedAgents ? (
@@ -276,6 +283,7 @@ function AgentFolderGroup({
 	const [busy, setBusy] = useState(false);
 	const visibleCount = agents.length + (unsavedDraft ? 1 : 0);
 	const assignedOrDraftCount = assignedCount + (unsavedDraft ? 1 : 0);
+	const label = folder?.name ?? "Unfiled";
 	const submitRename = async () => {
 		if (!folder || !name.trim() || busy) return;
 		setBusy(true);
@@ -291,7 +299,13 @@ function AgentFolderGroup({
 	return (
 		<div className="mb-2 border border-slate-800 bg-[#151f24]/70 rounded-sm">
 			<div className="group flex min-h-9 items-center gap-1 border-b border-slate-800/80 px-1.5">
-				<button type="button" onClick={() => setCollapsed((current) => !current)} aria-expanded={!collapsed} className="h-7 w-7 shrink-0 inline-flex items-center justify-center text-slate-500 hover:text-[#11a4d4]">
+				<button
+					type="button"
+					onClick={() => setCollapsed((current) => !current)}
+					aria-expanded={!collapsed}
+					aria-label={`${collapsed ? "Expand" : "Collapse"} ${label}`}
+					className="h-7 w-7 shrink-0 inline-flex items-center justify-center text-slate-500 hover:text-[#11a4d4]"
+				>
 					{collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
 				</button>
 				<span className={`h-6 w-6 shrink-0 inline-flex items-center justify-center rounded-sm ${folder ? "bg-[#11a4d4]/10 text-[#11a4d4]" : "bg-slate-800 text-slate-500"}`}>
@@ -299,14 +313,14 @@ function AgentFolderGroup({
 				</span>
 				{renaming && folder ? (
 					<form className="min-w-0 flex-1 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-1 py-1" onSubmit={(event) => { event.preventDefault(); void submitRename(); }}>
-						<input id={`agent-folder-name-${folder.id}`} name="agentFolderName" value={name} onChange={(event) => setName(event.target.value)} autoFocus aria-label="Agent folder name" className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-xs outline-none focus:border-[#11a4d4]" />
+						<input id={`agent-folder-name-${folder.id}`} name="agentFolderName" value={name} onChange={(event) => setName(event.target.value)} maxLength={80} autoFocus aria-label="Agent folder name" className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-xs outline-none focus:border-[#11a4d4]" />
 						<button type="submit" disabled={busy || !name.trim()} title="Save folder name" aria-label="Save folder name" className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"><Check size={12} /></button>
 						<button type="button" onClick={() => { setRenaming(false); setName(folder.name); }} title="Cancel rename" aria-label="Cancel rename" className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><X size={12} /></button>
 					</form>
 				) : (
 					<>
-						<button type="button" onClick={() => setCollapsed((current) => !current)} className="min-w-0 flex-1 text-left text-xs font-semibold text-slate-300">
-							<span className="block truncate">{folder?.name ?? "Unfiled"}</span>
+						<button type="button" onClick={() => setCollapsed((current) => !current)} aria-expanded={!collapsed} className="min-w-0 flex-1 text-left text-xs font-semibold text-slate-300">
+							<span className="block truncate">{label}</span>
 						</button>
 						<span className="min-w-5 text-center font-mono text-[10px] tabular-nums text-slate-500">{assignedOrDraftCount}</span>
 						<button type="button" onClick={onCreateAgent} title={`New agent in ${folder?.name ?? "Unfiled"}`} aria-label={`New agent in ${folder?.name ?? "Unfiled"}`} className="h-7 w-7 inline-flex items-center justify-center rounded-sm text-slate-500 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4]"><Plus size={12} /></button>
@@ -335,7 +349,7 @@ function AgentFolderGroup({
 							onCreateSession={() => onCreateSession(agent)}
 						/>
 					))}
-					{visibleCount === 0 ? <div className="px-2 py-2 text-[11px] text-slate-600">{assignedCount > 0 ? "Archived agents hidden" : "Empty folder"}</div> : null}
+					{visibleCount === 0 ? <div className="px-2 py-2 text-[11px] text-slate-600">{assignedCount > 0 ? "No active agents" : folder ? "Empty folder" : "No custom agents"}</div> : null}
 				</div>
 			)}
 		</div>
