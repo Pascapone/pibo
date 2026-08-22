@@ -28,7 +28,7 @@ import {
   getChatSessionView,
   listChatSessionViews,
 } from "../session-views/registry";
-import type { ChatSessionViewId } from "../session-views/types";
+import type { ChatSessionViewId, ToolDisplayMode } from "../session-views/types";
 import { SessionTracePane } from "../session-trace-pane";
 import type { SlashCommand } from "../chat-commands";
 import { commandActionParams } from "../app-command-actions";
@@ -56,6 +56,7 @@ export function ProjectsArea({
   showRawEvents,
   showThinking,
   expandThinking,
+  toolDisplayMode,
   commands,
   skills,
   onNavigate,
@@ -64,6 +65,7 @@ export function ProjectsArea({
   onToggleRawEvents,
   onToggleThinking,
   onToggleExpandThinking,
+  onToolDisplayModeChange,
   onThinkingLevelChange,
   mobileSidebarOpen,
   onCloseMobileSidebar,
@@ -79,6 +81,7 @@ export function ProjectsArea({
   showRawEvents: boolean;
   showThinking: boolean;
   expandThinking: boolean;
+  toolDisplayMode: ToolDisplayMode;
   commands: SlashCommand[];
   skills: Array<{ name: string; description?: string; path?: string }>;
   onNavigate: (
@@ -92,6 +95,7 @@ export function ProjectsArea({
   onToggleRawEvents: () => void;
   onToggleThinking: () => void;
   onToggleExpandThinking: () => void;
+  onToolDisplayModeChange: (mode: ToolDisplayMode) => void;
   onThinkingLevelChange: (level: ThinkingLevel) => void;
   mobileSidebarOpen: boolean;
   onCloseMobileSidebar: () => void;
@@ -490,6 +494,7 @@ export function ProjectsArea({
         showRawEvents={showRawEvents}
         showThinking={showThinking}
         expandThinking={expandThinking}
+        toolDisplayMode={toolDisplayMode}
         commands={commands}
         skills={skills}
         composerText={composerText}
@@ -502,6 +507,7 @@ export function ProjectsArea({
         onToggleRawEvents={onToggleRawEvents}
         onToggleThinking={onToggleThinking}
         onToggleExpandThinking={onToggleExpandThinking}
+        onToolDisplayModeChange={onToolDisplayModeChange}
         onSessionAgentProfileChange={async (profile) => {
           if (selectedPiboSessionId)
             await patchSession(selectedPiboSessionId, { profile });

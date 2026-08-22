@@ -480,6 +480,10 @@ export function AgentsView({
 	const contextUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.context, "Context delivery");
 	const contextDiscovery = selectedRuntime?.capabilities.contextDiscovery;
 	const nativeSubagents = selectedRuntime?.capabilities.nativeSubagents;
+	const intentTracing = selectedRuntime?.capabilities.tools.intentTracing;
+	const effectiveIntentTracing = typeof draft.runtimeOptions.intentTracing === "boolean"
+		? draft.runtimeOptions.intentTracing
+		: intentTracing?.enabledByDefault ?? false;
 	const automaticContextChecked = (contextDiscovery?.configurable
 		? draft.autoContextFiles
 		: contextDiscovery?.enabledByDefault ?? draft.autoContextFiles) ?? true;
@@ -805,6 +809,20 @@ export function AgentsView({
 							onRuntimeOptionsChange={(runtimeOptions) => setDraft((current) => ({ ...current, runtimeOptions }))}
 							onRuntimeOptionsError={updateRuntimeOptionsError}
 						/>
+						{intentTracing?.configurable ? (
+							<div className="grid gap-1 border-t border-slate-800 pt-3">
+								<InlineCheckboxToggle
+									disabled={readOnly || Boolean(runtimeUnavailableReason)}
+									checked={effectiveIntentTracing}
+									title="Tool intent tracing"
+									onToggle={() => setDraft((current) => ({
+										...current,
+										runtimeOptions: { ...current.runtimeOptions, intentTracing: !effectiveIntentTracing },
+									}))}
+								/>
+								<div className="text-[11px] text-slate-500">Adds a required concise intent to every Pi tool call. Disabled by default.</div>
+							</div>
+						) : null}
 					</DesignerPanel>
 					<DesignerPanel title="Main Agent">
 						{draft.source === "profile" && draft.hardPinnedModel ? (

@@ -565,6 +565,7 @@ function RuntimeCapabilitySummary({ runtime }: { runtime: AgentRuntimeCatalogEnt
 		["Pibo tools", deliveryLabel(capabilities.tools.piboManaged), deliverySupported(capabilities.tools.piboManaged)],
 		["Native tool inspection", deliveryLabel(capabilities.tools.nativeToolInspection), deliverySupported(capabilities.tools.nativeToolInspection)],
 		["Native tool yielding", deliveryLabel(capabilities.tools.nativeToolYielding), deliverySupported(capabilities.tools.nativeToolYielding)],
+		["Tool intents", capabilities.tools.intentTracing.supported ? capabilities.tools.intentTracing.configurable ? "optional" : "supported" : "unsupported", capabilities.tools.intentTracing.supported],
 		["External MCP", deliveryLabel(capabilities.mcp.externalServers), deliverySupported(capabilities.mcp.externalServers)],
 		["Skills", deliveryLabel(capabilities.skills), deliverySupported(capabilities.skills)],
 		["Context", deliveryLabel(capabilities.context), deliverySupported(capabilities.context)],

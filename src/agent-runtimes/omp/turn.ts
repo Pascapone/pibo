@@ -259,6 +259,7 @@ export class OmpRpcTurnController {
 				toolCallId: frame.toolCallId,
 				toolName: frame.toolName,
 				args: frame.args,
+				...(frame.intent ? { intent: frame.intent } : {}),
 			});
 			return;
 		}

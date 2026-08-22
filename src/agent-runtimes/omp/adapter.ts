@@ -104,6 +104,11 @@ function ompCapabilities(): AgentRuntimeCapabilities {
 			nativeToolYielding: unsupportedAgentRuntimeCapability(
 				"OMP native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
 			),
+			intentTracing: {
+				supported: true,
+				configurable: false,
+				enabledByDefault: true,
+			},
 		},
 		mcp: {
 			externalServers: { support: "unsupported", reason: "OMP manages its own MCP; external MCP delivery is not wired in the initial OMP adapter." },

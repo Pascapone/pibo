@@ -100,6 +100,11 @@ export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 		piboManaged: { support: "direct" },
 		nativeToolInspection: { support: "native" },
 		nativeToolYielding: { support: "native" },
+		intentTracing: {
+			supported: true,
+			configurable: true,
+			enabledByDefault: false,
+		},
 	},
 	mcp: {
 		externalServers: { support: "materialized", modes: ["isolated-pibo-mcp-config"] },
@@ -646,12 +651,22 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				message: `Profile "${input.profile.profileName}" selects runtime instance "${input.profile.runtimeInstanceId}", not "${this.instanceId}".`,
 			});
 		}
-		if (Object.keys(input.profile.runtimeOptions).length > 0) {
+		const runtimeOptionKeys = Object.keys(input.profile.runtimeOptions);
+		for (const key of runtimeOptionKeys) {
+			if (key === "intentTracing") continue;
 			diagnostics.push({
 				severity: "error",
-				code: "pi_runtime_options_unsupported",
-				message: "The Pi runtime does not accept adapter-specific profile options.",
-				path: "runtimeOptions",
+				code: "pi_runtime_option_unsupported",
+				message: `The Pi runtime does not accept profile option "${key}".`,
+				path: `runtimeOptions.${key}`,
+			});
+		}
+		if ("intentTracing" in input.profile.runtimeOptions && typeof input.profile.runtimeOptions["intentTracing"] !== "boolean") {
+			diagnostics.push({
+				severity: "error",
+				code: "pi_intent_tracing_invalid",
+				message: "Pi intentTracing must be a boolean.",
+				path: "runtimeOptions.intentTracing",
 			});
 		}
 		const profileProvidesBash = input.profile.toolPackages.runControl === true
