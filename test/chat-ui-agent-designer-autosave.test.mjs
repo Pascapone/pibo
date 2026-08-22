@@ -22,6 +22,18 @@ test("Agent Designer debounces autosave and serializes overlapping writes", () =
 	assert.match(modelSource, /const name = item\.name\.trim\(\)[\s\S]*const targetProfile = item\.targetProfile\.trim\(\)/);
 });
 
+test("Agent Designer clears stale validation errors when the agent name changes", () => {
+	assert.match(agentsViewSource, /value=\{draft\.displayName\}[\s\S]{0,400}onChange=\{\(event\) => \{[\s\S]{0,120}setLocalError\(null\)[\s\S]{0,160}displayName: event\.target\.value[\s\S]{0,80}\}\}/);
+});
+
+test("Agent Designer cannot restore an invalid persisted agent name", () => {
+	assert.match(agentsViewSource, /const draft: AgentDraft = \{[\s\S]{0,900}validateAgentName\(draft\.displayName\)[\s\S]{0,240}sessionStorage\.removeItem\(PENDING_AGENT_DRAFT_STORAGE_KEY\)[\s\S]{0,120}return null/);
+});
+
+test("Agent Designer cancels stale autosave timers and does not persist unfinished name edits", () => {
+	assert.match(agentsViewSource, /const signature = agentDraftSignature\(draft\)[\s\S]{0,500}clearAutosaveTimer\(\)[\s\S]{0,240}const nameError = validateAgentName\(draft\.displayName\)[\s\S]{0,240}if \(editingName \|\| nameError\) return[\s\S]{0,160}writePendingAgentDraft\(draft, savedSignatureRef\.current\)/);
+});
+
 test("Agent Designer keeps pending edits recoverable and exposes save state instead of a Save button", () => {
 	assert.match(agentsViewSource, /PENDING_AGENT_DRAFT_STORAGE_KEY/);
 	assert.match(agentsViewSource, /typeof parsed\.draft\.nativeSubagents === "boolean"/);
