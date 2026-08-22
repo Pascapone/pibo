@@ -136,6 +136,7 @@ async function startWebHostChannel(options = {}) {
 		dataStorePath,
 		dataPayloadRootDir,
 		projectStorePath,
+		...options.chat,
 	})];
 	const channel = createWebHostChannel({ port: 0, announce: false, ...options.web });
 
@@ -319,6 +320,39 @@ test("chat web app requires auth for localhost requests", async () => {
 		const response = await fetch(`${baseURL}/api/chat/session`);
 		assert.equal(response.status, 401);
 		assert.deepEqual(await response.json(), { error: "Unauthenticated" });
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app exposes authenticated VS Code Web integration metadata and a proxy auth check", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		chat: {
+			vscodeWeb: {
+				url: "/apps/vscode/",
+				workspaceRoot: "/srv/pibo-workspaces",
+			},
+		},
+	});
+
+	try {
+		const unauthenticated = await fetch(`${baseURL}/api/chat/auth-check`);
+		assert.equal(unauthenticated.status, 401);
+
+		const authenticated = await fetch(`${baseURL}/api/chat/auth-check`, { headers: { "x-test-user": "user-vscode" } });
+		assert.equal(authenticated.status, 204);
+		assert.equal(authenticated.headers.get("cache-control"), "no-store");
+
+		const bootstrap = await fetch(`${baseURL}/api/chat/bootstrap`, { headers: { "x-test-user": "user-vscode" } });
+		assert.equal(bootstrap.status, 200);
+		const payload = await bootstrap.json();
+		assert.deepEqual(payload.integrations, {
+			vscode: {
+				url: "/apps/vscode/",
+				workspaceRoot: "/srv/pibo-workspaces",
+			},
+		});
 	} finally {
 		await channel.stop?.();
 	}

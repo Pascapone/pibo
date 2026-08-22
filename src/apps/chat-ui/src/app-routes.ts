@@ -5,6 +5,7 @@ import type { SettingsPanel } from "./settings/types";
 export type ChatAppRoute =
 	| { area: "sessions"; roomId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
 	| { area: "projects"; projectId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
+	| { area: "vscode" }
 	| { area: "workflows"; draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string }
 	| { area: "agents" }
 	| { area: "cron" }
@@ -25,6 +26,7 @@ type ChatRouteNavigationRequest =
 	| { to: "/projects/$projectId/sessions/$piboSessionId"; params: { projectId: string; piboSessionId: string }; search: SessionViewSearch; replace: boolean }
 	| { to: "/projects/$projectId"; params: { projectId: string }; search: SessionViewSearch; replace: boolean }
 	| { to: "/projects"; search: SessionViewSearch; replace: boolean }
+	| { to: "/vscode"; replace: boolean }
 	| { to: "/workflows/drafts/$draftId"; params: { draftId: string }; replace: boolean }
 	| { to: "/workflows"; replace: boolean }
 	| { to: "/agents"; replace: boolean }
@@ -51,6 +53,7 @@ export function chatRouteFromLocation(pathname: string, search: Record<string, u
 		.map((part) => decodeURIComponent(part));
 	const sessionViewId = parseChatSessionViewId(search.view);
 	if (parts[0] === "context") return { area: "context", ...(contextPiboSessionId ? { piboSessionId: contextPiboSessionId } : {}) };
+	if (parts[0] === "vscode") return { area: "vscode" };
 	if (parts[0] === "workflows" && parts[1] === "drafts" && parts[2]) return { area: "workflows", draftId: parts[2] };
 	if (parts[0] === "workflows" && parts[1] === "view" && parts[2] && parts[3]) return { area: "workflows", viewWorkflowId: parts[2], viewWorkflowVersion: parts[3] };
 	if (parts[0] === "workflows") return { area: "workflows" };
@@ -85,6 +88,7 @@ export function chatNavigationRequest(target: ChatAppRoute, replace: boolean, ne
 		if (target.projectId) return { to: "/projects/$projectId", params: { projectId: target.projectId }, search: sessionViewSearch, replace };
 		return { to: "/projects", search: sessionViewSearch, replace };
 	}
+	if (target.area === "vscode") return { to: "/vscode", replace };
 	if (target.area === "workflows") {
 		if (target.draftId) return { to: "/workflows/drafts/$draftId", params: { draftId: target.draftId }, replace };
 		return { to: "/workflows", replace };
