@@ -25,4 +25,4 @@
 - [x] 4.2 Package and install the exact branch candidate on Pibo2.
 - [x] 4.3 Configure the development preview origin and validate authenticated HTTP/WebSocket traffic.
 - [x] 4.4 Validate inline/fullscreen UI in a headful authenticated browser with console/network evidence.
-- [ ] 4.5 Record final validation evidence and open the feature PR to `upstream/dev`.
+- [x] 4.5 Record final validation evidence and open the feature PR to `upstream/dev`.

@@ -51,6 +51,10 @@ The authenticated headful browser confirmed:
 
 After validation, temporary fixture processes, exact-host nginx configuration, certificates, active exposures, and the temporary `preview.baseURL` were removed. The candidate remains deployed and healthy; permanent operation still requires operator-provided wildcard DNS and TLS for the configured preview base hostname.
 
+## Review
+
+- Feature PR: `Pascapone/pibo#543`, targeting `upstream/dev`.
+
 ## Final health
 
 - Local gateway health: HTTP 200.
