@@ -81,6 +81,19 @@ code-server \
   /path/to/workspaces
 ```
 
+## Default theme
+
+Provision the code-server user settings with VS Code's current dark default rather than relying on the browser or operating-system color scheme:
+
+```json
+{
+  "window.autoDetectColorScheme": false,
+  "workbench.colorTheme": "Default Dark Modern"
+}
+```
+
+For the service layout above, store this as `<user-data-dir>/User/settings.json` before starting code-server.
+
 ## Large workspace roots
 
 VS Code recursively watches an opened workspace. Hosts with many repositories or dependency trees may need higher Linux inotify limits. Configure these through a normal sysctl drop-in rather than changing them only for the current shell.

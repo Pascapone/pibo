@@ -97,7 +97,7 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 		.sort((left, right) => left.name.localeCompare(right.name));
 
 	return (
-		<main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#101d22]" aria-label="VS Code Web">
+		<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#101d22]" aria-label="VS Code Web">
 			<div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-slate-800 bg-[#151f24] px-3">
 				<FolderOpen size={15} className="shrink-0 text-[#11a4d4]" />
 				<label htmlFor="vscode-project-folder" className="sr-only">Open project folder</label>

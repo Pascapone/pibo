@@ -41,6 +41,7 @@ test("VS Code area provides a configured-state fallback and trusted IDE iframe c
 	assert.match(stdout, /PIBO_VSCODE_WEB_URL/);
 
 	const source = readFileSync(resolve("src/apps/chat-ui/src/VscodeArea.tsx"), "utf8");
+	assert.match(source, /<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden/);
 	assert.match(source, /<iframe/);
 	assert.match(source, /allow="clipboard-read; clipboard-write"/);
 	assert.match(source, /getProjects\(\)/);
