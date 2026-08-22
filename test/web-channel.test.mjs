@@ -90,16 +90,17 @@ async function withCwd(cwd, run) {
 }
 
 async function withHome(home, run) {
-	const previous = process.env.HOME;
+	const previousHome = process.env.HOME;
+	const previousUserProfile = process.env.USERPROFILE;
 	process.env.HOME = home;
+	process.env.USERPROFILE = home;
 	try {
 		return await run();
 	} finally {
-		if (previous === undefined) {
-			delete process.env.HOME;
-		} else {
-			process.env.HOME = previous;
-		}
+		if (previousHome === undefined) delete process.env.HOME;
+		else process.env.HOME = previousHome;
+		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+		else process.env.USERPROFILE = previousUserProfile;
 	}
 }
 

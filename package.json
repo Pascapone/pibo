@@ -12,7 +12,8 @@
     "skills/builtin/**",
     "docs/ops/**",
     "README.md",
-    "src/mcp/LICENSE.mcp-cli"
+    "src/mcp/LICENSE.mcp-cli",
+    "npm-shrinkwrap.json"
   ],
   "bin": {
     "pibo": "dist/bin/pibo.js",
@@ -52,7 +53,8 @@
     "validate:goal-endurance": "node scripts/goal-endurance-check.mjs",
     "typecheck": "npm run workflows:typecheck && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && npm run chat-ui:typecheck && npm run context-files-ui:typecheck && npm run vscode:typecheck",
     "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
-    "prepack": "npm run build"
+    "prepack": "npm run build && node scripts/package-shrinkwrap.mjs prepare",
+    "postpack": "node scripts/package-shrinkwrap.mjs clean"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.84.2",

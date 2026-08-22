@@ -1092,13 +1092,22 @@ export class PiboSessionRouter {
 				this.pluginRegistry.disposeAgentRuntimeAuth(),
 				...(this.compatibilityRuntimeRegistry ? [this.compatibilityRuntimeRegistry.disposeAgentRuntimeAuth()] : []),
 			]);
+			const ownedPluginRegistries = this.options.pluginRegistry === undefined
+				? [this.pluginRegistry]
+				: this.compatibilityRuntimeRegistry ? [this.compatibilityRuntimeRegistry] : [];
+			const webAppDisposals = await Promise.allSettled(
+				ownedPluginRegistries.flatMap((registry) => registry.getWebApps().map((app) => app.dispose?.())),
+			);
 			await this.portableToolService.dispose();
 			await this.runtimeResourceService.dispose();
 			this.runtimeResourceSessions.clear();
 			this.activeSubagentChildren.clear();
 			await this.telemetryWriter?.dispose();
-			const authFailures = authDisposals.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-			if (authFailures.length > 0) throw new AggregateError(authFailures, "Failed to dispose runtime authentication controllers.");
+			const lifecycleFailures = [...authDisposals, ...webAppDisposals]
+				.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+			if (lifecycleFailures.length > 0) {
+				throw new AggregateError(lifecycleFailures, "Failed to dispose runtime authentication controllers or web apps.");
+			}
 		}
 	}
 

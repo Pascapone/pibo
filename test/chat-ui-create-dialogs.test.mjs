@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const source = (path) =>
-  readFile(new URL(`../src/apps/chat-ui/src/${path}`, import.meta.url), "utf8");
+const source = async (path) =>
+  (await readFile(new URL(`../src/apps/chat-ui/src/${path}`, import.meta.url), "utf8")).replaceAll("\r\n", "\n");
 
 test("project and workflow create handlers use app-owned dialogs instead of prompts", async () => {
   const [projectsArea, workflowsArea] = await Promise.all([

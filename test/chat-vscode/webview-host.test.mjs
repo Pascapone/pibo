@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
 
 const execFileAsync = promisify(execFile);
 const root = resolveDirname();
-const tsxBin = path.join(root, "node_modules", ".bin", "tsx");
+const tsxCli = createRequire(import.meta.url).resolve("tsx/cli");
 
 /**
  * Run an inline tsx scenario and return the parsed JSON written to
@@ -78,7 +80,7 @@ function makeWebviewView() {
 	}
 })();
 `;
-	const result = await execFileAsync(tsxBin, ["--eval", script], {
+	const result = await execFileAsync(process.execPath, [tsxCli, "--eval", script], {
 		cwd: root,
 		env: { ...process.env, NODE_ENV: "test" },
 	});
@@ -92,7 +94,7 @@ function makeWebviewView() {
 function resolveDirname() {
 	// The test file lives at <repo>/test/chat-vscode/webview-host.test.mjs
 	// and the repo root is two parents up.
-	return path.resolve(new URL(".", import.meta.url).pathname, "..", "..");
+	return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
 function makeBundleFixture(extensionPath) {
@@ -186,7 +188,7 @@ let logMessages = [];
 })();
 `;
 
-	const result = await execFileAsync(tsxBin, ["--eval", script], { cwd: root, env: { ...process.env, NODE_ENV: "test" } });
+	const result = await execFileAsync(process.execPath, [tsxCli, "--eval", script], { cwd: root, env: { ...process.env, NODE_ENV: "test" } });
 	const match = result.stdout.match(/PIBO_HOST_TEST_RESULT::(.+)/);
 	if (!match) {
 		throw new Error(`host test produced no result marker. stdout:\n${result.stdout}\nstderr:\n${result.stderr ?? ""}`);

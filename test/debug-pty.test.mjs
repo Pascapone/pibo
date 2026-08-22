@@ -20,6 +20,7 @@ function execFileAsync(file, args, options = {}) {
 }
 
 async function hasPythonPtyDriver() {
+	if (process.platform === "win32") return false; // The host driver requires Python's POSIX pty/termios modules.
 	try {
 		await execFileAsync("python3", ["--version"]);
 		return true;

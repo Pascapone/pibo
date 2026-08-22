@@ -28,6 +28,8 @@ function createHarness(options = {}) {
 	});
 	const sessions = new InMemoryPiboSessionStore();
 	const emitted = [];
+	let subscriptions = 0;
+	let unsubscriptions = 0;
 	const context = {
 		async requireSession({ request }) {
 			const userId = request.headers.get("x-test-user");
@@ -50,7 +52,15 @@ function createHarness(options = {}) {
 					...(event.type === "message" ? { text: event.text, queuedMessages: 1 } : { action: event.action, result: { ok: true } }),
 				});
 			},
-			subscribe() { return () => {}; },
+			subscribe() {
+				subscriptions += 1;
+				let active = true;
+				return () => {
+					if (!active) return;
+					active = false;
+					unsubscriptions += 1;
+				};
+			},
 			getSession(id) { return sessions.get(id); },
 			createSession(input) { return sessions.create(input); },
 			updateSession(id, input) { return sessions.update(id, input); },
@@ -75,7 +85,11 @@ function createHarness(options = {}) {
 		sessions,
 		emitted,
 		request,
-		cleanup() { rmSync(storageDir, { recursive: true, force: true }); },
+		subscriptionCounts: () => ({ subscriptions, unsubscriptions }),
+		cleanup() {
+			app.dispose?.();
+			rmSync(storageDir, { recursive: true, force: true });
+		},
 	};
 }
 
@@ -131,6 +145,14 @@ function insertHistoricalRoom(db, input) {
 		now,
 	);
 }
+
+test("Chat Web disposal releases its channel event subscription", async () => {
+	const harness = createHarness();
+	await harness.request("/apps/chat");
+	assert.deepEqual(harness.subscriptionCounts(), { subscriptions: 1, unsubscriptions: 0 });
+	harness.cleanup();
+	assert.deepEqual(harness.subscriptionCounts(), { subscriptions: 1, unsubscriptions: 1 });
+});
 
 test("Chat Web lists, opens, and sends to mixed historical sessions without partition equality", async () => {
 	const harness = createHarness();

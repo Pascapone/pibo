@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { computeNextRunAt, parseFriendlySchedule } from '../dist/cron/schedule.js';
 import { PiboCronStore } from '../dist/cron/store.js';
 
@@ -12,7 +13,7 @@ const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredPartitionField = `${retiredWord}Scope`;
 
 const execFileAsync = promisify(execFile);
-const cliPath = new URL('../dist/bin/pibo.js', import.meta.url).pathname;
+const cliPath = fileURLToPath(new URL('../dist/bin/pibo.js', import.meta.url));
 
 test('cron at schedule returns future date once', () => {
   const now = new Date('2026-05-09T08:00:00.000Z');

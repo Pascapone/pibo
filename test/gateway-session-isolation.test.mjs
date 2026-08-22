@@ -73,7 +73,17 @@ test("persistSession false uses an in-memory store and leaves the external Pibo 
 			const diagnostics = server.getDiagnostics();
 			assert.equal(diagnostics.authoritativeRuntime, false);
 			assert.match(diagnostics.runtimeInstanceId, /^gateway:/);
+			const routerWebApp = server.router?.compatibilityRuntimeRegistry?.getWebApps()
+				.find((app) => app.name === "web-annotations");
+			assert.ok(routerWebApp?.dispose);
+			const dispose = routerWebApp.dispose.bind(routerWebApp);
+			let disposeCalls = 0;
+			routerWebApp.dispose = async () => {
+				disposeCalls += 1;
+				await dispose();
+			};
 			await server.stop();
+			assert.equal(disposeCalls, 1);
 		});
 
 		const verification = new PiboDataStore(join(root, "pibo.sqlite"), {

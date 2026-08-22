@@ -140,6 +140,26 @@ test("Web Annotation API creates same-origin bindings and serves standalone over
 	}
 });
 
+test("disposing one default Web Annotation app keeps shared storage alive for remaining apps", async () => {
+	const moduleUrl = new URL("../dist/web-annotations/api.js", import.meta.url);
+	moduleUrl.searchParams.set("shared-store-test", String(Date.now()));
+	const { createWebAnnotationsWebApp: createFreshWebAnnotationsWebApp } = await import(moduleUrl.href);
+	const first = createFreshWebAnnotationsWebApp();
+	const second = createFreshWebAnnotationsWebApp();
+	try {
+		first.dispose?.();
+		first.dispose?.();
+		const response = await second.handleRequest(createRequest("/api/web-annotations/bindings", {
+			piboSessionId: "ps_a",
+			url: "http://127.0.0.1/apps/chat/rooms/room_a/sessions/ps_a",
+			sameOrigin: true,
+		}), createContext());
+		assert.equal(response.status, 201);
+	} finally {
+		second.dispose?.();
+	}
+});
+
 test("Web Annotation overlay submissions use binding token and derive session scope", async () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });
 	try {

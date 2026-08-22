@@ -25,6 +25,7 @@ async function httpRequest(target, options = {}) {
 		const url = new URL(target);
 		const req = http.request(
 			{
+				agent: false,
 				host: url.hostname,
 				port: url.port,
 				path: url.pathname + url.search,
@@ -309,7 +310,7 @@ describe("chat-vscode/sidecar", () => {
 
 			const url = `http://127.0.0.1:${sidecar.port()}/api/chat/events?roomId=r1`;
 			const collected = await new Promise((resolve, reject) => {
-				const req = http.request(url, { method: "GET" }, (res) => {
+				const req = http.request(url, { agent: false, method: "GET" }, (res) => {
 					assert.equal(res.statusCode, 200);
 					assert.equal(res.headers["content-type"], "text/event-stream");
 					const chunks = [];

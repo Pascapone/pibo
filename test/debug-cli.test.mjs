@@ -1950,7 +1950,7 @@ test("pibo debug reports missing stores with the expected path", async () => {
 	const cwd = await makeEmptyCwd();
 	try {
 		await assert.rejects(execFileAsync("node", [cliPath, "debug", "db", "tables", "sessions"], { cwd }), (error) => {
-			assert.match(error.stderr, /Debug store "sessions" not found at .*\.pibo\/pibo\.sqlite/);
+			assert.match(error.stderr, /Debug store "sessions" not found at .*\.pibo[\\/]pibo\.sqlite/);
 			return true;
 		});
 	} finally {

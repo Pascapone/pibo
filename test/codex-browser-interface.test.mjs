@@ -245,7 +245,7 @@ test("node_repl.js preserves state, reaches the bound browser bridge, resets, an
 		assert.equal(afterReset.status, "error");
 		assert.equal(afterReset.error?.name, "ReferenceError");
 	} finally {
-		repl.dispose();
+		await repl.dispose();
 		rmSync(cwd, { recursive: true, force: true });
 	}
 });

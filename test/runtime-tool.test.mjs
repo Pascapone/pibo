@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +8,10 @@ import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { RuntimeSessionRegistry } from "../dist/tools/runtime/registry.js";
+
+const defaultPythonExecutable = process.platform === "win32" ? "python" : "python3";
+const pythonAvailable = spawnSync(defaultPythonExecutable, ["--version"], { stdio: "ignore" }).status === 0;
+const pythonTest = (name, run) => test(name, { skip: pythonAvailable ? false : `${defaultPythonExecutable} is unavailable` }, run);
 
 async function withRuntimeRegistry(run) {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-runtime-tool-"));
@@ -19,7 +24,7 @@ async function withRuntimeRegistry(run) {
 	}
 }
 
-test("python runtime preserves variables across exec calls", async () => {
+pythonTest("python runtime preserves variables across exec calls", async () => {
 	await withRuntimeRegistry(async (registry) => {
 		const start = await registry.start("controller", { runtime: "python" });
 		assert.equal(start.status, "ok");
@@ -33,7 +38,7 @@ test("python runtime preserves variables across exec calls", async () => {
 	});
 });
 
-test("python runtime errors keep prior state and expose failing line", async () => {
+pythonTest("python runtime errors keep prior state and expose failing line", async () => {
 	await withRuntimeRegistry(async (registry) => {
 		const start = await registry.start("controller", { runtime: "python" });
 		const sessionId = start.sessionId;
@@ -54,7 +59,7 @@ test("python runtime errors keep prior state and expose failing line", async () 
 	});
 });
 
-test("closeOnSuccess closes only after successful exec", async () => {
+pythonTest("closeOnSuccess closes only after successful exec", async () => {
 	await withRuntimeRegistry(async (registry) => {
 		const start = await registry.start("controller", { runtime: "python" });
 		const sessionId = start.sessionId;
@@ -75,7 +80,7 @@ test("closeOnSuccess closes only after successful exec", async () => {
 	});
 });
 
-test("runtime captures stdout and stderr separately", async () => {
+pythonTest("runtime captures stdout and stderr separately", async () => {
 	await withRuntimeRegistry(async (registry) => {
 		const start = await registry.start("controller", { runtime: "python" });
 		const sessionId = start.sessionId;
@@ -91,7 +96,7 @@ test("runtime captures stdout and stderr separately", async () => {
 	});
 });
 
-test("runtime vars, inspect, and controller isolation work", async () => {
+pythonTest("runtime vars, inspect, and controller isolation work", async () => {
 	await withRuntimeRegistry(async (registry) => {
 		const start = await registry.start("controller-a", { runtime: "python" });
 		const sessionId = start.sessionId;
