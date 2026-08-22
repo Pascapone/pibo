@@ -1,6 +1,6 @@
 # Spec: Pluggable Audio Transcription
 
-**Status:** Implementing  
+**Status:** Done
 **Created:** 2026-08-22  
 **Requester / Source:** User request and `codex-transcribe-chatgpt-subscription.md`
 
@@ -86,7 +86,7 @@ Microphone, authentication, provider, empty-audio, and unsupported-browser failu
 
 ## Success Criteria
 
-- [ ] SC-001: OpenAI and a fixture provider satisfy the common provider contract.
-- [ ] SC-002: Settings persist a provider separately from model settings.
-- [ ] SC-003: A real browser recording inserts text but does not send it.
-- [ ] SC-004: A second recording appends while preserving the first transcript and manually typed text.
+- [x] SC-001: OpenAI and a fixture provider satisfy the common provider contract.
+- [x] SC-002: Settings persist a provider separately from model settings.
+- [x] SC-003: A real browser recording inserts text but does not send it.
+- [x] SC-004: A second recording appends while preserving the first transcript and manually typed text.
