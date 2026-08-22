@@ -94,6 +94,10 @@ function readPendingAgentDraft(): PendingAgentDraft | null {
 				? parsed.draft.autoContextFiles
 				: true,
 		};
+		if (validateAgentName(draft.displayName)) {
+			sessionStorage.removeItem(PENDING_AGENT_DRAFT_STORAGE_KEY);
+			return null;
+		}
 		return { draft, savedSignature: typeof parsed.savedSignature === "string" ? parsed.savedSignature : null };
 	} catch {
 		return null;
@@ -353,10 +357,12 @@ export function AgentsView({
 			clearPendingAgentDraft();
 			return;
 		}
-		writePendingAgentDraft(draft, savedSignatureRef.current);
-		setSaveState((current) => current === "saving" ? current : "idle");
-		if (editingName || runtimeOptionsError || validateAgentName(draft.displayName) || !catalogRef.current) return;
 		clearAutosaveTimer();
+		setSaveState((current) => current === "saving" ? current : "idle");
+		const nameError = validateAgentName(draft.displayName);
+		if (nameError) return;
+		writePendingAgentDraft(draft, savedSignatureRef.current);
+		if (editingName || runtimeOptionsError || !catalogRef.current) return;
 		autosaveTimerRef.current = window.setTimeout(() => {
 			autosaveTimerRef.current = null;
 			void persistIfNeeded().catch(() => undefined);
@@ -733,7 +739,18 @@ export function AgentsView({
 				{localError ? <div className="mb-3 border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{localError}</div> : null}
 				<div className="grid gap-4">
 					<DesignerPanel title="Basics">
-						<input value={draft.displayName} disabled={readOnly} onFocus={() => setEditingName(true)} onBlur={() => setEditingName(false)} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} className={`min-w-0 bg-[#0e1116] border rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60 ${agentNameError ? "border-[#f59e0b]" : "border-slate-700"}`} placeholder="agent-name" />
+						<input
+							value={draft.displayName}
+							disabled={readOnly}
+							onFocus={() => setEditingName(true)}
+							onBlur={() => setEditingName(false)}
+							onChange={(event) => {
+								setLocalError(null);
+								setDraft((current) => ({ ...current, displayName: event.target.value }));
+							}}
+							className={`min-w-0 bg-[#0e1116] border rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60 ${agentNameError ? "border-[#f59e0b]" : "border-slate-700"}`}
+							placeholder="agent-name"
+						/>
 						{agentNameError ? <div className="text-xs text-amber-100">{agentNameError}</div> : null}
 						<textarea value={draft.description} disabled={readOnly} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} className="min-h-[72px] bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="Description" />
 						<AgentRuntimeSelector
