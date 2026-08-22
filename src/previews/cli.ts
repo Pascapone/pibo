@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { Command } from "commander";
 import { createDefaultPiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import { DEFAULT_PREVIEW_TTL_MINUTES, previewPublicURL, requirePreviewBaseURL } from "./config.js";
-import { probePreviewTarget, validatePreviewPort } from "./network.js";
+import { findPreviewTargetProcess, isPreviewTargetProcessCurrent, probePreviewTarget, validatePreviewPort } from "./network.js";
 import { createDefaultPreviewStore, previewExposureState } from "./store.js";
 import type { PreviewExposure } from "./types.js";
 
@@ -33,7 +33,8 @@ function inferredProjectId(metadata: unknown): string | undefined {
 
 async function exposureView(exposure: PreviewExposure) {
 	const state = previewExposureState(exposure);
-	const target = state === "active" ? await probePreviewTarget(exposure.targetPort) : undefined;
+	const processCurrent = state === "active" ? isPreviewTargetProcessCurrent(exposure, { cacheMs: 0 }) : false;
+	const target = processCurrent ? await probePreviewTarget(exposure.targetPort) : undefined;
 	return {
 		...exposure,
 		state,
@@ -95,6 +96,7 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 
 			const now = new Date();
 			const id = createPreviewId();
+			const targetProcess = findPreviewTargetProcess(target.host, port);
 			const store = createDefaultPreviewStore();
 			let exposure;
 			try {
@@ -105,6 +107,8 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 					label: options.name?.trim() || `Preview ${port}`,
 					targetHost: target.host,
 					targetPort: port,
+					targetProcessId: targetProcess?.pid,
+					targetProcessStartTicks: targetProcess?.startTicks,
 					workspace: resolve(options.workspace ?? session.workspace ?? process.cwd()),
 					createdAt: now.toISOString(),
 					expiresAt: new Date(now.getTime() + options.ttlMinutes * 60_000).toISOString(),

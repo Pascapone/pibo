@@ -181,6 +181,15 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 		assert.equal(opened.status, 200);
 		assert.match(opened.body, /method="post"/);
 	}
+	const listed = await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews?piboSessionId=ps_preview_web",
+		headers: { "x-test-user": "account-a" },
+	});
+	const listedBody = JSON.parse(listed.body);
+	assert.equal("workspace" in listedBody.previews[0], false);
+	assert.equal("targetProcessId" in listedBody.previews[0], false);
 
 	const opened = await request({
 		port: webPort,

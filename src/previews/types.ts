@@ -8,6 +8,8 @@ export type PreviewExposure = {
 	label: string;
 	targetHost: "127.0.0.1" | "::1";
 	targetPort: number;
+	targetProcessId?: number;
+	targetProcessStartTicks?: string;
 	workspace: string;
 	createdAt: string;
 	expiresAt: string;
@@ -21,6 +23,8 @@ export type CreatePreviewExposureInput = {
 	label: string;
 	targetHost: PreviewExposure["targetHost"];
 	targetPort: number;
+	targetProcessId?: number;
+	targetProcessStartTicks?: string;
 	workspace: string;
 	createdAt: string;
 	expiresAt: string;
@@ -38,7 +42,7 @@ export type PreviewBrowserSession = {
 	expiresAt: string;
 };
 
-export type PublicPreviewExposure = PreviewExposure & {
+export type PublicPreviewExposure = Omit<PreviewExposure, "workspace" | "targetProcessId" | "targetProcessStartTicks"> & {
 	state: PreviewExposureState;
 	health: PreviewHealthState;
 	publicUrl: string;

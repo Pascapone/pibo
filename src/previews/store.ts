@@ -20,6 +20,8 @@ type ExposureRow = {
 	label: string;
 	target_host: "127.0.0.1" | "::1";
 	target_port: number;
+	target_process_id: number | null;
+	target_process_start_ticks: string | null;
 	workspace: string;
 	created_at: string;
 	expires_at: string;
@@ -48,6 +50,8 @@ function exposureFromRow(row: ExposureRow): PreviewExposure {
 		label: row.label,
 		targetHost: row.target_host,
 		targetPort: row.target_port,
+		targetProcessId: row.target_process_id ?? undefined,
+		targetProcessStartTicks: row.target_process_start_ticks ?? undefined,
 		workspace: row.workspace,
 		createdAt: row.created_at,
 		expiresAt: row.expires_at,
@@ -89,6 +93,8 @@ export class PreviewStore {
 				label TEXT NOT NULL,
 				target_host TEXT NOT NULL CHECK (target_host IN ('127.0.0.1', '::1')),
 				target_port INTEGER NOT NULL,
+				target_process_id INTEGER,
+				target_process_start_ticks TEXT,
 				workspace TEXT NOT NULL,
 				created_at TEXT NOT NULL,
 				expires_at TEXT NOT NULL,
@@ -114,14 +120,17 @@ export class PreviewStore {
 			CREATE INDEX IF NOT EXISTS preview_browser_sessions_preview_idx
 				ON preview_browser_sessions (preview_id, expires_at);
 		`);
+		const columns = new Set((this.db.prepare("PRAGMA table_info(preview_exposures)").all() as Array<{ name: string }>).map((column) => column.name));
+		if (!columns.has("target_process_id")) this.db.exec("ALTER TABLE preview_exposures ADD COLUMN target_process_id INTEGER");
+		if (!columns.has("target_process_start_ticks")) this.db.exec("ALTER TABLE preview_exposures ADD COLUMN target_process_start_ticks TEXT");
 	}
 
 	createExposure(input: CreatePreviewExposureInput): PreviewExposure {
 		this.db.prepare(`
 			INSERT INTO preview_exposures (
 				id, pibo_session_id, project_id, label, target_host, target_port,
-				workspace, created_at, expires_at, closed_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+				target_process_id, target_process_start_ticks, workspace, created_at, expires_at, closed_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
 		`).run(
 			input.id,
 			input.piboSessionId,
@@ -129,6 +138,8 @@ export class PreviewStore {
 			input.label,
 			input.targetHost,
 			input.targetPort,
+			input.targetProcessId ?? null,
+			input.targetProcessStartTicks ?? null,
 			input.workspace,
 			input.createdAt,
 			input.expiresAt,

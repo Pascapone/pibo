@@ -10,7 +10,7 @@ import {
 	previewPublicURL,
 	requirePreviewBaseURL,
 } from "./config.js";
-import { probePreviewTarget } from "./network.js";
+import { isPreviewTargetProcessCurrent, probePreviewTarget } from "./network.js";
 import { cookieValue, PREVIEW_SESSION_COOKIE, proxyPreviewHttp, proxyPreviewWebSocket } from "./proxy.js";
 import { PreviewStore, createDefaultPreviewStore, previewExposureState } from "./store.js";
 import type { PreviewExposure, PublicPreviewExposure } from "./types.js";
@@ -54,9 +54,11 @@ function withStore<T>(path: string | undefined, action: (store: PreviewStore) =>
 
 async function publicExposure(exposure: PreviewExposure, baseURL: URL): Promise<PublicPreviewExposure> {
 	const state = previewExposureState(exposure);
-	const online = state === "active" ? Boolean(await probePreviewTarget(exposure.targetPort, { timeoutMs: 500 })) : false;
+	const processCurrent = state === "active" ? isPreviewTargetProcessCurrent(exposure) : false;
+	const online = processCurrent ? Boolean(await probePreviewTarget(exposure.targetPort, { timeoutMs: 500 })) : false;
+	const { workspace: _workspace, targetProcessId: _targetProcessId, targetProcessStartTicks: _targetProcessStartTicks, ...publicFields } = exposure;
 	return {
-		...exposure,
+		...publicFields,
 		state,
 		health: state === "active" ? (online ? "online" : "offline") : state,
 		publicUrl: previewPublicURL(exposure.id, baseURL).toString(),
@@ -133,7 +135,10 @@ function previewOpenHtml(exposure: PreviewExposure, ticket: string, baseURL: URL
 
 function validPreviewExposure(store: PreviewStore, previewId: string): PreviewExposure | undefined {
 	const exposure = store.getExposure(previewId);
-	return exposure && previewExposureState(exposure) === "active" ? exposure : undefined;
+	if (!exposure || previewExposureState(exposure) !== "active") return undefined;
+	if (isPreviewTargetProcessCurrent(exposure)) return exposure;
+	store.closeExposure(previewId);
+	return undefined;
 }
 
 export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWebApp {

@@ -22,6 +22,8 @@ function createExposure(store, overrides = {}) {
 		label: overrides.label ?? "Website",
 		targetHost: overrides.targetHost ?? "127.0.0.1",
 		targetPort: overrides.targetPort ?? 5173,
+		targetProcessId: overrides.targetProcessId,
+		targetProcessStartTicks: overrides.targetProcessStartTicks,
 		workspace: overrides.workspace ?? "/workspace/site",
 		createdAt: now.toISOString(),
 		expiresAt: overrides.expiresAt ?? "2030-08-22T12:01:00.000Z",
@@ -31,7 +33,9 @@ function createExposure(store, overrides = {}) {
 test("preview store persists exposures and filters inactive records", () => {
 	const { dir, store } = fixture();
 	try {
-		const active = createExposure(store);
+		const active = createExposure(store, { targetProcessId: 321, targetProcessStartTicks: "987654" });
+		assert.equal(active.targetProcessId, 321);
+		assert.equal(active.targetProcessStartTicks, "987654");
 		const expired = createExposure(store, { id: "pv-expired123", expiresAt: "2026-08-22T11:00:00.000Z" });
 		assert.equal(previewExposureState(active, new Date("2026-08-22T12:00:30.000Z")), "active");
 		assert.equal(previewExposureState(expired, new Date("2026-08-22T12:00:30.000Z")), "expired");
