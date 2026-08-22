@@ -47,7 +47,7 @@ export type OmpRpcHostToolParameterSchema = {
 export type OmpRpcHostToolDefinition = {
 	name: string;
 	description: string;
-	inputSchema: OmpRpcHostToolParameterSchema;
+	parameters: OmpRpcHostToolParameterSchema;
 	/** Streaming partial-result delivery requested by the host. */
 	stream?: boolean;
 	[extra: string]: unknown;

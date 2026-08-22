@@ -227,9 +227,27 @@ rl.on("line", (line) => {
 		case "get_messages_page":
 			write({ id, type: "response", command: "get_messages_page", success: true, data: { messages: [{ role: "user", content: "hi" }], totalMessages: 1 } });
 			break;
-		case "set_host_tools":
-			write({ id, type: "response", command: "set_host_tools", success: true, data: { toolNames: [] } });
+		case "set_host_tools": {
+			const invalid = cmd.tools.find((tool) => !tool.parameters || typeof tool.parameters !== "object" || Array.isArray(tool.parameters));
+			if (invalid) {
+				write({
+					id,
+					type: "response",
+					command: "set_host_tools",
+					success: false,
+					error: `Host tool "${invalid.name}" must provide a JSON Schema object`,
+				});
+				break;
+			}
+			write({
+				id,
+				type: "response",
+				command: "set_host_tools",
+				success: true,
+				data: { toolNames: cmd.tools.map((tool) => tool.name) },
+			});
 			break;
+		}
 		default:
 			write({ id, type: "response", command: cmd.type, success: true });
 			break;
