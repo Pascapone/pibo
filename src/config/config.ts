@@ -21,6 +21,10 @@ export type PiboConfig = {
 		machineKeyStorePath?: string;
 		mode?: "better-auth" | "local";
 	};
+	preview?: {
+		baseURL?: string;
+		databasePath?: string;
+	};
 };
 
 export type PiboConfigKeyDefinition = {
@@ -79,6 +83,16 @@ export const PIBO_CONFIG_KEYS: PiboConfigKeyDefinition[] = [
 		type: "string",
 		description: "Auth service mode. Use 'local' to skip Google OAuth on a loopback bind. Default 'better-auth'.",
 		values: ["better-auth", "local"] as const,
+	},
+	{
+		key: "preview.baseURL",
+		type: "string",
+		description: "Public preview base URL. Preview ids become subdomains, for example https://preview.example.com.",
+	},
+	{
+		key: "preview.databasePath",
+		type: "string",
+		description: "Optional SQLite path for live preview registrations and browser sessions.",
 	},
 ];
 
@@ -191,11 +205,14 @@ export function setPiboConfigValue(config: PiboConfig, key: string, rawValue: st
 	const definition = getKeyDefinition(key);
 	const value = parseConfigValue(definition, rawValue);
 	const [section, name] = key.split(".");
-	if (section !== "auth" || !name) throw new Error(`Unsupported config key "${key}"`);
+	if (!section || !name || (section !== "auth" && section !== "preview")) {
+		throw new Error(`Unsupported config key "${key}"`);
+	}
+	const currentSection = config[section] as Record<string, unknown> | undefined;
 	return {
 		...config,
-		auth: {
-			...config.auth,
+		[section]: {
+			...currentSection,
 			[name]: value,
 		},
 	};
@@ -208,13 +225,16 @@ export function isPiboConfigKeySecret(key: string): boolean {
 export function deletePiboConfigValue(config: PiboConfig, key: string): PiboConfig {
 	getKeyDefinition(key);
 	const [section, name] = key.split(".");
-	if (section !== "auth" || !name) throw new Error(`Unsupported config key "${key}"`);
-	if (!config.auth || !(name in config.auth)) return config;
+	if (!section || !name || (section !== "auth" && section !== "preview")) {
+		throw new Error(`Unsupported config key "${key}"`);
+	}
+	const currentSection = config[section] as Record<string, unknown> | undefined;
+	if (!currentSection || !(name in currentSection)) return config;
 
-	const auth = { ...config.auth };
-	delete (auth as Record<string, unknown>)[name];
+	const nextSection = { ...currentSection };
+	delete nextSection[name];
 	return {
 		...config,
-		auth: Object.keys(auth).length > 0 ? auth : undefined,
+		[section]: Object.keys(nextSection).length > 0 ? nextSection : undefined,
 	};
 }

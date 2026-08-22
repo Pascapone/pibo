@@ -66,6 +66,8 @@ import {
   openCurrentPwaSessionWindow,
 } from "./pwa-session-window";
 import { RuntimeRequestPanel } from "./runtime-request-panel";
+import { closeSessionLivePreview, getSessionLivePreviews } from "./api-previews";
+import { PreviewFullscreenTopBar, SessionLivePreviewPanel } from "./session-live-preview";
 
 export function SessionTracePane({
   bootstrap,
@@ -221,6 +223,34 @@ export function SessionTracePane({
     enabled: Boolean(selectedBackendPiboSessionId),
     refetchInterval: selectedBackendPiboSessionId ? 5_000 : false,
   });
+  const [livePreviewSelected, setLivePreviewSelected] = useState(false);
+  const [selectedLivePreviewId, setSelectedLivePreviewId] = useState<string | null>(null);
+  const [livePreviewReloadKey, setLivePreviewReloadKey] = useState(0);
+  const livePreviewsQuery = useQuery({
+    queryKey: selectedBackendPiboSessionId
+      ? ["chat", "session-live-previews", selectedBackendPiboSessionId]
+      : ["chat", "session-live-previews", "idle"],
+    queryFn: () => getSessionLivePreviews(selectedBackendPiboSessionId!),
+    enabled: Boolean(selectedBackendPiboSessionId),
+    refetchInterval: (query) => selectedBackendPiboSessionId && query.state.data?.configured !== false ? 5_000 : false,
+  });
+  const livePreviews = livePreviewsQuery.data?.previews ?? [];
+  const selectedLivePreview = livePreviews.find((preview) => preview.id === selectedLivePreviewId) ?? livePreviews[0];
+  useEffect(() => {
+    setLivePreviewSelected(false);
+    setSelectedLivePreviewId(null);
+    setLivePreviewReloadKey(0);
+  }, [selectedBackendPiboSessionId]);
+  useEffect(() => {
+    if (livePreviews.length === 0) {
+      setLivePreviewSelected(false);
+      setSelectedLivePreviewId(null);
+      return;
+    }
+    if (!selectedLivePreviewId || !livePreviews.some((preview) => preview.id === selectedLivePreviewId)) {
+      setSelectedLivePreviewId(livePreviews[0]!.id);
+    }
+  }, [livePreviews, selectedLivePreviewId]);
   const openSessionWindowAvailable = Boolean(selectedBackendPiboSessionId) && canOpenDesktopPwaSessionWindow();
   const openSelectedSessionWindow = useCallback(() => {
     if (openCurrentPwaSessionWindow()) return;
@@ -326,6 +356,7 @@ export function SessionTracePane({
     selectedRoomArchived,
   );
   const terminalFileDropEnabled =
+    !livePreviewSelected &&
     !composerDisabled &&
     currentSessionView.id === "terminal" &&
     (activeViewId ?? sessionViewId) === "terminal";
@@ -482,6 +513,75 @@ export function SessionTracePane({
     onRefreshBootstrap,
     onError,
   });
+  const refreshLivePreview = () => setLivePreviewReloadKey((current) => current + 1);
+  const closeLivePreview = async (previewId: string) => {
+    try {
+      await closeSessionLivePreview(previewId);
+      const refreshed = await livePreviewsQuery.refetch();
+      const remaining = refreshed.data?.previews ?? [];
+      setSelectedLivePreviewId(remaining[0]?.id ?? null);
+      if (remaining.length === 0) {
+        setLivePreviewSelected(false);
+        if (terminalFullscreen) onExitTerminalFullscreen?.();
+      }
+    } catch (caught) {
+      onError(errorMessage(caught));
+    }
+  };
+  const parentExtraViewTabs = extraViewTabs?.map((tab) => ({
+    ...tab,
+    onSelect: () => {
+      setLivePreviewSelected(false);
+      tab.onSelect();
+    },
+  })) ?? [];
+  const combinedExtraViewTabs: SessionTraceHeaderExtraViewTab[] = livePreviews.length > 0
+    ? [
+        ...parentExtraViewTabs,
+        {
+          id: "preview",
+          label: "Preview",
+          description: "Open the live development preview attached to this Pibo Session.",
+          active: livePreviewSelected,
+          onSelect: () => setLivePreviewSelected(true),
+        },
+      ]
+    : parentExtraViewTabs;
+  const livePreviewPanel = livePreviewSelected ? (
+    <SessionLivePreviewPanel
+      previews={livePreviews}
+      selectedPreview={selectedLivePreview}
+      loading={livePreviewsQuery.isLoading}
+      error={livePreviewsQuery.error ? errorMessage(livePreviewsQuery.error) : undefined}
+      reloadKey={livePreviewReloadKey}
+      onSelect={setSelectedLivePreviewId}
+      onReload={refreshLivePreview}
+      onRefresh={() => void livePreviewsQuery.refetch()}
+      onClose={(previewId) => void closeLivePreview(previewId)}
+      onEnterFullscreen={onEnterTerminalFullscreen}
+    />
+  ) : projectModulePanel;
+  const previewFullscreenContent = livePreviewSelected && selectedLivePreview ? (
+    <SessionLivePreviewPanel
+      previews={livePreviews}
+      selectedPreview={selectedLivePreview}
+      loading={livePreviewsQuery.isLoading}
+      error={livePreviewsQuery.error ? errorMessage(livePreviewsQuery.error) : undefined}
+      reloadKey={livePreviewReloadKey}
+      fullscreen
+      onSelect={setSelectedLivePreviewId}
+      onReload={refreshLivePreview}
+      onRefresh={() => void livePreviewsQuery.refetch()}
+      onClose={(previewId) => void closeLivePreview(previewId)}
+    />
+  ) : undefined;
+  const previewFullscreenTopBar = livePreviewSelected && selectedLivePreview ? (
+    <PreviewFullscreenTopBar
+      preview={selectedLivePreview}
+      onReload={refreshLivePreview}
+      onExit={onExitTerminalFullscreen ?? (() => undefined)}
+    />
+  ) : undefined;
 
   return (
     <>
@@ -524,12 +624,15 @@ export function SessionTracePane({
       roomNavigationPending={roomNavigationPending}
       sessionNavigationPending={sessionNavigationPending}
       traceError={traceError}
-      showRawEvents={showRawEvents}
+      showRawEvents={showRawEvents && !livePreviewSelected}
       currentTraceView={currentTraceView}
       rawEventLimit={rawEventLimit}
       tracePageFetching={showRawEvents ? rawEventsQuery.isFetching : tracePageQuery.isFetching}
       onLoadMoreRawEvents={loadMoreRawEvents}
       terminalFullscreen={terminalFullscreen}
+      fullscreenTopBar={previewFullscreenTopBar}
+      fullscreenContent={previewFullscreenContent}
+      hideComposer={livePreviewSelected}
       terminalFileDropEnabled={terminalFileDropEnabled}
       onTerminalFilesDropped={handleTerminalFilesDropped}
       onOpenSessionWindow={onOpenSessionWindow}
@@ -552,9 +655,9 @@ export function SessionTracePane({
         sessionViews,
         currentSessionView,
         allowedSessionViewIds,
-        extraViewTabs,
-        activeViewId,
-        terminalFullscreenAvailable: currentSessionView.id === "terminal" && (activeViewId ?? sessionViewId) === "terminal",
+        extraViewTabs: combinedExtraViewTabs,
+        activeViewId: livePreviewSelected ? "preview" : activeViewId,
+        terminalFullscreenAvailable: !livePreviewSelected && currentSessionView.id === "terminal" && (activeViewId ?? sessionViewId) === "terminal",
         onEnterTerminalFullscreen,
         onOpenSessionWindow,
         showRawEvents,
@@ -562,7 +665,10 @@ export function SessionTracePane({
         expandThinking,
         onShowWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(true),
         onHideWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(false),
-        onSelectSessionView,
+        onSelectSessionView: (viewId) => {
+          setLivePreviewSelected(false);
+          onSelectSessionView(viewId);
+        },
         onToggleRawEvents,
         onToggleThinking,
         onToggleExpandThinking,
@@ -570,10 +676,10 @@ export function SessionTracePane({
       }}
       projectSessionCreatePanel={projectSessionCreatePanel}
       workflowStartPanel={workflowStartPanel}
-      projectModulePanel={projectModulePanel}
+      projectModulePanel={livePreviewPanel}
       currentSessionView={currentSessionView}
       sessionViewProps={sessionViewProps}
-      webAnnotationsPanelRendered={webAnnotationsPanelRendered}
+      webAnnotationsPanelRendered={webAnnotationsPanelRendered && !livePreviewSelected}
       webAnnotationsPanelProps={{
         piboSessionId: selectedPiboSessionId,
         annotations: visibleWebAnnotations,
@@ -592,7 +698,7 @@ export function SessionTracePane({
         onCollapse: toggleWebAnnotationsPanelCollapsed,
         onClose: () => setWebAnnotationsPanelVisible(false),
       }}
-      runtimeRequestPanel={selectedBackendPiboSessionId ? (
+      runtimeRequestPanel={selectedBackendPiboSessionId && !livePreviewSelected ? (
         <RuntimeRequestPanel
           piboSessionId={selectedBackendPiboSessionId}
           approvals={runtimeApprovals}
