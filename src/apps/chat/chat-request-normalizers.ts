@@ -132,6 +132,7 @@ export type ChatModelDefaultsBody = {
 export type ChatUserSettingsBody = {
 	timezone?: unknown;
 	shortcuts?: unknown;
+	transcription?: unknown;
 	telemetryRetention?: unknown;
 };
 

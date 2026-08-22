@@ -97,6 +97,10 @@ const settingsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings",
 });
+const settingsTranscriptionRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "settings/transcription",
+});
 const settingsShortcutsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings/shortcuts",
@@ -118,7 +122,7 @@ const settingsProvidersRoute = createRoute({
 	path: "settings/providers",
 });
 const router = createRouter({
-	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, vscodeRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
+	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, vscodeRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsTranscriptionRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
 	basepath: "/apps/chat",
 });
 
