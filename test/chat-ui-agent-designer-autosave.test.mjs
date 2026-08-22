@@ -30,8 +30,8 @@ test("Agent Designer cannot restore an invalid persisted agent name", () => {
 	assert.match(agentsViewSource, /const draft: AgentDraft = \{[\s\S]{0,900}validateAgentName\(draft\.displayName\)[\s\S]{0,240}sessionStorage\.removeItem\(PENDING_AGENT_DRAFT_STORAGE_KEY\)[\s\S]{0,120}return null/);
 });
 
-test("Agent Designer cancels stale autosave timers and does not persist invalid names", () => {
-	assert.match(agentsViewSource, /const signature = agentDraftSignature\(draft\)[\s\S]{0,500}clearAutosaveTimer\(\)[\s\S]{0,240}const nameError = validateAgentName\(draft\.displayName\)[\s\S]{0,240}if \(nameError\) return[\s\S]{0,160}writePendingAgentDraft\(draft, savedSignatureRef\.current\)/);
+test("Agent Designer cancels stale autosave timers and does not persist unfinished name edits", () => {
+	assert.match(agentsViewSource, /const signature = agentDraftSignature\(draft\)[\s\S]{0,500}clearAutosaveTimer\(\)[\s\S]{0,240}const nameError = validateAgentName\(draft\.displayName\)[\s\S]{0,240}if \(editingName \|\| nameError\) return[\s\S]{0,160}writePendingAgentDraft\(draft, savedSignatureRef\.current\)/);
 });
 
 test("Agent Designer keeps pending edits recoverable and exposes save state instead of a Save button", () => {
