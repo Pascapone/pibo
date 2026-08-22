@@ -7,6 +7,7 @@ import type { ToolDisplayMode } from "../session-views/types";
 import { countRender } from "../renderMetrics";
 import { TraceSpanCard, type SpanExpansionDepth } from "./SpanNode";
 import { processSpanTree } from "./traceTree";
+import { filterToolDisplaySpans } from "./tool-display-spans";
 import { collectVisibleRows, isTraceSnapshotCollectionEnabled } from "./snapshotCollector";
 
 type TraceTimelineProps = {
@@ -677,18 +678,6 @@ function StreamingIndicator() {
 			</div>
 		</div>
 	);
-}
-
-function filterToolDisplaySpans(spans: Span[], mode: ToolDisplayMode): Span[] {
-	if (mode !== "hide" && mode !== "intent") return spans;
-	return spans.flatMap((span) => {
-		if (isToolDisplaySpan(span) && (mode === "hide" || typeof span.attributes.intent !== "string" || !span.attributes.intent.trim())) return [];
-		return [{ ...span, children: span.children ? filterToolDisplaySpans(span.children, mode) : undefined }];
-	});
-}
-
-function isToolDisplaySpan(span: Span): boolean {
-	return span.spanType === "tool.call" || span.spanType === "tool.result" || span.spanType === "agent.delegation";
 }
 
 export function filterThinking(spans: Span[], showThinking: boolean): Span[] {
