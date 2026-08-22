@@ -51,6 +51,7 @@ import {
 	waitForPiboProviderRecovery,
 } from "../../core/provider-recovery.js";
 import { PiAgentRuntimeAuthController } from "./auth.js";
+import { splitPiToolIntentArguments } from "./intent-tracing.js";
 import { loadModelCatalog as loadPiModelCatalog } from "./model-catalog.js";
 import {
 	PIBO_TRANSCRIPT_INTEGRITY_RESUME_MESSAGE_TYPE,
@@ -312,13 +313,15 @@ function normalizeToolCallEvent(piboSessionId: string, candidate: PiEventCandida
 		const toolCall = toolCallFromAssistantEvent(candidate);
 		if (!toolCall) return undefined;
 
+		const { args, intent } = splitPiToolIntentArguments(toolCall.args);
 		return {
 			type: "tool_call",
 			piboSessionId,
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
-			args: toolCall.args,
+			args,
 			argsComplete: candidate.assistantMessageEvent.type === "toolcall_end",
+			...(intent ? { intent } : {}),
 		};
 	}
 
@@ -331,23 +334,27 @@ function normalizeToolExecutionEvent(piboSessionId: string, candidate: PiEventCa
 	}
 
 	if (candidate.type === "tool_execution_start") {
+		const { args, intent } = splitPiToolIntentArguments(candidate.args);
 		return {
 			type: "tool_execution_started",
 			piboSessionId,
 			toolCallId: candidate.toolCallId,
 			toolName: candidate.toolName,
-			args: candidate.args,
+			args,
+			...(intent ? { intent } : {}),
 		};
 	}
 
 	if (candidate.type === "tool_execution_update") {
+		const { args, intent } = splitPiToolIntentArguments(candidate.args);
 		return {
 			type: "tool_execution_updated",
 			piboSessionId,
 			toolCallId: candidate.toolCallId,
 			toolName: candidate.toolName,
-			args: candidate.args,
+			args,
 			partialResult: candidate.partialResult,
+			...(intent ? { intent } : {}),
 		};
 	}
 

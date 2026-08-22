@@ -30,7 +30,7 @@ import { AgentsView } from "./agents/AgentsView";
 import { SessionTracePane } from "./session-trace-pane";
 import { SessionSidebar } from "./session-sidebar";
 import { getChatSessionView, listChatSessionViews } from "./session-views/registry";
-import type { ChatSessionViewId } from "./session-views/types";
+import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
 import {
 	clearStoredSelection,
 	readStoredComposerDraft,
@@ -42,6 +42,7 @@ import {
 	readStoredShowArchivedSessions,
 	readStoredShowRawEvents,
 	readStoredShowThinking,
+	readStoredToolDisplayMode,
 	removeStoredNewSessionProfile,
 	removeStoredRoomSelection,
 	writeStoredComposerDraft,
@@ -53,6 +54,7 @@ import {
 	writeStoredShowArchivedSessions,
 	writeStoredShowRawEvents,
 	writeStoredShowThinking,
+	writeStoredToolDisplayMode,
 } from "./app-storage";
 import {
 	addRoomToBootstrap,
@@ -291,6 +293,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
 	const [expandThinking, setExpandThinking] = useState(readStoredExpandThinking);
 	const [showRawEvents, setShowRawEvents] = useState(readStoredShowRawEvents);
+	const [toolDisplayMode, setToolDisplayMode] = useState<ToolDisplayMode>(readStoredToolDisplayMode);
 	const [showArchived, setShowArchived] = useState(readStoredShowArchivedSessions);
 	const [showArchivedRooms, setShowArchivedRooms] = useState(readStoredShowArchivedRooms);
 	const [newSessionProfile, setNewSessionProfile] = useState("");
@@ -1629,6 +1632,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						showRawEvents={showRawEvents}
 						showThinking={showThinking}
 						expandThinking={expandThinking}
+						toolDisplayMode={toolDisplayMode}
 						commands={slashCommands}
 						skills={skills}
 						mobileSidebarOpen={mobileSidebarOpen}
@@ -1653,6 +1657,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 							const next = !expandThinking;
 							setExpandThinking(next);
 							writeStoredExpandThinking(next);
+						}}
+						onToolDisplayModeChange={(mode) => {
+							setToolDisplayMode(mode);
+							writeStoredToolDisplayMode(mode);
 						}}
 						onThinkingLevelChange={(level) => void postAction(routePiboSessionId ?? "", "thinking", { level })}
 						onError={setError}
@@ -1795,6 +1803,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						showRawEvents={showRawEvents}
 						showThinking={showThinking}
 						expandThinking={expandThinking}
+						toolDisplayMode={toolDisplayMode}
 						commands={slashCommands}
 						skills={skills}
 						composerText={composerText}
@@ -1814,6 +1823,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 							const next = !expandThinking;
 							setExpandThinking(next);
 							writeStoredExpandThinking(next);
+						}}
+						onToolDisplayModeChange={(mode) => {
+							setToolDisplayMode(mode);
+							writeStoredToolDisplayMode(mode);
 						}}
 						onSessionAgentProfileChange={(profile) => void updateSelectedSessionProfile(profile)}
 						onFork={forkFrom}

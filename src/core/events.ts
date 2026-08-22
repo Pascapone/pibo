@@ -380,6 +380,7 @@ export type PiboToolCallEvent = {
 	toolName: string;
 	args: unknown;
 	argsComplete: boolean;
+	intent?: string;
 };
 
 export type PiboToolExecutionStartedEvent = {
@@ -389,6 +390,7 @@ export type PiboToolExecutionStartedEvent = {
 	toolCallId: string;
 	toolName: string;
 	args: unknown;
+	intent?: string;
 };
 
 export type PiboToolExecutionUpdatedEvent = {
@@ -399,6 +401,7 @@ export type PiboToolExecutionUpdatedEvent = {
 	toolName: string;
 	args: unknown;
 	partialResult: unknown;
+	intent?: string;
 };
 
 export type PiboToolExecutionFinishedEvent = {
@@ -409,6 +412,7 @@ export type PiboToolExecutionFinishedEvent = {
 	toolName: string;
 	result: unknown;
 	isError: boolean;
+	intent?: string;
 };
 
 export type PiboCompactionStartEvent = {

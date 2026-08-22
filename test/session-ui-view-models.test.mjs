@@ -227,7 +227,7 @@ test("Web Compact Terminal source preserves shared flow ordering hooks and strea
 	const fixtureRows = buildCanonicalTerminalRows();
 	assert.ok(fixtureRows.some((row) => row.kind === "tool.status" && row.orderSource), "canonical shared fixture exercises Web row/card hooks");
 	const compactSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"), "utf8");
-	assert.match(compactSource, /buildCompactTerminalRows\(traceView, \{ showThinking \}\)/, "Web terminal must derive rows from shared row builder");
+	assert.match(compactSource, /buildCompactTerminalRows\(traceView, \{ showThinking, toolDisplayMode \}\)/, "Web terminal must derive rows and tool display mode from the shared row builder");
 	assert.match(compactSource, /computeItemKey=\{\(_, row\) => row\.id\}/, "Web terminal should use shared row ids as stable render keys");
 	assert.match(compactSource, /data-row-kind=\{row\.kind\}/, "Web terminal should expose shared row kind hooks");
 	assert.match(compactSource, /data-row-status=\{row\.status\}/, "Web terminal should expose shared row status hooks");

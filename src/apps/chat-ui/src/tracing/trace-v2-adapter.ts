@@ -56,6 +56,7 @@ function traceNodeFromTimelineNode(row: TraceTimelineNode): PiboTraceNode {
 		eventId: row.eventId,
 		toolCallId: row.toolCallId,
 		runId: row.runId,
+		intent: row.intent,
 		type: row.type,
 		title: row.title,
 		status: row.status,

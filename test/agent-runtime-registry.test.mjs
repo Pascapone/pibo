@@ -85,10 +85,20 @@ test("runtime registry reports availability diagnostics and validates profile op
 	);
 	assert.equal(valid.some((diagnostic) => diagnostic.severity === "error"), false);
 
+	const intentEnabled = await registry.validateAgentRuntimeProfile(
+		new InitialSessionContextBuilder("intent-pi").withAgentRuntime("pi", { intentTracing: true }).createSession(),
+	);
+	assert.equal(intentEnabled.some((diagnostic) => diagnostic.severity === "error"), false);
+
 	const invalid = await registry.validateAgentRuntimeProfile(
 		new InitialSessionContextBuilder("invalid-pi").withAgentRuntime("pi", { unexpected: true }).createSession(),
 	);
-	assert.ok(invalid.some((diagnostic) => diagnostic.code === "pi_runtime_options_unsupported"));
+	assert.ok(invalid.some((diagnostic) => diagnostic.code === "pi_runtime_option_unsupported"));
+
+	const invalidIntent = await registry.validateAgentRuntimeProfile(
+		new InitialSessionContextBuilder("invalid-intent-pi").withAgentRuntime("pi", { intentTracing: "yes" }).createSession(),
+	);
+	assert.ok(invalidIntent.some((diagnostic) => diagnostic.code === "pi_intent_tracing_invalid"));
 
 	const unknown = await registry.validateAgentRuntimeProfile(
 		new InitialSessionContextBuilder("unknown-runtime").withAgentRuntime("missing-runtime").createSession(),
@@ -373,6 +383,13 @@ test("runtime registry validates descriptor and live-session capability claims",
 	assert.throws(
 		() => invalidFeatureRegistry.registerDriver(invalidFeatureDriver),
 		/nativeSubagents\.configurable requires nativeSubagents\.supported/,
+	);
+	const invalidIntentRegistry = new AgentRuntimeAdapterRegistry();
+	const invalidIntentDriver = createFakeAgentRuntimeDriver({ adapterId: "invalid-intent-capabilities" });
+	invalidIntentDriver.descriptor.capabilities.tools.intentTracing.configurable = true;
+	assert.throws(
+		() => invalidIntentRegistry.registerDriver(invalidIntentDriver),
+		/tools\.intentTracing\.configurable requires tools\.intentTracing\.supported/,
 	);
 	const invalidContextRegistry = new AgentRuntimeAdapterRegistry();
 	const invalidContextDriver = createFakeAgentRuntimeDriver({ adapterId: "invalid-context-capabilities" });

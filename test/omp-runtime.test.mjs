@@ -121,6 +121,13 @@ test("OMP turn controller streams a real prompt and resolves on terminal agent_e
 	assert.ok(deltas.length > 0, "expected assistant_delta events");
 	assert.equal(deltas[0].text, "Hello there");
 	assert.ok(events.some((e) => e.type === "turn_started"));
+	assert.deepEqual(events.find((event) => event.type === "tool_execution_started"), {
+		type: "tool_execution_started",
+		toolCallId: "tool-intent-1",
+		toolName: "read",
+		args: { path: "README.md" },
+		intent: "Reviewing project documentation",
+	});
 	turn.dispose();
 });
 
