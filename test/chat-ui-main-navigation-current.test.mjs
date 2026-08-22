@@ -18,6 +18,7 @@ async function renderHeader(area) {
 			mobileAreaMenuOpen: true,
 			mobileSidebarTriggerRef: { current: null },
 			totalRoomUnreadCount: 0,
+			vscodeEnabled: true,
 			onOpenMobileSidebar() {},
 			onSelectMainNavArea() {},
 			onToggleMobileAreaMenu() {},
@@ -30,10 +31,10 @@ async function renderHeader(area) {
 }
 
 test("desktop and mobile main navigation identify the active area", async () => {
-	const markup = await renderHeader("workflows");
+	const markup = await renderHeader("vscode");
 	const currentButtons = [...markup.matchAll(/<button(?=[^>]*aria-current="page")[^>]*>([\s\S]*?)<\/button>/g)];
 
 	assert.match(markup, /<nav aria-label="Main navigation"/);
 	assert.equal(currentButtons.length, 2, "expected one current desktop item and one current mobile item");
-	for (const [, contents] of currentButtons) assert.match(contents, />workflows</);
+	for (const [, contents] of currentButtons) assert.match(contents, />VS Code</);
 });
