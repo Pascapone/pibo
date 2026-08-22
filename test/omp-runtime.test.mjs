@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { OmpRpcClient } from "../dist/agent-runtimes/omp/client.js";
+import { OmpHostToolBridge } from "../dist/agent-runtimes/omp/host-tools.js";
 import { OmpRpcTurnController } from "../dist/agent-runtimes/omp/turn.js";
 import { OmpThreadController, readOmpAvailableCommands } from "../dist/agent-runtimes/omp/thread.js";
 import { parseOmpRuntimeConfig } from "../dist/agent-runtimes/omp/config.js";
@@ -56,6 +57,32 @@ test("OMP RPC client correlates get_state response by id", async (t) => {
 	const data = responseData(response);
 	assert.ok(data && typeof data === "object" && "sessionId" in data);
 	assert.equal(data.sessionId, "fake-session-1");
+});
+
+test("OMP host-tool bridge sends Pibo input schemas as RPC parameters", async (t) => {
+	const client = await startClient(t, "host-tools");
+	const bridge = new OmpHostToolBridge(
+		client,
+		{
+			createDefinitions() {
+				return [{
+					name: "get_goal",
+					title: "Get Goal",
+					description: "Get the current goal.",
+					inputSchema: { type: "object", properties: {} },
+					async execute() {
+						return { content: [{ type: "text", text: "ok" }] };
+					},
+				}];
+			},
+		},
+		{ cwd: process.cwd(), runtimeInstanceId: "omp-native", adapterId: "orp" },
+		() => {},
+	);
+	t.after(() => bridge.dispose());
+
+	assert.deepEqual(await bridge.install(), ["get_goal"]);
+	assert.deepEqual(bridge.installedNames, ["get_goal"]);
 });
 
 test("OMP RPC client surfaces model catalog and switches model", async (t) => {
