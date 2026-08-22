@@ -360,9 +360,9 @@ export function AgentsView({
 		clearAutosaveTimer();
 		setSaveState((current) => current === "saving" ? current : "idle");
 		const nameError = validateAgentName(draft.displayName);
-		if (nameError) return;
+		if (editingName || nameError) return;
 		writePendingAgentDraft(draft, savedSignatureRef.current);
-		if (editingName || runtimeOptionsError || !catalogRef.current) return;
+		if (runtimeOptionsError || !catalogRef.current) return;
 		autosaveTimerRef.current = window.setTimeout(() => {
 			autosaveTimerRef.current = null;
 			void persistIfNeeded().catch(() => undefined);
