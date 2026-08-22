@@ -393,7 +393,9 @@ export function createPiboCompactionPromptExtension(
 					spec: await readActivePiboCompactionPromptSpec(ctx.cwd),
 					model: ctx.model,
 					apiKey: auth.apiKey,
-					headers: auth.headers,
+					headers: auth.headers
+						? Object.fromEntries(Object.entries(auth.headers).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+						: undefined,
 					customInstructions: event.customInstructions,
 					signal: event.signal,
 					thinkingLevel: sessionContext.thinkingLevel as ThinkingLevel,

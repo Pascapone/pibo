@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
 	OPENAI_API_KEY_ENV,
 	OPENAI_BASE_URL,
@@ -62,7 +63,7 @@ const baseCodexModel = {
 	thinkingLevelMap: { xhigh: "xhigh", minimal: "low" },
 };
 
-test("GPT-5.6 registration keeps OpenAI API on API token auth and ChatGPT Subscription on OAuth", () => {
+test("GPT-5.6 registration leaves native provider auth ownership unchanged", () => {
 	const fake = makeFakeRegistry();
 	const result = registerOpenAiGpt56Models(fake.api, {
 		baseOpenAiModels: [baseOpenAiModel, baseCodexModel],
@@ -87,9 +88,20 @@ test("GPT-5.6 registration keeps OpenAI API on API token auth and ChatGPT Subscr
 	assert.equal(codex.config.baseUrl, OPENAI_CODEX_BASE_URL);
 	assert.equal(codex.config.api, OPENAI_CODEX_RESPONSES_API);
 	assert.equal(codex.config.apiKey, undefined);
-	assert.equal(typeof codex.config.oauth?.login, "function");
-	assert.equal(typeof codex.config.oauth?.getApiKey, "function");
+	assert.equal(codex.config.oauth, undefined);
 	assert.equal(codex.config.models.some((model) => model.provider === OPENAI_PROVIDER_ID), false);
+});
+
+test("GPT-5.6 registration preserves native Codex OAuth in ModelRuntime", async () => {
+	const modelRuntime = await ModelRuntime.create({ allowModelNetwork: false, refreshOnCreate: false });
+	const nativeProvider = modelRuntime.getProvider(OPENAI_CODEX_PROVIDER_ID);
+	assert.equal(typeof nativeProvider?.auth.oauth?.login, "function");
+
+	registerOpenAiGpt56Models(new ModelRegistry(modelRuntime));
+
+	const registeredProvider = modelRuntime.getProvider(OPENAI_CODEX_PROVIDER_ID);
+	assert.equal(typeof registeredProvider?.auth.oauth?.login, "function");
+	assert.ok(modelRuntime.getModel(OPENAI_CODEX_PROVIDER_ID, "gpt-5.6-sol"));
 });
 
 test("GPT-5.6 OpenAI API models preserve built-ins and add Sol Terra Luna", () => {

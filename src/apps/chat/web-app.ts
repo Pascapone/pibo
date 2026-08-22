@@ -2,7 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
-import { PI_AGENT_RUNTIME_CAPABILITIES } from "../../agent-runtimes/pi/adapter.js";
+import {
+	PI_AGENT_RUNTIME_CAPABILITIES,
+	PI_PROTOCOL_VERSION,
+} from "../../agent-runtimes/pi/adapter.js";
 import { AgentRuntimeBindingMissingError } from "../../agent-runtime/errors.js";
 import {
 	buildPortableRuntimeContextSnapshot,
@@ -3294,7 +3297,7 @@ async function resolveContextBuildRuntime(context: PiboWebAppContext, runtimeIns
 			transport: "embedded",
 			capabilities: structuredClone(PI_AGENT_RUNTIME_CAPABILITIES),
 			configSchema: { type: "object", additionalProperties: false },
-			protocol: { name: "pi-sdk", supportedRange: "0.80.6" },
+			protocol: { name: "pi-sdk", supportedRange: PI_PROTOCOL_VERSION },
 			diagnostics: [],
 		};
 	}

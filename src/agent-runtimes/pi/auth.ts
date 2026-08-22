@@ -1,4 +1,3 @@
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import { randomBytes, randomUUID } from "node:crypto";
 import { AgentRuntimeAuthError } from "../../agent-runtime/errors.js";
 import type {
@@ -11,6 +10,12 @@ import type {
 	StartAgentRuntimeAuthInput,
 } from "../../agent-runtime/types.js";
 import type { ModelCatalog } from "./model-catalog.js";
+import {
+	deletePiCredential,
+	getPiProviderAuthStatus,
+	listPiCredentials,
+	writePiCredential,
+} from "./credentials.js";
 
 const OPENAI_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
@@ -65,10 +70,6 @@ export type PendingDeviceLogin = {
 };
 
 const pendingLogins = new Map<string, PendingLogin | PendingDeviceLogin>();
-
-function createAuthStorage(): AuthStorage {
-	return AuthStorage.create();
-}
 
 function decodeJwt(token: string): Record<string, unknown> | null {
 	try {
@@ -310,8 +311,7 @@ export async function completeLogin(provider: string, code: string | undefined, 
 		);
 		const accountId = getOpenAiAccountId(tokenResult.accessToken);
 
-		const authStorage = createAuthStorage();
-		authStorage.set(provider, {
+		await writePiCredential(provider, {
 			type: "oauth",
 			access: tokenResult.accessToken,
 			refresh: tokenResult.refreshToken,
@@ -334,8 +334,7 @@ export async function completeLogin(provider: string, code: string | undefined, 
 		const tokenResult = await exchangeOpenAiAuthorizationCode(code, pending.verifier, OPENAI_REDIRECT_URI);
 		const accountId = getOpenAiAccountId(tokenResult.accessToken);
 
-		const authStorage = createAuthStorage();
-		authStorage.set("openai-codex", {
+		await writePiCredential("openai-codex", {
 			type: "oauth",
 			access: tokenResult.accessToken,
 			refresh: tokenResult.refreshToken,
@@ -349,9 +348,8 @@ export async function completeLogin(provider: string, code: string | undefined, 
 	throw new Error(`OAuth login complete not supported for provider "${provider}". Supported: openai-codex.`);
 }
 
-export function setApiKey(provider: string, apiKey: string): { success: true; provider: string } {
-	const authStorage = createAuthStorage();
-	authStorage.set(provider, { type: "api_key", key: apiKey });
+export async function setApiKey(provider: string, apiKey: string): Promise<{ success: true; provider: string }> {
+	await writePiCredential(provider, { type: "api_key", key: apiKey });
 	return { success: true, provider };
 }
 
@@ -363,12 +361,15 @@ export type LoginStatus = {
 	label?: string;
 };
 
-export function getLoginStatus(provider?: string): LoginStatus[] {
-	const authStorage = createAuthStorage();
-	if (provider) {
-		return [{ id: provider, provider, ...authStorage.getAuthStatus(provider) }];
-	}
-	return authStorage.list().map((p) => ({ id: p, provider: p, ...authStorage.getAuthStatus(p) }));
+export async function getLoginStatus(provider?: string): Promise<LoginStatus[]> {
+	const providerIds = provider
+		? [provider]
+		: (await listPiCredentials()).map((credential) => credential.providerId);
+	return await Promise.all(providerIds.map(async (providerId) => ({
+		id: providerId,
+		provider: providerId,
+		...(await getPiProviderAuthStatus(providerId)),
+	})));
 }
 
 export function cancelLogin(provider: string, state: string): { success: true; provider: string } {
@@ -377,9 +378,8 @@ export function cancelLogin(provider: string, state: string): { success: true; p
 	return { success: true, provider };
 }
 
-export function removeLogin(provider: string): { success: true; provider: string } {
-	const authStorage = createAuthStorage();
-	authStorage.logout(provider);
+export async function removeLogin(provider: string): Promise<{ success: true; provider: string }> {
+	await deletePiCredential(provider);
 	return { success: true, provider };
 }
 
@@ -426,21 +426,31 @@ export class PiAgentRuntimeAuthController {
 		try {
 			this.cleanupExpired();
 			const catalog = await this.loadCatalog();
+			const storedStatuses = await getLoginStatus();
 			const providers = new Map(catalog.providers.map((provider) => [provider.id, {
 				id: provider.id,
 				displayName: provider.label,
+				configured: provider.authConfigured,
 			}]));
-			for (const configured of getLoginStatus()) {
-				if (!providers.has(configured.id)) providers.set(configured.id, { id: configured.id, displayName: configured.id });
+			for (const stored of storedStatuses) {
+				const existing = providers.get(stored.id);
+				if (existing) {
+					existing.configured = stored.configured;
+					continue;
+				}
+				providers.set(stored.id, {
+					id: stored.id,
+					displayName: stored.id,
+					configured: stored.configured,
+				});
 			}
 			return [...providers.values()].map((provider) => {
-				const configured = getLoginStatus(provider.id)[0]?.configured ?? false;
 				const pending = [...this.pending.values()].find((entry) => entry.providerId === provider.id);
 				return {
 					id: provider.id,
 					displayName: provider.displayName,
-					state: pending ? "pending" : configured ? "connected" : "disconnected",
-					configured,
+					state: pending ? "pending" : provider.configured ? "connected" : "disconnected",
+					configured: provider.configured,
 					methods: [...piAuthMethodsForProvider(provider.id)],
 					...(pending ? { pending: { ...pending.flow } } : {}),
 				};
@@ -457,7 +467,7 @@ export class PiAgentRuntimeAuthController {
 		if (!supported) throw new Error(`Pi does not support ${input.method} authentication for provider "${input.providerId}".`);
 		if (input.method === "api_key") {
 			try {
-				setApiKey(input.providerId, input.apiKey);
+				await setApiKey(input.providerId, input.apiKey);
 			} catch {
 				throw new AgentRuntimeAuthError("pi_auth_failed", "Pi API-key authentication failed safely.", true);
 			}
@@ -512,7 +522,7 @@ export class PiAgentRuntimeAuthController {
 			const pending = this.requirePending(input.providerId, input.flowId);
 			cancelLogin(pending.nativeProviderId, pending.nativeState);
 			this.pending.delete(input.flowId);
-			const configured = getLoginStatus(input.providerId)[0]?.configured ?? false;
+			const configured = (await getLoginStatus(input.providerId))[0]?.configured ?? false;
 			return {
 				providerId: input.providerId,
 				state: configured ? "connected" : "disconnected",
@@ -536,7 +546,7 @@ export class PiAgentRuntimeAuthController {
 			this.pending.delete(flowId);
 		}
 		try {
-			removeLogin(input.providerId);
+			await removeLogin(input.providerId);
 		} catch {
 			throw new AgentRuntimeAuthError("pi_auth_failed", "Pi provider logout failed safely.", true);
 		}

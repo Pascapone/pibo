@@ -268,7 +268,7 @@ Terminal users have parity with Chat Web for changing thinking levels and can ch
 - **Compatibility:** The allowed thinking level strings are public product values and should not change without migration and UI updates.
 - **Security / Privacy:** Thinking text is reasoning content. It follows the same room/session access controls as other Pibo output events and must not be exposed outside authorized streams or trace reads.
 - **Performance:** Thinking deltas can be frequent. Durable storage and live compaction must stay bounded by the output-compaction contract.
-- **Dependencies:** Actual reasoning support and available levels come from Pi Coding Agent runtime model capabilities. Pi Coding Agent 0.80.6 supports `max`; provider model metadata determines whether it is available.
+- **Dependencies:** Actual reasoning support and available levels come from Pi Coding Agent runtime model capabilities. Pi Coding Agent 0.84.2 supports `max`; provider model metadata determines whether it is available.
 
 ## Success Criteria
 

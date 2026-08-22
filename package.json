@@ -3,8 +3,7 @@
   "version": "1.7.2",
   "type": "module",
   "workspaces": [
-    "packages/workflows",
-    "src/apps/chat-vscode/extension/vscode-shim"
+    "packages/workflows"
   ],
   "description": "Minimal TypeScript wrapper around Pi Coding Agent.",
   "files": [
@@ -56,11 +55,10 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.80.6",
-    "@earendil-works/pi-ai": "0.80.6",
-    "@earendil-works/pi-coding-agent": "0.80.6",
-    "@earendil-works/pi-tui": "0.80.6",
-    "@mdxeditor/editor": "^3.55.0",
+    "@earendil-works/pi-agent-core": "0.84.2",
+    "@earendil-works/pi-ai": "0.84.2",
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@earendil-works/pi-tui": "0.84.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tailwindcss/vite": "^4.2.4",
     "@tanstack/react-query": "^5.100.7",
@@ -85,7 +83,12 @@
     "tailwindcss": "^4.2.4",
     "typebox": "1.1.38"
   },
+  "overrides": {
+    "esbuild": "$esbuild",
+    "js-yaml": "4.3.1"
+  },
   "devDependencies": {
+    "@mdxeditor/editor": "^3.55.0",
     "@tanstack/router-plugin": "^1.167.28",
     "@types/node": "^25.6.0",
     "@types/prismjs": "^1.26.6",
@@ -93,12 +96,12 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "@vscode/vsce": "^3.6.0",
-    "esbuild": "^0.27.7",
+    "esbuild": "^0.28.2",
     "react-test-renderer": "19.2.5",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
-    "vscode": "0.0.0-pibo-test-shim",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "vscode": "file:src/apps/chat-vscode/extension/vscode-shim"
   }
 }
