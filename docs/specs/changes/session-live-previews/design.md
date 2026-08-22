@@ -48,9 +48,9 @@ Pibo's Web Gateway currently routes Fetch-style requests by path and delegates a
 
 ## Risks / Trade-offs
 
-- Wildcard DNS/TLS is required before public host validation can pass.
+- Wildcard DNS/TLS is required before arbitrary preview ids can operate permanently on a public deployment.
 - A preview-only session remains valid until its short expiry even if the main Pibo login logs out.
-- Process ownership checks are best-effort; the hard boundary is explicit local CLI registration, loopback-only targeting, port restrictions, and expiry.
+- Linux exposures are pinned to the original listening process and socket; other platforms retain the hard boundary of explicit local CLI registration, loopback-only targeting, port restrictions, and expiry.
 - Some applications deliberately reject reverse-proxy Host or Origin values and may require their own development-server configuration.
 
 ## Migration / Rollback

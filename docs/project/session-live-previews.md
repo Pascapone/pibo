@@ -21,7 +21,8 @@ Example reverse-proxy behavior, expressed without host-specific paths:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name *.preview.example.com;
 
     # Configure the wildcard certificate and key for this hostname.
@@ -71,6 +72,7 @@ The canonical Pibo auth cookie is never forwarded to the development application
 - Targets are loopback-only and created only through the local CLI.
 - Privileged and known sensitive service ports are rejected.
 - Exposures require an existing Pibo Session and expire automatically.
+- On Linux, Pibo pins an exposure to the original listening process and rejects a replacement process that later occupies the same port.
 - Preview JavaScript runs on a different origin from Chat Web.
 - Pibo, Better Auth, machine-session, and preview-auth cookies are stripped before upstream proxying.
 - Pibo handles HTTP, streaming responses, SSE, and WebSocket upgrades without giving the application Pibo credentials.
