@@ -1,4 +1,4 @@
-import { DEFAULT_CHAT_SESSION_VIEW_ID, type ChatSessionViewId } from "./session-views/types";
+import { DEFAULT_CHAT_SESSION_VIEW_ID, toolDisplayModes, type ChatSessionViewId, type ToolDisplayMode } from "./session-views/types";
 
 const LAST_SELECTION_STORAGE_KEY = "pibo.chat.lastSelection";
 const SESSION_VIEW_STORAGE_KEY = "pibo.chat.sessionView";
@@ -7,6 +7,7 @@ const COMPOSER_HISTORY_STORAGE_KEY = "pibo.chat.composerHistory";
 const SHOW_THINKING_STORAGE_KEY = "pibo.chat.showThinking";
 const EXPAND_THINKING_STORAGE_KEY = "pibo.chat.expandThinking";
 const SHOW_RAW_EVENTS_STORAGE_KEY = "pibo.chat.showRawEvents";
+const TOOL_DISPLAY_MODE_STORAGE_KEY = "pibo.chat.toolDisplayMode";
 const SHOW_ARCHIVED_SESSIONS_STORAGE_KEY = "pibo.chat.showArchived";
 const SHOW_ARCHIVED_ROOMS_STORAGE_KEY = "pibo.chat.showArchivedRooms";
 const NEW_SESSION_PROFILE_STORAGE_KEY = "pibo.chat.newSessionProfile";
@@ -161,6 +162,23 @@ export function writeStoredExpandThinking(value: boolean): void {
 
 export function readStoredShowRawEvents(): boolean {
 	return readStoredBoolean(SHOW_RAW_EVENTS_STORAGE_KEY, false);
+}
+
+export function readStoredToolDisplayMode(): ToolDisplayMode {
+	try {
+		const stored = localStorage.getItem(TOOL_DISPLAY_MODE_STORAGE_KEY);
+		return toolDisplayModes.includes(stored as ToolDisplayMode) ? stored as ToolDisplayMode : "default";
+	} catch {
+		return "default";
+	}
+}
+
+export function writeStoredToolDisplayMode(value: ToolDisplayMode): void {
+	try {
+		localStorage.setItem(TOOL_DISPLAY_MODE_STORAGE_KEY, value);
+	} catch {
+		// Browser storage can be unavailable in private or locked-down contexts.
+	}
 }
 
 export function writeStoredShowRawEvents(value: boolean): void {

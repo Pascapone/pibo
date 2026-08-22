@@ -107,6 +107,7 @@ function storedEventFromStreamEvent(
 			toolCallId: event.toolCallId,
 			toolName: event.toolName,
 			args: event.args,
+			...(event.intent ? { intent: event.intent } : {}),
 		};
 		return makeStored(event, piboSessionId, "tool_execution_started", payload, nextSequence, now);
 	}
@@ -122,6 +123,7 @@ function storedEventFromStreamEvent(
 					toolName: event.toolName,
 					args: event.args,
 					partialResult: event.partialResult,
+					...(event.intent ? { intent: event.intent } : {}),
 				}
 			: {
 					type: "tool_call",
@@ -131,6 +133,7 @@ function storedEventFromStreamEvent(
 					toolName: event.toolName,
 					args: event.args,
 					argsComplete: Boolean(event.argsComplete),
+					...(event.intent ? { intent: event.intent } : {}),
 				};
 		return makeStored(event, piboSessionId, sourceEventType, payload, nextSequence, now);
 	}
@@ -143,6 +146,7 @@ function storedEventFromStreamEvent(
 			toolName: event.toolName,
 			result: event.result,
 			isError: Boolean(event.isError),
+			...(event.intent ? { intent: event.intent } : {}),
 		};
 		return makeStored(event, piboSessionId, "tool_execution_finished", payload, nextSequence, now);
 	}

@@ -90,6 +90,27 @@ test("tool update only replaces the matching tool node and preserves siblings", 
   assert.equal(patchedById.get(otherTool.id), otherTool);
 });
 
+test("tool intent updates replace the matching node even when no other field changes", () => {
+  const tool = node({ id: "tool:call-1", type: "tool.call", title: "read", toolCallId: "call-1", status: "running", input: { path: "README.md" } });
+  const otherTool = node({ id: "tool:call-2", type: "tool.call", title: "bash", toolCallId: "call-2", status: "running" });
+  const base = view([tool, otherTool]);
+
+  const patched = patchTraceViewWithEvent(base, event({
+    type: "tool_execution_started",
+    piboSessionId: "ps-test",
+    eventId: "turn-1",
+    toolCallId: "call-1",
+    toolName: "read",
+    args: { path: "README.md" },
+    intent: "Reviewing project documentation",
+  }), "running");
+
+  const patchedById = new Map(patched.nodes.map((patchedNode) => [patchedNode.id, patchedNode]));
+  assert.notEqual(patchedById.get(tool.id), tool);
+  assert.equal(patchedById.get(tool.id).intent, "Reviewing project documentation");
+  assert.equal(patchedById.get(otherTool.id), otherTool);
+});
+
 test("duplicate raw event returns the same trace view", () => {
   const assistant = node({ id: "event:assistant:turn-1", type: "assistant.message", title: "Agent Message", status: "running", output: "a", summary: "a" });
   const stored = event({ type: "assistant_delta", piboSessionId: "ps-test", eventId: "turn-1", text: "b" });

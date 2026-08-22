@@ -6,6 +6,29 @@ import { adaptTrace } from "./tracing/adapt";
 
 export type SessionTraceViewLinks = Pick<ChatSessionViewProps, "sessionBreadcrumbs" | "originSession" | "derivedSessions">;
 
+export function sessionSupportsToolIntent(
+	bootstrap: BootstrapData,
+	piboSessionId: string | null,
+	profileName: string,
+): boolean {
+	const session = piboSessionId ? findSessionNode(bootstrap.sessions, piboSessionId) : undefined;
+	const staticProfile = bootstrap.agents.find((agent) => agent.name === profileName);
+	const customProfile = bootstrap.customAgents.find((agent) => agent.profileName === profileName);
+	const profile = customProfile ?? staticProfile;
+	const runtimeInstanceId = session?.runtimeInstanceId ?? profile?.runtimeInstanceId;
+	const runtime = bootstrap.agentCatalog?.agentRuntimes.find((candidate) =>
+		runtimeInstanceId ? candidate.id === runtimeInstanceId : session?.runtimeAdapterId ? candidate.adapterId === session.runtimeAdapterId : false,
+	);
+	const capability = runtime?.capabilities.tools.intentTracing;
+	if (!capability?.supported) return false;
+	if (!capability.configurable) return true;
+	const activeBinding = bootstrap.session?.id === piboSessionId ? bootstrap.session.runtimeBinding : undefined;
+	const boundConfiguration = activeBinding?.metadata?.intentTracing;
+	if (typeof boundConfiguration === "boolean") return boundConfiguration;
+	const configured = profile?.runtimeOptions?.intentTracing;
+	return typeof configured === "boolean" ? configured : capability.enabledByDefault;
+}
+
 export function resolveSessionTraceTitle(input: {
 	sessionNodes: readonly PiboWebSessionNode[];
 	selectedPiboSessionId: string | null;
@@ -65,6 +88,7 @@ export function createSessionTraceViewProps(input: {
 	isLoading: boolean;
 	showThinking: boolean;
 	expandThinking: boolean;
+	toolDisplayMode: ChatSessionViewProps["toolDisplayMode"];
 	selectedSessionProfile: string;
 	sessionActiveModelBadge?: string;
 	sessionRuntimeBinding?: RuntimeSessionBinding;
@@ -97,6 +121,7 @@ export function createSessionTraceViewProps(input: {
 		isLoading: input.isLoading,
 		showThinking: input.showThinking,
 		expandThinking: input.expandThinking,
+		toolDisplayMode: input.toolDisplayMode,
 		sessionAgentProfile: input.selectedSessionProfile,
 		sessionActiveModel: input.sessionActiveModelBadge,
 		sessionRuntimeBinding: input.sessionRuntimeBinding,

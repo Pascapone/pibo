@@ -64,6 +64,7 @@ function traceNodeShallowEqual(left: PiboTraceNode, right: PiboTraceNode): boole
 		left.eventId === right.eventId &&
 		left.toolCallId === right.toolCallId &&
 		left.runId === right.runId &&
+		left.intent === right.intent &&
 		left.type === right.type &&
 		left.title === right.title &&
 		left.status === right.status &&

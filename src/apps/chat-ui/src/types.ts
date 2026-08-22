@@ -632,6 +632,7 @@ export type AgentRuntimeCapabilities = {
 		piboManaged: AgentRuntimeCapabilityDelivery;
 		nativeToolInspection: AgentRuntimeCapabilityDelivery;
 		nativeToolYielding: AgentRuntimeCapabilityDelivery;
+		intentTracing: { supported: boolean; configurable: boolean; enabledByDefault: boolean };
 	};
 	mcp: { externalServers: AgentRuntimeCapabilityDelivery; statusInspection: boolean };
 	skills: AgentRuntimeCapabilityDelivery;

@@ -279,12 +279,14 @@ test("chat data ingest keeps progressive tool call argument snapshots", () => {
 				toolName: "read",
 				args: { path: "README.md" },
 				argsComplete: true,
+				intent: "Reviewing project documentation",
 			},
 		});
 
 		const events = store.eventLog.listEvents({ sessionId: session.id });
 		assert.equal(events.length, 2);
 		assert.deepEqual(events.map((event) => event.attributes.argsComplete), [false, true]);
+		assert.deepEqual(events.map((event) => event.attributes.intent), [undefined, "Reviewing project documentation"]);
 	} finally {
 		store.close();
 	}

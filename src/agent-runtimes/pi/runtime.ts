@@ -69,6 +69,7 @@ import {
 	type PiboToolDefinition,
 } from "../../tools/contract.js";
 import { compilePiboToolForPi } from "./tool-compiler.js";
+import { installPiIntentTracing, piIntentTracingEnabled } from "./intent-tracing.js";
 import type { PiboPortableToolSession } from "../../tools/session-service.js";
 import type {
 	AgentRuntimeDeliveryReport,
@@ -476,6 +477,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			tools: getBuiltinToolAllowlist(profile, piboToolDefinitions),
 		});
 
+		if (piIntentTracingEnabled(profile.runtimeOptions)) installPiIntentTracing(created.session);
 		installPiboTranscriptIntegrity(created.session);
 		installValidationOutputCompaction(created.session.agent);
 		registerPiboAssistantContextGuardRecovery(created.session, contextGuardRecovery);

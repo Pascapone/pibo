@@ -3,6 +3,7 @@ import { Check, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, GitBranch, 
 import { Virtuoso } from "react-virtuoso";
 import { useStickyVirtuoso } from "../components/useStickyVirtuoso";
 import type { PiboSignalSnapshot, Span, Trace } from "../types";
+import type { ToolDisplayMode } from "../session-views/types";
 import { countRender } from "../renderMetrics";
 import { TraceSpanCard, type SpanExpansionDepth } from "./SpanNode";
 import { processSpanTree } from "./traceTree";
@@ -13,6 +14,7 @@ type TraceTimelineProps = {
 	isLoading?: boolean;
 	showThinking: boolean;
 	expandThinking: boolean;
+	toolDisplayMode: ToolDisplayMode;
 	sessionAgentProfile?: string;
 	sessionActiveModel?: string;
 	signals?: PiboSignalSnapshot;
@@ -81,6 +83,7 @@ export function TraceTimeline({
 	isLoading = false,
 	showThinking,
 	expandThinking,
+	toolDisplayMode,
 	sessionAgentProfile,
 	sessionActiveModel,
 	signals,
@@ -107,8 +110,8 @@ export function TraceTimeline({
 
 	const spanTree = useMemo(() => {
 		if (!trace?.spans) return [];
-		return processSpanTree(filterThinking(trace.spans, showThinking));
-	}, [trace?.spans, showThinking]);
+		return processSpanTree(filterToolDisplaySpans(filterThinking(trace.spans, showThinking), toolDisplayMode));
+	}, [showThinking, toolDisplayMode, trace?.spans]);
 
 	const allSpans = useMemo(() => flattenSpans(spanTree), [spanTree]);
 	const startTime = useMemo(() => {
@@ -353,6 +356,7 @@ export function TraceTimeline({
 									onFork={onFork}
 									onOpenSession={onOpenSession}
 									signals={signals}
+									toolDisplayMode={toolDisplayMode}
 								/>
 							</div>
 						)}
@@ -673,6 +677,18 @@ function StreamingIndicator() {
 			</div>
 		</div>
 	);
+}
+
+function filterToolDisplaySpans(spans: Span[], mode: ToolDisplayMode): Span[] {
+	if (mode !== "hide" && mode !== "intent") return spans;
+	return spans.flatMap((span) => {
+		if (isToolDisplaySpan(span) && (mode === "hide" || typeof span.attributes.intent !== "string" || !span.attributes.intent.trim())) return [];
+		return [{ ...span, children: span.children ? filterToolDisplaySpans(span.children, mode) : undefined }];
+	});
+}
+
+function isToolDisplaySpan(span: Span): boolean {
+	return span.spanType === "tool.call" || span.spanType === "tool.result" || span.spanType === "agent.delegation";
 }
 
 export function filterThinking(spans: Span[], showThinking: boolean): Span[] {

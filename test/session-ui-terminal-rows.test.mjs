@@ -446,6 +446,88 @@ test("compact terminal row identity survives assistant and reasoning projection 
 	}
 });
 
+test("tool display modes preserve default output and support hide, slim, and intent views", () => {
+	const view = traceView([
+		traceNode("user.message", "user-1", { order: 1, output: "Inspect the tool modes" }),
+		traceNode("tool.call", "tool-1", {
+			order: 2,
+			title: "read",
+			intent: "Reviewing runtime configuration",
+			input: { path: "src/runtime.ts" },
+			output: "line one\nline two",
+		}),
+		traceNode("assistant.message", "assistant-1", { order: 3, output: "Done" }),
+	]);
+
+	const defaultRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "default" });
+	assert.equal(defaultRows.length, 3);
+	assert.match(rowText(defaultRows[1]), /line one/);
+
+	const hiddenRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "hide" });
+	assert.deepEqual(hiddenRows.map((row) => row.kind), ["message.user", "message.assistant"]);
+
+	const slimRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "slim" });
+	assert.equal(slimRows[1].lines.length, 1);
+	assert.equal(slimRows[1].output, undefined);
+	assert.equal(slimRows[1].expandable, false);
+	assert.equal(slimRows[1].singleLine, true);
+	assert.doesNotMatch(rowText(slimRows[1]), /line one/);
+
+	const intentRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "intent" });
+	assert.equal(intentRows[1].lines.length, 1);
+	assert.equal(rowText(intentRows[1]), "Reviewing runtime configuration");
+	assert.equal(intentRows[1].output, undefined);
+	assert.doesNotMatch(rowText(intentRows[1]), /read|line one/i);
+	assert.deepEqual(
+		buildCompactTerminalRows(traceView([traceNode("tool.call", "tool-without-intent", { title: "read", input: { path: "README.md" } })]), { showThinking: false, toolDisplayMode: "intent" }),
+		[],
+	);
+});
+
+test("tool display modes include shell tools rendered as command rows", () => {
+	const view = traceView([
+		traceNode("tool.call", "tool-shell", {
+			toolCallId: "shell-call",
+			title: "bash",
+			intent: "Wait briefly to validate live intent projection",
+			input: { command: "sleep 5" },
+			output: "completed output",
+		}),
+	]);
+
+	assert.equal(buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "default" })[0]?.kind, "execution.command");
+	assert.deepEqual(buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "hide" }), []);
+
+	const slimRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "slim" });
+	assert.equal(slimRows.length, 1);
+	assert.equal(slimRows[0].singleLine, true);
+	assert.equal(slimRows[0].output, undefined);
+	assert.doesNotMatch(rowText(slimRows[0]), /completed output/);
+
+	const intentRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "intent" });
+	assert.equal(intentRows.length, 1);
+	assert.equal(rowText(intentRows[0]), "Wait briefly to validate live intent projection");
+});
+
+test("intent mode preserves intent when a later conceptual tool row omits it", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "tool-start", {
+			order: 1,
+			toolCallId: "shared-tool",
+			intent: "Reviewing project documentation",
+			input: { path: "README.md" },
+		}),
+		traceNode("tool.result", "tool-result", {
+			order: 2,
+			toolCallId: "shared-tool",
+			output: "ok",
+		}),
+	]), { showThinking: false, toolDisplayMode: "intent" });
+
+	assert.equal(rows.length, 1);
+	assert.equal(rowText(rows[0]), "Reviewing project documentation");
+});
+
 test("compact terminal identity does not collapse repeated compactions or unresolved subagents", () => {
 	const rows = buildCompactTerminalRows(traceView([
 		traceNode("execution.compaction", "compaction-1", { order: 1, stableKey: "compaction:active" }),

@@ -585,6 +585,7 @@ function traceNodeFromEvent(
 				id: `tool:${event.toolCallId}`,
 				parentId: turnParentId,
 				toolCallId: event.toolCallId,
+				intent: event.intent,
 				type: subagentTool ? "agent.delegation" : "tool.call",
 				title: event.toolName,
 				status:
@@ -858,6 +859,7 @@ function isNativeHistoryToolEchoEvent(
 		event.type !== "tool_execution_updated" &&
 		event.type !== "tool_execution_finished"
 	) return false;
+	if (typeof event.intent === "string" && event.intent.trim()) return false;
 	return coverage.toolCallIds.has(event.toolCallId) || historyCoversEvent(event, coverage);
 }
 
@@ -1124,6 +1126,7 @@ function thinkingEventNodeId(
 
 function mergeToolEvent(target: PiboTraceNode, update: PiboTraceNode): void {
 	target.status = update.status;
+	target.intent = update.intent ?? target.intent;
 	target.summary = update.summary ?? target.summary;
 	target.input = mergeDelegationInput(target, update);
 	target.output = update.output ?? target.output;

@@ -70,6 +70,7 @@ export type CompactTerminalRow = {
 	sourceNodeIds: string[];
 	eventId?: string;
 	runId?: string;
+	intent?: string;
 	orderSource?: string;
 	orderStreamId?: number;
 	orderStreamFrameIndex?: number;
@@ -85,12 +86,16 @@ export type CompactTerminalRow = {
 	markdown?: string;
 	payloadRefs?: Partial<Record<"input" | "output" | "reasoning" | "error" | "raw", TracePayloadRef>>;
 	expandable?: boolean;
+	singleLine?: boolean;
 	previewOmission?: CompactTerminalPreviewOmission;
 	detailItems?: readonly CompactTerminalDetailItem[];
 };
 
+export type ToolDisplayMode = "default" | "hide" | "slim" | "intent";
+
 export type BuildTerminalRowsOptions = {
 	showThinking: boolean;
+	toolDisplayMode?: ToolDisplayMode;
 };
 
 type FlatTraceNode = {
@@ -127,7 +132,52 @@ export function buildCompactTerminalRows(
 		.filter((item) => item.node.type !== "agent.turn" && (options.showThinking || item.node.type !== "model.reasoning"));
 	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
 	applyCompletedTurnTiming(candidates, turnById);
-	return groupRelatedToolCandidates(reconcileConceptualRowCandidates(candidates)).map((candidate) => candidate.row);
+	const reconciled = reconcileConceptualRowCandidates(candidates);
+	const rows = (options.toolDisplayMode ?? "default") === "default"
+		? groupRelatedToolCandidates(reconciled).map((candidate) => candidate.row)
+		: reconciled.map((candidate) => candidate.row);
+	return applyToolDisplayMode(rows, options.toolDisplayMode ?? "default");
+}
+
+function applyToolDisplayMode(rows: CompactTerminalRow[], mode: ToolDisplayMode): CompactTerminalRow[] {
+	if (mode === "default") return rows;
+	if (mode === "hide") return rows.filter((row) => !isToolDisplayRow(row));
+	return rows.flatMap((row) => {
+		if (!isToolDisplayRow(row)) return [row];
+		const intent = row.intent?.trim();
+		if (mode === "intent" && !intent) return [];
+		const slimRow: CompactTerminalRow = {
+			...row,
+			lines: row.lines.slice(0, 1),
+			input: undefined,
+			output: undefined,
+			error: undefined,
+			markdown: undefined,
+			expandable: false,
+			singleLine: true,
+			previewOmission: undefined,
+			detailItems: undefined,
+		};
+		if (mode !== "intent") return [slimRow];
+		return [{
+			...slimRow,
+			title: undefined,
+			summary: undefined,
+			lines: [{
+				prefix: "bullet",
+				tokens: [token(intent!, row.status === "error" ? "red" : row.status === "done" ? "green" : "cyan", "semibold")],
+			}],
+		}];
+	});
+}
+
+function isToolDisplayRow(row: CompactTerminalRow): boolean {
+	return row.id.startsWith("terminal:tool:")
+		|| row.kind === "tool.call"
+		|| row.kind === "tool.image"
+		|| row.kind === "tool.group.exploring"
+		|| row.kind === "tool.group.images"
+		|| row.kind === "agent.delegation";
 }
 
 export function findActiveTurnStartedAt(traceView: PiboSessionTraceView | null): string | undefined {
@@ -224,6 +274,7 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 		row: {
 			...candidate.row,
 			id: compactTerminalRowIdentity(node),
+			intent: node.intent,
 			...debugFields(node),
 		},
 	};
@@ -275,6 +326,7 @@ function reconcileConceptualRowCandidates(candidates: readonly RowCandidate[]): 
 				...existing.row,
 				...candidate.row,
 				sourceNodeIds: [...new Set([...existing.row.sourceNodeIds, ...candidate.row.sourceNodeIds])],
+				intent: candidate.row.intent ?? existing.row.intent,
 				input: candidate.row.input ?? existing.row.input,
 				output: candidate.row.output ?? existing.row.output,
 				error: candidate.row.error ?? existing.row.error,
