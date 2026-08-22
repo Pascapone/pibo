@@ -367,7 +367,7 @@ export function Composer({
 						<div className="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
 							<div>
 								<div className="text-sm font-semibold text-slate-100">Pasted image detected</div>
-								<div className="mt-1 text-xs text-slate-400">Upload this clipboard image to ~/.pibo/uploads?</div>
+								<div className="mt-1 text-xs text-slate-400">Upload this clipboard image to the configured Pibo uploads directory?</div>
 							</div>
 							<button type="button" onClick={closeClipboardImageDialog} className="rounded-sm p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200" aria-label="Cancel pasted image upload">
 								<X size={14} />

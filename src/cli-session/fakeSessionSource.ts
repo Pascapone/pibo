@@ -925,10 +925,10 @@ function fakeUploadResult(args: string | undefined): unknown {
     return {
       supported: false,
       unsupportedReason:
-        "Usage: /upload <path>. Browser file picker upload is Web-only; copy files to ~/.pibo/uploads from the shell.",
+        "Usage: /upload <path>. Browser file picker upload is Web-only; copy files to $PIBO_HOME/uploads (default ~/.pibo/uploads) from the shell.",
     };
   return {
-    message: `Terminal upload for ${target}: copy the file to ~/.pibo/uploads or use Web /upload. The CLI did not copy file contents.`,
+    message: `Terminal upload for ${target}: copy the file to $PIBO_HOME/uploads (default ~/.pibo/uploads) or use Web /upload. The CLI did not copy file contents.`,
   };
 }
 
