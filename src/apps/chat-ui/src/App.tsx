@@ -123,6 +123,7 @@ import { SettingsView } from "./settings/SettingsView";
 import type { SettingsPanel } from "./settings/types";
 import { ProjectsArea } from "./projects/ProjectsArea";
 import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
+import { VscodeArea } from "./VscodeArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
 import { mobileSidebarA11yProps, useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
@@ -1530,7 +1531,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		&& (area === "projects" || sessionViewId === "terminal");
 	const routeShellClassName = isTerminalFullscreen
 		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
-		: (area === "workflows" || area === "cron" || area === "loops")
+		: (area === "vscode" || area === "workflows" || area === "cron" || area === "loops")
 			? "h-full overflow-hidden"
 			: `grid ${(area === "sessions" || area === "projects") && showRawEvents
 				? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
@@ -1567,6 +1568,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 						mobileAreaMenuOpen={mobileAreaMenuOpen}
 						mobileSidebarTriggerRef={mobileSidebarTriggerRef}
 						totalRoomUnreadCount={totalRoomUnreadCount}
+						vscodeEnabled={Boolean(bootstrap.integrations?.vscode)}
+						showMobileSidebarTrigger={area !== "vscode"}
 						onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
 						onSelectMainNavArea={selectMainNavArea}
 						onToggleMobileAreaMenu={() => setMobileAreaMenuOpen((open) => !open)}
@@ -1588,7 +1591,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 				data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
 				className={`min-h-0 ${routeShellClassName}`}
 			>
-				{area === "cron" ? (
+				{area === "vscode" ? (
+					<VscodeArea integration={bootstrap.integrations?.vscode} />
+				) : area === "cron" ? (
 					<CronArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={closeMobileSidebar} />
 				) : area === "loops" ? (
 					<LoopArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={closeMobileSidebar} />
