@@ -25,6 +25,9 @@ type SessionTraceLayoutProps = {
   tracePageFetching: boolean;
   onLoadMoreRawEvents: () => void;
   terminalFullscreen: boolean;
+  fullscreenTopBar?: ReactNode;
+  fullscreenContent?: ReactNode;
+  hideComposer?: boolean;
   terminalFileDropEnabled: boolean;
   onTerminalFilesDropped: (files: readonly File[]) => Promise<void>;
   onOpenSessionWindow?: () => void;
@@ -56,6 +59,9 @@ export function SessionTraceLayout({
   tracePageFetching,
   onLoadMoreRawEvents,
   terminalFullscreen,
+  fullscreenTopBar,
+  fullscreenContent,
+  hideComposer = false,
   terminalFileDropEnabled,
   onTerminalFilesDropped,
   onOpenSessionWindow,
@@ -98,11 +104,13 @@ export function SessionTraceLayout({
         className="min-h-0 flex flex-col"
       >
         {terminalFullscreen ? (
-          <TerminalFullscreenTopBar
-            title={headerProps.title}
-            onOpenSessionWindow={onOpenSessionWindow}
-            onExit={onExitTerminalFullscreen}
-          />
+          fullscreenTopBar ?? (
+            <TerminalFullscreenTopBar
+              title={headerProps.title}
+              onOpenSessionWindow={onOpenSessionWindow}
+              onExit={onExitTerminalFullscreen}
+            />
+          )
         ) : (
           <SessionTraceHeader {...headerProps} />
         )}
@@ -116,7 +124,9 @@ export function SessionTraceLayout({
             {workflowStartPanel}
           </div>
         ) : null}
-        {!terminalFullscreen && projectModulePanel ? (
+        {terminalFullscreen && fullscreenContent ? (
+          fullscreenContent
+        ) : !terminalFullscreen && projectModulePanel ? (
           projectModulePanel
         ) : terminalLoading ? (
           <TerminalLoadingSkeleton label={roomNavigationPending ? "Loading room" : "Loading session"} />
@@ -131,7 +141,7 @@ export function SessionTraceLayout({
           <WebAnnotationsSessionPanel {...webAnnotationsPanelProps} />
         ) : null}
         {runtimeRequestPanel}
-        <Composer {...composerProps} />
+        {hideComposer ? null : <Composer {...composerProps} />}
       </TerminalFileDropTarget>
 
       <RawEventsSidebar

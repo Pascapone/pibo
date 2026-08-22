@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
+import type { Duplex } from "node:stream";
 import { PiboAuthError } from "../auth/types.js";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
 import { handleSimpleAgentApiRequest } from "../api/simple-agent-api.js";
@@ -262,6 +263,14 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 	const handleRequest = async (nodeRequest: IncomingMessage, nodeResponse: ServerResponse): Promise<void> => {
 		try {
 			const baseURL = createRequestBaseURL(nodeRequest, host, port);
+			const requestURL = new URL(nodeRequest.url ?? "/", baseURL);
+			const ctx = requireContext();
+			const apps = ctx.getWebApps();
+			const hostApp = apps.find((candidate) => candidate.matchesHost?.(requestURL.hostname));
+			if (hostApp?.handleNodeRequest) {
+				await hostApp.handleNodeRequest(nodeRequest, nodeResponse, createAppContext(ctx), requestURL);
+				return;
+			}
 			const baseRequest = await nodeRequestToWebRequest(nodeRequest, baseURL);
 			// Inject the TCP socket peer into every request so the local auth
 			// plugin can apply the same loopback predicate from `getSession`
@@ -298,14 +307,12 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 				return;
 			}
 
-			const ctx = requireContext();
 			const simpleApiResponse = await handleSimpleAgentApiRequest(request, ctx);
 			if (simpleApiResponse) {
 				await sendResponse(nodeResponse, simpleApiResponse);
 				return;
 			}
 
-			const apps = ctx.getWebApps();
 			const app = apps.find(
 				(candidate) => matchPrefix(url.pathname, candidate.mountPath) || matchPrefix(url.pathname, candidate.apiPrefix),
 			);
@@ -336,6 +343,25 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 		}
 	};
 
+	const handleUpgrade = async (nodeRequest: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> => {
+		try {
+			const ctx = requireContext();
+			const requestURL = new URL(nodeRequest.url ?? "/", createRequestBaseURL(nodeRequest, host, port));
+			const app = ctx.getWebApps().find((candidate) => candidate.matchesHost?.(requestURL.hostname));
+			if (!app?.handleUpgrade) {
+				socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+				return;
+			}
+			await app.handleUpgrade(nodeRequest, socket, head, createAppContext(ctx), requestURL);
+		} catch (error) {
+			if (!socket.destroyed) {
+				const message = error instanceof PiboAuthError || error instanceof PiboWebHttpError ? "Unauthorized" : "Bad Gateway";
+				const status = error instanceof PiboAuthError || error instanceof PiboWebHttpError ? 401 : 502;
+				socket.end(`HTTP/1.1 ${status} ${message}\r\nConnection: close\r\n\r\n`);
+			}
+		}
+	};
+
 	return {
 		name: WEB_CHANNEL_NAME,
 		kind: "web",
@@ -348,6 +374,9 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			context = channelContext;
 			server = createServer((request, response) => {
 				void handleRequest(request, response);
+			});
+			server.on("upgrade", (request, socket, head) => {
+				void handleUpgrade(request, socket, head);
 			});
 			server.on("connection", (socket) => {
 				sockets.add(socket);

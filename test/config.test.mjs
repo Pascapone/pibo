@@ -24,6 +24,8 @@ test("pibo config stores and reads supported keys", () => {
 		config = setPiboConfigValue(config, "auth.allowedEmails", "you@example.com,friend@example.com");
 		config = setPiboConfigValue(config, "auth.trustedOrigins", "http://4788.192.168.0.204.sslip.io");
 		config = setPiboConfigValue(config, "auth.databasePath", "/tmp/pibo-auth.sqlite");
+		config = setPiboConfigValue(config, "preview.baseURL", "https://preview.example.test");
+		config = setPiboConfigValue(config, "preview.databasePath", "/tmp/pibo-previews.sqlite");
 		savePiboConfig(config, path);
 
 		const loaded = loadPiboConfig(path);
@@ -33,11 +35,15 @@ test("pibo config stores and reads supported keys", () => {
 			"http://4788.192.168.0.204.sslip.io",
 		]);
 		assert.equal(getPiboConfigValue(loaded, "auth.databasePath"), "/tmp/pibo-auth.sqlite");
+		assert.equal(getPiboConfigValue(loaded, "preview.baseURL"), "https://preview.example.test");
+		assert.equal(getPiboConfigValue(loaded, "preview.databasePath"), "/tmp/pibo-previews.sqlite");
 
 		const withoutBaseURL = deletePiboConfigValue(loaded, "auth.baseURL");
 		assert.equal(getPiboConfigValue(withoutBaseURL, "auth.baseURL"), undefined);
 		const withoutDatabasePath = deletePiboConfigValue(loaded, "auth.databasePath");
 		assert.equal(getPiboConfigValue(withoutDatabasePath, "auth.databasePath"), undefined);
+		const withoutPreviewBaseURL = deletePiboConfigValue(loaded, "preview.baseURL");
+		assert.equal(getPiboConfigValue(withoutPreviewBaseURL, "preview.baseURL"), undefined);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
