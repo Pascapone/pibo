@@ -61,6 +61,8 @@ export function SessionLivePreviewPanel({
 			{fullscreen ? null : (
 				<div className="min-h-11 border-b border-slate-800 bg-[#151f24] px-3 flex items-center gap-2">
 					<select
+						id="session-live-preview-select"
+						name="session-live-preview"
 						value={selectedPreview.id}
 						onChange={(event) => onSelect(event.target.value)}
 						aria-label="Selected live preview"
