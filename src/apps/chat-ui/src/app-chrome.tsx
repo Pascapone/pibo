@@ -3,9 +3,26 @@ import { AlertTriangle, LogOut, List, Menu, RefreshCw, UserRound } from "lucide-
 import { signInWithGoogle, signOut } from "./api-auth";
 import type { BootstrapData } from "./types";
 
-export type AppArea = "sessions" | "projects" | "workflows" | "cron" | "loops" | "agents" | "context" | "settings";
+export type AppArea = "sessions" | "projects" | "vscode" | "workflows" | "cron" | "loops" | "agents" | "context" | "settings";
 
-const MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "projects", "workflows", "cron", "loops", "agents", "context", "settings"];
+const BASE_MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "projects", "workflows", "cron", "loops", "agents", "context", "settings"];
+const APP_AREA_LABELS: Record<AppArea, string> = {
+	sessions: "sessions",
+	projects: "projects",
+	vscode: "VS Code",
+	workflows: "workflows",
+	cron: "cron",
+	loops: "loops",
+	agents: "agents",
+	context: "context",
+	settings: "settings",
+};
+
+export function mainNavAreas(vscodeEnabled: boolean): readonly AppArea[] {
+	return vscodeEnabled
+		? ["sessions", "projects", "vscode", "workflows", "cron", "loops", "agents", "context", "settings"]
+		: BASE_MAIN_NAV_AREAS;
+}
 const MAIN_NAV_MENU_ID = "main-navigation-menu";
 
 type AppHeaderProps = {
@@ -14,6 +31,8 @@ type AppHeaderProps = {
 	mobileAreaMenuOpen: boolean;
 	mobileSidebarTriggerRef: RefObject<HTMLButtonElement | null>;
 	totalRoomUnreadCount: number;
+	vscodeEnabled?: boolean;
+	showMobileSidebarTrigger?: boolean;
 	onOpenMobileSidebar: () => void;
 	onSelectMainNavArea: (area: AppArea) => void;
 	onToggleMobileAreaMenu: () => void;
@@ -35,6 +54,8 @@ export function AppHeader({
 	mobileAreaMenuOpen,
 	mobileSidebarTriggerRef,
 	totalRoomUnreadCount,
+	vscodeEnabled = false,
+	showMobileSidebarTrigger = true,
 	onOpenMobileSidebar,
 	onSelectMainNavArea,
 	onToggleMobileAreaMenu,
@@ -45,9 +66,10 @@ export function AppHeader({
 	const mobileAreaMenuButtonRef = useRef<HTMLButtonElement>(null);
 	const mobileAreaMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 	const pendingMenuFocusIndexRef = useRef<number | null>(null);
+	const navigationAreas = mainNavAreas(vscodeEnabled);
 
 	const focusMenuItem = (index: number) => {
-		const normalizedIndex = (index + MAIN_NAV_AREAS.length) % MAIN_NAV_AREAS.length;
+		const normalizedIndex = (index + navigationAreas.length) % navigationAreas.length;
 		mobileAreaMenuItemRefs.current[normalizedIndex]?.focus();
 	};
 
@@ -66,7 +88,7 @@ export function AppHeader({
 			openMenuWithFocus(0);
 		} else if (event.key === "ArrowUp") {
 			event.preventDefault();
-			openMenuWithFocus(MAIN_NAV_AREAS.length - 1);
+			openMenuWithFocus(navigationAreas.length - 1);
 		}
 	};
 
@@ -78,9 +100,9 @@ export function AppHeader({
 		const currentIndex = mobileAreaMenuItemRefs.current.findIndex((item) => item === document.activeElement);
 		let nextIndex: number | null = null;
 		if (event.key === "ArrowDown") nextIndex = currentIndex < 0 ? 0 : currentIndex + 1;
-		else if (event.key === "ArrowUp") nextIndex = currentIndex < 0 ? MAIN_NAV_AREAS.length - 1 : currentIndex - 1;
+		else if (event.key === "ArrowUp") nextIndex = currentIndex < 0 ? navigationAreas.length - 1 : currentIndex - 1;
 		else if (event.key === "Home") nextIndex = 0;
-		else if (event.key === "End") nextIndex = MAIN_NAV_AREAS.length - 1;
+		else if (event.key === "End") nextIndex = navigationAreas.length - 1;
 		if (nextIndex === null) return;
 		event.preventDefault();
 		event.stopPropagation();
@@ -122,21 +144,23 @@ export function AppHeader({
 	return (
 		<header className="relative flex items-center gap-3 px-4 bg-[#1a262b] border-b border-slate-800 min-h-14 max-[980px]:px-3">
 			<div className="flex min-w-0 items-center gap-2">
-				<button
-					ref={mobileSidebarTriggerRef}
-					type="button"
-					onClick={onOpenMobileSidebar}
-					className="min-[981px]:hidden shrink-0 p-1.5 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-					title="Open sidebar"
-					aria-label="Open sidebar"
-				>
-					<Menu size={16} />
-				</button>
+				{showMobileSidebarTrigger ? (
+					<button
+						ref={mobileSidebarTriggerRef}
+						type="button"
+						onClick={onOpenMobileSidebar}
+						className="min-[981px]:hidden shrink-0 p-1.5 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+						title="Open sidebar"
+						aria-label="Open sidebar"
+					>
+						<Menu size={16} />
+					</button>
+				) : null}
 				<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Logo" className="h-5 w-auto shrink-0" />
 				<div className="truncate font-extrabold tracking-[0.08em] uppercase text-lg max-[420px]:text-base">Pibo Chat</div>
 			</div>
 			<nav aria-label="Main navigation" className="flex gap-1 max-[1200px]:hidden min-[1201px]:absolute min-[1201px]:left-1/2 min-[1201px]:-translate-x-1/2">
-				{MAIN_NAV_AREAS.map((item) => (
+				{navigationAreas.map((item) => (
 					<button
 						key={item}
 						type="button"
@@ -147,7 +171,7 @@ export function AppHeader({
 						}`}
 					>
 						<span className="inline-flex items-center gap-1.5">
-							<span>{item}</span>
+							<span>{APP_AREA_LABELS[item]}</span>
 							{item === "sessions" ? <MobileUnreadBadge count={totalRoomUnreadCount} /> : null}
 						</span>
 					</button>
@@ -155,7 +179,7 @@ export function AppHeader({
 			</nav>
 			<div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-xs text-slate-400 min-[1201px]:ml-0">
 				<UserRound size={14} />
-				<span className="truncate max-[600px]:hidden">{identityLabel}</span>
+				<span className={`truncate ${vscodeEnabled ? "max-[1500px]:hidden" : "max-[600px]:hidden"}`}>{identityLabel}</span>
 				<button type="button" onClick={() => void signOut().then(() => location.reload())} className="p-1 border border-slate-700 rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4]" title="Sign out" aria-label="Sign out">
 					<LogOut size={14} />
 				</button>
@@ -185,7 +209,7 @@ export function AppHeader({
 							aria-label="Main navigation"
 							onKeyDown={handleMenuKeyDown}
 						>
-							{MAIN_NAV_AREAS.map((item, index) => (
+							{navigationAreas.map((item, index) => (
 								<button
 									ref={(node) => {
 										mobileAreaMenuItemRefs.current[index] = node;
@@ -203,7 +227,7 @@ export function AppHeader({
 									role="menuitem"
 									tabIndex={-1}
 								>
-									<span>{item}</span>
+									<span>{APP_AREA_LABELS[item]}</span>
 									{item === "sessions" ? <MobileUnreadBadge count={totalRoomUnreadCount} /> : null}
 								</button>
 							))}
