@@ -51,6 +51,7 @@ export function resolveSessionTraceModelBadge(input: {
 		input.selectedSessionActiveModel,
 		input.bootstrap.runtimeStatus?.thinkingLevel
 			?? traceThinkingState.level
+			?? selectedSessionNode?.initialThinkingLevel
 			?? resolveSessionThinkingLevel(input.bootstrap, input.selectedSessionProfile, Boolean(selectedSessionNode?.parentId)),
 		input.bootstrap.runtimeStatus?.fastMode
 			?? traceThinkingState.fast

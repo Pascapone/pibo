@@ -17,7 +17,7 @@ Define the observable contract for registering subagents, exposing them as tools
 
 ## Background / Current State
 
-Subagents are registered as `SubagentProfile` records with a `name`, `targetProfile`, optional `description`, optional timeout, and optional max depth. Profiles select subagents through `InitialSessionContextBuilder.addSubagent` or `addSubagents`. Runtime creation converts enabled selected subagents that remain below their max depth into generated tools named `pibo_subagent_<normalized-name>`.
+Subagents are registered as `SubagentProfile` records with a `name`, `targetProfile`, optional parent-visible `description`, optional model and thinking overrides, optional timeout, and optional max depth. Profiles select subagents through `InitialSessionContextBuilder.addSubagent` or `addSubagents`. Runtime creation converts enabled selected subagents that remain below their max depth into generated tools named `pibo_subagent_<normalized-name>`.
 
 When such a tool runs, the session router resolves or creates a child Pibo Session with channel `pibo.subagents`, kind `subagent`, the parent's workspace and app context compatibility context, and a parent-child relationship through `parentId`. The router emits a `subagent_session` output event on the parent before waiting for the child assistant reply.
 
@@ -33,7 +33,7 @@ When such a tool runs, the session router resolves or creates a child Pibo Sessi
 
 ### Out of Scope
 
-- Designing new subagent UI flows — existing Agent Designer fields are the current source behavior.
+- Harness-native subagent configuration owned by an external agent runtime.
 - Scheduling background subagents — use yielded-run control for asynchronous tool wrapping.
 - Changing the Pi Coding Agent transcript format — Pibo only specifies product-level session and event behavior.
 
@@ -55,7 +55,7 @@ Subagent availability remains deterministic: registering a subagent does not act
 
 - A profile that does not select a registered subagent has no generated tool for that subagent.
 - A profile that selects an enabled subagent exposes exactly one generated subagent tool.
-- The capability catalog includes the subagent name, description, target profile, timeout, and max depth when present.
+- The capability catalog includes the subagent name, description, target profile, model, thinking level, timeout, and max depth when present.
 
 #### Scenario: Profile selects a registered helper
 
@@ -104,6 +104,7 @@ The tool interface stays compact for agents while preserving enough structured d
 #### Acceptance
 
 - Calling a subagent tool without `message` is invalid by schema.
+- A configured description is used as the generated tool description and prompt snippet visible to the parent agent.
 - Supplying `threadKey` passes it to the subagent runner unchanged after tool validation.
 - The result content contains the final child assistant text.
 - The result details identify the child Pibo Session and the routed input event id.
@@ -193,30 +194,32 @@ Agents do not receive unusable subagent tools or spend tokens attempting delegat
 - AND a direct call that bypasses tool selection fails with a max-depth error
 - AND no new child session is created for that call.
 
-### Requirement: Child runtime selection respects subagent defaults
+### Requirement: Child runtime selection respects per-subagent execution settings
 
-The system MUST resolve the child session's active model, thinking level, and fast mode using child-session semantics before the delegated runtime starts.
+The system MUST let each concrete subagent entry select an optional model and thinking level for newly created child sessions. It MUST use child-session fallback semantics when an entry leaves either value unset.
 
 #### Current
 
-Child session active model selection treats the child as a parented profile. Subagent-specific profile settings take precedence over global subagent defaults, which take precedence over shared defaults.
+A subagent entry may carry `model` and `thinkingLevel`. The router stores the entry model as the new child session's active model and stores the entry thinking level as `initialThinkingLevel` metadata before the delegated runtime starts. When no entry override exists, target-profile and global child-session defaults remain valid compatibility fallbacks. Fast mode continues to use the target profile and global child-session fallback chain.
 
 #### Target
 
-Main-agent defaults do not accidentally override subagent-specific defaults for delegated child sessions.
+Two subagent entries can target the same profile while intentionally using different models or thinking effort. Existing child sessions remain stable when the parent profile is edited later.
 
 #### Acceptance
 
-- A profile hard-pinned to a model still uses that model for child sessions.
-- A parented child profile with no hard pin uses profile subagent model settings or configured subagent defaults.
-- Chat Web displays subagent model, thinking, and fast defaults using the same parent-session rule.
+- An entry-level model overrides the target profile's hard pin, legacy subagent model, and global subagent default for a newly created child session.
+- An entry-level thinking level overrides target-profile and global child thinking defaults for a newly created child session.
+- A subagent entry with no model or thinking override uses the existing target-profile and Settings fallback chain.
+- Reusing the same child thread preserves its persisted active model and initial thinking level instead of silently applying later profile edits.
+- Chat Web uses the child session's persisted active model and initial thinking level when rendering its model badge.
 
-#### Scenario: Subagent model default applies
+#### Scenario: Per-subagent execution override applies
 
-- GIVEN model defaults include a subagent model
-- AND a delegated child profile has no hard-pinned model
-- WHEN the child Pibo Session is created
-- THEN the child active model is the configured subagent model.
+- GIVEN a parent profile configures subagent `researcher` with model `openai/gpt-5.6-mini` and thinking level `high`
+- WHEN the parent creates a new `researcher` child session
+- THEN the child active model is `openai/gpt-5.6-mini`
+- AND the child initial thinking level is `high`.
 
 ### Requirement: Delegation is emitted before waiting for the reply
 
@@ -277,6 +280,7 @@ Subagent work is distinguishable from direct user input and cannot block the par
 - Duplicate registered subagent names fail at plugin registration time.
 - Duplicate generated tool names can still occur across different registered names and must fail during tool definition creation.
 - A parent-session cycle in stored metadata must not cause infinite depth traversal.
+- Changing a subagent model or thinking setting does not mutate an already-created child thread.
 
 ## Constraints
 
@@ -292,6 +296,7 @@ Subagent work is distinguishable from direct user input and cannot block the par
 - [ ] SC-003: A second call with the same parent, subagent, target profile, and `threadKey` reuses the existing child session.
 - [ ] SC-004: A subagent tool at configured max depth is absent from the active runtime, and bypass calls fail before creating new child work.
 - [ ] SC-005: Chat Web can render a delegation event from `subagent_session` without waiting for the child reply.
+- [ ] SC-006: Two subagent entries can persist different descriptions, models, and thinking levels and create child sessions with those execution settings.
 
 ## Assumptions and Open Questions
 
@@ -317,7 +322,7 @@ Subagent work is distinguishable from direct user input and cannot block the par
 | REQ-004: Delegation creates or reuses child Pibo Sessions | Thread key reuse | Source-backed spec only | Draft |
 | REQ-005: Child sessions inherit room placement when available | Delegation inside a room | Source-backed spec only | Draft |
 | REQ-006: Subagent depth is bounded | Recursive delegation reaches limit | Source-backed spec only | Draft |
-| REQ-007: Child runtime selection respects subagent defaults | Subagent model default applies | Source-backed spec only | Draft |
+| REQ-007: Child runtime selection respects per-subagent execution settings | Per-subagent execution override applies | Source-backed spec only | Draft |
 | REQ-008: Delegation is emitted before waiting for the reply | Delegation appears before child completion | Source-backed spec only | Draft |
 | REQ-009: Delegated messages use actor source and bounded waiting | Child reply timeout | Source-backed spec only | Draft |
 
@@ -334,6 +339,7 @@ This spec is based on current code in:
 - `src/plugins/codex-compat.ts`
 - `src/apps/chat/agent-store.ts`
 - `src/apps/chat/web-app.ts`
+- `src/apps/chat-ui/src/agents/AgentsView.tsx`
 - `src/apps/chat/stream.ts`
 - `src/data/ingest-service.ts`
 - `test/subagents.test.mjs`

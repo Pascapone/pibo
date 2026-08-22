@@ -18,6 +18,7 @@ import {
 	type PiTranscriptHistoryPage,
 } from "../../agent-runtimes/pi/history.js";
 import type { ModelProfile } from "../../core/profiles.js";
+import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
 import type { PiboSession } from "../../sessions/store.js";
 import { buildTraceViewFromEvents, traceNodesFromHistoryEntries } from "../../shared/trace-engine.js";
 import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
@@ -53,6 +54,7 @@ export type PiboWebSessionNode = {
 	originId?: string;
 	profile: string;
 	activeModel?: ModelProfile;
+	initialThinkingLevel?: PiboThinkingLevel;
 	subagentName?: string;
 	workflowSessionKind?: PiboWorkflowSessionKind;
 	title: string;
@@ -150,6 +152,7 @@ export async function buildSessionNodes(
 			originId: session.originId,
 			profile: session.profile,
 			activeModel: session.activeModel,
+			initialThinkingLevel: thinkingLevelValue(session.metadata?.initialThinkingLevel),
 			subagentName: stringValue(session.metadata?.subagentName),
 			workflowSessionKind: workflowSessionKindFromMetadata(session.metadata),
 			title: createSessionTitle(session, historyMetadataFromInspection(inspection)),
@@ -399,6 +402,10 @@ function historyMessageText(entry: Extract<AgentRuntimeHistoryEntry, { type: "me
 
 function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" ? value : undefined;
+}
+
+function thinkingLevelValue(value: unknown): PiboThinkingLevel | undefined {
+	return typeof value === "string" && isPiboThinkingLevel(value) ? value : undefined;
 }
 
 // Pi compatibility exports. Normal Chat Web history resolves through the selected runtime adapter.
