@@ -1189,7 +1189,7 @@ function SubagentDesigner({
 					disabled={configurationReadOnly}
 					onClick={() => setDraft((current) => ({
 						...current,
-						subagents: [...current.subagents, { name: "helper", targetProfile: profileOptions[0]?.value ?? "base", maxDepth: 3 }],
+						subagents: [...current.subagents, { name: "helper", targetProfile: profileOptions[0]?.value ?? "base", maxDepth: 1 }],
 					}))}
 					className="h-7 w-7 shrink-0 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
 					title="Add Subagent"
@@ -1233,7 +1233,7 @@ function SubagentDesigner({
 								</label>
 								<label className="grid gap-1">
 									<span className="text-[10px] uppercase tracking-wider text-slate-500">Max depth</span>
-									<input name={`subagents.${index}.maxDepth`} aria-label={`Subagent ${index + 1} max depth`} type="number" min={1} disabled={configurationReadOnly} value={subagent.maxDepth ?? 3} onChange={(event) => updateSubagent(index, { maxDepth: Number(event.target.value) || 1 })} className="min-w-0 w-full bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" />
+									<input name={`subagents.${index}.maxDepth`} aria-label={`Subagent ${index + 1} max depth`} type="number" min={1} disabled={configurationReadOnly} value={subagent.maxDepth ?? 1} onChange={(event) => updateSubagent(index, { maxDepth: Number(event.target.value) || 1 })} className="min-w-0 w-full bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" />
 								</label>
 								<div className="grid content-end">
 									<button type="button" disabled={readOnly} onClick={() => setDraft((current) => ({ ...current, subagents: current.subagents.filter((_, itemIndex) => itemIndex !== index) }))} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-red-500 hover:text-red-300 disabled:opacity-50" title="Remove Subagent" aria-label="Remove Subagent">

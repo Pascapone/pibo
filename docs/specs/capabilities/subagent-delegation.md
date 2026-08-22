@@ -171,7 +171,7 @@ The router MUST omit a generated subagent tool when the current session depth is
 
 #### Current
 
-The max depth defaults to `3`. Custom agent API input accepts positive numeric `maxDepth` values and rounds them before storage. Runtime profile creation filters each configured subagent against the calling session's current parent depth.
+The max depth defaults to `1`. Custom agent API input accepts positive numeric `maxDepth` values and rounds them before storage. Runtime profile creation filters each configured subagent against the calling session's current parent depth.
 
 #### Target
 
@@ -179,7 +179,7 @@ Agents do not receive unusable subagent tools or spend tokens attempting delegat
 
 #### Acceptance
 
-- A subagent with no `maxDepth` uses depth limit `3`.
+- A subagent with no `maxDepth` uses depth limit `1`.
 - A subagent with `maxDepth: 1` is available to a root session at depth `0` and absent from a child session at depth `1`.
 - Depth filtering is per subagent definition, so a child at depth `1` may still receive another subagent tool configured with `maxDepth: 2`.
 - A direct or stale call at the limit fails before creating or reusing a child session.
