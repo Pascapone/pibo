@@ -23,6 +23,7 @@ import { PendingUserMessageDelivery } from "../components/PendingUserMessageDeli
 import { countRender } from "../renderMetrics";
 import { JsonRenderer } from "./JsonRenderer";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { isToolDisplaySpan } from "./tool-display-spans";
 
 type SpanNodeProps = {
 	span: Span;
@@ -237,7 +238,7 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	const statusStyles = getStatusStyles(span.status, isActive);
 	const isUserMessage = span.spanType === "user.prompt" || span.spanType === "user_input";
 	const hasChildren = Boolean(span.children?.length);
-	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpanType(span.spanType);
+	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpan(span);
 	const relativeTime = formatRelativeTime(span.startTime, startTime);
 	const duration = span.durationUs
 		? `${(span.durationUs / 1000).toFixed(1)}ms`
@@ -342,10 +343,6 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	);
 });
 
-function isToolDisplaySpanType(spanType: SpanType): boolean {
-	return spanType === "tool.call" || spanType === "tool.result" || spanType === "agent.delegation";
-}
-
 function isInteractiveSpanEventTarget(event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) {
 	const target = event.target;
 	if (!(target instanceof Element) || target === event.currentTarget) return false;
@@ -378,7 +375,7 @@ function SpanHeader({
 	onOpenSession?: (piboSessionId: string) => void;
 	toolDisplayMode: ToolDisplayMode;
 }) {
-	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpanType(span.spanType);
+	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpan(span);
 	const intent = toolDisplayMode === "intent" ? stringField(span.attributes.intent) : undefined;
 	const userMessageHeaderClass = span.spanType === "user.prompt" || span.spanType === "user_input" ? "bg-[#11a4d4]/10" : statusStyles.headerClass;
 	const headerClassName = `${contentExpanded && !compactToolDisplay ? `border-b ${config.borderColor}/20` : ""} ${userMessageHeaderClass}`;

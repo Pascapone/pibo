@@ -51,7 +51,7 @@ import {
 	waitForPiboProviderRecovery,
 } from "../../core/provider-recovery.js";
 import { PiAgentRuntimeAuthController } from "./auth.js";
-import { piIntentTracingInstalled, splitPiToolIntentArguments } from "./intent-tracing.js";
+import { piIntentTracingInstalled, piToolIntentField, splitPiToolIntentArguments } from "./intent-tracing.js";
 import { loadModelCatalog as loadPiModelCatalog } from "./model-catalog.js";
 import {
 	PIBO_TRANSCRIPT_INTEGRITY_RESUME_MESSAGE_TYPE,
@@ -153,7 +153,11 @@ type AssistantErrorMessage = {
 	usage?: unknown;
 };
 
-type ErrorContext = { contextWindow?: number; intentTracing?: boolean };
+type ErrorContext = {
+	contextWindow?: number;
+	intentTracing?: boolean;
+	intentFieldForTool?: (toolName: string) => string | undefined;
+};
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -314,7 +318,7 @@ function normalizeToolCallEvent(piboSessionId: string, candidate: PiEventCandida
 		if (!toolCall) return undefined;
 
 		const { args, intent } = context?.intentTracing
-			? splitPiToolIntentArguments(toolCall.args)
+			? splitPiToolIntentArguments(toolCall.args, context.intentFieldForTool?.(toolCall.name))
 			: { args: toolCall.args };
 		return {
 			type: "tool_call",
@@ -337,7 +341,7 @@ function normalizeToolExecutionEvent(piboSessionId: string, candidate: PiEventCa
 
 	if (candidate.type === "tool_execution_start") {
 		const { args, intent } = context?.intentTracing
-			? splitPiToolIntentArguments(candidate.args)
+			? splitPiToolIntentArguments(candidate.args, context.intentFieldForTool?.(candidate.toolName))
 			: { args: candidate.args };
 		return {
 			type: "tool_execution_started",
@@ -351,7 +355,7 @@ function normalizeToolExecutionEvent(piboSessionId: string, candidate: PiEventCa
 
 	if (candidate.type === "tool_execution_update") {
 		const { args, intent } = context?.intentTracing
-			? splitPiToolIntentArguments(candidate.args)
+			? splitPiToolIntentArguments(candidate.args, context.intentFieldForTool?.(candidate.toolName))
 			: { args: candidate.args };
 		return {
 			type: "tool_execution_updated",
@@ -729,6 +733,7 @@ export class RoutedSession {
 			const normalized = normalizePiEvent(this.piboSessionId, event, {
 				contextWindow: numberValue(model?.contextWindow),
 				intentTracing: piIntentTracingInstalled(session),
+				intentFieldForTool: (toolName) => piToolIntentField(session, toolName),
 			});
 			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
 			const assistantMessageEnded = candidate?.type === "message_end" && isAssistantMessage(candidate.message);
