@@ -176,6 +176,10 @@ export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {
 	const useDevAuth = resolveWebGatewayAuthMode(resolvedOptions) === "dev-auth";
 	return PiboPluginRegistry.create({
 		plugins: [
+			// Register the chat web app first so the bare host URL ("/") resolves to
+			// the chat/sessions app as the primary landing app, instead of whichever
+			// auxiliary web app (e.g. web annotations) happens to be wired up first.
+			createPiboChatWebPlugin(resolvedOptions.chat),
 			...createDefaultPiboPlugins(),
 			useDevAuth ? createPiboDevAuthPlugin() : createPiboBetterAuthPlugin(resolvedOptions.auth),
 			createPiboWebHostPlugin({ announce: false, canonicalBaseURL: useDevAuth ? undefined : authBaseURL(resolvedOptions), gatewayMode: webGatewayMode(resolvedOptions, useDevAuth), ...resolvedOptions.web }),
@@ -187,7 +191,6 @@ export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {
 			createPiboChatCustomAgentProfilesPlugin({ agentStorePath: resolvedOptions.chat?.agentStorePath }),
 			createPiboLoopPlugin({ loopStorePath: resolvedOptions.chat?.ralphStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
 			createPiboContextFilesPlugin(resolvedOptions.contextFiles),
-			createPiboChatWebPlugin(resolvedOptions.chat),
 			createPiboChatVscodeWebPlugin(),
 		],
 	});
