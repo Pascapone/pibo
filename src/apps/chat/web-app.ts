@@ -120,6 +120,7 @@ import {
 	readProviderAuthCatalog,
 } from "./provider-auth-actions.js";
 import { ensurePrivateChatUploadDirectory, prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, saveUploadedChatFiles } from "./chat-files.js";
+import { responseChatTranscription, responseChatTranscriptionProviders } from "./chat-transcription.js";
 import {
 	chatSettingsRoute,
 	chatSettingsRouteInvalidatesBootstrapCatalog,
@@ -4481,6 +4482,17 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseJson(await saveUploadedChatFiles(request), { status: 201 });
 			}
 
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/transcription/providers` && request.method === "GET") {
+				await requireSession(request, context);
+				return await responseChatTranscriptionProviders(context);
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/transcription` && request.method === "POST") {
+				requireSameOriginMultipartRequest(request);
+				await requireSession(request, context);
+				return await responseChatTranscription(request, context);
+			}
+
 			if (url.pathname === CHAT_WEB_API_PREFIX + "/download" && request.method === "GET") {
 				const webSession = await requireSession(request, context);
 				const path = url.searchParams.get("path")?.trim();
@@ -5343,11 +5355,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (settingsRoute) {
 				if (chatSettingsRouteRequiresSameOrigin(settingsRoute)) requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
+				const transcriptionProviderIds = settingsRoute.kind === "user-settings" && settingsRoute.action === "update"
+					? (await context.channelContext.getTranscriptionProviderInfos?.())?.map((provider) => provider.id)
+					: undefined;
 				const response = await handleChatSettingsRoute({
 					route: settingsRoute,
 					request,
 					cwd: process.cwd(),
 					dataStore: state.dataStore,
+					transcriptionProviderIds,
 				});
 				if (chatSettingsRouteInvalidatesBootstrapCatalog(settingsRoute)) invalidateBootstrapCatalogCache(state);
 				return response;

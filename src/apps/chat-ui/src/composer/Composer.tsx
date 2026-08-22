@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
-import { Copy, SendHorizontal, X } from "lucide-react";
+import { Copy, LoaderCircle, Mic, SendHorizontal, Square, X } from "lucide-react";
 import { uploadChatFiles, type ChatUploadedFile } from "../api-chat-files";
+import { transcribeChatAudio } from "../api-transcription";
 import type { WebAnnotationMessageAttachment } from "../api-web-annotations";
 import { appendStoredComposerHistory, readStoredComposerHistory } from "../app-storage";
 import type { UploadedChatAttachment } from "../chat-upload-attachments";
@@ -59,6 +60,11 @@ export function Composer({
 	const activeCommandRef = useRef<HTMLButtonElement>(null);
 	const activeSkillRef = useRef<HTMLButtonElement>(null);
 	const historyNavRef = useRef<{ entries: string[]; index: number; draft: string } | null>(null);
+	const latestValueRef = useRef(value);
+	const mountedRef = useRef(true);
+	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+	const mediaStreamRef = useRef<MediaStream | null>(null);
+	const audioChunksRef = useRef<Blob[]>([]);
 	const [activeIndex, setActiveIndex] = useState(0);
 	const [activeSkillIndex, setActiveSkillIndex] = useState(0);
 	const [cursorPos, setCursorPos] = useState(0);
@@ -66,6 +72,9 @@ export function Composer({
 	const [uploading, setUploading] = useState(false);
 	const [uploadStatus, setUploadStatus] = useState<{ message: string; copyText?: string; error: boolean } | null>(null);
 	const [pendingClipboardImage, setPendingClipboardImage] = useState<ClipboardImageUpload | null>(null);
+	const [recording, setRecording] = useState(false);
+	const [transcribing, setTranscribing] = useState(false);
+	const [transcriptionStatus, setTranscriptionStatus] = useState<{ message: string; error: boolean } | null>(null);
 
 	const skillTrigger = useMemo(() => {
 		for (let i = cursorPos - 1; i >= 0; i--) {
@@ -141,8 +150,26 @@ export function Composer({
 	}, [activeSkillIndex, filteredSkills.length]);
 
 	useEffect(() => {
+		latestValueRef.current = value;
+	}, [value]);
+
+	useEffect(() => {
 		historyNavRef.current = null;
 	}, [sessionId]);
+
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+			const recorder = mediaRecorderRef.current;
+			if (recorder && recorder.state !== "inactive") {
+				recorder.ondataavailable = null;
+				recorder.onstop = null;
+				recorder.stop();
+			}
+			for (const track of mediaStreamRef.current?.getTracks() ?? []) track.stop();
+		};
+	}, []);
 
 	useEffect(() => {
 		if (!pendingClipboardImage) return;
@@ -284,8 +311,97 @@ export function Composer({
 		}
 	};
 
+	const finishAudioRecording = async (recorder: MediaRecorder) => {
+		const chunks = audioChunksRef.current;
+		audioChunksRef.current = [];
+		for (const track of mediaStreamRef.current?.getTracks() ?? []) track.stop();
+		mediaStreamRef.current = null;
+		mediaRecorderRef.current = null;
+		if (!mountedRef.current) return;
+		setRecording(false);
+		setTranscribing(true);
+		setTranscriptionStatus({ message: "Transcribing recording…", error: false });
+		try {
+			if (!chunks.length) throw new Error("The audio recording is empty.");
+			const mimeType = recorder.mimeType || chunks.find((chunk) => chunk.type)?.type || "audio/webm";
+			const blob = new Blob(chunks, { type: mimeType });
+			const file = new File([blob], recordingFilename(mimeType), { type: mimeType, lastModified: Date.now() });
+			const result = await transcribeChatAudio(file);
+			if (!mountedRef.current) return;
+			const nextValue = appendTranscribedText(latestValueRef.current, result.text);
+			latestValueRef.current = nextValue;
+			onValueChange(nextValue);
+			setTranscriptionStatus(null);
+			requestAnimationFrame(() => {
+				const input = inputRef.current;
+				if (!input) return;
+				input.focus();
+				input.setSelectionRange(nextValue.length, nextValue.length);
+				setCursorPos(nextValue.length);
+			});
+		} catch (error) {
+			if (mountedRef.current) setTranscriptionStatus({ message: error instanceof Error ? error.message : String(error), error: true });
+		} finally {
+			if (mountedRef.current) setTranscribing(false);
+		}
+	};
+
+	const toggleAudioRecording = async () => {
+		if (recording) {
+			const recorder = mediaRecorderRef.current;
+			if (recorder && recorder.state !== "inactive") {
+				setRecording(false);
+				setTranscribing(true);
+				recorder.stop();
+			}
+			return;
+		}
+		if (disabled || uploading || transcribing) return;
+		setTranscriptionStatus(null);
+		if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+			setTranscriptionStatus({ message: "Audio recording is not supported by this browser.", error: true });
+			return;
+		}
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			if (!mountedRef.current) {
+				for (const track of stream.getTracks()) track.stop();
+				return;
+			}
+			const mimeType = preferredRecordingMimeType();
+			const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+			mediaStreamRef.current = stream;
+			mediaRecorderRef.current = recorder;
+			audioChunksRef.current = [];
+			recorder.ondataavailable = (event) => {
+				if (event.data.size > 0) audioChunksRef.current.push(event.data);
+			};
+			recorder.onerror = () => {
+				recorder.onstop = null;
+				audioChunksRef.current = [];
+				for (const track of stream.getTracks()) track.stop();
+				mediaStreamRef.current = null;
+				mediaRecorderRef.current = null;
+				if (!mountedRef.current) return;
+				setRecording(false);
+				setTranscribing(false);
+				setTranscriptionStatus({ message: "Audio recording failed.", error: true });
+			};
+			recorder.onstop = () => void finishAudioRecording(recorder);
+			recorder.start();
+			setRecording(true);
+		} catch (error) {
+			for (const track of mediaStreamRef.current?.getTracks() ?? []) track.stop();
+			mediaStreamRef.current = null;
+			mediaRecorderRef.current = null;
+			if (!mountedRef.current) return;
+			setRecording(false);
+			setTranscriptionStatus({ message: error instanceof Error ? error.message : "Microphone access failed.", error: true });
+		}
+	};
+
 	const submit = async () => {
-		if (disabled) return;
+		if (disabled || recording || transcribing) return;
 		const text = value.trim();
 		if (!text) return;
 		if (filteredSkills.length) {
@@ -351,6 +467,17 @@ export function Composer({
 					>
 						<X size={13} />
 					</button>
+				</div>
+			) : null}
+			{transcriptionStatus ? (
+				<div className={`mb-2 flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${transcriptionStatus.error ? "border-red-900 bg-red-950/40 text-red-200" : "border-slate-700 bg-[#0e1116] text-slate-300"}`} data-pibo-debug="composer-transcription-status">
+					{transcribing && !transcriptionStatus.error ? <LoaderCircle size={13} className="shrink-0 animate-spin text-[#11a4d4]" /> : null}
+					<span className="min-w-0 flex-1 truncate">{transcriptionStatus.message}</span>
+					{transcriptionStatus.error ? (
+						<button type="button" onClick={() => setTranscriptionStatus(null)} title="Hide transcription status" aria-label="Hide transcription status" className="shrink-0 rounded-sm p-0.5 text-slate-500 hover:bg-slate-800 hover:text-slate-200">
+							<X size={13} />
+						</button>
+					) : null}
 				</div>
 			) : null}
 			{pendingClipboardImage ? (
@@ -460,7 +587,7 @@ export function Composer({
 					))}
 				</div>
 			) : null}
-			<div className="grid grid-cols-[1fr_auto] items-end gap-2">
+			<div className="grid grid-cols-[1fr_auto_auto] items-end gap-2">
 				<textarea
 					id="message-composer-input"
 					ref={inputRef}
@@ -472,6 +599,7 @@ export function Composer({
 					disabled={disabled}
 					onChange={(event) => {
 						historyNavRef.current = null;
+						latestValueRef.current = event.target.value;
 						onValueChange(event.target.value);
 						setCursorPos(event.target.selectionStart);
 					}}
@@ -513,7 +641,20 @@ export function Composer({
 				/>
 				<button
 					type="button"
-					disabled={disabled || uploading}
+					disabled={transcribing || uploading || (!recording && disabled)}
+					onClick={() => void toggleAudioRecording()}
+					title={recording ? "Stop recording and transcribe" : transcribing ? "Transcribing recording" : "Start voice recording"}
+					aria-label={recording ? "Stop recording and transcribe" : "Start voice recording"}
+					aria-pressed={recording}
+					data-pibo-debug="composer-audio-recording"
+					data-recording={recording ? "true" : "false"}
+					className={`h-10 w-10 self-end inline-flex items-center justify-center rounded-sm border disabled:opacity-50 ${recording ? "border-red-400 bg-red-500/20 text-red-300 animate-pulse" : "border-slate-700 bg-[#0e1116] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]"}`}
+				>
+					{transcribing ? <LoaderCircle size={16} className="animate-spin" /> : recording ? <Square size={14} fill="currentColor" /> : <Mic size={16} />}
+				</button>
+				<button
+					type="button"
+					disabled={disabled || uploading || recording || transcribing}
 					onClick={() => void submit()}
 					title="Send message"
 					aria-label="Send message"
@@ -594,6 +735,27 @@ function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+export function appendTranscribedText(currentValue: string, transcription: string): string {
+	const text = transcription.trim();
+	if (!text) return currentValue;
+	if (!currentValue) return text;
+	return `${currentValue}${/\s$/.test(currentValue) ? "" : "\n\n"}${text}`;
+}
+
+function preferredRecordingMimeType(): string | undefined {
+	const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+	return candidates.find((mimeType) => MediaRecorder.isTypeSupported(mimeType));
+}
+
+function recordingFilename(mimeType: string): string {
+	const extension = mimeType.includes("ogg")
+		? "ogg"
+		: mimeType.includes("mp4")
+			? "m4a"
+			: "webm";
+	return `recording-${Date.now()}.${extension}`;
 }
 
 export function resizeComposerInput(input: HTMLTextAreaElement | null) {

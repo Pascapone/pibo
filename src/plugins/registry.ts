@@ -13,6 +13,12 @@ import type { PiboChannel } from "../channels/types.js";
 import type { PiboAuthService } from "../auth/types.js";
 import type { PiboWebApp } from "../web/types.js";
 import type {
+	PiboTranscriptionProvider,
+	PiboTranscriptionProviderInfo,
+	PiboTranscriptionRequest,
+	PiboTranscriptionResult,
+} from "../transcription/types.js";
+import type {
 	PiboGatewayAction,
 	PiboGatewayActionInfo,
 	PiboPlugin,
@@ -94,6 +100,7 @@ export class PiboPluginRegistry {
 	private readonly gatewaySlashCommands = new Map<string, string>();
 	private readonly channels = new Map<string, PiboChannel>();
 	private authService?: PiboAuthService;
+	private readonly transcriptionProviders = new Map<string, PiboTranscriptionProvider>();
 	private readonly webApps = new Map<string, PiboWebApp>();
 	private readonly capabilityPackages = new Map<string, PiboCapabilityPackageInfo>();
 	private readonly eventListeners = new Set<PiboPluginEventListener>();
@@ -260,6 +267,26 @@ export class PiboPluginRegistry {
 			throw new Error(`Auth service "${this.authService.name}" is already registered`);
 		}
 		this.authService = service;
+	}
+
+	registerTranscriptionProvider(provider: PiboTranscriptionProvider): void {
+		this.addUnique(this.transcriptionProviders, provider.id, provider, "transcription provider");
+	}
+
+	async getTranscriptionProviderInfos(): Promise<PiboTranscriptionProviderInfo[]> {
+		return await Promise.all([...this.transcriptionProviders.values()].map(async (provider) => ({
+			id: provider.id,
+			name: provider.name,
+			description: provider.description,
+			configured: provider.isConfigured ? await Promise.resolve(provider.isConfigured()).catch(() => false) : true,
+			pluginId: provider.pluginId,
+			pluginName: provider.pluginId ? this.pluginNames.get(provider.pluginId) : undefined,
+		})));
+	}
+
+	async transcribe(providerId: string, input: PiboTranscriptionRequest): Promise<PiboTranscriptionResult> {
+		const provider = this.getRequired(this.transcriptionProviders, providerId, "transcription provider");
+		return { providerId, ...await provider.transcribe(input) };
 	}
 
 	registerWebApp(app: PiboWebApp): void {
@@ -517,6 +544,10 @@ export class PiboPluginRegistry {
 			toolNames: [...pkg.toolNames],
 			pluginId: pkg.pluginId ?? pluginId,
 		});
+		const withPluginTranscriptionProviderContext = (provider: PiboTranscriptionProvider): PiboTranscriptionProvider => ({
+			...provider,
+			pluginId: provider.pluginId ?? pluginId,
+		});
 		return {
 			registerAgentRuntimeDriver: (driver) => this.registerAgentRuntimeDriver(driver),
 			registerAgentRuntimeInstance: (instance) => this.registerAgentRuntimeInstance(instance),
@@ -533,6 +564,7 @@ export class PiboPluginRegistry {
 			registerGatewayAction: (action) => this.registerGatewayAction(action),
 			registerChannel: (channel) => this.registerChannel(channel),
 			registerAuthService: (service) => this.registerAuthService(service),
+			registerTranscriptionProvider: (provider) => this.registerTranscriptionProvider(withPluginTranscriptionProviderContext(provider)),
 			registerWebApp: (app) => this.registerWebApp(app),
 			registerCapabilityPackage: (pkg) => this.registerCapabilityPackage(withPluginPackageContext(pkg)),
 			registerLoopStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),

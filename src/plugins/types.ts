@@ -31,6 +31,7 @@ import type {
 } from "../core/profiles.js";
 import type { PiboPiPackageInfo } from "../pi-packages/types.js";
 import type { PiboProviderUsageStatus } from "../auth/openai-codex-usage.js";
+import type { PiboTranscriptionProvider } from "../transcription/types.js";
 import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 import type {
 	AgentRuntimeAuthOperationResult,
@@ -261,6 +262,7 @@ export type PiboPluginApi = {
 	registerGatewayAction(action: PiboGatewayAction): void;
 	registerChannel(channel: PiboChannel): void;
 	registerAuthService(service: PiboAuthService): void;
+	registerTranscriptionProvider(provider: PiboTranscriptionProvider): void;
 	registerWebApp(app: PiboWebApp): void;
 	registerCapabilityPackage(pkg: PiboCapabilityPackageInfo): void;
 	registerLoopStopCondition(condition: PiboLoopStopConditionDefinition): void;

@@ -9,6 +9,7 @@ import {
 	Key,
 	Keyboard,
 	Layers,
+	Mic,
 	Plus,
 	Power,
 	PowerOff,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import { createUserSkill, deletePiPackage, deleteUserSkill, getUserSkill, installUserSkill, patchPiPackage, postPiPackage, updateUserSkill } from "../api-agent-designer";
 import { getUserSettings, patchModelDefaults, patchUserSettings, pruneTelemetryRetention } from "../api-settings";
+import { getTranscriptionProviders } from "../api-transcription";
 import { piPackageMeta, type PiPackageCatalogItem } from "../agents/agent-designer-model";
 import { AgentRuntimeOptions, DesignerPanel, EmptyCatalog, InlineCheckboxToggle, PiPackageDetails } from "../agents/designer-ui";
 import { writeStoredExpandThinking, writeStoredShowThinking } from "../app-storage";
@@ -88,6 +90,20 @@ export function SettingsView({
 					Skills
 				</h1>
 				<UserSkillsSettings skills={userSkills} onSkillChanged={onUserSkillChanged} onSkillRemoved={onUserSkillRemoved} />
+			</div>
+		);
+	}
+
+	if (activePanel === "transcription") {
+		return (
+			<div className="p-6 overflow-auto">
+				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+					<Mic size={16} />
+					Transcription
+				</h1>
+				<DesignerPanel title="Audio transcription">
+					<TranscriptionProviderSettings />
+				</DesignerPanel>
 			</div>
 		);
 	}
@@ -243,6 +259,70 @@ function UserTimezoneSettings() {
 				</select>
 			</div>
 			<div className="mt-2 text-[11px] text-slate-500">Choose a city-based timezone. Changes are saved automatically and loaded into every runtime context together with the current Pibo Session ID.</div>
+			{saving ? <div className="mt-2 text-xs text-slate-400">Saving…</div> : null}
+			{error ? <div className="mt-2 text-xs text-red-300">{error}</div> : null}
+		</div>
+	);
+}
+
+function TranscriptionProviderSettings() {
+	const queryClient = useQueryClient();
+	const settingsQuery = useQuery({ queryKey: ["user-settings"], queryFn: getUserSettings });
+	const providersQuery = useQuery({ queryKey: ["transcription-providers"], queryFn: getTranscriptionProviders });
+	const providers = providersQuery.data?.providers ?? [];
+	const selectedProviderId = settingsQuery.data?.transcription.providerId ?? providersQuery.data?.selectedProviderId ?? "";
+	const [draft, setDraft] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (selectedProviderId) setDraft(selectedProviderId);
+	}, [selectedProviderId]);
+
+	const save = async (providerId: string) => {
+		setDraft(providerId);
+		setSaving(true);
+		setError(null);
+		try {
+			const saved = await patchUserSettings({ transcription: { providerId } });
+			queryClient.setQueryData(["user-settings"], saved);
+			queryClient.setQueryData(["transcription-providers"], (current: typeof providersQuery.data) => current
+				? { ...current, selectedProviderId: saved.transcription.providerId }
+				: current);
+			setDraft(saved.transcription.providerId);
+		} catch (err) {
+			setDraft(selectedProviderId);
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const currentProviderAvailable = providers.some((provider) => provider.id === draft);
+	return (
+		<div>
+			<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Transcription provider</div>
+			<div className="max-w-xl">
+				<select
+					value={draft}
+					disabled={settingsQuery.isLoading || providersQuery.isLoading || saving || providers.length === 0}
+					onChange={(event) => void save(event.target.value)}
+					className="w-full min-w-0 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+				>
+					{draft && !currentProviderAvailable ? <option value={draft}>{draft} (unavailable)</option> : null}
+					{providers.map((provider) => (
+						<option key={provider.id} value={provider.id}>
+							{provider.name}{provider.configured ? "" : " — authentication required"}
+						</option>
+					))}
+				</select>
+			</div>
+			<div className="mt-2 text-[11px] text-slate-500">This selection is independent from the providers used by chat models. Recordings use the selected provider and are inserted into the composer without sending the message.</div>
+			{providers.find((provider) => provider.id === draft)?.description ? (
+				<div className="mt-2 text-[11px] text-slate-400">{providers.find((provider) => provider.id === draft)?.description}</div>
+			) : null}
+			{providers.length === 0 && !providersQuery.isLoading ? <div className="mt-2 text-xs text-amber-300">No transcription providers are registered.</div> : null}
+			{providersQuery.error ? <div className="mt-2 text-xs text-red-300">{providersQuery.error instanceof Error ? providersQuery.error.message : String(providersQuery.error)}</div> : null}
 			{saving ? <div className="mt-2 text-xs text-slate-400">Saving…</div> : null}
 			{error ? <div className="mt-2 text-xs text-red-300">{error}</div> : null}
 		</div>
