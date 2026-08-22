@@ -71,6 +71,7 @@ export type ChatAgentBody = {
 	description?: unknown;
 	runtimeInstanceId?: unknown;
 	runtimeOptions?: unknown;
+	nativeSubagents?: unknown;
 	nativeTools?: unknown;
 	skills?: unknown;
 	contextFiles?: unknown;
@@ -352,6 +353,12 @@ export function normalizeBuiltinToolNames(value: unknown): string[] | undefined 
 export function normalizeAutoContextFiles(value: unknown): boolean {
 	if (value === undefined) return true;
 	if (typeof value !== "boolean") throw new PiboWebHttpError("autoContextFiles must be a boolean", 400);
+	return value;
+}
+
+export function normalizeNativeSubagents(value: unknown): boolean | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== "boolean") throw new PiboWebHttpError("nativeSubagents must be a boolean", 400);
 	return value;
 }
 
@@ -759,6 +766,7 @@ export function createAgentInput(body: ChatAgentBody) {
 		description: normalizeAgentDescription(body.description),
 		runtimeInstanceId: normalizeAgentRuntimeInstanceId(body.runtimeInstanceId),
 		runtimeOptions: normalizeAgentRuntimeOptions(body.runtimeOptions),
+		nativeSubagents: normalizeNativeSubagents(body.nativeSubagents),
 		nativeTools: normalizeNameArray(body.nativeTools, "nativeTools"),
 		skills: normalizeNameArray(body.skills, "skills"),
 		contextFiles: normalizeNameArray(body.contextFiles, "contextFiles"),
@@ -787,6 +795,11 @@ export function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 	if (body.description !== undefined) update.description = normalizeAgentDescription(body.description);
 	if (body.runtimeInstanceId !== undefined) update.runtimeInstanceId = normalizeAgentRuntimeInstanceId(body.runtimeInstanceId);
 	if (body.runtimeOptions !== undefined) update.runtimeOptions = normalizeAgentRuntimeOptions(body.runtimeOptions);
+	if (body.nativeSubagents !== undefined) {
+		update.nativeSubagents = body.nativeSubagents === null
+			? null
+			: normalizeNativeSubagents(body.nativeSubagents);
+	}
 	if (body.nativeTools !== undefined) update.nativeTools = normalizeNameArray(body.nativeTools, "nativeTools");
 	if (body.skills !== undefined) update.skills = normalizeNameArray(body.skills, "skills");
 	if (body.contextFiles !== undefined) update.contextFiles = normalizeNameArray(body.contextFiles, "contextFiles");

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
 import { SessionManager, type AgentSessionRuntime, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
 	InitialSessionContext,
@@ -63,9 +64,10 @@ import {
 	readPiAgentRuntimeHistory,
 } from "./history.js";
 import { PiAgentRuntimeAuthController } from "./auth.js";
+import { importPortableHistoryIntoPi } from "./portable-history.js";
 
 const PI_ADAPTER_ID = "pi";
-const PI_PROTOCOL_VERSION = "0.80.6";
+export const PI_PROTOCOL_VERSION = "0.84.2";
 
 export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 	lifecycle: {
@@ -105,6 +107,19 @@ export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 	},
 	skills: { support: "native" },
 	context: { support: "native" },
+	contextDiscovery: {
+		supported: true,
+		configurable: true,
+		enabledByDefault: true,
+		strategy: "filesystem-ancestors",
+		knownFileNames: ["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"],
+	},
+	nativeSubagents: {
+		supported: false,
+		configurable: false,
+		enabledByDefault: false,
+	},
+	historyImport: true,
 	auth: {
 		status: true,
 		methods: [
@@ -180,6 +195,7 @@ function cloneProfileForPiSession(input: OpenAgentRuntimeSessionInput): InitialS
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,
+		nativeSubagents: profile.nativeSubagents,
 		toolPackages: profile.toolPackages,
 	});
 }
@@ -689,6 +705,9 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
+		if (input.historyHandoff?.mode === "import" && input.binding?.state === "bound") {
+			throw new Error("Pi portable history import requires a new native session.");
+		}
 		const compatibility = input.services?.compatibility as PiAgentRuntimeCompatibilityServices | undefined;
 		const runtime = await createPiboRuntime({
 			cwd: input.workspace,
@@ -712,6 +731,16 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			},
 			contextGuardTuiQueueOrdering: compatibility?.contextGuardTuiQueueOrdering,
 		});
+		if (input.historyHandoff?.mode === "import") {
+			try {
+				importPortableHistoryIntoPi(runtime.session.sessionManager, input.historyHandoff.history);
+			} catch (error) {
+				const partialSessionFile = runtime.session.sessionFile;
+				await runtime.dispose().catch(() => {});
+				if (partialSessionFile) await rm(partialSessionFile, { force: true }).catch(() => {});
+				throw error;
+			}
+		}
 		const binding: RuntimeSessionBinding = {
 			...(input.binding ? structuredClone(input.binding) : {}),
 			piboSessionId: input.piboSession.id,

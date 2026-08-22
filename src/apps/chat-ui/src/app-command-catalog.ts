@@ -25,7 +25,7 @@ export function buildSlashCommands(actions: BootstrapData["capabilities"]["actio
 		{
 			slash: "/upload",
 			action: "upload",
-			description: "Upload one or more files to ~/.pibo/uploads.",
+			description: "Upload one or more files to the configured Pibo uploads directory.",
 		},
 		{
 			slash: "/thinking-show",

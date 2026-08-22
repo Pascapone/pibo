@@ -2,7 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
-import { PI_AGENT_RUNTIME_CAPABILITIES } from "../../agent-runtimes/pi/adapter.js";
+import {
+	PI_AGENT_RUNTIME_CAPABILITIES,
+	PI_PROTOCOL_VERSION,
+} from "../../agent-runtimes/pi/adapter.js";
 import { AgentRuntimeBindingMissingError } from "../../agent-runtime/errors.js";
 import {
 	buildPortableRuntimeContextSnapshot,
@@ -76,7 +79,9 @@ import {
 	createDefaultCustomAgentStore,
 	previewCustomAgentCreate,
 	previewCustomAgentUpdate,
+	type CreateCustomAgentInput,
 	type CustomAgentDefinition,
+	type UpdateCustomAgentInput,
 } from "./agent-store.js";
 import {
 	loadPiboModelDefaults,
@@ -114,7 +119,7 @@ import {
 	providerAuthActionResponse,
 	readProviderAuthCatalog,
 } from "./provider-auth-actions.js";
-import { prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, saveUploadedChatFiles } from "./chat-files.js";
+import { ensurePrivateChatUploadDirectory, prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, saveUploadedChatFiles } from "./chat-files.js";
 import {
 	chatSettingsRoute,
 	chatSettingsRouteInvalidatesBootstrapCatalog,
@@ -1570,6 +1575,7 @@ function serializeCustomAgents(agents: readonly CustomAgentDefinition[], context
 const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
 	"runtimeInstanceId",
 	"runtimeOptions",
+	"nativeSubagents",
 	"nativeTools",
 	"skills",
 	"contextFiles",
@@ -1593,6 +1599,39 @@ const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
 
 function customAgentUpdateAffectsRuntime(update: object): boolean {
 	return Object.keys(update).some((field) => RUNTIME_PROFILE_UPDATE_FIELDS.has(field));
+}
+
+function normalizeCreateRuntimeFeatureOverrides(
+	input: CreateCustomAgentInput,
+	context: PiboWebAppContext,
+): CreateCustomAgentInput {
+	const runtime = context.channelContext.getCapabilityCatalog?.().agentRuntimes
+		?.find((candidate) => candidate.id === input.runtimeInstanceId);
+	if (!runtime) return input;
+	return {
+		...input,
+		...(runtime.capabilities.contextDiscovery.configurable
+			? { autoContextFiles: input.autoContextFiles }
+			: { autoContextFiles: true }),
+		...(runtime.capabilities.nativeSubagents.configurable
+			? { nativeSubagents: input.nativeSubagents }
+			: { nativeSubagents: undefined }),
+	};
+}
+
+function normalizeUpdateRuntimeFeatureOverrides(
+	input: UpdateCustomAgentInput,
+	runtimeInstanceId: string,
+	context: PiboWebAppContext,
+): UpdateCustomAgentInput {
+	const runtime = context.channelContext.getCapabilityCatalog?.().agentRuntimes
+		?.find((candidate) => candidate.id === runtimeInstanceId);
+	if (!runtime) return input;
+	return {
+		...input,
+		...(runtime.capabilities.contextDiscovery.configurable ? {} : { autoContextFiles: true }),
+		...(runtime.capabilities.nativeSubagents.configurable ? {} : { nativeSubagents: null }),
+	};
 }
 
 async function requireValidCustomAgentRuntime(agent: CustomAgentDefinition, context: PiboWebAppContext): Promise<void> {
@@ -3258,7 +3297,7 @@ async function resolveContextBuildRuntime(context: PiboWebAppContext, runtimeIns
 			transport: "embedded",
 			capabilities: structuredClone(PI_AGENT_RUNTIME_CAPABILITIES),
 			configSchema: { type: "object", additionalProperties: false },
-			protocol: { name: "pi-sdk", supportedRange: "0.80.6" },
+			protocol: { name: "pi-sdk", supportedRange: PI_PROTOCOL_VERSION },
 			diagnostics: [],
 		};
 	}
@@ -4309,6 +4348,7 @@ async function sendChatMessage(input: {
 
 
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
+	ensurePrivateChatUploadDirectory();
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
 	const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
@@ -4353,6 +4393,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		telemetryRetentionMaintenance: {},
 	};
 
+	let disposed = false;
 	const requireSession = (request: Request, context: PiboWebAppContext): Promise<PiboWebSession> =>
 		context.requireSession({
 			request,
@@ -4362,6 +4403,20 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		name: CHAT_WEB_APP_NAME,
 		mountPath: CHAT_WEB_MOUNT_PATH,
 		apiPrefix: CHAT_WEB_API_PREFIX,
+		dispose() {
+			if (disposed) return;
+			disposed = true;
+			state.unsubscribe?.();
+			state.unsubscribe = undefined;
+			state.subscribedContext = undefined;
+			state.eventLoopDelay.disable();
+			state.projectService.close();
+			state.agentStore.close();
+			state.reliabilityStore.close();
+			state.cronStore.close();
+			state.loopStore.close();
+			state.dataStore.close();
+		},
 		async handleRequest(request, context) {
 			const url = new URL(request.url);
 			if (isTelemetryRetentionMaintenanceDue({ state: state.telemetryRetentionMaintenance })) {
@@ -5317,7 +5372,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const input = createAgentInput(body);
+				const input = normalizeCreateRuntimeFeatureOverrides(createAgentInput(body), context);
 				requireAgentProfileNameAvailable(state, context, input.displayName);
 				await requireValidCustomAgentRuntime(previewCustomAgentCreate(input), context);
 				const agent = state.agentStore.create(input);
@@ -5332,7 +5387,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const existing = requireSharedAgent(state.agentStore.get(patchAgentId));
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const update = createAgentUpdate(body);
+				const rawUpdate = createAgentUpdate(body);
+				const update = normalizeUpdateRuntimeFeatureOverrides(
+					rawUpdate,
+					rawUpdate.runtimeInstanceId ?? existing.runtimeInstanceId,
+					context,
+				);
 				const archived = normalizeAgentArchived(body.archived);
 				if (update.displayName) requireAgentProfileNameAvailable(state, context, update.displayName, existing.id);
 				if (customAgentUpdateAffectsRuntime(update)) {
@@ -5592,6 +5652,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (body.state !== undefined && body.state !== "unbound" && body.state !== "bound") {
 					throw new PiboWebHttpError("state must be unbound or bound", 400);
 				}
+				if (body.startFresh !== undefined && typeof body.startFresh !== "boolean") {
+					throw new PiboWebHttpError("startFresh must be a boolean", 400);
+				}
 				const locator = body.locator;
 				const locatorKinds = new Set(["local-file", "local-directory", "uri", "remote", "adapter-resolved"]);
 				if (
@@ -5611,6 +5674,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						nativeSessionId: typeof body.nativeSessionId === "string" && body.nativeSessionId.trim() ? body.nativeSessionId.trim() : undefined,
 						state: body.state as "unbound" | "bound" | undefined,
 						locator: locator as { kind: "local-file" | "local-directory" | "uri" | "remote" | "adapter-resolved"; value?: string } | undefined,
+						startFresh: body.startFresh === true,
 						expectedRevision: Number(body.expectedRevision),
 					});
 					const updated = context.channelContext.getSession(selectedSession.id);
@@ -5618,7 +5682,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					return responseJson({ binding });
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					const status = /concurrently|idle/i.test(message) ? 409 : 400;
+					const status = /concurrently|idle|quiescing/i.test(message) ? 409 : 400;
 					throw new PiboWebHttpError(message, status);
 				}
 			}

@@ -53,6 +53,7 @@ import {
 	diagnoseOmpRuntime,
 	disposeOmpSessionPaths,
 	prepareOmpSessionPaths,
+	resetOmpNativeSession,
 	resolveOmpCommand,
 	type OmpSessionPaths,
 } from "./process.js";
@@ -109,11 +110,39 @@ function ompCapabilities(): AgentRuntimeCapabilities {
 			statusInspection: false,
 		},
 		skills: { support: "materialized", modes: ["omp-custom-directories"] },
-		context: {
-			support: "unsupported",
-			reason:
-				"OMP loads project context via its own AGENTS.md/rules discovery in the session cwd; Pibo has no injection seam and does not mutate the user's workspace.",
+		context: { support: "materialized", modes: ["native-project-discovery", "omp-append-system-prompt"] },
+		contextDiscovery: {
+			supported: true,
+			configurable: false,
+			enabledByDefault: true,
+			strategy: "omp-project",
+			knownFileNames: ["AGENTS.md"],
+			knownUserRelativePaths: [
+				".claude/CLAUDE.md",
+				".codex/AGENTS.md",
+				".gemini/GEMINI.md",
+				".config/opencode/AGENTS.md",
+				".copilot/copilot-instructions.md",
+			],
+			knownCwdRelativePaths: [
+				".claude/CLAUDE.md",
+				".gemini/GEMINI.md",
+				".github/copilot-instructions.md",
+			],
+			knownRelativePaths: [
+				".omp/AGENTS.md",
+			],
+			knownAncestorRelativePaths: [
+				".agent/AGENTS.md",
+				".agents/AGENTS.md",
+			],
 		},
+		nativeSubagents: {
+			supported: true,
+			configurable: true,
+			enabledByDefault: true,
+		},
+		historyImport: true,
 		auth: {
 			status: true,
 			methods: OMP_AUTH_METHODS,
@@ -465,16 +494,27 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			piboSessionId: input.piboSession.id,
 			sessionGeneration: randomUUID(),
 		});
-		// Materialize BEFORE spawn (MUST-FIX #3): OMP reads config.yml at startup.
-		const resourceDelivery = new OmpResourceDelivery(this.parsed, paths, input.services?.resources);
-		await resourceDelivery.prepare();
+		if (binding.state === "unbound") await resetOmpNativeSession(paths);
+		if (input.historyHandoff?.mode === "import" && binding.state === "bound") {
+			throw new Error("OMP portable history import requires a new native session.");
+		}
+		// Materialize BEFORE spawn: OMP reads config.yml and append-system-prompt at startup.
+		const resourceDelivery = new OmpResourceDelivery(
+			this.parsed,
+			paths,
+			input.services?.resources,
+			input.historyHandoff,
+			input.profile.nativeSubagents ?? this.descriptor.capabilities.nativeSubagents.enabledByDefault,
+		);
+		const resourceResult = await resourceDelivery.prepare();
+		input.services?.resources?.recordAdapterDelivery?.(resourceResult.reports, resourceResult.diagnostics);
 
 		const environment = buildOmpProcessEnvironment({
 			paths,
 			config: this.parsed,
 			baseEnvironment: process.env,
 		});
-		const command = resolveOmpCommand(this.parsed, paths);
+		const command = resolveOmpCommand(this.parsed, paths, resourceDelivery.appendSystemPromptPath);
 		const client = new OmpRpcClient({
 			startupTimeoutMs: this.parsed.startupTimeoutMs,
 			requestTimeoutMs: this.parsed.requestTimeoutMs,

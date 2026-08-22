@@ -1,4 +1,7 @@
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import {
+	readPiCredential,
+	resolvePiProviderAuth,
+} from "../agent-runtimes/pi/credentials.js";
 
 const OPENAI_CODEX_PROVIDER = "openai-codex";
 const OPENAI_CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -145,11 +148,11 @@ function normalizeUsagePayload(payload: unknown): PiboProviderUsageStatus | unde
 export async function getOpenAiCodexProviderUsageForActiveModel(activeModel: { provider: string } | undefined): Promise<PiboProviderUsageStatus | undefined> {
 	if (activeModel?.provider !== OPENAI_CODEX_PROVIDER) return undefined;
 
-	const authStorage = AuthStorage.create();
-	const credential = authStorage.get(OPENAI_CODEX_PROVIDER);
+	const credential = await readPiCredential(OPENAI_CODEX_PROVIDER);
 	if (credential?.type !== "oauth") return undefined;
 
-	const accessToken = await authStorage.getApiKey(OPENAI_CODEX_PROVIDER, { includeFallback: false });
+	const resolvedAuth = await resolvePiProviderAuth(OPENAI_CODEX_PROVIDER);
+	const accessToken = resolvedAuth?.auth.apiKey;
 	if (!accessToken) return undefined;
 
 	const headers: Record<string, string> = {

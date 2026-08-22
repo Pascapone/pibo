@@ -228,7 +228,7 @@ export class CodexBrowserSessionController implements CodexBrowserToolController
 	}
 
 	async dispose(): Promise<void> {
-		this.nodeRepl?.dispose();
+		await this.nodeRepl?.dispose();
 		this.nodeRepl = undefined;
 		if (!this.browserLeaseUsed) return;
 		const identity = {

@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
-	chmod,
 	lstat,
 	mkdir,
 	realpath,
@@ -9,8 +8,9 @@ import {
 	rmdir,
 	writeFile,
 } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
+import { protectPrivatePathsSync } from "../../core/private-path.js";
 import { CodexAppServerClient, type CodexAppServerDiagnostic } from "./client.js";
 import type { CodexAppServerInitializeCapabilities } from "./protocol-types.js";
 import type { CodexNativeRuntimeConfig } from "./config.js";
@@ -123,11 +123,12 @@ function isInside(root: string, candidate: string): boolean {
 	return child === "" || (!child.startsWith(`..${sep}`) && child !== ".." && !isAbsolute(child));
 }
 
-async function ensurePrivateDirectory(path: string): Promise<void> {
-	await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
-	const metadata = await lstat(path);
-	if (metadata.isSymbolicLink() || !metadata.isDirectory()) throw new Error("runtime path is not a private directory");
-	await chmod(path, PRIVATE_DIRECTORY_MODE);
+async function ensurePrivateDirectories(paths: readonly string[]): Promise<void> {
+	for (const path of paths) {
+		await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+		const metadata = await lstat(path);
+		if (metadata.isSymbolicLink() || !metadata.isDirectory()) throw new Error("runtime path is not a private directory");
+	}
 }
 
 async function ensurePrivateConfig(path: string): Promise<void> {
@@ -138,12 +139,18 @@ async function ensurePrivateConfig(path: string): Promise<void> {
 	}
 	const metadata = await lstat(path);
 	if (metadata.isSymbolicLink() || !metadata.isFile()) throw new Error("runtime config is not a private regular file");
-	await chmod(path, PRIVATE_FILE_MODE);
 }
 
 function nodeErrorCode(error: unknown): string | undefined {
 	const code = (error as NodeJS.ErrnoException | undefined)?.code;
 	return typeof code === "string" && /^[A-Z0-9_]+$/.test(code) ? code : undefined;
+}
+
+function codexExecutableInvocation(executable: string, args: readonly string[]): { command: string; args: string[] } {
+	if (process.platform === "win32" && isAbsolute(executable) && [".js", ".cjs", ".mjs"].includes(extname(executable).toLowerCase())) {
+		return { command: process.execPath, args: [executable, ...args] };
+	}
+	return { command: executable, args: [...args] };
 }
 
 export async function prepareCodexNativeInstancePaths(
@@ -157,7 +164,7 @@ export async function prepareCodexNativeInstancePaths(
 		const root = join(canonicalHomeRoot, safeSegment(runtimeInstanceId));
 		const codexHome = join(root, "codex-home");
 		const sessions = join(root, "sessions");
-		for (const path of [root, codexHome, sessions]) await ensurePrivateDirectory(path);
+		await ensurePrivateDirectories([canonicalHomeRoot, root, codexHome, sessions]);
 		const canonicalRoot = await realpath(root);
 		for (const path of [codexHome, sessions]) {
 			const canonical = await realpath(path);
@@ -165,6 +172,10 @@ export async function prepareCodexNativeInstancePaths(
 		}
 		const configFile = join(codexHome, "config.toml");
 		await ensurePrivateConfig(configFile);
+		protectPrivatePathsSync([
+			...([canonicalHomeRoot, root, codexHome, sessions].map((path) => ({ path, kind: "directory" as const }))),
+			{ path: configFile, kind: "file" },
+		]);
 		return { root: canonicalRoot, codexHome: await realpath(codexHome), configFile, sessions: await realpath(sessions) };
 	} catch {
 		throw new CodexNativeProcessError(
@@ -185,17 +196,16 @@ export async function prepareCodexNativeSessionPaths(
 	const generationRoot = join(sessionRoot, safeSegment(input.sessionGeneration));
 	let sessionDirectoryReady = false;
 	try {
-		await ensurePrivateDirectory(sessionRoot);
-		sessionDirectoryReady = true;
 		const processHome = join(generationRoot, "home");
 		const temp = join(generationRoot, "tmp");
 		const xdgCache = join(processHome, ".cache");
 		const xdgConfig = join(processHome, ".config");
 		const xdgData = join(processHome, ".local", "share");
 		const xdgState = join(processHome, ".local", "state");
-		for (const path of [generationRoot, processHome, temp, xdgCache, xdgConfig, xdgData, xdgState]) {
-			await ensurePrivateDirectory(path);
-		}
+		const privateDirectories = [sessionRoot, generationRoot, processHome, temp, xdgCache, xdgConfig, xdgData, xdgState];
+		await ensurePrivateDirectories(privateDirectories);
+		protectPrivatePathsSync(privateDirectories.map((path) => ({ path, kind: "directory" })));
+		sessionDirectoryReady = true;
 		const canonicalGenerationRoot = await realpath(generationRoot);
 		if (!isInside(instance.sessions, canonicalGenerationRoot)) throw new Error("runtime generation escaped its session root");
 		return {
@@ -298,7 +308,8 @@ async function probeCodexVersion(
 	return await new Promise<VersionProbeResult>((resolveProbe) => {
 		let child;
 		try {
-			child = spawn(config.executable, ["--version"], { env: environment, stdio: ["ignore", "pipe", "pipe"] });
+			const invocation = codexExecutableInvocation(config.executable, ["--version"]);
+			child = spawn(invocation.command, invocation.args, { env: environment, stdio: ["ignore", "pipe", "pipe"] });
 		} catch (error) {
 			resolveProbe({ status: "failed", errorCode: nodeErrorCode(error) });
 			return;
@@ -520,18 +531,19 @@ export async function startCodexNativeAppServer(
 	let client: CodexAppServerClient | undefined;
 	try {
 		const capabilities: CodexAppServerInitializeCapabilities = { experimentalApi: false };
+		const invocation = codexExecutableInvocation(input.config.executable, [
+			"app-server",
+			"--stdio",
+			"--strict-config",
+			"-c",
+			`tools.experimental_request_user_input.enabled=${input.config.experimentalUserInput}`,
+			"-c",
+			`features.default_mode_request_user_input=${input.config.experimentalUserInput}`,
+		]);
 		client = await CodexAppServerClient.start({
-			command: input.config.executable,
+			command: invocation.command,
 			fileCreationMask: 0o077,
-			args: [
-				"app-server",
-				"--stdio",
-				"--strict-config",
-				"-c",
-				`tools.experimental_request_user_input.enabled=${input.config.experimentalUserInput}`,
-				"-c",
-				`features.default_mode_request_user_input=${input.config.experimentalUserInput}`,
-			],
+			args: invocation.args,
 			cwd: resolve(input.workspace),
 			env: buildCodexNativeProcessEnvironment({
 				config: input.config,

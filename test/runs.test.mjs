@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { PiboRunRegistry } from "../dist/runs/registry.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { createRunToolDefinitions } from "../dist/runs/tools.js";
@@ -369,6 +373,38 @@ test("run tools start yieldable tools with explicit completion policy", async ()
 	assert.equal(result.details.runId, "run_1");
 });
 
+test("run start cancellation aborts the yieldable tool execution", async () => {
+	let started;
+	let observedSignal;
+	const [startTool] = createRunToolDefinitions(
+		[{
+			name: "helper",
+			async execute(_toolCallId, _params, signal) {
+				observedSignal = signal;
+				return await new Promise((_resolve, reject) => {
+					signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+				});
+			},
+		}],
+		{
+			startToolRun(input) { started = input; return runSnapshot(undefined, { toolName: input.toolName }); },
+			listRuns() { return []; },
+			getRunStatus() { throw new Error("not used"); },
+			waitForRun() { throw new Error("not used"); },
+			readRun() { throw new Error("not used"); },
+			cancelRun() { throw new Error("not used"); },
+			ackRun() { throw new Error("not used"); },
+		},
+	);
+
+	await startTool.execute("tool-call-cancel", { toolName: "helper", arguments: {} });
+	const execution = started.execute();
+	await new Promise((resolve) => setImmediate(resolve));
+	await started.cancel();
+	await assert.rejects(execution, /Yielded run was cancelled/);
+	assert.equal(observedSignal.aborted, true);
+});
+
 test("run start records inferred Bash timeout, warns for foreground services, and classifies lifetime expiry", async () => {
 	let started;
 	const [startTool] = createRunToolDefinitions(
@@ -708,6 +744,83 @@ test("router rejects concurrent yielded runs until the active execution settles"
 	}
 });
 
+test("pibo_run_cancel aborts the active tool and releases admission before returning", async () => {
+	const previousMode = process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+	const previousFree = process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+	const previousReservation = process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+	const previousMax = process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+	process.env.PIBO_GATEWAY_RESOURCE_GUARD = "block";
+	process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = "0";
+	process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = "0";
+	process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = "1";
+	try {
+		const router = new PiboSessionRouter({ persistSession: false });
+		let activeSignal;
+		const tools = Object.fromEntries(createRunToolDefinitions([{
+			name: "helper",
+			async execute(_toolCallId, params, signal) {
+				if (!params.wait) return { content: [{ type: "text", text: "done" }] };
+				activeSignal = signal;
+				return await new Promise((_resolve, reject) => {
+					signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+				});
+			},
+		}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+
+		const started = await tools.pibo_run_start.execute("start-cancelled", {
+			toolName: "helper",
+			arguments: { wait: true },
+			completionPolicy: "tracked",
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		const cancelled = await tools.pibo_run_cancel.execute("cancel-active", { runId: started.details.runId });
+		assert.equal(cancelled.details.status, "cancelled");
+		assert.equal(activeSignal.aborted, true);
+
+		const next = await tools.pibo_run_start.execute("start-next", {
+			toolName: "helper",
+			arguments: { wait: false },
+			completionPolicy: "detached",
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(router.runRegistry.status("parent", next.details.runId).status, "completed");
+	} finally {
+		if (previousMode === undefined) delete process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+		else process.env.PIBO_GATEWAY_RESOURCE_GUARD = previousMode;
+		if (previousFree === undefined) delete process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+		else process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = previousFree;
+		if (previousReservation === undefined) delete process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+		else process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = previousReservation;
+		if (previousMax === undefined) delete process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = previousMax;
+	}
+});
+
+test("session disposal terminates active yielded execution before returning", async () => {
+	const router = new PiboSessionRouter({ persistSession: false });
+	let activeSignal;
+	const tools = Object.fromEntries(createRunToolDefinitions([{
+		name: "helper",
+		async execute(_toolCallId, _params, signal) {
+			activeSignal = signal;
+			return await new Promise((_resolve, reject) => {
+				signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+			});
+		},
+	}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+
+	const started = await tools.pibo_run_start.execute("start-dispose-cancelled", {
+		toolName: "helper",
+		arguments: {},
+		completionPolicy: "tracked",
+	});
+	await new Promise((resolve) => setImmediate(resolve));
+	await router.disposeSession("parent", "test disposal");
+
+	assert.equal(activeSignal.aborted, true);
+	assert.equal(router.runRegistry.status("parent", started.details.runId).status, "cancelled");
+});
+
 test("router converts yielded tool errors into failed run notifications", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
 	const messages = [];
@@ -765,6 +878,114 @@ test("router emits a distinct timed_out run notification", async () => {
 	assert.match(messages[0].text, /"status":"timed_out"/);
 	assert.match(messages[0].text, /"timeoutPhase":"lifetime"/);
 });
+
+if (process.platform === "win32") {
+	test("pibo_run_cancel terminates a native Windows Bash process tree and releases admission", async (t) => {
+		const root = mkdtempSync(join(tmpdir(), "pibo-windows-yielded-tree-"));
+		t.after(() => rmSync(root, { recursive: true, force: true }));
+		const pidPath = join(root, "child.pid");
+		const heartbeatPath = join(root, "heartbeat.txt");
+		const readyPath = join(root, "ready.txt");
+		const previousIsolation = process.env.PIBO_YIELDED_RUN_ISOLATION;
+		const previousMode = process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+		const previousReservation = process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+		const previousMax = process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+		process.env.PIBO_YIELDED_RUN_ISOLATION = "windows-process-tree";
+		process.env.PIBO_GATEWAY_RESOURCE_GUARD = "block";
+		process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = "0";
+		process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = "1";
+		let childPid;
+		const router = new PiboSessionRouter({ persistSession: false });
+		try {
+			const bash = createBashTool(process.cwd());
+			const tools = Object.fromEntries(createRunToolDefinitions(
+				[bash],
+				router.createRunToolController("parent"),
+			).map((tool) => [tool.name, tool]));
+			const childScript = [
+				'const fs=require("node:fs");',
+				'fs.writeFileSync(process.argv[1],String(process.pid));',
+				'setInterval(()=>fs.appendFileSync(process.argv[2],"."),40);',
+			].join("");
+			const command = [
+				`node -e ${bashQuote(childScript)} ${bashQuote(windowsPathForBash(pidPath))} ${bashQuote(windowsPathForBash(heartbeatPath))} &`,
+				"child=$!",
+				`printf ready > ${bashQuote(windowsPathForBash(readyPath))}`,
+				'wait "$child"',
+			].join("\n");
+			const started = await tools.pibo_run_start.execute("start-windows-tree", {
+				toolName: "bash",
+				arguments: { command },
+				completionPolicy: "tracked",
+			});
+			await waitFor(() => existsSync(readyPath) && existsSync(pidPath), 10_000);
+			childPid = Number(readFileSync(pidPath, "utf8"));
+			assert.ok(Number.isSafeInteger(childPid) && childPid > 0);
+			assert.equal(isProcessAlive(childPid), true);
+			await waitFor(() => existsSync(heartbeatPath) && readFileSync(heartbeatPath).length > 0, 5_000);
+
+			const cancelled = await tools.pibo_run_cancel.execute("cancel-windows-tree", { runId: started.details.runId });
+			assert.equal(cancelled.details.status, "cancelled");
+			assert.equal(cancelled.details.resources.isolationMode, "windows-process-tree");
+			await waitFor(() => !isProcessAlive(childPid), 10_000);
+			const heartbeatBytes = readFileSync(heartbeatPath).length;
+			await new Promise((resolve) => setTimeout(resolve, 250));
+			assert.equal(readFileSync(heartbeatPath).length, heartbeatBytes, "cancelled child must stop writing");
+
+			const replacement = await tools.pibo_run_start.execute("start-windows-replacement", {
+				toolName: "bash",
+				arguments: { command: "printf replacement" },
+				completionPolicy: "tracked",
+			});
+			const settled = await tools.pibo_run_wait.execute("wait-windows-replacement", {
+				runId: replacement.details.runId,
+				timeoutMs: 10_000,
+			});
+			assert.equal(settled.details.status, "completed");
+			const read = await tools.pibo_run_read.execute("read-windows-replacement", { runId: replacement.details.runId });
+			assert.match(read.content[0].text, /replacement/);
+		} finally {
+			if (childPid && isProcessAlive(childPid)) {
+				try { process.kill(childPid, "SIGKILL"); } catch {}
+			}
+			await router.disposeAll();
+			if (previousIsolation === undefined) delete process.env.PIBO_YIELDED_RUN_ISOLATION;
+			else process.env.PIBO_YIELDED_RUN_ISOLATION = previousIsolation;
+			if (previousMode === undefined) delete process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+			else process.env.PIBO_GATEWAY_RESOURCE_GUARD = previousMode;
+			if (previousReservation === undefined) delete process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+			else process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = previousReservation;
+			if (previousMax === undefined) delete process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+			else process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = previousMax;
+		}
+	});
+}
+
+function windowsPathForBash(path) {
+	return path.replaceAll("\\", "/");
+}
+
+function bashQuote(value) {
+	return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function isProcessAlive(pid) {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function waitFor(predicate, timeoutMs) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
+	assert.fail(`Condition did not become true within ${timeoutMs}ms`);
+}
 
 test("router invalidates stale queued run notifications after read", async () => {
 	const previousMode = process.env.PIBO_GATEWAY_RESOURCE_GUARD;

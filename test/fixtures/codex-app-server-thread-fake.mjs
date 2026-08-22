@@ -30,6 +30,8 @@ if (args[0] === "--version") {
 			turnRequests: [],
 			resourceRequests: [],
 			skillRequests: [],
+			injectedItems: [],
+			compactionRequests: [],
 		};
 	const save = (state) => writeFileSync(statePath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
 	const nextTimestamp = (state) => state.clock++;
@@ -126,22 +128,43 @@ if (args[0] === "--version") {
 		},
 	];
 	const defaultEffortForModel = (modelId) => models.find((model) => model.id === modelId)?.defaultReasoningEffort ?? "high";
-	const skillMetadata = () => skillRoots.flatMap((root) => {
-		const candidates = [];
-		if (existsSync(join(root, "SKILL.md"))) candidates.push(root);
-		if (existsSync(root)) {
-			for (const entry of readdirSync(root, { withFileTypes: true })) {
-				if (entry.isDirectory() && existsSync(join(root, entry.name, "SKILL.md"))) candidates.push(join(root, entry.name));
+	const skillMetadata = () => {
+		const discovered = [];
+		if (process.env.PIBO_CODEX_FIXTURE_NATIVE_SKILL_NAME) {
+			discovered.push({
+				name: process.env.PIBO_CODEX_FIXTURE_NATIVE_SKILL_NAME,
+				description: "Fixture native collision skill",
+				enabled: true,
+				path: `/native/skills/${process.env.PIBO_CODEX_FIXTURE_NATIVE_SKILL_NAME}/SKILL.md`,
+				scope: "system",
+				dependencies: null,
+				interface: null,
+				shortDescription: null,
+			});
+		}
+		for (const root of skillRoots) {
+			const candidates = [];
+			if (existsSync(join(root, "SKILL.md"))) candidates.push(root);
+			if (existsSync(root)) {
+				for (const entry of readdirSync(root, { withFileTypes: true })) {
+					if (entry.isDirectory() && existsSync(join(root, entry.name, "SKILL.md"))) candidates.push(join(root, entry.name));
+				}
+			}
+			for (const directory of candidates) {
+				const path = join(directory, "SKILL.md");
+				const source = readFileSync(path, "utf8");
+				const name = /^name:\s*([^\r\n]+)$/m.exec(source)?.[1]?.trim() ?? directory.split(/[\\/]/).at(-1);
+				const description = /^description:\s*([^\r\n]+)$/m.exec(source)?.[1]?.trim() ?? "Fixture skill";
+				discovered.push({ name, description, enabled: true, path, scope: "user", dependencies: null, interface: null, shortDescription: null });
 			}
 		}
-		return candidates.map((directory) => {
-			const path = join(directory, "SKILL.md");
-			const source = readFileSync(path, "utf8");
-			const name = /^name:\s*([^\r\n]+)$/m.exec(source)?.[1]?.trim() ?? directory.split(/[\\/]/).at(-1);
-			const description = /^description:\s*([^\r\n]+)$/m.exec(source)?.[1]?.trim() ?? "Fixture skill";
-			return { name, description, enabled: true, path, scope: "user", dependencies: null, interface: null, shortDescription: null };
+		const seen = new Set();
+		return discovered.filter((skill) => {
+			if (seen.has(skill.name)) return false;
+			seen.add(skill.name);
+			return true;
 		});
-	});
+	};
 	const summarizeResources = (params) => {
 		const servers = params.config?.mcp_servers && typeof params.config.mcp_servers === "object"
 			? Object.entries(params.config.mcp_servers).map(([name, config]) => ({
@@ -166,6 +189,9 @@ if (args[0] === "--version") {
 			containsPiboSelectedContext: instructions.includes("# Pibo-Selected Context"),
 			containsPiboMcpCliInstructions: instructions.includes("Use the MCP CLI for discovery and calls."),
 			containsPiBasePrompt: instructions.includes("You are Pibo, a helpful AI coding agent") || instructions.includes("Pi Coding Agent"),
+			multiAgentEnabled: params.config?.features?.multi_agent ?? null,
+			multiAgentV2Enabled: params.config?.features?.multi_agent_v2 ?? null,
+			agentsEnabled: params.config?.agents?.enabled ?? null,
 		};
 	};
 	const missing = (id, threadId) => ({ id, error: { code: -32600, message: `no rollout found for thread id ${threadId}` } });
@@ -781,6 +807,60 @@ if (args[0] === "--version") {
 			send({ id: message.id, result: { thread: selected } });
 			return;
 		}
+		if (message.method === "thread/inject_items") {
+			const thread = loadedThreads[params.threadId] ?? state.threads[params.threadId];
+			if (!thread) {
+				send(missing(message.id, params.threadId));
+				return;
+			}
+			state.injectedItems ??= [];
+			state.injectedItems.push({ threadId: params.threadId, items: clone(params.items ?? []) });
+			save(state);
+			send({ id: message.id, result: {} });
+			return;
+		}
+		if (message.method === "thread/compact/start") {
+			const thread = loadedThreads[params.threadId] ?? state.threads[params.threadId];
+			if (!thread) {
+				send(missing(message.id, params.threadId));
+				return;
+			}
+			if (state.failNextCompaction === true) {
+				state.failNextCompaction = false;
+				save(state);
+				send({ id: message.id, error: { code: -32603, message: "fixture compaction failure" } });
+				return;
+			}
+			if (activeTurns[params.threadId]) {
+				send({ id: message.id, error: { code: -32600, message: "thread already has an active turn" } });
+				return;
+			}
+			const turnId = `turn-${state.nextTurn++}`;
+			const active = {
+				threadId: params.threadId,
+				turnId,
+				startedAt: nextTimestamp(state),
+				started: false,
+				terminal: false,
+				items: [],
+				eventSequence: 1,
+				userText: "",
+				mode: "compact",
+			};
+			activeTurns[params.threadId] = active;
+			state.compactionRequests ??= [];
+			state.compactionRequests.push({ threadId: params.threadId, turnId });
+			save(state);
+			send({ id: message.id, result: {} });
+			setImmediate(() => {
+				emitTurnStarted(active);
+				const item = { id: `${turnId}-compaction`, type: "contextCompaction", status: "completed" };
+				itemStarted(active, { ...item, status: "inProgress" });
+				itemCompleted(active, item);
+				completeActive(active, "completed");
+			});
+			return;
+		}
 		if (message.method === "thread/list") {
 			let data = Object.values(state.threads).filter((thread) => {
 				if (Array.isArray(params.sourceKinds) && params.sourceKinds.length > 0 && !params.sourceKinds.includes(thread.source)) return false;
@@ -916,6 +996,12 @@ if (args[0] === "--version") {
 			}
 			send({ id: message.id, result: {} });
 			setImmediate(() => completeActive(active, "interrupted"));
+			return;
+		}
+		if (message.method === "test/failNextCompaction") {
+			state.failNextCompaction = true;
+			save(state);
+			send({ id: message.id, result: {} });
 			return;
 		}
 		if (message.method === "test/markThreadRolloutMissing") {

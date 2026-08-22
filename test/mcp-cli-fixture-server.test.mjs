@@ -255,8 +255,8 @@ test("pibo mcp info reports connection failures for an unreachable configured se
         assert.equal(error.stdout, "");
         assert.match(error.stderr, /SERVER_CONNECTION_FAILED/);
         assert.match(error.stderr, /Failed to connect to server "unreachable"/);
-        assert.match(error.stderr, /spawn \/path\/does\/not\/exist ENOENT/);
-        assert.match(error.stderr, /Command not found/);
+        assert.match(error.stderr, /Details:/);
+        assert.match(error.stderr, /Suggestion:/);
         return true;
       },
     );

@@ -13,7 +13,7 @@ These behaviors affect safety, continuity, and debuggability. They need a durabl
 
 ## Goal
 
-Pibo SHALL select, expose, validate, and apply base-prompt and compaction-prompt configuration consistently across Chat Web, runtime creation, and Pi session compaction.
+Pibo SHALL select, expose, validate, and apply base-prompt, additive runtime context, and compaction configuration consistently across Chat Web and configured runtime adapters while preserving exact Pi behavior.
 
 ## Background / Current State
 
@@ -221,6 +221,53 @@ After compaction, the next agent turn has enough context to continue without rer
 - THEN the resulting summary includes a history summary
 - AND a `Turn Context (split turn)` section for the retained turn suffix.
 
+### Requirement: Native adapters use truthful compaction semantics
+
+A runtime adapter that advertises native manual compaction MUST invoke its stable native compaction operation and MUST emit balanced Pibo compaction lifecycle events.
+
+#### Current
+
+Pi retains the Pibo compaction extension. Native Codex invokes stable App Server v2 `thread/compact/start` for the bound thread. The stable Codex method does not accept Pibo custom compaction instructions, so the adapter emits a warning when optional instructions are supplied rather than claiming they were applied.
+
+#### Acceptance
+
+- Native Codex `/compact` targets the current bound thread through `thread/compact/start`.
+- Pibo emits one start and one terminal compaction event for success or failure.
+- Session and binding identity remain unchanged after compaction.
+- Unsupported optional custom instructions produce an explicit bounded warning.
+- Missing or malformed native compaction completion fails clearly rather than reporting success.
+
+#### Scenario: Compact a native Codex thread
+
+- GIVEN a Pibo Session is bound to a running native Codex thread
+- WHEN the user invokes `/compact`
+- THEN the adapter sends `thread/compact/start`
+- AND waits for native completion
+- AND emits balanced Pibo compaction events.
+
+### Requirement: OMP selected context is additive to its native prompt
+
+Pibo MUST deliver selected OMP context and portable history without replacing OMP's own system prompt or mutating workspace/global harness configuration.
+
+#### Current
+
+The OMP adapter writes a private session-scoped prompt file and launches OMP with `--append-system-prompt`. The file has separate bounded selected-context and portable-history sections and is removed or replaced when those inputs change.
+
+#### Acceptance
+
+- The generated file is owner-private and lives in the managed runtime session directory.
+- Selected context order is preserved after exact native-discovery duplicates are removed.
+- Portable history is explicitly labeled as append-only handoff context, not a native transcript.
+- A later turn with no selected additive material removes stale generated prompt state.
+- The workspace and global OMP config remain unchanged.
+
+#### Scenario: OMP receives selected context
+
+- GIVEN an OMP profile selects one context file not loaded by native discovery
+- WHEN the OMP process starts
+- THEN Pibo passes a private file through `--append-system-prompt`
+- AND OMP's native system prompt remains active before that additive material.
+
 ### Requirement: Chat Web prompt APIs are authenticated and same-origin protected
 
 Pibo MUST require an authenticated web session for all prompt-management API calls and MUST require same-origin JSON requests for prompt mutations.
@@ -297,8 +344,10 @@ Users can inspect the active prompt, edit custom content, save changes, and swit
 - [ ] SC-004: Custom base prompt content survives library/custom toggles.
 - [ ] SC-005: Broken custom compaction prompts are rejected before they become active.
 - [ ] SC-006: Compaction summaries use the active compaction prompt and preserve split-turn context.
-- [ ] SC-007: Chat Web prompt API mutations are authenticated and same-origin protected.
-- [ ] SC-008: Chat Web UI accurately shows active, read-only, editable, saving, and error states.
+- [ ] SC-007: Native Codex manual compaction uses `thread/compact/start` with balanced lifecycle events and truthful custom-instruction disclosure.
+- [ ] SC-008: OMP receives bounded selected context and portable handoff content as a private additive system prompt.
+- [ ] SC-009: Chat Web prompt API mutations are authenticated and same-origin protected.
+- [ ] SC-010: Chat Web UI accurately shows active, read-only, editable, saving, and error states.
 
 ## Assumptions and Open Questions
 
@@ -325,8 +374,10 @@ Users can inspect the active prompt, edit custom content, save changes, and swit
 | REQ-005 Compaction prompt mode is persisted per workspace | Gateway restarted after custom compaction prompt saved | `src/core/compaction-prompt.ts` | Implemented |
 | REQ-006 Custom compaction prompt saves are structurally validated | Missing summary section | `test/compaction-prompt.test.mjs` | Implemented |
 | REQ-007 Compaction summaries preserve continuity and file-operation context | Split turn compaction | `src/core/compaction-prompt.ts` | Implemented |
-| REQ-008 Chat Web prompt APIs are authenticated and same-origin protected | Cross-site prompt mutation | `src/apps/chat/web-app.ts` | Implemented |
-| REQ-009 Chat Web prompt UI distinguishes library and custom sources | Invalid custom compaction prompt in UI | `src/apps/chat-ui/src/context/*PromptView.tsx` | Implemented |
+| REQ-008 Native adapters use truthful compaction semantics | Compact a native Codex thread | `src/agent-runtimes/codex-native/adapter.ts`, `test/codex-native-turn.test.mjs` | Implemented |
+| REQ-009 OMP selected context is additive to its native prompt | OMP receives selected context | `src/agent-runtimes/omp/resource-delivery.ts`, `src/agent-runtimes/omp/process.ts`, `test/omp-resources.test.mjs` | Implemented |
+| REQ-010 Chat Web prompt APIs are authenticated and same-origin protected | Cross-site prompt mutation | `src/apps/chat/web-app.ts` | Implemented |
+| REQ-011 Chat Web prompt UI distinguishes library and custom sources | Invalid custom compaction prompt in UI | `src/apps/chat-ui/src/context/*PromptView.tsx` | Implemented |
 
 ## Verification Basis
 

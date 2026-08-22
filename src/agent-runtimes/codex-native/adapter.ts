@@ -80,6 +80,7 @@ import {
 	type CodexNativeModelCatalog,
 } from "./models.js";
 import { CodexNativeAuthController } from "./auth.js";
+import { injectPortableHistoryIntoCodex } from "./portable-history.js";
 
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
@@ -130,6 +131,19 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 		},
 		skills: { support: "materialized", modes: ["codex-extra-roots"] },
 		context: { support: "materialized", modes: ["native-project-discovery", "codex-developer-instructions"] },
+		contextDiscovery: {
+			supported: true,
+			configurable: false,
+			enabledByDefault: true,
+			strategy: "codex-project",
+			knownFileNames: ["AGENTS.override.md", "AGENTS.md"],
+		},
+		nativeSubagents: {
+			supported: true,
+			configurable: true,
+			enabledByDefault: true,
+		},
+		historyImport: true,
 		auth: {
 			status: true,
 			methods: [
@@ -154,7 +168,7 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 			structuredUserInput,
 		},
 		maintenance: {
-			compaction: false,
+			compaction: true,
 			contextUsage: true,
 			history: true,
 			health: true,
@@ -342,6 +356,22 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 				this.assertIdle();
 				return this.settings.setModel(model);
 			},
+			compact: async (customInstructions) => await this.runIdleOperation(async () => {
+				const customInstructionsRequested = Boolean(customInstructions?.trim());
+				if (customInstructionsRequested) {
+					this.emit({
+						type: "warning",
+						message: "Native Codex compaction owns its summary and cannot apply custom Pibo compaction instructions; the native compaction is continuing without them.",
+					});
+				}
+				await this.turns.compact();
+				this.updateBindingFromCurrentThread();
+				return {
+					native: true,
+					method: "thread/compact/start",
+					customInstructionsApplied: !customInstructionsRequested,
+				};
+			}),
 			respondToApproval: (requestId, decision) => this.requests.respondToApproval(requestId, decision),
 			respondToUserInput: (requestId, answers) => this.requests.respondToUserInput(requestId, answers),
 		};
@@ -845,6 +875,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			workspace: input.workspace,
 			portableTools: input.services?.portableTools,
 			resources: input.services?.resources,
+			nativeSubagentsEnabled: input.profile.nativeSubagents,
 		};
 		const startProcessBundle = async (processGeneration: string): Promise<CodexNativeProcessBundle> => {
 			let delivery: CodexNativeResourceDelivery | undefined;
@@ -924,6 +955,12 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			} catch (error) {
 				if (error instanceof CodexNativeThreadMissingError || !resourceDelivery.hasMcpServers) throw error;
 				throw new Error("Codex could not initialize every selected MCP server.");
+			}
+			if (input.historyHandoff?.mode === "import") {
+				if (binding.state === "bound") {
+					throw new Error("Native Codex portable history import requires a new thread.");
+				}
+				await injectPortableHistoryIntoCodex(process.client, threads.thread.id, input.historyHandoff.history);
 			}
 			settings.attachThread(threads.thread.id, threads.configuration);
 			await resourceDelivery.verifyThread(process.client, threads.thread.id);

@@ -107,7 +107,7 @@ export class PythonRuntimeBackend implements RuntimeBackend {
 		const target = input.target ?? {};
 		const backend = new PythonRuntimeBackend(
 			resolveCwd(baseCwd, target.cwd),
-			target.executable ?? "python3",
+			target.executable ?? (process.platform === "win32" ? "python" : "python3"),
 			target.args ?? [],
 			target.env,
 		);
@@ -190,8 +190,10 @@ export class PythonRuntimeBackend implements RuntimeBackend {
 
 	async close(force = false): Promise<void> {
 		if (!this.isAlive()) return;
+		const closed = new Promise<void>((resolve) => this.child.once("close", () => resolve()));
 		if (force) {
 			this.child.kill("SIGKILL");
+			await closed;
 			return;
 		}
 		try {
@@ -199,6 +201,7 @@ export class PythonRuntimeBackend implements RuntimeBackend {
 		} catch {
 			this.child.kill("SIGTERM");
 		}
+		await closed;
 	}
 
 	private waitReady(timeoutMs: number): Promise<void> {

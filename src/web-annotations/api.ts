@@ -61,10 +61,20 @@ type AnnotationPatchBody = {
 };
 
 let defaultStore: WebAnnotationStore | undefined;
+let defaultStoreUsers = 0;
 
-function getDefaultStore(): WebAnnotationStore {
+function acquireDefaultStore(): WebAnnotationStore {
 	defaultStore ??= createDefaultWebAnnotationStore();
+	defaultStoreUsers += 1;
 	return defaultStore;
+}
+
+function releaseDefaultStore(store: WebAnnotationStore): void {
+	if (defaultStore !== store) return;
+	defaultStoreUsers = Math.max(0, defaultStoreUsers - 1);
+	if (defaultStoreUsers > 0) return;
+	store.close();
+	defaultStore = undefined;
 }
 
 function createSameOriginBinding(store: WebAnnotationStore, request: Request, context: WebAnnotationBindingContext, body: BindingBody) {
@@ -88,13 +98,20 @@ function createSameOriginBinding(store: WebAnnotationStore, request: Request, co
 }
 
 export function createWebAnnotationsWebApp(options: WebAnnotationsWebAppOptions = {}): PiboWebApp {
-	const store = options.store ?? getDefaultStore();
+	const usesDefaultStore = options.store === undefined;
+	const store = options.store ?? acquireDefaultStore();
 	const baseService = options.cdpService ?? createWebAnnotationCdpService({ store });
+	let disposed = false;
 
 	return {
 		name: "web-annotations",
 		mountPath: WEB_ANNOTATIONS_APP_MOUNT,
 		apiPrefix: WEB_ANNOTATIONS_API_PREFIX,
+		dispose() {
+			if (disposed) return;
+			disposed = true;
+			if (usesDefaultStore) releaseDefaultStore(store);
+		},
 		async handleRequest(request, context) {
 			const url = new URL(request.url);
 			if (url.pathname === `${WEB_ANNOTATIONS_APP_MOUNT}/overlay.js` && request.method === "GET") {

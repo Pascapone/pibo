@@ -3,16 +3,17 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const piboBin = new URL("../dist/bin/pibo.js", import.meta.url);
+const piboBin = fileURLToPath(new URL("../dist/bin/pibo.js", import.meta.url));
 
 function tempHome() {
 	return mkdtempSync(join(tmpdir(), "pibo-skills-cli-"));
 }
 
 function runSkills(args, home = tempHome(), cwd = home) {
-	return spawnSync(process.execPath, [piboBin.pathname, "skills", ...args], {
+	return spawnSync(process.execPath, [piboBin, "skills", ...args], {
 		cwd,
 		env: { ...process.env, HOME: home },
 		encoding: "utf-8",

@@ -63,7 +63,7 @@ test("OpenAI Codex login uses device code flow and stores OAuth credentials", as
 		assert.equal(authJson["openai-codex"].refresh, "refresh-token");
 		assert.equal(authJson["openai-codex"].accountId, "acct-test");
 
-		assert.deepEqual(getLoginStatus("openai-codex"), [
+		assert.deepEqual(await getLoginStatus("openai-codex"), [
 			{
 				id: "openai-codex",
 				provider: "openai-codex",

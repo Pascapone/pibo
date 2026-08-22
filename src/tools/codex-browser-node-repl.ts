@@ -177,11 +177,13 @@ export class CodexBrowserNodeRepl {
 		}
 	}
 
-	dispose(): void {
+	async dispose(): Promise<void> {
 		if (!this.isAlive()) return;
 		this.alive = false;
-		this.child.kill("SIGTERM");
 		this.rejectAll(new Error("node_repl worker was disposed"));
+		const closed = new Promise<void>((resolve) => this.child.once("close", () => resolve()));
+		this.child.kill("SIGTERM");
+		await closed;
 	}
 
 	private waitReady(timeoutMs: number): Promise<void> {

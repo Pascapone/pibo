@@ -90,6 +90,9 @@ export {
 export type {
 	AgentRuntimeCapabilities,
 	AgentRuntimeCapabilityDelivery,
+	AgentRuntimeConfigurableFeatureCapability,
+	AgentRuntimeContextDiscoveryCapability,
+	AgentRuntimeContextDiscoveryStrategy,
 	AgentRuntimeSessionCapabilities,
 } from "./agent-runtime/capabilities.js";
 export type {
@@ -118,10 +121,14 @@ export type {
 	AgentRuntimeDriverCreateInput,
 	AgentRuntimeHistoryContentPart,
 	AgentRuntimeHistoryEntry,
+	AgentRuntimeHistoryHandoff,
 	AgentRuntimeHistoryInspection,
 	AgentRuntimeHistoryMessageEntry,
 	AgentRuntimeHistoryPage,
 	AgentRuntimeHistorySource,
+	AgentRuntimePortableHistory,
+	AgentRuntimePortableHistoryCheckpoint,
+	AgentRuntimePortableHistoryProvider,
 	AgentRuntimeInstanceDefinition,
 	AgentRuntimeInstanceId,
 	AgentRuntimeInstanceInfo,
@@ -136,6 +143,7 @@ export type {
 	AgentRuntimeStatus,
 	InspectAgentRuntimeHistoryInput,
 	OpenAgentRuntimeSessionInput,
+	PersistedPortableHistoryHandoff,
 	ReadAgentRuntimeHistoryInput,
 	RuntimeSessionBinding,
 } from "./agent-runtime/types.js";

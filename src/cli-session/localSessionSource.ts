@@ -1470,10 +1470,10 @@ function terminalUploadResult(
     return {
       supported: false,
       unsupportedReason:
-        "Usage: /upload <path>. Browser file picker upload is Web-only; from SSH, copy files with scp/rsync or place them under ~/.pibo/uploads.",
+        "Usage: /upload <path>. Browser file picker upload is Web-only; from SSH, copy files with scp/rsync or place them under $PIBO_HOME/uploads (default ~/.pibo/uploads).",
     };
   return {
-    message: `Terminal upload for ${target}: copy or move the file to ~/.pibo/uploads, or use Web /upload for browser file selection. The CLI did not copy file contents or echo secrets.`,
+    message: `Terminal upload for ${target}: copy or move the file to $PIBO_HOME/uploads (default ~/.pibo/uploads), or use Web /upload for browser file selection. The CLI did not copy file contents or echo secrets.`,
   };
 }
 

@@ -188,7 +188,7 @@ test("pibo mcp info unknown server reports merged lookup path details", async ()
 		await assert.rejects(
 			execFileAsync("node", [cliPath, "mcp", "info", "missing"], {
 				cwd,
-				env: { ...process.env, HOME: home },
+				env: { ...process.env, HOME: home, USERPROFILE: home },
 			}),
 			(error) => {
 				assert.equal(error.code, 1);

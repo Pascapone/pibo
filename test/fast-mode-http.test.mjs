@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { brotliDecompressSync, gunzipSync, inflateSync, zstdDecompressSync } from "node:zlib";
+import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
@@ -146,8 +148,18 @@ test("fast mode sends priority service tier through the HTTP provider request", 
 			.withBuiltinTools("disabled")
 			.withAutoContextFiles(false)
 			.createSession();
+		const credentials = new InMemoryCredentialStore();
+		await credentials.modify("openai-codex", async () => ({
+			type: "oauth",
+			access: fakeCodexToken(),
+			refresh: "deterministic-refresh-token",
+			expires: Date.now() + 60 * 60 * 1000,
+			accountId: "acct_http_test",
+		}));
+		const modelRuntime = await ModelRuntime.create({ credentials, allowModelNetwork: false });
 		runtime = await createPiboRuntime({
 			cwd,
+			modelRuntime,
 			persistSession: false,
 			profile,
 			modelDefaults: {},
@@ -160,9 +172,6 @@ test("fast mode sends priority service tier through the HTTP provider request", 
 			],
 		});
 
-		// Avoid real credentials while preserving the normal AgentSession -> Agent -> pi-ai provider path.
-		runtime.session._modelRegistry.hasConfiguredAuth = () => true;
-		runtime.session._modelRegistry.getApiKeyAndHeaders = async () => ({ ok: true, apiKey: fakeCodexToken() });
 		runtime.session.agent.transport = "sse";
 		runtime.session.state.model = {
 			api: "openai-codex-responses",

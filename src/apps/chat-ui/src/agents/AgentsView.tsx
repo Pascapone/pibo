@@ -87,6 +87,12 @@ function readPendingAgentDraft(): PendingAgentDraft | null {
 			runtimeOptions: parsed.draft.runtimeOptions && typeof parsed.draft.runtimeOptions === "object" && !Array.isArray(parsed.draft.runtimeOptions)
 				? parsed.draft.runtimeOptions
 				: {},
+			nativeSubagents: typeof parsed.draft.nativeSubagents === "boolean"
+				? parsed.draft.nativeSubagents
+				: undefined,
+			autoContextFiles: typeof parsed.draft.autoContextFiles === "boolean"
+				? parsed.draft.autoContextFiles
+				: true,
 		};
 		return { draft, savedSignature: typeof parsed.savedSignature === "string" ? parsed.savedSignature : null };
 	} catch {
@@ -455,6 +461,12 @@ export function AgentsView({
 		: null;
 	const skillsUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.skills, "Skills");
 	const contextUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.context, "Context delivery");
+	const contextDiscovery = selectedRuntime?.capabilities.contextDiscovery;
+	const nativeSubagents = selectedRuntime?.capabilities.nativeSubagents;
+	const automaticContextChecked = (contextDiscovery?.configurable
+		? draft.autoContextFiles
+		: contextDiscovery?.enabledByDefault ?? draft.autoContextFiles) ?? true;
+	const effectiveNativeSubagents = draft.nativeSubagents ?? nativeSubagents?.enabledByDefault ?? false;
 	const mcpUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.mcp.externalServers, "External MCP servers");
 	const piPackagesUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime?.adapterId !== "pi" ? "Pi packages are available only to Pi-backed runtime instances." : null);
 	const piBuiltinToolsUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime?.adapterId !== "pi" ? "Pi built-in tool overrides do not apply to this runtime; its native tools remain unchanged." : null);
@@ -734,7 +746,16 @@ export function AgentsView({
 							readOnly={readOnly}
 							onRuntimeChange={(runtimeInstanceId) => {
 								updateRuntimeOptionsError(null);
-								setDraft((current) => ({ ...current, runtimeInstanceId, runtimeOptions: {} }));
+								const nextRuntime = catalog?.agentRuntimes.find((runtime) => runtime.id === runtimeInstanceId);
+								setDraft((current) => ({
+									...current,
+									runtimeInstanceId,
+									runtimeOptions: {},
+									nativeSubagents: undefined,
+									...(nextRuntime && !nextRuntime.capabilities.contextDiscovery.configurable
+										? { autoContextFiles: true }
+										: {}),
+								}));
 							}}
 							onRuntimeOptionsChange={(runtimeOptions) => setDraft((current) => ({ ...current, runtimeOptions }))}
 							onRuntimeOptionsError={updateRuntimeOptionsError}
@@ -776,7 +797,27 @@ export function AgentsView({
 							onThinkingChange={(subagentThinkingLevel) => setDraft((current) => ({ ...current, subagentThinkingLevel }))}
 							onFastChange={(subagentFast) => setDraft((current) => ({ ...current, subagentFast }))}
 						/>
-						<InlineCheckboxToggle disabled={readOnly || Boolean(contextUnavailableReason && !draft.autoContextFiles)} checked={draft.autoContextFiles} title={contextUnavailableReason ? `Load AGENTS.md / CLAUDE.md — ${contextUnavailableReason}` : "Load AGENTS.md / CLAUDE.md"} onToggle={() => setDraft((current) => ({ ...current, autoContextFiles: !current.autoContextFiles }))} />
+						{nativeSubagents?.configurable ? (
+							<InlineCheckboxToggle
+								disabled={readOnly || Boolean(runtimeUnavailableReason)}
+								checked={effectiveNativeSubagents}
+								title="Native Subagents"
+								onToggle={() => setDraft((current) => ({
+									...current,
+									nativeSubagents: !(current.nativeSubagents ?? nativeSubagents.enabledByDefault),
+								}))}
+							/>
+						) : null}
+						{contextDiscovery?.supported ? (
+							<InlineCheckboxToggle
+								disabled={readOnly || !contextDiscovery.configurable || Boolean(contextUnavailableReason)}
+								checked={automaticContextChecked}
+								title={contextDiscovery.configurable
+									? "Automatic Context Discovery"
+									: `${selectedRuntime?.displayName ?? "This runtime"} discovers project context files natively; Pibo cannot override this setting.`}
+								onToggle={() => setDraft((current) => ({ ...current, autoContextFiles: !(current.autoContextFiles ?? true) }))}
+							/>
+						) : null}
 						<BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} />
 					</DesignerPanel>
 					<DesignerPanel title="Tools">

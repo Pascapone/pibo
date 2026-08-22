@@ -43,7 +43,7 @@ async function runTerminalFileDropScenario() {
     }));
     assert.match(uploadingMarkup, /data-pibo-state="uploading"/);
     assert.match(uploadingMarkup, /Uploading 2 files/);
-    assert.ok(uploadingMarkup.includes("Saving to ~/.pibo/uploads"));
+    assert.ok(uploadingMarkup.includes("Saving to the Pibo uploads directory"));
   `;
   await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }

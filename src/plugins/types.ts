@@ -90,6 +90,7 @@ export type PiboProfileInfo = {
 	builtinTools: BuiltinToolsMode;
 	builtinToolNames: string[];
 	autoContextFiles: boolean;
+	nativeSubagents?: boolean;
 	runControl: boolean;
 	goalControl: boolean;
 };

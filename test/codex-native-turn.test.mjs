@@ -46,7 +46,7 @@ function runtimeConfig(root) {
 		homeRoot: join(root, "runtime-state"),
 		environmentAllowlist: ["PATH"],
 		diagnosticTimeoutMs: 1_000,
-		startupTimeoutMs: 2_000,
+		startupTimeoutMs: process.platform === "win32" ? 5_000 : 2_000,
 		requestTimeoutMs: 2_000,
 		shutdownTimeoutMs: 100,
 		killTimeoutMs: 100,
@@ -72,7 +72,7 @@ function unboundBinding(instanceId, piboSessionId) {
 	};
 }
 
-function openInput(instanceId, workspace, binding, activeMessageId = "pibo-message-1") {
+function openInput(instanceId, workspace, binding, activeMessageId = "pibo-message-1", historyHandoff) {
 	const selectedProfile = profile(instanceId);
 	const piboSession = createPiboSession({
 		id: binding.piboSessionId,
@@ -87,6 +87,7 @@ function openInput(instanceId, workspace, binding, activeMessageId = "pibo-messa
 		profile: selectedProfile,
 		binding,
 		workspace,
+		...(historyHandoff ? { historyHandoff } : {}),
 		productContext: {
 			piboSessionId: piboSession.id,
 			getActiveMessage: () => ({ id: activeMessageId, source: "user" }),
@@ -186,6 +187,90 @@ test("Codex native normalizes assistant, reasoning, usage, terminal ordering, an
 	await resumed.dispose();
 });
 
+test("Codex native imports portable history with thread/inject_items before the first prompt", async (t) => {
+	const root = await testRoot(t);
+	const { registry, instanceId } = createAdapter(root, "codex-native-history-import");
+	const binding = unboundBinding(instanceId, "ps_codex_history_import");
+	const historyHandoff = {
+		mode: "import",
+		history: {
+			version: 1,
+			piboSessionId: binding.piboSessionId,
+			sourceRuntimeInstanceId: "pi",
+			sourceAdapterId: "pi",
+			checkpoint: { maxSessionSequence: 4, createdAt: "2026-08-20T00:00:00.000Z" },
+			entries: [
+				{ id: "u1", type: "message", source: "product", createdAt: "2026-08-20T00:00:00.000Z", role: "user", content: "Portable question", status: "complete" },
+				{ id: "a1", type: "message", source: "product", createdAt: "2026-08-20T00:00:01.000Z", role: "assistant", content: [{ type: "tool_call", toolCallId: "call-1", toolName: "lookup", input: { query: "portable" } }], status: "complete" },
+				{ id: "t1", type: "message", source: "product", createdAt: "2026-08-20T00:00:02.000Z", role: "tool", content: "portable result", toolCallId: "call-1", toolName: "lookup", result: { answer: "portable" }, status: "complete" },
+				{ id: "a2", type: "message", source: "product", createdAt: "2026-08-20T00:00:03.000Z", role: "assistant", content: "Portable answer", status: "complete" },
+			],
+			truncated: false,
+			omittedEntries: 0,
+		},
+	};
+	const session = await registry.openSession(
+		instanceId,
+		openInput(instanceId, root, binding, "history-message", historyHandoff),
+	);
+	t.after(() => session.dispose());
+	const state = await getCodexNativeClient(session).request("test/getState", {});
+	assert.equal(state.injectedItems.length, 1);
+	assert.equal(state.injectedItems[0].threadId, session.getBinding().nativeSessionId);
+	assert.deepEqual(state.injectedItems[0].items.map((item) => item.type), [
+		"message",
+		"function_call",
+		"function_call_output",
+		"message",
+	]);
+	assert.equal(state.turnRequests.length, 0, "history injection must not fabricate a model turn");
+	await session.prompt({ text: "Continue", source: "rpc" });
+	assert.equal((await getCodexNativeClient(session).request("test/getState", {})).turnRequests.length, 1);
+	await session.dispose();
+});
+
+test("Codex native manual compaction uses thread/compact/start and emits balanced Pibo compaction events", async (t) => {
+	const root = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "compaction");
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	const result = await session.controls.compact("Preserve the active implementation plan.");
+	assert.deepEqual(result, {
+		native: true,
+		method: "thread/compact/start",
+		customInstructionsApplied: false,
+	});
+	assert.equal(events.filter((event) => event.type === "warning").length, 1);
+	assert.match(events.find((event) => event.type === "warning").message, /cannot apply custom Pibo compaction instructions/);
+	assert.equal(events.filter((event) => event.type === "compaction_start").length, 1);
+	assert.equal(events.filter((event) => event.type === "compaction_end").length, 1);
+	assert.equal(events.find((event) => event.type === "compaction_end").aborted, false);
+	assert.ok(events.findIndex((event) => event.type === "compaction_start") < events.findIndex((event) => event.type === "compaction_end"));
+	const state = await getCodexNativeClient(session).request("test/getState", {});
+	assert.equal(state.compactionRequests.length, 1);
+	assert.equal(state.compactionRequests[0].threadId, session.getBinding().nativeSessionId);
+	await session.dispose();
+});
+
+test("Codex native compaction start failures still emit one balanced terminal lifecycle", async (t) => {
+	const root = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "compaction-failure");
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await getCodexNativeClient(session).request("test/failNextCompaction", {});
+	await assert.rejects(() => session.controls.compact(), /fixture compaction failure/);
+	assert.equal(events.filter((event) => event.type === "compaction_start").length, 1);
+	assert.equal(events.filter((event) => event.type === "compaction_end").length, 1);
+	const terminal = events.find((event) => event.type === "compaction_end");
+	assert.equal(terminal.aborted, false);
+	assert.match(terminal.errorMessage, /fixture compaction failure/);
+	assert.equal(session.getStatus().streaming, false);
+	await session.controls.compact();
+	assert.equal(events.filter((event) => event.type === "compaction_start").length, 2, "the controller must be reusable after a start failure");
+	assert.equal(events.filter((event) => event.type === "compaction_end").length, 2);
+	await session.dispose();
+});
+
 test("Codex native maps native command, file, and MCP item lifecycles with bounded secret redaction", async (t) => {
 	const root = await testRoot(t);
 	const { session } = await openFreshSession(t, root, "tools");
@@ -209,6 +294,7 @@ test("Codex native maps native command, file, and MCP item lifecycles with bound
 	assert.equal(calls[2].args.arguments.apiKey, "[redacted]");
 	assert.equal(finishes[2].result.result.accessToken, "[redacted]");
 	assert.doesNotMatch(JSON.stringify(events), /sk-fixture-secret|fixture-token/);
+	await session.dispose();
 });
 
 test("Codex native uses stable turn/steer and turn/interrupt against the active native turn", async (t) => {
@@ -241,6 +327,7 @@ test("Codex native uses stable turn/steer and turn/interrupt against the active 
 	assert.equal(events.filter((event) => event.type === "turn_failed").length, 0);
 	assert.equal(session.getStatus().streaming, false);
 	await assert.rejects(session.steer({ text: "too late", source: "rpc" }), /requires an active turn/);
+	await session.dispose();
 });
 
 test("Codex native emits one redacted terminal failure for provider failure, malformed protocol, and process crash", async (t) => {
@@ -269,6 +356,9 @@ test("Codex native emits one redacted terminal failure for provider failure, mal
 	await assert.rejects(crash.session.prompt({ text: "[crash]", source: "rpc" }), /exited|closed/i);
 	assert.equal(crashEvents.filter((event) => event.type === "turn_failed").length, 1);
 	assert.equal(crashEvents.filter((event) => event.type === "turn_completed").length, 0);
+	await provider.session.dispose();
+	await malformed.session.dispose();
+	await crash.session.dispose();
 });
 
 test("Codex native ignores foreign and duplicate notifications without duplicating terminal or item completion", async (t) => {
@@ -280,6 +370,7 @@ test("Codex native ignores foreign and duplicate notifications without duplicati
 	assert.equal(events.filter((event) => event.type === "turn_started").length, 1);
 	assert.equal(events.filter((event) => event.type === "assistant_message").length, 1);
 	assert.equal(events.filter((event) => event.type === "turn_completed").length, 1);
+	await session.dispose();
 });
 
 test("Codex native events flow through generic routed orchestration with correlation and restart continuity", async (t) => {

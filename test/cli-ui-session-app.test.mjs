@@ -4,6 +4,7 @@ import { PassThrough } from "node:stream";
 import { promisify } from "node:util";
 import React from "react";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { renderToString } from "ink";
 import { CliSourceError, createDefaultFakeCliSessionSource, FakeCliSessionSource } from "../dist/cli-session/index.js";
 import { buildCompactTerminalRows, buildTerminalCardDescriptor } from "../dist/session-ui/index.js";
@@ -32,7 +33,7 @@ const retiredTitle = `${String.fromCharCode(111, 119, 110, 101, 114)[0].toUpperC
 const retiredHeaderPattern = new RegExp(`${retiredTitle}:`);
 
 const execFileAsync = promisify(execFile);
-const cliPath = new URL("../dist/bin/pibo.js", import.meta.url).pathname;
+const cliPath = fileURLToPath(new URL("../dist/bin/pibo.js", import.meta.url));
 
 function traceView() {
 	return {

@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-export type YieldedRunIsolationMode = "off" | "systemd";
+export type YieldedRunIsolationMode = "off" | "systemd" | "windows-process-tree";
 
 export type YieldedRunResourcePolicy = {
 	mode: YieldedRunIsolationMode;
@@ -72,6 +74,7 @@ export type PreparedYieldedRunExecution = {
 	params: unknown;
 	resources: PiboRunResourceUsage;
 	execute<T>(operation: () => Promise<T>): Promise<T>;
+	cancel(): Promise<void>;
 };
 
 export class PiboRunResourceLimitError extends Error {
@@ -82,7 +85,7 @@ export class PiboRunResourceLimitError extends Error {
 }
 
 const DEFAULT_POLICY: YieldedRunResourcePolicy = Object.freeze({
-	mode: "systemd",
+	mode: process.platform === "win32" ? "windows-process-tree" : "systemd",
 	memoryHighBytes: 1280 * 1024 * 1024,
 	memoryMaxBytes: 1792 * 1024 * 1024,
 	tasksMax: 128,
@@ -152,24 +155,42 @@ export function prepareYieldedRunExecution(
 ): PreparedYieldedRunExecution {
 	const policy = resolveYieldedRunResourcePolicy(options.env);
 	const command = bashCommand(params);
-	const shouldIsolate = policy.mode === "systemd" && toolName === "bash" && command !== undefined;
-	const unitName = shouldIsolate ? options.unitName ?? yieldedRunUnitName() : undefined;
+	const shouldUseSystemd = policy.mode === "systemd" && toolName === "bash" && command !== undefined;
+	const shouldUseWindowsProcessTree = policy.mode === "windows-process-tree" && toolName === "bash" && command !== undefined;
+	const unitName = shouldUseSystemd ? options.unitName ?? yieldedRunUnitName() : undefined;
 	const metricsPath = unitName ? `/tmp/${unitName}.metrics` : undefined;
+	const windowsPidPath = shouldUseWindowsProcessTree
+		? join(tmpdir(), `pibo-yielded-${randomUUID()}.winpid`)
+		: undefined;
 	const resources: PiboRunResourceUsage = {
-		isolationMode: shouldIsolate ? "systemd" : "off",
+		isolationMode: shouldUseSystemd ? "systemd" : shouldUseWindowsProcessTree ? "windows-process-tree" : "off",
 		...(unitName ? { unitName } : {}),
 		policy,
 		admission: collectYieldedRunHostResourceSnapshot({ now: options.now }),
 	};
-	const preparedParams = shouldIsolate
+	const preparedParams = shouldUseSystemd
 		? { ...(params as Record<string, unknown>), command: systemdRunCommand(command, unitName!, policy, metricsPath) }
-		: params;
+		: shouldUseWindowsProcessTree && windowsPidPath
+			? { ...(params as Record<string, unknown>), command: windowsProcessTreeCommand(command, windowsPidPath) }
+			: params;
 
 	return {
 		params: preparedParams,
 		resources,
+		async cancel(): Promise<void> {
+			if (shouldUseSystemd && unitName) await terminateSystemdUnit(unitName);
+			if (shouldUseWindowsProcessTree && windowsPidPath) await terminateWindowsProcessTree(windowsPidPath);
+		},
 		async execute<T>(operation: () => Promise<T>): Promise<T> {
-			if (!shouldIsolate || !unitName) return await operation();
+			if (shouldUseWindowsProcessTree && windowsPidPath) {
+				resources.startedAt = new Date().toISOString();
+				try {
+					return await operation();
+				} finally {
+					unlinkOptional(windowsPidPath);
+				}
+			}
+			if (!shouldUseSystemd || !unitName) return await operation();
 			if (process.platform !== "linux" || !existsSync("/run/systemd/system")) {
 				resources.limitReason = "systemd isolation is unavailable on this host";
 				throw new PiboRunResourceLimitError("resource_limited: systemd isolation is unavailable for yielded Bash execution", resources);
@@ -193,6 +214,139 @@ export function prepareYieldedRunExecution(
 			}
 		},
 	};
+}
+
+export function windowsProcessTreeCommand(command: string, pidPath: string): string {
+	const portablePidPath = pidPath.replaceAll("\\", "/");
+	return [
+		"__pibo_win_pid=\"$(ps -W | awk -v p=$$ 'NR > 1 && $1 == p { print $4; exit }')\"",
+		"if [ -z \"$__pibo_win_pid\" ]; then printf '%s\\n' 'Pibo could not identify the Windows Bash process.' >&2; exit 125; fi",
+		`printf '%s %s' "$$" "$__pibo_win_pid" > ${bashSingleQuote(portablePidPath)}`,
+		"unset __pibo_win_pid",
+		command,
+	].join("\n");
+}
+
+type WindowsProcessIdentity = {
+	msysPid: number;
+	windowsPid: number;
+};
+
+type WindowsProcessRow = WindowsProcessIdentity & {
+	parentMsysPid: number;
+	processGroupId: number;
+};
+
+async function terminateWindowsProcessTree(pidPath: string): Promise<void> {
+	const identity = await waitForWindowsProcessIdentity(pidPath);
+	if (!identity) return;
+	try {
+		const rows = await listWindowsProcessTree(identity.msysPid);
+		for (const row of rows) {
+			try {
+				process.kill(row.windowsPid, "SIGKILL");
+			} catch {
+				// The process may have exited between the snapshot and termination.
+			}
+		}
+		for (let attempt = 0; attempt < 100 && processIsAlive(identity.windowsPid); attempt += 1) {
+			await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+		}
+		if (processIsAlive(identity.windowsPid)) {
+			throw new Error(`Windows yielded-run process tree rooted at PID ${identity.windowsPid} is still active after termination.`);
+		}
+	} finally {
+		unlinkOptional(pidPath);
+	}
+}
+
+async function waitForWindowsProcessIdentity(pidPath: string): Promise<WindowsProcessIdentity | undefined> {
+	for (let attempt = 0; attempt < 80; attempt += 1) {
+		try {
+			const match = readFileSync(pidPath, "utf8").trim().match(/^([1-9]\d*)\s+([1-9]\d*)$/);
+			if (match) return { msysPid: Number(match[1]), windowsPid: Number(match[2]) };
+		} catch {
+			// The Bash wrapper may still be starting.
+		}
+		await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+	}
+	return undefined;
+}
+
+async function listWindowsProcessTree(rootMsysPid: number): Promise<WindowsProcessRow[]> {
+	const { stdout } = await execFileAsync(windowsBashExecutable(), ["-lc", "ps -W"], {
+		encoding: "utf8",
+		timeout: 5_000,
+		windowsHide: true,
+	});
+	const rows = stdout.split(/\r?\n/).flatMap((line) => {
+		const fields = line.trim().split(/\s+/);
+		if (fields.length < 4 || !fields.slice(0, 4).every((field) => /^\d+$/.test(field))) return [];
+		return [{
+			msysPid: Number(fields[0]),
+			parentMsysPid: Number(fields[1]),
+			processGroupId: Number(fields[2]),
+			windowsPid: Number(fields[3]),
+		}];
+	});
+	const selected = new Set<number>([rootMsysPid]);
+	for (let changed = true; changed;) {
+		changed = false;
+		for (const row of rows) {
+			if (selected.has(row.msysPid)) continue;
+			if (row.processGroupId === rootMsysPid || selected.has(row.parentMsysPid)) {
+				selected.add(row.msysPid);
+				changed = true;
+			}
+		}
+	}
+	return rows
+		.filter((row) => selected.has(row.msysPid) && row.windowsPid > 0)
+		.sort((left, right) => processTreeDepth(right, rows) - processTreeDepth(left, rows));
+}
+
+function processTreeDepth(row: WindowsProcessRow, rows: readonly WindowsProcessRow[]): number {
+	const byPid = new Map(rows.map((candidate) => [candidate.msysPid, candidate]));
+	let depth = 0;
+	let current = row;
+	const seen = new Set<number>();
+	while (!seen.has(current.msysPid)) {
+		seen.add(current.msysPid);
+		const parent = byPid.get(current.parentMsysPid);
+		if (!parent) break;
+		depth += 1;
+		current = parent;
+	}
+	return depth;
+}
+
+function windowsBashExecutable(): string {
+	const candidates = [
+		process.env.ProgramFiles ? join(process.env.ProgramFiles, "Git", "bin", "bash.exe") : undefined,
+		process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"]!, "Git", "bin", "bash.exe") : undefined,
+	].filter((candidate): candidate is string => Boolean(candidate));
+	return candidates.find((candidate) => existsSync(candidate)) ?? "bash.exe";
+}
+
+function processIsAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function unlinkOptional(path: string): void {
+	try {
+		unlinkSync(path);
+	} catch {
+		// Best-effort transient process metadata cleanup.
+	}
+}
+
+function bashSingleQuote(value: string): string {
+	return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 export function systemdRunCommand(command: string, unitName: string, policy: YieldedRunResourcePolicy, metricsPath = `/tmp/${unitName}.metrics`): string {
@@ -494,8 +648,10 @@ function finiteNumber(value: string | undefined): number | undefined {
 
 function parseIsolationMode(value: string | undefined, fallback: YieldedRunIsolationMode): YieldedRunIsolationMode {
 	const normalized = value?.trim().toLowerCase();
+	if (normalized === "off" || normalized === "0" || normalized === "false") return "off";
+	if (process.platform === "win32") return "windows-process-tree";
 	if (!normalized) return fallback;
-	return normalized === "off" || normalized === "0" || normalized === "false" ? "off" : "systemd";
+	return "systemd";
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {

@@ -145,6 +145,7 @@ export type InitialSessionContextOptions = {
 	builtinTools?: BuiltinToolsMode;
 	builtinToolNames?: readonly string[];
 	autoContextFiles?: boolean;
+	nativeSubagents?: boolean;
 	toolPackages?: ToolPackageProfile;
 };
 
@@ -172,6 +173,7 @@ export class InitialSessionContext {
 	readonly builtinTools: BuiltinToolsMode;
 	readonly builtinToolNames: readonly string[];
 	readonly autoContextFiles: boolean;
+	readonly nativeSubagents?: boolean;
 	readonly toolPackages: ToolPackageProfile;
 
 	constructor(options: InitialSessionContextOptions) {
@@ -198,6 +200,7 @@ export class InitialSessionContext {
 		this.builtinTools = options.builtinTools ?? "default";
 		this.builtinToolNames = [...(options.builtinToolNames ?? DEFAULT_BUILTIN_TOOL_NAMES)];
 		this.autoContextFiles = options.autoContextFiles ?? true;
+		this.nativeSubagents = options.nativeSubagents;
 		this.toolPackages = { ...(options.toolPackages ?? {}) };
 	}
 }
@@ -226,6 +229,7 @@ export class InitialSessionContextBuilder {
 	private builtinTools: BuiltinToolsMode = "default";
 	private builtinToolNames: string[] = [...DEFAULT_BUILTIN_TOOL_NAMES];
 	private autoContextFiles = true;
+	private nativeSubagents?: boolean;
 	private toolPackages: ToolPackageProfile = {};
 
 	constructor(profileName: string) {
@@ -305,6 +309,11 @@ export class InitialSessionContextBuilder {
 
 	withAutoContextFiles(enabled: boolean): this {
 		this.autoContextFiles = enabled;
+		return this;
+	}
+
+	withNativeSubagents(enabled: boolean | undefined): this {
+		this.nativeSubagents = enabled;
 		return this;
 	}
 
@@ -398,6 +407,7 @@ export class InitialSessionContextBuilder {
 			builtinTools: this.builtinTools,
 			builtinToolNames: this.builtinToolNames,
 			autoContextFiles: this.autoContextFiles,
+			nativeSubagents: this.nativeSubagents,
 			toolPackages: this.toolPackages,
 		});
 	}

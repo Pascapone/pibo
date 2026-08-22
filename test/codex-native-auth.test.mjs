@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
 import { CODEX_NATIVE_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/codex-native/adapter.js";
+import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 
 const fixture = resolve("test/fixtures/codex-app-server-auth-fake.mjs");
 
@@ -179,7 +180,10 @@ test("native Codex API-key login, logout, and same-adapter instances remain isol
 			assert.equal(JSON.stringify({ first, files: files.map((file) => file.path) }).includes(apiKey), false);
 			assert.equal(await readFile(join(globalCodexHome, "marker.txt"), "utf8"), "unchanged\n");
 			await assert.rejects(() => readFile(join(piHome, "auth.json"), "utf8"), /ENOENT/);
-			for (const file of files) assert.equal((await stat(file.path)).mode & 0o077, 0);
+			for (const file of files) {
+				if (process.platform === "win32") assertPrivateWindowsAcl(file.path, "file");
+				else assert.equal((await stat(file.path)).mode & 0o077, 0);
+			}
 			await registry.disposeAuth();
 		});
 	} finally {

@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 
 const piboBin = resolve("dist/bin/pibo.js");
 
@@ -67,8 +68,13 @@ test("machine-key CLI resolves, generates, imports, lists, and revokes without l
 	const token = readFileSync(secretPath, "utf8").trim();
 	const record = JSON.parse(readFileSync(recordPath, "utf8"));
 	assert.match(token, /^pibo_mk_/);
-	assert.equal(statSync(secretPath).mode & 0o777, 0o600);
-	assert.equal(statSync(recordPath).mode & 0o777, 0o600);
+	if (process.platform === "win32") {
+		assertPrivateWindowsAcl(secretPath, "file");
+		assertPrivateWindowsAcl(recordPath, "file");
+	} else {
+		assert.equal(statSync(secretPath).mode & 0o777, 0o600);
+		assert.equal(statSync(recordPath).mode & 0o777, 0o600);
+	}
 	assert.equal(generated.stdout.includes(token), false);
 	assert.equal(generated.stderr.includes(token), false);
 	assert.equal(JSON.stringify(record).includes(token), false);

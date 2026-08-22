@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { AgentRuntimeAuthError } from "../../agent-runtime/errors.js";
+import { protectPrivateTreeSync } from "../../core/private-path.js";
 import type {
 	AgentRuntimeAuthOperationResult,
 	AgentRuntimeAuthPendingFlow,
@@ -343,7 +344,7 @@ export class CodexNativeAuthController {
 		await Promise.allSettled(flows.map(async (flow) => {
 			if (flow.timer) clearTimeout(flow.timer);
 			flow.unsubscribe?.();
-			await flow.process?.close();
+			await this.closeProcess(flow.process);
 			flow.process = undefined;
 		}));
 	}
@@ -418,7 +419,7 @@ export class CodexNativeAuthController {
 			};
 		} catch (error) {
 			unsubscribe?.();
-			await process?.close().catch(() => {});
+			await this.closeProcess(process).catch(() => {});
 			if (error instanceof AgentRuntimeAuthError) throw error;
 			throw operationFailure("device login start");
 		}
@@ -469,7 +470,16 @@ export class CodexNativeAuthController {
 				flow.timer = undefined;
 				flow.unsubscribe?.();
 				flow.unsubscribe = undefined;
-				await flow.process?.close().catch(() => {});
+				try {
+					await this.closeProcess(flow.process);
+				} catch {
+					flow.terminal = {
+						providerId: flow.providerId,
+						state: "failed",
+						configured: false,
+						message: "Native Codex login state could not be secured. Start a new login.",
+					};
+				}
 				flow.process = undefined;
 			})();
 		}
@@ -497,7 +507,16 @@ export class CodexNativeAuthController {
 		try {
 			return await operation(process);
 		} finally {
+			await this.closeProcess(process);
+		}
+	}
+
+	private async closeProcess(process: CodexNativeAppServerProcess | undefined): Promise<void> {
+		if (!process) return;
+		try {
 			await process.close();
+		} finally {
+			protectPrivateTreeSync(process.paths.codexHome);
 		}
 	}
 

@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const skillPath = fileURLToPath(new URL("../skills/builtin/pibo-agent-runtime-adapter/SKILL.md", import.meta.url));
 const skillDir = dirname(skillPath);
-const skillMarkdown = readFileSync(skillPath, "utf8");
+const normalizeLineEndings = (text) => text.replaceAll("\r\n", "\n");
+const skillMarkdown = normalizeLineEndings(readFileSync(skillPath, "utf8"));
 const referenceNames = [
 	"interfaces-and-registration.md",
 	"capabilities-and-designer.md",
@@ -18,7 +19,7 @@ const referenceNames = [
 const references = referenceNames.map((name) => ({
 	name,
 	path: resolve(skillDir, "references", name),
-	markdown: readFileSync(resolve(skillDir, "references", name), "utf8"),
+	markdown: normalizeLineEndings(readFileSync(resolve(skillDir, "references", name), "utf8")),
 }));
 const allGuidance = [skillMarkdown, ...references.map((reference) => reference.markdown)].join("\n");
 

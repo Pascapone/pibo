@@ -37,7 +37,7 @@ The capability catalog exposes one package named `pibo-run-control`. When a prof
 
 - A user-facing Chat Web run management panel beyond existing trace/session output behavior.
 - Distributed execution of yielded runs in a separate worker process.
-- Guaranteed cancellation of underlying OS processes beyond Pibo's recorded run cancellation.
+- Guaranteed rollback of external side effects that completed before cancellation or tools that ignore cancellation.
 - Retrying arbitrary yieldable tools by default.
 - Changing the synchronous behavior of tools that are called directly instead of through `pibo_run_start`.
 
@@ -244,25 +244,29 @@ Large or sensitive terminal output is pulled only when the agent asks for it, wh
 - THEN the response contains that text
 - AND later notifications no longer include that run.
 
-### Requirement: Cancellation records terminal state and suppresses reminders
+### Requirement: Cancellation stops cancellable execution before reporting success
 
-`pibo_run_cancel` MUST mark a non-terminal run cancelled, consume it for reminder purposes, and unblock any waiters.
+`pibo_run_cancel` MUST mark a non-terminal run cancelled, consume it for reminder purposes, propagate cancellation to the active yieldable tool, stop an isolated Bash process tree, and unblock waiters.
 
 #### Current
 
-`PiboRunRegistry.cancel()` changes non-terminal status to `cancelled`, completes timestamps, marks the run consumed, persists the update, and resolves waiters. Router controller cleanup calls `cancelControllerRuns()`.
+`PiboRunRegistry.cancel()` records terminal state while the run controller invokes the cancellation handler captured by `pibo_run_start`. The handler aborts the active tool signal, terminates any dedicated systemd unit, and waits a bounded interval for execution settlement before returning.
 
 #### Target
 
-Cancellation gives the agent a consistent terminal state even when the underlying yieldable tool cannot be forcibly stopped.
+A successful cancellation response means Pibo has stopped cancellable execution and released its gateway work admission, not merely changed the stored run status.
 
 #### Acceptance
 
 - Cancelling a running run returns status `cancelled`.
 - The cancelled run is marked consumed.
+- The active yieldable tool receives an aborted signal.
+- An isolated Bash run's complete systemd control group is inactive before successful cancellation returns.
+- Gateway work admission is released before a replacement yielded run is started.
 - Waiters on the run resolve with `timedOut: false` and status `cancelled`.
 - Cancelling a terminal run leaves it terminal and consumed.
-- Disposing or killing an controller session cancels that controller's non-terminal runs.
+- Cancellation fails explicitly if execution does not settle within the bounded cleanup interval.
+- Disposing or killing a controller session cancels that controller's non-terminal runs.
 
 #### Scenario: Controller session is disposed
 
@@ -330,7 +334,7 @@ Run state stays small without losing unread tracked results.
 - A stale queued reminder can exist after the agent reads a run; router cleanup MUST remove queued service reminders that no longer describe pending run state.
 - A session may own both tracked and detached runs; default list output MUST hide detached runs while keeping tracked work visible.
 - Multiple runs can complete close together; reminders MAY coalesce them into one compact service message grouped by status.
-- Cancelling a run does not guarantee the underlying external side effect stopped immediately; the Pibo record still becomes terminal from the agent's point of view.
+- A tool that ignores its abort signal may not settle; cancellation reports a bounded cleanup failure instead of falsely claiming complete process termination. External side effects that completed before cancellation are not rolled back.
 
 ## Constraints
 
@@ -351,6 +355,7 @@ Run state stays small without losing unread tracked results.
 - [ ] SC-007: Store-backed interrupted non-retryable runs recover as failed rather than staying running forever.
 - [ ] SC-008: Pruning removes only detached terminal runs or consumed tracked terminal runs after their TTLs.
 - [ ] SC-009: Configured execution timeouts persist at start, terminate as `timed_out`, preserve startup-versus-lifetime classification, and warn for finite foreground service runs.
+- [ ] SC-010: Successful cancellation aborts the active tool, terminates isolated Bash process groups, and releases admission before returning.
 
 ## Assumptions and Open Questions
 
@@ -362,7 +367,6 @@ Run state stays small without losing unread tracked results.
 
 ### Open Questions
 
-- Should future cancellation propagate AbortSignal or process-level termination consistently to every yieldable tool?
 - Should run-control expose per-tool retry declarations instead of the current conservative default?
 - Should Chat Web show a dedicated yielded-run panel for humans, separate from trace nodes and service messages?
 - Should terminal result retention be configurable per profile or per run?
@@ -378,7 +382,7 @@ Run state stays small without losing unread tracked results.
 | REQ-005 Detached runs are inspectable but do not remind | Fire-and-forget background work | `src/runs/registry.ts`, `src/runs/tools.ts` | Implemented |
 | REQ-006 Waiting is bounded and timeout is normal | Long command is still running | `src/runs/registry.ts`, `src/runs/tools.ts` | Implemented |
 | REQ-007 Terminal results are read explicitly | Read completed result | `src/runs/registry.ts`, `src/runs/tools.ts` | Implemented |
-| REQ-008 Cancellation records terminal state and suppresses reminders | Controller session is disposed | `src/runs/registry.ts`, `src/core/session-router.ts` | Implemented |
+| REQ-008 Cancellation stops cancellable execution before reporting success | Controller session is disposed | `src/runs/tools.ts`, `src/runs/resource-isolation.ts`, `src/runs/registry.ts`, `src/core/session-router.ts` | Implemented |
 | REQ-009 Durable stores recover interrupted runs conservatively | Gateway process dies during a background run | `src/reliability/store.ts`, `src/runs/registry.ts` | Implemented |
 | REQ-010 Terminal run records are pruned after policy-specific TTLs | Unread completed run remains available | `src/runs/registry.ts`, `src/reliability/store.ts` | Implemented |
 

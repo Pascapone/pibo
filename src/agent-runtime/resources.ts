@@ -32,6 +32,8 @@ export type AgentRuntimeContextContribution = {
 	/** Exact contribution text. Treat it as adapter input, not safe debug output. */
 	content?: string;
 	byteSize?: number;
+	/** True when this exact source is already loaded by known native project discovery. */
+	nativeDiscovered?: boolean;
 	materializedPath?: string;
 };
 
@@ -124,6 +126,11 @@ export interface PiboRuntimeResourceSession {
 	getAdapterEnvironment(): Readonly<NodeJS.ProcessEnv>;
 	/** Sensitive resolved server configs for adapter-owned launch state. Never expose through inspection. */
 	getExternalMcpServerConfigs(): Readonly<Record<string, ServerConfig>>;
+	/** Replace generic capability-derived reports with adapter-observed delivery evidence. */
+	recordAdapterDelivery?(
+		reports: readonly AgentRuntimeDeliveryReport[],
+		diagnostics?: readonly AgentRuntimeResourceDiagnostic[],
+	): void;
 	getInspection(): AgentRuntimeResourceInspection;
 	dispose(): Promise<void>;
 }

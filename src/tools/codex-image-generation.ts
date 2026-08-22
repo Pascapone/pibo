@@ -1,8 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { platform, release, arch } from "node:os";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import {
+	readPiCredential,
+	resolvePiProviderAuth,
+} from "../agent-runtimes/pi/credentials.js";
 import { definePiboTool, type PiboToolDefinition, type PiboToolDefinitionContext } from "./contract.js";
 import type { ToolProfile } from "../core/profiles.js";
 import { getPiboHome } from "../core/pibo-home.js";
@@ -89,13 +92,13 @@ function getOpenAiAccountId(accessToken: string, storedAccountId: unknown): stri
 }
 
 async function getCodexImageAuth(): Promise<CodexImageAuth> {
-	const authStorage = AuthStorage.create();
-	const credential = authStorage.get(OPENAI_CODEX_PROVIDER);
+	const credential = await readPiCredential(OPENAI_CODEX_PROVIDER);
 	if (credential?.type !== "oauth") {
 		throw new Error("codex_image_generation requires ChatGPT/Codex OAuth login for provider openai-codex. Use the existing OpenAI Codex login flow; API keys are not supported for this tool.");
 	}
 
-	const accessToken = await authStorage.getApiKey(OPENAI_CODEX_PROVIDER, { includeFallback: false });
+	const resolvedAuth = await resolvePiProviderAuth(OPENAI_CODEX_PROVIDER);
+	const accessToken = resolvedAuth?.auth.apiKey;
 	if (!accessToken) {
 		throw new Error("codex_image_generation could not load a ChatGPT/Codex OAuth access token for provider openai-codex. Please log in again with the OpenAI Codex login flow.");
 	}

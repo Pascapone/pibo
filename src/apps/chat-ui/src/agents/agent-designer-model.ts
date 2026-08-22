@@ -31,6 +31,7 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 		runtimeOptions: draft.runtimeOptions && typeof draft.runtimeOptions === "object" && !Array.isArray(draft.runtimeOptions)
 			? structuredClone(draft.runtimeOptions)
 			: {},
+		nativeSubagents: draft.nativeSubagents ?? null,
 		nativeTools: uniqueNames(draft.nativeTools),
 		skills: uniqueNames(draft.skills),
 		contextFiles: uniqueNames(draft.contextFiles),
@@ -70,6 +71,7 @@ export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new
 		description: "",
 		runtimeInstanceId: defaultRuntimeInstanceId(catalog),
 		runtimeOptions: {},
+		nativeSubagents: undefined,
 		nativeTools: [],
 		skills: hasBuiltinSkill(catalog, "pi-agent-harness") ? ["pi-agent-harness"] : [],
 		contextFiles: [],
@@ -132,6 +134,7 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 		description: agent.description ?? "",
 		runtimeInstanceId: agent.runtimeInstanceId ?? "pi",
 		runtimeOptions: structuredClone(agent.runtimeOptions ?? {}),
+		nativeSubagents: agent.nativeSubagents,
 		nativeTools: agent.nativeTools,
 		skills: agent.skills,
 		contextFiles: agent.contextFiles,
@@ -164,6 +167,7 @@ export function profileToDraft(profile: BootstrapData["agents"][number], catalog
 		description: profile.description ?? "",
 		runtimeInstanceId: profile.runtimeInstanceId ?? "pi",
 		runtimeOptions: structuredClone(profile.runtimeOptions ?? {}),
+		nativeSubagents: profile.nativeSubagents,
 		nativeTools: profile.nativeTools ?? [],
 		skills: profile.skills ?? (hasBuiltinSkill(catalog, "pi-agent-harness") ? ["pi-agent-harness"] : []),
 		contextFiles: profile.contextFiles ?? [],

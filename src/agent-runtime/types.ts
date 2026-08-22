@@ -22,6 +22,14 @@ export type {
 	RuntimeSessionBinding,
 } from "../sessions/runtime-binding.js";
 import type { AgentRuntimeCapabilities, AgentRuntimeSessionCapabilities } from "./capabilities.js";
+import type { AgentRuntimeHistoryHandoff } from "./portable-history.js";
+export type {
+	AgentRuntimeHistoryHandoff,
+	AgentRuntimePortableHistory,
+	AgentRuntimePortableHistoryCheckpoint,
+	AgentRuntimePortableHistoryProvider,
+	PersistedPortableHistoryHandoff,
+} from "./portable-history.js";
 import type {
 	AgentRuntimeAuthOperationResult,
 	AgentRuntimeAuthStatus,
@@ -145,6 +153,7 @@ export type OpenAgentRuntimeSessionInput = {
 	binding?: RuntimeSessionBinding;
 	workspace: string;
 	activeModel?: ModelProfile;
+	historyHandoff?: AgentRuntimeHistoryHandoff;
 	productContext: AgentRuntimeProductContext;
 	services?: AgentRuntimeOpenServices;
 };

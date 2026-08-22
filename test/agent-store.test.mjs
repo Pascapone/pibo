@@ -352,6 +352,36 @@ test("custom agent store persists automatic context file setting", () => {
 	store.close();
 });
 
+test("custom agent store keeps automatic context concrete while native-subagent overrides remain nullable", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-runtime-features-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	const agent = store.create({
+		displayName: "runtime-feature-agent",
+		autoContextFiles: false,
+		nativeSubagents: false,
+	});
+	assert.equal(agent.autoContextFiles, false);
+	assert.equal(agent.nativeSubagents, false);
+
+	const cleared = store.update(agent.id, { autoContextFiles: null, nativeSubagents: null });
+	assert.equal(cleared.autoContextFiles, true);
+	assert.equal(cleared.nativeSubagents, undefined);
+	store.close();
+
+	const reopened = new CustomAgentStore(path);
+	const persisted = reopened.get(agent.id);
+	assert.equal(persisted.autoContextFiles, true);
+	assert.equal(persisted.nativeSubagents, undefined);
+	reopened.close();
+
+	const db = new DatabaseSync(path);
+	assert.equal(tableColumns(db, "chat_agents").has("auto_context_files_override"), false);
+	assert.ok(tableColumns(db, "chat_agents").has("native_subagents"));
+	assert.equal(db.prepare("SELECT auto_context_files, native_subagents FROM chat_agents WHERE id = ?").get(agent.id).auto_context_files, 1);
+	assert.equal(db.prepare("SELECT auto_context_files, native_subagents FROM chat_agents WHERE id = ?").get(agent.id).native_subagents, null);
+	db.close();
+});
+
 test("custom agent store persists runtime instance selection and adapter options", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-runtime-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
+import { protectPrivateFileSync, protectPrivatePathsSync } from "../../core/private-path.js";
 import { OmpRpcClient } from "./client.js";
 import type { OmpRuntimeConfig } from "./config.js";
 
@@ -69,17 +70,19 @@ function nodeErrorCode(error: unknown): string | undefined {
 		: undefined;
 }
 
-async function ensurePrivateDirectory(path: string): Promise<void> {
-	await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+async function ensurePrivateDirectories(paths: readonly string[]): Promise<void> {
+	for (const path of paths) await mkdir(path, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+	protectPrivatePathsSync(paths.map((path) => ({ path, kind: "directory" })));
 }
 
 async function ensurePrivateConfig(path: string): Promise<void> {
-	await mkdir(dirname(path), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+	await ensurePrivateDirectories([dirname(path)]);
 	try {
 		await stat(path);
 	} catch {
 		await writeFile(path, "", { mode: PRIVATE_FILE_MODE });
 	}
+	protectPrivateFileSync(path);
 }
 
 export async function prepareOmpInstancePaths(
@@ -121,11 +124,7 @@ export async function prepareOmpSessionPaths(
 		// re-attaches to the same native session files.
 		sessionDir: join(sessionRoot, "omp-sessions"),
 	};
-	await ensurePrivateDirectory(instanceRoot);
-	await ensurePrivateDirectory(paths.agentDir);
-	await ensurePrivateDirectory(paths.skills);
-	await ensurePrivateDirectory(paths.context);
-	await ensurePrivateDirectory(paths.sessionDir);
+	await ensurePrivateDirectories([instanceRoot, paths.agentDir, paths.skills, paths.context, paths.sessionDir]);
 	await ensurePrivateConfig(paths.config);
 	return paths;
 }
@@ -137,6 +136,15 @@ export async function prepareOmpSessionPaths(
  */
 export async function disposeOmpSessionPaths(paths: OmpSessionPaths): Promise<void> {
 	await rm(paths.root, { recursive: true, force: true });
+}
+
+/** Ensure an unbound/start-fresh Pibo binding cannot inherit an older OMP transcript or portable handoff. */
+export async function resetOmpNativeSession(paths: OmpSessionPaths): Promise<void> {
+	await Promise.all([
+		rm(paths.sessionDir, { recursive: true, force: true }),
+		rm(paths.context, { recursive: true, force: true }),
+	]);
+	await ensurePrivateDirectories([paths.sessionDir, paths.context]);
 }
 
 /**
@@ -358,9 +366,21 @@ export async function startOmpProcess(input: StartOmpProcessInputFull): Promise<
  * config-parse time (config.ompEntry), so the command is never resolved against
  * the arbitrary session workspace.
  */
-export function resolveOmpCommand(config: OmpRuntimeConfig, paths: OmpSessionPaths): string[] {
+export function resolveOmpCommand(
+	config: OmpRuntimeConfig,
+	paths: OmpSessionPaths,
+	appendSystemPromptPath?: string,
+): string[] {
 	if (!config.ompEntry) {
 		throw new Error("OMP CLI entry is not configured; set config.ompEntry to an absolute CLI path.");
 	}
-	return [config.bunExecutable, config.ompEntry, "--mode", "rpc", "--session-dir", paths.sessionDir];
+	return [
+		config.bunExecutable,
+		config.ompEntry,
+		"--mode",
+		"rpc",
+		"--session-dir",
+		paths.sessionDir,
+		...(appendSystemPromptPath ? ["--append-system-prompt", appendSystemPromptPath] : []),
+	];
 }

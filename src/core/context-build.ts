@@ -292,6 +292,7 @@ function withoutRequestedModels(profile: InitialSessionContext): InitialSessionC
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,
+		nativeSubagents: profile.nativeSubagents,
 		toolPackages: profile.toolPackages,
 	});
 }

@@ -107,7 +107,7 @@ export class NodeRuntimeBackend implements RuntimeBackend {
 		const target = input.target ?? {};
 		const backend = new NodeRuntimeBackend(
 			resolveCwd(baseCwd, target.cwd),
-			target.executable ?? "node",
+			target.executable ?? process.execPath,
 			target.args ?? [],
 			target.env,
 		);
@@ -191,8 +191,10 @@ export class NodeRuntimeBackend implements RuntimeBackend {
 
 	async close(force = false): Promise<void> {
 		if (!this.isAlive()) return;
+		const closed = new Promise<void>((resolve) => this.child.once("close", () => resolve()));
 		if (force) {
 			this.child.kill("SIGKILL");
+			await closed;
 			return;
 		}
 		try {
@@ -200,6 +202,7 @@ export class NodeRuntimeBackend implements RuntimeBackend {
 		} catch {
 			this.child.kill("SIGTERM");
 		}
+		await closed;
 	}
 
 	private waitReady(timeoutMs: number): Promise<void> {
