@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, FolderOpen, RefreshCw, ServerCrash } from "lucide-react";
-import { getProjects } from "./api-chat-sessions";
-import type { PiboProject, VscodeWebIntegration } from "./types";
+import { ExternalLink, RefreshCw, ServerCrash } from "lucide-react";
+import type { VscodeWebIntegration } from "./types";
 
 export function vscodeWebUrl(baseUrl: string, folder?: string, documentUrl = "http://localhost/"): string {
 	const target = new URL(baseUrl, documentUrl);
@@ -14,10 +13,6 @@ export function vscodeWebUrl(baseUrl: string, folder?: string, documentUrl = "ht
 }
 
 export function VscodeArea({ integration }: { integration?: VscodeWebIntegration }) {
-	const initialFolder = integration?.workspaceRoot ?? "";
-	const [projects, setProjects] = useState<PiboProject[]>([]);
-	const [selectedFolder, setSelectedFolder] = useState(initialFolder);
-	const [workspacePath, setWorkspacePath] = useState(initialFolder);
 	const [probeStatus, setProbeStatus] = useState<"checking" | "ready" | "unavailable">("checking");
 	const [probeError, setProbeError] = useState<string | null>(null);
 	const [frameReady, setFrameReady] = useState(false);
@@ -27,30 +22,13 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 	const frameReadinessTimerRef = useRef<number | null>(null);
 
 	useEffect(() => {
-		const nextFolder = integration?.workspaceRoot ?? "";
-		setSelectedFolder(nextFolder);
-		setWorkspacePath(nextFolder);
 		setFrameReady(false);
 	}, [integration?.url, integration?.workspaceRoot]);
 
-	useEffect(() => {
-		let active = true;
-		getProjects()
-			.then(({ projects: nextProjects }) => {
-				if (active) setProjects(nextProjects.filter((project) => !project.archivedAt));
-			})
-			.catch(() => {
-				if (active) setProjects([]);
-			});
-		return () => {
-			active = false;
-		};
-	}, []);
-
 	const frameUrl = useMemo(() => {
 		if (!integration) return "";
-		return vscodeWebUrl(integration.url, selectedFolder || undefined, window.location.href);
-	}, [integration, selectedFolder]);
+		return vscodeWebUrl(integration.url, integration.workspaceRoot || undefined, window.location.href);
+	}, [integration]);
 
 	useEffect(() => {
 		if (!integration || !frameUrl) {
@@ -136,13 +114,6 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 		inspectFrame();
 	};
 
-	const openWorkspacePath = () => {
-		setFrameReady(false);
-		setSelectedFolder(workspacePath.trim());
-		setReloadKey((value) => value + 1);
-		setRetryKey((value) => value + 1);
-	};
-
 	const reloadFrame = () => {
 		setFrameReady(false);
 		setReloadKey((value) => value + 1);
@@ -160,48 +131,10 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 		);
 	}
 
-	const projectOptions = projects
-		.filter((project) => project.projectFolder !== integration.workspaceRoot)
-		.sort((left, right) => left.name.localeCompare(right.name));
-
 	return (
 		<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#101d22]" aria-label="VS Code Web">
-			<div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-slate-800 bg-[#151f24] px-3">
-				<FolderOpen size={15} className="shrink-0 text-[#11a4d4]" />
-				<form
-					className="flex min-w-0 max-w-2xl flex-1 items-center gap-1"
-					onSubmit={(event) => {
-						event.preventDefault();
-						openWorkspacePath();
-					}}
-				>
-					<label htmlFor="vscode-workspace-path" className="sr-only">Workspace path on Pibo</label>
-					<input
-						id="vscode-workspace-path"
-						list="vscode-workspace-paths"
-						value={workspacePath}
-						onChange={(event) => setWorkspacePath(event.target.value)}
-						placeholder="Absolute workspace path on Pibo"
-						autoComplete="off"
-						spellCheck={false}
-						className="min-w-0 flex-1 rounded-sm border border-slate-700 bg-[#0e1116] px-2 py-1.5 font-mono text-xs text-slate-200 focus:border-[#11a4d4] focus:outline-none"
-					/>
-					<datalist id="vscode-workspace-paths">
-						{integration.workspaceRoot ? <option value={integration.workspaceRoot}>Workspace root</option> : null}
-						{projectOptions.map((project) => (
-							<option key={project.id} value={project.projectFolder}>{project.name}</option>
-						))}
-					</datalist>
-					<button
-						type="submit"
-						className="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-						title="Open workspace path"
-						aria-label="Open workspace path"
-					>
-						<FolderOpen size={14} />
-					</button>
-				</form>
-				<div className="ml-auto flex shrink-0 items-center gap-1">
+			<div className="flex min-h-11 shrink-0 items-center justify-end gap-1 border-b border-slate-800 bg-[#151f24] px-3">
+				<div className="flex shrink-0 items-center gap-1">
 					<button
 						type="button"
 						onClick={reloadFrame}
