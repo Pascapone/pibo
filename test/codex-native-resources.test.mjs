@@ -26,7 +26,7 @@ function delay(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitFor(predicate, timeoutMs = 3_000) {
+async function waitFor(predicate, timeoutMs = process.platform === "win32" ? 10_000 : 3_000) {
 	const deadline = Date.now() + timeoutMs;
 	while (!predicate()) {
 		if (Date.now() >= deadline) throw new Error("Timed out waiting for native Codex resource maintenance");
@@ -47,7 +47,7 @@ function runtimeConfig(root) {
 		homeRoot: join(root, "runtime-state"),
 		environmentAllowlist: ["PATH"],
 		diagnosticTimeoutMs: 1_000,
-		startupTimeoutMs: 2_000,
+		startupTimeoutMs: process.platform === "win32" ? 5_000 : 2_000,
 		requestTimeoutMs: 2_000,
 		shutdownTimeoutMs: 100,
 		killTimeoutMs: 100,
@@ -185,6 +185,7 @@ test("Codex native delivers selected Pibo tools, HTTP MCP, skills, and context w
 		.withAgentRuntime(instanceId)
 		.withBuiltinTools("disabled")
 		.withAutoContextFiles(true)
+		.withNativeSubagents(true)
 		.withToolPackages({ goalControl: false })
 		.addTool({ name: "alpha", definition: alpha })
 		.addSkill({ name: "selected-codex-skill", path: join(selectedSkill, "SKILL.md"), kind: "user" })
@@ -320,7 +321,10 @@ test("Codex native delivers selected Pibo tools, HTTP MCP, skills, and context w
 		const delivered = state.resourceRequests.at(-1);
 		assert.equal(delivered.method, index === 0 ? "thread/start" : "thread/resume");
 		assert.equal(delivered.hasBaseInstructions, false);
-		assert.equal(delivered.hasNativeToolOverrides, false);
+		assert.equal(delivered.hasNativeToolOverrides, true);
+		assert.equal(delivered.multiAgentEnabled, true);
+		assert.equal(delivered.multiAgentV2Enabled, true);
+		assert.equal(delivered.agentsEnabled, true);
 		assert.equal(delivered.containsPiboSelectedContext, true);
 		assert.equal(delivered.containsPiboMcpCliInstructions, false);
 		assert.equal(delivered.containsPiBasePrompt, false);
@@ -365,6 +369,76 @@ test("Codex native delivers selected Pibo tools, HTTP MCP, skills, and context w
 	}
 	assert.equal(accesses[0].credentialId === accesses[1].credentialId, false);
 	assert.equal(await readFile(mcpConfigPath, "utf8"), sourceMcpConfig);
+});
+
+test("Codex native leaves existing runtime subagent configuration untouched when the profile has no override", async (t) => {
+	const root = await fixtureRoot(t);
+	const workspace = join(root, "workspace");
+	await mkdir(workspace, { recursive: true });
+	const instanceId = "codex-native-subagents-inherited";
+	const profile = new InitialSessionContextBuilder("codex-native-subagents-inherited-profile")
+		.withAgentRuntime(instanceId)
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.createSession();
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
+	registry.registerInstance({ id: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, config: runtimeConfig(root) });
+	const runtimeBinding = binding(instanceId, "ps_codex_native_subagents_inherited");
+	const session = await registry.openSession(instanceId, openInput({
+		instanceId,
+		piboSessionId: "ps_codex_native_subagents_inherited",
+		workspace,
+		profile,
+		runtimeBinding,
+		portableTools: undefined,
+		resources: undefined,
+	}));
+	t.after(async () => session.dispose());
+	const state = await getCodexNativeClient(session).request("test/getState", {});
+	const start = state.resourceRequests.find((request) => request.method === "thread/start");
+	assert.equal(start.multiAgentEnabled, null);
+	assert.equal(start.multiAgentV2Enabled, null);
+	assert.equal(start.agentsEnabled, null);
+	assert.equal(start.hasNativeToolOverrides, false);
+	await session.dispose();
+});
+
+test("Codex native disables only harness-native multi-agent tools when the profile turns native subagents off", async (t) => {
+	const root = await fixtureRoot(t);
+	const workspace = join(root, "workspace");
+	await mkdir(workspace, { recursive: true });
+	const instanceId = "codex-native-subagents-disabled";
+	const profile = new InitialSessionContextBuilder("codex-native-subagents-disabled-profile")
+		.withAgentRuntime(instanceId)
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withNativeSubagents(false)
+		.withToolPackages({ goalControl: false })
+		.createSession();
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
+	registry.registerInstance({ id: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, config: runtimeConfig(root) });
+	const runtimeBinding = binding(instanceId, "ps_codex_native_subagents_disabled");
+	const session = await registry.openSession(instanceId, openInput({
+		instanceId,
+		piboSessionId: "ps_codex_native_subagents_disabled",
+		workspace,
+		profile,
+		runtimeBinding,
+		portableTools: undefined,
+		resources: undefined,
+	}));
+	t.after(async () => session.dispose());
+	const state = await getCodexNativeClient(session).request("test/getState", {});
+	const start = state.resourceRequests.find((request) => request.method === "thread/start");
+	assert.equal(start.multiAgentEnabled, false);
+	assert.equal(start.multiAgentV2Enabled, false);
+	assert.equal(start.agentsEnabled, false, "model-catalog multi-agent hints must not re-enable native subagents");
+	assert.equal(start.hasNativeToolOverrides, true);
+	assert.equal(session.capabilities.nativeSubagents.configurable, true);
+	await session.dispose();
 });
 
 test("Codex native renews its scoped Pibo tool lease while a turn remains active", async (t) => {
@@ -486,7 +560,7 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 			const access = await tracked.issueMcpAccess(options);
 			issued += 1;
 			if (issued === 1) return { ...access, expiresAt: new Date(Date.now() + 100).toISOString() };
-			if (issued === 2) return { ...access, expiresAt: new Date(Date.now() + 60_500).toISOString() };
+			if (issued === 2) return { ...access, expiresAt: new Date(Date.now() + (process.platform === "win32" ? 65_000 : 60_500)).toISOString() };
 			return access;
 		},
 		renewMcpAccess(token, ttlMs) {
@@ -512,10 +586,10 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 	const initialThreadId = session.getBinding().nativeSessionId;
 	await waitFor(() => accesses.length === 2 && getCodexNativeClient(session) !== initialClient);
 	assert.notEqual(session.getBinding().nativeSessionId, initialThreadId);
+	const secondClient = getCodexNativeClient(session);
 	await session.prompt({ text: "materialize rollover thread", source: "rpc" });
 	await expectCredentialRevoked(accesses[0]);
 	const durableThreadId = session.getBinding().nativeSessionId;
-	const secondClient = getCodexNativeClient(session);
 	await waitFor(() => accesses.length === 3 && getCodexNativeClient(session) !== secondClient);
 	await session.prompt({ text: "verify resumed rollover thread", source: "rpc" });
 	assert.equal(session.getBinding().nativeSessionId, durableThreadId);
@@ -528,6 +602,61 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 	await session.dispose();
 	await expectCredentialRevoked(accesses[2]);
 	portable.dispose();
+});
+
+test("Codex native rejects same-name native skill collisions instead of silently losing explicit Pibo priority", async (t) => {
+	const root = await fixtureRoot(t);
+	const workspace = join(root, "workspace");
+	await mkdir(workspace, { recursive: true });
+	const skillsRoot = join(root, "materialized-skills");
+	const selectedSkillDir = join(skillsRoot, "collision-skill");
+	const selectedSkillPath = join(selectedSkillDir, "SKILL.md");
+	await mkdir(selectedSkillDir, { recursive: true });
+	await writeFile(selectedSkillPath, "---\nname: collision-skill\ndescription: selected collision fixture\n---\n\n# Selected collision skill\n");
+	const instanceId = "codex-native-skill-collision";
+	const profile = new InitialSessionContextBuilder("codex-native-skill-collision-profile")
+		.withAgentRuntime(instanceId)
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addSkill({ name: "collision-skill", path: selectedSkillPath })
+		.createSession();
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
+	registry.registerInstance({ id: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, config: runtimeConfig(root) });
+	const resources = {
+		piboSessionId: "ps_codex_skill_collision",
+		runtimeInstanceId: instanceId,
+		adapterId: CODEX_NATIVE_ADAPTER_ID,
+		sessionGeneration: "generation-skill-collision",
+		getContextContributions: () => [],
+		getSkillPaths: () => [selectedSkillPath],
+		getMcpConfigPath: () => undefined,
+		getAdapterEnvironment: () => ({ PIBO_CODEX_FIXTURE_NATIVE_SKILL_NAME: "collision-skill" }),
+		getExternalMcpServerConfigs: () => ({}),
+		getInspection: () => ({
+			piboSessionId: "ps_codex_skill_collision",
+			runtimeInstanceId: instanceId,
+			adapterId: CODEX_NATIVE_ADAPTER_ID,
+			sessionGeneration: "generation-skill-collision",
+			paths: { root, home: root, skills: skillsRoot, context: root, config: root, protocol: root },
+			skills: [{ contributionId: "skill:collision-skill", name: "collision-skill", kind: "user", required: true, sourcePath: selectedSkillPath, materializedPath: selectedSkillPath }],
+			context: [], mcpServers: [], delivery: [], diagnostics: [],
+		}),
+		dispose: async () => {},
+	};
+	await assert.rejects(
+		() => registry.openSession(instanceId, openInput({
+			instanceId,
+			piboSessionId: "ps_codex_skill_collision",
+			workspace,
+			profile,
+			runtimeBinding: binding(instanceId, "ps_codex_skill_collision"),
+			portableTools: undefined,
+			resources,
+		})),
+		/explicit Pibo-skill precedence cannot be guaranteed/,
+	);
 });
 
 test("Codex native rejects unverified MCP delivery, revokes the scoped credential, and cleans its process generation", async (t) => {

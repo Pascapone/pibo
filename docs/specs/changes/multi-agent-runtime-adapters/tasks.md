@@ -1,7 +1,7 @@
 # Tasks: Multi-Agent Runtime Adapters
 
-**Status:** Ready for review
-**Updated:** 2026-08-16
+**Status:** Runtime Portability v4.1 validation in progress
+**Updated:** 2026-08-20
 
 Each milestone must be committed only after its listed verification passes. Codex implementation may not begin while a known Pi parity regression remains.
 
@@ -182,3 +182,20 @@ The August 16 final review found that Chat Web still intercepted provider auth b
 - [x] 12.8 Push focused stacked PR #518 without merge/release/publication.
 - [x] 12.9 Install exact candidate `cc0dcde6616dcec6a8dcf7cd0f78e70478a8ab1c` on Pibo2 and validate the public provider-settings path while leaving native Codex unauthenticated.
 - [x] 12.10 After authorized user login, verify safe `account/read` metadata and one bounded public native-Codex production-provider turn before closing 10.12/11.8/11.9.
+
+## 13. Runtime Portability v4.1 correction
+
+Detailed requirements, design, and validation tasks live in `../runtime-portability-v4-1/`.
+
+- [x] 13.1 Add capability contracts for native context discovery, configurable harness-native subagents, and portable history import.
+- [x] 13.2 Keep legacy `autoContextFiles` concrete/default-true while making Designer controls capability-aware; add nullable native-subagent overrides.
+- [x] 13.3 Add bounded, redacted, checkpointed Pibo-owned history handoff with explicit `startFresh` and retry-safe audit metadata.
+- [x] 13.4 Import history through Pi `appendMessage`, Codex `thread/inject_items`, and OMP additive prompt handoff without fabricating native transcripts.
+- [x] 13.5 Route native Codex manual compaction through stable `thread/compact/start` with balanced Pibo lifecycle events.
+- [x] 13.6 Add adapter-owned context discovery, exact-path deduplication, OMP additive selected context, and selected-skill collision protection.
+- [x] 13.7 Add Codex and OMP native-subagent suppression while preserving portable Pibo tools/subagents independently.
+- [x] 13.8 Pass focused capability, router, resource, adapter, store, API, and UI tests plus typecheck/build.
+- [ ] 13.9 Pass the final canonical full suite, package inspection, and security audit disposition.
+- [ ] 13.10 Validate an exact disposable integrated candidate with the Windows Better Auth migration through Pibo2 public/API/browser paths.
+- [ ] 13.11 Record adapter-owned OMP evidence, final validation report, exact package checksum, and unresolved external release gates.
+- [ ] 13.12 Push a focused portability PR without merging, publishing, releasing, or replacing an approved production candidate.

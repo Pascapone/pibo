@@ -35,6 +35,7 @@ export type CodexNativeResourceDeliveryInput = {
 	workspace: string;
 	portableTools?: PiboPortableToolSession;
 	resources?: PiboRuntimeResourceSession;
+	nativeSubagentsEnabled?: boolean;
 };
 
 type ExpectedMcpServer = {
@@ -91,7 +92,9 @@ function optionalStringArray(
 function buildDeveloperInstructions(resources: PiboRuntimeResourceSession | undefined): string | undefined {
 	if (!resources) return undefined;
 	const contributions = resources.getContextContributions().filter((contribution) =>
-		contribution.id !== ENABLED_MCP_CONTEXT_ID && contribution.content?.trim());
+		contribution.id !== ENABLED_MCP_CONTEXT_ID
+		&& !contribution.nativeDiscovered
+		&& contribution.content?.trim());
 	if (contributions.length === 0) return undefined;
 	if (contributions.length > MAX_CONTEXT_CONTRIBUTIONS) {
 		throw new Error(`Native Codex context exceeds ${MAX_CONTEXT_CONTRIBUTIONS} contributions.`);
@@ -300,7 +303,7 @@ export class CodexNativeResourceDelivery {
 		readonly threadConfig: Record<string, PiboJsonValue> | undefined,
 		readonly developerInstructions: string | undefined,
 		private readonly skillRoots: string[],
-		private readonly skillPaths: string[],
+		private readonly selectedSkills: Array<{ name: string; path: string }>,
 		private readonly expectedMcpServers: ExpectedMcpServer[],
 		private readonly portableTools?: PiboPortableToolSession,
 		private readonly mcpAccess?: PiboToolMcpAccess,
@@ -360,22 +363,30 @@ export class CodexNativeResourceDelivery {
 				expectedMcpServers.push({ name: serverName, toolNames: [...mcpAccess.allowedToolNames] });
 			}
 
-			const skillPaths = input.resources
-				? await Promise.all(input.resources.getSkillPaths("materialized").map(async (path) => await realpath(path)))
+			const selectedSkills = input.resources
+				? await Promise.all(input.resources.getInspection().skills.flatMap((skill) => {
+					const path = skill.materializedPath;
+					return path ? [{ name: skill.name, path }] : [];
+				}).map(async (skill) => ({ ...skill, path: await realpath(skill.path) })))
 				: [];
 			const materializedSkillsRoot = input.resources?.getInspection().paths?.skills;
-			const skillRoots = skillPaths.length > 0 && materializedSkillsRoot
+			const skillRoots = selectedSkills.length > 0 && materializedSkillsRoot
 				? [await realpath(materializedSkillsRoot)]
 				: [];
-			const threadConfig = Object.keys(codexMcpServers).length > 0
-				? { mcp_servers: asJsonValue(codexMcpServers) }
-				: undefined;
+			const threadConfig: Record<string, PiboJsonValue> = {};
+			if (Object.keys(codexMcpServers).length > 0) threadConfig.mcp_servers = asJsonValue(codexMcpServers);
+			if (input.nativeSubagentsEnabled !== undefined) {
+				threadConfig.features = input.nativeSubagentsEnabled
+					? { multi_agent: true, multi_agent_v2: true }
+					: { multi_agent: false, multi_agent_v2: false };
+				threadConfig.agents = { enabled: input.nativeSubagentsEnabled };
+			}
 			return new CodexNativeResourceDelivery(
 				resourceEnvironment,
-				threadConfig,
+				Object.keys(threadConfig).length > 0 ? threadConfig : undefined,
 				buildDeveloperInstructions(input.resources),
 				skillRoots,
-				skillPaths,
+				selectedSkills,
 				expectedMcpServers,
 				input.portableTools,
 				mcpAccess,
@@ -442,19 +453,31 @@ export class CodexNativeResourceDelivery {
 			throw new Error("Codex could not load the selected Pibo skills.");
 		}
 		const loadedPaths = new Set<string>();
+		const loadedSkills = new Map<string, Set<string>>();
 		for (const entry of response.data) {
 			if (!isRecord(entry) || !Array.isArray(entry.skills) || !Array.isArray(entry.errors)) {
 				throw new Error("Codex skills/list returned an invalid entry.");
 			}
 			for (const skill of entry.skills) {
-				if (!isRecord(skill) || typeof skill.path !== "string" || typeof skill.enabled !== "boolean") {
+				if (!isRecord(skill) || typeof skill.name !== "string" || typeof skill.path !== "string" || typeof skill.enabled !== "boolean") {
 					throw new Error("Codex skills/list returned an invalid skill.");
 				}
-				if (skill.enabled) loadedPaths.add(await realpath(skill.path).catch(() => skill.path));
+				if (skill.enabled) {
+					const path = await realpath(skill.path).catch(() => skill.path);
+					loadedPaths.add(path);
+					const sameNamePaths = loadedSkills.get(skill.name) ?? new Set<string>();
+					sameNamePaths.add(path);
+					loadedSkills.set(skill.name, sameNamePaths);
+				}
 			}
 		}
-		if (this.skillPaths.some((path) => !loadedPaths.has(path))) {
-			throw new Error("Codex did not load every selected Pibo skill.");
+		for (const skill of this.selectedSkills) {
+			const sameNamePaths = loadedSkills.get(skill.name) ?? new Set<string>();
+			const conflictingPath = [...sameNamePaths].find((path) => path !== skill.path);
+			if (conflictingPath) {
+				throw new Error(`Selected Pibo skill "${skill.name}" conflicts with a native Codex skill; explicit Pibo-skill precedence cannot be guaranteed.`);
+			}
+			if (!loadedPaths.has(skill.path)) throw new Error(`Codex did not load selected Pibo skill "${skill.name}".`);
 		}
 	}
 

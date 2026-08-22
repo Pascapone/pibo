@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
@@ -19,11 +19,10 @@ import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/codex-app-server-thread-fake.mjs", import.meta.url));
 
-async function fixtureRoot(t, prefix) {
+async function fixtureRoot(prefix) {
 	const root = await mkdtemp(join(tmpdir(), prefix));
 	await chmod(fixturePath, 0o755);
 	await mkdir(join(root, "workspace"), { recursive: true, mode: 0o700 });
-	t.after(() => rm(root, { recursive: true, force: true }));
 	return root;
 }
 
@@ -33,7 +32,7 @@ function codexConfig(root) {
 		homeRoot: join(root, "runtime-state"),
 		environmentAllowlist: ["PATH"],
 		diagnosticTimeoutMs: 1_000,
-		startupTimeoutMs: 2_000,
+		startupTimeoutMs: process.platform === "win32" ? 5_000 : 2_000,
 		requestTimeoutMs: 5_000,
 		shutdownTimeoutMs: 100,
 		killTimeoutMs: 100,
@@ -68,7 +67,7 @@ function createRegistry(root, registerProfiles, childDriver) {
 		plugins: [
 			piboCorePlugin,
 			definePiboPlugin({
-				id: `test.codex-subagents.${root.split("/").at(-1)}`,
+				id: `test.codex-subagents.${basename(root)}`,
 				register(api) {
 					api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
 					api.registerAgentRuntimeInstance({
@@ -88,7 +87,7 @@ function createRegistry(root, registerProfiles, childDriver) {
 }
 
 test("Codex native invokes direct and yielded Pibo subagents through scoped MCP on a different runtime", async (t) => {
-	const root = await fixtureRoot(t, "pibo-codex-subagent-parent-");
+	const root = await fixtureRoot("pibo-codex-subagent-parent-");
 	const workspace = join(root, "workspace");
 	const childDriver = createFakeAgentRuntimeDriver({
 		adapterId: "fixture-child",
@@ -145,7 +144,10 @@ test("Codex native invokes direct and yielded Pibo subagents through scoped MCP 
 	});
 	const events = [];
 	router.subscribe((event) => events.push(event));
-	t.after(() => router.disposeAll());
+	t.after(async () => {
+		await router.disposeAll();
+		await rm(root, { recursive: true, force: true });
+	});
 
 	const status = await openStatus(router, "ps_codex_subagent_parent");
 	assert.ok(status.activeTools.includes("pibo-session-tools/pibo_subagent_helper"));
@@ -204,7 +206,7 @@ test("Codex native invokes direct and yielded Pibo subagents through scoped MCP 
 });
 
 test("a Pi parent subagent tool creates and reuses a native Codex child binding", async (t) => {
-	const root = await fixtureRoot(t, "pibo-pi-codex-subagent-");
+	const root = await fixtureRoot("pibo-pi-codex-subagent-");
 	const workspace = join(root, "workspace");
 	const registry = createRegistry(root, (api) => {
 		api.registerProfile({
@@ -253,7 +255,10 @@ test("a Pi parent subagent tool creates and reuses a native Codex child binding"
 		cwd: workspace,
 		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
 	});
-	t.after(() => router.disposeAll());
+	t.after(async () => {
+		await router.disposeAll();
+		await rm(root, { recursive: true, force: true });
+	});
 
 	const status = await openStatus(router, "ps_pi_subagent_parent");
 	assert.ok(status.activeTools.includes("pibo_subagent_codex"));

@@ -200,9 +200,15 @@ test("MCP-delivered runtimes reject legacy private tools and explain native-tool
 	assert.ok(runDiagnostics.some((diagnostic) => diagnostic.code === "runtime_native_tool_yielding_unsupported"));
 });
 
-test("materialized context requires an explicit automatic project-discovery mode", async () => {
+test("runtime feature capabilities independently govern context discovery and native-subagent overrides", async () => {
 	const capabilities = createFakeAgentRuntimeDriver({ adapterId: "context-template" }).descriptor.capabilities;
-	capabilities.context = { support: "materialized", modes: ["isolated-context-files"] };
+	capabilities.context = { support: "unsupported", reason: "This fixture supports native discovery but not Pibo-selected context delivery." };
+	capabilities.contextDiscovery = {
+		supported: true,
+		configurable: false,
+		enabledByDefault: true,
+		knownFileNames: ["AGENTS.md"],
+	};
 	const registry = PiboPluginRegistry.create({
 		plugins: [definePiboPlugin({
 			id: "test.context-runtime",
@@ -217,28 +223,44 @@ test("materialized context requires an explicit automatic project-discovery mode
 		.withBuiltinTools("disabled")
 		.withToolPackages({ goalControl: false })
 		.createSession();
-	const automaticDiagnostics = await registry.validateAgentRuntimeProfile(automaticProfile);
-	assert.ok(automaticDiagnostics.some((diagnostic) => diagnostic.code === "runtime_auto_context_discovery_unsupported"));
+	assert.equal(
+		(await registry.validateAgentRuntimeProfile(automaticProfile)).some((diagnostic) => diagnostic.severity === "error"),
+		false,
+	);
 
-	capabilities.context = { support: "materialized", modes: ["isolated-context-files", "native-project-discovery"] };
-	const supportedRegistry = PiboPluginRegistry.create({
+	const invalidNativeOverride = new InitialSessionContextBuilder("invalid-native-subagents")
+		.withAgentRuntime("context-runtime")
+		.withBuiltinTools("disabled")
+		.withToolPackages({ goalControl: false })
+		.withNativeSubagents(false)
+		.createSession();
+	assert.ok((await registry.validateAgentRuntimeProfile(invalidNativeOverride))
+		.some((diagnostic) => diagnostic.code === "runtime_native_subagents_not_configurable"));
+
+	const configurableCapabilities = structuredClone(capabilities);
+	configurableCapabilities.nativeSubagents = { supported: true, configurable: true, enabledByDefault: true };
+	const configurableRegistry = PiboPluginRegistry.create({
 		plugins: [definePiboPlugin({
-			id: "test.context-runtime-supported",
+			id: "test.native-subagents-runtime",
 			register(api) {
-				api.registerAgentRuntimeDriver(createFakeAgentRuntimeDriver({ adapterId: "context-runtime-supported", capabilities }));
-				api.registerAgentRuntimeInstance({ id: "context-runtime-supported", adapterId: "context-runtime-supported" });
+				api.registerAgentRuntimeDriver(createFakeAgentRuntimeDriver({ adapterId: "native-subagents-runtime", capabilities: configurableCapabilities }));
+				api.registerAgentRuntimeInstance({ id: "native-subagents-runtime", adapterId: "native-subagents-runtime" });
 			},
 		})],
 	});
-	const supportedProfile = new InitialSessionContextBuilder("supported-auto-context-profile")
-		.withAgentRuntime("context-runtime-supported")
+	const validNativeOverride = new InitialSessionContextBuilder("valid-native-subagents")
+		.withAgentRuntime("native-subagents-runtime")
 		.withBuiltinTools("disabled")
 		.withToolPackages({ goalControl: false })
+		.withNativeSubagents(false)
 		.createSession();
 	assert.equal(
-		(await supportedRegistry.validateAgentRuntimeProfile(supportedProfile)).some((diagnostic) => diagnostic.severity === "error"),
+		(await configurableRegistry.validateAgentRuntimeProfile(validNativeOverride)).some((diagnostic) => diagnostic.severity === "error"),
 		false,
 	);
+	const malformedNativeOverride = { ...validNativeOverride, nativeSubagents: "false" };
+	assert.ok((await configurableRegistry.validateAgentRuntimeProfile(malformedNativeOverride))
+		.some((diagnostic) => diagnostic.code === "runtime_native_subagents_invalid"));
 });
 
 
@@ -344,6 +366,38 @@ test("runtime registry validates descriptor and live-session capability claims",
 	assert.throws(
 		() => invalidDescriptorRegistry.registerDriver(invalidDriver),
 		/lifecycle\.resume requires lifecycle\.persistent/,
+	);
+	const invalidFeatureRegistry = new AgentRuntimeAdapterRegistry();
+	const invalidFeatureDriver = createFakeAgentRuntimeDriver({ adapterId: "invalid-feature-capabilities" });
+	invalidFeatureDriver.descriptor.capabilities.nativeSubagents.configurable = true;
+	assert.throws(
+		() => invalidFeatureRegistry.registerDriver(invalidFeatureDriver),
+		/nativeSubagents\.configurable requires nativeSubagents\.supported/,
+	);
+	const invalidContextRegistry = new AgentRuntimeAdapterRegistry();
+	const invalidContextDriver = createFakeAgentRuntimeDriver({ adapterId: "invalid-context-capabilities" });
+	invalidContextDriver.descriptor.capabilities.contextDiscovery.knownFileNames = ["AGENTS.md", "AGENTS.md"];
+	assert.throws(
+		() => invalidContextRegistry.registerDriver(invalidContextDriver),
+		/contextDiscovery\.knownFileNames must not contain duplicates/,
+	);
+	const unsafeContextRegistry = new AgentRuntimeAdapterRegistry();
+	const unsafeContextDriver = createFakeAgentRuntimeDriver({ adapterId: "unsafe-context-capabilities" });
+	unsafeContextDriver.descriptor.capabilities.contextDiscovery.supported = true;
+	unsafeContextDriver.descriptor.capabilities.contextDiscovery.strategy = "omp-project";
+	unsafeContextDriver.descriptor.capabilities.contextDiscovery.knownRelativePaths = ["../AGENTS.md"];
+	assert.throws(
+		() => unsafeContextRegistry.registerDriver(unsafeContextDriver),
+		/contextDiscovery\.knownRelativePaths entries must be safe relative paths/,
+	);
+	const driveRelativeContextRegistry = new AgentRuntimeAdapterRegistry();
+	const driveRelativeContextDriver = createFakeAgentRuntimeDriver({ adapterId: "drive-relative-context-capabilities" });
+	driveRelativeContextDriver.descriptor.capabilities.contextDiscovery.supported = true;
+	driveRelativeContextDriver.descriptor.capabilities.contextDiscovery.strategy = "omp-project";
+	driveRelativeContextDriver.descriptor.capabilities.contextDiscovery.knownRelativePaths = ["C:AGENTS.md"];
+	assert.throws(
+		() => driveRelativeContextRegistry.registerDriver(driveRelativeContextDriver),
+		/contextDiscovery\.knownRelativePaths entries must be safe relative paths/,
 	);
 
 	const registry = new AgentRuntimeAdapterRegistry();

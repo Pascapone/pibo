@@ -576,6 +576,7 @@ export type AgentProfile = {
 	builtinTools?: "default" | "disabled";
 	builtinToolNames?: string[];
 	autoContextFiles?: boolean;
+	nativeSubagents?: boolean;
 	runControl?: boolean;
 	goalControl?: boolean;
 };
@@ -621,6 +622,19 @@ export type AgentRuntimeCapabilities = {
 	mcp: { externalServers: AgentRuntimeCapabilityDelivery; statusInspection: boolean };
 	skills: AgentRuntimeCapabilityDelivery;
 	context: AgentRuntimeCapabilityDelivery;
+	contextDiscovery: {
+		supported: boolean;
+		configurable: boolean;
+		enabledByDefault: boolean;
+		strategy?: "filesystem-ancestors" | "codex-project" | "omp-project";
+		knownFileNames?: string[];
+		knownUserRelativePaths?: string[];
+		knownCwdRelativePaths?: string[];
+		knownRelativePaths?: string[];
+		knownAncestorRelativePaths?: string[];
+	};
+	nativeSubagents: { supported: boolean; configurable: boolean; enabledByDefault: boolean };
+	historyImport: boolean;
 	auth: {
 		status: boolean;
 		methods: Array<{ id: "device_code" | "browser_oauth" | "api_key"; completion: "immediate" | "explicit" | "notification" }>;
@@ -808,6 +822,7 @@ export type CustomAgent = {
 	builtinTools: "default" | "disabled";
 	builtinToolNames: string[];
 	autoContextFiles: boolean;
+	nativeSubagents?: boolean;
 	runControl: boolean;
 	goalControl: boolean;
 	brokenContextFiles?: string[];

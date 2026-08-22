@@ -54,6 +54,8 @@ export type RuntimeSessionBindingRebindInput = {
 	nativeSessionId?: string;
 	state?: "unbound" | "bound";
 	locator?: AgentRuntimeBindingLocator;
+	/** Explicitly discard prior model context instead of importing portable Pibo history. */
+	startFresh?: boolean;
 	expectedRevision: number;
 };
 

@@ -66,6 +66,7 @@ export type SaveCustomAgentInput = {
 	description?: string;
 	runtimeInstanceId: string;
 	runtimeOptions: Record<string, unknown>;
+	nativeSubagents?: boolean | null;
 	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];

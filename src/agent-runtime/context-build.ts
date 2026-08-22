@@ -13,12 +13,12 @@ export function profileWithRuntimeInstance(profile: InitialSessionContext, runti
 	return new InitialSessionContext({
 		profileName: profile.profileName,
 		runtimeInstanceId,
-		runtimeOptions: profile.runtimeOptions,
+		runtimeOptions: {},
 		sessionId: profile.sessionId,
 		parentSessionId: profile.parentSessionId,
-		model: profile.model,
-		mainModel: profile.mainModel,
-		subagentModel: profile.subagentModel,
+		model: undefined,
+		mainModel: undefined,
+		subagentModel: undefined,
 		thinkingLevel: profile.thinkingLevel,
 		mainThinkingLevel: profile.mainThinkingLevel,
 		subagentThinkingLevel: profile.subagentThinkingLevel,
@@ -34,6 +34,7 @@ export function profileWithRuntimeInstance(profile: InitialSessionContext, runti
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,
+		nativeSubagents: undefined,
 		toolPackages: profile.toolPackages,
 	});
 }
@@ -121,7 +122,12 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	} else {
 		addRuntimeContributionGroup(nodes, "skills", "Skills", profile.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name), input.runtime.capabilities.skills);
 		addRuntimeContributionGroup(nodes, "context", "Context", [
-			...(profile.autoContextFiles ? ["automatic:AGENTS.md/CLAUDE.md"] : []),
+			...(input.runtime.capabilities.contextDiscovery.supported
+				&& (input.runtime.capabilities.contextDiscovery.configurable
+					? profile.autoContextFiles
+					: input.runtime.capabilities.contextDiscovery.enabledByDefault)
+				? ["automatic:runtime project context discovery"]
+				: []),
 			...profile.contextFiles.filter((file) => file.enabled !== false).map((file) => file.key ?? file.path),
 		], input.runtime.capabilities.context);
 		addRuntimeContributionGroup(nodes, "mcp", "External MCP Servers", [...profile.mcpServers], input.runtime.capabilities.mcp.externalServers);
@@ -154,6 +160,8 @@ export function buildPortableRuntimeContextSnapshot(input: {
 			subagentFast: profile.subagentFast ?? profile.fast,
 			builtinTools: profile.builtinTools,
 			builtinToolNames: profile.builtinToolNames,
+			nativeSubagents: profile.nativeSubagents
+				?? input.runtime.capabilities.nativeSubagents.enabledByDefault,
 		},
 	});
 	for (const [index, diagnostic] of input.runtime.diagnostics.entries()) {

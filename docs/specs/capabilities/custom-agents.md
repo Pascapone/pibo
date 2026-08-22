@@ -28,7 +28,7 @@ Custom agents are persisted in `chat-agents.sqlite`. Each active record is regis
 - App-context custom-agent listing, creation, update, archive, restore, and permanent deletion.
 - Dynamic profile registration for active custom agents.
 - Agent Designer catalog data for selectable capabilities.
-- Selections for native tools, skills, context files, subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
+- Selections for runtime instances, native tools, skills, context files, Pibo subagents, harness-native subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
 - Read-only display and copy flow for plugin profiles.
 - Agent-scoped context-file creation from the Agent Designer.
 - Broken context-file reporting for saved custom agents.
@@ -152,6 +152,32 @@ A dynamic custom-agent profile MUST translate saved agent selections into `Initi
 - GIVEN a saved custom agent selects a Pi package and enables run control
 - WHEN a new Pibo Session uses that profile
 - THEN runtime creation receives the package selection and the run-control capability package.
+
+### Requirement: Runtime-owned controls are capability-driven
+
+The Agent Designer MUST expose automatic-context and harness-native-subagent settings only according to the selected runtime instance's advertised capabilities.
+
+#### Current
+
+The runtime catalog exposes `contextDiscovery` and `nativeSubagents` capability contracts. The designer derives controls from the selected instance, clears stale non-configurable overrides when runtime selection changes, and keeps Pibo subagent selection independent from harness-native subagents.
+
+`autoContextFiles` remains a concrete persisted boolean with default `true`; nullable API input resets it to `true`. `nativeSubagents` is a nullable override and is accepted only when the selected runtime reports `nativeSubagents.configurable: true`.
+
+#### Acceptance
+
+- Automatic-context controls reflect whether the selected runtime reports context discovery as configurable.
+- Harness-native-subagent controls appear only for runtimes that report configurable support.
+- Selecting a runtime with non-configurable behavior removes stale overrides instead of silently retaining them.
+- Pibo subagents and yielded Pibo subagent runs remain separate from harness-native-subagent policy.
+- Existing custom-agent rows without the new nullable native-subagent field preserve prior runtime defaults.
+- Persisted `autoContextFiles` remains a required boolean and no nullable replacement column is introduced.
+
+#### Scenario: Change from configurable to fixed runtime
+
+- GIVEN a custom-agent draft disables native subagents on a configurable runtime
+- WHEN the user selects a runtime whose native subagents are always on or unsupported
+- THEN the designer hides the native-subagent switch
+- AND clears the stale override before persistence.
 
 ### Requirement: Missing skills and context files do not break profile creation
 
@@ -325,7 +351,7 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 - [ ] SC-002: All allowed accounts see the same shared custom agents through Chat Web APIs, with archived agents hidden by default.
 - [ ] SC-003: Invalid, duplicate, or plugin-conflicting agent names are rejected before persistence.
 - [ ] SC-004: Archiving removes a dynamic profile; restoring registers it again.
-- [ ] SC-005: A custom-agent runtime profile applies selected tools, skills, context files, subagents, MCP servers, Pi packages, models, thinking options, built-in tools, automatic context, and run control.
+- [ ] SC-005: A custom-agent runtime profile applies its selected runtime, tools, skills, context files, Pibo subagents, capability-valid native-subagent behavior, MCP servers, Pi packages, models, thinking options, built-in tools, automatic context, and run control.
 - [ ] SC-006: Stale skill and context-file references do not prevent profile creation, and broken context files are visible in serialized agent data.
 - [ ] SC-007: Unknown Pi package ids are rejected, and built-in tool selections are filtered to supported built-in tools.
 - [ ] SC-008: Permanent deletion requires archive plus exact name confirmation and deletes shared sessions for that profile.
@@ -354,13 +380,14 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 | REQ-003 Agent names are valid unique profile names | Plugin profile conflict | `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts` | Implemented |
 | REQ-004 Active custom agents register dynamic profiles | Archive removes profile | `src/apps/chat/web-app.ts`, `src/apps/chat/agent-profiles.ts` | Implemented |
 | REQ-005 Custom profile creation applies selected capabilities | Agent with run control and package selection | `src/apps/chat/agent-profiles.ts`, `src/core/profiles.ts` | Implemented |
-| REQ-006 Missing skills and context files do not break profile creation | Context file was removed | `src/apps/chat/agent-profiles.ts`, `src/apps/chat/web-app.ts`, `test/agent-profiles.test.mjs` | Implemented |
-| REQ-007 Pi package selections are validated against the package store | Unknown package selection | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
-| REQ-008 Built-in tool selections are constrained to supported tools | Unknown built-in tool name | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
-| REQ-009 Agent Designer supports read-only profiles and copy-to-custom | Copy plugin profile | `src/apps/chat-ui/src/App.tsx` | Implemented |
-| REQ-010 Agent-scoped context files can be created from the designer | Add private agent context | `src/apps/chat-ui/src/App.tsx`, `src/plugins/context-files.ts` | Implemented |
-| REQ-011 Archive precedes destructive deletion | Delete archived agent and sessions | `src/apps/chat/web-app.ts` | Implemented |
-| REQ-012 Chat Web mutations are authenticated same-origin JSON requests | Cross-controller update | `src/apps/chat/web-app.ts`, `src/web/http.ts` | Implemented |
+| REQ-006 Runtime-owned controls are capability-driven | Change from configurable to fixed runtime | `src/agent-runtime/capabilities.ts`, `src/apps/chat/agent-store.ts`, `src/apps/chat/agent-profiles.ts`, `src/apps/chat-ui/src/agents/AgentsView.tsx` | Implemented |
+| REQ-007 Missing skills and context files do not break profile creation | Context file was removed | `src/apps/chat/agent-profiles.ts`, `src/apps/chat/web-app.ts`, `test/agent-profiles.test.mjs` | Implemented |
+| REQ-008 Pi package selections are validated against the package store | Unknown package selection | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
+| REQ-009 Built-in tool selections are constrained to supported tools | Unknown built-in tool name | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
+| REQ-010 Agent Designer supports read-only profiles and copy-to-custom | Copy plugin profile | `src/apps/chat-ui/src/App.tsx` | Implemented |
+| REQ-011 Agent-scoped context files can be created from the designer | Add private agent context | `src/apps/chat-ui/src/App.tsx`, `src/plugins/context-files.ts` | Implemented |
+| REQ-012 Archive precedes destructive deletion | Delete archived agent and sessions | `src/apps/chat/web-app.ts` | Implemented |
+| REQ-013 Chat Web mutations are authenticated same-origin JSON requests | Cross-account update | `src/apps/chat/web-app.ts`, `src/web/http.ts` | Implemented |
 
 ## Verification Basis
 

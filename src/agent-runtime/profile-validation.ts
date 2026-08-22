@@ -79,7 +79,7 @@ export function validateAgentRuntimeProfileCapabilities(
 			`Profile "${profile.profileName}" selects skills`,
 		);
 	}
-	if (enabledContextFiles.length > 0 || profile.autoContextFiles) {
+	if (enabledContextFiles.length > 0) {
 		pushUnsupportedDeliveryDiagnostic(
 			diagnostics,
 			capabilities.context,
@@ -88,16 +88,19 @@ export function validateAgentRuntimeProfileCapabilities(
 			`Profile "${profile.profileName}" selects managed or automatic context`,
 		);
 	}
-	if (
-		profile.autoContextFiles
-		&& capabilities.context.support === "materialized"
-		&& !capabilities.context.modes.includes("native-project-discovery")
-	) {
+	if (profile.nativeSubagents !== undefined && typeof profile.nativeSubagents !== "boolean") {
 		diagnostics.push({
 			severity: "error",
-			code: "runtime_auto_context_discovery_unsupported",
-			message: `Runtime "${profile.runtimeInstanceId}" materializes explicit context but does not support automatic AGENTS.md / CLAUDE.md discovery. Disable automatic context or choose a runtime that declares native-project-discovery.`,
-			path: "autoContextFiles",
+			code: "runtime_native_subagents_invalid",
+			message: `Profile "${profile.profileName}" must set nativeSubagents to a boolean when provided.`,
+			path: "nativeSubagents",
+		});
+	} else if (profile.nativeSubagents !== undefined && !capabilities.nativeSubagents.configurable) {
+		diagnostics.push({
+			severity: "error",
+			code: "runtime_native_subagents_not_configurable",
+			message: `Runtime "${profile.runtimeInstanceId}" does not allow profiles to override native subagents.`,
+			path: "nativeSubagents",
 		});
 	}
 

@@ -54,6 +54,7 @@ function createCustomAgentBuilder(agent: CustomAgentDefinition): InitialSessionC
 		.withBuiltinTools(agent.builtinTools)
 		.withBuiltinToolNames(agent.builtinToolNames)
 		.withAutoContextFiles(agent.autoContextFiles)
+		.withNativeSubagents(agent.nativeSubagents)
 		.withMcpServers(agent.mcpServers)
 		.withPiPackages(agent.piPackages.map((id) => ({ id })))
 		.withToolPackages({ runControl: agent.runControl, goalControl: agent.goalControl ?? true });

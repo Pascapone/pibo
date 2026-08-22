@@ -19,7 +19,7 @@ Pibo MUST treat `PiboSession` records as the product source of truth for routed 
 
 The current implementation defines the session model and in-memory store in `src/sessions/store.ts`, SQLite-backed stores in `src/sessions/sqlite-store.ts` and `src/sessions/pibo-data-store.ts`, routing in `src/core/session-router.ts`, active-model resolution in `src/core/session-model.ts`, gateway channel context in `src/gateway/server.ts`, and Chat Web projections in `src/apps/chat/trace.ts` and `src/apps/chat/web-app.ts`.
 
-A `PiboSession` stores product identity and metadata: `id`, `piSessionId`, `channel`, `kind`, `profile`, legacy-compatible `appContext` when old stores need it, `parentId`, `originId`, `workspace`, `title`, `metadata`, `activeModel`, and timestamps. Runtime creation uses the stored profile, workspace, Pi session id, parent Pi session id, selected context, and active model. Auth account identity must not select the workspace or product visibility.
+A `PiboSession` stores product identity and metadata: `id`, legacy-compatible `piSessionId`, `channel`, `kind`, `profile`, legacy-compatible `appContext` when old stores need it, `parentId`, `originId`, `workspace`, `title`, `metadata`, `activeModel`, and timestamps. A frozen runtime binding additionally identifies the configured runtime instance, adapter, native session locator, and bounded adapter-owned metadata. Runtime creation uses the stored profile, workspace, frozen binding, selected context, and active model. Auth account identity must not select the workspace or product visibility.
 
 ## Scope
 
@@ -27,7 +27,8 @@ A `PiboSession` stores product identity and metadata: `id`, `piSessionId`, `chan
 
 - `PiboSession` identity, persistence, lookup, listing, update, deletion, and filtering.
 - Lazy creation of fallback runtime sessions when a requested Pibo Session does not exist.
-- Runtime creation from stored Pibo Session profile, workspace, active model, and Pi session id.
+- Runtime creation from stored Pibo Session profile, workspace, active model, and frozen runtime binding.
+- Explicit same-runtime repair and cross-runtime rebinding with bounded Pibo-owned history handoff.
 - Parent-child hierarchy for subagents and recursive session interruption.
 - Origin derivation for fork and clone branch sessions.
 - Active model freezing on session creation or first runtime open.
@@ -36,7 +37,7 @@ A `PiboSession` stores product identity and metadata: `id`, `piSessionId`, `chan
 
 ### Out of Scope
 
-- The Pi transcript JSONL format — it remains managed by Pi Coding Agent.
+- Native harness transcript formats — they remain managed by their owning adapters/harnesses.
 - Chat room membership, room events, and SSE frame durability — those are Chat Web concerns.
 - Yielded-run lifecycle — covered by `docs/specs/capabilities/yielded-run-control.md`.
 - Scheduled-job creation and run reservation — covered by `docs/specs/capabilities/scheduled-pibo-jobs.md`.
@@ -222,6 +223,33 @@ Consumers that react to the result can immediately read the updated product sess
 - WHEN the switch succeeds
 - THEN the listener sees the new Pi session id in the session store.
 
+### Requirement: Cross-runtime rebinding preserves bounded Pibo-owned history
+
+The router MUST preserve product conversation continuity when an existing Pibo Session is explicitly rebound to a different runtime instance, unless the caller explicitly requests `startFresh`.
+
+#### Current
+
+The router validates target capabilities, projects the source profile into the target namespace, creates a bounded redacted portable-history checkpoint from Pibo-owned history, persists a `pending` handoff audit record, creates a fresh native target session, imports through the target adapter, and commits the binding as `completed`. Pi appends compatible messages, native Codex uses `thread/inject_items`, and OMP receives an append-only prompt handoff.
+
+#### Acceptance
+
+- A normal cross-runtime change fails before mutation when the target reports history import as unsupported.
+- `startFresh` is explicit and does not silently masquerade as successful history transfer.
+- The caller cannot supply a native target id or locator for a cross-runtime switch.
+- Source runtime model identifiers, options, and native feature flags do not leak into the target runtime namespace.
+- Handoff entries and failure metadata are bounded and secret-redacted.
+- A completed checkpoint is not imported twice during restoration or retry.
+- A failed target startup leaves retry-safe pending state and does not claim completion.
+- Child sessions retain their own frozen runtime bindings.
+
+#### Scenario: Rebind Pi conversation to native Codex
+
+- GIVEN a Pi-bound Pibo Session has durable user, assistant, and tool history
+- WHEN an authorized caller rebinds it to a configured native Codex instance without `startFresh`
+- THEN Pibo creates a fresh Codex thread
+- AND injects the bounded portable history before the first new user prompt
+- AND records the checkpoint as completed only after import succeeds.
+
 ### Requirement: Gateway channels access sessions through channel context
 
 The gateway MUST expose session store operations to plugins and channels through `PiboChannelContext`, with profile resolution and active-model initialization on create.
@@ -296,7 +324,8 @@ The Pibo Session Store remains the source of truth for product session metadata 
 - [ ] SC-004: Fork and clone operations create visible branch sessions with `originId` without mutating the source Pi session id.
 - [ ] SC-005: Session switch updates the current Pibo Session before observers handle the execution result.
 - [ ] SC-006: Chat Web session trees and trace views remain addressable by Pibo Session ID even when transcript metadata is incomplete.
-- [ ] SC-007: SQLite and in-memory session stores both support creation, update, lookup, filtering, and uniqueness guarantees.
+- [ ] SC-007: Cross-runtime rebinding imports one bounded redacted Pibo-owned checkpoint before the target's first new prompt, while explicit `startFresh` is the only discard path.
+- [ ] SC-008: SQLite and in-memory session stores both support creation, update, lookup, filtering, and uniqueness guarantees.
 
 ## Assumptions and Open Questions
 
@@ -324,8 +353,9 @@ The Pibo Session Store remains the source of truth for product session metadata 
 | REQ-005 Parent-child hierarchy represents subagent sessions | Threaded subagent reuse | `src/core/session-router.ts`, `test/subagents.test.mjs` | Implemented |
 | REQ-006 Origin derivation represents fork and clone branches | Clone creates visible branch | `src/core/session-router.ts`, `test/session-router-store.test.mjs`, `test/session-actions.test.mjs` | Implemented |
 | REQ-007 Session switch updates the current Pibo Session before results are emitted | Switch result is consistent | `src/core/session-router.ts`, `test/session-router-store.test.mjs` | Implemented |
-| REQ-008 Gateway channels access sessions through channel context | Chat Web creates a room session | `src/gateway/server.ts`, `src/apps/chat/web-app.ts` | Implemented |
-| REQ-009 Chat Web projections keep product session identity separate from traces | Transcript file missing | `src/apps/chat/trace.ts`, `src/shared/trace-engine.ts` | Implemented |
+| REQ-008 Cross-runtime rebinding preserves bounded Pibo-owned history | Rebind Pi conversation to native Codex | `src/core/session-router.ts`, `src/agent-runtime/portable-history.ts`, `src/sessions/runtime-binding.ts`, `test/runtime-portability.test.mjs` | Implemented |
+| REQ-009 Gateway channels access sessions through channel context | Chat Web creates a room session | `src/gateway/server.ts`, `src/apps/chat/web-app.ts` | Implemented |
+| REQ-010 Chat Web projections keep product session identity separate from traces | Transcript file missing | `src/apps/chat/trace.ts`, `src/shared/trace-engine.ts` | Implemented |
 
 ## Verification Basis
 

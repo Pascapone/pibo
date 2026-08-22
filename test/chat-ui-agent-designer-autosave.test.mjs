@@ -24,6 +24,7 @@ test("Agent Designer debounces autosave and serializes overlapping writes", () =
 
 test("Agent Designer keeps pending edits recoverable and exposes save state instead of a Save button", () => {
 	assert.match(agentsViewSource, /PENDING_AGENT_DRAFT_STORAGE_KEY/);
+	assert.match(agentsViewSource, /typeof parsed\.draft\.nativeSubagents === "boolean"/);
 	assert.match(agentsViewSource, /writePendingAgentDraft\(draft, savedSignatureRef\.current\)/);
 	assert.match(agentsViewSource, /data-agent-autosave-state=\{saveState\}/);
 	assert.match(agentsViewSource, />\s*Retry\s*</);
@@ -49,6 +50,17 @@ test("Agent Designer persists runtime selection, validates JSON options, and sho
 	assert.match(modelSource, /export function reasoningValuesForModel/);
 	assert.match(agentsViewSource, /reasoningValuesForModel\(selectedRuntime\?\.capabilities\.reasoning\.values, runtimeModelCatalog, draft\.mainModel\)/);
 	assert.match(agentsViewSource, /reasoningValuesForModel\(selectedRuntime\?\.capabilities\.reasoning\.values, runtimeModelCatalog, draft\.subagentModel\)/);
+});
+
+test("Agent Designer exposes only truthful runtime-owned context and native-subagent controls", () => {
+	assert.match(agentsViewSource, /nativeSubagents\?\.configurable \? \(/);
+	assert.match(agentsViewSource, /title="Native Subagents"/);
+	assert.match(agentsViewSource, /contextDiscovery\?\.supported \? \(/);
+	assert.match(agentsViewSource, /disabled=\{readOnly \|\| !contextDiscovery\.configurable/);
+	assert.match(agentsViewSource, /discovers project context files natively; Pibo cannot override this setting/);
+	assert.match(agentsViewSource, /nativeSubagents: undefined/);
+	assert.match(agentsViewSource, /!nextRuntime\.capabilities\.contextDiscovery\.configurable[\s\S]*autoContextFiles: true/);
+	assert.match(modelSource, /nativeSubagents: draft\.nativeSubagents \?\? null/);
 });
 
 test("Agent Designer keeps Pibo subagents and yielded subagent runs capability-gated", () => {

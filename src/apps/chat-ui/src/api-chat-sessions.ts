@@ -120,6 +120,7 @@ export async function patchSessionRuntimeBinding(
 		nativeSessionId?: string;
 		state?: "unbound" | "bound";
 		locator?: { kind: string; value?: string };
+		startFresh?: boolean;
 		expectedRevision: number;
 	},
 ): Promise<{ binding: import("./types").RuntimeSessionBinding }> {

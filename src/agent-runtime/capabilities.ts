@@ -14,6 +14,32 @@ export type AgentRuntimeCapabilityDelivery =
 	| { support: "materialized"; modes: readonly string[] }
 	| { support: "degraded"; mode: string; reason: string };
 
+export type AgentRuntimeConfigurableFeatureCapability = {
+	supported: boolean;
+	configurable: boolean;
+	enabledByDefault: boolean;
+};
+
+export type AgentRuntimeContextDiscoveryStrategy =
+	| "filesystem-ancestors"
+	| "codex-project"
+	| "omp-project";
+
+export type AgentRuntimeContextDiscoveryCapability = AgentRuntimeConfigurableFeatureCapability & {
+	/** Native ancestor-boundary semantics used for exact selected-file deduplication. */
+	strategy?: AgentRuntimeContextDiscoveryStrategy;
+	/** Ordered filenames checked per discovered ancestor directory; first existing name wins. */
+	knownFileNames?: readonly string[];
+	/** Runtime-owned user-relative files resolved from the current OS home directory. */
+	knownUserRelativePaths?: readonly string[];
+	/** Runtime-owned project-relative files resolved only from the exact session cwd. */
+	knownCwdRelativePaths?: readonly string[];
+	/** Runtime-owned project-relative files resolved from the nearest supported ancestor. */
+	knownRelativePaths?: readonly string[];
+	/** Runtime-owned project-relative files loaded independently from every supported ancestor directory. */
+	knownAncestorRelativePaths?: readonly string[];
+};
+
 export type AgentRuntimeCapabilities = {
 	lifecycle: {
 		persistent: boolean;
@@ -52,6 +78,9 @@ export type AgentRuntimeCapabilities = {
 	};
 	skills: AgentRuntimeCapabilityDelivery;
 	context: AgentRuntimeCapabilityDelivery;
+	contextDiscovery: AgentRuntimeContextDiscoveryCapability;
+	nativeSubagents: AgentRuntimeConfigurableFeatureCapability;
+	historyImport: boolean;
 	auth: {
 		status: boolean;
 		methods: readonly AgentRuntimeAuthMethodCapability[];
@@ -104,6 +133,13 @@ const BOOLEAN_CAPABILITY_PATHS = [
 	"output.diffs",
 	"output.rawNativeEvents",
 	"mcp.statusInspection",
+	"contextDiscovery.supported",
+	"contextDiscovery.configurable",
+	"contextDiscovery.enabledByDefault",
+	"nativeSubagents.supported",
+	"nativeSubagents.configurable",
+	"nativeSubagents.enabledByDefault",
+	"historyImport",
 	"auth.status",
 	"auth.cancel",
 	"auth.logout",
@@ -134,6 +170,14 @@ function readPath(value: unknown, path: string): unknown {
 		current = (current as Record<string, unknown>)[segment];
 	}
 	return current;
+}
+
+function safeDeclaredRelativePath(value: string): boolean {
+	const normalized = value.replaceAll("\\", "/");
+	return !normalized.startsWith("/")
+		&& !/^[A-Za-z]:/.test(normalized)
+		&& !normalized.includes("\0")
+		&& normalized.split("/").every((segment) => segment !== "..");
 }
 
 function validateDelivery(path: string, value: unknown, errors: string[]): void {
@@ -189,6 +233,45 @@ export function validateAgentRuntimeCapabilities(value: unknown): string[] {
 	}
 	if (reasoningSupported === false && Array.isArray(reasoningValues) && reasoningValues.length > 0) {
 		errors.push("reasoning.values must be omitted or empty when reasoning is unsupported");
+	}
+	for (const feature of ["contextDiscovery", "nativeSubagents"] as const) {
+		const supported = readPath(value, `${feature}.supported`);
+		const configurable = readPath(value, `${feature}.configurable`);
+		const enabledByDefault = readPath(value, `${feature}.enabledByDefault`);
+		if (configurable === true && supported !== true) {
+			errors.push(`${feature}.configurable requires ${feature}.supported`);
+		}
+		if (enabledByDefault === true && supported !== true) {
+			errors.push(`${feature}.enabledByDefault requires ${feature}.supported`);
+		}
+	}
+	const contextDiscoveryStrategy = readPath(value, "contextDiscovery.strategy");
+	if (contextDiscoveryStrategy !== undefined
+		&& !["filesystem-ancestors", "codex-project", "omp-project"].includes(String(contextDiscoveryStrategy))) {
+		errors.push("contextDiscovery.strategy must be filesystem-ancestors, codex-project, or omp-project when provided");
+	}
+	if (contextDiscoveryStrategy !== undefined && readPath(value, "contextDiscovery.supported") !== true) {
+		errors.push("contextDiscovery.strategy requires contextDiscovery.supported");
+	}
+	for (const field of ["knownFileNames", "knownUserRelativePaths", "knownCwdRelativePaths", "knownRelativePaths", "knownAncestorRelativePaths"] as const) {
+		const knownContextPaths = readPath(value, `contextDiscovery.${field}`);
+		if (knownContextPaths === undefined) continue;
+		if (!Array.isArray(knownContextPaths)) {
+			errors.push(`contextDiscovery.${field} must be an array of non-empty strings when provided`);
+			continue;
+		}
+		if (knownContextPaths.some((name) => typeof name !== "string" || !name.trim())) {
+			errors.push(`contextDiscovery.${field} must be an array of non-empty strings when provided`);
+		} else if (new Set(knownContextPaths).size !== knownContextPaths.length) {
+			errors.push(`contextDiscovery.${field} must not contain duplicates`);
+		} else if (field === "knownFileNames" && knownContextPaths.some((name) => name.includes("/") || name.includes("\\") || name === "." || name === "..")) {
+			errors.push("contextDiscovery.knownFileNames entries must be plain filenames");
+		} else if (field !== "knownFileNames" && knownContextPaths.some((path) => !safeDeclaredRelativePath(path))) {
+			errors.push(`contextDiscovery.${field} entries must be safe relative paths`);
+		}
+		if (readPath(value, "contextDiscovery.supported") !== true && knownContextPaths.length > 0) {
+			errors.push(`contextDiscovery.${field} requires contextDiscovery.supported`);
+		}
 	}
 	const authMethods = readPath(value, "auth.methods");
 	if (!Array.isArray(authMethods)) {
@@ -275,6 +358,17 @@ export function createMinimalAgentRuntimeCapabilities(): AgentRuntimeCapabilitie
 		},
 		skills: unavailable,
 		context: unavailable,
+		contextDiscovery: {
+			supported: false,
+			configurable: false,
+			enabledByDefault: false,
+		},
+		nativeSubagents: {
+			supported: false,
+			configurable: false,
+			enabledByDefault: false,
+		},
+		historyImport: false,
 		auth: {
 			status: false,
 			methods: [],
