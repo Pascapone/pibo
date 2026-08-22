@@ -817,14 +817,16 @@ function createDataStore(options: ChatWebAppOptions): PiboDataStore {
 function resolveVscodeWebUrl(value: string | undefined): string | undefined {
 	const trimmed = value?.trim();
 	if (!trimmed) return undefined;
-	if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
+	const configurationOrigin = "https://pibo.invalid";
 	try {
-		const parsed = new URL(trimmed);
-		if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.toString();
+		const parsed = new URL(trimmed, `${configurationOrigin}/`);
+		if (trimmed.startsWith("/") && !trimmed.includes("\\") && parsed.origin === configurationOrigin) {
+			return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+		}
 	} catch {
 		// Fall through to the startup error below.
 	}
-	throw new Error("VS Code Web URL must be a same-origin absolute path or an http(s) URL");
+	throw new Error("VS Code Web URL must be a same-origin absolute path beginning with /");
 }
 
 function resolveChatWebIntegrations(options: ChatWebAppOptions): ChatWebIntegrations {
@@ -4410,6 +4412,7 @@ async function sendChatMessage(input: {
 
 
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
+	const integrations = resolveChatWebIntegrations(options);
 	ensurePrivateChatUploadDirectory();
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
@@ -4453,7 +4456,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		workflowLifecycleEventStore: new ChatWorkflowLifecycleEventStore(dataStore),
 		workflowPromptAssetStore: new ChatWorkflowPromptAssetStore(dataStore),
 		telemetryRetentionMaintenance: {},
-		integrations: resolveChatWebIntegrations(options),
+		integrations,
 	};
 
 	let disposed = false;

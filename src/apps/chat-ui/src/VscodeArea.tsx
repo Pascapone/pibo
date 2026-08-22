@@ -2,14 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, ServerCrash } from "lucide-react";
 import type { VscodeWebIntegration } from "./types";
 
+const VSCODE_WORKBENCH_POLL_MS = 50;
+const VSCODE_WORKBENCH_READY_TIMEOUT_MS = 60_000;
+
 export function vscodeWebUrl(baseUrl: string, folder?: string, documentUrl = "http://localhost/"): string {
 	const target = new URL(baseUrl, documentUrl);
+	if (target.origin !== new URL(documentUrl).origin) {
+		throw new Error("VS Code Web URL must use the Pibo Chat origin.");
+	}
 	if (folder) target.searchParams.set("folder", folder);
 	else target.searchParams.delete("folder");
-	const documentOrigin = new URL(documentUrl).origin;
-	return target.origin === documentOrigin
-		? `${target.pathname}${target.search}${target.hash}`
-		: target.toString();
+	return `${target.pathname}${target.search}${target.hash}`;
 }
 
 export function VscodeArea({ integration }: { integration?: VscodeWebIntegration }) {
@@ -20,27 +23,18 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const frameReadinessTimerRef = useRef<number | null>(null);
 
-	useEffect(() => {
-		setFrameReady(false);
-	}, [integration?.url, integration?.workspaceRoot]);
-
 	const frameUrl = useMemo(() => {
 		if (!integration) return "";
 		return vscodeWebUrl(integration.url, integration.workspaceRoot || undefined, window.location.href);
-	}, [integration]);
+	}, [integration?.url, integration?.workspaceRoot]);
 
 	useEffect(() => {
-		if (!integration || !frameUrl) {
+		if (!frameUrl) {
 			setProbeStatus("unavailable");
 			setProbeError("VS Code Web is not configured for this Pibo gateway.");
 			return;
 		}
 		const target = new URL(frameUrl, window.location.href);
-		if (target.origin !== window.location.origin) {
-			setProbeStatus("ready");
-			setProbeError(null);
-			return;
-		}
 		const controller = new AbortController();
 		setProbeStatus("checking");
 		setProbeError(null);
@@ -64,7 +58,7 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 				setProbeError(error instanceof Error ? error.message : String(error));
 			});
 		return () => controller.abort();
-	}, [frameUrl, integration, retryKey]);
+	}, [frameUrl, retryKey]);
 
 	useEffect(() => {
 		setFrameReady(false);
@@ -82,14 +76,8 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 
 	const waitForDarkWorkbench = () => {
 		if (frameReadinessTimerRef.current !== null) window.clearTimeout(frameReadinessTimerRef.current);
-		const target = new URL(frameUrl, window.location.href);
-		if (target.origin !== window.location.origin) {
-			frameReadinessTimerRef.current = window.setTimeout(() => {
-				setFrameReady(true);
-				frameReadinessTimerRef.current = null;
-			}, 100);
-			return;
-		}
+		setFrameReady(false);
+		const startedAt = Date.now();
 		const inspectFrame = () => {
 			let darkWorkbenchReady = false;
 			try {
@@ -108,11 +96,16 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 				}, 100);
 				return;
 			}
-			frameReadinessTimerRef.current = window.setTimeout(inspectFrame, 50);
+			if (Date.now() - startedAt >= VSCODE_WORKBENCH_READY_TIMEOUT_MS) {
+				frameReadinessTimerRef.current = null;
+				setProbeStatus("unavailable");
+				setProbeError("VS Code Web did not finish starting in dark mode.");
+				return;
+			}
+			frameReadinessTimerRef.current = window.setTimeout(inspectFrame, VSCODE_WORKBENCH_POLL_MS);
 		};
 		inspectFrame();
 	};
-
 
 	if (!integration) {
 		return (

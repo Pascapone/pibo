@@ -9,9 +9,10 @@ PIBO_VSCODE_WEB_URL=/apps/vscode/
 PIBO_VSCODE_WEB_WORKSPACE_ROOT=/path/to/workspaces
 ```
 
-- `PIBO_VSCODE_WEB_URL` may be a same-origin absolute path or an `http(s)` URL.
-- `PIBO_VSCODE_WEB_WORKSPACE_ROOT` is optional. When set, it becomes the initial folder offered by the embedded IDE.
-- Pibo project folders are listed in the tab and opened through VS Code's `folder` URL parameter.
+- `PIBO_VSCODE_WEB_URL` must be a same-origin absolute path beginning with `/`. Cross-origin URLs are rejected so Pibo authentication remains the only public access boundary.
+- `PIBO_VSCODE_WEB_WORKSPACE_ROOT` is optional. When set, it becomes the initial folder opened through VS Code's `folder` URL parameter.
+- VS Code manages folder selection inside the IDE. Pibo does not add a workspace picker or an extra IDE toolbar.
+- The initial folder is a convenience, not a filesystem sandbox. The code-server process account and its operating-system permissions remain the access boundary.
 
 The integration metadata is returned only in authenticated Chat bootstrap responses. When no URL is configured, the navigation item is hidden and a direct `/apps/chat/vscode` visit shows a configuration notice.
 
@@ -54,6 +55,10 @@ location /apps/vscode/ {
 
     proxy_http_version 1.1;
     proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_read_timeout 3600s;

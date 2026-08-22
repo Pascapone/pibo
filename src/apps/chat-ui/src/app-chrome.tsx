@@ -179,7 +179,7 @@ export function AppHeader({
 			</nav>
 			<div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-xs text-slate-400 min-[1201px]:ml-0">
 				<UserRound size={14} />
-				<span className="truncate max-[1500px]:hidden">{identityLabel}</span>
+				<span className={`truncate ${vscodeEnabled ? "max-[1500px]:hidden" : "max-[600px]:hidden"}`}>{identityLabel}</span>
 				<button type="button" onClick={() => void signOut().then(() => location.reload())} className="p-1 border border-slate-700 rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4]" title="Sign out" aria-label="Sign out">
 					<LogOut size={14} />
 				</button>

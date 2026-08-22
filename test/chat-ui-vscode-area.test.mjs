@@ -20,9 +20,13 @@ test("VS Code Web URL helper preserves the mount path and selects server folders
 			vscodeWebUrl("/apps/vscode/?quality=stable", undefined, "https://pibo.example/apps/chat/vscode"),
 			"/apps/vscode/?quality=stable",
 		);
-		assert.equal(
-			vscodeWebUrl("https://code.example/", "/srv/project", "https://pibo.example/apps/chat/vscode"),
-			"https://code.example/?folder=%2Fsrv%2Fproject",
+		assert.throws(
+			() => vscodeWebUrl("https://code.example/", "/srv/project", "https://pibo.example/apps/chat/vscode"),
+			/VS Code Web URL must use the Pibo Chat origin/,
+		);
+		assert.throws(
+			() => vscodeWebUrl("/\\\\code.example/", undefined, "https://pibo.example/apps/chat/vscode"),
+			/VS Code Web URL must use the Pibo Chat origin/,
 		);
 		assert.equal(
 			vscodeWebUrl("/apps/vscode/", "/tmp/any folder", "https://pibo.example/apps/chat/vscode"),
@@ -55,6 +59,10 @@ test("VS Code area provides a configured-state fallback and trusted IDE iframe c
 	assert.match(source, /frameDocument\?\.querySelector\("\.monaco-workbench"\)/);
 	assert.match(source, /frameDocument\.querySelector\("\.vs-dark, \.hc-black"\)/);
 	assert.match(source, /frameReady \? "visible" : "invisible"/);
+	assert.match(source, /VSCODE_WORKBENCH_READY_TIMEOUT_MS/);
+	assert.match(source, /\[frameUrl, retryKey\]/);
+	assert.doesNotMatch(source, /\[frameUrl, integration, retryKey\]/);
+	assert.match(source, /VS Code Web did not finish starting in dark mode/);
 	assert.match(source, /Starting VS Code in dark mode/);
 	assert.match(source, /searchParams\.set\("folder", folder\)/);
 });

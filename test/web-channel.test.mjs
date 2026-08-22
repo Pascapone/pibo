@@ -358,6 +358,15 @@ test("chat web app exposes authenticated VS Code Web integration metadata and a 
 	}
 });
 
+test("chat web app rejects cross-origin and ambiguous VS Code Web URLs before opening stores", () => {
+	for (const url of ["https://code.example/", "//code.example/", "/\\code.example/", "apps/vscode/"]) {
+		assert.throws(
+			() => createChatWebApp({ vscodeWeb: { url } }),
+			/VS Code Web URL must be a same-origin absolute path beginning with \//,
+		);
+	}
+});
+
 test("chat web app serves the React shell for deep app links", async () => {
 	const { channel, baseURL } = await startWebHostChannel();
 

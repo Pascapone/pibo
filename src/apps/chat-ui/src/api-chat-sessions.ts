@@ -27,11 +27,6 @@ export async function getNavigation(
 	return requestJson<Partial<NavigationData>>(`/api/chat/navigation${suffix}`, init).then(normalizeNavigation);
 }
 
-export async function getProjects(includeArchived = false): Promise<{ projects: PiboProject[] }> {
-	const suffix = includeArchived ? "?includeArchived=true" : "";
-	return requestJson<{ projects: PiboProject[] }>(`/api/chat/projects${suffix}`);
-}
-
 export async function getProjectsBootstrap(input: { projectId?: string; piboSessionId?: string; includeArchived?: boolean } = {}): Promise<ProjectsBootstrapData> {
 	const params = new URLSearchParams();
 	if (input.projectId) params.set("projectId", input.projectId);
