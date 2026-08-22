@@ -69,6 +69,7 @@ export type ChatRoomDeleteBody = {
 export type ChatAgentBody = {
 	displayName?: unknown;
 	description?: unknown;
+	folderId?: unknown;
 	runtimeInstanceId?: unknown;
 	runtimeOptions?: unknown;
 	nativeSubagents?: unknown;
@@ -93,6 +94,10 @@ export type ChatAgentBody = {
 	goalControl?: unknown;
 	archived?: unknown;
 	confirmName?: unknown;
+};
+
+export type ChatAgentFolderBody = {
+	name?: unknown;
 };
 
 export type ChatMcpServerDescriptionBody = {
@@ -252,6 +257,24 @@ export function normalizeAgentDisplayName(value: unknown, fallback = "new-agent"
 		throw new PiboWebHttpError("Agent name must be lowercase kebab-case, for example test-agent", 400);
 	}
 	return name;
+}
+
+export function normalizeAgentFolderName(value: unknown): string {
+	if (typeof value !== "string") throw new PiboWebHttpError("Agent folder name must be a string", 400);
+	const name = value.replace(/\s+/g, " ").trim();
+	if (!name) throw new PiboWebHttpError("Agent folder name is required", 400);
+	if (name.length > 80) throw new PiboWebHttpError("Agent folder name is too long", 400);
+	return name;
+}
+
+export function normalizeAgentFolderId(value: unknown): string | null | undefined {
+	if (value === undefined) return undefined;
+	if (value === null || value === "") return null;
+	if (typeof value !== "string") throw new PiboWebHttpError("Agent folder id must be a string", 400);
+	const folderId = value.trim();
+	if (!folderId) return null;
+	if (folderId.length > 160) throw new PiboWebHttpError("Agent folder id is too long", 400);
+	return folderId;
 }
 
 export function normalizeAgentDescription(value: unknown): string | undefined {
@@ -768,6 +791,7 @@ export function createAgentInput(body: ChatAgentBody) {
 	return {
 		displayName: normalizeAgentDisplayName(body.displayName),
 		description: normalizeAgentDescription(body.description),
+		folderId: normalizeAgentFolderId(body.folderId) ?? undefined,
 		runtimeInstanceId: normalizeAgentRuntimeInstanceId(body.runtimeInstanceId),
 		runtimeOptions: normalizeAgentRuntimeOptions(body.runtimeOptions),
 		nativeSubagents: normalizeNativeSubagents(body.nativeSubagents),
@@ -797,6 +821,7 @@ export function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 	const update: UpdateCustomAgentInput = {};
 	if (body.displayName !== undefined) update.displayName = normalizeAgentDisplayName(body.displayName);
 	if (body.description !== undefined) update.description = normalizeAgentDescription(body.description);
+	if (body.folderId !== undefined) update.folderId = normalizeAgentFolderId(body.folderId);
 	if (body.runtimeInstanceId !== undefined) update.runtimeInstanceId = normalizeAgentRuntimeInstanceId(body.runtimeInstanceId);
 	if (body.runtimeOptions !== undefined) update.runtimeOptions = normalizeAgentRuntimeOptions(body.runtimeOptions);
 	if (body.nativeSubagents !== undefined) {

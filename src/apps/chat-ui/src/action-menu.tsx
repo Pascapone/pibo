@@ -229,7 +229,7 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 						role="menu"
 						aria-labelledby={triggerId}
 						onKeyDown={handleMenuKeyDown}
-						className="fixed z-[1000] w-48 bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1"
+						className="fixed z-[1000] max-h-[calc(100vh-1rem)] w-48 overflow-y-auto bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1"
 						style={position}
 					>
 						{children}

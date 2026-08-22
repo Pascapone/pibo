@@ -32,6 +32,7 @@ export function createProjectsTraceBootstrap(baseBootstrap: BootstrapData, data:
 		...(data?.session ? { session: data.session } : {}),
 		agents: data?.agents ?? baseBootstrap.agents,
 		customAgents: data?.customAgents ?? baseBootstrap.customAgents,
+		agentFolders: data?.agentFolders ?? baseBootstrap.agentFolders,
 		modelDefaults: data?.modelDefaults ?? baseBootstrap.modelDefaults,
 		modelCatalog: data?.modelCatalog ?? baseBootstrap.modelCatalog,
 		agentCatalog: data?.agentCatalog ?? baseBootstrap.agentCatalog,

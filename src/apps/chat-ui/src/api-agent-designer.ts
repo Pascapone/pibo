@@ -1,5 +1,5 @@
 import { requestJson } from "./api-http";
-import type { AgentCatalog, AgentRuntimeCapabilities, AgentRuntimeDiagnostic, CustomAgent, ModelProfile, UserSkill } from "./types";
+import type { AgentCatalog, AgentRuntimeCapabilities, AgentRuntimeDiagnostic, CustomAgent, CustomAgentFolder, ModelProfile, UserSkill } from "./types";
 
 export type ContextBuildDiagnostic = {
 	type: "info" | "warning" | "error";
@@ -64,6 +64,7 @@ export type ContextBuildSnapshot = {
 export type SaveCustomAgentInput = {
 	displayName: string;
 	description?: string;
+	folderId?: string | null;
 	runtimeInstanceId: string;
 	runtimeOptions: Record<string, unknown>;
 	nativeSubagents?: boolean | null;
@@ -97,6 +98,34 @@ export async function getAgentCatalog(): Promise<{
 
 export async function getCustomAgents(): Promise<{ agents: CustomAgent[] }> {
 	return requestJson("/api/chat/agents");
+}
+
+export async function getAgentFolders(): Promise<{ folders: CustomAgentFolder[] }> {
+	return requestJson("/api/chat/agent-folders");
+}
+
+export async function postAgentFolder(name: string): Promise<{ folder: CustomAgentFolder }> {
+	return requestJson("/api/chat/agent-folders", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ name }),
+	});
+}
+
+export async function patchAgentFolder(id: string, name: string): Promise<{ folder: CustomAgentFolder }> {
+	return requestJson(`/api/chat/agent-folders/${encodeURIComponent(id)}`, {
+		method: "PATCH",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ name }),
+	});
+}
+
+export async function deleteAgentFolder(id: string): Promise<{ deletedFolderId: string }> {
+	return requestJson(`/api/chat/agent-folders/${encodeURIComponent(id)}`, {
+		method: "DELETE",
+		headers: { "content-type": "application/json" },
+		body: "{}",
+	});
 }
 
 export async function getContextBuild(input: { piboSessionId: string }): Promise<ContextBuildSnapshot> {

@@ -2891,6 +2891,98 @@ test("chat web app creates custom agents from the native capability catalog", as
 	}
 });
 
+test("chat Agent Designer manages app-wide agent folders and folder assignments", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: [] }],
+	});
+	const mutationHeaders = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+
+	try {
+		const createdFolderResponse = await fetch(`${baseURL}/api/chat/agent-folders`, {
+			method: "POST",
+			headers: mutationHeaders,
+			body: JSON.stringify({ name: "Research" }),
+		});
+		assert.equal(createdFolderResponse.status, 201);
+		const createdFolder = (await createdFolderResponse.json()).folder;
+		assert.equal(createdFolder.name, "Research");
+
+		const listedFoldersResponse = await fetch(`${baseURL}/api/chat/agent-folders`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(listedFoldersResponse.status, 200);
+		assert.deepEqual((await listedFoldersResponse.json()).folders.map((folder) => folder.id), [createdFolder.id]);
+
+		const duplicateFolderResponse = await fetch(`${baseURL}/api/chat/agent-folders`, {
+			method: "POST",
+			headers: mutationHeaders,
+			body: JSON.stringify({ name: "research" }),
+		});
+		assert.equal(duplicateFolderResponse.status, 409);
+
+		const missingFolderAgentResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: mutationHeaders,
+			body: JSON.stringify({ displayName: "missing-folder-agent", folderId: "agent_folder_missing" }),
+		});
+		assert.equal(missingFolderAgentResponse.status, 404);
+
+		const createdAgentResponse = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers: mutationHeaders,
+			body: JSON.stringify({ displayName: "folder-agent", folderId: createdFolder.id }),
+		});
+		assert.equal(createdAgentResponse.status, 201);
+		const createdAgent = (await createdAgentResponse.json()).agent;
+		assert.equal(createdAgent.folderId, createdFolder.id);
+
+		const blockedDeleteResponse = await fetch(`${baseURL}/api/chat/agent-folders/${encodeURIComponent(createdFolder.id)}`, {
+			method: "DELETE",
+			headers: mutationHeaders,
+			body: "{}",
+		});
+		assert.equal(blockedDeleteResponse.status, 409);
+
+		const renamedFolderResponse = await fetch(`${baseURL}/api/chat/agent-folders/${encodeURIComponent(createdFolder.id)}`, {
+			method: "PATCH",
+			headers: mutationHeaders,
+			body: JSON.stringify({ name: "Production" }),
+		});
+		assert.equal(renamedFolderResponse.status, 200);
+		assert.equal((await renamedFolderResponse.json()).folder.name, "Production");
+
+		const unfiledAgentResponse = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdAgent.id)}`, {
+			method: "PATCH",
+			headers: mutationHeaders,
+			body: JSON.stringify({ folderId: null }),
+		});
+		assert.equal(unfiledAgentResponse.status, 200);
+		assert.equal((await unfiledAgentResponse.json()).agent.folderId, undefined);
+
+		const deletedFolderResponse = await fetch(`${baseURL}/api/chat/agent-folders/${encodeURIComponent(createdFolder.id)}`, {
+			method: "DELETE",
+			headers: mutationHeaders,
+			body: "{}",
+		});
+		assert.equal(deletedFolderResponse.status, 200);
+
+		const bootstrapResponse = await fetch(`${baseURL}/api/chat/bootstrap`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(bootstrapResponse.status, 200);
+		const bootstrap = await bootstrapResponse.json();
+		assert.deepEqual(bootstrap.agentFolders, []);
+		assert.equal(bootstrap.customAgents.find((agent) => agent.id === createdAgent.id).folderId, undefined);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtime selections", async () => {
 	const piCapabilities = fakeRuntimeCapabilities();
 	piCapabilities.contextDiscovery = { supported: true, configurable: true, enabledByDefault: true, knownFileNames: ["AGENTS.md", "CLAUDE.md"] };
