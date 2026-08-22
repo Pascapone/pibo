@@ -159,6 +159,10 @@ test("custom agent store migrates old app-context tables with stable defaults", 
 	assert.equal(agent.subagentFast, undefined);
 	assert.equal(agent.archivedAt, undefined);
 	assert.equal(agent.runControl, false);
+	assert.equal(agent.folderId, undefined);
+
+	const migratedFolder = store.createFolder("Migrated");
+	assert.equal(store.update(agent.id, { folderId: migratedFolder.id }).folderId, migratedFolder.id);
 
 	store.close();
 });
@@ -180,6 +184,37 @@ test("custom agent store archives and deletes agents", () => {
 	assert.equal(store.get(agent.id), undefined);
 
 	store.close();
+});
+
+test("custom agent store organizes agents in durable renamable folders", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-folders-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	const research = store.createFolder("Research");
+	const delivery = store.createFolder("Delivery");
+
+	assert.deepEqual(store.listFolders().map((folder) => folder.name), ["Delivery", "Research"]);
+	assert.throws(() => store.createFolder("research"), /already exists/);
+
+	const agent = store.create({ displayName: "folder-agent", folderId: research.id });
+	assert.equal(agent.folderId, research.id);
+	assert.throws(() => store.deleteFolder(research.id), /Move agents out/);
+
+	const moved = store.update(agent.id, { folderId: delivery.id });
+	assert.equal(moved.folderId, delivery.id);
+	const renamed = store.renameFolder(delivery.id, "Production");
+	assert.equal(renamed.name, "Production");
+
+	const unfiled = store.update(agent.id, { folderId: null });
+	assert.equal(unfiled.folderId, undefined);
+	assert.equal(store.deleteFolder(research.id), true);
+	assert.equal(store.deleteFolder(delivery.id), true);
+	assert.deepEqual(store.listFolders(), []);
+	assert.throws(() => store.update(agent.id, { folderId: "agent_folder_missing" }), /does not exist/);
+
+	store.close();
+	const reopened = new CustomAgentStore(path);
+	assert.equal(reopened.get(agent.id).folderId, undefined);
+	reopened.close();
 });
 
 test("custom agent profile renames leave old session profile names resolvable", () => {

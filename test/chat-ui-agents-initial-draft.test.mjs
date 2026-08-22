@@ -11,7 +11,7 @@ test("Agent Designer selects an existing agent initially and only creates drafts
 	const modelSource = readFileSync("src/apps/chat-ui/src/agents/agent-designer-model.ts", "utf8");
 	assert.match(source, /pending\?\.draft \?\? selectExistingAgentDraft\(agents, initialCustomAgents, initialCatalog\)/);
 	assert.match(source, /const \[showUnsavedAgentDraft, setShowUnsavedAgentDraft\] = useState\(Boolean\(initialDraftState\.restored && !initialDraftState\.draft\.id\)\)/);
-	assert.match(source, /onClick=\{createNewAgentDraft\} title="New Agent"/);
+	assert.match(source, /onCreateAgent=\{createNewAgentDraft\}/);
 	assert.match(source, /activateDraft\(nextDraft, null\)/);
 	assert.match(source, /noAgentSelected \? "no agent selected"/);
 	assert.match(source, /draft\.source === "custom" && !archivedDraft && !noAgentSelected/);

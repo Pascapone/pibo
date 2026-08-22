@@ -24,6 +24,6 @@ test("hiding archived agents switches the designer away from a hidden archived s
 	assert.match(handler, /if \(nextDraft\.profileName\) onSelect\(nextDraft\.profileName\);/);
 });
 
-test("the archived-agent visibility button uses the reconciled toggle handler", () => {
-	assert.match(source, /onClick=\{toggleArchivedAgents\}/);
+test("the archived-agent visibility control uses the reconciled toggle handler", () => {
+	assert.match(source, /onToggleArchivedAgents=\{toggleArchivedAgents\}/);
 });

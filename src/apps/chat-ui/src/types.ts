@@ -425,6 +425,7 @@ export type NavigationData = {
 export type BootstrapData = NavigationData & {
 	agents: AgentProfile[];
 	customAgents: CustomAgent[];
+	agentFolders: CustomAgentFolder[];
 	modelDefaults?: ModelDefaults;
 	modelCatalog?: ModelCatalog;
 	agentCatalog?: AgentCatalog;
@@ -444,6 +445,7 @@ export type ProjectsBootstrapData = {
 	sessions: PiboWebSessionNode[];
 	agents: AgentProfile[];
 	customAgents: CustomAgent[];
+	agentFolders: CustomAgentFolder[];
 	modelDefaults?: ModelDefaults;
 	modelCatalog?: ModelCatalog;
 	agentCatalog?: AgentCatalog;
@@ -792,6 +794,13 @@ export type AgentCatalog = {
 	userSkills: UserSkill[];
 };
 
+export type CustomAgentFolder = {
+	id: string;
+	name: string;
+	createdAt: string;
+	updatedAt: string;
+};
+
 export type CustomAgentSubagent = {
 	name: string;
 	description?: string;
@@ -807,6 +816,7 @@ export type CustomAgent = {
 	profileName: string;
 	profileAliases?: string[];
 	displayName: string;
+	folderId?: string;
 	description?: string;
 	runtimeInstanceId: string;
 	runtimeOptions: Record<string, unknown>;

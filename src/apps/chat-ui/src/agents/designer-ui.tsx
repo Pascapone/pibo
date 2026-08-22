@@ -5,17 +5,17 @@ import { CATALOG_GROUP_RENDER_LIMIT, piPackageMeta, type CatalogGroup, type PiPa
 
 export function DesignerPanel({ title, children }: { title: string; children: ReactNode }) {
 	return (
-		<div className="border border-slate-700 bg-[#1a262b] rounded-sm p-4">
-			<div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">{title}</div>
-			<div className="grid gap-3">{children}</div>
-		</div>
+		<section className="overflow-hidden border border-slate-700/90 bg-[#1a262b] rounded-sm">
+			<div className="border-b border-slate-800 bg-[#151f24] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-300">{title}</div>
+			<div className="grid gap-3 p-4">{children}</div>
+		</section>
 	);
 }
 
 export function CatalogSection({ title, children }: { title: string; children: ReactNode }) {
 	return (
 		<DesignerPanel title={title}>
-			<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">{children}</div>
+			<div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-2">{children}</div>
 		</DesignerPanel>
 	);
 }
@@ -69,7 +69,7 @@ function CatalogGroupCard<T>({
 			</button>
 			{open ? (
 				<div className="border-t border-slate-800 p-2">
-					<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">{visibleItems.map(renderItem)}</div>
+					<div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-2">{visibleItems.map(renderItem)}</div>
 					{hiddenCount > 0 ? <div className="mt-2 text-xs text-slate-500">Showing first {CATALOG_GROUP_RENDER_LIMIT} of {group.items.length} items. Use Context to manage the full catalog.</div> : null}
 				</div>
 			) : null}
@@ -148,8 +148,8 @@ export function CatalogToggle({
 						</span>
 					) : null}
 				</span>
-				{description ? <span className="block text-xs text-slate-500 truncate">{description}</span> : null}
-				{meta ? <span className={`block font-mono text-[10px] mt-1 ${metaClass ?? "text-slate-600"}`}>{meta}</span> : null}
+				{description ? <span className="block break-words text-xs leading-4 text-slate-500">{description}</span> : null}
+				{meta ? <span className={`mt-1 block break-words font-mono text-[10px] leading-4 ${metaClass ?? "text-slate-600"}`}>{meta}</span> : null}
 			</span>
 		</button>
 	);
@@ -377,7 +377,7 @@ export function AgentRuntimeSelector({
 	};
 
 	return (
-		<div className="grid gap-3 border border-slate-800 rounded-sm p-3">
+		<div className="grid gap-3 border border-slate-800 bg-[#101d22]/55 rounded-sm p-3">
 			<div className="flex items-center justify-between gap-3">
 				<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Agent Runtime</div>
 				<span className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${selected?.available ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200" : "border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100"}`}>
@@ -490,6 +490,7 @@ function SchemaRuntimeOptionsFields({
 						{field.description ? <span className="text-[10px] text-slate-500">{field.description}</span> : null}
 						{field.enumValues ? (
 							<select
+								name={`runtimeOption.${field.key}`}
 								value={current === undefined ? "" : String(current)}
 								disabled={readOnly}
 								onChange={(event) => {
@@ -503,6 +504,7 @@ function SchemaRuntimeOptionsFields({
 							</select>
 						) : field.type === "boolean" ? (
 							<select
+								name={`runtimeOption.${field.key}`}
 								value={typeof current === "boolean" ? String(current) : ""}
 								disabled={readOnly}
 								onChange={(event) => setField(field, event.target.value === "" ? undefined : event.target.value === "true")}
@@ -514,6 +516,7 @@ function SchemaRuntimeOptionsFields({
 							</select>
 						) : (
 							<input
+								name={`runtimeOption.${field.key}`}
 								type={field.type === "number" || field.type === "integer" ? "number" : "text"}
 								step={field.type === "integer" ? 1 : undefined}
 								value={typeof current === "string" || typeof current === "number" ? current : ""}
@@ -630,7 +633,7 @@ export function AgentRuntimeOptions({
 	onFastChange?: (value: boolean) => void;
 }) {
 	return (
-		<div className="grid gap-2 border border-slate-800 rounded-sm p-3">
+		<div className="grid gap-2 border border-slate-800 bg-[#101d22]/45 rounded-sm p-3">
 			<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{title}</div>
 			<div className={`grid gap-3 ${showFast ? "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)_auto]" : "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)]"} lg:items-start`}>
 				<ModelSelector
@@ -710,6 +713,8 @@ function ThinkingLevelSelector({
 			</div>
 			{unavailableReason ? <div className="text-xs text-amber-100">{unavailableReason}</div> : hint ? <div className="text-xs text-slate-500">{hint}</div> : reserveHintSpace ? <div className="h-4" aria-hidden="true" /> : null}
 			<select
+				name={`${title} thinking`}
+				aria-label={title}
 				value={value ?? ""}
 				disabled={readOnly || Boolean(unavailableReason)}
 				onChange={(event) => onChange(event.target.value ? (event.target.value as ThinkingLevel) : undefined)}
@@ -801,6 +806,8 @@ function ModelSelector({
 			) : null}
 			<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">
 				<select
+					name={`${title} provider`}
+					aria-label={`${title} provider`}
 					value={providerId}
 					disabled={readOnly || Boolean(unavailableReason)}
 					onChange={(event) => {
@@ -820,6 +827,8 @@ function ModelSelector({
 					{hasStaleProvider ? <option value={providerId}>{staleProviderLabel}</option> : null}
 				</select>
 				<select
+					name={`${title} model`}
+					aria-label={`${title} model`}
 					value={modelId}
 					disabled={readOnly || Boolean(unavailableReason)}
 					onChange={(event) => {
