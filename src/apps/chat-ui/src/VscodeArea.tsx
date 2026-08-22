@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, RefreshCw, ServerCrash } from "lucide-react";
+import { RefreshCw, ServerCrash } from "lucide-react";
 import type { VscodeWebIntegration } from "./types";
 
 export function vscodeWebUrl(baseUrl: string, folder?: string, documentUrl = "http://localhost/"): string {
@@ -17,7 +17,6 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 	const [probeError, setProbeError] = useState<string | null>(null);
 	const [frameReady, setFrameReady] = useState(false);
 	const [retryKey, setRetryKey] = useState(0);
-	const [reloadKey, setReloadKey] = useState(0);
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const frameReadinessTimerRef = useRef<number | null>(null);
 
@@ -79,7 +78,7 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 				frameReadinessTimerRef.current = null;
 			}
 		};
-	}, [frameUrl, reloadKey]);
+	}, [frameUrl]);
 
 	const waitForDarkWorkbench = () => {
 		if (frameReadinessTimerRef.current !== null) window.clearTimeout(frameReadinessTimerRef.current);
@@ -114,11 +113,6 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 		inspectFrame();
 	};
 
-	const reloadFrame = () => {
-		setFrameReady(false);
-		setReloadKey((value) => value + 1);
-		setRetryKey((value) => value + 1);
-	};
 
 	if (!integration) {
 		return (
@@ -133,30 +127,6 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 
 	return (
 		<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#101d22]" aria-label="VS Code Web">
-			<div className="flex min-h-11 shrink-0 items-center justify-end gap-1 border-b border-slate-800 bg-[#151f24] px-3">
-				<div className="flex shrink-0 items-center gap-1">
-					<button
-						type="button"
-						onClick={reloadFrame}
-						className="grid h-8 w-8 place-items-center rounded-sm border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-						title="Reload VS Code"
-						aria-label="Reload VS Code"
-					>
-						<RefreshCw size={14} />
-					</button>
-					<a
-						href={frameUrl}
-						target="_blank"
-						rel="noreferrer"
-						className="grid h-8 w-8 place-items-center rounded-sm border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-						title="Open VS Code in a new tab"
-						aria-label="Open VS Code in a new tab"
-					>
-						<ExternalLink size={14} />
-					</a>
-				</div>
-			</div>
-
 			<div className="relative min-h-0 flex-1 bg-[#101d22]">
 				{probeStatus === "ready" ? (
 					<>
@@ -170,7 +140,7 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 						) : null}
 						<iframe
 							ref={frameRef}
-							key={`${frameUrl}:${reloadKey}`}
+							key={frameUrl}
 							src={frameUrl}
 							title="VS Code Web"
 							allow="clipboard-read; clipboard-write"

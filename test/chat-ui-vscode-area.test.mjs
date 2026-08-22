@@ -48,6 +48,8 @@ test("VS Code area provides a configured-state fallback and trusted IDE iframe c
 	assert.match(source, /<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden/);
 	assert.doesNotMatch(source, /vscode-workspace-path/);
 	assert.doesNotMatch(source, /getProjects\(\)/);
+	assert.doesNotMatch(source, /Reload VS Code/);
+	assert.doesNotMatch(source, /Open VS Code in a new tab/);
 	assert.match(source, /<iframe/);
 	assert.match(source, /allow="clipboard-read; clipboard-write"/);
 	assert.match(source, /frameDocument\?\.querySelector\("\.monaco-workbench"\)/);
