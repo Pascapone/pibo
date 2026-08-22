@@ -24,6 +24,10 @@ test("VS Code Web URL helper preserves the mount path and selects server folders
 			vscodeWebUrl("https://code.example/", "/srv/project", "https://pibo.example/apps/chat/vscode"),
 			"https://code.example/?folder=%2Fsrv%2Fproject",
 		);
+		assert.equal(
+			vscodeWebUrl("/apps/vscode/", "/tmp/any folder", "https://pibo.example/apps/chat/vscode"),
+			"/apps/vscode/?folder=%2Ftmp%2Fany+folder",
+		);
 	`;
 	await assert.doesNotReject(execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() }));
 });
@@ -42,8 +46,15 @@ test("VS Code area provides a configured-state fallback and trusted IDE iframe c
 
 	const source = readFileSync(resolve("src/apps/chat-ui/src/VscodeArea.tsx"), "utf8");
 	assert.match(source, /<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden/);
+	assert.match(source, /id="vscode-workspace-path"/);
+	assert.match(source, /list="vscode-workspace-paths"/);
+	assert.match(source, /placeholder="Absolute workspace path on Pibo"/);
 	assert.match(source, /<iframe/);
 	assert.match(source, /allow="clipboard-read; clipboard-write"/);
+	assert.match(source, /frameDocument\?\.querySelector\("\.monaco-workbench"\)/);
+	assert.match(source, /frameDocument\.querySelector\("\.vs-dark, \.hc-black"\)/);
+	assert.match(source, /frameReady \? "visible" : "invisible"/);
+	assert.match(source, /Starting VS Code in dark mode/);
 	assert.match(source, /getProjects\(\)/);
 	assert.match(source, /searchParams\.set\("folder", folder\)/);
 });
