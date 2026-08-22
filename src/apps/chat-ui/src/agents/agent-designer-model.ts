@@ -27,6 +27,7 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 	return {
 		displayName: draft.displayName.trim(),
 		description: (draft.description ?? "").trim() || undefined,
+		folderId: draft.folderId ?? null,
 		runtimeInstanceId: (draft.runtimeInstanceId ?? "pi").trim() || "pi",
 		runtimeOptions: draft.runtimeOptions && typeof draft.runtimeOptions === "object" && !Array.isArray(draft.runtimeOptions)
 			? structuredClone(draft.runtimeOptions)
@@ -68,10 +69,11 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 	};
 }
 
-export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new-agent"): AgentDraft {
+export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new-agent", folderId?: string): AgentDraft {
 	return {
 		displayName,
 		description: "",
+		folderId,
 		runtimeInstanceId: defaultRuntimeInstanceId(catalog),
 		runtimeOptions: {},
 		nativeSubagents: undefined,
@@ -135,6 +137,7 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 		profileName: agent.profileName,
 		displayName: agent.displayName,
 		description: agent.description ?? "",
+		folderId: agent.folderId,
 		runtimeInstanceId: agent.runtimeInstanceId ?? "pi",
 		runtimeOptions: structuredClone(agent.runtimeOptions ?? {}),
 		nativeSubagents: agent.nativeSubagents,

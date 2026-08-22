@@ -139,6 +139,7 @@ import {
 } from "./chat-user-skill-routes.js";
 import {
 	CHAT_WEB_API_PREFIX,
+	agentFolderResourceId,
 	agentResourceId,
 	projectResourcePath,
 	projectSessionResourceId,
@@ -167,6 +168,7 @@ import {
 	createRoomUpdate,
 	createSessionUpdate,
 	normalizeAgentArchived,
+	normalizeAgentFolderName,
 	normalizeClientTxnId,
 	normalizeMessageDelivery,
 	normalizeMessageText,
@@ -192,6 +194,7 @@ import {
 	normalizeStreamingFixtureTraceSnapshots,
 	resolveCreateSessionProfile,
 	type ChatAgentBody,
+	type ChatAgentFolderBody,
 	type ChatMessageBody,
 	type ChatProjectCreateBody,
 	type ChatProjectDeleteBody,
@@ -443,6 +446,7 @@ type ChatGatewayResourceMetrics = {
 type ChatBootstrapCatalog = {
 	agents: ReturnType<NonNullable<PiboWebAppContext["channelContext"]["getProfiles"]>>;
 	customAgents: ReturnType<typeof serializeCustomAgents>;
+	agentFolders: ReturnType<CustomAgentStore["listFolders"]>;
 	modelDefaults: PiboModelDefaults;
 	modelCatalog: Awaited<ReturnType<typeof loadModelCatalog>>;
 	agentCatalog: Awaited<ReturnType<typeof buildAgentCatalog>>;
@@ -468,6 +472,7 @@ function loadBootstrapCatalog(
 	]).then(([modelCatalog, agentCatalog]) => ({
 		agents: context.channelContext.getProfiles?.() ?? [],
 		customAgents: serializeCustomAgents(state.agentStore.list({ includeArchived: true }), context),
+		agentFolders: state.agentStore.listFolders(),
 		modelDefaults: loadChatModelDefaults(process.cwd()),
 		modelCatalog,
 		agentCatalog,
@@ -1570,6 +1575,22 @@ function serializeCustomAgent(agent: CustomAgentDefinition, context: PiboWebAppC
 
 function serializeCustomAgents(agents: readonly CustomAgentDefinition[], context: PiboWebAppContext) {
 	return agents.map((agent) => serializeCustomAgent(agent, context));
+}
+
+function requireAgentFolder(state: ChatWebAppState, folderId: string) {
+	const folder = state.agentStore.getFolder(folderId);
+	if (!folder) throw new PiboWebHttpError("Agent folder not found", 404);
+	return folder;
+}
+
+function requireAgentFolderNameAvailable(state: ChatWebAppState, name: string, currentId?: string): void {
+	const conflict = state.agentStore.listFolders().find((folder) => folder.id !== currentId && folder.name.localeCompare(name, undefined, { sensitivity: "accent" }) === 0);
+	if (conflict) throw new PiboWebHttpError(`Agent folder "${name}" already exists`, 409);
+}
+
+function requireAgentFolderAssignmentAvailable(state: ChatWebAppState, folderId: string | null | undefined): void {
+	if (!folderId) return;
+	requireAgentFolder(state, folderId);
 }
 
 const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
@@ -5362,6 +5383,46 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				});
 			}
 
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agent-folders` && request.method === "GET") {
+				await requireSession(request, context);
+				return responseJson({ folders: state.agentStore.listFolders() });
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agent-folders` && request.method === "POST") {
+				requireSameOriginJsonRequest(request);
+				await requireSession(request, context);
+				const body = await readJsonBody<ChatAgentFolderBody>(request);
+				const name = normalizeAgentFolderName(body.name);
+				requireAgentFolderNameAvailable(state, name);
+				const folder = state.agentStore.createFolder(name);
+				invalidateBootstrapCatalogCache(state);
+				return responseJson({ folder }, { status: 201 });
+			}
+
+			const patchAgentFolderId = agentFolderResourceId(url.pathname);
+			if (patchAgentFolderId && request.method === "PATCH") {
+				requireSameOriginJsonRequest(request);
+				await requireSession(request, context);
+				requireAgentFolder(state, patchAgentFolderId);
+				const body = await readJsonBody<ChatAgentFolderBody>(request);
+				const name = normalizeAgentFolderName(body.name);
+				requireAgentFolderNameAvailable(state, name, patchAgentFolderId);
+				const folder = state.agentStore.renameFolder(patchAgentFolderId, name);
+				invalidateBootstrapCatalogCache(state);
+				return responseJson({ folder: requireAgentFolder(state, folder?.id ?? patchAgentFolderId) });
+			}
+
+			if (patchAgentFolderId && request.method === "DELETE") {
+				requireSameOriginJsonRequest(request);
+				await requireSession(request, context);
+				const folder = requireAgentFolder(state, patchAgentFolderId);
+				const assignedAgent = state.agentStore.list({ includeArchived: true }).find((agent) => agent.folderId === folder.id);
+				if (assignedAgent) throw new PiboWebHttpError("Move agents out of this folder before deleting it.", 409);
+				state.agentStore.deleteFolder(folder.id);
+				invalidateBootstrapCatalogCache(state);
+				return responseJson({ deletedFolderId: folder.id });
+			}
+
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
 				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
@@ -5374,6 +5435,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const body = await readJsonBody<ChatAgentBody>(request);
 				const input = normalizeCreateRuntimeFeatureOverrides(createAgentInput(body), context);
 				requireAgentProfileNameAvailable(state, context, input.displayName);
+				requireAgentFolderAssignmentAvailable(state, input.folderId);
 				await requireValidCustomAgentRuntime(previewCustomAgentCreate(input), context);
 				const agent = state.agentStore.create(input);
 				context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(agent));
@@ -5395,6 +5457,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				);
 				const archived = normalizeAgentArchived(body.archived);
 				if (update.displayName) requireAgentProfileNameAvailable(state, context, update.displayName, existing.id);
+				requireAgentFolderAssignmentAvailable(state, update.folderId);
 				if (customAgentUpdateAffectsRuntime(update)) {
 					await requireValidCustomAgentRuntime(previewCustomAgentUpdate(existing, update), context);
 				}

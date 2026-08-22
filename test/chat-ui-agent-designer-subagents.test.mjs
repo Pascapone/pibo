@@ -13,6 +13,8 @@ test("Agent Designer edits description, model, and thinking per subagent", async
 	assert.match(source, /model=\{subagent\.model\}/);
 	assert.match(source, /thinking=\{subagent\.thinkingLevel\}/);
 	assert.match(source, /showFast=\{false\}/);
+	assert.match(source, /maxDepth: 1/);
+	assert.match(source, /value=\{subagent\.maxDepth \?\? 1\}/);
 
 	const script = `
 		import assert from "node:assert/strict";

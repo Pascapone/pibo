@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
 	Archive,
 	ArchiveRestore,
 	AlertTriangle,
 	ChevronDown,
 	ChevronRight,
-	CopyPlus,
 	Edit3,
 	MessageSquarePlus,
 	Plus,
@@ -14,10 +13,10 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { deleteCustomAgent, getCustomAgents, patchCustomAgent, postCustomAgent } from "../api-agent-designer";
+import { deleteAgentFolder, deleteCustomAgent, getCustomAgents, patchAgentFolder, patchCustomAgent, postAgentFolder, postCustomAgent } from "../api-agent-designer";
 import type { SaveState } from "../api";
 import { listContextFiles, postContextFile } from "../api-context-files";
-import type { AgentCatalog, AgentRuntimeCapabilityDelivery, BootstrapData, CustomAgent, CustomAgentSubagent, ModelCatalog, ModelProfile } from "../types";
+import type { AgentCatalog, AgentRuntimeCapabilityDelivery, BootstrapData, CustomAgent, CustomAgentFolder, CustomAgentSubagent, ModelCatalog, ModelProfile } from "../types";
 import {
 	BUILTIN_TOOL_DESCRIPTIONS,
 	DEFAULT_BUILTIN_TOOL_NAMES,
@@ -60,6 +59,7 @@ import {
 	PiPackageCard,
 	SelectionCheckbox,
 } from "./designer-ui";
+import { AgentsSidebar } from "./AgentsSidebar";
 
 const AGENT_AUTOSAVE_DELAY_MS = 900;
 const PENDING_AGENT_DRAFT_STORAGE_KEY = "pibo.chat.agentDesigner.pendingDraft.v1";
@@ -130,6 +130,7 @@ function autosaveStateLabel(state: SaveState): string {
 export function AgentsView({
 	agents,
 	initialCustomAgents,
+	initialAgentFolders,
 	initialCatalog,
 	modelCatalog,
 	onSelect,
@@ -139,9 +140,13 @@ export function AgentsView({
 	onAgentsChanged,
 	onAutosaveHandlerChange,
 	creatingSession,
+	mobileSidebarOpen,
+	isMobileSidebarViewport,
+	onCloseMobileSidebar,
 }: {
 	agents: BootstrapData["agents"];
 	initialCustomAgents: CustomAgent[];
+	initialAgentFolders: CustomAgentFolder[];
 	initialCatalog?: AgentCatalog;
 	modelCatalog?: ModelCatalog;
 	onSelect: (profile: string) => void;
@@ -151,6 +156,9 @@ export function AgentsView({
 	onAgentsChanged: () => void;
 	onAutosaveHandlerChange: (handler: (() => Promise<void>) | null) => void;
 	creatingSession: boolean;
+	mobileSidebarOpen: boolean;
+	isMobileSidebarViewport: boolean;
+	onCloseMobileSidebar: () => void;
 }) {
 	const [initialDraftState] = useState(() => {
 		const pending = readPendingAgentDraft();
@@ -163,6 +171,7 @@ export function AgentsView({
 	});
 	const [catalog, setCatalog] = useState<AgentCatalog | null>(initialCatalog ?? null);
 	const [customAgents, setCustomAgents] = useState(initialCustomAgents);
+	const [agentFolders, setAgentFolders] = useState(initialAgentFolders);
 	const [draft, setDraft] = useState<AgentDraft>(initialDraftState.draft);
 	const [showUnsavedAgentDraft, setShowUnsavedAgentDraft] = useState(Boolean(initialDraftState.restored && !initialDraftState.draft.id));
 	const [saveState, setSaveState] = useState<SaveState>(initialDraftState.restored ? "idle" : "saved");
@@ -407,6 +416,7 @@ export function AgentsView({
 	}, []);
 
 	useEffect(() => setCustomAgents(initialCustomAgents), [initialCustomAgents]);
+	useEffect(() => setAgentFolders(initialAgentFolders), [initialAgentFolders]);
 	useEffect(() => {
 		if (initialCatalog) setCatalog(initialCatalog);
 	}, [initialCatalog]);
@@ -435,6 +445,7 @@ export function AgentsView({
 	const readOnly = draft.source === "profile" || archivedDraft || noAgentSelected;
 	const agentNameError = readOnly ? null : validateAgentName(draft.displayName);
 	const draftProfileName = noAgentSelected ? "No agent selected" : draft.profileName ?? (agentNameError ? "new custom profile" : draft.displayName);
+	const draftFolderName = draft.folderId ? agentFolders.find((folder) => folder.id === draft.folderId)?.name ?? "Missing folder" : "Unfiled";
 	const visibleContextFiles = useMemo(
 		() => catalog?.contextFiles.filter((contextFile) => {
 			if ((contextFile.scope ?? "global") !== "agent") return true;
@@ -495,14 +506,15 @@ export function AgentsView({
 		}
 	};
 
-	const createNewAgentDraft = () => {
+	const createNewAgentDraft = (folderId?: string) => {
 		void runAfterAutosave(() => {
 			const usedNames = [
 				...agentNamesInUse(agents, customAgents),
 				...(unsavedAgentDraftVisible ? [draft.displayName] : []),
 			];
-			const nextDraft = createBlankAgentDraft(catalog ?? undefined, uniqueDraftAgentName(usedNames));
+			const nextDraft = createBlankAgentDraft(catalog ?? undefined, uniqueDraftAgentName(usedNames), folderId);
 			activateDraft(nextDraft, null);
+			onCloseMobileSidebar();
 		});
 	};
 
@@ -568,6 +580,61 @@ export function AgentsView({
 		}
 	};
 
+	const createFolder = async (name: string) => {
+		try {
+			const response = await postAgentFolder(name);
+			setAgentFolders((current) => [...current, response.folder].sort((left, right) => left.name.localeCompare(right.name)));
+			onAgentsChangedRef.current();
+			setLocalError(null);
+		} catch (caught) {
+			setLocalError(caught instanceof Error ? caught.message : String(caught));
+			throw caught;
+		}
+	};
+
+	const renameFolder = async (folderId: string, name: string) => {
+		try {
+			const response = await patchAgentFolder(folderId, name);
+			setAgentFolders((current) => current.map((folder) => folder.id === folderId ? response.folder : folder).sort((left, right) => left.name.localeCompare(right.name)));
+			onAgentsChangedRef.current();
+			setLocalError(null);
+		} catch (caught) {
+			setLocalError(caught instanceof Error ? caught.message : String(caught));
+			throw caught;
+		}
+	};
+
+	const removeFolder = async (folderId: string) => {
+		try {
+			await deleteAgentFolder(folderId);
+			setAgentFolders((current) => current.filter((folder) => folder.id !== folderId));
+			onAgentsChangedRef.current();
+			setLocalError(null);
+		} catch (caught) {
+			setLocalError(caught instanceof Error ? caught.message : String(caught));
+			throw caught;
+		}
+	};
+
+	const moveAgent = (agent: CustomAgent, folderId?: string) => {
+		void runAfterAutosave(async () => {
+			try {
+				const response = await patchCustomAgent(agent.id, { folderId: folderId ?? null });
+				const nextAgents = customAgentsRef.current.map((item) => item.id === response.agent.id ? response.agent : item);
+				customAgentsRef.current = nextAgents;
+				setCustomAgents(nextAgents);
+				if (currentDraftRef.current.source === "custom" && currentDraftRef.current.id === response.agent.id) {
+					const nextDraft = agentToDraft(response.agent);
+					activateDraft(nextDraft, agentDraftSignature(nextDraft));
+				}
+				onAgentsChangedRef.current();
+				setLocalError(null);
+			} catch (caught) {
+				setLocalError(caught instanceof Error ? caught.message : String(caught));
+			}
+		});
+	};
+
 	const deleteDraft = async () => {
 		if (!draft.id || !draft.profileName || !archivedDraft) return;
 		setSaving(true);
@@ -589,127 +656,79 @@ export function AgentsView({
 	};
 
 	return (
-		<div className="h-full min-h-0 overflow-hidden grid grid-cols-[300px_minmax(0,1fr)] max-[920px]:grid-cols-1">
-			<aside className="border-r border-slate-800 bg-[#1a262b] min-h-0 overflow-auto">
-				<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
-					<span>Agents</span>
-					<div className="flex items-center gap-1">
-						<button type="button" onClick={createNewAgentDraft} title="New Agent" aria-label="New Agent" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
-							<Plus size={13} />
-						</button>
-						<button
-							type="button"
-							onClick={toggleArchivedAgents}
-							title={showArchivedAgents ? "Hide Archived Agents" : "Show Archived Agents"}
-							aria-label={showArchivedAgents ? "Hide Archived Agents" : "Show Archived Agents"}
-							className={`p-1 border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedAgents ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
-						>
-							{showArchivedAgents ? <ArchiveRestore size={13} /> : <Archive size={13} />}
-						</button>
-						<button type="button" onClick={() => void runAfterAutosave(onAgentsChanged)} title="Refresh" aria-label="Refresh" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
-							<RefreshCw size={13} />
-						</button>
-					</div>
-				</div>
-				<div className="p-2">
-					<AgentList title="Custom Agents">
-						{unsavedAgentDraftVisible ? (
-							<AgentSidebarRow
-								key="unsaved-agent-draft"
-								title={draft.displayName || "new-agent"}
-								subtitle="unsaved custom agent"
-								selected
-								onSelect={() => {}}
-								onCreateSession={() => {}}
-								createSessionDisabled
-							/>
-						) : null}
-						{activeCustomAgents.map((agent) => (
-							<AgentSidebarRow
-								key={agent.id}
-								title={agent.displayName}
-								subtitle={agent.profileName}
-								selected={draft.source === "custom" && draft.id === agent.id}
-								onSelect={() => {
-									if (draft.source === "custom" && draft.id === agent.id) return;
-									void runAfterAutosave(() => {
-										const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
-										const nextDraft = agentToDraft(latestAgent);
-										activateDraft(nextDraft, agentDraftSignature(nextDraft));
-										onSelect(latestAgent.profileName);
-									});
-								}}
-								onCopy={() => void runAfterAutosave(() => {
-									const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
-									activateDraft(copyCustomAgentToDraft(latestAgent), null);
-								})}
-								onCreateSession={() => void runAfterAutosave(() => {
-									onSelect(agent.profileName);
-									onCreateSession(agent.profileName);
-								})}
-								createSessionDisabled={creatingSession}
-							/>
-						))}
-						{activeCustomAgents.length === 0 && !unsavedAgentDraftVisible ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No custom agents</div> : null}
-					</AgentList>
-					{showArchivedAgents ? (
-						<AgentList title="Archived Custom Agents">
-							{archivedCustomAgents.map((agent) => (
-								<AgentSidebarRow
-									key={agent.id}
-									title={agent.displayName}
-									subtitle={agent.profileName}
-									selected={draft.source === "custom" && draft.id === agent.id}
-									onSelect={() => {
-										if (draft.source === "custom" && draft.id === agent.id) return;
-										void runAfterAutosave(() => {
-											const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
-											const nextDraft = agentToDraft(latestAgent);
-											activateDraft(nextDraft, agentDraftSignature(nextDraft));
-										});
-									}}
-									onCopy={() => void runAfterAutosave(() => {
-										const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
-										activateDraft(copyCustomAgentToDraft(latestAgent), null);
-									})}
-									onCreateSession={() => {}}
-									createSessionDisabled
-								/>
-							))}
-							{archivedCustomAgents.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived agents</div> : null}
-						</AgentList>
-					) : null}
-					<AgentList title="Read-only Profiles">
-						{pluginProfiles.map((agent) => (
-							<AgentSidebarRow
-								key={agent.name}
-								title={agent.name}
-								subtitle={agent.aliases.join(", ") || "plugin"}
-								selected={draft.source === "profile" && draft.profileName === agent.name}
-								onSelect={() => void runAfterAutosave(() => {
-									const nextDraft = profileToDraft(agent, catalog ?? undefined);
-									activateDraft(nextDraft, agentDraftSignature(nextDraft));
-									onSelect(agent.name);
-								})}
-								onCopy={() => void runAfterAutosave(() => {
-									activateDraft(copyProfileToDraft(agent, catalog ?? undefined), null);
-								})}
-								onCreateSession={() => void runAfterAutosave(() => {
-									onSelect(agent.name);
-									onCreateSession(agent.name);
-								})}
-								createSessionDisabled={creatingSession}
-							/>
-						))}
-					</AgentList>
-				</div>
-			</aside>
-			<section className="min-h-0 overflow-auto p-5">
-				<div className="flex items-center justify-between gap-3 mb-4">
+		<>
+			<div
+				data-pibo-mobile-sidebar-backdrop
+				aria-hidden="true"
+				className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+				onClick={onCloseMobileSidebar}
+			/>
+			<AgentsSidebar
+				folders={agentFolders}
+				activeAgents={activeCustomAgents}
+				archivedAgents={archivedCustomAgents}
+				pluginProfiles={pluginProfiles}
+				draft={draft}
+				error={localError}
+				unsavedAgentDraftVisible={unsavedAgentDraftVisible}
+				showArchivedAgents={showArchivedAgents}
+				creatingSession={creatingSession}
+				mobileSidebarOpen={mobileSidebarOpen}
+				isMobileSidebarViewport={isMobileSidebarViewport}
+				onCloseMobileSidebar={onCloseMobileSidebar}
+				onCreateAgent={createNewAgentDraft}
+				onCreateFolder={createFolder}
+				onRenameFolder={renameFolder}
+				onDeleteFolder={removeFolder}
+				onToggleArchivedAgents={toggleArchivedAgents}
+				onRefresh={() => void runAfterAutosave(onAgentsChanged)}
+				onSelectAgent={(agent) => {
+					if (draft.source === "custom" && draft.id === agent.id) {
+						onCloseMobileSidebar();
+						return;
+					}
+					void runAfterAutosave(() => {
+						const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
+						const nextDraft = agentToDraft(latestAgent);
+						activateDraft(nextDraft, agentDraftSignature(nextDraft));
+						if (!latestAgent.archivedAt) onSelect(latestAgent.profileName);
+						onCloseMobileSidebar();
+					});
+				}}
+				onCopyAgent={(agent) => void runAfterAutosave(() => {
+					const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
+					activateDraft(copyCustomAgentToDraft(latestAgent), null);
+					onCloseMobileSidebar();
+				})}
+				onMoveAgent={moveAgent}
+				onCreateAgentSession={(agent) => void runAfterAutosave(() => {
+					onSelect(agent.profileName);
+					onCreateSession(agent.profileName);
+					onCloseMobileSidebar();
+				})}
+				onSelectProfile={(profile) => void runAfterAutosave(() => {
+					const nextDraft = profileToDraft(profile, catalog ?? undefined);
+					activateDraft(nextDraft, agentDraftSignature(nextDraft));
+					onSelect(profile.name);
+					onCloseMobileSidebar();
+				})}
+				onCopyProfile={(profile) => void runAfterAutosave(() => {
+					activateDraft(copyProfileToDraft(profile, catalog ?? undefined), null);
+					onCloseMobileSidebar();
+				})}
+				onCreateProfileSession={(profile) => void runAfterAutosave(() => {
+					onSelect(profile.name);
+					onCreateSession(profile.name);
+					onCloseMobileSidebar();
+				})}
+			/>
+			<main className="min-h-0 overflow-y-auto bg-[#101d22]" data-pibo-debug="agent-designer-main">
+				<div className="sticky top-0 z-20 border-b border-slate-800 bg-[#101d22]/95 backdrop-blur-sm">
+					<div className="mx-auto flex min-h-16 max-w-[1180px] items-center justify-between gap-3 px-4 py-3 sm:px-6">
 					<div className="min-w-0">
 						<h1 className="text-sm font-bold uppercase tracking-wider">Agent Designer</h1>
 						<div className="font-mono text-[11px] text-slate-500 truncate">{draftProfileName}</div>
-						<div className="text-[11px] uppercase tracking-wider text-slate-500">{noAgentSelected ? "no agent selected" : draft.source === "profile" ? "read-only plugin profile" : archivedDraft ? "archived custom agent" : "custom agent"}</div>
+						<div className="text-[11px] uppercase tracking-wider text-slate-500">{noAgentSelected ? "no agent selected" : draft.source === "profile" ? "read-only plugin profile" : archivedDraft ? `archived custom agent · ${draftFolderName}` : `custom agent · ${draftFolderName}`}</div>
 					</div>
 					<div className="flex items-center gap-2">
 						{draft.source === "custom" && !archivedDraft && !noAgentSelected ? (
@@ -731,15 +750,21 @@ export function AgentsView({
 							</button>
 						) : null}
 					</div>
+					</div>
 				</div>
-				{designerAvailable ? null : <div className="mb-3 border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">{agentDesignerUnavailableMessage()}</div>}
+				<div className="mx-auto grid max-w-[1180px] gap-4 px-4 py-4 sm:px-6 sm:py-6">
+				{designerAvailable ? null : <div className="border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">{agentDesignerUnavailableMessage()}</div>}
 				{noAgentSelected ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">Select an existing agent or use New Agent to create one.</div> : null}
 				{draft.source === "profile" ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">This profile is registered by a plugin. Copy it to create an editable custom agent.</div> : null}
 				{archivedDraft ? <div className="mb-3 border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">This agent is archived. Restore it before editing or starting new sessions.</div> : null}
-				{localError ? <div className="mb-3 border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{localError}</div> : null}
+				{localError ? <div role="alert" className="mb-3 border border-red-500/60 bg-red-500/10 text-red-200 px-3 py-2 text-sm rounded-sm">{localError}</div> : null}
 				<div className="grid gap-4">
-					<DesignerPanel title="Basics">
+					<DesignerPanel title="Identity">
+						<label className="grid gap-1" htmlFor="agent-designer-name">
+							<span className="text-[11px] uppercase tracking-wider text-slate-500">Agent name</span>
 						<input
+							id="agent-designer-name"
+							name="agentName"
 							value={draft.displayName}
 							disabled={readOnly}
 							onFocus={() => setEditingName(true)}
@@ -751,8 +776,14 @@ export function AgentsView({
 							className={`min-w-0 bg-[#0e1116] border rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60 ${agentNameError ? "border-[#f59e0b]" : "border-slate-700"}`}
 							placeholder="agent-name"
 						/>
+						</label>
 						{agentNameError ? <div className="text-xs text-amber-100">{agentNameError}</div> : null}
-						<textarea value={draft.description} disabled={readOnly} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} className="min-h-[72px] bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="Description" />
+						<label className="grid gap-1" htmlFor="agent-designer-description">
+							<span className="text-[11px] uppercase tracking-wider text-slate-500">Description</span>
+							<textarea id="agent-designer-description" name="agentDescription" value={draft.description} disabled={readOnly} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} className="min-h-[88px] bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="What should this agent be used for?" />
+						</label>
+					</DesignerPanel>
+					<DesignerPanel title="Runtime">
 						<AgentRuntimeSelector
 							runtimes={catalog?.agentRuntimes ?? []}
 							runtimeInstanceId={draft.runtimeInstanceId}
@@ -774,13 +805,15 @@ export function AgentsView({
 							onRuntimeOptionsChange={(runtimeOptions) => setDraft((current) => ({ ...current, runtimeOptions }))}
 							onRuntimeOptionsError={updateRuntimeOptionsError}
 						/>
+					</DesignerPanel>
+					<DesignerPanel title="Main Agent">
 						{draft.source === "profile" && draft.hardPinnedModel ? (
 							<div className="border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-xs rounded-sm">
 								This plugin profile hard-pins <span className="font-mono">{formatModelProfile(draft.hardPinnedModel)}</span> when no session or parent subagent override selects another model.
 							</div>
 						) : null}
 						<AgentRuntimeOptions
-							title="Main Agent"
+							title="Model & Reasoning"
 							modelTitle="Main Agent Model"
 							model={draft.mainModel}
 							thinking={draft.mainThinkingLevel}
@@ -920,7 +953,7 @@ export function AgentsView({
 							</div>
 						) : null}
 						<div className="grid grid-cols-[1fr_auto] gap-2">
-							<input value={newContextFileName} disabled={readOnly || Boolean(contextUnavailableReason)} onChange={(event) => setNewContextFileName(event.target.value)} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="New context file" />
+							<input id="agent-designer-new-context-file" name="newContextFile" aria-label="New context file" value={newContextFileName} disabled={readOnly || Boolean(contextUnavailableReason)} onChange={(event) => setNewContextFileName(event.target.value)} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="New context file" />
 							<button type="button" disabled={readOnly || Boolean(contextUnavailableReason) || saving || !newContextFileName.trim() || Boolean(agentNameError)} onClick={() => void createContextFileForDraft()} title="Create Context File" aria-label="Create Context File" className="h-9 w-9 inline-flex items-center justify-center border border-[#11a4d4] rounded-sm text-[#11a4d4] bg-[#11a4d4]/10 disabled:opacity-50">
 								<Plus size={14} />
 							</button>
@@ -973,7 +1006,7 @@ export function AgentsView({
 							<div className="border border-red-500/60 bg-red-500/10 text-red-100 rounded-sm p-3 text-sm">
 								Permanently deleting this agent also deletes all Chat sessions that use profile <span className="font-mono">{draft.profileName}</span>.
 							</div>
-							<input value={deleteConfirmName} onChange={(event) => setDeleteConfirmName(event.target.value)} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-red-500" placeholder={draft.profileName} />
+							<input name="deleteAgentConfirmation" aria-label="Confirm agent name for permanent deletion" value={deleteConfirmName} onChange={(event) => setDeleteConfirmName(event.target.value)} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm outline-none focus:border-red-500" placeholder={draft.profileName} />
 							<button type="button" onClick={() => void deleteDraft()} disabled={saving || deleteConfirmName !== draft.profileName} className="h-8 w-fit inline-flex items-center gap-2 border border-red-500 rounded-sm px-3 text-red-200 bg-red-500/10 disabled:opacity-50">
 								<Trash2 size={14} />
 								Delete permanently
@@ -981,8 +1014,9 @@ export function AgentsView({
 						</DesignerPanel>
 					) : null}
 				</div>
-			</section>
-		</div>
+				</div>
+			</main>
+		</>
 	);
 }
 
@@ -990,54 +1024,6 @@ function RuntimeCapabilityNotice({ reason }: { reason: string }) {
 	return (
 		<div className="border border-[#f59e0b]/50 bg-[#f59e0b]/10 px-3 py-2 text-xs text-amber-100 rounded-sm">
 			{reason} Existing selections remain visible so they can be removed.
-		</div>
-	);
-}
-
-function AgentList({ title, children }: { title: string; children: ReactNode }) {
-	return (
-		<div className="mb-4">
-			<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{title}</div>
-			{children}
-		</div>
-	);
-}
-
-function AgentSidebarRow({
-	title,
-	subtitle,
-	selected,
-	onSelect,
-	onCopy,
-	onCreateSession,
-	createSessionDisabled,
-}: {
-	title: string;
-	subtitle: string;
-	selected: boolean;
-	onSelect: () => void;
-	onCopy?: () => void;
-	onCreateSession: () => void;
-	createSessionDisabled: boolean;
-}) {
-	return (
-		<div className={`mb-1 border rounded-sm ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-transparent hover:border-slate-700"}`}>
-			<div className="grid grid-cols-[1fr_auto_auto] items-center gap-1 p-1">
-				<button type="button" onClick={onSelect} className="min-w-0 text-left px-1 py-1">
-					<span className="block text-sm truncate text-slate-200">{title}</span>
-					<span className="block text-[10px] font-mono truncate text-slate-500">{subtitle}</span>
-				</button>
-				{onCopy ? (
-					<button type="button" onClick={onCopy} title="Copy To Custom Agent" aria-label="Copy To Custom Agent" className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
-						<CopyPlus size={13} />
-					</button>
-				) : (
-					<span className="h-7 w-7" />
-				)}
-				<button type="button" onClick={onCreateSession} disabled={createSessionDisabled} title="New Session With Profile" aria-label="New Session With Profile" className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
-					<MessageSquarePlus size={13} />
-				</button>
-			</div>
 		</div>
 	);
 }
@@ -1203,7 +1189,7 @@ function SubagentDesigner({
 					disabled={configurationReadOnly}
 					onClick={() => setDraft((current) => ({
 						...current,
-						subagents: [...current.subagents, { name: "helper", targetProfile: profileOptions[0]?.value ?? "base", maxDepth: 3 }],
+						subagents: [...current.subagents, { name: "helper", targetProfile: profileOptions[0]?.value ?? "base", maxDepth: 1 }],
 					}))}
 					className="h-7 w-7 shrink-0 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
 					title="Add Subagent"
@@ -1237,17 +1223,17 @@ function SubagentDesigner({
 							<div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_auto] max-[1100px]:grid-cols-1 gap-2">
 								<label className="grid gap-1">
 									<span className="text-[10px] uppercase tracking-wider text-slate-500">Name</span>
-									<input aria-label={`Subagent ${index + 1} name`} value={subagent.name} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { name: event.target.value })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="name" />
+									<input name={`subagents.${index}.name`} aria-label={`Subagent ${index + 1} name`} value={subagent.name} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { name: event.target.value })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="name" />
 								</label>
 								<label className="grid gap-1">
 									<span className="text-[10px] uppercase tracking-wider text-slate-500">Target profile</span>
-									<select aria-label={`Subagent ${index + 1} target profile`} value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value, model: undefined, thinkingLevel: undefined })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
+									<select name={`subagents.${index}.targetProfile`} aria-label={`Subagent ${index + 1} target profile`} value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value, model: undefined, thinkingLevel: undefined })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
 										{profileOptions.map((profile) => <option key={profile.value} value={profile.value}>{profile.label}</option>)}
 									</select>
 								</label>
 								<label className="grid gap-1">
 									<span className="text-[10px] uppercase tracking-wider text-slate-500">Max depth</span>
-									<input aria-label={`Subagent ${index + 1} max depth`} type="number" min={1} disabled={configurationReadOnly} value={subagent.maxDepth ?? 3} onChange={(event) => updateSubagent(index, { maxDepth: Number(event.target.value) || 1 })} className="min-w-0 w-full bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" />
+									<input name={`subagents.${index}.maxDepth`} aria-label={`Subagent ${index + 1} max depth`} type="number" min={1} disabled={configurationReadOnly} value={subagent.maxDepth ?? 1} onChange={(event) => updateSubagent(index, { maxDepth: Number(event.target.value) || 1 })} className="min-w-0 w-full bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" />
 								</label>
 								<div className="grid content-end">
 									<button type="button" disabled={readOnly} onClick={() => setDraft((current) => ({ ...current, subagents: current.subagents.filter((_, itemIndex) => itemIndex !== index) }))} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-red-500 hover:text-red-300 disabled:opacity-50" title="Remove Subagent" aria-label="Remove Subagent">
@@ -1258,6 +1244,7 @@ function SubagentDesigner({
 							<label className="grid gap-1">
 								<span className="text-[10px] uppercase tracking-wider text-slate-500">Parent-visible description</span>
 								<textarea
+									name={`subagents.${index}.description`}
 									aria-label={`Subagent ${index + 1} description`}
 									value={subagent.description ?? ""}
 									disabled={configurationReadOnly}

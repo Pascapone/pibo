@@ -98,6 +98,7 @@ test("every responsive Chat Web drawer applies shared modal semantics and preser
 	const drawers = [
 		["src/apps/chat-ui/src/App.tsx", "Chat sidebar"],
 		["src/apps/chat-ui/src/projects/ProjectsSidebar.tsx", "Projects sidebar"],
+		["src/apps/chat-ui/src/agents/AgentsSidebar.tsx", "Agents sidebar"],
 		["src/apps/chat-ui/src/CronArea.tsx", "Cron jobs sidebar"],
 		["src/apps/chat-ui/src/LoopArea.tsx", "Loop jobs sidebar"],
 	];
@@ -111,6 +112,7 @@ test("every responsive Chat Web drawer applies shared modal semantics and preser
 	const backdropSources = await Promise.all([
 		"src/apps/chat-ui/src/App.tsx",
 		"src/apps/chat-ui/src/projects/ProjectsArea.tsx",
+		"src/apps/chat-ui/src/agents/AgentsView.tsx",
 		"src/apps/chat-ui/src/CronArea.tsx",
 		"src/apps/chat-ui/src/LoopArea.tsx",
 	].map((path) => readFile(path, "utf8")));

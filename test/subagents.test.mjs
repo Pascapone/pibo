@@ -271,6 +271,7 @@ test("router omits subagent tools that have reached their max depth", async () =
 			id: "test.subagent-depth-tools",
 			register(api) {
 				api.registerSubagents([
+					{ name: "defaulted", targetProfile: "recursive-profile" },
 					{ name: "limited", targetProfile: "recursive-profile", maxDepth: 1 },
 					{ name: "deeper", targetProfile: "recursive-profile", maxDepth: 2 },
 				]);
@@ -280,6 +281,7 @@ test("router omits subagent tools that have reached their max depth", async () =
 						return new InitialSessionContextBuilder("recursive-profile")
 							.withToolPackages({ runControl: true })
 							.addSubagents([
+								context.getSubagent("defaulted"),
 								context.getSubagent("limited"),
 								context.getSubagent("deeper"),
 							])
@@ -324,22 +326,25 @@ test("router omits subagent tools that have reached their max depth", async () =
 			action: "status",
 		});
 
+		assert.equal(rootOutput.result.activeTools.includes("pibo_subagent_defaulted"), true);
 		assert.equal(rootOutput.result.activeTools.includes("pibo_subagent_limited"), true);
 		assert.equal(rootOutput.result.activeTools.includes("pibo_subagent_deeper"), true);
+		assert.equal(childOutput.result.activeTools.includes("pibo_subagent_defaulted"), false);
 		assert.equal(childOutput.result.activeTools.includes("pibo_subagent_limited"), false);
 		assert.equal(childOutput.result.activeTools.includes("pibo_subagent_deeper"), true);
 
 		const childRunStart = router.sessions.get("ps_child").runtime.session.getToolDefinition("pibo_run_start");
 		const childYieldableToolNames = childRunStart.parameters.properties.toolName.enum;
+		assert.equal(childYieldableToolNames.includes("pibo_subagent_defaulted"), false);
 		assert.equal(childYieldableToolNames.includes("pibo_subagent_limited"), false);
 		assert.equal(childYieldableToolNames.includes("pibo_subagent_deeper"), true);
 
 		await assert.rejects(
 			router.createSubagentRunner("ps_child").runSubagent({
-				subagent: { name: "limited", targetProfile: "recursive-profile", maxDepth: 1 },
+				subagent: { name: "defaulted", targetProfile: "recursive-profile" },
 				message: "must not create another child",
 			}),
-			/Subagent "limited" exceeded max depth 1/,
+			/Subagent "defaulted" exceeded max depth 1/,
 		);
 		assert.equal(store.list().length, 2);
 	} finally {
