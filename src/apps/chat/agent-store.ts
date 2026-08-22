@@ -12,6 +12,8 @@ export type CustomAgentSubagent = {
 	name: string;
 	description?: string;
 	targetProfile: string;
+	model?: ModelProfile;
+	thinkingLevel?: PiboThinkingLevel;
 	timeoutMs?: number;
 	maxDepth?: number;
 };
@@ -909,11 +911,12 @@ function parseModelProfile(value: string | null): ModelProfile | undefined {
 	}
 }
 
-function sanitizeModelProfile(value: ModelProfile | undefined): ModelProfile | undefined {
-	if (!value) return undefined;
-	if (typeof value.provider !== "string" || typeof value.id !== "string") return undefined;
-	const provider = value.provider.trim();
-	const id = value.id.trim();
+function sanitizeModelProfile(value: unknown): ModelProfile | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const candidate = value as Partial<ModelProfile>;
+	if (typeof candidate.provider !== "string" || typeof candidate.id !== "string") return undefined;
+	const provider = candidate.provider.trim();
+	const id = candidate.id.trim();
 	if (!provider || !id) return undefined;
 	return { provider, id };
 }
@@ -928,6 +931,10 @@ function sanitizeSubagents(value: unknown[]): CustomAgentSubagent[] {
 			targetProfile: candidate.targetProfile,
 		};
 		if (typeof candidate.description === "string") subagent.description = candidate.description;
+		const model = sanitizeModelProfile(candidate.model);
+		if (model) subagent.model = model;
+		const thinkingLevel = sanitizeThinkingLevel(candidate.thinkingLevel);
+		if (thinkingLevel) subagent.thinkingLevel = thinkingLevel;
 		if (typeof candidate.timeoutMs === "number") subagent.timeoutMs = candidate.timeoutMs;
 		if (typeof candidate.maxDepth === "number") subagent.maxDepth = candidate.maxDepth;
 		return [subagent];

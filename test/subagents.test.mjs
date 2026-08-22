@@ -176,6 +176,8 @@ test("subagent tool definitions delegate execution to the provided runner", asyn
 	);
 
 	assert.equal(tool.name, "pibo_subagent_helper");
+	assert.equal(tool.description, "Ask the helper agent.");
+	assert.equal(tool.promptSnippet, "Ask the helper agent.");
 	assert.equal(tool.executionMode, "parallel");
 
 	const controller = new AbortController();
@@ -203,6 +205,8 @@ test("profiles can expose subagents as active router tools", async () => {
 					name: "helper",
 					description: "Ask the helper profile.",
 					targetProfile: "helper-profile",
+					model: { provider: "openai", id: "gpt-5.6-mini" },
+					thinkingLevel: "high",
 				});
 				api.registerProfile({
 					name: "parent-profile",
@@ -221,6 +225,16 @@ test("profiles can expose subagents as active router tools", async () => {
 			},
 		}),
 	);
+
+	assert.deepEqual(registry.getCapabilityCatalog().subagents.find((subagent) => subagent.name === "helper"), {
+		name: "helper",
+		description: "Ask the helper profile.",
+		targetProfile: "helper-profile",
+		timeoutMs: undefined,
+		model: { provider: "openai", id: "gpt-5.6-mini" },
+		thinkingLevel: "high",
+		maxDepth: undefined,
+	});
 
 	const store = new InMemoryPiboSessionStore();
 	store.create({
@@ -373,6 +387,69 @@ test("subagent runner emits a parent link event before waiting for the child rep
 		assert.equal(Object.hasOwn(store.get(result.piboSessionId), retiredPartitionField), false);
 		assert.equal(store.get(result.piboSessionId).metadata.chatRoomId, "room_parent");
 		assert.equal(store.get(result.piboSessionId).metadata.workflowSessionKind, "subagent");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("subagent runner freezes per-subagent model and thinking settings on new child sessions", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_parent",
+		piSessionId: "parent-session",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+	});
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		modelDefaults: { subagent: { provider: "default-provider", id: "default-subagent" } },
+	});
+	router.emitMessageAndWaitForReply = async (event) => ({
+		type: "assistant_message",
+		piboSessionId: event.piboSessionId,
+		eventId: event.id,
+		text: "child reply",
+	});
+
+	try {
+		const runner = router.createSubagentRunner("ps_parent");
+		const first = await runner.runSubagent({
+			subagent: {
+				name: "researcher",
+				targetProfile: "base",
+				model: { provider: "openai", id: "gpt-5.6-mini" },
+				thinkingLevel: "high",
+			},
+			message: "research this",
+			threadKey: "research-thread",
+		});
+		const child = store.get(first.piboSessionId);
+		assert.deepEqual(child.activeModel, { provider: "openai", id: "gpt-5.6-mini" });
+		assert.equal(child.metadata.initialThinkingLevel, "high");
+
+		const reused = await runner.runSubagent({
+			subagent: {
+				name: "researcher",
+				targetProfile: "base",
+				model: { provider: "other", id: "changed-model" },
+				thinkingLevel: "low",
+			},
+			message: "continue",
+			threadKey: "research-thread",
+		});
+		assert.equal(reused.piboSessionId, first.piboSessionId);
+		assert.deepEqual(store.get(reused.piboSessionId).activeModel, { provider: "openai", id: "gpt-5.6-mini" });
+		assert.equal(store.get(reused.piboSessionId).metadata.initialThinkingLevel, "high");
+
+		const fallback = await runner.runSubagent({
+			subagent: { name: "worker", targetProfile: "base" },
+			message: "use defaults",
+			threadKey: "default-thread",
+		});
+		assert.deepEqual(store.get(fallback.piboSessionId).activeModel, { provider: "default-provider", id: "default-subagent" });
+		assert.equal(store.get(fallback.piboSessionId).metadata.initialThinkingLevel, undefined);
 	} finally {
 		await router.disposeAll();
 	}

@@ -607,6 +607,7 @@ export function AgentRuntimeOptions({
 	thinkingUnavailableReason,
 	thinkingValues,
 	configuredProvidersOnly = false,
+	showFast = true,
 	onModelChange,
 	onThinkingChange,
 	onFastChange,
@@ -623,14 +624,15 @@ export function AgentRuntimeOptions({
 	thinkingUnavailableReason?: string | null;
 	thinkingValues?: ThinkingLevel[];
 	configuredProvidersOnly?: boolean;
+	showFast?: boolean;
 	onModelChange: (value: ModelProfile | undefined) => void;
 	onThinkingChange: (value: ThinkingLevel | undefined) => void;
-	onFastChange: (value: boolean) => void;
+	onFastChange?: (value: boolean) => void;
 }) {
 	return (
 		<div className="grid gap-2 border border-slate-800 rounded-sm p-3">
 			<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{title}</div>
-			<div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)_auto] lg:items-start">
+			<div className={`grid gap-3 ${showFast ? "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)_auto]" : "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)]"} lg:items-start`}>
 				<ModelSelector
 					title={modelTitle}
 					catalog={modelCatalog}
@@ -652,19 +654,21 @@ export function AgentRuntimeOptions({
 					reserveHintSpace
 					onChange={onThinkingChange}
 				/>
-				<div className="grid gap-2 pb-1">
-					<div className="text-[11px] uppercase tracking-wider text-slate-500">Fast</div>
-					<div className="h-4" aria-hidden="true" />
-					<button
-						type="button"
-						disabled={readOnly}
-						onClick={() => onFastChange(!fast)}
-						className="inline-flex h-9 w-fit items-center gap-2 text-left text-sm text-slate-300 hover:text-slate-100 disabled:opacity-60"
-					>
-						<SelectionCheckbox checked={fast === true} disabled={readOnly} />
-						<span>{fast ? "Fast on" : "Fast off"}</span>
-					</button>
-				</div>
+				{showFast ? (
+					<div className="grid gap-2 pb-1">
+						<div className="text-[11px] uppercase tracking-wider text-slate-500">Fast</div>
+						<div className="h-4" aria-hidden="true" />
+						<button
+							type="button"
+							disabled={readOnly}
+							onClick={() => onFastChange?.(!fast)}
+							className="inline-flex h-9 w-fit items-center gap-2 text-left text-sm text-slate-300 hover:text-slate-100 disabled:opacity-60"
+						>
+							<SelectionCheckbox checked={fast === true} disabled={readOnly} />
+							<span>{fast ? "Fast on" : "Fast off"}</span>
+						</button>
+					</div>
+				) : null}
 			</div>
 		</div>
 	);

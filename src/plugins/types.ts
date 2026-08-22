@@ -118,6 +118,8 @@ export type PiboSubagentInfo = {
 	name: string;
 	description?: string;
 	targetProfile: string;
+	model?: ModelProfile;
+	thinkingLevel?: PiboThinkingLevel;
 	timeoutMs?: number;
 	maxDepth?: number;
 };

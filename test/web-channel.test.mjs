@@ -2840,7 +2840,13 @@ test("chat web app creates custom agents from the native capability catalog", as
 				builtinToolNames: ["read", "bash"],
 				autoContextFiles: false,
 				runControl: true,
-				subagents: [{ name: "helper", targetProfile: "codex-compat-openai-web" }],
+				subagents: [{
+					name: "helper",
+					description: "Research evidence for the parent agent.",
+					targetProfile: "codex-compat-openai-web",
+					model: { provider: "openai", id: "gpt-5.6-mini" },
+					thinkingLevel: "high",
+				}],
 			}),
 		});
 		assert.equal(createdAgent.status, 201);
@@ -2851,6 +2857,13 @@ test("chat web app creates custom agents from the native capability catalog", as
 		assert.deepEqual(agentPayload.agent.builtinToolNames, ["read", "bash"]);
 		assert.equal(agentPayload.agent.autoContextFiles, false);
 		assert.equal(agentPayload.agent.runControl, true);
+		assert.deepEqual(agentPayload.agent.subagents, [{
+			name: "helper",
+			description: "Research evidence for the parent agent.",
+			targetProfile: "codex-compat-openai-web",
+			model: { provider: "openai", id: "gpt-5.6-mini" },
+			thinkingLevel: "high",
+		}]);
 		assert.equal(retiredPartitionField in agentPayload.agent, false);
 
 		const session = await fetch(`${baseURL}/api/chat/sessions`, {

@@ -387,6 +387,8 @@ export class PiboPluginRegistry {
 				description: subagent.description,
 				targetProfile: subagent.targetProfile,
 				timeoutMs: subagent.timeoutMs,
+				model: subagent.model ? { ...subagent.model } : undefined,
+				thinkingLevel: subagent.thinkingLevel,
 				maxDepth: subagent.maxDepth,
 			})),
 			contextFiles: [...this.contextFiles.entries()].map(([key, contextFile]) => ({

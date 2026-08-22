@@ -38,11 +38,14 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 		subagents: draft.subagents.flatMap((item) => {
 			const name = item.name.trim();
 			const targetProfile = item.targetProfile.trim();
+			const model = normalizeModel(item.model);
 			if (!name || !targetProfile) return [];
 			return [{
 				name,
 				targetProfile,
 				...((item.description ?? "").trim() ? { description: item.description!.trim() } : {}),
+				...(model ? { model } : {}),
+				...(item.thinkingLevel ? { thinkingLevel: item.thinkingLevel } : {}),
 				...(typeof item.timeoutMs === "number" ? { timeoutMs: Math.round(item.timeoutMs) } : {}),
 				...(typeof item.maxDepth === "number" ? { maxDepth: Math.round(item.maxDepth) } : {}),
 			}];

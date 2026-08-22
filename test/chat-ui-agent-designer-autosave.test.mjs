@@ -49,7 +49,7 @@ test("Agent Designer persists runtime selection, validates JSON options, and sho
 	assert.match(modelSource, /reasoningOptions = model\.reasoningOptions\?\.filter/);
 	assert.match(modelSource, /export function reasoningValuesForModel/);
 	assert.match(agentsViewSource, /reasoningValuesForModel\(selectedRuntime\?\.capabilities\.reasoning\.values, runtimeModelCatalog, draft\.mainModel\)/);
-	assert.match(agentsViewSource, /reasoningValuesForModel\(selectedRuntime\?\.capabilities\.reasoning\.values, runtimeModelCatalog, draft\.subagentModel\)/);
+	assert.match(agentsViewSource, /reasoningValuesForModel\(runtime\?\.capabilities\.reasoning\.values, targetModelCatalog, subagent\.model\)/);
 });
 
 test("Agent Designer exposes only truthful runtime-owned context and native-subagent controls", () => {
