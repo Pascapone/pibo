@@ -519,7 +519,7 @@ test("custom agent store persists selected registered Pi packages", async () => 
 	});
 });
 
-test("custom agent store persists main and subagent model overrides", () => {
+test("custom agent store persists main and legacy subagent model overrides", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);
 	const agent = store.create({
@@ -534,6 +534,43 @@ test("custom agent store persists main and subagent model overrides", () => {
 	const updated = store.update(agent.id, { subagentModel: { provider: "openai", id: "gpt-5.5" } });
 	assert.deepEqual(updated.mainModel, { provider: "openai", id: "gpt-5.4" });
 	assert.deepEqual(updated.subagentModel, { provider: "openai", id: "gpt-5.5" });
+
+	store.close();
+});
+
+test("custom agent store persists per-subagent descriptions, models, and thinking levels", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	const agent = store.create({
+		displayName: "delegating-agent",
+		subagents: [{
+			name: "researcher",
+			description: "Research current sources and report evidence.",
+			targetProfile: "research-profile",
+			model: { provider: "openai", id: "gpt-5.6-mini" },
+			thinkingLevel: "high",
+			maxDepth: 2,
+		}],
+	});
+
+	assert.deepEqual(agent.subagents, [{
+		name: "researcher",
+		description: "Research current sources and report evidence.",
+		targetProfile: "research-profile",
+		model: { provider: "openai", id: "gpt-5.6-mini" },
+		thinkingLevel: "high",
+		maxDepth: 2,
+	}]);
+
+	const updated = store.update(agent.id, {
+		subagents: [{
+			name: "researcher",
+			targetProfile: "research-profile",
+			model: { provider: " ", id: "invalid" },
+			thinkingLevel: "unsupported",
+		}],
+	});
+	assert.deepEqual(updated.subagents, [{ name: "researcher", targetProfile: "research-profile" }]);
 
 	store.close();
 });

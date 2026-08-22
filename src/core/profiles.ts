@@ -55,6 +55,8 @@ export type SubagentProfile = {
 	name: string;
 	description?: string;
 	targetProfile: string;
+	model?: ModelProfile;
+	thinkingLevel?: PiboThinkingLevel;
 	enabled?: boolean;
 	timeoutMs?: number;
 	maxDepth?: number;
@@ -104,6 +106,13 @@ export type ModelProfile = {
 	provider: string;
 	id: string;
 };
+
+function cloneSubagentProfile(subagent: SubagentProfile): SubagentProfile {
+	return {
+		...subagent,
+		...(subagent.model ? { model: { ...subagent.model } } : {}),
+	};
+}
 
 export type WebSearchProviderOptions = {
 	externalWebAccess?: boolean;
@@ -193,7 +202,7 @@ export class InitialSessionContext {
 		this.subagentFast = options.subagentFast;
 		this.skills = [...(options.skills ?? [])];
 		this.tools = (options.tools ?? []).map(normalizeToolProfile);
-		this.subagents = [...(options.subagents ?? [])];
+		this.subagents = (options.subagents ?? []).map(cloneSubagentProfile);
 		this.mcpServers = [...(options.mcpServers ?? [])];
 		this.piPackages = [...(options.piPackages ?? [])];
 		this.contextFiles = [...(options.contextFiles ?? [])];
@@ -343,12 +352,12 @@ export class InitialSessionContextBuilder {
 	}
 
 	addSubagent(subagent: SubagentProfile): this {
-		this.subagents.push(subagent);
+		this.subagents.push(cloneSubagentProfile(subagent));
 		return this;
 	}
 
 	addSubagents(subagents: readonly SubagentProfile[]): this {
-		this.subagents.push(...subagents);
+		this.subagents.push(...subagents.map(cloneSubagentProfile));
 		return this;
 	}
 

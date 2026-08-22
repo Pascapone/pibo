@@ -41,6 +41,7 @@ export type PiboWebSessionNode = {
 	originId?: string;
 	profile: string;
 	activeModel?: ModelProfile;
+	initialThinkingLevel?: ThinkingLevel;
 	subagentName?: string;
 	workflowSessionKind?: PiboWorkflowSessionKind;
 	title: string;
@@ -742,6 +743,8 @@ export type AgentCatalog = {
 		name: string;
 		description?: string;
 		targetProfile: string;
+		model?: ModelProfile;
+		thinkingLevel?: ThinkingLevel;
 		timeoutMs?: number;
 		maxDepth?: number;
 	}>;
@@ -793,6 +796,8 @@ export type CustomAgentSubagent = {
 	name: string;
 	description?: string;
 	targetProfile: string;
+	model?: ModelProfile;
+	thinkingLevel?: ThinkingLevel;
 	timeoutMs?: number;
 	maxDepth?: number;
 };

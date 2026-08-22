@@ -496,6 +496,10 @@ export function normalizeAgentSubagents(value: unknown): CustomAgentSubagent[] {
 		};
 		const description = normalizeAgentDescription(raw.description);
 		if (description) subagent.description = description;
+		const model = normalizeModelProfile(raw.model, "subagent model");
+		if (model) subagent.model = model;
+		const thinkingLevel = normalizeThinkingLevel(raw.thinkingLevel, "subagent thinkingLevel");
+		if (thinkingLevel) subagent.thinkingLevel = thinkingLevel;
 		if (raw.timeoutMs !== undefined) {
 			if (typeof raw.timeoutMs !== "number" || !Number.isFinite(raw.timeoutMs) || raw.timeoutMs <= 0) {
 				throw new PiboWebHttpError("subagent timeoutMs must be a positive number", 400);

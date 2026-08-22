@@ -1936,6 +1936,9 @@ export class PiboSessionRouter {
 		const metadata: PiboJsonObject = withWorkflowSessionKind(baseMetadata, "subagent");
 		const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
 		if (parentChatRoomId) metadata.chatRoomId = parentChatRoomId;
+		const newSessionMetadata: PiboJsonObject = subagent.thinkingLevel
+			? { ...metadata, initialThinkingLevel: subagent.thinkingLevel }
+			: metadata;
 		const legacyMetadata: PiboJsonObject = { ...baseMetadata };
 		const legacyMetadataWithChatRoom: PiboJsonObject | undefined = parentChatRoomId
 			? { ...baseMetadata, chatRoomId: parentChatRoomId }
@@ -1972,9 +1975,11 @@ export class PiboSessionRouter {
 			parentId: parent.id,
 			runtimeBinding: this.createRuntimeBindingInput(childProfile),
 			workspace: parent.workspace,
-			metadata,
+			metadata: newSessionMetadata,
+			activeModel: subagent.model,
 		});
 		this.signalRegistry.project({ type: "session_created", session: childSession });
+		if (subagent.model) return childSession;
 		const activeModel = resolvePiboSessionActiveModel({
 			profile: childProfile,
 			piboSession: childSession,

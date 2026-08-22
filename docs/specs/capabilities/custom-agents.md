@@ -28,7 +28,7 @@ Custom agents are persisted in `chat-agents.sqlite`. Each active record is regis
 - App-context custom-agent listing, creation, update, archive, restore, and permanent deletion.
 - Dynamic profile registration for active custom agents.
 - Agent Designer catalog data for selectable capabilities.
-- Selections for runtime instances, native tools, skills, context files, Pibo subagents, harness-native subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
+- Selections for runtime instances, native tools, skills, context files, Pibo subagents with per-entry descriptions and execution settings, harness-native subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
 - Read-only display and copy flow for plugin profiles.
 - Agent-scoped context-file creation from the Agent Designer.
 - Broken context-file reporting for saved custom agents.
@@ -136,22 +136,46 @@ A dynamic custom-agent profile MUST translate saved agent selections into `Initi
 
 #### Current
 
-`createCustomAgentProfileDefinition` builds a profile with built-in tool mode and names, automatic context-file setting, MCP servers, Pi packages, run-control package selection, model overrides, thinking options, fast-mode options, skills, context files, native tools, and subagent definitions.
+`createCustomAgentProfileDefinition` builds a profile with built-in tool mode and names, automatic context-file setting, MCP servers, Pi packages, run-control package selection, main-agent model and thinking options, compatibility-only legacy subagent profile defaults, fast-mode options, skills, context files, native tools, and subagent definitions with per-entry descriptions, models, and thinking levels.
 
 #### Acceptance
 
 - Selected built-in tool mode and built-in tool names control built-in Pi tool exposure.
 - Selected MCP server names and Pi package ids are attached to the runtime profile.
 - Run control is enabled only when the custom agent has `runControl: true`.
-- Main and subagent model overrides are applied when present.
-- Global, main, and subagent thinking/fast options are applied when present.
-- Selected native tools and subagent definitions are added to the runtime profile.
+- Main-agent model overrides are applied when present.
+- Legacy profile-level subagent model and thinking fields remain valid compatibility fallbacks for previously saved agents but are not the primary Agent Designer control.
+- Global and main thinking/fast options are applied when present.
+- Selected native tools and subagent definitions are added to the runtime profile, including each subagent's description, model, and thinking level.
 
 #### Scenario: Agent with run control and package selection
 
 - GIVEN a saved custom agent selects a Pi package and enables run control
 - WHEN a new Pibo Session uses that profile
 - THEN runtime creation receives the package selection and the run-control capability package.
+
+### Requirement: Agent Designer configures each Pibo subagent independently
+
+The Agent Designer MUST let a user configure the name, parent-visible description, target profile, max depth, model, and thinking level for each Pibo subagent entry. It MUST NOT present one editable profile-wide Subagent Model block as the primary configuration for all entries.
+
+#### Current
+
+Each subagent card contains identity, target, depth, description, model, and thinking controls. The model catalog and available thinking values are derived from the selected target profile's runtime instance. Changing the target profile clears model and thinking values that belonged to the previous target runtime.
+
+#### Acceptance
+
+- Two entries in one parent agent can select different providers, models, and thinking levels.
+- The description is persisted and becomes the generated subagent tool description visible to the parent agent.
+- Leaving model or thinking unset uses the target profile and Settings fallback chain.
+- The designer does not show one editable global Subagent Model section in Basics.
+- Read-only plugin profiles display their saved per-subagent settings without allowing edits.
+
+#### Scenario: Configure research and implementation subagents
+
+- GIVEN a parent custom agent has `researcher` and `implementer` subagent entries
+- WHEN the user selects different models and descriptions for the two entries
+- THEN autosave persists both configurations independently
+- AND the parent runtime sees two generated tools with their respective descriptions.
 
 ### Requirement: Runtime-owned controls are capability-driven
 
@@ -355,6 +379,7 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 - [ ] SC-006: Stale skill and context-file references do not prevent profile creation, and broken context files are visible in serialized agent data.
 - [ ] SC-007: Unknown Pi package ids are rejected, and built-in tool selections are filtered to supported built-in tools.
 - [ ] SC-008: Permanent deletion requires archive plus exact name confirmation and deletes shared sessions for that profile.
+- [ ] SC-009: One parent agent can persist multiple subagent entries with independent descriptions, providers, models, and thinking levels.
 
 ## Assumptions and Open Questions
 
@@ -380,15 +405,16 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 | REQ-003 Agent names are valid unique profile names | Plugin profile conflict | `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts` | Implemented |
 | REQ-004 Active custom agents register dynamic profiles | Archive removes profile | `src/apps/chat/web-app.ts`, `src/apps/chat/agent-profiles.ts` | Implemented |
 | REQ-005 Custom profile creation applies selected capabilities | Agent with run control and package selection | `src/apps/chat/agent-profiles.ts`, `src/core/profiles.ts` | Implemented |
-| REQ-006 Runtime-owned controls are capability-driven | Change from configurable to fixed runtime | `src/agent-runtime/capabilities.ts`, `src/apps/chat/agent-store.ts`, `src/apps/chat/agent-profiles.ts`, `src/apps/chat-ui/src/agents/AgentsView.tsx` | Implemented |
-| REQ-007 Missing skills and context files do not break profile creation | Context file was removed | `src/apps/chat/agent-profiles.ts`, `src/apps/chat/web-app.ts`, `test/agent-profiles.test.mjs` | Implemented |
-| REQ-008 Pi package selections are validated against the package store | Unknown package selection | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
-| REQ-009 Built-in tool selections are constrained to supported tools | Unknown built-in tool name | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
-| REQ-010 Agent Designer supports read-only profiles and copy-to-custom | Copy plugin profile | `src/apps/chat-ui/src/App.tsx` | Implemented |
-| REQ-011 Agent-scoped context files can be created from the designer | Add private agent context | `src/apps/chat-ui/src/App.tsx`, `src/plugins/context-files.ts` | Implemented |
-| REQ-012 Archive precedes destructive deletion | Delete archived agent and sessions | `src/apps/chat/web-app.ts` | Implemented |
-| REQ-013 Chat Web mutations are authenticated same-origin JSON requests | Cross-account update | `src/apps/chat/web-app.ts`, `src/web/http.ts` | Implemented |
+| REQ-006 Agent Designer configures each Pibo subagent independently | Configure research and implementation subagents | `src/apps/chat-ui/src/agents/AgentsView.tsx`, `src/apps/chat/agent-store.ts`, `src/core/session-router.ts` | Implemented |
+| REQ-007 Runtime-owned controls are capability-driven | Change from configurable to fixed runtime | `src/agent-runtime/capabilities.ts`, `src/apps/chat/agent-store.ts`, `src/apps/chat/agent-profiles.ts`, `src/apps/chat-ui/src/agents/AgentsView.tsx` | Implemented |
+| REQ-008 Missing skills and context files do not break profile creation | Context file was removed | `src/apps/chat/agent-profiles.ts`, `src/apps/chat/web-app.ts`, `test/agent-profiles.test.mjs` | Implemented |
+| REQ-009 Pi package selections are validated against the package store | Unknown package selection | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
+| REQ-010 Built-in tool selections are constrained to supported tools | Unknown built-in tool name | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
+| REQ-011 Agent Designer supports read-only profiles and copy-to-custom | Copy plugin profile | `src/apps/chat-ui/src/App.tsx` | Implemented |
+| REQ-012 Agent-scoped context files can be created from the designer | Add private agent context | `src/apps/chat-ui/src/App.tsx`, `src/plugins/context-files.ts` | Implemented |
+| REQ-013 Archive precedes destructive deletion | Delete archived agent and sessions | `src/apps/chat/web-app.ts` | Implemented |
+| REQ-014 Chat Web mutations are authenticated same-origin JSON requests | Cross-account update | `src/apps/chat/web-app.ts`, `src/web/http.ts` | Implemented |
 
 ## Verification Basis
 
-Current behavior is covered or illustrated by `test/agent-store.test.mjs`, `test/agent-profiles.test.mjs`, `test/web-channel.test.mjs`, `test/chat-ui-integration.test.mjs`, `test/pi-packages.test.mjs`, and `test/context-files-web.test.mjs`.
+Current behavior is covered or illustrated by `test/agent-store.test.mjs`, `test/agent-profiles.test.mjs`, `test/subagents.test.mjs`, `test/web-channel.test.mjs`, `test/chat-ui-agent-designer-subagents.test.mjs`, `test/chat-ui-integration.test.mjs`, `test/pi-packages.test.mjs`, and `test/context-files-web.test.mjs`.

@@ -477,11 +477,8 @@ export function AgentsView({
 		[selectedRuntime, modelCatalog],
 	);
 	const mainReasoningValues = reasoningValuesForModel(selectedRuntime?.capabilities.reasoning.values, runtimeModelCatalog, draft.mainModel);
-	const subagentReasoningValues = reasoningValuesForModel(selectedRuntime?.capabilities.reasoning.values, runtimeModelCatalog, draft.subagentModel);
 	const mainReasoningUnavailableReason = reasoningUnavailableReason
 		?? (draft.mainModel && mainReasoningValues?.length === 0 ? `Model "${draft.mainModel.id}" does not advertise a selectable reasoning effort.` : null);
-	const subagentReasoningUnavailableReason = reasoningUnavailableReason
-		?? (draft.subagentModel && subagentReasoningValues?.length === 0 ? `Model "${draft.subagentModel.id}" does not advertise a selectable reasoning effort.` : null);
 
 	const runAfterAutosave = async (action: () => void | Promise<void>) => {
 		try {
@@ -762,7 +759,7 @@ export function AgentsView({
 						/>
 						{draft.source === "profile" && draft.hardPinnedModel ? (
 							<div className="border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-xs rounded-sm">
-								This plugin profile hard-pins <span className="font-mono">{formatModelProfile(draft.hardPinnedModel)}</span>. Main-agent and subagent defaults do not apply.
+								This plugin profile hard-pins <span className="font-mono">{formatModelProfile(draft.hardPinnedModel)}</span> when no session or parent subagent override selects another model.
 							</div>
 						) : null}
 						<AgentRuntimeOptions
@@ -780,22 +777,6 @@ export function AgentsView({
 							onModelChange={(mainModel) => setDraft((current) => ({ ...current, mainModel }))}
 							onThinkingChange={(mainThinkingLevel) => setDraft((current) => ({ ...current, mainThinkingLevel }))}
 							onFastChange={(mainFast) => setDraft((current) => ({ ...current, mainFast }))}
-						/>
-						<AgentRuntimeOptions
-							title="Subagent"
-							modelTitle="Subagent Model"
-							model={draft.subagentModel}
-							thinking={draft.subagentThinkingLevel}
-							fast={draft.subagentFast ?? false}
-							modelCatalog={runtimeModelCatalog}
-							readOnly={readOnly}
-							modelHint="Unset to use the settings default."
-							modelUnavailableReason={modelUnavailableReason}
-							thinkingUnavailableReason={subagentReasoningUnavailableReason}
-							thinkingValues={subagentReasoningValues}
-							onModelChange={(subagentModel) => setDraft((current) => ({ ...current, subagentModel }))}
-							onThinkingChange={(subagentThinkingLevel) => setDraft((current) => ({ ...current, subagentThinkingLevel }))}
-							onFastChange={(subagentFast) => setDraft((current) => ({ ...current, subagentFast }))}
 						/>
 						{nativeSubagents?.configurable ? (
 							<InlineCheckboxToggle
@@ -951,7 +932,17 @@ export function AgentsView({
 							)}
 						/>
 					</DesignerPanel>
-					<SubagentDesigner draft={draft} setDraft={setDraft} profileOptions={profileOptions} readOnly={readOnly} capabilityUnavailableReason={piboToolsUnavailableReason} />
+					<SubagentDesigner
+						draft={draft}
+						setDraft={setDraft}
+						profileOptions={profileOptions}
+						agents={agents}
+						customAgents={activeCustomAgents}
+						catalog={catalog ?? undefined}
+						legacyModelCatalog={modelCatalog}
+						readOnly={readOnly}
+						capabilityUnavailableReason={piboToolsUnavailableReason}
+					/>
 					<McpServersDesigner
 						servers={catalog?.mcpServers}
 						draft={draft}
@@ -1160,12 +1151,20 @@ function SubagentDesigner({
 	draft,
 	setDraft,
 	profileOptions,
+	agents,
+	customAgents,
+	catalog,
+	legacyModelCatalog,
 	readOnly,
 	capabilityUnavailableReason,
 }: {
 	draft: AgentDraft;
 	setDraft: Dispatch<SetStateAction<AgentDraft>>;
 	profileOptions: Array<{ value: string; label: string }>;
+	agents: BootstrapData["agents"];
+	customAgents: CustomAgent[];
+	catalog?: AgentCatalog;
+	legacyModelCatalog?: ModelCatalog;
 	readOnly: boolean;
 	capabilityUnavailableReason: string | null;
 }) {
@@ -1180,7 +1179,8 @@ function SubagentDesigner({
 	return (
 		<DesignerPanel title="Subagents">
 			{capabilityUnavailableReason ? <RuntimeCapabilityNotice reason={capabilityUnavailableReason} /> : null}
-			<div className="flex justify-end">
+			<div className="flex items-center justify-between gap-3">
+				<div className="text-xs text-slate-500">Descriptions are shown to the parent agent. Model and thinking settings apply to newly created child sessions.</div>
 				<button
 					type="button"
 					disabled={configurationReadOnly}
@@ -1188,30 +1188,102 @@ function SubagentDesigner({
 						...current,
 						subagents: [...current.subagents, { name: "helper", targetProfile: profileOptions[0]?.value ?? "base", maxDepth: 3 }],
 					}))}
-					className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
+					className="h-7 w-7 shrink-0 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
 					title="Add Subagent"
 					aria-label="Add Subagent"
 				>
 					<Plus size={13} />
 				</button>
 			</div>
-			<div className="grid gap-2">
-				{draft.subagents.map((subagent, index) => (
-					<div key={index} className="grid grid-cols-[1fr_1fr_80px_auto] max-[1100px]:grid-cols-1 gap-2 border border-slate-800 bg-[#151f24] p-2 rounded-sm">
-						<input value={subagent.name} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { name: event.target.value })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="name" />
-						<select value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
-							{profileOptions.map((profile) => <option key={profile.value} value={profile.value}>{profile.label}</option>)}
-						</select>
-						<input type="number" min={1} disabled={configurationReadOnly} value={subagent.maxDepth ?? 3} onChange={(event) => updateSubagent(index, { maxDepth: Number(event.target.value) || 1 })} className="bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" />
-						<button type="button" disabled={readOnly} onClick={() => setDraft((current) => ({ ...current, subagents: current.subagents.filter((_, itemIndex) => itemIndex !== index) }))} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-red-500 hover:text-red-300 disabled:opacity-50" title="Remove Subagent" aria-label="Remove Subagent">
-							<X size={14} />
-						</button>
-					</div>
-				))}
+			<div className="grid gap-3">
+				{draft.subagents.map((subagent, index) => {
+					const runtimeInstanceId = subagentTargetRuntimeInstanceId(subagent.targetProfile, draft, agents, customAgents);
+					const runtime = catalog?.agentRuntimes.find((candidate) => candidate.id === runtimeInstanceId);
+					const runtimeUnavailableReason = !catalog
+						? null
+						: runtime
+							? runtime.available
+								? null
+								: runtime.diagnostics.find((diagnostic) => diagnostic.severity === "error")?.message ?? "The target runtime is unavailable."
+							: `Runtime instance "${runtimeInstanceId}" is not registered.`;
+					const targetModelCatalog = runtime
+						? modelCatalogForRuntime(runtime, legacyModelCatalog)
+						: runtimeInstanceId === "pi" ? legacyModelCatalog : undefined;
+					const modelUnavailableReason = runtimeUnavailableReason
+						?? (runtime && !runtime.capabilities.models.catalog ? "The target runtime does not expose a model catalog to Agent Designer." : null);
+					const reasoningValues = reasoningValuesForModel(runtime?.capabilities.reasoning.values, targetModelCatalog, subagent.model);
+					const thinkingUnavailableReason = runtimeUnavailableReason
+						?? (runtime && !runtime.capabilities.reasoning.supported ? "The target runtime does not support profile-level reasoning control." : null)
+						?? (subagent.model && reasoningValues?.length === 0 ? `Model "${subagent.model.id}" does not advertise a selectable reasoning effort.` : null);
+					return (
+						<div key={index} className="grid gap-3 border border-slate-800 bg-[#151f24] p-3 rounded-sm">
+							<div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_auto] max-[1100px]:grid-cols-1 gap-2">
+								<label className="grid gap-1">
+									<span className="text-[10px] uppercase tracking-wider text-slate-500">Name</span>
+									<input aria-label={`Subagent ${index + 1} name`} value={subagent.name} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { name: event.target.value })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="name" />
+								</label>
+								<label className="grid gap-1">
+									<span className="text-[10px] uppercase tracking-wider text-slate-500">Target profile</span>
+									<select aria-label={`Subagent ${index + 1} target profile`} value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value, model: undefined, thinkingLevel: undefined })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
+										{profileOptions.map((profile) => <option key={profile.value} value={profile.value}>{profile.label}</option>)}
+									</select>
+								</label>
+								<label className="grid gap-1">
+									<span className="text-[10px] uppercase tracking-wider text-slate-500">Max depth</span>
+									<input aria-label={`Subagent ${index + 1} max depth`} type="number" min={1} disabled={configurationReadOnly} value={subagent.maxDepth ?? 3} onChange={(event) => updateSubagent(index, { maxDepth: Number(event.target.value) || 1 })} className="min-w-0 w-full bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" />
+								</label>
+								<div className="grid content-end">
+									<button type="button" disabled={readOnly} onClick={() => setDraft((current) => ({ ...current, subagents: current.subagents.filter((_, itemIndex) => itemIndex !== index) }))} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-red-500 hover:text-red-300 disabled:opacity-50" title="Remove Subagent" aria-label="Remove Subagent">
+										<X size={14} />
+									</button>
+								</div>
+							</div>
+							<label className="grid gap-1">
+								<span className="text-[10px] uppercase tracking-wider text-slate-500">Parent-visible description</span>
+								<textarea
+									aria-label={`Subagent ${index + 1} description`}
+									value={subagent.description ?? ""}
+									disabled={configurationReadOnly}
+									onChange={(event) => updateSubagent(index, { description: event.target.value })}
+									className="min-h-[64px] bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+									placeholder="Describe when the parent agent should delegate to this subagent."
+								/>
+							</label>
+							<AgentRuntimeOptions
+								title={`Execution / ${runtime?.displayName ?? runtimeInstanceId}`}
+								modelTitle="Subagent Model"
+								model={subagent.model}
+								thinking={subagent.thinkingLevel}
+								modelCatalog={targetModelCatalog}
+								readOnly={configurationReadOnly}
+								modelHint="Unset to use the target profile or Settings default."
+								modelUnavailableReason={modelUnavailableReason}
+								thinkingUnavailableReason={thinkingUnavailableReason}
+								thinkingValues={reasoningValues}
+								showFast={false}
+								onModelChange={(model) => updateSubagent(index, { model })}
+								onThinkingChange={(thinkingLevel) => updateSubagent(index, { thinkingLevel })}
+							/>
+						</div>
+					);
+				})}
 				{draft.subagents.length === 0 ? <div className="text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm p-3">No subagents configured</div> : null}
 			</div>
 		</DesignerPanel>
 	);
+}
+
+function subagentTargetRuntimeInstanceId(
+	targetProfile: string,
+	draft: AgentDraft,
+	agents: BootstrapData["agents"],
+	customAgents: CustomAgent[],
+): string {
+	if (targetProfile === draft.profileName || targetProfile === draft.displayName) return draft.runtimeInstanceId;
+	const customAgent = customAgents.find((agent) => agent.profileName === targetProfile || agent.profileAliases?.includes(targetProfile));
+	if (customAgent) return customAgent.runtimeInstanceId;
+	const profile = agents.find((agent) => agent.name === targetProfile || agent.aliases.includes(targetProfile));
+	return profile?.runtimeInstanceId ?? "pi";
 }
 
 function McpServersDesigner({

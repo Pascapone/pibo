@@ -44,6 +44,7 @@ async function runSessionTraceViewPropsScenario() {
 		const child = session({
 			piboSessionId: "ps-child",
 			profile: "worker-profile",
+			initialThinkingLevel: "high",
 			subagentName: "reviewer",
 			title: "Child title",
 			parentId: "ps-root",
@@ -130,7 +131,7 @@ async function runSessionTraceViewPropsScenario() {
 			selectedSessionProfile: "worker-profile",
 			selectedSessionActiveModel: "gpt-test",
 			currentTraceView: null,
-		}), "gpt-test xhigh fast");
+		}), "gpt-test high fast");
 
 		const traceView = {
 			piboSessionId: "ps-root",
