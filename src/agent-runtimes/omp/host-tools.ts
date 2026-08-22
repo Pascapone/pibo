@@ -99,7 +99,7 @@ export class OmpHostToolBridge {
 		const wire: Array<{
 			name: string;
 			description: string;
-			inputSchema: OmpRpcHostToolParameterSchema;
+			parameters: OmpRpcHostToolParameterSchema;
 		}> = [];
 		for (const def of definitions) {
 			if (typeof def.name !== "string" || def.name.length === 0 || def.portable === false) continue;
@@ -107,7 +107,7 @@ export class OmpHostToolBridge {
 			wire.push({
 				name: def.name,
 				description: typeof def.description === "string" ? def.description : "",
-				inputSchema: toolInputSchema(def),
+				parameters: toolInputSchema(def),
 			});
 		}
 		const result = await this.client.request({ type: "set_host_tools", tools: wire }, "set_host_tools");
