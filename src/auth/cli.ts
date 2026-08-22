@@ -10,6 +10,7 @@ import { dirname, resolve } from "node:path";
 import { Command } from "commander";
 import { loadPiboConfig } from "../config/config.js";
 import { piboHomePath } from "../core/pibo-home.js";
+import { protectPrivateFileSync } from "../core/private-path.js";
 import type { PiboAuthIdentity } from "./types.js";
 import {
 	generateMachineKey,
@@ -136,7 +137,13 @@ function requireNewOutputPath(path: string, label: string): string {
 
 function writePrivateNewFile(path: string, content: string): void {
 	mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-	writeFileSync(path, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
+	try {
+		writeFileSync(path, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
+		protectPrivateFileSync(path, { force: true });
+	} catch (error) {
+		if (existsSync(path)) unlinkSync(path);
+		throw error;
+	}
 }
 
 function parseExpiresAt(value: string | undefined): string | undefined {

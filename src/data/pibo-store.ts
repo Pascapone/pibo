@@ -1,7 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { piboHomePath } from "../core/pibo-home.js";
+import { ensurePrivatePiboHomeForPath, piboHomePath } from "../core/pibo-home.js";
+import { protectPrivateFileSync } from "../core/private-path.js";
 import { PiboEventLogStore } from "./event-log.js";
 import { MessageStore } from "./message-store.js";
 import { NavigationStore } from "./navigation-store.js";
@@ -28,8 +29,10 @@ export class PiboDataStore {
 
 	constructor(path = piboHomePath("pibo.sqlite"), options: PiboDataStoreOptions = {}) {
 		this.path = path === ":memory:" ? path : resolve(path);
+		const insidePiboHome = ensurePrivatePiboHomeForPath(this.path);
 		if (this.path !== ":memory:") mkdirSync(dirname(this.path), { recursive: true });
 		this.db = new DatabaseSync(this.path);
+		if (insidePiboHome) protectPrivateFileSync(this.path);
 		this.db.exec("PRAGMA busy_timeout = 5000");
 		this.db.exec("PRAGMA foreign_keys = ON");
 		if (this.path !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
