@@ -1,7 +1,7 @@
 import { readPiboBasePrompt, savePiboCustomBasePrompt, setPiboBasePromptMode } from "../../core/base-prompt.js";
 import { readPiboCompactionPrompt, savePiboCustomCompactionPrompt, setPiboCompactionPromptMode } from "../../core/compaction-prompt.js";
 import { sanitizeTelemetryRetentionDays, sanitizeTelemetryRetentionSettings } from "../../core/telemetry-retention-settings.js";
-import { loadPiboUserSettings, sanitizeShortcutSettings, sanitizeTimezone, updatePiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
+import { loadPiboUserSettings, sanitizeShortcutSettings, sanitizeTimezone, sanitizeTranscriptionProviderId, updatePiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
 import { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 import {
@@ -51,6 +51,7 @@ export async function handleChatSettingsRoute(input: {
 	request: Request;
 	cwd?: string;
 	dataStore?: import("../../data/pibo-store.js").PiboDataStore;
+	transcriptionProviderIds?: readonly string[];
 }): Promise<Response> {
 	const cwd = input.cwd ?? process.cwd();
 	const { route, request } = input;
@@ -63,7 +64,7 @@ export async function handleChatSettingsRoute(input: {
 	if (route.kind === "user-settings") {
 		if (route.action === "read") return responseJson({ userSettings: loadPiboUserSettings() });
 		const body = await readJsonBody<ChatUserSettingsBody>(request);
-		return responseJson({ userSettings: updatePiboUserSettings(userSettingsPatch(body)) });
+		return responseJson({ userSettings: updatePiboUserSettings(userSettingsPatch(body, input.transcriptionProviderIds)) });
 	}
 
 	if (route.kind === "telemetry-retention") {
@@ -93,7 +94,7 @@ export async function handleChatSettingsRoute(input: {
 	return responseJson({ compactionPrompt: await savePiboCustomCompactionPrompt(normalizeCompactionPromptMarkdown(body.markdown), cwd) });
 }
 
-function userSettingsPatch(body: ChatUserSettingsBody): Parameters<typeof updatePiboUserSettings>[0] {
+function userSettingsPatch(body: ChatUserSettingsBody, transcriptionProviderIds?: readonly string[]): Parameters<typeof updatePiboUserSettings>[0] {
 	const patch: Parameters<typeof updatePiboUserSettings>[0] = {};
 	if (body.timezone !== undefined) {
 		const timezone = sanitizeTimezone(body.timezone);
@@ -101,6 +102,17 @@ function userSettingsPatch(body: ChatUserSettingsBody): Parameters<typeof update
 		patch.timezone = timezone;
 	}
 	if (body.shortcuts !== undefined) patch.shortcuts = sanitizeShortcutSettings(body.shortcuts);
+	if (body.transcription !== undefined) {
+		const raw = body.transcription && typeof body.transcription === "object" && !Array.isArray(body.transcription)
+			? body.transcription as Record<string, unknown>
+			: {};
+		const providerId = sanitizeTranscriptionProviderId(raw.providerId);
+		if (!providerId) throw new PiboWebHttpError("Invalid transcription provider", 400);
+		if (transcriptionProviderIds && !transcriptionProviderIds.includes(providerId)) {
+			throw new PiboWebHttpError(`Unknown transcription provider "${providerId}"`, 400);
+		}
+		patch.transcription = { providerId };
+	}
 	if (body.telemetryRetention !== undefined) {
 		const current = loadPiboUserSettings().telemetryRetention;
 		patch.telemetryRetention = {
