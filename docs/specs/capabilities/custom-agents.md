@@ -30,6 +30,7 @@ Custom agents are persisted in `chat-agents.sqlite`. Each active record is regis
 - Agent Designer catalog data for selectable capabilities.
 - Selections for runtime instances, native tools, skills, context files, Pibo subagents with per-entry descriptions and execution settings, harness-native subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
 - Read-only display and copy flow for plugin profiles.
+- App-wide organizational folders for custom agents, including folder creation, rename, assignment, and safe deletion.
 - Agent-scoped context-file creation from the Agent Designer.
 - Broken context-file reporting for saved custom agents.
 - Legacy profile-name migration from `custom-agent:<id>` names to valid profile names.
@@ -288,6 +289,39 @@ The Agents area lists active custom agents, optional archived custom agents, and
 - WHEN the user copies it
 - THEN the designer opens an editable custom-agent draft based on selectable profile metadata without changing the plugin profile.
 
+### Requirement: Custom agents can be organized in folders
+
+The Agent Designer MUST let users organize custom agents in app-wide folders without changing profile names, runtime configuration, session compatibility, or archived state.
+
+#### Target
+
+The Agents sidebar uses the standard responsive app-sidebar behavior. It shows custom agents grouped into optional folders plus an unfiled group. Users can create and rename folders, create agents directly inside a folder, and move active or archived custom agents between folders.
+
+#### Acceptance
+
+- The Agents sidebar is visible by default on desktop and closed by default on mobile.
+- On mobile, the global sidebar trigger opens the Agents sidebar as a modal drawer with the standard backdrop, Escape handling, focus isolation, and close control.
+- Folder names are non-empty, at most 80 characters, and unique case-insensitively.
+- Folder assignment is optional and does not alter the custom agent profile name or runtime profile registration.
+- An agent can be created inside a folder or moved between folders and the unfiled group.
+- Renaming a folder preserves every contained agent assignment.
+- A non-empty folder cannot be deleted; users must move its agents first.
+- Plugin-managed read-only profiles remain outside custom-agent folders.
+
+#### Scenario: Organize an existing agent
+
+- GIVEN an active custom agent is unfiled
+- WHEN the user creates a folder and moves the agent into it
+- THEN the sidebar renders the agent in that folder
+- AND existing sessions and runtime behavior for the agent remain unchanged.
+
+#### Scenario: Open Agents on mobile
+
+- GIVEN the viewport is 980 pixels wide or narrower
+- WHEN the user navigates to Agents
+- THEN the agent picker is initially hidden
+- AND the global sidebar trigger opens it as the standard modal sidebar.
+
 ### Requirement: Agent-scoped context files can be created from the designer
 
 The Agent Designer MUST let users create a managed context file for the current custom-agent draft and attach it to the draft.
@@ -380,6 +414,7 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 - [ ] SC-007: Unknown Pi package ids are rejected, and built-in tool selections are filtered to supported built-in tools.
 - [ ] SC-008: Permanent deletion requires archive plus exact name confirmation and deletes shared sessions for that profile.
 - [ ] SC-009: One parent agent can persist multiple subagent entries with independent descriptions, providers, models, and thinking levels.
+- [ ] SC-010: Custom agents can be created in, moved between, and displayed within durable folders while the Agents sidebar follows the standard desktop and mobile behavior.
 
 ## Assumptions and Open Questions
 
@@ -411,9 +446,10 @@ Create, update, archive, restore, and delete routes call `requireSameOriginJsonR
 | REQ-009 Pi package selections are validated against the package store | Unknown package selection | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
 | REQ-010 Built-in tool selections are constrained to supported tools | Unknown built-in tool name | `src/apps/chat/agent-store.ts`, `test/agent-store.test.mjs` | Implemented |
 | REQ-011 Agent Designer supports read-only profiles and copy-to-custom | Copy plugin profile | `src/apps/chat-ui/src/App.tsx` | Implemented |
-| REQ-012 Agent-scoped context files can be created from the designer | Add private agent context | `src/apps/chat-ui/src/App.tsx`, `src/plugins/context-files.ts` | Implemented |
-| REQ-013 Archive precedes destructive deletion | Delete archived agent and sessions | `src/apps/chat/web-app.ts` | Implemented |
-| REQ-014 Chat Web mutations are authenticated same-origin JSON requests | Cross-account update | `src/apps/chat/web-app.ts`, `src/web/http.ts` | Implemented |
+| REQ-012 Custom agents can be organized in folders | Organize an existing agent; open Agents on mobile | `src/apps/chat/agent-store.ts`, `src/apps/chat/web-app.ts`, `src/apps/chat-ui/src/agents/AgentsSidebar.tsx` | Implemented |
+| REQ-013 Agent-scoped context files can be created from the designer | Add private agent context | `src/apps/chat-ui/src/App.tsx`, `src/plugins/context-files.ts` | Implemented |
+| REQ-014 Archive precedes destructive deletion | Delete archived agent and sessions | `src/apps/chat/web-app.ts` | Implemented |
+| REQ-015 Chat Web mutations are authenticated same-origin JSON requests | Cross-account update | `src/apps/chat/web-app.ts`, `src/web/http.ts` | Implemented |
 
 ## Verification Basis
 

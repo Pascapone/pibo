@@ -1530,7 +1530,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		&& (area === "projects" || sessionViewId === "terminal");
 	const routeShellClassName = isTerminalFullscreen
 		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
-		: (area === "agents" || area === "workflows" || area === "cron" || area === "loops")
+		: (area === "workflows" || area === "cron" || area === "loops")
 			? "h-full overflow-hidden"
 			: `grid ${(area === "sessions" || area === "projects") && showRawEvents
 				? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
@@ -1596,6 +1596,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					<AgentsView
 						agents={bootstrap.agents}
 						initialCustomAgents={bootstrap.customAgents}
+						initialAgentFolders={bootstrap.agentFolders}
 						initialCatalog={bootstrap.agentCatalog}
 						modelCatalog={bootstrap.modelCatalog}
 						onSelect={setPreferredNewSessionProfile}
@@ -1605,6 +1606,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onAgentsChanged={() => void loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { selectSession: false })}
 						onAutosaveHandlerChange={updateAgentAutosaveHandler}
 						creatingSession={creatingSession || selectedRoomArchived}
+						mobileSidebarOpen={mobileSidebarOpen}
+						isMobileSidebarViewport={isMobileSidebarViewport}
+						onCloseMobileSidebar={closeMobileSidebar}
 					/>
 				) : area === "workflows" ? (
 					<MinimalWorkflowsArea

@@ -282,6 +282,7 @@ function normalizeProjectsBootstrap(payload: Partial<ProjectsBootstrapData> | nu
 		sessions: Array.isArray(payload.sessions) ? payload.sessions : [],
 		agents: Array.isArray(payload.agents) ? payload.agents : [],
 		customAgents: Array.isArray(payload.customAgents) ? payload.customAgents : [],
+		agentFolders: Array.isArray(payload.agentFolders) ? payload.agentFolders : [],
 		modelDefaults: payload.modelDefaults,
 		modelCatalog: payload.modelCatalog,
 		agentCatalog: payload.agentCatalog,
@@ -305,6 +306,7 @@ function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
 		...navigation,
 		agents: payload.agents ?? [],
 		customAgents: payload.customAgents ?? [],
+		agentFolders: payload.agentFolders ?? [],
 		modelDefaults: payload.modelDefaults,
 		modelCatalog: payload.modelCatalog
 			? {

@@ -18,11 +18,19 @@ export type CustomAgentSubagent = {
 	maxDepth?: number;
 };
 
+export type CustomAgentFolderDefinition = {
+	id: string;
+	name: string;
+	createdAt: string;
+	updatedAt: string;
+};
+
 export type CustomAgentDefinition = {
 	id: string;
 	profileName: string;
 	displayName: string;
 	profileAliases: string[];
+	folderId?: string;
 	description?: string;
 	runtimeInstanceId: string;
 	runtimeOptions: PiboJsonObject;
@@ -56,6 +64,7 @@ const CUSTOM_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 export type CreateCustomAgentInput = {
 	displayName: string;
 	description?: string;
+	folderId?: string;
 	runtimeInstanceId?: string;
 	runtimeOptions?: PiboJsonObject;
 	nativeSubagents?: boolean;
@@ -80,9 +89,17 @@ export type CreateCustomAgentInput = {
 	goalControl?: boolean;
 };
 
-export type UpdateCustomAgentInput = Omit<Partial<CreateCustomAgentInput>, "nativeSubagents" | "autoContextFiles"> & {
+export type UpdateCustomAgentInput = Omit<Partial<CreateCustomAgentInput>, "folderId" | "nativeSubagents" | "autoContextFiles"> & {
+	folderId?: string | null;
 	nativeSubagents?: boolean | null;
 	autoContextFiles?: boolean | null;
+};
+
+type AgentFolderRow = {
+	id: string;
+	name: string;
+	created_at: string;
+	updated_at: string;
 };
 
 type AgentRow = {
@@ -90,6 +107,7 @@ type AgentRow = {
 	profile_name: string;
 	display_name: string;
 	description: string | null;
+	folder_id: string | null;
 	runtime_instance_id: string;
 	runtime_options_json: string;
 	native_subagents: 0 | 1 | null;
@@ -128,6 +146,7 @@ export function previewCustomAgentCreate(
 		profileName: input.displayName,
 		displayName: input.displayName,
 		profileAliases: [],
+		folderId: input.folderId,
 		description: input.description,
 		runtimeInstanceId: sanitizeRuntimeInstanceId(input.runtimeInstanceId),
 		runtimeOptions: cloneRuntimeOptions(input.runtimeOptions),
@@ -166,6 +185,7 @@ export function previewCustomAgentUpdate(
 		...existing,
 		profileName,
 		displayName: input.displayName ?? existing.displayName,
+		folderId: input.folderId === undefined ? existing.folderId : input.folderId ?? undefined,
 		description: input.description === undefined ? existing.description : input.description,
 		runtimeInstanceId: input.runtimeInstanceId === undefined ? existing.runtimeInstanceId : sanitizeRuntimeInstanceId(input.runtimeInstanceId),
 		runtimeOptions: input.runtimeOptions === undefined ? existing.runtimeOptions : cloneRuntimeOptions(input.runtimeOptions),
@@ -206,11 +226,19 @@ export class CustomAgentStore {
 		this.db.exec("PRAGMA foreign_keys = ON");
 		if (resolvedPath !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
 		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS chat_agent_folders (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+
 			CREATE TABLE IF NOT EXISTS chat_agents (
 				id TEXT PRIMARY KEY,
 				profile_name TEXT NOT NULL UNIQUE,
 				display_name TEXT NOT NULL,
 				description TEXT,
+				folder_id TEXT REFERENCES chat_agent_folders(id) ON DELETE SET NULL,
 				runtime_instance_id TEXT NOT NULL DEFAULT 'pi',
 				runtime_options_json TEXT NOT NULL DEFAULT '{}',
 				native_subagents INTEGER,
@@ -239,6 +267,7 @@ export class CustomAgentStore {
 			);
 
 		`);
+		this.migrateAgentFolderColumn();
 		this.migrateProfileAliasTable();
 		this.migrateArchivedAtColumn();
 		this.migrateAutoContextFilesColumn();
@@ -254,6 +283,41 @@ export class CustomAgentStore {
 		this.migrateAgentHistory();
 		this.migrateLegacyProfileNames();
 		this.migrateDuplicateProfileNames();
+	}
+
+	listFolders(): CustomAgentFolderDefinition[] {
+		const rows = this.db.prepare("SELECT * FROM chat_agent_folders ORDER BY name COLLATE NOCASE ASC, created_at ASC").all() as AgentFolderRow[];
+		return rows.map(folderFromRow);
+	}
+
+	getFolder(id: string): CustomAgentFolderDefinition | undefined {
+		const row = this.db.prepare("SELECT * FROM chat_agent_folders WHERE id = ?").get(id) as AgentFolderRow | undefined;
+		return row ? folderFromRow(row) : undefined;
+	}
+
+	createFolder(name: string): CustomAgentFolderDefinition {
+		const normalizedName = normalizeCustomAgentFolderName(name);
+		this.requireFolderNameAvailable(normalizedName);
+		const now = new Date().toISOString();
+		const id = `agent_folder_${randomUUID()}`;
+		this.db.prepare("INSERT INTO chat_agent_folders (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)").run(id, normalizedName, now, now);
+		return this.getFolder(id)!;
+	}
+
+	renameFolder(id: string, name: string): CustomAgentFolderDefinition | undefined {
+		const existing = this.getFolder(id);
+		if (!existing) return undefined;
+		const normalizedName = normalizeCustomAgentFolderName(name);
+		this.requireFolderNameAvailable(normalizedName, id);
+		this.db.prepare("UPDATE chat_agent_folders SET name = ?, updated_at = ? WHERE id = ?").run(normalizedName, new Date().toISOString(), id);
+		return this.getFolder(id);
+	}
+
+	deleteFolder(id: string): boolean {
+		const assigned = this.db.prepare("SELECT COUNT(*) AS count FROM chat_agents WHERE folder_id = ?").get(id) as { count: number };
+		if (assigned.count > 0) throw new Error("Move agents out of this folder before deleting it");
+		const result = this.db.prepare("DELETE FROM chat_agent_folders WHERE id = ?").run(id);
+		return Number(result.changes ?? 0) > 0;
 	}
 
 	list(options: { includeArchived?: boolean } = {}): CustomAgentDefinition[] {
@@ -274,6 +338,7 @@ export class CustomAgentStore {
 	create(input: CreateCustomAgentInput): CustomAgentDefinition {
 		this.migrateLegacyProfileNames();
 		this.requireProfileNameAvailable(input.displayName);
+		this.requireFolderExists(input.folderId);
 		const agent = previewCustomAgentCreate(input);
 		this.insert(agent);
 		const created = this.get(agent.id);
@@ -287,6 +352,7 @@ export class CustomAgentStore {
 		if (!existing) return undefined;
 		const profileName = input.displayName ?? existing.displayName;
 		this.requireProfileNameAvailable(profileName, id);
+		this.requireFolderExists(input.folderId);
 		const updated = previewCustomAgentUpdate(existing, input);
 		this.db
 			.prepare(`
@@ -294,6 +360,7 @@ export class CustomAgentStore {
 					profile_name = ?,
 					display_name = ?,
 					description = ?,
+					folder_id = ?,
 					runtime_instance_id = ?,
 					runtime_options_json = ?,
 					native_subagents = ?,
@@ -323,6 +390,7 @@ export class CustomAgentStore {
 				updated.profileName,
 				updated.displayName,
 				updated.description ?? null,
+				updated.folderId ?? null,
 				updated.runtimeInstanceId,
 				JSON.stringify(updated.runtimeOptions),
 				serializeBoolean(updated.nativeSubagents),
@@ -380,6 +448,7 @@ export class CustomAgentStore {
 					profile_name,
 					display_name,
 					description,
+					folder_id,
 					runtime_instance_id,
 					runtime_options_json,
 					native_subagents,
@@ -405,13 +474,14 @@ export class CustomAgentStore {
 					created_at,
 					updated_at,
 					archived_at
-				) VALUES (${Array.from({ length: 29 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 30 }, () => "?").join(", ")})
 			`)
 			.run(
 				agent.id,
 				agent.profileName,
 				agent.displayName,
 				agent.description ?? null,
+				agent.folderId ?? null,
 				agent.runtimeInstanceId,
 				JSON.stringify(agent.runtimeOptions),
 				serializeBoolean(agent.nativeSubagents),
@@ -438,6 +508,16 @@ export class CustomAgentStore {
 				agent.updatedAt,
 				agent.archivedAt ?? null,
 			);
+	}
+
+	private requireFolderExists(folderId: string | null | undefined): void {
+		if (folderId === undefined || folderId === null) return;
+		if (!this.getFolder(folderId)) throw new Error(`Agent folder "${folderId}" does not exist`);
+	}
+
+	private requireFolderNameAvailable(name: string, currentId?: string): void {
+		const row = this.db.prepare("SELECT id FROM chat_agent_folders WHERE name = ? COLLATE NOCASE").get(name) as { id: string } | undefined;
+		if (row && row.id !== currentId) throw new Error(`Agent folder "${name}" already exists`);
 	}
 
 	private requireProfileNameAvailable(profileName: string, currentId?: string): void {
@@ -496,6 +576,13 @@ export class CustomAgentStore {
 				.prepare("UPDATE chat_agents SET profile_name = ?, display_name = ? WHERE id = ?")
 				.run(nextName, nextName, row.id);
 		}
+	}
+
+	private migrateAgentFolderColumn(): void {
+		if (!this.tableColumns().has("folder_id")) {
+			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN folder_id TEXT REFERENCES chat_agent_folders(id) ON DELETE SET NULL").run();
+		}
+		this.db.exec("CREATE INDEX IF NOT EXISTS chat_agents_folder_id_idx ON chat_agents(folder_id)");
 	}
 
 	private migrateProfileAliasTable(): void {
@@ -798,6 +885,7 @@ function agentFromRow(row: AgentRow, profileAliases: readonly string[]): CustomA
 		profileName: row.profile_name,
 		displayName: row.display_name,
 		profileAliases: profileAliases.filter((alias) => alias !== row.profile_name),
+		folderId: row.folder_id ?? undefined,
 		description: row.description ?? undefined,
 		runtimeInstanceId: sanitizeRuntimeInstanceId(row.runtime_instance_id),
 		runtimeOptions: parseRuntimeOptions(row.runtime_options_json),
@@ -825,6 +913,22 @@ function agentFromRow(row: AgentRow, profileAliases: readonly string[]): CustomA
 		updatedAt: row.updated_at,
 		archivedAt: row.archived_at ?? undefined,
 	};
+}
+
+function folderFromRow(row: AgentFolderRow): CustomAgentFolderDefinition {
+	return {
+		id: row.id,
+		name: row.name,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+export function normalizeCustomAgentFolderName(value: string): string {
+	const name = value.replace(/\s+/g, " ").trim();
+	if (!name) throw new Error("Agent folder name is required");
+	if (name.length > 80) throw new Error("Agent folder name is too long");
+	return name;
 }
 
 function parseStringArray(value: string): string[] {

@@ -29,6 +29,18 @@ export function roomResourcePath(pathname: string): RoomResourcePath | undefined
 	}
 }
 
+export function agentFolderResourceId(pathname: string): string | undefined {
+	const prefix = `${CHAT_WEB_API_PREFIX}/agent-folders/`;
+	if (!pathname.startsWith(prefix)) return undefined;
+	const encodedId = pathname.slice(prefix.length);
+	if (!encodedId || encodedId.includes("/")) return undefined;
+	try {
+		return decodeURIComponent(encodedId);
+	} catch {
+		throw new PiboWebHttpError("Invalid agent folder id", 400);
+	}
+}
+
 export function agentResourceId(pathname: string): string | undefined {
 	const prefix = `${CHAT_WEB_API_PREFIX}/agents/`;
 	if (!pathname.startsWith(prefix)) return undefined;
