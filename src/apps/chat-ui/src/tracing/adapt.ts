@@ -109,6 +109,7 @@ function spanAttributes(node: PiboTraceNode): Record<string, unknown> {
 	if (node.error) attributes.error = node.error;
 	if (node.toolCallId) attributes.tool_call_id = node.toolCallId;
 	if (node.runId) attributes.run_id = node.runId;
+	if (node.intent) attributes.intent = node.intent;
 	if (node.type === "tool.call" || node.type === "agent.delegation") {
 		attributes.tool_name = node.title;
 	}

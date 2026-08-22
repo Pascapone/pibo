@@ -78,6 +78,14 @@ const emitTurn = (message) => {
 		assistantMessageEvent: { type: "text_end", contentIndex: 0, content: "Hello there", partial: { role: "assistant", content: "Hello there" } },
 	});
 	write({ type: "message_end", message: { role: "assistant", content: "Hello there" } });
+	write({
+		type: "tool_execution_start",
+		toolCallId: "tool-intent-1",
+		toolName: "read",
+		args: { path: "README.md" },
+		intent: "Reviewing project documentation",
+	});
+	write({ type: "tool_execution_end", toolCallId: "tool-intent-1", toolName: "read", result: "ok", isError: false });
 	write({ type: "turn_end", message: { role: "assistant", content: "Hello there" }, toolResults: [] });
 	write({ type: "agent_end", messages: [], isTerminal: true });
 	streaming = false;

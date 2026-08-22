@@ -53,10 +53,10 @@ export type AgentRuntimeSemanticEvent =
 	| { type: "reasoning_started"; contentIndex?: number }
 	| { type: "reasoning_delta"; text: string; contentIndex?: number }
 	| { type: "reasoning_finished"; text?: string; contentIndex?: number }
-	| { type: "tool_call"; toolCallId: string; toolName: string; args: unknown; argsComplete: boolean }
-	| { type: "tool_execution_started"; toolCallId: string; toolName: string; args: unknown }
-	| { type: "tool_execution_updated"; toolCallId: string; toolName: string; args: unknown; partialResult: unknown }
-	| { type: "tool_execution_finished"; toolCallId: string; toolName: string; result: unknown; isError: boolean }
+	| { type: "tool_call"; toolCallId: string; toolName: string; args: unknown; argsComplete: boolean; intent?: string }
+	| { type: "tool_execution_started"; toolCallId: string; toolName: string; args: unknown; intent?: string }
+	| { type: "tool_execution_updated"; toolCallId: string; toolName: string; args: unknown; partialResult: unknown; intent?: string }
+	| { type: "tool_execution_finished"; toolCallId: string; toolName: string; result: unknown; isError: boolean; intent?: string }
 	| { type: "usage"; usage: AgentRuntimeUsage }
 	| { type: "plan_updated"; plan: PiboJsonValue }
 	| { type: "diff_updated"; diff: PiboJsonValue }

@@ -3,8 +3,10 @@ import type { AgentProfile, PiboLoopJob, PiboProjectSession, PiboSessionSignalSn
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "../tracing/TraceTimeline";
 
 export const chatSessionViewIds = ["terminal", "workflow"] as const;
+export const toolDisplayModes = ["default", "hide", "slim", "intent"] as const;
 
 export type ChatSessionViewId = (typeof chatSessionViewIds)[number];
+export type ToolDisplayMode = (typeof toolDisplayModes)[number];
 
 export const DEFAULT_CHAT_SESSION_VIEW_ID: ChatSessionViewId = "terminal";
 
@@ -23,6 +25,7 @@ export type ChatSessionViewProps = {
 	terminalFullscreen?: boolean;
 	showThinking: boolean;
 	expandThinking: boolean;
+	toolDisplayMode: ToolDisplayMode;
 	sessionAgentProfile?: string;
 	sessionActiveModel?: string;
 	sessionRuntimeBinding?: RuntimeSessionBinding;
