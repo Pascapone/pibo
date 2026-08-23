@@ -30,15 +30,15 @@
 ## 5. Pibo2 host integration
 
 - [x] 5.1 Add host setup and controller helper scripts without hard-coded hostnames.
-- [ ] 5.2 Configure pool root, runtime image, environment file, slot hostnames, and ports.
-- [ ] 5.3 Provide exact DNS-01 and OAuth callback instructions to the operator.
+- [x] 5.2 Configure pool root, runtime image, environment file, slot hostnames, and ports.
+- [x] 5.3 Provide exact DNS-01 and OAuth callback instructions to the operator.
 - [ ] 5.4 Configure nginx only after DNS/TLS prerequisites are ready.
 
 ## 6. Validation
 
-- [ ] 6.1 Run build, typecheck, focused tests, and full tests.
-- [ ] 6.2 Install an exact combined candidate on Pibo2.
-- [ ] 6.3 Validate fresh, medium, and full slots.
-- [ ] 6.4 Validate three concurrent leases, release, expiry, and reaping.
-- [ ] 6.5 Validate Google OAuth, Machine Auth, Chat Web, streaming, and browser behavior.
-- [ ] 6.6 Record a durable validation report.
+- [x] 6.1 Run build, typecheck, focused tests, and full tests.
+- [x] 6.2 Install an exact combined candidate on Pibo2.
+- [x] 6.3 Validate fresh, medium, and full slots.
+- [x] 6.4 Validate three concurrent leases, release, expiry, and reaping.
+- [ ] 6.5 Validate Google OAuth, Machine Auth, Chat Web, streaming, and browser behavior. Machine Auth, Chat Web, and streaming passed; public Google OAuth and browser validation await DNS/TLS.
+- [x] 6.6 Record a durable validation report.
