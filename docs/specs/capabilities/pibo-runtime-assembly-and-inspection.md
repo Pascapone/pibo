@@ -246,7 +246,7 @@ The system MUST inspect selected runtime resources without letting generated too
 
 #### Current
 
-`inspectPiboProfile()` creates inert subagent and run-control controllers when needed. It reports loaded skills, profile tools, generated Pibo tools, selected subagents, selected Pi packages, loaded context files with byte counts, and diagnostics, then disposes the runtime.
+`inspectPiboProfile()` creates inert delegated-agent and run-control controllers when needed. It reports loaded skills, profile tools, the four shared `pibo_agents_*` tools, selected delegated agents, selected Pi packages, loaded context files with byte counts, and diagnostics, then disposes the runtime.
 
 #### Acceptance
 
@@ -262,7 +262,8 @@ The system MUST inspect selected runtime resources without letting generated too
 - GIVEN a profile selects subagent `explorer`
 - WHEN an operator runs `pibo profile <profile>`
 - THEN the JSON includes subagent `explorer`
-- AND includes generated tool `pibo_subagent_explorer`
+- AND includes the four shared `pibo_agents_*` tools
+- AND the send tool context identifies `explorer` by name and description
 - AND no child Pibo Session is created.
 
 ### Requirement: Build Context snapshots are read-only, ordered, and redacted
@@ -271,7 +272,7 @@ The system MUST expose an inspection snapshot that explains startup context asse
 
 #### Current
 
-`inspectPiboContextBuild()` calls `createPiboRuntime()` with `persistSession: false`, uses inert subagent and run-control controllers when needed, omits requested model auth resolution for inspection, reads loaded runtime resources, redacts secret-like values in text, metadata, schema, payload, and diagnostics, estimates direct and subtree tokens, and disposes the runtime in a `finally` block. Chat Web requires an authenticated shared session for `GET /api/chat/context-build?piboSessionId=...` and passes the selected session's profile, active model, workspace, app context compatibility context, room id, and timezone into the snapshot.
+`inspectPiboContextBuild()` calls `createPiboRuntime()` with `persistSession: false`, uses inert delegated-agent and run-control controllers when needed, omits requested model auth resolution for inspection, reads loaded runtime resources, redacts secret-like values in text, metadata, schema, payload, and diagnostics, estimates direct and subtree tokens, and disposes the runtime in a `finally` block. Chat Web requires an authenticated shared session for `GET /api/chat/context-build?piboSessionId=...` and passes the selected session's profile, active model, workspace, app context compatibility context, room id, and timezone into the snapshot.
 
 #### Acceptance
 

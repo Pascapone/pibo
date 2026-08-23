@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { InitialSessionContext } from "../core/profiles.js";
 import type { PiboRunToolController } from "../runs/tools.js";
-import type { PiboSubagentRunner } from "../subagents/tool.js";
+import type { PiboAgentsController } from "../subagents/tool.js";
 import type { CodexBrowserToolController } from "./codex-browser.js";
 import type { PiboToolDefinition, PiboToolDefinitionContext } from "./contract.js";
 import {
@@ -13,7 +13,7 @@ import type { PiboRuntimeToolController } from "./runtime/tool.js";
 import { createPiboSessionToolDefinitions } from "./session-tool-set.js";
 
 export type PiboPortableToolSessionControllers = {
-	subagentRunner?: PiboSubagentRunner;
+	agentsController?: PiboAgentsController;
 	runToolController?: PiboRunToolController;
 	runtimeToolController?: PiboRuntimeToolController;
 	codexBrowserController?: CodexBrowserToolController;
@@ -129,7 +129,7 @@ export class PiboPortableToolService {
 				cwd,
 			},
 			controllers: {
-				subagentRunner: input.subagentRunner,
+				agentsController: input.agentsController,
 				runToolController: input.runToolController,
 				runtimeToolController: input.runtimeToolController,
 				codexBrowserController: input.codexBrowserController,

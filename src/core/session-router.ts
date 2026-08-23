@@ -18,13 +18,19 @@ import type {
 	PiboEventListener,
 	PiboExecutionEvent,
 	PiboJsonObject,
+	PiboJsonValue,
 	PiboInputEvent,
 	PiboMessageEvent,
 	PiboOutputEvent,
 	PiboSessionOperationResult,
 	PiboSessionStatus,
 } from "./events.js";
-import { createSubagentToolName, type PiboSubagentRunner } from "../subagents/tool.js";
+import {
+	type PiboAgentObservation,
+	type PiboAgentObserveInput,
+	type PiboAgentsController,
+	type PiboManagedAgent,
+} from "../subagents/tool.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
 import { PiboRunExecutionTimeoutError } from "../runs/lifecycle.js";
 import { PiboRunResourceLimitError } from "../runs/resource-isolation.js";
@@ -107,7 +113,7 @@ export type PiboRuntimeBindingRebindInput = RuntimeSessionBindingRebindInput;
 
 export type PiboSessionRouterOptions = Omit<
 	PiboRuntimeOptions,
-	"profile" | "subagentRunner" | "runToolController" | "resources"
+	"profile" | "agentsController" | "runToolController" | "resources"
 > & {
 	profile?: InitialSessionContext;
 	pluginRegistry?: PiboPluginRegistry;
@@ -138,6 +144,11 @@ export type PiboSessionRouterOptions = Omit<
 const DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_SUBAGENT_MAX_DEPTH = 1;
 const MAX_SUBAGENT_THREAD_KEY_BYTES = 512;
+const MAX_AGENT_OBSERVATIONS = 5_000;
+const MAX_AGENT_OBSERVATION_TEXT_BYTES = 4 * 1024;
+const MAX_AGENT_OBSERVATION_DETAILS_BYTES = 32 * 1024;
+const DEFAULT_AGENT_OBSERVATION_LIMIT = 50;
+const MAX_AGENT_OBSERVATION_LIMIT = 200;
 const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS = 30 * 1000;
 
@@ -300,6 +311,76 @@ function piboRoomIdFromMetadata(metadata: PiboJsonObject | undefined): string | 
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function parseAgentObservationTimestamp(value: string | undefined, label: string): number | undefined {
+	if (value === undefined) return undefined;
+	const timestamp = Date.parse(value);
+	if (!Number.isFinite(timestamp)) throw new Error(`Agent observation ${label} must be a valid ISO-8601 timestamp.`);
+	return timestamp;
+}
+
+function agentObservationKind(event: PiboOutputEvent): PiboAgentObservation["kind"] {
+	if (event.type === "message_queued" || event.type === "message_steered" || event.type === "message_started" || event.type === "assistant_message" || event.type === "message_finished") return "message";
+	if (event.type.startsWith("thinking_")) return "thinking";
+	if (event.type.startsWith("tool_") || event.type === "subagent_session") return "tool";
+	if (event.type === "session_error") return "error";
+	if (event.type === "execution_result" || event.type.startsWith("compaction_")) return "lifecycle";
+	return "event";
+}
+
+function agentObservationRole(event: PiboOutputEvent): string | undefined {
+	if (event.type === "assistant_message" || event.type === "assistant_delta" || event.type.startsWith("thinking_")) return "assistant";
+	if (event.type === "message_queued" || event.type === "message_steered" || event.type === "message_started") return event.source ?? "actor";
+	if (event.type.startsWith("tool_")) return "tool";
+	if (event.type === "subagent_session") return "agent";
+	if (event.type === "session_error" || event.type === "execution_result" || event.type.startsWith("compaction_")) return "system";
+	return undefined;
+}
+
+function boundedAgentObservationText(value: string): string {
+	if (Buffer.byteLength(value, "utf8") <= MAX_AGENT_OBSERVATION_TEXT_BYTES) return value;
+	let end = Math.min(value.length, MAX_AGENT_OBSERVATION_TEXT_BYTES);
+	while (end > 0 && Buffer.byteLength(value.slice(0, end), "utf8") > MAX_AGENT_OBSERVATION_TEXT_BYTES) end -= 1;
+	return `${value.slice(0, end)}…`;
+}
+
+function stringifyAgentObservationValue(value: unknown): string | undefined {
+	if (typeof value === "string") return boundedAgentObservationText(value);
+	if (value === undefined) return undefined;
+	try {
+		return boundedAgentObservationText(JSON.stringify(value));
+	} catch {
+		return boundedAgentObservationText(String(value));
+	}
+}
+
+function agentObservationText(event: PiboOutputEvent): string | undefined {
+	if ("text" in event && typeof event.text === "string") return boundedAgentObservationText(event.text);
+	if (event.type === "session_error") return boundedAgentObservationText(event.error);
+	if (event.type === "tool_call" || event.type === "tool_execution_started") return stringifyAgentObservationValue(event.args) ?? event.toolName;
+	if (event.type === "tool_execution_updated") return stringifyAgentObservationValue(event.partialResult) ?? event.toolName;
+	if (event.type === "tool_execution_finished") return stringifyAgentObservationValue(event.result) ?? event.toolName;
+	if (event.type === "subagent_session") return event.subagentName;
+	if (event.type === "execution_result") return stringifyAgentObservationValue(event.result) ?? event.action;
+	if (event.type === "compaction_start" || event.type === "compaction_end") return event.reason;
+	return undefined;
+}
+
+function agentObservationDetails(event: PiboOutputEvent): PiboJsonValue {
+	let serialized: string;
+	try {
+		serialized = JSON.stringify(event) ?? "null";
+	} catch {
+		return { truncated: true, preview: boundedAgentObservationText(String(event)) };
+	}
+	if (Buffer.byteLength(serialized, "utf8") <= MAX_AGENT_OBSERVATION_DETAILS_BYTES) {
+		return JSON.parse(serialized) as PiboJsonValue;
+	}
+	return {
+		truncated: true,
+		preview: boundedAgentObservationText(serialized),
+	};
+}
+
 function runtimeBindingsEqual(left: RuntimeSessionBinding, right: RuntimeSessionBinding): boolean {
 	return left.piboSessionId === right.piboSessionId
 		&& left.runtimeInstanceId === right.runtimeInstanceId
@@ -343,6 +424,10 @@ type ScheduledRunReminder = {
 	includeAlreadyNotified: boolean;
 };
 
+type StoredAgentObservation = PiboAgentObservation & {
+	managingParentId: string;
+};
+
 class PiboSessionDisposalTimeoutError extends Error {
 	constructor(readonly piboSessionId: string, readonly timeoutMs: number) {
 		super(`Timed out disposing Pibo session "${piboSessionId}" after ${timeoutMs}ms`);
@@ -383,6 +468,8 @@ export class PiboSessionRouter {
 	private readonly runtimeResourceSessions = new Map<string, PiboRuntimeResourceSession>();
 	private readonly runtimeAuthFingerprints = new Map<string, string>();
 	private readonly activeSubagentChildren = new Map<string, Map<string, number>>();
+	private readonly agentObservations: StoredAgentObservation[] = [];
+	private nextAgentObservationSequence = 1;
 	private readonly scheduledRunReminders = new Map<string, ScheduledRunReminder>();
 	private readonly runReminderGenerations = new Map<string, number>();
 	private readonly runCancellationHandlers = new Map<string, () => Promise<void>>();
@@ -1103,6 +1190,7 @@ export class PiboSessionRouter {
 			await this.runtimeResourceService.dispose();
 			this.runtimeResourceSessions.clear();
 			this.activeSubagentChildren.clear();
+			this.agentObservations.length = 0;
 			await this.telemetryWriter?.dispose();
 			const lifecycleFailures = [...authDisposals, ...webAppDisposals]
 				.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
@@ -1274,7 +1362,7 @@ export class PiboSessionRouter {
 			historyHandoff = { mode: "fresh" };
 		}
 		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
-		const subagentRunner = this.createSubagentRunner(piboSession.id);
+		const agentsController = this.createAgentsController(piboSession.id);
 		const runToolController = this.createRunToolController(piboSession.id);
 		const codeRuntimeToolController = this.runtimeRegistry.createController(piboSession.id);
 		const sessionGeneration = randomUUID();
@@ -1290,7 +1378,7 @@ export class PiboSessionRouter {
 			profile: sessionProfile,
 			cwd: workspace,
 			getActiveMessage: () => session?.getActiveMessage(),
-			subagentRunner,
+			agentsController,
 			runToolController,
 			runtimeToolController: codeRuntimeToolController,
 		});
@@ -1334,7 +1422,7 @@ export class PiboSessionRouter {
 					getActiveMessage: () => session?.getActiveMessage(),
 				},
 				services: {
-					subagentRunner,
+					agentsController,
 					runToolController,
 					codeRuntimeToolController,
 					portableTools,
@@ -1775,13 +1863,12 @@ export class PiboSessionRouter {
 		})));
 	}
 
-	private createSubagentRunner(parentPiboSessionId: string): PiboSubagentRunner {
+	private createAgentsController(parentPiboSessionId: string): PiboAgentsController {
 		return {
-			runSubagent: async ({ subagent, message, threadKey, toolCallId, signal }) => {
+			sendMessage: async ({ subagent, message, threadKey, toolCallId, signal }) => {
 				this.assertSubagentDepth(parentPiboSessionId, subagent);
 				const child = this.resolveSubagentSession(parentPiboSessionId, subagent, threadKey);
-				const toolName = createSubagentToolName(subagent.name);
-
+				const resolvedThreadKey = typeof child.metadata?.threadKey === "string" ? child.metadata.threadKey : "";
 				const event: PiboMessageEvent = {
 					type: "message",
 					piboSessionId: child.id,
@@ -1794,10 +1881,10 @@ export class PiboSessionRouter {
 					type: "subagent_session",
 					piboSessionId: parentPiboSessionId,
 					toolCallId,
-					toolName,
+					toolName: "pibo_agents_send_message",
 					subagentName: subagent.name,
 					childPiboSessionId: child.id,
-					threadKey: typeof child.metadata?.threadKey === "string" ? child.metadata.threadKey : undefined,
+					threadKey: resolvedThreadKey,
 				});
 
 				const untrack = this.trackActiveSubagent(parentPiboSessionId, child.id);
@@ -1807,12 +1894,127 @@ export class PiboSessionRouter {
 						subagent.timeoutMs ?? DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS,
 						signal,
 					);
-					return { piboSessionId: child.id, eventId: event.id!, reply };
+					return {
+						agentId: child.id,
+						name: subagent.name,
+						profile: child.profile,
+						threadKey: resolvedThreadKey,
+						eventId: event.id!,
+						reply,
+					};
 				} finally {
 					untrack();
 				}
 			},
+			listAgents: () => this.listManagedAgents(parentPiboSessionId),
+			observe: (input) => this.observeManagedAgents(parentPiboSessionId, input),
+			killAgent: async (agentId) => await this.killManagedAgent(parentPiboSessionId, agentId),
 		};
+	}
+
+	private listManagedAgents(parentPiboSessionId: string): PiboManagedAgent[] {
+		return this.sessionStore.find({
+			channel: "pibo.subagents",
+			kind: "subagent",
+			parentId: parentPiboSessionId,
+		}).map((session) => {
+			const live = this.sessions.get(session.id)?.getStatus();
+			const killed = session.metadata?.agentStatus === "killed";
+			const running = !killed && Boolean(live && (live.processing || live.streaming || live.queuedMessages > 0));
+			return {
+				agentId: session.id,
+				name: typeof session.metadata?.subagentName === "string" ? session.metadata.subagentName : session.profile,
+				profile: session.profile,
+				...(typeof session.metadata?.threadKey === "string" ? { threadKey: session.metadata.threadKey } : {}),
+				status: killed ? "killed" : running ? "running" : "idle",
+				createdAt: session.createdAt,
+				updatedAt: session.updatedAt,
+				...(session.activeModel ? { activeModel: { ...session.activeModel } } : {}),
+			};
+		});
+	}
+
+	private requireManagedAgent(parentPiboSessionId: string, agentId: string): PiboSession {
+		const session = this.sessionStore.get(agentId);
+		if (
+			!session
+			|| session.parentId !== parentPiboSessionId
+			|| session.channel !== "pibo.subagents"
+			|| session.kind !== "subagent"
+		) {
+			throw new Error(`Agent "${agentId}" is not owned by Pibo session "${parentPiboSessionId}".`);
+		}
+		return session;
+	}
+
+	private observeManagedAgents(parentPiboSessionId: string, input: PiboAgentObserveInput) {
+		const order = input.order ?? "asc";
+		const limit = Math.max(1, Math.min(input.limit ?? DEFAULT_AGENT_OBSERVATION_LIMIT, MAX_AGENT_OBSERVATION_LIMIT));
+		const since = parseAgentObservationTimestamp(input.since, "since");
+		const until = parseAgentObservationTimestamp(input.until, "until");
+		if (since !== undefined && until !== undefined && since > until) {
+			throw new Error("Agent observation since must not be after until.");
+		}
+		const agentIds = input.agentIds ? new Set(input.agentIds) : undefined;
+		if (agentIds) {
+			for (const agentId of agentIds) this.requireManagedAgent(parentPiboSessionId, agentId);
+		}
+		const names = input.names ? new Set(input.names) : undefined;
+		const threadKeys = input.threadKeys ? new Set(input.threadKeys) : undefined;
+		const eventTypes = input.eventTypes ? new Set(input.eventTypes) : undefined;
+		const kinds = input.kinds ? new Set(input.kinds) : undefined;
+		const textContains = input.textContains?.toLocaleLowerCase();
+		const matches = this.agentObservations.filter((observation) => {
+			if (observation.managingParentId !== parentPiboSessionId) return false;
+			if (agentIds && !agentIds.has(observation.agentId)) return false;
+			if (names && !names.has(observation.name)) return false;
+			if (threadKeys && (!observation.threadKey || !threadKeys.has(observation.threadKey))) return false;
+			if (eventTypes && !eventTypes.has(observation.eventType)) return false;
+			if (kinds && !kinds.has(observation.kind)) return false;
+			if (input.afterSequence !== undefined && observation.sequence <= input.afterSequence) return false;
+			const createdAt = Date.parse(observation.createdAt);
+			if (since !== undefined && createdAt < since) return false;
+			if (until !== undefined && createdAt > until) return false;
+			if (textContains && !(observation.text ?? "").toLocaleLowerCase().includes(textContains)) return false;
+			return true;
+		});
+		matches.sort((left, right) => order === "asc" ? left.sequence - right.sequence : right.sequence - left.sequence);
+		const selected = matches.slice(0, limit).map((observation) => {
+			const { managingParentId: _managingParentId, details, ...visible } = observation;
+			return input.includeDetails === true && details !== undefined ? { ...visible, details } : visible;
+		});
+		const nextAfterSequence = selected.reduce(
+			(maximum, observation) => Math.max(maximum, observation.sequence),
+			input.afterSequence ?? 0,
+		);
+		return {
+			filters: { ...input, order, limit, includeDetails: input.includeDetails === true },
+			observations: selected,
+			nextAfterSequence,
+			truncated: matches.length > selected.length,
+		};
+	}
+
+	private async killManagedAgent(parentPiboSessionId: string, agentId: string) {
+		const child = this.requireManagedAgent(parentPiboSessionId, agentId);
+		const ids = [agentId, ...this.descendantSessionIds(agentId)];
+		const cancelledRuns = this.runRegistry.listAll({ includeConsumed: true, includeDetached: true })
+			.filter((run) => ids.includes(run.controllerPiboSessionId) && !isTerminalRunStatus(run.status))
+			.map((run) => run.runId);
+		if (child.metadata?.agentStatus !== "killed") {
+			await Promise.allSettled(ids.flatMap((id) => this.sessions.has(id)
+				? [this.emit({ type: "execution", piboSessionId: id, action: "abort", id: randomUUID() })]
+				: []));
+			this.sessionStore.update(agentId, {
+				metadata: {
+					...(child.metadata ?? {}),
+					agentStatus: "killed",
+					killedAt: new Date().toISOString(),
+				},
+			});
+			await this.disposeSessionSubtree(agentId, `killed by parent ${parentPiboSessionId}`, { cancelRuns: true });
+		}
+		return { agentId, killed: ids, cancelledRuns };
 	}
 
 	private async invokeRunCancellationHandlers(runs: readonly PiboRunSnapshot[]): Promise<void> {
@@ -1932,35 +2134,33 @@ export class PiboSessionRouter {
 		const targetProfile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, subagent.targetProfile);
 		const parent = this.resolvePiboSession(parentPiboSessionId);
 		const resolvedThreadKey = resolveSubagentThreadKey(threadKey);
-		const baseMetadata: PiboJsonObject = {
+		const identityMetadata: PiboJsonObject = {
 			subagentName: subagent.name,
-			subagentToolName: createSubagentToolName(subagent.name),
 			threadKey: resolvedThreadKey,
 		};
-		const metadata: PiboJsonObject = withWorkflowSessionKind(baseMetadata, "subagent");
+		const metadata: PiboJsonObject = withWorkflowSessionKind({
+			...identityMetadata,
+			subagentToolName: "pibo_agents_send_message",
+			agentStatus: "active",
+		}, "subagent");
 		const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
 		if (parentChatRoomId) metadata.chatRoomId = parentChatRoomId;
 		const newSessionMetadata: PiboJsonObject = subagent.thinkingLevel
 			? { ...metadata, initialThinkingLevel: subagent.thinkingLevel }
 			: metadata;
-		const legacyMetadata: PiboJsonObject = { ...baseMetadata };
-		const legacyMetadataWithChatRoom: PiboJsonObject | undefined = parentChatRoomId
-			? { ...baseMetadata, chatRoomId: parentChatRoomId }
-			: undefined;
-		const findExisting = (candidate: PiboJsonObject | undefined): PiboSession | undefined => candidate
-			? this.sessionStore.find({
-				channel: "pibo.subagents",
-				kind: "subagent",
-				parentId: parent.id,
-				profile: targetProfile,
-				metadata: candidate,
-			})[0]
-			: undefined;
-		const existing = findExisting(metadata) ?? findExisting(legacyMetadataWithChatRoom) ?? findExisting(legacyMetadata);
+		const existing = this.sessionStore.find({
+			channel: "pibo.subagents",
+			kind: "subagent",
+			parentId: parent.id,
+			profile: targetProfile,
+			metadata: identityMetadata,
+		}).find((candidate) => candidate.metadata?.agentStatus !== "killed");
 		if (existing) {
 			const updatedMetadata = withWorkflowSessionKind(
 				{
 					...(existing.metadata ?? {}),
+					subagentToolName: "pibo_agents_send_message",
+					agentStatus: "active",
 					...(parentChatRoomId ? { chatRoomId: parentChatRoomId } : {}),
 				},
 				"subagent",
@@ -1993,8 +2193,34 @@ export class PiboSessionRouter {
 		return activeModel ? this.sessionStore.update(childSession.id, { activeModel }) ?? childSession : childSession;
 		}
 
+	private recordAgentObservation(event: PiboOutputEvent, session: PiboSession | undefined): void {
+		if (!session || session.kind !== "subagent" || session.channel !== "pibo.subagents" || !session.parentId) return;
+		const name = typeof session.metadata?.subagentName === "string" ? session.metadata.subagentName : session.profile;
+		const observation: StoredAgentObservation = {
+			managingParentId: session.parentId,
+			sequence: this.nextAgentObservationSequence++,
+			createdAt: new Date().toISOString(),
+			agentId: session.id,
+			name,
+			...(typeof session.metadata?.threadKey === "string" ? { threadKey: session.metadata.threadKey } : {}),
+			eventType: event.type,
+			kind: agentObservationKind(event),
+			...(agentObservationRole(event) ? { role: agentObservationRole(event) } : {}),
+			...(agentObservationText(event) ? { text: agentObservationText(event) } : {}),
+			...("toolName" in event && typeof event.toolName === "string" ? { toolName: event.toolName } : {}),
+			...("toolCallId" in event && typeof event.toolCallId === "string" ? { toolCallId: event.toolCallId } : {}),
+			...(event.type === "tool_execution_finished" ? { isError: event.isError } : event.type === "session_error" ? { isError: true } : {}),
+			details: agentObservationDetails(event),
+		};
+		this.agentObservations.push(observation);
+		if (this.agentObservations.length > MAX_AGENT_OBSERVATIONS) {
+			this.agentObservations.splice(0, this.agentObservations.length - MAX_AGENT_OBSERVATIONS);
+		}
+	}
+
 	private readonly emitOutput = (event: PiboOutputEvent): void => {
 		const session = this.sessionStore.get(event.piboSessionId);
+		this.recordAgentObservation(event, session);
 		this.telemetryRecorder?.recordOutput(event, { session, status: this.sessions.get(event.piboSessionId)?.getStatus() });
 		this.signalRegistry.project({ type: "pibo_output", event, session });
 		this.pluginRegistry.notifyEvent(event);
