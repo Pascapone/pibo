@@ -176,8 +176,9 @@ done
 	if [[ -n "$cert" ]]; then
 		echo
 		echo 'server {'
-		echo '    listen 443 ssl http2;'
-		echo '    listen [::]:443 ssl http2;'
+		echo '    listen 443 ssl;'
+		echo '    listen [::]:443 ssl;'
+		echo '    http2 on;'
 		echo "    server_name ${server_names[*]};"
 		echo "    ssl_certificate $cert;"
 		echo "    ssl_certificate_key $key;"
@@ -200,7 +201,7 @@ done
 		echo '    }'
 		echo '    location @pibo_deployment_pool_inactive {'
 		echo '        default_type text/plain;'
-		echo '        return 503 "Deployment slot is inactive\\n";'
+		echo '        return 503 "Deployment slot is inactive";'
 		echo '    }'
 		echo '}'
 	fi
