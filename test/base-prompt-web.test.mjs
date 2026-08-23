@@ -151,6 +151,69 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 	}
 });
 
+test("chat gateway-settings API validates and persists yielded-run concurrency", async () => {
+	const originalPiboHome = process.env.PIBO_HOME;
+	const originalGatewayLimit = process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+	const originalSessionLimit = process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS;
+	const dir = mkdtempSync(join(tmpdir(), "pibo-gateway-settings-web-"));
+	process.env.PIBO_HOME = join(dir, "pibo-home");
+	process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = "60";
+	process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS = "12";
+	const { channel, baseURL, dispose } = await startChatHost(dir);
+	try {
+		const current = await fetchJson(`${baseURL}/api/chat/gateway-settings`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(current.response.status, 200);
+		assert.deepEqual(current.data.gatewaySettings, {
+			maxConcurrentYieldedRuns: 60,
+			sessionConcurrentYieldedRuns: 12,
+		});
+
+		const missingOrigin = await fetch(`${baseURL}/api/chat/gateway-settings`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-1", "content-type": "application/json" },
+			body: JSON.stringify({ maxConcurrentYieldedRuns: 80, sessionConcurrentYieldedRuns: 16 }),
+		});
+		assert.equal(missingOrigin.status, 403);
+
+		const invalid = await fetchJson(`${baseURL}/api/chat/gateway-settings`, {
+			method: "PATCH",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ maxConcurrentYieldedRuns: 0 }),
+		});
+		assert.equal(invalid.response.status, 400);
+		assert.match(invalid.data.error, /Invalid gateway yielded-run concurrency/);
+
+		const saved = await fetchJson(`${baseURL}/api/chat/gateway-settings`, {
+			method: "PATCH",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ maxConcurrentYieldedRuns: 80, sessionConcurrentYieldedRuns: 16 }),
+		});
+		assert.equal(saved.response.status, 200);
+		assert.deepEqual(saved.data.gatewaySettings, {
+			maxConcurrentYieldedRuns: 80,
+			sessionConcurrentYieldedRuns: 16,
+		});
+
+		const persisted = JSON.parse(readFileSync(join(process.env.PIBO_HOME, "gateway-settings.json"), "utf-8"));
+		assert.deepEqual(persisted.settings, {
+			maxConcurrentYieldedRuns: 80,
+			sessionConcurrentYieldedRuns: 16,
+		});
+	} finally {
+		await channel.stop?.();
+		dispose();
+		if (originalPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = originalPiboHome;
+		if (originalGatewayLimit === undefined) delete process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = originalGatewayLimit;
+		if (originalSessionLimit === undefined) delete process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS = originalSessionLimit;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("chat base-prompt API validates same-origin mutations and accepts empty custom markdown", async () => {
 	const originalCwd = process.cwd();
 	const dir = mkdtempSync(join(tmpdir(), "pibo-base-prompt-web-"));

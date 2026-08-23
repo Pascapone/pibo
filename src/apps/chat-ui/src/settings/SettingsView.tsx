@@ -6,6 +6,7 @@ import {
 	ChevronRight,
 	Edit3,
 	ExternalLink,
+	Gauge,
 	Key,
 	Keyboard,
 	Layers,
@@ -18,7 +19,7 @@ import {
 	Wrench,
 } from "lucide-react";
 import { createUserSkill, deletePiPackage, deleteUserSkill, getUserSkill, installUserSkill, patchPiPackage, postPiPackage, updateUserSkill } from "../api-agent-designer";
-import { getUserSettings, patchModelDefaults, patchUserSettings, pruneTelemetryRetention } from "../api-settings";
+import { getGatewaySettings, getUserSettings, patchGatewaySettings, patchModelDefaults, patchUserSettings, pruneTelemetryRetention } from "../api-settings";
 import { getTranscriptionProviders } from "../api-transcription";
 import { piPackageMeta, type PiPackageCatalogItem } from "../agents/agent-designer-model";
 import { AgentRuntimeOptions, DesignerPanel, EmptyCatalog, InlineCheckboxToggle, PiPackageDetails } from "../agents/designer-ui";
@@ -90,6 +91,20 @@ export function SettingsView({
 					Skills
 				</h1>
 				<UserSkillsSettings skills={userSkills} onSkillChanged={onUserSkillChanged} onSkillRemoved={onUserSkillRemoved} />
+			</div>
+		);
+	}
+
+	if (activePanel === "concurrency") {
+		return (
+			<div className="p-6 overflow-auto">
+				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+					<Gauge size={16} />
+					Concurrency
+				</h1>
+				<DesignerPanel title="Yielded runs">
+					<YieldedRunConcurrencySettings />
+				</DesignerPanel>
 			</div>
 		);
 	}
@@ -177,6 +192,102 @@ export function SettingsView({
 					onChanged={onModelDefaultsChanged}
 				/>
 			</DesignerPanel>
+		</div>
+	);
+}
+
+function YieldedRunConcurrencySettings() {
+	const queryClient = useQueryClient();
+	const { data, isLoading } = useQuery({ queryKey: ["gateway-settings"], queryFn: getGatewaySettings });
+	const [gatewayLimit, setGatewayLimit] = useState("50");
+	const [sessionLimit, setSessionLimit] = useState("10");
+	const [saving, setSaving] = useState(false);
+	const [message, setMessage] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!data) return;
+		setGatewayLimit(String(data.maxConcurrentYieldedRuns));
+		setSessionLimit(String(data.sessionConcurrentYieldedRuns));
+	}, [data]);
+
+	const save = async () => {
+		const maxConcurrentYieldedRuns = Number(gatewayLimit);
+		const sessionConcurrentYieldedRuns = Number(sessionLimit);
+		if (!Number.isSafeInteger(maxConcurrentYieldedRuns) || maxConcurrentYieldedRuns < 1) {
+			setError("Gateway concurrency must be a positive integer.");
+			return;
+		}
+		if (!Number.isSafeInteger(sessionConcurrentYieldedRuns) || sessionConcurrentYieldedRuns < 1) {
+			setError("Session concurrency must be a positive integer.");
+			return;
+		}
+		setSaving(true);
+		setMessage(null);
+		setError(null);
+		try {
+			const saved = await patchGatewaySettings({ maxConcurrentYieldedRuns, sessionConcurrentYieldedRuns });
+			setGatewayLimit(String(saved.maxConcurrentYieldedRuns));
+			setSessionLimit(String(saved.sessionConcurrentYieldedRuns));
+			queryClient.setQueryData(["gateway-settings"], saved);
+			setMessage("Concurrency settings saved. New yielded runs use these limits immediately.");
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<div className="max-w-xl">
+			<p className="mb-4 text-xs text-slate-400">
+				Limit concurrent yielded tool and subagent runs across the gateway and within each controlling Pibo Session.
+			</p>
+			<div className="grid gap-4 sm:grid-cols-2">
+				<label className="block text-xs text-slate-300" htmlFor="gateway-concurrent-yielded-runs">
+					<span className="mb-1 block font-semibold">Gateway limit</span>
+					<input
+						id="gateway-concurrent-yielded-runs"
+						type="number"
+						min="1"
+						step="1"
+						value={gatewayLimit}
+						disabled={isLoading || saving}
+						onChange={(event) => setGatewayLimit(event.target.value)}
+						className="w-full rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 font-mono text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+					/>
+					<span className="mt-1 block text-[11px] text-slate-500">Default: 50 across this gateway.</span>
+				</label>
+				<label className="block text-xs text-slate-300" htmlFor="session-concurrent-yielded-runs">
+					<span className="mb-1 block font-semibold">Per-session limit</span>
+					<input
+						id="session-concurrent-yielded-runs"
+						type="number"
+						min="1"
+						step="1"
+						value={sessionLimit}
+						disabled={isLoading || saving}
+						onChange={(event) => setSessionLimit(event.target.value)}
+						className="w-full rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 font-mono text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+					/>
+					<span className="mt-1 block text-[11px] text-slate-500">Default: 10 for each controlling session.</span>
+				</label>
+			</div>
+			<div className="mt-4 flex items-center gap-3">
+				<button
+					type="button"
+					disabled={isLoading || saving}
+					onClick={() => void save()}
+					className="whitespace-nowrap rounded-sm bg-[#11a4d4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0d8db7] disabled:opacity-60"
+				>
+					{saving ? "Saving…" : "Save limits"}
+				</button>
+				{message ? <span className="text-xs text-green-400">{message}</span> : null}
+			</div>
+			{error ? <div className="mt-3 text-xs text-red-300">{error}</div> : null}
+			<p className="mt-4 font-mono text-[10px] text-slate-500">
+				Environment fallbacks: PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS and PIBO_SESSION_CONCURRENT_YIELDED_RUNS.
+			</p>
 		</div>
 	);
 }

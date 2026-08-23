@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-08-23
 **Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`
 
@@ -31,6 +32,8 @@ The capability catalog exposes one package named `pibo-run-control`. When a prof
 - Tracked and detached completion policies.
 - Compact service reminders for tracked runs.
 - Durable run records and interrupted-run recovery when a reliability store is attached.
+- Gateway-wide and per-controller-session concurrency admission.
+- Persistent concurrency configuration through Chat Web Settings.
 - Controller-session cleanup and router disposal behavior.
 
 ### Out of Scope
@@ -94,6 +97,31 @@ The parent agent receives a `runId` immediately and uses later run-control calls
 - WHEN the agent calls `pibo_run_start` with that tool name and arguments
 - THEN Pibo returns a run snapshot for the parent session
 - AND the wrapped tool executes without blocking the parent turn on its terminal result.
+
+### Requirement: Yielded-run concurrency is bounded per gateway and session
+
+The gateway MUST enforce both a gateway-wide yielded-run concurrency limit and a limit for each controlling Pibo Session before starting new yielded work.
+
+#### Target
+
+The default gateway limit is `50`. The default per-session limit is `10`. Operators can override the defaults with `PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS` and `PIBO_SESSION_CONCURRENT_YIELDED_RUNS`, or persist effective overrides in Chat Web under **Settings → Concurrency**.
+
+#### Acceptance
+
+- With no environment or persisted override, the gateway admits at most 50 simultaneous yielded runs.
+- One controlling Pibo Session admits at most 10 simultaneous yielded runs by default.
+- A session at its limit does not prevent another session from using remaining gateway capacity.
+- Lowering a limit does not cancel active runs; it blocks new admission until active counts fall below the new limit.
+- Settings changes persist under Pibo Home and apply to new admission attempts without a gateway restart.
+- Persisted Web settings take precedence over environment fallbacks.
+
+#### Scenario: Orchestrator reaches its session limit
+
+- GIVEN one Pibo Session controls 10 active yielded runs
+- AND the gateway still has unused capacity
+- WHEN that session starts another yielded run
+- THEN Pibo rejects the new run with the configured session limit
+- AND a different session can still start a yielded run.
 
 ### Requirement: Run access is scoped to the owning Pibo Session
 
