@@ -62,13 +62,14 @@ A built-in `loop` skill and `pibo tools guide loop loop` teach same-session Goal
 ## Risks and Trade-offs
 
 - A model can call `blocked` before satisfying the prompt contract; Codex has the same trust boundary.
-- Usage is accounted after provider messages, so a single request can still overshoot the soft budget; the reserve reduces pre-turn risk but is not a hard provider limit.
+- Token accounting is explicit per Goal job and run as `{ version: 1, basis: "total" | "uncached" }`. New Goals use `uncached`: cache-read and cache-write tokens remain telemetry and do not consume the budget. Persisted rows without the descriptor are read as legacy `total` and continue counting reported total usage; Pibo does not relabel or numerically rewrite counters that cannot be reconstructed. A single request can still overshoot the soft budget; the reserve reduces pre-turn risk but is not a hard provider limit.
 - Existing custom agents need a migration default of enabled to avoid Goal loops that cannot complete structurally.
 - `create_goal` from an ordinary session depends on the Web Loop service being active for automatic continuation.
 
 ## Migration and Rollback
 
-- Add optional fields to existing job state and runtime/API types; no destructive table rename is required.
+- Add the versioned token-accounting descriptor to new Goal job state and run accounting JSON; no table rename is required.
+- Treat a missing descriptor as legacy version `1` `total` accounting on read and preserve that basis on later writes and runs. This is a semantic compatibility rule, not a synthetic counter migration.
 - Add `goal_control` to custom-agent storage with default enabled.
 - Existing Ralph jobs continue to use markers.
 - Existing Goal jobs without explicit status remain operable through derived status and gain structured tools when their profile permits them.

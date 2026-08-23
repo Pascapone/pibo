@@ -7,6 +7,7 @@ import { isPiboThinkingLevel } from '../core/thinking.js';
 import type { PiboJsonObject, PiboMessageEvent, PiboSessionErrorDetails } from '../core/events.js';
 import type { ModelProfile } from '../core/profiles.js';
 import type { PiboThinkingLevel } from '../core/thinking.js';
+import { newGoalTokenAccounting, normalizeLoopTokenAccounting } from './accounting.js';
 import type { PiboGoalStatus, PiboLoopFactReader, PiboLoopFailure, PiboLoopJob, PiboLoopJobCreateInput, PiboLoopJobPatchInput, PiboLoopJobState, PiboLoopMode, PiboLoopResourceCleanupState, PiboLoopResourceMetadata, PiboLoopRun, PiboLoopRunAccounting, PiboLoopRunFact, PiboLoopRunMessageState, PiboLoopRunStatus, PiboLoopStopEvaluationSummary, PiboLoopStopPolicy, PiboLoopTarget } from './types.js';
 
 export type PiboLoopStoreOptions = { path?: string };
@@ -75,7 +76,9 @@ function parseRunAccounting(json: string | null | undefined): PiboLoopRunAccount
 	if (!json) return undefined;
 	try {
 		const value = JSON.parse(json) as PiboLoopRunAccounting;
-		return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
+		return value && typeof value === 'object' && !Array.isArray(value)
+			? { ...value, tokenAccounting: normalizeLoopTokenAccounting(value.tokenAccounting) }
+			: undefined;
 	} catch { return undefined; }
 }
 function runAccountingJson(accounting: PiboLoopRunAccounting | undefined): string | null { return accounting ? JSON.stringify(accounting) : null; }
@@ -91,7 +94,7 @@ function normalizeJobState(state: PiboLoopJobState, mode: PiboLoopMode, enabled:
 	if (mode !== 'goal') return state;
 	const activeTimeSeconds = Math.max(0, Math.floor(state.activeTimeSeconds ?? state.timeUsedSeconds ?? 0));
 	const goalStartedAt = state.goalStartedAt ?? (enabled || (state.completedIterations ?? 0) > 0 || (state.tokensUsed ?? 0) > 0 || (state.goalStatus !== undefined && state.goalStatus !== 'paused') ? createdAt : undefined);
-	const normalized = { ...state, activeTimeSeconds, ...(goalStartedAt ? { goalStartedAt } : {}) };
+	const normalized = { ...state, tokenAccounting: normalizeLoopTokenAccounting(state.tokenAccounting), activeTimeSeconds, ...(goalStartedAt ? { goalStartedAt } : {}) };
 	delete normalized.timeUsedSeconds;
 	return normalized;
 }
@@ -234,7 +237,7 @@ export class PiboLoopStore {
 		const enabled = input.enabled === true;
 		const state: PiboLoopJobState = {
 			completedIterations: 0,
-			...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokensUsed: 0, activeTimeSeconds: 0, ...(enabled ? { goalStartedAt: timestamp } : {}) } : {}),
+			...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokenAccounting: newGoalTokenAccounting(), tokensUsed: 0, activeTimeSeconds: 0, ...(enabled ? { goalStartedAt: timestamp } : {}) } : {}),
 			...(input.initialPiboSessionId?.trim() ? { lastPiboSessionId: input.initialPiboSessionId.trim() } : {}),
 		};
 		const job: PiboLoopJob = { id: mode === 'ralph' ? `ralph_${randomUUID()}` : `loop_${randomUUID()}`, mode, name: (input.name ?? defaultName(input.prompt)).trim(), description: input.description?.trim() || undefined, enabled, target, profile: input.profile, prompt: input.prompt, maxIterations: normalizeMaxIterations(input.maxIterations), tokenBudget: normalizeTokenBudget(input.tokenBudget), tokenReserve: normalizeTokenReserve(input.tokenReserve), stopPolicy: normalizeLoopStopPolicy(input.stopPolicy), ...runtimeOptions, ...(resources ? { resources } : {}), state, createdAt: timestamp, updatedAt: timestamp };
@@ -343,7 +346,7 @@ export class PiboLoopStore {
 			if (job?.mode === 'goal') {
 				const row = this.db.prepare('SELECT * FROM pibo_ralph_runs WHERE id = ? AND job_id = ?').get(runId, id) as LoopRunRow | undefined;
 				if (row) {
-					const accounting = parseRunAccounting(row.accounting_json) ?? {};
+					const accounting = parseRunAccounting(row.accounting_json) ?? { tokenAccounting: normalizeLoopTokenAccounting(job.state.tokenAccounting) };
 					const turnTokens = (accounting.tokensUsed ?? 0) + Math.max(0, Math.floor(tokens));
 					const budget = accounting.tokenBudget;
 					const before = accounting.tokensUsedBefore ?? 0;
@@ -363,7 +366,7 @@ export class PiboLoopStore {
 			if (job?.mode === 'goal') {
 				const row = this.db.prepare('SELECT * FROM pibo_ralph_runs WHERE id = ? AND job_id = ?').get(runId, id) as LoopRunRow | undefined;
 				if (row) {
-					const accounting = { ...(parseRunAccounting(row.accounting_json) ?? {}), activeTimeSeconds: seconds };
+					const accounting = { ...(parseRunAccounting(row.accounting_json) ?? { tokenAccounting: normalizeLoopTokenAccounting(job.state.tokenAccounting) }), activeTimeSeconds: seconds };
 					this.db.prepare('UPDATE pibo_ralph_runs SET accounting_json = ?, updated_at = ? WHERE id = ?').run(runAccountingJson(accounting), nowIso(now), runId);
 				}
 			}
@@ -390,7 +393,7 @@ export class PiboLoopStore {
 		const enabled = patch.enabled ?? existing.enabled;
 		let state: PiboLoopJobState = mode === existing.mode
 			? { ...existing.state }
-			: { completedIterations: existing.state.completedIterations ?? 0, ...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokensUsed: 0, activeTimeSeconds: 0, ...(enabled ? { goalStartedAt: nowIso(now) } : {}) } : {}) };
+			: { completedIterations: existing.state.completedIterations ?? 0, ...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokenAccounting: newGoalTokenAccounting(), tokensUsed: 0, activeTimeSeconds: 0, ...(enabled ? { goalStartedAt: nowIso(now) } : {}) } : {}) };
 		if (mode === 'goal' && patch.enabled !== undefined) {
 			const currentGoalStatus = goalStatus({ mode, enabled: existing.enabled, state: existing.state }) ?? 'paused';
 			if (patch.enabled) {
@@ -634,6 +637,7 @@ export class PiboLoopStore {
 	private createRunLocked(job: PiboLoopJob, timestamp: string): PiboLoopRun {
 		const tokensUsedBefore = job.state.tokensUsed ?? 0;
 		const accounting: PiboLoopRunAccounting | undefined = job.mode === 'goal' ? {
+			tokenAccounting: normalizeLoopTokenAccounting(job.state.tokenAccounting),
 			...(job.tokenBudget !== undefined ? { tokenBudget: job.tokenBudget, remainingTokensBefore: Math.max(0, job.tokenBudget - tokensUsedBefore) } : {}),
 			...(job.tokenReserve !== undefined ? { tokenReserve: job.tokenReserve } : {}),
 			tokensUsedBefore,

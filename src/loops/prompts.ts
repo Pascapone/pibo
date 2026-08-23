@@ -1,3 +1,4 @@
+import { goalTokenAccounting } from './accounting.js';
 import type { PiboLoopJob } from './types.js';
 
 const completionMarkerInstruction = 'When and only when the full objective is proven complete, end with the XML completion marker on its own line. Compose it from the opening tag <promise>, the word COMPLETE, and the closing tag </promise>. Do not quote, negate, explain, or mention the literal marker before completion.';
@@ -26,6 +27,11 @@ function buildGoalTurnPrompt(job: PiboLoopJob, continuation: boolean, goalToolsA
 	const tokenBudget = job.tokenBudget;
 	const remainingTokens = tokenBudget === undefined ? 'unbounded' : String(Math.max(0, tokenBudget - tokensUsed));
 	const tokenReserve = job.tokenReserve ?? 0;
+	const tokenAccounting = goalTokenAccounting(job);
+	const tokenBasis = tokenAccounting.basis === 'uncached' ? 'uncached' : 'total';
+	const accountingPolicy = tokenAccounting.basis === 'uncached'
+		? '- Cache-read and cache-write tokens do not consume the budget.'
+		: '- Legacy compatibility: cache-read and cache-write tokens remain included because prior persisted counters cannot be reconstructed safely.';
 	return [
 		continuation ? 'Continue working toward the active Pibo loop goal.' : 'Start working toward the active Pibo loop goal.',
 		'',
@@ -41,11 +47,13 @@ function buildGoalTurnPrompt(job: PiboLoopJob, continuation: boolean, goalToolsA
 		'- Temporary rough edges are acceptable while work moves toward the requested end state. Completion still requires the requested end state to be true and verified.',
 		'',
 		'Budget:',
-		'- Budget enforcement: soft; model usage is reported after a response and the current turn can overshoot the limit.',
-		`- Reported tokens used before this turn: ${tokensUsed}`,
-		`- Soft token budget: ${tokenBudget ?? 'none'}`,
-		`- Pre-turn token reserve: ${tokenReserve}`,
-		`- Reported tokens remaining before this turn: ${remainingTokens}`,
+		`- Accounting basis: ${tokenBasis} tokens (version ${tokenAccounting.version}).`,
+		`- Budget enforcement: soft; ${tokenBasis} model usage is reported after a response and the current turn can overshoot the limit.`,
+		accountingPolicy,
+		`- Reported ${tokenBasis} tokens used before this turn: ${tokensUsed}`,
+		`- Soft ${tokenBasis} token budget: ${tokenBudget ?? 'none'}`,
+		`- Pre-turn ${tokenBasis} token reserve: ${tokenReserve}`,
+		`- Reported ${tokenBasis} tokens remaining before this turn: ${remainingTokens}`,
 		'',
 		'Work from evidence:',
 		'Use the current workspace, repository, runtime, and external state as authoritative. Previous conversation context can help locate relevant work, but inspect current state before relying on it. Improve, replace, or remove existing work as needed to satisfy the actual objective.',

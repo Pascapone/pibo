@@ -1,4 +1,37 @@
-import type { PiboLoopJob } from './types.js';
+import type { PiboAssistantUsageEvent } from '../core/events.js';
+import type { PiboLoopJob, PiboLoopTokenAccounting, PiboLoopTokenAccountingBasis } from './types.js';
+
+export const LOOP_TOKEN_ACCOUNTING_VERSION = 1 as const;
+
+function normalizedTokenCount(value: number | undefined): number {
+	return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+export function normalizeLoopTokenAccounting(value: unknown, fallback: PiboLoopTokenAccountingBasis = 'total'): PiboLoopTokenAccounting {
+	if (value && typeof value === 'object' && !Array.isArray(value)) {
+		const candidate = value as { version?: unknown; basis?: unknown };
+		if (candidate.version === LOOP_TOKEN_ACCOUNTING_VERSION && (candidate.basis === 'total' || candidate.basis === 'uncached')) {
+			return { version: LOOP_TOKEN_ACCOUNTING_VERSION, basis: candidate.basis };
+		}
+	}
+	return { version: LOOP_TOKEN_ACCOUNTING_VERSION, basis: fallback };
+}
+
+export function newGoalTokenAccounting(): PiboLoopTokenAccounting {
+	return { version: LOOP_TOKEN_ACCOUNTING_VERSION, basis: 'uncached' };
+}
+
+export function goalTokenAccounting(job: PiboLoopJob): PiboLoopTokenAccounting {
+	return normalizeLoopTokenAccounting(job.state.tokenAccounting);
+}
+
+export function goalBudgetTokens(usage: PiboAssistantUsageEvent, basis: PiboLoopTokenAccountingBasis): number {
+	const totalTokens = normalizedTokenCount(usage.totalTokens);
+	if (basis === 'total') return totalTokens;
+	const cacheReadTokens = normalizedTokenCount(usage.cacheReadTokens);
+	const cacheWriteTokens = normalizedTokenCount(usage.cacheWriteTokens);
+	return Math.max(0, totalTokens - cacheReadTokens - cacheWriteTokens);
+}
 
 export function goalActiveTimeSeconds(job: PiboLoopJob): number {
 	return Math.max(0, Math.floor(job.state.activeTimeSeconds ?? job.state.timeUsedSeconds ?? 0));

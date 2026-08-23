@@ -375,8 +375,9 @@ if (args[0] === "--version") {
 		const previous = state.threadTokenUsage[active.threadId]?.tokenUsage?.total?.totalTokens ?? 0;
 		const totalTokens = previous + 20;
 		const tokenUsage = {
-			last: { cachedInputTokens: 3, inputTokens: 11, outputTokens: 7, reasoningOutputTokens: 2, totalTokens: 20 },
+			last: { cacheWriteInputTokens: 2, cachedInputTokens: 3, inputTokens: 11, outputTokens: 7, reasoningOutputTokens: 2, totalTokens: 20 },
 			total: {
+				cacheWriteInputTokens: Math.round(totalTokens * 0.1),
 				cachedInputTokens: Math.round(totalTokens * 0.15),
 				inputTokens: Math.round(totalTokens * 0.55),
 				outputTokens: Math.round(totalTokens * 0.35),

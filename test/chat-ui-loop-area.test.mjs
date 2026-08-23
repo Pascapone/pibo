@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import test from "node:test";
 
 const execFileAsync = promisify(execFile);
+const loopAreaSource = readFileSync(new URL("../src/apps/chat-ui/src/LoopArea.tsx", import.meta.url), "utf8");
 
 test("new Loop UI defaults to same-session goal mode and exposes legacy Ralph mode", async () => {
 	const script = `
@@ -22,5 +24,12 @@ test("new Loop UI defaults to same-session goal mode and exposes legacy Ralph mo
 	assert.match(stdout, /Goal loops continue in one Pibo Session/);
 	assert.match(stdout, /Soft Token Budget/);
 	assert.match(stdout, /Pre-turn Token Reserve/);
+	assert.match(stdout, /cache reads and writes are excluded/);
 	assert.match(stdout, /final turn can overshoot/);
+});
+
+test("Loop UI labels legacy total accounting without claiming cache exclusion", () => {
+	assert.match(loopAreaSource, /This legacy Goal keeps total-token accounting, including cache reads and writes/);
+	assert.match(loopAreaSource, /tokenAccountingLabel\(job\)/);
+	assert.match(loopAreaSource, /legacy total/);
 });

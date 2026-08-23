@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { piboStringEnum } from "../tools/schema.js";
 import { definePiboTool, type PiboToolDefinition, type PiboToolDefinitionContext } from "../tools/contract.js";
-import { goalActiveTimeSeconds, goalCanStartNextTurn, goalElapsedWallClockSeconds, goalRemainingTokens } from './accounting.js';
+import { goalActiveTimeSeconds, goalCanStartNextTurn, goalElapsedWallClockSeconds, goalRemainingTokens, goalTokenAccounting } from './accounting.js';
 import { createDefaultPiboLoopStore, type PiboLoopStore } from './store.js';
 import type { PiboGoalStatus, PiboLoopJob } from './types.js';
 
@@ -77,11 +77,13 @@ function nonNegativeInteger(value: number | undefined, field: string): number | 
 
 function goalPayload(job: PiboLoopJob) {
 	const tokenBudget = job.tokenBudget;
+	const tokenAccounting = goalTokenAccounting(job);
 	return {
 		goalId: job.id,
 		objective: job.prompt,
 		status: effectiveGoalStatus(job),
 		budgetType: tokenBudget === undefined ? 'unbounded' : 'soft',
+		tokenAccounting,
 		tokenBudget: tokenBudget ?? null,
 		tokenReserve: job.tokenReserve ?? 0,
 		tokensUsed: job.state.tokensUsed ?? 0,
@@ -140,8 +142,8 @@ function createCreateGoalTool(context: PiboToolDefinitionContext, options: PiboG
 		promptSnippet: 'Call create_goal only when the user or system explicitly requests a persistent goal. Do not infer a goal from an ordinary task.',
 		inputSchema: Type.Object({
 			objective: Type.String({ description: 'Concrete objective to pursue across automatic continuations.' }),
-			token_budget: Type.Optional(Type.Number({ description: 'Optional soft token budget. Usage arrives after each model response, so the final turn can overshoot.' })),
-			token_reserve: Type.Optional(Type.Number({ description: 'Optional non-negative minimum remaining tokens required before Pibo starts another turn.' })),
+			token_budget: Type.Optional(Type.Number({ description: 'Optional soft uncached-token budget. Cache reads and writes are excluded. Usage arrives after each model response, so the final turn can overshoot.' })),
+			token_reserve: Type.Optional(Type.Number({ description: 'Optional non-negative minimum remaining uncached tokens required before Pibo starts another turn.' })),
 		}),
 		async execute(_toolCallId, params: CreateGoalParams) {
 			try {
@@ -188,11 +190,12 @@ function createUpdateGoalTool(context: PiboToolDefinitionContext, options: PiboG
 					if (!existing) throw new Error('cannot update goal because this Pibo Session has no goal');
 					const job = store.updateGoalStatus(existing.id, status);
 					if (!job) throw new Error('goal no longer exists');
+					const tokenBasis = goalTokenAccounting(job).basis;
 					return toolResult({
 						ok: true,
 						goal: goalPayload(job),
 						...(status === 'complete' && job.tokenBudget !== undefined
-							? { completionBudgetReport: `${job.state.tokensUsed ?? 0}/${job.tokenBudget} reported tokens consumed against a soft budget before the current model turn finishes` }
+							? { completionBudgetReport: `${job.state.tokensUsed ?? 0}/${job.tokenBudget} reported ${tokenBasis} tokens consumed against a soft budget before the current model turn finishes` }
 							: {}),
 					});
 				});

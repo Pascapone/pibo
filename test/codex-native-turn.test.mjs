@@ -159,7 +159,7 @@ test("Codex native normalizes assistant, reasoning, usage, terminal ordering, an
 		inputTokens: 11,
 		outputTokens: 7,
 		cacheReadTokens: 3,
-		cacheWriteTokens: 0,
+		cacheWriteTokens: 2,
 		reasoningTokens: 2,
 		totalTokens: 20,
 		contextWindow: 200_000,

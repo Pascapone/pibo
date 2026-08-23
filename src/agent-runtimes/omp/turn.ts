@@ -78,6 +78,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function tokenCount(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : undefined;
+}
+
 function assistantEventText(event: OmpRpcAssistantMessageEvent): { text?: string; thinking?: string } | undefined {
 	if (event.type === "text_delta") return { text: event.delta };
 	if (event.type === "text_end") return { text: event.content };
@@ -296,6 +300,11 @@ export class OmpRpcTurnController {
 			case "turn_end":
 				this.emit({ type: "turn_completed", status: "completed" });
 				break;
+			case "message_end": {
+				const usage = OmpRpcTurnController.usageFromMessage(frame.message);
+				if (usage) this.emit({ type: "usage", usage });
+				break;
+			}
 			case "auto_compaction_start":
 				this.emit({ type: "compaction_start", reason: frame.reason });
 				break;
@@ -326,22 +335,27 @@ export class OmpRpcTurnController {
 		const usage = (message as { usage?: unknown }).usage;
 		if (!isRecord(usage)) return undefined;
 		const record = usage as {
-			inputTokens?: unknown;
-			outputTokens?: unknown;
-			cachedInputTokens?: unknown;
-			reasoningTokens?: unknown;
+			input?: unknown;
+			output?: unknown;
+			cacheRead?: unknown;
+			cacheWrite?: unknown;
+			reasoning?: unknown;
 			totalTokens?: unknown;
 		};
-		const input = typeof record.inputTokens === "number" ? record.inputTokens : 0;
-		const output = typeof record.outputTokens === "number" ? record.outputTokens : 0;
-		const total = typeof record.totalTokens === "number" ? record.totalTokens : input + output;
+		const input = tokenCount(record.input);
+		const output = tokenCount(record.output);
+		const cacheRead = tokenCount(record.cacheRead);
+		const cacheWrite = tokenCount(record.cacheWrite);
+		const reasoning = tokenCount(record.reasoning);
+		const reportedTotal = tokenCount(record.totalTokens);
+		if (input === undefined && output === undefined && cacheRead === undefined && cacheWrite === undefined && reasoning === undefined && reportedTotal === undefined) return undefined;
 		return {
-			inputTokens: input,
-			outputTokens: output,
-			cacheReadTokens: typeof record.cachedInputTokens === "number" ? record.cachedInputTokens : 0,
-			cacheWriteTokens: 0,
-			reasoningTokens: typeof record.reasoningTokens === "number" ? record.reasoningTokens : 0,
-			totalTokens: total,
+			inputTokens: input ?? 0,
+			outputTokens: output ?? 0,
+			cacheReadTokens: cacheRead ?? 0,
+			cacheWriteTokens: cacheWrite ?? 0,
+			reasoningTokens: reasoning ?? 0,
+			totalTokens: reportedTotal ?? (input ?? 0) + (output ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0),
 		};
 	}
 }
