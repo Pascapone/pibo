@@ -16,6 +16,7 @@ export type ToolProfile = {
 	enabled?: boolean;
 	yieldable?: boolean;
 	pluginId?: string;
+	replacesBuiltinTools?: readonly string[];
 	definition?: PiboToolDefinition;
 	createDefinition?: (context: ToolDefinitionContext) => PiboToolDefinition;
 	providerTool?: ProviderToolProfile;

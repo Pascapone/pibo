@@ -277,7 +277,14 @@ function getEnabledSkillPaths(cwd: string, profile: InitialSessionContext): stri
 function getBuiltinToolAllowlist(profile: InitialSessionContext, customTools: readonly PiboToolDefinition[]): string[] | undefined {
 	if (profile.builtinTools === "disabled") return undefined;
 	const defaultBuiltinTools = new Set<string>(DEFAULT_BUILTIN_TOOL_NAMES);
-	const selectedBuiltinTools = profile.builtinToolNames.filter((name) => defaultBuiltinTools.has(name));
+	const replacedBuiltinTools = new Set(
+		profile.tools
+			.filter((tool) => tool.enabled !== false)
+			.flatMap((tool) => tool.replacesBuiltinTools ?? []),
+	);
+	const selectedBuiltinTools = profile.builtinToolNames.filter(
+		(name) => defaultBuiltinTools.has(name) && !replacedBuiltinTools.has(name),
+	);
 	if (selectedBuiltinTools.length === DEFAULT_BUILTIN_TOOL_NAMES.length) return undefined;
 	return [...selectedBuiltinTools, ...customTools.map((tool) => tool.name)];
 }
