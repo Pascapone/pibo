@@ -93,7 +93,7 @@ fi
 
 [[ "$(id -u)" -eq 0 ]] || { echo "Host setup must run as root" >&2; exit 1; }
 install -d -m 0700 "$pool_root" "$pool_root/inbox" "$pool_root/artifacts" "$pool_root/slots" "$pool_root/failures"
-install -d -m 0755 "$acme_webroot/.well-known/acme-challenge"
+install -d -m 0755 "$acme_webroot" "$acme_webroot/.well-known" "$acme_webroot/.well-known/acme-challenge"
 cat > "$env_path" <<EOF
 PIBO_COMPUTE_POOL_BASE_URL=$base_url
 PIBO_COMPUTE_POOL_ROOT=$pool_root
