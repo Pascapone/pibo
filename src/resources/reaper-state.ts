@@ -16,6 +16,7 @@ export interface ResourceReaperState {
 		unmanagedBrowsers: number;
 		staleFiles: number;
 		computeWorkers: number;
+		deploymentLeases?: number;
 	};
 	lastError?: string;
 }
