@@ -79,7 +79,10 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 	process.env.PIBO_HOME = piboHome;
 	mkdirSync(piboHome, { recursive: true });
 	writeFileSync(join(piboHome, "user-settings.json"), `${JSON.stringify({
-		settings: { telemetryRetention: { enabled: true, days: 30, lastPrunedAt } },
+		settings: {
+			transcription: { providerId: "openai" },
+			telemetryRetention: { enabled: true, days: 30, lastPrunedAt },
+		},
 	}, null, 2)}\n`);
 	const { channel, baseURL, dispose } = await startChatHost(dir);
 	try {
@@ -88,6 +91,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		});
 		assert.equal(current.response.status, 200);
 		assert.equal(current.data.userSettings.timezone, "UTC");
+		assert.deepEqual(current.data.userSettings.transcription, { providerId: "openai-chatgpt" });
 		assert.deepEqual(current.data.userSettings.telemetryRetention, { enabled: true, days: 30, lastPrunedAt });
 
 		const missingOrigin = await fetch(`${baseURL}/api/chat/user-settings`, {
@@ -135,6 +139,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		const persisted = JSON.parse(readFileSync(join(process.env.PIBO_HOME, "user-settings.json"), "utf-8"));
 		assert.equal(persisted.settings.timezone, "Europe/Berlin");
 		assert.equal(persisted.settings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+		assert.deepEqual(persisted.settings.transcription, { providerId: "openai-chatgpt" });
 		assert.deepEqual(persisted.settings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 		assert.equal("users" in persisted, false);
 	} finally {
@@ -142,6 +147,69 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		dispose();
 		if (originalPiboHome === undefined) delete process.env.PIBO_HOME;
 		else process.env.PIBO_HOME = originalPiboHome;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("chat gateway-settings API validates and persists yielded-run concurrency", async () => {
+	const originalPiboHome = process.env.PIBO_HOME;
+	const originalGatewayLimit = process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+	const originalSessionLimit = process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS;
+	const dir = mkdtempSync(join(tmpdir(), "pibo-gateway-settings-web-"));
+	process.env.PIBO_HOME = join(dir, "pibo-home");
+	process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = "60";
+	process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS = "12";
+	const { channel, baseURL, dispose } = await startChatHost(dir);
+	try {
+		const current = await fetchJson(`${baseURL}/api/chat/gateway-settings`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(current.response.status, 200);
+		assert.deepEqual(current.data.gatewaySettings, {
+			maxConcurrentYieldedRuns: 60,
+			sessionConcurrentYieldedRuns: 12,
+		});
+
+		const missingOrigin = await fetch(`${baseURL}/api/chat/gateway-settings`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-1", "content-type": "application/json" },
+			body: JSON.stringify({ maxConcurrentYieldedRuns: 80, sessionConcurrentYieldedRuns: 16 }),
+		});
+		assert.equal(missingOrigin.status, 403);
+
+		const invalid = await fetchJson(`${baseURL}/api/chat/gateway-settings`, {
+			method: "PATCH",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ maxConcurrentYieldedRuns: 0 }),
+		});
+		assert.equal(invalid.response.status, 400);
+		assert.match(invalid.data.error, /Invalid gateway yielded-run concurrency/);
+
+		const saved = await fetchJson(`${baseURL}/api/chat/gateway-settings`, {
+			method: "PATCH",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ maxConcurrentYieldedRuns: 80, sessionConcurrentYieldedRuns: 16 }),
+		});
+		assert.equal(saved.response.status, 200);
+		assert.deepEqual(saved.data.gatewaySettings, {
+			maxConcurrentYieldedRuns: 80,
+			sessionConcurrentYieldedRuns: 16,
+		});
+
+		const persisted = JSON.parse(readFileSync(join(process.env.PIBO_HOME, "gateway-settings.json"), "utf-8"));
+		assert.deepEqual(persisted.settings, {
+			maxConcurrentYieldedRuns: 80,
+			sessionConcurrentYieldedRuns: 16,
+		});
+	} finally {
+		await channel.stop?.();
+		dispose();
+		if (originalPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = originalPiboHome;
+		if (originalGatewayLimit === undefined) delete process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = originalGatewayLimit;
+		if (originalSessionLimit === undefined) delete process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS = originalSessionLimit;
 		rmSync(dir, { recursive: true, force: true });
 	}
 });

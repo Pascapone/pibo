@@ -17,11 +17,13 @@ import {
 	User,
 } from "lucide-react";
 import type { PiboSignalSnapshot, Span, SpanStatus, SpanType } from "../types";
+import type { ToolDisplayMode } from "../session-views/types";
 import { AgentDelegationCard } from "../components/AgentDelegationCard";
 import { PendingUserMessageDelivery } from "../components/PendingUserMessageDelivery";
 import { countRender } from "../renderMetrics";
 import { JsonRenderer } from "./JsonRenderer";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { isToolDisplaySpan } from "./tool-display-spans";
 
 type SpanNodeProps = {
 	span: Span;
@@ -30,6 +32,7 @@ type SpanNodeProps = {
 	expansionDepth: SpanExpansionDepth;
 	expansionSignal: number;
 	expandThinking: boolean;
+	toolDisplayMode?: ToolDisplayMode;
 	onFork?: (entryId: string) => void;
 	onOpenSession?: (piboSessionId: string) => void;
 };
@@ -46,6 +49,7 @@ type TraceSpanCardProps = {
 	onFork?: (entryId: string) => void;
 	onOpenSession?: (piboSessionId: string) => void;
 	signals?: PiboSignalSnapshot;
+	toolDisplayMode?: ToolDisplayMode;
 	childrenContent?: ReactNode;
 };
 
@@ -146,6 +150,7 @@ export const SpanNode = memo(function SpanNode({
 	expansionDepth,
 	expansionSignal,
 	expandThinking,
+	toolDisplayMode = "default",
 	onFork,
 	onOpenSession,
 }: SpanNodeProps) {
@@ -191,6 +196,7 @@ export const SpanNode = memo(function SpanNode({
 			onToggle={handleToggle}
 			onFork={onFork}
 			onOpenSession={onOpenSession}
+			toolDisplayMode={toolDisplayMode}
 			childrenContent={
 				hasChildren
 					? span.children?.map((child) => (
@@ -202,6 +208,7 @@ export const SpanNode = memo(function SpanNode({
 								expansionDepth={expansionDepth}
 								expansionSignal={expansionSignal}
 								expandThinking={expandThinking}
+								toolDisplayMode={toolDisplayMode}
 								onFork={onFork}
 								onOpenSession={onOpenSession}
 							/>
@@ -222,6 +229,7 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	onFork,
 	onOpenSession,
 	signals,
+	toolDisplayMode = "default",
 	childrenContent,
 }: TraceSpanCardProps) {
 	countRender("TraceSpanCard");
@@ -230,6 +238,7 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	const statusStyles = getStatusStyles(span.status, isActive);
 	const isUserMessage = span.spanType === "user.prompt" || span.spanType === "user_input";
 	const hasChildren = Boolean(span.children?.length);
+	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpan(span);
 	const relativeTime = formatRelativeTime(span.startTime, startTime);
 	const duration = span.durationUs
 		? `${(span.durationUs / 1000).toFixed(1)}ms`
@@ -238,18 +247,18 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 			: null;
 
 	const handleCardDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
-		if (isInteractiveSpanEventTarget(event)) return;
+		if (compactToolDisplay || isInteractiveSpanEventTarget(event)) return;
 		onToggle();
 	};
 	const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-		if (isInteractiveSpanEventTarget(event)) return;
+		if (compactToolDisplay || isInteractiveSpanEventTarget(event)) return;
 		if (event.key === "Enter" || event.key === " ") {
 			event.preventDefault();
 			onToggle();
 		}
 	};
 
-	if (span.spanType === "agent.delegation") {
+	if (span.spanType === "agent.delegation" && toolDisplayMode === "default") {
 		return (
 			<div
 				className="relative mb-4"
@@ -304,9 +313,9 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 				}`}
 				onDoubleClick={handleCardDoubleClick}
 				onKeyDown={handleCardKeyDown}
-				role="button"
-				tabIndex={0}
-				aria-expanded={contentExpanded}
+				role={compactToolDisplay ? undefined : "button"}
+				tabIndex={compactToolDisplay ? undefined : 0}
+				aria-expanded={compactToolDisplay ? undefined : contentExpanded}
 			>
 				<SpanHeader
 					span={span}
@@ -319,11 +328,12 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 					onToggle={onToggle}
 					onFork={onFork}
 					onOpenSession={onOpenSession}
+					toolDisplayMode={toolDisplayMode}
 				/>
 
-				{contentExpanded ? <SpanContent span={span} /> : null}
+				{!compactToolDisplay && contentExpanded ? <SpanContent span={span} /> : null}
 
-				{hasChildren && childrenExpanded && contentExpanded ? (
+				{!compactToolDisplay && hasChildren && childrenExpanded && contentExpanded ? (
 					<div className="min-w-0 border-t border-slate-700 bg-slate-900/50 py-4">
 						{childrenContent}
 					</div>
@@ -351,6 +361,7 @@ function SpanHeader({
 	onToggle,
 	onFork,
 	onOpenSession,
+	toolDisplayMode,
 }: {
 	span: Span;
 	config: SpanTypeConfig;
@@ -362,23 +373,32 @@ function SpanHeader({
 	onToggle: () => void;
 	onFork?: (entryId: string) => void;
 	onOpenSession?: (piboSessionId: string) => void;
+	toolDisplayMode: ToolDisplayMode;
 }) {
+	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpan(span);
+	const intent = toolDisplayMode === "intent" ? stringField(span.attributes.intent) : undefined;
 	const userMessageHeaderClass = span.spanType === "user.prompt" || span.spanType === "user_input" ? "bg-[#11a4d4]/10" : statusStyles.headerClass;
-	const headerClassName = `${contentExpanded ? `border-b ${config.borderColor}/20` : ""} ${userMessageHeaderClass}`;
+	const headerClassName = `${contentExpanded && !compactToolDisplay ? `border-b ${config.borderColor}/20` : ""} ${userMessageHeaderClass}`;
 
 	return (
 		<div className={headerClassName}>
 			<div className="box-border flex w-full min-w-0 items-center" style={{ maxWidth: "100%" }}>
 				<div className="min-w-0 flex-1 px-4 py-2 text-left">
 					<span className={`min-w-0 text-xs font-bold ${config.color} uppercase tracking-wider flex items-center gap-2`}>
-						{contentExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+						{compactToolDisplay ? null : contentExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
 						<SpanIconBadge spanType={span.spanType} config={config} isActive={isActive} />
-						<span className="shrink-0">{config.label}</span>
-						{span.name ? (
-							<span className="min-w-0 truncate font-normal text-slate-500 dark:text-slate-400 normal-case">
-								: {span.name}
-							</span>
-						) : null}
+						{intent ? (
+							<span className="min-w-0 truncate normal-case">{intent}</span>
+						) : (
+							<>
+								<span className="shrink-0">{config.label}</span>
+								{span.name ? (
+									<span className="min-w-0 truncate font-normal text-slate-500 dark:text-slate-400 normal-case">
+										: {span.name}
+									</span>
+								) : null}
+							</>
+						)}
 						{isActive ? <span className="w-1.5 h-1.5 rounded-full bg-[#11a4d4] animate-pulse" /> : null}
 					</span>
 				</div>

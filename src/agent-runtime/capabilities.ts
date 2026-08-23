@@ -71,6 +71,7 @@ export type AgentRuntimeCapabilities = {
 		piboManaged: AgentRuntimeCapabilityDelivery;
 		nativeToolInspection: AgentRuntimeCapabilityDelivery;
 		nativeToolYielding: AgentRuntimeCapabilityDelivery;
+		intentTracing: AgentRuntimeConfigurableFeatureCapability;
 	};
 	mcp: {
 		externalServers: AgentRuntimeCapabilityDelivery;
@@ -139,6 +140,9 @@ const BOOLEAN_CAPABILITY_PATHS = [
 	"nativeSubagents.supported",
 	"nativeSubagents.configurable",
 	"nativeSubagents.enabledByDefault",
+	"tools.intentTracing.supported",
+	"tools.intentTracing.configurable",
+	"tools.intentTracing.enabledByDefault",
 	"historyImport",
 	"auth.status",
 	"auth.cancel",
@@ -234,7 +238,7 @@ export function validateAgentRuntimeCapabilities(value: unknown): string[] {
 	if (reasoningSupported === false && Array.isArray(reasoningValues) && reasoningValues.length > 0) {
 		errors.push("reasoning.values must be omitted or empty when reasoning is unsupported");
 	}
-	for (const feature of ["contextDiscovery", "nativeSubagents"] as const) {
+	for (const feature of ["contextDiscovery", "nativeSubagents", "tools.intentTracing"] as const) {
 		const supported = readPath(value, `${feature}.supported`);
 		const configurable = readPath(value, `${feature}.configurable`);
 		const enabledByDefault = readPath(value, `${feature}.enabledByDefault`);
@@ -351,6 +355,11 @@ export function createMinimalAgentRuntimeCapabilities(): AgentRuntimeCapabilitie
 			piboManaged: unavailable,
 			nativeToolInspection: unavailable,
 			nativeToolYielding: unavailable,
+			intentTracing: {
+				supported: false,
+				configurable: false,
+				enabledByDefault: false,
+			},
 		},
 		mcp: {
 			externalServers: unavailable,

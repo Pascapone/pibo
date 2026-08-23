@@ -120,6 +120,7 @@ import {
 	readProviderAuthCatalog,
 } from "./provider-auth-actions.js";
 import { ensurePrivateChatUploadDirectory, prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, saveUploadedChatFiles } from "./chat-files.js";
+import { responseChatTranscription, responseChatTranscriptionProviders } from "./chat-transcription.js";
 import {
 	chatSettingsRoute,
 	chatSettingsRouteInvalidatesBootstrapCatalog,
@@ -319,6 +320,18 @@ export const CHAT_WEB_CHANNEL = "pibo.chat-web";
 export { CHAT_WEB_MOUNT_PATH } from "./static-assets.js";
 export { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 
+export type ChatVscodeWebIntegrationOptions = {
+	url?: string;
+	workspaceRoot?: string;
+};
+
+export type ChatWebIntegrations = {
+	vscode?: {
+		url: string;
+		workspaceRoot?: string;
+	};
+};
+
 export type ChatWebAppOptions = {
 	defaultProfile?: string;
 	agentStorePath?: string;
@@ -330,6 +343,7 @@ export type ChatWebAppOptions = {
 	projectStorePath?: string;
 	cronStorePath?: string;
 	ralphStorePath?: string;
+	vscodeWeb?: ChatVscodeWebIntegrationOptions;
 };
 
 type ChatPersistenceMetrics = {
@@ -435,6 +449,7 @@ type ChatWebAppState = {
 	workflowLifecycleEventStore: ChatWorkflowLifecycleEventStore;
 	workflowPromptAssetStore: ChatWorkflowPromptAssetStore;
 	telemetryRetentionMaintenance: TelemetryRetentionMaintenanceState;
+	integrations: ChatWebIntegrations;
 };
 
 type ChatGatewayResourceMetrics = {
@@ -451,6 +466,7 @@ type ChatBootstrapCatalog = {
 	modelCatalog: Awaited<ReturnType<typeof loadModelCatalog>>;
 	agentCatalog: Awaited<ReturnType<typeof buildAgentCatalog>>;
 	capabilities: { actions: ReturnType<PiboWebAppContext["channelContext"]["getGatewayActions"]> };
+	integrations: ChatWebIntegrations;
 };
 
 const BOOTSTRAP_CATALOG_CACHE_TTL_MS = 30_000;
@@ -479,6 +495,7 @@ function loadBootstrapCatalog(
 		capabilities: {
 			actions: context.channelContext.getGatewayActions(),
 		},
+		integrations: state.integrations,
 	}));
 	state.bootstrapCatalogCache = { expiresAt: now + BOOTSTRAP_CATALOG_CACHE_TTL_MS, value };
 	value.catch(() => {
@@ -796,6 +813,33 @@ function createReliabilityStore(path?: string): PiboReliabilityStore {
 
 function createDataStore(options: ChatWebAppOptions): PiboDataStore {
 	return new PiboDataStore(options.dataStorePath, { payloadRootDir: options.dataPayloadRootDir });
+}
+
+function resolveVscodeWebUrl(value: string | undefined): string | undefined {
+	const trimmed = value?.trim();
+	if (!trimmed) return undefined;
+	const configurationOrigin = "https://pibo.invalid";
+	try {
+		const parsed = new URL(trimmed, `${configurationOrigin}/`);
+		if (trimmed.startsWith("/") && !trimmed.includes("\\") && parsed.origin === configurationOrigin) {
+			return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+		}
+	} catch {
+		// Fall through to the startup error below.
+	}
+	throw new Error("VS Code Web URL must be a same-origin absolute path beginning with /");
+}
+
+function resolveChatWebIntegrations(options: ChatWebAppOptions): ChatWebIntegrations {
+	const url = resolveVscodeWebUrl(options.vscodeWeb?.url ?? process.env.PIBO_VSCODE_WEB_URL);
+	if (!url) return {};
+	const workspaceRoot = (options.vscodeWeb?.workspaceRoot ?? process.env.PIBO_VSCODE_WEB_WORKSPACE_ROOT)?.trim();
+	return {
+		vscode: {
+			url,
+			...(workspaceRoot ? { workspaceRoot } : {}),
+		},
+	};
 }
 
 function createPersistenceMetrics(): ChatPersistenceMetrics {
@@ -4369,6 +4413,7 @@ async function sendChatMessage(input: {
 
 
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
+	const integrations = resolveChatWebIntegrations(options);
 	ensurePrivateChatUploadDirectory();
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
@@ -4412,6 +4457,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		workflowLifecycleEventStore: new ChatWorkflowLifecycleEventStore(dataStore),
 		workflowPromptAssetStore: new ChatWorkflowPromptAssetStore(dataStore),
 		telemetryRetentionMaintenance: {},
+		integrations,
 	};
 
 	let disposed = false;
@@ -4440,6 +4486,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		},
 		async handleRequest(request, context) {
 			const url = new URL(request.url);
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/auth-check` && request.method === "GET") {
+				await requireSession(request, context);
+				return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+			}
 			if (isTelemetryRetentionMaintenanceDue({ state: state.telemetryRetentionMaintenance })) {
 				maybeRunTelemetryRetentionMaintenance({
 					state: state.telemetryRetentionMaintenance,
@@ -4479,6 +4529,17 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginMultipartRequest(request);
 				await requireSession(request, context);
 				return responseJson(await saveUploadedChatFiles(request), { status: 201 });
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/transcription/providers` && request.method === "GET") {
+				await requireSession(request, context);
+				return await responseChatTranscriptionProviders(context);
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/transcription` && request.method === "POST") {
+				requireSameOriginMultipartRequest(request);
+				await requireSession(request, context);
+				return await responseChatTranscription(request, context);
 			}
 
 			if (url.pathname === CHAT_WEB_API_PREFIX + "/download" && request.method === "GET") {
@@ -5343,11 +5404,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (settingsRoute) {
 				if (chatSettingsRouteRequiresSameOrigin(settingsRoute)) requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
+				const transcriptionProviderIds = settingsRoute.kind === "user-settings" && settingsRoute.action === "update"
+					? (await context.channelContext.getTranscriptionProviderInfos?.())?.map((provider) => provider.id)
+					: undefined;
 				const response = await handleChatSettingsRoute({
 					route: settingsRoute,
 					request,
 					cwd: process.cwd(),
 					dataStore: state.dataStore,
+					transcriptionProviderIds,
 				});
 				if (chatSettingsRouteInvalidatesBootstrapCatalog(settingsRoute)) invalidateBootstrapCatalogCache(state);
 				return response;

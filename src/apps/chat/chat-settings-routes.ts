@@ -1,7 +1,12 @@
 import { readPiboBasePrompt, savePiboCustomBasePrompt, setPiboBasePromptMode } from "../../core/base-prompt.js";
 import { readPiboCompactionPrompt, savePiboCustomCompactionPrompt, setPiboCompactionPromptMode } from "../../core/compaction-prompt.js";
+import {
+	loadPiboGatewaySettings,
+	sanitizeConcurrentYieldedRuns,
+	updatePiboGatewaySettings,
+} from "../../core/gateway-settings.js";
 import { sanitizeTelemetryRetentionDays, sanitizeTelemetryRetentionSettings } from "../../core/telemetry-retention-settings.js";
-import { loadPiboUserSettings, sanitizeShortcutSettings, sanitizeTimezone, updatePiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
+import { loadPiboUserSettings, sanitizeShortcutSettings, sanitizeTimezone, sanitizeTranscriptionProviderId, updatePiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
 import { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 import {
@@ -11,6 +16,7 @@ import {
 	normalizeCompactionPromptMode,
 	updateChatModelDefaults,
 	type ChatBasePromptBody,
+	type ChatGatewaySettingsBody,
 	type ChatModelDefaultsBody,
 	type ChatTelemetryRetentionPruneBody,
 	type ChatUserSettingsBody,
@@ -20,6 +26,7 @@ import { pruneTelemetryOlderThan } from "./telemetry-retention-service.js";
 export type ChatSettingsRoute =
 	| { kind: "model-defaults" }
 	| { kind: "user-settings"; action: "read" | "update" }
+	| { kind: "gateway-settings"; action: "read" | "update" }
 	| { kind: "telemetry-retention"; action: "prune" }
 	| { kind: "base-prompt"; action: "read" | "set-mode" | "save-custom" }
 	| { kind: "compaction-prompt"; action: "read" | "set-mode" | "save-custom" };
@@ -28,6 +35,8 @@ export function chatSettingsRoute(pathname: string, method: string): ChatSetting
 	if (pathname === `${CHAT_WEB_API_PREFIX}/model-defaults` && method === "PATCH") return { kind: "model-defaults" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/user-settings` && method === "GET") return { kind: "user-settings", action: "read" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/user-settings` && method === "PATCH") return { kind: "user-settings", action: "update" };
+	if (pathname === `${CHAT_WEB_API_PREFIX}/gateway-settings` && method === "GET") return { kind: "gateway-settings", action: "read" };
+	if (pathname === `${CHAT_WEB_API_PREFIX}/gateway-settings` && method === "PATCH") return { kind: "gateway-settings", action: "update" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/telemetry-retention/prune` && method === "POST") return { kind: "telemetry-retention", action: "prune" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/base-prompt` && method === "GET") return { kind: "base-prompt", action: "read" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/base-prompt` && method === "PATCH") return { kind: "base-prompt", action: "set-mode" };
@@ -51,6 +60,7 @@ export async function handleChatSettingsRoute(input: {
 	request: Request;
 	cwd?: string;
 	dataStore?: import("../../data/pibo-store.js").PiboDataStore;
+	transcriptionProviderIds?: readonly string[];
 }): Promise<Response> {
 	const cwd = input.cwd ?? process.cwd();
 	const { route, request } = input;
@@ -63,7 +73,13 @@ export async function handleChatSettingsRoute(input: {
 	if (route.kind === "user-settings") {
 		if (route.action === "read") return responseJson({ userSettings: loadPiboUserSettings() });
 		const body = await readJsonBody<ChatUserSettingsBody>(request);
-		return responseJson({ userSettings: updatePiboUserSettings(userSettingsPatch(body)) });
+		return responseJson({ userSettings: updatePiboUserSettings(userSettingsPatch(body, input.transcriptionProviderIds)) });
+	}
+
+	if (route.kind === "gateway-settings") {
+		if (route.action === "read") return responseJson({ gatewaySettings: loadPiboGatewaySettings() });
+		const body = await readJsonBody<ChatGatewaySettingsBody>(request);
+		return responseJson({ gatewaySettings: updatePiboGatewaySettings(gatewaySettingsPatch(body)) });
 	}
 
 	if (route.kind === "telemetry-retention") {
@@ -93,7 +109,23 @@ export async function handleChatSettingsRoute(input: {
 	return responseJson({ compactionPrompt: await savePiboCustomCompactionPrompt(normalizeCompactionPromptMarkdown(body.markdown), cwd) });
 }
 
-function userSettingsPatch(body: ChatUserSettingsBody): Parameters<typeof updatePiboUserSettings>[0] {
+function gatewaySettingsPatch(body: ChatGatewaySettingsBody): Parameters<typeof updatePiboGatewaySettings>[0] {
+	const patch: Parameters<typeof updatePiboGatewaySettings>[0] = {};
+	if (body.maxConcurrentYieldedRuns !== undefined) {
+		const value = sanitizeConcurrentYieldedRuns(body.maxConcurrentYieldedRuns);
+		if (!value) throw new PiboWebHttpError("Invalid gateway yielded-run concurrency", 400);
+		patch.maxConcurrentYieldedRuns = value;
+	}
+	if (body.sessionConcurrentYieldedRuns !== undefined) {
+		const value = sanitizeConcurrentYieldedRuns(body.sessionConcurrentYieldedRuns);
+		if (!value) throw new PiboWebHttpError("Invalid session yielded-run concurrency", 400);
+		patch.sessionConcurrentYieldedRuns = value;
+	}
+	if (Object.keys(patch).length === 0) throw new PiboWebHttpError("No gateway settings provided", 400);
+	return patch;
+}
+
+function userSettingsPatch(body: ChatUserSettingsBody, transcriptionProviderIds?: readonly string[]): Parameters<typeof updatePiboUserSettings>[0] {
 	const patch: Parameters<typeof updatePiboUserSettings>[0] = {};
 	if (body.timezone !== undefined) {
 		const timezone = sanitizeTimezone(body.timezone);
@@ -101,6 +133,17 @@ function userSettingsPatch(body: ChatUserSettingsBody): Parameters<typeof update
 		patch.timezone = timezone;
 	}
 	if (body.shortcuts !== undefined) patch.shortcuts = sanitizeShortcutSettings(body.shortcuts);
+	if (body.transcription !== undefined) {
+		const raw = body.transcription && typeof body.transcription === "object" && !Array.isArray(body.transcription)
+			? body.transcription as Record<string, unknown>
+			: {};
+		const providerId = sanitizeTranscriptionProviderId(raw.providerId);
+		if (!providerId) throw new PiboWebHttpError("Invalid transcription provider", 400);
+		if (transcriptionProviderIds && !transcriptionProviderIds.includes(providerId)) {
+			throw new PiboWebHttpError(`Unknown transcription provider "${providerId}"`, 400);
+		}
+		patch.transcription = { providerId };
+	}
 	if (body.telemetryRetention !== undefined) {
 		const current = loadPiboUserSettings().telemetryRetention;
 		patch.telemetryRetention = {

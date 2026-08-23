@@ -422,6 +422,15 @@ export type NavigationData = {
 	sessions: PiboWebSessionNode[];
 };
 
+export type VscodeWebIntegration = {
+	url: string;
+	workspaceRoot?: string;
+};
+
+export type WebIntegrations = {
+	vscode?: VscodeWebIntegration;
+};
+
 export type BootstrapData = NavigationData & {
 	agents: AgentProfile[];
 	customAgents: CustomAgent[];
@@ -430,6 +439,7 @@ export type BootstrapData = NavigationData & {
 	modelCatalog?: ModelCatalog;
 	agentCatalog?: AgentCatalog;
 	capabilities: { actions: Array<{ name: string; description?: string; slashCommands: string[] }> };
+	integrations?: WebIntegrations;
 };
 
 export type ProjectsBootstrapData = {
@@ -450,6 +460,7 @@ export type ProjectsBootstrapData = {
 	modelCatalog?: ModelCatalog;
 	agentCatalog?: AgentCatalog;
 	capabilities: { actions: Array<{ name: string; description?: string; slashCommands: string[] }> };
+	integrations?: WebIntegrations;
 };
 
 
@@ -621,6 +632,7 @@ export type AgentRuntimeCapabilities = {
 		piboManaged: AgentRuntimeCapabilityDelivery;
 		nativeToolInspection: AgentRuntimeCapabilityDelivery;
 		nativeToolYielding: AgentRuntimeCapabilityDelivery;
+		intentTracing: { supported: boolean; configurable: boolean; enabledByDefault: boolean };
 	};
 	mcp: { externalServers: AgentRuntimeCapabilityDelivery; statusInspection: boolean };
 	skills: AgentRuntimeCapabilityDelivery;

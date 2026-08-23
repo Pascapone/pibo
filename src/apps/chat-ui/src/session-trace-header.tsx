@@ -5,7 +5,7 @@ import type {
   getChatSessionView,
   listChatSessionViews,
 } from "./session-views/registry";
-import type { ChatSessionViewId } from "./session-views/types";
+import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
 import { WebAnnotationsEntryPoints } from "./web-annotations";
 import {
   WorkflowHeaderMeta,
@@ -42,6 +42,9 @@ export function SessionTraceHeader({
   showRawEvents,
   showThinking,
   expandThinking,
+  toolDisplayMode,
+  toolIntentSupported,
+  onToolDisplayModeChange,
   onShowWebAnnotationsPanel,
   onHideWebAnnotationsPanel,
   onSelectSessionView,
@@ -70,6 +73,9 @@ export function SessionTraceHeader({
   showRawEvents: boolean;
   showThinking: boolean;
   expandThinking: boolean;
+  toolDisplayMode: ToolDisplayMode;
+  toolIntentSupported: boolean;
+  onToolDisplayModeChange: (mode: ToolDisplayMode) => void;
   onShowWebAnnotationsPanel: () => void;
   onHideWebAnnotationsPanel: () => void;
   onSelectSessionView: (viewId: ChatSessionViewId) => void;
@@ -165,6 +171,19 @@ export function SessionTraceHeader({
             <Plus size={15} />
           </button>
         ) : null}
+        <select
+          value={toolDisplayMode}
+          onChange={(event) => onToolDisplayModeChange(event.target.value as ToolDisplayMode)}
+          title="Tool display mode"
+          aria-label="Tool display mode"
+          data-pibo-debug="tool-display-mode"
+          className="h-8 rounded-sm border border-slate-700 bg-[#0e1116] px-2 text-[11px] font-bold uppercase tracking-wide text-slate-300 outline-none focus:border-[#11a4d4]"
+        >
+          <option value="default">Tools: Default</option>
+          <option value="hide">Tools: Hide</option>
+          <option value="slim">Tools: Slim</option>
+          <option value="intent" disabled={!toolIntentSupported}>Tools: Intent</option>
+        </select>
         <div
           role="group"
           aria-label="Session views"

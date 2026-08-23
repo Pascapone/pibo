@@ -538,6 +538,54 @@ test("event-log projection merges tool lifecycle updates and compaction lifecycl
 	assert.equal(compaction.completedAt, "2026-01-01T00:00:07.000Z");
 });
 
+test("idle Pi history keeps persisted tool intent metadata and sanitized arguments", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		transcriptEntries: [
+			{
+				id: "entry-user",
+				type: "message",
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "Read the file" }] },
+			},
+			{
+				id: "entry-assistant",
+				type: "message",
+				timestamp: "2026-01-01T00:00:02.000Z",
+				message: {
+					role: "assistant",
+					content: [{
+						type: "toolCall",
+						id: "tool-intent",
+						name: "read",
+						arguments: { i: "Reviewing project documentation", path: "README.md" },
+					}],
+				},
+			},
+			{
+				id: "entry-result",
+				type: "message",
+				timestamp: "2026-01-01T00:00:03.000Z",
+				message: { role: "toolResult", toolCallId: "tool-intent", toolName: "read", content: [{ type: "text", text: "ok" }] },
+			},
+		],
+		events: [outputEvent(1, {
+			type: "tool_execution_started",
+			piboSessionId: "ps_root",
+			toolCallId: "tool-intent",
+			toolName: "read",
+			args: { path: "README.md" },
+			intent: "Reviewing project documentation",
+		})],
+		status: "idle",
+	});
+
+	const tool = view.nodes.flatMap((node) => [node, ...node.children]).find((node) => node.toolCallId === "tool-intent");
+	assert.equal(tool?.intent, "Reviewing project documentation");
+	assert.deepEqual(tool?.input, { path: "README.md" });
+	assert.deepEqual(tool?.output, { content: [{ type: "text", text: "ok" }] });
+});
+
 test("v2 event mapper preserves session error details for trace rendering", () => {
 	const event = storedPiboEventFromV2Row({
 		stream_id: 42,

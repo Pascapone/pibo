@@ -6,9 +6,11 @@ import {
 	ChevronRight,
 	Edit3,
 	ExternalLink,
+	Gauge,
 	Key,
 	Keyboard,
 	Layers,
+	Mic,
 	Plus,
 	Power,
 	PowerOff,
@@ -17,7 +19,8 @@ import {
 	Wrench,
 } from "lucide-react";
 import { createUserSkill, deletePiPackage, deleteUserSkill, getUserSkill, installUserSkill, patchPiPackage, postPiPackage, updateUserSkill } from "../api-agent-designer";
-import { getUserSettings, patchModelDefaults, patchUserSettings, pruneTelemetryRetention } from "../api-settings";
+import { getGatewaySettings, getUserSettings, patchGatewaySettings, patchModelDefaults, patchUserSettings, pruneTelemetryRetention } from "../api-settings";
+import { getTranscriptionProviders } from "../api-transcription";
 import { piPackageMeta, type PiPackageCatalogItem } from "../agents/agent-designer-model";
 import { AgentRuntimeOptions, DesignerPanel, EmptyCatalog, InlineCheckboxToggle, PiPackageDetails } from "../agents/designer-ui";
 import { writeStoredExpandThinking, writeStoredShowThinking } from "../app-storage";
@@ -92,6 +95,34 @@ export function SettingsView({
 		);
 	}
 
+	if (activePanel === "concurrency") {
+		return (
+			<div className="p-6 overflow-auto">
+				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+					<Gauge size={16} />
+					Concurrency
+				</h1>
+				<DesignerPanel title="Yielded runs">
+					<YieldedRunConcurrencySettings />
+				</DesignerPanel>
+			</div>
+		);
+	}
+
+	if (activePanel === "transcription") {
+		return (
+			<div className="p-6 overflow-auto">
+				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+					<Mic size={16} />
+					Transcription
+				</h1>
+				<DesignerPanel title="Audio transcription">
+					<TranscriptionProviderSettings />
+				</DesignerPanel>
+			</div>
+		);
+	}
+
 	if (activePanel === "providers") {
 		return (
 			<div className="p-6 overflow-auto">
@@ -161,6 +192,102 @@ export function SettingsView({
 					onChanged={onModelDefaultsChanged}
 				/>
 			</DesignerPanel>
+		</div>
+	);
+}
+
+function YieldedRunConcurrencySettings() {
+	const queryClient = useQueryClient();
+	const { data, isLoading } = useQuery({ queryKey: ["gateway-settings"], queryFn: getGatewaySettings });
+	const [gatewayLimit, setGatewayLimit] = useState("50");
+	const [sessionLimit, setSessionLimit] = useState("10");
+	const [saving, setSaving] = useState(false);
+	const [message, setMessage] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!data) return;
+		setGatewayLimit(String(data.maxConcurrentYieldedRuns));
+		setSessionLimit(String(data.sessionConcurrentYieldedRuns));
+	}, [data]);
+
+	const save = async () => {
+		const maxConcurrentYieldedRuns = Number(gatewayLimit);
+		const sessionConcurrentYieldedRuns = Number(sessionLimit);
+		if (!Number.isSafeInteger(maxConcurrentYieldedRuns) || maxConcurrentYieldedRuns < 1) {
+			setError("Gateway concurrency must be a positive integer.");
+			return;
+		}
+		if (!Number.isSafeInteger(sessionConcurrentYieldedRuns) || sessionConcurrentYieldedRuns < 1) {
+			setError("Session concurrency must be a positive integer.");
+			return;
+		}
+		setSaving(true);
+		setMessage(null);
+		setError(null);
+		try {
+			const saved = await patchGatewaySettings({ maxConcurrentYieldedRuns, sessionConcurrentYieldedRuns });
+			setGatewayLimit(String(saved.maxConcurrentYieldedRuns));
+			setSessionLimit(String(saved.sessionConcurrentYieldedRuns));
+			queryClient.setQueryData(["gateway-settings"], saved);
+			setMessage("Concurrency settings saved. New yielded runs use these limits immediately.");
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<div className="max-w-xl">
+			<p className="mb-4 text-xs text-slate-400">
+				Limit concurrent yielded tool and subagent runs across the gateway and within each controlling Pibo Session.
+			</p>
+			<div className="grid gap-4 sm:grid-cols-2">
+				<label className="block text-xs text-slate-300" htmlFor="gateway-concurrent-yielded-runs">
+					<span className="mb-1 block font-semibold">Gateway limit</span>
+					<input
+						id="gateway-concurrent-yielded-runs"
+						type="number"
+						min="1"
+						step="1"
+						value={gatewayLimit}
+						disabled={isLoading || saving}
+						onChange={(event) => setGatewayLimit(event.target.value)}
+						className="w-full rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 font-mono text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+					/>
+					<span className="mt-1 block text-[11px] text-slate-500">Default: 50 across this gateway.</span>
+				</label>
+				<label className="block text-xs text-slate-300" htmlFor="session-concurrent-yielded-runs">
+					<span className="mb-1 block font-semibold">Per-session limit</span>
+					<input
+						id="session-concurrent-yielded-runs"
+						type="number"
+						min="1"
+						step="1"
+						value={sessionLimit}
+						disabled={isLoading || saving}
+						onChange={(event) => setSessionLimit(event.target.value)}
+						className="w-full rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 font-mono text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+					/>
+					<span className="mt-1 block text-[11px] text-slate-500">Default: 10 for each controlling session.</span>
+				</label>
+			</div>
+			<div className="mt-4 flex items-center gap-3">
+				<button
+					type="button"
+					disabled={isLoading || saving}
+					onClick={() => void save()}
+					className="whitespace-nowrap rounded-sm bg-[#11a4d4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0d8db7] disabled:opacity-60"
+				>
+					{saving ? "Saving…" : "Save limits"}
+				</button>
+				{message ? <span className="text-xs text-green-400">{message}</span> : null}
+			</div>
+			{error ? <div className="mt-3 text-xs text-red-300">{error}</div> : null}
+			<p className="mt-4 font-mono text-[10px] text-slate-500">
+				Environment fallbacks: PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS and PIBO_SESSION_CONCURRENT_YIELDED_RUNS.
+			</p>
 		</div>
 	);
 }
@@ -243,6 +370,70 @@ function UserTimezoneSettings() {
 				</select>
 			</div>
 			<div className="mt-2 text-[11px] text-slate-500">Choose a city-based timezone. Changes are saved automatically and loaded into every runtime context together with the current Pibo Session ID.</div>
+			{saving ? <div className="mt-2 text-xs text-slate-400">Saving…</div> : null}
+			{error ? <div className="mt-2 text-xs text-red-300">{error}</div> : null}
+		</div>
+	);
+}
+
+function TranscriptionProviderSettings() {
+	const queryClient = useQueryClient();
+	const settingsQuery = useQuery({ queryKey: ["user-settings"], queryFn: getUserSettings });
+	const providersQuery = useQuery({ queryKey: ["transcription-providers"], queryFn: getTranscriptionProviders });
+	const providers = providersQuery.data?.providers ?? [];
+	const selectedProviderId = settingsQuery.data?.transcription.providerId ?? providersQuery.data?.selectedProviderId ?? "";
+	const [draft, setDraft] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (selectedProviderId) setDraft(selectedProviderId);
+	}, [selectedProviderId]);
+
+	const save = async (providerId: string) => {
+		setDraft(providerId);
+		setSaving(true);
+		setError(null);
+		try {
+			const saved = await patchUserSettings({ transcription: { providerId } });
+			queryClient.setQueryData(["user-settings"], saved);
+			queryClient.setQueryData(["transcription-providers"], (current: typeof providersQuery.data) => current
+				? { ...current, selectedProviderId: saved.transcription.providerId }
+				: current);
+			setDraft(saved.transcription.providerId);
+		} catch (err) {
+			setDraft(selectedProviderId);
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const currentProviderAvailable = providers.some((provider) => provider.id === draft);
+	return (
+		<div>
+			<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Transcription provider</div>
+			<div className="max-w-xl">
+				<select
+					value={draft}
+					disabled={settingsQuery.isLoading || providersQuery.isLoading || saving || providers.length === 0}
+					onChange={(event) => void save(event.target.value)}
+					className="w-full min-w-0 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+				>
+					{draft && !currentProviderAvailable ? <option value={draft}>{draft} (unavailable)</option> : null}
+					{providers.map((provider) => (
+						<option key={provider.id} value={provider.id}>
+							{provider.name}{provider.configured ? "" : " — authentication required"}
+						</option>
+					))}
+				</select>
+			</div>
+			<div className="mt-2 text-[11px] text-slate-500">This selection is independent from the providers used by chat models. Recordings use the selected provider and are inserted into the composer without sending the message.</div>
+			{providers.find((provider) => provider.id === draft)?.description ? (
+				<div className="mt-2 text-[11px] text-slate-400">{providers.find((provider) => provider.id === draft)?.description}</div>
+			) : null}
+			{providers.length === 0 && !providersQuery.isLoading ? <div className="mt-2 text-xs text-amber-300">No transcription providers are registered.</div> : null}
+			{providersQuery.error ? <div className="mt-2 text-xs text-red-300">{providersQuery.error instanceof Error ? providersQuery.error.message : String(providersQuery.error)}</div> : null}
 			{saving ? <div className="mt-2 text-xs text-slate-400">Saving…</div> : null}
 			{error ? <div className="mt-2 text-xs text-red-300">{error}</div> : null}
 		</div>

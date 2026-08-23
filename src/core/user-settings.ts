@@ -6,15 +6,22 @@ import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSe
 
 export const DEFAULT_USER_TIMEZONE = "UTC";
 export const DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT = "Alt+Shift+A";
+export const DEFAULT_TRANSCRIPTION_PROVIDER_ID = "openai-chatgpt";
+const LEGACY_OPENAI_TRANSCRIPTION_PROVIDER_ID = "openai";
 export const DEFAULT_PIBO_USER_SETTINGS_PATH = "user-settings.json";
 
 export type PiboShortcutSettings = {
 	webAnnotationsToggle: string;
 };
 
+export type PiboTranscriptionSettings = {
+	providerId: string;
+};
+
 export type PiboUserSettings = {
 	timezone: string;
 	shortcuts: PiboShortcutSettings;
+	transcription: PiboTranscriptionSettings;
 	telemetryStaleThresholds: TelemetryStaleThresholdSettings;
 	telemetryRetention: TelemetryRetentionSettings;
 };
@@ -58,6 +65,24 @@ export function sanitizeShortcut(value: unknown): string | undefined {
 	return shortcut && shortcut.length <= 80 ? shortcut : undefined;
 }
 
+export function sanitizeTranscriptionProviderId(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const providerId = value.trim();
+	return /^[a-z0-9][a-z0-9._-]{0,79}$/i.test(providerId) ? providerId : undefined;
+}
+
+export function sanitizeTranscriptionSettings(value: unknown): PiboTranscriptionSettings {
+	const raw = value && typeof value === "object" && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: {};
+	const providerId = sanitizeTranscriptionProviderId(raw.providerId);
+	return {
+		providerId: providerId === LEGACY_OPENAI_TRANSCRIPTION_PROVIDER_ID
+			? DEFAULT_TRANSCRIPTION_PROVIDER_ID
+			: providerId ?? DEFAULT_TRANSCRIPTION_PROVIDER_ID,
+	};
+}
+
 export function sanitizeTimezone(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const timezone = value.trim();
@@ -77,6 +102,7 @@ function sanitizeUserSettings(value: unknown): PiboUserSettings {
 	return {
 		timezone: sanitizeTimezone(raw.timezone) ?? DEFAULT_USER_TIMEZONE,
 		shortcuts: sanitizeShortcutSettings(raw.shortcuts),
+		transcription: sanitizeTranscriptionSettings(raw.transcription),
 		telemetryStaleThresholds: sanitizeTelemetryStaleThresholdSettings(raw.telemetryStaleThresholds),
 		telemetryRetention: sanitizeTelemetryRetentionSettings(raw.telemetryRetention),
 	};

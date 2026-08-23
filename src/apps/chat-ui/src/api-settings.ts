@@ -62,7 +62,15 @@ export type UserSettings = {
 	shortcuts: {
 		webAnnotationsToggle: string;
 	};
+	transcription: {
+		providerId: string;
+	};
 	telemetryRetention: TelemetryRetentionSettings;
+};
+
+export type GatewaySettings = {
+	maxConcurrentYieldedRuns: number;
+	sessionConcurrentYieldedRuns: number;
 };
 
 export async function getBasePrompt(): Promise<BasePromptSnapshot> {
@@ -123,6 +131,18 @@ export async function patchUserSettings(input: Partial<UserSettings>): Promise<U
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(input),
 	})).userSettings;
+}
+
+export async function getGatewaySettings(): Promise<GatewaySettings> {
+	return (await requestJson<{ gatewaySettings: GatewaySettings }>("/api/chat/gateway-settings")).gatewaySettings;
+}
+
+export async function patchGatewaySettings(input: GatewaySettings): Promise<GatewaySettings> {
+	return (await requestJson<{ gatewaySettings: GatewaySettings }>("/api/chat/gateway-settings", {
+		method: "PATCH",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(input),
+	})).gatewaySettings;
 }
 
 export async function pruneTelemetryRetention(input: { days: number; dryRun?: boolean }): Promise<TelemetryRetentionRunResult> {

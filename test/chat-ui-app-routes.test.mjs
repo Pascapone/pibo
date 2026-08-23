@@ -27,6 +27,18 @@ async function runAppRoutesScenario() {
 			{ area: "settings", panel: "providers" },
 		);
 		assert.deepEqual(
+			chatRouteFromLocation("/apps/chat/vscode", {}),
+			{ area: "vscode" },
+		);
+		assert.deepEqual(
+			chatRouteFromLocation("/settings/transcription", {}),
+			{ area: "settings", panel: "transcription" },
+		);
+		assert.deepEqual(
+			chatRouteFromLocation("/settings/concurrency", {}),
+			{ area: "settings", panel: "concurrency" },
+		);
+		assert.deepEqual(
 			chatRouteFromLocation("/workflows/view/wf_1/v2", {}),
 			{ area: "workflows", viewWorkflowId: "wf_1", viewWorkflowVersion: "v2" },
 		);
@@ -58,8 +70,20 @@ async function runAppRoutesScenario() {
 			{ to: "/context", search: { piboSessionId: "ps_3" }, replace: false },
 		);
 		assert.deepEqual(
+			chatNavigationRequest({ area: "vscode" }, false, "terminal"),
+			{ to: "/vscode", replace: false },
+		);
+		assert.deepEqual(
 			chatNavigationRequest({ area: "settings", panel: "skills" }, true, "terminal"),
 			{ to: "/settings/skills", replace: true },
+		);
+		assert.deepEqual(
+			chatNavigationRequest({ area: "settings", panel: "transcription" }, true, "terminal"),
+			{ to: "/settings/transcription", replace: true },
+		);
+		assert.deepEqual(
+			chatNavigationRequest({ area: "settings", panel: "concurrency" }, true, "terminal"),
+			{ to: "/settings/concurrency", replace: true },
 		);
 		assert.deepEqual(
 			chatNavigationRequest({ area: "sessions" }, false, "terminal"),

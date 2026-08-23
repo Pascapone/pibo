@@ -6,6 +6,7 @@ export function TraceSessionView({
 	isLoading,
 	showThinking,
 	expandThinking,
+	toolDisplayMode,
 	sessionAgentProfile,
 	sessionActiveModel,
 	signals,
@@ -27,6 +28,7 @@ export function TraceSessionView({
 			isLoading={isLoading}
 			showThinking={showThinking}
 			expandThinking={expandThinking}
+			toolDisplayMode={toolDisplayMode}
 			sessionAgentProfile={sessionAgentProfile}
 			sessionActiveModel={sessionActiveModel}
 			signals={signals}

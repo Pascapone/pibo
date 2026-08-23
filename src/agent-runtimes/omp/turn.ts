@@ -254,11 +254,13 @@ export class OmpRpcTurnController {
 			return;
 		}
 		if (frame.type === "tool_execution_start") {
+			const intent = typeof frame.intent === "string" ? frame.intent.trim() : "";
 			this.emit({
 				type: "tool_execution_started",
 				toolCallId: frame.toolCallId,
 				toolName: frame.toolName,
 				args: frame.args,
+				...(intent ? { intent } : {}),
 			});
 			return;
 		}

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import test from "node:test";
 
@@ -57,4 +58,10 @@ async function runComposerSizingScenario() {
 
 test("chat composer sizes wrapped empty placeholders without changing typed-text growth limits", async () => {
 	await assert.doesNotReject(runComposerSizingScenario());
+});
+
+test("chat composer uses the compact single-line placeholder", () => {
+	const source = readFileSync("src/apps/chat-ui/src/composer/Composer.tsx", "utf8");
+	assert.match(source, /placeholder=\{disabled \? "Select a session to message" : "Send message \.\.\."\}/);
+	assert.doesNotMatch(source, /Send Message \(\/ for commands or \$ for skills\)/);
 });
