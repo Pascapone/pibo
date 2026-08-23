@@ -98,23 +98,38 @@ Create these public DNS records:
 
 Do not publish an `AAAA` record unless the development host has a confirmed stable IPv6 address and inbound IPv6 HTTPS is configured. A transient or dynamically leased IPv6 address is not suitable.
 
-Issue a certificate containing both names:
+Issue one certificate containing the ten fixed slot hostnames:
 
-```text
-POOL_BASE_HOST
-*.POOL_BASE_HOST
+```bash
+for index in $(seq -w 1 10); do
+  printf 'slot-%s.%s\n' "$index" "$POOL_BASE_HOST"
+done
 ```
 
-A wildcard certificate requires DNS-01. Configure the DNS client's provider-specific API credential outside the repository, or delegate `_acme-challenge.POOL_BASE_HOST` with a CNAME to an automated challenge zone controlled by the certificate client. The resulting client must be able to create and delete TXT records at `_acme-challenge.POOL_BASE_HOST` unattended for renewal.
+The fixed names allow automated HTTP-01 issuance and renewal through nginx. No DNS-01 API credential, TXT record, CNAME challenge delegation, or wildcard certificate is required. Before initial issuance, run host setup without TLS paths so it exposes only `/.well-known/acme-challenge/` for the ten slot names on HTTP port 80 and returns 503 for other slot requests.
 
-After DNS resolves and the certificate and key exist, rerun host setup with their absolute paths:
+After DNS resolves, issue the certificate using the host's existing Certbot account:
+
+```bash
+certbot certonly --non-interactive --webroot \
+  --webroot-path /var/lib/pibo-deployment-pool-acme \
+  --cert-name pibo-deployment-pool \
+  --deploy-hook 'nginx -t && systemctl reload nginx' \
+  -d "slot-01.${POOL_BASE_HOST}" -d "slot-02.${POOL_BASE_HOST}" \
+  -d "slot-03.${POOL_BASE_HOST}" -d "slot-04.${POOL_BASE_HOST}" \
+  -d "slot-05.${POOL_BASE_HOST}" -d "slot-06.${POOL_BASE_HOST}" \
+  -d "slot-07.${POOL_BASE_HOST}" -d "slot-08.${POOL_BASE_HOST}" \
+  -d "slot-09.${POOL_BASE_HOST}" -d "slot-10.${POOL_BASE_HOST}"
+```
+
+After the certificate and key exist, rerun host setup with their absolute paths:
 
 ```bash
 sudo -E \
   PIBO_COMPUTE_POOL_BASE_URL="https://${POOL_BASE_HOST}" \
   PIBO_POOL_RUNTIME_BINARY=<installed-pibo-binary> \
-  PIBO_POOL_TLS_CERTIFICATE=<wildcard-fullchain-path> \
-  PIBO_POOL_TLS_CERTIFICATE_KEY=<wildcard-private-key-path> \
+  PIBO_POOL_TLS_CERTIFICATE=<san-fullchain-path> \
+  PIBO_POOL_TLS_CERTIFICATE_KEY=<san-private-key-path> \
   scripts/deployment-pool-host-setup.sh --apply --restart-gateway
 ```
 
@@ -122,23 +137,7 @@ The setup script writes fixed nginx mappings for all configured slots, validates
 
 ## Google OAuth registration
 
-Register one exact redirect URI per fixed slot:
-
-```bash
-for index in $(seq -w 1 10); do
-  printf 'https://slot-%s.%s/api/auth/callback/google\n' "$index" "$POOL_BASE_HOST"
-done
-```
-
-If the Google client configuration also uses authorized JavaScript origins, register:
-
-```bash
-for index in $(seq -w 1 10); do
-  printf 'https://slot-%s.%s\n' "$index" "$POOL_BASE_HOST"
-done
-```
-
-Do not register wildcard OAuth callback URIs; Google requires exact redirect URIs.
+Do not add Google OAuth callbacks for deployment slots. The existing canonical Google OAuth callback remains the only registered callback and continues to serve normal human testing on the canonical development instance. Pool slots use Machine Auth for API, automation, and browser validation.
 
 ## Acceptance checks
 
@@ -150,5 +149,5 @@ Do not register wildcard OAuth callback URIs; Google requires exact redirect URI
 6. Renew updates expiry; explicit release removes the container and isolated active data.
 7. An expired lease is removed by the Resource Reaper.
 8. A labeled orphan is selected by dry-run and removed by apply.
-9. Public HTTPS has a valid wildcard certificate, Google OAuth completes on a slot callback, and a headful browser can use Chat Web.
+9. Public HTTPS has a valid SAN certificate for all fixed slots, a headful browser can use a slot through Machine Auth, and canonical Google OAuth remains unchanged.
 10. The canonical development instance remains healthy before and after pool activity.

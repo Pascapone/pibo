@@ -19,7 +19,7 @@ Optional environment:
   PIBO_COMPUTE_POOL_RUNTIME_IMAGE Default: pibo:latest
   PIBO_COMPUTE_POOL_SEED_SOURCE_HOME     Default: /root/.pibo
   PIBO_COMPUTE_POOL_SEED_SOURCE_PI_HOME  Default: /root/.pi
-  PIBO_POOL_TLS_CERTIFICATE       Enables nginx config when paired with key
+  PIBO_POOL_TLS_CERTIFICATE       Enables HTTPS slot routing when paired with key
   PIBO_POOL_TLS_CERTIFICATE_KEY
 
 Usage:
@@ -62,6 +62,7 @@ wrapper_path="/usr/local/bin/pibo-pool"
 dropin_path="/etc/systemd/system/pibo-web.service.d/deployment-pool.conf"
 nginx_available="/etc/nginx/sites-available/pibo-deployment-pool.conf"
 nginx_enabled="/etc/nginx/sites-enabled/pibo-deployment-pool.conf"
+acme_webroot="/var/lib/pibo-deployment-pool-acme"
 
 for value in "$slot_count" "$max_active" "$port_base" "$port_stride"; do
 	[[ "$value" =~ ^[0-9]+$ && "$value" -gt 0 ]] || { echo "Slot counts and ports must be positive integers" >&2; exit 2; }
@@ -76,7 +77,8 @@ Dry-run only. Files that would be managed:
   $slot_env_path
   $wrapper_path
   $dropin_path
-  $nginx_available (only when TLS certificate and key are provided)
+  $nginx_available
+  $acme_webroot
 
 Pool: $base_url
 Slots: $slot_count configured, $max_active active maximum
@@ -91,6 +93,7 @@ fi
 
 [[ "$(id -u)" -eq 0 ]] || { echo "Host setup must run as root" >&2; exit 1; }
 install -d -m 0700 "$pool_root" "$pool_root/inbox" "$pool_root/artifacts" "$pool_root/slots" "$pool_root/failures"
+install -d -m 0755 "$acme_webroot/.well-known/acme-challenge"
 cat > "$env_path" <<EOF
 PIBO_COMPUTE_POOL_BASE_URL=$base_url
 PIBO_COMPUTE_POOL_ROOT=$pool_root
@@ -138,26 +141,39 @@ cert="${PIBO_POOL_TLS_CERTIFICATE:-}"
 key="${PIBO_POOL_TLS_CERTIFICATE_KEY:-}"
 if [[ -n "$cert" || -n "$key" ]]; then
 	[[ -f "$cert" && -f "$key" ]] || { echo "Both PIBO_POOL_TLS_CERTIFICATE and PIBO_POOL_TLS_CERTIFICATE_KEY must exist" >&2; exit 2; }
-	server_names=()
-	map_entries=()
-	for ((index=1; index<=slot_count; index++)); do
-		slot=$(printf 'slot-%02d' "$index")
-		port=$((port_base + (index - 1) * port_stride))
-		server_names+=("${slot}.${base_host}")
-		map_entries+=("    ${slot}.${base_host} ${port};")
-	done
-	{
-		echo 'map $host $pibo_deployment_pool_port {'
-		echo '    default 0;'
-		printf '%s\n' "${map_entries[@]}"
-		echo '}'
-		echo
-		echo 'server {'
-		echo '    listen 80;'
-		echo '    listen [::]:80;'
-		echo "    server_name ${server_names[*]};"
-		echo '    return 301 https://$host$request_uri;'
-		echo '}'
+fi
+server_names=()
+map_entries=()
+for ((index=1; index<=slot_count; index++)); do
+	slot=$(printf 'slot-%02d' "$index")
+	port=$((port_base + (index - 1) * port_stride))
+	server_names+=("${slot}.${base_host}")
+	map_entries+=("    ${slot}.${base_host} ${port};")
+done
+{
+	echo 'map $host $pibo_deployment_pool_port {'
+	echo '    default 0;'
+	printf '%s\n' "${map_entries[@]}"
+	echo '}'
+	echo
+	echo 'server {'
+	echo '    listen 80;'
+	echo '    listen [::]:80;'
+	echo "    server_name ${server_names[*]};"
+	echo '    location ^~ /.well-known/acme-challenge/ {'
+	echo "        root $acme_webroot;"
+	echo '        default_type text/plain;'
+	echo '        try_files $uri =404;'
+	echo '    }'
+	echo '    location / {'
+	if [[ -n "$cert" ]]; then
+		echo '        return 301 https://$host$request_uri;'
+	else
+		echo '        return 503;'
+	fi
+	echo '    }'
+	echo '}'
+	if [[ -n "$cert" ]]; then
 		echo
 		echo 'server {'
 		echo '    listen 443 ssl http2;'
@@ -181,12 +197,15 @@ if [[ -n "$cert" || -n "$key" ]]; then
 		echo '        proxy_pass http://127.0.0.1:$pibo_deployment_pool_port;'
 		echo '    }'
 		echo '}'
-	} > "$nginx_available"
-	ln -sfn "$nginx_available" "$nginx_enabled"
-	nginx -t
-	systemctl reload nginx
+	fi
+} > "$nginx_available"
+ln -sfn "$nginx_available" "$nginx_enabled"
+nginx -t
+systemctl reload nginx
+if [[ -n "$cert" ]]; then
+	echo "HTTPS slot routing enabled."
 else
-	echo "TLS paths not supplied; nginx slot routing remains disabled."
+	echo "HTTP ACME challenge routing enabled; HTTPS slot routing remains disabled until a certificate is supplied."
 fi
 
 if $restart_gateway; then

@@ -17,7 +17,7 @@ Pibo already has Docker worker resource limits, package candidate installation, 
 ### Decision: Fixed slots and ports
 
 - **Choice:** Preconfigure slot ordinals, hostnames, and loopback port blocks.
-- **Rationale:** Acquire/release needs no proxy reload; OAuth callback URLs are stable.
+- **Rationale:** Acquire/release needs no proxy reload, and fixed names support one automatically renewed SAN certificate.
 
 ### Decision: SQLite lease registry
 
@@ -50,7 +50,7 @@ SQLite files are copied with the Node SQLite backup API rather than raw live-fil
 ## Risks / Trade-offs
 
 - Full seeds are large and slower to prepare.
-- Fixed slots require their OAuth callbacks to be registered before use.
+- Slot access uses Machine Auth; the existing canonical Google OAuth callback is not duplicated across slots.
 - The shared image must remain compatible with mounted package runtimes.
 - Three active deployments are a starting policy, not a claim that the host can support more.
 

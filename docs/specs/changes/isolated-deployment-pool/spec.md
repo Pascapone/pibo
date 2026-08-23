@@ -1,6 +1,6 @@
 # Spec: Isolated Deployment Pool
 
-**Status:** Implementing
+**Status:** Implemented; public DNS/TLS activation pending
 **Created:** 2026-08-23
 **Requester / Source:** User request in Pibo Session `ps_d0fb25d0-2b64-467c-b79d-a1d058db598b`
 **Related docs:** [Proposal](./proposal.md), [Design](./design.md), [Tasks](./tasks.md)
@@ -21,7 +21,7 @@ Pibo MUST provide a bounded lease pool where an agent can deploy an exact packag
 - Concurrency-safe acquire, status, doctor, renew, release, and reap commands.
 - Exact runtime directories and checksum-addressed npm package artifacts.
 - Full, medium, and fresh seed modes.
-- Better Auth and Machine Auth slot configuration.
+- Machine Auth slot configuration while retaining the single existing canonical Google OAuth callback.
 - Docker limits, labels, health checks, failed retention, artifact cleanup, and reaper integration.
 
 ### Out of Scope
@@ -66,15 +66,16 @@ Acquire MUST require or default a seed mode from `full`, `medium`, or `fresh`.
 - Fresh starts without existing rooms, sessions, projects, cron jobs, or traces.
 - Live SQLite databases are cloned through a consistent backup operation.
 
-### Requirement: Public slots use normal auth
+### Requirement: Public slots use Machine Auth
 
-Each slot MUST use Better Auth and Machine Auth. Public local auth MUST NOT be enabled.
+Each slot MUST support Machine Auth. Public local auth MUST NOT be enabled, and the pool MUST NOT require a separate Google OAuth callback for each slot.
 
 #### Acceptance
 
 - Slot config contains its own canonical base URL and trusted origin.
 - Machine-key hash records are available without copying the raw key.
 - Unauthenticated app requests remain unauthenticated.
+- The existing canonical Google OAuth callback remains unchanged.
 
 ### Requirement: Leases expire and can be renewed or released
 

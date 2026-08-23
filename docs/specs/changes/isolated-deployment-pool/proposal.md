@@ -8,7 +8,7 @@ A single shared Pibo2 deployment cannot safely validate multiple agent changes a
 
 - Add a lease-based `pibo compute pool` CLI for fixed Docker deployment slots.
 - Install exact npm artifacts in a content-addressed store and mount them into one shared runtime image.
-- Give every slot an isolated Pibo home, workspace, ports, public URL, Better Auth configuration, and machine-auth records.
+- Give every slot an isolated Pibo home, workspace, ports, public URL, and Machine Auth configuration while leaving the canonical Google OAuth callback unchanged.
 - Support `full`, `medium`, and `fresh` seed modes.
 - Reap expired leases and retained failed snapshots automatically.
 
@@ -26,5 +26,5 @@ A single shared Pibo2 deployment cannot safely validate multiple agent changes a
 - **Code:** New compute pool registry, seed copier, artifact store, Docker launcher, CLI, and reaper integration.
 - **CLI:** New `pibo compute pool` command group.
 - **Data:** Pool SQLite registry and bounded slot/artifact directories under the configured pool root.
-- **Auth:** Every slot uses normal Better Auth plus Machine Auth; public local auth remains prohibited.
+- **Auth:** Machine Auth is the supported slot access path. The existing canonical Google OAuth callback remains the only Google callback; public local auth remains prohibited.
 - **Host:** Fixed loopback ports and externally configured DNS/TLS/nginx slot routes.

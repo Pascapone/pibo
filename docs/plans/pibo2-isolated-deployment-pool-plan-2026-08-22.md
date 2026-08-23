@@ -1,6 +1,6 @@
 # Implementierungsplan: Isolierter Pibo2 Deployment Pool
 
-**Status:** Implemented; public DNS/TLS/OAuth activation pending
+**Status:** Implemented; public DNS/TLS activation pending
 **Created:** 2026-08-22
 **Updated:** 2026-08-23
 **Source:** Nutzeranfrage in Pibo Session `ps_d0fb25d0-2b64-467c-b79d-a1d058db598b`
@@ -130,7 +130,7 @@ Vorteile gegenüber dynamischen Hostnamen:
 
 - keine nginx-Konfigurationsänderung pro Lease;
 - keine Race Conditions bei Reloads;
-- feste Google-OAuth-Callback-URLs können einmalig registriert werden;
+- die zehn festen Hostnamen passen in ein automatisch erneuertes SAN-Zertifikat;
 - einfacher Zusammenhang zwischen Hostname, Portblock, Slot-Verzeichnis und Container;
 - abgelaufene Slots können eindeutig auf eine neutrale 503-Seite fallen;
 - ein Wildcard-DNS-Eintrag genügt.
@@ -139,11 +139,11 @@ Vorteile gegenüber dynamischen Hostnamen:
 
 Erforderlich sind:
 
-- ein A/AAAA-Eintrag für den Deployment-Base-Host;
-- ein Wildcard-Eintrag `*.<deployment-pool-base-host>` auf Pibo2;
-- ein Wildcard-Zertifikat über DNS-01.
+- ein A-Eintrag für den Deployment-Base-Host;
+- ein Wildcard-A-Eintrag `*.<deployment-pool-base-host>` auf Pibo2;
+- ein automatisch erneuertes SAN-Zertifikat für die zehn festen Slot-Hostnamen.
 
-DNS-01-Automatisierung und ein Wildcard-Zertifikat sind für V1 gesetzt. Sobald Base-Host, DNS-Provider und Challenge-Verfahren im Implementierungsschritt feststehen, erhält der Betreiber die exakten anzulegenden Records und gegebenenfalls die benötigten delegierten Challenge-Records. DNS-Änderungen werden nicht vorausgesetzt oder stillschweigend vorgenommen.
+Weil die Hostnamen fest sind, erfolgt Zertifikatsausstellung und Erneuerung per HTTP-01 über nginx. Squarespace benötigt dafür weder DNS-API-Zugang noch TXT-/CNAME-Challenge-Records. Ein AAAA-Eintrag wird erst bei stabiler IPv6-Adresse und geprüftem IPv6-HTTPS-Routing ergänzt.
 
 ### nginx
 
@@ -158,7 +158,7 @@ nginx darf niemals direkt auf Docker-Socket-Metadaten vertrauen. Die Slot-Portzu
 
 ### Entscheidung
 
-Jeder Full-Pibo-Slot verwendet normale Pibo-Authentifizierung. Der Docker-Local-Auth-Modus wird nicht öffentlich durch nginx weitergereicht.
+Machine Auth ist der unterstützte Zugriffsweg für Deployment-Slots. Der bestehende kanonische Google-OAuth-Callback bleibt der einzige Google-Callback. Der Docker-Local-Auth-Modus wird nicht öffentlich durch nginx weitergereicht.
 
 ### Machine Auth
 
@@ -170,9 +170,9 @@ Jeder Full-Pibo-Slot verwendet normale Pibo-Authentifizierung. Der Docker-Local-
 
 ### Google OAuth
 
-Weil Slot-Hostnamen fest sind, können ihre Callback-URLs einmalig beim OAuth-Provider registriert werden. Das erlaubt auch menschliche Tests ohne Sonder-Auth-Modus.
+Für Deployment-Slots werden keine zusätzlichen Google-OAuth-Callbacks registriert. Der bestehende Callback des kanonischen Pibo2 bleibt unverändert und dient weiterhin menschlichen Tests auf der kanonischen Entwicklungsinstanz.
 
-Google OAuth ist für V1 verpflichtend. Alle festen Slot-Callback-URLs werden vor Freigabe registriert und durch einen echten Login getestet. Machine Auth bleibt zusätzlich für automatisierte Browser- und API-Validierung erhalten.
+Slot-API-, Agenten- und Browservalidierung verwendet Machine Auth. Falls später ein Google-Login direkt auf beliebigen Slot-Hostnamen benötigt wird, erfordert das einen zentralen Auth-Handoff und ist eine eigene Erweiterung statt zehn Callback-Registrierungen.
 
 ### Secret-Grenze
 
@@ -461,8 +461,8 @@ Der Workflow wird in den bestehenden Pibo-V2-Server-Skill integriert oder als ei
 
 - Change Spec unter `docs/specs/changes/isolated-deployment-pool/` erstellen.
 - Auth-, Seed-, Artefakt- und Cleanup-Grenzen als testbare Anforderungen festschreiben.
-- DNS-Provider, Base-Host und DNS-01-Verfahren bestätigen und dem Betreiber die exakten Records nennen.
-- Google OAuth für alle festen Slots sowie zusätzliche Machine Auth als V1-Vertrag festschreiben.
+- Squarespace-Base- und Wildcard-A-Records bestätigen und dem Betreiber exakt nennen.
+- den bestehenden kanonischen Google-OAuth-Callback als einzigen Callback sowie Machine Auth für Slots als V1-Vertrag festschreiben.
 - kuratierten realistischen Golden Seed und zweistündige, auf drei Snapshots begrenzte Fehler-Retention festschreiben.
 
 **Verifikation:** Spec-Review mit eindeutigen Acceptance Criteria und ohne offene Sicherheitsblocker.
@@ -521,7 +521,7 @@ Aufgaben:
 - slot-spezifische `auth.baseURL` und Trusted Origins;
 - Machine-Key-Hash-Provisioning;
 - private Secret-Injection;
-- optional feste OAuth-Callbacks.
+- keine zusätzlichen OAuth-Callbacks für Slots.
 
 **Verifikation:** Beide Slots authentifizieren unabhängig; Session- und Produktdaten eines Slots erscheinen nicht im anderen.
 
@@ -529,8 +529,8 @@ Aufgaben:
 
 Aufgaben:
 
-- Base- und Wildcard-DNS konfigurieren;
-- Wildcard-Zertifikat per DNS-01 bereitstellen;
+- Base- und Wildcard-A-Records konfigurieren;
+- SAN-Zertifikat für die zehn festen Slot-Namen per HTTP-01 bereitstellen und automatisch erneuern;
 - statische Slot-Routen und neutrale Inactive-Seite einrichten;
 - bestehendes kanonisches Pibo2- und Session-Live-Preview-Routing unverändert halten;
 - nginx-Konfiguration testen, bevor sie geladen wird.
@@ -591,7 +591,7 @@ Reihenfolge:
 
 - Nicht authentifizierte Slot-Aufrufe erhalten keinen Chat-Zugriff.
 - Machine Auth funktioniert auf jedem Slot separat.
-- Google OAuth funktioniert auf allen registrierten Slot-Hostnamen und wurde jeweils durch einen echten Login geprüft.
+- Der bestehende kanonische Google-OAuth-Callback bleibt unverändert und funktionsfähig; es existieren keine Slot-Callbacks.
 - Cookies eines Slots autorisieren keinen anderen Slot.
 - Artefakte, Logs und Docker-Labels enthalten keine Secrets.
 - Docker-Ports sind nur über Loopback erreichbar.
@@ -635,7 +635,7 @@ Reihenfolge:
 | Öffentlicher Local Auth wird unsicher | normale Better Auth/Machine Auth pro Slot; Local Auth nicht öffentlich proxien |
 | Slot-Daten vermischen sich | eigener Seed-Klon und eigenes `PIBO_HOME` pro Slot |
 | Staler DB-/Docker-Zustand | Reconciliation bei Acquire, Status und Reaper |
-| DNS-01 kann mit dem gewählten Provider nicht automatisiert werden | Rollout blockieren, Providerverfahren klären und dem Betreiber exakte TXT-/CNAME-Records nennen; keine stille TLS-Ersatzlösung |
+| HTTP-01-Erneuerung für einen Slot-Namen schlägt fehl | Zertifikat nicht aktivieren, DNS/nginx-Challengepfad prüfen und `certbot renew --dry-run` erneut ausführen |
 | Alte Browsercookies greifen auf neue Lease zu | Slot-Auth-DB beim Reset neu erzeugen; alte Sessions dadurch ungültig |
 | Pool-Implementierung beschädigt kanonisches Pibo2 | separate Container/Ports/Verzeichnisse; nginx-Routing exakt; Canary-Rollout |
 
@@ -643,18 +643,16 @@ Reihenfolge:
 
 ### Festgelegt
 
-1. DNS-01-Automatisierung und Wildcard-TLS werden verwendet. Der Betreiber setzt die benötigten DNS-Records nach konkreter Anweisung.
-2. Google OAuth gehört ab V1 zu allen festen Slots; Machine Auth bleibt zusätzlich für Automation aktiv.
+1. Squarespace erhält einen Base- und einen Wildcard-A-Record; die zehn festen Slots verwenden ein per HTTP-01 erneuertes SAN-Zertifikat.
+2. Der bestehende kanonische Google-OAuth-Callback bleibt der einzige Google-Callback; Deployment-Slots verwenden Machine Auth.
 3. Der Golden Seed ist kuratiert, aber realistisch und basiert auf bewusst ausgewählten Pibo2-Testzuständen.
 4. Fehlgeschlagene Slot-Homes und begrenzte Logs bleiben zwei Stunden erhalten; höchstens drei Fehlersnapshots werden gleichzeitig aufbewahrt.
 5. Der Pool startet mit drei aktiven Slots. Eine spätere Erhöhung erfolgt nach praktischer Nutzung und manueller Bewertung.
 
 ### Noch zu klären
 
-1. Welcher DNS-Provider verwaltet den vorgesehenen Preview-/Deployment-Base-Host und welches DNS-01-Plugin beziehungsweise API-Verfahren ist verfügbar?
-2. Welcher konkrete Base-Host soll verwendet werden?
-3. Reicht für V1 ausschließlich das npm-Paket-Artefakt, oder wird zwingend ein Git-Ref-Buildpfad benötigt?
-4. Welche konkreten Räume, Sessions, Profile, Projekte und Fehlerzustände gehören in die erste Seed-Version?
+1. Reicht für V1 ausschließlich das npm-Paket-Artefakt, oder wird zwingend ein Git-Ref-Buildpfad benötigt?
+2. Welche konkreten Räume, Sessions, Profile, Projekte und Fehlerzustände gehören in die erste Seed-Version?
 
 ## 18. Erfolgskriterien
 

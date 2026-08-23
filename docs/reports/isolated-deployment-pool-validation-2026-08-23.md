@@ -4,7 +4,7 @@ Date: 2026-08-23
 
 ## Result
 
-The isolated deployment pool is installed and active on the dedicated Pibo2 development host. Internal slot lifecycle, isolation, authentication, model execution, streaming, retention, and cleanup passed. Public slot access remains intentionally disabled because wildcard DNS, automated DNS-01 issuance, and Google OAuth redirect registration require operator-controlled external configuration.
+The isolated deployment pool is installed and active on the dedicated Pibo2 development host. Internal slot lifecycle, isolation, authentication, model execution, streaming, retention, and cleanup passed. Public slot access remains intentionally disabled until the pool and wildcard A records resolve and an automatically renewed SAN certificate is issued for the ten fixed slot names.
 
 Validated candidate:
 
@@ -33,7 +33,7 @@ The host has:
 - Host CLI wrapper at `/usr/local/bin/pibo-pool`.
 - Pool configuration loaded into the canonical gateway through a systemd environment file.
 - Optional pool cleanup active in the Resource Reaper.
-- nginx slot routing intentionally absent until valid wildcard TLS is available.
+- nginx HTTPS slot routing intentionally absent until the fixed-slot SAN certificate is available; HTTP ACME challenge routing can be enabled beforehand.
 
 After final validation:
 
@@ -93,7 +93,7 @@ Observed seed behavior:
 - The final candidate completed a real model turn through Machine Auth and returned exactly `FINAL_POOL_OK`.
 - The live SSE stream included `RUN_STARTED`, `message_started`, `TEXT_MESSAGE_START`, multiple `TEXT_MESSAGE_CONTENT` frames, `TEXT_MESSAGE_END`, `assistant_message`, `RUN_FINISHED`, and `message_finished`.
 
-Public Google OAuth and headful browser validation remain pending because public wildcard DNS and TLS are not configured.
+Public headful slot-browser validation remains pending because pool DNS and TLS are not configured. The existing canonical Google OAuth callback remains the only Google callback and is not duplicated per slot.
 
 ## Lease and cleanup validation
 
@@ -112,10 +112,9 @@ The operator must complete these external steps before public slot URLs can be e
 
 1. Add the pool-base and wildcard `A` records described in `docs/project/isolated-deployment-pool-operations.md`.
 2. Do not add `AAAA` until a stable IPv6 address and inbound IPv6 route are confirmed.
-3. Provide a DNS provider API credential, or a delegated automated ACME challenge zone, for unattended DNS-01 renewal.
-4. Issue a certificate covering the pool base and wildcard slot hostname.
-5. Add all 10 exact Google OAuth callback URIs and, if used by the client configuration, all 10 JavaScript origins.
-6. Rerun host setup with the wildcard certificate and key paths to generate and activate nginx routing.
-7. Validate Google sign-in and Chat Web in a headful authenticated browser.
+3. Issue an automatically renewed HTTP-01 SAN certificate covering the ten fixed slot hostnames; no DNS-01 record or DNS API credential is required.
+4. Keep the existing canonical Google OAuth callback unchanged; do not add slot callbacks.
+5. Rerun host setup with the SAN certificate and key paths to generate and activate nginx routing.
+6. Validate a slot through Machine Auth in a headful browser and confirm canonical Google sign-in remains healthy.
 
 Until those steps are complete, the pool is ready for host-local and SSH-driven Machine Auth testing, but its public URLs are not expected to resolve.
