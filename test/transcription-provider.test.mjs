@@ -61,6 +61,7 @@ test("ChatGPT subscription transcription provider follows the Codex OAuth backen
 	});
 	const result = await provider.transcribe({
 		audio: { bytes: new Uint8Array([9, 8, 7]), filename: "recording.webm", mimeType: "audio/webm" },
+		clientUserAgent: "Mozilla/5.0 FixtureBrowser/1.0",
 	});
 
 	assert.equal(provider.id, "openai-chatgpt");
@@ -72,7 +73,7 @@ test("ChatGPT subscription transcription provider follows the Codex OAuth backen
 	assert.equal(captured.init.headers["ChatGPT-Account-Id"], "acct-test");
 	assert.equal(captured.init.headers.Origin, "https://chatgpt.com");
 	assert.equal(captured.init.headers.Referer, "https://chatgpt.com/");
-	assert.equal(captured.init.headers["User-Agent"], "codex-cli");
+	assert.equal(captured.init.headers["User-Agent"], "Mozilla/5.0 FixtureBrowser/1.0");
 	assert.ok(captured.init.body instanceof FormData);
 	assert.equal(captured.init.body.get("model"), null);
 	const file = captured.init.body.get("file");

@@ -62,6 +62,7 @@ async function readTranscriptionAudio(request: Request) {
 			filename,
 			mimeType: file.type || "application/octet-stream",
 		},
+		clientUserAgent: sanitizeClientUserAgent(request.headers.get("user-agent")),
 	};
 }
 
@@ -84,6 +85,12 @@ function isUploadedAudioFile(value: unknown): value is UploadedAudioFile {
 function sanitizeAudioFilename(value: string): string {
 	const filename = basename(value).replace(/[\u0000-\u001f\u007f]/g, "").trim();
 	return filename && !/^\.+$/.test(filename) ? filename : `recording-${Date.now()}.webm`;
+}
+
+function sanitizeClientUserAgent(value: string | null): string | undefined {
+	if (!value) return undefined;
+	const userAgent = value.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+	return userAgent ? userAgent.slice(0, 512) : undefined;
 }
 
 function transcriptionErrorStatus(error: PiboTranscriptionError): number {

@@ -87,7 +87,7 @@ The default provider MUST reuse the existing `openai-codex` OAuth credential and
 
 - The request targets `/backend-api/transcribe`.
 - The request contains the audio `file` and no API transcription model field.
-- The request uses the OAuth bearer token, includes `ChatGPT-Account-Id` when available, and carries the ChatGPT product origin context required by the endpoint boundary.
+- The request uses the OAuth bearer token, includes `ChatGPT-Account-Id` when available, and carries the sanitized recording browser's user agent plus ChatGPT product origin context required by the endpoint boundary.
 - An OpenAI API key alone does not mark this provider as configured.
 
 ### REQ-008: OpenAI API alternative
@@ -96,7 +96,7 @@ The official OpenAI Audio Transcriptions API MUST remain available as a separate
 
 ## Constraints
 
-- **Security / Privacy:** The API requires an authenticated same-origin request. Audio is processed in memory, OAuth tokens remain server-side, and recordings are not persisted by this capability.
+- **Security / Privacy:** The API requires an authenticated same-origin request. Audio is processed in memory, OAuth tokens remain server-side, only the sanitized browser user agent crosses the provider boundary, and recordings are not persisted by this capability.
 - **Compatibility:** Existing settings without transcription data select `openai-chatgpt`; the unreleased legacy value `openai` migrates to that provider, while explicit API selection persists as `openai-api`.
 - **Provider boundary:** Provider-specific authentication and HTTP behavior stay behind the transcription provider interface.
 - **Verification:** Unit, API, type/build, and authenticated browser validation are required.

@@ -27,6 +27,7 @@ export type { BetterAuthServiceOptions } from "./auth/better-auth.js";
 export type { PiboAuthIdentity, PiboAuthService, PiboAuthSession } from "./auth/types.js";
 export {
 	DEFAULT_OPENAI_CHATGPT_TRANSCRIPTION_URL,
+	DEFAULT_OPENAI_CHATGPT_USER_AGENT,
 	OPENAI_CHATGPT_TRANSCRIPTION_PROVIDER_ID,
 	OPENAI_CODEX_AUTH_PROVIDER_ID,
 	createOpenAiChatGptTranscriptionProvider,

@@ -6,6 +6,7 @@ export type PiboTranscriptionAudio = {
 
 export type PiboTranscriptionRequest = {
 	audio: PiboTranscriptionAudio;
+	clientUserAgent?: string;
 };
 
 export type PiboTranscriptionResult = {

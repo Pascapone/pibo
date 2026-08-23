@@ -10,6 +10,7 @@ import {
 export const OPENAI_CHATGPT_TRANSCRIPTION_PROVIDER_ID = "openai-chatgpt";
 export const OPENAI_CODEX_AUTH_PROVIDER_ID = "openai-codex";
 export const DEFAULT_OPENAI_CHATGPT_TRANSCRIPTION_URL = "https://chatgpt.com/backend-api/transcribe";
+export const DEFAULT_OPENAI_CHATGPT_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
 
 export type OpenAiChatGptTranscriptionAuth = {
 	accessToken: string;
@@ -67,7 +68,7 @@ export function createOpenAiChatGptTranscriptionProvider(
 				Authorization: `Bearer ${auth.accessToken}`,
 				Origin: "https://chatgpt.com",
 				Referer: "https://chatgpt.com/",
-				"User-Agent": "codex-cli",
+				"User-Agent": chatGptUserAgent(input.clientUserAgent),
 			};
 			if (auth.accountId) headers["ChatGPT-Account-Id"] = auth.accountId;
 
@@ -118,6 +119,13 @@ async function resolveOpenAiChatGptTranscriptionAuth(): Promise<OpenAiChatGptTra
 		accessToken,
 		accountId: getOpenAiAccountId(accessToken, credential.accountId),
 	};
+}
+
+function chatGptUserAgent(value: string | undefined): string {
+	const userAgent = value?.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+	return userAgent && userAgent.length <= 512 && /\bMozilla\/5\.0\b/.test(userAgent)
+		? userAgent
+		: DEFAULT_OPENAI_CHATGPT_USER_AGENT;
 }
 
 function getOpenAiAccountId(accessToken: string, storedAccountId: unknown): string | undefined {

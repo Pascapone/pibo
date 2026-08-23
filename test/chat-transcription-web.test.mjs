@@ -95,7 +95,7 @@ test("chat transcription API uses the independently selected provider", async ()
 		form.append("file", new File([new Uint8Array([4, 5, 6])], "recording.webm", { type: "audio/webm" }));
 		const response = await fetch(`${baseURL}/api/chat/transcription`, {
 			method: "POST",
-			headers: { "x-test-user": "user-1", origin: baseURL },
+			headers: { "x-test-user": "user-1", origin: baseURL, "user-agent": "Mozilla/5.0 TestBrowser/1.0" },
 			body: form,
 		});
 		assert.equal(response.status, 200);
@@ -106,6 +106,7 @@ test("chat transcription API uses the independently selected provider", async ()
 		assert.equal(calls[0].providerId, "fixture");
 		assert.equal(calls[0].input.audio.filename, "recording.webm");
 		assert.equal(calls[0].input.audio.mimeType, "audio/webm");
+		assert.equal(calls[0].input.clientUserAgent, "Mozilla/5.0 TestBrowser/1.0");
 		assert.deepEqual(calls[0].input.audio.bytes, new Uint8Array([4, 5, 6]));
 
 		const missingOriginForm = new FormData();
