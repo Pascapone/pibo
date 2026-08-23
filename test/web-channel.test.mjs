@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { request as nodeHttpRequest } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
@@ -7911,6 +7912,42 @@ test("chat web app accepts same-origin mutations behind a local reverse proxy", 
 		assert.equal(response.status, 201);
 		const payload = await response.json();
 		assert.equal(retiredPartitionField in payload.session, false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app accepts same-origin mutations through a Docker-published canonical host", async () => {
+	const canonicalBaseURL = "https://slot-01.pool.example.test";
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		web: { canonicalBaseURL },
+	});
+
+	try {
+		const target = new URL(baseURL);
+		const body = JSON.stringify({ profile: "base" });
+		const statusCode = await new Promise((resolvePromise, reject) => {
+			const request = nodeHttpRequest({
+				host: target.hostname,
+				port: target.port,
+				path: "/api/chat/sessions",
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"content-length": Buffer.byteLength(body),
+					host: new URL(canonicalBaseURL).host,
+					origin: canonicalBaseURL,
+					"x-test-user": "user-1",
+				},
+			}, (response) => {
+				response.resume();
+				response.once("end", () => resolvePromise(response.statusCode));
+			});
+			request.once("error", reject);
+			request.end(body);
+		});
+		assert.equal(statusCode, 201);
 	} finally {
 		await channel.stop?.();
 	}
