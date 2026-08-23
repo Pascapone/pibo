@@ -6,7 +6,8 @@ import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSe
 
 export const DEFAULT_USER_TIMEZONE = "UTC";
 export const DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT = "Alt+Shift+A";
-export const DEFAULT_TRANSCRIPTION_PROVIDER_ID = "openai";
+export const DEFAULT_TRANSCRIPTION_PROVIDER_ID = "openai-chatgpt";
+const LEGACY_OPENAI_TRANSCRIPTION_PROVIDER_ID = "openai";
 export const DEFAULT_PIBO_USER_SETTINGS_PATH = "user-settings.json";
 
 export type PiboShortcutSettings = {
@@ -74,8 +75,11 @@ export function sanitizeTranscriptionSettings(value: unknown): PiboTranscription
 	const raw = value && typeof value === "object" && !Array.isArray(value)
 		? value as Record<string, unknown>
 		: {};
+	const providerId = sanitizeTranscriptionProviderId(raw.providerId);
 	return {
-		providerId: sanitizeTranscriptionProviderId(raw.providerId) ?? DEFAULT_TRANSCRIPTION_PROVIDER_ID,
+		providerId: providerId === LEGACY_OPENAI_TRANSCRIPTION_PROVIDER_ID
+			? DEFAULT_TRANSCRIPTION_PROVIDER_ID
+			: providerId ?? DEFAULT_TRANSCRIPTION_PROVIDER_ID,
 	};
 }
 

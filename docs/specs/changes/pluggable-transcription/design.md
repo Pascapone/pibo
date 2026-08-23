@@ -23,10 +23,16 @@ Model providers are runtime concerns, while dictation is a product input capabil
 - **Rationale:** Browser audio remains separate from chat file attachments and message delivery.
 - **Limits:** Requests are same-origin, authenticated, and capped at 25 MiB.
 
-### Decision: Use the official OpenAI API for the built-in provider
+### Decision: Default to the Codex ChatGPT subscription path
 
-- **Choice:** Send multipart audio to `/v1/audio/transcriptions` with `gpt-4o-mini-transcribe` and the configured `openai` API credential.
-- **Rationale:** The internal ChatGPT subscription endpoint is undocumented and is not an approved integration boundary.
+- **Choice:** Register `openai-chatgpt` as the default provider. It sends multipart audio to `/backend-api/transcribe` with the existing `openai-codex` OAuth bearer token and optional `ChatGPT-Account-Id` header.
+- **Codex parity:** The request contains only the `file` part and does not send a transcription model. The ChatGPT backend selects the model and applies subscription entitlement.
+- **Boundary:** This endpoint is internal and undocumented, so all request behavior remains isolated behind the provider contract and failures stay visible to the user.
+
+### Decision: Retain the official OpenAI API as an alternative
+
+- **Choice:** Register `openai-api` separately. It sends multipart audio to `/v1/audio/transcriptions` with `gpt-4o-mini-transcribe` and the configured `openai` API credential.
+- **Rationale:** API-key users retain a documented fallback without coupling it to the ChatGPT subscription provider.
 
 ### Decision: Record in the shared composer with MediaRecorder
 
@@ -38,8 +44,10 @@ Model providers are runtime concerns, while dictation is a product input capabil
 - Browser recording MIME types differ; the client selects the first supported WebM, Ogg, or MP4 format.
 - The first version waits for recording completion and does not stream partial text.
 - Provider status can change after settings load; execution errors remain authoritative and visible to the user.
+- The ChatGPT subscription endpoint can change independently of Pibo and may return product or Cloudflare errors even when OAuth remains valid.
 
 ## Migration / Rollback
 
-- Existing settings are sanitized with `openai` as the default transcription provider.
-- Removing the provider plugin leaves the saved selection visible as unavailable and makes transcription return a controlled conflict response.
+- Existing settings without a provider select `openai-chatgpt`.
+- The unreleased legacy value `openai` migrates to `openai-chatgpt`; the API alternative now persists as `openai-api`.
+- Removing a provider plugin leaves the saved selection visible as unavailable and makes transcription return a controlled conflict response.

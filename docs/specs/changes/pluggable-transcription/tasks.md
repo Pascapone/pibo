@@ -4,7 +4,8 @@
 
 - [x] 1.1 Add transcription provider types and errors.
 - [x] 1.2 Extend plugin registry and gateway channel capability.
-- [x] 1.3 Register the built-in OpenAI transcription provider.
+- [x] 1.3 Register the built-in OpenAI API transcription provider.
+- [x] 1.4 Register the ChatGPT Subscription provider using `openai-codex` OAuth and make it the default.
 
 ## 2. Settings and API
 
@@ -24,3 +25,4 @@
 - [x] 4.1 Run typecheck and production build.
 - [x] 4.2 Run provider, API, settings, route, and composer tests.
 - [x] 4.3 Validate microphone recording and repeated append behavior in the authenticated Pibo2 Chat Web UI.
+- [ ] 4.4 Validate a real transcription through the ChatGPT subscription provider on Pibo2.

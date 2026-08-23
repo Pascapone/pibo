@@ -4,7 +4,8 @@ import {
 	type PiboTranscriptionProvider,
 } from "./types.js";
 
-export const OPENAI_TRANSCRIPTION_PROVIDER_ID = "openai";
+export const OPENAI_TRANSCRIPTION_PROVIDER_ID = "openai-api";
+export const OPENAI_API_CREDENTIAL_PROVIDER_ID = "openai";
 export const DEFAULT_OPENAI_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 export const DEFAULT_OPENAI_TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions";
 
@@ -22,8 +23,8 @@ export function createOpenAiTranscriptionProvider(
 	const model = options.model ?? DEFAULT_OPENAI_TRANSCRIPTION_MODEL;
 	const url = options.url ?? DEFAULT_OPENAI_TRANSCRIPTION_URL;
 	const fetchImpl = options.fetch ?? fetch;
-	const getApiKey = options.getApiKey ?? (async () => (await resolvePiProviderAuth(OPENAI_TRANSCRIPTION_PROVIDER_ID))?.auth.apiKey);
-	const isConfigured = options.isConfigured ?? (async () => (await getPiProviderAuthStatus(OPENAI_TRANSCRIPTION_PROVIDER_ID)).configured);
+	const getApiKey = options.getApiKey ?? (async () => (await resolvePiProviderAuth(OPENAI_API_CREDENTIAL_PROVIDER_ID))?.auth.apiKey);
+	const isConfigured = options.isConfigured ?? (async () => (await getPiProviderAuthStatus(OPENAI_API_CREDENTIAL_PROVIDER_ID)).configured);
 
 	return {
 		id: OPENAI_TRANSCRIPTION_PROVIDER_ID,

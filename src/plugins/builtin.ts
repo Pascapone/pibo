@@ -23,6 +23,7 @@ import { piboCodexNativePlugin } from "./codex-native.js";
 import { addPiboNativeToolingContext, registerPiboNativeTooling } from "./native-tooling.js";
 import { piboWebAnnotationsPlugin } from "./web-annotations.js";
 import { piboOmpPlugin } from "./omp.js";
+import { piboOpenAiChatGptTranscriptionPlugin } from "./openai-chatgpt-transcription.js";
 import { piboOpenAiTranscriptionPlugin } from "./openai-transcription.js";
 import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
 import type { PiboPlugin, PiboProfileBuildContext } from "./types.js";
@@ -631,12 +632,12 @@ export const piboGatewayProducerPlugin = definePiboPlugin({
 });
 
 export function createDefaultPiboPlugins(): PiboPlugin[] {
-	return [piboCorePlugin, piboCodexNativePlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin, piboOmpPlugin, piboOpenAiTranscriptionPlugin];
+	return [piboCorePlugin, piboCodexNativePlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin, piboOmpPlugin, piboOpenAiChatGptTranscriptionPlugin, piboOpenAiTranscriptionPlugin];
 }
 
 export function createGatewayProducerPiboPluginRegistry(): PiboPluginRegistry {
 	return PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, piboCodexNativePlugin, piboGatewayProducerPlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin, piboOmpPlugin, piboOpenAiTranscriptionPlugin],
+		plugins: [piboCorePlugin, piboCodexNativePlugin, piboGatewayProducerPlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin, piboOmpPlugin, piboOpenAiChatGptTranscriptionPlugin, piboOpenAiTranscriptionPlugin],
 	});
 }
 

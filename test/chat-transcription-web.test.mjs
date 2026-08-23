@@ -73,7 +73,7 @@ test("chat transcription API uses the independently selected provider", async ()
 		assert.equal(catalogResponse.status, 200);
 		assert.deepEqual(await catalogResponse.json(), {
 			providers: [{ id: "fixture", name: "Fixture", configured: true }],
-			selectedProviderId: "openai",
+			selectedProviderId: "openai-chatgpt",
 		});
 
 		const unknownProvider = await fetch(`${baseURL}/api/chat/user-settings`, {

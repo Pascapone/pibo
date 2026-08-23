@@ -1,8 +1,9 @@
 # Spec: Pluggable Audio Transcription
 
-**Status:** Done
+**Status:** Implementing
 **Created:** 2026-08-22  
-**Requester / Source:** User request and `codex-transcribe-chatgpt-subscription.md`
+**Updated:** 2026-08-23
+**Requester / Source:** User request, correction, and `codex-transcribe-chatgpt-subscription.md`
 
 ## Why
 
@@ -10,14 +11,15 @@ Pibo users need to dictate text into the Chat Web composer. Transcription provid
 
 ## Goal
 
-Add provider-pluggable audio transcription that records in Chat Web, transcribes through the selected provider, and appends the result to the unsent composer draft.
+Add provider-pluggable audio transcription that defaults to the user's ChatGPT/Codex subscription, retains the OpenAI API as an alternative, and appends results to the unsent Chat Web composer draft.
 
 ## Scope
 
 ### In Scope
 
 - A plugin registration contract for transcription providers.
-- OpenAI API as the first built-in transcription provider.
+- ChatGPT Subscription as the default built-in provider using the existing `openai-codex` OAuth login.
+- OpenAI API-key transcription as an independently selectable alternative provider.
 - A persisted transcription-provider setting independent from model defaults.
 - Browser microphone recording in the shared Chat Web composer.
 - Appending completed transcripts without automatically sending a message.
@@ -25,8 +27,8 @@ Add provider-pluggable audio transcription that records in Chat Web, transcribes
 
 ### Out of Scope
 
-- Direct use of ChatGPT's internal `/backend-api/transcribe` endpoint.
-- Treating a ChatGPT subscription as OpenAI API billing or authorization.
+- Treating ChatGPT's internal transcription endpoint as a stable public API contract.
+- Treating ChatGPT subscription authorization as OpenAI API-key authorization.
 - Realtime partial transcripts, speaker diarization, or stored audio history.
 - CLI/Ink microphone recording.
 
@@ -77,16 +79,32 @@ A completed transcript MUST preserve all current composer text and append the ne
 
 Microphone, authentication, provider, empty-audio, and unsupported-browser failures MUST remain visible in the composer without clearing the draft.
 
+### REQ-007: ChatGPT subscription provider
+
+The default provider MUST reuse the existing `openai-codex` OAuth credential and follow Codex's ChatGPT transcription request shape.
+
+#### Acceptance
+
+- The request targets `/backend-api/transcribe`.
+- The request contains the audio `file` and no API transcription model field.
+- The request uses the OAuth bearer token and includes `ChatGPT-Account-Id` when available.
+- An OpenAI API key alone does not mark this provider as configured.
+
+### REQ-008: OpenAI API alternative
+
+The official OpenAI Audio Transcriptions API MUST remain available as a separate `openai-api` provider using the `openai` API-key credential.
+
 ## Constraints
 
-- **Security / Privacy:** The API requires an authenticated same-origin request. Audio is processed in memory and is not persisted by this capability.
-- **Compatibility:** Existing user settings without transcription data load with the built-in OpenAI provider selected.
+- **Security / Privacy:** The API requires an authenticated same-origin request. Audio is processed in memory, OAuth tokens remain server-side, and recordings are not persisted by this capability.
+- **Compatibility:** Existing settings without transcription data select `openai-chatgpt`; the unreleased legacy value `openai` migrates to that provider, while explicit API selection persists as `openai-api`.
 - **Provider boundary:** Provider-specific authentication and HTTP behavior stay behind the transcription provider interface.
 - **Verification:** Unit, API, type/build, and authenticated browser validation are required.
 
 ## Success Criteria
 
-- [x] SC-001: OpenAI and a fixture provider satisfy the common provider contract.
+- [x] SC-001: ChatGPT Subscription, OpenAI API, and a fixture provider satisfy the common provider contract.
 - [x] SC-002: Settings persist a provider separately from model settings.
 - [x] SC-003: A real browser recording inserts text but does not send it.
 - [x] SC-004: A second recording appends while preserving the first transcript and manually typed text.
+- [ ] SC-005: An authenticated Pibo2 recording returns text through the ChatGPT subscription provider without an OpenAI API key.
