@@ -51,6 +51,7 @@ import {
 	waitForPiboProviderRecovery,
 } from "../../core/provider-recovery.js";
 import { PiAgentRuntimeAuthController } from "./auth.js";
+import { piIntentTracingInstalled, piToolIntentField, splitPiToolIntentArguments } from "./intent-tracing.js";
 import { loadModelCatalog as loadPiModelCatalog } from "./model-catalog.js";
 import {
 	PIBO_TRANSCRIPT_INTEGRITY_RESUME_MESSAGE_TYPE,
@@ -152,7 +153,11 @@ type AssistantErrorMessage = {
 	usage?: unknown;
 };
 
-type ErrorContext = { contextWindow?: number };
+type ErrorContext = {
+	contextWindow?: number;
+	intentTracing?: boolean;
+	intentFieldForTool?: (toolName: string) => string | undefined;
+};
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -303,7 +308,7 @@ function toolCallFromAssistantEvent(candidate: PiEventCandidate): PiToolCall | u
 	return toolCallFromMessage(candidate.message, candidate.assistantMessageEvent?.contentIndex);
 }
 
-function normalizeToolCallEvent(piboSessionId: string, candidate: PiEventCandidate): PiboOutputEvent | undefined {
+function normalizeToolCallEvent(piboSessionId: string, candidate: PiEventCandidate, context?: ErrorContext): PiboOutputEvent | undefined {
 	if (
 		candidate.type === "message_update" &&
 		(candidate.assistantMessageEvent?.type === "toolcall_start" ||
@@ -312,42 +317,54 @@ function normalizeToolCallEvent(piboSessionId: string, candidate: PiEventCandida
 		const toolCall = toolCallFromAssistantEvent(candidate);
 		if (!toolCall) return undefined;
 
+		const { args, intent } = context?.intentTracing
+			? splitPiToolIntentArguments(toolCall.args, context.intentFieldForTool?.(toolCall.name))
+			: { args: toolCall.args };
 		return {
 			type: "tool_call",
 			piboSessionId,
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
-			args: toolCall.args,
+			args,
 			argsComplete: candidate.assistantMessageEvent.type === "toolcall_end",
+			...(intent ? { intent } : {}),
 		};
 	}
 
 	return undefined;
 }
 
-function normalizeToolExecutionEvent(piboSessionId: string, candidate: PiEventCandidate): PiboOutputEvent | undefined {
+function normalizeToolExecutionEvent(piboSessionId: string, candidate: PiEventCandidate, context?: ErrorContext): PiboOutputEvent | undefined {
 	if (typeof candidate.toolCallId !== "string" || typeof candidate.toolName !== "string") {
 		return undefined;
 	}
 
 	if (candidate.type === "tool_execution_start") {
+		const { args, intent } = context?.intentTracing
+			? splitPiToolIntentArguments(candidate.args, context.intentFieldForTool?.(candidate.toolName))
+			: { args: candidate.args };
 		return {
 			type: "tool_execution_started",
 			piboSessionId,
 			toolCallId: candidate.toolCallId,
 			toolName: candidate.toolName,
-			args: candidate.args,
+			args,
+			...(intent ? { intent } : {}),
 		};
 	}
 
 	if (candidate.type === "tool_execution_update") {
+		const { args, intent } = context?.intentTracing
+			? splitPiToolIntentArguments(candidate.args, context.intentFieldForTool?.(candidate.toolName))
+			: { args: candidate.args };
 		return {
 			type: "tool_execution_updated",
 			piboSessionId,
 			toolCallId: candidate.toolCallId,
 			toolName: candidate.toolName,
-			args: candidate.args,
+			args,
 			partialResult: candidate.partialResult,
+			...(intent ? { intent } : {}),
 		};
 	}
 
@@ -487,10 +504,10 @@ export function normalizePiEvent(piboSessionId: string, event: unknown, context?
 			: { type: "thinking_finished", piboSessionId, contentIndex: messageContentIndex(candidate), text };
 	}
 
-	const toolCallEvent = normalizeToolCallEvent(piboSessionId, candidate);
+	const toolCallEvent = normalizeToolCallEvent(piboSessionId, candidate, context);
 	if (toolCallEvent) return toolCallEvent;
 
-	const toolExecutionEvent = normalizeToolExecutionEvent(piboSessionId, candidate);
+	const toolExecutionEvent = normalizeToolExecutionEvent(piboSessionId, candidate, context);
 	if (toolExecutionEvent) return toolExecutionEvent;
 
 	if (candidate.type === "message_end") {
@@ -713,7 +730,11 @@ export class RoutedSession {
 		this.unsubscribe = session.subscribe((event) => {
 			this.onPiEventTelemetry?.(this.piboSessionId, event, { status: this.getStatus(), activeEventId: this.activeMessage?.id ?? this.activeExecutionEvent?.id });
 			const model = this.runtime.session.model as { contextWindow?: unknown } | undefined;
-			const normalized = normalizePiEvent(this.piboSessionId, event, { contextWindow: numberValue(model?.contextWindow) });
+			const normalized = normalizePiEvent(this.piboSessionId, event, {
+				contextWindow: numberValue(model?.contextWindow),
+				intentTracing: piIntentTracingInstalled(session),
+				intentFieldForTool: (toolName) => piToolIntentField(session, toolName),
+			});
 			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
 			const assistantMessageEnded = candidate?.type === "message_end" && isAssistantMessage(candidate.message);
 			const usageEvent = assistantMessageEnded ? normalizeAssistantUsageEvent(this.piboSessionId, candidate?.message as AssistantErrorMessage) : undefined;

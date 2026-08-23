@@ -1,6 +1,6 @@
 {
   "name": "@pasko70/pibo",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "type": "module",
   "workspaces": [
     "packages/workflows"

@@ -30,7 +30,7 @@ import { AgentsView } from "./agents/AgentsView";
 import { SessionTracePane } from "./session-trace-pane";
 import { SessionSidebar } from "./session-sidebar";
 import { getChatSessionView, listChatSessionViews } from "./session-views/registry";
-import type { ChatSessionViewId } from "./session-views/types";
+import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
 import {
 	clearStoredSelection,
 	readStoredComposerDraft,
@@ -42,6 +42,7 @@ import {
 	readStoredShowArchivedSessions,
 	readStoredShowRawEvents,
 	readStoredShowThinking,
+	readStoredToolDisplayMode,
 	removeStoredNewSessionProfile,
 	removeStoredRoomSelection,
 	writeStoredComposerDraft,
@@ -53,6 +54,7 @@ import {
 	writeStoredShowArchivedSessions,
 	writeStoredShowRawEvents,
 	writeStoredShowThinking,
+	writeStoredToolDisplayMode,
 } from "./app-storage";
 import {
 	addRoomToBootstrap,
@@ -123,6 +125,7 @@ import { SettingsView } from "./settings/SettingsView";
 import type { SettingsPanel } from "./settings/types";
 import { ProjectsArea } from "./projects/ProjectsArea";
 import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
+import { VscodeArea } from "./VscodeArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
 import { mobileSidebarA11yProps, useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
@@ -290,6 +293,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
 	const [expandThinking, setExpandThinking] = useState(readStoredExpandThinking);
 	const [showRawEvents, setShowRawEvents] = useState(readStoredShowRawEvents);
+	const [toolDisplayMode, setToolDisplayMode] = useState<ToolDisplayMode>(readStoredToolDisplayMode);
 	const [showArchived, setShowArchived] = useState(readStoredShowArchivedSessions);
 	const [showArchivedRooms, setShowArchivedRooms] = useState(readStoredShowArchivedRooms);
 	const [newSessionProfile, setNewSessionProfile] = useState("");
@@ -1530,7 +1534,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		&& (area === "projects" || sessionViewId === "terminal");
 	const routeShellClassName = isTerminalFullscreen
 		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
-		: (area === "workflows" || area === "cron" || area === "loops")
+		: (area === "vscode" || area === "workflows" || area === "cron" || area === "loops")
 			? "h-full overflow-hidden"
 			: `grid ${(area === "sessions" || area === "projects") && showRawEvents
 				? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
@@ -1567,6 +1571,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 						mobileAreaMenuOpen={mobileAreaMenuOpen}
 						mobileSidebarTriggerRef={mobileSidebarTriggerRef}
 						totalRoomUnreadCount={totalRoomUnreadCount}
+						vscodeEnabled={Boolean(bootstrap.integrations?.vscode)}
+						showMobileSidebarTrigger={area !== "vscode"}
 						onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
 						onSelectMainNavArea={selectMainNavArea}
 						onToggleMobileAreaMenu={() => setMobileAreaMenuOpen((open) => !open)}
@@ -1588,7 +1594,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 				data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
 				className={`min-h-0 ${routeShellClassName}`}
 			>
-				{area === "cron" ? (
+				{area === "vscode" ? (
+					<VscodeArea integration={bootstrap.integrations?.vscode} />
+				) : area === "cron" ? (
 					<CronArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={closeMobileSidebar} />
 				) : area === "loops" ? (
 					<LoopArea bootstrap={bootstrap} mobileSidebarOpen={mobileSidebarOpen} onCloseMobileSidebar={closeMobileSidebar} />
@@ -1624,6 +1632,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						showRawEvents={showRawEvents}
 						showThinking={showThinking}
 						expandThinking={expandThinking}
+						toolDisplayMode={toolDisplayMode}
 						commands={slashCommands}
 						skills={skills}
 						mobileSidebarOpen={mobileSidebarOpen}
@@ -1648,6 +1657,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 							const next = !expandThinking;
 							setExpandThinking(next);
 							writeStoredExpandThinking(next);
+						}}
+						onToolDisplayModeChange={(mode) => {
+							setToolDisplayMode(mode);
+							writeStoredToolDisplayMode(mode);
 						}}
 						onThinkingLevelChange={(level) => void postAction(routePiboSessionId ?? "", "thinking", { level })}
 						onError={setError}
@@ -1790,6 +1803,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						showRawEvents={showRawEvents}
 						showThinking={showThinking}
 						expandThinking={expandThinking}
+						toolDisplayMode={toolDisplayMode}
 						commands={slashCommands}
 						skills={skills}
 						composerText={composerText}
@@ -1809,6 +1823,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 							const next = !expandThinking;
 							setExpandThinking(next);
 							writeStoredExpandThinking(next);
+						}}
+						onToolDisplayModeChange={(mode) => {
+							setToolDisplayMode(mode);
+							writeStoredToolDisplayMode(mode);
 						}}
 						onSessionAgentProfileChange={(profile) => void updateSelectedSessionProfile(profile)}
 						onFork={forkFrom}

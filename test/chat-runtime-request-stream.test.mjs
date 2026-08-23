@@ -5,6 +5,38 @@ import {
 	createChatStreamState,
 } from "../dist/apps/chat/stream.js";
 
+test("chat stream forwards an intent that arrives after the tool call started", () => {
+	const state = createChatStreamState();
+	assert.deepEqual(chatStreamFramesFromOutputEvent({
+		type: "tool_call",
+		piboSessionId: "ps-intent",
+		eventId: "message-1",
+		toolCallId: "tool-1",
+		toolName: "read",
+		args: { path: "README.md" },
+		argsComplete: true,
+	}, state, { includeRawEvent: false }), [
+		{ type: "TOOL_CALL_START", toolCallId: "tool-1", toolName: "read", args: { path: "README.md" }, runId: "message-1" },
+		{ type: "TOOL_CALL_ARGS", toolCallId: "tool-1", toolName: "read", args: { path: "README.md" }, argsComplete: true, runId: "message-1", sourceEventType: "tool_call" },
+	]);
+	assert.deepEqual(chatStreamFramesFromOutputEvent({
+		type: "tool_execution_started",
+		piboSessionId: "ps-intent",
+		eventId: "message-1",
+		toolCallId: "tool-1",
+		toolName: "read",
+		args: { path: "README.md" },
+		intent: "Reviewing project documentation",
+	}, state, { includeRawEvent: false }), [{
+		type: "TOOL_CALL_START",
+		toolCallId: "tool-1",
+		toolName: "read",
+		args: { path: "README.md" },
+		intent: "Reviewing project documentation",
+		runId: "message-1",
+	}]);
+});
+
 test("chat stream projects runtime approval and structured-input request lifecycles without losing raw events", () => {
 	const state = createChatStreamState();
 	const approvalRequest = {

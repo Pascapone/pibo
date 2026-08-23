@@ -35,6 +35,7 @@ export function CompactTerminalSessionView({
 	terminalFullscreen,
 	showThinking,
 	expandThinking,
+	toolDisplayMode,
 	sessionAgentProfile,
 	sessionActiveModel,
 	sessionRuntimeBinding,
@@ -57,8 +58,8 @@ export function CompactTerminalSessionView({
 	onModelChanged,
 }: ChatSessionViewProps) {
 	const rows = useMemo(
-		() => buildCompactTerminalRows(traceView, { showThinking }),
-		[showThinking, traceView],
+		() => buildCompactTerminalRows(traceView, { showThinking, toolDisplayMode }),
+		[showThinking, toolDisplayMode, traceView],
 	);
 	const rowKeys = useMemo(() => rows.map((row) => row.id), [rows]);
 	const piboSessionId = traceView?.piboSessionId ?? "";
@@ -602,7 +603,7 @@ function TerminalRowContent({
 	if (row.kind === "message.user") {
 		return (
 			<>
-				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} />
+				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
 				{row.pendingMessageDelivery ? (
 					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} className="ml-[1.9rem] mt-2" />
 				) : null}
@@ -618,7 +619,7 @@ function TerminalRowContent({
 	if (row.kind === "reasoning" && row.markdown) {
 		return (
 			<>
-				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} />
+				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
 				<div className="ml-[1.9rem] min-w-0" data-pibo-component="TerminalReasoningMarkdown">
 					<div className="compact-terminal-markdown compact-terminal-reasoning" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="reasoning">
 						<MarkdownRenderer streaming={row.status === "running"}>{row.markdown}</MarkdownRenderer>
@@ -627,20 +628,22 @@ function TerminalRowContent({
 			</>
 		);
 	}
-	return <TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} />;
+	return <TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />;
 }
 
 function TerminalLines({
 	lines,
 	status,
 	clampPreview,
+	singleLine,
 }: {
 	lines: CompactTerminalLine[];
 	status: CompactTerminalRow["status"];
 	clampPreview: boolean;
+	singleLine?: boolean;
 }) {
 	return lines.map((line, index) => (
-		<TerminalLine key={index} line={line} status={status} clampLines={clampPreview && index === 0 ? 5 : undefined} />
+		<TerminalLine key={index} line={line} status={status} clampLines={singleLine ? 1 : clampPreview && index === 0 ? 5 : undefined} />
 	));
 }
 

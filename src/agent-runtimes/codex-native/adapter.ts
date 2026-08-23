@@ -124,6 +124,11 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 			nativeToolYielding: unsupportedAgentRuntimeCapability(
 				"Codex native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
 			),
+			intentTracing: {
+				supported: false,
+				configurable: false,
+				enabledByDefault: false,
+			},
 		},
 		mcp: {
 			externalServers: { support: "mcp", transports: ["streamable-http", "stdio"] },

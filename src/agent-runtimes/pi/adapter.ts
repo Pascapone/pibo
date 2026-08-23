@@ -65,6 +65,7 @@ import {
 } from "./history.js";
 import { PiAgentRuntimeAuthController } from "./auth.js";
 import { importPortableHistoryIntoPi } from "./portable-history.js";
+import { piIntentTracingEnabled } from "./intent-tracing.js";
 
 const PI_ADAPTER_ID = "pi";
 export const PI_PROTOCOL_VERSION = "0.84.2";
@@ -100,6 +101,11 @@ export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 		piboManaged: { support: "direct" },
 		nativeToolInspection: { support: "native" },
 		nativeToolYielding: { support: "native" },
+		intentTracing: {
+			supported: true,
+			configurable: true,
+			enabledByDefault: false,
+		},
 	},
 	mcp: {
 		externalServers: { support: "materialized", modes: ["isolated-pibo-mcp-config"] },
@@ -253,7 +259,7 @@ function nativeSessionInfoFromPi(
 	};
 }
 
-function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSemanticEvent | undefined {
+export function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSemanticEvent | undefined {
 	switch (event.type) {
 		case "message_started":
 			return { type: "turn_started", turnId: event.eventId };
@@ -276,6 +282,7 @@ function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSemanticEven
 				toolName: event.toolName,
 				args: event.args,
 				argsComplete: event.argsComplete,
+				...(event.intent ? { intent: event.intent } : {}),
 			};
 		case "tool_execution_started":
 			return { ...event, type: "tool_execution_started" };
@@ -646,12 +653,22 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				message: `Profile "${input.profile.profileName}" selects runtime instance "${input.profile.runtimeInstanceId}", not "${this.instanceId}".`,
 			});
 		}
-		if (Object.keys(input.profile.runtimeOptions).length > 0) {
+		const runtimeOptionKeys = Object.keys(input.profile.runtimeOptions);
+		for (const key of runtimeOptionKeys) {
+			if (key === "intentTracing") continue;
 			diagnostics.push({
 				severity: "error",
-				code: "pi_runtime_options_unsupported",
-				message: "The Pi runtime does not accept adapter-specific profile options.",
-				path: "runtimeOptions",
+				code: "pi_runtime_option_unsupported",
+				message: `The Pi runtime does not accept profile option "${key}".`,
+				path: `runtimeOptions.${key}`,
+			});
+		}
+		if ("intentTracing" in input.profile.runtimeOptions && typeof input.profile.runtimeOptions["intentTracing"] !== "boolean") {
+			diagnostics.push({
+				severity: "error",
+				code: "pi_intent_tracing_invalid",
+				message: "Pi intentTracing must be a boolean.",
+				path: "runtimeOptions.intentTracing",
 			});
 		}
 		const profileProvidesBash = input.profile.toolPackages.runControl === true
@@ -709,10 +726,12 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			throw new Error("Pi portable history import requires a new native session.");
 		}
 		const compatibility = input.services?.compatibility as PiAgentRuntimeCompatibilityServices | undefined;
+		const profile = cloneProfileForPiSession(input);
+		const intentTracing = piIntentTracingEnabled(profile.runtimeOptions);
 		const runtime = await createPiboRuntime({
 			cwd: input.workspace,
 			persistSession: compatibility?.persistSession,
-			profile: cloneProfileForPiSession(input),
+			profile,
 			thinkingLevel: compatibility?.thinkingLevel,
 			retryDefaults: compatibility?.retryDefaults,
 			extensionFactories: compatibility?.extensionFactories,
@@ -756,6 +775,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			metadata: {
 				...(input.binding?.metadata ?? {}),
 				persistent: compatibility?.persistSession !== false,
+				intentTracing,
 				nativePresenceExpected:
 					compatibility?.persistSession !== false
 					&& runtime.session.sessionManager.buildSessionContext().messages.length > 0,

@@ -363,8 +363,8 @@ function attributesForOutputEvent(event: PiboOutputEvent): Record<string, unknow
 	if (event.type === "message_steered") return { inlineText: event.text, source: event.source, activeEventId: event.activeEventId };
 	if (event.type === "assistant_message" || event.type === "assistant_delta") return { assistantIndex: event.assistantIndex, contentIndex: event.contentIndex };
 	if (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished") return { thinkingIndex: event.thinkingIndex, contentIndex: event.contentIndex };
-	if (event.type === "tool_call") return { toolCallId: event.toolCallId, toolName: event.toolName, argsComplete: event.argsComplete };
-	if (event.type === "tool_execution_started" || event.type === "tool_execution_updated" || event.type === "tool_execution_finished") return { toolCallId: event.toolCallId, toolName: event.toolName, isError: "isError" in event ? event.isError : undefined };
+	if (event.type === "tool_call") return { toolCallId: event.toolCallId, toolName: event.toolName, argsComplete: event.argsComplete, intent: event.intent };
+	if (event.type === "tool_execution_started" || event.type === "tool_execution_updated" || event.type === "tool_execution_finished") return { toolCallId: event.toolCallId, toolName: event.toolName, isError: "isError" in event ? event.isError : undefined, intent: event.intent };
 	if (event.type === "subagent_session") return { toolCallId: event.toolCallId, toolName: event.toolName, subagentName: event.subagentName, childPiboSessionId: event.childPiboSessionId, threadKey: event.threadKey };
 	if (event.type === "execution_result") return { action: event.action };
 	if (event.type === "session_error") return { error: event.error, ...(event.errorDetails ? { errorDetails: event.errorDetails } : {}) };

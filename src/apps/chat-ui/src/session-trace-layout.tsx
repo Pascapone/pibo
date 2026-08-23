@@ -95,7 +95,7 @@ export function SessionTraceLayout({
                 : "empty"
         }
         data-pibo-terminal-fullscreen={terminalFullscreen ? "true" : "false"}
-        className="min-h-0 flex flex-col"
+        className="min-h-0 h-full flex flex-col"
       >
         {terminalFullscreen ? (
           <TerminalFullscreenTopBar

@@ -44,9 +44,9 @@ export type ChatStreamEvent = ChatStreamEventMeta & (
 	| { type: "REASONING_MESSAGE_START"; messageId: string; runId?: string }
 	| { type: "REASONING_MESSAGE_CONTENT"; messageId: string; runId?: string; delta: string }
 	| { type: "REASONING_MESSAGE_END"; messageId: string; runId?: string; finalText?: string }
-	| { type: "TOOL_CALL_START"; toolCallId: string; toolName: string; args?: unknown; runId?: string }
-	| { type: "TOOL_CALL_ARGS"; toolCallId: string; toolName?: string; args: unknown; argsComplete: boolean; runId?: string; partialResult?: unknown; sourceEventType?: "tool_call" | "tool_execution_updated" }
-	| { type: "TOOL_CALL_RESULT"; toolCallId: string; toolName?: string; result: unknown; isError: boolean; runId?: string }
+	| { type: "TOOL_CALL_START"; toolCallId: string; toolName: string; args?: unknown; intent?: string; runId?: string }
+	| { type: "TOOL_CALL_ARGS"; toolCallId: string; toolName?: string; args: unknown; argsComplete: boolean; intent?: string; runId?: string; partialResult?: unknown; sourceEventType?: "tool_call" | "tool_execution_updated" }
+	| { type: "TOOL_CALL_RESULT"; toolCallId: string; toolName?: string; result: unknown; isError: boolean; intent?: string; runId?: string }
 	| { type: "AGENT_DELEGATION"; toolCallId?: string; toolName: string; subagentName: string; childPiboSessionId: string; threadKey?: string }
 	| { type: "EXECUTION_RESULT"; runId?: string; eventId?: string; action: string; result: unknown }
 	| { type: "RUNTIME_APPROVAL_REQUESTED"; runId?: string; request: PiboRuntimeApprovalRequest }

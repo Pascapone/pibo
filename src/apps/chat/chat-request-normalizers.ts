@@ -132,7 +132,13 @@ export type ChatModelDefaultsBody = {
 export type ChatUserSettingsBody = {
 	timezone?: unknown;
 	shortcuts?: unknown;
+	transcription?: unknown;
 	telemetryRetention?: unknown;
+};
+
+export type ChatGatewaySettingsBody = {
+	maxConcurrentYieldedRuns?: unknown;
+	sessionConcurrentYieldedRuns?: unknown;
 };
 
 export type ChatTelemetryRetentionPruneBody = {

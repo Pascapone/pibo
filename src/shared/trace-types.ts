@@ -28,6 +28,7 @@ export type PiboTraceNode = {
 	eventId?: string;
 	toolCallId?: string;
 	runId?: string;
+	intent?: string;
 	type: PiboTraceNodeType;
 	title: string;
 	status: PiboTraceNodeStatus;
@@ -79,6 +80,7 @@ export type TraceTimelineNode = {
 	linkedPiboSessionId?: string;
 	toolCallId?: string;
 	runId?: string;
+	intent?: string;
 	eventId?: string;
 	entryId?: string;
 	source?: PiboTraceSource;

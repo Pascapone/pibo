@@ -289,6 +289,7 @@ function normalizeProjectsBootstrap(payload: Partial<ProjectsBootstrapData> | nu
 		capabilities: {
 			actions: Array.isArray(payload.capabilities?.actions) ? payload.capabilities.actions : [],
 		},
+		integrations: payload.integrations,
 	};
 }
 
@@ -327,5 +328,6 @@ function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
 		capabilities: {
 			actions: payload.capabilities?.actions ?? [],
 		},
+		integrations: payload.integrations,
 	};
 }

@@ -7,6 +7,7 @@ import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { PiboRunRegistry } from "../dist/runs/registry.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { createRunToolDefinitions } from "../dist/runs/tools.js";
+import { updatePiboGatewaySettings } from "../dist/core/gateway-settings.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 
@@ -718,7 +719,7 @@ test("router rejects concurrent yielded runs until the active execution settles"
 		});
 		assert.throws(
 			() => controller.startToolRun({ toolName: "bash", async execute() { return { text: "must not start" }; } }),
-			/Active yielded runs 1 reached the configured limit 1/,
+			/Active yielded runs 1 reached the configured gateway limit 1/,
 		);
 
 		finishFirst();
@@ -741,6 +742,135 @@ test("router rejects concurrent yielded runs until the active execution settles"
 		else process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = previousReservation;
 		if (previousMax === undefined) delete process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
 		else process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = previousMax;
+	}
+});
+
+test("router enforces yielded-run concurrency per controlling session", async () => {
+	const previousMode = process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+	const previousFree = process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+	const previousReservation = process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+	const previousGatewayMax = process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+	const previousSessionMax = process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS;
+	process.env.PIBO_GATEWAY_RESOURCE_GUARD = "block";
+	process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = "0";
+	process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = "0";
+	process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = "3";
+	process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS = "1";
+	try {
+		const router = new PiboSessionRouter({ persistSession: false });
+		let finishFirst;
+		const firstFinished = new Promise((resolve) => {
+			finishFirst = resolve;
+		});
+		const firstController = router.createRunToolController("parent-a");
+		firstController.startToolRun({
+			toolName: "subagent",
+			completionPolicy: "detached",
+			async execute() {
+				await firstFinished;
+				return { text: "first done" };
+			},
+		});
+		assert.throws(
+			() => firstController.startToolRun({ toolName: "subagent", async execute() { return { text: "must not start" }; } }),
+			/parent-a .*configured session limit 1/,
+		);
+
+		const otherController = router.createRunToolController("parent-b");
+		const other = otherController.startToolRun({
+			toolName: "subagent",
+			completionPolicy: "detached",
+			async execute() {
+				return { text: "other done" };
+			},
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(router.runRegistry.status("parent-b", other.runId).status, "completed");
+
+		finishFirst();
+		await new Promise((resolve) => setImmediate(resolve));
+		const next = firstController.startToolRun({
+			toolName: "subagent",
+			completionPolicy: "detached",
+			async execute() {
+				return { text: "next done" };
+			},
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(router.runRegistry.status("parent-a", next.runId).status, "completed");
+	} finally {
+		if (previousMode === undefined) delete process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+		else process.env.PIBO_GATEWAY_RESOURCE_GUARD = previousMode;
+		if (previousFree === undefined) delete process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+		else process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = previousFree;
+		if (previousReservation === undefined) delete process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+		else process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = previousReservation;
+		if (previousGatewayMax === undefined) delete process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = previousGatewayMax;
+		if (previousSessionMax === undefined) delete process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS;
+		else process.env.PIBO_SESSION_CONCURRENT_YIELDED_RUNS = previousSessionMax;
+	}
+});
+
+test("router applies persisted concurrency changes without restart", async () => {
+	const originalPiboHome = process.env.PIBO_HOME;
+	const previousMode = process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+	const previousFree = process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+	const previousReservation = process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+	const dir = mkdtempSync(join(tmpdir(), "pibo-run-concurrency-live-settings-"));
+	process.env.PIBO_HOME = dir;
+	process.env.PIBO_GATEWAY_RESOURCE_GUARD = "block";
+	process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = "0";
+	process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = "0";
+	try {
+		updatePiboGatewaySettings({ maxConcurrentYieldedRuns: 3, sessionConcurrentYieldedRuns: 1 });
+		const router = new PiboSessionRouter({ persistSession: false });
+		let finishFirst;
+		let finishSecond;
+		const firstFinished = new Promise((resolve) => {
+			finishFirst = resolve;
+		});
+		const secondFinished = new Promise((resolve) => {
+			finishSecond = resolve;
+		});
+		const controller = router.createRunToolController("parent");
+		controller.startToolRun({
+			toolName: "subagent",
+			completionPolicy: "detached",
+			async execute() {
+				await firstFinished;
+				return { text: "first done" };
+			},
+		});
+		assert.throws(
+			() => controller.startToolRun({ toolName: "subagent", async execute() { return { text: "blocked" }; } }),
+			/configured session limit 1/,
+		);
+
+		updatePiboGatewaySettings({ sessionConcurrentYieldedRuns: 2 });
+		const second = controller.startToolRun({
+			toolName: "subagent",
+			completionPolicy: "detached",
+			async execute() {
+				await secondFinished;
+				return { text: "second done" };
+			},
+		});
+		assert.equal(router.runRegistry.status("parent", second.runId).status, "running");
+		finishFirst();
+		finishSecond();
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(router.runRegistry.status("parent", second.runId).status, "completed");
+	} finally {
+		if (originalPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = originalPiboHome;
+		if (previousMode === undefined) delete process.env.PIBO_GATEWAY_RESOURCE_GUARD;
+		else process.env.PIBO_GATEWAY_RESOURCE_GUARD = previousMode;
+		if (previousFree === undefined) delete process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES;
+		else process.env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES = previousFree;
+		if (previousReservation === undefined) delete process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES;
+		else process.env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES = previousReservation;
+		rmSync(dir, { recursive: true, force: true });
 	}
 });
 

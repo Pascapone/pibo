@@ -13,6 +13,7 @@ async function runSessionTraceViewPropsScenario() {
 			createSessionTraceViewProps,
 			resolveSessionTraceModelBadge,
 			resolveSessionTraceTitle,
+			sessionSupportsToolIntent,
 		} = await import("./src/apps/chat-ui/src/session-trace-view-props.ts");
 
 		function session(overrides) {
@@ -106,6 +107,8 @@ async function runSessionTraceViewPropsScenario() {
 				{
 					id: "custom-worker",
 					profileName: "worker-profile",
+					runtimeInstanceId: "pi",
+					runtimeOptions: { intentTracing: true },
 					name: "Worker",
 					description: "Worker profile",
 					thinkingLevel: "minimal",
@@ -122,8 +125,29 @@ async function runSessionTraceViewPropsScenario() {
 				},
 			],
 			modelDefaults: { thinking: "off", fast: false },
+			agentCatalog: {
+				agentRuntimes: [{ id: "pi", adapterId: "pi", capabilities: { tools: { intentTracing: { supported: true, configurable: true, enabledByDefault: false } } } }],
+			},
 			capabilities: { actions: [] },
 		};
+
+		assert.equal(sessionSupportsToolIntent(bootstrap, "ps-child", "worker-profile"), true);
+		assert.equal(sessionSupportsToolIntent({ ...bootstrap, customAgents: [{ ...bootstrap.customAgents[0], runtimeOptions: {} }] }, "ps-child", "worker-profile"), false);
+		assert.equal(sessionSupportsToolIntent({
+			...bootstrap,
+			session: {
+				...bootstrap.session,
+				runtimeBinding: { piboSessionId: "ps-child", runtimeInstanceId: "pi", adapterId: "pi", state: "bound", metadata: { intentTracing: false } },
+			},
+		}, "ps-child", "worker-profile"), false);
+		assert.equal(sessionSupportsToolIntent({
+			...bootstrap,
+			session: {
+				...bootstrap.session,
+				runtimeBinding: { piboSessionId: "ps-child", runtimeInstanceId: "pi", adapterId: "pi", state: "bound", metadata: { intentTracing: true } },
+			},
+			customAgents: [{ ...bootstrap.customAgents[0], runtimeOptions: {} }],
+		}, "ps-child", "worker-profile"), true);
 
 		assert.equal(resolveSessionTraceModelBadge({
 			bootstrap,
@@ -174,6 +198,7 @@ async function runSessionTraceViewPropsScenario() {
 			isLoading: false,
 			showThinking: true,
 			expandThinking: false,
+			toolDisplayMode: "intent",
 			selectedSessionProfile: "worker-profile",
 			sessionActiveModelBadge: "gpt-test xhigh fast",
 			sessionRuntimeBinding: { piboSessionId: "ps-child", runtimeInstanceId: "pi", adapterId: "pi", nativeSessionId: "pi-child", state: "bound", revision: 2 },
@@ -194,6 +219,7 @@ async function runSessionTraceViewPropsScenario() {
 		assert.equal(props.selectedTrace.id, "ps-root");
 		assert.deepEqual(props.selectedTrace.spans.map((span) => span.name), ["thinking", "fast_mode"]);
 		assert.equal(props.sessionActiveModel, "gpt-test xhigh fast");
+		assert.equal(props.toolDisplayMode, "intent");
 		assert.equal(props.sessionRuntimeBinding.runtimeInstanceId, "pi");
 		assert.equal(props.sessionRuntimeBinding.state, "bound");
 		assert.equal(props.sessionBreadcrumbs, links.sessionBreadcrumbs);
