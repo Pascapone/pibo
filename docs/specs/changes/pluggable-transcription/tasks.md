@@ -27,4 +27,4 @@
 - [x] 4.2 Run provider, API, settings, route, and composer tests.
 - [x] 4.3 Validate microphone recording and repeated append behavior in the authenticated Pibo2 Chat Web UI.
 - [x] 4.4 Validate a real transcription through the ChatGPT subscription provider on Pibo2.
-- [ ] 4.5 Validate waveform motion, placement, responsive layout, and cleanup in authenticated headful Chrome.
+- [x] 4.5 Validate waveform motion, placement, responsive layout, and cleanup in authenticated headful Chrome.

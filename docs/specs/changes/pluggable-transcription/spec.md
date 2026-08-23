@@ -1,6 +1,6 @@
 # Spec: Pluggable Audio Transcription
 
-**Status:** Implementing
+**Status:** Done
 **Created:** 2026-08-22  
 **Updated:** 2026-08-23
 **Requester / Source:** User request, correction, and `codex-transcribe-chatgpt-subscription.md`
@@ -120,4 +120,4 @@ While recording, Chat Web MUST show a dedicated waveform component above the tex
 - [x] SC-003: A real browser recording inserts text but does not send it.
 - [x] SC-004: A second recording appends while preserving the first transcript and manually typed text.
 - [x] SC-005: An authenticated Pibo2 recording returns text through the ChatGPT subscription provider without an OpenAI API key.
-- [ ] SC-006: During a real browser recording, a pill-shaped waveform above the input updates from live audio and represents only the latest three seconds.
+- [x] SC-006: During a real browser recording, a pill-shaped waveform above the input updates from live audio and represents only the latest three seconds.
