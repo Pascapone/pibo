@@ -87,7 +87,7 @@ The default provider MUST reuse the existing `openai-codex` OAuth credential and
 
 - The request targets `/backend-api/transcribe`.
 - The request contains the audio `file` and no API transcription model field.
-- The request uses the OAuth bearer token and includes `ChatGPT-Account-Id` when available.
+- The request uses the OAuth bearer token, includes `ChatGPT-Account-Id` when available, and carries the ChatGPT product origin context required by the endpoint boundary.
 - An OpenAI API key alone does not mark this provider as configured.
 
 ### REQ-008: OpenAI API alternative

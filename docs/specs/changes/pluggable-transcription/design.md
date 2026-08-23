@@ -25,7 +25,7 @@ Model providers are runtime concerns, while dictation is a product input capabil
 
 ### Decision: Default to the Codex ChatGPT subscription path
 
-- **Choice:** Register `openai-chatgpt` as the default provider. It sends multipart audio to `/backend-api/transcribe` with the existing `openai-codex` OAuth bearer token and optional `ChatGPT-Account-Id` header.
+- **Choice:** Register `openai-chatgpt` as the default provider. It sends multipart audio to `/backend-api/transcribe` with the existing `openai-codex` OAuth bearer token, optional `ChatGPT-Account-Id`, and the ChatGPT `Origin`/`Referer` product context required by the endpoint boundary.
 - **Codex parity:** The request contains only the `file` part and does not send a transcription model. The ChatGPT backend selects the model and applies subscription entitlement.
 - **Boundary:** This endpoint is internal and undocumented, so all request behavior remains isolated behind the provider contract and failures stay visible to the user.
 

@@ -65,6 +65,8 @@ export function createOpenAiChatGptTranscriptionProvider(
 
 			const headers: Record<string, string> = {
 				Authorization: `Bearer ${auth.accessToken}`,
+				Origin: "https://chatgpt.com",
+				Referer: "https://chatgpt.com/",
 				"User-Agent": "codex-cli",
 			};
 			if (auth.accountId) headers["ChatGPT-Account-Id"] = auth.accountId;
@@ -167,7 +169,9 @@ function transcriptionErrorMessage(payload: Record<string, unknown> | undefined,
 		? message
 		: typeof payload?.detail === "string"
 			? payload.detail
-			: responseText;
+			: responseText.trimStart().startsWith("<")
+				? "ChatGPT rejected the request at its web boundary."
+				: responseText;
 	const normalized = candidate.replace(/\s+/g, " ").trim();
 	return normalized ? normalized.slice(0, 300) : undefined;
 }

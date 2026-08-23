@@ -70,6 +70,8 @@ test("ChatGPT subscription transcription provider follows the Codex OAuth backen
 	assert.equal(captured.init.method, "POST");
 	assert.equal(captured.init.headers.Authorization, "Bearer subscription-token");
 	assert.equal(captured.init.headers["ChatGPT-Account-Id"], "acct-test");
+	assert.equal(captured.init.headers.Origin, "https://chatgpt.com");
+	assert.equal(captured.init.headers.Referer, "https://chatgpt.com/");
 	assert.equal(captured.init.headers["User-Agent"], "codex-cli");
 	assert.ok(captured.init.body instanceof FormData);
 	assert.equal(captured.init.body.get("model"), null);
