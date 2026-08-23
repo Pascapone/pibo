@@ -71,7 +71,7 @@ test("portable runtime context build exposes selected Pibo subagents through MCP
 		.withBuiltinTools("disabled")
 		.withAutoContextFiles(false)
 		.withToolPackages({ goalControl: false, runControl: true })
-		.addSubagent({ name: "reviewer", targetProfile: "pi-reviewer" })
+		.addSubagent({ name: "reviewer", description: "Review the proposed implementation.", targetProfile: "pi-reviewer" })
 		.createSession();
 	const snapshot = buildPortableRuntimeContextSnapshot({
 		profile,
@@ -89,8 +89,37 @@ test("portable runtime context build exposes selected Pibo subagents through MCP
 	const tools = findNode(snapshot.nodes, (node) => node.id === "tools");
 	assert.equal(tools.state, "active");
 	assert.ok(tools.badges.includes("MCP:STREAMABLE-HTTP"));
-	assert.ok(tools.children.some((node) => node.title === "subagent:reviewer -> pi-reviewer"));
+	assert.ok(tools.children.some((node) => node.title === "pibo_agents_send_message"));
+	assert.ok(tools.children.some((node) => node.title === "pibo_agents_observe"));
+	assert.ok(tools.children.some((node) => node.title === "agent:reviewer (pi-reviewer) — Review the proposed implementation."));
 	assert.ok(tools.children.some((node) => node.title === "package:pibo-run-control"));
+});
+
+test("context build exposes one shared agent surface and the available name-description catalog", async () => {
+	const profile = new InitialSessionContextBuilder("agent-context")
+		.withAutoContextFiles(false)
+		.withBuiltinTools("disabled")
+		.withToolPackages({ goalControl: false, runControl: true })
+		.addSubagents([
+			{ name: "explorer", description: "Inspect the repository and report findings.", targetProfile: "explorer-profile" },
+			{ name: "worker", description: "Implement focused changes and verify them.", targetProfile: "worker-profile" },
+		])
+		.createSession();
+	const snapshot = await inspectPiboContextBuild({ profile, persistSession: false });
+	const sendDefinition = findNode(snapshot.nodes, (node) => node.id === "tools/pibo_agents_send_message/definition");
+	const toolIds = [];
+	const collect = (nodes) => {
+		for (const node of nodes) {
+			if (node.kind === "tool") toolIds.push(node.id);
+			collect(node.children ?? []);
+		}
+	};
+	collect(snapshot.nodes);
+
+	assert.match(sendDefinition.schemaJson.description, /explorer: Inspect the repository and report findings\./);
+	assert.match(sendDefinition.schemaJson.description, /worker: Implement focused changes and verify them\./);
+	assert.equal(toolIds.filter((id) => id.startsWith("tools/pibo_agents_")).length, 4);
+	assert.equal(toolIds.some((id) => id.includes("pibo_subagent_")), false);
 });
 
 test("context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate", async () => {

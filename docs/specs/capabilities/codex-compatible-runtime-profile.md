@@ -66,11 +66,11 @@ The Codex-compatible profile MUST expose only the supported Pibo and Pi tools se
 
 #### Current
 
-The profile allows Pi built-ins `read`, `edit`, and `write`; enables `codexCompat` and `runControl`; selects `apply_patch`, `web_search`, `view_image`, and `runtime`; and selects three registered subagents. Runtime generation adds run-control `bash`, yielded-run tools, and `pibo_subagent_*` tools.
+The profile allows Pi built-ins `read`, `edit`, and `write`; enables `codexCompat` and `runControl`; selects `apply_patch`, `web_search`, `view_image`, and `runtime`; and may select delegated agents. Runtime generation adds run-control `bash`, yielded-run tools, and the shared `pibo_agents_*` tools when delegated agents are available.
 
 #### Acceptance
 
-Profile inspection or runtime startup shows active `read`, `edit`, `write`, `bash`, `apply_patch`, `view_image`, `runtime`, `web_search`, `pibo_run_*`, and `pibo_subagent_default|explorer|worker` tools, and does not expose unsupported legacy Codex tools such as `spawn_agent`, `send_input`, `resume_agent`, `wait_agent`, or `close_agent`.
+Profile inspection or runtime startup shows the selected coding tools, `pibo_run_*`, and—when delegated agents are configured—the four shared `pibo_agents_*` tools. It does not expose unsupported legacy Codex tools such as `spawn_agent`, `send_input`, `resume_agent`, `wait_agent`, or `close_agent`.
 
 #### Scenario: Inspect default profile
 
@@ -78,7 +78,7 @@ Profile inspection or runtime startup shows active `read`, `edit`, `write`, `bas
 - WHEN the active tool list is read
 - THEN `apply_patch`, `web_search`, `view_image`, and `runtime` are active
 - AND `pibo_run_start`, `pibo_run_read`, and the other run-control tools are active
-- AND `pibo_subagent_default`, `pibo_subagent_explorer`, and `pibo_subagent_worker` are active
+- AND the four shared `pibo_agents_*` tools are active when delegated agents are configured
 - AND unsupported Codex agent-control tools are absent.
 
 ### Requirement: Shell execution goes through yielded run control
@@ -125,11 +125,11 @@ The runtime MUST prepend Codex compatibility instructions that describe the actu
 
 #### Current
 
-`createCodexCompatExtension` adds a `# Codex-Compatible Runtime` section, instructs agents to use `pibo_run_*` and `pibo_subagent_*` tools, mentions `web_search` generically when selected, and appends an environment block with cwd, shell, current date, timezone, and known subagent names.
+`createCodexCompatExtension` adds a `# Codex-Compatible Runtime` section, references `pibo_run_*` and `pibo_agents_*`, mentions `web_search` generically when selected, and appends an environment block with cwd, shell, current date, and timezone. The shared send tool owns the dynamic available-agent catalog.
 
 #### Acceptance
 
-A rendered prompt includes the compatibility heading, cwd, shell, current date, timezone, and subagent names; references selected `web_search` generically; and does not mention unavailable tools such as `update_plan` or `request_user_input` as if they exist.
+A rendered prompt includes the compatibility heading, cwd, shell, current date, and timezone; references selected `web_search` generically; and does not mention unavailable tools such as `update_plan` or `request_user_input` as if they exist.
 
 #### Scenario: Render main-agent prompt
 

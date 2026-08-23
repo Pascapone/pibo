@@ -91,7 +91,8 @@ test("codex-compatible prompt adds environment and child-agent framing without p
 	assert.match(prompt, /<shell>bash<\/shell>/);
 	assert.match(prompt, /<current_date>2026-05-02<\/current_date>/);
 	assert.match(prompt, /<timezone>Europe\/Berlin<\/timezone>/);
-	assert.match(prompt, /<subagents>default, explorer, worker<\/subagents>/);
+	assert.doesNotMatch(prompt, /<subagents>/);
+	assert.match(prompt, /pibo_agents_\*/);
 	assert.match(prompt, /Delegated Child Agent/);
 	assert.doesNotMatch(prompt, /request_user_input tool/);
 	assert.doesNotMatch(prompt, /update_plan tool/);

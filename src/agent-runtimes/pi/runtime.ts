@@ -30,7 +30,8 @@ import {
 import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "../../core/model-defaults.js";
 import { createDefaultPiboProfile } from "../../core/default-profile.js";
 import {
-	createSubagentToolName,
+	PIBO_AGENT_TOOL_NAMES,
+	type PiboAgentsController,
 	type PiboSubagentRunner,
 } from "../../subagents/tool.js";
 import type { PiboRunToolController } from "../../runs/tools.js";
@@ -122,6 +123,8 @@ export type PiboRuntimeOptions = {
 	/** Optional Pi model runtime override for embedded callers and deterministic tests. */
 	modelRuntime?: ModelRuntime;
 	extensionFactories?: ExtensionFactory[];
+	agentsController?: PiboAgentsController;
+	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
 	subagentRunner?: PiboSubagentRunner;
 	runToolController?: PiboRunToolController;
 	runtimeToolController?: PiboRuntimeToolController;
@@ -298,11 +301,20 @@ function getProfileExtensionFactories(
 	];
 }
 
-function createInspectionSubagentRunner(): PiboSubagentRunner {
+function createInspectionAgentsController(): PiboAgentsController {
+	const fail = () => {
+		throw new Error("Profile inspection cannot execute delegated-agent tools");
+	};
 	return {
-		async runSubagent() {
-			throw new Error("Profile inspection cannot execute subagents");
-		},
+		sendMessage: fail,
+		listAgents: () => [],
+		observe: (input) => ({
+			filters: input,
+			observations: [],
+			nextAfterSequence: input.afterSequence ?? 0,
+			truncated: false,
+		}),
+		killAgent: fail,
 	};
 }
 
@@ -343,6 +355,9 @@ async function createSessionManager(
 export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promise<AgentSessionRuntime> {
 	const cwd = options.cwd ?? getDefaultPiboWorkspace();
 	const profile = options.profile ?? createDefaultPiboProfile();
+	if (profile.subagents.some((subagent) => subagent.enabled !== false) && options.subagentRunner && !options.agentsController && !options.portableTools) {
+		throw new Error("PiboRuntimeOptions.subagentRunner is retired. Provide agentsController so the runtime can expose the four pibo_agents_* management tools. The deprecated createSubagentToolDefinitions export remains available only for external legacy tool assembly.");
+	}
 	const agentDir = getAgentDir();
 	const sessionManager = await createSessionManager(cwd, profile, options.persistSession !== false);
 
@@ -453,7 +468,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			: createPiboSessionToolDefinitions({
 				profile,
 				toolContext,
-				subagentRunner: options.subagentRunner,
+				agentsController: options.agentsController,
 				runToolController: options.runToolController,
 				runtimeToolController,
 				codexBrowserController,
@@ -615,7 +630,7 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 		persistSession: false,
 		modelDefaults: {},
 		activeModel: undefined,
-		subagentRunner: options.subagentRunner ?? (hasEnabledSubagents ? createInspectionSubagentRunner() : undefined),
+		agentsController: options.agentsController ?? (hasEnabledSubagents ? createInspectionAgentsController() : undefined),
 		runToolController:
 			options.runToolController ?? (hasYieldableTools ? createInspectionRunToolController() : undefined),
 	});
@@ -663,14 +678,11 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 				registered: registeredToolNames.has(tool.name) || tool.providerTool !== undefined || isRuntimeTool(tool) || isCodexBrowserTool(tool),
 				active: activeToolNames.has(tool.name) || tool.providerTool !== undefined,
 			})).concat(generatedTools),
-			subagents: profile.subagents.map((subagent) => {
-				const toolName = createSubagentToolName(subagent.name);
-				return {
-					name: subagent.name,
-					targetProfile: subagent.targetProfile,
-					active: activeToolNames.has(toolName),
-				};
-			}),
+			subagents: profile.subagents.map((subagent) => ({
+				name: subagent.name,
+				targetProfile: subagent.targetProfile,
+				active: subagent.enabled !== false && activeToolNames.has(PIBO_AGENT_TOOL_NAMES[0]),
+			})),
 			mcpServers: [...profile.mcpServers],
 			mcpStatus: options.resources?.getInspection().mcpServers.map((server) => structuredClone(server)) ?? [],
 			resourceDelivery: options.resources?.getInspection().delivery.map((report) => ({ ...report })) ?? [],
@@ -732,7 +744,7 @@ function installPiboContextGuardTuiQueueOrdering(session: AgentSessionRuntime["s
 export async function runPiboTui(options: PiboRuntimeOptions = {}): Promise<void> {
 	const profile = options.profile ?? createDefaultPiboProfile();
 	const hasEnabledSubagents = profile.subagents.some((subagent) => subagent.enabled !== false);
-	if (hasEnabledSubagents && (!options.subagentRunner || !options.runToolController)) {
+	if (hasEnabledSubagents && (!options.agentsController || !options.runToolController)) {
 		console.error(
 			`Error: Profile "${profile.profileName}" uses subagents and requires the routed pibo runtime. ` +
 				`Use "npm run tui:routed -- ${profile.profileName}" for local TUI QA.`,

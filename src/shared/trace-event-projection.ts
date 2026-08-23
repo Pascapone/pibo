@@ -1157,8 +1157,14 @@ function findLegacySubagentLinkTarget(nodes: readonly PiboTraceNode[], update: P
 
 function delegationAgentName(node: PiboTraceNode): string | undefined {
 	const input = isObjectRecord(node.input) ? node.input : undefined;
-	const value = typeof input?.subagentName === "string" ? input.subagentName : node.summary ?? node.title;
-	return typeof value === "string" ? value.replace(/^pibo_subagent_/, "").trim().toLowerCase() || undefined : undefined;
+	const value = typeof input?.name === "string"
+		? input.name
+		: typeof input?.subagentName === "string"
+			? input.subagentName
+			: node.summary ?? node.title;
+	return typeof value === "string"
+		? value.replace(/^pibo_agents_send_message$/, "agent").replace(/^pibo_subagent_/, "").trim().toLowerCase() || undefined
+		: undefined;
 }
 
 function delegationThreadKey(value: unknown): string | undefined {

@@ -59,10 +59,12 @@ function createAsyncAgentRunNode(
 	const toolName = stringValue(run?.toolName) ?? stringValue(input.toolName) ?? delegation?.title;
 	if (!toolName || !isSubagentToolName(toolName)) return undefined;
 
-	const subagentName = stringValue(delegation?.summary) ?? subagentNameFromToolName(toolName);
+	const delegatedArguments = input.arguments;
+	const subagentName = stringValue(delegation?.summary)
+		?? (isRecord(delegatedArguments) ? stringValue(delegatedArguments.name) : undefined)
+		?? subagentNameFromToolName(toolName);
 	const runId = stringValue(run?.runId);
 	const runStatus = stringValue(run?.status);
-	const delegatedArguments = input.arguments;
 	const completionPolicy = stringValue(run?.completionPolicy) ?? stringValue(input.completionPolicy);
 
 	return {

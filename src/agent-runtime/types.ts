@@ -138,7 +138,7 @@ export type AgentRuntimeProductContext = {
 };
 
 export type AgentRuntimeOpenServices = {
-	subagentRunner?: unknown;
+	agentsController?: unknown;
 	runToolController?: unknown;
 	codeRuntimeToolController?: unknown;
 	portableTools?: PiboPortableToolSession;

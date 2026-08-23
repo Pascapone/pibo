@@ -95,6 +95,21 @@ async function runComposerSendScenario() {
 		}]).spans[0];
 		assert.equal(pendingSteerSpan.attributes["message.pending_delivery"], "steer");
 
+		const delegationSpan = adaptTrace("ps-1", "Test", [{
+			id: "tool:shared-agent",
+			piboSessionId: "ps-1",
+			type: "agent.delegation",
+			title: "pibo_agents_send_message",
+			status: "done",
+			startedAt: "2026-05-27T10:02:00.000Z",
+			completedAt: "2026-05-27T10:02:01.000Z",
+			input: { name: "explorer", message: "Inspect the route" },
+			linkedPiboSessionId: "ps-child",
+			children: [],
+		}]).spans[0];
+		assert.equal(delegationSpan.attributes["delegation.target_agent"], "explorer");
+		assert.equal(delegationSpan.attributes.linked_pibo_session_id, "ps-child");
+
 		const existingEvent = { id: "existing", type: "message_queued", createdAt: "2026-05-27T09:59:00.000Z", payload: {} };
 		const appendedSameSession = appendComposerOptimisticEvent({ piboSessionId: "ps-1", events: [existingEvent] }, "ps-1", plan.optimisticEvent);
 		assert.deepEqual(appendedSameSession.events.map((event) => event.id), ["existing", "web-test-txn"]);

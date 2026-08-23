@@ -133,16 +133,16 @@ The adapter preserves Codex's native system prompt and standard tools. Pibo cont
 ## Subagent branch
 
 ```text
-model calls pibo_subagent_<name>
-  -> selected Pibo tool (direct in Pi or Pibo MCP in Codex)
-  -> Pibo subagent router
+model calls pibo_agents_send_message(name, message, threadKey?)
+  -> shared Pibo agent tool (direct in Pi or Pibo MCP in Codex)
+  -> Pibo delegated-agent router
   -> create/reuse child Pibo Session by bounded thread key
   -> child freezes target profile runtime binding
   -> normal router/runtime flow
   -> child result returned to parent tool call
 ```
 
-Parent interruption cancels active child work recursively but does not delete reusable child identity.
+Parent interruption cancels active child work recursively but does not delete reusable child identity. `pibo_agents_list_agents`, `pibo_agents_observe`, and `pibo_agents_kill` manage direct child agents; `pibo_run_start` remains the asynchronous execution path.
 
 ## Failure paths
 

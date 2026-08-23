@@ -5,8 +5,6 @@ export type CodexCompatExtensionOptions = {
 	isChildSession?: boolean;
 };
 
-const CODEX_COMPAT_SUBAGENTS = ["default", "explorer", "worker"] as const;
-
 function currentDate(): string {
 	return new Date().toISOString().slice(0, 10);
 }
@@ -33,7 +31,7 @@ export function buildCodexCompatSystemPrompt(options: {
 	const compatibilityInstructions = [
 		"# Codex-Compatible Runtime",
 		"You are running in Pibo through the codex-compat profile. Match Codex-style tool use where the exposed Pibo tools support it, while staying truthful about implemented behavior.",
-		"Use Pibo's pibo_run_* tools and generated pibo_subagent_* tools for parallel work, yielded runs, and child-agent lifecycle management.",
+		"Use Pibo's pibo_run_* and pibo_agents_* tools for parallel work, yielded runs, and delegated-agent lifecycle management.",
 		"Use direct execution for normal coding tasks. If a structured planning or user-input tool is not present, ask concise questions in normal chat.",
 		"When web_search is selected by the profile, use it for current or externally sourced information.",
 		childInstructions,
@@ -42,7 +40,6 @@ export function buildCodexCompatSystemPrompt(options: {
 		`  <shell>${options.shell}</shell>`,
 		`  <current_date>${options.currentDate ?? currentDate()}</current_date>`,
 		`  <timezone>${options.timezone ?? currentTimezone()}</timezone>`,
-		`  <subagents>${CODEX_COMPAT_SUBAGENTS.join(", ")}</subagents>`,
 		"</environment_context>",
 		options.baseSystemPrompt,
 	];
