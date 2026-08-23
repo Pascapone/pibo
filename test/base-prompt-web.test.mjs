@@ -79,7 +79,10 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 	process.env.PIBO_HOME = piboHome;
 	mkdirSync(piboHome, { recursive: true });
 	writeFileSync(join(piboHome, "user-settings.json"), `${JSON.stringify({
-		settings: { telemetryRetention: { enabled: true, days: 30, lastPrunedAt } },
+		settings: {
+			transcription: { providerId: "openai" },
+			telemetryRetention: { enabled: true, days: 30, lastPrunedAt },
+		},
 	}, null, 2)}\n`);
 	const { channel, baseURL, dispose } = await startChatHost(dir);
 	try {
@@ -88,6 +91,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		});
 		assert.equal(current.response.status, 200);
 		assert.equal(current.data.userSettings.timezone, "UTC");
+		assert.deepEqual(current.data.userSettings.transcription, { providerId: "openai-chatgpt" });
 		assert.deepEqual(current.data.userSettings.telemetryRetention, { enabled: true, days: 30, lastPrunedAt });
 
 		const missingOrigin = await fetch(`${baseURL}/api/chat/user-settings`, {
@@ -135,6 +139,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		const persisted = JSON.parse(readFileSync(join(process.env.PIBO_HOME, "user-settings.json"), "utf-8"));
 		assert.equal(persisted.settings.timezone, "Europe/Berlin");
 		assert.equal(persisted.settings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+		assert.deepEqual(persisted.settings.transcription, { providerId: "openai-chatgpt" });
 		assert.deepEqual(persisted.settings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 		assert.equal("users" in persisted, false);
 	} finally {

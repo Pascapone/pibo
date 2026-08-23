@@ -12,6 +12,11 @@ import type {
 } from "../plugins/types.js";
 import type { PiboAuthService } from "../auth/types.js";
 import type { PiboWebApp } from "../web/types.js";
+import type {
+	PiboTranscriptionProviderInfo,
+	PiboTranscriptionRequest,
+	PiboTranscriptionResult,
+} from "../transcription/types.js";
 import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 import type { ContextFileProfile, InitialSessionContext, ModelProfile, SkillProfile } from "../core/profiles.js";
 import type { RuntimeSessionBinding, RuntimeSessionBindingRebindInput } from "../sessions/runtime-binding.js";
@@ -70,6 +75,8 @@ export type PiboChannelContext = {
 	getProfiles?(): PiboProfileInfo[];
 	createProfile?(name: string): InitialSessionContext;
 	getCapabilityCatalog?(): PiboCapabilityCatalog;
+	getTranscriptionProviderInfos?(): Promise<PiboTranscriptionProviderInfo[]>;
+	transcribe?(providerId: string, input: PiboTranscriptionRequest): Promise<PiboTranscriptionResult>;
 	inspectAgentRuntimeInstances?(): Promise<AgentRuntimeInstanceInspection[]>;
 	getAgentRuntimeAuthStatus?(runtimeInstanceId: string): Promise<readonly AgentRuntimeAuthStatus[]>;
 	startAgentRuntimeAuth?(runtimeInstanceId: string, input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthTargetOperationResult>;

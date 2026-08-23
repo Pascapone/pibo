@@ -62,6 +62,9 @@ export type UserSettings = {
 	shortcuts: {
 		webAnnotationsToggle: string;
 	};
+	transcription: {
+		providerId: string;
+	};
 	telemetryRetention: TelemetryRetentionSettings;
 };
 

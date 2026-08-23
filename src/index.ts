@@ -15,6 +15,8 @@ export {
 } from "./plugins/builtin.js";
 export { createPiboBetterAuthPlugin } from "./plugins/better-auth.js";
 export { createPiboChatWebPlugin } from "./plugins/chat-web.js";
+export { createPiboOpenAiChatGptTranscriptionPlugin, piboOpenAiChatGptTranscriptionPlugin } from "./plugins/openai-chatgpt-transcription.js";
+export { createPiboOpenAiTranscriptionPlugin, piboOpenAiTranscriptionPlugin } from "./plugins/openai-transcription.js";
 export { createPiboContextFilesPlugin } from "./plugins/context-files.js";
 export type { ContextFilesPluginOptions } from "./plugins/context-files.js";
 export { createPiboWebHostPlugin } from "./plugins/web.js";
@@ -23,6 +25,34 @@ export type { ChatWebAppOptions } from "./apps/chat/web-app.js";
 export { createBetterAuthService } from "./auth/better-auth.js";
 export type { BetterAuthServiceOptions } from "./auth/better-auth.js";
 export type { PiboAuthIdentity, PiboAuthService, PiboAuthSession } from "./auth/types.js";
+export {
+	DEFAULT_OPENAI_CHATGPT_TRANSCRIPTION_URL,
+	DEFAULT_OPENAI_CHATGPT_USER_AGENT,
+	OPENAI_CHATGPT_TRANSCRIPTION_PROVIDER_ID,
+	OPENAI_CODEX_AUTH_PROVIDER_ID,
+	createOpenAiChatGptTranscriptionProvider,
+} from "./transcription/openai-chatgpt.js";
+export type {
+	OpenAiChatGptTranscriptionAuth,
+	OpenAiChatGptTranscriptionProviderOptions,
+} from "./transcription/openai-chatgpt.js";
+export {
+	DEFAULT_OPENAI_TRANSCRIPTION_MODEL,
+	DEFAULT_OPENAI_TRANSCRIPTION_URL,
+	OPENAI_API_CREDENTIAL_PROVIDER_ID,
+	OPENAI_TRANSCRIPTION_PROVIDER_ID,
+	createOpenAiTranscriptionProvider,
+} from "./transcription/openai.js";
+export type { OpenAiTranscriptionProviderOptions } from "./transcription/openai.js";
+export { PiboTranscriptionError } from "./transcription/types.js";
+export type {
+	PiboTranscriptionAudio,
+	PiboTranscriptionErrorCode,
+	PiboTranscriptionProvider,
+	PiboTranscriptionProviderInfo,
+	PiboTranscriptionRequest,
+	PiboTranscriptionResult,
+} from "./transcription/types.js";
 export {
 	DEFAULT_AGENT_RUNTIME_INSTANCE_ID,
 	InitialSessionContext,

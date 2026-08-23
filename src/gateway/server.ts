@@ -523,6 +523,8 @@ export class PiboGatewayServer {
 			getProfiles: () => this.pluginRegistry.getProfileInfos(),
 			createProfile: (name) => this.pluginRegistry.createProfile(name),
 			getCapabilityCatalog: () => this.pluginRegistry.getCapabilityCatalog(),
+			getTranscriptionProviderInfos: () => this.pluginRegistry.getTranscriptionProviderInfos(),
+			transcribe: (providerId, input) => this.pluginRegistry.transcribe(providerId, input),
 			inspectAgentRuntimeInstances: () => this.pluginRegistry.inspectAgentRuntimeInstances(),
 			getAgentRuntimeAuthStatus: (runtimeInstanceId) => this.requireRouter().getAgentRuntimeAuthStatus(runtimeInstanceId),
 			startAgentRuntimeAuth: (runtimeInstanceId, input) => this.requireRouter().startAgentRuntimeAuth(runtimeInstanceId, input),

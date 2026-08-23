@@ -1,1 +1,1 @@
-export type SettingsPanel = "general" | "shortcuts" | "maintenance" | "pi-packages" | "skills" | "providers";
+export type SettingsPanel = "general" | "transcription" | "shortcuts" | "maintenance" | "pi-packages" | "skills" | "providers";
