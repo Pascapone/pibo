@@ -142,7 +142,7 @@ key="${PIBO_POOL_TLS_CERTIFICATE_KEY:-}"
 if [[ -n "$cert" || -n "$key" ]]; then
 	[[ -f "$cert" && -f "$key" ]] || { echo "Both PIBO_POOL_TLS_CERTIFICATE and PIBO_POOL_TLS_CERTIFICATE_KEY must exist" >&2; exit 2; }
 fi
-server_names=()
+server_names=("$base_host")
 map_entries=()
 for ((index=1; index<=slot_count; index++)); do
 	slot=$(printf 'slot-%02d' "$index")

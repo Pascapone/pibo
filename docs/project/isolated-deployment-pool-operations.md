@@ -98,9 +98,10 @@ Create these public DNS records:
 
 Do not publish an `AAAA` record unless the development host has a confirmed stable IPv6 address and inbound IPv6 HTTPS is configured. A transient or dynamically leased IPv6 address is not suitable.
 
-Issue one certificate containing the ten fixed slot hostnames:
+Issue one certificate containing the pool base hostname and the ten fixed slot hostnames:
 
 ```bash
+printf '%s\n' "$POOL_BASE_HOST"
 for index in $(seq -w 1 10); do
   printf 'slot-%s.%s\n' "$index" "$POOL_BASE_HOST"
 done
@@ -115,6 +116,7 @@ certbot certonly --non-interactive --webroot \
   --webroot-path /var/lib/pibo-deployment-pool-acme \
   --cert-name pibo-deployment-pool \
   --deploy-hook 'nginx -t && systemctl reload nginx' \
+  -d "${POOL_BASE_HOST}" \
   -d "slot-01.${POOL_BASE_HOST}" -d "slot-02.${POOL_BASE_HOST}" \
   -d "slot-03.${POOL_BASE_HOST}" -d "slot-04.${POOL_BASE_HOST}" \
   -d "slot-05.${POOL_BASE_HOST}" -d "slot-06.${POOL_BASE_HOST}" \
@@ -149,5 +151,5 @@ Do not add Google OAuth callbacks for deployment slots. The existing canonical G
 6. Renew updates expiry; explicit release removes the container and isolated active data.
 7. An expired lease is removed by the Resource Reaper.
 8. A labeled orphan is selected by dry-run and removed by apply.
-9. Public HTTPS has a valid SAN certificate for all fixed slots, a headful browser can use a slot through Machine Auth, and canonical Google OAuth remains unchanged.
+9. Public HTTPS has a valid SAN certificate for the pool base and all fixed slots, a headful browser can use a slot through Machine Auth, and canonical Google OAuth remains unchanged.
 10. The canonical development instance remains healthy before and after pool activity.

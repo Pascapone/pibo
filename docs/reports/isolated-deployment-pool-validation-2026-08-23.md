@@ -4,7 +4,7 @@ Date: 2026-08-23
 
 ## Result
 
-The isolated deployment pool is installed and active on the dedicated Pibo2 development host. Internal slot lifecycle, isolation, authentication, model execution, streaming, retention, and cleanup passed. Public slot access remains intentionally disabled until the pool and wildcard A records resolve and an automatically renewed SAN certificate is issued for the ten fixed slot names.
+The isolated deployment pool is installed and active on the dedicated Pibo2 development host. Internal slot lifecycle, isolation, authentication, model execution, streaming, retention, and cleanup passed. Public slot access remains intentionally disabled until the pool and wildcard A records resolve and an automatically renewed SAN certificate is issued for the pool base and ten fixed slot names.
 
 Validated candidate:
 
@@ -112,7 +112,7 @@ The operator must complete these external steps before public slot URLs can be e
 
 1. Add the pool-base and wildcard `A` records described in `docs/project/isolated-deployment-pool-operations.md`.
 2. Do not add `AAAA` until a stable IPv6 address and inbound IPv6 route are confirmed.
-3. Issue an automatically renewed HTTP-01 SAN certificate covering the ten fixed slot hostnames; no DNS-01 record or DNS API credential is required.
+3. Issue an automatically renewed HTTP-01 SAN certificate covering the pool base and ten fixed slot hostnames; no DNS-01 record or DNS API credential is required.
 4. Keep the existing canonical Google OAuth callback unchanged; do not add slot callbacks.
 5. Rerun host setup with the SAN certificate and key paths to generate and activate nginx routing.
 6. Validate a slot through Machine Auth in a headful browser and confirm canonical Google sign-in remains healthy.

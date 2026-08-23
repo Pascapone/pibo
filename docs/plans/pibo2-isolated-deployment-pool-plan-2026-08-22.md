@@ -130,7 +130,7 @@ Vorteile gegenüber dynamischen Hostnamen:
 
 - keine nginx-Konfigurationsänderung pro Lease;
 - keine Race Conditions bei Reloads;
-- die zehn festen Hostnamen passen in ein automatisch erneuertes SAN-Zertifikat;
+- der Base-Hostname und die zehn festen Slot-Hostnamen passen in ein automatisch erneuertes SAN-Zertifikat;
 - einfacher Zusammenhang zwischen Hostname, Portblock, Slot-Verzeichnis und Container;
 - abgelaufene Slots können eindeutig auf eine neutrale 503-Seite fallen;
 - ein Wildcard-DNS-Eintrag genügt.
@@ -141,7 +141,7 @@ Erforderlich sind:
 
 - ein A-Eintrag für den Deployment-Base-Host;
 - ein Wildcard-A-Eintrag `*.<deployment-pool-base-host>` auf Pibo2;
-- ein automatisch erneuertes SAN-Zertifikat für die zehn festen Slot-Hostnamen.
+- ein automatisch erneuertes SAN-Zertifikat für den Base-Host und die zehn festen Slot-Hostnamen.
 
 Weil die Hostnamen fest sind, erfolgt Zertifikatsausstellung und Erneuerung per HTTP-01 über nginx. Squarespace benötigt dafür weder DNS-API-Zugang noch TXT-/CNAME-Challenge-Records. Ein AAAA-Eintrag wird erst bei stabiler IPv6-Adresse und geprüftem IPv6-HTTPS-Routing ergänzt.
 
@@ -530,7 +530,7 @@ Aufgaben:
 Aufgaben:
 
 - Base- und Wildcard-A-Records konfigurieren;
-- SAN-Zertifikat für die zehn festen Slot-Namen per HTTP-01 bereitstellen und automatisch erneuern;
+- SAN-Zertifikat für den Base-Host und die zehn festen Slot-Namen per HTTP-01 bereitstellen und automatisch erneuern;
 - statische Slot-Routen und neutrale Inactive-Seite einrichten;
 - bestehendes kanonisches Pibo2- und Session-Live-Preview-Routing unverändert halten;
 - nginx-Konfiguration testen, bevor sie geladen wird.
@@ -643,7 +643,7 @@ Reihenfolge:
 
 ### Festgelegt
 
-1. Squarespace erhält einen Base- und einen Wildcard-A-Record; die zehn festen Slots verwenden ein per HTTP-01 erneuertes SAN-Zertifikat.
+1. Squarespace erhält einen Base- und einen Wildcard-A-Record; der Base-Host und die zehn festen Slots verwenden ein per HTTP-01 erneuertes SAN-Zertifikat.
 2. Der bestehende kanonische Google-OAuth-Callback bleibt der einzige Google-Callback; Deployment-Slots verwenden Machine Auth.
 3. Der Golden Seed ist kuratiert, aber realistisch und basiert auf bewusst ausgewählten Pibo2-Testzuständen.
 4. Fehlgeschlagene Slot-Homes und begrenzte Logs bleiben zwei Stunden erhalten; höchstens drei Fehlersnapshots werden gleichzeitig aufbewahrt.
