@@ -183,6 +183,8 @@ done
 		echo "    ssl_certificate_key $key;"
 		echo '    client_max_body_size 100m;'
 		echo '    proxy_buffering off;'
+		echo '    proxy_intercept_errors on;'
+		echo '    error_page 502 503 504 = @pibo_deployment_pool_inactive;'
 		echo '    proxy_read_timeout 3600s;'
 		echo '    proxy_send_timeout 3600s;'
 		echo '    location / {'
@@ -195,6 +197,10 @@ done
 		echo '        proxy_set_header Upgrade $http_upgrade;'
 		echo '        proxy_set_header Connection "upgrade";'
 		echo '        proxy_pass http://127.0.0.1:$pibo_deployment_pool_port;'
+		echo '    }'
+		echo '    location @pibo_deployment_pool_inactive {'
+		echo '        default_type text/plain;'
+		echo '        return 503 "Deployment slot is inactive\\n";'
 		echo '    }'
 		echo '}'
 	fi
