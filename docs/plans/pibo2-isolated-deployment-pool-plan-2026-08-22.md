@@ -1,9 +1,9 @@
 # Implementierungsplan: Isolierter Pibo2 Deployment Pool
 
-**Status:** Draft  
-**Created:** 2026-08-22  
-**Updated:** 2026-08-23  
-**Source:** Nutzeranfrage in Pibo Session `ps_d0fb25d0-2b64-467c-b79d-a1d058db598b`  
+**Status:** Implemented; public DNS/TLS/OAuth activation pending
+**Created:** 2026-08-22
+**Updated:** 2026-08-23
+**Source:** Nutzeranfrage in Pibo Session `ps_d0fb25d0-2b64-467c-b79d-a1d058db598b`
 **Related docs:** `docs/specs/capabilities/docker-compute-workers.md`, `docs/specs/capabilities/standalone-docker-runtime.md`, `docs/project/compute-browser-resource-operating-model.md`, `docs/project/session-live-previews.md`
 
 ## 1. Kurzentscheidung
