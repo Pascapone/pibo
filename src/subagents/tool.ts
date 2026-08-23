@@ -1,8 +1,12 @@
+import { createHash } from "node:crypto";
 import { Type } from "typebox";
 import { piboStringEnum } from "../tools/schema.js";
 import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
 import type { PiboAssistantMessageEvent, PiboJsonValue } from "../core/events.js";
 import type { ModelProfile, SubagentProfile } from "../core/profiles.js";
+import type { PiboAgentObservationKind, PiboAgentObservationOrder } from "./observations.js";
+
+export type { PiboAgentObservationKind, PiboAgentObservationOrder } from "./observations.js";
 
 export const PIBO_AGENT_TOOL_NAMES = [
 	"pibo_agents_send_message",
@@ -13,8 +17,6 @@ export const PIBO_AGENT_TOOL_NAMES = [
 
 export type PiboAgentToolName = (typeof PIBO_AGENT_TOOL_NAMES)[number];
 export type PiboAgentStatus = "running" | "idle" | "killed";
-export type PiboAgentObservationKind = "message" | "thinking" | "tool" | "error" | "lifecycle" | "event";
-export type PiboAgentObservationOrder = "asc" | "desc";
 
 export type PiboAvailableAgent = {
 	name: string;
@@ -101,6 +103,27 @@ export type PiboAgentsController = {
 	listAgents(): PiboManagedAgent[];
 	observe(input: PiboAgentObserveInput): PiboAgentObserveResult;
 	killAgent(agentId: string): Promise<PiboAgentKillResult>;
+};
+
+/** @deprecated Use PiboAgentSendMessageInput with PiboAgentsController. */
+export type PiboSubagentRunInput = {
+	subagent: SubagentProfile;
+	message: string;
+	threadKey?: string;
+	toolCallId?: string;
+	signal?: AbortSignal;
+};
+
+/** @deprecated Use PiboAgentSendMessageResult with PiboAgentsController. */
+export type PiboSubagentRunResult = {
+	piboSessionId: string;
+	eventId: string;
+	reply: PiboAssistantMessageEvent;
+};
+
+/** @deprecated Use PiboAgentsController. */
+export type PiboSubagentRunner = {
+	runSubagent(input: PiboSubagentRunInput): Promise<PiboSubagentRunResult>;
 };
 
 function availableAgentDescription(subagent: SubagentProfile): string {
@@ -204,7 +227,7 @@ export function createAgentToolDefinitions(
 			name: "pibo_agents_observe",
 			title: "Pibo Agents Observe",
 			description: "Read bounded delegated-agent observations with exact agent, thread, event, kind, time, text, cursor, order, and limit filters.",
-			promptSnippet: "Observe child-agent activity. Array filters use OR within a field and different fields combine with AND. Use afterSequence to poll without duplicates.",
+			promptSnippet: "Observe child-agent activity. Array filters use OR within a field and different fields combine with AND. For cursor polling, pass afterSequence from the previous result; pages consume the oldest unseen observations even when order is desc.",
 			executionMode: "parallel",
 			annotations: { readOnly: true },
 			inputSchema: Type.Object({
@@ -216,7 +239,7 @@ export function createAgentToolDefinitions(
 				since: Type.Optional(Type.String({ description: "Inclusive ISO-8601 lower timestamp bound" })),
 				until: Type.Optional(Type.String({ description: "Inclusive ISO-8601 upper timestamp bound" })),
 				textContains: Type.Optional(Type.String({ description: "Case-insensitive substring match against normalized observation text" })),
-				afterSequence: Type.Optional(Type.Integer({ description: "Exclusive live observation cursor", minimum: 0 })),
+				afterSequence: Type.Optional(Type.Integer({ description: "Exclusive live observation cursor. Cursor pages consume the oldest unseen observations; desc reverses only the returned page.", minimum: 0 })),
 				order: Type.Optional(piboStringEnum(["asc", "desc"], { default: "asc" })),
 				limit: Type.Optional(Type.Integer({ description: "Maximum observations to return", minimum: 1, maximum: 200, default: 50 })),
 				includeDetails: Type.Optional(Type.Boolean({ description: "Include the normalized source event in each observation" })),
@@ -248,4 +271,55 @@ export function createAgentToolDefinitions(
 			},
 		}),
 	];
+}
+
+function legacySubagentToolHash(value: string): string {
+	return createHash("sha256").update(value).digest("hex").slice(0, 12);
+}
+
+/**
+ * @deprecated Runtime-generated per-agent tools are no longer assembled by Pibo runtimes.
+ * This helper remains source-compatible for integrations migrating to PIBO_AGENT_TOOL_NAMES.
+ */
+export function createSubagentToolName(subagentName: string): string {
+	const normalized = subagentName.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+	return `pibo_subagent_${normalized || `subagent_${legacySubagentToolHash(subagentName)}`}`;
+}
+
+/**
+ * @deprecated Use createAgentToolDefinitions with a PiboAgentsController.
+ * Pibo runtimes expose only the four pibo_agents_* tools, but this legacy factory remains available
+ * for external callers during migration.
+ */
+export function createSubagentToolDefinitions(
+	subagents: readonly SubagentProfile[],
+	runner: PiboSubagentRunner,
+): PiboToolDefinition[] {
+	const seen = new Set<string>();
+	const definitions: PiboToolDefinition[] = [];
+	for (const subagent of subagents) {
+		if (subagent.enabled === false) continue;
+		const toolName = createSubagentToolName(subagent.name);
+		if (seen.has(toolName)) throw new Error(`Duplicate subagent tool name "${toolName}"`);
+		seen.add(toolName);
+		definitions.push(definePiboTool({
+			name: toolName,
+			title: `Pibo Subagent ${subagent.name}`,
+			description: subagent.description ?? `Send a message to the ${subagent.name} subagent. Use threadKey to continue the same subagent session.`,
+			promptSnippet: subagent.description ?? `Send a message to the ${subagent.name} subagent. Pass the same threadKey when you want to continue the same subagent session.`,
+			executionMode: "parallel",
+			inputSchema: Type.Object({
+				message: Type.String({ description: "Message to send to the subagent" }),
+				threadKey: Type.Optional(Type.String({
+					description: "Stable key for continuing a previous subagent conversation. Omit it to create a new subagent session.",
+					maxLength: 256,
+				})),
+			}),
+			async execute(toolCallId, params, signal) {
+				const result = await runner.runSubagent({ subagent, message: params.message, threadKey: params.threadKey, toolCallId, signal });
+				return { content: [{ type: "text", text: result.reply.text }], details: result };
+			},
+		}));
+	}
+	return definitions;
 }

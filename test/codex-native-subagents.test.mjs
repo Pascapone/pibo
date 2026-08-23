@@ -181,6 +181,23 @@ test("Codex native invokes direct and yielded Pibo subagents through scoped MCP 
 	assert.equal(second.structuredContent.agentId, firstChild.id);
 	assert.equal(childSessions(store, parent.id).length, 1);
 
+	const listed = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_list_agents", {});
+	assert.equal(listed.structuredContent.availableAgents[0].name, "helper");
+	assert.equal(listed.structuredContent.agents[0].agentId, firstChild.id);
+	const observed = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_observe", {
+		agentIds: [firstChild.id],
+		eventTypes: ["assistant_message"],
+		kinds: ["message"],
+		textContains: "SECOND DIRECT REQUEST",
+		limit: 10,
+	});
+	assert.equal(observed.structuredContent.observations.length, 1);
+	assert.match(observed.structuredContent.observations[0].text, /fixture child: second direct request/);
+	const killed = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_kill", { agentId: firstChild.id });
+	assert.deepEqual(killed.structuredContent.killed, [firstChild.id]);
+	const afterKill = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_list_agents", {});
+	assert.equal(afterKill.structuredContent.agents[0].status, "killed");
+
 	const started = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_start", {
 		toolName: "pibo_agents_send_message",
 		arguments: { name: "helper", message: "yielded request", threadKey: "yielded" },

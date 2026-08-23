@@ -361,7 +361,16 @@ function previewTextForOutputEvent(event: PiboOutputEvent): string | undefined {
 function attributesForOutputEvent(event: PiboOutputEvent): Record<string, unknown> {
 	if (event.type === "message_queued") return { inlineText: event.text, source: event.source, queuedMessages: event.queuedMessages };
 	if (event.type === "message_steered") return { inlineText: event.text, source: event.source, activeEventId: event.activeEventId };
+	if (event.type === "message_started") return { inlineText: event.text, source: event.source };
+	if (event.type === "message_finished") return { source: event.source };
 	if (event.type === "assistant_message" || event.type === "assistant_delta") return { assistantIndex: event.assistantIndex, contentIndex: event.contentIndex };
+	if (event.type === "assistant_usage") return {
+		inputTokens: event.inputTokens,
+		outputTokens: event.outputTokens,
+		cacheReadTokens: event.cacheReadTokens,
+		cacheWriteTokens: event.cacheWriteTokens,
+		totalTokens: event.totalTokens,
+	};
 	if (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished") return { thinkingIndex: event.thinkingIndex, contentIndex: event.contentIndex };
 	if (event.type === "tool_call") return { toolCallId: event.toolCallId, toolName: event.toolName, argsComplete: event.argsComplete, intent: event.intent };
 	if (event.type === "tool_execution_started" || event.type === "tool_execution_updated" || event.type === "tool_execution_finished") return { toolCallId: event.toolCallId, toolName: event.toolName, isError: "isError" in event ? event.isError : undefined, intent: event.intent };

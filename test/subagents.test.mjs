@@ -8,12 +8,18 @@ import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { createAgentToolDefinitions, PIBO_AGENT_TOOL_NAMES } from "../dist/subagents/tool.js";
+import {
+	createAgentToolDefinitions,
+	createSubagentToolDefinitions,
+	createSubagentToolName,
+	PIBO_AGENT_TOOL_NAMES,
+} from "../dist/subagents/tool.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { findCliToolEntry, getInstalledCliToolContextFile } from "../dist/tools/registry.js";
+import { isGeneratedPiboTool } from "../dist/tools/session-tool-set.js";
 import { getToolPythonRuntimePaths } from "../dist/tools/python-runtime.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
@@ -95,6 +101,53 @@ test("delegated agents expose four stable shared tools and reject duplicate exac
 			{ name: "same", targetProfile: "other-profile" },
 		], noopAgentsController),
 		/Duplicate agent name "same"/,
+	);
+});
+
+test("legacy subagent tool exports remain source-compatible without entering runtime assembly", async () => {
+	assert.equal(createSubagentToolName("Research Helper"), "pibo_subagent_research_helper");
+	assert.equal(isGeneratedPiboTool("pibo_subagent_research_helper"), true);
+	assert.equal(isGeneratedPiboTool("pibo_agents_send_message"), true);
+	const calls = [];
+	const [tool] = createSubagentToolDefinitions(
+		[{ name: "Research Helper", description: "Legacy integration helper.", targetProfile: "helper-profile" }],
+		{
+			async runSubagent(input) {
+				calls.push(input);
+				return {
+					piboSessionId: "ps_legacy_child",
+					eventId: "event-legacy",
+					reply: { type: "assistant_message", piboSessionId: "ps_legacy_child", eventId: "event-legacy", text: "legacy reply" },
+				};
+			},
+		},
+	);
+	assert.equal(tool.name, "pibo_subagent_research_helper");
+	const result = await tool.execute("tool-legacy", { message: "inspect", threadKey: "migration" });
+	assert.equal(result.content[0].text, "legacy reply");
+	assert.equal(calls[0].toolCallId, "tool-legacy");
+	assert.equal(calls[0].threadKey, "migration");
+	assert.throws(
+		() => createSubagentToolDefinitions([
+			{ name: "same-name", targetProfile: "one" },
+			{ name: "same name", targetProfile: "two" },
+		], { async runSubagent() { throw new Error("not used"); } }),
+		/Duplicate subagent tool name "pibo_subagent_same_name"/,
+	);
+});
+
+test("legacy runtime subagentRunner callers receive an explicit migration error", async () => {
+	const profile = new InitialSessionContextBuilder("legacy-runtime")
+		.withAutoContextFiles(false)
+		.addSubagent({ name: "helper", targetProfile: "base" })
+		.createSession();
+	await assert.rejects(
+		createPiboRuntime({
+			profile,
+			persistSession: false,
+			subagentRunner: { async runSubagent() { throw new Error("not used"); } },
+		}),
+		/PiboRuntimeOptions\.subagentRunner is retired\. Provide agentsController/,
 	);
 });
 
@@ -590,6 +643,106 @@ test("agents controller lists, filters observations, kills owned children, and d
 			router.createAgentsController(explorer.agentId).killAgent(replacement.agentId),
 			/is not owned/,
 		);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("agent observation polling is cursor-safe in descending order and reports retention loss", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	store.create({
+		id: "ps_child",
+		channel: "pibo.subagents",
+		kind: "subagent",
+		profile: "base",
+		parentId: "ps_parent",
+		metadata: { subagentName: "worker", threadKey: "retained" },
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		for (let index = 1; index <= 5_002; index += 1) {
+			router.emitOutput({
+				type: "assistant_delta",
+				piboSessionId: "ps_child",
+				eventId: `event-${index}`,
+				text: `observation ${index}`,
+			});
+		}
+		const controller = router.createAgentsController("ps_parent");
+		const first = controller.observe({ afterSequence: 0, order: "desc", limit: 2 });
+		assert.deepEqual(first.observations.map((observation) => observation.sequence), [4, 3]);
+		assert.equal(first.nextAfterSequence, 4);
+		assert.equal(first.truncated, true);
+
+		const second = controller.observe({ afterSequence: first.nextAfterSequence, order: "desc", limit: 2 });
+		assert.deepEqual(second.observations.map((observation) => observation.sequence), [6, 5]);
+		assert.equal(second.nextAfterSequence, 6);
+		assert.equal(second.truncated, true);
+
+		const newest = controller.observe({ order: "desc", limit: 2 });
+		assert.deepEqual(newest.observations.map((observation) => observation.sequence), [5_002, 5_001]);
+		assert.equal(newest.truncated, true);
+
+		router.emitOutput({
+			type: "assistant_message",
+			piboSessionId: "ps_child",
+			eventId: "event-large",
+			text: `prefix-${"é".repeat(20_000)}`,
+		});
+		const large = controller.observe({ textContains: "prefix-", includeDetails: true, limit: 1 });
+		assert.equal(Buffer.byteLength(large.observations[0].text, "utf8") <= 4 * 1024, true);
+		assert.equal(large.observations[0].text.endsWith("…"), true);
+		assert.deepEqual(large.observations[0].details.truncated, true);
+		assert.throws(() => controller.observe({ limit: 0 }), /limit must be an integer from 1 to 200/);
+		assert.throws(() => controller.observe({ since: "2026-08-23" }), /valid ISO-8601 timestamp/);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("agent kill retries subtree cleanup after a partial failure", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	store.create({
+		id: "ps_child",
+		channel: "pibo.subagents",
+		kind: "subagent",
+		profile: "base",
+		parentId: "ps_parent",
+		metadata: { subagentName: "worker", threadKey: "cleanup" },
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "status" });
+		assert.equal(router.sessions.has("ps_child"), true);
+		const originalDispose = router.disposeSessionSubtree.bind(router);
+		let attempts = 0;
+		router.disposeSessionSubtree = async (...args) => {
+			attempts += 1;
+			if (attempts === 1) throw new Error("injected cleanup failure");
+			return originalDispose(...args);
+		};
+		const controller = router.createAgentsController("ps_parent");
+		await assert.rejects(controller.killAgent("ps_child"), /injected cleanup failure/);
+		assert.equal(controller.listAgents()[0].status, "killed");
+		const retried = await controller.killAgent("ps_child");
+		assert.deepEqual(retried.killed, ["ps_child"]);
+		assert.equal(attempts, 2);
+		assert.equal(router.sessions.has("ps_child"), false);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("descendant traversal is cycle-safe for corrupt stored session graphs", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_a", channel: "pibo.subagents", kind: "subagent", profile: "base", parentId: "ps_c" });
+	store.create({ id: "ps_b", channel: "pibo.subagents", kind: "subagent", profile: "base", parentId: "ps_a" });
+	store.create({ id: "ps_c", channel: "pibo.subagents", kind: "subagent", profile: "base", parentId: "ps_b" });
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		assert.deepEqual(router.descendantSessionIds("ps_a"), ["ps_b", "ps_c"]);
 	} finally {
 		await router.disposeAll();
 	}

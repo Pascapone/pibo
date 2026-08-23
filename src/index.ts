@@ -339,6 +339,8 @@ export type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "./web/types.
 export { sendGatewayEvent, sendGatewayMessageAndWaitForReply } from "./gateway/request.js";
 export {
 	createAgentToolDefinitions,
+	createSubagentToolDefinitions,
+	createSubagentToolName,
 	formatAvailableAgentsForPrompt,
 	listAvailableAgents,
 	PIBO_AGENT_TOOL_NAMES,
@@ -347,14 +349,19 @@ export type {
 	PiboAgentKillResult,
 	PiboAgentObservation,
 	PiboAgentObservationKind,
+	PiboAgentObservationOrder,
 	PiboAgentObserveInput,
 	PiboAgentObserveResult,
 	PiboAgentSendMessageInput,
 	PiboAgentSendMessageResult,
 	PiboAgentStatus,
+	PiboAgentToolName,
 	PiboAgentsController,
 	PiboAvailableAgent,
 	PiboManagedAgent,
+	PiboSubagentRunInput,
+	PiboSubagentRunner,
+	PiboSubagentRunResult,
 } from "./subagents/tool.js";
 export { PiboSteeringUnavailableError } from "./core/events.js";
 export type {

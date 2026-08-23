@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { inspectDebugAgentList, inspectDebugAgentObservations } from "../dist/debug/agents.js";
+import { inspectDebugAgentList, inspectDebugAgentObservations, runDebugAgentsCli } from "../dist/debug/agents.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
@@ -49,6 +49,12 @@ function createFixture() {
 		createdAt: "2026-08-23T12:01:00.000Z",
 		event: { type: "tool_call", piboSessionId: worker.id, eventId: "event_worker", toolCallId: "tool_worker", toolName: "bash", args: { command: "npm test" }, argsComplete: true },
 	});
+	ingest.ingestOutputEvent({
+		session: explorer,
+		roomId: "room_test",
+		createdAt: "2026-08-23T12:02:00.000Z",
+		event: { type: "assistant_delta", piboSessionId: explorer.id, eventId: "event_delta", text: `large-prefix-${"é".repeat(20_000)}` },
+	});
 	return {
 		root,
 		dataStore,
@@ -61,7 +67,7 @@ test("debug delegated-agent inspection lists owned children and applies exact ob
 	try {
 		const agents = inspectDebugAgentList("ps_parent", fixture.store);
 		assert.deepEqual(agents.map((agent) => [agent.agentId, agent.name, agent.status]).sort(), [
-			["ps_explorer", "explorer", "idle"],
+			["ps_explorer", "explorer", "running"],
 			["ps_worker", "worker", "killed"],
 		]);
 		assert.deepEqual(inspectDebugAgentList("ps_parent", fixture.store, { status: "killed" }).map((agent) => agent.agentId), ["ps_worker"]);
@@ -84,7 +90,26 @@ test("debug delegated-agent inspection lists owned children and applies exact ob
 		assert.equal(result.observations[0].toolName, "bash");
 		assert.equal(result.observations[0].details.toolCallId, "tool_worker");
 		assert.equal(result.nextAfterSequence, result.observations[0].streamId);
-		assert.equal(inspectDebugAgentObservations("ps_parent", fixture.store, { afterSequence: result.nextAfterSequence }).observations.length, 0);
+		assert.equal(inspectDebugAgentObservations("ps_parent", fixture.store, { afterSequence: result.nextAfterSequence }).observations.length, 1);
+
+		const firstPage = inspectDebugAgentObservations("ps_parent", fixture.store, { afterSequence: 0, order: "desc", limit: 1 });
+		const secondPage = inspectDebugAgentObservations("ps_parent", fixture.store, { afterSequence: firstPage.nextAfterSequence, order: "desc", limit: 1 });
+		assert.equal(firstPage.observations[0].streamId < secondPage.observations[0].streamId, true);
+		assert.equal(firstPage.observations[0].kind, "message");
+		assert.equal(firstPage.truncated, true);
+
+		const large = inspectDebugAgentObservations("ps_parent", fixture.store, {
+			eventTypes: ["assistant_delta"],
+			textContains: "LARGE-PREFIX",
+			includeDetails: true,
+			limit: 1,
+		});
+		assert.equal(large.observations[0].kind, "message");
+		assert.equal(Buffer.byteLength(large.observations[0].text, "utf8") <= 4 * 1024, true);
+		assert.equal(large.observations[0].text.endsWith("…"), true);
+		assert.equal(large.observations[0].details.truncated, true);
+		assert.throws(() => inspectDebugAgentObservations("ps_parent", fixture.store, { limit: 0 }), /limit must be an integer from 1 to 200/);
+		assert.throws(() => inspectDebugAgentObservations("ps_parent", fixture.store, { since: "2026-08-23" }), /valid ISO-8601 timestamp/);
 		assert.throws(
 			() => inspectDebugAgentObservations("ps_parent", fixture.store, { agentIds: ["ps_foreign"] }),
 			/is not owned/,
@@ -93,4 +118,21 @@ test("debug delegated-agent inspection lists owned children and applies exact ob
 		fixture.dataStore.close();
 		rmSync(fixture.root, { recursive: true, force: true });
 	}
+});
+
+test("debug delegated-agent CLI exposes command-level discovery and rejects ignored options", async () => {
+	const output = [];
+	const originalLog = console.log;
+	console.log = (...args) => output.push(args.join(" "));
+	try {
+		await runDebugAgentsCli(["ps_parent", "observe", "--help"]);
+	} finally {
+		console.log = originalLog;
+	}
+	assert.match(output.join("\n"), /pages always consume the oldest unseen rows/);
+	assert.match(output.join("\n"), /--agent-id/);
+	await assert.rejects(
+		runDebugAgentsCli(["ps_parent", "list", "--limit", "1"]),
+		/Unsupported option for pibo debug agents list/,
+	);
 });

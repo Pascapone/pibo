@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { InitialSessionContext } from "../core/profiles.js";
 import type { PiboRunToolController } from "../runs/tools.js";
-import type { PiboAgentsController } from "../subagents/tool.js";
+import type { PiboAgentsController, PiboSubagentRunner } from "../subagents/tool.js";
 import type { CodexBrowserToolController } from "./codex-browser.js";
 import type { PiboToolDefinition, PiboToolDefinitionContext } from "./contract.js";
 import {
@@ -14,6 +14,8 @@ import { createPiboSessionToolDefinitions } from "./session-tool-set.js";
 
 export type PiboPortableToolSessionControllers = {
 	agentsController?: PiboAgentsController;
+	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
+	subagentRunner?: PiboSubagentRunner;
 	runToolController?: PiboRunToolController;
 	runtimeToolController?: PiboRuntimeToolController;
 	codexBrowserController?: CodexBrowserToolController;
@@ -130,6 +132,7 @@ export class PiboPortableToolService {
 			},
 			controllers: {
 				agentsController: input.agentsController,
+				subagentRunner: input.subagentRunner,
 				runToolController: input.runToolController,
 				runtimeToolController: input.runtimeToolController,
 				codexBrowserController: input.codexBrowserController,

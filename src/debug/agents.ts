@@ -1,5 +1,16 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { PiboAgentObservationKind } from "../subagents/tool.js";
+import {
+	normalizePiboAgentObservationCursor,
+	normalizePiboAgentObservationLimit,
+	normalizePiboAgentObservationOrder,
+	parsePiboAgentObservationTimestamp,
+	piboAgentObservationDetails,
+	piboAgentObservationKind,
+	piboAgentObservationRole,
+	piboAgentObservationText,
+	type PiboAgentObservationKind,
+	type PiboAgentObservationSource,
+} from "../subagents/observations.js";
 import { createDebugPayloadStore, hydrateDebugEventRow } from "./persisted-payloads.js";
 import { eventAttributes, eventPayload, type DebugEventRow } from "./payloads.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
@@ -80,10 +91,18 @@ export async function runDebugAgentsCli(args: string[]): Promise<void> {
 	const parentPiboSessionId = args[0]!;
 	const command = args[1];
 	if (!command || command === "--help" || command === "-h") {
-		printDebugAgentsDiscovery();
+		printDebugAgentsDiscovery(parentPiboSessionId);
+		return;
+	}
+	if (command !== "list" && command !== "observe") {
+		throw new Error(`Unknown pibo debug agents command "${command}". Run pibo debug agents ${parentPiboSessionId} --help.`);
+	}
+	if (args.slice(2).some((arg) => arg === "--help" || arg === "-h")) {
+		printDebugAgentsCommandHelp(parentPiboSessionId, command);
 		return;
 	}
 	const parsed = parseAgentDebugOptions(args.slice(2));
+	validateAgentDebugOptions(command, parsed);
 	const store = resolveDebugStore("pibo-data");
 	if (command === "list") {
 		const agents = inspectDebugAgentList(parentPiboSessionId, store, {
@@ -94,26 +113,22 @@ export async function runDebugAgentsCli(args: string[]): Promise<void> {
 		else console.log(formatDebugAgentList(parentPiboSessionId, agents));
 		return;
 	}
-	if (command === "observe") {
-		const result = inspectDebugAgentObservations(parentPiboSessionId, store, {
-			agentIds: parsed.agentIds.length ? parsed.agentIds : undefined,
-			names: parsed.names.length ? parsed.names : undefined,
-			threadKeys: parsed.threadKeys.length ? parsed.threadKeys : undefined,
-			eventTypes: parsed.eventTypes.length ? parsed.eventTypes : undefined,
-			kinds: parsed.kinds.length ? parsed.kinds : undefined,
-			since: parsed.since,
-			until: parsed.until,
-			textContains: parsed.textContains,
-			afterSequence: parsed.afterSequence,
-			order: parsed.order,
-			limit: parsed.limit,
-			includeDetails: parsed.details,
-		});
-		if (parsed.json) console.log(JSON.stringify(result, null, 2));
-		else console.log(formatDebugAgentObservations(result));
-		return;
-	}
-	throw new Error(`Unknown pibo debug agents command "${command}". Run pibo debug agents --help.`);
+	const result = inspectDebugAgentObservations(parentPiboSessionId, store, {
+		agentIds: parsed.agentIds.length ? parsed.agentIds : undefined,
+		names: parsed.names.length ? parsed.names : undefined,
+		threadKeys: parsed.threadKeys.length ? parsed.threadKeys : undefined,
+		eventTypes: parsed.eventTypes.length ? parsed.eventTypes : undefined,
+		kinds: parsed.kinds.length ? parsed.kinds : undefined,
+		since: parsed.since,
+		until: parsed.until,
+		textContains: parsed.textContains,
+		afterSequence: parsed.afterSequence,
+		order: parsed.order,
+		limit: parsed.limit,
+		includeDetails: parsed.details,
+	});
+	if (parsed.json) console.log(JSON.stringify(result, null, 2));
+	else console.log(formatDebugAgentObservations(result));
 }
 
 export function inspectDebugAgentList(
@@ -142,10 +157,11 @@ export function inspectDebugAgentObservations(
 	if (!store.exists) throw new Error(`Debug store "pibo-data" not found at ${store.path}`);
 	const db = openReadOnlyDebugDatabase(store);
 	try {
-		const order = input.order ?? "asc";
-		const limit = Math.max(1, Math.min(input.limit ?? 50, 200));
-		const since = parseTimestamp(input.since, "since");
-		const until = parseTimestamp(input.until, "until");
+		const order = normalizePiboAgentObservationOrder(input.order);
+		const limit = normalizePiboAgentObservationLimit(input.limit);
+		const afterSequence = normalizePiboAgentObservationCursor(input.afterSequence);
+		const since = parsePiboAgentObservationTimestamp(input.since, "since");
+		const until = parsePiboAgentObservationTimestamp(input.until, "until");
 		if (since !== undefined && until !== undefined && since > until) throw new Error("Agent observation since must not be after until.");
 		const owned = readOwnedAgents(db, parentPiboSessionId);
 		const ownedById = new Map(owned.map((agent) => [agent.agentId, agent]));
@@ -158,33 +174,43 @@ export function inspectDebugAgentObservations(
 		const eventTypes = input.eventTypes ? new Set(input.eventTypes) : undefined;
 		const kinds = input.kinds ? new Set(input.kinds) : undefined;
 		const payloadStore = createDebugPayloadStore(db, store);
-		const rows = db.prepare(`
+		const clauses = ["s.parent_id = ?", "s.channel = 'pibo.subagents'", "s.kind = 'subagent'", "s.deleted_at IS NULL"];
+		const values: Array<string | number> = [parentPiboSessionId];
+		if (afterSequence !== undefined) {
+			clauses.push("e.stream_id > ?");
+			values.push(afterSequence);
+		}
+		const scanOrder = afterSequence !== undefined ? "ASC" : order.toUpperCase();
+		const statement = db.prepare(`
 			SELECT e.stream_id, e.session_id, e.session_sequence, e.event_id, e.type, e.created_at,
 				e.payload_ref, e.preview_text, e.attributes_json, s.profile, s.metadata_json
 			FROM event_log e
 			JOIN sessions s ON s.id = e.session_id
-			WHERE s.parent_id = ? AND s.channel = 'pibo.subagents' AND s.kind = 'subagent' AND s.deleted_at IS NULL
-			ORDER BY e.stream_id ASC
-		`).all(parentPiboSessionId) as AgentEventRow[];
-		const textContains = input.textContains?.toLocaleLowerCase();
-		const matches = rows.flatMap((rawRow) => {
+			WHERE ${clauses.join(" AND ")}
+			ORDER BY e.stream_id ${scanOrder}
+		`);
+		const textContains = input.textContains?.toLowerCase();
+		const matches: DebugAgentObservation[] = [];
+		for (const rawRow of statement.iterate(...values) as IterableIterator<AgentEventRow>) {
 			const agent = ownedById.get(rawRow.session_id ?? "");
-			if (!agent) return [];
-			if (agentIds && !agentIds.has(agent.agentId)) return [];
-			if (names && !names.has(agent.name)) return [];
-			if (threadKeys && (!agent.threadKey || !threadKeys.has(agent.threadKey))) return [];
-			if (eventTypes && !eventTypes.has(rawRow.type)) return [];
-			const kind = observationKind(rawRow.type);
-			if (kinds && !kinds.has(kind)) return [];
-			if (input.afterSequence !== undefined && rawRow.stream_id <= input.afterSequence) return [];
+			if (!agent) continue;
+			if (agentIds && !agentIds.has(agent.agentId)) continue;
+			if (names && !names.has(agent.name)) continue;
+			if (threadKeys && (!agent.threadKey || !threadKeys.has(agent.threadKey))) continue;
+			if (eventTypes && !eventTypes.has(rawRow.type)) continue;
+			const kind = piboAgentObservationKind(rawRow.type);
+			if (kinds && !kinds.has(kind)) continue;
 			const createdAt = Date.parse(rawRow.created_at);
-			if (since !== undefined && createdAt < since) return [];
-			if (until !== undefined && createdAt > until) return [];
+			if (since !== undefined && createdAt < since) continue;
+			if (until !== undefined && createdAt > until) continue;
 			const row = hydrateDebugEventRow(rawRow, payloadStore) as AgentEventRow;
-			const payload = { ...eventAttributes(row), ...eventPayload(row) };
-			const text = observationText(row, payload);
-			if (textContains && !(text ?? "").toLocaleLowerCase().includes(textContains)) return [];
-			return [{
+			const attributes = eventAttributes(row);
+			const payload = { ...attributes, ...eventPayload(row) };
+			const source = debugAgentObservationSource(row, attributes);
+			const text = piboAgentObservationText(source);
+			if (textContains && !(text ?? "").toLowerCase().includes(textContains)) continue;
+			const role = piboAgentObservationRole(source);
+			matches.push({
 				streamId: row.stream_id,
 				createdAt: row.created_at,
 				agentId: agent.agentId,
@@ -192,22 +218,30 @@ export function inspectDebugAgentObservations(
 				...(agent.threadKey ? { threadKey: agent.threadKey } : {}),
 				eventType: row.type,
 				kind,
-				...(observationRole(row.type, payload) ? { role: observationRole(row.type, payload) } : {}),
+				...(role ? { role } : {}),
 				...(text ? { text } : {}),
 				...(typeof payload.toolName === "string" ? { toolName: payload.toolName } : {}),
 				...(typeof payload.toolCallId === "string" ? { toolCallId: payload.toolCallId } : {}),
 				...(row.type === "tool_execution_finished" ? { isError: payload.isError === true } : row.type === "session_error" ? { isError: true } : {}),
-				...(input.includeDetails === true ? { details: payload } : {}),
-			} satisfies DebugAgentObservation];
-		});
-		matches.sort((left, right) => order === "asc" ? left.streamId - right.streamId : right.streamId - left.streamId);
+				...(input.includeDetails === true ? { details: piboAgentObservationDetails(debugAgentObservationDetails(row, payload)) } : {}),
+			});
+			if (matches.length > limit) break;
+		}
+		const truncated = matches.length > limit;
 		const observations = matches.slice(0, limit);
+		if (afterSequence !== undefined && order === "desc") observations.reverse();
 		return {
 			parentPiboSessionId,
-			filters: { ...input, order, limit, includeDetails: input.includeDetails === true },
+			filters: {
+				...input,
+				...(afterSequence !== undefined ? { afterSequence } : {}),
+				order,
+				limit,
+				includeDetails: input.includeDetails === true,
+			},
 			observations,
-			nextAfterSequence: observations.reduce((maximum, observation) => Math.max(maximum, observation.streamId), input.afterSequence ?? 0),
-			truncated: matches.length > observations.length,
+			nextAfterSequence: observations.reduce((maximum, observation) => Math.max(maximum, observation.streamId), afterSequence ?? 0),
+			truncated,
 		};
 	} catch (error) {
 		throw withStorePath(error, store);
@@ -239,37 +273,39 @@ function readOwnedAgents(db: DatabaseSync, parentPiboSessionId: string): DebugAg
 	});
 }
 
-function observationKind(type: string): PiboAgentObservationKind {
-	if (["message_queued", "message_steered", "message_started", "assistant_message", "message_finished"].includes(type)) return "message";
-	if (type.startsWith("thinking_")) return "thinking";
-	if (type.startsWith("tool_") || type === "subagent_session") return "tool";
-	if (type === "session_error") return "error";
-	if (type === "execution_result" || type.startsWith("compaction_")) return "lifecycle";
-	return "event";
+function debugAgentObservationSource(row: DebugEventRow, attributes: Record<string, unknown>): PiboAgentObservationSource {
+	const inlinePayload = attributes.inlinePayload;
+	const source: PiboAgentObservationSource = {
+		eventType: row.type,
+		fallbackText: row.preview_text ?? row.type,
+		...(typeof attributes.source === "string" ? { source: attributes.source } : {}),
+	};
+	if (row.type === "message_queued" || row.type === "message_steered" || row.type === "message_started") {
+		source.text = typeof attributes.inlineText === "string" ? attributes.inlineText : row.preview_text ?? undefined;
+	} else if (row.type === "assistant_message" || row.type === "assistant_delta" || row.type === "thinking_delta" || row.type === "thinking_finished") {
+		source.text = typeof inlinePayload === "string" ? inlinePayload : row.preview_text ?? undefined;
+	} else if (row.type === "session_error") {
+		source.error = attributes.error;
+	} else if (row.type === "tool_call" || row.type === "tool_execution_started") {
+		source.args = inlinePayload;
+	} else if (row.type === "tool_execution_updated") {
+		source.partialResult = inlinePayload;
+	} else if (row.type === "tool_execution_finished" || row.type === "execution_result" || row.type === "compaction_end") {
+		source.result = inlinePayload;
+	}
+	if (row.type === "execution_result") source.action = attributes.action;
+	if (row.type === "compaction_start" || row.type === "compaction_end") source.reason = attributes.reason;
+	if (row.type === "subagent_session") source.subagentName = attributes.subagentName;
+	return source;
 }
 
-function observationRole(type: string, payload: Record<string, unknown>): string | undefined {
-	if (type === "assistant_message" || type === "assistant_delta" || type.startsWith("thinking_")) return "assistant";
-	if (type === "message_queued" || type === "message_steered" || type === "message_started") return typeof payload.source === "string" ? payload.source : "actor";
-	if (type.startsWith("tool_")) return "tool";
-	if (type === "subagent_session") return "agent";
-	if (type === "session_error" || type === "execution_result" || type.startsWith("compaction_")) return "system";
-	return undefined;
-}
-
-function observationText(row: DebugEventRow, payload: Record<string, unknown>): string | undefined {
-	if (typeof payload.text === "string") return payload.text;
-	if (typeof payload.inlineText === "string") return payload.inlineText;
-	if (payload.inlinePayload !== undefined) return stringify(payload.inlinePayload);
-	if (typeof payload.error === "string") return payload.error;
-	if (payload.result !== undefined) return stringify(payload.result);
-	if (payload.partialResult !== undefined) return stringify(payload.partialResult);
-	if (payload.args !== undefined) return stringify(payload.args);
-	return row.preview_text ?? undefined;
-}
-
-function stringify(value: unknown): string {
-	return typeof value === "string" ? value : JSON.stringify(value);
+function debugAgentObservationDetails(row: DebugEventRow, payload: Record<string, unknown>): Record<string, unknown> {
+	return {
+		type: row.type,
+		...(row.session_id ? { piboSessionId: row.session_id } : {}),
+		...(row.event_id ? { eventId: row.event_id } : {}),
+		...payload,
+	};
 }
 
 function parseObject(value: string): Record<string, unknown> {
@@ -279,13 +315,6 @@ function parseObject(value: string): Record<string, unknown> {
 	} catch {
 		return {};
 	}
-}
-
-function parseTimestamp(value: string | undefined, label: string): number | undefined {
-	if (value === undefined) return undefined;
-	const timestamp = Date.parse(value);
-	if (!Number.isFinite(timestamp)) throw new Error(`Agent observation ${label} must be a valid ISO-8601 timestamp.`);
-	return timestamp;
 }
 
 function isRunningStatus(status: string): boolean {
@@ -313,23 +342,43 @@ function formatDebugAgentObservations(result: DebugAgentObserveResult): string {
 	].join("\n");
 }
 
-function printDebugAgentsDiscovery(): void {
+function printDebugAgentsDiscovery(parentPiboSessionId = "<parent-session-id>"): void {
 	console.log(`pibo debug agents - inspect delegated child agents
 
 Usage:
-  pibo debug agents <parent-session-id> list [--name name] [--status running|idle|killed] [--json]
-  pibo debug agents <parent-session-id> observe [--agent-id ps_...] [--name name] [--thread-key key]
+  pibo debug agents ${parentPiboSessionId} <command>
+
+Commands:
+  list      List child agents owned by the parent session.
+  observe   Read persisted child-agent observations.
+
+Next:
+  pibo debug agents ${parentPiboSessionId} list --help
+  pibo debug agents ${parentPiboSessionId} observe --help
+`);
+}
+
+function printDebugAgentsCommandHelp(parentPiboSessionId: string, command: "list" | "observe"): void {
+	if (command === "list") {
+		console.log(`pibo debug agents ${parentPiboSessionId} list
+
+Usage:
+  pibo debug agents ${parentPiboSessionId} list [--name name] [--status running|idle|killed] [--json]
+
+Filters use exact values. The command inspects only direct pibo.subagents children owned by the parent session.`);
+		return;
+	}
+	console.log(`pibo debug agents ${parentPiboSessionId} observe
+
+Usage:
+  pibo debug agents ${parentPiboSessionId} observe [--agent-id ps_...] [--name name] [--thread-key key]
     [--event-type type] [--kind message|thinking|tool|error|lifecycle|event]
     [--since iso] [--until iso] [--contains text] [--after-sequence n]
     [--order asc|desc] [--limit 1..200] [--details] [--json]
 
-Repeat --agent-id, --name, --thread-key, --event-type, or --kind to form an OR filter within that field.
-Different filter fields combine with AND.
-
-Next:
-  pibo debug agents ps_... list
-  pibo debug agents ps_... observe --kind tool --limit 20
-`);
+Repeat --agent-id, --name, --thread-key, --event-type, or --kind for OR within that field.
+Different fields combine with AND. With --after-sequence, pages always consume the oldest unseen rows;
+--order desc reverses only the returned page, so nextAfterSequence remains safe for polling.`);
 }
 
 type ParsedAgentDebugOptions = {
@@ -374,11 +423,25 @@ function parseAgentDebugOptions(args: string[]): ParsedAgentDebugOptions {
 		else if (arg === "--order") {
 			if (value !== "asc" && value !== "desc") throw new Error(`Invalid --order "${value}"`);
 			parsed.order = value;
-		} else if (arg === "--limit") parsed.limit = Math.max(1, Math.min(parseNonNegativeInteger(value, arg), 200));
+		} else if (arg === "--limit") parsed.limit = normalizePiboAgentObservationLimit(parseNonNegativeInteger(value, arg));
 		else throw new Error(`Unknown pibo debug agents option "${arg}"`);
 		index += 1;
 	}
 	return parsed;
+}
+
+function validateAgentDebugOptions(command: "list" | "observe", parsed: ParsedAgentDebugOptions): void {
+	if (command === "list") {
+		if (parsed.names.length > 1) throw new Error("pibo debug agents list accepts at most one --name value");
+		if (
+			parsed.details || parsed.agentIds.length > 0 || parsed.threadKeys.length > 0 || parsed.eventTypes.length > 0
+			|| parsed.kinds.length > 0 || parsed.since !== undefined || parsed.until !== undefined
+			|| parsed.textContains !== undefined || parsed.afterSequence !== undefined || parsed.order !== undefined
+			|| parsed.limit !== undefined
+		) throw new Error("Unsupported option for pibo debug agents list. Run the list command with --help.");
+		return;
+	}
+	if (parsed.status !== undefined) throw new Error("--status is supported only by pibo debug agents list");
 }
 
 function parseNonNegativeInteger(value: string, option: string): number {

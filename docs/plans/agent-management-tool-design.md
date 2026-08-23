@@ -151,13 +151,15 @@ Normalized observation:
 }
 ```
 
-`includeDetails: true` adds the normalized source event under `details`. Default output omits it. The journal is router-global, monotonic, and bounded to the newest 5,000 delegated-child observations. `afterSequence` is exclusive. Results report `nextAfterSequence` as the highest returned sequence, or the input cursor when no result matched.
+`includeDetails: true` adds the normalized source event under `details`. Default output omits it. Normalized text is bounded to 4 KiB and details to 32 KiB per observation. The journal is router-global, monotonic, and bounded to the newest 5,000 delegated-child observations.
+
+`afterSequence` is exclusive. Cursor pages always select the oldest unseen matching records first. `order: desc` reverses only that selected page, so `nextAfterSequence` never skips unseen records. The result sets `truncated` when another matching page exists or when the caller's cursor predates retained history. On retention loss, the next cursor advances through the known eviction boundary even if no retained record matches.
 
 Kinds map as follows:
 
 | Event | Kind | Role |
 |---|---|---|
-| `message_queued`, `message_steered`, `message_started`, `assistant_message`, `message_finished` | `message` | actor/assistant |
+| `message_queued`, `message_steered`, `message_started`, `assistant_delta`, `assistant_message`, `message_finished` | `message` | actor/assistant |
 | `thinking_*` | `thinking` | assistant |
 | `tool_*`, `subagent_session` | `tool` | tool/agent |
 | `session_error` | `error` | system |
@@ -172,7 +174,7 @@ Input:
 { "agentId": "ps_..." }
 ```
 
-The controller verifies direct ownership, persists `metadata.agentStatus = "killed"`, disposes the child subtree, and cancels runs belonging to the subtree. The result lists killed session and run IDs. Killed children are excluded from future thread reuse.
+The controller verifies direct ownership, persists `metadata.agentStatus = "killed"`, disposes the child subtree, and cancels runs belonging to the subtree. The result lists killed session and run IDs. Killed children are excluded from future thread reuse. Disposal is retried on repeated kill calls after a partial failure, and descendant traversal is iterative and cycle-safe.
 
 ## Ownership Model
 
@@ -199,8 +201,9 @@ Progressive discovery:
 ```text
 pibo debug --help
   -> pibo debug agents --help
-    -> pibo debug agents <parent-session-id> list
-    -> pibo debug agents <parent-session-id> observe
+    -> pibo debug agents <parent-session-id> --help
+      -> pibo debug agents <parent-session-id> list --help
+      -> pibo debug agents <parent-session-id> observe --help
 ```
 
 List options:
@@ -229,10 +232,11 @@ Observe options are repeatable where plural:
 --json
 ```
 
-CLI observation sequence uses persisted `event_log.stream_id`, explicitly labeled `streamId` in JSON. The model tool's live `sequence` is not claimed to survive a router restart.
+CLI observation sequence uses persisted `event_log.stream_id`, explicitly labeled `streamId` in JSON. Persisted rows are streamed rather than loaded as one unbounded array, and normal text/details use the same bounds as the live tool. Cursor pagination follows the same oldest-unseen rule. The model tool's live `sequence` is not claimed to survive a router restart.
 
 ## Legacy and UI
 
+- Deprecated `createSubagentToolName`, `createSubagentToolDefinitions`, runner types, and `subagentRunner` option shapes remain source-visible for migration. External callers can still invoke the legacy factory, while Pibo-owned runtime assembly rejects the old controller option with a direct `agentsController` migration error.
 - Existing `subagent_session` events and child-session trace cards remain.
 - Their `toolName` changes to `pibo_agents_send_message` for new delegations.
 - Trace materialization must read agent name from the link event or `args.name`, not from a generated tool suffix.

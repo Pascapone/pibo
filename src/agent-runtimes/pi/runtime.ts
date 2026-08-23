@@ -32,6 +32,7 @@ import { createDefaultPiboProfile } from "../../core/default-profile.js";
 import {
 	PIBO_AGENT_TOOL_NAMES,
 	type PiboAgentsController,
+	type PiboSubagentRunner,
 } from "../../subagents/tool.js";
 import type { PiboRunToolController } from "../../runs/tools.js";
 import type { PiboThinkingLevel } from "../../core/thinking.js";
@@ -123,6 +124,8 @@ export type PiboRuntimeOptions = {
 	modelRuntime?: ModelRuntime;
 	extensionFactories?: ExtensionFactory[];
 	agentsController?: PiboAgentsController;
+	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
+	subagentRunner?: PiboSubagentRunner;
 	runToolController?: PiboRunToolController;
 	runtimeToolController?: PiboRuntimeToolController;
 	/** Router-owned portable tool scope shared with external-harness MCP delivery. */
@@ -352,6 +355,9 @@ async function createSessionManager(
 export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promise<AgentSessionRuntime> {
 	const cwd = options.cwd ?? getDefaultPiboWorkspace();
 	const profile = options.profile ?? createDefaultPiboProfile();
+	if (profile.subagents.some((subagent) => subagent.enabled !== false) && options.subagentRunner && !options.agentsController && !options.portableTools) {
+		throw new Error("PiboRuntimeOptions.subagentRunner is retired. Provide agentsController so the runtime can expose the four pibo_agents_* management tools. The deprecated createSubagentToolDefinitions export remains available only for external legacy tool assembly.");
+	}
 	const agentDir = getAgentDir();
 	const sessionManager = await createSessionManager(cwd, profile, options.persistSession !== false);
 

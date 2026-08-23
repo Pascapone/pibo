@@ -5,7 +5,7 @@ import type {
 } from "../core/profiles.js";
 import { createPiboGoalToolDefinitions, PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
-import { createAgentToolDefinitions, type PiboAgentsController } from "../subagents/tool.js";
+import { createAgentToolDefinitions, type PiboAgentsController, type PiboSubagentRunner } from "../subagents/tool.js";
 import {
 	CODEX_BROWSER_TOOL_NAMES,
 	createCodexBrowserToolDefinitions,
@@ -20,6 +20,8 @@ export type CreatePiboSessionToolDefinitionsOptions = {
 	profile: InitialSessionContext;
 	toolContext?: ToolDefinitionContext;
 	agentsController?: PiboAgentsController;
+	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
+	subagentRunner?: PiboSubagentRunner;
 	runToolController?: PiboRunToolController;
 	runtimeToolController?: PiboRuntimeToolController;
 	codexBrowserController?: CodexBrowserToolController;
@@ -46,6 +48,7 @@ export function isEnabledCodexBrowserToolProfile(tool: ToolProfile): boolean {
 export function isGeneratedPiboTool(name: string): boolean {
 	return name === "runtime"
 		|| name.startsWith("pibo_agents_")
+		|| name.startsWith("pibo_subagent_")
 		|| name.startsWith("pibo_run_")
 		|| PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number]);
 }
@@ -73,6 +76,9 @@ export function createPiboSessionToolDefinitions(
 	options: CreatePiboSessionToolDefinitionsOptions,
 ): PiboToolDefinition[] {
 	const { profile } = options;
+	if (profile.subagents.some((subagent) => subagent.enabled !== false) && options.subagentRunner && !options.agentsController) {
+		throw new Error("CreatePiboSessionToolDefinitionsOptions.subagentRunner is retired. Provide agentsController so the session can expose the four pibo_agents_* management tools.");
+	}
 	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeToolProfile);
 	const runtimeTool = runtimeProfileTool && options.runtimeToolController
 		? createRuntimeToolDefinition(options.runtimeToolController)

@@ -1,6 +1,6 @@
 # Spec: Agent Delegation and Management
 
-**Status:** Proposed
+**Status:** Implementing
 **Created:** 2026-05-10
 **Revised:** 2026-08-23
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Custom Agents and Agent Designer](./custom-agents.md), [Yielded Run Control](./yielded-run-control.md), [Agent Management Tool Design](../../plans/agent-management-tool-design.md)
@@ -113,7 +113,7 @@ Each instance MUST expose:
 - bounded `limit`
 - optional full `details`
 
-The result MUST report the applied filters, observations, `nextAfterSequence`, and whether earlier matching results were truncated.
+The result MUST report the applied filters, observations, `nextAfterSequence`, and whether the requested result was truncated by the page limit or live-journal retention.
 
 #### Acceptance
 
@@ -122,6 +122,9 @@ The result MUST report the applied filters, observations, `nextAfterSequence`, a
 - Invalid timestamp ranges fail.
 - Default output omits large raw details while retaining useful text, tool, and error summaries.
 - Observations have a router-global monotonic sequence so callers can poll with `afterSequence` without duplicates.
+- Cursor pages consume the oldest unseen matching observations before applying presentation order; `order: desc` cannot advance the cursor past unseen records.
+- If the caller's cursor predates retained live history, `truncated` is true and `nextAfterSequence` advances through the known eviction boundary even when no retained observation matches.
+- Normalized text is bounded to 4 KiB and optional details to 32 KiB per observation.
 - Memory retained for live observations is bounded.
 
 ### Requirement: Kill is targeted and ownership-safe
@@ -134,6 +137,8 @@ The result MUST report the applied filters, observations, `nextAfterSequence`, a
 - Killing an active send interrupts its waiting caller.
 - A killed child remains listed with status `killed`.
 - A later send using the same thread creates a new child rather than reviving the killed session.
+- Repeating kill after a partial cleanup failure retries subtree disposal even though the child is already marked killed.
+- Corrupt parent-link cycles do not cause recursive traversal or duplicate affected IDs.
 
 ### Requirement: Existing delegation guarantees remain intact
 
@@ -141,14 +146,25 @@ Shared tools MUST retain existing behavior for depth limits, timeout, workspace 
 
 The link event MUST use `toolName: "pibo_agents_send_message"` and continue to identify `subagentName`, child Pibo Session ID, resolved thread key, and optional tool call ID.
 
+### Requirement: Legacy library callers have an explicit migration path
+
+The public legacy naming and tool-factory exports MUST remain available as deprecated compatibility APIs, while Pibo-owned runtime assembly MUST use only the four shared tools. Deprecated runtime and portable-session `subagentRunner` options MUST remain source-visible and fail with a direct instruction to provide `agentsController` rather than disappearing or being silently ignored.
+
+#### Acceptance
+
+- `createSubagentToolName`, `createSubagentToolDefinitions`, and their runner input/result types remain exported.
+- Legacy generated-tool names remain recognizable for inspection and historical trace compatibility.
+- No Pibo-owned runtime path assembles a generated `pibo_subagent_*` tool.
+- A caller that passes only the deprecated runtime controller receives a deterministic migration error.
+
 ### Requirement: Operator CLI mirrors observation filters
 
 The debug CLI MUST provide progressively discoverable delegated-agent commands:
 
 ```text
 pibo debug agents --help
-pibo debug agents <parent-session-id> list
-pibo debug agents <parent-session-id> observe [filters]
+pibo debug agents <parent-session-id> list --help
+pibo debug agents <parent-session-id> observe --help
 ```
 
 The observe command MUST use the same ownership and filter vocabulary where persisted data permits it, and JSON output MUST be stable for automation.
@@ -157,6 +173,7 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 
 - Two configured agent names may target the same profile and remain separate identities.
 - Existing legacy child sessions with `subagentToolName: pibo_subagent_*` remain discoverable by metadata but all new link events use the shared send tool name.
+- Deprecated public legacy factories remain callable for external migration code but are never selected by Pibo runtime assembly.
 - A killed legacy child is excluded from thread reuse.
 - Parent-link cycles do not cause unbounded depth or ownership traversal.
 - Observation details may contain tool payloads; normal output remains bounded and payload persistence/redaction rules continue to apply.
@@ -168,7 +185,7 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 - **Compatibility:** Pibo Run remains the sole asynchronous execution and wait lifecycle.
 - **Security:** Management operations are scoped to direct children of the calling Pibo Session.
 - **Performance:** Listing uses indexed session-store queries; observation retention and result limits are bounded.
-- **Legacy:** `codex-compat` receives only necessary reference corrections.
+- **Legacy:** `codex-compat` receives only necessary reference corrections; deprecated library exports remain available with explicit runtime migration errors.
 
 ## Success Criteria
 
@@ -180,6 +197,7 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 - [ ] SC-006: Kill interrupts active work, marks the instance killed, and prevents thread reuse.
 - [ ] SC-007: Existing trace/UI delegation cards still link to child sessions under the shared send tool.
 - [ ] SC-008: Pibo2 real-provider validation with `gpt-5.6-luna` at `low` demonstrates foreground, yielded, observe, list, and kill behavior in the headful Chat Web UI.
+- [ ] SC-009: Descending cursor pagination, retention loss, cleanup retry, legacy exports, portable MCP, and shared-tool trace/UI behavior have focused regression coverage.
 
 ## Traceability
 
@@ -191,4 +209,5 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 | List and kill | session router ownership/status methods | router/tool tests |
 | Observe filters | normalized observation journal and debug query | filter unit tests, debug CLI tests |
 | Existing delegation | router/session metadata and trace projections | trace/UI tests |
-| Run compatibility | yielded tool assembly | run-control integration test, Pibo2 real run |
+| Legacy migration | deprecated exports and controller-option guards | compatibility unit tests |
+| Run compatibility | yielded tool assembly | run-control integration test, portable MCP test, Pibo2 real run |
