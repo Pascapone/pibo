@@ -125,7 +125,9 @@ function spanAttributes(node: PiboTraceNode): Record<string, unknown> {
 		attributes.reasoning = node.output ?? node.summary ?? "";
 	}
 	if (node.type === "agent.delegation") {
-		attributes["delegation.target_agent"] = node.title.replace(/^pibo_subagent_/, "");
+		attributes["delegation.target_agent"] = isRecord(node.input) && typeof node.input.name === "string"
+			? node.input.name
+			: node.title.replace(/^pibo_agents_send_message$/, "agent").replace(/^pibo_subagent_/, "");
 		attributes["delegation.query"] = node.summary ?? node.input;
 		attributes["result.status"] = node.status === "done" ? "completed" : node.status;
 		attributes.linked_pibo_session_id = node.linkedPiboSessionId;

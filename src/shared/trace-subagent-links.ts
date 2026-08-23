@@ -44,10 +44,17 @@ export function findLikelyTraceChildSession(
 	childByParent: Map<string, readonly TraceChildSession[]>,
 ): string | undefined {
 	if (!isSubagentToolName(toolName)) return undefined;
+	const agentName = toolEventAgentName(event);
 	const candidates =
 		childByParent
 			.get(piboSessionId)
-			?.filter((session) => session.metadata?.subagentToolName === toolName) ?? [];
+			?.filter((session) => {
+				if (toolName === "pibo_agents_send_message") {
+					return session.metadata?.subagentToolName === toolName
+						&& (!agentName || session.metadata?.subagentName === agentName);
+				}
+				return session.metadata?.subagentToolName === toolName;
+			}) ?? [];
 	const threadKey = toolEventThreadKey(event);
 	if (threadKey) {
 		return candidates.find((session) => session.metadata?.threadKey === threadKey)?.id;
@@ -56,18 +63,25 @@ export function findLikelyTraceChildSession(
 }
 
 export function isSubagentToolName(name: string): boolean {
-	return name.startsWith("pibo_subagent_");
+	return name === "pibo_agents_send_message" || name.startsWith("pibo_subagent_");
 }
 
 export function subagentNameFromToolName(toolName: string): string {
-	return toolName.slice("pibo_subagent_".length);
+	return toolName === "pibo_agents_send_message" ? "agent" : toolName.slice("pibo_subagent_".length);
+}
+
+function toolEventArguments(event: TraceSubagentToolEvent): Record<string, unknown> | undefined {
+	return "args" in event && event.args && typeof event.args === "object" && !Array.isArray(event.args)
+		? event.args as Record<string, unknown>
+		: undefined;
+}
+
+function toolEventAgentName(event: TraceSubagentToolEvent): string | undefined {
+	const name = toolEventArguments(event)?.name;
+	return typeof name === "string" && name.trim() ? name.trim() : undefined;
 }
 
 function toolEventThreadKey(event: TraceSubagentToolEvent): string | undefined {
-	const args =
-		"args" in event && event.args && typeof event.args === "object" && !Array.isArray(event.args)
-			? event.args
-			: undefined;
-	const threadKey = args && "threadKey" in args ? args.threadKey : undefined;
+	const threadKey = toolEventArguments(event)?.threadKey;
 	return typeof threadKey === "string" && threadKey.trim() ? threadKey.trim() : undefined;
 }

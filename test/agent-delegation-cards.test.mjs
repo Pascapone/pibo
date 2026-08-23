@@ -39,6 +39,7 @@ test("delegation helpers map child signals and extract display content", () => {
 	assert.equal(resolveAgentDelegationStatus(childSignal({ aggregateStatus: "cancelled" }), "error", true), "failed");
 	assert.equal(extractAgentDelegationName({ message: "inspect" }, "pibo_subagent_explorer"), "Explorer");
 	assert.equal(extractAgentDelegationName({ subagentName: "code_worker" }, "pibo_subagent_worker"), "Code Worker");
+	assert.equal(extractAgentDelegationName({ name: "explorer" }, "pibo_agents_send_message"), "Explorer");
 	assert.equal(compactAgentDelegationTask({ message: "Inspect the trace merge" }), "Inspect the trace merge");
 	assert.equal(formatAgentDelegationDuration(65_000), "1m 5s");
 });
@@ -125,6 +126,54 @@ test("subagent session materialization enriches delegation without replacing raw
 		threadKey: "research",
 		subagentName: "explorer",
 	});
+	assert.equal(view.nodes[0].linkedPiboSessionId, "ps-child");
+});
+
+test("shared agent send-message events materialize one linked delegation with the selected name", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps-root", piSessionId: "pi-root", title: "Root" },
+		status: "idle",
+		events: [
+			{
+				id: "event-tool",
+				piboSessionId: "ps-root",
+				eventSequence: 1,
+				type: "tool_call",
+				createdAt: "2026-08-23T12:00:00.000Z",
+				payload: {
+					type: "tool_call",
+					piboSessionId: "ps-root",
+					eventId: "turn-shared",
+					toolCallId: "tool-shared",
+					toolName: "pibo_agents_send_message",
+					args: { name: "explorer", message: "Find the trace path", threadKey: "research" },
+					argsComplete: true,
+				},
+			},
+			{
+				id: "event-link",
+				piboSessionId: "ps-root",
+				eventSequence: 2,
+				type: "subagent_session",
+				createdAt: "2026-08-23T12:00:01.000Z",
+				payload: {
+					type: "subagent_session",
+					piboSessionId: "ps-root",
+					toolCallId: "tool-shared",
+					toolName: "pibo_agents_send_message",
+					subagentName: "explorer",
+					childPiboSessionId: "ps-child",
+					threadKey: "research",
+				},
+			},
+		],
+	});
+
+	assert.equal(view.nodes.length, 1);
+	assert.equal(view.nodes[0].type, "agent.delegation");
+	assert.equal(view.nodes[0].title, "pibo_agents_send_message");
+	assert.equal(view.nodes[0].input.name, "explorer");
+	assert.equal(view.nodes[0].input.subagentName, "explorer");
 	assert.equal(view.nodes[0].linkedPiboSessionId, "ps-child");
 });
 
