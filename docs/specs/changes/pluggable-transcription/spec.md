@@ -1,6 +1,6 @@
 # Spec: Pluggable Audio Transcription
 
-**Status:** Done
+**Status:** Implementing
 **Created:** 2026-08-22  
 **Updated:** 2026-08-23
 **Requester / Source:** User request, correction, and `codex-transcribe-chatgpt-subscription.md`
@@ -24,6 +24,7 @@ Add provider-pluggable audio transcription that defaults to the user's ChatGPT/C
 - Browser microphone recording in the shared Chat Web composer.
 - Appending completed transcripts without automatically sending a message.
 - Repeated recordings that preserve existing composer text.
+- A live three-second waveform above the composer input while audio is being recorded.
 
 ### Out of Scope
 
@@ -94,6 +95,17 @@ The default provider MUST reuse the existing `openai-codex` OAuth credential and
 
 The official OpenAI Audio Transcriptions API MUST remain available as a separate `openai-api` provider using the `openai` API-key credential.
 
+### REQ-009: Live recording waveform
+
+While recording, Chat Web MUST show a dedicated waveform component above the text input so users can see that microphone audio is being captured.
+
+#### Acceptance
+
+- The waveform visualizes the latest three seconds of microphone amplitude.
+- The component appears only while recording and is outside, directly above, the input row.
+- The container uses a 100% pill radius as an intentional special-state exception to the normal compact radii in `DESIGN.md`.
+- The waveform uses the terminal palette, includes a compact recording indicator and elapsed time, and does not interfere with recording or transcription when Web Audio visualization is unavailable.
+
 ## Constraints
 
 - **Security / Privacy:** The API requires an authenticated same-origin request. Audio is processed in memory, OAuth tokens remain server-side, only the sanitized browser user agent crosses the provider boundary, and recordings are not persisted by this capability.
@@ -108,3 +120,4 @@ The official OpenAI Audio Transcriptions API MUST remain available as a separate
 - [x] SC-003: A real browser recording inserts text but does not send it.
 - [x] SC-004: A second recording appends while preserving the first transcript and manually typed text.
 - [x] SC-005: An authenticated Pibo2 recording returns text through the ChatGPT subscription provider without an OpenAI API key.
+- [ ] SC-006: During a real browser recording, a pill-shaped waveform above the input updates from live audio and represents only the latest three seconds.

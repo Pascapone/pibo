@@ -39,9 +39,17 @@ Model providers are runtime concerns, while dictation is a product input capabil
 - **Choice:** A compact microphone button toggles recording. Stop creates one browser audio file and starts transcription.
 - **Draft behavior:** The transcript is appended to the latest controlled composer value with paragraph separation. Send is disabled while recording or transcribing.
 
+### Decision: Show a three-second live waveform above the input
+
+- **Choice:** While recording, a separate `RecordingWaveform` component samples microphone amplitude through Web Audio every 50 ms and retains only the latest three seconds.
+- **Placement:** The component spans the composer width directly above the textarea/button row. It is not embedded inside the text input.
+- **Visual language:** The waveform uses the near-black code surface, terminal-cyan border and bars, compact monospaced timing, and a red recording indicator. Its `rounded-full` pill shape is an intentional recording-state exception to the normal small-radius container guidance in `DESIGN.md`.
+- **Fallback:** MediaRecorder remains authoritative. If AudioContext visualization is unavailable, recording and transcription continue without failing.
+
 ## Risks / Trade-offs
 
 - Browser recording MIME types differ; the client selects the first supported WebM, Ogg, or MP4 format.
+- Waveform amplitude is local visual feedback only and is not persisted or sent separately.
 - The first version waits for recording completion and does not stream partial text.
 - Provider status can change after settings load; execution errors remain authoritative and visible to the user.
 - The ChatGPT subscription endpoint can change independently of Pibo and may return product or Cloudflare errors even when OAuth remains valid.

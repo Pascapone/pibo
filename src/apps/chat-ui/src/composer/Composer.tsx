@@ -6,6 +6,12 @@ import type { WebAnnotationMessageAttachment } from "../api-web-annotations";
 import { appendStoredComposerHistory, readStoredComposerHistory } from "../app-storage";
 import type { UploadedChatAttachment } from "../chat-upload-attachments";
 import { copyTextToClipboard } from "../clipboard";
+import {
+	appendRecordingWaveformSample,
+	RECORDING_WAVEFORM_SAMPLE_INTERVAL_MS,
+	RecordingWaveform,
+	type RecordingWaveformSample,
+} from "./RecordingWaveform";
 
 type ComposerCommand = {
 	slash: string;
@@ -65,6 +71,10 @@ export function Composer({
 	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 	const mediaStreamRef = useRef<MediaStream | null>(null);
 	const audioChunksRef = useRef<Blob[]>([]);
+	const audioContextRef = useRef<AudioContext | null>(null);
+	const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+	const audioAnalyserRef = useRef<AnalyserNode | null>(null);
+	const waveformAnimationFrameRef = useRef<number | null>(null);
 	const [activeIndex, setActiveIndex] = useState(0);
 	const [activeSkillIndex, setActiveSkillIndex] = useState(0);
 	const [cursorPos, setCursorPos] = useState(0);
@@ -75,6 +85,66 @@ export function Composer({
 	const [recording, setRecording] = useState(false);
 	const [transcribing, setTranscribing] = useState(false);
 	const [transcriptionStatus, setTranscriptionStatus] = useState<{ message: string; error: boolean } | null>(null);
+	const [waveformSamples, setWaveformSamples] = useState<RecordingWaveformSample[]>([]);
+	const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
+
+	const stopAudioVisualization = useCallback((resetState = true) => {
+		if (waveformAnimationFrameRef.current !== null) {
+			cancelAnimationFrame(waveformAnimationFrameRef.current);
+			waveformAnimationFrameRef.current = null;
+		}
+		audioSourceRef.current?.disconnect();
+		audioAnalyserRef.current?.disconnect();
+		audioSourceRef.current = null;
+		audioAnalyserRef.current = null;
+		const context = audioContextRef.current;
+		audioContextRef.current = null;
+		if (context && context.state !== "closed") void context.close().catch(() => undefined);
+		if (resetState) {
+			setWaveformSamples([]);
+			setRecordingElapsedMs(0);
+		}
+	}, []);
+
+	const startAudioVisualization = useCallback((stream: MediaStream) => {
+		stopAudioVisualization();
+		const AudioContextConstructor = window.AudioContext
+			?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+		if (!AudioContextConstructor) return;
+		try {
+			const context = new AudioContextConstructor();
+			const source = context.createMediaStreamSource(stream);
+			const analyser = context.createAnalyser();
+			analyser.fftSize = 1_024;
+			analyser.smoothingTimeConstant = 0.65;
+			source.connect(analyser);
+			audioContextRef.current = context;
+			audioSourceRef.current = source;
+			audioAnalyserRef.current = analyser;
+			const samples = new Uint8Array(analyser.fftSize);
+			const startedAt = performance.now();
+			let lastSampleAt = startedAt - RECORDING_WAVEFORM_SAMPLE_INTERVAL_MS;
+			const update = (now: number) => {
+				if (now - lastSampleAt >= RECORDING_WAVEFORM_SAMPLE_INTERVAL_MS) {
+					analyser.getByteTimeDomainData(samples);
+					let squareSum = 0;
+					for (const sample of samples) {
+						const centered = (sample - 128) / 128;
+						squareSum += centered * centered;
+					}
+					const level = Math.min(1, Math.sqrt(squareSum / samples.length) * 4);
+					setWaveformSamples((current) => appendRecordingWaveformSample(current, level, now));
+					setRecordingElapsedMs(now - startedAt);
+					lastSampleAt = now;
+				}
+				waveformAnimationFrameRef.current = requestAnimationFrame(update);
+			};
+			void context.resume().catch(() => undefined);
+			waveformAnimationFrameRef.current = requestAnimationFrame(update);
+		} catch {
+			stopAudioVisualization();
+		}
+	}, [stopAudioVisualization]);
 
 	const skillTrigger = useMemo(() => {
 		for (let i = cursorPos - 1; i >= 0; i--) {
@@ -161,6 +231,7 @@ export function Composer({
 		mountedRef.current = true;
 		return () => {
 			mountedRef.current = false;
+			stopAudioVisualization(false);
 			const recorder = mediaRecorderRef.current;
 			if (recorder && recorder.state !== "inactive") {
 				recorder.ondataavailable = null;
@@ -169,7 +240,7 @@ export function Composer({
 			}
 			for (const track of mediaStreamRef.current?.getTracks() ?? []) track.stop();
 		};
-	}, []);
+	}, [stopAudioVisualization]);
 
 	useEffect(() => {
 		if (!pendingClipboardImage) return;
@@ -314,6 +385,7 @@ export function Composer({
 	const finishAudioRecording = async (recorder: MediaRecorder) => {
 		const chunks = audioChunksRef.current;
 		audioChunksRef.current = [];
+		stopAudioVisualization();
 		for (const track of mediaStreamRef.current?.getTracks() ?? []) track.stop();
 		mediaStreamRef.current = null;
 		mediaRecorderRef.current = null;
@@ -350,6 +422,7 @@ export function Composer({
 		if (recording) {
 			const recorder = mediaRecorderRef.current;
 			if (recorder && recorder.state !== "inactive") {
+				stopAudioVisualization();
 				setRecording(false);
 				setTranscribing(true);
 				recorder.stop();
@@ -379,6 +452,7 @@ export function Composer({
 			recorder.onerror = () => {
 				recorder.onstop = null;
 				audioChunksRef.current = [];
+				stopAudioVisualization();
 				for (const track of stream.getTracks()) track.stop();
 				mediaStreamRef.current = null;
 				mediaRecorderRef.current = null;
@@ -389,8 +463,10 @@ export function Composer({
 			};
 			recorder.onstop = () => void finishAudioRecording(recorder);
 			recorder.start();
+			startAudioVisualization(stream);
 			setRecording(true);
 		} catch (error) {
+			stopAudioVisualization();
 			for (const track of mediaStreamRef.current?.getTracks() ?? []) track.stop();
 			mediaStreamRef.current = null;
 			mediaRecorderRef.current = null;
@@ -587,6 +663,7 @@ export function Composer({
 					))}
 				</div>
 			) : null}
+			{recording ? <RecordingWaveform samples={waveformSamples} elapsedMs={recordingElapsedMs} /> : null}
 			<div className="grid grid-cols-[1fr_auto_auto] items-end gap-2">
 				<textarea
 					id="message-composer-input"
