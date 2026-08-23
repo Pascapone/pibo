@@ -55,8 +55,9 @@ MCP config lookup order:
   1. -c/--config <path>
   2. MCP_CONFIG_PATH
   3. ./mcp_servers.json
-  4. ~/.mcp_servers.json
-  5. ~/.config/mcp/mcp_servers.json
+  4. ~/mcp_servers.json
+  5. ~/.mcp_servers.json
+  6. ~/.config/mcp/mcp_servers.json
 `);
 }
 

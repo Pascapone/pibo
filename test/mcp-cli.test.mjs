@@ -65,6 +65,20 @@ test("pibo mcp help stays progressive", async () => {
 	const schema = await execFileAsync("node", [cliPath, "mcp", "config", "schema"]);
 	assert.match(schema.stdout, /Server schema:/);
 	assert.match(schema.stdout, /Full example:/);
+
+	const paths = await execFileAsync("node", [cliPath, "mcp", "config", "paths"]);
+	assert.deepEqual(
+		paths.stdout.trim().split("\n").map((line) => line.trim()),
+		[
+			"MCP config lookup order:",
+			"1. -c/--config <path>",
+			"2. MCP_CONFIG_PATH",
+			"3. ./mcp_servers.json",
+			"4. ~/mcp_servers.json",
+			"5. ~/.mcp_servers.json",
+			"6. ~/.config/mcp/mcp_servers.json",
+		],
+	);
 });
 
 test("pibo mcp parser reports focused errors for invalid command shapes", async () => {
@@ -123,12 +137,15 @@ test("pibo mcp config add accepts config option after positional arguments", asy
 	}
 });
 
-test("pibo mcp config path follows explicit env cwd priority", async () => {
+test("pibo mcp config path follows explicit env cwd home priority", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-mcp-config-paths-"));
+	const home = join(cwd, "home");
 	try {
 		const explicitPath = join(cwd, "explicit.json");
 		const envPath = join(cwd, "env.json");
 		const cwdPath = join(cwd, "mcp_servers.json");
+		const homePath = join(home, "mcp_servers.json");
+		await mkdir(home, { recursive: true });
 		await writeFile(
 			explicitPath,
 			JSON.stringify({ mcpServers: { explicit: { command: "node" } } }),
@@ -140,6 +157,10 @@ test("pibo mcp config path follows explicit env cwd priority", async () => {
 		await writeFile(
 			cwdPath,
 			JSON.stringify({ mcpServers: { cwd: { command: "node" } } }),
+		);
+		await writeFile(
+			homePath,
+			JSON.stringify({ mcpServers: { home: { command: "node" } } }),
 		);
 
 		const env = { ...process.env, MCP_CONFIG_PATH: envPath };
@@ -166,8 +187,55 @@ test("pibo mcp config path follows explicit env cwd priority", async () => {
 			{ cwd, env: withoutEnv },
 		);
 		assert.equal(fromCwd.stdout.trim(), cwdPath);
+
+		await rm(cwdPath);
+		const fromHome = await execFileAsync(
+			"node",
+			[cliPath, "mcp", "config", "path"],
+			{
+				cwd,
+				env: { ...withoutEnv, HOME: home, USERPROFILE: home },
+			},
+		);
+		assert.equal(fromHome.stdout.trim(), homePath);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo mcp info without a server merges an empty cwd config with home servers", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-info-home-"));
+	try {
+		const cwd = join(root, "project");
+		const home = join(root, "home");
+		await Promise.all([
+			mkdir(cwd, { recursive: true }),
+			mkdir(home, { recursive: true }),
+		]);
+		await writeFile(
+			join(cwd, "mcp_servers.json"),
+			JSON.stringify({ mcpServers: {} }),
+		);
+		await writeFile(
+			join(home, "mcp_servers.json"),
+			JSON.stringify({
+				mcpServers: { homeOnly: { command: "node" } },
+			}),
+		);
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "mcp", "info"], {
+				cwd,
+				env: { ...process.env, HOME: home, USERPROFILE: home },
+			}),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.match(error.stderr, /Available servers: homeOnly/);
+				return true;
+			},
+		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
 	}
 });
 
