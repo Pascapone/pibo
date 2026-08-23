@@ -1,6 +1,6 @@
 # Spec: Isolated Deployment Pool
 
-**Status:** Implemented; public DNS/TLS activation pending
+**Status:** Implemented and publicly activated
 **Created:** 2026-08-23
 **Requester / Source:** User request in Pibo Session `ps_d0fb25d0-2b64-467c-b79d-a1d058db598b`
 **Related docs:** [Proposal](./proposal.md), [Design](./design.md), [Tasks](./tasks.md)

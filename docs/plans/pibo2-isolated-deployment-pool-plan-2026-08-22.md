@@ -1,6 +1,6 @@
 # Implementierungsplan: Isolierter Pibo2 Deployment Pool
 
-**Status:** Implemented; public DNS/TLS activation pending
+**Status:** Implemented and publicly activated
 **Created:** 2026-08-22
 **Updated:** 2026-08-23
 **Source:** Nutzeranfrage in Pibo Session `ps_d0fb25d0-2b64-467c-b79d-a1d058db598b`

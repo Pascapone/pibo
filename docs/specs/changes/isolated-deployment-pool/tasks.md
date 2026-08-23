@@ -32,7 +32,7 @@
 - [x] 5.1 Add host setup and controller helper scripts without hard-coded hostnames.
 - [x] 5.2 Configure pool root, runtime image, environment file, slot hostnames, and ports.
 - [x] 5.3 Provide exact Squarespace DNS records and preserve the single existing canonical Google OAuth callback.
-- [ ] 5.4 Configure nginx only after DNS/TLS prerequisites are ready.
+- [x] 5.4 Configure nginx after DNS propagation and SAN certificate issuance.
 
 ## 6. Validation
 
@@ -40,5 +40,5 @@
 - [x] 6.2 Install an exact combined candidate on Pibo2.
 - [x] 6.3 Validate fresh, medium, and full slots.
 - [x] 6.4 Validate three concurrent leases, release, expiry, and reaping.
-- [ ] 6.5 Validate Machine Auth, Chat Web, streaming, and public browser behavior. Machine Auth, Chat Web, and streaming passed; public browser validation awaits DNS/TLS. Canonical Google OAuth remains unchanged and is not duplicated per slot.
+- [x] 6.5 Validate public Machine Auth, Chat Web, POST mutation, live SSE streaming, and a headful browser turn. Confirm the canonical Google OAuth initiation still uses the single existing callback.
 - [x] 6.6 Record a durable validation report.
