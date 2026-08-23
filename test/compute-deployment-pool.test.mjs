@@ -9,6 +9,7 @@ import test from "node:test";
 import { deploymentSlotDefinitions, resolveDeploymentPoolConfig } from "../dist/compute/pool/config.js";
 import { DeploymentPoolStore } from "../dist/compute/pool/store.js";
 import { prepareDeploymentSeed } from "../dist/compute/pool/seeds.js";
+import { inspectRuntimeArtifact } from "../dist/compute/pool/artifacts.js";
 import { buildDeploymentContainerArgs } from "../dist/compute/pool/docker.js";
 import { planDeploymentPoolReap } from "../dist/compute/pool/service.js";
 
@@ -55,6 +56,28 @@ test("deployment pool config creates fixed slots and caps active count", () => {
 		["slot-03", 15020, 15021, "https://slot-03.pool.example.test/"],
 		["slot-04", 15030, 15031, "https://slot-04.pool.example.test/"],
 	]);
+});
+
+test("installed runtime artifact digest covers the complete Pibo package", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-pool-artifact-"));
+	try {
+		const createRuntime = (name, extraContent) => {
+			const runtime = resolve(dir, name);
+			const packageRoot = resolve(runtime, "node_modules/@pasko70/pibo");
+			mkdirSync(resolve(packageRoot, "dist/bin"), { recursive: true });
+			writeFileSync(resolve(packageRoot, "package.json"), '{"name":"@pasko70/pibo","version":"1.0.0"}\n');
+			writeFileSync(resolve(packageRoot, "dist/bin/pibo.js"), "entrypoint\n");
+			writeFileSync(resolve(packageRoot, "dist/extra.js"), extraContent);
+			return runtime;
+		};
+		const first = await inspectRuntimeArtifact(createRuntime("first", "first\n"));
+		const duplicate = await inspectRuntimeArtifact(createRuntime("duplicate", "first\n"));
+		const changed = await inspectRuntimeArtifact(createRuntime("changed", "changed\n"));
+		assert.equal(first.sha256, duplicate.sha256);
+		assert.notEqual(first.sha256, changed.sha256);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });
 
 test("deployment store reserves unique slots and enforces maxActive", () => {

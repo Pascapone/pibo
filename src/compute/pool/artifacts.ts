@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, readlink, rename, rm, utimes, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -72,19 +72,54 @@ export async function inspectRuntimeArtifact(runtimePath: string): Promise<Deplo
 	} catch (error) {
 		if (error instanceof Error && error.message.startsWith("Unexpected package")) throw error;
 	}
-	const hash = createHash("sha256");
-	hash.update(await readFile(binaryPath));
-	hash.update(packageText);
-	return { sha256: hash.digest("hex"), runtimePath: resolved, binaryPath, packageVersion, reused: true };
+	const packageRoot = resolve(resolved, "node_modules/@pasko70/pibo");
+	return { sha256: await sha256Directory(packageRoot), runtimePath: resolved, binaryPath, packageVersion, reused: true };
 }
 
-async function sha256File(path: string): Promise<string> {
+async function sha256Directory(root: string): Promise<string> {
 	const hash = createHash("sha256");
+	await hashDirectoryEntries(hash, root, "");
+	return hash.digest("hex");
+}
+
+async function hashDirectoryEntries(hash: ReturnType<typeof createHash>, root: string, relativeDirectory: string): Promise<void> {
+	const directory = relativeDirectory ? resolve(root, relativeDirectory) : root;
+	const entries = await readdir(directory, { withFileTypes: true });
+	entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+	for (const entry of entries) {
+		const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+		const absolutePath = resolve(root, relativePath);
+		const stats = await lstat(absolutePath);
+		if (entry.isDirectory()) {
+			hash.update(`directory\0${relativePath}\0${stats.mode & 0o777}\0`);
+			await hashDirectoryEntries(hash, root, relativePath);
+			continue;
+		}
+		if (entry.isFile()) {
+			hash.update(`file\0${relativePath}\0${stats.mode & 0o777}\0${stats.size}\0`);
+			await hashFileContents(hash, absolutePath);
+			hash.update("\0");
+			continue;
+		}
+		if (entry.isSymbolicLink()) {
+			hash.update(`symlink\0${relativePath}\0${await readlink(absolutePath)}\0`);
+			continue;
+		}
+		throw new Error(`Unsupported runtime artifact entry: ${absolutePath}`);
+	}
+}
+
+async function hashFileContents(hash: ReturnType<typeof createHash>, path: string): Promise<void> {
 	await new Promise<void>((resolvePromise, reject) => {
 		const stream = createReadStream(path);
 		stream.on("data", (chunk) => hash.update(chunk));
 		stream.once("end", resolvePromise);
 		stream.once("error", reject);
 	});
+}
+
+async function sha256File(path: string): Promise<string> {
+	const hash = createHash("sha256");
+	await hashFileContents(hash, path);
 	return hash.digest("hex");
 }
