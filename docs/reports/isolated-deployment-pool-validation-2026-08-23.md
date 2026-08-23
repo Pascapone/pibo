@@ -32,8 +32,8 @@ Public DNS resolves the pool base and all ten fixed slot names to the developmen
 
 The `pibo-deployment-pool` Let's Encrypt certificate covers:
 
-- `pool.pibo2.neuralnexus.me`
-- `slot-01.pool.pibo2.neuralnexus.me` through `slot-10.pool.pibo2.neuralnexus.me`
+- the configured pool base host
+- `slot-01` through `slot-10` under that pool base host
 
 The certificate expires on 2026-11-21 at 19:31:27 UTC and uses the existing automated Certbot renewal path. nginx passed configuration validation and serves HTTPS slot routing with current HTTP/2 syntax. An inactive slot returns HTTP 503. The pool base currently has no application page and returns HTTP 404 over valid HTTPS.
 
@@ -116,9 +116,7 @@ The browser profile and tunnel were stopped after validation. The screenshot was
 
 ## Canonical Google OAuth boundary
 
-The canonical social sign-in initiation returned HTTP 200 and generated a Google authorization URL at `accounts.google.com`. Its `redirect_uri` remained exactly:
-
-`https://pibo2.neuralnexus.me/api/auth/callback/google`
+The canonical social sign-in initiation returned HTTP 200 and generated a Google authorization URL at `accounts.google.com`. Its `redirect_uri` remained the configured canonical development origin plus `/api/auth/callback/google`.
 
 This confirms the existing canonical callback remains in use. No callback was registered for a pool slot. Completing a fresh interactive Google consent flow was outside this automated Machine Auth validation; the canonical application remained reachable before and after pool activity.
 
