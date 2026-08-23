@@ -108,6 +108,7 @@ export class ResourceReaperService {
 					unmanagedBrowsers: result.terminatedUnmanagedBrowsers.length,
 					staleFiles: result.removedStaleFiles.length,
 					computeWorkers: result.removedComputeWorkers.length,
+					...(result.deploymentPoolResult ? { deploymentLeases: result.removedDeploymentLeases?.length ?? 0 } : {}),
 				},
 				lastError: undefined,
 			};

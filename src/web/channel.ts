@@ -103,7 +103,17 @@ export function stripSocketPeerHeaderFromResponse(response: Response): Response 
 	});
 }
 
-function createRequestBaseURL(nodeRequest: IncomingMessage, host: string, port: number): string {
+function createRequestBaseURL(
+	nodeRequest: IncomingMessage,
+	host: string,
+	port: number,
+	canonicalBaseURL?: string,
+): string {
+	const requestHost = firstHeaderValue(nodeRequest.headers.host);
+	if (canonicalBaseURL && requestHost) {
+		const canonical = new URL(canonicalBaseURL);
+		if (requestHost.toLowerCase() === canonical.host.toLowerCase()) return canonical.origin;
+	}
 	if (isLoopbackAddress(nodeRequest.socket.remoteAddress)) {
 		const forwardedHost = firstHeaderValue(nodeRequest.headers["x-forwarded-host"]);
 		const forwardedProto = firstHeaderValue(nodeRequest.headers["x-forwarded-proto"]);
@@ -111,7 +121,7 @@ function createRequestBaseURL(nodeRequest: IncomingMessage, host: string, port: 
 			return `${forwardedProto}://${forwardedHost}`;
 		}
 	}
-	return `http://${nodeRequest.headers.host ?? `${host}:${port}`}`;
+	return `http://${requestHost ?? `${host}:${port}`}`;
 }
 
 function isActiveRunStatus(status: unknown): boolean {
@@ -261,7 +271,7 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 
 	const handleRequest = async (nodeRequest: IncomingMessage, nodeResponse: ServerResponse): Promise<void> => {
 		try {
-			const baseURL = createRequestBaseURL(nodeRequest, host, port);
+			const baseURL = createRequestBaseURL(nodeRequest, host, port, options.canonicalBaseURL);
 			const baseRequest = await nodeRequestToWebRequest(nodeRequest, baseURL);
 			// Inject the TCP socket peer into every request so the local auth
 			// plugin can apply the same loopback predicate from `getSession`

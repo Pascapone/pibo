@@ -217,14 +217,28 @@ export async function runComputeCli(argv: string[]): Promise<void> {
 Examples:
   $ pibo compute spawn
   $ pibo compute dev spawn --worktree my-fix
+  $ pibo compute pool status
   $ pibo compute list
   $ pibo compute release pibo-worker-abc123
 
 Next:
   $ pibo compute spawn --help
   $ pibo compute dev --help
+  $ pibo compute pool --help
 `,
 		);
+
+	program
+		.command("pool")
+		.description("Lease isolated Pibo deployment slots")
+		.helpOption(false)
+		.allowUnknownOption(true)
+		.allowExcessArguments(true)
+		.argument("[args...]")
+		.action(async (args: string[]) => {
+			const { runComputePoolCli } = await import("./pool/cli.js");
+			await runComputePoolCli([argv[0] ?? "node", "pibo compute pool", ...args]);
+		});
 
 	program
 		.command("spawn")

@@ -23,6 +23,9 @@ import {
 	type BrowserPoolReapResult,
 	type BrowserPoolState,
 } from "../tools/browser-pool.js";
+import { resolveDeploymentPoolConfig } from "../compute/pool/config.js";
+import { applyDeploymentPoolReapPlan, planDeploymentPoolReap } from "../compute/pool/service.js";
+import type { DeploymentPoolReapPlan, DeploymentPoolReapResult } from "../compute/pool/types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -98,6 +101,7 @@ export interface ResourceReapPlan {
 		skipped: number;
 	};
 	compute: ComputeWorkerReapPlan;
+	deploymentPool?: DeploymentPoolReapPlan;
 	worktreesPreserved: true;
 }
 
@@ -108,6 +112,8 @@ export interface ResourceReapApplyResult {
 	terminatedUnmanagedBrowsers: number[];
 	removedStaleFiles: string[];
 	removedComputeWorkers: string[];
+	deploymentPoolResult?: DeploymentPoolReapResult;
+	removedDeploymentLeases?: string[];
 	worktreesPreserved: true;
 }
 
@@ -127,6 +133,7 @@ interface ApplyResourceReapDependencies {
 	plan?: (options: PlanResourceReapOptions) => Promise<ResourceReapPlan>;
 	reapBrowserPool?: typeof reapIdleBrowserPool;
 	applyCompute?: typeof applyComputeWorkerReapPlan;
+	applyDeploymentPool?: typeof applyDeploymentPoolReapPlan;
 	terminateUnmanagedBrowser?: (item: ResourceUnmanagedBrowserPlanItem) => Promise<boolean>;
 	isPidAlive?: (pid: number) => boolean;
 }
@@ -178,7 +185,7 @@ export async function getActiveResourceLeases(browserPoolRoot = defaultBrowserPo
 export async function planResourceReap(options: PlanResourceReapOptions = {}): Promise<ResourceReapPlan> {
 	const now = options.now ?? new Date();
 	const resolved = resolveReapOptions(options);
-	const [records, staleFiles, compute, health] = await Promise.all([
+	const [records, staleFiles, compute, health, deploymentPool] = await Promise.all([
 		collectManagedBrowserPools(resolved.browserPoolRoot),
 		planStaleCdpFiles(resolved.browserUseHome),
 		planComputeReapSafely({ includeDev: resolved.includeDev, maxAgeMinutes: resolved.maxAgeMinutes, now }),
@@ -188,6 +195,7 @@ export async function planResourceReap(options: PlanResourceReapOptions = {}): P
 			browserUseHome: resolved.browserUseHome,
 			exemptBrowserUserDataDirs: [],
 		}),
+		planDeploymentPoolReapSafely(now),
 	]);
 	const unmanagedBrowsers = buildUnmanagedBrowserPlanItems(
 		health.browserProcesses.unassignedMainProcessDetails,
@@ -196,7 +204,7 @@ export async function planResourceReap(options: PlanResourceReapOptions = {}): P
 		new Set(resolved.exemptBrowserUserDataDirs),
 		resolved.browserUseHome,
 	);
-	return buildResourceReapPlan({ now, options: resolved, records, staleFiles, unmanagedBrowsers, compute });
+	return buildResourceReapPlan({ now, options: resolved, records, staleFiles, unmanagedBrowsers, compute, deploymentPool });
 }
 
 export function buildResourceReapPlan(input: {
@@ -206,6 +214,7 @@ export function buildResourceReapPlan(input: {
 	staleFiles: ResourceStaleFilePlanItem[];
 	unmanagedBrowsers?: ResourceUnmanagedBrowserPlanItem[];
 	compute: ComputeWorkerReapPlan;
+	deploymentPool?: DeploymentPoolReapPlan;
 }): ResourceReapPlan {
 	const browserItems = input.records.map((record) => buildBrowserReapPlanItem(record, input.now, input.options.idleTimeoutMinutes));
 	const unmanagedBrowsers = input.unmanagedBrowsers ?? [];
@@ -225,6 +234,7 @@ export function buildResourceReapPlan(input: {
 			skipped: unmanagedBrowsers.filter((item) => item.action === "skip").length,
 		},
 		compute: input.compute,
+		deploymentPool: input.deploymentPool,
 		worktreesPreserved: true,
 	};
 }
@@ -250,6 +260,9 @@ export async function applyResourceReapPlan(plan: ResourceReapPlan, dependencies
 	}
 	const removedStaleFiles = await applyStaleCdpFilePlan(confirmed.staleFiles.items, dependencies.isPidAlive);
 	const removedComputeWorkers = await (dependencies.applyCompute ?? applyComputeWorkerReapPlan)(confirmed.compute);
+	const deploymentPoolResult = confirmed.deploymentPool
+		? await (dependencies.applyDeploymentPool ?? applyDeploymentPoolReapPlan)(confirmed.deploymentPool)
+		: undefined;
 	return {
 		applied: true,
 		plan: confirmed,
@@ -257,6 +270,8 @@ export async function applyResourceReapPlan(plan: ResourceReapPlan, dependencies
 		terminatedUnmanagedBrowsers,
 		removedStaleFiles,
 		removedComputeWorkers,
+		deploymentPoolResult,
+		removedDeploymentLeases: deploymentPoolResult?.releasedLeases ?? [],
 		worktreesPreserved: true,
 	};
 }
@@ -426,6 +441,16 @@ export async function planComputeReapSafely(
 		const plan = buildComputeWorkerReapPlan([], options);
 		plan.nextCommands = ["Docker compute cleanup is unavailable; browser and stale-file cleanup remain active."];
 		return plan;
+	}
+}
+
+async function planDeploymentPoolReapSafely(now: Date): Promise<DeploymentPoolReapPlan | undefined> {
+	const config = resolveDeploymentPoolConfig();
+	if (!existsSync(config.databasePath)) return undefined;
+	try {
+		return await planDeploymentPoolReap({ config, now });
+	} catch {
+		return undefined;
 	}
 }
 
