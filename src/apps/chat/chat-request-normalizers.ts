@@ -136,6 +136,11 @@ export type ChatUserSettingsBody = {
 	telemetryRetention?: unknown;
 };
 
+export type ChatGatewaySettingsBody = {
+	maxConcurrentYieldedRuns?: unknown;
+	sessionConcurrentYieldedRuns?: unknown;
+};
+
 export type ChatTelemetryRetentionPruneBody = {
 	days?: unknown;
 	dryRun?: unknown;

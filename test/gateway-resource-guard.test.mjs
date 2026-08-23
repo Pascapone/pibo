@@ -14,7 +14,8 @@ import {
 test('gateway resource guard resolves safe defaults and explicit policy env', () => {
 	const defaults = resolveGatewayResourceGuardPolicy({});
 	assert.equal(defaults.mode, 'block');
-	assert.equal(defaults.maxConcurrentYieldedRuns, 1);
+	assert.equal(defaults.maxConcurrentYieldedRuns, 50);
+	assert.equal(defaults.sessionConcurrentYieldedRuns, 10);
 	assert.equal(defaults.yieldedRunMemoryReservationBytes, 2 * 1024 * 1024 * 1024);
 
 	const policy = resolveGatewayResourceGuardPolicy({
@@ -22,9 +23,13 @@ test('gateway resource guard resolves safe defaults and explicit policy env', ()
 		PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES: '999999999999999',
 		PIBO_GATEWAY_MIN_HEAP_AVAILABLE_BYTES: '0',
 		PIBO_GATEWAY_MAX_RSS_BYTES: '999999999999999',
+		PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS: '75',
+		PIBO_SESSION_CONCURRENT_YIELDED_RUNS: '15',
 	});
 	assert.equal(policy.mode, 'block');
 	assert.equal(policy.minFreeMemoryBytes, 999999999999999);
+	assert.equal(policy.maxConcurrentYieldedRuns, 75);
+	assert.equal(policy.sessionConcurrentYieldedRuns, 15);
 
 	const warnSnapshot = buildGatewayResourceSnapshot({
 		env: { PIBO_GATEWAY_RESOURCE_GUARD: 'warn', PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES: '999999999999999' },
@@ -55,24 +60,47 @@ test('gateway work admission reserves one yielded-run slot until execution settl
 		PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES: '0',
 		PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS: '1',
 	};
-	const first = controller.reserve('yielded run bash', env);
+	const first = controller.reserve('yielded run bash', { env });
 	assert.throws(
-		() => controller.reserve('yielded run bash', env),
-		/Active yielded runs 1 reached the configured limit 1/,
+		() => controller.reserve('yielded run bash', { env }),
+		/Active yielded runs 1 reached the configured gateway limit 1/,
 	);
 	first.release();
-	const next = controller.reserve('yielded run bash', env);
+	const next = controller.reserve('yielded run bash', { env });
 	next.release();
 	next.release();
+});
+
+test('gateway work admission enforces session concurrency independently', () => {
+	const controller = new GatewayWorkAdmissionController();
+	const env = {
+		PIBO_GATEWAY_RESOURCE_GUARD: 'block',
+		PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES: '0',
+		PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES: '0',
+		PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS: '3',
+		PIBO_SESSION_CONCURRENT_YIELDED_RUNS: '1',
+	};
+	const first = controller.reserve('yielded run subagent', { env, sessionId: 'parent-a' });
+	assert.throws(
+		() => controller.reserve('yielded run subagent', { env, sessionId: 'parent-a' }),
+		/parent-a .*configured session limit 1/,
+	);
+	const otherSession = controller.reserve('yielded run subagent', { env, sessionId: 'parent-b' });
+	first.release();
+	const next = controller.reserve('yielded run subagent', { env, sessionId: 'parent-a' });
+	next.release();
+	otherSession.release();
 });
 
 test('gateway work admission rejects a run that would consume the host reserve', () => {
 	const controller = new GatewayWorkAdmissionController();
 	assert.throws(
 		() => controller.reserve('yielded run bash', {
-			PIBO_GATEWAY_RESOURCE_GUARD: 'block',
-			PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES: '0',
-			PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES: '999999999999999',
+			env: {
+				PIBO_GATEWAY_RESOURCE_GUARD: 'block',
+				PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES: '0',
+				PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES: '999999999999999',
+			},
 		}),
 		/cannot preserve reserve/,
 	);
@@ -110,6 +138,9 @@ test('gateway resource process parsing exposes children and known heavy daemons'
 		minHeapAvailableBytes: 1,
 		maxRssBytes: 999999999,
 		knownDaemonWarningRssBytes: 2 * 1024 * 1024 * 1024,
+		maxConcurrentYieldedRuns: 50,
+		sessionConcurrentYieldedRuns: 10,
+		yieldedRunMemoryReservationBytes: 2 * 1024 * 1024 * 1024,
 	});
 	assert.deepEqual(rows.map((row) => [row.pid, row.kind, row.label]), [
 		[100, 'gateway', undefined],

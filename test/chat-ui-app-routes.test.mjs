@@ -35,6 +35,10 @@ async function runAppRoutesScenario() {
 			{ area: "settings", panel: "transcription" },
 		);
 		assert.deepEqual(
+			chatRouteFromLocation("/settings/concurrency", {}),
+			{ area: "settings", panel: "concurrency" },
+		);
+		assert.deepEqual(
 			chatRouteFromLocation("/workflows/view/wf_1/v2", {}),
 			{ area: "workflows", viewWorkflowId: "wf_1", viewWorkflowVersion: "v2" },
 		);
@@ -76,6 +80,10 @@ async function runAppRoutesScenario() {
 		assert.deepEqual(
 			chatNavigationRequest({ area: "settings", panel: "transcription" }, true, "terminal"),
 			{ to: "/settings/transcription", replace: true },
+		);
+		assert.deepEqual(
+			chatNavigationRequest({ area: "settings", panel: "concurrency" }, true, "terminal"),
+			{ to: "/settings/concurrency", replace: true },
 		);
 		assert.deepEqual(
 			chatNavigationRequest({ area: "sessions" }, false, "terminal"),

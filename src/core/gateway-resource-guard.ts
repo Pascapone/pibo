@@ -3,6 +3,12 @@ import { freemem, totalmem } from "node:os";
 import { promisify } from "node:util";
 import { getHeapStatistics } from "node:v8";
 import { collectYieldedRunHostResourceSnapshot, type YieldedRunHostResourceSnapshot } from "../runs/resource-isolation.js";
+import {
+	DEFAULT_GATEWAY_CONCURRENT_YIELDED_RUNS,
+	DEFAULT_SESSION_CONCURRENT_YIELDED_RUNS,
+	resolvePiboGatewaySettings,
+	type PiboGatewaySettings,
+} from "./gateway-settings.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -16,6 +22,7 @@ export interface GatewayResourceGuardPolicy {
 	maxRssBytes: number;
 	knownDaemonWarningRssBytes: number;
 	maxConcurrentYieldedRuns: number;
+	sessionConcurrentYieldedRuns: number;
 	yieldedRunMemoryReservationBytes: number;
 }
 
@@ -98,6 +105,13 @@ export interface CollectGatewayResourceSnapshotOptions {
 	yieldedUnitListOutput?: string;
 	yieldedUnitListError?: string;
 	hostResourceSnapshot?: YieldedRunHostResourceSnapshot;
+	gatewaySettings?: PiboGatewaySettings;
+}
+
+export interface GatewayWorkAdmissionOptions {
+	sessionId?: string;
+	env?: NodeJS.ProcessEnv;
+	gatewaySettings?: PiboGatewaySettings;
 }
 
 const DEFAULT_POLICY: GatewayResourceGuardPolicy = Object.freeze({
@@ -106,18 +120,23 @@ const DEFAULT_POLICY: GatewayResourceGuardPolicy = Object.freeze({
 	minHeapAvailableBytes: 64 * 1024 * 1024,
 	maxRssBytes: 1536 * 1024 * 1024,
 	knownDaemonWarningRssBytes: 2 * 1024 * 1024 * 1024,
-	maxConcurrentYieldedRuns: 1,
+	maxConcurrentYieldedRuns: DEFAULT_GATEWAY_CONCURRENT_YIELDED_RUNS,
+	sessionConcurrentYieldedRuns: DEFAULT_SESSION_CONCURRENT_YIELDED_RUNS,
 	yieldedRunMemoryReservationBytes: 2 * 1024 * 1024 * 1024,
 });
 
-export function resolveGatewayResourceGuardPolicy(env: NodeJS.ProcessEnv = process.env): GatewayResourceGuardPolicy {
+export function resolveGatewayResourceGuardPolicy(
+	env: NodeJS.ProcessEnv = process.env,
+	gatewaySettings: PiboGatewaySettings = resolvePiboGatewaySettings(env),
+): GatewayResourceGuardPolicy {
 	return {
 		mode: parseMode(env.PIBO_GATEWAY_RESOURCE_GUARD, DEFAULT_POLICY.mode),
 		minFreeMemoryBytes: parseByteThreshold(env.PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES, DEFAULT_POLICY.minFreeMemoryBytes),
 		minHeapAvailableBytes: parseByteThreshold(env.PIBO_GATEWAY_MIN_HEAP_AVAILABLE_BYTES, DEFAULT_POLICY.minHeapAvailableBytes),
 		maxRssBytes: parseByteThreshold(env.PIBO_GATEWAY_MAX_RSS_BYTES, DEFAULT_POLICY.maxRssBytes),
 		knownDaemonWarningRssBytes: parseByteThreshold(env.PIBO_GATEWAY_KNOWN_DAEMON_WARNING_RSS_BYTES, DEFAULT_POLICY.knownDaemonWarningRssBytes),
-		maxConcurrentYieldedRuns: parsePositiveInteger(env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS, DEFAULT_POLICY.maxConcurrentYieldedRuns),
+		maxConcurrentYieldedRuns: gatewaySettings.maxConcurrentYieldedRuns,
+		sessionConcurrentYieldedRuns: gatewaySettings.sessionConcurrentYieldedRuns,
 		yieldedRunMemoryReservationBytes: parseByteThreshold(env.PIBO_GATEWAY_YIELDED_RUN_MEMORY_RESERVATION_BYTES, DEFAULT_POLICY.yieldedRunMemoryReservationBytes),
 	};
 }
@@ -138,7 +157,7 @@ export function collectGatewayProcessMemory(): GatewayProcessMemorySnapshot {
 }
 
 export function buildGatewayResourceSnapshot(options: CollectGatewayResourceSnapshotOptions = {}): GatewayResourceSnapshot {
-	const policy = resolveGatewayResourceGuardPolicy(options.env);
+	const policy = resolveGatewayResourceGuardPolicy(options.env, options.gatewaySettings);
 	const gateway = collectGatewayProcessMemory();
 	const hostResources = options.hostResourceSnapshot ?? collectYieldedRunHostResourceSnapshot({ now: options.now });
 	const host = { freeBytes: hostResources.memoryFreeBytes || freemem(), availableBytes: hostResources.memoryAvailableBytes || freemem(), totalBytes: totalmem() };
@@ -194,16 +213,33 @@ export function assertGatewayResourceAvailableForWork(workLabel: string, env: No
 
 export class GatewayWorkAdmissionController {
 	private readonly activeReservations = new Set<symbol>();
+	private readonly activeSessionReservations = new Map<string, number>();
 
-	reserve(workLabel: string, env: NodeJS.ProcessEnv = process.env): GatewayWorkReservation {
-		const snapshot = buildGatewayResourceSnapshot({ env, includeProcesses: false });
+	reserve(workLabel: string, options: GatewayWorkAdmissionOptions = {}): GatewayWorkReservation {
+		const snapshot = buildGatewayResourceSnapshot({
+			env: options.env,
+			gatewaySettings: options.gatewaySettings,
+			includeProcesses: false,
+		});
 		const policy = snapshot.policy;
 		if (snapshot.guardAction === "block") {
 			throwGatewayResourceBlock(workLabel, snapshot.checks.filter((check) => check.severity === "critical").map((check) => check.message));
 		}
 		if (policy.mode === "block" && this.activeReservations.size >= policy.maxConcurrentYieldedRuns) {
 			throwGatewayResourceBlock(workLabel, [
-				`Active yielded runs ${this.activeReservations.size} reached the configured limit ${policy.maxConcurrentYieldedRuns}. Wait for an active run to settle or raise PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS explicitly.`,
+				`Active yielded runs ${this.activeReservations.size} reached the configured gateway limit ${policy.maxConcurrentYieldedRuns}. Wait for an active run to settle or raise PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS in Settings or the gateway environment.`,
+			]);
+		}
+		const activeForSession = options.sessionId
+			? this.activeSessionReservations.get(options.sessionId) ?? 0
+			: 0;
+		if (
+			policy.mode === "block"
+			&& options.sessionId
+			&& activeForSession >= policy.sessionConcurrentYieldedRuns
+		) {
+			throwGatewayResourceBlock(workLabel, [
+				`Session ${options.sessionId} has ${activeForSession} active yielded runs and reached the configured session limit ${policy.sessionConcurrentYieldedRuns}. Wait for an active run to settle or raise PIBO_SESSION_CONCURRENT_YIELDED_RUNS in Settings or the gateway environment.`,
 			]);
 		}
 		if (
@@ -217,6 +253,7 @@ export class GatewayWorkAdmissionController {
 
 		const reservation = Symbol(workLabel);
 		this.activeReservations.add(reservation);
+		if (options.sessionId) this.activeSessionReservations.set(options.sessionId, activeForSession + 1);
 		let released = false;
 		return {
 			admission: collectYieldedRunHostResourceSnapshot(),
@@ -224,6 +261,10 @@ export class GatewayWorkAdmissionController {
 				if (released) return;
 				released = true;
 				this.activeReservations.delete(reservation);
+				if (!options.sessionId) return;
+				const nextSessionCount = (this.activeSessionReservations.get(options.sessionId) ?? 1) - 1;
+				if (nextSessionCount > 0) this.activeSessionReservations.set(options.sessionId, nextSessionCount);
+				else this.activeSessionReservations.delete(options.sessionId);
 			},
 		};
 	}
@@ -263,7 +304,7 @@ export function renderGatewayResourceSnapshotText(snapshot: GatewayResourceSnaps
 	lines.push(`Gateway PID: ${snapshot.gateway.pid}`);
 	lines.push(`Gateway memory: rss=${snapshot.gateway.rssBytes} heapUsed=${snapshot.gateway.heapUsedBytes} heapAvailable=${snapshot.gateway.heapAvailableBytes} heapLimit=${snapshot.gateway.heapLimitBytes}`);
 	lines.push(`Host memory: free=${snapshot.host.freeBytes} available=${snapshot.host.availableBytes} total=${snapshot.host.totalBytes}`);
-	lines.push(`Thresholds: minFree=${snapshot.policy.minFreeMemoryBytes} minHeapAvailable=${snapshot.policy.minHeapAvailableBytes} maxRss=${snapshot.policy.maxRssBytes} daemonWarnRss=${snapshot.policy.knownDaemonWarningRssBytes} maxYieldedRuns=${snapshot.policy.maxConcurrentYieldedRuns} yieldedRunReservation=${snapshot.policy.yieldedRunMemoryReservationBytes}`);
+	lines.push(`Thresholds: minFree=${snapshot.policy.minFreeMemoryBytes} minHeapAvailable=${snapshot.policy.minHeapAvailableBytes} maxRss=${snapshot.policy.maxRssBytes} daemonWarnRss=${snapshot.policy.knownDaemonWarningRssBytes} maxYieldedRuns=${snapshot.policy.maxConcurrentYieldedRuns} sessionYieldedRuns=${snapshot.policy.sessionConcurrentYieldedRuns} yieldedRunReservation=${snapshot.policy.yieldedRunMemoryReservationBytes}`);
 	lines.push(`Related processes: children=${snapshot.processes.children.length} knownDaemons=${snapshot.processes.knownDaemons.length} processList=${snapshot.processes.available ? "available" : "unavailable"}`);
 	lines.push(`Yielded-run cgroups: units=${snapshot.yieldedRunUnits.units.length} systemdList=${snapshot.yieldedRunUnits.available ? "available" : "unavailable"}`);
 	if (snapshot.processes.error) lines.push(`Process list error: ${snapshot.processes.error}`);
@@ -338,12 +379,6 @@ function parseByteThreshold(value: string | undefined, fallback: number): number
 	if (value === undefined || value.trim() === "") return fallback;
 	const parsed = Number(value);
 	return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
-}
-
-function parsePositiveInteger(value: string | undefined, fallback: number): number {
-	if (value === undefined || value.trim() === "") return fallback;
-	const parsed = Number(value);
-	return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function throwGatewayResourceBlock(workLabel: string, reasons: string[]): never {

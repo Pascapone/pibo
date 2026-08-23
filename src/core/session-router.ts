@@ -58,6 +58,7 @@ import type {
 import { validateAgentRuntimeProfileCapabilities } from "../agent-runtime/profile-validation.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
+import { loadPiboGatewaySettings } from "./gateway-settings.js";
 import { loadPiboUserSettings } from "./user-settings.js";
 import { resolvePiboSessionActiveModel } from "./session-model.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "./thinking.js";
@@ -1828,7 +1829,10 @@ export class PiboSessionRouter {
 	private createRunToolController(parentPiboSessionId: string): PiboRunToolController {
 		return {
 			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, timeoutMs, serviceWarning, resources, execute, cancel }) => {
-				const admission = this.gatewayWorkAdmission.reserve(`yielded run ${toolName}`);
+				const admission = this.gatewayWorkAdmission.reserve(`yielded run ${toolName}`, {
+					sessionId: parentPiboSessionId,
+					gatewaySettings: loadPiboGatewaySettings(),
+				});
 				if (resources) resources.admission = admission.admission;
 				const reminderGeneration = this.runReminderGeneration(parentPiboSessionId);
 				let run: PiboRunSnapshot;
