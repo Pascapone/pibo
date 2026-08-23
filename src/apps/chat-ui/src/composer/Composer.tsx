@@ -713,7 +713,7 @@ export function Composer({
 						}
 					}}
 					onPaste={handleClipboardImagePaste}
-					placeholder={disabled ? "Select a session to message" : "Send Message (/ for commands or $ for skills)"}
+					placeholder={disabled ? "Select a session to message" : "Send message ..."}
 					className="h-10 min-h-10 resize-none overflow-hidden bg-[#0e1116] border border-slate-700 rounded-sm px-3 py-2 text-sm leading-5 outline-none focus:border-[#11a4d4] disabled:opacity-50 [scrollbar-gutter:stable]"
 				/>
 				<button
