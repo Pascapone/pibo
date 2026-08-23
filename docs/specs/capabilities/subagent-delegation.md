@@ -1,6 +1,6 @@
 # Spec: Agent Delegation and Management
 
-**Status:** Implementing
+**Status:** Done
 **Created:** 2026-05-10
 **Revised:** 2026-08-23
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Custom Agents and Agent Designer](./custom-agents.md), [Yielded Run Control](./yielded-run-control.md), [Agent Management Tool Design](../../plans/agent-management-tool-design.md)
@@ -189,15 +189,15 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 
 ## Success Criteria
 
-- [ ] SC-001: Two configured agents produce four shared tools and zero `pibo_subagent_*` tools.
-- [ ] SC-002: Prompt inspection shows each available name and description.
-- [ ] SC-003: Foreground send returns a child reply and reusable `agentId`; yielded send completes through `pibo_run_*`.
-- [ ] SC-004: List reports available definitions and running/idle/killed instances accurately.
-- [ ] SC-005: Observe combines all documented filters and cursor pagination without cross-parent leakage.
-- [ ] SC-006: Kill interrupts active work, marks the instance killed, and prevents thread reuse.
-- [ ] SC-007: Existing trace/UI delegation cards still link to child sessions under the shared send tool.
-- [ ] SC-008: Pibo2 real-provider validation with `gpt-5.6-luna` at `low` demonstrates foreground, yielded, observe, list, and kill behavior in the headful Chat Web UI.
-- [ ] SC-009: Descending cursor pagination, retention loss, cleanup retry, legacy exports, portable MCP, and shared-tool trace/UI behavior have focused regression coverage.
+- [x] SC-001: Two configured agents produce four shared tools and zero `pibo_subagent_*` tools.
+- [x] SC-002: Prompt inspection shows each available name and description.
+- [x] SC-003: Foreground send returns a child reply and reusable `agentId`; yielded send completes through `pibo_run_*`.
+- [x] SC-004: List reports available definitions and running/idle/killed instances accurately.
+- [x] SC-005: Observe combines all documented filters and cursor pagination without cross-parent leakage.
+- [x] SC-006: Kill interrupts active work, marks the instance killed, and prevents thread reuse.
+- [x] SC-007: Existing trace/UI delegation cards still link to child sessions under the shared send tool.
+- [x] SC-008: Pibo2 real-provider validation with `gpt-5.6-luna` at `low` demonstrates foreground, yielded, observe, list, and kill behavior in the headful Chat Web UI.
+- [x] SC-009: Descending cursor pagination, retention loss, cleanup retry, legacy exports, portable MCP, and shared-tool trace/UI behavior have focused regression coverage.
 
 ## Traceability
 

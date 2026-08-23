@@ -1,8 +1,8 @@
 # Agent Management Tools Implementation Plan
 
-**Status:** In progress  
-**Date:** 2026-08-23  
-**Spec:** [Agent Delegation and Management](../specs/capabilities/subagent-delegation.md)  
+**Status:** Done
+**Date:** 2026-08-23
+**Spec:** [Agent Delegation and Management](../specs/capabilities/subagent-delegation.md)
 **Design:** [Agent Management Tool and CLI Design](./agent-management-tool-design.md)
 
 ## Success Boundary
