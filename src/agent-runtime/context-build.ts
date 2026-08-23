@@ -7,6 +7,7 @@ import type {
 	PiboContextBuildSnapshot,
 } from "../core/context-build.js";
 import { InitialSessionContext } from "../core/profiles.js";
+import { PIBO_AGENT_TOOL_NAMES, listAvailableAgents } from "../subagents/tool.js";
 
 export function profileWithRuntimeInstance(profile: InitialSessionContext, runtimeInstanceId: string): InitialSessionContext {
 	if (profile.runtimeInstanceId === runtimeInstanceId) return profile;
@@ -78,9 +79,11 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		},
 		payloadJson: input.runtime.capabilities,
 	});
-	addRuntimeContributionGroup(nodes, "tools", "Pibo Tools and Subagents", [
+	const availableAgents = listAvailableAgents(profile.subagents);
+	addRuntimeContributionGroup(nodes, "tools", "Pibo Tools and Delegated Agents", [
 		...profile.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.name),
-		...profile.subagents.filter((subagent) => subagent.enabled !== false).map((subagent) => `subagent:${subagent.name} -> ${subagent.targetProfile}`),
+		...(availableAgents.length > 0 ? PIBO_AGENT_TOOL_NAMES : []),
+		...availableAgents.map((agent) => `agent:${agent.name} (${agent.profile}) — ${agent.description}`),
 		...(profile.toolPackages.goalControl !== false ? ["package:pibo-goal-control"] : []),
 		...(profile.toolPackages.runControl === true ? ["package:pibo-run-control"] : []),
 	], input.runtime.capabilities.tools.piboManaged);

@@ -28,7 +28,8 @@ export function resolveAgentDelegationStatus(
 
 export function extractAgentDelegationName(input: unknown, title?: string, summary?: string): string {
 	const record = isRecord(input) ? input : undefined;
-	const rawName = stringValue(record?.subagentName)
+	const rawName = stringValue(record?.name)
+		?? stringValue(record?.subagentName)
 		?? subagentNameFromToolName(title)
 		?? stringValue(summary)
 		?? stringValue(title)
@@ -81,11 +82,12 @@ function isCancelledSignalStatus(status: string): boolean {
 function subagentNameFromToolName(value: string | undefined): string | undefined {
 	const name = nonEmpty(value);
 	if (!name) return undefined;
-	return name.replace(/^pibo_subagent_/, "");
+	return name === "pibo_agents_send_message" ? undefined : name.replace(/^pibo_subagent_/, "");
 }
 
 function titleCaseAgentName(value: string): string {
 	return value
+		.replace(/^pibo_agents_send_message$/, "Agent")
 		.replace(/^pibo_subagent_/, "")
 		.split(/[\s_-]+/)
 		.filter(Boolean)

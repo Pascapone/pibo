@@ -85,6 +85,11 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			await runDebugEvents(args.slice(1));
 			return;
 		}
+		if (args[0] === "agents") {
+			const { runDebugAgentsCli } = await import("./agents.js");
+			await runDebugAgentsCli(args.slice(1));
+			return;
+		}
 		if (args[0] === "jobs") {
 			await runDebugJobs(args.slice(1));
 			return;
@@ -1004,6 +1009,7 @@ Commands:
   final    Show the latest assistant message
   trace    Rebuild the Chat Web trace view for one Pibo Session
   events   Inspect compact event payload fields for one Pibo Session
+  agents   Inspect delegated child agents and their persisted activity
   tool     Inspect one grouped tool call
   failures List failed tool calls and trace/session errors
   jobs     Inspect durable Pibo jobs and DLQ
@@ -1021,6 +1027,7 @@ Next:
   pibo debug messages <pibo-session-id> list
   pibo debug trace <pibo-session-id> --running-only
   pibo debug events stream --topic pibo.output
+  pibo debug agents <parent-session-id> list
   pibo debug resources --json
   pibo debug signals tree ps_...
   pibo debug telemetry sessions --active

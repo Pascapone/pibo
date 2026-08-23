@@ -19,7 +19,7 @@ import type {
 	PiboSessionOperationResult,
 	PiboSessionTreeResult,
 } from "../../core/events.js";
-import type { PiboSubagentRunner } from "../../subagents/tool.js";
+import type { PiboAgentsController } from "../../subagents/tool.js";
 import type { PiboRunToolController } from "../../runs/tools.js";
 import type { PiboRuntimeToolController } from "../../tools/runtime/tool.js";
 import { PiboPluginRegistry } from "../../plugins/registry.js";
@@ -735,7 +735,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			thinkingLevel: compatibility?.thinkingLevel,
 			retryDefaults: compatibility?.retryDefaults,
 			extensionFactories: compatibility?.extensionFactories,
-			subagentRunner: input.services?.subagentRunner as PiboSubagentRunner | undefined,
+			agentsController: input.services?.agentsController as PiboAgentsController | undefined,
 			runToolController: input.services?.runToolController as PiboRunToolController | undefined,
 			runtimeToolController: input.services?.codeRuntimeToolController as PiboRuntimeToolController | undefined,
 			portableTools: input.services?.portableTools,

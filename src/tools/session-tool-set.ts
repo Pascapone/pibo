@@ -5,7 +5,7 @@ import type {
 } from "../core/profiles.js";
 import { createPiboGoalToolDefinitions, PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
-import { createSubagentToolDefinitions, type PiboSubagentRunner } from "../subagents/tool.js";
+import { createAgentToolDefinitions, type PiboAgentsController, type PiboSubagentRunner } from "../subagents/tool.js";
 import {
 	CODEX_BROWSER_TOOL_NAMES,
 	createCodexBrowserToolDefinitions,
@@ -19,6 +19,8 @@ import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "./r
 export type CreatePiboSessionToolDefinitionsOptions = {
 	profile: InitialSessionContext;
 	toolContext?: ToolDefinitionContext;
+	agentsController?: PiboAgentsController;
+	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
 	subagentRunner?: PiboSubagentRunner;
 	runToolController?: PiboRunToolController;
 	runtimeToolController?: PiboRuntimeToolController;
@@ -45,6 +47,7 @@ export function isEnabledCodexBrowserToolProfile(tool: ToolProfile): boolean {
 
 export function isGeneratedPiboTool(name: string): boolean {
 	return name === "runtime"
+		|| name.startsWith("pibo_agents_")
 		|| name.startsWith("pibo_subagent_")
 		|| name.startsWith("pibo_run_")
 		|| PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number]);
@@ -73,6 +76,9 @@ export function createPiboSessionToolDefinitions(
 	options: CreatePiboSessionToolDefinitionsOptions,
 ): PiboToolDefinition[] {
 	const { profile } = options;
+	if (profile.subagents.some((subagent) => subagent.enabled !== false) && options.subagentRunner && !options.agentsController) {
+		throw new Error("CreatePiboSessionToolDefinitionsOptions.subagentRunner is retired. Provide agentsController so the session can expose the four pibo_agents_* management tools.");
+	}
 	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeToolProfile);
 	const runtimeTool = runtimeProfileTool && options.runtimeToolController
 		? createRuntimeToolDefinition(options.runtimeToolController)
@@ -93,8 +99,8 @@ export function createPiboSessionToolDefinitions(
 	const goalTools = profile.toolPackages.goalControl !== false
 		? createPiboGoalToolDefinitions(options.toolContext ?? {})
 		: [];
-	const subagentTools = options.subagentRunner
-		? createSubagentToolDefinitions(profile.subagents, options.subagentRunner)
+	const agentTools = options.agentsController
+		? createAgentToolDefinitions(profile.subagents, options.agentsController)
 		: [];
 	const nativeYieldableTools = [...(options.nativeYieldableTools ?? [])];
 	const yieldableTools = [
@@ -104,7 +110,7 @@ export function createPiboSessionToolDefinitions(
 			.map((tool) => getToolDefinition(tool, options.toolContext)),
 		...(runtimeTool && runtimeProfileTool?.yieldable !== false ? [runtimeTool] : []),
 		...codexBrowserTools.filter((definition) => profile.tools.find((tool) => tool.name === definition.name)?.yieldable !== false),
-		...subagentTools,
+		...agentTools,
 		...codexCompatTools,
 	];
 	const runTools = profile.toolPackages.runControl === true
@@ -118,7 +124,7 @@ export function createPiboSessionToolDefinitions(
 		...profileToolDefinitions,
 		...(runtimeTool ? [runtimeTool] : []),
 		...codexBrowserTools,
-		...subagentTools,
+		...agentTools,
 		...codexCompatTools,
 		...goalTools,
 		...runTools,
