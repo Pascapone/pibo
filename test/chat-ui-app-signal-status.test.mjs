@@ -143,12 +143,15 @@ async function runAppSignalStatusScenario() {
 			updatedAt: "2026-05-27T00:05:00.000Z",
 		};
 		assert.equal(signalLegacyStatus(signalSession({ latestTurn: runningTurn })), "running", "the canonical running turn keeps sidebar status active");
+		assert.equal(signalLegacyStatus(signalSession({ isTreeActive: true, localStatus: "error", aggregateStatus: "error", hasError: true, hasErrorDescendant: true, latestTurn: runningTurn })), "running", "active work outranks historical errors");
 		assert.equal(signalLegacyStatus(signalSession({ isTreeActive: true, latestTurn: { ...runningTurn, state: "completed", completedAt: runningTurn.updatedAt } })), "running", "background tree activity stays visible after the local turn ends");
+		assert.equal(signalLegacyStatus(signalSession({ aggregateStatus: "error", hasErrorDescendant: true, latestTurn: { ...runningTurn, state: "completed", completedAt: runningTurn.updatedAt } })), "idle", "historical descendant errors do not poison a settled session");
+		assert.equal(signalLegacyStatus(signalSession({ localStatus: "error", aggregateStatus: "error", hasError: true })), "error", "a terminal local error remains visible");
 		assert.equal(signalLegacyStatus(signalSession({ latestTurn: { ...runningTurn, state: "completed", completedAt: runningTurn.updatedAt } })), "idle", "terminal local turn settles sidebar status with the tree");
 
 		const withSnapshot = applySignalSnapshotToBootstrap(base, snapshot);
 		const updatedChild = withSnapshot.sessions[0].children[0];
-		assert.equal(updatedChild.status, "error", "unread error sessions stay visibly errored");
+		assert.equal(updatedChild.status, "running", "active sessions stay running even when they contain unread errors");
 		assertAtLeastIso(updatedChild.lastActivityAt, "2026-05-27T00:10:00.000Z");
 		assert.equal(updatedChild.derivedSessions[0].status, "running", "acknowledged active derived errors collapse to running");
 		assertAtLeastIso(updatedChild.derivedSessions[0].lastActivityAt, "2026-05-27T00:11:00.000Z");

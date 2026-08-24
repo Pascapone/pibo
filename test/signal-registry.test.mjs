@@ -53,6 +53,43 @@ test("global status snapshots and subscribers cover independent roots", async ()
 	}
 });
 
+test("parent status stays running during work and settles idle despite a child error", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "session_created", session: session("child", "root") });
+	registry.project({ type: "pibo_output", event: { type: "session_error", piboSessionId: "child", eventId: "child-error", error: "boom" } });
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "root", eventId: "root-turn", text: "continue" } });
+
+	let tree = registry.snapshotTree("root");
+	let statuses = registry.snapshotStatuses();
+	assert.equal(tree.sessions.root.hasErrorDescendant, true, "the child failure remains available as detailed health data");
+	assert.equal(statuses.sessions.root.status, "running", "active parent work outranks a child failure");
+	assert.equal(statuses.sessions.child.status, "error", "the failed child keeps its own terminal status");
+
+	registry.project({ type: "pibo_output", event: { type: "message_finished", piboSessionId: "root", eventId: "root-turn" } });
+	tree = registry.snapshotTree("root");
+	statuses = registry.snapshotStatuses();
+	assert.equal(tree.sessions.root.hasErrorDescendant, true);
+	assert.equal(statuses.sessions.root.status, "idle", "a historical child failure does not poison the settled parent status");
+});
+
+test("a new successful turn clears presentation error status without deleting error history", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "root", eventId: "failed-turn", text: "fail" } });
+	registry.project({ type: "pibo_output", event: { type: "session_error", piboSessionId: "root", eventId: "failed-turn", error: "boom" } });
+
+	assert.equal(registry.snapshotStatuses().sessions.root.status, "error");
+
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "root", eventId: "recovery-turn", text: "retry" } });
+	assert.equal(registry.snapshotStatuses().sessions.root.status, "running");
+	registry.project({ type: "pibo_output", event: { type: "message_finished", piboSessionId: "root", eventId: "recovery-turn" } });
+
+	const tree = registry.snapshotTree("root");
+	assert.equal(tree.sessions.root.hasError, true, "the failed turn remains available in detailed signal history");
+	assert.equal(registry.snapshotStatuses().sessions.root.status, "idle");
+});
+
 test("child session creation is published on the parent signal root", () => {
 	const registry = createPiboSignalRegistry();
 	registry.project({ type: "session_created", session: session("root") });
@@ -422,6 +459,7 @@ test("interruption and disposal terminalize unresolved turns", () => {
 		const snapshot = registry.snapshotTree("root");
 		assert.equal(snapshot.sessions.root.latestTurn.state, expected);
 		assert.equal(snapshot.sessions.root.isTreeActive, false);
+		assert.equal(registry.snapshotStatuses().sessions.root.status, "idle");
 	}
 });
 

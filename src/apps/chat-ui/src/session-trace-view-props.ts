@@ -6,6 +6,35 @@ import { adaptTrace } from "./tracing/adapt";
 
 export type SessionTraceViewLinks = Pick<ChatSessionViewProps, "sessionBreadcrumbs" | "originSession" | "derivedSessions">;
 
+function sessionRuntime(
+	bootstrap: BootstrapData,
+	piboSessionId: string | null,
+	profileName: string,
+) {
+	const session = piboSessionId ? findSessionNode(bootstrap.sessions, piboSessionId) : undefined;
+	const staticProfile = bootstrap.agents.find((agent) => agent.name === profileName);
+	const customProfile = bootstrap.customAgents.find((agent) => agent.profileName === profileName);
+	const profile = customProfile ?? staticProfile;
+	const activeBinding = bootstrap.session?.id === piboSessionId ? bootstrap.session.runtimeBinding : undefined;
+	const runtimeInstanceId = session?.runtimeInstanceId ?? activeBinding?.runtimeInstanceId ?? profile?.runtimeInstanceId;
+	return bootstrap.agentCatalog?.agentRuntimes.find((candidate) =>
+		runtimeInstanceId ? candidate.id === runtimeInstanceId : session?.runtimeAdapterId ? candidate.adapterId === session.runtimeAdapterId : false,
+	);
+}
+
+export function sessionCanSteer(
+	bootstrap: BootstrapData,
+	piboSessionId: string | null,
+	profileName: string,
+	signal: PiboSessionSignalSnapshot | undefined,
+): boolean {
+	if (signal?.latestTurn?.state !== "running") return false;
+	const runtime = sessionRuntime(bootstrap, piboSessionId, profileName);
+	return runtime?.enabled !== false
+		&& runtime?.available !== false
+		&& runtime?.capabilities.input?.steering === true;
+}
+
 export function sessionSupportsToolIntent(
 	bootstrap: BootstrapData,
 	piboSessionId: string | null,
@@ -15,10 +44,7 @@ export function sessionSupportsToolIntent(
 	const staticProfile = bootstrap.agents.find((agent) => agent.name === profileName);
 	const customProfile = bootstrap.customAgents.find((agent) => agent.profileName === profileName);
 	const profile = customProfile ?? staticProfile;
-	const runtimeInstanceId = session?.runtimeInstanceId ?? profile?.runtimeInstanceId;
-	const runtime = bootstrap.agentCatalog?.agentRuntimes.find((candidate) =>
-		runtimeInstanceId ? candidate.id === runtimeInstanceId : session?.runtimeAdapterId ? candidate.adapterId === session.runtimeAdapterId : false,
-	);
+	const runtime = sessionRuntime(bootstrap, piboSessionId, profileName);
 	const capability = runtime?.capabilities.tools.intentTracing;
 	if (!capability?.supported) return false;
 	if (!capability.configurable) return true;

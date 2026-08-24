@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import test from "node:test";
 
@@ -13,6 +14,7 @@ async function runSessionTraceViewPropsScenario() {
 			createSessionTraceViewProps,
 			resolveSessionTraceModelBadge,
 			resolveSessionTraceTitle,
+			sessionCanSteer,
 			sessionSupportsToolIntent,
 		} = await import("./src/apps/chat-ui/src/session-trace-view-props.ts");
 
@@ -126,7 +128,7 @@ async function runSessionTraceViewPropsScenario() {
 			],
 			modelDefaults: { thinking: "off", fast: false },
 			agentCatalog: {
-				agentRuntimes: [{ id: "pi", adapterId: "pi", capabilities: { tools: { intentTracing: { supported: true, configurable: true, enabledByDefault: false } } } }],
+				agentRuntimes: [{ id: "pi", adapterId: "pi", enabled: true, available: true, capabilities: { input: { steering: true }, tools: { intentTracing: { supported: true, configurable: true, enabledByDefault: false } } } }],
 			},
 			capabilities: { actions: [] },
 		};
@@ -148,6 +150,18 @@ async function runSessionTraceViewPropsScenario() {
 			},
 			customAgents: [{ ...bootstrap.customAgents[0], runtimeOptions: {} }],
 		}, "ps-child", "worker-profile"), true);
+
+		const activeSignal = { latestTurn: { state: "running" } };
+		assert.equal(sessionCanSteer(bootstrap, "ps-child", "worker-profile", activeSignal), true, "an active local turn on a steering runtime can be steered");
+		assert.equal(sessionCanSteer(bootstrap, "ps-child", "worker-profile", { latestTurn: { state: "completed" }, isTreeActive: true }), false, "descendant-only activity cannot steer the selected session");
+		assert.equal(sessionCanSteer({
+			...bootstrap,
+			agentCatalog: {
+				...bootstrap.agentCatalog,
+				agentRuntimes: [{ ...bootstrap.agentCatalog.agentRuntimes[0], capabilities: { ...bootstrap.agentCatalog.agentRuntimes[0].capabilities, input: { steering: false } } }],
+			},
+		}, "ps-child", "worker-profile", activeSignal), false, "runtime capability gates steering");
+		assert.equal(sessionCanSteer(bootstrap, "ps-child", "worker-profile", undefined), false, "status alone does not imply steering eligibility");
 
 		assert.equal(resolveSessionTraceModelBadge({
 			bootstrap,
@@ -233,4 +247,11 @@ async function runSessionTraceViewPropsScenario() {
 
 test("session trace view props helpers preserve link labels and model badge fallbacks", async () => {
 	await assert.doesNotReject(runSessionTraceViewPropsScenario());
+});
+
+test("composer delivery choices use explicit steering eligibility instead of presentation status", () => {
+	const source = readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
+	assert.match(source, /const canSteer = sessionCanSteer\(/);
+	assert.match(source, /if \(canSteer\) \{/);
+	assert.doesNotMatch(source, /if \(selectedSessionStatus === "running"\)/);
 });
