@@ -27,6 +27,8 @@ export type WebHostChannelOptions = {
 	port?: number;
 	announce?: boolean;
 	canonicalBaseURL?: string;
+	/** Stable PiboWebApp.name used for the bare-host landing redirect. */
+	landingAppName?: string;
 	gatewayMode?: "dev" | "prod" | "fallback" | "unknown";
 	shutdownDrainTimeoutMs?: number;
 };
@@ -326,12 +328,17 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 				return;
 			}
 
-			if (url.pathname === "/" && apps[0]) {
-				await sendResponse(nodeResponse, redirect(apps[0].mountPath));
-				return;
-			}
-
 			if (url.pathname === "/") {
+				const landingApp = options.landingAppName
+					? apps.find((candidate) => candidate.name === options.landingAppName)
+					: apps[0];
+				if (options.landingAppName && !landingApp) {
+					throw new Error(`Configured landing web app "${options.landingAppName}" is not registered`);
+				}
+				if (landingApp) {
+					await sendResponse(nodeResponse, redirect(`${landingApp.mountPath}${url.search}`));
+					return;
+				}
 				await sendResponse(nodeResponse, responseHtml("<!doctype html><title>Pibo</title><p>No web apps registered.</p>"));
 				return;
 			}

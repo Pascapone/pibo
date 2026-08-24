@@ -1,3 +1,4 @@
+import { CHAT_WEB_APP_NAME } from "../apps/chat/web-app.js";
 import { createDefaultPiboPlugins } from "../plugins/builtin.js";
 import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import { createPiboBetterAuthPlugin } from "../plugins/better-auth.js";
@@ -178,7 +179,13 @@ export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {
 		plugins: [
 			...createDefaultPiboPlugins(),
 			useDevAuth ? createPiboDevAuthPlugin() : createPiboBetterAuthPlugin(resolvedOptions.auth),
-			createPiboWebHostPlugin({ announce: false, canonicalBaseURL: useDevAuth ? undefined : authBaseURL(resolvedOptions), gatewayMode: webGatewayMode(resolvedOptions, useDevAuth), ...resolvedOptions.web }),
+			createPiboWebHostPlugin({
+				announce: false,
+				canonicalBaseURL: useDevAuth ? undefined : authBaseURL(resolvedOptions),
+				gatewayMode: webGatewayMode(resolvedOptions, useDevAuth),
+				...resolvedOptions.web,
+				landingAppName: CHAT_WEB_APP_NAME,
+			}),
 			createPiboCronPlugin({ cronStorePath: resolvedOptions.chat?.cronStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
 			createPiboChatUserSkillsPlugin({
 				globalRoot: resolvedOptions.chat?.userSkillGlobalRoot,

@@ -571,7 +571,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const navigateToRoute = useCallback(
 		(target: ChatAppRoute, replace = false, nextSessionViewId = sessionViewId, options: NavigationOptions = {}) => {
 			if (options.closeMobileSidebar !== false) closeMobileSidebar();
-			navigateToChatRoute(navigate, target, replace, nextSessionViewId);
+			navigateToChatRoute(
+				navigate,
+				target,
+				replace,
+				nextSessionViewId,
+				options.preserveHash === true,
+				options.preserveSearch === true,
+			);
 		},
 		[closeMobileSidebar, navigate, sessionViewId],
 	);
@@ -775,7 +782,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const canonicalizeSessionsRoute = (data: BootstrapData, replace = true) => {
 			const selection = sessionsRouteCanonicalSelection(route, data);
 			if (!selection) return;
-			navigateToSelectedSession(selection.selectedRoomId, selection.selectedPiboSessionId, replace);
+			navigateToSelectedSession(selection.selectedRoomId, selection.selectedPiboSessionId, replace, {
+				preserveHash: true,
+				preserveSearch: true,
+			});
 		};
 
 		if (shouldSkipRouteSelectionLoad({ bootstrap, creatingSession: creatingSessionRef.current, route })) return;

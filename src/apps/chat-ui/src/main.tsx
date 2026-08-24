@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRootRoute, createRoute, createRouter, RouterProvider, useRouterState } from "@tanstack/react-router";
 import { App } from "./App";
-import { chatRouteFromLocation } from "./app-routes";
+import { chatRouteFromLocation, stringifyChatSearch } from "./app-routes";
 import "./styles.css";
 import "../../shared/markdown-editor.css";
 
@@ -128,6 +128,7 @@ const settingsProvidersRoute = createRoute({
 const router = createRouter({
 	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, vscodeRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsConcurrencyRoute, settingsTranscriptionRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
 	basepath: "/apps/chat",
+	stringifySearch: stringifyChatSearch,
 });
 
 declare module "@tanstack/react-router" {

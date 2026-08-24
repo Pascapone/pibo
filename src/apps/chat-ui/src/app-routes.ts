@@ -15,6 +15,8 @@ export type ChatAppRoute =
 
 export type NavigationOptions = {
 	closeMobileSidebar?: boolean;
+	preserveHash?: boolean;
+	preserveSearch?: boolean;
 };
 
 type SessionViewSearch = { view: ChatSessionViewId };
@@ -126,8 +128,47 @@ export function chatNavigationRequest(target: ChatAppRoute, replace: boolean, ne
 	return { to: "/", search: sessionViewSearch, replace };
 }
 
-export function navigateToChatRoute(navigate: (options: NavigateOptions) => Promise<void>, target: ChatAppRoute, replace: boolean, nextSessionViewId: ChatSessionViewId): void {
-	void navigate(chatNavigationRequest(target, replace, nextSessionViewId) as NavigateOptions);
+function stringifyChatSearchValue(value: unknown): string {
+	if (value !== null && typeof value === "object") return JSON.stringify(value);
+	if (typeof value === "string") {
+		try {
+			JSON.parse(value);
+			return JSON.stringify(value);
+		} catch {
+			return value;
+		}
+	}
+	return String(value);
+}
+
+export function stringifyChatSearch(search: Record<string, unknown>): string {
+	const searchParams = new URLSearchParams();
+	for (const [key, value] of Object.entries(search)) {
+		if (value === undefined) continue;
+		for (const item of Array.isArray(value) ? value : [value]) {
+			searchParams.append(key, stringifyChatSearchValue(item));
+		}
+	}
+	const serialized = searchParams.toString();
+	return serialized ? `?${serialized}` : "";
+}
+
+export function navigateToChatRoute(
+	navigate: (options: NavigateOptions) => Promise<void>,
+	target: ChatAppRoute,
+	replace: boolean,
+	nextSessionViewId: ChatSessionViewId,
+	preserveHash = false,
+	preserveSearch = false,
+): void {
+	const request = chatNavigationRequest(target, replace, nextSessionViewId);
+	const withSearch = preserveSearch && "search" in request
+		? {
+			...request,
+			search: (current: Record<string, unknown>) => ({ ...current, ...request.search }),
+		}
+		: request;
+	void navigate((preserveHash ? { ...withSearch, hash: true } : withSearch) as NavigateOptions);
 }
 
 function settingsPanelFromPathPart(part: string | undefined): SettingsPanel {
