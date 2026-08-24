@@ -1295,7 +1295,9 @@ export class RoutedSession {
 			this.notifyMessagesInterrupted([this.activeMessage], "message cancelled");
 			this.cancelProviderRecovery();
 			this.cancelContextGuardRecovery("Context guard recovery cancelled with the active message");
+			const drain = this.drainPromise;
 			await this.runtime.session.abort();
+			if (drain) await drain;
 			return true;
 		}
 

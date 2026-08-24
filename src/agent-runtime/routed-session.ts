@@ -519,7 +519,9 @@ export class RuntimeRoutedSession {
 		}
 		if (this.activeMessage?.id === eventId) {
 			this.notifyMessagesInterrupted([this.activeMessage], "message cancelled");
+			const drain = this.drainPromise;
 			await this.runtimeSession.abort();
+			if (drain) await drain;
 			return true;
 		}
 		return false;

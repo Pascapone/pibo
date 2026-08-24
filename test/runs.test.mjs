@@ -406,6 +406,47 @@ test("run start cancellation aborts the yieldable tool execution", async () => {
 	assert.equal(observedSignal.aborted, true);
 });
 
+test("run cancellation fails visibly and stays non-cancelled when execution does not settle within 15 seconds", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const router = new PiboSessionRouter({ persistSession: false });
+	let markExecutionStarted;
+	let finishExecution;
+	const executionStarted = new Promise((resolve) => { markExecutionStarted = resolve; });
+	const executionFinished = new Promise((resolve) => { finishExecution = resolve; });
+	const tools = Object.fromEntries(createRunToolDefinitions([{
+		name: "helper",
+		async execute() {
+			markExecutionStarted();
+			await executionFinished;
+			return { content: [{ type: "text", text: "eventually completed" }] };
+		},
+	}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+
+	try {
+		const started = await tools.pibo_run_start.execute("start-stuck-cancel", {
+			toolName: "helper",
+			arguments: {},
+			completionPolicy: "detached",
+		});
+		await executionStarted;
+		const cancellation = tools.pibo_run_cancel.execute("cancel-stuck-run", { runId: started.details.runId });
+		const rejection = assert.rejects(cancellation, (error) => (
+			error instanceof AggregateError
+			&& error.errors.some((failure) => failure instanceof Error && /did not settle within 15000ms/.test(failure.message))
+		));
+		await Promise.resolve();
+		t.mock.timers.tick(15_000);
+		await rejection;
+		assert.equal(router.runRegistry.status("parent", started.details.runId).status, "running");
+
+		finishExecution();
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(router.runRegistry.status("parent", started.details.runId).status, "completed");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("run start records inferred Bash timeout, warns for foreground services, and classifies lifetime expiry", async () => {
 	let started;
 	const [startTool] = createRunToolDefinitions(

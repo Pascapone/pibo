@@ -759,6 +759,60 @@ test("descendant traversal is cycle-safe for corrupt stored session graphs", asy
 	}
 });
 
+function createYieldedAgentHarness({ adapterId, script, timeoutMs }) {
+	const childProfile = `${adapterId}-profile`;
+	const childDriver = createFakeAgentRuntimeDriver({ adapterId, script });
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: `test.${adapterId}`,
+				register(api) {
+					api.registerAgentRuntimeDriver(childDriver);
+					api.registerAgentRuntimeInstance({ id: adapterId, adapterId });
+					api.registerProfile({
+						name: childProfile,
+						create() {
+							return new InitialSessionContextBuilder(childProfile)
+								.withAgentRuntime(adapterId)
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.createSession();
+						},
+					});
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_yielded_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	const subagent = { name: "worker", targetProfile: childProfile, ...(timeoutMs === undefined ? {} : { timeoutMs }) };
+	const agentsController = router.createAgentsController("ps_yielded_parent");
+	const agentTools = createAgentToolDefinitions([subagent], agentsController);
+	const runTools = Object.fromEntries(createRunToolDefinitions(
+		agentTools,
+		router.createRunToolController("ps_yielded_parent"),
+	).map((tool) => [tool.name, tool]));
+	return {
+		agentsController,
+		adapter: registry.requireAgentRuntimeAdapter(adapterId),
+		router,
+		runTools,
+		store,
+		subagent,
+	};
+}
+
+async function waitForCondition(condition, failureMessage, timeoutMs = 2_000) {
+	const deadline = Date.now() + timeoutMs;
+	while (!condition()) {
+		if (Date.now() >= deadline) throw new Error(failureMessage);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+}
+
 test("aborting a parent turn interrupts its active subagent child", async () => {
 	const childDriver = createFakeAgentRuntimeDriver({
 		adapterId: "subagent-abort-child",
@@ -828,57 +882,132 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 	}
 });
 
-test("yielded agent deadlines are timed_out and preserve thread reuse", async () => {
-	const store = new InMemoryPiboSessionStore();
-	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
-	const emitted = [];
-	router.emit = async (event) => {
-		emitted.push(event);
-		return event.type === "message"
-			? { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source }
-			: { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: "aborted" };
-	};
-
+test("cancelling one yielded request does not abort another request in the same persistent child session", async () => {
+	const harness = createYieldedAgentHarness({
+		adapterId: "shared-request-cancellation",
+		script: { waitForAbort: true },
+	});
 	try {
-		const subagent = { name: "worker", targetProfile: "base", timeoutMs: 10 };
-		const agentsController = router.createAgentsController("ps_parent");
-		const agentTools = createAgentToolDefinitions([subagent], agentsController);
-		const runTools = Object.fromEntries(createRunToolDefinitions(
-			agentTools,
-			router.createRunToolController("ps_parent"),
-		).map((tool) => [tool.name, tool]));
-		const started = await runTools.pibo_run_start.execute("start-agent-timeout", {
+		const first = await harness.runTools.pibo_run_start.execute("start-shared-a", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "request A", threadKey: "shared" },
+			completionPolicy: "detached",
+		});
+		await waitForCondition(
+			() => harness.adapter.sessions[0]?.getStatus().streaming === true,
+			"Timed out waiting for request A to become active",
+		);
+		const child = harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" })[0];
+		assert.ok(child);
+
+		const second = await harness.runTools.pibo_run_start.execute("start-shared-b", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "request B", threadKey: "shared" },
+			completionPolicy: "detached",
+		});
+		await waitForCondition(
+			() => harness.router.sessions.get(child.id)?.getStatus().queuedMessages === 1,
+			"Timed out waiting for request B to queue in the shared child session",
+		);
+
+		const cancelledSecond = await harness.runTools.pibo_run_cancel.execute("cancel-shared-b", { runId: second.details.runId });
+		assert.equal(cancelledSecond.details.status, "cancelled");
+		assert.equal(harness.adapter.sessions[0].abortCalls, 0);
+		assert.equal(harness.adapter.sessions[0].getStatus().streaming, true);
+		assert.equal(harness.router.sessions.get(child.id).getStatus().queuedMessages, 0);
+		assert.equal(harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" }).length, 1);
+
+		const cancelledFirst = await harness.runTools.pibo_run_cancel.execute("cancel-shared-a", { runId: first.details.runId });
+		assert.equal(cancelledFirst.details.status, "cancelled");
+		assert.equal(harness.adapter.sessions[0].abortCalls, 1);
+		assert.equal(harness.adapter.sessions[0].getStatus().streaming, false);
+	} finally {
+		await harness.router.disposeAll();
+	}
+});
+
+test("rejected adapter abort fails the yielded run instead of reporting it cancelled", async () => {
+	const harness = createYieldedAgentHarness({
+		adapterId: "rejected-adapter-abort",
+		script: { waitForAbort: true },
+	});
+	let restoreAbort;
+	try {
+		const started = await harness.runTools.pibo_run_start.execute("start-rejected-abort", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "wait", threadKey: "abort-failure" },
+			completionPolicy: "detached",
+		});
+		await waitForCondition(
+			() => harness.adapter.sessions[0]?.getStatus().streaming === true,
+			"Timed out waiting for the abort-failure request to become active",
+		);
+		const session = harness.adapter.sessions[0];
+		const originalAbort = session.abort.bind(session);
+		restoreAbort = () => { session.abort = originalAbort; };
+		session.abort = async () => {
+			session.abortCalls += 1;
+			throw new Error("adapter abort rejected");
+		};
+
+		await assert.rejects(
+			harness.runTools.pibo_run_cancel.execute("cancel-rejected-abort", { runId: started.details.runId }),
+			/Failed to terminate cancelled yielded runs/,
+		);
+		await waitForCondition(
+			() => harness.router.runRegistry.status("ps_yielded_parent", started.details.runId).status === "failed",
+			"Timed out waiting for rejected adapter abort to fail the run",
+		);
+		const failed = harness.router.runRegistry.read("ps_yielded_parent", started.details.runId);
+		assert.equal(failed.status, "failed");
+		assert.match(failed.error, /Failed to cancel subagent request/);
+		assert.equal(session.getStatus().streaming, true);
+
+		restoreAbort();
+		restoreAbort = undefined;
+		await session.abort();
+	} finally {
+		restoreAbort?.();
+		await harness.router.disposeAll();
+	}
+});
+
+test("yielded agent deadlines are timed_out and preserve thread reuse", async () => {
+	const harness = createYieldedAgentHarness({
+		adapterId: "deadline-thread-reuse",
+		timeoutMs: 10,
+		script: (_input, promptIndex) => promptIndex === 1
+			? { waitForAbort: true }
+			: { events: [{ type: "assistant_message", text: "continued" }] },
+	});
+	try {
+		const started = await harness.runTools.pibo_run_start.execute("start-agent-timeout", {
 			toolName: "pibo_agents_send_message",
 			arguments: { name: "worker", message: "wait", threadKey: "reusable" },
-			completionPolicy: "tracked",
+			completionPolicy: "detached",
 		});
-		const waited = await runTools.pibo_run_wait.execute("wait-agent-timeout", {
+		const waited = await harness.runTools.pibo_run_wait.execute("wait-agent-timeout", {
 			runId: started.details.runId,
 			timeoutMs: 1_000,
 		});
 
 		assert.equal(waited.details.status, "timed_out");
 		assert.equal(waited.details.timeoutPhase, "lifetime");
-		assert.equal(emitted.filter((event) => event.type === "execution" && event.action === "abort").length, 1);
-		const timedOutChild = store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" })[0];
+		assert.equal(harness.adapter.sessions[0].abortCalls, 1);
+		const timedOutChild = harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" })[0];
 		assert.ok(timedOutChild);
 
-		router.emitMessageAndWaitForReply = async (event) => ({
-			type: "assistant_message",
-			piboSessionId: event.piboSessionId,
-			eventId: event.id,
-			text: "continued",
-		});
-		const reused = await agentsController.sendMessage({
-			subagent,
+		const reused = await harness.agentsController.sendMessage({
+			subagent: harness.subagent,
 			message: "continue",
 			threadKey: "reusable",
 		});
 		assert.equal(reused.agentId, timedOutChild.id);
-		assert.equal(store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" }).length, 1);
+		assert.equal(reused.reply.text, "continued");
+		assert.equal(harness.adapter.sessions.length, 1);
+		assert.equal(harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" }).length, 1);
 	} finally {
-		await router.disposeAll();
+		await harness.router.disposeAll();
 	}
 });
 
