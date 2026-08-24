@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createDefaultPiboProfile } from "./default-profile.js";
+import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "./model-defaults.js";
 import { getMcpAgentContextFile } from "../mcp/agent-context.js";
 import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
 import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
@@ -20,6 +21,8 @@ import {
 import { buildCodexCompatSystemPrompt } from "./codex-compat.js";
 import { readPiboBasePrompt } from "./base-prompt.js";
 import { DEFAULT_BUILTIN_TOOL_NAMES, InitialSessionContext, type ModelProfile } from "./profiles.js";
+import type { PiboThinkingLevel } from "./thinking.js";
+import { resolvePiboSubagentRuntimeSelections, type PiboResolvedSubagentRuntimeSelection } from "../subagents/runtime-selection.js";
 import type { PiboRuntimeOptions, PiboRuntimeSessionContext } from "./runtime.js";
 import type { AgentRuntimeCapabilities } from "../agent-runtime/capabilities.js";
 import type { AgentRuntimeDiagnostic, AgentRuntimeTransport } from "../agent-runtime/types.js";
@@ -39,6 +42,7 @@ export type PiboContextBuildNodeKind =
 	| "skills"
 	| "skill"
 	| "runtime_extension"
+	| "runtime_manifest"
 	| "diagnostic"
 	| "metadata";
 
@@ -98,6 +102,23 @@ export type PiboContextBuildRuntimeInfo = {
 	diagnostics: AgentRuntimeDiagnostic[];
 };
 
+export type PiboRuntimeResolutionManifest = {
+	version: 1;
+	profileName: string;
+	runtimeInstanceId: string;
+	adapterId?: string;
+	piboSessionId?: string;
+	piboRoomId?: string;
+	cwd: string;
+	effectiveModel?: ModelProfile;
+	effectiveThinkingLevel?: PiboThinkingLevel;
+	toolSurface: "complete" | "pibo-managed-only";
+	activeToolNames: string[];
+	contextFilePaths: string[];
+	skillNames: string[];
+	delegatedAgents: Array<Omit<PiboResolvedSubagentRuntimeSelection, "enabled">>;
+};
+
 export type PiboContextBuildSnapshot = {
 	version: 1;
 	generatedAt: string;
@@ -117,6 +138,47 @@ export type PiboContextBuildSnapshot = {
 	nodes: PiboContextBuildNode[];
 	diagnostics: PiboContextBuildDiagnostic[];
 };
+
+export function createPiboRuntimeResolutionManifest(input: {
+	profile: InitialSessionContext;
+	cwd: string;
+	adapterId?: string;
+	piboSessionId?: string;
+	piboRoomId?: string;
+	activeModel?: ModelProfile;
+	thinkingLevel?: PiboThinkingLevel;
+	toolSurface?: "complete" | "pibo-managed-only";
+	activeToolNames: readonly string[];
+	contextFilePaths: readonly string[];
+	skillNames: readonly string[];
+	modelDefaults?: PiboModelDefaults;
+	subagentProfileResolver?: (profileName: string) => InitialSessionContext;
+}): PiboRuntimeResolutionManifest {
+	const modelDefaults = input.modelDefaults ?? loadPiboModelDefaults(input.cwd);
+	const effectiveModel = input.activeModel ?? selectRequestedModelProfile(input.profile, modelDefaults);
+	const effectiveThinkingLevel = input.thinkingLevel ?? selectRequestedThinkingLevel(input.profile, modelDefaults);
+	const delegatedAgents = resolvePiboSubagentRuntimeSelections(
+		input.profile.subagents,
+		input.subagentProfileResolver,
+		modelDefaults,
+	).filter((subagent) => subagent.enabled).map(({ enabled: _enabled, ...subagent }) => subagent);
+	return {
+		version: 1,
+		profileName: input.profile.profileName,
+		runtimeInstanceId: input.profile.runtimeInstanceId,
+		...(input.adapterId ? { adapterId: input.adapterId } : {}),
+		...(input.piboSessionId ? { piboSessionId: input.piboSessionId } : {}),
+		...(input.piboRoomId ? { piboRoomId: input.piboRoomId } : {}),
+		cwd: input.cwd,
+		...(effectiveModel ? { effectiveModel: { ...effectiveModel } } : {}),
+		...(effectiveThinkingLevel ? { effectiveThinkingLevel } : {}),
+		toolSurface: input.toolSurface ?? "complete",
+		activeToolNames: [...input.activeToolNames],
+		contextFilePaths: [...input.contextFilePaths],
+		skillNames: [...input.skillNames],
+		delegatedAgents,
+	};
+}
 
 type NodeInput = Omit<PiboContextBuildNode, "order" | "children"> & {
 	children?: NodeInput[];
@@ -143,6 +205,7 @@ function jsonText(value: unknown): string {
 }
 
 function estimateDirectNodeTokens(node: PiboContextBuildNode): number {
+	if (node.kind === "runtime_manifest") return 0;
 	let tokens = 0;
 	if (node.hydratedText) tokens += estimateTokens(node.hydratedText);
 	if (node.schemaJson !== undefined) tokens += estimateTokens(jsonText(node.schemaJson));
@@ -310,10 +373,6 @@ function resolveProfilePath(cwd: string, path: string): string {
 	return path.startsWith("pibo://") ? path : resolve(cwd, path);
 }
 
-function activeModelFor(profile: InitialSessionContext, options: PiboRuntimeOptions): ModelProfile | undefined {
-	return options.activeModel ?? profile.mainModel ?? profile.model;
-}
-
 function toolDefinitionSchema(definition: ToolDefinition | undefined, toolInfo: { parameters?: unknown } | undefined): unknown {
 	return definition?.parameters ?? toolInfo?.parameters;
 }
@@ -329,7 +388,7 @@ function generatedOriginForTool(name: string, profile: InitialSessionContext): s
 }
 
 function sourceForContextFile(path: string, profile: InitialSessionContext, cwd: string): PiboContextBuildNodeSource {
-	if (path === "pibo://runtime/session-context.md") return "runtime";
+	if (path === "pibo://runtime/session-context.md" || path === "pibo://runtime/delegated-agents.md") return "runtime";
 	if (path.endsWith(".pibo/context/installed-pibo-tools.md") || path === ".pibo/context/installed-pibo-tools.md") return "generated";
 	if (path.endsWith(".pibo/context/enabled-mcp-servers.md") || path === ".pibo/context/enabled-mcp-servers.md") return "generated";
 	const selected = profile.contextFiles.find((contextFile) => contextFile.enabled !== false && resolveProfilePath(cwd, contextFile.path) === path);
@@ -820,7 +879,32 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 			});
 		}
 
+		const runtimeManifest = createPiboRuntimeResolutionManifest({
+			profile,
+			cwd,
+			adapterId: "pi",
+			piboSessionId: options.sessionContext?.piboSessionId,
+			piboRoomId: options.sessionContext?.piboRoomId,
+			activeModel: options.activeModel,
+			thinkingLevel: options.thinkingLevel,
+			activeToolNames: toolNames,
+			contextFilePaths: contextChildren.flatMap((node) => node.path ? [node.path] : []),
+			skillNames: skillChildren.map((node) => node.title),
+			modelDefaults: options.modelDefaults,
+			subagentProfileResolver: options.subagentProfileResolver,
+		});
+
 		const topLevel: NodeInput[] = [
+			{
+				id: "runtime-manifest",
+				kind: "runtime_manifest",
+				title: "Runtime Resolution Manifest",
+				source: "runtime",
+				state: "active",
+				badges: ["RESOLVED", "READ-ONLY"],
+				payloadJson: runtimeManifest,
+				notes: ["Resolution evidence for this inspection only. It is not a second profile configuration and is not injected into the agent prompt."],
+			},
 			{
 				id: "prompt",
 				kind: "prompt_section",
@@ -828,7 +912,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 				source: "runtime",
 				state: "active",
 				badges: ["ACTIVE"],
-				metadata: { childCount: promptChildren.length, activeModel: activeModelFor(profile, options) },
+				metadata: { childCount: promptChildren.length, activeModel: runtimeManifest.effectiveModel },
 				children: promptChildren,
 			},
 			{
@@ -935,7 +1019,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 			piboSessionId: options.sessionContext?.piboSessionId,
 			piboRoomId: options.sessionContext?.piboRoomId,
 			cwd,
-			activeModel: activeModelFor(profile, options),
+			activeModel: runtimeManifest.effectiveModel,
 			summary: {
 				topLevelNodes: nodes.length,
 				totalNodes: countNodes(nodes),

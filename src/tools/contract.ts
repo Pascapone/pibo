@@ -57,6 +57,8 @@ export type PiboToolExecutionContext = Omit<PiboToolDefinitionContext, "cwd"> & 
 	runtimeInstanceId?: string;
 	adapterId?: string;
 	sessionGeneration?: string;
+	/** Present only while a tool executes inside pibo_run_start. */
+	yieldedRunId?: string;
 	/** Adapter-private compatibility context. Portable tools must not depend on this field. */
 	nativeContext?: unknown;
 };

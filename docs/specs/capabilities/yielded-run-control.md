@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-08-25
 **Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`
 
@@ -30,7 +31,7 @@ This decision supersedes the earlier attempt to capability-scope run-reminder se
 
 This is the standing product decision. Any future change that proposes to withhold Bash or other tools inside a reminder turn must be reviewed as a regression of this decision.
 
-The capability catalog exposes one package named `pibo-run-control`. When a profile enables it and has yieldable tools, the runtime adds `pibo_run_start`, `pibo_run_list`, `pibo_run_status`, `pibo_run_wait`, `pibo_run_read`, `pibo_run_cancel`, and `pibo_run_ack`.
+The capability catalog exposes one package named `pibo-run-control`. When a profile enables it and has yieldable tools, the runtime adds `pibo_run_start`, `pibo_run_list`, `pibo_run_status`, `pibo_run_wait`, `pibo_run_read`, `pibo_run_cancel`, and `pibo_run_ack`. Pibo also auto-enables this management surface when delegated agents are available because delegated sends are yielded-only.
 
 ## Scope
 
@@ -50,7 +51,7 @@ The capability catalog exposes one package named `pibo-run-control`. When a prof
 - Distributed execution of yielded runs in a separate worker process.
 - Guaranteed cancellation of underlying OS processes beyond Pibo's recorded run cancellation.
 - Retrying arbitrary yieldable tools by default.
-- Changing the synchronous behavior of tools that are called directly instead of through `pibo_run_start`.
+- Changing the synchronous behavior of tools that are called directly instead of through `pibo_run_start`, except that delegated send is intentionally no longer directly exposed.
 
 ## Requirements
 
@@ -64,12 +65,12 @@ The system MUST expose run control through the `pibo-run-control` capability pac
 
 #### Target
 
-A profile that enables run control can start and manage yielded runs. A profile that does not enable run control does not receive these tools except through compatibility profiles that explicitly enable the package.
+A profile that enables run control can start and manage yielded runs. A profile with available delegated agents receives the run-management tools automatically so it can start the yielded-only send target. Other profiles that do not enable run control do not receive these tools except through compatibility profiles that explicitly enable the package.
 
 #### Acceptance
 
 - The capability catalog lists `pibo-run-control` with all seven `pibo_run_*` tool names.
-- Runtime tool generation adds run-control tools only when run control is enabled and yieldable tools exist.
+- Runtime tool generation adds run-control tools when run control is enabled and yieldable tools exist, or when a delegated send target is available.
 - Profile inspection can list the tools but MUST NOT execute run-control operations.
 
 #### Scenario: Agent profile enables run control
@@ -97,7 +98,8 @@ The parent agent receives a `runId` immediately and uses later run-control calls
 - The run id begins with `run_`.
 - The initial status is `running` unless recovered durable state says otherwise.
 - The run stores the owning Pibo Session id, tool name, completion policy, timestamps, and summary.
-- Direct calls to the same yieldable tool remain synchronous and do not create yielded run records.
+- Direct calls to ordinary yieldable tools remain synchronous and do not create yielded run records.
+- Delegated send is not a direct runtime tool; its run ID is its request ID.
 
 #### Scenario: Start a background subagent or shell task
 
@@ -231,6 +233,7 @@ Agents can block briefly when dependent on a run, then continue other work if th
 - Waiting on an already terminal run returns immediately with `timedOut: false`.
 - Waiting on a running run resolves with `timedOut: false` when the run becomes terminal before timeout.
 - Waiting on a still-running run after timeout returns the current run snapshot with `timedOut: true`.
+- Wait timeout never cancels or changes the lifetime of the wrapped tool.
 - Requested timeouts above 300000 ms are clamped to 300000 ms.
 
 #### Scenario: Long command is still running
@@ -271,6 +274,8 @@ Large or sensitive terminal output is pulled only when the agent asks for it, wh
 #### Acceptance
 
 - Reading a completed run returns the stored result text and details when present.
+- A delegated-send result contains the complete final assistant message plus request, agent, thread, and event identity.
+- A Bash result follows Pi's bounded inline-output contract and retains `fullOutputPath` details when complete output was externalized.
 - Reading a failed run returns the stored error.
 - Reading a non-terminal run returns a snapshot without a terminal result and does not imply completion.
 - Reading a terminal run sets `consumed: true` and suppresses future tracked reminders.
@@ -284,15 +289,15 @@ Large or sensitive terminal output is pulled only when the agent asks for it, wh
 
 ### Requirement: Cancellation records terminal state and suppresses reminders
 
-`pibo_run_cancel` MUST mark a non-terminal run cancelled, consume it for reminder purposes, and unblock any waiters.
+`pibo_run_cancel` MUST propagate cancellation to the active yieldable tool, wait for bounded settlement, and only then mark a non-terminal run cancelled and consumed. Delegated sends MUST cancel their exact message event rather than aborting unrelated work on the shared child session.
 
 #### Current
 
-`PiboRunRegistry.cancel()` changes non-terminal status to `cancelled`, completes timestamps, marks the run consumed, persists the update, and resolves waiters. Router controller cleanup calls `cancelControllerRuns()`.
+The run controller invokes the cancellation handler captured by `pibo_run_start` before changing explicit-cancel state. The handler aborts the active tool signal, terminates any dedicated systemd unit, and waits a bounded interval for execution settlement. A delegated handler removes or aborts its exact queued or active child message and waits for that message to settle.
 
 #### Target
 
-Cancellation gives the agent a consistent terminal state even when the underlying yieldable tool cannot be forcibly stopped.
+A successful cancellation response means Pibo has stopped the requested cancellable execution and released its gateway work admission, not merely changed stored run status. Negative cancellation acknowledgement and bounded-settlement failure remain explicit errors and MUST NOT be reported as successful cancellation.
 
 #### Acceptance
 
@@ -300,7 +305,10 @@ Cancellation gives the agent a consistent terminal state even when the underlyin
 - The cancelled run is marked consumed.
 - Waiters on the run resolve with `timedOut: false` and status `cancelled`.
 - Cancelling a terminal run leaves it terminal and consumed.
-- Disposing or killing an controller session cancels that controller's non-terminal runs.
+- Cancellation fails explicitly if execution does not settle within the bounded cleanup interval.
+- A rejected child abort fails explicitly and the run is not stored as successfully cancelled.
+- Cancelling one queued delegated request does not abort another active request on the same child session or dispatch the cancelled request later.
+- Disposing or killing a controller session cancels that controller's non-terminal runs only after cancellation settlement is confirmed.
 
 #### Scenario: Controller session is disposed
 

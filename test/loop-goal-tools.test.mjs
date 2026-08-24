@@ -26,14 +26,16 @@ function details(result) {
 }
 
 test("assistant model usage is normalized for Goal token accounting", () => {
-	assert.deepEqual(normalizeAssistantUsageEvent("ps_usage", { usage: { input: 10, output: 5, cacheRead: 3, cacheWrite: 2, totalTokens: 20 } }), {
+	assert.deepEqual(normalizeAssistantUsageEvent("ps_usage", { usage: { input: 10, output: 5, cacheRead: 3, cacheWrite: 2, reasoning: 4, totalTokens: 20, cost: { total: 0.02 } } }), {
 		type: "assistant_usage",
 		piboSessionId: "ps_usage",
 		inputTokens: 10,
 		outputTokens: 5,
 		cacheReadTokens: 3,
 		cacheWriteTokens: 2,
+		reasoningTokens: 4,
 		totalTokens: 20,
+		costUsd: 0.02,
 	});
 	assert.equal(normalizeAssistantUsageEvent("ps_usage", { usage: { input: 10, output: 5, cacheRead: 3, cacheWrite: 2 } })?.totalTokens, 20);
 	assert.equal(normalizeAssistantUsageEvent("ps_usage", { usage: {} }), undefined);

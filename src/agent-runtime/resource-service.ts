@@ -27,6 +27,7 @@ import {
 } from "../mcp/runtime-session.js";
 import { getMcpAgentContextFileFromConfig } from "../mcp/agent-context.js";
 import { getInstalledCliToolContextFile } from "../tools/registry.js";
+import { getDelegatedAgentContextFile } from "../subagents/context.js";
 import type {
 	AgentRuntimeCapabilities,
 	AgentRuntimeCapabilityDelivery,
@@ -664,6 +665,21 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 				});
 				this.diagnostics.push({ severity: "error", code: "runtime_context_file_failed", message, contributionId: id });
 			}
+		}
+		const delegatedAgents = getDelegatedAgentContextFile(this.input.profile.subagents);
+		if (delegatedAgents) {
+			this.requiredContributionIds.add("context:delegated-agents");
+			this.context.push({
+				id: "context:delegated-agents",
+				kind: "generated",
+				source: "generated",
+				intent: "developer",
+				label: "Delegated Agent Management",
+				required: true,
+				order: 250,
+				path: delegatedAgents.path,
+				content: delegatedAgents.content,
+			});
 		}
 		const installedTools = getInstalledCliToolContextFile();
 		if (installedTools) {

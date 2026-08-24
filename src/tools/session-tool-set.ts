@@ -102,6 +102,8 @@ export function createPiboSessionToolDefinitions(
 	const agentTools = options.agentsController
 		? createAgentToolDefinitions(profile.subagents, options.agentsController)
 		: [];
+	const delegatedSendTool = agentTools.find((tool) => tool.name === "pibo_agents_send_message");
+	const directAgentTools = agentTools.filter((tool) => tool !== delegatedSendTool);
 	const nativeYieldableTools = [...(options.nativeYieldableTools ?? [])];
 	const yieldableTools = [
 		...nativeYieldableTools,
@@ -113,10 +115,11 @@ export function createPiboSessionToolDefinitions(
 		...agentTools,
 		...codexCompatTools,
 	];
-	const runTools = profile.toolPackages.runControl === true
-		&& options.runToolController
-		&& yieldableTools.length > 0
-		? createRunToolDefinitions(yieldableTools, options.runToolController)
+	const runControlYieldableTools = profile.toolPackages.runControl === true
+		? yieldableTools
+		: delegatedSendTool ? [delegatedSendTool] : [];
+	const runTools = options.runToolController && runControlYieldableTools.length > 0
+		? createRunToolDefinitions(runControlYieldableTools, options.runToolController)
 		: [];
 
 	return [
@@ -124,7 +127,7 @@ export function createPiboSessionToolDefinitions(
 		...profileToolDefinitions,
 		...(runtimeTool ? [runtimeTool] : []),
 		...codexBrowserTools,
-		...agentTools,
+		...directAgentTools,
 		...codexCompatTools,
 		...goalTools,
 		...runTools,

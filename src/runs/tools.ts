@@ -12,6 +12,16 @@ import type {
 	PiboToolRunResult,
 } from "./registry.js";
 
+export const PIBO_RUN_TOOL_NAMES = [
+	"pibo_run_start",
+	"pibo_run_list",
+	"pibo_run_status",
+	"pibo_run_wait",
+	"pibo_run_read",
+	"pibo_run_cancel",
+	"pibo_run_ack",
+] as const;
+
 export type PiboRunStartToolInput = {
 	toolName: string;
 	params: unknown;
@@ -21,7 +31,7 @@ export type PiboRunStartToolInput = {
 	timeoutMs?: number;
 	serviceWarning?: string;
 	resources?: PiboRunResourceUsage;
-	execute(): Promise<PiboToolRunResult>;
+	execute(runId: string): Promise<PiboToolRunResult>;
 	cancel?(): Promise<void>;
 };
 
@@ -135,13 +145,13 @@ export function createRunToolDefinitions(
 						if (executionStarted) await waitForRunCancellationSettlement(executionSettled);
 						if (cancellationFailure) throw cancellationFailure;
 					},
-					async execute() {
+					async execute(runId) {
 						executionStarted = true;
 						try {
 							const result = await prepared.execute(() => tool.execute(toolCallId, prepared.params, runSignal, (update) => {
 								observedOutput ||= hasMeaningfulTimeoutOutput(update);
 								onUpdate?.(update);
-							}, ctx));
+							}, { ...ctx, yieldedRunId: runId }));
 							const resultObject = result as { content?: unknown; details?: unknown; isError?: unknown };
 							const text = textFromToolResult(resultObject);
 							if (resultObject.isError === true) {
@@ -264,8 +274,11 @@ export function createRunToolDefinitions(
 			}),
 			async execute(_toolCallId, params) {
 				const run = await controller.cancelRun(params.runId);
+				const prefix = run.status === "cancelled"
+					? `Cancelled run ${run.runId}.`
+					: `Run ${run.runId} reached ${run.status} before cancellation completed.`;
 				return {
-					content: [{ type: "text", text: resultText(`Cancelled run ${run.runId}.`, run) }],
+					content: [{ type: "text", text: resultText(prefix, run) }],
 					details: run,
 				};
 			},

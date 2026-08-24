@@ -431,23 +431,54 @@ export class PiboLoopService {
 	private getStopConditionDefinitions(): PiboLoopStopConditionDefinition[] { return this.options.context.getLoopStopConditionDefinitions?.() ?? this.options.context.getRalphStopConditionDefinitions?.() ?? createBuiltInLoopStopConditions(); }
 	private handleOutputEvent(event: PiboOutputEvent): void {
 		const eventId = 'eventId' in event ? event.eventId : undefined;
-		if (!eventId) return;
-		if (event.type === 'message_queued') this.store.updateRunMessageState(eventId, 'queued');
-		else if (event.type === 'message_started') this.store.updateRunMessageState(eventId, 'active');
-		else if (event.type === 'message_finished') this.store.updateRunMessageState(eventId, 'finished');
-		else if (event.type === 'session_error' && event.errorDetails?.code === 'loop_continuation_invalidated') this.store.updateRunMessageState(eventId, 'invalidated');
+		if (eventId) {
+			if (event.type === 'message_queued') this.store.updateRunMessageState(eventId, 'queued');
+			else if (event.type === 'message_started') this.store.updateRunMessageState(eventId, 'active');
+			else if (event.type === 'message_finished') this.store.updateRunMessageState(eventId, 'finished');
+			else if (event.type === 'session_error' && event.errorDetails?.code === 'loop_continuation_invalidated') this.store.updateRunMessageState(eventId, 'invalidated');
+		}
 		if (event.type !== 'assistant_usage') return;
-		const provenance = event.provenance?.kind === 'loop-run' ? event.provenance : undefined;
-		const run = this.store.getRunByMessageEventId(eventId) ?? (provenance ? this.store.getRun(provenance.runId) : undefined);
-		if (!run || run.piboSessionId !== event.piboSessionId) return;
-		if (provenance && (
-			run.jobId !== provenance.jobId
-			|| (provenance.cause === 'run-reminder' && run.messageEventId !== provenance.rootEventId)
-		)) return;
+		const provenance = event.provenance;
+		const provenanceRunId = provenance?.kind === 'loop-run'
+			? provenance.runId
+			: provenance?.kind === 'subagent-request'
+				? provenance.loopRunId
+				: undefined;
+		const provenanceJobId = provenance?.kind === 'loop-run'
+			? provenance.jobId
+			: provenance?.kind === 'subagent-request'
+				? provenance.loopJobId
+				: undefined;
+		const run = provenanceRunId
+			? this.store.getRun(provenanceRunId)
+			: eventId
+				? this.store.getRunByMessageEventId(eventId)
+				: undefined;
+		if (!run || (provenanceJobId && run.jobId !== provenanceJobId) || !this.isRunSessionOrDescendant(run, event.piboSessionId)) return;
+		if (provenance?.kind === 'loop-run'
+			&& provenance.cause === 'run-reminder'
+			&& run.messageEventId !== provenance.rootEventId) return;
 		const job = this.store.getJob(run.jobId);
 		if (!job || job.mode !== 'goal') return;
 		const basis = run.accounting?.tokenAccounting?.basis ?? goalTokenAccounting(job).basis;
-		this.store.recordGoalTurnUsage(job.id, run.id, goalBudgetTokens(event, basis));
+		this.store.recordGoalAssistantUsage(job.id, run.id, {
+			usage: event,
+			budgetTokens: goalBudgetTokens(event, basis),
+			piboSessionId: event.piboSessionId,
+			descendant: event.piboSessionId !== run.piboSessionId,
+		});
+	}
+	private isRunSessionOrDescendant(run: PiboLoopRun, piboSessionId: string): boolean {
+		if (!run.piboSessionId) return false;
+		if (run.piboSessionId === piboSessionId) return true;
+		let current = this.options.context.getSession(piboSessionId);
+		const seen = new Set<string>();
+		while (current?.parentId && !seen.has(current.parentId)) {
+			if (current.parentId === run.piboSessionId) return true;
+			seen.add(current.parentId);
+			current = this.options.context.getSession(current.parentId);
+		}
+		return false;
 	}
 	private handleProductEvent(event: { type: string; payload: PiboJsonObject; source: string }): void {
 		if (event.type !== 'pibo.loop.fact' && event.type !== 'loop.fact' && event.type !== 'pibo.ralph.fact' && event.type !== 'ralph.fact') return;

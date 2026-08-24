@@ -17,20 +17,35 @@ export type PiboModelDefaults = {
 	subagentFast?: boolean;
 };
 
-export function selectRequestedModelProfile(
+export function selectRequestedSubagentModelProfile(
 	profile: InitialSessionContext,
 	defaults: PiboModelDefaults = {},
 ): ModelProfile | undefined {
 	if (profile.model) return cloneModelProfile(profile.model);
-	if (profile.parentSessionId) return cloneModelProfile(profile.subagentModel ?? defaults.subagent);
+	return cloneModelProfile(profile.subagentModel ?? defaults.subagent);
+}
+
+export function selectRequestedModelProfile(
+	profile: InitialSessionContext,
+	defaults: PiboModelDefaults = {},
+): ModelProfile | undefined {
+	if (profile.parentSessionId) return selectRequestedSubagentModelProfile(profile, defaults);
+	if (profile.model) return cloneModelProfile(profile.model);
 	return cloneModelProfile(profile.mainModel ?? defaults.main);
+}
+
+export function selectRequestedSubagentThinkingLevel(
+	profile: InitialSessionContext,
+	defaults: PiboModelDefaults = {},
+): PiboThinkingLevel | undefined {
+	return profile.subagentThinkingLevel ?? profile.thinkingLevel ?? defaults.subagentThinking ?? defaults.thinking;
 }
 
 export function selectRequestedThinkingLevel(
 	profile: InitialSessionContext,
 	defaults: PiboModelDefaults = {},
 ): PiboThinkingLevel | undefined {
-	if (profile.parentSessionId) return profile.subagentThinkingLevel ?? profile.thinkingLevel ?? defaults.subagentThinking ?? defaults.thinking;
+	if (profile.parentSessionId) return selectRequestedSubagentThinkingLevel(profile, defaults);
 	return profile.mainThinkingLevel ?? profile.thinkingLevel ?? defaults.mainThinking ?? defaults.thinking;
 }
 

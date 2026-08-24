@@ -66,11 +66,11 @@ The Codex-compatible profile MUST expose only the supported Pibo and Pi tools se
 
 #### Current
 
-The profile allows Pi built-ins `read`, `edit`, and `write`; enables `codexCompat` and `runControl`; selects `apply_patch`, `web_search`, `view_image`, and `runtime`; and may select delegated agents. Runtime generation adds run-control `bash`, yielded-run tools, and the shared `pibo_agents_*` tools when delegated agents are available.
+The profile allows Pi built-ins `read`, `edit`, and `write`; enables `codexCompat` and `runControl`; selects `apply_patch`, `web_search`, `view_image`, and `runtime`; and may select delegated agents. Runtime generation adds run-control `bash`, yielded-run tools, direct list/observe/kill agent tools, and delegated send as a `pibo_run_start` target when delegated agents are available.
 
 #### Acceptance
 
-Profile inspection or runtime startup shows the selected coding tools, `pibo_run_*`, and—when delegated agents are configured—the four shared `pibo_agents_*` tools. It does not expose unsupported legacy Codex tools such as `spawn_agent`, `send_input`, `resume_agent`, `wait_agent`, or `close_agent`.
+Profile inspection or runtime startup shows the selected coding tools, `pibo_run_*`, and—when delegated agents are configured—three direct `pibo_agents_*` management tools plus yielded-only `pibo_agents_send_message` in the `pibo_run_start` target catalog. It does not expose unsupported legacy Codex tools such as `spawn_agent`, `send_input`, `resume_agent`, `wait_agent`, or `close_agent`.
 
 #### Scenario: Inspect default profile
 
@@ -78,7 +78,7 @@ Profile inspection or runtime startup shows the selected coding tools, `pibo_run
 - WHEN the active tool list is read
 - THEN `apply_patch`, `web_search`, `view_image`, and `runtime` are active
 - AND `pibo_run_start`, `pibo_run_read`, and the other run-control tools are active
-- AND the four shared `pibo_agents_*` tools are active when delegated agents are configured
+- AND list, observe, and kill are direct while delegated send is a yielded target when delegated agents are configured
 - AND unsupported Codex agent-control tools are absent.
 
 ### Requirement: Shell execution goes through yielded run control

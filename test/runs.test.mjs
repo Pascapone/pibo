@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { PiboRunRegistry } from "../dist/runs/registry.js";
-import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
+import { isConfiguredTimeoutError, PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { createRunToolDefinitions } from "../dist/runs/tools.js";
 import { updatePiboGatewaySettings } from "../dist/core/gateway-settings.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
@@ -486,6 +486,62 @@ test("run cancellation fails visibly and stays non-cancelled when execution does
 		finishExecution();
 		await new Promise((resolve) => setImmediate(resolve));
 		assert.equal(router.runRegistry.status("parent", started.details.runId).status, "completed");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("configured timeout detection accepts terminal timeout variants without matching ordinary failure reports", () => {
+	assert.equal(isConfiguredTimeoutError("Command timed out after 2 seconds"), true);
+	assert.equal(isConfiguredTimeoutError("output\nError: Command timed out after 2 seconds"), true);
+	assert.equal(isConfiguredTimeoutError("Timed out after 10ms"), true);
+	assert.equal(isConfiguredTimeoutError("Error: Timed out after 10ms."), true);
+	assert.equal(isConfiguredTimeoutError("Timeout after 20 seconds"), true);
+	assert.equal(isConfiguredTimeoutError("AssertionError: Timed out waiting for condition\nCommand exited with code 1"), false);
+	assert.equal(isConfiguredTimeoutError("Timeout option is not supported"), false);
+	assert.equal(isConfiguredTimeoutError("Timeout configuration is invalid"), false);
+	assert.equal(isConfiguredTimeoutError("Error: timeout value must be an integer"), false);
+});
+
+test("generic terminal configured-timeout errors become timed_out runs", async () => {
+	const router = new PiboSessionRouter({ persistSession: false });
+	const tools = Object.fromEntries(createRunToolDefinitions([{
+		name: "helper",
+		async execute() { throw new Error("Timed out after 10ms"); },
+	}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+	try {
+		const started = await tools.pibo_run_start.execute("start-generic-timeout", {
+			toolName: "helper",
+			arguments: { timeoutMs: 10 },
+			completionPolicy: "tracked",
+		});
+		const waited = await tools.pibo_run_wait.execute("wait-generic-timeout", { runId: started.details.runId, timeoutMs: 1000 });
+		assert.equal(waited.details.status, "timed_out");
+		assert.equal(waited.details.timeoutMs, 10);
+		assert.equal(waited.details.timeoutPhase, "startup");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("timeout configuration failures remain failed runs", async () => {
+	const router = new PiboSessionRouter({ persistSession: false });
+	const tools = Object.fromEntries(createRunToolDefinitions([{
+		name: "helper",
+		async execute() { throw new Error("Timeout option is not supported"); },
+	}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+	try {
+		const started = await tools.pibo_run_start.execute("start-timeout-option-failure", {
+			toolName: "helper",
+			arguments: { timeoutMs: 10 },
+			completionPolicy: "tracked",
+		});
+		const waited = await tools.pibo_run_wait.execute("wait-timeout-option-failure", { runId: started.details.runId, timeoutMs: 1000 });
+		assert.equal(waited.details.status, "failed");
+		assert.equal(waited.details.timeoutPhase, undefined);
+		const read = await tools.pibo_run_read.execute("read-timeout-option-failure", { runId: started.details.runId });
+		assert.equal(read.details.error, "Timeout option is not supported");
+		assert.equal(read.details.timeoutPhase, undefined);
 	} finally {
 		await router.disposeAll();
 	}

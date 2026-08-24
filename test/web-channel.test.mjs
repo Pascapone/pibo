@@ -237,6 +237,11 @@ async function startWebHostChannel(options = {}) {
 		getSessionRuntimeBinding(id) {
 			return sessions.getRuntimeBinding(id);
 		},
+		...(options.getSessionRuntimeProfile ? {
+			getSessionRuntimeProfile(id) {
+				return options.getSessionRuntimeProfile(id, sessions);
+			},
+		} : {}),
 		...(options.inspectSessionRuntimeHistory ? {
 			inspectSessionRuntimeHistory: options.inspectSessionRuntimeHistory,
 		} : {}),
@@ -3317,7 +3322,12 @@ test("chat context build uses the frozen non-Pi runtime without rendering Pi sta
 		assert.equal(payload.snapshot.runtime.runtimeInstanceId, "codex-native");
 		assert.equal(payload.snapshot.runtime.adapterId, "codex");
 		assert.equal(payload.snapshot.runtime.bindingState, "bound");
-		assert.equal(payload.snapshot.nodes[0].id, "runtime");
+		assert.equal(payload.snapshot.nodes[0].id, "runtime-manifest");
+		const manifestNode = payload.snapshot.nodes.find((node) => node.id === "runtime-manifest");
+		assert.equal(manifestNode.payloadJson.runtimeInstanceId, "codex-native");
+		assert.equal(manifestNode.payloadJson.adapterId, "codex");
+		assert.equal(manifestNode.payloadJson.toolSurface, "pibo-managed-only");
+		assert.ok(payload.snapshot.nodes.some((node) => node.id === "runtime"));
 		const skillNode = payload.snapshot.nodes.find((node) => node.id === "skills").children.find((node) => node.title === "review-skill");
 		const contextNode = payload.snapshot.nodes.find((node) => node.id === "context").children.find((node) => node.title === "project-context");
 		const mcpNode = payload.snapshot.nodes.find((node) => node.id === "mcp").children.find((node) => node.title === "filesystem");
@@ -3327,6 +3337,72 @@ test("chat context build uses the frozen non-Pi runtime without rendering Pi sta
 		assert.ok(payload.snapshot.summary.errors >= 3);
 		assert.equal(payload.snapshot.nodes.some((node) => node.title === "Base System Prompt"), false);
 		assert.equal(JSON.stringify(payload.snapshot).includes("workspace-write"), false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat context build uses the concrete depth-filtered session profile", async () => {
+	const runtime = fakeRuntimeInspection("codex-native", {
+		adapterId: "codex",
+		displayName: "Codex Native",
+		protocol: "codex-app-server",
+	});
+	const configuredProfile = new InitialSessionContextBuilder("recursive-context-agent")
+		.withAgentRuntime("pi")
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addSubagent({ name: "limited", targetProfile: "base", maxDepth: 1 })
+		.createSession();
+	const concreteProfile = new InitialSessionContextBuilder("recursive-context-agent")
+		.withAgentRuntime("codex-native")
+		.withSessionId("child-native")
+		.withParentSessionId("parent-native")
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.createSession();
+	let validatedProfile;
+	const { channel, baseURL, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "recursive-context-agent", aliases: [], runtimeInstanceId: "pi", runtimeOptions: {} }],
+		capabilityCatalog: {
+			agentRuntimes: [{ ...runtime, available: undefined, diagnostics: undefined }],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		inspectAgentRuntimeInstances: async () => [runtime],
+		validateAgentRuntimeProfile: async (profile) => { validatedProfile = profile; return []; },
+		createProfile: () => configuredProfile,
+		getSessionRuntimeProfile: () => concreteProfile,
+	});
+	try {
+		const parent = sessions.create({
+			id: "ps_context_parent",
+			channel: "pibo.chat",
+			kind: "chat",
+			profile: "recursive-context-agent",
+			runtimeBinding: { runtimeInstanceId: "codex-native", adapterId: "codex", nativeSessionId: "parent-native", state: "bound" },
+		});
+		const child = sessions.create({
+			id: "ps_context_child",
+			channel: "pibo.subagents",
+			kind: "subagent",
+			profile: "recursive-context-agent",
+			parentId: parent.id,
+			runtimeBinding: { runtimeInstanceId: "codex-native", adapterId: "codex", nativeSessionId: "child-native", state: "bound" },
+		});
+		const response = await fetch(`${baseURL}/api/chat/context-build?piboSessionId=${encodeURIComponent(child.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(response.status, 200);
+		const payload = await response.json();
+		const manifest = payload.snapshot.nodes.find((node) => node.id === "runtime-manifest");
+		assert.deepEqual(manifest.payloadJson.delegatedAgents, []);
+		assert.equal(manifest.payloadJson.contextFilePaths.includes("pibo://runtime/delegated-agents.md"), false);
+		assert.equal(validatedProfile.sessionId, "child-native");
+		assert.equal(validatedProfile.parentSessionId, "parent-native");
+		assert.deepEqual(validatedProfile.subagents, []);
 	} finally {
 		await channel.stop?.();
 	}

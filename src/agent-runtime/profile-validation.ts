@@ -88,6 +88,15 @@ export function validateAgentRuntimeProfileCapabilities(
 			`Profile "${profile.profileName}" selects managed or automatic context`,
 		);
 	}
+	if (enabledSubagents.length > 0) {
+		pushUnsupportedDeliveryDiagnostic(
+			diagnostics,
+			capabilities.context,
+			"runtime_delegated_agent_context_unsupported",
+			"subagents",
+			`Profile "${profile.profileName}" requires delegated-agent management context`,
+		);
+	}
 	if (profile.nativeSubagents !== undefined && typeof profile.nativeSubagents !== "boolean") {
 		diagnostics.push({
 			severity: "error",

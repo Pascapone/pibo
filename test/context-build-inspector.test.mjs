@@ -70,13 +70,21 @@ test("portable runtime context build exposes selected Pibo subagents through MCP
 		.withAgentRuntime("codex-native")
 		.withBuiltinTools("disabled")
 		.withAutoContextFiles(false)
-		.withToolPackages({ goalControl: false, runControl: true })
-		.addSubagent({ name: "reviewer", description: "Review the proposed implementation.", targetProfile: "pi-reviewer" })
+		.withToolPackages({ goalControl: false })
+		.addSubagent({
+			name: "reviewer",
+			description: "Review the proposed implementation.",
+			targetProfile: "pi-reviewer",
+			model: { provider: "openai-codex", id: "gpt-5.6-sol" },
+			thinkingLevel: "xhigh",
+		})
 		.createSession();
 	const snapshot = buildPortableRuntimeContextSnapshot({
 		profile,
 		cwd: process.cwd(),
 		piboSessionId: "ps_codex_subagent_context",
+		activeModel: { provider: "openai-codex", id: "gpt-5.6-sol" },
+		thinkingLevel: "max",
 		runtime: {
 			runtimeInstanceId: "codex-native",
 			adapterId: "codex-native",
@@ -87,15 +95,36 @@ test("portable runtime context build exposes selected Pibo subagents through MCP
 		},
 	});
 	const tools = findNode(snapshot.nodes, (node) => node.id === "tools");
+	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
 	assert.equal(tools.state, "active");
 	assert.ok(tools.badges.includes("MCP:STREAMABLE-HTTP"));
-	assert.ok(tools.children.some((node) => node.title === "pibo_agents_send_message"));
+	assert.equal(tools.children.some((node) => node.title === "pibo_agents_send_message"), false);
+	assert.ok(tools.children.some((node) => node.title === "yielded-target:pibo_agents_send_message"));
 	assert.ok(tools.children.some((node) => node.title === "pibo_agents_observe"));
+	assert.ok(tools.children.some((node) => node.title === "pibo_run_start"));
+	assert.ok(tools.children.some((node) => node.title === "pibo_run_read"));
 	assert.ok(tools.children.some((node) => node.title === "agent:reviewer (pi-reviewer) — Review the proposed implementation."));
-	assert.ok(tools.children.some((node) => node.title === "package:pibo-run-control"));
+	assert.ok(tools.children.some((node) => node.title === "package:pibo-run-control (automatic for delegation)"));
+	assert.equal(manifest.kind, "runtime_manifest");
+	assert.equal(manifest.estimatedTokens, undefined, "the read-only manifest must not count as prompt context");
+	assert.equal(manifest.payloadJson.toolSurface, "pibo-managed-only");
+	assert.deepEqual(manifest.payloadJson.effectiveModel, { provider: "openai-codex", id: "gpt-5.6-sol" });
+	assert.equal(manifest.payloadJson.effectiveThinkingLevel, "max");
+	assert.deepEqual(manifest.payloadJson.delegatedAgents, [{
+		name: "reviewer",
+		targetProfile: "pi-reviewer",
+		configuredModel: { provider: "openai-codex", id: "gpt-5.6-sol" },
+		effectiveModel: { provider: "openai-codex", id: "gpt-5.6-sol" },
+		configuredThinkingLevel: "xhigh",
+		effectiveThinkingLevel: "xhigh",
+	}]);
 });
 
 test("context build exposes one shared agent surface and the available name-description catalog", async () => {
+	const targetProfile = new InitialSessionContextBuilder("delegated-target")
+		.withSubagentModel({ provider: "fallback-provider", id: "fallback-model" })
+		.withSubagentThinkingLevel("medium")
+		.createSession();
 	const profile = new InitialSessionContextBuilder("agent-context")
 		.withAutoContextFiles(false)
 		.withBuiltinTools("disabled")
@@ -105,8 +134,14 @@ test("context build exposes one shared agent surface and the available name-desc
 			{ name: "worker", description: "Implement focused changes and verify them.", targetProfile: "worker-profile" },
 		])
 		.createSession();
-	const snapshot = await inspectPiboContextBuild({ profile, persistSession: false });
-	const sendDefinition = findNode(snapshot.nodes, (node) => node.id === "tools/pibo_agents_send_message/definition");
+	const snapshot = await inspectPiboContextBuild({
+		profile,
+		persistSession: false,
+		subagentProfileResolver: () => targetProfile,
+	});
+	const runStartDefinition = findNode(snapshot.nodes, (node) => node.id === "tools/pibo_run_start/definition");
+	const delegatedContext = findNode(snapshot.nodes, (node) => node.path === "pibo://runtime/delegated-agents.md");
+	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
 	const toolIds = [];
 	const collect = (nodes) => {
 		for (const node of nodes) {
@@ -116,10 +151,24 @@ test("context build exposes one shared agent surface and the available name-desc
 	};
 	collect(snapshot.nodes);
 
-	assert.match(sendDefinition.schemaJson.description, /explorer: Inspect the repository and report findings\./);
-	assert.match(sendDefinition.schemaJson.description, /worker: Implement focused changes and verify them\./);
-	assert.equal(toolIds.filter((id) => id.startsWith("tools/pibo_agents_")).length, 4);
+	assert.ok(runStartDefinition.schemaJson.inputSchema.properties.toolName.enum.includes("pibo_agents_send_message"));
+	assert.match(delegatedContext.hydratedText, /`explorer`.*Inspect the repository and report findings\./s);
+	assert.match(delegatedContext.hydratedText, /`worker`.*Implement focused changes and verify them\./s);
+	assert.match(delegatedContext.hydratedText, /pibo_run_wait/);
+	assert.match(delegatedContext.hydratedText, /pibo_agents_observe/);
+	assert.equal(toolIds.filter((id) => id.startsWith("tools/pibo_agents_")).length, 3);
+	assert.equal(toolIds.includes("tools/pibo_agents_send_message"), false);
 	assert.equal(toolIds.some((id) => id.includes("pibo_subagent_")), false);
+	assert.equal(manifest.payloadJson.toolSurface, "complete");
+	assert.equal(manifest.payloadJson.contextFilePaths.includes("pibo://runtime/delegated-agents.md"), true);
+	assert.deepEqual(manifest.payloadJson.delegatedAgents.map((agent) => ({
+		name: agent.name,
+		effectiveModel: agent.effectiveModel,
+		effectiveThinkingLevel: agent.effectiveThinkingLevel,
+	})), [
+		{ name: "explorer", effectiveModel: { provider: "fallback-provider", id: "fallback-model" }, effectiveThinkingLevel: "medium" },
+		{ name: "worker", effectiveModel: { provider: "fallback-provider", id: "fallback-model" }, effectiveThinkingLevel: "medium" },
+	]);
 });
 
 test("context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate", async () => {

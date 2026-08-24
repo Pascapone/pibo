@@ -18,6 +18,8 @@ export type FakeAgentRuntimeScript = {
 	events?: readonly AgentRuntimeSemanticEvent[];
 	failWith?: string;
 	waitForAbort?: boolean;
+	abortFailWith?: string;
+	abortNeverSettles?: boolean;
 	missingNativeSession?: boolean;
 	bindingPatchAfterPrompt?: Partial<RuntimeSessionBinding>;
 };
@@ -45,6 +47,7 @@ export class FakeAgentRuntimeSession implements AgentRuntimeSession {
 	private disposed = false;
 	private aborted = false;
 	private promptIndex = 0;
+	private activeScript?: FakeAgentRuntimeScript;
 	private abortWaiters: Array<() => void> = [];
 	readonly prompts: AgentRuntimePromptInput[] = [];
 	disposeCalls = 0;
@@ -89,6 +92,7 @@ export class FakeAgentRuntimeSession implements AgentRuntimeSession {
 		this.aborted = false;
 		const turnId = `fake-turn-${this.promptIndex}`;
 		const script = typeof this.script === "function" ? this.script(input, this.promptIndex) : this.script ?? {};
+		this.activeScript = script;
 		this.emit({ type: "turn_started", turnId });
 		try {
 			if (script.waitForAbort) {
@@ -111,6 +115,7 @@ export class FakeAgentRuntimeSession implements AgentRuntimeSession {
 			}
 			this.emit({ type: "turn_completed", turnId, status: "completed" });
 		} finally {
+			this.activeScript = undefined;
 			this.streaming = false;
 		}
 	}
@@ -125,6 +130,8 @@ export class FakeAgentRuntimeSession implements AgentRuntimeSession {
 
 	async abort(): Promise<void> {
 		this.abortCalls += 1;
+		if (this.activeScript?.abortFailWith) throw new Error(this.activeScript.abortFailWith);
+		if (this.activeScript?.abortNeverSettles) return;
 		const wasStreaming = this.streaming;
 		this.aborted = true;
 		const waiters = this.abortWaiters;

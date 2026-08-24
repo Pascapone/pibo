@@ -26,6 +26,49 @@ test("new Loop UI defaults to same-session goal mode and exposes legacy Ralph mo
 	assert.match(stdout, /final turn can overshoot/);
 });
 
+test("Loop UI renders recursive model usage and reported cost", async () => {
+	const script = `
+		import React from "react";
+		globalThis.React = React;
+		import { renderToStaticMarkup } from "react-dom/server";
+		const { LoopUsageSummary } = await import("./src/apps/chat-ui/src/LoopArea.tsx");
+		const totals = { inputTokens: 30, outputTokens: 12, cacheReadTokens: 300, cacheWriteTokens: 7, reasoningTokens: 5, totalTokens: 349, costUsd: 0.46, costReportedTurns: 2, assistantTurns: 2 };
+		const job = {
+			id: "loop_usage",
+			mode: "goal",
+			name: "Recursive usage",
+			enabled: true,
+			target: { kind: "default-chat" },
+			profile: "base",
+			prompt: "Continue",
+			state: {
+				usage: {
+					controller: { ...totals, totalTokens: 118, cacheReadTokens: 100, costUsd: 0.12, assistantTurns: 1 },
+					descendants: { ...totals, totalTokens: 231, cacheReadTokens: 200, costUsd: 0.34, assistantTurns: 1 },
+					total: totals,
+					sessionIds: ["ps_controller", "ps_child"],
+				},
+			},
+			createdAt: "2026-08-24T00:00:00.000Z",
+			updatedAt: "2026-08-24T00:00:00.000Z",
+		};
+		console.log(renderToStaticMarkup(React.createElement(LoopUsageSummary, { job })));
+	`;
+	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	assert.match(stdout, /data-pibo-loop-recursive-usage/);
+	assert.match(stdout, />2</);
+	assert.match(stdout, />349</);
+	assert.match(stdout, />231</);
+	assert.match(stdout, />300</);
+	assert.match(stdout, /\$0\.4600/);
+	assert.match(stdout, /2 sessions/);
+	assert.match(stdout, /Contributing sessions/);
+	assert.match(stdout, /ps_controller/);
+	assert.match(stdout, /ps_child/);
+	assert.match(stdout, /\/apps\/chat\/sessions\/ps_controller/);
+	assert.match(stdout, /\/apps\/chat\/sessions\/ps_child/);
+});
+
 test("Loop UI draft shows uncached after Ralph-to-Goal switch while legacy Goals remain total", async () => {
 	const script = `
 		import React from "react";

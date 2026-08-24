@@ -34,6 +34,8 @@ import {
 	type PiboAgentsController,
 	type PiboSubagentRunner,
 } from "../../subagents/tool.js";
+import { getDelegatedAgentContextFile } from "../../subagents/context.js";
+import { resolvePiboSubagentRuntimeSelections } from "../../subagents/runtime-selection.js";
 import type { PiboRunToolController } from "../../runs/tools.js";
 import type { PiboThinkingLevel } from "../../core/thinking.js";
 import { getInstalledCliToolContextFile } from "../../tools/registry.js";
@@ -134,6 +136,8 @@ export type PiboRuntimeOptions = {
 	resources?: PiboRuntimeResourceSession;
 	/** Product-level model defaults selected outside the workspace, e.g. Chat Web settings. */
 	modelDefaults?: PiboModelDefaults;
+	/** Resolve delegated target profiles for exact profile-inspection runtime selection. */
+	subagentProfileResolver?: (profileName: string) => InitialSessionContext;
 	/** SessionStore-persisted model. Routed sessions must prefer this over current defaults. */
 	activeModel?: ModelProfile;
 	/** Product metadata that is always injected into runtime context. */
@@ -169,7 +173,15 @@ export type PiboProfileInspection = {
 	toolPackages: InitialSessionContext["toolPackages"];
 	skills: Array<{ name: string; path: string }>;
 	tools: Array<{ name: string; hasDefinition: boolean; registered: boolean; active: boolean }>;
-	subagents: Array<{ name: string; targetProfile: string; active: boolean }>;
+	subagents: Array<{
+		name: string;
+		targetProfile: string;
+		configuredModel?: ModelProfile;
+		effectiveModel?: ModelProfile;
+		configuredThinkingLevel?: PiboThinkingLevel;
+		effectiveThinkingLevel?: PiboThinkingLevel;
+		active: boolean;
+	}>;
 	mcpServers: string[];
 	mcpStatus: AgentRuntimeExternalMcpServerInspection[];
 	resourceDelivery: AgentRuntimeDeliveryReport[];
@@ -379,6 +391,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			: createSessionContextFile({ piboSessionId: profile.sessionId, ...options.sessionContext });
 		const installedToolContextFile = options.resources ? undefined : getInstalledCliToolContextFile();
 		const mcpAgentContextFile = options.resources ? undefined : await getMcpAgentContextFile(profile.mcpServers);
+		const delegatedAgentContextFile = options.resources ? undefined : getDelegatedAgentContextFile(profile.subagents);
 		const skillPaths = options.resources
 			? [...options.resources.getSkillPaths("source")]
 			: getEnabledSkillPaths(runtimeCwd, profile);
@@ -411,6 +424,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 							...contextFiles,
 							...(installedToolContextFile ? [installedToolContextFile] : []),
 							...(mcpAgentContextFile ? [mcpAgentContextFile] : []),
+							...(delegatedAgentContextFile ? [delegatedAgentContextFile] : []),
 						],
 					),
 				}),
@@ -600,6 +614,7 @@ function resolveProfileModel(
 export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Promise<PiboProfileInspection> {
 	const cwd = options.cwd ?? process.cwd();
 	const profile = options.profile ?? createDefaultPiboProfile();
+	const inspectionModelDefaults = options.modelDefaults ?? loadPiboModelDefaults(cwd);
 	const runtimeProfile = new InitialSessionContext({
 		profileName: profile.profileName,
 		runtimeInstanceId: profile.runtimeInstanceId,
@@ -678,10 +693,13 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 				registered: registeredToolNames.has(tool.name) || tool.providerTool !== undefined || isRuntimeTool(tool) || isCodexBrowserTool(tool),
 				active: activeToolNames.has(tool.name) || tool.providerTool !== undefined,
 			})).concat(generatedTools),
-			subagents: profile.subagents.map((subagent) => ({
-				name: subagent.name,
-				targetProfile: subagent.targetProfile,
-				active: subagent.enabled !== false && activeToolNames.has(PIBO_AGENT_TOOL_NAMES[0]),
+			subagents: resolvePiboSubagentRuntimeSelections(
+				profile.subagents,
+				options.subagentProfileResolver,
+				inspectionModelDefaults,
+			).map(({ enabled, ...subagent }) => ({
+				...subagent,
+				active: enabled && activeToolNames.has("pibo_run_start"),
 			})),
 			mcpServers: [...profile.mcpServers],
 			mcpStatus: options.resources?.getInspection().mcpServers.map((server) => structuredClone(server)) ?? [],

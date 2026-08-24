@@ -2,7 +2,7 @@
 
 **Status:** Done
 **Created:** 2026-05-10
-**Revised:** 2026-08-23
+**Revised:** 2026-08-24
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Custom Agents and Agent Designer](./custom-agents.md), [Yielded Run Control](./yielded-run-control.md), [Agent Management Tool Design](../../plans/agent-management-tool-design.md)
 
 ## Why
@@ -13,14 +13,14 @@ Pibo needs one stable management surface that keeps delegated work visible as ch
 
 ## Goal
 
-Replace generated per-subagent tools with four stable Pibo-managed tools:
+Replace generated per-subagent tools with four stable Pibo-managed capabilities:
 
-- `pibo_agents_send_message`
-- `pibo_agents_list_agents`
-- `pibo_agents_observe`
-- `pibo_agents_kill`
+- yielded target `pibo_agents_send_message`
+- direct management tool `pibo_agents_list_agents`
+- direct management tool `pibo_agents_observe`
+- direct management tool `pibo_agents_kill`
 
-The model context must identify every currently available delegated agent by configured `name` and profile description. A foreground send waits for that child reply. Any management tool can still be invoked through `pibo_run_start`; the normal asynchronous delegation path is a yielded `pibo_agents_send_message` followed by `pibo_run_wait` or `pibo_run_read`.
+The model context must identify every currently available delegated agent by configured `name` and profile description. Sends are started only through `pibo_run_start`; the returned run ID is also the request ID used for observation, reading, and explicit cancellation.
 
 ## Scope
 
@@ -30,7 +30,8 @@ The model context must identify every currently available delegated agent by con
 - Dynamic model-visible available-agent catalog.
 - Child-session creation, thread reuse, status listing, event observation, and targeted termination.
 - Exact ownership checks between the calling parent session and managed child sessions.
-- Existing depth, timeout, model, thinking, workspace, room, routing, trace, and run-control behavior.
+- Existing depth, model, thinking, workspace, room, routing, trace, and run-control behavior.
+- Removal of implicit and profile-driven delegated-request lifetime timeouts.
 - Operator debug CLI discovery for listing and observing delegated child sessions.
 - Removal of generated `pibo_subagent_*` runtime tools.
 
@@ -43,39 +44,47 @@ The model context must identify every currently available delegated agent by con
 
 ## Requirements
 
-### Requirement: One stable shared tool surface
+### Requirement: One stable shared management surface
 
-When a session has at least one enabled delegated-agent profile below its depth limit, Pibo MUST expose exactly the four `pibo_agents_*` tools and MUST NOT expose any generated `pibo_subagent_*` tool.
+When a session has at least one enabled delegated-agent profile below its depth limit, Pibo MUST expose list, observe, and kill directly, expose send only as a `pibo_run_start` target, and MUST NOT expose any generated `pibo_subagent_*` tool.
 
 #### Acceptance
 
+- Direct model tools omit `pibo_agents_send_message`.
+- `pibo_run_start` accepts `pibo_agents_send_message` even when the profile did not otherwise enable run control.
 - Tool count does not grow with the number of configured agents.
-- Every shared tool remains eligible for `pibo_run_start` when run control is enabled.
-- A session with no available delegated agents exposes none of the four tools.
+- A session with no available delegated agents exposes none of the four agent capabilities or their generated management context.
 - Generated-tool detection and context inspection classify `pibo_agents_*` as Pibo-generated tools.
 
 ### Requirement: Available agents are explicit in model context
 
-The shared send tool MUST contribute a model-visible catalog containing each enabled, depth-eligible agent's exact `name` and description. If no description exists, the catalog MUST identify the target profile without inventing capabilities.
+A generated delegated-agent management context MUST contain each enabled, depth-eligible agent's exact `name` and description, the yielded send signature, and the direct list, observe, kill, run wait, run status, run read, and run cancel lifecycle. If no description exists, the catalog MUST identify the target profile without inventing capabilities.
 
 #### Acceptance
 
 - Each configured name appears once.
 - Descriptions remain associated with their names.
-- The catalog is present in tool-definition inspection and normal runtime tool declarations.
+- The catalog is present in normal runtime context for Pi and external adapters.
+- The generated context is absent when no delegated agent is available.
 - Other management tools do not repeat the full catalog unnecessarily.
 
-### Requirement: Send selects by name and returns stable identity
+### Requirement: Yielded send selects by name and returns stable identity
 
-`pibo_agents_send_message` MUST accept `name`, `message`, and optional `threadKey`. It MUST resolve `name` only against the current profile's enabled, depth-eligible agents, route the message with source `actor`, wait for the bounded child reply, and return an `agentId` equal to the child Pibo Session ID.
+`pibo_agents_send_message` MUST accept `name`, `message`, and optional `threadKey` only as a `pibo_run_start` target. It MUST resolve `name` only against the current profile's enabled, depth-eligible agents, route the message with source `actor`, wait without an implicit lifetime deadline, and return an `agentId` equal to the child Pibo Session ID.
 
 #### Acceptance
 
 - Unknown names fail schema validation or execution without creating a child.
 - The first explicit thread creates a child; the same parent, name, target profile, and thread reuses it.
 - Omitting or blanking `threadKey` creates a new generated thread.
-- The result identifies `agentId`, name, profile, resolved thread key, input event ID, and reply.
-- `pibo_run_start` can execute the same send asynchronously and `pibo_run_read` returns its final reply.
+- The yielded run ID is the request ID.
+- Expiring a bounded `pibo_run_wait` leaves the request and child running.
+- Only explicit run cancellation, agent kill, parent abort, or session disposal ends active delegated work.
+- Run cancellation targets the exact queued or active child message event; cancelling one request cannot abort another request sharing the child thread.
+- Successful cancellation waits for request settlement; rejected abort and bounded-settlement failure remain explicit errors.
+- Legacy `SubagentProfile.timeoutMs` does not impose request lifetime.
+- The terminal result identifies request ID, agent ID, name, profile, resolved thread key, input event ID, complete final message, and reply event.
+- Multi-part provider text is assembled in order without a new size cap, and `pibo_run_read` returns that complete final assistant message.
 
 ### Requirement: List distinguishes availability from instances
 
@@ -101,11 +110,13 @@ Each instance MUST expose:
 
 `pibo_agents_observe` MUST read normalized child-session output observations owned by the caller. It MUST support intersecting filters for:
 
+- yielded `requestIds`
 - `agentIds`
 - agent `names`
 - `threadKeys`
 - exact `eventTypes`
 - normalized `kinds`: `message`, `thinking`, `tool`, `error`, `lifecycle`, `event`
+- normalized exact `roles`, including `assistant`, `tool`, and `system`
 - `since` and `until` ISO timestamps
 - case-insensitive `textContains`
 - `afterSequence`
@@ -142,13 +153,13 @@ The result MUST report the applied filters, observations, `nextAfterSequence`, a
 
 ### Requirement: Existing delegation guarantees remain intact
 
-Shared tools MUST retain existing behavior for depth limits, timeout, workspace and room inheritance, app-context compatibility, per-agent model/thinking settings, and `subagent_session` trace linkage.
+Shared tools MUST retain existing behavior for depth limits, workspace and room inheritance, app-context compatibility, per-agent model/thinking settings, persistent thread reuse, and `subagent_session` trace linkage. Delegated request lifetime MUST be unbounded unless explicitly cancelled.
 
-The link event MUST use `toolName: "pibo_agents_send_message"` and continue to identify `subagentName`, child Pibo Session ID, resolved thread key, and optional tool call ID.
+The link event MUST use `toolName: "pibo_agents_send_message"` and continue to identify `subagentName`, child Pibo Session ID, resolved thread key, and optional tool call ID. Turn-scoped child outputs MUST retain the active message provenance so recursively delegated usage remains attributable to its originating Loop run.
 
 ### Requirement: Legacy library callers have an explicit migration path
 
-The public legacy naming and tool-factory exports MUST remain available as deprecated compatibility APIs, while Pibo-owned runtime assembly MUST use only the four shared tools. Deprecated runtime and portable-session `subagentRunner` options MUST remain source-visible and fail with a direct instruction to provide `agentsController` rather than disappearing or being silently ignored.
+The public legacy naming and tool-factory exports MUST remain available as deprecated compatibility APIs, while Pibo-owned runtime assembly MUST use only the four shared agent capabilities and MUST keep send yielded-only. Deprecated runtime and portable-session `subagentRunner` options MUST remain source-visible and fail with a direct instruction to provide `agentsController` rather than disappearing or being silently ignored.
 
 #### Acceptance
 
@@ -189,9 +200,9 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 
 ## Success Criteria
 
-- [x] SC-001: Two configured agents produce four shared tools and zero `pibo_subagent_*` tools.
-- [x] SC-002: Prompt inspection shows each available name and description.
-- [x] SC-003: Foreground send returns a child reply and reusable `agentId`; yielded send completes through `pibo_run_*`.
+- [x] SC-001: Two configured agents produce three direct management tools, one yielded-only send target, and zero `pibo_subagent_*` tools.
+- [x] SC-002: Conditional runtime context shows each available name, description, and yielded management lifecycle.
+- [x] SC-003: Yielded send returns a reusable child `agentId`; bounded waits are non-destructive and `pibo_run_read` returns the complete final message.
 - [x] SC-004: List reports available definitions and running/idle/killed instances accurately.
 - [x] SC-005: Observe combines all documented filters and cursor pagination without cross-parent leakage.
 - [x] SC-006: Kill interrupts active work, marks the instance killed, and prevents thread reuse.
@@ -204,8 +215,8 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 | Requirement | Primary implementation | Verification |
 |---|---|---|
 | Shared tool surface | `src/subagents/tool.ts`, `src/tools/session-tool-set.ts` | `test/subagents.test.mjs`, context inspection tests |
-| Catalog in context | send tool model-visible description | tool/context tests |
-| Send and identity | session router agent controller | router/tool tests, Pibo2 real run |
+| Catalog in context | generated delegated-agent runtime context | tool/context and resource-delivery tests |
+| Send and identity | session router agent controller and yielded run ID | router/tool tests, Pibo2 real run |
 | List and kill | session router ownership/status methods | router/tool tests |
 | Observe filters | normalized observation journal and debug query | filter unit tests, debug CLI tests |
 | Existing delegation | router/session metadata and trace projections | trace/UI tests |

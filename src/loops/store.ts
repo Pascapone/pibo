@@ -4,10 +4,10 @@ import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { piboHomePath } from '../core/pibo-home.js';
 import { isPiboThinkingLevel } from '../core/thinking.js';
-import type { PiboJsonObject, PiboMessageEvent, PiboSessionErrorDetails } from '../core/events.js';
+import type { PiboAssistantUsageEvent, PiboJsonObject, PiboMessageEvent, PiboSessionErrorDetails } from '../core/events.js';
 import type { ModelProfile } from '../core/profiles.js';
 import type { PiboThinkingLevel } from '../core/thinking.js';
-import { newGoalTokenAccounting, normalizeLoopTokenAccounting } from './accounting.js';
+import { addLoopAssistantUsage, newGoalTokenAccounting, normalizeLoopTokenAccounting } from './accounting.js';
 import type { PiboGoalStatus, PiboLoopFactReader, PiboLoopFailure, PiboLoopJob, PiboLoopJobCreateInput, PiboLoopJobPatchInput, PiboLoopJobState, PiboLoopMode, PiboLoopResourceCleanupState, PiboLoopResourceMetadata, PiboLoopRun, PiboLoopRunAccounting, PiboLoopRunFact, PiboLoopRunMessageState, PiboLoopRunStatus, PiboLoopStopEvaluationSummary, PiboLoopStopPolicy, PiboLoopTarget } from './types.js';
 
 export type PiboLoopStoreOptions = { path?: string };
@@ -339,24 +339,65 @@ export class PiboLoopStore {
 		this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = ?, state_json = ?, updated_at = ? WHERE id = ?').run(budgetLimited ? 0 : job.enabled ? 1 : 0, JSON.stringify(state), timestamp, id);
 		return this.getJob(id);
 	}
-	recordGoalTurnUsage(id: string, runId: string, tokens: number, now = new Date()): PiboLoopJob | undefined {
+	recordGoalAssistantUsage(
+		id: string,
+		runId: string,
+		input: { usage: PiboAssistantUsageEvent; budgetTokens: number; piboSessionId: string; descendant: boolean },
+		now = new Date(),
+	): PiboLoopJob | undefined {
 		this.db.exec('BEGIN IMMEDIATE');
 		try {
-			const job = this.recordGoalProgress(id, { tokens }, now);
-			if (job?.mode === 'goal') {
-				const row = this.db.prepare('SELECT * FROM pibo_ralph_runs WHERE id = ? AND job_id = ?').get(runId, id) as LoopRunRow | undefined;
-				if (row) {
-					const accounting = parseRunAccounting(row.accounting_json) ?? { tokenAccounting: normalizeLoopTokenAccounting(job.state.tokenAccounting) };
-					const turnTokens = (accounting.tokensUsed ?? 0) + Math.max(0, Math.floor(tokens));
-					const budget = accounting.tokenBudget;
-					const before = accounting.tokensUsedBefore ?? 0;
-					const nextAccounting: PiboLoopRunAccounting = { ...accounting, tokensUsed: turnTokens, ...(budget !== undefined ? { overshootTokens: Math.max(0, before + turnTokens - budget) } : {}) };
-					this.db.prepare('UPDATE pibo_ralph_runs SET accounting_json = ?, updated_at = ? WHERE id = ?').run(runAccountingJson(nextAccounting), nowIso(now), runId);
-				}
+			const job = this.getJob(id);
+			if (!job || job.mode !== 'goal') {
+				this.db.exec('COMMIT');
+				return job;
+			}
+			const tokens = Math.max(0, Math.floor(input.budgetTokens));
+			const nextTokens = (job.state.tokensUsed ?? 0) + tokens;
+			const currentStatus = goalStatus(job) ?? 'active';
+			const budgetLimited = currentStatus === 'active' && job.tokenBudget !== undefined && nextTokens >= job.tokenBudget;
+			const timestamp = nowIso(now);
+			const state: PiboLoopJobState = {
+				...job.state,
+				tokensUsed: nextTokens,
+				usage: addLoopAssistantUsage(job.state.usage, input.usage, {
+					piboSessionId: input.piboSessionId,
+					descendant: input.descendant,
+				}),
+				goalStatus: budgetLimited ? 'budget_limited' : currentStatus,
+			};
+			if (budgetLimited) state.goalEndedAt = job.state.goalEndedAt ?? timestamp;
+			this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = ?, state_json = ?, updated_at = ? WHERE id = ?').run(budgetLimited ? 0 : job.enabled ? 1 : 0, JSON.stringify(state), timestamp, id);
+
+			const row = this.db.prepare('SELECT * FROM pibo_ralph_runs WHERE id = ? AND job_id = ?').get(runId, id) as LoopRunRow | undefined;
+			if (row) {
+				const accounting = parseRunAccounting(row.accounting_json) ?? { tokenAccounting: normalizeLoopTokenAccounting(state.tokenAccounting) };
+				const turnTokens = (accounting.tokensUsed ?? 0) + tokens;
+				const budget = accounting.tokenBudget;
+				const before = accounting.tokensUsedBefore ?? 0;
+				const nextAccounting: PiboLoopRunAccounting = {
+					...accounting,
+					tokensUsed: turnTokens,
+					usage: addLoopAssistantUsage(accounting.usage, input.usage, {
+						piboSessionId: input.piboSessionId,
+						descendant: input.descendant,
+					}),
+					...(budget !== undefined ? { overshootTokens: Math.max(0, before + turnTokens - budget) } : {}),
+				};
+				this.db.prepare('UPDATE pibo_ralph_runs SET accounting_json = ?, updated_at = ? WHERE id = ?').run(runAccountingJson(nextAccounting), timestamp, runId);
 			}
 			this.db.exec('COMMIT');
-			return job;
+			return this.getJob(id);
 		} catch (error) { this.db.exec('ROLLBACK'); throw error; }
+	}
+	recordGoalTurnUsage(id: string, runId: string, tokens: number, now = new Date()): PiboLoopJob | undefined {
+		const run = this.getRun(runId);
+		return this.recordGoalAssistantUsage(id, runId, {
+			usage: { type: 'assistant_usage', piboSessionId: run?.piboSessionId ?? 'unknown', totalTokens: Math.max(0, Math.floor(tokens)) },
+			budgetTokens: tokens,
+			piboSessionId: run?.piboSessionId ?? 'unknown',
+			descendant: false,
+		}, now);
 	}
 	recordGoalRunTime(id: string, runId: string, activeTimeSeconds: number, now = new Date()): PiboLoopJob | undefined {
 		const seconds = Math.max(0, Math.floor(activeTimeSeconds));

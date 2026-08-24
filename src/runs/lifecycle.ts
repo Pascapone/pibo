@@ -38,7 +38,15 @@ export function foregroundServiceWarning(toolName: string, params: unknown, time
 
 export function isConfiguredTimeoutError(error: unknown): boolean {
 	const message = error instanceof Error ? error.message : String(error);
-	return /(?:timed?\s*out|timeout)/i.test(message);
+	const terminalLines = message.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-5);
+	return terminalLines.some((line) => {
+		const normalized = line.replace(/^error:\s*/i, "");
+		return /^(?:command|process|tool execution|yielded run)\s+timed?\s*out\b.*$/i.test(normalized)
+			|| /^timed?\s*out(?:\s+after\s+.+)?[.!]?$/i.test(normalized)
+			|| /^timeout(?:\s+error)?[.!]?$/i.test(normalized)
+			|| /^timeout(?::|\s+)(?:occurred|expired|exceeded|elapsed|reached)\b.*$/i.test(normalized)
+			|| /^timeout(?::|\s+)(?:after\s+)?\d+(?:\.\d+)?\s*(?:ms|milliseconds?|s|secs?|seconds?|m|mins?|minutes?|h|hours?)\b.*$/i.test(normalized);
+	});
 }
 
 export function hasMeaningfulTimeoutOutput(value: unknown): boolean {
