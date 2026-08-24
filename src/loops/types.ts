@@ -56,6 +56,8 @@ export type PiboLoopStopEvaluationSummary = {
 };
 
 export type PiboLoopResourceCleanupState = 'none' | 'active' | 'released' | 'retained' | 'dirty';
+export type PiboLoopTokenAccountingBasis = 'total' | 'uncached';
+export type PiboLoopTokenAccounting = { version: 1; basis: PiboLoopTokenAccountingBasis };
 
 export type PiboLoopResourceMetadata = {
 	workerId?: string;
@@ -77,6 +79,8 @@ export type PiboLoopFailure = {
 
 export type PiboLoopJobState = {
 	goalStatus?: PiboGoalStatus;
+	/** Missing in legacy persisted rows; readers interpret absence as version 1 total-token accounting. */
+	tokenAccounting?: PiboLoopTokenAccounting;
 	tokensUsed?: number;
 	activeTimeSeconds?: number;
 	/** Legacy persisted field migrated to activeTimeSeconds when read. */
@@ -126,6 +130,8 @@ export type PiboLoopRunStatus = 'running' | 'ok' | 'error' | 'cancelled';
 export type PiboLoopRunMessageState = 'reserved' | 'queued' | 'active' | 'invalidated' | 'finished';
 
 export type PiboLoopRunAccounting = {
+	/** Missing in legacy persisted rows; readers interpret absence as version 1 total-token accounting. */
+	tokenAccounting?: PiboLoopTokenAccounting;
 	tokenBudget?: number;
 	tokenReserve?: number;
 	tokensUsedBefore?: number;

@@ -28,7 +28,7 @@ export function configSearchError(): CliError {
     type: 'CONFIG_NOT_FOUND',
     message: 'No mcp_servers.json found in search paths',
     details:
-      'Searched: ./mcp_servers.json, ~/.mcp_servers.json, ~/.config/mcp/mcp_servers.json',
+      'Searched: ./mcp_servers.json, ~/mcp_servers.json, ~/.mcp_servers.json, ~/.config/mcp/mcp_servers.json',
     suggestion:
       'Create mcp_servers.json in current directory or use -c/--config to specify path',
   };

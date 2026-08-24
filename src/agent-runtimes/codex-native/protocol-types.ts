@@ -354,6 +354,7 @@ export type CodexAppServerServerRequestResolvedNotification = {
 };
 
 export type CodexAppServerTokenUsageBreakdown = {
+	cacheWriteInputTokens?: number;
 	cachedInputTokens: number;
 	inputTokens: number;
 	outputTokens: number;

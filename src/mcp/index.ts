@@ -10,7 +10,6 @@
  *   mcp-cli call <server> <tool> {}  Call tool with JSON args
  */
 
-import { readFileSync } from 'node:fs';
 import { type ConfigAction, configCommand } from './config-command.js';
 import {
   DEFAULT_CONCURRENCY,
@@ -20,6 +19,7 @@ import {
   ensureConfigExists,
   listServerNames,
   loadConfig,
+  loadConfigUnresolved,
 } from './config.js';
 import {
   ErrorCode,
@@ -191,44 +191,8 @@ function parseArgs(args: string[]): ParsedArgs {
     const remaining = positional.slice(1);
     const { server, tool } = parseServerTool(remaining);
 
-    // info requires a server argument - show available servers in error
     if (!server) {
-      // Try to load config synchronously to show available servers
-      let availableServers: string[] = [];
-      const configPaths = [
-        result.configPath,
-        process.env.MCP_CONFIG_PATH,
-        './mcp_servers.json',
-        `${process.env.HOME}/.mcp_servers.json`,
-        `${process.env.HOME}/.config/mcp/mcp_servers.json`,
-      ].filter(Boolean) as string[];
-
-      for (const cfgPath of configPaths) {
-        try {
-          const content = readFileSync(cfgPath, 'utf-8');
-          const config = JSON.parse(content);
-          if (config.mcpServers) {
-            availableServers = Object.keys(config.mcpServers);
-            break;
-          }
-        } catch {
-          // Try next path
-        }
-      }
-
-      const serverList =
-        availableServers.length > 0
-          ? availableServers.join(', ')
-          : '(none found)';
-
-      console.error(
-        'Error [MISSING_ARGUMENT]: Missing required argument for info: server',
-      );
-      console.error(`  Available servers: ${serverList}`);
-      console.error(
-        `  Suggestion: Use 'pibo mcp info <server>' to see server details, or just 'pibo mcp' to list all`,
-      );
-      process.exit(ErrorCode.CLIENT_ERROR);
+      return result;
     }
 
     result.server = server;
@@ -487,10 +451,32 @@ export async function runMcpCli(argv = process.argv): Promise<void> {
         break;
 
       case 'info':
+        if (!args.server) {
+          let availableServers: string[] = [];
+          try {
+            availableServers = listServerNames(
+              await loadConfigUnresolved(args.configPath),
+            );
+          } catch {
+            // Keep the missing-argument error focused when no valid config exists.
+          }
+          const serverList =
+            availableServers.length > 0
+              ? availableServers.join(', ')
+              : '(none found)';
+          console.error(
+            'Error [MISSING_ARGUMENT]: Missing required argument for info: server',
+          );
+          console.error(`  Available servers: ${serverList}`);
+          console.error(
+            `  Suggestion: Use 'pibo mcp info <server>' to see server details, or just 'pibo mcp' to list all`,
+          );
+          process.exitCode = ErrorCode.CLIENT_ERROR;
+          break;
+        }
         await ensureConfigExists(args.configPath);
         {
           const { infoCommand } = await import('./commands/info.js');
-          // info always has a server (validated in parseArgs)
           await infoCommand({
             target: buildTarget(args.server, args.tool),
             withDescriptions: args.withDescriptions,

@@ -19,6 +19,7 @@ test("Loop API defaults to goal and the Ralph alias defaults to legacy mode", as
 		assert.equal(goal.tokenBudget, 1234);
 		assert.equal(goal.tokenReserve, 200);
 		assert.equal(goal.state.goalStatus, "paused");
+		assert.deepEqual(goal.state.tokenAccounting, { version: 1, basis: "uncached" });
 
 		const ralphResponse = await handleChatLoopApiRequest(options(store, jsonRequest("http://localhost/api/chat/ralph/jobs", {
 			profile: "base",

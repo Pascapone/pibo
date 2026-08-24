@@ -17,6 +17,7 @@ function turn(state, overrides = {}) {
 function signal(overrides = {}) {
 	return {
 		isTreeActive: false,
+		localStatus: "idle",
 		hasError: false,
 		hasErrorDescendant: false,
 		aggregateStatus: "idle",
@@ -71,6 +72,38 @@ test("background tree activity keeps status running without showing local Workin
 	assert.equal(activity.status, "running");
 	assert.equal(activity.isTreeActive, true);
 	assert.equal(activity.isTurnActive, false);
+});
+
+test("active work outranks historical local and descendant errors", () => {
+	const activity = resolveSessionActivity(signal({
+		isTreeActive: true,
+		localStatus: "error",
+		aggregateStatus: "error",
+		hasError: true,
+		hasErrorDescendant: true,
+		latestTurn: turn("running"),
+	}));
+	assert.equal(activity.status, "running");
+	assert.equal(activity.isTurnActive, true);
+});
+
+test("historical errors do not poison a settled session after a successful turn", () => {
+	const activity = resolveSessionActivity(signal({
+		aggregateStatus: "error",
+		hasError: true,
+		hasErrorDescendant: true,
+		latestTurn: turn("completed"),
+	}));
+	assert.equal(activity.status, "idle");
+});
+
+test("a terminal local session error remains visible without a turn summary", () => {
+	const activity = resolveSessionActivity(signal({
+		localStatus: "error",
+		aggregateStatus: "error",
+		hasError: true,
+	}));
+	assert.equal(activity.status, "error");
 });
 
 test("terminal signal state ignores stale trace fallback", () => {

@@ -1,3 +1,5 @@
+import { resolveSessionSignalStatus } from "../signals/status.js";
+
 export type SessionActivityStatus = "idle" | "running" | "error";
 export type SessionTurnState = "running" | "completed" | "failed" | "cancelled" | "interrupted";
 
@@ -12,6 +14,7 @@ export type SessionTurnActivity = {
 
 export type SessionActivitySignal = {
 	isTreeActive: boolean;
+	localStatus?: string;
 	hasError: boolean;
 	hasErrorDescendant: boolean;
 	aggregateStatus: string;
@@ -41,9 +44,12 @@ export function resolveSessionActivity(
 	const latestTurn = signal.latestTurn;
 	const isTurnActive = latestTurn?.state === "running";
 	const isTreeActive = signal.isTreeActive || isTurnActive;
-	const hasError = signal.hasError || signal.hasErrorDescendant || signal.aggregateStatus === "error";
 	return {
-		status: hasError ? "error" : isTreeActive ? "running" : "idle",
+		status: resolveSessionSignalStatus({
+			isTreeActive,
+			localStatus: signal.localStatus,
+			latestTurn,
+		}),
 		isTreeActive,
 		isTurnActive,
 		activeTurnId: isTurnActive ? latestTurn.eventId : undefined,

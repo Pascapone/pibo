@@ -332,6 +332,7 @@ export type PiboAssistantUsageEvent = {
 	outputTokens?: number;
 	cacheReadTokens?: number;
 	cacheWriteTokens?: number;
+	reasoningTokens?: number;
 	totalTokens: number;
 	provenance?: PiboMessageProvenance;
 };
