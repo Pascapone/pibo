@@ -78,6 +78,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function tokenCount(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : undefined;
+}
+
 function assistantEventText(event: OmpRpcAssistantMessageEvent): { text?: string; thinking?: string } | undefined {
 	if (event.type === "text_delta") return { text: event.delta };
 	if (event.type === "text_end") return { text: event.content };
@@ -296,6 +300,11 @@ export class OmpRpcTurnController {
 			case "turn_end":
 				this.emit({ type: "turn_completed", status: "completed" });
 				break;
+			case "message_end": {
+				const usage = OmpRpcTurnController.usageFromMessage(frame.message);
+				if (usage) this.emit({ type: "usage", usage });
+				break;
+			}
 			case "auto_compaction_start":
 				this.emit({ type: "compaction_start", reason: frame.reason });
 				break;
@@ -326,22 +335,43 @@ export class OmpRpcTurnController {
 		const usage = (message as { usage?: unknown }).usage;
 		if (!isRecord(usage)) return undefined;
 		const record = usage as {
-			inputTokens?: unknown;
-			outputTokens?: unknown;
-			cachedInputTokens?: unknown;
+			input?: unknown;
+			output?: unknown;
+			cacheRead?: unknown;
+			cacheWrite?: unknown;
 			reasoningTokens?: unknown;
+			orchestration?: unknown;
 			totalTokens?: unknown;
 		};
-		const input = typeof record.inputTokens === "number" ? record.inputTokens : 0;
-		const output = typeof record.outputTokens === "number" ? record.outputTokens : 0;
-		const total = typeof record.totalTokens === "number" ? record.totalTokens : input + output;
+		const orchestration = isRecord(record.orchestration) ? record.orchestration : undefined;
+		const topLevelInput = tokenCount(record.input);
+		const topLevelOutput = tokenCount(record.output);
+		const topLevelCacheRead = tokenCount(record.cacheRead);
+		const cacheWrite = tokenCount(record.cacheWrite);
+		const orchestrationInput = tokenCount(orchestration?.input);
+		const orchestrationOutput = tokenCount(orchestration?.output);
+		const orchestrationCacheRead = tokenCount(orchestration?.cacheRead);
+		const reasoning = tokenCount(record.reasoningTokens);
+		const reportedTotal = tokenCount(record.totalTokens);
+		if (topLevelInput === undefined
+			&& topLevelOutput === undefined
+			&& topLevelCacheRead === undefined
+			&& cacheWrite === undefined
+			&& orchestrationInput === undefined
+			&& orchestrationOutput === undefined
+			&& orchestrationCacheRead === undefined
+			&& reasoning === undefined
+			&& reportedTotal === undefined) return undefined;
+		const input = (topLevelInput ?? 0) + (orchestrationInput ?? 0);
+		const output = (topLevelOutput ?? 0) + (orchestrationOutput ?? 0);
+		const cacheRead = (topLevelCacheRead ?? 0) + (orchestrationCacheRead ?? 0);
 		return {
 			inputTokens: input,
 			outputTokens: output,
-			cacheReadTokens: typeof record.cachedInputTokens === "number" ? record.cachedInputTokens : 0,
-			cacheWriteTokens: 0,
-			reasoningTokens: typeof record.reasoningTokens === "number" ? record.reasoningTokens : 0,
-			totalTokens: total,
+			cacheReadTokens: cacheRead,
+			cacheWriteTokens: cacheWrite ?? 0,
+			reasoningTokens: reasoning ?? 0,
+			totalTokens: reportedTotal ?? input + output + cacheRead + (cacheWrite ?? 0),
 		};
 	}
 }

@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import {
   ErrorCode,
   configInvalidJsonError,
@@ -412,9 +412,15 @@ export function getDefaultConfigPaths(): string[] {
   // Current directory
   paths.push(resolve(DEFAULT_MCP_CONFIG_FILE));
 
-  // Home directory variants
-  paths.push(join(home, '.mcp_servers.json'));
-  paths.push(join(home, '.config', 'mcp', 'mcp_servers.json'));
+  // Home directory variants. Include the non-dot filename because `pibo mcp
+  // config` creates it when invoked from the home directory, and services can
+  // later run with a different working directory. Ignore empty or relative
+  // platform home values instead of treating them as paths below the cwd.
+  if (home && isAbsolute(home)) {
+    paths.push(join(home, DEFAULT_MCP_CONFIG_FILE));
+    paths.push(join(home, '.mcp_servers.json'));
+    paths.push(join(home, '.config', 'mcp', 'mcp_servers.json'));
+  }
 
   return paths;
 }

@@ -187,7 +187,9 @@ function tokenUsageBreakdown(value: unknown, label: string): AgentRuntimeUsage {
 		inputTokens: requiredNonNegativeInteger(record.inputTokens, `${label} input token count`),
 		outputTokens: requiredNonNegativeInteger(record.outputTokens, `${label} output token count`),
 		cacheReadTokens: requiredNonNegativeInteger(record.cachedInputTokens, `${label} cached input token count`),
-		cacheWriteTokens: 0,
+		cacheWriteTokens: record.cacheWriteInputTokens === undefined
+			? 0
+			: requiredNonNegativeInteger(record.cacheWriteInputTokens, `${label} cache-write input token count`),
 		reasoningTokens: requiredNonNegativeInteger(record.reasoningOutputTokens, `${label} reasoning token count`),
 		totalTokens: requiredNonNegativeInteger(record.totalTokens, `${label} total token count`),
 	};

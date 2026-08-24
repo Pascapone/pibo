@@ -119,6 +119,59 @@ function assertStructuredMissingRefDiagnostic(diagnostics, expected) {
 	assert.ok(diagnostic.message.includes(expected.registryRef));
 }
 
+async function startLandingChannel(apps, landingAppName) {
+	const channel = createWebHostChannel({ port: 0, announce: false, ...(landingAppName ? { landingAppName } : {}) });
+	await channel.start({
+		emit() {
+			throw new Error("not used");
+		},
+		subscribe() {
+			return () => {};
+		},
+		getSession() {
+			return undefined;
+		},
+		createSession() {
+			throw new Error("not used");
+		},
+		findSessions() {
+			return [];
+		},
+		getGatewayActions() {
+			return [];
+		},
+		getWebApps() {
+			return apps;
+		},
+	});
+	const address = channel.getAddress();
+	assert.ok(address);
+	return { channel, baseURL: `http://${address.host}:${address.port}` };
+}
+
+function createLandingApps() {
+	return [
+		{
+			name: "test.auxiliary-web-app",
+			mountPath: "/apps/auxiliary",
+			apiPrefix: "/api/auxiliary",
+			handleRequest(request) {
+				const url = new URL(request.url);
+				return Response.json({ app: "auxiliary", pathname: url.pathname, search: url.search });
+			},
+		},
+		{
+			name: "pibo.chat-web",
+			mountPath: "/apps/chat",
+			apiPrefix: "/api/chat",
+			handleRequest(request) {
+				const url = new URL(request.url);
+				return Response.json({ app: "chat", pathname: url.pathname, search: url.search });
+			},
+		},
+	];
+}
+
 async function startWebHostChannel(options = {}) {
 	const emitted = [];
 	const listeners = new Set();
@@ -376,6 +429,50 @@ test("chat web app serves the React shell for deep app links", async () => {
 		assert.equal(response.status, 200);
 		assert.match(response.headers.get("content-type") ?? "", /^text\/html/);
 		assert.match(await response.text(), /<div id="root"><\/div>/);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("web host resolves an explicit landing app independently of registration order and preserves the raw query", async () => {
+	const { channel, baseURL } = await startLandingChannel(createLandingApps(), "pibo.chat-web");
+	const query = "?tag=one&tag=two&encoded=a%2Fb%20c&empty=&flag";
+	try {
+		const response = await fetch(`${baseURL}/${query}`, { redirect: "manual" });
+		assert.equal(response.status, 302);
+		assert.equal(response.headers.get("location"), `/apps/chat${query}`);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("generic web host without an explicit landing app keeps the first-app fallback", async () => {
+	const { channel, baseURL } = await startLandingChannel(createLandingApps());
+	const query = "?tag=one&tag=two&empty=";
+	try {
+		const response = await fetch(`${baseURL}/${query}`, { redirect: "manual" });
+		assert.equal(response.status, 302);
+		assert.equal(response.headers.get("location"), `/apps/auxiliary${query}`);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("explicit root landing does not intercept auxiliary app or API routes", async () => {
+	const { channel, baseURL } = await startLandingChannel(createLandingApps(), "pibo.chat-web");
+	try {
+		for (const path of [
+			"/apps/auxiliary/deep?encoded=a%2Fb&empty=",
+			"/api/auxiliary/status?tag=one&tag=two",
+		]) {
+			const response = await fetch(`${baseURL}${path}`);
+			assert.equal(response.status, 200);
+			assert.deepEqual(await response.json(), {
+				app: "auxiliary",
+				pathname: new URL(path, baseURL).pathname,
+				search: new URL(path, baseURL).search,
+			});
+		}
 	} finally {
 		await channel.stop?.();
 	}

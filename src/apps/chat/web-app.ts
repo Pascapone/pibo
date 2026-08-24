@@ -3430,13 +3430,12 @@ function signalStatusFromSnapshot(
 ): { status?: PiboWebSessionStatus; updatedAt?: string } | undefined {
 	const session = snapshot?.sessions[piboSessionId];
 	if (!session) return undefined;
-	const hasSignalError = session.hasError || session.hasErrorDescendant || session.aggregateStatus === "error";
+	const summary = summarizeSessionSignalStatus(session);
+	if (summary.status === "running") return { status: "running", updatedAt: session.updatedAt };
 	const hasUnreadError = options.sessions && options.sessionUnreadCounts
 		? hasUnreadInSessionSubtree(options.sessions, options.sessionUnreadCounts, piboSessionId)
 		: true;
-	if (hasSignalError && hasUnreadError) return { status: "error", updatedAt: session.updatedAt };
-	if (session.isTreeActive) return { status: "running", updatedAt: session.updatedAt };
-	return { status: "idle", updatedAt: session.updatedAt };
+	return { status: summary.status === "error" && hasUnreadError ? "error" : "idle", updatedAt: session.updatedAt };
 }
 
 function signalStatusFromSummary(
@@ -3448,8 +3447,8 @@ function signalStatusFromSummary(
 	const hasUnreadError = options.sessions && options.sessionUnreadCounts
 		? hasUnreadInSessionSubtree(options.sessions, options.sessionUnreadCounts, piboSessionId)
 		: true;
-	if (summary.status === "error" && hasUnreadError) return { status: "error", updatedAt: summary.updatedAt };
 	if (summary.isTreeActive || summary.status === "running") return { status: "running", updatedAt: summary.updatedAt };
+	if (summary.status === "error" && hasUnreadError) return { status: "error", updatedAt: summary.updatedAt };
 	return { status: "idle", updatedAt: summary.updatedAt };
 }
 

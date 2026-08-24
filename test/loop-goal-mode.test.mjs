@@ -32,9 +32,95 @@ test("new loops default to goal while legacy rows load as ralph", async () => {
 	}
 });
 
-test("Goal accounting includes usage reported after update_goal completes the active run", async () => {
+test("legacy Goal counters remain total and new runs inherit the legacy basis", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-legacy-accounting-"));
+	const path = join(dir, "loops.sqlite");
+	const seededStore = new PiboLoopStore({ path });
+	const seededJob = seededStore.createJob({ mode: "goal", target: { kind: "default-chat" }, profile: "base", prompt: "Continue legacy accounting.", maxIterations: 2, tokenBudget: 100 });
+	const seededRun = seededStore.reserveRun(seededJob.id);
+	assert.ok(seededRun);
+	seededStore.recordGoalTurnUsage(seededJob.id, seededRun.run.id, 10);
+	seededStore.completeRun({ jobId: seededJob.id, runId: seededRun.run.id, status: "ok", goalStatus: "active", stopAfterRun: true });
+	seededStore.close();
+
+	const db = new DatabaseSync(path);
+	const stateRow = db.prepare("SELECT state_json FROM pibo_ralph_jobs WHERE id = ?").get(seededJob.id);
+	const legacyState = JSON.parse(stateRow.state_json);
+	delete legacyState.tokenAccounting;
+	legacyState.goalStatus = "paused";
+	db.prepare("UPDATE pibo_ralph_jobs SET enabled = 0, state_json = ? WHERE id = ?").run(JSON.stringify(legacyState), seededJob.id);
+	const accountingRow = db.prepare("SELECT accounting_json FROM pibo_ralph_runs WHERE id = ?").get(seededRun.run.id);
+	const legacyRunAccounting = JSON.parse(accountingRow.accounting_json);
+	delete legacyRunAccounting.tokenAccounting;
+	db.prepare("UPDATE pibo_ralph_runs SET accounting_json = ? WHERE id = ?").run(JSON.stringify(legacyRunAccounting), seededRun.run.id);
+	db.close();
+
+	const store = new PiboLoopStore({ path });
+	assert.deepEqual(store.getJob(seededJob.id)?.state.tokenAccounting, { version: 1, basis: "total" });
+	assert.equal(store.getJob(seededJob.id)?.state.tokensUsed, 10);
+	assert.deepEqual(store.getRun(seededRun.run.id)?.accounting?.tokenAccounting, { version: 1, basis: "total" });
+	assert.equal(store.getRun(seededRun.run.id)?.accounting?.tokensUsed, 10);
+
+	const listeners = new Set();
+	const sessions = new Map();
+	let prompt = "";
+	const context = {
+		async emit(event) {
+			if (event.type === "message") {
+				prompt = event.text;
+				queueMicrotask(() => {
+					for (const listener of listeners) {
+						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, inputTokens: 12, outputTokens: 8, cacheReadTokens: 3, cacheWriteTokens: 2, totalTokens: 25 });
+						listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: "legacy progress" });
+						listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
+					}
+				});
+			}
+			return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} };
+		},
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		createSession(input) { const session = createPiboSession({ ...input, id: "ps_legacy_accounting" }); sessions.set(session.id, session); return session; },
+		getSession(id) { return sessions.get(id); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+		getWebApps() { return []; },
+		getLoopStopConditionDefinitions() { return createBuiltInLoopStopConditions(); },
+	};
+	let service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), intervalMs: 10, runTimeoutMs: 5_000 });
+	try {
+		service.start();
+		const run = await service.startJob(seededJob.id);
+		assert.ok(run);
+		assert.deepEqual(run.accounting?.tokenAccounting, { version: 1, basis: "total" });
+		await waitFor(() => store.getJob(seededJob.id)?.state.completedIterations === 2);
+		const saved = store.getJob(seededJob.id);
+		const latestRun = store.listRuns({ jobId: seededJob.id })[0];
+		assert.equal(saved?.state.tokensUsed, 35);
+		assert.deepEqual(saved?.state.tokenAccounting, { version: 1, basis: "total" });
+		assert.equal(latestRun.accounting?.tokensUsed, 25);
+		assert.deepEqual(latestRun.accounting?.tokenAccounting, { version: 1, basis: "total" });
+		assert.match(prompt, /Accounting basis: total tokens \(version 1\)/);
+		assert.match(prompt, /Legacy compatibility: cache-read and cache-write tokens remain included/);
+		service.stop();
+		service = undefined;
+		const reloaded = new PiboLoopStore({ path });
+		try {
+			assert.equal(reloaded.getJob(seededJob.id)?.state.tokensUsed, 35);
+			assert.deepEqual(reloaded.getJob(seededJob.id)?.state.tokenAccounting, { version: 1, basis: "total" });
+			assert.deepEqual(reloaded.listRuns({ jobId: seededJob.id })[0]?.accounting?.tokenAccounting, { version: 1, basis: "total" });
+		} finally {
+			reloaded.close();
+		}
+	} finally {
+		service?.stop();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("Goal accounting sums and persists uncached usage reported after update_goal completes the active run", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-completion-usage-"));
-	const store = new PiboLoopStore({ path: ":memory:" });
+	const path = join(dir, "loops.sqlite");
+	const store = new PiboLoopStore({ path });
 	const listeners = new Set();
 	const sessions = new Map();
 	let jobId;
@@ -44,7 +130,8 @@ test("Goal accounting includes usage reported after update_goal completes the ac
 				queueMicrotask(() => {
 					store.updateGoalStatus(jobId, "complete");
 					for (const listener of listeners) {
-						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, totalTokens: 7 });
+						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, inputTokens: 4, outputTokens: 3, cacheReadTokens: 5, cacheWriteTokens: 2, totalTokens: 14 });
+						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, inputTokens: 2, outputTokens: 1, cacheReadTokens: 4, cacheWriteTokens: 1, totalTokens: 8 });
 						listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: "done" });
 						listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
 					}
@@ -69,7 +156,19 @@ test("Goal accounting includes usage reported after update_goal completes the ac
 		await waitFor(() => store.getJob(job.id)?.state.completedIterations === 1);
 		const saved = store.getJob(job.id);
 		assert.equal(saved?.state.goalStatus, "complete");
-		assert.equal(saved?.state.tokensUsed, 7);
+		assert.deepEqual(saved?.state.tokenAccounting, { version: 1, basis: "uncached" });
+		assert.equal(saved?.state.tokensUsed, 10);
+		assert.deepEqual(store.listRuns({ jobId: job.id })[0]?.accounting?.tokenAccounting, { version: 1, basis: "uncached" });
+		assert.equal(store.listRuns({ jobId: job.id })[0]?.accounting?.tokensUsed, 10);
+		const reloaded = new PiboLoopStore({ path });
+		try {
+			assert.equal(reloaded.getJob(job.id)?.state.tokensUsed, 10);
+			assert.deepEqual(reloaded.getJob(job.id)?.state.tokenAccounting, { version: 1, basis: "uncached" });
+			assert.equal(reloaded.listRuns({ jobId: job.id })[0]?.accounting?.tokensUsed, 10);
+			assert.deepEqual(reloaded.listRuns({ jobId: job.id })[0]?.accounting?.tokenAccounting, { version: 1, basis: "uncached" });
+		} finally {
+			reloaded.close();
+		}
 	} finally {
 		service.stop();
 		await rm(dir, { recursive: true, force: true });
@@ -88,7 +187,7 @@ test("Goal records a final turn that exceeds remaining soft budget", async () =>
 				prompt = event.text;
 				queueMicrotask(() => {
 					for (const listener of listeners) {
-						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, totalTokens: 50 });
+						listener({ type: "assistant_usage", piboSessionId: event.piboSessionId, eventId: event.id, inputTokens: 40, outputTokens: 10, cacheReadTokens: 5, cacheWriteTokens: 4, totalTokens: 59 });
 						listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: "final progress" });
 						listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
 					}
@@ -117,7 +216,8 @@ test("Goal records a final turn that exceeds remaining soft budget", async () =>
 		assert.equal(saved.state.goalStatus, "budget_limited");
 		assert.equal(saved.state.tokensUsed, 130);
 		assert.equal(saved.enabled, false);
-		assert.match(prompt, /Reported tokens remaining before this turn: 20/);
+		assert.match(prompt, /Reported uncached tokens remaining before this turn: 20/);
+		assert.deepEqual(completedRun.accounting.tokenAccounting, { version: 1, basis: "uncached" });
 		assert.equal(completedRun.accounting.tokensUsedBefore, 80);
 		assert.equal(completedRun.accounting.remainingTokensBefore, 20);
 		assert.equal(completedRun.accounting.tokensUsed, 50);

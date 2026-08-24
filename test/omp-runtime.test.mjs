@@ -1,22 +1,27 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { RuntimeRoutedSession } from "../dist/agent-runtime/routed-session.js";
+import { OMP_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/omp/adapter.js";
 import { OmpRpcClient } from "../dist/agent-runtimes/omp/client.js";
 import { OmpHostToolBridge } from "../dist/agent-runtimes/omp/host-tools.js";
 import { OmpRpcTurnController } from "../dist/agent-runtimes/omp/turn.js";
 import { OmpThreadController, readOmpAvailableCommands } from "../dist/agent-runtimes/omp/thread.js";
 import { parseOmpRuntimeConfig } from "../dist/agent-runtimes/omp/config.js";
 import { setOmpModel, readOmpModelCatalog } from "../dist/agent-runtimes/omp/models.js";
+import { PiboLoopService } from "../dist/loops/service.js";
+import { PiboLoopStore } from "../dist/loops/store.js";
+import { createBuiltInLoopStopConditions } from "../dist/loops/stopping.js";
+import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { createPiboSession } from "../dist/sessions/store.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/omp-rpc-fake.mjs", import.meta.url));
 
 async function testRoot(t, label) {
-	const root = await mkdtemp(join(tmpdir(), `pibo-omp-${label}-`));
-	await chmod(fixturePath, 0o755);
-	return root;
+	return await mkdtemp(join(tmpdir(), `pibo-omp-${label}-`));
 }
 
 function registerCleanup(t, root, client) {
@@ -27,10 +32,10 @@ function registerCleanup(t, root, client) {
 	});
 }
 
-async function startClient(t, label) {
+async function startClient(t, label, env = {}) {
 	const root = await testRoot(t, label);
 	const client = new OmpRpcClient({ startupTimeoutMs: 10_000, requestTimeoutMs: 30_000 });
-	await client.connect([process.execPath, fixturePath], { cwd: root, env: { ...process.env, PI_CODING_AGENT_DIR: join(root, "agent") } });
+	await client.connect([process.execPath, fixturePath], { cwd: root, env: { ...process.env, ...env, PI_CODING_AGENT_DIR: join(root, "agent") } });
 	registerCleanup(t, root, client);
 	return client;
 }
@@ -128,7 +133,139 @@ test("OMP turn controller streams a real prompt and resolves on terminal agent_e
 		args: { path: "README.md" },
 		intent: "Reviewing project documentation",
 	});
+	assert.deepEqual(events.find((event) => event.type === "usage")?.usage, {
+		inputTokens: 9,
+		outputTokens: 7,
+		cacheReadTokens: 4,
+		cacheWriteTokens: 2,
+		reasoningTokens: 3,
+		totalTokens: 22,
+	});
 	turn.dispose();
+});
+
+test("OMP usage aggregates canonical orchestration buckets and reconstructs a missing total", () => {
+	assert.deepEqual(OmpRpcTurnController.usageFromMessage({
+		role: "assistant",
+		usage: {
+			input: 7,
+			output: 4,
+			cacheRead: 3,
+			cacheWrite: 2,
+			reasoningTokens: 3,
+			orchestration: { input: 2, cacheRead: 1, output: 3 },
+		},
+	}), {
+		inputTokens: 9,
+		outputTokens: 7,
+		cacheReadTokens: 4,
+		cacheWriteTokens: 2,
+		reasoningTokens: 3,
+		totalTokens: 22,
+	});
+	assert.equal(OmpRpcTurnController.usageFromMessage({
+		role: "assistant",
+		usage: { input: 1, output: 1, totalTokens: 9 },
+	})?.totalTokens, 9);
+	assert.equal(OmpRpcTurnController.usageFromMessage({
+		role: "assistant",
+		usage: { inputTokens: 7, outputTokens: 4, cachedInputTokens: 3, cacheCreationInputTokens: 2, reasoning: 3 },
+	}), undefined);
+});
+
+async function assertRawOmpGoalAccounting(t, label, env = {}) {
+	const client = await startClient(t, `goal-accounting-${label}`, env);
+	const dir = await mkdtemp(join(tmpdir(), `pibo-omp-goal-accounting-${label}-`));
+	const storePath = join(dir, "loops.sqlite");
+	const store = new PiboLoopStore({ path: storePath });
+	const runtimeListeners = new Set();
+	const outputListeners = new Set();
+	const outputEvents = [];
+	const sessions = new Map();
+	const turn = new OmpRpcTurnController(client, (event) => {
+		for (const listener of runtimeListeners) listener(event);
+	});
+	const runtimeSession = {
+		adapterId: "orp",
+		runtimeInstanceId: "omp-goal-test",
+		cwd: dir,
+		capabilities: OMP_RUNTIME_CAPABILITIES,
+		getBinding() { return { piboSessionId: "ps_omp_goal", runtimeInstanceId: "omp-goal-test", adapterId: "orp", protocolVersion: "2", adapterVersion: "test", locator: { kind: "adapter-resolved", value: "fake-session-1" }, state: "bound" }; },
+		subscribe(listener) { runtimeListeners.add(listener); return () => runtimeListeners.delete(listener); },
+		prompt(input) { return turn.prompt(input.text); },
+		abort() { return turn.interrupt(); },
+		async dispose() { turn.dispose(); },
+		getStatus() { return { streaming: turn.streaming, enabledTools: [], cwd: dir }; },
+	};
+	let routed;
+	const context = {
+		async emit(event) {
+			if (event.type !== "message" || !routed) throw new Error(`Unexpected test event: ${event.type}`);
+			return routed.enqueueMessage(event);
+		},
+		subscribe(listener) { outputListeners.add(listener); return () => outputListeners.delete(listener); },
+		createSession(input) {
+			const session = createPiboSession({ ...input, id: "ps_omp_goal" });
+			sessions.set(session.id, session);
+			routed = new RuntimeRoutedSession(session.id, runtimeSession, (event) => {
+				outputEvents.push(event);
+				for (const listener of outputListeners) listener(event);
+			}, new PiboPluginRegistry());
+			return session;
+		},
+		getSession(id) { return sessions.get(id); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+		getWebApps() { return []; },
+		getLoopStopConditionDefinitions() { return createBuiltInLoopStopConditions(); },
+	};
+	let service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), intervalMs: 10, runTimeoutMs: 5_000 });
+	try {
+		service.start();
+		const job = store.createJob({ mode: "goal", target: { kind: "default-chat" }, profile: "base", prompt: "Account the OMP response.", maxIterations: 1, tokenBudget: 100 });
+		assert.deepEqual(job.state.tokenAccounting, { version: 1, basis: "uncached" });
+		const run = await service.startJob(job.id);
+		assert.ok(run);
+		assert.deepEqual(run.accounting?.tokenAccounting, { version: 1, basis: "uncached" });
+		await waitFor(() => store.getJob(job.id)?.state.completedIterations === 1);
+		const usage = outputEvents.find((event) => event.type === "assistant_usage");
+		assert.deepEqual(usage && {
+			inputTokens: usage.inputTokens,
+			outputTokens: usage.outputTokens,
+			cacheReadTokens: usage.cacheReadTokens,
+			cacheWriteTokens: usage.cacheWriteTokens,
+			reasoningTokens: usage.reasoningTokens,
+			totalTokens: usage.totalTokens,
+		}, { inputTokens: 9, outputTokens: 7, cacheReadTokens: 4, cacheWriteTokens: 2, reasoningTokens: 3, totalTokens: 22 });
+		assert.equal(store.getJob(job.id)?.state.tokensUsed, 16);
+		assert.equal(store.listRuns({ jobId: job.id })[0]?.accounting?.tokensUsed, 16);
+		service.stop();
+		service = undefined;
+		await routed?.dispose();
+		routed = undefined;
+		const reloaded = new PiboLoopStore({ path: storePath });
+		try {
+			assert.equal(reloaded.getJob(job.id)?.state.tokensUsed, 16);
+			assert.deepEqual(reloaded.getJob(job.id)?.state.tokenAccounting, { version: 1, basis: "uncached" });
+			assert.equal(reloaded.listRuns({ jobId: job.id })[0]?.accounting?.tokensUsed, 16);
+			assert.deepEqual(reloaded.listRuns({ jobId: job.id })[0]?.accounting?.tokenAccounting, { version: 1, basis: "uncached" });
+		} finally {
+			reloaded.close();
+		}
+	} finally {
+		service?.stop();
+		await routed?.dispose();
+		await rm(dir, { recursive: true, force: true });
+	}
+}
+
+test("raw OMP usage persists uncached Goal consumption through routed output", async (t) => {
+	await t.test("uses the provider-reported total", async (t) => {
+		await assertRawOmpGoalAccounting(t, "reported-total");
+	});
+	await t.test("reconstructs a missing total from top-level and orchestration buckets", async (t) => {
+		await assertRawOmpGoalAccounting(t, "fallback-total", { OMP_FAKE_OMIT_USAGE_TOTAL: "1" });
+	});
 });
 
 test("OMP turn controller abort interrupts a streaming turn", async (t) => {
@@ -246,3 +383,11 @@ test("OMP client sends set_fast_mode and set_thinking_level wire frames", async 
 	// would have replied with an error and these requests would have thrown.
 	assert.ok(true);
 });
+
+async function waitFor(predicate, timeoutMs = 3_000) {
+	const started = Date.now();
+	while (!predicate()) {
+		if (Date.now() - started > timeoutMs) throw new Error("Timed out waiting for OMP Goal accounting");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+}

@@ -74,13 +74,17 @@ The CLI MUST use a defined config lookup order, MUST merge existing MCP server c
 
 #### Current
 
-`findConfigPath`, `getPreferredConfigPath`, `ensureConfigExists`, and `printConfigPaths` implement lookup order: explicit `--config`, `MCP_CONFIG_PATH`, `./mcp_servers.json`, `~/.mcp_servers.json`, and `~/.config/mcp/mcp_servers.json`. `loadConfig` reads all existing files in that order and additively merges `mcpServers`; when the same server name appears more than once, the more specific earlier path wins. Config mutation commands still edit exactly one file selected by `findConfigPath`/`ensureConfigExists`.
+`findConfigPath`, `getPreferredConfigPath`, `ensureConfigExists`, and `printConfigPaths` implement lookup order: explicit `--config`, `MCP_CONFIG_PATH`, `./mcp_servers.json`, `~/mcp_servers.json`, `~/.mcp_servers.json`, and `~/.config/mcp/mcp_servers.json`. `loadConfig` reads all existing files in that order and additively merges `mcpServers`; when the same server name appears more than once, the more specific earlier path wins. Config mutation commands still edit exactly one file selected by `findConfigPath`/`ensureConfigExists`.
 
 #### Acceptance
 
 - An explicit `--config` path takes precedence over all other paths.
 - `MCP_CONFIG_PATH` takes precedence over default paths when no explicit path is supplied.
 - Read operations merge all existing lookup paths, so a local empty `mcp_servers.json` does not hide globally configured servers.
+- `pibo mcp info` without a server reports names from the complete merged lookup order rather than stopping at the first existing file.
+- A config created as `~/mcp_servers.json` remains discoverable when Pibo later runs from another working directory.
+- `~/mcp_servers.json` takes precedence over `~/.mcp_servers.json`, which takes precedence over `~/.config/mcp/mcp_servers.json`.
+- Home-derived lookup paths are added only when platform home discovery returns a non-empty absolute path; empty or relative values do not create cwd-relative fake home paths.
 - A server entry in a more specific path overrides same-named entries in less specific paths.
 - `pibo mcp info <unknown-server>` reports merged available servers and per-path discovered server names.
 - `pibo mcp config paths` shows the lookup order.
@@ -94,6 +98,20 @@ The CLI MUST use a defined config lookup order, MUST merge existing MCP server c
 - AND the current project has an empty `mcp_servers.json`
 - WHEN an operator runs `pibo mcp info unknown`
 - THEN Pibo reports `unity` in the merged available servers and lists both the local and global config paths.
+
+#### Scenario: Home config remains discoverable outside the home directory
+
+- GIVEN `~/mcp_servers.json` defines server `home-only`
+- AND Pibo runs from a different working directory with an empty local config
+- WHEN an operator runs `pibo mcp info` without a server
+- THEN the missing-argument error reports `home-only` from the merged config.
+
+#### Scenario: Empty home environment does not create relative lookup paths
+
+- GIVEN platform home discovery returns an empty or relative value
+- WHEN Pibo computes default MCP config paths
+- THEN it keeps the absolute current-directory path
+- AND it does not add relative home-derived paths.
 
 #### Scenario: Initialize in project directory
 
@@ -349,7 +367,7 @@ The runtime MUST inject an MCP context file only when the active profile selects
 | Requirement | Scenario / Story | Code basis | Status |
 |---|---|---|---|
 | REQ-001 MCP CLI discovery is progressive | Agent discovers MCP config | `src/mcp/index.ts`, `test/mcp-cli.test.mjs` | Implemented |
-| REQ-002 MCP config lookup and initialization are deterministic | Initialize in project directory | `src/mcp/config.ts`, `src/mcp/config-command.ts`, `test/mcp-cli.test.mjs` | Implemented |
+| REQ-002 MCP config lookup and initialization are deterministic | Home config remains discoverable outside the home directory; initialize in project directory | `src/mcp/config.ts`, `src/mcp/config-command.ts`, `test/mcp-config-merge.test.mjs`, `test/mcp-cli.test.mjs` | Implemented |
 | REQ-003 Server configs are validated before use | Invalid mixed transport | `src/mcp/config.ts`, `src/mcp/config-command.ts` | Implemented |
 | REQ-004 Environment references are resolved explicitly | Missing token | `src/mcp/config.ts` | Implemented |
 | REQ-005 Tool visibility follows allow and deny filters | Deny overrides allow | `src/mcp/config.ts`, `src/mcp/client.ts` | Implemented |

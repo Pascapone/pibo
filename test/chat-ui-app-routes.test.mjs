@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 async function runAppRoutesScenario() {
 	const script = `
 		import assert from "node:assert/strict";
-		const { chatNavigationRequest, chatRouteFromLocation } = await import("./src/apps/chat-ui/src/app-routes.ts");
+		const { chatNavigationRequest, chatRouteFromLocation, navigateToChatRoute, stringifyChatSearch } = await import("./src/apps/chat-ui/src/app-routes.ts");
 
 		assert.deepEqual(
 			chatRouteFromLocation("/apps/chat/rooms/room%201/sessions/ps_1", { view: "workflow" }),
@@ -89,6 +89,49 @@ async function runAppRoutesScenario() {
 			chatNavigationRequest({ area: "sessions" }, false, "terminal"),
 			{ to: "/", search: { view: "terminal" }, replace: false },
 		);
+
+		const navigationCalls = [];
+		navigateToChatRoute(
+			async (options) => { navigationCalls.push(options); },
+			{ area: "sessions", roomId: "room-1", piboSessionId: "ps_1" },
+			true,
+			"terminal",
+			true,
+			true,
+		);
+		assert.equal(navigationCalls.length, 1);
+		const [{ search, ...navigation }] = navigationCalls;
+		assert.deepEqual(navigation, {
+			to: "/rooms/$roomId/sessions/$piboSessionId",
+			params: { roomId: "room-1", piboSessionId: "ps_1" },
+			replace: true,
+			hash: true,
+		});
+		assert.equal(typeof search, "function");
+		const preservedSearch = search({
+			view: "workflow",
+			profileRef: "profile:test",
+			handlerRef: "handler:test",
+			adapterRef: "adapter:test",
+			tag: ["one", "two"],
+			encoded: "a/b c",
+			empty: "",
+		});
+		assert.deepEqual(preservedSearch, {
+			view: "terminal",
+			profileRef: "profile:test",
+			handlerRef: "handler:test",
+			adapterRef: "adapter:test",
+			tag: ["one", "two"],
+			encoded: "a/b c",
+			empty: "",
+		});
+		const serializedSearch = stringifyChatSearch(preservedSearch);
+		const serializedParams = new URLSearchParams(serializedSearch);
+		assert.equal(serializedParams.get("view"), "terminal");
+		assert.deepEqual(serializedParams.getAll("tag"), ["one", "two"]);
+		assert.equal(serializedParams.get("encoded"), "a/b c");
+		assert.equal(serializedParams.get("empty"), "");
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }

@@ -586,6 +586,7 @@ export class RuntimeRoutedSession {
 					outputTokens: event.usage.outputTokens,
 					cacheReadTokens: event.usage.cacheReadTokens,
 					cacheWriteTokens: event.usage.cacheWriteTokens,
+					reasoningTokens: event.usage.reasoningTokens,
 					totalTokens: event.usage.totalTokens,
 				}));
 				return;
