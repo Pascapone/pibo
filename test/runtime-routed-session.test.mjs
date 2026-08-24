@@ -19,7 +19,13 @@ async function waitFor(predicate, timeoutMs = 1_000) {
 	}
 }
 
-function createFakeRuntimeFixture() {
+function deferred() {
+	let resolve;
+	const promise = new Promise((done) => { resolve = done; });
+	return { promise, resolve };
+}
+
+function createFakeRuntimeFixture(routerOptions = {}) {
 	const fakeDriver = createFakeAgentRuntimeDriver({
 		adapterId: "router-fake",
 		script: (input) => ({
@@ -68,6 +74,7 @@ function createFakeRuntimeFixture() {
 			persistSession: false,
 			pluginRegistry: registry,
 			sessionStore: store,
+			...routerOptions,
 		}),
 	};
 }
@@ -120,6 +127,44 @@ test("generic routed orchestration queues and correlates a non-Pi fake adapter",
 		await fixture.router.disposeAll();
 	}
 	assert.throws(() => portableTools.createDefinitions(), /disposed/);
+});
+
+test("generic routed requests remain cancellable during asynchronous message preflight", async () => {
+	const preflightStarted = deferred();
+	const releasePreflight = deferred();
+	const fixture = createFakeRuntimeFixture({
+		messagePreflight: async () => {
+			preflightStarted.resolve();
+			await releasePreflight.promise;
+			return { allowed: true };
+		},
+	});
+	const events = [];
+	fixture.router.subscribe((event) => events.push(event));
+	try {
+		const controller = new AbortController();
+		let settled = false;
+		const waiting = fixture.router.emitMessageAndWaitForReply({
+			type: "message",
+			piboSessionId: "ps_router_fake",
+			id: "fake-message-preflight-cancelled",
+			text: "cancel before prompt",
+			source: "actor",
+		}, 30_000, controller.signal).finally(() => { settled = true; });
+		await preflightStarted.promise;
+		controller.abort();
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(settled, false);
+		assert.equal(fixture.registry.requireAgentRuntimeAdapter("router-fake").sessions[0].prompts.length, 0);
+
+		releasePreflight.resolve();
+		await assert.rejects(waiting, (error) => error instanceof Error && error.name === "AbortError");
+		assert.equal(fixture.registry.requireAgentRuntimeAdapter("router-fake").sessions[0].prompts.length, 0);
+		assert.equal(events.some((event) => event.type === "message_started" && event.eventId === "fake-message-preflight-cancelled"), false);
+	} finally {
+		releasePreflight.resolve();
+		await fixture.router.disposeAll();
+	}
 });
 
 test("generic router rejects profile selections the runtime cannot deliver", async () => {

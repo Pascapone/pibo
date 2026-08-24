@@ -50,6 +50,14 @@ type RuntimeRoutedQueueItem =
 	| { kind: "message"; event: PiboMessageEvent }
 	| { kind: "compact"; event: PiboExecutionEvent };
 
+type RuntimeInFlightMessage = {
+	event: PiboMessageEvent;
+	cancelled: boolean;
+	settled: Promise<void>;
+	resolveSettled: () => void;
+	cancellation?: Promise<void>;
+};
+
 type PiboSessionOperationListener = (
 	result: PiboSessionOperationResult,
 	event: PiboExecutionEvent,
@@ -169,6 +177,7 @@ export class RuntimeRoutedSession {
 	private runtimeDisposePromise?: Promise<void>;
 	private forceDisposalStarted = false;
 	private drainPromise?: Promise<void>;
+	private inFlightMessage?: RuntimeInFlightMessage;
 	private activeMessage?: PiboMessageEvent;
 	private activeExecutionEvent?: PiboExecutionEvent;
 	private activeMessageFailed = false;
@@ -517,6 +526,26 @@ export class RuntimeRoutedSession {
 			this.notifyState();
 			return true;
 		}
+		const inFlight = this.inFlightMessage;
+		if (inFlight?.event.id === eventId) {
+			if (!inFlight.cancellation) {
+				inFlight.cancelled = true;
+				this.notifyMessagesInterrupted([inFlight.event], "message cancelled");
+				const active = this.activeMessage?.id === eventId;
+				inFlight.cancellation = (async () => {
+					try {
+						if (active) await this.runtimeSession.abort();
+						await inFlight.settled;
+					} catch (error) {
+						inFlight.cancelled = false;
+						inFlight.cancellation = undefined;
+						throw error;
+					}
+				})();
+			}
+			await inFlight.cancellation;
+			return true;
+		}
 		if (this.activeMessage?.id === eventId) {
 			this.notifyMessagesInterrupted([this.activeMessage], "message cancelled");
 			await this.runtimeSession.abort();
@@ -700,9 +729,10 @@ export class RuntimeRoutedSession {
 	}
 
 	private async processQueuedMessage(event: PiboMessageEvent): Promise<void> {
+		const inFlight = this.beginInFlightMessage(event);
 		try {
 			const preflight = await this.options.messagePreflight?.(event);
-			if (this.disposed) return;
+			if (this.disposed || inFlight.cancelled) return;
 			if (preflight && !preflight.allowed) {
 				this.emit({
 					type: "session_error",
@@ -720,6 +750,9 @@ export class RuntimeRoutedSession {
 				});
 				return;
 			}
+			this.activeMessage = event;
+			this.activeMessageFailed = false;
+			this.resetContentIndices();
 			this.emit({
 				type: "message_started",
 				piboSessionId: this.piboSessionId,
@@ -728,15 +761,13 @@ export class RuntimeRoutedSession {
 				source: event.source,
 				provenance: event.provenance,
 			});
-			this.activeMessage = event;
-			this.activeMessageFailed = false;
-			this.resetContentIndices();
+			if (inFlight.cancelled) return;
 			await this.runtimeSession.prompt({
 				text: event.text,
 				source: promptSource(event.source),
 				capabilityScope: event.capabilityScope,
 			});
-			if (this.disposed) return;
+			if (this.disposed || inFlight.cancelled) return;
 			if (!this.activeMessageFailed) {
 				this.emit({
 					type: "message_finished",
@@ -747,7 +778,7 @@ export class RuntimeRoutedSession {
 				});
 			}
 		} catch (error) {
-			if (this.disposed) return;
+			if (this.disposed || inFlight.cancelled) return;
 			if (!this.activeMessageFailed) {
 				const message = errorMessage(error);
 				this.emit({
@@ -763,7 +794,21 @@ export class RuntimeRoutedSession {
 			this.activeMessage = undefined;
 			this.activeMessageFailed = false;
 			this.resetContentIndices();
+			if (this.inFlightMessage === inFlight) this.inFlightMessage = undefined;
+			inFlight.resolveSettled();
 		}
+	}
+
+	private beginInFlightMessage(event: PiboMessageEvent): RuntimeInFlightMessage {
+		let resolveSettled: (() => void) | undefined;
+		const inFlight: RuntimeInFlightMessage = {
+			event,
+			cancelled: false,
+			settled: new Promise<void>((resolve) => { resolveSettled = resolve; }),
+			resolveSettled: () => { resolveSettled?.(); },
+		};
+		this.inFlightMessage = inFlight;
+		return inFlight;
 	}
 
 	private async processQueuedCompact(event: PiboExecutionEvent): Promise<void> {
@@ -955,7 +1000,9 @@ export class RuntimeRoutedSession {
 
 	private activeAndQueuedMessages(): PiboMessageEvent[] {
 		const messages = this.queue.flatMap((item) => item.kind === "message" ? [item.event] : []);
-		return this.activeMessage ? [this.activeMessage, ...messages] : messages;
+		const inFlight = this.inFlightMessage?.event;
+		if (this.activeMessage) return [this.activeMessage, ...messages];
+		return inFlight ? [inFlight, ...messages] : messages;
 	}
 
 	private notifyMessagesInterrupted(messages: readonly PiboMessageEvent[], reason: string): void {

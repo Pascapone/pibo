@@ -42,6 +42,43 @@ test("RoutedSession revalidates queued Loop authority before message_started", a
 	}
 });
 
+test("Pi routed requests remain cancellable during asynchronous message preflight", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-loop-preflight-cancel-"));
+	const profile = new InitialSessionContextBuilder("loop-preflight-cancel-test").createSession();
+	const runtime = await createPiboRuntime({ cwd, persistSession: false, profile });
+	let promptCalls = 0;
+	runtime.session.prompt = async () => { promptCalls += 1; };
+	let markPreflightStarted;
+	let releasePreflight;
+	const preflightStarted = new Promise((resolve) => { markPreflightStarted = resolve; });
+	const preflightGate = new Promise((resolve) => { releasePreflight = resolve; });
+	const events = [];
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const routed = new RoutedSession("ps_goal", runtime, (event) => events.push(event), registry, false, undefined, false, undefined, undefined, undefined, undefined, async () => {
+		markPreflightStarted();
+		await preflightGate;
+		return { allowed: true };
+	});
+	try {
+		routed.enqueueMessage({ type: "message", piboSessionId: "ps_goal", id: "loop_msg_preflight_cancelled", source: "service", text: "Do not prompt" });
+		await preflightStarted;
+		let settled = false;
+		const cancellation = routed.cancelMessage("loop_msg_preflight_cancelled").finally(() => { settled = true; });
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(settled, false);
+		assert.equal(promptCalls, 0);
+
+		releasePreflight();
+		assert.equal(await cancellation, true);
+		assert.equal(promptCalls, 0);
+		assert.equal(events.some((event) => event.type === "message_started" && event.eventId === "loop_msg_preflight_cancelled"), false);
+	} finally {
+		releasePreflight();
+		await routed.dispose();
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("RoutedSession contains preflight exceptions and continues draining queued messages", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-loop-preflight-error-"));
 	const profile = new InitialSessionContextBuilder("loop-preflight-error-test").createSession();

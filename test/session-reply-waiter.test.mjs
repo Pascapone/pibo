@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
+import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 
 async function withRouter(run) {
 	const router = new PiboSessionRouter({ persistSession: false });
@@ -56,29 +57,81 @@ test("session reply waiter rejects terminal session errors", async () => {
 	});
 });
 
-test("session reply waiter propagates caller cancellation and aborts the dispatched child", async () => {
+test("session reply waiter propagates caller cancellation after the child confirms targeted termination", async () => {
 	await withRouter(async (router) => {
 		const emitted = [];
+		const cancellations = [];
+		let confirmCancellation;
 		router.emit = async (event) => {
 			emitted.push(event);
-			return event.type === "message"
-				? { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source }
-				: { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: "aborted" };
+			return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source };
+		};
+		router.cancelSessionMessage = async (piboSessionId, eventId) => {
+			cancellations.push({ piboSessionId, eventId });
+			await new Promise((resolve) => { confirmCancellation = resolve; });
 		};
 		const controller = new AbortController();
+		let settled = false;
 		const waiting = router.emitMessageAndWaitForReply({
 			type: "message",
 			piboSessionId: "ps_waiter",
 			id: "message-cancelled",
 			text: "work",
 			source: "actor",
-		}, 30_000, controller.signal);
+		}, 30_000, controller.signal).finally(() => { settled = true; });
 		await new Promise((resolve) => setImmediate(resolve));
 		controller.abort();
-		await assert.rejects(waiting, (error) => error instanceof Error && error.name === "AbortError" && error.message === "Subagent request was aborted.");
 		await new Promise((resolve) => setImmediate(resolve));
 		assert.equal(emitted.some((event) => event.type === "message" && event.id === "message-cancelled"), true);
-		assert.equal(emitted.some((event) => event.type === "execution" && event.action === "abort" && event.piboSessionId === "ps_waiter"), true);
+		assert.deepEqual(cancellations, [{ piboSessionId: "ps_waiter", eventId: "message-cancelled" }]);
+		assert.equal(settled, false);
+
+		router.emitOutput({ type: "assistant_message", piboSessionId: "ps_waiter", eventId: "message-cancelled", text: "late reply" });
+		router.emitOutput({ type: "message_finished", piboSessionId: "ps_waiter", eventId: "message-cancelled" });
+		assert.equal(settled, false);
+
+		confirmCancellation();
+		await assert.rejects(waiting, (error) => error instanceof Error && error.name === "AbortError" && error.message === "Subagent request was aborted.");
+	});
+});
+
+test("session reply waiter cancels only the requested message when two requests share a child session", async () => {
+	await withRouter(async (router) => {
+		const cancellations = [];
+		router.emit = async (event) => ({ type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: event.id === "request-a" ? 0 : 1, text: event.text, source: event.source });
+		router.cancelSessionMessage = async (piboSessionId, eventId) => { cancellations.push({ piboSessionId, eventId }); };
+		const firstController = new AbortController();
+		const secondController = new AbortController();
+		const first = router.emitMessageAndWaitForReply({ type: "message", piboSessionId: "ps_shared", id: "request-a", text: "A", source: "actor" }, undefined, firstController.signal);
+		const second = router.emitMessageAndWaitForReply({ type: "message", piboSessionId: "ps_shared", id: "request-b", text: "B", source: "actor" }, undefined, secondController.signal);
+		await new Promise((resolve) => setImmediate(resolve));
+
+		secondController.abort();
+		await assert.rejects(second, (error) => error instanceof Error && error.name === "AbortError");
+		assert.deepEqual(cancellations, [{ piboSessionId: "ps_shared", eventId: "request-b" }]);
+
+		router.emitOutput({ type: "assistant_message", piboSessionId: "ps_shared", eventId: "request-a", text: "A completed" });
+		router.emitOutput({ type: "message_finished", piboSessionId: "ps_shared", eventId: "request-a" });
+		assert.equal((await first).text, "A completed");
+		assert.equal(firstController.signal.aborted, false);
+	});
+});
+
+test("session reply waiter reports failed targeted cancellation instead of confirming abort", async () => {
+	await withRouter(async (router) => {
+		router.emit = async (event) => ({ type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source });
+		router.cancelSessionMessage = async () => { throw new Error("provider abort failed"); };
+		const controller = new AbortController();
+		const waiting = router.emitMessageAndWaitForReply({ type: "message", piboSessionId: "ps_waiter", id: "request-failed-cancel", text: "work", source: "actor" }, undefined, controller.signal);
+		await new Promise((resolve) => setImmediate(resolve));
+		controller.abort();
+		await assert.rejects(waiting, (error) => (
+			error instanceof Error
+			&& error.name === "PiboRunCancellationError"
+			&& /Failed to cancel subagent request/.test(error.message)
+			&& error.cause instanceof Error
+			&& error.cause.message === "provider abort failed"
+		));
 	});
 });
 
@@ -102,23 +155,36 @@ test("session reply waiter does not dispatch an already-aborted request", async 
 	});
 });
 
-test("session reply waiter aborts the child session when its timeout expires", async () => {
+test("session reply waiter classifies timeout after the child confirms targeted termination", async () => {
 	await withRouter(async (router) => {
-		const emitted = [];
-		router.emit = async (event) => {
-			emitted.push(event);
-			return event.type === "message"
-				? { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source }
-				: { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: "aborted" };
+		const cancellations = [];
+		let confirmCancellation;
+		router.emit = async (event) => ({ type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source });
+		router.cancelSessionMessage = async (piboSessionId, eventId) => {
+			cancellations.push({ piboSessionId, eventId });
+			await new Promise((resolve) => { confirmCancellation = resolve; });
 		};
-
-		await assert.rejects(router.emitMessageAndWaitForReply({
+		let settled = false;
+		const waiting = router.emitMessageAndWaitForReply({
 			type: "message",
 			piboSessionId: "ps_waiter",
 			id: "message-3",
 			text: "work",
 			source: "actor",
-		}, 10), /Timed out waiting for assistant reply/);
-		assert.equal(emitted.some((event) => event.type === "execution" && event.action === "abort" && event.piboSessionId === "ps_waiter"), true);
+		}, 10).finally(() => { settled = true; });
+
+		const deadline = Date.now() + 1_000;
+		while (!confirmCancellation) {
+			if (Date.now() >= deadline) throw new Error("Timed out waiting for targeted child cancellation");
+			await new Promise((resolve) => setTimeout(resolve, 5));
+		}
+		assert.equal(settled, false);
+		confirmCancellation();
+		await assert.rejects(waiting, (error) => (
+			error instanceof PiboRunExecutionTimeoutError
+			&& error.timeoutPhase === "lifetime"
+			&& /Timed out waiting for assistant reply/.test(error.message)
+		));
+		assert.deepEqual(cancellations, [{ piboSessionId: "ps_waiter", eventId: "message-3" }]);
 	});
 });
