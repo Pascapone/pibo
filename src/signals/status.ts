@@ -1,14 +1,24 @@
 import type { PiboSessionSignalSnapshot, PiboSessionSignalStatus } from "./types.js";
 
+type SessionSignalStatusSource = {
+	isTreeActive: boolean;
+	localStatus?: string;
+	latestTurn?: { state: string };
+};
+
+export function resolveSessionSignalStatus(snapshot: SessionSignalStatusSource): PiboSessionSignalStatus["status"] {
+	if (snapshot.isTreeActive || snapshot.latestTurn?.state === "running") return "running";
+	if (snapshot.localStatus === "error" || snapshot.latestTurn?.state === "failed") return "error";
+	return "idle";
+}
+
 export function summarizeSessionSignalStatus(snapshot: PiboSessionSignalSnapshot): PiboSessionSignalStatus {
-	const isTurnActive = snapshot.latestTurn?.state === "running";
-	const hasError = snapshot.hasError || snapshot.hasErrorDescendant || snapshot.aggregateStatus === "error";
-	const isTreeActive = snapshot.isTreeActive || isTurnActive;
+	const isTreeActive = snapshot.isTreeActive || snapshot.latestTurn?.state === "running";
 	return {
 		piboSessionId: snapshot.piboSessionId,
 		rootPiboSessionId: snapshot.rootPiboSessionId,
 		updatedAt: snapshot.updatedAt,
-		status: isTreeActive ? "running" : hasError ? "error" : "idle",
+		status: resolveSessionSignalStatus(snapshot),
 		isTreeActive,
 	};
 }

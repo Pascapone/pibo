@@ -146,8 +146,9 @@ function sessionNodeUnreadCount(node: PiboWebSessionNode): number {
 }
 
 function acknowledgedSignalStatus(update: SignalSessionUpdate | undefined, unreadCount: number): PiboWebSessionNode["status"] | undefined {
+	if (update?.isTreeActive) return "running";
 	if (update?.status !== "error") return update?.status;
-	return unreadCount > 0 ? "error" : update.isTreeActive ? "running" : "idle";
+	return unreadCount > 0 ? "error" : "idle";
 }
 
 function signalSessionUpdate(snapshot: PiboSignalSnapshot["sessions"][string] | undefined): SignalSessionUpdate | undefined {

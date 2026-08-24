@@ -44,6 +44,7 @@ import {
   createSessionTraceViewProps,
   resolveSessionTraceModelBadge,
   resolveSessionTraceTitle,
+  sessionCanSteer,
   sessionSupportsToolIntent,
 } from "./session-trace-view-props";
 import {
@@ -409,6 +410,13 @@ export function SessionTracePane({
     onError(errorMessage(caught));
   };
 
+  const canSteer = sessionCanSteer(
+    bootstrap,
+    selectedBackendPiboSessionId,
+    selectedSessionProfile,
+    selectedSessionSignal,
+  );
+
   const handleComposerSend = async (text: string) => {
     if (composerDisabled || !selectedPiboSessionId) return;
     const sendPlan = createComposerSendPlan({
@@ -420,7 +428,7 @@ export function SessionTracePane({
       now: new Date().toISOString(),
       clientTxnId: createClientTxnId(),
     });
-    if (selectedSessionStatus === "running") {
+    if (canSteer) {
       setPendingSendPlan(sendPlan);
       return;
     }
