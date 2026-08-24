@@ -206,7 +206,7 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 							</div>
 							{draft.targetKind === "room" ? <Field label="Room"><select className={inputClass} value={draft.roomId} onChange={(event) => setDraft({ ...draft, roomId: event.target.value })}>{writableRooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}{selectedRoom && isArchivedRoom(selectedRoom) ? <option value={selectedRoom.id} disabled>{selectedRoom.name} (archived)</option> : null}</select></Field> : null}
 							<Field label="Max Iterations"><input className={inputClass} type="number" min="1" value={draft.maxIterations} onChange={(event) => setDraft({ ...draft, maxIterations: event.target.value })} placeholder="Unlimited" /></Field>
-							{draft.mode === "goal" ? <><Field label="Soft Token Budget"><input className={inputClass} type="number" min="1" value={draft.tokenBudget} onChange={(event) => setDraft({ ...draft, tokenBudget: event.target.value })} placeholder="Unbounded" /></Field><Field label="Pre-turn Token Reserve"><input className={inputClass} type="number" min="0" value={draft.tokenReserve} onChange={(event) => setDraft({ ...draft, tokenReserve: event.target.value })} placeholder="0" /></Field><div className="rounded-sm border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-500">{selectedJob && tokenAccountingBasis(selectedJob) === "total" ? "This legacy Goal keeps total-token accounting, including cache reads and writes, because its persisted counters cannot be reconstructed safely. New Goals use uncached-token accounting." : "The budget counts uncached input and output tokens; cache reads and writes are excluded. It is soft because usage arrives after each model response, so the final turn can overshoot. Pibo starts another turn only while remaining tokens exceed the reserve."}</div></> : null}
+							{draft.mode === "goal" ? <><Field label="Soft Token Budget"><input className={inputClass} type="number" min="1" value={draft.tokenBudget} onChange={(event) => setDraft({ ...draft, tokenBudget: event.target.value })} placeholder="Unbounded" /></Field><Field label="Pre-turn Token Reserve"><input className={inputClass} type="number" min="0" value={draft.tokenReserve} onChange={(event) => setDraft({ ...draft, tokenReserve: event.target.value })} placeholder="0" /></Field><GoalTokenAccountingNotice selectedJob={selectedJob} draftMode={draft.mode} /></> : null}
 							<div className="rounded-sm border border-slate-800 bg-[#101d22] px-3 py-2 text-xs text-slate-500">Target: <span className="text-slate-300">{draft.targetKind === "room" ? selectedRoomName : "Shared Chat"}</span></div>
 						</Panel>
 
@@ -304,6 +304,11 @@ function Stat({ label, value }: { label: string; value: ReactNode }) {
 
 function ErrorBox({ message }: { message: string }) {
 	return <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-100 flex items-start gap-2"><AlertTriangle size={16} className="mt-0.5 text-red-300" /> <span>{message}</span></div>;
+}
+
+export function GoalTokenAccountingNotice({ selectedJob, draftMode }: { selectedJob: PiboLoopJob | null; draftMode: PiboLoopMode }) {
+	const keepsLegacyTotal = draftMode === "goal" && selectedJob?.mode === "goal" && tokenAccountingBasis(selectedJob) === "total";
+	return <div data-pibo-goal-token-accounting={keepsLegacyTotal ? "total" : "uncached"} className="rounded-sm border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-500">{keepsLegacyTotal ? "This legacy Goal keeps total-token accounting, including cache reads and writes, because its persisted counters cannot be reconstructed safely. New Goals use uncached-token accounting." : "The budget counts uncached input and output tokens; cache reads and writes are excluded. It is soft because usage arrives after each model response, so the final turn can overshoot. Pibo starts another turn only while remaining tokens exceed the reserve."}</div>;
 }
 
 function StopConditionsEditor({ conditions, value, onChange }: { conditions: PiboLoopStopConditionInfo[]; value: string; onChange: (value: string) => void }) {

@@ -41,6 +41,7 @@ write({
 
 let streaming = false;
 const hangAfterPrompt = process.env.OMP_FAKE_HANG_AFTER_PROMPT === "1";
+const omitUsageTotal = process.env.OMP_FAKE_OMIT_USAGE_TOTAL === "1";
 let turnStarted = false;
 const emitTurn = (message) => {
 	if (streaming) return;
@@ -77,12 +78,21 @@ const emitTurn = (message) => {
 		message: { role: "assistant", content: "Hello there" },
 		assistantMessageEvent: { type: "text_end", contentIndex: 0, content: "Hello there", partial: { role: "assistant", content: "Hello there" } },
 	});
+	const usage = {
+		input: 7,
+		output: 4,
+		cacheRead: 3,
+		cacheWrite: 2,
+		reasoningTokens: 3,
+		orchestration: { input: 2, cacheRead: 1, output: 3 },
+		...(!omitUsageTotal ? { totalTokens: 22 } : {}),
+	};
 	write({
 		type: "message_end",
 		message: {
 			role: "assistant",
 			content: "Hello there",
-			usage: { input: 12, output: 8, cacheRead: 3, cacheWrite: 2, reasoning: 1, totalTokens: 25 },
+			usage,
 		},
 	});
 	write({

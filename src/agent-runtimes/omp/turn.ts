@@ -339,23 +339,39 @@ export class OmpRpcTurnController {
 			output?: unknown;
 			cacheRead?: unknown;
 			cacheWrite?: unknown;
-			reasoning?: unknown;
+			reasoningTokens?: unknown;
+			orchestration?: unknown;
 			totalTokens?: unknown;
 		};
-		const input = tokenCount(record.input);
-		const output = tokenCount(record.output);
-		const cacheRead = tokenCount(record.cacheRead);
+		const orchestration = isRecord(record.orchestration) ? record.orchestration : undefined;
+		const topLevelInput = tokenCount(record.input);
+		const topLevelOutput = tokenCount(record.output);
+		const topLevelCacheRead = tokenCount(record.cacheRead);
 		const cacheWrite = tokenCount(record.cacheWrite);
-		const reasoning = tokenCount(record.reasoning);
+		const orchestrationInput = tokenCount(orchestration?.input);
+		const orchestrationOutput = tokenCount(orchestration?.output);
+		const orchestrationCacheRead = tokenCount(orchestration?.cacheRead);
+		const reasoning = tokenCount(record.reasoningTokens);
 		const reportedTotal = tokenCount(record.totalTokens);
-		if (input === undefined && output === undefined && cacheRead === undefined && cacheWrite === undefined && reasoning === undefined && reportedTotal === undefined) return undefined;
+		if (topLevelInput === undefined
+			&& topLevelOutput === undefined
+			&& topLevelCacheRead === undefined
+			&& cacheWrite === undefined
+			&& orchestrationInput === undefined
+			&& orchestrationOutput === undefined
+			&& orchestrationCacheRead === undefined
+			&& reasoning === undefined
+			&& reportedTotal === undefined) return undefined;
+		const input = (topLevelInput ?? 0) + (orchestrationInput ?? 0);
+		const output = (topLevelOutput ?? 0) + (orchestrationOutput ?? 0);
+		const cacheRead = (topLevelCacheRead ?? 0) + (orchestrationCacheRead ?? 0);
 		return {
-			inputTokens: input ?? 0,
-			outputTokens: output ?? 0,
-			cacheReadTokens: cacheRead ?? 0,
+			inputTokens: input,
+			outputTokens: output,
+			cacheReadTokens: cacheRead,
 			cacheWriteTokens: cacheWrite ?? 0,
 			reasoningTokens: reasoning ?? 0,
-			totalTokens: reportedTotal ?? (input ?? 0) + (output ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0),
+			totalTokens: reportedTotal ?? input + output + cacheRead + (cacheWrite ?? 0),
 		};
 	}
 }

@@ -52,7 +52,7 @@ pibo loop stop <job-id>
 pibo loop cancel <job-id>
 \`\`\`
 
-Token budgets count uncached input and output usage reported by completed assistant model messages. Cache-read and cache-write tokens are excluded. One request can overshoot because usage is known after the response returns.
+New Goals persist token-accounting version \`1\` with basis \`uncached\`: their budgets count uncached input and output usage reported by completed assistant model messages, while cache-read and cache-write tokens remain telemetry and do not consume the budget. Legacy persisted Goal jobs and runs without an accounting descriptor remain on version \`1\` basis \`total\`, including cache reads and writes, so their existing counters are neither relabeled nor numerically reconstructed without source data. Inspect \`pibo loop list --all --json\` and \`pibo loop runs --job <job-id> --json\` for the persisted basis. Both bases are soft because usage arrives after the response, so one request can overshoot.
 `,
 };
 

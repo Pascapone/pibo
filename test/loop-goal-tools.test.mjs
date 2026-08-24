@@ -14,6 +14,7 @@ import { getEffectiveLoopStopPolicy } from "../dist/loops/stopping.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
 import { createPiboGoalToolDefinitions } from "../dist/loops/tools.js";
 import { listLoopJobTemplates } from "../dist/loops/templates.js";
+import { LOOP_GUIDE } from "../dist/tools/guides.js";
 
 function toolsByName(store, context = { piboSessionId: "ps_goal", piboRoomId: "room_goal", profileName: "goal-agent" }) {
 	return Object.fromEntries(createPiboGoalToolDefinitions(context, { store }).map((tool) => [tool.name, tool]));
@@ -138,6 +139,13 @@ test("Loop CLI identifies new uncached and legacy total accounting", () => {
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
+});
+
+test("public Loop guide distinguishes new uncached Goals from legacy total accounting", () => {
+	assert.match(LOOP_GUIDE.content, /New Goals persist token-accounting version `1` with basis `uncached`/);
+	assert.match(LOOP_GUIDE.content, /cache-read and cache-write tokens remain telemetry and do not consume the budget/);
+	assert.match(LOOP_GUIDE.content, /Legacy persisted Goal jobs and runs without an accounting descriptor remain on version `1` basis `total`/);
+	assert.match(LOOP_GUIDE.content, /existing counters are neither relabeled nor numerically reconstructed without source data/);
 });
 
 test("token budgets are limited to Goal mode", () => {

@@ -32,10 +32,10 @@ function registerCleanup(t, root, client) {
 	});
 }
 
-async function startClient(t, label) {
+async function startClient(t, label, env = {}) {
 	const root = await testRoot(t, label);
 	const client = new OmpRpcClient({ startupTimeoutMs: 10_000, requestTimeoutMs: 30_000 });
-	await client.connect([process.execPath, fixturePath], { cwd: root, env: { ...process.env, PI_CODING_AGENT_DIR: join(root, "agent") } });
+	await client.connect([process.execPath, fixturePath], { cwd: root, env: { ...process.env, ...env, PI_CODING_AGENT_DIR: join(root, "agent") } });
 	registerCleanup(t, root, client);
 	return client;
 }
@@ -134,37 +134,48 @@ test("OMP turn controller streams a real prompt and resolves on terminal agent_e
 		intent: "Reviewing project documentation",
 	});
 	assert.deepEqual(events.find((event) => event.type === "usage")?.usage, {
-		inputTokens: 12,
-		outputTokens: 8,
-		cacheReadTokens: 3,
+		inputTokens: 9,
+		outputTokens: 7,
+		cacheReadTokens: 4,
 		cacheWriteTokens: 2,
-		reasoningTokens: 1,
-		totalTokens: 25,
+		reasoningTokens: 3,
+		totalTokens: 22,
 	});
 	turn.dispose();
 });
 
-test("OMP usage reconstructs a missing total from every canonical token bucket", () => {
+test("OMP usage aggregates canonical orchestration buckets and reconstructs a missing total", () => {
 	assert.deepEqual(OmpRpcTurnController.usageFromMessage({
 		role: "assistant",
-		usage: { input: 12, output: 8, cacheRead: 3, cacheWrite: 2, reasoning: 1 },
+		usage: {
+			input: 7,
+			output: 4,
+			cacheRead: 3,
+			cacheWrite: 2,
+			reasoningTokens: 3,
+			orchestration: { input: 2, cacheRead: 1, output: 3 },
+		},
 	}), {
-		inputTokens: 12,
-		outputTokens: 8,
-		cacheReadTokens: 3,
+		inputTokens: 9,
+		outputTokens: 7,
+		cacheReadTokens: 4,
 		cacheWriteTokens: 2,
-		reasoningTokens: 1,
-		totalTokens: 25,
+		reasoningTokens: 3,
+		totalTokens: 22,
 	});
 	assert.equal(OmpRpcTurnController.usageFromMessage({
 		role: "assistant",
-		usage: { inputTokens: 12, outputTokens: 8, cachedInputTokens: 3, cacheCreationInputTokens: 2 },
+		usage: { input: 1, output: 1, totalTokens: 9 },
+	})?.totalTokens, 9);
+	assert.equal(OmpRpcTurnController.usageFromMessage({
+		role: "assistant",
+		usage: { inputTokens: 7, outputTokens: 4, cachedInputTokens: 3, cacheCreationInputTokens: 2, reasoning: 3 },
 	}), undefined);
 });
 
-test("raw OMP usage persists uncached Goal consumption through routed output", async (t) => {
-	const client = await startClient(t, "goal-accounting");
-	const dir = await mkdtemp(join(tmpdir(), "pibo-omp-goal-accounting-"));
+async function assertRawOmpGoalAccounting(t, label, env = {}) {
+	const client = await startClient(t, `goal-accounting-${label}`, env);
+	const dir = await mkdtemp(join(tmpdir(), `pibo-omp-goal-accounting-${label}-`));
 	const storePath = join(dir, "loops.sqlite");
 	const store = new PiboLoopStore({ path: storePath });
 	const runtimeListeners = new Set();
@@ -223,19 +234,20 @@ test("raw OMP usage persists uncached Goal consumption through routed output", a
 			outputTokens: usage.outputTokens,
 			cacheReadTokens: usage.cacheReadTokens,
 			cacheWriteTokens: usage.cacheWriteTokens,
+			reasoningTokens: usage.reasoningTokens,
 			totalTokens: usage.totalTokens,
-		}, { inputTokens: 12, outputTokens: 8, cacheReadTokens: 3, cacheWriteTokens: 2, totalTokens: 25 });
-		assert.equal(store.getJob(job.id)?.state.tokensUsed, 20);
-		assert.equal(store.listRuns({ jobId: job.id })[0]?.accounting?.tokensUsed, 20);
+		}, { inputTokens: 9, outputTokens: 7, cacheReadTokens: 4, cacheWriteTokens: 2, reasoningTokens: 3, totalTokens: 22 });
+		assert.equal(store.getJob(job.id)?.state.tokensUsed, 16);
+		assert.equal(store.listRuns({ jobId: job.id })[0]?.accounting?.tokensUsed, 16);
 		service.stop();
 		service = undefined;
 		await routed?.dispose();
 		routed = undefined;
 		const reloaded = new PiboLoopStore({ path: storePath });
 		try {
-			assert.equal(reloaded.getJob(job.id)?.state.tokensUsed, 20);
+			assert.equal(reloaded.getJob(job.id)?.state.tokensUsed, 16);
 			assert.deepEqual(reloaded.getJob(job.id)?.state.tokenAccounting, { version: 1, basis: "uncached" });
-			assert.equal(reloaded.listRuns({ jobId: job.id })[0]?.accounting?.tokensUsed, 20);
+			assert.equal(reloaded.listRuns({ jobId: job.id })[0]?.accounting?.tokensUsed, 16);
 			assert.deepEqual(reloaded.listRuns({ jobId: job.id })[0]?.accounting?.tokenAccounting, { version: 1, basis: "uncached" });
 		} finally {
 			reloaded.close();
@@ -245,6 +257,15 @@ test("raw OMP usage persists uncached Goal consumption through routed output", a
 		await routed?.dispose();
 		await rm(dir, { recursive: true, force: true });
 	}
+}
+
+test("raw OMP usage persists uncached Goal consumption through routed output", async (t) => {
+	await t.test("uses the provider-reported total", async (t) => {
+		await assertRawOmpGoalAccounting(t, "reported-total");
+	});
+	await t.test("reconstructs a missing total from top-level and orchestration buckets", async (t) => {
+		await assertRawOmpGoalAccounting(t, "fallback-total", { OMP_FAKE_OMIT_USAGE_TOTAL: "1" });
+	});
 });
 
 test("OMP turn controller abort interrupts a streaming turn", async (t) => {
