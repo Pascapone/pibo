@@ -882,6 +882,91 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 	}
 });
 
+test("parent abort reports rejected child cancellation instead of silently succeeding", async () => {
+	const childDriver = createFakeAgentRuntimeDriver({
+		adapterId: "subagent-parent-abort-rejected-child",
+		script: { waitForAbort: true },
+	});
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: "test.subagent-parent-abort-rejected-child",
+				register(api) {
+					api.registerAgentRuntimeDriver(childDriver);
+					api.registerAgentRuntimeInstance({ id: "subagent-parent-abort-rejected-child", adapterId: "subagent-parent-abort-rejected-child" });
+					api.registerProfile({
+						name: "subagent-parent-abort-rejected-parent",
+						create() {
+							return new InitialSessionContextBuilder("subagent-parent-abort-rejected-parent")
+								.withAgentRuntime("pi")
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.addSubagent({ name: "worker", targetProfile: "subagent-parent-abort-rejected-child-profile" })
+								.createSession();
+						},
+					});
+					api.registerProfile({
+						name: "subagent-parent-abort-rejected-child-profile",
+						create() {
+							return new InitialSessionContextBuilder("subagent-parent-abort-rejected-child-profile")
+								.withAgentRuntime("subagent-parent-abort-rejected-child")
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.createSession();
+						},
+					});
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_abort_rejected_parent",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "subagent-parent-abort-rejected-parent",
+		runtimeBinding: { piboSessionId: "ps_abort_rejected_parent", runtimeInstanceId: "pi", adapterId: "pi", state: "unbound" },
+	});
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	let restoreAbort;
+	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_abort_rejected_parent", action: "status" });
+		const runtime = router.sessions.get("ps_abort_rejected_parent").runtime;
+		const tool = runtime.session.getToolDefinition("pibo_agents_send_message");
+		const execution = tool.execute("subagent-rejected-parent-abort-tool", { name: "worker", message: "hold", threadKey: "hold" });
+		const executionRejection = assert.rejects(execution, (error) => error instanceof Error && error.name === "PiboRunCancellationError");
+		const childAdapter = registry.requireAgentRuntimeAdapter("subagent-parent-abort-rejected-child");
+		await waitForCondition(
+			() => childAdapter.sessions[0]?.getStatus().streaming === true,
+			"Timed out waiting for active child before rejected parent abort",
+		);
+		const childSession = childAdapter.sessions[0];
+		const originalAbort = childSession.abort.bind(childSession);
+		restoreAbort = () => { childSession.abort = originalAbort; };
+		childSession.abort = async () => {
+			childSession.abortCalls += 1;
+			throw new Error("child adapter abort rejected");
+		};
+
+		await assert.rejects(
+			router.emit({ type: "execution", piboSessionId: "ps_abort_rejected_parent", action: "abort" }),
+			/Failed to cancel active subagent requests/,
+		);
+		await executionRejection;
+		assert.equal(childSession.getStatus().streaming, true);
+
+		restoreAbort();
+		restoreAbort = undefined;
+		await childSession.abort();
+	} finally {
+		restoreAbort?.();
+		await router.disposeAll();
+	}
+});
+
 test("cancelling one yielded request does not abort another request in the same persistent child session", async () => {
 	const harness = createYieldedAgentHarness({
 		adapterId: "shared-request-cancellation",
@@ -921,6 +1006,51 @@ test("cancelling one yielded request does not abort another request in the same 
 		assert.equal(cancelledFirst.details.status, "cancelled");
 		assert.equal(harness.adapter.sessions[0].abortCalls, 1);
 		assert.equal(harness.adapter.sessions[0].getStatus().streaming, false);
+	} finally {
+		await harness.router.disposeAll();
+	}
+});
+
+test("cancelling an active yielded request settles before the next queued request finishes", async () => {
+	const harness = createYieldedAgentHarness({
+		adapterId: "active-request-cancellation",
+		script: { waitForAbort: true },
+	});
+	try {
+		const first = await harness.runTools.pibo_run_start.execute("start-active-a", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "request A", threadKey: "shared" },
+			completionPolicy: "detached",
+		});
+		await waitForCondition(
+			() => harness.adapter.sessions[0]?.getStatus().streaming === true,
+			"Timed out waiting for request A to become active",
+		);
+		const child = harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" })[0];
+		assert.ok(child);
+
+		const second = await harness.runTools.pibo_run_start.execute("start-active-b", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "request B", threadKey: "shared" },
+			completionPolicy: "detached",
+		});
+		await waitForCondition(
+			() => harness.router.sessions.get(child.id)?.getStatus().queuedMessages === 1,
+			"Timed out waiting for request B to queue behind request A",
+		);
+
+		const cancelledFirst = await harness.runTools.pibo_run_cancel.execute("cancel-active-a", { runId: first.details.runId });
+		assert.equal(cancelledFirst.details.status, "cancelled");
+		await waitForCondition(
+			() => harness.adapter.sessions[0].prompts.length === 2 && harness.adapter.sessions[0].getStatus().streaming === true,
+			"Timed out waiting for request B to start after request A cancellation",
+		);
+		assert.equal(harness.adapter.sessions[0].abortCalls, 1);
+		assert.equal(harness.router.runRegistry.status("ps_yielded_parent", second.details.runId).status, "running");
+
+		const cancelledSecond = await harness.runTools.pibo_run_cancel.execute("cancel-active-b", { runId: second.details.runId });
+		assert.equal(cancelledSecond.details.status, "cancelled");
+		assert.equal(harness.adapter.sessions[0].abortCalls, 2);
 	} finally {
 		await harness.router.disposeAll();
 	}

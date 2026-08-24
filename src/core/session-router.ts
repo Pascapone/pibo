@@ -364,9 +364,13 @@ type StoredAgentObservation = PiboAgentObservation & {
 	managingParentId: string;
 };
 
+type ActiveSubagentRequestSettlement =
+	| { status: "fulfilled" }
+	| { status: "rejected"; reason: unknown };
+
 type ActiveSubagentRequest = {
 	abortController: AbortController;
-	settled: Promise<void>;
+	settled: Promise<ActiveSubagentRequestSettlement>;
 };
 
 class PiboSessionDisposalTimeoutError extends Error {
@@ -558,11 +562,21 @@ export class PiboSessionRouter {
 				return output;
 			}
 
-			const childAbort = event.action === "abort"
-				? this.abortActiveSubagentSessions(event.piboSessionId)
-				: undefined;
-			const output = await session.executeAction(event);
-			await childAbort;
+			let output: PiboOutputEvent;
+			if (event.action === "abort") {
+				const [sessionAbort, childAbort] = await Promise.allSettled([
+					session.executeAction(event),
+					this.abortActiveSubagentSessions(event.piboSessionId),
+				]);
+				if (sessionAbort.status === "rejected" && childAbort.status === "rejected") {
+					throw new AggregateError([sessionAbort.reason, childAbort.reason], "Failed to abort the session and its active subagent requests.");
+				}
+				if (sessionAbort.status === "rejected") throw sessionAbort.reason;
+				if (childAbort.status === "rejected") throw childAbort.reason;
+				output = sessionAbort.value;
+			} else {
+				output = await session.executeAction(event);
+			}
 			if (event.action === "kill" || event.action === "kill_all") {
 				await this.disposeSessionSubtree(event.piboSessionId, `${event.action} action`, { cancelRuns: event.action === "kill_all" });
 				teardownCompleted = true;
@@ -1820,7 +1834,9 @@ export class PiboSessionRouter {
 	private async abortActiveSubagentSessions(parentPiboSessionId: string): Promise<void> {
 		const requests = [...(this.activeSubagentRequests.get(parentPiboSessionId) ?? [])];
 		for (const request of requests) request.abortController.abort();
-		await Promise.all(requests.map(async (request) => await request.settled));
+		const settlements = await Promise.all(requests.map(async (request) => await request.settled));
+		const failures = settlements.flatMap((settlement) => settlement.status === "rejected" ? [settlement.reason] : []);
+		if (failures.length > 0) throw new AggregateError(failures, "Failed to cancel active subagent requests.");
 	}
 
 	private createAgentsController(parentPiboSessionId: string): PiboAgentsController {
@@ -1852,14 +1868,15 @@ export class PiboSessionRouter {
 				const requestSignal = signal
 					? AbortSignal.any([signal, parentAbortController.signal])
 					: parentAbortController.signal;
-				let resolveSettled: (() => void) | undefined;
-				const settled = new Promise<void>((resolve) => {
+				let resolveSettled: ((settlement: ActiveSubagentRequestSettlement) => void) | undefined;
+				const settled = new Promise<ActiveSubagentRequestSettlement>((resolve) => {
 					resolveSettled = resolve;
 				});
 				const untrack = this.trackActiveSubagent(parentPiboSessionId, {
 					abortController: parentAbortController,
 					settled,
 				});
+				let settlement: ActiveSubagentRequestSettlement = { status: "fulfilled" };
 				try {
 					const reply = await this.emitMessageAndWaitForReply(
 						event,
@@ -1874,9 +1891,15 @@ export class PiboSessionRouter {
 						eventId: event.id!,
 						reply,
 					};
+				} catch (error) {
+					const confirmedParentCancellation = parentAbortController.signal.aborted
+						&& error instanceof Error
+						&& error.name === "AbortError";
+					if (!confirmedParentCancellation) settlement = { status: "rejected", reason: error };
+					throw error;
 				} finally {
 					untrack();
-					resolveSettled?.();
+					resolveSettled?.(settlement);
 				}
 			},
 			listAgents: () => this.listManagedAgents(parentPiboSessionId),

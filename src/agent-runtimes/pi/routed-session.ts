@@ -546,6 +546,14 @@ type RoutedQueueItem =
 	| { kind: "message"; event: PiboMessageEvent }
 	| { kind: "compact"; event: PiboExecutionEvent };
 
+type PiInFlightMessage = {
+	event: PiboMessageEvent;
+	cancelled: boolean;
+	settled: Promise<void>;
+	resolveSettled: () => void;
+	cancellation?: Promise<void>;
+};
+
 function estimateContextTokens(messages: unknown[]): number {
 	let chars = 0;
 	for (const msg of messages) {
@@ -603,6 +611,7 @@ export class RoutedSession {
 	private runtimeDisposePromise?: Promise<void>;
 	private forceDisposalStarted = false;
 	private drainPromise?: Promise<void>;
+	private inFlightMessage?: PiInFlightMessage;
 	private fastMode = false;
 	private readonly fastModePatchedAgents = new WeakSet<object>();
 	private activeMessage?: PiboMessageEvent;
@@ -1291,13 +1300,36 @@ export class RoutedSession {
 			return true;
 		}
 
+		const inFlight = this.inFlightMessage;
+		if (inFlight?.event.id === eventId) {
+			if (!inFlight.cancellation) {
+				inFlight.cancelled = true;
+				this.notifyMessagesInterrupted([inFlight.event], "message cancelled");
+				const active = this.activeMessage?.id === eventId;
+				inFlight.cancellation = (async () => {
+					try {
+						if (active) {
+							this.cancelProviderRecovery();
+							this.cancelContextGuardRecovery("Context guard recovery cancelled with the active message");
+							await this.runtime.session.abort();
+						}
+						await inFlight.settled;
+					} catch (error) {
+						inFlight.cancelled = false;
+						inFlight.cancellation = undefined;
+						throw error;
+					}
+				})();
+			}
+			await inFlight.cancellation;
+			return true;
+		}
+
 		if (this.activeMessage?.id === eventId) {
 			this.notifyMessagesInterrupted([this.activeMessage], "message cancelled");
 			this.cancelProviderRecovery();
 			this.cancelContextGuardRecovery("Context guard recovery cancelled with the active message");
-			const drain = this.drainPromise;
 			await this.runtime.session.abort();
-			if (drain) await drain;
 			return true;
 		}
 
@@ -1335,9 +1367,10 @@ export class RoutedSession {
 	}
 
 	private async processQueuedMessage(event: PiboMessageEvent): Promise<void> {
+		const inFlight = this.beginInFlightMessage(event);
 		try {
 			const preflight = await this.messagePreflight?.(event);
-			if (this.disposed) return;
+			if (this.disposed || inFlight.cancelled) return;
 			if (preflight && !preflight.allowed) {
 				this.emit({
 					type: "session_error",
@@ -1357,15 +1390,7 @@ export class RoutedSession {
 			}
 			const session = this.runtime.session;
 			await this.resumeTranscriptIntegrityRecovery(session);
-			if (this.disposed) return;
-			this.emit({
-				type: "message_started",
-				piboSessionId: this.piboSessionId,
-				eventId: event.id,
-				text: event.text,
-				source: event.source,
-				provenance: event.provenance,
-			});
+			if (this.disposed || inFlight.cancelled) return;
 
 			this.activeMessage = event;
 			this.providerRecoveryCancelled = false;
@@ -1376,19 +1401,28 @@ export class RoutedSession {
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
+			this.emit({
+				type: "message_started",
+				piboSessionId: this.piboSessionId,
+				eventId: event.id,
+				text: event.text,
+				source: event.source,
+				provenance: event.provenance,
+			});
+			if (inFlight.cancelled) return;
 			this.applyMessageCapabilityScope(event, session);
 			const expandedText = expandInlineSkills(
 				event.text,
 				session.resourceLoader.getSkills().skills,
 			);
 			await session.prompt(expandedText, { source: promptSource(event.source) });
-			if (this.disposed) return;
+			if (this.disposed || inFlight.cancelled) return;
 			await this.waitForPiAgentSettlement(session);
-			if (this.disposed) return;
+			if (this.disposed || inFlight.cancelled) return;
 			await this.resumeContextGuardRecovery(session);
-			if (this.disposed) return;
+			if (this.disposed || inFlight.cancelled) return;
 			await this.recoverTransientProviderErrors(session);
-			if (this.disposed) return;
+			if (this.disposed || inFlight.cancelled) return;
 			this.flushPendingAssistantError();
 			if (!this.activeMessageFailed) {
 				this.emit({
@@ -1400,7 +1434,7 @@ export class RoutedSession {
 				});
 			}
 		} catch (error) {
-			if (error instanceof PiboProviderRecoveryCancelledError || this.disposed) return;
+			if (error instanceof PiboProviderRecoveryCancelledError || this.disposed || inFlight.cancelled) return;
 			const message = errorMessage(error);
 			this.emit({
 				type: "session_error",
@@ -1421,7 +1455,21 @@ export class RoutedSession {
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
+			if (this.inFlightMessage === inFlight) this.inFlightMessage = undefined;
+			inFlight.resolveSettled();
 		}
+	}
+
+	private beginInFlightMessage(event: PiboMessageEvent): PiInFlightMessage {
+		let resolveSettled: (() => void) | undefined;
+		const inFlight: PiInFlightMessage = {
+			event,
+			cancelled: false,
+			settled: new Promise<void>((resolve) => { resolveSettled = resolve; }),
+			resolveSettled: () => { resolveSettled?.(); },
+		};
+		this.inFlightMessage = inFlight;
+		return inFlight;
 	}
 
 	private applyMessageCapabilityScope(event: PiboMessageEvent, session: AgentSessionRuntime["session"]): void {
@@ -1595,7 +1643,9 @@ export class RoutedSession {
 
 	private activeAndQueuedMessages(): PiboMessageEvent[] {
 		const messages = this.queue.flatMap((item) => item.kind === "message" ? [item.event] : []);
-		return this.activeMessage ? [this.activeMessage, ...messages] : messages;
+		const inFlight = this.inFlightMessage?.event;
+		if (this.activeMessage) return [this.activeMessage, ...messages];
+		return inFlight ? [inFlight, ...messages] : messages;
 	}
 
 	private notifyMessagesInterrupted(messages: readonly PiboMessageEvent[], reason: string): void {
