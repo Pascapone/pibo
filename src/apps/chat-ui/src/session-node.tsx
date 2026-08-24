@@ -32,6 +32,7 @@ export function SessionNode({
 	autoRename = false,
 	onAutoRenameConsumed,
 	showWorkflowSessionKindMarkers = false,
+	mutationsDisabled = false,
 }: {
 	node: PiboWebSessionNode;
 	signalNow: number;
@@ -47,6 +48,7 @@ export function SessionNode({
 	autoRename?: boolean;
 	onAutoRenameConsumed?: () => void;
 	showWorkflowSessionKindMarkers?: boolean;
+	mutationsDisabled?: boolean;
 }) {
 	const safeTitle = sessionNodeTitle(node);
 	const sessionTooltip = sessionNodeTooltip(node);
@@ -63,11 +65,15 @@ export function SessionNode({
 	}, [editing, safeTitle]);
 
 	useEffect(() => {
-		if (!autoRename) return;
+		if (!autoRename || mutationsDisabled) return;
 		setDraftTitle(safeTitle === "Untitled Session" ? "" : safeTitle);
 		setEditing(true);
 		onAutoRenameConsumed?.();
-	}, [autoRename, safeTitle, onAutoRenameConsumed]);
+	}, [autoRename, mutationsDisabled, safeTitle, onAutoRenameConsumed]);
+
+	useEffect(() => {
+		if (mutationsDisabled) setEditing(false);
+	}, [mutationsDisabled]);
 
 	useLayoutEffect(() => {
 		if (!editing) return;
@@ -80,6 +86,7 @@ export function SessionNode({
 	}, [hasSelectedDescendant]);
 
 	const submitRename = () => {
+		if (mutationsDisabled) return;
 		const title = draftTitle.trim();
 		onRename(node.piboSessionId, title ? title : null);
 		setEditing(false);
@@ -106,7 +113,7 @@ export function SessionNode({
 				style={{ paddingLeft: 8 + depth * 14 }}
 				title={sessionTooltip}
 			>
-				{editing ? (
+				{editing && !mutationsDisabled ? (
 					<form
 						className="min-w-0 grid grid-cols-[1fr_auto_auto] gap-1 py-1 pr-1"
 						onSubmit={(event) => {
@@ -117,6 +124,7 @@ export function SessionNode({
 						<input
 							ref={titleInputRef}
 							value={draftTitle}
+							disabled={mutationsDisabled}
 							onChange={(event) => setDraftTitle(event.target.value)}
 							onKeyDown={(event) => {
 								if (event.key === "Escape") {
@@ -130,6 +138,7 @@ export function SessionNode({
 						/>
 						<button
 							type="submit"
+							disabled={mutationsDisabled}
 							title="Save Session Title"
 							aria-label="Save Session Title"
 							className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
@@ -138,6 +147,7 @@ export function SessionNode({
 						</button>
 						<button
 							type="button"
+							disabled={mutationsDisabled}
 							onClick={() => {
 								setEditing(false);
 								setDraftTitle(safeTitle);
@@ -195,9 +205,13 @@ export function SessionNode({
 						</span>
 					</div>
 				)}
-				{editing ? null : (
+				{editing && !mutationsDisabled ? null : (
 					<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
-						<ActionMenu label={`Actions for session ${safeTitle}`} estimatedHeight={144}>
+						<ActionMenu
+							label={`Actions for session ${safeTitle}`}
+							estimatedHeight={144}
+							disabled={mutationsDisabled}
+						>
 							{node.archived ? (
 								<>
 									<ActionMenuItem onSelect={() => onArchive(node.piboSessionId, false)}>
@@ -244,6 +258,7 @@ export function SessionNode({
 							depth={depth + 1}
 							loadingPiboSessionId={loadingPiboSessionId}
 							showWorkflowSessionKindMarkers={showWorkflowSessionKindMarkers}
+							mutationsDisabled={mutationsDisabled}
 						/>
 					)) : null}
 				</div>

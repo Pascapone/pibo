@@ -70,6 +70,16 @@ async function runSessionTraceViewPropsScenario() {
 			selectedPiboSessionId: "ps-missing",
 			traceTitle: "Trace title",
 		}), "Trace title");
+		assert.equal(resolveSessionTraceTitle({
+			sessionNodes: sessions,
+			selectedPiboSessionId: null,
+			fallback: "No session selected",
+		}), "No session selected");
+		assert.notEqual(resolveSessionTraceTitle({
+			sessionNodes: sessions,
+			selectedPiboSessionId: null,
+			fallback: "No session selected",
+		}), "Shared Chat");
 
 		assert.deepEqual(createSessionTraceViewLinks(sessions, null), {
 			sessionBreadcrumbs: [],

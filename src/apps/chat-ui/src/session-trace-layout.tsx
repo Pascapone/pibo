@@ -100,6 +100,8 @@ export function SessionTraceLayout({
         {terminalFullscreen ? (
           <TerminalFullscreenTopBar
             title={headerProps.title}
+            contextKind={headerProps.contextKind}
+            contextLabel={headerProps.contextLabel}
             onOpenSessionWindow={onOpenSessionWindow}
             onExit={onExitTerminalFullscreen}
           />

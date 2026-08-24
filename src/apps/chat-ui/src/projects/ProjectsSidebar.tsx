@@ -26,6 +26,7 @@ export function ProjectsSidebar({
   selectedSessionPathIds,
   autoRenameSessionId,
   creatingSession,
+  navigationPending,
   showArchivedProjects,
   showArchivedSessions,
   mobileSidebarOpen,
@@ -61,6 +62,7 @@ export function ProjectsSidebar({
   selectedSessionPathIds: ReadonlySet<string>;
   autoRenameSessionId: string | null;
   creatingSession: boolean;
+  navigationPending: boolean;
   showArchivedProjects: boolean;
   showArchivedSessions: boolean;
   mobileSidebarOpen: boolean;
@@ -89,6 +91,7 @@ export function ProjectsSidebar({
   return (
     <aside
       data-pibo-mobile-sidebar
+      data-pibo-navigation-pending={navigationPending ? "true" : "false"}
       {...mobileSidebarA11yProps(isMobileSidebarViewport, mobileSidebarOpen, "Projects sidebar")}
       className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
         mobileSidebarOpen
@@ -128,6 +131,7 @@ export function ProjectsSidebar({
             project={data.sharedDefaultProject}
             selected={selectedProject?.id === data.sharedDefaultProject.id}
             onSelect={() => onSelectProject(data.sharedDefaultProject.id)}
+            mutationsDisabled={navigationPending}
           />
         </div>
         <div>
@@ -139,9 +143,10 @@ export function ProjectsSidebar({
               <button
                 type="button"
                 onClick={onCreateProject}
+                disabled={navigationPending}
                 title="New Project"
                 aria-label="New Project"
-                className="h-6 w-6 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+                className="h-6 w-6 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Plus size={14} />
               </button>
@@ -168,6 +173,7 @@ export function ProjectsSidebar({
               onSelect={() => onSelectProject(project.id)}
               onRename={(name) => onRenameProject(project, name)}
               onArchive={() => onSetProjectArchived(project, true)}
+              mutationsDisabled={navigationPending}
             />
           ))}
           {listedActiveProjects.length === 0 ? (
@@ -190,6 +196,7 @@ export function ProjectsSidebar({
                   onArchive={() => onSetProjectArchived(project, false)}
                   onDelete={() => onDeleteArchivedProject(project)}
                   archived
+                  mutationsDisabled={navigationPending}
                 />
               ))}
             </div>
@@ -209,7 +216,7 @@ export function ProjectsSidebar({
               <button
                 type="button"
                 onClick={onCreateProjectSession}
-                disabled={creatingSession || !selectedProject}
+                disabled={creatingSession || navigationPending || !selectedProject}
                 title="New Project Session"
                 aria-label="New Project Session"
                 className="h-6 w-6 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
@@ -254,6 +261,7 @@ export function ProjectsSidebar({
               loadingPiboSessionId={null}
               autoRename={autoRenameSessionId === session.piboSessionId}
               onAutoRenameConsumed={onAutoRenameConsumed}
+              mutationsDisabled={navigationPending}
             />
           ))}
           {sessionGroups.active.length === 0 ? (
@@ -279,6 +287,7 @@ export function ProjectsSidebar({
                   onDelete={onDeleteSession}
                   onViewContext={onViewContext}
                   loadingPiboSessionId={null}
+                  mutationsDisabled={navigationPending}
                 />
               ))}
               {sessionGroups.archived.length === 0 ? (
@@ -302,6 +311,7 @@ function ProjectRow({
   onRename,
   onArchive,
   onDelete,
+  mutationsDisabled,
 }: {
   project: PiboProject;
   selected: boolean;
@@ -310,6 +320,7 @@ function ProjectRow({
   onRename?: (name: string) => void;
   onArchive?: () => void;
   onDelete?: () => void;
+  mutationsDisabled: boolean;
 }) {
   const sharedDefault =
     project.metadata?.default === true || project.metadata?.personal === true;
@@ -324,6 +335,12 @@ function ProjectRow({
   }, [editing, project.name]);
 
   useEffect(() => {
+    if (!mutationsDisabled) return;
+    setEditing(false);
+    setMenuOpen(false);
+  }, [mutationsDisabled]);
+
+  useEffect(() => {
     if (!menuOpen) return;
     const handle = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node))
@@ -334,7 +351,7 @@ function ProjectRow({
   }, [menuOpen]);
 
   useLayoutEffect(() => {
-    if (!editing) return;
+    if (!editing || mutationsDisabled) return;
     inputRef.current?.focus();
     inputRef.current?.select();
   }, [editing]);
@@ -342,6 +359,7 @@ function ProjectRow({
   const displayProjectName = sharedDefault ? "Project Manager" : project.name;
 
   const submitRename = () => {
+    if (mutationsDisabled) return;
     const name = draftName.trim();
     if (name && name !== project.name) onRename?.(name);
     setEditing(false);
@@ -370,7 +388,7 @@ function ProjectRow({
           <FolderPlus size={13} />
         )}
       </span>
-      {editing ? (
+      {editing && !mutationsDisabled ? (
         <form
           className="min-w-0 flex-1 grid grid-cols-[1fr_auto_auto] gap-1"
           onSubmit={(event) => {
@@ -381,6 +399,7 @@ function ProjectRow({
           <input
             ref={inputRef}
             value={draftName}
+            disabled={mutationsDisabled}
             onChange={(event) => setDraftName(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -393,6 +412,7 @@ function ProjectRow({
           />
           <button
             type="submit"
+            disabled={mutationsDisabled}
             title="Save Project Name"
             aria-label="Save Project Name"
             className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
@@ -401,6 +421,7 @@ function ProjectRow({
           </button>
           <button
             type="button"
+            disabled={mutationsDisabled}
             onClick={() => {
               setEditing(false);
               setDraftName(project.name);
@@ -446,17 +467,18 @@ function ProjectRow({
         >
           <button
             type="button"
+            disabled={mutationsDisabled}
             onClick={() => setMenuOpen((value) => !value)}
             title="Project actions"
             aria-label="Project actions"
-            className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+            className="h-7 w-7 max-[980px]:h-9 max-[980px]:w-9 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <MoreVertical
               size={24}
               className="w-3.5 h-3.5 max-[980px]:w-5 max-[980px]:h-5"
             />
           </button>
-          {menuOpen ? (
+          {menuOpen && !mutationsDisabled ? (
             <div className="absolute right-0 top-full z-50 mt-1 w-48 bg-[#1a262b] border border-slate-700 rounded-sm shadow-lg py-1">
               {onRename ? (
                 <button

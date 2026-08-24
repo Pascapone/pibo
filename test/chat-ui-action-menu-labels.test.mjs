@@ -125,7 +125,7 @@ test("action trigger names bind only to the displayed Room and Session names", (
 	const sessionSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/session-node.tsx"), "utf8");
 
 	assert.match(roomSource, /<ActionMenu label=\{`Actions for room \$\{room\.name\}`\}/);
-	assert.match(sessionSource, /<ActionMenu label=\{`Actions for session \$\{safeTitle\}`\}/);
+	assert.match(sessionSource, /<ActionMenu\s+label=\{`Actions for session \$\{safeTitle\}`\}/);
 	assert.doesNotMatch(roomSource, /label=\{`Actions for room[^`]*\$\{room\.(?:id|workspace|metadata)/);
 	assert.doesNotMatch(sessionSource, /label=\{`Actions for session[^`]*\$\{node\.(?:piboSessionId|piSessionId|profile|status)/);
 });

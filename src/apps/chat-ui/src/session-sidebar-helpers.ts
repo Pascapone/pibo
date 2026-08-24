@@ -104,6 +104,16 @@ export function findRoomById(rooms: PiboRoom[], roomId: string): PiboRoom | unde
 	return undefined;
 }
 
+export function resolveRoomContextLabel(
+	rooms: PiboRoom[],
+	selectedRoomId: string | null,
+	fallbackRoom?: PiboRoom,
+): string {
+	if (!selectedRoomId) return fallbackRoom?.name ?? "Unknown room";
+	return findRoomById(rooms, selectedRoomId)?.name
+		?? (fallbackRoom?.id === selectedRoomId ? fallbackRoom.name : selectedRoomId);
+}
+
 export function fallbackRoomIdWhenHidingArchived(rooms: PiboRoom[], selectedRoomId: string | null): string | undefined {
 	if (!selectedRoomId) return undefined;
 	const sharedDefaultRoom = findSharedDefaultRoom(rooms);
