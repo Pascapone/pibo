@@ -57,6 +57,8 @@ function isJsonValue(value: unknown): boolean {
 }
 
 export function isGatewayRequestFrame(value: unknown): value is GatewayRequestFrame {
+	// Keep this unversioned wire validator compatible with existing clients. Stricter
+	// message text, delivery, and identifier validation belongs at client boundaries.
 	if (!value || typeof value !== "object") return false;
 
 	const frame = value as { type?: unknown; id?: unknown; event?: unknown };
