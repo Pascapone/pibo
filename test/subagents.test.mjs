@@ -7,6 +7,7 @@ import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
+import { createRunToolDefinitions } from "../dist/runs/tools.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import {
 	createAgentToolDefinitions,
@@ -537,7 +538,7 @@ test("subagent runner freezes per-subagent model and thinking settings on new ch
 	}
 });
 
-test("subagent runner rejects oversized thread keys before creating a child session", async () => {
+test("subagent runner rejects invalid or cancelled requests before creating a child session", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
 		id: "ps_parent",
@@ -548,11 +549,21 @@ test("subagent runner rejects oversized thread keys before creating a child sess
 	});
 	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
 	try {
-		await assert.rejects(router.createAgentsController("ps_parent").sendMessage({
+		const controller = router.createAgentsController("ps_parent");
+		await assert.rejects(controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
 			message: "must not create a child",
 			threadKey: "é".repeat(257),
 		}), /Subagent thread key exceeds 512 bytes/);
+
+		const abortController = new AbortController();
+		abortController.abort();
+		await assert.rejects(controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			message: "must not create a child",
+			threadKey: "cancelled",
+			signal: abortController.signal,
+		}), (error) => error instanceof Error && error.name === "AbortError");
 		assert.equal(store.list().length, 1);
 	} finally {
 		await router.disposeAll();
@@ -809,9 +820,63 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		}
 		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "abort" });
-		await assert.rejects(execution, /finished without an assistant reply/);
-		assert.equal(childAdapter.sessions[0].abortCalls > 0, true);
+		await assert.rejects(execution, (error) => error instanceof Error && error.name === "AbortError");
+		assert.equal(childAdapter.sessions[0].abortCalls, 1);
 		assert.equal(childAdapter.sessions[0].getStatus().streaming, false);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("yielded agent deadlines are timed_out and preserve thread reuse", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const emitted = [];
+	router.emit = async (event) => {
+		emitted.push(event);
+		return event.type === "message"
+			? { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source }
+			: { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: "aborted" };
+	};
+
+	try {
+		const subagent = { name: "worker", targetProfile: "base", timeoutMs: 10 };
+		const agentsController = router.createAgentsController("ps_parent");
+		const agentTools = createAgentToolDefinitions([subagent], agentsController);
+		const runTools = Object.fromEntries(createRunToolDefinitions(
+			agentTools,
+			router.createRunToolController("ps_parent"),
+		).map((tool) => [tool.name, tool]));
+		const started = await runTools.pibo_run_start.execute("start-agent-timeout", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "wait", threadKey: "reusable" },
+			completionPolicy: "tracked",
+		});
+		const waited = await runTools.pibo_run_wait.execute("wait-agent-timeout", {
+			runId: started.details.runId,
+			timeoutMs: 1_000,
+		});
+
+		assert.equal(waited.details.status, "timed_out");
+		assert.equal(waited.details.timeoutPhase, "lifetime");
+		assert.equal(emitted.filter((event) => event.type === "execution" && event.action === "abort").length, 1);
+		const timedOutChild = store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" })[0];
+		assert.ok(timedOutChild);
+
+		router.emitMessageAndWaitForReply = async (event) => ({
+			type: "assistant_message",
+			piboSessionId: event.piboSessionId,
+			eventId: event.id,
+			text: "continued",
+		});
+		const reused = await agentsController.sendMessage({
+			subagent,
+			message: "continue",
+			threadKey: "reusable",
+		});
+		assert.equal(reused.agentId, timedOutChild.id);
+		assert.equal(store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" }).length, 1);
 	} finally {
 		await router.disposeAll();
 	}
