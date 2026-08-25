@@ -12,7 +12,7 @@ Tool assembly keeps `pibo_agents_send_message` in the yieldable catalog but omit
 
 ### Waiting has no lifetime effect
 
-The reply waiter accepts an optional deadline for non-agent compatibility, but the agent controller supplies none. Run wait remains bounded and non-destructive.
+The reply waiter accepts an optional deadline for non-agent compatibility, but the agent controller supplies none. Run wait remains bounded and non-destructive. Normal parent-turn completion and stale telemetry likewise have no delegated-request lifetime effect.
 
 ### Provenance follows recursive delegation
 

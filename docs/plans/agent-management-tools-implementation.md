@@ -2,6 +2,7 @@
 
 **Status:** Done
 **Date:** 2026-08-23
+**Updated:** 2026-08-25
 **Spec:** [Agent Delegation and Management](../specs/capabilities/subagent-delegation.md)
 **Design:** [Agent Management Tool and CLI Design](./agent-management-tool-design.md)
 
@@ -23,7 +24,7 @@ Implementation is complete only when the shared tools, filtering, run compatibil
 ### 2. Implement router lifecycle management
 
 - Convert the subagent runner into a parent-scoped agents controller.
-- Preserve send/thread/depth/timeout/model/thinking behavior.
+- Preserve send/thread/depth/model/thinking behavior while removing implicit and profile-driven delegated-request lifetime timeouts.
 - Implement ownership-safe list and kill.
 - Mark killed children and exclude them from reuse.
 - Retry subtree disposal after partial kill cleanup and keep descendant traversal cycle-safe.
@@ -89,7 +90,7 @@ Implementation is complete only when the shared tools, filtering, run compatibil
 - Deploy only to the documented remote Pibo2 development server.
 - Restart only the remote Pibo2 gateway through the documented helper/CLI workflow.
 - Create a real Chat Web parent profile with at least `explorer` and `worker`, using `gpt-5.6-luna` and thinking `low`.
-- Validate foreground send, yielded send plus wait/read, list, observe filters/cursor, kill, and child trace links.
+- Validate yielded send plus bounded wait/read, list, observe filters/cursor, kill, and child trace links; confirm that wait expiry leaves the delegated request running.
 - Use the existing authenticated headful browser and capture CDP/visual evidence.
 
 ### 10. Delivery

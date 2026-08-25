@@ -53,7 +53,7 @@ The runtime MUST NOT expose `pibo_agents_send_message` as a directly callable mo
 
 ### Requirement: No implicit delegated lifetime
 
-A delegated send MUST remain active until it completes or receives explicit cancellation. A `pibo_run_wait` timeout MUST NOT cancel it. Legacy `SubagentProfile.timeoutMs` values MUST NOT impose a child lifetime.
+A delegated send MUST have no implicit wall-clock deadline and MUST remain active until natural settlement, explicit cancellation, or owning-session/router disposal. A `pibo_run_wait` timeout, normal parent-turn completion, or stale telemetry threshold MUST NOT cancel it. Legacy `SubagentProfile.timeoutMs` values MUST NOT impose a child or yielded-run lifetime.
 
 ### Requirement: Conditional management context
 

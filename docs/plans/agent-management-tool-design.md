@@ -1,7 +1,8 @@
 # Agent Management Tool and CLI Design
 
-**Status:** Accepted for implementation  
-**Date:** 2026-08-23  
+**Status:** Accepted; updated for yielded-only dispatch
+**Date:** 2026-08-23
+**Updated:** 2026-08-25
 **Capability spec:** [Agent Delegation and Management](../specs/capabilities/subagent-delegation.md)
 
 ## Design Decisions
@@ -63,9 +64,9 @@ Input:
 - `message`: required string.
 - `threadKey`: optional stable continuation key, schema limit 256 characters and router limit 512 UTF-8 bytes.
 
-Foreground execution waits for the child reply. Output text includes name, `agentId`, resolved thread, and reply. Structured details retain the complete child reply event and routed event ID.
+`pibo_agents_send_message` is yielded-only and is never exposed as a direct foreground tool. The run wrapper returns a run ID immediately, while its background execution waits for the child reply without an implicit lifetime deadline. The terminal result includes name, `agentId`, resolved thread, complete reply, child reply event, and routed event ID.
 
-Asynchronous execution is intentionally delegated to existing run control:
+Dispatch uses existing run control:
 
 ```json
 {
@@ -79,7 +80,7 @@ Asynchronous execution is intentionally delegated to existing run control:
 }
 ```
 
-The caller uses `pibo_run_wait` or `pibo_run_read`; no separate agent wait protocol is introduced.
+The caller uses `pibo_run_status`, bounded `pibo_run_wait`, or `pibo_run_read`; no separate agent wait protocol is introduced. `pibo_run_wait` defaults to 30 seconds and is capped at 300 seconds per call. An expired wait, normal parent-turn completion, or stale telemetry leaves the delegated request running. Legacy `SubagentProfile.timeoutMs` values do not create a request or run deadline.
 
 ### `pibo_agents_list_agents`
 
