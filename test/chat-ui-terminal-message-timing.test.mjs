@@ -280,6 +280,8 @@ test("Compact Terminal preserves message timing and the animated working footer 
 	assert.doesNotMatch(source, /useStableActiveTurn|findLatestActiveTurnTerminal|selectedTrace\?\.status/);
 	assert.match(source, /data-pibo-component="TerminalStreamingFooter"/);
 	assert.match(source, /aria-label=\{footerAriaLabel\}[\s\S]*aria-hidden="true"/);
+	assert.match(source, /goalTokenUsage \? `Tokens \$\{goalTokenUsage\}` : undefined/);
+	assert.match(source, /flex-wrap[\s\S]*justify-between[\s\S]*compact-terminal-working-scramble[\s\S]*SessionGoalIndicator/, "Working and Goal status should share the responsive animated footer div");
 	assert.match(source, /justify-between[\s\S]*compact-terminal-working-scramble[\s\S]*SessionGoalIndicator/, "Working and Goal status should share the same right-aligned footer div");
 	assert.match(source, /const WORKING_SCRAMBLE_TARGET = "Working\.\.\."/);
 	assert.match(source, /const \{ chars, activeIndex \} = useWorkingScramble\(WORKING_SCRAMBLE_TARGET, isWorking\)/);
@@ -290,6 +292,8 @@ test("Compact Terminal preserves message timing and the animated working footer 
 	assert.match(source, /window\.matchMedia\("\(prefers-reduced-motion: reduce\)"\)/);
 	const styles = fs.readFileSync(path.resolve("src/apps/chat-ui/src/styles.css"), "utf8");
 	assert.match(styles, /\.compact-terminal-working-scramble/);
+	assert.match(styles, /\.compact-terminal-working-scramble \{[\s\S]*width: 10ch/);
+	assert.match(styles, /\.compact-terminal-working-scramble > span \{[\s\S]*width: 1ch/);
 	assert.match(styles, /\.compact-terminal-working-scramble-active/);
 	assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 	assert.doesNotMatch(styles, /\.compact-terminal-working-label/);

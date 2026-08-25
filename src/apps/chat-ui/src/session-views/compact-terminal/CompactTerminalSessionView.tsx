@@ -6,7 +6,7 @@ import { AgentDelegationCard } from "../../components/AgentDelegationCard";
 import { PendingUserMessageDelivery } from "../../components/PendingUserMessageDelivery";
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
-import { SessionGoalIndicator, sessionGoalIndicatorStatus } from "../../session-goal-indicator";
+import { SessionGoalIndicator, formatSessionGoalTokenUsage, sessionGoalIndicatorStatus } from "../../session-goal-indicator";
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
 import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tracing/snapshotCollector";
 import type { ChatSessionViewProps } from "../types";
@@ -791,9 +791,11 @@ function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: s
 	const elapsed = useActiveTurnElapsed(isWorking ? startedAt : undefined);
 	const { chars, activeIndex } = useWorkingScramble(WORKING_SCRAMBLE_TARGET, isWorking);
 	const goalStatus = sessionGoalIndicatorStatus(goal);
+	const goalTokenUsage = goal && goalStatus === "active" ? formatSessionGoalTokenUsage(goal) : undefined;
 	const footerAriaLabel = [
 		isWorking ? "Working" : undefined,
 		goalStatus === "active" ? "Pursuing Goal" : goalStatus === "paused" ? "Goal Paused" : undefined,
+		goalTokenUsage ? `Tokens ${goalTokenUsage}` : undefined,
 	].filter(Boolean).join(". ");
 
 	return (
@@ -805,7 +807,7 @@ function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: s
 			data-pibo-component="TerminalStreamingFooter"
 			data-pibo-active-turn-started-at={isWorking ? startedAt : undefined}
 		>
-			<div className="flex min-w-0 items-baseline justify-between gap-4" aria-hidden="true">
+			<div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1" aria-hidden="true">
 				{isWorking ? (
 					<div className="grid min-w-0 flex-1 grid-cols-[1.9rem_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words">
 						<span className="whitespace-pre text-[#737373]">•</span>

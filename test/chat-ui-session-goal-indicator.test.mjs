@@ -15,7 +15,7 @@ const renderScript = `
 	console.log(renderToStaticMarkup(React.createElement(SessionGoalIndicatorView, { goal, nowMs })));
 `;
 
-function goal(status) {
+function goal(status, { tokenBudget, tokensUsed = 254_600, usage } = {}) {
 	return {
 		id: "loop_goal",
 		mode: "goal",
@@ -24,9 +24,13 @@ function goal(status) {
 		target: { kind: "default-chat" },
 		profile: "base",
 		prompt: "Implement and verify the requested feature",
+		...(tokenBudget === undefined ? {} : { tokenBudget }),
 		state: {
 			goalStatus: status,
 			goalStartedAt: "2026-08-10T10:00:00.000Z",
+			tokenAccounting: { version: 1, basis: "uncached" },
+			tokensUsed,
+			...(usage === undefined ? {} : { usage }),
 		},
 		createdAt: "2026-08-10T10:00:00.000Z",
 		updatedAt: "2026-08-10T10:05:57.000Z",
@@ -51,6 +55,30 @@ test("session Goal indicator shows active Goals with screenshot-style elapsed ti
 	assert.match(markup, /data-goal-status="active"/);
 	assert.match(markup, /Pursuing Goal:/);
 	assert.match(markup, />5:57</);
+	assert.match(markup, />254\.6k</);
+	assert.match(markup, /aria-label="Pursuing Goal\. Elapsed 5:57\. Tokens 254\.6k"/);
+});
+
+test("session Goal indicator shows compact token usage and budget with one decimal place", async () => {
+	const markup = await render(goal("active", { tokenBudget: 12_300_000 }));
+	assert.match(markup, />254\.6k \/ 12\.3M</);
+});
+
+test("session Goal indicator preserves a trailing decimal zero", async () => {
+	const markup = await render(goal("active", { tokensUsed: 1_000, tokenBudget: 1_000_000 }));
+	assert.match(markup, />1\.0k \/ 1\.0M</);
+});
+
+test("session Goal indicator uses the corrected uncached counter instead of cached-input totals", async () => {
+	const usage = {
+		controller: { inputTokens: 9_000, outputTokens: 7_000, cacheReadTokens: 4_000, cacheWriteTokens: 2_000, reasoningTokens: 0, totalTokens: 22_000, costUsd: 0, costReportedTurns: 1, assistantTurns: 1 },
+		descendants: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, totalTokens: 0, costUsd: 0, costReportedTurns: 0, assistantTurns: 0 },
+		total: { inputTokens: 9_000, outputTokens: 7_000, cacheReadTokens: 4_000, cacheWriteTokens: 2_000, reasoningTokens: 0, totalTokens: 22_000, costUsd: 0, costReportedTurns: 1, assistantTurns: 1 },
+		sessionIds: ["ps_goal"],
+	};
+	const markup = await render(goal("active", { tokensUsed: 16_000, tokenBudget: 100_000, usage }));
+	assert.match(markup, />16\.0k \/ 100\.0k</);
+	assert.doesNotMatch(markup, />22\.0k \/ 100\.0k</);
 });
 
 test("session Goal indicator remains visible while the Goal is paused", async () => {
@@ -58,6 +86,8 @@ test("session Goal indicator remains visible while the Goal is paused", async ()
 	assert.match(markup, /data-goal-status="paused"/);
 	assert.match(markup, /Goal Paused:/);
 	assert.match(markup, />5:57</);
+	assert.match(markup, /aria-label="Goal Paused\. Elapsed 5:57"/);
+	assert.doesNotMatch(markup, /Tokens 254\.6k/);
 });
 
 test("session Goal indicator hides terminal Goals", async () => {
