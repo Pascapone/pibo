@@ -74,8 +74,8 @@ export type SaveCustomAgentInput = {
 	subagents: CustomAgent["subagents"];
 	mcpServers: string[];
 	piPackages: string[];
-	mainModel?: ModelProfile;
-	subagentModel?: ModelProfile;
+	mainModel?: ModelProfile | null;
+	subagentModel?: ModelProfile | null;
 	thinkingLevel?: CustomAgent["thinkingLevel"] | null;
 	mainThinkingLevel?: CustomAgent["mainThinkingLevel"] | null;
 	subagentThinkingLevel?: CustomAgent["subagentThinkingLevel"] | null;

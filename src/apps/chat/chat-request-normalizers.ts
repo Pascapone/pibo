@@ -841,8 +841,12 @@ export function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 	if (body.subagents !== undefined) update.subagents = normalizeAgentSubagents(body.subagents);
 	if (body.mcpServers !== undefined) update.mcpServers = normalizeNameArray(body.mcpServers, "mcpServers");
 	if (body.piPackages !== undefined) update.piPackages = normalizeRegisteredPiPackages(body.piPackages);
-	if (body.mainModel !== undefined) update.mainModel = normalizeModelProfile(body.mainModel, "mainModel");
-	if (body.subagentModel !== undefined) update.subagentModel = normalizeModelProfile(body.subagentModel, "subagentModel");
+	if (body.mainModel !== undefined) {
+		update.mainModel = body.mainModel === null ? null : normalizeModelProfile(body.mainModel, "mainModel");
+	}
+	if (body.subagentModel !== undefined) {
+		update.subagentModel = body.subagentModel === null ? null : normalizeModelProfile(body.subagentModel, "subagentModel");
+	}
 	if (body.thinkingLevel !== undefined) update.thinkingLevel = normalizeThinkingLevel(body.thinkingLevel, "thinkingLevel");
 	if (body.mainThinkingLevel !== undefined) update.mainThinkingLevel = normalizeThinkingLevel(body.mainThinkingLevel, "mainThinkingLevel");
 	if (body.subagentThinkingLevel !== undefined) update.subagentThinkingLevel = normalizeThinkingLevel(body.subagentThinkingLevel, "subagentThinkingLevel");

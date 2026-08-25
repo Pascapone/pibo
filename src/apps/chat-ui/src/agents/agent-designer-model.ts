@@ -1,7 +1,9 @@
 import type { SaveCustomAgentInput } from "../api-agent-designer";
 import { THINKING_LEVELS, type AgentCatalog, type AgentRuntimeCatalogEntry, type BootstrapData, type CustomAgent, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
 
-export type AgentDraft = SaveCustomAgentInput & {
+export type AgentDraft = Omit<SaveCustomAgentInput, "mainModel" | "subagentModel"> & {
+	mainModel?: ModelProfile;
+	subagentModel?: ModelProfile;
 	id?: string;
 	profileName?: string;
 	archivedAt?: string;
@@ -53,8 +55,8 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 		}),
 		mcpServers: uniqueNames(draft.mcpServers),
 		piPackages: uniqueNames(draft.piPackages),
-		mainModel: normalizeModel(draft.mainModel),
-		subagentModel: normalizeModel(draft.subagentModel),
+		mainModel: normalizeModel(draft.mainModel) ?? null,
+		subagentModel: normalizeModel(draft.subagentModel) ?? null,
 		thinkingLevel: draft.thinkingLevel ?? null,
 		mainThinkingLevel: draft.mainThinkingLevel ?? null,
 		subagentThinkingLevel: draft.subagentThinkingLevel ?? null,
@@ -267,6 +269,21 @@ export function modelCatalogForRuntime(runtime: AgentRuntimeCatalogEntry | undef
 				...provider,
 				models: provider.models.sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id)),
 			})),
+	};
+}
+
+export function compatibleModelSelectionsForRuntime(
+	draft: Pick<AgentDraft, "mainModel" | "subagentModel">,
+	runtime: AgentRuntimeCatalogEntry | undefined,
+	legacyPiCatalog?: ModelCatalog,
+): Pick<AgentDraft, "mainModel" | "subagentModel"> {
+	const catalog = modelCatalogForRuntime(runtime, legacyPiCatalog);
+	const isSupported = (model: ModelProfile | undefined): boolean => !model || Boolean(catalog?.providers.some(
+		(provider) => provider.id === model.provider && provider.models.some((entry) => entry.id === model.id),
+	));
+	return {
+		mainModel: isSupported(draft.mainModel) ? draft.mainModel : undefined,
+		subagentModel: isSupported(draft.subagentModel) ? draft.subagentModel : undefined,
 	};
 }
 
