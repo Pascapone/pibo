@@ -73,6 +73,8 @@ export function SessionTracePane({
   bootstrap,
   selectedPiboSessionId,
   selectedRoomId,
+  contextKind = "room",
+  contextLabel,
   selectedRoomArchived,
   roomNavigationPending,
   sessionNavigationPending,
@@ -123,6 +125,8 @@ export function SessionTracePane({
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
   selectedRoomId: string | null;
+  contextKind?: "room" | "project";
+  contextLabel?: string;
   selectedRoomArchived: boolean;
   roomNavigationPending?: boolean;
   sessionNavigationPending?: boolean;
@@ -330,7 +334,7 @@ export function SessionTracePane({
   const composerDisabled = isSessionComposerDisabled(
     selectedPiboSessionId,
     selectedRoomArchived,
-  );
+  ) || Boolean(roomNavigationPending || sessionNavigationPending);
   const terminalFileDropEnabled =
     !composerDisabled &&
     currentSessionView.id === "terminal" &&
@@ -555,9 +559,16 @@ export function SessionTracePane({
           sessionNodes: bootstrap.sessions,
           selectedPiboSessionId,
           traceTitle: currentTraceView?.title,
-          fallback: bootstrap.room?.name ?? selectedRoomId ?? undefined,
+          fallback: "No session selected",
         }),
-        roomLabel: bootstrap.room?.name ?? selectedRoomId ?? "Room",
+        contextKind,
+        contextLabel:
+          contextLabel ??
+          (bootstrap.room?.id === selectedRoomId
+            ? bootstrap.room.name
+            : undefined) ??
+          selectedRoomId ??
+          "Unknown room",
         headerPiboSessionId,
         piboSessionId: selectedPiboSessionId,
         piboRoomId: selectedRoomId ?? bootstrap.selectedRoomId ?? undefined,

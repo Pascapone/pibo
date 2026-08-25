@@ -23,7 +23,7 @@ test("project and workflow create handlers use app-owned dialogs instead of prom
   assert.doesNotMatch(projectCreateHandler, /window\.prompt/);
   assert.doesNotMatch(workflowCreateHandler, /window\.prompt/);
   assert.match(projectsArea, /<CreateProjectDialog/);
-  assert.match(projectsArea, /onCreateProject=\{\(\) => setCreateProjectDialogOpen\(true\)\}/);
+  assert.match(projectsArea, /onCreateProject=\{\(\) => \{[\s\S]*?!navigationPendingRef\.current[\s\S]*?setCreateProjectDialogOpen\(true\)/);
   assert.match(workflowsArea, /<CreateWorkflowDialog/);
   assert.match(workflowsArea, /setCreateWorkflowDialogOpen\(true\)/);
 });

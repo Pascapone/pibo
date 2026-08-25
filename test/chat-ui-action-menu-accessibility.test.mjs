@@ -141,7 +141,7 @@ test("shared action menu owns menu-button semantics and dismissal behavior", () 
 	assert.match(source, /role="menuitem"/);
 	assert.match(source, /max-h-\[calc\(100vh-1rem\)\]/);
 	assert.match(source, /overflow-y-auto/);
-	assert.match(source, /\{open && position && typeof document !== "undefined" \? createPortal\(/);
+	assert.match(source, /\{!disabled && open && position && typeof document !== "undefined" \? createPortal\(/);
 	assert.doesNotMatch(source, /hidden=\{!open\}/);
 	assert.match(source, /event\.key === "Escape"[\s\S]*event\.stopPropagation\(\)[\s\S]*event\.nativeEvent\.stopImmediatePropagation\(\)[\s\S]*triggerRef\.current\?\.focus\(\)/);
 	assert.match(source, /event\.key === "Tab"[\s\S]*focusRelativeToTrigger/);

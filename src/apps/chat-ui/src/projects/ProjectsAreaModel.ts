@@ -1,4 +1,5 @@
 import type { WorkflowVersionPickerOption } from "../api-workflows";
+import { findSessionNode } from "../app-session-model";
 import type { BootstrapData, PiboProject, PiboProjectSession, ProjectsBootstrapData } from "../types";
 import type { WorkflowUiDiagnostic } from "./ProjectWorkflowPanels";
 import { isWorkflowBackedProjectSession } from "./project-session-workflow";
@@ -7,6 +8,69 @@ export type ProjectArchiveGroups = {
 	active: PiboProject[];
 	archived: PiboProject[];
 };
+
+export type ProjectsTraceSelection = {
+	project: PiboProject | undefined;
+	selectedPiboSessionId: string | null;
+	navigationPending: boolean;
+};
+
+export type ProjectsCanonicalRoute = {
+	projectId: string;
+	piboSessionId?: string;
+};
+
+export function resolveProjectsCanonicalRoute(
+	data: ProjectsBootstrapData,
+	routeProjectId?: string,
+	routePiboSessionId?: string,
+): ProjectsCanonicalRoute | null {
+	if (
+		routeProjectId === data.selectedProjectId &&
+		routePiboSessionId === data.selectedPiboSessionId
+	) return null;
+	return {
+		projectId: data.selectedProjectId,
+		...(data.selectedPiboSessionId ? { piboSessionId: data.selectedPiboSessionId } : {}),
+	};
+}
+
+export function resolveProjectsTraceSelection(
+	data: ProjectsBootstrapData | null,
+	routeProjectId?: string,
+	routePiboSessionId?: string,
+): ProjectsTraceSelection {
+	const projectNavigationPending = Boolean(
+		routeProjectId && data?.selectedProjectId !== routeProjectId,
+	);
+	const routeProjectConfirmed = Boolean(
+		data && (!routeProjectId || data.selectedProjectId === routeProjectId),
+	);
+	const routeSessionConfirmed = Boolean(
+		routePiboSessionId &&
+		routeProjectConfirmed &&
+		findSessionNode(data?.sessions ?? [], routePiboSessionId),
+	);
+	const sessionNavigationPending = Boolean(
+		routePiboSessionId &&
+		(!routeSessionConfirmed || data?.selectedPiboSessionId !== routePiboSessionId),
+	);
+	const navigationPending = projectNavigationPending || sessionNavigationPending;
+	const project = !routeProjectId || data?.project?.id === routeProjectId
+		? data?.project
+		: data?.projects.find((candidate) => candidate.id === routeProjectId);
+	return {
+		project,
+		selectedPiboSessionId: projectNavigationPending
+			? null
+			: routePiboSessionId
+				? routeSessionConfirmed
+					? routePiboSessionId
+					: null
+				: data?.selectedPiboSessionId ?? null,
+		navigationPending,
+	};
+}
 
 export function splitProjectsByArchive(projects: readonly PiboProject[] | undefined): ProjectArchiveGroups {
 	const active: PiboProject[] = [];

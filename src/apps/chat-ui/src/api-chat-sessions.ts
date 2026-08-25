@@ -27,13 +27,16 @@ export async function getNavigation(
 	return requestJson<Partial<NavigationData>>(`/api/chat/navigation${suffix}`, init).then(normalizeNavigation);
 }
 
-export async function getProjectsBootstrap(input: { projectId?: string; piboSessionId?: string; includeArchived?: boolean } = {}): Promise<ProjectsBootstrapData> {
+export async function getProjectsBootstrap(
+	input: { projectId?: string; piboSessionId?: string; includeArchived?: boolean } = {},
+	init?: RequestInit,
+): Promise<ProjectsBootstrapData> {
 	const params = new URLSearchParams();
 	if (input.projectId) params.set("projectId", input.projectId);
 	if (input.piboSessionId) params.set("piboSessionId", input.piboSessionId);
 	if (input.includeArchived) params.set("includeArchived", "true");
 	const suffix = params.size ? `?${params.toString()}` : "";
-	return requestJson<Partial<ProjectsBootstrapData> | null>(`/api/chat/projects/bootstrap${suffix}`).then(normalizeProjectsBootstrap);
+	return requestJson<Partial<ProjectsBootstrapData> | null>(`/api/chat/projects/bootstrap${suffix}`, init).then(normalizeProjectsBootstrap);
 }
 
 export async function postProject(input: { name: string; projectFolder: string; description?: string; createFolder?: boolean }): Promise<{ project: PiboProject }> {
