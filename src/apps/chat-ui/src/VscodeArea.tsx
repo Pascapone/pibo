@@ -4,6 +4,16 @@ import type { VscodeWebIntegration } from "./types";
 
 const VSCODE_WORKBENCH_POLL_MS = 50;
 const VSCODE_WORKBENCH_READY_TIMEOUT_MS = 60_000;
+const VSCODE_WORKBENCH_THEME_SELECTORS = [".vs", ".vs-dark", ".hc-black", ".hc-light"] as const;
+
+type VscodeWorkbenchDocument = Pick<Document, "querySelector">;
+
+export function vscodeWorkbenchReady(frameDocument: VscodeWorkbenchDocument | null | undefined): boolean {
+	return Boolean(
+		frameDocument?.querySelector(".monaco-workbench")
+		&& VSCODE_WORKBENCH_THEME_SELECTORS.some((selector) => frameDocument.querySelector(selector)),
+	);
+}
 
 export function vscodeWebUrl(baseUrl: string, folder?: string, documentUrl = "http://localhost/"): string {
 	const target = new URL(baseUrl, documentUrl);
@@ -74,22 +84,19 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 		};
 	}, [frameUrl]);
 
-	const waitForDarkWorkbench = () => {
+	const waitForWorkbench = () => {
 		if (frameReadinessTimerRef.current !== null) window.clearTimeout(frameReadinessTimerRef.current);
 		setFrameReady(false);
 		const startedAt = Date.now();
 		const inspectFrame = () => {
-			let darkWorkbenchReady = false;
+			let workbenchReady = false;
 			try {
 				const frameDocument = frameRef.current?.contentDocument;
-				darkWorkbenchReady = Boolean(
-					frameDocument?.querySelector(".monaco-workbench")
-					&& frameDocument.querySelector(".vs-dark, .hc-black"),
-				);
+				workbenchReady = vscodeWorkbenchReady(frameDocument);
 			} catch {
-				darkWorkbenchReady = false;
+				workbenchReady = false;
 			}
-			if (darkWorkbenchReady) {
+			if (workbenchReady) {
 				frameReadinessTimerRef.current = window.setTimeout(() => {
 					setFrameReady(true);
 					frameReadinessTimerRef.current = null;
@@ -99,7 +106,7 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 			if (Date.now() - startedAt >= VSCODE_WORKBENCH_READY_TIMEOUT_MS) {
 				frameReadinessTimerRef.current = null;
 				setProbeStatus("unavailable");
-				setProbeError("VS Code Web did not finish starting in dark mode.");
+				setProbeError("VS Code Web did not finish starting.");
 				return;
 			}
 			frameReadinessTimerRef.current = window.setTimeout(inspectFrame, VSCODE_WORKBENCH_POLL_MS);
@@ -127,7 +134,7 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 							<div className="absolute inset-0 z-10 grid place-items-center bg-[#101d22]" role="status" aria-live="polite">
 								<div className="flex items-center gap-3 text-sm text-slate-300">
 									<RefreshCw size={16} className="animate-spin text-[#11a4d4]" />
-									Starting VS Code in dark mode…
+									Starting VS Code…
 								</div>
 							</div>
 						) : null}
@@ -137,7 +144,7 @@ export function VscodeArea({ integration }: { integration?: VscodeWebIntegration
 							src={frameUrl}
 							title="VS Code Web"
 							allow="clipboard-read; clipboard-write"
-							onLoad={waitForDarkWorkbench}
+							onLoad={waitForWorkbench}
 							aria-hidden={!frameReady}
 							tabIndex={frameReady ? 0 : -1}
 							className={`h-full w-full border-0 bg-[#101d22] ${frameReady ? "visible" : "invisible"}`}
