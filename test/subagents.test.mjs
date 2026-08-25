@@ -16,6 +16,10 @@ import {
 	createSubagentToolName,
 	PIBO_AGENT_TOOL_NAMES,
 } from "../dist/subagents/tool.js";
+import {
+	PIBO_AGENT_OBSERVATION_TOOL_SUMMARY_MAX_BYTES,
+	piboAgentObservationToolSummary,
+} from "../dist/subagents/observations.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
@@ -168,6 +172,15 @@ test("delegated agents expose four stable shared tools and reject duplicate exac
 	assert.deepEqual(definitions.map((definition) => definition.name), PIBO_AGENT_TOOL_NAMES);
 	assert.match(definitions[0].description, /research-helper: Research the relevant code/);
 	assert.match(definitions[0].description, /worker: Implement focused changes/);
+	const observe = definitions.find((definition) => definition.name === "pibo_agents_observe");
+	assert.match(observe.description, /newest 20 completed assistant messages/);
+	assert.match(observe.promptSnippet, /no streaming deltas, no duplicate tool progress events, no tools/);
+	assert.equal(observe.inputSchema.properties.order.default, "desc");
+	assert.equal(observe.inputSchema.properties.limit.default, 20);
+	assert.equal(observe.inputSchema.properties.includeTools.default, false);
+	assert.equal(observe.inputSchema.properties.toolDetail.default, "summary");
+	assert.match(observe.inputSchema.properties.eventTypes.items.description, /Explicit filters can retrieve progress events/);
+	assert.match(observe.inputSchema.properties.kinds.items.description, /including progress events/);
 	assert.throws(
 		() => createAgentToolDefinitions([
 			{ name: "same", targetProfile: "helper-profile" },
@@ -175,6 +188,23 @@ test("delegated agents expose four stable shared tools and reject duplicate exac
 		], noopAgentsController),
 		/Duplicate agent name "same"/,
 	);
+});
+
+test("agent observation tool summaries bound oversized and malformed values", () => {
+	const oversized = piboAgentObservationToolSummary(undefined, false, {
+		result: { status: "completed", output: `prefix-${"x".repeat(100_000)}` },
+	});
+	assert.equal(Buffer.byteLength(oversized, "utf8") <= PIBO_AGENT_OBSERVATION_TOOL_SUMMARY_MAX_BYTES, true);
+	assert.match(oversized, /"outputBytes":100007/);
+	assert.match(oversized, /"outputPreview":"prefix-/);
+	assert.equal(oversized.includes("x".repeat(1_000)), false);
+
+	const cyclic = {};
+	cyclic.self = cyclic;
+	const malformed = piboAgentObservationToolSummary(undefined, true, { result: cyclic });
+	assert.equal(Buffer.byteLength(malformed, "utf8") <= PIBO_AGENT_OBSERVATION_TOOL_SUMMARY_MAX_BYTES, true);
+	assert.match(malformed, /"preview":"\[object Object\]"/);
+	assert.match(malformed, /"isError":true/);
 });
 
 test("legacy subagent tool exports remain source-compatible without entering runtime assembly", async () => {
@@ -884,6 +914,13 @@ test("agents controller lists, filters observations, kills owned children, and d
 		assert.deepEqual(controller.listAgents().map((agent) => [agent.name, agent.status]).sort(), [["explorer", "idle"], ["worker", "idle"]]);
 
 		router.emitOutput({
+			type: "assistant_delta",
+			piboSessionId: explorer.agentId,
+			eventId: "event-explorer",
+			text: "Alpha",
+			provenance: { kind: "subagent-request", requestId: "run_explorer", controllerPiboSessionId: "ps_parent" },
+		});
+		router.emitOutput({
 			type: "assistant_message",
 			piboSessionId: explorer.agentId,
 			eventId: "event-explorer",
@@ -901,11 +938,107 @@ test("agents controller lists, filters observations, kills owned children, and d
 			provenance: { kind: "subagent-request", requestId: "run_worker", controllerPiboSessionId: "ps_parent" },
 		});
 		router.emitOutput({
+			type: "tool_execution_started",
+			piboSessionId: worker.agentId,
+			eventId: "event-worker",
+			toolCallId: "tool-worker",
+			toolName: "bash",
+			args: { command: "npm test" },
+			provenance: { kind: "subagent-request", requestId: "run_worker", controllerPiboSessionId: "ps_parent" },
+		});
+		router.emitOutput({
+			type: "tool_execution_updated",
+			piboSessionId: worker.agentId,
+			eventId: "event-worker",
+			toolCallId: "tool-worker",
+			toolName: "bash",
+			args: { command: "npm test" },
+			partialResult: { delta: "x".repeat(5_000) },
+			provenance: { kind: "subagent-request", requestId: "run_worker", controllerPiboSessionId: "ps_parent" },
+		});
+		router.emitOutput({
+			type: "tool_execution_finished",
+			piboSessionId: worker.agentId,
+			eventId: "event-worker",
+			toolCallId: "tool-worker",
+			toolName: "bash",
+			result: { status: "completed", exitCode: 0, durationMs: 12, output: "x".repeat(5_000) },
+			isError: false,
+			provenance: { kind: "subagent-request", requestId: "run_worker", controllerPiboSessionId: "ps_parent" },
+		});
+		router.emitOutput({
 			type: "session_error",
 			piboSessionId: worker.agentId,
 			eventId: "event-worker-error",
 			error: "test failed",
 		});
+
+		const defaults = controller.observe({});
+		assert.deepEqual(defaults.filters.eventTypes, ["assistant_message"]);
+		assert.equal(defaults.filters.order, "desc");
+		assert.equal(defaults.filters.limit, 20);
+		assert.equal(defaults.filters.includeTools, false);
+		assert.equal(defaults.filters.toolDetail, "summary");
+		assert.deepEqual(defaults.observations.map((observation) => observation.eventType), ["assistant_message"]);
+		assert.equal(defaults.observations[0].text, "Alpha complete");
+		assert.deepEqual(
+			controller.observe({ eventTypes: ["assistant_delta"], limit: 50 }).observations.map((observation) => observation.eventType),
+			["assistant_delta"],
+		);
+
+		const withToolSummaries = controller.observe({ includeTools: true, order: "asc", limit: 50 });
+		assert.deepEqual(withToolSummaries.filters.eventTypes, ["assistant_message", "tool_call", "tool_execution_finished"]);
+		assert.deepEqual(withToolSummaries.observations.map((observation) => observation.eventType), [
+			"assistant_message",
+			"tool_call",
+			"tool_execution_finished",
+		]);
+		const summarizedToolResult = withToolSummaries.observations.find((observation) => observation.eventType === "tool_execution_finished");
+		assert.match(summarizedToolResult.text, /"outputBytes":5000/);
+		assert.equal(Buffer.byteLength(summarizedToolResult.text, "utf8") <= 768, true);
+		const fullTools = controller.observe({ requestIds: ["run_worker"], includeTools: true, toolDetail: "full", order: "asc", limit: 50 });
+		const fullToolResult = fullTools.observations.find((observation) => observation.eventType === "tool_execution_finished");
+		assert.equal(Buffer.byteLength(fullToolResult.text, "utf8") <= 4 * 1024, true);
+		assert.ok(Buffer.byteLength(fullToolResult.text, "utf8") > Buffer.byteLength(summarizedToolResult.text, "utf8"));
+
+		const broadActivity = controller.observe({ kinds: ["message", "tool", "error", "lifecycle"], order: "asc", limit: 100 });
+		assert.equal(broadActivity.filters.includeTools, true);
+		assert.deepEqual(broadActivity.observations.map((observation) => observation.eventType), [
+			"assistant_delta",
+			"assistant_message",
+			"tool_call",
+			"tool_execution_started",
+			"tool_execution_updated",
+			"tool_execution_finished",
+			"session_error",
+		]);
+
+		const firstExplicitPage = controller.observe({ afterSequence: 0, kinds: ["message", "tool"], order: "desc", limit: 2 });
+		assert.deepEqual(firstExplicitPage.observations.map((observation) => observation.eventType), ["assistant_message", "assistant_delta"]);
+		const secondExplicitPage = controller.observe({
+			afterSequence: firstExplicitPage.nextAfterSequence,
+			kinds: ["message", "tool"],
+			order: "desc",
+			limit: 2,
+		});
+		assert.deepEqual(secondExplicitPage.observations.map((observation) => observation.eventType), ["tool_execution_started", "tool_call"]);
+		assert.equal(secondExplicitPage.nextAfterSequence > firstExplicitPage.nextAfterSequence, true);
+
+		const observeTool = createAgentToolDefinitions([
+			{ name: "explorer", targetProfile: "base" },
+			{ name: "worker", targetProfile: "base" },
+		], controller).find((definition) => definition.name === "pibo_agents_observe");
+		const modelResult = await observeTool.execute("observe-default", {});
+		assert.match(modelResult.content[0].text, /Alpha complete/);
+		assert.doesNotMatch(modelResult.content[0].text, /assistant_delta|npm test|"observations"/);
+		const detailedModelResult = await observeTool.execute("observe-details", {
+			eventTypes: ["tool_execution_finished"],
+			includeDetails: true,
+			toolDetail: "full",
+			limit: 1,
+		});
+		assert.equal(detailedModelResult.details.observations[0].details.type, "tool_execution_finished");
+		assert.equal(detailedModelResult.details.filters.includeDetails, true);
 
 		const observed = controller.observe({
 			requestIds: ["run_worker"],
@@ -925,7 +1058,7 @@ test("agents controller lists, filters observations, kills owned children, and d
 		assert.equal(observed.observations[0].toolName, "bash");
 		assert.equal(observed.observations[0].details, undefined);
 		assert.equal(observed.nextAfterSequence, observed.observations[0].sequence);
-		assert.equal(controller.observe({ afterSequence: observed.nextAfterSequence }).observations.length, 1);
+		assert.equal(controller.observe({ afterSequence: observed.nextAfterSequence, kinds: ["error"] }).observations.length, 1);
 		assert.equal(controller.observe({ kinds: ["error"], includeDetails: true }).observations[0].details.type, "session_error");
 		assert.throws(() => controller.observe({ agentIds: ["ps_foreign"] }), /is not owned/);
 
@@ -963,7 +1096,7 @@ test("agent observation polling is cursor-safe in descending order and reports r
 	try {
 		for (let index = 1; index <= 5_002; index += 1) {
 			router.emitOutput({
-				type: "assistant_delta",
+				type: "assistant_message",
 				piboSessionId: "ps_child",
 				eventId: `event-${index}`,
 				text: `observation ${index}`,
@@ -995,6 +1128,7 @@ test("agent observation polling is cursor-safe in descending order and reports r
 		assert.equal(large.observations[0].text.endsWith("…"), true);
 		assert.deepEqual(large.observations[0].details.truncated, true);
 		assert.throws(() => controller.observe({ limit: 0 }), /limit must be an integer from 1 to 200/);
+		assert.throws(() => controller.observe({ toolDetail: "verbose" }), /toolDetail must be "summary" or "full"/);
 		assert.throws(() => controller.observe({ since: "2026-08-23" }), /valid ISO-8601 timestamp/);
 	} finally {
 		await router.disposeAll();

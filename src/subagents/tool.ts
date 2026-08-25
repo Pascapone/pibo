@@ -4,9 +4,17 @@ import { piboStringEnum } from "../tools/schema.js";
 import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
 import type { PiboAssistantMessageEvent, PiboJsonValue, PiboMessageProvenance } from "../core/events.js";
 import type { ModelProfile, SubagentProfile } from "../core/profiles.js";
-import type { PiboAgentObservationKind, PiboAgentObservationOrder } from "./observations.js";
+import type {
+	PiboAgentObservationKind,
+	PiboAgentObservationOrder,
+	PiboAgentObservationToolDetail,
+} from "./observations.js";
 
-export type { PiboAgentObservationKind, PiboAgentObservationOrder } from "./observations.js";
+export type {
+	PiboAgentObservationKind,
+	PiboAgentObservationOrder,
+	PiboAgentObservationToolDetail,
+} from "./observations.js";
 
 export const PIBO_AGENT_TOOL_NAMES = [
 	"pibo_agents_send_message",
@@ -89,6 +97,8 @@ export type PiboAgentObserveInput = {
 	afterSequence?: number;
 	order?: PiboAgentObservationOrder;
 	limit?: number;
+	includeTools?: boolean;
+	toolDetail?: PiboAgentObservationToolDetail;
 	includeDetails?: boolean;
 };
 
@@ -157,6 +167,32 @@ export function formatAvailableAgentsForPrompt(subagents: readonly SubagentProfi
 
 function resultText(prefix: string, value: unknown): string {
 	return `${prefix}\n${JSON.stringify(value, null, 2)}`;
+}
+
+export function formatAgentObservationsForModel(result: PiboAgentObserveResult): string {
+	const includeTools = result.filters.includeTools === true;
+	const toolDetail = result.filters.toolDetail ?? "summary";
+	const lines = [
+		`Agent observations (${result.observations.length}; tools=${includeTools ? toolDetail : "hidden"}; order=${result.filters.order ?? "desc"}; limit=${result.filters.limit ?? 20})`,
+		`nextAfterSequence=${result.nextAfterSequence}; truncated=${result.truncated}`,
+	];
+	if (result.observations.length === 0) {
+		lines.push("", "No delegated-agent observations matched the filters.");
+		return lines.join("\n");
+	}
+	for (const observation of result.observations) {
+		const scope = [
+			observation.name,
+			observation.threadKey ? `thread=${observation.threadKey}` : undefined,
+			observation.requestId ? `request=${observation.requestId}` : undefined,
+		].filter(Boolean).join("; ");
+		const event = observation.kind === "tool"
+			? `${observation.eventType}${observation.toolName ? ` ${observation.toolName}` : ""}`
+			: observation.eventType;
+		lines.push("", `#${observation.sequence} ${scope} — ${event}${observation.isError ? " [error]" : ""}`);
+		if (observation.text) lines.push(observation.text);
+	}
+	return lines.join("\n");
 }
 
 function normalizeAgentSendMessageResult(
@@ -257,8 +293,12 @@ export function createAgentToolDefinitions(
 		definePiboTool({
 			name: "pibo_agents_observe",
 			title: "Pibo Agents Observe",
-			description: "Read bounded delegated-agent observations with exact agent, thread, event, kind, time, text, cursor, order, and limit filters.",
-			promptSnippet: "Observe child-agent activity. Array filters use OR within a field and different fields combine with AND. For cursor polling, pass afterSequence from the previous result; pages consume the oldest unseen observations even when order is desc.",
+			description: [
+				"Read completed delegated-agent messages with bounded cursor, identity, event, time, text, order, and limit filters.",
+				"Default: the newest 20 completed assistant messages, with streaming deltas and tools hidden.",
+				"Set includeTools=true to add compact tool calls and terminal results; set toolDetail=full only for bounded diagnostic inspection.",
+			].join("\n"),
+			promptSnippet: "Observe child-agent progress through completed assistant messages. Defaults: newest 20 messages, no streaming deltas, no duplicate tool progress events, no tools. Set includeTools=true for compact tool call/result summaries, toolDetail=full for bounded raw tool text, or eventTypes/kinds for explicit progress diagnostics. Pass afterSequence from the previous result for cursor polling; cursor pages consume the oldest unseen matches even when order is desc.",
 			executionMode: "parallel",
 			annotations: { readOnly: true },
 			inputSchema: Type.Object({
@@ -266,21 +306,23 @@ export function createAgentToolDefinitions(
 				agentIds: Type.Optional(Type.Array(Type.String({ description: "Owned child agentId" }), { maxItems: 50 })),
 				names: Type.Optional(Type.Array(piboStringEnum(names), { maxItems: 50 })),
 				threadKeys: Type.Optional(Type.Array(Type.String(), { maxItems: 50 })),
-				eventTypes: Type.Optional(Type.Array(Type.String({ description: "Exact Pibo output event type" }), { maxItems: 50 })),
-				kinds: Type.Optional(Type.Array(piboStringEnum(["message", "thinking", "tool", "error", "lifecycle", "event"]), { maxItems: 6 })),
+				eventTypes: Type.Optional(Type.Array(Type.String({ description: "Exact Pibo output event type. Explicit filters can retrieve progress events hidden by the default view." }), { maxItems: 50 })),
+				kinds: Type.Optional(Type.Array(piboStringEnum(["message", "thinking", "tool", "error", "lifecycle", "event"], { description: "Optional broad event kinds, including progress events. Omit eventTypes and kinds for the compact default view." }), { maxItems: 6 })),
 				roles: Type.Optional(Type.Array(Type.String({ description: "Exact normalized role, for example assistant" }), { maxItems: 20 })),
 				since: Type.Optional(Type.String({ description: "Inclusive ISO-8601 lower timestamp bound" })),
 				until: Type.Optional(Type.String({ description: "Inclusive ISO-8601 upper timestamp bound" })),
 				textContains: Type.Optional(Type.String({ description: "Case-insensitive substring match against normalized observation text" })),
-				afterSequence: Type.Optional(Type.Integer({ description: "Exclusive live observation cursor. Cursor pages consume the oldest unseen observations; desc reverses only the returned page.", minimum: 0 })),
-				order: Type.Optional(piboStringEnum(["asc", "desc"], { default: "asc" })),
-				limit: Type.Optional(Type.Integer({ description: "Maximum observations to return", minimum: 1, maximum: 200, default: 50 })),
-				includeDetails: Type.Optional(Type.Boolean({ description: "Include the normalized source event in each observation" })),
+				afterSequence: Type.Optional(Type.Integer({ description: "Exclusive live observation cursor. Cursor pages consume the oldest unseen matches; desc reverses only the returned page.", minimum: 0 })),
+				order: Type.Optional(piboStringEnum(["asc", "desc"], { default: "desc", description: "Newest first by default when no cursor is supplied" })),
+				limit: Type.Optional(Type.Integer({ description: "Maximum completed messages or activity records to return. Use 50 explicitly when needed.", minimum: 1, maximum: 200, default: 20 })),
+				includeTools: Type.Optional(Type.Boolean({ description: "Include tools. Default false. With the default message view, true adds tool_call and tool_execution_finished records.", default: false })),
+				toolDetail: Type.Optional(piboStringEnum(["summary", "full"], { default: "summary", description: "Tool text detail when tools are included. summary is compact; full remains bounded to the observation text limit." })),
+				includeDetails: Type.Optional(Type.Boolean({ description: "Include the normalized source event in structured details. Default false; use only for diagnostics.", default: false })),
 			}),
 			async execute(_toolCallId, params) {
 				const result = controller.observe(params as PiboAgentObserveInput);
 				return {
-					content: [{ type: "text", text: resultText("Agent observations:", result) }],
+					content: [{ type: "text", text: formatAgentObservationsForModel(result) }],
 					details: result,
 				};
 			},

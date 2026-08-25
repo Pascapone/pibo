@@ -32,15 +32,19 @@ import {
 	type PiboManagedAgent,
 } from "../subagents/tool.js";
 import {
+	PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES,
+	PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES,
 	normalizePiboAgentObservationCursor,
 	normalizePiboAgentObservationLimit,
 	normalizePiboAgentObservationOrder,
+	normalizePiboAgentObservationToolDetail,
 	parsePiboAgentObservationTimestamp,
 	piboAgentObservationDetails,
 	piboAgentObservationKind,
 	piboAgentObservationRole,
 	piboAgentObservationSourceFromEvent,
 	piboAgentObservationText,
+	piboAgentObservationToolSummary,
 } from "../subagents/observations.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
 import { PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, waitForRunCancellationSettlement } from "../runs/lifecycle.js";
@@ -2016,6 +2020,7 @@ export class PiboSessionRouter {
 	private observeManagedAgents(parentPiboSessionId: string, input: PiboAgentObserveInput) {
 		const order = normalizePiboAgentObservationOrder(input.order);
 		const limit = normalizePiboAgentObservationLimit(input.limit);
+		const toolDetail = normalizePiboAgentObservationToolDetail(input.toolDetail);
 		const afterSequence = normalizePiboAgentObservationCursor(input.afterSequence);
 		const since = parsePiboAgentObservationTimestamp(input.since, "since");
 		const until = parsePiboAgentObservationTimestamp(input.until, "until");
@@ -2033,12 +2038,22 @@ export class PiboSessionRouter {
 		const kinds = input.kinds ? new Set(input.kinds) : undefined;
 		const roles = input.roles ? new Set(input.roles) : undefined;
 		const textContains = input.textContains?.toLowerCase();
+		const defaultMessageView = eventTypes === undefined && kinds === undefined;
+		const explicitlySelectsTools = input.eventTypes?.some((eventType) => piboAgentObservationKind(eventType) === "tool") === true
+			|| input.kinds?.includes("tool") === true;
+		const includeTools = input.includeTools === true || (input.includeTools === undefined && explicitlySelectsTools);
+		const defaultEventTypes = includeTools
+			? [...PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES, ...PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES]
+			: [...PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES];
+		const defaultEventTypeSet = new Set<string>(defaultEventTypes);
 		const matches = this.agentObservations.filter((observation) => {
 			if (observation.managingParentId !== parentPiboSessionId) return false;
 			if (requestIds && (!observation.requestId || !requestIds.has(observation.requestId))) return false;
 			if (agentIds && !agentIds.has(observation.agentId)) return false;
 			if (names && !names.has(observation.name)) return false;
 			if (threadKeys && (!observation.threadKey || !threadKeys.has(observation.threadKey))) return false;
+			if (observation.kind === "tool" && !includeTools) return false;
+			if (defaultMessageView && !defaultEventTypeSet.has(observation.eventType)) return false;
 			if (eventTypes && !eventTypes.has(observation.eventType)) return false;
 			if (kinds && !kinds.has(observation.kind)) return false;
 			if (roles && (!observation.role || !roles.has(observation.role))) return false;
@@ -2056,7 +2071,10 @@ export class PiboSessionRouter {
 		if (cursorPolling && order === "desc") ordered.reverse();
 		const selected = ordered.map((observation) => {
 			const { managingParentId: _managingParentId, details, ...visible } = observation;
-			return input.includeDetails === true && details !== undefined ? { ...visible, details } : visible;
+			const compact = visible.kind === "tool" && toolDetail === "summary"
+				? { ...visible, text: piboAgentObservationToolSummary(visible.text, visible.isError, details) }
+				: visible;
+			return input.includeDetails === true && details !== undefined ? { ...compact, details } : compact;
 		});
 		const evictedThrough = this.agentObservationEvictedThroughByParent.get(parentPiboSessionId) ?? 0;
 		const retentionTruncated = afterSequence === undefined ? evictedThrough > 0 : afterSequence < evictedThrough;
@@ -2067,9 +2085,12 @@ export class PiboSessionRouter {
 		return {
 			filters: {
 				...input,
+				...(defaultMessageView ? { eventTypes: defaultEventTypes } : {}),
 				...(afterSequence !== undefined ? { afterSequence } : {}),
 				order,
 				limit,
+				includeTools,
+				toolDetail,
 				includeDetails: input.includeDetails === true,
 			},
 			observations: selected,

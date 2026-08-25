@@ -132,16 +132,25 @@ Each instance MUST expose:
 - `afterSequence`
 - `order`: `asc` or `desc`
 - bounded `limit`
+- optional `includeTools`
+- `toolDetail`: `summary` or `full`
 - optional full `details`
 
-The result MUST report the applied filters, observations, `nextAfterSequence`, and whether the requested result was truncated by the page limit or live-journal retention.
+The default view MUST return the newest 20 completed `assistant_message` observations. It MUST hide tools, `assistant_delta`, duplicate `tool_execution_started`, and streaming `tool_execution_updated` progress events. `includeTools: true` MUST add compact `tool_call` and terminal `tool_execution_finished` observations to the default message view. Explicit `eventTypes` or `kinds` filters MUST retain access to matching progress events for compatibility and diagnostics. `toolDetail: full` MAY expose bounded raw tool text for explicit diagnostics.
+
+The result MUST report the applied filters, observations, `nextAfterSequence`, and whether the requested result was truncated by the page limit or live-journal retention. The model-facing tool content MUST render concise observation entries instead of duplicating the full structured result as formatted JSON.
 
 #### Acceptance
 
+- With no view filters, the result contains only completed assistant messages, ordered newest first, with a limit of 20.
+- `includeTools` defaults to false; callers can request 50 or more bounded messages and tool records explicitly.
+- `assistant_delta`, `tool_execution_started`, and `tool_execution_updated` do not appear by default but remain available through explicit broad-kind or exact-event filters.
+- Compact tool summaries include bounded identifying, status, and output-preview fields instead of full command output.
+- `toolDetail: full` retains the existing 4 KiB observation-text bound.
 - Filters combine with AND semantics between fields and OR semantics within each array field.
 - Unknown or foreign `agentIds` fail instead of being ignored.
 - Invalid timestamp ranges fail.
-- Default output omits large raw details while retaining useful text, tool, and error summaries.
+- Default output omits tools and large raw details; explicit tool inspection defaults to compact summaries.
 - Observations have a router-global monotonic sequence so callers can poll with `afterSequence` without duplicates.
 - Cursor pages consume the oldest unseen matching observations before applying presentation order; `order: desc` cannot advance the cursor past unseen records.
 - If the caller's cursor predates retained live history, `truncated` is true and `nextAfterSequence` advances through the known eviction boundary even when no retained observation matches.
