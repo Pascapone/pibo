@@ -188,6 +188,7 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 					</div> : null}
 
 					{selectedJob?.mode === "goal" ? <div className="grid grid-cols-3 gap-3 max-[720px]:grid-cols-1"><Stat label="Active agent time" value={formatDurationSeconds(goalActiveTimeSeconds(selectedJob))} /><Stat label="Wall-clock elapsed" value={formatDurationSeconds(goalElapsedWallClockSeconds(selectedJob))} /><Stat label="Paused time" value="Included in wall clock" /></div> : null}
+					{selectedJob?.mode === "goal" && selectedJob.state.usage ? <LoopUsageSummary job={selectedJob} /> : null}
 
 					<section className="grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] gap-4 max-[980px]:grid-cols-1">
 						<Panel title="Job">
@@ -306,6 +307,27 @@ function ErrorBox({ message }: { message: string }) {
 	return <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-100 flex items-start gap-2"><AlertTriangle size={16} className="mt-0.5 text-red-300" /> <span>{message}</span></div>;
 }
 
+export function LoopUsageSummary({ job }: { job: PiboLoopJob }) {
+	const usage = job.state.usage;
+	if (!usage) return null;
+	return (
+		<div data-pibo-loop-recursive-usage className="grid grid-cols-6 gap-3 max-[1100px]:grid-cols-3 max-[720px]:grid-cols-2 max-[520px]:grid-cols-1">
+			<Stat label="Model turns" value={formatTokenCount(usage.total.assistantTurns)} />
+			<Stat label="All model tokens" value={formatTokenCount(usage.total.totalTokens)} />
+			<Stat label="Delegated tokens" value={formatTokenCount(usage.descendants.totalTokens)} />
+			<Stat label="Cache reads" value={formatTokenCount(usage.total.cacheReadTokens)} />
+			<Stat label="Reported cost" value={usage.total.costReportedTurns > 0 ? formatUsd(usage.total.costUsd) : "Not reported"} />
+			<Stat label="Session subtree" value={`${usage.sessionIds.length} session${usage.sessionIds.length === 1 ? "" : "s"}`} />
+			<div data-pibo-loop-contributing-sessions className="col-span-full rounded-sm border border-slate-800 bg-[#101d22] px-3 py-2">
+				<div className="text-[10px] uppercase tracking-wider text-slate-500">Contributing sessions</div>
+				<div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px]">
+					{usage.sessionIds.map((sessionId) => <a key={sessionId} className="text-[#11a4d4] hover:underline" href={`/apps/chat/sessions/${encodeURIComponent(sessionId)}`}>{sessionId}</a>)}
+				</div>
+			</div>
+		</div>
+	);
+}
+
 export function GoalTokenAccountingNotice({ selectedJob, draftMode }: { selectedJob: PiboLoopJob | null; draftMode: PiboLoopMode }) {
 	const keepsLegacyTotal = draftMode === "goal" && selectedJob?.mode === "goal" && tokenAccountingBasis(selectedJob) === "total";
 	return <div data-pibo-goal-token-accounting={keepsLegacyTotal ? "total" : "uncached"} className="rounded-sm border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-500">{keepsLegacyTotal ? "This legacy Goal keeps total-token accounting, including cache reads and writes, because its persisted counters cannot be reconstructed safely. New Goals use uncached-token accounting." : "The budget counts uncached input and output tokens; cache reads and writes are excluded. It is soft because usage arrives after each model response, so the final turn can overshoot. Pibo starts another turn only while remaining tokens exceed the reserve."}</div>;
@@ -377,11 +399,13 @@ function draftFromJob(job: PiboLoopJob, defaultProfile: string, roomId?: string)
 function inputFromDraft(draft: Draft): LoopJobInput { return { mode: draft.mode, name: draft.name.trim() || undefined, description: draft.description.trim() || undefined, profile: draft.profile, prompt: draft.prompt, maxIterations: draft.maxIterations.trim() ? Number(draft.maxIterations) : null, tokenBudget: draft.mode === "goal" && draft.tokenBudget.trim() ? Number(draft.tokenBudget) : null, tokenReserve: draft.mode === "goal" && draft.tokenReserve.trim() ? Number(draft.tokenReserve) : null, stopPolicy: parseStopPolicyText(draft.stopPolicyText), modelOverride: draft.modelOverride ?? null, thinkingLevel: draft.thinkingLevel ?? null, fastMode: draft.fastMode ?? null, target: draft.targetKind === "room" ? { kind: "room", roomId: draft.roomId } : { kind: "default-chat" } }; }
 function parseStopPolicyText(value: string): PiboLoopStopPolicy | null { const trimmed = value.trim(); if (!trimmed) return null; return JSON.parse(trimmed) as PiboLoopStopPolicy; }
 function profileOptions(agents: AgentProfile[], customAgents: CustomAgent[]): AgentOption[] { const options = new Map<string, AgentOption>(); for (const agent of agents) options.set(agent.name, { name: agent.name, label: agent.name, description: agent.description }); for (const agent of customAgents) if (!agent.archivedAt) options.set(agent.profileName, { name: agent.profileName, label: agent.displayName === agent.profileName ? agent.profileName : `${agent.displayName} (${agent.profileName})`, description: agent.description }); return [...options.values()]; }
-function runtimeSummary(job: PiboLoopJob): string { const parts = [job.mode, job.mode === "goal" ? job.state.goalStatus ?? (job.enabled ? "active" : "paused") : undefined, job.tokenBudget ? `soft ${tokenAccountingLabel(job)} ${job.state.tokensUsed ?? 0}/${job.tokenBudget}, reserve ${job.tokenReserve ?? 0}` : undefined, job.mode === "goal" ? `active ${formatDurationSeconds(goalActiveTimeSeconds(job))}, wall ${formatDurationSeconds(goalElapsedWallClockSeconds(job))}` : undefined, job.modelOverride ? `${job.modelOverride.provider}/${job.modelOverride.id}` : undefined, job.thinkingLevel ? `thinking ${job.thinkingLevel}` : undefined, job.fastMode !== undefined ? job.fastMode ? "fast on" : "fast off" : undefined].filter(Boolean); return parts.length ? parts.join(" · ") : "default runtime"; }
+function runtimeSummary(job: PiboLoopJob): string { const parts = [job.mode, job.mode === "goal" ? job.state.goalStatus ?? (job.enabled ? "active" : "paused") : undefined, job.tokenBudget ? `soft ${tokenAccountingLabel(job)} ${job.state.tokensUsed ?? 0}/${job.tokenBudget}, reserve ${job.tokenReserve ?? 0}` : undefined, job.state.usage ? `${formatTokenCount(job.state.usage.total.totalTokens)} subtree tokens` : undefined, job.mode === "goal" ? `active ${formatDurationSeconds(goalActiveTimeSeconds(job))}, wall ${formatDurationSeconds(goalElapsedWallClockSeconds(job))}` : undefined, job.modelOverride ? `${job.modelOverride.provider}/${job.modelOverride.id}` : undefined, job.thinkingLevel ? `thinking ${job.thinkingLevel}` : undefined, job.fastMode !== undefined ? job.fastMode ? "fast on" : "fast off" : undefined].filter(Boolean); return parts.length ? parts.join(" · ") : "default runtime"; }
 function tokenAccountingBasis(job: PiboLoopJob): "total" | "uncached" { return job.state.tokenAccounting?.version === 1 && job.state.tokenAccounting.basis === "uncached" ? "uncached" : "total"; }
 function tokenAccountingLabel(job: PiboLoopJob): string { return tokenAccountingBasis(job) === "uncached" ? "uncached" : "legacy total"; }
 function goalActiveTimeSeconds(job: PiboLoopJob): number { return Math.max(0, Math.floor(job.state.activeTimeSeconds ?? job.state.timeUsedSeconds ?? 0)); }
 function goalElapsedWallClockSeconds(job: PiboLoopJob): number { const startedAt = job.state.goalStartedAt ? Date.parse(job.state.goalStartedAt) : Number.NaN; const endedAt = job.state.goalEndedAt ? Date.parse(job.state.goalEndedAt) : Date.now(); return Number.isFinite(startedAt) && Number.isFinite(endedAt) ? Math.max(0, Math.floor((endedAt - startedAt) / 1000)) : 0; }
 function formatDurationSeconds(seconds: number): string { const hours = Math.floor(seconds / 3600); const minutes = Math.floor((seconds % 3600) / 60); const rest = seconds % 60; return hours ? `${hours}h ${minutes}m` : minutes ? `${minutes}m ${rest}s` : `${rest}s`; }
-function formatRunAccounting(run: PiboLoopRun): string { if (!run.accounting) return "-"; const remaining = run.accounting.remainingTokensBefore ?? "unbounded"; const basis = run.accounting.tokenAccounting?.version === 1 && run.accounting.tokenAccounting.basis === "uncached" ? "uncached" : "legacy total"; return `${run.accounting.tokensUsed ?? 0} ${basis} tokens · ${remaining} before · ${run.accounting.overshootTokens ?? 0} overshoot · ${formatDurationSeconds(run.accounting.activeTimeSeconds ?? 0)} active`; }
+function formatRunAccounting(run: PiboLoopRun): string { if (!run.accounting) return "-"; const remaining = run.accounting.remainingTokensBefore ?? "unbounded"; const basis = run.accounting.tokenAccounting?.version === 1 && run.accounting.tokenAccounting.basis === "uncached" ? "uncached" : "legacy total"; const recursive = run.accounting.usage ? ` · ${formatTokenCount(run.accounting.usage.total.totalTokens)} subtree · ${formatTokenCount(run.accounting.usage.descendants.totalTokens)} delegated${run.accounting.usage.total.costReportedTurns > 0 ? ` · ${formatUsd(run.accounting.usage.total.costUsd)}` : ""}` : ""; return `${run.accounting.tokensUsed ?? 0} ${basis} tokens · ${remaining} before · ${run.accounting.overshootTokens ?? 0} overshoot · ${formatDurationSeconds(run.accounting.activeTimeSeconds ?? 0)} active${recursive}`; }
+function formatTokenCount(tokens: number): string { return new Intl.NumberFormat("en-US").format(Math.max(0, Math.floor(tokens))); }
+function formatUsd(costUsd: number): string { return `$${Math.max(0, costUsd).toFixed(4)}`; }
 function shortDate(value: string): string { return new Date(value).toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }); }

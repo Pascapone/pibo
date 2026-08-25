@@ -174,11 +174,25 @@ function numberValue(value: unknown): number | undefined {
 export function normalizeAssistantUsageEvent(piboSessionId: string, message: unknown): Extract<PiboOutputEvent, { type: "assistant_usage" }> | undefined {
 	const assistant = message as AssistantErrorMessage | undefined;
 	if (!assistant?.usage || typeof assistant.usage !== "object") return undefined;
-	const usage = assistant.usage as { input?: unknown; output?: unknown; inputTokens?: unknown; outputTokens?: unknown; cacheRead?: unknown; cacheWrite?: unknown; totalTokens?: unknown };
+	const usage = assistant.usage as {
+		input?: unknown;
+		output?: unknown;
+		inputTokens?: unknown;
+		outputTokens?: unknown;
+		cacheRead?: unknown;
+		cacheWrite?: unknown;
+		reasoning?: unknown;
+		reasoningTokens?: unknown;
+		totalTokens?: unknown;
+		cost?: unknown;
+	};
 	const inputTokens = numberValue(usage.inputTokens) ?? numberValue(usage.input);
 	const outputTokens = numberValue(usage.outputTokens) ?? numberValue(usage.output);
 	const cacheReadTokens = numberValue(usage.cacheRead);
 	const cacheWriteTokens = numberValue(usage.cacheWrite);
+	const reasoningTokens = numberValue(usage.reasoningTokens) ?? numberValue(usage.reasoning);
+	const cost = usage.cost && typeof usage.cost === "object" ? usage.cost as { total?: unknown } : undefined;
+	const costUsd = numberValue(cost?.total) ?? numberValue(usage.cost);
 	const reportedTotal = numberValue(usage.totalTokens);
 	const normalizedTotal = reportedTotal ?? [inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens]
 		.filter((value): value is number => value !== undefined)
@@ -191,7 +205,9 @@ export function normalizeAssistantUsageEvent(piboSessionId: string, message: unk
 		...(outputTokens !== undefined ? { outputTokens } : {}),
 		...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
 		...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+		...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
 		totalTokens: Math.max(0, normalizedTotal),
+		...(costUsd !== undefined ? { costUsd } : {}),
 	};
 }
 
@@ -266,21 +282,24 @@ function promptSource(source: PiboEventSource | undefined): "interactive" | "rpc
 	return source === "user" || source === "ui" ? "interactive" : "rpc";
 }
 
-function lastTextPartFromMessage(message: unknown): { text: string; contentIndex: number } | undefined {
+function textFromMessage(message: unknown): { text: string; contentIndex: number } | undefined {
 	if (!message || typeof message !== "object") return undefined;
 
 	const content = (message as { content?: unknown }).content;
 	if (!Array.isArray(content)) return undefined;
 
-	for (let index = content.length - 1; index >= 0; index -= 1) {
+	const textParts: Array<{ text: string; contentIndex: number }> = [];
+	for (let index = 0; index < content.length; index += 1) {
 		const part = content[index];
 		if (!part || typeof part !== "object") continue;
 		const candidate = part as { type?: unknown; text?: unknown };
 		if (candidate.type === "text" && typeof candidate.text === "string" && candidate.text.length > 0) {
-			return { text: candidate.text, contentIndex: index };
+			textParts.push({ text: candidate.text, contentIndex: index });
 		}
 	}
-	return undefined;
+	const finalPart = textParts.at(-1);
+	if (!finalPart) return undefined;
+	return { text: textParts.map((part) => part.text).join("\n"), contentIndex: finalPart.contentIndex };
 }
 
 function toolCallFromMessage(message: unknown, contentIndex: unknown): PiToolCall | undefined {
@@ -522,13 +541,13 @@ export function normalizePiEvent(piboSessionId: string, event: unknown, context?
 					errorDetails: assistantErrorDetails(message, context),
 				};
 			}
-			const textPart = lastTextPartFromMessage(candidate.message);
-			if (textPart) {
+			const messageText = textFromMessage(candidate.message);
+			if (messageText) {
 				return {
 					type: "assistant_message",
 					piboSessionId,
-					contentIndex: textPart.contentIndex,
-					text: textPart.text,
+					contentIndex: messageText.contentIndex,
+					text: messageText.text,
 				};
 			}
 		}
@@ -1667,55 +1686,60 @@ export class RoutedSession {
 	}
 
 	private withActiveMessage(event: PiboOutputEvent): PiboOutputEvent {
-		if (this.activeMessage?.id && event.type === "assistant_delta") {
+		const activeMessage = this.activeMessage;
+		if (!activeMessage?.id) return event;
+		const correlation = {
+			eventId: activeMessage.id,
+			...(activeMessage.provenance ? { provenance: activeMessage.provenance } : {}),
+		};
+		if (event.type === "assistant_delta") {
 			const assistantIndex = this.activeAssistantIndex ?? this.nextAssistantIndex;
 			if (this.activeAssistantIndex === undefined) {
 				this.nextAssistantIndex += 1;
 				this.activeAssistantIndex = assistantIndex;
 			}
-			return { ...event, eventId: this.activeMessage.id, assistantIndex };
+			return { ...event, ...correlation, assistantIndex };
 		}
 
-		if (this.activeMessage?.id && event.type === "assistant_message") {
+		if (event.type === "assistant_message") {
 			const assistantIndex = this.activeAssistantIndex ?? this.nextAssistantIndex;
 			if (this.activeAssistantIndex === undefined) {
 				this.nextAssistantIndex += 1;
 			}
 			this.activeAssistantIndex = undefined;
-			return { ...event, eventId: this.activeMessage.id, assistantIndex };
+			return { ...event, ...correlation, assistantIndex };
 		}
 
-		if (this.activeMessage?.id && event.type === "thinking_started") {
+		if (event.type === "thinking_started") {
 			const thinkingIndex = this.nextThinkingIndex;
 			this.nextThinkingIndex += 1;
 			this.activeThinkingIndex = thinkingIndex;
-			return { ...event, eventId: this.activeMessage.id, thinkingIndex };
+			return { ...event, ...correlation, thinkingIndex };
 		}
 
-		if (this.activeMessage?.id && (event.type === "thinking_delta" || event.type === "thinking_finished")) {
+		if (event.type === "thinking_delta" || event.type === "thinking_finished") {
 			const thinkingIndex = this.activeThinkingIndex ?? this.nextThinkingIndex;
 			if (this.activeThinkingIndex === undefined) {
 				this.nextThinkingIndex += 1;
 				this.activeThinkingIndex = thinkingIndex;
 			}
-			const output = { ...event, eventId: this.activeMessage.id, thinkingIndex };
+			const output = { ...event, ...correlation, thinkingIndex };
 			if (event.type === "thinking_finished") this.activeThinkingIndex = undefined;
 			return output;
 		}
 
 		if (
-			this.activeMessage?.id &&
-			(event.type === "assistant_usage" ||
-				event.type === "compaction_start" ||
-				event.type === "compaction_end" ||
-				event.type === "tool_call" ||
-				event.type === "tool_execution_started" ||
-				event.type === "tool_execution_updated" ||
-				event.type === "tool_execution_finished" ||
-				event.type === "session_error" ||
-				event.type === "execution_result")
+			event.type === "assistant_usage" ||
+			event.type === "compaction_start" ||
+			event.type === "compaction_end" ||
+			event.type === "tool_call" ||
+			event.type === "tool_execution_started" ||
+			event.type === "tool_execution_updated" ||
+			event.type === "tool_execution_finished" ||
+			event.type === "session_error" ||
+			event.type === "execution_result"
 		) {
-			return { ...event, eventId: this.activeMessage.id };
+			return { ...event, ...correlation };
 		}
 
 		return event;

@@ -171,6 +171,51 @@ test("Pi event normalization extracts configured intents without corrupting defa
 	assert.deepEqual(collisionEvent.args, { i: 7, path: "records.json" });
 });
 
+test("Pi final message normalization preserves every ordered text part", () => {
+	assert.deepEqual(normalizePiEvent("ps-final", {
+		type: "message_end",
+		message: {
+			role: "assistant",
+			content: [
+				{ type: "text", text: "first block" },
+				{ type: "thinking", thinking: "hidden" },
+				{ type: "text", text: "second block" },
+			],
+			stopReason: "stop",
+		},
+	}), {
+		type: "assistant_message",
+		piboSessionId: "ps-final",
+		contentIndex: 2,
+		text: "first block\nsecond block",
+	});
+});
+
+test("Pi semantic usage conversion preserves reasoning tokens and reported cost", () => {
+	assert.deepEqual(semanticEventFromPibo({
+		type: "assistant_usage",
+		piboSessionId: "ps-usage",
+		inputTokens: 10,
+		outputTokens: 3,
+		cacheReadTokens: 2,
+		cacheWriteTokens: 1,
+		reasoningTokens: 4,
+		totalTokens: 20,
+		costUsd: 0.25,
+	}), {
+		type: "usage",
+		usage: {
+			inputTokens: 10,
+			outputTokens: 3,
+			cacheReadTokens: 2,
+			cacheWriteTokens: 1,
+			reasoningTokens: 4,
+			totalTokens: 20,
+			costUsd: 0.25,
+		},
+	});
+});
+
 test("Pi semantic event conversion preserves tool call intent", () => {
 	assert.deepEqual(semanticEventFromPibo({
 		type: "tool_call",

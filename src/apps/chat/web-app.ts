@@ -88,6 +88,7 @@ import {
 	type PiboModelDefaults,
 } from "../../core/model-defaults.js";
 import { inspectPiboContextBuild, type PiboContextBuildRuntimeInfo, type PiboContextBuildSnapshot } from "../../core/context-build.js";
+import { isPiboThinkingLevel } from "../../core/thinking.js";
 import { loadPiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
 import { isTelemetryRetentionMaintenanceDue, maybeRunTelemetryRetentionMaintenance, type TelemetryRetentionMaintenanceState } from "./telemetry-retention-service.js";
 import { loadModelCatalog } from "./model-catalog.js";
@@ -3257,19 +3258,22 @@ async function buildContextBuildSnapshotForRequest(input: {
 	if (!input.piboSessionId) throw new PiboWebHttpError("piboSessionId is required", 400);
 
 	const selectedSession = requireSharedSession(input.context, input.piboSessionId);
-	const configuredProfile = createProfile(selectedSession.profile);
-	const runtimeInstanceId = selectedSession.runtimeBinding?.runtimeInstanceId ?? configuredProfile.runtimeInstanceId;
-	const profile = profileWithRuntimeInstance(configuredProfile, runtimeInstanceId);
+	const runtimeBinding = input.context.channelContext.getSessionRuntimeBinding?.(selectedSession.id) ?? selectedSession.runtimeBinding;
+	const configuredProfile = input.context.channelContext.getSessionRuntimeProfile?.(selectedSession.id) ?? createProfile(selectedSession.profile);
+	const runtimeInstanceId = runtimeBinding?.runtimeInstanceId ?? configuredProfile.runtimeInstanceId;
+	const profile = configuredProfile.runtimeInstanceId === runtimeInstanceId
+		? configuredProfile
+		: profileWithRuntimeInstance(configuredProfile, runtimeInstanceId);
 	const cwd = selectedSession.workspace ?? getDefaultPiboWorkspace();
 	const runtime = await resolveContextBuildRuntime(input.context, runtimeInstanceId);
 	const validationDiagnostics = input.context.channelContext.validateAgentRuntimeProfile
 		? await input.context.channelContext.validateAgentRuntimeProfile(profile, cwd)
 		: [];
-	const bindingMismatchDiagnostic = selectedSession.runtimeBinding && selectedSession.runtimeBinding.adapterId !== runtime.adapterId
+	const bindingMismatchDiagnostic = runtimeBinding && runtimeBinding.adapterId !== runtime.adapterId
 		? [{
 			severity: "error" as const,
 			code: "runtime_binding_adapter_mismatch",
-			message: `Session binding expects adapter "${selectedSession.runtimeBinding.adapterId}", but runtime instance "${runtime.id}" uses "${runtime.adapterId}".`,
+			message: `Session binding expects adapter "${runtimeBinding.adapterId}", but runtime instance "${runtime.id}" uses "${runtime.adapterId}".`,
 		}]
 		: [];
 	const diagnostics = uniqueRuntimeDiagnostics([
@@ -3282,13 +3286,18 @@ async function buildContextBuildSnapshotForRequest(input: {
 		adapterId: runtime.adapterId,
 		available: runtime.available && !diagnostics.some((diagnostic) => diagnostic.severity === "error"),
 		transport: runtime.transport,
-		bindingState: selectedSession.runtimeBinding?.state,
+		bindingState: runtimeBinding?.state,
 		protocol: runtime.protocol,
 		capabilities: runtime.capabilities,
 		diagnostics,
 	};
 
 	const userSettings = loadPiboUserSettings();
+	const modelDefaults = loadPiboModelDefaults(cwd);
+	const storedInitialThinkingLevel = selectedSession.metadata?.initialThinkingLevel;
+	const initialThinkingLevel = typeof storedInitialThinkingLevel === "string" && isPiboThinkingLevel(storedInitialThinkingLevel)
+		? storedInitialThinkingLevel
+		: undefined;
 	const resourceService = new PiboRuntimeResourceService();
 	const resources = await resourceService.createSession({
 		piboSessionId: selectedSession.id,
@@ -3308,6 +3317,9 @@ async function buildContextBuildSnapshotForRequest(input: {
 				cwd,
 				profile,
 				activeModel: selectedSession.activeModel,
+				thinkingLevel: initialThinkingLevel,
+				modelDefaults,
+				subagentProfileResolver: createProfile,
 				persistSession: false,
 				resources,
 				sessionContext: {
@@ -3339,6 +3351,9 @@ async function buildContextBuildSnapshotForRequest(input: {
 			piboSessionId: selectedSession.id,
 			piboRoomId: chatRoomIdFromMetadata(selectedSession.metadata),
 			activeModel: selectedSession.activeModel,
+			thinkingLevel: initialThinkingLevel,
+			modelDefaults,
+			subagentProfileResolver: createProfile,
 			resources: resources.getInspection(),
 		});
 	} finally {

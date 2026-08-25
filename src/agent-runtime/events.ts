@@ -7,6 +7,7 @@ export type AgentRuntimeUsage = {
 	cacheWriteTokens?: number;
 	reasoningTokens?: number;
 	totalTokens: number;
+	costUsd?: number;
 	contextWindow?: number;
 };
 

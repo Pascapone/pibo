@@ -644,6 +644,7 @@ export class RuntimeRoutedSession {
 					cacheWriteTokens: event.usage.cacheWriteTokens,
 					reasoningTokens: event.usage.reasoningTokens,
 					totalTokens: event.usage.totalTokens,
+					costUsd: event.usage.costUsd,
 					provenance: this.activeMessage?.provenance,
 				}));
 				this.trackRunReminderTurnGuard("usage", { totalTokens: event.usage.totalTokens });
@@ -1136,55 +1137,58 @@ export class RuntimeRoutedSession {
 	}
 
 	private withActiveMessage(event: PiboOutputEvent): PiboOutputEvent {
-		if (this.activeMessage?.id && event.type === "assistant_delta") {
+		const activeMessage = this.activeMessage;
+		if (!activeMessage?.id) return event;
+		const correlation = {
+			eventId: activeMessage.id,
+			...(activeMessage.provenance ? { provenance: activeMessage.provenance } : {}),
+		};
+		if (event.type === "assistant_delta") {
 			const assistantIndex = this.activeAssistantIndex ?? this.nextAssistantIndex;
 			if (this.activeAssistantIndex === undefined) {
 				this.nextAssistantIndex += 1;
 				this.activeAssistantIndex = assistantIndex;
 			}
-			return { ...event, eventId: this.activeMessage.id, assistantIndex };
+			return { ...event, ...correlation, assistantIndex };
 		}
-		if (this.activeMessage?.id && event.type === "assistant_message") {
+		if (event.type === "assistant_message") {
 			const assistantIndex = this.activeAssistantIndex ?? this.nextAssistantIndex;
 			if (this.activeAssistantIndex === undefined) this.nextAssistantIndex += 1;
 			this.activeAssistantIndex = undefined;
-			return { ...event, eventId: this.activeMessage.id, assistantIndex };
+			return { ...event, ...correlation, assistantIndex };
 		}
-		if (this.activeMessage?.id && event.type === "thinking_started") {
+		if (event.type === "thinking_started") {
 			const thinkingIndex = this.nextThinkingIndex;
 			this.nextThinkingIndex += 1;
 			this.activeThinkingIndex = thinkingIndex;
-			return { ...event, eventId: this.activeMessage.id, thinkingIndex };
+			return { ...event, ...correlation, thinkingIndex };
 		}
-		if (this.activeMessage?.id && (event.type === "thinking_delta" || event.type === "thinking_finished")) {
+		if (event.type === "thinking_delta" || event.type === "thinking_finished") {
 			const thinkingIndex = this.activeThinkingIndex ?? this.nextThinkingIndex;
 			if (this.activeThinkingIndex === undefined) {
 				this.nextThinkingIndex += 1;
 				this.activeThinkingIndex = thinkingIndex;
 			}
-			const output = { ...event, eventId: this.activeMessage.id, thinkingIndex };
+			const output = { ...event, ...correlation, thinkingIndex };
 			if (event.type === "thinking_finished") this.activeThinkingIndex = undefined;
 			return output;
 		}
 		if (
-			this.activeMessage?.id
-			&& (
-				event.type === "assistant_usage"
-				|| event.type === "compaction_start"
-				|| event.type === "compaction_end"
-				|| event.type === "tool_call"
-				|| event.type === "tool_execution_started"
-				|| event.type === "tool_execution_updated"
-				|| event.type === "tool_execution_finished"
-				|| event.type === "approval_requested"
-				|| event.type === "approval_resolved"
-				|| event.type === "user_input_requested"
-				|| event.type === "user_input_resolved"
-				|| event.type === "session_error"
-				|| event.type === "execution_result"
-			)
+			event.type === "assistant_usage"
+			|| event.type === "compaction_start"
+			|| event.type === "compaction_end"
+			|| event.type === "tool_call"
+			|| event.type === "tool_execution_started"
+			|| event.type === "tool_execution_updated"
+			|| event.type === "tool_execution_finished"
+			|| event.type === "approval_requested"
+			|| event.type === "approval_resolved"
+			|| event.type === "user_input_requested"
+			|| event.type === "user_input_resolved"
+			|| event.type === "session_error"
+			|| event.type === "execution_result"
 		) {
-			return { ...event, eventId: this.activeMessage.id };
+			return { ...event, ...correlation };
 		}
 		return event;
 	}

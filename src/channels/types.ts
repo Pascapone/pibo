@@ -59,6 +59,7 @@ export type PiboChannelContext = {
 	findSessions(input: FindPiboSessionsInput): PiboSession[];
 	listSessions?(): PiboSession[];
 	getSessionRuntimeBinding?(piboSessionId: string): RuntimeSessionBinding | undefined;
+	getSessionRuntimeProfile?(piboSessionId: string): InitialSessionContext;
 	inspectSessionRuntimeHistory?(piboSessionId: string): Promise<AgentRuntimeHistoryInspection>;
 	readSessionRuntimeHistory?(piboSessionId: string, input?: { cursor?: string; beforeTimestamp?: string; limit?: number }): Promise<AgentRuntimeHistoryPage>;
 	rebindSessionRuntime?(piboSessionId: string, input: RuntimeSessionBindingRebindInput): Promise<RuntimeSessionBinding>;

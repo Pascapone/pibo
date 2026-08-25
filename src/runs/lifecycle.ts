@@ -1,5 +1,7 @@
 export type PiboRunTimeoutPhase = "startup" | "lifetime";
 
+export const PIBO_RUN_CANCELLATION_SETTLEMENT_TIMEOUT_MS = 15_000;
+
 export class PiboRunExecutionTimeoutError extends Error {
 	constructor(message: string, readonly timeoutPhase: PiboRunTimeoutPhase) {
 		super(message);
@@ -21,6 +23,24 @@ export class PiboRunCancelledError extends Error {
 	}
 }
 
+export async function waitForRunCancellationSettlement(
+	settled: Promise<unknown>,
+	timeoutMs = PIBO_RUN_CANCELLATION_SETTLEMENT_TIMEOUT_MS,
+): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		await Promise.race([
+			settled,
+			new Promise<never>((_resolve, reject) => {
+				timer = setTimeout(() => reject(new Error(`Yielded run did not settle within ${timeoutMs}ms after cancellation.`)), timeoutMs);
+				timer.unref?.();
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
 export function resolveRunTimeoutMs(toolName: string, params: unknown): number | undefined {
 	if (!params || typeof params !== "object" || Array.isArray(params)) return undefined;
 	const input = params as Record<string, unknown>;
@@ -38,7 +58,15 @@ export function foregroundServiceWarning(toolName: string, params: unknown, time
 
 export function isConfiguredTimeoutError(error: unknown): boolean {
 	const message = error instanceof Error ? error.message : String(error);
-	return /(?:timed?\s*out|timeout)/i.test(message);
+	const terminalLines = message.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-5);
+	return terminalLines.some((line) => {
+		const normalized = line.replace(/^error:\s*/i, "");
+		return /^(?:command|process|tool execution|yielded run)\s+timed?\s*out\b.*$/i.test(normalized)
+			|| /^timed?\s*out(?:\s+after\s+.+)?[.!]?$/i.test(normalized)
+			|| /^timeout(?:\s+error)?[.!]?$/i.test(normalized)
+			|| /^timeout(?::|\s+)(?:occurred|expired|exceeded|elapsed|reached)\b.*$/i.test(normalized)
+			|| /^timeout(?::|\s+)(?:after\s+)?\d+(?:\.\d+)?\s*(?:ms|milliseconds?|s|secs?|seconds?|m|mins?|minutes?|h|hours?)\b.*$/i.test(normalized);
+	});
 }
 
 export function hasMeaningfulTimeoutOutput(value: unknown): boolean {

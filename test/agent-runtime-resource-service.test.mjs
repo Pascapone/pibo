@@ -122,6 +122,35 @@ async function createFixture() {
 	return { root, workspace, selectedSkillDir, unselectedSkillDir, configPath };
 }
 
+test("portable delegated sessions require delivery of generated management context", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-delegated-context-"));
+	t.after(async () => rm(root, { recursive: true, force: true }));
+	const service = new PiboRuntimeResourceService({ rootDir: join(root, "generations") });
+	t.after(async () => service.dispose());
+	const profile = new InitialSessionContextBuilder("portable-delegated")
+		.withAgentRuntime("portable-runtime")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addSubagent({ name: "worker", targetProfile: "base" })
+		.createSession();
+	const capabilities = createMinimalAgentRuntimeCapabilities();
+	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
+
+	await assert.rejects(
+		service.createSession({
+			piboSessionId: "ps_portable_delegated",
+			runtimeInstanceId: "portable-runtime",
+			adapterId: "portable",
+			sessionGeneration: "generation-one",
+			profile,
+			cwd: root,
+			capabilities,
+		}),
+		(error) => error instanceof PiboRuntimeResourceError
+			&& /does not provide this capability/.test(error.message),
+	);
+});
+
 test("runtime resources isolate selected skills, context, MCP config, secrets, and verified inventory", async (t) => {
 	const fixture = await createFixture();
 	t.after(async () => rm(fixture.root, { recursive: true, force: true }));
@@ -139,6 +168,7 @@ test("runtime resources isolate selected skills, context, MCP config, secrets, a
 		.withToolPackages({ goalControl: false })
 		.addSkill({ name: "selected", path: join(fixture.selectedSkillDir, "SKILL.md"), kind: "user" })
 		.addContextFile({ key: "selected-context", path: "selected-context.md", source: "managed" })
+		.addSubagent({ name: "worker", description: "Perform delegated work.", targetProfile: "worker-profile" })
 		.withMcpServers(["selected"])
 		.createSession();
 	const service = new PiboRuntimeResourceService({
@@ -171,6 +201,11 @@ test("runtime resources isolate selected skills, context, MCP config, secrets, a
 	const context = session.getContextContributions();
 	assert.ok(context.some((item) => item.id === "context:pibo-session" && item.content.includes("ps_resources")));
 	assert.ok(context.some((item) => item.id === "context:selected-context" && item.content === "# Selected context\n"));
+	const delegatedContext = context.find((item) => item.id === "context:delegated-agents");
+	assert.equal(delegatedContext.required, true);
+	assert.match(delegatedContext.content, /`worker`/);
+	assert.match(delegatedContext.content, /pibo_run_start/);
+	assert.match(delegatedContext.content, /pibo_agents_observe/);
 	assert.equal(context.some((item) => item.content?.includes("Unselected context")), false);
 	assert.ok(context.filter((item) => item.content !== undefined).every((item) => item.materializedPath));
 

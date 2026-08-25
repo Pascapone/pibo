@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Type } from "typebox";
 import { piboStringEnum } from "../tools/schema.js";
 import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
-import type { PiboAssistantMessageEvent, PiboJsonValue } from "../core/events.js";
+import type { PiboAssistantMessageEvent, PiboJsonValue, PiboMessageProvenance } from "../core/events.js";
 import type { ModelProfile, SubagentProfile } from "../core/profiles.js";
 import type { PiboAgentObservationKind, PiboAgentObservationOrder } from "./observations.js";
 
@@ -42,21 +42,26 @@ export type PiboAgentSendMessageInput = {
 	message: string;
 	threadKey?: string;
 	toolCallId?: string;
+	requestId?: string;
+	parentProvenance?: PiboMessageProvenance;
 	signal?: AbortSignal;
 };
 
 export type PiboAgentSendMessageResult = {
+	requestId?: string;
 	agentId: string;
 	name: string;
 	profile: string;
 	threadKey: string;
 	eventId: string;
+	finalMessage?: string;
 	reply: PiboAssistantMessageEvent;
 };
 
 export type PiboAgentObservation = {
 	sequence: number;
 	createdAt: string;
+	requestId?: string;
 	agentId: string;
 	name: string;
 	threadKey?: string;
@@ -71,11 +76,13 @@ export type PiboAgentObservation = {
 };
 
 export type PiboAgentObserveInput = {
+	requestIds?: string[];
 	agentIds?: string[];
 	names?: string[];
 	threadKeys?: string[];
 	eventTypes?: string[];
 	kinds?: PiboAgentObservationKind[];
+	roles?: string[];
 	since?: string;
 	until?: string;
 	textContains?: string;
@@ -152,6 +159,17 @@ function resultText(prefix: string, value: unknown): string {
 	return `${prefix}\n${JSON.stringify(value, null, 2)}`;
 }
 
+function normalizeAgentSendMessageResult(
+	result: PiboAgentSendMessageResult,
+	fallbackRequestId: string,
+): PiboAgentSendMessageResult & { requestId: string; finalMessage: string } {
+	return {
+		...result,
+		requestId: result.requestId?.trim() || fallbackRequestId,
+		finalMessage: typeof result.finalMessage === "string" ? result.finalMessage : result.reply.text,
+	};
+}
+
 export function createAgentToolDefinitions(
 	subagents: readonly SubagentProfile[],
 	controller: PiboAgentsController,
@@ -172,11 +190,11 @@ export function createAgentToolDefinitions(
 			name: "pibo_agents_send_message",
 			title: "Pibo Agents Send Message",
 			description: [
-				"Send a message to an available delegated agent. Foreground execution waits for the reply; use pibo_run_start for asynchronous delegation.",
+				"Yielded-only delegated send. Start this tool through pibo_run_start; bounded waits do not limit the child lifetime.",
 				"Available agents:",
 				catalog,
 			].join("\n"),
-			promptSnippet: "Send work to an available delegated agent by name. Reuse threadKey to continue its child session. Use pibo_run_start with this tool for asynchronous work. The tool definition lists the available names and parent-visible descriptions.",
+			promptSnippet: "Start pibo_agents_send_message through pibo_run_start. Reuse threadKey to continue its child session, and use run wait/status/read/cancel plus agent observe for lifecycle control.",
 			executionMode: "parallel",
 			inputSchema: Type.Object({
 				name: piboStringEnum(names, { description: "Available delegated agent name" }),
@@ -188,21 +206,34 @@ export function createAgentToolDefinitions(
 					}),
 				),
 			}),
-			async execute(toolCallId, params, signal) {
+			async execute(toolCallId, params, signal, _onUpdate, context) {
 				const subagent = byName.get(params.name);
 				if (!subagent) throw new Error(`Unknown delegated agent "${params.name}"`);
-				const result = await controller.sendMessage({
+				if (!context.yieldedRunId) {
+					throw new Error("pibo_agents_send_message is yielded-only. Start it through pibo_run_start.");
+				}
+				const result = normalizeAgentSendMessageResult(await controller.sendMessage({
 					subagent,
 					message: params.message,
 					threadKey: params.threadKey,
 					toolCallId,
+					requestId: context.yieldedRunId,
+					parentProvenance: context.getActiveMessage?.()?.provenance,
 					signal,
-				});
+				}), context.yieldedRunId);
 				return {
 					content: [{
 						type: "text",
-						text: `Agent ${result.name} (${result.agentId}, thread ${result.threadKey}) replied:\n${result.reply.text}`,
+						text: `Agent request ${result.requestId} completed (${result.name}, ${result.agentId}, thread ${result.threadKey}).\n\n${result.finalMessage}`,
 					}],
+					structuredContent: {
+						status: "completed",
+						requestId: result.requestId,
+						agentId: result.agentId,
+						threadKey: result.threadKey,
+						eventId: result.eventId,
+						finalMessage: result.finalMessage,
+					},
 					details: result,
 				};
 			},
@@ -231,11 +262,13 @@ export function createAgentToolDefinitions(
 			executionMode: "parallel",
 			annotations: { readOnly: true },
 			inputSchema: Type.Object({
+				requestIds: Type.Optional(Type.Array(Type.String({ description: "Exact yielded run/request ID" }), { maxItems: 50 })),
 				agentIds: Type.Optional(Type.Array(Type.String({ description: "Owned child agentId" }), { maxItems: 50 })),
 				names: Type.Optional(Type.Array(piboStringEnum(names), { maxItems: 50 })),
 				threadKeys: Type.Optional(Type.Array(Type.String(), { maxItems: 50 })),
 				eventTypes: Type.Optional(Type.Array(Type.String({ description: "Exact Pibo output event type" }), { maxItems: 50 })),
 				kinds: Type.Optional(Type.Array(piboStringEnum(["message", "thinking", "tool", "error", "lifecycle", "event"]), { maxItems: 6 })),
+				roles: Type.Optional(Type.Array(Type.String({ description: "Exact normalized role, for example assistant" }), { maxItems: 20 })),
 				since: Type.Optional(Type.String({ description: "Inclusive ISO-8601 lower timestamp bound" })),
 				until: Type.Optional(Type.String({ description: "Inclusive ISO-8601 upper timestamp bound" })),
 				textContains: Type.Optional(Type.String({ description: "Case-insensitive substring match against normalized observation text" })),

@@ -1,13 +1,24 @@
 import type { AgentRuntimeCapabilityDelivery } from "./capabilities.js";
 import type { AgentRuntimeDiagnostic } from "./types.js";
 import type { AgentRuntimeResourceInspection } from "./resources.js";
-import type {
-	PiboContextBuildNode,
-	PiboContextBuildRuntimeInfo,
-	PiboContextBuildSnapshot,
+import {
+	createPiboRuntimeResolutionManifest,
+	type PiboContextBuildNode,
+	type PiboContextBuildRuntimeInfo,
+	type PiboContextBuildSnapshot,
 } from "../core/context-build.js";
 import { InitialSessionContext } from "../core/profiles.js";
+import type { PiboModelDefaults } from "../core/model-defaults.js";
+import type { PiboThinkingLevel } from "../core/thinking.js";
 import { PIBO_AGENT_TOOL_NAMES, listAvailableAgents } from "../subagents/tool.js";
+import { PIBO_DELEGATED_AGENT_CONTEXT_PATH } from "../subagents/context.js";
+import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
+import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
+import { CODEX_COMPAT_TOOL_NAMES } from "../tools/codex-compat.js";
+import {
+	isEnabledRuntimeToolProfile,
+	materializePiboProfileTools,
+} from "../tools/session-tool-set.js";
 
 export function profileWithRuntimeInstance(profile: InitialSessionContext, runtimeInstanceId: string): InitialSessionContext {
 	if (profile.runtimeInstanceId === runtimeInstanceId) return profile;
@@ -50,6 +61,10 @@ export function uniqueRuntimeDiagnostics(diagnostics: readonly AgentRuntimeDiagn
 	});
 }
 
+function uniqueNames(values: readonly string[]): string[] {
+	return [...new Set(values)];
+}
+
 export function buildPortableRuntimeContextSnapshot(input: {
 	profile: InitialSessionContext;
 	runtime: PiboContextBuildRuntimeInfo;
@@ -57,11 +72,101 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	piboSessionId: string;
 	piboRoomId?: string;
 	activeModel?: InitialSessionContext["model"];
+	thinkingLevel?: PiboThinkingLevel;
+	modelDefaults?: PiboModelDefaults;
+	subagentProfileResolver?: (profileName: string) => InitialSessionContext;
 	resources?: AgentRuntimeResourceInspection;
 }): PiboContextBuildSnapshot {
 	const profile = input.profile;
 	const nodes: PiboContextBuildNode[] = [];
 	const addNode = (node: Omit<PiboContextBuildNode, "order">) => nodes.push({ ...node, order: nodes.length });
+	const availableAgents = listAvailableAgents(profile.subagents);
+	const delegatedSendAvailable = availableAgents.length > 0;
+	const toolContext = {
+		piboSessionId: input.piboSessionId,
+		piboRoomId: input.piboRoomId,
+		profileName: profile.profileName,
+		cwd: input.cwd,
+	};
+	const materializedProfileTools = materializePiboProfileTools(profile, toolContext);
+	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeToolProfile);
+	const callableProfileTools = [
+		...materializedProfileTools.map((tool) => ({ name: tool.definition.name, yieldable: tool.profile.yieldable })),
+		...(runtimeProfileTool ? [{ name: "runtime", yieldable: runtimeProfileTool.yieldable }] : []),
+	];
+	const profileToolNames = callableProfileTools.map((tool) => tool.name);
+	const directAgentToolNames = delegatedSendAvailable
+		? PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message")
+		: [];
+	const codexCompatToolNames = profile.toolPackages.codexCompat === true ? [...CODEX_COMPAT_TOOL_NAMES] : [];
+	const explicitYieldableToolNames = uniqueNames([
+		...callableProfileTools.filter((tool) => tool.yieldable !== false).map((tool) => tool.name),
+		...(delegatedSendAvailable ? PIBO_AGENT_TOOL_NAMES : []),
+		...codexCompatToolNames,
+	]);
+	const yieldableToolNames = profile.toolPackages.runControl === true
+		? explicitYieldableToolNames
+		: delegatedSendAvailable ? ["pibo_agents_send_message"] : [];
+	const runControlAvailable = yieldableToolNames.length > 0;
+	const activeToolNames = uniqueNames([
+		...profileToolNames,
+		...directAgentToolNames,
+		...codexCompatToolNames,
+		...(profile.toolPackages.goalControl !== false ? PIBO_GOAL_TOOL_NAMES : []),
+		...(runControlAvailable ? PIBO_RUN_TOOL_NAMES : []),
+	]);
+	const activeToolPackages = [
+		...(profile.toolPackages.goalControl !== false ? ["pibo-goal-control"] : []),
+		...(profile.toolPackages.codexCompat === true ? ["codex-compat"] : []),
+		...(runControlAvailable ? ["pibo-run-control"] : []),
+	];
+	const managedToolDisplayNames = [
+		...activeToolNames,
+		...yieldableToolNames.map((name) => `yielded-target:${name}`),
+		...availableAgents.map((agent) => `agent:${agent.name} (${agent.profile}) — ${agent.description}`),
+		...activeToolPackages.map((name) => name === "pibo-run-control" && profile.toolPackages.runControl !== true
+			? "package:pibo-run-control (automatic for delegation)"
+			: `package:${name}`),
+	];
+	const manifestContextPaths = input.resources
+		? input.resources.context.flatMap((contribution) => {
+			const path = contribution.materializedPath ?? contribution.path ?? contribution.sourcePath;
+			return path ? [path] : [];
+		})
+		: [
+			"pibo://runtime/session-context.md",
+			...profile.contextFiles.filter((file) => file.enabled !== false).map((file) => file.key ?? file.path),
+			...(delegatedSendAvailable ? [PIBO_DELEGATED_AGENT_CONTEXT_PATH] : []),
+		];
+	const runtimeManifest = createPiboRuntimeResolutionManifest({
+		profile,
+		cwd: input.cwd,
+		adapterId: input.runtime.adapterId,
+		piboSessionId: input.piboSessionId,
+		piboRoomId: input.piboRoomId,
+		activeModel: input.activeModel,
+		thinkingLevel: input.thinkingLevel,
+		toolSurface: "pibo-managed-only",
+		activeToolNames,
+		yieldableToolNames,
+		activeToolPackages,
+		contextFilePaths: manifestContextPaths,
+		skillNames: input.resources
+			? input.resources.skills.map((skill) => skill.name)
+			: profile.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name),
+		modelDefaults: input.modelDefaults,
+		subagentProfileResolver: input.subagentProfileResolver,
+	});
+	addNode({
+		id: "runtime-manifest",
+		kind: "runtime_manifest",
+		title: "Runtime Resolution Manifest",
+		source: "runtime",
+		state: "active",
+		badges: ["RESOLVED", "READ-ONLY", "PIBO-MANAGED-TOOLS"],
+		payloadJson: runtimeManifest,
+		notes: ["Resolution evidence for this inspection only. It is not a second profile configuration and is not injected into the agent prompt. Harness-native tool names may remain discoverable only at runtime."],
+	});
 	addNode({
 		id: "runtime",
 		kind: "metadata",
@@ -79,16 +184,9 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		},
 		payloadJson: input.runtime.capabilities,
 	});
-	const availableAgents = listAvailableAgents(profile.subagents);
-	addRuntimeContributionGroup(nodes, "tools", "Pibo Tools and Delegated Agents", [
-		...profile.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.name),
-		...(availableAgents.length > 0 ? PIBO_AGENT_TOOL_NAMES : []),
-		...availableAgents.map((agent) => `agent:${agent.name} (${agent.profile}) — ${agent.description}`),
-		...(profile.toolPackages.goalControl !== false ? ["package:pibo-goal-control"] : []),
-		...(profile.toolPackages.runControl === true ? ["package:pibo-run-control"] : []),
-	], input.runtime.capabilities.tools.piboManaged);
+	addRuntimeContributionGroup(nodes, "tools", "Pibo Tools and Delegated Agents", managedToolDisplayNames, input.runtime.capabilities.tools.piboManaged);
 	addNativeToolInspectionNode(nodes, input.runtime.capabilities.tools.nativeToolInspection);
-	if (profile.toolPackages.runControl === true) {
+	if (runControlAvailable) {
 		addNativeToolYieldingNode(nodes, input.runtime.capabilities.tools.nativeToolYielding);
 	}
 	if (input.resources) {
@@ -154,7 +252,7 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		source: "profile",
 		state: "active",
 		metadata: {
-			activeModel: input.activeModel,
+			activeModel: runtimeManifest.effectiveModel,
 			mainModel: profile.mainModel,
 			subagentModel: profile.subagentModel,
 			mainThinkingLevel: profile.mainThinkingLevel ?? profile.thinkingLevel,
@@ -203,7 +301,7 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		piboSessionId: input.piboSessionId,
 		piboRoomId: input.piboRoomId,
 		cwd: input.cwd,
-		activeModel: input.activeModel,
+		activeModel: runtimeManifest.effectiveModel,
 		runtime: input.runtime,
 		summary: {
 			topLevelNodes: nodes.length,

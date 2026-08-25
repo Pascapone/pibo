@@ -298,7 +298,9 @@ export function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSeman
 					outputTokens: event.outputTokens,
 					cacheReadTokens: event.cacheReadTokens,
 					cacheWriteTokens: event.cacheWriteTokens,
+					reasoningTokens: event.reasoningTokens,
 					totalTokens: event.totalTokens,
+					costUsd: event.costUsd,
 				},
 			};
 		case "compaction_start":
