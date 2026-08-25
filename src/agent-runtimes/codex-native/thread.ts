@@ -167,6 +167,8 @@ export type CodexNativeThreadSelection = {
 	model?: string;
 	serviceTier?: string | null;
 	personality?: string | null;
+	approvalPolicy?: "untrusted" | "on-request" | "never";
+	sandbox?: "read-only" | "workspace-write" | "danger-full-access";
 	config?: Record<string, CodexAppServerJson>;
 	developerInstructions?: string;
 };
@@ -271,7 +273,7 @@ export class CodexNativeThreadController {
 		readonly client: CodexAppServerClient,
 		private currentThread: CodexAppServerThread,
 		private currentConfiguration: CodexNativeThreadConfiguration,
-		private readonly resourceSelection: Pick<CodexNativeThreadSelection, "config" | "developerInstructions">,
+		private readonly inheritedSelection: Pick<CodexNativeThreadSelection, "approvalPolicy" | "sandbox" | "config" | "developerInstructions">,
 	) {
 		this.knownThreads.set(currentThread.id, structuredClone(currentThread));
 	}
@@ -287,11 +289,15 @@ export class CodexNativeThreadController {
 			...(selection.model ? { model: selection.model } : {}),
 			...(selection.serviceTier !== undefined ? { serviceTier: selection.serviceTier } : {}),
 			...(selection.personality !== undefined ? { personality: selection.personality } : {}),
+			...(selection.approvalPolicy ? { approvalPolicy: selection.approvalPolicy } : {}),
+			...(selection.sandbox ? { sandbox: selection.sandbox } : {}),
 			...(selection.config ? { config: selection.config } : {}),
 			...(selection.developerInstructions ? { developerInstructions: selection.developerInstructions } : {}),
 		});
 		const selected = threadSessionFromResponse(response, "thread/start");
 		return new CodexNativeThreadController(client, selected.thread, selected.configuration, {
+			...(selection.approvalPolicy ? { approvalPolicy: selection.approvalPolicy } : {}),
+			...(selection.sandbox ? { sandbox: selection.sandbox } : {}),
 			...(selection.config ? { config: structuredClone(selection.config) } : {}),
 			...(selection.developerInstructions ? { developerInstructions: selection.developerInstructions } : {}),
 		});
@@ -310,6 +316,8 @@ export class CodexNativeThreadController {
 				...(selection.model ? { model: selection.model } : {}),
 				...(selection.serviceTier !== undefined ? { serviceTier: selection.serviceTier } : {}),
 				...(selection.personality !== undefined ? { personality: selection.personality } : {}),
+				...(selection.approvalPolicy ? { approvalPolicy: selection.approvalPolicy } : {}),
+				...(selection.sandbox ? { sandbox: selection.sandbox } : {}),
 				...(selection.config ? { config: selection.config } : {}),
 				...(selection.developerInstructions ? { developerInstructions: selection.developerInstructions } : {}),
 			});
@@ -317,6 +325,8 @@ export class CodexNativeThreadController {
 			const thread = selected.thread;
 			if (thread.id !== threadId) throw new CodexNativeThreadProtocolError("Codex resumed a different thread than requested.");
 			return new CodexNativeThreadController(client, thread, selected.configuration, {
+				...(selection.approvalPolicy ? { approvalPolicy: selection.approvalPolicy } : {}),
+				...(selection.sandbox ? { sandbox: selection.sandbox } : {}),
 				...(selection.config ? { config: structuredClone(selection.config) } : {}),
 				...(selection.developerInstructions ? { developerInstructions: selection.developerInstructions } : {}),
 			});
@@ -437,9 +447,11 @@ export class CodexNativeThreadController {
 			...(lastTurnId ? { lastTurnId } : {}),
 			cwd: workspace,
 			ephemeral: false,
-			...(this.resourceSelection.config ? { config: structuredClone(this.resourceSelection.config) } : {}),
-			...(this.resourceSelection.developerInstructions
-				? { developerInstructions: this.resourceSelection.developerInstructions }
+			...(this.inheritedSelection.approvalPolicy ? { approvalPolicy: this.inheritedSelection.approvalPolicy } : {}),
+			...(this.inheritedSelection.sandbox ? { sandbox: this.inheritedSelection.sandbox } : {}),
+			...(this.inheritedSelection.config ? { config: structuredClone(this.inheritedSelection.config) } : {}),
+			...(this.inheritedSelection.developerInstructions
+				? { developerInstructions: this.inheritedSelection.developerInstructions }
 				: {}),
 		};
 		try {

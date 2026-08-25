@@ -529,6 +529,16 @@ export function normalizeAgentSubagents(value: unknown): CustomAgentSubagent[] {
 		if (model) subagent.model = model;
 		const thinkingLevel = normalizeThinkingLevel(raw.thinkingLevel, "subagent thinkingLevel");
 		if (thinkingLevel) subagent.thinkingLevel = thinkingLevel;
+		if (raw.runtimeOptions !== undefined) {
+			if (!raw.runtimeOptions || typeof raw.runtimeOptions !== "object" || Array.isArray(raw.runtimeOptions)) {
+				throw new PiboWebHttpError("subagent runtimeOptions must be a JSON object", 400);
+			}
+			subagent.runtimeOptions = normalizeAgentRuntimeJsonObject(
+				raw.runtimeOptions as Record<string, unknown>,
+				"subagent runtimeOptions",
+				0,
+			);
+		}
 		if (raw.timeoutMs !== undefined) {
 			if (typeof raw.timeoutMs !== "number" || !Number.isFinite(raw.timeoutMs) || raw.timeoutMs <= 0) {
 				throw new PiboWebHttpError("subagent timeoutMs must be a positive number", 400);

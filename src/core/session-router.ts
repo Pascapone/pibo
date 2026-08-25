@@ -183,6 +183,13 @@ export function resolvePiboSessionInitialFastMode(session: Pick<PiboSession, "me
 	return typeof value === "boolean" ? value : undefined;
 }
 
+export function resolvePiboSessionInitialRuntimeOptions(session: Pick<PiboSession, "metadata">): PiboJsonObject | undefined {
+	const value = session.metadata?.initialRuntimeOptions;
+	return value && typeof value === "object" && !Array.isArray(value)
+		? structuredClone(value)
+		: undefined;
+}
+
 function hasReachedSubagentMaxDepth(subagent: SubagentProfile, depth: number): boolean {
 	return depth >= (subagent.maxDepth ?? DEFAULT_SUBAGENT_MAX_DEPTH);
 }
@@ -212,12 +219,15 @@ function profileForSession(
 	nativeSessionId: string | undefined,
 	parentNativeSessionId: string | undefined,
 	subagentDepth: number,
+	runtimeOptionsOverride?: PiboJsonObject,
 ): InitialSessionContext {
 	const usesProfileRuntime = baseProfile.runtimeInstanceId === runtimeInstanceId;
 	const options: InitialSessionContextOptions = {
 		profileName: baseProfile.profileName,
 		runtimeInstanceId,
-		runtimeOptions: usesProfileRuntime ? baseProfile.runtimeOptions : {},
+		runtimeOptions: usesProfileRuntime
+			? { ...baseProfile.runtimeOptions, ...runtimeOptionsOverride }
+			: {},
 		sessionId: nativeSessionId,
 		parentSessionId: parentNativeSessionId,
 		model: usesProfileRuntime ? baseProfile.model : undefined,
@@ -882,6 +892,7 @@ export class PiboSessionRouter {
 			binding.nativeSessionId,
 			parentNativeSessionId,
 			this.getSubagentDepth(session.id),
+			resolvePiboSessionInitialRuntimeOptions(session),
 		);
 	}
 
@@ -942,6 +953,7 @@ export class PiboSessionRouter {
 			startsNewNativeSession ? undefined : input.nativeSessionId,
 			undefined,
 			this.getSubagentDepth(session.id),
+			resolvePiboSessionInitialRuntimeOptions(session),
 		);
 		const targetDiagnostics = await adapter.diagnose();
 		const unavailableTarget = targetDiagnostics.find((diagnostic) => diagnostic.severity === "error");
@@ -2274,9 +2286,13 @@ export class PiboSessionRouter {
 		}, "subagent");
 		const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
 		if (parentChatRoomId) metadata.chatRoomId = parentChatRoomId;
-		const newSessionMetadata: PiboJsonObject = subagent.thinkingLevel
-			? { ...metadata, initialThinkingLevel: subagent.thinkingLevel }
-			: metadata;
+		const newSessionMetadata: PiboJsonObject = {
+			...metadata,
+			...(subagent.thinkingLevel ? { initialThinkingLevel: subagent.thinkingLevel } : {}),
+			...(subagent.runtimeOptions && Object.keys(subagent.runtimeOptions).length > 0
+				? { initialRuntimeOptions: structuredClone(subagent.runtimeOptions) }
+				: {}),
+		};
 		const existing = this.sessionStore.find({
 			channel: "pibo.subagents",
 			kind: "subagent",

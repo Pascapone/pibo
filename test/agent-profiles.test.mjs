@@ -62,6 +62,7 @@ test("custom agent profiles preserve per-subagent execution settings", () => {
 			targetProfile: "research-agent",
 			model: { provider: "openai", id: "gpt-5.6-mini" },
 			thinkingLevel: "high",
+			runtimeOptions: { permissionMode: "plan" },
 			maxDepth: 2,
 		}],
 		mcpServers: [],
@@ -90,6 +91,7 @@ test("custom agent profiles preserve per-subagent execution settings", () => {
 		targetProfile: "research-agent",
 		model: { provider: "openai", id: "gpt-5.6-mini" },
 		thinkingLevel: "high",
+		runtimeOptions: { permissionMode: "plan" },
 		maxDepth: 2,
 	}]);
 });

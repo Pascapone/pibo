@@ -740,7 +740,7 @@ test("agents controller emits a parent link event before waiting for the child r
 	}
 });
 
-test("subagent runner freezes per-subagent model and thinking settings on new child sessions", async () => {
+test("subagent runner freezes per-subagent model, thinking, and runtime overrides on new child sessions", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
 		id: "ps_parent",
@@ -769,6 +769,7 @@ test("subagent runner freezes per-subagent model and thinking settings on new ch
 				targetProfile: "base",
 				model: { provider: "openai", id: "gpt-5.6-mini" },
 				thinkingLevel: "high",
+				runtimeOptions: { permissionMode: "yolo" },
 			},
 			message: "research this",
 			threadKey: "research-thread",
@@ -777,6 +778,8 @@ test("subagent runner freezes per-subagent model and thinking settings on new ch
 		const child = store.get(first.agentId);
 		assert.deepEqual(child.activeModel, { provider: "openai", id: "gpt-5.6-mini" });
 		assert.equal(child.metadata.initialThinkingLevel, "high");
+		assert.deepEqual(child.metadata.initialRuntimeOptions, { permissionMode: "yolo" });
+		assert.deepEqual(router.getSessionRuntimeProfile(child.id).runtimeOptions, { permissionMode: "yolo" });
 
 		const reused = await controller.sendMessage({
 			subagent: {
@@ -784,6 +787,7 @@ test("subagent runner freezes per-subagent model and thinking settings on new ch
 				targetProfile: "base",
 				model: { provider: "other", id: "changed-model" },
 				thinkingLevel: "low",
+				runtimeOptions: { permissionMode: "approval" },
 			},
 			message: "continue",
 			threadKey: "research-thread",
@@ -792,6 +796,7 @@ test("subagent runner freezes per-subagent model and thinking settings on new ch
 		assert.equal(reused.agentId, first.agentId);
 		assert.deepEqual(store.get(reused.agentId).activeModel, { provider: "openai", id: "gpt-5.6-mini" });
 		assert.equal(store.get(reused.agentId).metadata.initialThinkingLevel, "high");
+		assert.deepEqual(router.getSessionRuntimeProfile(reused.agentId).runtimeOptions, { permissionMode: "yolo" });
 
 		const fallback = await controller.sendMessage({
 			subagent: { name: "worker", targetProfile: "base" },
@@ -801,6 +806,7 @@ test("subagent runner freezes per-subagent model and thinking settings on new ch
 		});
 		assert.deepEqual(store.get(fallback.agentId).activeModel, { provider: "default-provider", id: "default-subagent" });
 		assert.equal(store.get(fallback.agentId).metadata.initialThinkingLevel, undefined);
+		assert.equal(store.get(fallback.agentId).metadata.initialRuntimeOptions, undefined);
 	} finally {
 		await router.disposeAll();
 	}

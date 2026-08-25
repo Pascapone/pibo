@@ -12,6 +12,9 @@ import type {
 	CodexAppServerModel,
 	CodexAppServerModelListResponse,
 	CodexAppServerModelReroutedNotification,
+	CodexAppServerApprovalPolicy,
+	CodexAppServerCollaborationMode,
+	CodexAppServerSandboxPolicy,
 	CodexAppServerThreadSettingsUpdatedNotification,
 	CodexAppServerThreadTokenUsageUpdatedNotification,
 } from "./protocol-types.js";
@@ -38,6 +41,13 @@ export const CODEX_NATIVE_MODEL_OPTIONS_SCHEMA: PiboJsonObject = {
 			enum: ["auto", "concise", "detailed", "none"],
 			description: "Optional native Codex reasoning-summary mode.",
 		},
+		permissionMode: {
+			type: "string",
+			title: "Permission mode",
+			enum: ["approval", "yolo", "plan"],
+			default: "approval",
+			description: "Codex permissions: Approval asks before privileged work, YOLO disables approvals with unrestricted host access, and Plan uses a read-only planning turn.",
+		},
 	},
 };
 
@@ -54,16 +64,20 @@ const MAX_DESCRIPTION_LENGTH = 4_096;
 const MAX_CURSOR_LENGTH = 1_024;
 const PERSONALITIES = new Set(["none", "friendly", "pragmatic"]);
 const REASONING_SUMMARIES = new Set(["auto", "concise", "detailed", "none"]);
+const PERMISSION_MODES = new Set(["approval", "yolo", "plan"]);
 const BINDING_MODEL_KEY = "codexNativeModelId";
 const BINDING_REASONING_KEY = "codexNativeReasoningEffort";
 const BINDING_SERVICE_TIER_KEY = "codexNativeServiceTier";
 const BINDING_PERSONALITY_KEY = "codexNativePersonality";
 const BINDING_REASONING_SUMMARY_KEY = "codexNativeReasoningSummary";
 
+export type CodexNativePermissionMode = "approval" | "yolo" | "plan";
+
 export type CodexNativeProfileOptions = {
 	serviceTier?: string | null;
 	personality?: "none" | "friendly" | "pragmatic" | null;
 	reasoningSummary?: "auto" | "concise" | "detailed" | "none" | null;
+	permissionMode?: CodexNativePermissionMode;
 };
 
 export type CodexNativePersistedSettings = {
@@ -89,6 +103,9 @@ export type CodexNativeTurnModelOptions = {
 	serviceTier: string | null;
 	summary?: string | null;
 	personality?: string | null;
+	approvalPolicy: CodexAppServerApprovalPolicy;
+	sandboxPolicy: CodexAppServerSandboxPolicy;
+	collaborationMode?: CodexAppServerCollaborationMode;
 };
 
 export class CodexNativeModelProtocolError extends Error {
@@ -321,7 +338,7 @@ export function readCodexNativePersistedSettings(metadata: PiboJsonObject | unde
 }
 
 export function parseCodexNativeProfileOptions(value: PiboJsonObject): CodexNativeProfileOptions {
-	const allowed = new Set(["serviceTier", "personality", "reasoningSummary"]);
+	const allowed = new Set(["serviceTier", "personality", "reasoningSummary", "permissionMode"]);
 	const unknown = Object.keys(value).filter((key) => !allowed.has(key));
 	if (unknown.length > 0) throw new Error(`Unsupported native Codex runtime option${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}.`);
 	const options: CodexNativeProfileOptions = {};
@@ -346,7 +363,49 @@ export function parseCodexNativeProfileOptions(value: PiboJsonObject): CodexNati
 		}
 		options.reasoningSummary = value.reasoningSummary as CodexNativeProfileOptions["reasoningSummary"];
 	}
+	if (Object.hasOwn(value, "permissionMode")) {
+		if (typeof value.permissionMode !== "string" || !PERMISSION_MODES.has(value.permissionMode)) {
+			throw new Error("Native Codex runtime option permissionMode must be one of: approval, yolo, plan.");
+		}
+		options.permissionMode = value.permissionMode as CodexNativePermissionMode;
+	}
 	return options;
+}
+
+export function codexNativePermissionMode(options: CodexNativeProfileOptions): CodexNativePermissionMode {
+	return options.permissionMode ?? "approval";
+}
+
+export function codexNativeThreadPermissionSelection(
+	mode: CodexNativePermissionMode,
+): Pick<CodexNativeThreadSelection, "approvalPolicy" | "sandbox"> {
+	if (mode === "yolo") return { approvalPolicy: "never", sandbox: "danger-full-access" };
+	if (mode === "plan") return { approvalPolicy: "on-request", sandbox: "read-only" };
+	return { approvalPolicy: "on-request", sandbox: "workspace-write" };
+}
+
+export function codexNativeTurnPermissionOptions(
+	mode: CodexNativePermissionMode,
+	model: string,
+	effort: string,
+): Pick<CodexNativeTurnModelOptions, "approvalPolicy" | "sandboxPolicy" | "collaborationMode"> {
+	if (mode === "yolo") {
+		return { approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } };
+	}
+	if (mode === "plan") {
+		return {
+			approvalPolicy: "on-request",
+			sandboxPolicy: { type: "readOnly", networkAccess: false },
+			collaborationMode: {
+				mode: "plan",
+				settings: { model, reasoning_effort: effort, developer_instructions: null },
+			},
+		};
+	}
+	return {
+		approvalPolicy: "on-request",
+		sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
+	};
 }
 
 function findModel(catalog: CodexNativeModelCatalog, value: string): CodexAppServerModel | undefined {
@@ -433,6 +492,7 @@ export class CodexNativeSessionSettingsController {
 	private serviceTier: string | null;
 	private readonly personality?: CodexNativeProfileOptions["personality"];
 	private readonly reasoningSummary?: CodexNativeProfileOptions["reasoningSummary"];
+	private readonly permissionMode: CodexNativePermissionMode;
 	private activeThreadId?: string;
 	private contextUsage?: AgentRuntimeContextUsage;
 	private readonly pendingContextUsage = new Map<string, AgentRuntimeContextUsage>();
@@ -460,6 +520,7 @@ export class CodexNativeSessionSettingsController {
 		this.serviceTier = validateServiceTier(this.currentModel, selectedTier);
 		this.personality = initial.profileOptions.personality;
 		this.reasoningSummary = initial.profileOptions.reasoningSummary;
+		this.permissionMode = codexNativePermissionMode(initial.profileOptions);
 		this.bindClient(client);
 	}
 
@@ -529,6 +590,7 @@ export class CodexNativeSessionSettingsController {
 			model: this.currentModel.id,
 			serviceTier: this.serviceTier,
 			...(this.personality !== undefined ? { personality: this.personality } : {}),
+			...codexNativeThreadPermissionSelection(this.permissionMode),
 		};
 	}
 
@@ -539,6 +601,7 @@ export class CodexNativeSessionSettingsController {
 			serviceTier: this.serviceTier,
 			...(this.reasoningSummary !== undefined ? { summary: this.reasoningSummary } : {}),
 			...(this.personality !== undefined ? { personality: this.personality } : {}),
+			...codexNativeTurnPermissionOptions(this.permissionMode, this.currentModel.id, this.reasoningLevel),
 		};
 	}
 
