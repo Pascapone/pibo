@@ -111,8 +111,13 @@ export class PythonRuntimeBackend implements RuntimeBackend {
 			target.args ?? [],
 			target.env,
 		);
-		await backend.waitReady(input.timeoutMs ?? 10000);
-		return backend;
+		try {
+			await backend.waitReady(input.timeoutMs ?? 10000);
+			return backend;
+		} catch (error) {
+			await backend.close(true).catch(() => undefined);
+			throw error;
+		}
 	}
 
 	isAlive(): boolean {

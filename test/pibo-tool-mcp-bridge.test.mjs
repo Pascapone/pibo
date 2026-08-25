@@ -120,6 +120,18 @@ test("session-scoped MCP bridge enforces tool isolation and preserves progress, 
 			};
 		},
 	});
+	const runRead = definePiboTool({
+		name: "pibo_run_read",
+		title: "Pibo Run Read",
+		description: "Complete large run result fixture",
+		inputSchema: Type.Object({ runId: Type.String() }),
+		async execute() {
+			return {
+				content: [{ type: "text", text: "r".repeat(256) }],
+				details: { runId: "run_large", result: { details: { finalMessage: "f".repeat(256) } } },
+			};
+		},
+	});
 	const failure = definePiboTool({
 		name: "failure",
 		title: "Failure",
@@ -158,7 +170,7 @@ test("session-scoped MCP bridge enforces tool isolation and preserves progress, 
 		},
 	};
 
-	let exposedTools = [alpha, beta, failure, large, slow, legacyPrivate];
+	let exposedTools = [alpha, beta, failure, large, runRead, slow, legacyPrivate];
 	const bridge = new PiboToolMcpBridge({
 		largeResultThresholdBytes: 64,
 		previewBytes: 16,
@@ -176,7 +188,7 @@ test("session-scoped MCP bridge enforces tool isolation and preserves progress, 
 	const address = await bridge.start();
 	t.after(async () => bridge.stop());
 
-	const credentialA = bridge.issueCredential(scope({ allowedToolNames: ["alpha", "failure", "large", "slow", "legacy_private"] }));
+	const credentialA = bridge.issueCredential(scope({ allowedToolNames: ["alpha", "failure", "large", "pibo_run_read", "slow", "legacy_private"] }));
 	const credentialB = bridge.issueCredential(scope({
 		piboSessionId: "ps_b",
 		piboRoomId: "room_b",
@@ -196,7 +208,7 @@ test("session-scoped MCP bridge enforces tool isolation and preserves progress, 
 	const a = await connectClient(address.url, credentialA.token, "session-a");
 	t.after(async () => a.transport.close());
 	const listedA = await a.client.listTools();
-	assert.deepEqual(listedA.tools.map((tool) => tool.name).sort(), ["alpha", "failure", "large", "slow"]);
+	assert.deepEqual(listedA.tools.map((tool) => tool.name).sort(), ["alpha", "failure", "large", "pibo_run_read", "slow"]);
 	assert.equal(listedA.tools.some((tool) => tool.name === "legacy_private"), false);
 	assert.equal(listedA.tools.find((tool) => tool.name === "alpha").annotations.readOnlyHint, true);
 
@@ -236,6 +248,10 @@ test("session-scoped MCP bridge enforces tool isolation and preserves progress, 
 	assert.equal(largeResult._meta.payloadRefs.length, 2);
 	assert.match(largeResult.content.map((item) => item.type === "text" ? item.text : "").join("\n"), /Large result stored/);
 	assert.match(largeResult.content.map((item) => item.type === "text" ? item.text : "").join("\n"), /Structured result stored/);
+	const completeRunRead = await a.client.callTool({ name: "pibo_run_read", arguments: { runId: "run_large" } });
+	assert.equal(payloadWrites.length, 2, "pibo_run_read must not externalize its complete terminal result");
+	assert.equal(completeRunRead.content[0].text, "r".repeat(256));
+	assert.equal(completeRunRead.structuredContent.result.details.finalMessage, "f".repeat(256));
 	exposedTools = exposedTools.filter((tool) => tool.name !== "large");
 	const removedTool = await a.client.callTool({ name: "large", arguments: {} });
 	assert.equal(removedTool.isError, true);

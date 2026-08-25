@@ -5,6 +5,8 @@ import { Type } from "typebox";
 import { piboStringEnum } from "./schema.js";
 import { definePiboTool, type PiboToolDefinition } from "./contract.js";
 
+export const CODEX_COMPAT_TOOL_NAMES = ["apply_patch", "view_image"] as const;
+
 function resolveCwd(baseCwd: string, workdir: string | undefined): string {
 	if (!workdir || workdir.trim().length === 0) return baseCwd;
 	return isAbsolute(workdir) ? workdir : resolve(baseCwd, workdir);

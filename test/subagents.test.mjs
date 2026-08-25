@@ -6,6 +6,7 @@ import test from "node:test";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
+import { normalizePiEvent } from "../dist/agent-runtimes/pi/routed-session.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { createRunToolDefinitions } from "../dist/runs/tools.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
@@ -29,11 +30,13 @@ const retiredPartitionField = `${retiredWord}Scope`;
 const noopAgentsController = {
 	async sendMessage(input) {
 		return {
+			requestId: input.requestId,
 			agentId: "ps_child",
 			name: input.subagent.name,
 			profile: input.subagent.targetProfile,
 			threadKey: input.threadKey ?? "generated-thread",
 			eventId: "event-1",
+			finalMessage: `helper result for ${input.subagent.name}`,
 			reply: {
 				type: "assistant_message",
 				piboSessionId: "ps_child",
@@ -76,6 +79,75 @@ const noopRunToolController = {
 		throw new Error("not used");
 	},
 };
+
+async function waitFor(predicate, timeoutMs = 2_000) {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() >= deadline) throw new Error("Timed out waiting for condition");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+}
+
+function createYieldedSubagentFixture(suffix, script) {
+	const adapterId = `subagent-${suffix}-child`;
+	const parentProfile = `subagent-${suffix}-parent`;
+	const childProfile = `subagent-${suffix}-child-profile`;
+	const parentId = `ps_${suffix}_parent`;
+	const childDriver = createFakeAgentRuntimeDriver({ adapterId, script });
+	const registry = PiboPluginRegistry.create({
+		plugins: [
+			piboCorePlugin,
+			definePiboPlugin({
+				id: `test.subagent-${suffix}`,
+				register(api) {
+					api.registerAgentRuntimeDriver(childDriver);
+					api.registerAgentRuntimeInstance({ id: adapterId, adapterId });
+					api.registerProfile({
+						name: parentProfile,
+						create() {
+							return new InitialSessionContextBuilder(parentProfile)
+								.withAgentRuntime("pi")
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.addSubagent({ name: "worker", targetProfile: childProfile })
+								.createSession();
+						},
+					});
+					api.registerProfile({
+						name: childProfile,
+						create() {
+							return new InitialSessionContextBuilder(childProfile)
+								.withAgentRuntime(adapterId)
+								.withBuiltinTools("disabled")
+								.withAutoContextFiles(false)
+								.withToolPackages({ goalControl: false })
+								.createSession();
+						},
+					});
+				},
+			}),
+		],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: parentId,
+		channel: "pibo.test",
+		kind: "chat",
+		profile: parentProfile,
+		runtimeBinding: { piboSessionId: parentId, runtimeInstanceId: "pi", adapterId: "pi", state: "unbound" },
+	});
+	return { adapterId, parentId, registry, store, router: new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store }) };
+}
+
+async function yieldedSubagentTools(fixture) {
+	await fixture.router.emit({ type: "execution", piboSessionId: fixture.parentId, action: "status" });
+	const runtime = fixture.router.sessions.get(fixture.parentId).runtime;
+	return {
+		start: runtime.session.getToolDefinition("pibo_run_start"),
+		cancel: runtime.session.getToolDefinition("pibo_run_cancel"),
+	};
+}
 
 async function withPiboHome(piboHome, run) {
 	const previous = process.env.PIBO_HOME;
@@ -135,6 +207,44 @@ test("legacy subagent tool exports remain source-compatible without entering run
 		], { async runSubagent() { throw new Error("not used"); } }),
 		/Duplicate subagent tool name "pibo_subagent_same_name"/,
 	);
+});
+
+test("shared send tool normalizes the legacy agents-controller result shape", async () => {
+	let observedInput;
+	const [send] = createAgentToolDefinitions(
+		[{ name: "helper", description: "Legacy controller helper.", targetProfile: "helper-profile" }],
+		{
+			async sendMessage(input) {
+				observedInput = input;
+				return {
+					agentId: "ps_legacy_controller_child",
+					name: "helper",
+					profile: "helper-profile",
+					threadKey: "legacy-thread",
+					eventId: "legacy-event",
+					reply: {
+						type: "assistant_message",
+						piboSessionId: "ps_legacy_controller_child",
+						eventId: "legacy-event",
+						text: "legacy reply text",
+					},
+				};
+			},
+			listAgents() { return []; },
+			observe(input) { return { filters: input, observations: [], nextAfterSequence: 0, truncated: false }; },
+			async killAgent(agentId) { return { agentId, killed: [agentId], cancelledRuns: [] }; },
+		},
+	);
+	const result = await send.execute("legacy-controller-send", {
+		name: "helper",
+		message: "work",
+	}, undefined, undefined, { yieldedRunId: "run_legacy_controller" });
+	assert.equal(observedInput.requestId, "run_legacy_controller");
+	assert.equal(result.details.requestId, "run_legacy_controller");
+	assert.equal(result.details.finalMessage, "legacy reply text");
+	assert.equal(result.structuredContent.requestId, "run_legacy_controller");
+	assert.equal(result.structuredContent.finalMessage, "legacy reply text");
+	assert.match(result.content[0].text, /legacy reply text/);
 });
 
 test("legacy runtime subagentRunner callers receive an explicit migration error", async () => {
@@ -224,6 +334,50 @@ test("installed pibo tools are injected into the runtime context", async () => {
 	});
 });
 
+test("direct Pi prompt orders delegated-agent context before installed-tool and MCP context", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-direct-pi-context-order-"));
+	const piboHome = join(root, "pibo-home");
+	const mcpConfigPath = join(root, "mcp_servers.json");
+	const previousMcpConfigPath = process.env.MCP_CONFIG_PATH;
+	writeFileSync(mcpConfigPath, JSON.stringify({
+		mcpServers: {
+			filesystem: {
+				command: "node",
+				pibo: { description: "Inspect files for context-order testing.", descriptionSource: "user" },
+			},
+		},
+	}));
+	try {
+		await withPiboHome(piboHome, async () => {
+			const browserUse = findCliToolEntry("browser-use");
+			assert.ok(browserUse);
+			const paths = getToolPythonRuntimePaths(browserUse.name, browserUse.runtime);
+			mkdirSync(paths.binDir, { recursive: true });
+			writeFileSync(paths.executablePath, "#!/bin/sh\n");
+			process.env.MCP_CONFIG_PATH = mcpConfigPath;
+			const profile = new InitialSessionContextBuilder("direct-context-order")
+				.withAutoContextFiles(false)
+				.withBuiltinTools("disabled")
+				.withToolPackages({ goalControl: false })
+				.withMcpServers(["filesystem"])
+				.addSubagent({ name: "worker", description: "Perform delegated work.", targetProfile: "base" })
+				.createSession();
+			const inspection = await inspectPiboProfile({ cwd: root, profile, persistSession: false });
+			const pathsInOrder = inspection.contextFiles.map((contextFile) => contextFile.path);
+			const delegatedIndex = pathsInOrder.indexOf("pibo://runtime/delegated-agents.md");
+			const installedIndex = pathsInOrder.indexOf(".pibo/context/installed-pibo-tools.md");
+			const mcpIndex = pathsInOrder.indexOf(".pibo/context/enabled-mcp-servers.md");
+			assert.ok(delegatedIndex >= 0, `delegated context missing from ${JSON.stringify(pathsInOrder)}`);
+			assert.ok(installedIndex > delegatedIndex, `installed-tool context must follow delegated context: ${JSON.stringify(pathsInOrder)}`);
+			assert.ok(mcpIndex > installedIndex, `MCP context must follow installed-tool context: ${JSON.stringify(pathsInOrder)}`);
+		});
+	} finally {
+		if (previousMcpConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousMcpConfigPath;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("shared agent tool definitions delegate execution and management to the controller", async () => {
 	let observed;
 	const tools = createAgentToolDefinitions(
@@ -249,20 +403,35 @@ test("shared agent tool definitions delegate execution and management to the con
 	assert.equal(send.executionMode, "parallel");
 	assert.match(send.description, /helper: Ask the helper agent/);
 	const controller = new AbortController();
+	await assert.rejects(
+		send.execute("tool-call-direct", { name: "helper", message: "direct" }, controller.signal, undefined, {}),
+		/yielded-only/,
+	);
 	const result = await send.execute("tool-call-1", {
 		name: "helper",
 		message: "Find the relevant files.",
 		threadKey: "files",
-	}, controller.signal);
+	}, controller.signal, undefined, {
+		yieldedRunId: "run_request_1",
+		getActiveMessage: () => ({
+			id: "message-parent",
+			source: "actor",
+			provenance: { kind: "loop-run", jobId: "loop_job", runId: "loop_run" },
+		}),
+	});
 
 	assert.equal(observed.subagent.name, "helper");
 	assert.equal(observed.message, "Find the relevant files.");
 	assert.equal(observed.threadKey, "files");
 	assert.equal(observed.toolCallId, "tool-call-1");
+	assert.equal(observed.requestId, "run_request_1");
+	assert.deepEqual(observed.parentProvenance, { kind: "loop-run", jobId: "loop_job", runId: "loop_run" });
 	assert.equal(observed.signal, controller.signal);
 	assert.equal(send.inputSchema.properties.threadKey.maxLength, 256);
 	assert.equal(result.details.agentId, "ps_child");
-	assert.match(result.content[0].text, /Agent helper \(ps_child, thread files\) replied:/);
+	assert.equal(result.details.requestId, "run_request_1");
+	assert.equal(result.structuredContent.finalMessage, "helper result for helper");
+	assert.match(result.content[0].text, /Agent request run_request_1 completed/);
 	assert.match(result.content[0].text, /helper result for helper/);
 
 	const listed = await list.execute("tool-call-2", {});
@@ -287,6 +456,19 @@ test("profiles can expose subagents as active router tools", async () => {
 					name: "parent-profile",
 					create(context) {
 						return new InitialSessionContextBuilder("parent-profile")
+							.withBuiltinTools("disabled")
+							.withAutoContextFiles(false)
+							.withToolPackages({ goalControl: false, runControl: false })
+							.addTool({
+								name: "ordinary",
+								definition: {
+									name: "ordinary",
+									title: "Ordinary",
+									description: "Ordinary direct tool.",
+									inputSchema: { type: "object", properties: {}, additionalProperties: false },
+									async execute() { return { content: [{ type: "text", text: "ordinary" }] }; },
+								},
+							})
 							.addSubagent(context.getSubagent("helper"))
 							.createSession();
 					},
@@ -310,6 +492,21 @@ test("profiles can expose subagents as active router tools", async () => {
 		thinkingLevel: "high",
 		maxDepth: undefined,
 	});
+	const inspection = await inspectPiboProfile({
+		profile: registry.createProfile("parent-profile"),
+		persistSession: false,
+		subagentProfileResolver: (name) => registry.createProfile(name),
+	});
+	assert.deepEqual(inspection.subagents, [{
+		name: "helper",
+		targetProfile: "helper-profile",
+		configuredModel: { provider: "openai", id: "gpt-5.6-mini" },
+		effectiveModel: { provider: "openai", id: "gpt-5.6-mini" },
+		configuredThinkingLevel: "high",
+		effectiveThinkingLevel: "high",
+		active: true,
+	}]);
+	assert.equal(inspection.contextFiles.some((file) => file.path === "pibo://runtime/delegated-agents.md"), true);
 
 	const store = new InMemoryPiboSessionStore();
 	store.create({
@@ -335,12 +532,58 @@ test("profiles can expose subagents as active router tools", async () => {
 		assert.equal(output.type, "execution_result");
 		assert.deepEqual(
 			PIBO_AGENT_TOOL_NAMES.filter((name) => output.result.activeTools.includes(name)),
-			PIBO_AGENT_TOOL_NAMES,
+			PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message"),
 		);
+		assert.equal(output.result.activeTools.includes("ordinary"), true);
+		assert.equal(output.result.activeTools.includes("pibo_run_start"), true);
 		assert.equal(output.result.activeTools.some((name) => name.startsWith("pibo_subagent_")), false);
+		const runStart = router.sessions.get("ps_parent").runtime.session.getToolDefinition("pibo_run_start");
+		assert.deepEqual(runStart.parameters.properties.toolName.enum, ["pibo_agents_send_message"]);
 	} finally {
 		await router.disposeAll();
 	}
+});
+
+test("profile inspection distinguishes configured subagent overrides from effective target-profile fallbacks", async () => {
+	const targetProfile = new InitialSessionContextBuilder("target-profile")
+		.withSubagentModel({ provider: "fallback-provider", id: "fallback-model" })
+		.withSubagentThinkingLevel("medium")
+		.createSession();
+	const profile = new InitialSessionContextBuilder("inspection-parent")
+		.addSubagents([
+			{
+				name: "configured",
+				targetProfile: "target-profile",
+				model: { provider: "override-provider", id: "override-model" },
+				thinkingLevel: "xhigh",
+			},
+			{ name: "fallback", targetProfile: "target-profile" },
+		])
+		.createSession();
+	const inspection = await inspectPiboProfile({
+		profile,
+		persistSession: false,
+		subagentProfileResolver: () => targetProfile,
+	});
+
+	assert.deepEqual(inspection.subagents, [
+		{
+			name: "configured",
+			targetProfile: "target-profile",
+			configuredModel: { provider: "override-provider", id: "override-model" },
+			effectiveModel: { provider: "override-provider", id: "override-model" },
+			configuredThinkingLevel: "xhigh",
+			effectiveThinkingLevel: "xhigh",
+			active: true,
+		},
+		{
+			name: "fallback",
+			targetProfile: "target-profile",
+			effectiveModel: { provider: "fallback-provider", id: "fallback-model" },
+			effectiveThinkingLevel: "medium",
+			active: true,
+		},
+	]);
 });
 
 test("router omits subagent tools that have reached their max depth", async () => {
@@ -394,6 +637,12 @@ test("router omits subagent tools that have reached their max depth", async () =
 	});
 
 	try {
+		assert.deepEqual(router.getSessionRuntimeProfile("ps_root").subagents.map((subagent) => subagent.name), ["defaulted", "limited", "deeper"]);
+		const childProfile = router.getSessionRuntimeProfile("ps_child");
+		assert.deepEqual(childProfile.subagents.map((subagent) => subagent.name), ["deeper"]);
+		assert.equal(childProfile.sessionId, "child-session");
+		assert.equal(childProfile.parentSessionId, "root-session");
+
 		const rootOutput = await router.emit({
 			type: "execution",
 			piboSessionId: "ps_root",
@@ -405,21 +654,32 @@ test("router omits subagent tools that have reached their max depth", async () =
 			action: "status",
 		});
 
-		assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => rootOutput.result.activeTools.includes(name)), PIBO_AGENT_TOOL_NAMES);
-		assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => childOutput.result.activeTools.includes(name)), PIBO_AGENT_TOOL_NAMES);
-		const rootSend = router.sessions.get("ps_root").runtime.session.getToolDefinition("pibo_agents_send_message");
-		const childSend = router.sessions.get("ps_child").runtime.session.getToolDefinition("pibo_agents_send_message");
-		assert.deepEqual(rootSend.parameters.properties.name.enum, ["defaulted", "limited", "deeper"]);
-		assert.deepEqual(childSend.parameters.properties.name.enum, ["deeper"]);
+		const managementToolNames = PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message");
+		assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => rootOutput.result.activeTools.includes(name)), managementToolNames);
+		assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => childOutput.result.activeTools.includes(name)), managementToolNames);
+		assert.equal(router.sessions.get("ps_root").runtime.session.getToolDefinition("pibo_agents_send_message"), undefined);
+		assert.equal(router.sessions.get("ps_child").runtime.session.getToolDefinition("pibo_agents_send_message"), undefined);
 
-		const childRunStart = router.sessions.get("ps_child").runtime.session.getToolDefinition("pibo_run_start");
+		const rootRuntime = router.sessions.get("ps_root").runtime;
+		const childRuntime = router.sessions.get("ps_child").runtime;
+		const rootAgentContext = rootRuntime.session.resourceLoader.getAgentsFiles().agentsFiles.find((file) => file.path === "pibo://runtime/delegated-agents.md");
+		const childAgentContext = childRuntime.session.resourceLoader.getAgentsFiles().agentsFiles.find((file) => file.path === "pibo://runtime/delegated-agents.md");
+		assert.match(rootAgentContext.content, /`defaulted`/);
+		assert.match(rootAgentContext.content, /`limited`/);
+		assert.match(rootAgentContext.content, /`deeper`/);
+		assert.doesNotMatch(childAgentContext.content, /`defaulted`/);
+		assert.doesNotMatch(childAgentContext.content, /`limited`/);
+		assert.match(childAgentContext.content, /`deeper`/);
+
+		const childRunStart = childRuntime.session.getToolDefinition("pibo_run_start");
 		const childYieldableToolNames = childRunStart.parameters.properties.toolName.enum;
-		assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => childYieldableToolNames.includes(name)), PIBO_AGENT_TOOL_NAMES);
+		assert.equal(childYieldableToolNames.includes("pibo_agents_send_message"), true);
 
 		await assert.rejects(
 			router.createAgentsController("ps_child").sendMessage({
 				subagent: { name: "defaulted", targetProfile: "recursive-profile" },
 				message: "must not create another child",
+				requestId: "run_depth_rejected",
 			}),
 			/Subagent "defaulted" exceeded max depth 1/,
 		);
@@ -456,10 +716,13 @@ test("agents controller emits a parent link event before waiting for the child r
 			message: "check this",
 			threadKey: "inspect",
 			toolCallId: "tool-1",
+			requestId: "run_request_link",
+			parentProvenance: { kind: "loop-run", jobId: "loop_parent", runId: "loop_run_parent" },
 		});
 		const linkEvent = events.find((event) => event.type === "subagent_session");
 
 		assert.equal(linkEvent.piboSessionId, "ps_parent");
+		assert.equal(linkEvent.requestId, "run_request_link");
 		assert.equal(linkEvent.toolCallId, "tool-1");
 		assert.equal(linkEvent.toolName, "pibo_agents_send_message");
 		assert.equal(linkEvent.subagentName, "explorer");
@@ -470,6 +733,8 @@ test("agents controller emits a parent link event before waiting for the child r
 		assert.equal(store.get(result.agentId).metadata.chatRoomId, "room_parent");
 		assert.equal(store.get(result.agentId).metadata.workflowSessionKind, "subagent");
 		assert.equal(store.get(result.agentId).metadata.subagentToolName, "pibo_agents_send_message");
+		assert.equal(result.requestId, "run_request_link");
+		assert.equal(result.finalMessage, "child reply");
 	} finally {
 		await router.disposeAll();
 	}
@@ -507,6 +772,7 @@ test("subagent runner freezes per-subagent model and thinking settings on new ch
 			},
 			message: "research this",
 			threadKey: "research-thread",
+			requestId: "run_research_first",
 		});
 		const child = store.get(first.agentId);
 		assert.deepEqual(child.activeModel, { provider: "openai", id: "gpt-5.6-mini" });
@@ -521,6 +787,7 @@ test("subagent runner freezes per-subagent model and thinking settings on new ch
 			},
 			message: "continue",
 			threadKey: "research-thread",
+			requestId: "run_research_reuse",
 		});
 		assert.equal(reused.agentId, first.agentId);
 		assert.deepEqual(store.get(reused.agentId).activeModel, { provider: "openai", id: "gpt-5.6-mini" });
@@ -530,6 +797,7 @@ test("subagent runner freezes per-subagent model and thinking settings on new ch
 			subagent: { name: "worker", targetProfile: "base" },
 			message: "use defaults",
 			threadKey: "default-thread",
+			requestId: "run_research_default",
 		});
 		assert.deepEqual(store.get(fallback.agentId).activeModel, { provider: "default-provider", id: "default-subagent" });
 		assert.equal(store.get(fallback.agentId).metadata.initialThinkingLevel, undefined);
@@ -552,8 +820,13 @@ test("subagent runner rejects invalid or cancelled requests before creating a ch
 		const controller = router.createAgentsController("ps_parent");
 		await assert.rejects(controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
+			message: "must identify the request",
+		}), /requestId is required/);
+		await assert.rejects(controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
 			message: "must not create a child",
 			threadKey: "é".repeat(257),
+			requestId: "run_invalid_thread",
 		}), /Subagent thread key exceeds 512 bytes/);
 
 		const abortController = new AbortController();
@@ -562,6 +835,7 @@ test("subagent runner rejects invalid or cancelled requests before creating a ch
 			subagent: { name: "explorer", targetProfile: "base" },
 			message: "must not create a child",
 			threadKey: "cancelled",
+			requestId: "run_preaborted",
 			signal: abortController.signal,
 		}), (error) => error instanceof Error && error.name === "AbortError");
 		assert.equal(store.list().length, 1);
@@ -593,11 +867,13 @@ test("agents controller lists, filters observations, kills owned children, and d
 			subagent: { name: "explorer", targetProfile: "base" },
 			message: "explore",
 			threadKey: "alpha",
+			requestId: "run_explorer",
 		});
 		const worker = await controller.sendMessage({
 			subagent: { name: "worker", targetProfile: "base" },
 			message: "work",
 			threadKey: "beta",
+			requestId: "run_worker",
 		});
 		assert.deepEqual(controller.listAgents().map((agent) => [agent.name, agent.status]).sort(), [["explorer", "idle"], ["worker", "idle"]]);
 
@@ -606,6 +882,7 @@ test("agents controller lists, filters observations, kills owned children, and d
 			piboSessionId: explorer.agentId,
 			eventId: "event-explorer",
 			text: "Alpha complete",
+			provenance: { kind: "subagent-request", requestId: "run_explorer", controllerPiboSessionId: "ps_parent" },
 		});
 		router.emitOutput({
 			type: "tool_call",
@@ -615,6 +892,7 @@ test("agents controller lists, filters observations, kills owned children, and d
 			toolName: "bash",
 			args: { command: "npm test" },
 			argsComplete: true,
+			provenance: { kind: "subagent-request", requestId: "run_worker", controllerPiboSessionId: "ps_parent" },
 		});
 		router.emitOutput({
 			type: "session_error",
@@ -624,16 +902,20 @@ test("agents controller lists, filters observations, kills owned children, and d
 		});
 
 		const observed = controller.observe({
+			requestIds: ["run_worker"],
 			agentIds: [worker.agentId],
 			names: ["worker"],
 			threadKeys: ["beta"],
 			eventTypes: ["tool_call"],
 			kinds: ["tool"],
+			roles: ["tool"],
 			textContains: "NPM TEST",
 			order: "asc",
 			limit: 10,
 		});
 		assert.equal(observed.observations.length, 1);
+		assert.equal(observed.observations[0].requestId, "run_worker");
+		assert.equal(observed.observations[0].role, "tool");
 		assert.equal(observed.observations[0].toolName, "bash");
 		assert.equal(observed.observations[0].details, undefined);
 		assert.equal(observed.nextAfterSequence, observed.observations[0].sequence);
@@ -648,6 +930,7 @@ test("agents controller lists, filters observations, kills owned children, and d
 			subagent: { name: "worker", targetProfile: "base" },
 			message: "retry",
 			threadKey: "beta",
+			requestId: "run_worker_replacement",
 		});
 		assert.notEqual(replacement.agentId, worker.agentId);
 		await assert.rejects(
@@ -759,60 +1042,6 @@ test("descendant traversal is cycle-safe for corrupt stored session graphs", asy
 	}
 });
 
-function createYieldedAgentHarness({ adapterId, script, timeoutMs }) {
-	const childProfile = `${adapterId}-profile`;
-	const childDriver = createFakeAgentRuntimeDriver({ adapterId, script });
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
-				id: `test.${adapterId}`,
-				register(api) {
-					api.registerAgentRuntimeDriver(childDriver);
-					api.registerAgentRuntimeInstance({ id: adapterId, adapterId });
-					api.registerProfile({
-						name: childProfile,
-						create() {
-							return new InitialSessionContextBuilder(childProfile)
-								.withAgentRuntime(adapterId)
-								.withBuiltinTools("disabled")
-								.withAutoContextFiles(false)
-								.withToolPackages({ goalControl: false })
-								.createSession();
-						},
-					});
-				},
-			}),
-		],
-	});
-	const store = new InMemoryPiboSessionStore();
-	store.create({ id: "ps_yielded_parent", channel: "pibo.test", kind: "chat", profile: "base" });
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
-	const subagent = { name: "worker", targetProfile: childProfile, ...(timeoutMs === undefined ? {} : { timeoutMs }) };
-	const agentsController = router.createAgentsController("ps_yielded_parent");
-	const agentTools = createAgentToolDefinitions([subagent], agentsController);
-	const runTools = Object.fromEntries(createRunToolDefinitions(
-		agentTools,
-		router.createRunToolController("ps_yielded_parent"),
-	).map((tool) => [tool.name, tool]));
-	return {
-		agentsController,
-		adapter: registry.requireAgentRuntimeAdapter(adapterId),
-		router,
-		runTools,
-		store,
-		subagent,
-	};
-}
-
-async function waitForCondition(condition, failureMessage, timeoutMs = 2_000) {
-	const deadline = Date.now() + timeoutMs;
-	while (!condition()) {
-		if (Date.now() >= deadline) throw new Error(failureMessage);
-		await new Promise((resolve) => setTimeout(resolve, 10));
-	}
-}
-
 test("aborting a parent turn interrupts its active subagent child", async () => {
 	const childDriver = createFakeAgentRuntimeDriver({
 		adapterId: "subagent-abort-child",
@@ -865,8 +1094,13 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "status" });
 		const runtime = router.sessions.get("ps_abort_parent").runtime;
-		const tool = runtime.session.getToolDefinition("pibo_agents_send_message");
-		const execution = tool.execute("subagent-abort-tool", { name: "worker", message: "hold until parent abort", threadKey: "hold" });
+		assert.equal(runtime.session.getToolDefinition("pibo_agents_send_message"), undefined);
+		const startTool = runtime.session.getToolDefinition("pibo_run_start");
+		const started = await startTool.execute("subagent-abort-tool", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "hold until parent abort", threadKey: "hold" },
+			completionPolicy: "tracked",
+		});
 		const childAdapter = registry.requireAgentRuntimeAdapter("subagent-abort-child");
 		const deadline = Date.now() + 2_000;
 		while (!childAdapter.sessions.some((session) => session.getStatus().streaming)) {
@@ -874,7 +1108,8 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		}
 		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "abort" });
-		await assert.rejects(execution, (error) => error instanceof Error && error.name === "AbortError");
+		const terminal = await router.createRunToolController("ps_abort_parent").waitForRun(started.details.runId, 1_000);
+		assert.equal(terminal.status, "failed");
 		assert.equal(childAdapter.sessions[0].abortCalls, 1);
 		assert.equal(childAdapter.sessions[0].getStatus().streaming, false);
 	} finally {
@@ -883,35 +1118,103 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 });
 
 test("parent abort reports rejected child cancellation instead of silently succeeding", async () => {
+	const script = { waitForAbort: true, abortFailWith: "child adapter abort rejected" };
+	const fixture = createYieldedSubagentFixture("parent-abort-rejected", script);
+	try {
+		const tools = await yieldedSubagentTools(fixture);
+		const started = await tools.start.execute("start-parent-abort-rejected", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "hold", threadKey: "hold" },
+			completionPolicy: "tracked",
+		});
+		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
+		await waitFor(() => childAdapter.sessions[0]?.getStatus().streaming === true);
+
+		await assert.rejects(
+			fixture.router.emit({ type: "execution", piboSessionId: fixture.parentId, action: "abort" }),
+			/Failed to cancel active subagent requests/,
+		);
+		await waitFor(() => fixture.router.createRunToolController(fixture.parentId).getRunStatus(started.details.runId).status === "failed");
+		const failed = fixture.router.createRunToolController(fixture.parentId).readRun(started.details.runId);
+		assert.equal(failed.status, "failed");
+		assert.match(failed.error, /Failed to cancel subagent request/);
+		assert.equal(childAdapter.sessions[0].getStatus().streaming, true);
+
+		delete script.abortFailWith;
+		await childAdapter.sessions[0].abort();
+	} finally {
+		delete script.abortFailWith;
+		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
+		if (childAdapter.sessions[0]?.getStatus().streaming) await childAdapter.sessions[0].abort();
+		await fixture.router.disposeAll();
+	}
+});
+
+test("cancelling an active delegated run settles before the next queued request finishes", async () => {
+	const fixture = createYieldedSubagentFixture("active-request-cancellation", { waitForAbort: true });
+	try {
+		const tools = await yieldedSubagentTools(fixture);
+		const first = await tools.start.execute("start-active-a", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "A", threadKey: "shared" },
+			completionPolicy: "tracked",
+		});
+		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
+		await waitFor(() => childAdapter.sessions[0]?.getStatus().streaming === true);
+		const child = fixture.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: fixture.parentId })[0];
+		assert.ok(child);
+
+		const second = await tools.start.execute("start-active-b", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "B", threadKey: "shared" },
+			completionPolicy: "tracked",
+		});
+		await waitFor(() => fixture.router.sessions.get(child.id)?.getStatus().queuedMessages === 1);
+
+		const cancelledFirst = await tools.cancel.execute("cancel-active-a", { runId: first.details.runId });
+		assert.equal(cancelledFirst.details.status, "cancelled");
+		await waitFor(() => childAdapter.sessions[0].prompts.length === 2 && childAdapter.sessions[0].getStatus().streaming === true);
+		assert.equal(childAdapter.sessions[0].abortCalls, 1);
+		assert.equal(fixture.router.createRunToolController(fixture.parentId).getRunStatus(second.details.runId).status, "running");
+
+		const cancelledSecond = await tools.cancel.execute("cancel-active-b", { runId: second.details.runId });
+		assert.equal(cancelledSecond.details.status, "cancelled");
+		assert.equal(childAdapter.sessions[0].abortCalls, 2);
+	} finally {
+		await fixture.router.disposeAll();
+	}
+});
+
+test("cancelling a queued delegated run leaves the active request on the shared thread running", async () => {
 	const childDriver = createFakeAgentRuntimeDriver({
-		adapterId: "subagent-parent-abort-rejected-child",
+		adapterId: "subagent-targeted-cancel-child",
 		script: { waitForAbort: true },
 	});
 	const registry = PiboPluginRegistry.create({
 		plugins: [
 			piboCorePlugin,
 			definePiboPlugin({
-				id: "test.subagent-parent-abort-rejected-child",
+				id: "test.subagent-targeted-cancel",
 				register(api) {
 					api.registerAgentRuntimeDriver(childDriver);
-					api.registerAgentRuntimeInstance({ id: "subagent-parent-abort-rejected-child", adapterId: "subagent-parent-abort-rejected-child" });
+					api.registerAgentRuntimeInstance({ id: "subagent-targeted-cancel-child", adapterId: "subagent-targeted-cancel-child" });
 					api.registerProfile({
-						name: "subagent-parent-abort-rejected-parent",
+						name: "subagent-targeted-cancel-parent",
 						create() {
-							return new InitialSessionContextBuilder("subagent-parent-abort-rejected-parent")
+							return new InitialSessionContextBuilder("subagent-targeted-cancel-parent")
 								.withAgentRuntime("pi")
 								.withBuiltinTools("disabled")
 								.withAutoContextFiles(false)
 								.withToolPackages({ goalControl: false })
-								.addSubagent({ name: "worker", targetProfile: "subagent-parent-abort-rejected-child-profile" })
+								.addSubagent({ name: "worker", targetProfile: "subagent-targeted-cancel-child-profile" })
 								.createSession();
 						},
 					});
 					api.registerProfile({
-						name: "subagent-parent-abort-rejected-child-profile",
+						name: "subagent-targeted-cancel-child-profile",
 						create() {
-							return new InitialSessionContextBuilder("subagent-parent-abort-rejected-child-profile")
-								.withAgentRuntime("subagent-parent-abort-rejected-child")
+							return new InitialSessionContextBuilder("subagent-targeted-cancel-child-profile")
+								.withAgentRuntime("subagent-targeted-cancel-child")
 								.withBuiltinTools("disabled")
 								.withAutoContextFiles(false)
 								.withToolPackages({ goalControl: false })
@@ -924,220 +1227,229 @@ test("parent abort reports rejected child cancellation instead of silently succe
 	});
 	const store = new InMemoryPiboSessionStore();
 	store.create({
-		id: "ps_abort_rejected_parent",
+		id: "ps_targeted_cancel_parent",
 		channel: "pibo.test",
 		kind: "chat",
-		profile: "subagent-parent-abort-rejected-parent",
-		runtimeBinding: { piboSessionId: "ps_abort_rejected_parent", runtimeInstanceId: "pi", adapterId: "pi", state: "unbound" },
+		profile: "subagent-targeted-cancel-parent",
+		runtimeBinding: { piboSessionId: "ps_targeted_cancel_parent", runtimeInstanceId: "pi", adapterId: "pi", state: "unbound" },
 	});
 	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
-	let restoreAbort;
 	try {
-		await router.emit({ type: "execution", piboSessionId: "ps_abort_rejected_parent", action: "status" });
-		const runtime = router.sessions.get("ps_abort_rejected_parent").runtime;
-		const tool = runtime.session.getToolDefinition("pibo_agents_send_message");
-		const execution = tool.execute("subagent-rejected-parent-abort-tool", { name: "worker", message: "hold", threadKey: "hold" });
-		const executionRejection = assert.rejects(execution, (error) => error instanceof Error && error.name === "PiboRunCancellationError");
-		const childAdapter = registry.requireAgentRuntimeAdapter("subagent-parent-abort-rejected-child");
-		await waitForCondition(
-			() => childAdapter.sessions[0]?.getStatus().streaming === true,
-			"Timed out waiting for active child before rejected parent abort",
-		);
-		const childSession = childAdapter.sessions[0];
-		const originalAbort = childSession.abort.bind(childSession);
-		restoreAbort = () => { childSession.abort = originalAbort; };
-		childSession.abort = async () => {
-			childSession.abortCalls += 1;
-			throw new Error("child adapter abort rejected");
-		};
+		await router.emit({ type: "execution", piboSessionId: "ps_targeted_cancel_parent", action: "status" });
+		const runtime = router.sessions.get("ps_targeted_cancel_parent").runtime;
+		const startTool = runtime.session.getToolDefinition("pibo_run_start");
+		const cancelTool = runtime.session.getToolDefinition("pibo_run_cancel");
+		const first = await startTool.execute("start-shared-a", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "A", threadKey: "shared" },
+			completionPolicy: "tracked",
+		});
+		const childAdapter = registry.requireAgentRuntimeAdapter("subagent-targeted-cancel-child");
+		await waitFor(() => childAdapter.sessions[0]?.getStatus().streaming === true);
+		const second = await startTool.execute("start-shared-b", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "B", threadKey: "shared" },
+			completionPolicy: "tracked",
+		});
+		await new Promise((resolve) => setImmediate(resolve));
 
-		await assert.rejects(
-			router.emit({ type: "execution", piboSessionId: "ps_abort_rejected_parent", action: "abort" }),
-			/Failed to cancel active subagent requests/,
-		);
-		await executionRejection;
-		assert.equal(childSession.getStatus().streaming, true);
+		const cancelledSecond = await cancelTool.execute("cancel-shared-b", { runId: second.details.runId });
+		assert.equal(cancelledSecond.details.status, "cancelled");
+		assert.deepEqual(childAdapter.sessions[0].prompts.map((prompt) => prompt.text), ["A"]);
+		assert.equal(childAdapter.sessions[0].abortCalls, 0);
+		assert.equal(childAdapter.sessions[0].getStatus().streaming, true);
+		assert.equal(router.createRunToolController("ps_targeted_cancel_parent").getRunStatus(first.details.runId).status, "running");
 
-		restoreAbort();
-		restoreAbort = undefined;
-		await childSession.abort();
+		const cancelledFirst = await cancelTool.execute("cancel-shared-a", { runId: first.details.runId });
+		assert.equal(cancelledFirst.details.status, "cancelled");
+		assert.equal(childAdapter.sessions[0].abortCalls, 1);
+		assert.equal(childAdapter.sessions[0].getStatus().streaming, false);
 	} finally {
-		restoreAbort?.();
 		await router.disposeAll();
 	}
 });
 
-test("cancelling one yielded request does not abort another request in the same persistent child session", async () => {
-	const harness = createYieldedAgentHarness({
-		adapterId: "shared-request-cancellation",
-		script: { waitForAbort: true },
-	});
+test("delegated run cancellation fails when the child rejects targeted abort", async () => {
+	const script = { waitForAbort: true, abortFailWith: "provider abort failed" };
+	const fixture = createYieldedSubagentFixture("abort-rejection", script);
 	try {
-		const first = await harness.runTools.pibo_run_start.execute("start-shared-a", {
+		const tools = await yieldedSubagentTools(fixture);
+		const started = await tools.start.execute("start-abort-rejection", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "request A", threadKey: "shared" },
-			completionPolicy: "detached",
+			arguments: { name: "worker", message: "wait", threadKey: "abort-rejection" },
+			completionPolicy: "tracked",
 		});
-		await waitForCondition(
-			() => harness.adapter.sessions[0]?.getStatus().streaming === true,
-			"Timed out waiting for request A to become active",
-		);
-		const child = harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" })[0];
-		assert.ok(child);
+		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
+		await waitFor(() => childAdapter.sessions[0]?.getStatus().streaming === true);
 
-		const second = await harness.runTools.pibo_run_start.execute("start-shared-b", {
-			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "request B", threadKey: "shared" },
-			completionPolicy: "detached",
-		});
-		await waitForCondition(
-			() => harness.router.sessions.get(child.id)?.getStatus().queuedMessages === 1,
-			"Timed out waiting for request B to queue in the shared child session",
-		);
-
-		const cancelledSecond = await harness.runTools.pibo_run_cancel.execute("cancel-shared-b", { runId: second.details.runId });
-		assert.equal(cancelledSecond.details.status, "cancelled");
-		assert.equal(harness.adapter.sessions[0].abortCalls, 0);
-		assert.equal(harness.adapter.sessions[0].getStatus().streaming, true);
-		assert.equal(harness.router.sessions.get(child.id).getStatus().queuedMessages, 0);
-		assert.equal(harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" }).length, 1);
-
-		const cancelledFirst = await harness.runTools.pibo_run_cancel.execute("cancel-shared-a", { runId: first.details.runId });
-		assert.equal(cancelledFirst.details.status, "cancelled");
-		assert.equal(harness.adapter.sessions[0].abortCalls, 1);
-		assert.equal(harness.adapter.sessions[0].getStatus().streaming, false);
-	} finally {
-		await harness.router.disposeAll();
-	}
-});
-
-test("cancelling an active yielded request settles before the next queued request finishes", async () => {
-	const harness = createYieldedAgentHarness({
-		adapterId: "active-request-cancellation",
-		script: { waitForAbort: true },
-	});
-	try {
-		const first = await harness.runTools.pibo_run_start.execute("start-active-a", {
-			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "request A", threadKey: "shared" },
-			completionPolicy: "detached",
-		});
-		await waitForCondition(
-			() => harness.adapter.sessions[0]?.getStatus().streaming === true,
-			"Timed out waiting for request A to become active",
-		);
-		const child = harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" })[0];
-		assert.ok(child);
-
-		const second = await harness.runTools.pibo_run_start.execute("start-active-b", {
-			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "request B", threadKey: "shared" },
-			completionPolicy: "detached",
-		});
-		await waitForCondition(
-			() => harness.router.sessions.get(child.id)?.getStatus().queuedMessages === 1,
-			"Timed out waiting for request B to queue behind request A",
-		);
-
-		const cancelledFirst = await harness.runTools.pibo_run_cancel.execute("cancel-active-a", { runId: first.details.runId });
-		assert.equal(cancelledFirst.details.status, "cancelled");
-		await waitForCondition(
-			() => harness.adapter.sessions[0].prompts.length === 2 && harness.adapter.sessions[0].getStatus().streaming === true,
-			"Timed out waiting for request B to start after request A cancellation",
-		);
-		assert.equal(harness.adapter.sessions[0].abortCalls, 1);
-		assert.equal(harness.router.runRegistry.status("ps_yielded_parent", second.details.runId).status, "running");
-
-		const cancelledSecond = await harness.runTools.pibo_run_cancel.execute("cancel-active-b", { runId: second.details.runId });
-		assert.equal(cancelledSecond.details.status, "cancelled");
-		assert.equal(harness.adapter.sessions[0].abortCalls, 2);
-	} finally {
-		await harness.router.disposeAll();
-	}
-});
-
-test("rejected adapter abort fails the yielded run instead of reporting it cancelled", async () => {
-	const harness = createYieldedAgentHarness({
-		adapterId: "rejected-adapter-abort",
-		script: { waitForAbort: true },
-	});
-	let restoreAbort;
-	try {
-		const started = await harness.runTools.pibo_run_start.execute("start-rejected-abort", {
-			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "wait", threadKey: "abort-failure" },
-			completionPolicy: "detached",
-		});
-		await waitForCondition(
-			() => harness.adapter.sessions[0]?.getStatus().streaming === true,
-			"Timed out waiting for the abort-failure request to become active",
-		);
-		const session = harness.adapter.sessions[0];
-		const originalAbort = session.abort.bind(session);
-		restoreAbort = () => { session.abort = originalAbort; };
-		session.abort = async () => {
-			session.abortCalls += 1;
-			throw new Error("adapter abort rejected");
-		};
-
-		await assert.rejects(
-			harness.runTools.pibo_run_cancel.execute("cancel-rejected-abort", { runId: started.details.runId }),
-			/Failed to terminate cancelled yielded runs/,
-		);
-		await waitForCondition(
-			() => harness.router.runRegistry.status("ps_yielded_parent", started.details.runId).status === "failed",
-			"Timed out waiting for rejected adapter abort to fail the run",
-		);
-		const failed = harness.router.runRegistry.read("ps_yielded_parent", started.details.runId);
+		await assert.rejects(tools.cancel.execute("cancel-abort-rejection", { runId: started.details.runId }), (error) => (
+			error instanceof AggregateError
+			&& error.errors.some((nested) => nested?.name === "PiboRunCancellationError" && nested.cause?.message === "provider abort failed")
+		));
+		await waitFor(() => fixture.router.createRunToolController(fixture.parentId).getRunStatus(started.details.runId).status === "failed");
+		const failed = fixture.router.createRunToolController(fixture.parentId).readRun(started.details.runId);
 		assert.equal(failed.status, "failed");
 		assert.match(failed.error, /Failed to cancel subagent request/);
-		assert.equal(session.getStatus().streaming, true);
+		assert.equal(childAdapter.sessions[0].getStatus().streaming, true);
 
-		restoreAbort();
-		restoreAbort = undefined;
-		await session.abort();
+		delete script.abortFailWith;
+		await childAdapter.sessions[0].abort();
 	} finally {
-		restoreAbort?.();
-		await harness.router.disposeAll();
+		await fixture.router.disposeAll();
 	}
 });
 
-test("yielded agent deadlines are timed_out and preserve thread reuse", async () => {
-	const harness = createYieldedAgentHarness({
-		adapterId: "deadline-thread-reuse",
-		timeoutMs: 10,
-		script: (_input, promptIndex) => promptIndex === 1
-			? { waitForAbort: true }
-			: { events: [{ type: "assistant_message", text: "continued" }] },
-	});
+test("delegated run cancellation is bounded when an adapter never settles its active prompt", { timeout: 25_000 }, async () => {
+	const script = { waitForAbort: true, abortNeverSettles: true };
+	const fixture = createYieldedSubagentFixture("abort-nonsettling", script);
 	try {
-		const started = await harness.runTools.pibo_run_start.execute("start-agent-timeout", {
+		const tools = await yieldedSubagentTools(fixture);
+		const started = await tools.start.execute("start-abort-nonsettling", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "wait", threadKey: "reusable" },
-			completionPolicy: "detached",
+			arguments: { name: "worker", message: "wait", threadKey: "abort-nonsettling" },
+			completionPolicy: "tracked",
 		});
-		const waited = await harness.runTools.pibo_run_wait.execute("wait-agent-timeout", {
+		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
+		await waitFor(() => childAdapter.sessions[0]?.getStatus().streaming === true);
+
+		const cancelStartedAt = Date.now();
+		await assert.rejects(tools.cancel.execute("cancel-abort-nonsettling", { runId: started.details.runId }), (error) => (
+			error instanceof AggregateError
+			&& error.errors.some((nested) => /Yielded run did not settle within 15000ms after cancellation/.test(nested?.message ?? ""))
+		));
+		assert.ok(Date.now() - cancelStartedAt >= 14_500);
+		assert.equal(fixture.router.createRunToolController(fixture.parentId).getRunStatus(started.details.runId).status, "running");
+		assert.equal(childAdapter.sessions[0].getStatus().streaming, true);
+
+		script.abortNeverSettles = false;
+		await childAdapter.sessions[0].abort();
+		await waitFor(() => fixture.router.createRunToolController(fixture.parentId).getRunStatus(started.details.runId).status === "failed");
+	} finally {
+		script.abortNeverSettles = false;
+		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
+		if (childAdapter.sessions[0]?.getStatus().streaming) await childAdapter.sessions[0].abort();
+		await fixture.router.disposeAll();
+	}
+});
+
+test("yielded delegated run read returns the complete final message and request identity", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const firstBlock = `complete:${"x".repeat(6_000)}`;
+	const secondBlock = `${"y".repeat(6_000)}:end`;
+	const normalizedFinal = normalizePiEvent("ps_child", {
+		type: "message_end",
+		message: {
+			role: "assistant",
+			content: [
+				{ type: "text", text: firstBlock },
+				{ type: "toolCall", id: "tool-gap", name: "read", arguments: {} },
+				{ type: "text", text: secondBlock },
+			],
+			stopReason: "stop",
+		},
+	});
+	assert.equal(normalizedFinal.type, "assistant_message");
+	const finalMessage = `${firstBlock}\n${secondBlock}`;
+	router.emitMessageAndWaitForReply = async (event) => ({
+		...normalizedFinal,
+		piboSessionId: event.piboSessionId,
+		eventId: event.id,
+	});
+
+	try {
+		const subagent = { name: "worker", targetProfile: "base" };
+		const runTools = Object.fromEntries(createRunToolDefinitions(
+			createAgentToolDefinitions([subagent], router.createAgentsController("ps_parent")),
+			router.createRunToolController("ps_parent"),
+		).map((tool) => [tool.name, tool]));
+		const started = await runTools.pibo_run_start.execute("start-agent-complete", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "produce complete result", threadKey: "complete" },
+			completionPolicy: "tracked",
+		});
+		const waited = await runTools.pibo_run_wait.execute("wait-agent-complete", {
 			runId: started.details.runId,
 			timeoutMs: 1_000,
 		});
+		assert.equal(waited.details.status, "completed");
 
-		assert.equal(waited.details.status, "timed_out");
-		assert.equal(waited.details.timeoutPhase, "lifetime");
-		assert.equal(harness.adapter.sessions[0].abortCalls, 1);
-		const timedOutChild = harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" })[0];
-		assert.ok(timedOutChild);
+		const read = await runTools.pibo_run_read.execute("read-agent-complete", { runId: started.details.runId });
+		assert.equal(read.content[0].text.endsWith(finalMessage), true);
+		assert.equal(read.details.result.details.requestId, started.details.runId);
+		assert.equal(read.details.result.details.finalMessage, finalMessage);
+		assert.equal(read.details.result.details.threadKey, "complete");
+		assert.equal(typeof read.details.result.details.agentId, "string");
+		assert.equal(typeof read.details.result.details.eventId, "string");
+	} finally {
+		await router.disposeAll();
+	}
+});
 
-		const reused = await harness.agentsController.sendMessage({
-			subagent: harness.subagent,
+test("bounded run waits do not cancel delegated agents and explicit cancellation preserves thread reuse", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const emitted = [];
+	const cancellations = [];
+	router.emit = async (event) => {
+		emitted.push(event);
+		return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: 0, text: event.text, source: event.source };
+	};
+	router.cancelSessionMessage = async (piboSessionId, eventId) => {
+		cancellations.push({ piboSessionId, eventId });
+		await new Promise((resolve) => setTimeout(resolve, 40));
+	};
+
+	try {
+		const subagent = { name: "worker", targetProfile: "base", timeoutMs: 10 };
+		const agentsController = router.createAgentsController("ps_parent");
+		const agentTools = createAgentToolDefinitions([subagent], agentsController);
+		const runTools = Object.fromEntries(createRunToolDefinitions(
+			agentTools,
+			router.createRunToolController("ps_parent"),
+		).map((tool) => [tool.name, tool]));
+		const started = await runTools.pibo_run_start.execute("start-agent-timeout", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", message: "wait", threadKey: "reusable" },
+			completionPolicy: "tracked",
+		});
+		const waited = await runTools.pibo_run_wait.execute("wait-agent-timeout", {
+			runId: started.details.runId,
+			timeoutMs: 25,
+		});
+
+		assert.equal(waited.details.status, "running");
+		assert.equal(waited.details.timedOut, true);
+		assert.equal(started.details.timeoutMs, undefined);
+		assert.equal(cancellations.length, 0);
+		const activeChild = store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" })[0];
+		assert.ok(activeChild);
+
+		const cancelStartedAt = Date.now();
+		const cancelled = await runTools.pibo_run_cancel.execute("cancel-agent-request", { runId: started.details.runId });
+		assert.ok(Date.now() - cancelStartedAt >= 35, "run cancellation must await confirmed child settlement");
+		assert.equal(cancelled.details.status, "cancelled");
+		const delegatedMessage = emitted.find((event) => event.type === "message");
+		assert.deepEqual(cancellations, [{ piboSessionId: activeChild.id, eventId: delegatedMessage.id }]);
+
+		router.emitMessageAndWaitForReply = async (event) => ({
+			type: "assistant_message",
+			piboSessionId: event.piboSessionId,
+			eventId: event.id,
+			text: "continued",
+		});
+		const reused = await agentsController.sendMessage({
+			subagent,
 			message: "continue",
 			threadKey: "reusable",
+			requestId: "run_reused_thread",
 		});
-		assert.equal(reused.agentId, timedOutChild.id);
-		assert.equal(reused.reply.text, "continued");
-		assert.equal(harness.adapter.sessions.length, 1);
-		assert.equal(harness.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_yielded_parent" }).length, 1);
+		assert.equal(reused.agentId, activeChild.id);
+		assert.equal(store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" }).length, 1);
 	} finally {
-		await harness.router.disposeAll();
+		await router.disposeAll();
 	}
 });
 
@@ -1157,7 +1469,10 @@ test("profile-selected subagents expose run control tools", async () => {
 		inspection.subagents.map((subagent) => subagent.name),
 		["default", "explorer", "worker"],
 	);
-	assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => activeTools.has(name)), PIBO_AGENT_TOOL_NAMES);
+	assert.deepEqual(
+		PIBO_AGENT_TOOL_NAMES.filter((name) => activeTools.has(name)),
+		PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message"),
+	);
 	assert.equal([...activeTools].some((name) => name.startsWith("pibo_subagent_")), false);
 	assert.equal(activeTools.has("pibo_run_start"), true);
 	assert.equal(activeTools.has("pibo_run_list"), true);
@@ -1183,6 +1498,7 @@ test("run-control package exposes Pi bash as a yieldable tool", async () => {
 
 	try {
 		const activeTools = new Set(runtime.session.getActiveToolNames());
+		assert.equal(runtime.session.resourceLoader.getAgentsFiles().agentsFiles.some((file) => file.path === "pibo://runtime/delegated-agents.md"), false);
 		assert.equal(activeTools.has("bash"), true);
 		assert.equal(activeTools.has("pibo_exec"), false);
 

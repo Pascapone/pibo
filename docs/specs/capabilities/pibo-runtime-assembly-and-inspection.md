@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-08-24
 **Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/capabilities/plugin-registry-and-capability-catalog.md`, `docs/specs/capabilities/runtime-prompt-and-compaction.md`, `docs/specs/capabilities/model-provider-auth-and-session-selection.md`, `docs/specs/capabilities/yielded-run-control.md`
 
@@ -114,12 +115,13 @@ The system MUST merge Pi-provided context files with Pibo-provided context files
 
 #### Current
 
-`mergeContextFiles()` appends Pibo session context, profile context files, installed CLI tool context, and MCP agent context after the base Pi context files, skipping duplicate paths already seen.
+`mergeContextFiles()` appends Pibo session context, profile context files, conditional delegated-agent management context, installed CLI tool context, and MCP agent context after the base Pi context files, skipping duplicate paths already seen. The runtime resource service delivers the same generated delegated-agent context to non-Pi adapters.
 
 #### Acceptance
 
 - Base Pi agent files remain before Pibo-added files.
 - Pibo session context precedes profile-managed context files.
+- Delegated-agent management context is present only when an enabled, depth-eligible delegated agent exists.
 - Curated CLI tool and MCP context files are appended only when present.
 - Duplicate paths are ignored after the first occurrence.
 
@@ -164,7 +166,8 @@ The system MUST expose only selected built-in tools, selected native tool defini
 - Disabled native tools are not active.
 - If built-in tools are disabled, Pi built-ins are disabled while generated Pibo tools can still be supplied explicitly.
 - If the profile selects fewer than the default built-in tool names, only those selected built-ins plus custom generated tools are allowed.
-- Run-control tools are generated only when run control is enabled, a controller exists, and there is at least one yieldable tool.
+- Run-control tools are generated when run control is enabled or a yielded-only delegated send is available, a controller exists, and there is at least one yieldable tool.
+- `pibo_agents_send_message` is available as a `pibo_run_start` target but is omitted from direct runtime tools.
 - Provider-backed tools can appear active without local Pi function definitions.
 
 #### Scenario: Run control wraps yieldable tools
@@ -246,13 +249,14 @@ The system MUST inspect selected runtime resources without letting generated too
 
 #### Current
 
-`inspectPiboProfile()` creates inert delegated-agent and run-control controllers when needed. It reports loaded skills, profile tools, the four shared `pibo_agents_*` tools, selected delegated agents, selected Pi packages, loaded context files with byte counts, and diagnostics, then disposes the runtime.
+`inspectPiboProfile()` creates inert delegated-agent and run-control controllers when needed. It reports loaded skills, profile tools, direct management tools, yielded-run tools, selected delegated agents with configured and effective model/thinking selections, selected Pi packages, loaded context files with byte counts, and diagnostics, then disposes the runtime.
 
 #### Acceptance
 
 - Inspection lists each profile tool with `hasDefinition`, `registered`, and `active` flags.
 - Inspection includes generated Pibo tools that are active but not explicitly named in the profile.
-- Inspection lists subagents with target profiles and active state.
+- Inspection lists subagents with target profiles, configured per-agent model/thinking overrides, effective resolved model/thinking values when target-profile resolution is available, and active state.
+- A concrete delegated-agent override takes precedence over target-profile and global fallback values without being normalized downward.
 - Inspection lists loaded context file paths and byte counts.
 - Attempting to execute an inspection-only subagent or yielded run fails instead of performing work.
 - The CLI command `pibo profile [profile]` returns this inspection as JSON.
@@ -261,9 +265,9 @@ The system MUST inspect selected runtime resources without letting generated too
 
 - GIVEN a profile selects subagent `explorer`
 - WHEN an operator runs `pibo profile <profile>`
-- THEN the JSON includes subagent `explorer`
-- AND includes the four shared `pibo_agents_*` tools
-- AND the send tool context identifies `explorer` by name and description
+- THEN the JSON includes subagent `explorer` with configured and effective runtime selections
+- AND includes three direct `pibo_agents_*` management tools plus `pibo_run_start`
+- AND the generated delegated-agent context identifies `explorer` by name and description
 - AND no child Pibo Session is created.
 
 ### Requirement: Build Context snapshots are read-only, ordered, and redacted
@@ -272,7 +276,7 @@ The system MUST expose an inspection snapshot that explains startup context asse
 
 #### Current
 
-`inspectPiboContextBuild()` calls `createPiboRuntime()` with `persistSession: false`, uses inert delegated-agent and run-control controllers when needed, omits requested model auth resolution for inspection, reads loaded runtime resources, redacts secret-like values in text, metadata, schema, payload, and diagnostics, estimates direct and subtree tokens, and disposes the runtime in a `finally` block. Chat Web requires an authenticated shared session for `GET /api/chat/context-build?piboSessionId=...` and passes the selected session's profile, active model, workspace, app context compatibility context, room id, and timezone into the snapshot.
+`inspectPiboContextBuild()` calls `createPiboRuntime()` with `persistSession: false`, uses inert delegated-agent and run-control controllers when needed, omits requested model auth resolution for inspection, reads loaded runtime resources, redacts secret-like values in text, metadata, schema, payload, and diagnostics, estimates direct and subtree tokens, and disposes the runtime in a `finally` block. The snapshot includes a read-only runtime resolution manifest for the inspected session; the manifest is inspection evidence and is excluded from prompt-token estimates. Chat Web requires an authenticated shared session for `GET /api/chat/context-build?piboSessionId=...` and passes the selected session's profile, active model, initial thinking selection, workspace, app context compatibility context, room id, timezone, model defaults, and target-profile resolver into the snapshot.
 
 #### Acceptance
 
@@ -282,6 +286,8 @@ The system MUST expose an inspection snapshot that explains startup context asse
 - Provider-backed `web_search` appears as active without requiring a local function definition.
 - Secret-like values are redacted from node content, metadata, payloads, schemas, and diagnostics.
 - Snapshot generation disposes temporary runtime resources.
+- A structured runtime-manifest node reports the concrete profile/runtime/session identity, effective model and thinking selection, known active tools, context files, skills, and configured/effective delegated-agent selections.
+- Runtime-manifest data is not injected into the model prompt, does not count toward prompt token estimates, and marks portable tool discovery as Pibo-managed-only when harness-native names are not inspectable.
 
 #### Scenario: Inspect managed session startup context
 

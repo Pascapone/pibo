@@ -14,19 +14,25 @@ import type { PiboRuntimeOptions } from "./core/runtime.js";
 import { parsePiboThinkingLevel } from "./core/thinking.js";
 import { ensurePrivatePiboHome, piboHomePath } from "./core/pibo-home.js";
 
-async function createCliProfile(profileName?: string) {
+async function resolveCliProfile(profileName?: string) {
 	const { createDefaultPiboPluginRegistry, createGatewayProducerPiboProfile, createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
-	if (profileName === "gateway-producer" || profileName === "pibo-gateway-producer") {
-		return createGatewayProducerPiboProfile();
-	}
-
 	const registry = createDefaultPiboPluginRegistry();
 	const chatAgentStorePath = piboHomePath("chat-agents.sqlite");
 	if (existsSync(chatAgentStorePath)) {
 		const { createPiboChatCustomAgentProfilesPlugin } = await import("./plugins/chat-custom-agents.js");
 		registry.registerPlugin(createPiboChatCustomAgentProfilesPlugin({ agentStorePath: chatAgentStorePath }));
 	}
-	return createPiboProfileFromRegistryOrDefault(registry, profileName);
+	const profile = profileName === "gateway-producer" || profileName === "pibo-gateway-producer"
+		? createGatewayProducerPiboProfile()
+		: createPiboProfileFromRegistryOrDefault(registry, profileName);
+	return {
+		profile,
+		resolveSubagentProfile: (targetProfile: string) => createPiboProfileFromRegistryOrDefault(registry, targetProfile),
+	};
+}
+
+async function createCliProfile(profileName?: string) {
+	return (await resolveCliProfile(profileName)).profile;
 }
 
 function printJson(value: unknown): void {
@@ -418,7 +424,11 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.addHelpText("after", "\nProfiles include built-in plugin profiles plus active saved Chat custom agents from $PIBO_HOME/chat-agents.sqlite. Archived custom agents are not exposed.\n")
 		.action(async (profile?: string) => {
 			const { inspectPiboProfile } = await import("./core/runtime.js");
-			printJson(await inspectPiboProfile({ profile: await createCliProfile(profile) }));
+			const resolved = await resolveCliProfile(profile);
+			printJson(await inspectPiboProfile({
+				profile: resolved.profile,
+				subagentProfileResolver: resolved.resolveSubagentProfile,
+			}));
 		});
 	program
 		.command("tui")

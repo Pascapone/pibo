@@ -71,6 +71,21 @@ function getToolDefinition(
 	return tool.createDefinition!(context);
 }
 
+export type MaterializedPiboProfileTool = {
+	profile: ToolProfile;
+	definition: PiboToolDefinition;
+};
+
+export function materializePiboProfileTools(
+	profile: InitialSessionContext,
+	context: ToolDefinitionContext = {},
+): MaterializedPiboProfileTool[] {
+	return profile.tools
+		.filter((tool) => !isRuntimeToolProfile(tool) && !isCodexBrowserToolProfile(tool))
+		.filter(hasEnabledToolDefinition)
+		.map((tool) => ({ profile: tool, definition: getToolDefinition(tool, context) }));
+}
+
 /** Assemble the selected Pibo-managed tool set without importing any harness package. */
 export function createPiboSessionToolDefinitions(
 	options: CreatePiboSessionToolDefinitionsOptions,
@@ -89,10 +104,8 @@ export function createPiboSessionToolDefinitions(
 	const codexBrowserTools = options.codexBrowserController
 		? createCodexBrowserToolDefinitions(options.codexBrowserController, selectedCodexBrowserToolNames)
 		: [];
-	const profileTools = profile.tools
-		.filter((tool) => !isRuntimeToolProfile(tool) && !isCodexBrowserToolProfile(tool))
-		.filter(hasEnabledToolDefinition);
-	const profileToolDefinitions = profileTools.map((tool) => getToolDefinition(tool, options.toolContext));
+	const materializedProfileTools = materializePiboProfileTools(profile, options.toolContext);
+	const profileToolDefinitions = materializedProfileTools.map((tool) => tool.definition);
 	const codexCompatTools = profile.toolPackages.codexCompat === true
 		? createCodexCompatToolDefinitions()
 		: [];
@@ -102,21 +115,24 @@ export function createPiboSessionToolDefinitions(
 	const agentTools = options.agentsController
 		? createAgentToolDefinitions(profile.subagents, options.agentsController)
 		: [];
+	const delegatedSendTool = agentTools.find((tool) => tool.name === "pibo_agents_send_message");
+	const directAgentTools = agentTools.filter((tool) => tool !== delegatedSendTool);
 	const nativeYieldableTools = [...(options.nativeYieldableTools ?? [])];
 	const yieldableTools = [
 		...nativeYieldableTools,
-		...profileTools
-			.filter((tool) => tool.yieldable !== false)
-			.map((tool) => getToolDefinition(tool, options.toolContext)),
+		...materializedProfileTools
+			.filter((tool) => tool.profile.yieldable !== false)
+			.map((tool) => tool.definition),
 		...(runtimeTool && runtimeProfileTool?.yieldable !== false ? [runtimeTool] : []),
 		...codexBrowserTools.filter((definition) => profile.tools.find((tool) => tool.name === definition.name)?.yieldable !== false),
 		...agentTools,
 		...codexCompatTools,
 	];
-	const runTools = profile.toolPackages.runControl === true
-		&& options.runToolController
-		&& yieldableTools.length > 0
-		? createRunToolDefinitions(yieldableTools, options.runToolController)
+	const runControlYieldableTools = profile.toolPackages.runControl === true
+		? yieldableTools
+		: delegatedSendTool ? [delegatedSendTool] : [];
+	const runTools = options.runToolController && runControlYieldableTools.length > 0
+		? createRunToolDefinitions(runControlYieldableTools, options.runToolController)
 		: [];
 
 	return [
@@ -124,7 +140,7 @@ export function createPiboSessionToolDefinitions(
 		...profileToolDefinitions,
 		...(runtimeTool ? [runtimeTool] : []),
 		...codexBrowserTools,
-		...agentTools,
+		...directAgentTools,
 		...codexCompatTools,
 		...goalTools,
 		...runTools,
