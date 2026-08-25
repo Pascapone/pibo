@@ -570,6 +570,10 @@ test("custom agent store persists main and legacy subagent model overrides", () 
 	assert.deepEqual(updated.mainModel, { provider: "openai", id: "gpt-5.4" });
 	assert.deepEqual(updated.subagentModel, { provider: "openai", id: "gpt-5.5" });
 
+	const cleared = store.update(agent.id, { mainModel: null, subagentModel: null });
+	assert.equal(cleared.mainModel, undefined);
+	assert.equal(cleared.subagentModel, undefined);
+
 	store.close();
 });
 
