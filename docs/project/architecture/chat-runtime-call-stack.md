@@ -1,6 +1,6 @@
 # Chat Runtime Call Stack
 
-**Last reviewed:** 2026-08-16
+**Last reviewed:** 2026-08-25
 
 This note traces one Chat Web message through Pibo's runtime-neutral router and either the Pi or native Codex adapter. The matching Mermaid diagram is [`chat-runtime-flow.mmd`](./chat-runtime-flow.mmd). The broader architecture is documented in [`agent-runtime-adapters.md`](./agent-runtime-adapters.md).
 
@@ -133,16 +133,17 @@ The adapter preserves Codex's native system prompt and standard tools. Pibo cont
 ## Subagent branch
 
 ```text
-model calls pibo_agents_send_message(name, message, threadKey?)
-  -> shared Pibo agent tool (direct in Pi or Pibo MCP in Codex)
+model calls pibo_run_start(toolName: pibo_agents_send_message, arguments: ...)
+  -> yielded-run wrapper returns run ID
+  -> shared Pibo delegated-send target
   -> Pibo delegated-agent router
   -> create/reuse child Pibo Session by bounded thread key
   -> child freezes target profile runtime binding
   -> normal router/runtime flow
-  -> child result returned to parent tool call
+  -> child result settles the yielded run
 ```
 
-Parent interruption cancels active child work recursively but does not delete reusable child identity. `pibo_agents_list_agents`, `pibo_agents_observe`, and `pibo_agents_kill` manage direct child agents; `pibo_run_start` remains the asynchronous execution path.
+`pibo_agents_send_message` is not directly callable. `pibo_agents_list_agents`, `pibo_agents_observe`, and `pibo_agents_kill` manage direct child agents. Parent interruption cancels active child work recursively but does not delete reusable child identity; normal parent-turn completion, bounded `pibo_run_wait` expiry, and stale telemetry leave the child request running.
 
 ## Failure paths
 

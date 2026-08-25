@@ -1,6 +1,6 @@
 # Agent Runtime Operations
 
-**Updated:** 2026-08-16
+**Updated:** 2026-08-25
 
 This guide covers runtime selection, diagnostics, migration boundaries, private state, and safe troubleshooting for the built-in `pi` and `codex-native` runtimes. Architecture details live in [`architecture/agent-runtime-adapters.md`](./architecture/agent-runtime-adapters.md); exact integrated evidence and the runtime-auth correction are recorded in [`../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`](../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md) and [`../reports/runtime-auth-control-plane-validation-2026-08-16.md`](../reports/runtime-auth-control-plane-validation-2026-08-16.md).
 
@@ -149,6 +149,12 @@ After installing a candidate and restarting the development gateway:
 8. verify no leaked App Server or generation process remains after disposal.
 
 ## Failure triage
+
+### Long-running delegated agent
+
+A delegated send has no default or profile-driven wall-clock deadline and may run for hours. `pibo_run_wait` defaults to 30 seconds and is capped at 300 seconds per call; a wait timeout reports that the run is still active and does not cancel it. It is normal for a delegated run to have no `timeoutMs` or `timeoutAt`. A stale telemetry or signal hint is read-only diagnosis, not an automatic timeout or recovery action.
+
+Inspect the run with `pibo_run_status`, the child with `pibo_agents_observe`, and the terminal result with `pibo_run_read`. Stop work only deliberately through `pibo_run_cancel` or `pibo_agents_kill`, unless parent abort or session/router disposal already owns cleanup.
 
 ### Provider or protocol error
 

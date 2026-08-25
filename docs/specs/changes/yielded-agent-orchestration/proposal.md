@@ -2,7 +2,7 @@
 
 ## Why
 
-Delegated Pibo agents currently remain directly callable and inherit a ten-minute reply deadline. Long-running work can therefore be cancelled because a foreground waiter expired, while the model can bypass the yielded-run lifecycle that provides durable status, notifications, bounded waiting, reading, and cancellation.
+Before this change, delegated Pibo agents remained directly callable and inherited a ten-minute reply deadline. Long-running work could therefore be cancelled because a foreground waiter expired, while the model could bypass the yielded-run lifecycle that provides durable status, notifications, bounded waiting, reading, and cancellation. The current contract removes that deadline and direct send exposure.
 
 Loop accounting also attributes only the controller session's usage. Child-agent usage is omitted, and profile inspection hides per-agent model and thinking overrides.
 

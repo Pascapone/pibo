@@ -26,7 +26,8 @@ This decision supersedes the earlier attempt to capability-scope run-reminder se
 
 - **Never strip an awake agent's tools.** A run-reminder turn MUST retain the same active agent toolset as the session it serves (Bash, file tools, browser, Goal tools, subagents, `pibo_run_start`, and run-control tools). The agent must be able to write, use Bash, and manage its runs while handling a reminder.
 - **Do not cap by capability.** The previous guard that reduced run-reminder turns to only `pibo_run_status/wait/read/cancel/ack` is deprecated. It caused a hard tool-loss failure (see context-guard resume inheriting the narrowed scope) that froze sessions and dead-ended tasks. Revoking tools is not an acceptable control.
-- **Bound autonomously, do not hobble.** An autonomous wake-up is bounded by deterministic per-turn limits (max tool executions, provider rounds, total tokens, wall-clock duration, repeated identical calls) that trip a `run_reminder_limit_exceeded` abort, and by causal provenance binding that keeps the turn tied to its originating Goal run. These bounds stop runaway loops without removing legitimate tools.
+- **Bound autonomously, do not hobble.** An autonomous wake-up is bounded by deterministic per-turn limits (max tool executions, provider rounds, total tokens, a 15-minute wall-clock duration, repeated identical calls) that trip a `run_reminder_limit_exceeded` abort, and by causal provenance binding that keeps the turn tied to its originating Goal run. These bounds stop runaway loops without removing legitimate tools.
+- **Turn bounds are not run deadlines.** Reminder-turn limits stop only the autonomous service turn. They do not cancel or time out the wrapped yielded run or a delegated child request, which may continue after the reminder turn ends.
 - **Security is via causal scope, not tool denial.** The legitimate risk from an auto-triggered wake-up is autonomous drift after the originating Goal ends. That is controlled by revalidating the turn against active Goal authority and by refusing to reactivate paused or terminal Goals, not by hiding the toolset.
 
 This is the standing product decision. Any future change that proposes to withhold Bash or other tools inside a reminder turn must be reviewed as a regression of this decision.
@@ -218,11 +219,11 @@ Detached is reserved for intentional fire-and-forget work. Agents can still list
 
 ### Requirement: Waiting is bounded and timeout is normal
 
-`pibo_run_wait` MUST wait only up to a bounded timeout and MUST report timeout as ordinary run state, not as tool failure.
+`pibo_run_wait` MUST wait only up to a bounded timeout and MUST report timeout as ordinary run state, not as tool failure. Omitting `timeoutMs` waits for 30000 ms; every call is capped at 300000 ms.
 
 #### Current
 
-`PiboRunRegistry.wait()` clamps timeout to at most 300000 ms and returns `timedOut: true` when the run is still non-terminal after the wait.
+The generated tool defaults `timeoutMs` to 30000 ms. `PiboRunRegistry.wait()` clamps it to at most 300000 ms and returns `timedOut: true` when the run is still non-terminal after the wait.
 
 #### Target
 
@@ -233,7 +234,8 @@ Agents can block briefly when dependent on a run, then continue other work if th
 - Waiting on an already terminal run returns immediately with `timedOut: false`.
 - Waiting on a running run resolves with `timedOut: false` when the run becomes terminal before timeout.
 - Waiting on a still-running run after timeout returns the current run snapshot with `timedOut: true`.
-- Wait timeout never cancels or changes the lifetime of the wrapped tool.
+- Omitting `timeoutMs` waits for 30000 ms.
+- Wait timeout never cancels or changes the lifetime of the wrapped tool, including a delegated child request that continues for hours.
 - Requested timeouts above 300000 ms are clamped to 300000 ms.
 
 #### Scenario: Long command is still running
@@ -245,11 +247,12 @@ Agents can block briefly when dependent on a run, then continue other work if th
 
 ### Requirement: Execution timeouts are durable and distinct
 
-A yielded run with a configured execution timeout MUST persist that timeout at start and MUST use terminal status `timed_out` when the wrapped tool reaches it. Timeout classification MUST remain distinct from a bounded `pibo_run_wait` timeout, which leaves the run active.
+A yielded run with a recognized execution-timeout argument MUST persist that timeout at start and MUST use terminal status `timed_out` when the wrapped tool reaches it. Timeout classification MUST remain distinct from a bounded `pibo_run_wait` timeout, which leaves the run active. `pibo_agents_send_message` has no execution-timeout argument, and legacy `SubagentProfile.timeoutMs` data MUST NOT be copied into the yielded run.
 
 #### Acceptance
 
 - `pibo_run_start` persists and returns `timeoutMs` and `timeoutAt` when the selected tool has a recognized configured timeout argument.
+- A delegated send started through `pibo_run_start` has no implicit `timeoutMs` or `timeoutAt`; their absence is expected even for multi-hour work.
 - A configured execution timeout ends with status `timed_out`, not `failed`.
 - Timeout metadata records whether startup was unconfirmed (`startup`) or output proved successful startup before lifetime expiry (`lifetime`).
 - Notifications, status, list, read, debug output, signals, and trace projections preserve the timeout status and metadata.

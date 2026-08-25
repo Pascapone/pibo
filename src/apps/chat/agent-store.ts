@@ -15,6 +15,7 @@ export type CustomAgentSubagent = {
 	model?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	runtimeOptions?: PiboJsonObject;
+	/** @deprecated Compatibility-only. Does not limit delegated request or yielded-run lifetime. */
 	timeoutMs?: number;
 	maxDepth?: number;
 };

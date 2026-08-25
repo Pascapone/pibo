@@ -1,6 +1,6 @@
 # Agent Runtime Adapter Architecture
 
-**Updated:** 2026-08-16
+**Updated:** 2026-08-25
 
 Pibo supports multiple agent harnesses through a Pibo-owned runtime adapter boundary. Pibo remains the product and orchestration layer; Pi Coding Agent and Codex own their native model loops, prompts, tools, and resume state.
 
@@ -134,7 +134,7 @@ Pi uses its native loaders. Codex receives selected skills through isolated extr
 
 ### Subagents, workflows, and jobs
 
-Pibo-managed subagents remain Pibo tools. A subagent call creates or reuses a child Pibo Session with its own frozen target-profile binding. Stable thread keys are bounded, parent interruption cancels active child work recursively, and reusable child identity is preserved.
+Pibo-managed delegated agents remain Pibo capabilities. `pibo_agents_send_message` is dispatched only through `pibo_run_start`; list, observe, and kill remain direct management tools. A send creates or reuses a child Pibo Session with its own frozen target-profile binding. Stable thread keys are bounded, and parent interruption cancels active child work recursively while preserving reusable child identity. Normal parent-turn completion, bounded `pibo_run_wait` expiry, and stale telemetry do not cancel the child request.
 
 Cron, Loop, and workflow execution create normal Pibo Sessions through the same router. Their runtime is selected by profile and requires no harness-specific product fork.
 

@@ -2,7 +2,7 @@
 
 **Status:** Done
 **Created:** 2026-05-10
-**Revised:** 2026-08-24
+**Revised:** 2026-08-25
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Custom Agents and Agent Designer](./custom-agents.md), [Yielded Run Control](./yielded-run-control.md), [Agent Management Tool Design](../../plans/agent-management-tool-design.md)
 
 ## Why
@@ -21,6 +21,16 @@ Replace generated per-subagent tools with four stable Pibo-managed capabilities:
 - direct management tool `pibo_agents_kill`
 
 The model context must identify every currently available delegated agent by configured `name` and profile description. Sends are started only through `pibo_run_start`; the returned run ID is also the request ID used for observation, reading, and explicit cancellation.
+
+## Lifetime Contract
+
+Delegated-agent lifetime is independent from foreground waiting and diagnostic freshness:
+
+- Delegated sends have no implicit wall-clock deadline and may run for hours.
+- Legacy `SubagentProfile.timeoutMs` values are compatibility data only; they do not become request or yielded-run execution deadlines.
+- `pibo_run_wait` defaults to 30 seconds and is capped at 300 seconds per call. An expired wait reports that the run is still active; it does not cancel the run or child request.
+- A stale telemetry or signal threshold is diagnostic only. It does not create a timeout, cancellation, retry, or recovery action.
+- Normal completion or failure settles the request. Explicit run cancellation, agent kill, parent abort, or session/router disposal may stop active delegated work. Normal completion of the parent model turn does not.
 
 ## Scope
 
@@ -78,8 +88,8 @@ A generated delegated-agent management context MUST contain each enabled, depth-
 - The first explicit thread creates a child; the same parent, name, target profile, and thread reuses it.
 - Omitting or blanking `threadKey` creates a new generated thread.
 - The yielded run ID is the request ID.
-- Expiring a bounded `pibo_run_wait` leaves the request and child running.
-- Only explicit run cancellation, agent kill, parent abort, or session disposal ends active delegated work.
+- Expiring a bounded `pibo_run_wait`, completing the parent model turn, or crossing a stale threshold leaves the request and child running.
+- Natural completion or failure settles the request; explicit run cancellation, agent kill, parent abort, or session/router disposal may stop active delegated work.
 - Run cancellation targets the exact queued or active child message event; cancelling one request cannot abort another request sharing the child thread.
 - Successful cancellation waits for request settlement; rejected abort and bounded-settlement failure remain explicit errors.
 - Legacy `SubagentProfile.timeoutMs` does not impose request lifetime.
@@ -153,7 +163,7 @@ The result MUST report the applied filters, observations, `nextAfterSequence`, a
 
 ### Requirement: Existing delegation guarantees remain intact
 
-Shared tools MUST retain existing behavior for depth limits, workspace and room inheritance, app-context compatibility, per-agent model/thinking settings, persistent thread reuse, and `subagent_session` trace linkage. Delegated request lifetime MUST be unbounded unless explicitly cancelled.
+Shared tools MUST retain existing behavior for depth limits, workspace and room inheritance, app-context compatibility, per-agent model/thinking settings, persistent thread reuse, and `subagent_session` trace linkage. Delegated requests MUST have no implicit wall-clock deadline and MUST remain active until natural settlement, explicit cancellation, or owning-session/router disposal.
 
 The link event MUST use `toolName: "pibo_agents_send_message"` and continue to identify `subagentName`, child Pibo Session ID, resolved thread key, and optional tool call ID. Turn-scoped child outputs MUST retain the active message provenance so recursively delegated usage remains attributable to its originating Loop run.
 
