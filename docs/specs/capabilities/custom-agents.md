@@ -137,7 +137,7 @@ A dynamic custom-agent profile MUST translate saved agent selections into `Initi
 
 #### Current
 
-`createCustomAgentProfileDefinition` builds a profile with built-in tool mode and names, automatic context-file setting, MCP servers, Pi packages, run-control package selection, main-agent model and thinking options, compatibility-only legacy subagent profile defaults, fast-mode options, skills, context files, native tools, and subagent definitions with per-entry descriptions, models, and thinking levels.
+`createCustomAgentProfileDefinition` builds a profile with built-in tool mode and names, automatic context-file setting, MCP servers, Pi packages, run-control package selection, main-agent model and thinking options, compatibility-only legacy subagent profile defaults, fast-mode options, skills, context files, native tools, and subagent definitions with per-entry descriptions, models, thinking levels, and runtime-option overrides.
 
 #### Acceptance
 
@@ -147,7 +147,7 @@ A dynamic custom-agent profile MUST translate saved agent selections into `Initi
 - Main-agent model overrides are applied when present.
 - Legacy profile-level subagent model and thinking fields remain valid compatibility fallbacks for previously saved agents but are not the primary Agent Designer control.
 - Global and main thinking/fast options are applied when present.
-- Selected native tools and subagent definitions are added to the runtime profile, including each subagent's description, model, and thinking level.
+- Selected native tools and subagent definitions are added to the runtime profile, including each subagent's description, model, thinking level, and runtime-option overrides.
 
 #### Scenario: Agent with run control and package selection
 
@@ -157,26 +157,36 @@ A dynamic custom-agent profile MUST translate saved agent selections into `Initi
 
 ### Requirement: Agent Designer configures each Pibo subagent independently
 
-The Agent Designer MUST let a user configure the name, parent-visible description, target profile, max depth, model, and thinking level for each Pibo subagent entry. It MUST NOT present one editable profile-wide Subagent Model block as the primary configuration for all entries.
+The Agent Designer MUST let a user configure the name, parent-visible description, target profile, max depth, model, thinking level, and schema-driven runtime overrides for each Pibo subagent entry. It MUST NOT present one editable profile-wide Subagent Model block as the primary configuration for all entries.
 
 #### Current
 
-Each subagent card contains identity, target, depth, description, model, and thinking controls. The model catalog and available thinking values are derived from the selected target profile's runtime instance. Changing the target profile clears model and thinking values that belonged to the previous target runtime.
+Each subagent card contains identity, target, depth, description, model, thinking, and runtime-option controls. The model catalog, available thinking values, and option schema are derived from the selected target profile's runtime instance. Changing the target profile clears model, thinking, and runtime-option values that belonged to the previous target runtime.
 
 #### Acceptance
 
-- Two entries in one parent agent can select different providers, models, and thinking levels.
+- Two entries in one parent agent can select different providers, models, thinking levels, and runtime overrides.
 - The description is persisted and becomes the generated subagent tool description visible to the parent agent.
-- Leaving model or thinking unset uses the target profile and Settings fallback chain.
+- Leaving model, thinking, or a runtime option unset uses the target profile and Settings fallback chain.
+- A newly created child session freezes the selected subagent runtime overrides; reusing that child does not silently adopt later edits.
 - The designer does not show one editable global Subagent Model section in Basics.
 - Read-only plugin profiles display their saved per-subagent settings without allowing edits.
 
 #### Scenario: Configure research and implementation subagents
 
 - GIVEN a parent custom agent has `researcher` and `implementer` subagent entries
-- WHEN the user selects different models and descriptions for the two entries
+- WHEN the user selects different models, descriptions, and runtime overrides for the two entries
 - THEN autosave persists both configurations independently
 - AND the parent runtime sees two generated tools with their respective descriptions.
+
+#### Scenario: Override Codex permissions per child
+
+- GIVEN a Codex target profile defaults to Approval mode
+- AND one subagent entry selects YOLO while another selects Plan
+- WHEN each entry creates a new child Pibo Session
+- THEN the YOLO child runs without approvals and with unrestricted host access
+- AND the Plan child uses a read-only planning turn
+- AND an existing reused child retains the override frozen at its creation.
 
 ### Requirement: Runtime-owned controls are capability-driven
 

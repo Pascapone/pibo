@@ -87,6 +87,7 @@ export type PrepareCodexNativeSessionPathsInput = {
 export type StartCodexNativeAppServerInput = PrepareCodexNativeSessionPathsInput & {
 	workspace: string;
 	clientVersion: string;
+	experimentalApi?: boolean;
 	baseEnvironment?: NodeJS.ProcessEnv;
 	resourceEnvironment?: Readonly<NodeJS.ProcessEnv>;
 	onDiagnostic?: (diagnostic: CodexAppServerDiagnostic) => void;
@@ -530,7 +531,7 @@ export async function startCodexNativeAppServer(
 	const paths = await prepareCodexNativeSessionPaths(input);
 	let client: CodexAppServerClient | undefined;
 	try {
-		const capabilities: CodexAppServerInitializeCapabilities = { experimentalApi: false };
+		const capabilities: CodexAppServerInitializeCapabilities = { experimentalApi: input.experimentalApi === true };
 		const invocation = codexExecutableInvocation(input.config.executable, [
 			"app-server",
 			"--stdio",

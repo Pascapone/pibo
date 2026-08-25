@@ -6,12 +6,15 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 
-test("Agent Designer edits description, model, and thinking per subagent", async () => {
+test("Agent Designer edits description, model, thinking, and runtime overrides per subagent", async () => {
 	const source = readFileSync("src/apps/chat-ui/src/agents/AgentsView.tsx", "utf8");
 	assert.doesNotMatch(source, /title="Subagent"\s+modelTitle="Subagent Model"/);
 	assert.match(source, /placeholder="Describe when the parent agent should delegate to this subagent\."/);
 	assert.match(source, /model=\{subagent\.model\}/);
 	assert.match(source, /thinking=\{subagent\.thinkingLevel\}/);
+	assert.match(source, /value=\{subagent\.runtimeOptions \?\? \{\}\}/);
+	assert.match(source, /defaultLabel="Inherit target profile"/);
+	assert.match(source, /YOLO disables approvals and grants unrestricted host access/);
 	assert.match(source, /showFast=\{false\}/);
 	assert.match(source, /maxDepth: 1/);
 	assert.match(source, /value=\{subagent\.maxDepth \?\? 1\}/);
@@ -33,6 +36,7 @@ test("Agent Designer edits description, model, and thinking per subagent", async
 				targetProfile: " research-agent ",
 				model: { provider: " openai ", id: " gpt-5.6-mini " },
 				thinkingLevel: "high",
+				runtimeOptions: { permissionMode: "yolo" },
 				maxDepth: 2.4,
 			}],
 			mcpServers: [],
@@ -55,6 +59,7 @@ test("Agent Designer edits description, model, and thinking per subagent", async
 			targetProfile: "research-agent",
 			model: { provider: "openai", id: "gpt-5.6-mini" },
 			thinkingLevel: "high",
+			runtimeOptions: { permissionMode: "yolo" },
 			maxDepth: 2,
 		}]);
 	`;

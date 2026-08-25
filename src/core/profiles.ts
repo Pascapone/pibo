@@ -57,6 +57,7 @@ export type SubagentProfile = {
 	targetProfile: string;
 	model?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
+	runtimeOptions?: PiboJsonObject;
 	enabled?: boolean;
 	timeoutMs?: number;
 	maxDepth?: number;
@@ -111,6 +112,7 @@ function cloneSubagentProfile(subagent: SubagentProfile): SubagentProfile {
 	return {
 		...subagent,
 		...(subagent.model ? { model: { ...subagent.model } } : {}),
+		...(subagent.runtimeOptions ? { runtimeOptions: structuredClone(subagent.runtimeOptions) } : {}),
 	};
 }
 

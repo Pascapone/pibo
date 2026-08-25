@@ -416,6 +416,7 @@ export class PiboPluginRegistry {
 				timeoutMs: subagent.timeoutMs,
 				model: subagent.model ? { ...subagent.model } : undefined,
 				thinkingLevel: subagent.thinkingLevel,
+				...(subagent.runtimeOptions ? { runtimeOptions: structuredClone(subagent.runtimeOptions) } : {}),
 				maxDepth: subagent.maxDepth,
 			})),
 			contextFiles: [...this.contextFiles.entries()].map(([key, contextFile]) => ({

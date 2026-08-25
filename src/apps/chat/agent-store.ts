@@ -14,6 +14,7 @@ export type CustomAgentSubagent = {
 	targetProfile: string;
 	model?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
+	runtimeOptions?: PiboJsonObject;
 	timeoutMs?: number;
 	maxDepth?: number;
 };
@@ -1041,6 +1042,9 @@ function sanitizeSubagents(value: unknown[]): CustomAgentSubagent[] {
 		if (model) subagent.model = model;
 		const thinkingLevel = sanitizeThinkingLevel(candidate.thinkingLevel);
 		if (thinkingLevel) subagent.thinkingLevel = thinkingLevel;
+		if (candidate.runtimeOptions && typeof candidate.runtimeOptions === "object" && !Array.isArray(candidate.runtimeOptions)) {
+			subagent.runtimeOptions = structuredClone(candidate.runtimeOptions as PiboJsonObject);
+		}
 		if (typeof candidate.timeoutMs === "number") subagent.timeoutMs = candidate.timeoutMs;
 		if (typeof candidate.maxDepth === "number") subagent.maxDepth = candidate.maxDepth;
 		return [subagent];

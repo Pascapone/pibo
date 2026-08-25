@@ -819,6 +819,7 @@ export type CustomAgentSubagent = {
 	targetProfile: string;
 	model?: ModelProfile;
 	thinkingLevel?: ThinkingLevel;
+	runtimeOptions?: Record<string, unknown>;
 	timeoutMs?: number;
 	maxDepth?: number;
 };
