@@ -71,6 +71,21 @@ function getToolDefinition(
 	return tool.createDefinition!(context);
 }
 
+export type MaterializedPiboProfileTool = {
+	profile: ToolProfile;
+	definition: PiboToolDefinition;
+};
+
+export function materializePiboProfileTools(
+	profile: InitialSessionContext,
+	context: ToolDefinitionContext = {},
+): MaterializedPiboProfileTool[] {
+	return profile.tools
+		.filter((tool) => !isRuntimeToolProfile(tool) && !isCodexBrowserToolProfile(tool))
+		.filter(hasEnabledToolDefinition)
+		.map((tool) => ({ profile: tool, definition: getToolDefinition(tool, context) }));
+}
+
 /** Assemble the selected Pibo-managed tool set without importing any harness package. */
 export function createPiboSessionToolDefinitions(
 	options: CreatePiboSessionToolDefinitionsOptions,
@@ -89,10 +104,8 @@ export function createPiboSessionToolDefinitions(
 	const codexBrowserTools = options.codexBrowserController
 		? createCodexBrowserToolDefinitions(options.codexBrowserController, selectedCodexBrowserToolNames)
 		: [];
-	const profileTools = profile.tools
-		.filter((tool) => !isRuntimeToolProfile(tool) && !isCodexBrowserToolProfile(tool))
-		.filter(hasEnabledToolDefinition);
-	const profileToolDefinitions = profileTools.map((tool) => getToolDefinition(tool, options.toolContext));
+	const materializedProfileTools = materializePiboProfileTools(profile, options.toolContext);
+	const profileToolDefinitions = materializedProfileTools.map((tool) => tool.definition);
 	const codexCompatTools = profile.toolPackages.codexCompat === true
 		? createCodexCompatToolDefinitions()
 		: [];
@@ -107,9 +120,9 @@ export function createPiboSessionToolDefinitions(
 	const nativeYieldableTools = [...(options.nativeYieldableTools ?? [])];
 	const yieldableTools = [
 		...nativeYieldableTools,
-		...profileTools
-			.filter((tool) => tool.yieldable !== false)
-			.map((tool) => getToolDefinition(tool, options.toolContext)),
+		...materializedProfileTools
+			.filter((tool) => tool.profile.yieldable !== false)
+			.map((tool) => tool.definition),
 		...(runtimeTool && runtimeProfileTool?.yieldable !== false ? [runtimeTool] : []),
 		...codexBrowserTools.filter((definition) => profile.tools.find((tool) => tool.name === definition.name)?.yieldable !== false),
 		...agentTools,

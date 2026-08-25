@@ -16,6 +16,11 @@ import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
 import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { CODEX_BROWSER_TOOL_NAMES } from "../tools/codex-browser.js";
 import { CODEX_COMPAT_TOOL_NAMES } from "../tools/codex-compat.js";
+import {
+	isEnabledCodexBrowserToolProfile,
+	isEnabledRuntimeToolProfile,
+	materializePiboProfileTools,
+} from "../tools/session-tool-set.js";
 
 export function profileWithRuntimeInstance(profile: InitialSessionContext, runtimeInstanceId: string): InitialSessionContext {
 	if (profile.runtimeInstanceId === runtimeInstanceId) return profile;
@@ -79,14 +84,22 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	const addNode = (node: Omit<PiboContextBuildNode, "order">) => nodes.push({ ...node, order: nodes.length });
 	const availableAgents = listAvailableAgents(profile.subagents);
 	const delegatedSendAvailable = availableAgents.length > 0;
-	const callableProfileTools = profile.tools.filter((tool) => tool.enabled !== false && (
-		tool.definition !== undefined
-		|| tool.createDefinition !== undefined
-		|| tool.builtInPiboTool === "runtime"
-		|| tool.name === "runtime"
-		|| tool.builtInPiboTool === "codex_browser"
-		|| CODEX_BROWSER_TOOL_NAMES.includes(tool.name as (typeof CODEX_BROWSER_TOOL_NAMES)[number])
-	));
+	const toolContext = {
+		piboSessionId: input.piboSessionId,
+		piboRoomId: input.piboRoomId,
+		profileName: profile.profileName,
+		cwd: input.cwd,
+	};
+	const materializedProfileTools = materializePiboProfileTools(profile, toolContext);
+	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeToolProfile);
+	const codexBrowserProfileTools = profile.tools
+		.filter(isEnabledCodexBrowserToolProfile)
+		.filter((tool) => CODEX_BROWSER_TOOL_NAMES.includes(tool.name as (typeof CODEX_BROWSER_TOOL_NAMES)[number]));
+	const callableProfileTools = [
+		...materializedProfileTools.map((tool) => ({ name: tool.definition.name, yieldable: tool.profile.yieldable })),
+		...(runtimeProfileTool ? [{ name: "runtime", yieldable: runtimeProfileTool.yieldable }] : []),
+		...codexBrowserProfileTools.map((tool) => ({ name: tool.name, yieldable: tool.yieldable })),
+	];
 	const profileToolNames = callableProfileTools.map((tool) => tool.name);
 	const directAgentToolNames = delegatedSendAvailable
 		? PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message")

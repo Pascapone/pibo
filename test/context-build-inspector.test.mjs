@@ -3,11 +3,14 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { Type } from "typebox";
 import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/capabilities.js";
 import { buildPortableRuntimeContextSnapshot } from "../dist/agent-runtime/context-build.js";
 import { InitialSessionContext, InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
 import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
+import { definePiboTool } from "../dist/tools/contract.js";
+import { createPiboSessionToolDefinitions } from "../dist/tools/session-tool-set.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
@@ -61,6 +64,81 @@ test("portable runtime context build explains degraded native-tool inspection", 
 	assert.equal(nativeInspection.state, "warning");
 	assert.ok(nativeInspection.badges.includes("DEGRADED:OBSERVED-RUNTIME-ITEMS"));
 	assert.ok(nativeInspection.notes.includes("The stable runtime protocol exposes native tool names only after use."));
+});
+
+test("portable runtime manifest uses materialized callable names for fixed and factory profile tools", () => {
+	const capabilities = createMinimalAgentRuntimeCapabilities("Unavailable by default.");
+	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
+	let factoryCalls = 0;
+	let factoryContext;
+	const fixedDefinition = definePiboTool({
+		name: "fixed_callable",
+		title: "Fixed callable",
+		description: "Fixed callable test tool.",
+		inputSchema: Type.Object({}),
+		async execute() { return { content: [{ type: "text", text: "fixed" }] }; },
+	});
+	const profile = new InitialSessionContext({
+		profileName: "materialized-tool-names",
+		builtinTools: "disabled",
+		autoContextFiles: false,
+		toolPackages: { goalControl: false, runControl: true },
+		tools: [
+			{ name: "fixed_registration", definition: fixedDefinition, yieldable: false },
+			{
+				name: "factory_registration",
+				yieldable: true,
+				createDefinition(context) {
+					factoryCalls += 1;
+					factoryContext = context;
+					return definePiboTool({
+						name: "factory_callable",
+						title: "Factory callable",
+						description: "Factory callable test tool.",
+						inputSchema: Type.Object({}),
+						async execute() { return { content: [{ type: "text", text: "factory" }] }; },
+					});
+				},
+			},
+		],
+	});
+	const toolContext = {
+		piboSessionId: "ps_materialized_tool_names",
+		piboRoomId: "room_materialized_tool_names",
+		profileName: profile.profileName,
+		cwd: process.cwd(),
+	};
+	const snapshot = buildPortableRuntimeContextSnapshot({
+		profile,
+		cwd: toolContext.cwd,
+		piboSessionId: toolContext.piboSessionId,
+		piboRoomId: toolContext.piboRoomId,
+		runtime: {
+			runtimeInstanceId: "portable",
+			adapterId: "portable",
+			available: true,
+			transport: "stdio",
+			capabilities,
+			diagnostics: [],
+		},
+	});
+	assert.equal(factoryCalls, 1, "inspection materializes each profile factory once");
+	assert.deepEqual(factoryContext, toolContext);
+	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
+	const definitions = createPiboSessionToolDefinitions({
+		profile,
+		toolContext,
+		runToolController: {},
+	});
+	assert.equal(factoryCalls, 2, "session assembly materializes each profile factory once");
+	assert.deepEqual(manifest.payloadJson.activeToolNames, definitions.map((definition) => definition.name));
+	assert.deepEqual(
+		manifest.payloadJson.yieldableToolNames,
+		definitions.find((definition) => definition.name === "pibo_run_start").inputSchema.properties.toolName.enum,
+	);
+	assert.deepEqual(manifest.payloadJson.yieldableToolNames, ["factory_callable"]);
+	assert.equal(manifest.payloadJson.activeToolNames.includes("fixed_registration"), false);
+	assert.equal(manifest.payloadJson.activeToolNames.includes("factory_registration"), false);
 });
 
 test("portable runtime context build exposes selected Pibo subagents through MCP delivery", () => {
