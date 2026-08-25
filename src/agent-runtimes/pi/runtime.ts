@@ -422,9 +422,9 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 						[
 							...(sessionContextFile ? [sessionContextFile] : []),
 							...contextFiles,
+							...(delegatedAgentContextFile ? [delegatedAgentContextFile] : []),
 							...(installedToolContextFile ? [installedToolContextFile] : []),
 							...(mcpAgentContextFile ? [mcpAgentContextFile] : []),
-							...(delegatedAgentContextFile ? [delegatedAgentContextFile] : []),
 						],
 					),
 				}),

@@ -22,6 +22,9 @@ export type PiboToolImageContent = {
 export type PiboToolContent = PiboToolTextContent | PiboToolImageContent;
 
 /** Harness-neutral result returned by every Pibo-managed tool. */
+export type PiboToolTerminalStatus = "timed_out";
+export type PiboToolTimeoutPhase = "startup" | "lifetime";
+
 export type PiboToolResult<TDetails = unknown> = {
 	content: PiboToolContent[];
 	structuredContent?: PiboJsonValue;
@@ -30,6 +33,15 @@ export type PiboToolResult<TDetails = unknown> = {
 	payloadRefs?: string[];
 	metadata?: PiboJsonObject;
 };
+
+export function piboToolTerminalStatus(result: Pick<PiboToolResult, "metadata">): PiboToolTerminalStatus | undefined {
+	return result.metadata?.piboTerminalStatus === "timed_out" ? "timed_out" : undefined;
+}
+
+export function piboToolTimeoutPhase(result: Pick<PiboToolResult, "metadata">): PiboToolTimeoutPhase | undefined {
+	const phase = result.metadata?.piboTimeoutPhase;
+	return phase === "startup" || phase === "lifetime" ? phase : undefined;
+}
 
 /** Incremental update emitted while a Pibo-managed tool is running. */
 export type PiboToolProgress<TDetails = unknown> = PiboToolResult<TDetails> & {
@@ -158,11 +170,14 @@ export function isPiboToolDefinition(value: unknown): value is PiboToolDefinitio
 	);
 }
 
-export function normalizePiboToolResult<TDetails>(result: LegacyPiToolResultLike<TDetails>): PiboToolResult<TDetails> {
+export function normalizePiboToolResult<TDetails>(result: LegacyPiToolResultLike<TDetails> | PiboToolResult<TDetails>): PiboToolResult<TDetails> {
 	return {
 		content: result.content.map((content) => ({ ...content })),
+		...("structuredContent" in result && result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
 		...(result.details !== undefined ? { details: result.details } : {}),
 		...(result.isError !== undefined ? { isError: result.isError } : {}),
+		...("payloadRefs" in result && result.payloadRefs !== undefined ? { payloadRefs: [...result.payloadRefs] } : {}),
+		...("metadata" in result && result.metadata !== undefined ? { metadata: { ...result.metadata } } : {}),
 	};
 }
 

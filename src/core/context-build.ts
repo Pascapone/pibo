@@ -114,6 +114,8 @@ export type PiboRuntimeResolutionManifest = {
 	effectiveThinkingLevel?: PiboThinkingLevel;
 	toolSurface: "complete" | "pibo-managed-only";
 	activeToolNames: string[];
+	yieldableToolNames: string[];
+	activeToolPackages: string[];
 	contextFilePaths: string[];
 	skillNames: string[];
 	delegatedAgents: Array<Omit<PiboResolvedSubagentRuntimeSelection, "enabled">>;
@@ -149,6 +151,8 @@ export function createPiboRuntimeResolutionManifest(input: {
 	thinkingLevel?: PiboThinkingLevel;
 	toolSurface?: "complete" | "pibo-managed-only";
 	activeToolNames: readonly string[];
+	yieldableToolNames?: readonly string[];
+	activeToolPackages?: readonly string[];
 	contextFilePaths: readonly string[];
 	skillNames: readonly string[];
 	modelDefaults?: PiboModelDefaults;
@@ -174,6 +178,8 @@ export function createPiboRuntimeResolutionManifest(input: {
 		...(effectiveThinkingLevel ? { effectiveThinkingLevel } : {}),
 		toolSurface: input.toolSurface ?? "complete",
 		activeToolNames: [...input.activeToolNames],
+		yieldableToolNames: [...(input.yieldableToolNames ?? [])],
+		activeToolPackages: [...(input.activeToolPackages ?? [])],
 		contextFilePaths: [...input.contextFilePaths],
 		skillNames: [...input.skillNames],
 		delegatedAgents,
@@ -879,6 +885,17 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 			});
 		}
 
+		const runStartSchema = runtime.session.getToolDefinition("pibo_run_start")?.parameters as {
+			properties?: { toolName?: { enum?: unknown } };
+		} | undefined;
+		const yieldableToolNames = Array.isArray(runStartSchema?.properties?.toolName?.enum)
+			? runStartSchema.properties.toolName.enum.filter((name): name is string => typeof name === "string")
+			: [];
+		const activeToolPackages = [
+			...(PIBO_GOAL_TOOL_NAMES.some((name) => activeToolNames.has(name)) ? ["pibo-goal-control"] : []),
+			...(activeToolNames.has("apply_patch") || activeToolNames.has("view_image") ? ["codex-compat"] : []),
+			...(activeToolNames.has("pibo_run_start") ? ["pibo-run-control"] : []),
+		];
 		const runtimeManifest = createPiboRuntimeResolutionManifest({
 			profile,
 			cwd,
@@ -888,6 +905,8 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 			activeModel: options.activeModel,
 			thinkingLevel: options.thinkingLevel,
 			activeToolNames: toolNames,
+			yieldableToolNames,
+			activeToolPackages,
 			contextFilePaths: contextChildren.flatMap((node) => node.path ? [node.path] : []),
 			skillNames: skillChildren.map((node) => node.title),
 			modelDefaults: options.modelDefaults,

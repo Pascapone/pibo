@@ -61,7 +61,7 @@ A generated management section MUST be loaded only when at least one delegated a
 
 ### Requirement: Runtime resolution manifest
 
-Build Context MUST expose a read-only runtime resolution manifest for the concrete inspected session. It MUST identify the selected profile and runtime, effective model and thinking level, available managed tools, loaded context and skills, and configured/effective delegated-agent runtime selections. The manifest MUST be resolution evidence only: it MUST NOT become a second profile configuration, MUST NOT be injected into the agent prompt, and MUST NOT count toward prompt-context token estimates. When a portable runtime cannot enumerate harness-native tool names, the manifest MUST mark its tool surface as Pibo-managed-only.
+Build Context MUST expose a read-only runtime resolution manifest for the concrete inspected session. It MUST identify the selected profile and runtime, effective model and thinking level, directly callable managed tool names, yielded target names, active tool packages, loaded context and skills, and configured/effective delegated-agent runtime selections. `activeToolNames` MUST contain only real callable tool names; agent descriptions, package labels, and yielded-target labels MUST remain in their dedicated manifest fields or display nodes. The manifest MUST be resolution evidence only: it MUST NOT become a second profile configuration, MUST NOT be injected into the agent prompt, and MUST NOT count toward prompt-context token estimates. When a portable runtime cannot enumerate harness-native tool names, the manifest MUST mark its tool surface as Pibo-managed-only.
 
 ### Requirement: Request observation
 
@@ -83,6 +83,10 @@ The Loop view MUST show recursive turns, total tokens, cache reads, cost when av
 
 Profile inspection MUST expose each configured subagent's configured model/thinking overrides and effective model/thinking selection. Effective values MUST use the same target-profile fallback precedence as child runtime creation. A concrete delegated-agent setting MUST remain effective even when the target profile or global subagent fallback differs.
 
+### Requirement: Public agents-controller compatibility
+
+The package-root agents-controller input and result types MUST remain source-compatible with the prior controller shape. New request identity and complete-final-message fields MUST be additive and optional for controller implementations. Tool execution MUST normalize missing `requestId` to the yielded run ID and missing `finalMessage` to `reply.text` before rendering or returning structured details.
+
 ## Success Criteria
 
 - [ ] Direct runtime tools omit `pibo_agents_send_message` while `pibo_run_start` accepts it.
@@ -94,3 +98,4 @@ Profile inspection MUST expose each configured subagent's configured model/think
 - [ ] Run read returns the complete child final message.
 - [ ] Descendant usage appears in persisted Loop accounting and Chat Web.
 - [ ] Profile inspection reports a concrete `xhigh` override even when the profile's subagent-session level is `medium`.
+- [ ] A TypeScript controller using the prior input/result shape compiles, and its runtime result normalizes request identity and final text deterministically.

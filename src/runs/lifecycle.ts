@@ -1,5 +1,7 @@
 export type PiboRunTimeoutPhase = "startup" | "lifetime";
 
+export const PIBO_RUN_CANCELLATION_SETTLEMENT_TIMEOUT_MS = 15_000;
+
 export class PiboRunExecutionTimeoutError extends Error {
 	constructor(message: string, readonly timeoutPhase: PiboRunTimeoutPhase) {
 		super(message);
@@ -18,6 +20,24 @@ export class PiboRunCancelledError extends Error {
 	constructor(message = "Yielded run was cancelled.", options?: ErrorOptions) {
 		super(message, options);
 		this.name = "PiboRunCancelledError";
+	}
+}
+
+export async function waitForRunCancellationSettlement(
+	settled: Promise<unknown>,
+	timeoutMs = PIBO_RUN_CANCELLATION_SETTLEMENT_TIMEOUT_MS,
+): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		await Promise.race([
+			settled,
+			new Promise<never>((_resolve, reject) => {
+				timer = setTimeout(() => reject(new Error(`Yielded run did not settle within ${timeoutMs}ms after cancellation.`)), timeoutMs);
+				timer.unref?.();
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
 	}
 }
 

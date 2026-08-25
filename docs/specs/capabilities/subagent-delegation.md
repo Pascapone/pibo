@@ -207,7 +207,7 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 - [x] SC-005: Observe combines all documented filters and cursor pagination without cross-parent leakage.
 - [x] SC-006: Kill interrupts active work, marks the instance killed, and prevents thread reuse.
 - [x] SC-007: Existing trace/UI delegation cards still link to child sessions under the shared send tool.
-- [x] SC-008: Pibo2 real-provider validation with `gpt-5.6-luna` at `low` demonstrates foreground, yielded, observe, list, and kill behavior in the headful Chat Web UI.
+- [ ] SC-008: Pibo2 real-provider validation starts `pibo_agents_send_message` through `pibo_run_start`, uses bounded `pibo_run_wait` plus `pibo_run_read`, and demonstrates observe, list, request-specific cancel, and kill behavior in the headful Chat Web UI. Exact-SHA evidence is recorded externally in the PR or validation report so the accepted commit is not amended afterward.
 - [x] SC-009: Descending cursor pagination, retention loss, cleanup retry, legacy exports, portable MCP, and shared-tool trace/UI behavior have focused regression coverage.
 
 ## Traceability

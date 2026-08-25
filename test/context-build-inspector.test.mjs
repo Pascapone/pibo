@@ -108,6 +108,21 @@ test("portable runtime context build exposes selected Pibo subagents through MCP
 	assert.equal(manifest.kind, "runtime_manifest");
 	assert.equal(manifest.estimatedTokens, undefined, "the read-only manifest must not count as prompt context");
 	assert.equal(manifest.payloadJson.toolSurface, "pibo-managed-only");
+	assert.deepEqual(manifest.payloadJson.activeToolNames, [
+		"pibo_agents_list_agents",
+		"pibo_agents_observe",
+		"pibo_agents_kill",
+		"pibo_run_start",
+		"pibo_run_list",
+		"pibo_run_status",
+		"pibo_run_wait",
+		"pibo_run_read",
+		"pibo_run_cancel",
+		"pibo_run_ack",
+	]);
+	assert.deepEqual(manifest.payloadJson.yieldableToolNames, ["pibo_agents_send_message"]);
+	assert.deepEqual(manifest.payloadJson.activeToolPackages, ["pibo-run-control"]);
+	assert.equal(manifest.payloadJson.activeToolNames.some((name) => name.startsWith("agent:") || name.startsWith("package:") || name.startsWith("yielded-target:")), false);
 	assert.deepEqual(manifest.payloadJson.effectiveModel, { provider: "openai-codex", id: "gpt-5.6-sol" });
 	assert.equal(manifest.payloadJson.effectiveThinkingLevel, "max");
 	assert.deepEqual(manifest.payloadJson.delegatedAgents, [{
@@ -160,6 +175,27 @@ test("context build exposes one shared agent surface and the available name-desc
 	assert.equal(toolIds.includes("tools/pibo_agents_send_message"), false);
 	assert.equal(toolIds.some((id) => id.includes("pibo_subagent_")), false);
 	assert.equal(manifest.payloadJson.toolSurface, "complete");
+	assert.deepEqual(manifest.payloadJson.activeToolNames, [
+		"bash",
+		"pibo_agents_kill",
+		"pibo_agents_list_agents",
+		"pibo_agents_observe",
+		"pibo_run_ack",
+		"pibo_run_cancel",
+		"pibo_run_list",
+		"pibo_run_read",
+		"pibo_run_start",
+		"pibo_run_status",
+		"pibo_run_wait",
+	]);
+	assert.deepEqual(manifest.payloadJson.yieldableToolNames, [
+		"bash",
+		"pibo_agents_send_message",
+		"pibo_agents_list_agents",
+		"pibo_agents_observe",
+		"pibo_agents_kill",
+	]);
+	assert.deepEqual(manifest.payloadJson.activeToolPackages, ["pibo-run-control"]);
 	assert.equal(manifest.payloadJson.contextFilePaths.includes("pibo://runtime/delegated-agents.md"), true);
 	assert.deepEqual(manifest.payloadJson.delegatedAgents.map((agent) => ({
 		name: agent.name,

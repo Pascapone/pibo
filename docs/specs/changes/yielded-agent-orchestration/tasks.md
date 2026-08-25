@@ -9,5 +9,6 @@
 - [x] Preserve complete delegated final results and Bash full-output references.
 - [x] Add recursive Loop usage/cost accounting and WebUI statistics.
 - [x] Expose per-agent model/thinking settings in profile inspection.
-- [x] Run focused and complete Docker tests.
-- [ ] Complete independent review and Pibo2 acceptance.
+- [x] Run focused regressions, the complete canonical Docker suite, and headed WebUI acceptance for the final candidate.
+- [ ] Freeze the exact candidate SHA, complete exactly one independent review for that SHA, and record the verdict outside the frozen commit.
+- [ ] Build and locally accept the exact-SHA npm artifact, accept that same content-addressed artifact on an isolated Pibo2 slot, and record the evidence in the PR or an external validation report without amending the accepted commit.

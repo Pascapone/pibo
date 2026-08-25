@@ -20,7 +20,7 @@ A subagent-request provenance record carries request identity and optional origi
 
 ### Runtime manifest is resolution evidence
 
-Build Context adds a structured runtime-manifest node after resolving the concrete inspected session. It reports effective model/thinking values, the known tool surface, context, skills, and delegated-agent selections. The node is read-only inspection data, not profile input or prompt content; portable adapters explicitly mark tool discovery as Pibo-managed-only when harness-native names are unavailable.
+Build Context adds a structured runtime-manifest node after resolving the concrete inspected session. It reports effective model/thinking values, directly callable managed tool names, yielded targets, active packages, context, skills, and delegated-agent selections. Descriptive agent/package/yielded labels remain separate from `activeToolNames`. The node is read-only inspection data, not profile input or prompt content; portable adapters explicitly mark tool discovery as Pibo-managed-only when harness-native names are unavailable.
 
 ### Results distinguish inline and complete artifacts
 
@@ -28,7 +28,11 @@ A delegated final message is retained completely, including every ordered text p
 
 ### Cancellation is request-specific and acknowledgement-driven
 
-Explicit delegated cancellation uses the child message event ID. Queued cancellation removes only that message; active cancellation aborts that turn and waits for that request's in-flight settlement without waiting for unrelated queued work. `pibo_run_cancel` applies terminal cancelled state only after the bounded cancellation handler succeeds. Rejected abort or non-settlement remains an explicit failure rather than a false cancelled response.
+Explicit delegated cancellation uses the child message event ID. Queued cancellation removes only that message; active cancellation aborts that turn and waits for that request's in-flight settlement without waiting for unrelated queued work. Explicit cancellation, session kill, subtree disposal, and router disposal enumerate active runs without mutating them, await bounded cancellation settlement and execution cleanup, release admission, and only then commit terminal `cancelled` state. Rejected abort or non-settlement remains an explicit failure rather than a false cancelled response.
+
+### Public controller changes are additive
+
+The package-root agents-controller types keep the prior input and result shape valid. Yielded request identity and complete final text are optional additions at the controller boundary; the shared send tool normalizes missing values to the yielded run ID and `reply.text` before producing text, structured content, or details.
 
 ## Risks / Trade-offs
 

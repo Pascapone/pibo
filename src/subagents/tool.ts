@@ -42,19 +42,19 @@ export type PiboAgentSendMessageInput = {
 	message: string;
 	threadKey?: string;
 	toolCallId?: string;
-	requestId: string;
+	requestId?: string;
 	parentProvenance?: PiboMessageProvenance;
 	signal?: AbortSignal;
 };
 
 export type PiboAgentSendMessageResult = {
-	requestId: string;
+	requestId?: string;
 	agentId: string;
 	name: string;
 	profile: string;
 	threadKey: string;
 	eventId: string;
-	finalMessage: string;
+	finalMessage?: string;
 	reply: PiboAssistantMessageEvent;
 };
 
@@ -159,6 +159,17 @@ function resultText(prefix: string, value: unknown): string {
 	return `${prefix}\n${JSON.stringify(value, null, 2)}`;
 }
 
+function normalizeAgentSendMessageResult(
+	result: PiboAgentSendMessageResult,
+	fallbackRequestId: string,
+): PiboAgentSendMessageResult & { requestId: string; finalMessage: string } {
+	return {
+		...result,
+		requestId: result.requestId?.trim() || fallbackRequestId,
+		finalMessage: typeof result.finalMessage === "string" ? result.finalMessage : result.reply.text,
+	};
+}
+
 export function createAgentToolDefinitions(
 	subagents: readonly SubagentProfile[],
 	controller: PiboAgentsController,
@@ -201,7 +212,7 @@ export function createAgentToolDefinitions(
 				if (!context.yieldedRunId) {
 					throw new Error("pibo_agents_send_message is yielded-only. Start it through pibo_run_start.");
 				}
-				const result = await controller.sendMessage({
+				const result = normalizeAgentSendMessageResult(await controller.sendMessage({
 					subagent,
 					message: params.message,
 					threadKey: params.threadKey,
@@ -209,7 +220,7 @@ export function createAgentToolDefinitions(
 					requestId: context.yieldedRunId,
 					parentProvenance: context.getActiveMessage?.()?.provenance,
 					signal,
-				});
+				}), context.yieldedRunId);
 				return {
 					content: [{
 						type: "text",

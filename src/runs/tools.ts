@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { piboStringEnum } from "../tools/schema.js";
-import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
-import { foregroundServiceWarning, hasMeaningfulTimeoutOutput, isConfiguredTimeoutError, PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, resolveRunTimeoutMs } from "./lifecycle.js";
+import { definePiboTool, piboToolTerminalStatus, piboToolTimeoutPhase, type PiboToolDefinition, type PiboToolResult } from "../tools/contract.js";
+import { foregroundServiceWarning, hasMeaningfulTimeoutOutput, isConfiguredTimeoutError, PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, resolveRunTimeoutMs, waitForRunCancellationSettlement } from "./lifecycle.js";
 import { PiboRunResourceLimitError, prepareYieldedRunExecution, type PiboRunResourceUsage } from "./resource-isolation.js";
 import type {
 	PiboRunAckResult,
@@ -68,21 +68,6 @@ function requireTool(tools: readonly PiboToolDefinition[], name: string): PiboTo
 		throw new Error(`Unknown or non-yieldable tool "${name}"`);
 	}
 	return tool;
-}
-
-async function waitForRunCancellationSettlement(settled: Promise<void>, timeoutMs = 15_000): Promise<void> {
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	try {
-		await Promise.race([
-			settled,
-			new Promise<never>((_resolve, reject) => {
-				timer = setTimeout(() => reject(new Error(`Yielded run did not settle within ${timeoutMs}ms after cancellation.`)), timeoutMs);
-				timer.unref?.();
-			}),
-		]);
-	} finally {
-		if (timer) clearTimeout(timer);
-	}
 }
 
 export function createRunToolDefinitions(
@@ -152,10 +137,19 @@ export function createRunToolDefinitions(
 								observedOutput ||= hasMeaningfulTimeoutOutput(update);
 								onUpdate?.(update);
 							}, { ...ctx, yieldedRunId: runId }));
-							const resultObject = result as { content?: unknown; details?: unknown; isError?: unknown };
+							const resultObject = result as PiboToolResult;
 							const text = textFromToolResult(resultObject);
 							if (resultObject.isError === true) {
-								if (timeoutMs !== undefined && isConfiguredTimeoutError(text ?? "")) throw new PiboRunExecutionTimeoutError(text ?? `${tool.name} timed out.`, observedOutput || hasMeaningfulTimeoutOutput(text) ? "lifetime" : "startup");
+								const structuredTimeout = piboToolTerminalStatus(resultObject) === "timed_out";
+								if (structuredTimeout) {
+									throw new PiboRunExecutionTimeoutError(
+										text ?? `${tool.name} timed out.`,
+										piboToolTimeoutPhase(resultObject) ?? (observedOutput || hasMeaningfulTimeoutOutput(text) ? "lifetime" : "startup"),
+									);
+								}
+								if (timeoutMs !== undefined && isConfiguredTimeoutError(text ?? "")) {
+									throw new PiboRunExecutionTimeoutError(text ?? `${tool.name} timed out.`, observedOutput || hasMeaningfulTimeoutOutput(text) ? "lifetime" : "startup");
+								}
 								throw new Error(text ?? `${tool.name} returned an error result.`);
 							}
 							return { text, details: resultObject.details ?? result };

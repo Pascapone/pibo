@@ -13,6 +13,9 @@ import type { PiboThinkingLevel } from "../core/thinking.js";
 import { PIBO_AGENT_TOOL_NAMES, listAvailableAgents } from "../subagents/tool.js";
 import { PIBO_DELEGATED_AGENT_CONTEXT_PATH } from "../subagents/context.js";
 import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
+import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
+import { CODEX_BROWSER_TOOL_NAMES } from "../tools/codex-browser.js";
+import { CODEX_COMPAT_TOOL_NAMES } from "../tools/codex-compat.js";
 
 export function profileWithRuntimeInstance(profile: InitialSessionContext, runtimeInstanceId: string): InitialSessionContext {
 	if (profile.runtimeInstanceId === runtimeInstanceId) return profile;
@@ -55,6 +58,10 @@ export function uniqueRuntimeDiagnostics(diagnostics: readonly AgentRuntimeDiagn
 	});
 }
 
+function uniqueNames(values: readonly string[]): string[] {
+	return [...new Set(values)];
+}
+
 export function buildPortableRuntimeContextSnapshot(input: {
 	profile: InitialSessionContext;
 	runtime: PiboContextBuildRuntimeInfo;
@@ -72,15 +79,47 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	const addNode = (node: Omit<PiboContextBuildNode, "order">) => nodes.push({ ...node, order: nodes.length });
 	const availableAgents = listAvailableAgents(profile.subagents);
 	const delegatedSendAvailable = availableAgents.length > 0;
-	const runControlAvailable = profile.toolPackages.runControl === true || delegatedSendAvailable;
-	const managedToolNames = [
-		...profile.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.name),
-		...(delegatedSendAvailable ? PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message") : []),
-		...(delegatedSendAvailable ? ["yielded-target:pibo_agents_send_message"] : []),
+	const callableProfileTools = profile.tools.filter((tool) => tool.enabled !== false && (
+		tool.definition !== undefined
+		|| tool.createDefinition !== undefined
+		|| tool.builtInPiboTool === "runtime"
+		|| tool.name === "runtime"
+		|| tool.builtInPiboTool === "codex_browser"
+		|| CODEX_BROWSER_TOOL_NAMES.includes(tool.name as (typeof CODEX_BROWSER_TOOL_NAMES)[number])
+	));
+	const profileToolNames = callableProfileTools.map((tool) => tool.name);
+	const directAgentToolNames = delegatedSendAvailable
+		? PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message")
+		: [];
+	const codexCompatToolNames = profile.toolPackages.codexCompat === true ? [...CODEX_COMPAT_TOOL_NAMES] : [];
+	const explicitYieldableToolNames = uniqueNames([
+		...callableProfileTools.filter((tool) => tool.yieldable !== false).map((tool) => tool.name),
+		...(delegatedSendAvailable ? PIBO_AGENT_TOOL_NAMES : []),
+		...codexCompatToolNames,
+	]);
+	const yieldableToolNames = profile.toolPackages.runControl === true
+		? explicitYieldableToolNames
+		: delegatedSendAvailable ? ["pibo_agents_send_message"] : [];
+	const runControlAvailable = yieldableToolNames.length > 0;
+	const activeToolNames = uniqueNames([
+		...profileToolNames,
+		...directAgentToolNames,
+		...codexCompatToolNames,
+		...(profile.toolPackages.goalControl !== false ? PIBO_GOAL_TOOL_NAMES : []),
 		...(runControlAvailable ? PIBO_RUN_TOOL_NAMES : []),
+	]);
+	const activeToolPackages = [
+		...(profile.toolPackages.goalControl !== false ? ["pibo-goal-control"] : []),
+		...(profile.toolPackages.codexCompat === true ? ["codex-compat"] : []),
+		...(runControlAvailable ? ["pibo-run-control"] : []),
+	];
+	const managedToolDisplayNames = [
+		...activeToolNames,
+		...yieldableToolNames.map((name) => `yielded-target:${name}`),
 		...availableAgents.map((agent) => `agent:${agent.name} (${agent.profile}) — ${agent.description}`),
-		...(profile.toolPackages.goalControl !== false ? ["package:pibo-goal-control"] : []),
-		...(runControlAvailable ? [profile.toolPackages.runControl === true ? "package:pibo-run-control" : "package:pibo-run-control (automatic for delegation)"] : []),
+		...activeToolPackages.map((name) => name === "pibo-run-control" && profile.toolPackages.runControl !== true
+			? "package:pibo-run-control (automatic for delegation)"
+			: `package:${name}`),
 	];
 	const manifestContextPaths = input.resources
 		? input.resources.context.flatMap((contribution) => {
@@ -101,7 +140,9 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		activeModel: input.activeModel,
 		thinkingLevel: input.thinkingLevel,
 		toolSurface: "pibo-managed-only",
-		activeToolNames: managedToolNames,
+		activeToolNames,
+		yieldableToolNames,
+		activeToolPackages,
 		contextFilePaths: manifestContextPaths,
 		skillNames: input.resources
 			? input.resources.skills.map((skill) => skill.name)
@@ -136,7 +177,7 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		},
 		payloadJson: input.runtime.capabilities,
 	});
-	addRuntimeContributionGroup(nodes, "tools", "Pibo Tools and Delegated Agents", managedToolNames, input.runtime.capabilities.tools.piboManaged);
+	addRuntimeContributionGroup(nodes, "tools", "Pibo Tools and Delegated Agents", managedToolDisplayNames, input.runtime.capabilities.tools.piboManaged);
 	addNativeToolInspectionNode(nodes, input.runtime.capabilities.tools.nativeToolInspection);
 	if (runControlAvailable) {
 		addNativeToolYieldingNode(nodes, input.runtime.capabilities.tools.nativeToolYielding);

@@ -308,13 +308,15 @@ A successful cancellation response means Pibo has stopped the requested cancella
 - Cancellation fails explicitly if execution does not settle within the bounded cleanup interval.
 - A rejected child abort fails explicitly and the run is not stored as successfully cancelled.
 - Cancelling one queued delegated request does not abort another active request on the same child session or dispatch the cancelled request later.
-- Disposing or killing a controller session cancels that controller's non-terminal runs only after cancellation settlement is confirmed.
+- Disposing or killing a controller session, disposing a session subtree, and disposing the router enumerate active runs without mutating them, then persist and publish `cancelled` only after each run's cancellation and execution settlement is confirmed.
+- Rejected or bounded non-settling teardown cancellation leaves the run non-cancelled, does not release waiters as cancelled, and does not emit a cancelled notification.
 
 #### Scenario: Controller session is disposed
 
 - GIVEN a session has running yielded runs
 - WHEN the router disposes that session or executes kill-all behavior for it
-- THEN Pibo marks those runs cancelled and stops future reminders for them.
+- THEN Pibo first waits for bounded confirmed cancellation settlement
+- AND only successful settlements become cancelled and stop future reminders.
 
 ### Requirement: Durable stores recover interrupted runs conservatively
 
@@ -376,7 +378,7 @@ Run state stays small without losing unread tracked results.
 - A stale queued reminder can exist after the agent reads a run; router cleanup MUST remove queued service reminders that no longer describe pending run state.
 - A session may own both tracked and detached runs; default list output MUST hide detached runs while keeping tracked work visible.
 - Multiple runs can complete close together; reminders MAY coalesce them into one compact service message grouped by status.
-- Cancelling a run does not guarantee the underlying external side effect stopped immediately; the Pibo record still becomes terminal from the agent's point of view.
+- Cancellation cannot roll back an external side effect that already completed, but Pibo MUST NOT publish `cancelled` until the cancellable execution itself has confirmed termination.
 
 ## Constraints
 

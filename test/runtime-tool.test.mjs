@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -22,6 +22,30 @@ async function withRuntimeRegistry(run) {
 		await registry.closeAll({ force: true });
 		rmSync(cwd, { recursive: true, force: true });
 	}
+}
+
+for (const runtime of ["node", "python"]) {
+	test(`${runtime} runtime startup timeout force-closes the unregistered worker`, {
+		skip: process.platform === "win32" ? "POSIX worker fixture" : false,
+	}, async () => {
+		await withRuntimeRegistry(async (registry, cwd) => {
+			const pidPath = join(cwd, `${runtime}-startup-timeout.pid`);
+			const executablePath = join(cwd, `${runtime}-startup-timeout.sh`);
+			writeFileSync(executablePath, "#!/bin/sh\necho $$ > \"$PIBO_TEST_PID_FILE\"\nexec sleep 60\n");
+			chmodSync(executablePath, 0o755);
+			const result = await registry.start("controller", {
+				runtime,
+				timeoutMs: 20,
+				target: { executable: executablePath, env: { PIBO_TEST_PID_FILE: pidPath } },
+			});
+			assert.equal(result.status, "failed");
+			assert.match(result.error?.message ?? "", /Timed out waiting for .* runtime worker/);
+			const pid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
+			assert.ok(Number.isInteger(pid) && pid > 0);
+			assert.throws(() => process.kill(pid, 0), (error) => error?.code === "ESRCH");
+			assert.equal(registry.list("controller").sessions.length, 0);
+		});
+	});
 }
 
 pythonTest("python runtime preserves variables across exec calls", async () => {

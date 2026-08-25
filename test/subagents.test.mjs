@@ -209,6 +209,44 @@ test("legacy subagent tool exports remain source-compatible without entering run
 	);
 });
 
+test("shared send tool normalizes the legacy agents-controller result shape", async () => {
+	let observedInput;
+	const [send] = createAgentToolDefinitions(
+		[{ name: "helper", description: "Legacy controller helper.", targetProfile: "helper-profile" }],
+		{
+			async sendMessage(input) {
+				observedInput = input;
+				return {
+					agentId: "ps_legacy_controller_child",
+					name: "helper",
+					profile: "helper-profile",
+					threadKey: "legacy-thread",
+					eventId: "legacy-event",
+					reply: {
+						type: "assistant_message",
+						piboSessionId: "ps_legacy_controller_child",
+						eventId: "legacy-event",
+						text: "legacy reply text",
+					},
+				};
+			},
+			listAgents() { return []; },
+			observe(input) { return { filters: input, observations: [], nextAfterSequence: 0, truncated: false }; },
+			async killAgent(agentId) { return { agentId, killed: [agentId], cancelledRuns: [] }; },
+		},
+	);
+	const result = await send.execute("legacy-controller-send", {
+		name: "helper",
+		message: "work",
+	}, undefined, undefined, { yieldedRunId: "run_legacy_controller" });
+	assert.equal(observedInput.requestId, "run_legacy_controller");
+	assert.equal(result.details.requestId, "run_legacy_controller");
+	assert.equal(result.details.finalMessage, "legacy reply text");
+	assert.equal(result.structuredContent.requestId, "run_legacy_controller");
+	assert.equal(result.structuredContent.finalMessage, "legacy reply text");
+	assert.match(result.content[0].text, /legacy reply text/);
+});
+
 test("legacy runtime subagentRunner callers receive an explicit migration error", async () => {
 	const profile = new InitialSessionContextBuilder("legacy-runtime")
 		.withAutoContextFiles(false)
@@ -294,6 +332,50 @@ test("installed pibo tools are injected into the runtime context", async () => {
 			true,
 		);
 	});
+});
+
+test("direct Pi prompt orders delegated-agent context before installed-tool and MCP context", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-direct-pi-context-order-"));
+	const piboHome = join(root, "pibo-home");
+	const mcpConfigPath = join(root, "mcp_servers.json");
+	const previousMcpConfigPath = process.env.MCP_CONFIG_PATH;
+	writeFileSync(mcpConfigPath, JSON.stringify({
+		mcpServers: {
+			filesystem: {
+				command: "node",
+				pibo: { description: "Inspect files for context-order testing.", descriptionSource: "user" },
+			},
+		},
+	}));
+	try {
+		await withPiboHome(piboHome, async () => {
+			const browserUse = findCliToolEntry("browser-use");
+			assert.ok(browserUse);
+			const paths = getToolPythonRuntimePaths(browserUse.name, browserUse.runtime);
+			mkdirSync(paths.binDir, { recursive: true });
+			writeFileSync(paths.executablePath, "#!/bin/sh\n");
+			process.env.MCP_CONFIG_PATH = mcpConfigPath;
+			const profile = new InitialSessionContextBuilder("direct-context-order")
+				.withAutoContextFiles(false)
+				.withBuiltinTools("disabled")
+				.withToolPackages({ goalControl: false })
+				.withMcpServers(["filesystem"])
+				.addSubagent({ name: "worker", description: "Perform delegated work.", targetProfile: "base" })
+				.createSession();
+			const inspection = await inspectPiboProfile({ cwd: root, profile, persistSession: false });
+			const pathsInOrder = inspection.contextFiles.map((contextFile) => contextFile.path);
+			const delegatedIndex = pathsInOrder.indexOf("pibo://runtime/delegated-agents.md");
+			const installedIndex = pathsInOrder.indexOf(".pibo/context/installed-pibo-tools.md");
+			const mcpIndex = pathsInOrder.indexOf(".pibo/context/enabled-mcp-servers.md");
+			assert.ok(delegatedIndex >= 0, `delegated context missing from ${JSON.stringify(pathsInOrder)}`);
+			assert.ok(installedIndex > delegatedIndex, `installed-tool context must follow delegated context: ${JSON.stringify(pathsInOrder)}`);
+			assert.ok(mcpIndex > installedIndex, `MCP context must follow installed-tool context: ${JSON.stringify(pathsInOrder)}`);
+		});
+	} finally {
+		if (previousMcpConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousMcpConfigPath;
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test("shared agent tool definitions delegate execution and management to the controller", async () => {
