@@ -7,10 +7,10 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 
-test("VS Code Web URL helper preserves the mount path and selects server folders", async () => {
+test("VS Code Web helpers validate URLs and standard workbench themes", async () => {
 	const script = String.raw`
 		import assert from "node:assert/strict";
-		const { vscodeWebUrl } = await import("./src/apps/chat-ui/src/VscodeArea.tsx");
+		const { vscodeWebUrl, vscodeWorkbenchReady } = await import("./src/apps/chat-ui/src/VscodeArea.tsx");
 
 		assert.equal(
 			vscodeWebUrl("/apps/vscode/", "/root/code/pibo", "https://pibo.example/apps/chat/vscode"),
@@ -32,6 +32,16 @@ test("VS Code Web URL helper preserves the mount path and selects server folders
 			vscodeWebUrl("/apps/vscode/", "/tmp/any folder", "https://pibo.example/apps/chat/vscode"),
 			"/apps/vscode/?folder=%2Ftmp%2Fany+folder",
 		);
+
+		function frameDocument(...selectors) {
+			const matches = new Set(selectors);
+			return { querySelector(selector) { return matches.has(selector) ? {} : null; } };
+		}
+		for (const themeSelector of [".vs", ".vs-dark", ".hc-black", ".hc-light"]) {
+			assert.equal(vscodeWorkbenchReady(frameDocument(".monaco-workbench", themeSelector)), true);
+		}
+		assert.equal(vscodeWorkbenchReady(frameDocument(".monaco-workbench")), false);
+		assert.equal(vscodeWorkbenchReady(frameDocument(".vs-dark")), false);
 	`;
 	await assert.doesNotReject(execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() }));
 });
@@ -56,13 +66,16 @@ test("VS Code area provides a configured-state fallback and trusted IDE iframe c
 	assert.doesNotMatch(source, /Open VS Code in a new tab/);
 	assert.match(source, /<iframe/);
 	assert.match(source, /allow="clipboard-read; clipboard-write"/);
-	assert.match(source, /frameDocument\?\.querySelector\("\.monaco-workbench"\)/);
-	assert.match(source, /frameDocument\.querySelector\("\.vs-dark, \.hc-black"\)/);
+	assert.match(source, /vscodeWorkbenchReady\(frameDocument\)/);
+	for (const themeSelector of [".vs", ".vs-dark", ".hc-black", ".hc-light"]) {
+		assert.match(source, new RegExp(`"${themeSelector.replace(".", "\\.")}"`));
+	}
 	assert.match(source, /frameReady \? "visible" : "invisible"/);
 	assert.match(source, /VSCODE_WORKBENCH_READY_TIMEOUT_MS/);
 	assert.match(source, /\[frameUrl, retryKey\]/);
 	assert.doesNotMatch(source, /\[frameUrl, integration, retryKey\]/);
-	assert.match(source, /VS Code Web did not finish starting in dark mode/);
-	assert.match(source, /Starting VS Code in dark mode/);
+	assert.match(source, /VS Code Web did not finish starting/);
+	assert.match(source, /Starting VS Code…/);
+	assert.doesNotMatch(source, /starting in dark mode/i);
 	assert.match(source, /searchParams\.set\("folder", folder\)/);
 });
