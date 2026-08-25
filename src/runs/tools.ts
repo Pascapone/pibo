@@ -4,6 +4,7 @@ import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
 import { foregroundServiceWarning, hasMeaningfulTimeoutOutput, isConfiguredTimeoutError, PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, resolveRunTimeoutMs } from "./lifecycle.js";
 import { PiboRunResourceLimitError, prepareYieldedRunExecution, type PiboRunResourceUsage } from "./resource-isolation.js";
 import type {
+	PiboRunAckResult,
 	PiboRunCompletionPolicy,
 	PiboRunReadResult,
 	PiboRunSnapshot,
@@ -31,7 +32,7 @@ export type PiboRunToolController = {
 	waitForRun(runId: string, timeoutMs: number): Promise<PiboRunWaitResult>;
 	readRun(runId: string): PiboRunReadResult;
 	cancelRun(runId: string): Promise<PiboRunSnapshot>;
-	ackRun(runId: string): PiboRunSnapshot;
+	ackRun(runId: string): PiboRunAckResult;
 };
 
 function resultText(prefix: string, value: unknown): string {
@@ -281,8 +282,9 @@ export function createRunToolDefinitions(
 			}),
 			async execute(_toolCallId, params) {
 				const run = controller.ackRun(params.runId);
+				const prefix = run.changed ? `Acknowledged run ${run.runId}.` : `Run ${run.runId} was already acknowledged in state ${run.status}; no state changed.`;
 				return {
-					content: [{ type: "text", text: resultText(`Acknowledged run ${run.runId}.`, run) }],
+					content: [{ type: "text", text: resultText(prefix, run) }],
 					details: run,
 				};
 			},

@@ -47,7 +47,9 @@ function resolveGoalForTurn(store: PiboLoopStore, context: PiboToolDefinitionCon
 	const provenance = activeMessage?.provenance;
 	if (provenance?.kind !== 'loop-run') return store.getSessionGoalOwner(piboSessionId) ?? store.getLatestGoalForSession(piboSessionId);
 	const run = store.getRun(provenance.runId);
-	if (!run || run.jobId !== provenance.jobId || run.piboSessionId !== piboSessionId || run.messageEventId !== activeMessage?.id) {
+	const expectedEventId = provenance.cause === 'run-reminder' ? provenance.rootEventId : activeMessage?.id;
+	const validReminder = provenance.cause !== 'run-reminder' || (activeMessage?.source === 'service' && typeof provenance.rootEventId === 'string');
+	if (!run || !validReminder || run.jobId !== provenance.jobId || run.piboSessionId !== piboSessionId || run.messageEventId !== expectedEventId) {
 		throw new Error('cannot resolve goal because this turn has stale or invalid Loop provenance');
 	}
 	const job = store.getJob(provenance.jobId);

@@ -46,6 +46,31 @@ const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
 	"pibo_run_ack",
 ]);
 
+// Run reminders are autonomous service wakeups, so their provider/tool loop needs a deterministic boundary.
+const RUN_REMINDER_MAX_TOOL_EXECUTIONS = 64;
+const RUN_REMINDER_MAX_PROVIDER_ROUNDS = 64;
+const RUN_REMINDER_MAX_TOTAL_TOKENS = 2_000_000;
+const RUN_REMINDER_MAX_DURATION_MS = 15 * 60 * 1000;
+const RUN_REMINDER_MAX_REPEATED_TOOL_CALLS = 12;
+
+type RunReminderTurnGuard = {
+	eventId?: string;
+	toolExecutions: number;
+	providerRounds: number;
+	totalTokens: number;
+	toolSignatures: Map<string, number>;
+	tripped: boolean;
+	timer?: ReturnType<typeof setTimeout>;
+};
+
+function serializedToolArgs(value: unknown): string {
+	try {
+		return JSON.stringify(value) ?? String(value);
+	} catch {
+		return String(value);
+	}
+}
+
 type RuntimeRoutedQueueItem =
 	| { kind: "message"; event: PiboMessageEvent }
 	| { kind: "compact"; event: PiboExecutionEvent };
@@ -181,6 +206,7 @@ export class RuntimeRoutedSession {
 	private activeMessage?: PiboMessageEvent;
 	private activeExecutionEvent?: PiboExecutionEvent;
 	private activeMessageFailed = false;
+	private runReminderTurnGuard?: RunReminderTurnGuard;
 	private activeAssistantIndex?: number;
 	private nextAssistantIndex = 0;
 	private activeThinkingIndex?: number;
@@ -600,6 +626,7 @@ export class RuntimeRoutedSession {
 				return;
 			case "tool_execution_started":
 				this.emit(this.withActiveMessage({ ...event, type: "tool_execution_started", piboSessionId: this.piboSessionId }));
+				this.trackRunReminderTurnGuard("tool_execution_started", { toolName: event.toolName, args: event.args });
 				return;
 			case "tool_execution_updated":
 				this.emit(this.withActiveMessage({ ...event, type: "tool_execution_updated", piboSessionId: this.piboSessionId }));
@@ -617,7 +644,9 @@ export class RuntimeRoutedSession {
 					cacheWriteTokens: event.usage.cacheWriteTokens,
 					reasoningTokens: event.usage.reasoningTokens,
 					totalTokens: event.usage.totalTokens,
+					provenance: this.activeMessage?.provenance,
 				}));
+				this.trackRunReminderTurnGuard("usage", { totalTokens: event.usage.totalTokens });
 				return;
 			case "compaction_start":
 				this.emit(this.withActiveMessage({
@@ -752,6 +781,7 @@ export class RuntimeRoutedSession {
 			}
 			this.activeMessage = event;
 			this.activeMessageFailed = false;
+			this.beginRunReminderTurnGuard(event);
 			this.resetContentIndices();
 			this.emit({
 				type: "message_started",
@@ -794,6 +824,7 @@ export class RuntimeRoutedSession {
 			this.activeMessage = undefined;
 			this.activeMessageFailed = false;
 			this.resetContentIndices();
+			this.clearRunReminderTurnGuard();
 			if (this.inFlightMessage === inFlight) this.inFlightMessage = undefined;
 			inFlight.resolveSettled();
 		}
@@ -809,6 +840,85 @@ export class RuntimeRoutedSession {
 		};
 		this.inFlightMessage = inFlight;
 		return inFlight;
+	}
+
+	private beginRunReminderTurnGuard(event: PiboMessageEvent): void {
+		this.clearRunReminderTurnGuard();
+		if (event.source !== "service" || !event.text.startsWith("<pibo_run_notification>")) return;
+		const guard: RunReminderTurnGuard = {
+			eventId: event.id,
+			toolExecutions: 0,
+			providerRounds: 0,
+			totalTokens: 0,
+			toolSignatures: new Map<string, number>(),
+			tripped: false,
+		};
+		guard.timer = setTimeout(() => {
+			this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_DURATION_MS / 60_000} minutes`);
+		}, RUN_REMINDER_MAX_DURATION_MS);
+		guard.timer.unref?.();
+		this.runReminderTurnGuard = guard;
+	}
+
+	private clearRunReminderTurnGuard(): void {
+		const guard = this.runReminderTurnGuard;
+		if (!guard) return;
+		if (guard.timer) clearTimeout(guard.timer);
+		this.runReminderTurnGuard = undefined;
+	}
+
+	private trackRunReminderTurnGuard(type: "usage" | "tool_execution_started", payload: { totalTokens?: number } | { toolName?: string; args?: unknown }): void {
+		const guard = this.runReminderTurnGuard;
+		if (!guard || guard.tripped || guard.eventId !== this.activeMessage?.id) return;
+		if (type === "usage") {
+			const totalTokens = (payload as { totalTokens?: number }).totalTokens ?? 0;
+			guard.totalTokens += totalTokens;
+			guard.providerRounds += 1;
+			if (guard.totalTokens > RUN_REMINDER_MAX_TOTAL_TOKENS) {
+				this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_TOTAL_TOKENS} total tokens`);
+				return;
+			}
+			if (guard.providerRounds > RUN_REMINDER_MAX_PROVIDER_ROUNDS) {
+				this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_PROVIDER_ROUNDS} provider rounds`);
+			}
+			return;
+		}
+		const toolName = (payload as { toolName?: string }).toolName;
+		const args = (payload as { toolName?: string; args?: unknown }).args;
+		guard.toolExecutions += 1;
+		if (guard.toolExecutions > RUN_REMINDER_MAX_TOOL_EXECUTIONS) {
+			this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_TOOL_EXECUTIONS} tool executions`);
+			return;
+		}
+		const signature = `${String(toolName ?? "unknown")}:${serializedToolArgs(args)}`;
+		const repeated = (guard.toolSignatures.get(signature) ?? 0) + 1;
+		guard.toolSignatures.set(signature, repeated);
+		if (repeated > RUN_REMINDER_MAX_REPEATED_TOOL_CALLS) {
+			this.tripRunReminderTurnGuard(guard, `repeated the same tool call more than ${RUN_REMINDER_MAX_REPEATED_TOOL_CALLS} times`);
+		}
+	}
+
+	private tripRunReminderTurnGuard(guard: RunReminderTurnGuard, reason: string): void {
+		if (guard.tripped || this.runReminderTurnGuard !== guard) return;
+		guard.tripped = true;
+		this.activeMessageFailed = true;
+		const error = `Run-reminder turn stopped because it ${reason}.`;
+		this.emit({
+			type: "session_error",
+			piboSessionId: this.piboSessionId,
+			eventId: guard.eventId,
+			error,
+			errorDetails: {
+				category: "runtime_abort",
+				errorClass: "runtime_abort",
+				code: "run_reminder_limit_exceeded",
+				origin: "runtime",
+				retryable: false,
+				userMessage: error,
+			},
+			provenance: this.activeMessage?.provenance,
+		});
+		void Promise.resolve(this.runtimeSession.abort()).catch(() => undefined);
 	}
 
 	private async processQueuedCompact(event: PiboExecutionEvent): Promise<void> {
