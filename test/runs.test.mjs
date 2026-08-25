@@ -896,6 +896,7 @@ test("router coalesces generic run completion into a compact parent notification
 	};
 	const session = {
 		getActiveMessage() { return origin; },
+		removeQueuedMessages() { return 0; },
 		enqueueMessage(event) {
 			messages.push(event);
 			return {
@@ -912,14 +913,19 @@ test("router coalesces generic run completion into a compact parent notification
 	router.getOrCreateSession = async () => session;
 
 	const controller = router.createRunToolController("parent");
-	controller.startToolRun({
+	const run = controller.startToolRun({
 		toolName: "helper",
 		async execute() {
 			return { text: "done" };
 		},
 	});
+	const waited = controller.waitForRun(run.runId, 1_000);
 	await new Promise((resolve) => setImmediate(resolve));
 
+	const terminal = await waited;
+	assert.equal(terminal.status, "completed");
+	assert.equal(terminal.timedOut, false);
+	assert.equal(router.gatewayWorkAdmission.activeReservations.size, 0);
 	assert.equal(messages.length, 1);
 	assert.equal(messages[0].piboSessionId, "parent");
 	assert.equal(messages[0].source, "service");
@@ -934,7 +940,18 @@ test("router coalesces generic run completion into a compact parent notification
 	assert.match(messages[0].text, /<pibo_run_notification>/);
 	assert.match(messages[0].text, /"completed"/);
 	assert.match(messages[0].text, /"toolName":"helper"/);
-	assert.match(messages[0].text, /"runId":"run_/);
+	assert.match(messages[0].text, new RegExp(`"runId":"${run.runId}"`));
+
+	assert.equal(controller.readRun(run.runId).consumed, true);
+	router.emitOutput({
+		type: "message_finished",
+		piboSessionId: "parent",
+		eventId: "later-parent-turn",
+		source: "user",
+	});
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(messages.length, 1, "a consumed terminal run must not produce a duplicate reminder");
+	assert.equal(router.runRegistry.hasPendingNotification("parent", { includeAlreadyNotified: true }), false);
 });
 
 test("router rejects yielded runs when gateway resource block threshold is crossed", async () => {
@@ -1167,10 +1184,16 @@ test("pibo_run_cancel aborts the active tool and releases admission before retur
 			arguments: { wait: true },
 			completionPolicy: "tracked",
 		});
+		const waited = router.runRegistry.wait("parent", started.details.runId, 1_000);
 		await new Promise((resolve) => setImmediate(resolve));
 		const cancelled = await tools.pibo_run_cancel.execute("cancel-active", { runId: started.details.runId });
 		assert.equal(cancelled.details.status, "cancelled");
 		assert.equal(activeSignal.aborted, true);
+		const terminal = await waited;
+		assert.equal(terminal.status, "cancelled");
+		assert.equal(terminal.timedOut, false);
+		assert.equal(router.runRegistry.hasPendingNotification("parent", { includeAlreadyNotified: true }), false);
+		assert.equal(router.gatewayWorkAdmission.activeReservations.size, 0);
 
 		const next = await tools.pibo_run_start.execute("start-next", {
 			toolName: "helper",
@@ -1384,13 +1407,23 @@ test("router converts yielded tool errors into failed run notifications", async 
 			throw new Error("tool failed");
 		},
 	});
+	const waited = controller.waitForRun(run.runId, 1_000);
 	await new Promise((resolve) => setImmediate(resolve));
 
+	const terminal = await waited;
+	assert.equal(terminal.status, "failed");
+	assert.equal(terminal.timedOut, false);
+	assert.equal(router.gatewayWorkAdmission.activeReservations.size, 0);
 	assert.equal(router.runRegistry.status("parent", run.runId).status, "failed");
 	assert.equal(messages.length, 1);
 	assert.equal(messages[0].piboSessionId, "parent");
 	assert.match(messages[0].text, /"failed"/);
-	assert.match(messages[0].text, /"runId":"run_/);
+	assert.match(messages[0].text, new RegExp(`"runId":"${run.runId}"`));
+	assert.equal(controller.readRun(run.runId).consumed, true);
+	router.emitOutput({ type: "message_finished", piboSessionId: "parent", eventId: "later-failed-turn", source: "user" });
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(messages.length, 1, "a consumed failed run must not produce a duplicate reminder");
+	assert.equal(router.runRegistry.hasPendingNotification("parent", { includeAlreadyNotified: true }), false);
 });
 
 test("router emits a distinct timed_out run notification", async () => {
@@ -1408,14 +1441,24 @@ test("router emits a distinct timed_out run notification", async () => {
 		timeoutMs: 1000,
 		async execute() { throw new PiboRunExecutionTimeoutError("Command timed out after startup", "lifetime"); },
 	});
+	const waited = controller.waitForRun(run.runId, 1_000);
 	await new Promise((resolve) => setImmediate(resolve));
 
+	const terminal = await waited;
+	assert.equal(terminal.status, "timed_out");
+	assert.equal(terminal.timedOut, false);
+	assert.equal(router.gatewayWorkAdmission.activeReservations.size, 0);
 	const status = router.runRegistry.status("parent", run.runId);
 	assert.equal(status.status, "timed_out");
 	assert.equal(status.timeoutPhase, "lifetime");
 	assert.match(messages[0].text, /"timedOut"/);
 	assert.match(messages[0].text, /"status":"timed_out"/);
 	assert.match(messages[0].text, /"timeoutPhase":"lifetime"/);
+	assert.equal(controller.readRun(run.runId).consumed, true);
+	router.emitOutput({ type: "message_finished", piboSessionId: "parent", eventId: "later-timeout-turn", source: "user" });
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(messages.length, 1, "a consumed timed-out run must not produce a duplicate reminder");
+	assert.equal(router.runRegistry.hasPendingNotification("parent", { includeAlreadyNotified: true }), false);
 });
 
 if (process.platform === "win32") {

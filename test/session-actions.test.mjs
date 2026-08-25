@@ -874,6 +874,54 @@ function createDelayedContextGuardRuntime(order, agentSettlement, secondPrompt) 
 	};
 }
 
+test("Pi routed sessions re-arm a settled drain for a late run reminder exactly once", async () => {
+	const events = [];
+	const order = [];
+	const reminderText = '<pibo_run_notification>{"completed":[{"runId":"run-pi"}]}</pibo_run_notification>';
+	const runtime = createQueuedCompactRuntime(order, [], deferred());
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	let routed;
+	routed = new RoutedSession(
+		"route:test",
+		runtime,
+		(event) => {
+			events.push(event);
+			if (event.type !== "message_finished" || event.eventId !== "message-a") return;
+			queueMicrotask(() => {
+				void Promise.resolve().then(() => {
+					routed.enqueueMessage({
+						type: "message",
+						piboSessionId: "route:test",
+						id: "run-reminder-pi",
+						text: reminderText,
+						source: "service",
+					});
+				});
+			});
+		},
+		registry,
+		false,
+	);
+
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "route:test",
+		id: "message-a",
+		text: "A",
+		source: "actor",
+	});
+	await new Promise((resolve) => setImmediate(resolve));
+	await new Promise((resolve) => setImmediate(resolve));
+
+	assert.deepEqual(order, ["prompt:A", `prompt:${reminderText}`]);
+	for (const type of ["message_queued", "message_started", "message_finished"]) {
+		assert.equal(events.filter((event) => event.type === type && event.eventId === "run-reminder-pi").length, 1);
+	}
+	assert.equal(routed.getStatus().processing, false);
+	assert.equal(routed.getStatus().queuedMessages, 0);
+	await routed.dispose();
+});
+
 test("compact action is serialized between queued messages", async () => {
 	const events = [];
 	const order = [];

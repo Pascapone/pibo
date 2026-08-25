@@ -1360,7 +1360,9 @@ export class RoutedSession {
 		const drain = this.drain();
 		this.drainPromise = drain;
 		void drain.finally(() => {
-			if (this.drainPromise === drain) this.drainPromise = undefined;
+			if (this.drainPromise !== drain) return;
+			this.drainPromise = undefined;
+			if (this.queue.length > 0 && !this.disposed) this.startDrain();
 		});
 	}
 
