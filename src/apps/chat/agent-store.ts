@@ -89,10 +89,12 @@ export type CreateCustomAgentInput = {
 	goalControl?: boolean;
 };
 
-export type UpdateCustomAgentInput = Omit<Partial<CreateCustomAgentInput>, "folderId" | "nativeSubagents" | "autoContextFiles"> & {
+export type UpdateCustomAgentInput = Omit<Partial<CreateCustomAgentInput>, "folderId" | "nativeSubagents" | "autoContextFiles" | "mainModel" | "subagentModel"> & {
 	folderId?: string | null;
 	nativeSubagents?: boolean | null;
 	autoContextFiles?: boolean | null;
+	mainModel?: ModelProfile | null;
+	subagentModel?: ModelProfile | null;
 };
 
 type AgentFolderRow = {

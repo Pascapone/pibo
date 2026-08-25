@@ -27,6 +27,7 @@ import {
 	buildNativeToolGroups,
 	buildSkillGroups,
 	contextFileMeta,
+	compatibleModelSelectionsForRuntime,
 	copyCustomAgentToDraft,
 	copyProfileToDraft,
 	createBlankAgentDraft,
@@ -798,6 +799,7 @@ export function AgentsView({
 								const nextRuntime = catalog?.agentRuntimes.find((runtime) => runtime.id === runtimeInstanceId);
 								setDraft((current) => ({
 									...current,
+									...compatibleModelSelectionsForRuntime(current, nextRuntime, modelCatalog),
 									runtimeInstanceId,
 									runtimeOptions: {},
 									nativeSubagents: undefined,
