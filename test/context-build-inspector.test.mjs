@@ -9,6 +9,7 @@ import { buildPortableRuntimeContextSnapshot } from "../dist/agent-runtime/conte
 import { InitialSessionContext, InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
 import { createDefaultPiboProfile } from "../dist/plugins/builtin.js";
+import { createCodexBrowserToolProfiles } from "../dist/tools/codex-browser.js";
 import { definePiboTool } from "../dist/tools/contract.js";
 import { createPiboSessionToolDefinitions } from "../dist/tools/session-tool-set.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
@@ -139,6 +140,46 @@ test("portable runtime manifest uses materialized callable names for fixed and f
 	assert.deepEqual(manifest.payloadJson.yieldableToolNames, ["factory_callable"]);
 	assert.equal(manifest.payloadJson.activeToolNames.includes("fixed_registration"), false);
 	assert.equal(manifest.payloadJson.activeToolNames.includes("factory_registration"), false);
+});
+
+test("portable runtime manifest excludes controller-backed Codex browser tools when no controller exists", () => {
+	const capabilities = createMinimalAgentRuntimeCapabilities("Unavailable by default.");
+	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
+	const profile = new InitialSessionContext({
+		profileName: "portable-without-codex-browser-controller",
+		builtinTools: "disabled",
+		autoContextFiles: false,
+		toolPackages: { goalControl: false, runControl: true },
+		tools: createCodexBrowserToolProfiles(),
+	});
+	const toolContext = {
+		piboSessionId: "ps_portable_without_codex_browser_controller",
+		profileName: profile.profileName,
+		cwd: process.cwd(),
+	};
+	const snapshot = buildPortableRuntimeContextSnapshot({
+		profile,
+		cwd: toolContext.cwd,
+		piboSessionId: toolContext.piboSessionId,
+		runtime: {
+			runtimeInstanceId: "portable",
+			adapterId: "portable",
+			available: true,
+			transport: "stdio",
+			capabilities,
+			diagnostics: [],
+		},
+	});
+	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
+	const definitions = createPiboSessionToolDefinitions({
+		profile,
+		toolContext,
+		runToolController: {},
+	});
+	assert.deepEqual(definitions, []);
+	assert.deepEqual(manifest.payloadJson.activeToolNames, []);
+	assert.deepEqual(manifest.payloadJson.yieldableToolNames, []);
+	assert.deepEqual(manifest.payloadJson.activeToolPackages, []);
 });
 
 test("portable runtime context build exposes selected Pibo subagents through MCP delivery", () => {

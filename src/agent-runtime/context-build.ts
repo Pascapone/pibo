@@ -14,10 +14,8 @@ import { PIBO_AGENT_TOOL_NAMES, listAvailableAgents } from "../subagents/tool.js
 import { PIBO_DELEGATED_AGENT_CONTEXT_PATH } from "../subagents/context.js";
 import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
 import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
-import { CODEX_BROWSER_TOOL_NAMES } from "../tools/codex-browser.js";
 import { CODEX_COMPAT_TOOL_NAMES } from "../tools/codex-compat.js";
 import {
-	isEnabledCodexBrowserToolProfile,
 	isEnabledRuntimeToolProfile,
 	materializePiboProfileTools,
 } from "../tools/session-tool-set.js";
@@ -92,13 +90,9 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	};
 	const materializedProfileTools = materializePiboProfileTools(profile, toolContext);
 	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeToolProfile);
-	const codexBrowserProfileTools = profile.tools
-		.filter(isEnabledCodexBrowserToolProfile)
-		.filter((tool) => CODEX_BROWSER_TOOL_NAMES.includes(tool.name as (typeof CODEX_BROWSER_TOOL_NAMES)[number]));
 	const callableProfileTools = [
 		...materializedProfileTools.map((tool) => ({ name: tool.definition.name, yieldable: tool.profile.yieldable })),
 		...(runtimeProfileTool ? [{ name: "runtime", yieldable: runtimeProfileTool.yieldable }] : []),
-		...codexBrowserProfileTools.map((tool) => ({ name: tool.name, yieldable: tool.yieldable })),
 	];
 	const profileToolNames = callableProfileTools.map((tool) => tool.name);
 	const directAgentToolNames = delegatedSendAvailable
