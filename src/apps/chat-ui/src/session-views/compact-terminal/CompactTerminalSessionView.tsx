@@ -783,10 +783,13 @@ function isInteractiveEventTarget(event: MouseEvent<HTMLElement> | KeyboardEvent
 	return Boolean(interactiveTarget && interactiveTarget !== event.currentTarget);
 }
 
-const WORKING_LABEL = "Working...";
+const WORKING_SCRAMBLE_TARGET = "Working...";
+const WORKING_SCRAMBLE_ASCII_START = 33;
+const WORKING_SCRAMBLE_ASCII_END = 126;
 
 function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: string; isWorking: boolean; goal?: ChatSessionViewProps["sessionGoal"] }) {
 	const elapsed = useActiveTurnElapsed(isWorking ? startedAt : undefined);
+	const { chars, activeIndex } = useWorkingScramble(WORKING_SCRAMBLE_TARGET, isWorking);
 	const goalStatus = sessionGoalIndicatorStatus(goal);
 	const footerAriaLabel = [
 		isWorking ? "Working" : undefined,
@@ -808,7 +811,16 @@ function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: s
 						<span className="whitespace-pre text-[#737373]">•</span>
 						<span className="inline-flex min-w-0 items-baseline gap-2">
 							{elapsed ? <span className="shrink-0 tabular-nums text-[#737373]">{elapsed}</span> : null}
-							<span className="compact-terminal-working-label">{WORKING_LABEL}</span>
+							<span className="compact-terminal-working-scramble">
+								{chars.map((char, index) => (
+									<span
+										key={index}
+										className={index === activeIndex ? "compact-terminal-working-scramble-active" : undefined}
+									>
+										{char}
+									</span>
+								))}
+							</span>
 						</span>
 					</div>
 				) : <span className="min-w-0 flex-1" />}
@@ -816,6 +828,89 @@ function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: s
 			</div>
 		</div>
 	);
+}
+
+function useWorkingScramble(target: string, enabled: boolean) {
+	const targetChars = useMemo(() => Array.from(target), [target]);
+	const [chars, setChars] = useState(() => targetChars);
+	const [activeIndex, setActiveIndex] = useState(-1);
+
+	useEffect(() => {
+		if (!enabled || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+			setChars(targetChars);
+			setActiveIndex(-1);
+			return;
+		}
+
+		let index = 0;
+		let rotationFrame = 0;
+		let rotationsForChar = randomRotationCount();
+		let pauseTicks = 0;
+		setChars(randomAsciiChars(targetChars));
+		setActiveIndex(0);
+
+		const interval = window.setInterval(() => {
+			if (pauseTicks > 0) {
+				pauseTicks--;
+				return;
+			}
+
+			if (index >= targetChars.length) {
+				index = 0;
+				rotationFrame = 0;
+				rotationsForChar = randomRotationCount();
+				setChars(randomAsciiChars(targetChars));
+				setActiveIndex(0);
+				return;
+			}
+
+			const currentIndex = index;
+			const targetChar = targetChars[currentIndex] ?? " ";
+			setActiveIndex(currentIndex);
+			rotationFrame++;
+			if (rotationFrame < rotationsForChar) {
+				setChars((current) => replaceChar(current, currentIndex, randomAsciiChar(targetChar)));
+				return;
+			}
+
+			setChars((current) => replaceChar(current, currentIndex, targetChar));
+			index++;
+			rotationFrame = 0;
+			rotationsForChar = randomRotationCount();
+			if (index >= targetChars.length) {
+				setChars(targetChars);
+				setActiveIndex(-1);
+				pauseTicks = 18;
+			}
+		}, 55);
+
+		return () => window.clearInterval(interval);
+	}, [enabled, targetChars]);
+
+	return { chars, activeIndex };
+}
+
+function replaceChar(chars: string[], index: number, char: string): string[] {
+	const next = [...chars];
+	next[index] = char;
+	return next;
+}
+
+function randomAsciiChars(targetChars: string[]): string[] {
+	return targetChars.map((targetChar) => randomAsciiChar(targetChar));
+}
+
+function randomAsciiChar(exclude?: string): string {
+	let char = "";
+	do {
+		const code = WORKING_SCRAMBLE_ASCII_START + Math.floor(Math.random() * (WORKING_SCRAMBLE_ASCII_END - WORKING_SCRAMBLE_ASCII_START + 1));
+		char = String.fromCharCode(code);
+	} while (char === exclude);
+	return char;
+}
+
+function randomRotationCount(): number {
+	return 2 + Math.floor(Math.random() * 11);
 }
 
 function useActiveTurnElapsed(startedAt: string | undefined): string | undefined {
