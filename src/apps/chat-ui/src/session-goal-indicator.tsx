@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Target } from "lucide-react";
+import { goalActiveTimeSeconds } from "./goal-time";
 import type { PiboGoalStatus, PiboLoopJob } from "./types";
 
 export function SessionGoalIndicator({ goal }: { goal?: PiboLoopJob | null }) {
@@ -8,10 +9,10 @@ export function SessionGoalIndicator({ goal }: { goal?: PiboLoopJob | null }) {
 
 	useEffect(() => {
 		setNowMs(Date.now());
-		if (!status || goal?.state.goalEndedAt) return;
+		if (!status || !goal?.state.runningAt) return;
 		const interval = window.setInterval(() => setNowMs(Date.now()), 1_000);
 		return () => window.clearInterval(interval);
-	}, [goal?.id, goal?.state.goalEndedAt, status]);
+	}, [goal?.id, goal?.state.runningAt, status]);
 
 	return <SessionGoalIndicatorView goal={goal} nowMs={nowMs} />;
 }
@@ -21,9 +22,9 @@ export function SessionGoalIndicatorView({ goal, nowMs }: { goal?: PiboLoopJob |
 	if (!goal || !status) return null;
 	const label = status === "active" ? "Pursuing Goal" : "Goal Paused";
 	const tone = status === "active" ? "text-fuchsia-400" : "text-amber-300";
-	const elapsed = formatSessionGoalElapsed(goal, nowMs);
+	const activeTime = formatSessionGoalActiveTime(goal, nowMs);
 	const tokenUsage = status === "active" ? formatSessionGoalTokenUsage(goal) : undefined;
-	const accessibleLabel = [label, `Elapsed ${elapsed}`, tokenUsage ? `Tokens ${tokenUsage}` : undefined].filter(Boolean).join(". ");
+	const accessibleLabel = [label, `Active time ${activeTime}`, tokenUsage ? `Tokens ${tokenUsage}` : undefined].filter(Boolean).join(". ");
 
 	return (
 		<span
@@ -36,7 +37,7 @@ export function SessionGoalIndicatorView({ goal, nowMs }: { goal?: PiboLoopJob |
 		>
 			<Target size={17} className={status === "active" ? "animate-pulse" : ""} aria-hidden="true" />
 			<span>{label}:</span>
-			<span className="tabular-nums">{elapsed}</span>
+			<span className="tabular-nums">{activeTime}</span>
 			{tokenUsage ? <><span aria-hidden="true">·</span><span className="font-mono tabular-nums">{tokenUsage}</span></> : null}
 		</span>
 	);
@@ -60,15 +61,11 @@ function formatCompactTokenCount(tokens: number): string {
 		: `${(normalized / 1_000).toFixed(1)}k`;
 }
 
-export function formatSessionGoalElapsed(goal: PiboLoopJob, nowMs: number): string {
-	const startedAtMs = goal.state.goalStartedAt ? Date.parse(goal.state.goalStartedAt) : Number.NaN;
-	const endedAtMs = goal.state.goalEndedAt ? Date.parse(goal.state.goalEndedAt) : nowMs;
-	const elapsedSeconds = Number.isFinite(startedAtMs) && Number.isFinite(endedAtMs)
-		? Math.max(0, Math.floor((endedAtMs - startedAtMs) / 1_000))
-		: 0;
-	const hours = Math.floor(elapsedSeconds / 3_600);
-	const minutes = Math.floor((elapsedSeconds % 3_600) / 60);
-	const seconds = elapsedSeconds % 60;
+export function formatSessionGoalActiveTime(goal: PiboLoopJob, nowMs: number): string {
+	const activeSeconds = goalActiveTimeSeconds(goal, nowMs);
+	const hours = Math.floor(activeSeconds / 3_600);
+	const minutes = Math.floor((activeSeconds % 3_600) / 60);
+	const seconds = activeSeconds % 60;
 	return hours > 0
 		? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
 		: `${minutes}:${String(seconds).padStart(2, "0")}`;
