@@ -505,7 +505,11 @@ export class PiboLoopStore {
 		const completedIterations = (job.state.completedIterations ?? 0) + 1;
 		const reachedMaxIterations = job.maxIterations !== undefined && completedIterations >= job.maxIterations;
 		const currentGoalStatus = goalStatus(job);
-		const nextGoalStatus = job.mode === 'goal' ? isTerminalGoalStatus(currentGoalStatus) ? currentGoalStatus : input.goalStatus ?? currentGoalStatus : undefined;
+		const nextGoalStatus = job.mode === 'goal'
+			? isTerminalGoalStatus(currentGoalStatus) || currentGoalStatus === 'paused'
+				? currentGoalStatus
+				: input.goalStatus ?? currentGoalStatus
+			: undefined;
 		const terminalGoalStatus = job.mode === 'goal' && isTerminalGoalStatus(nextGoalStatus);
 		const shouldDisable = terminalGoalStatus || reachedMaxIterations || input.stopAfterRun === true || input.stopEvaluation?.finalAction === 'stop-after-run' || input.stopEvaluation?.finalAction === 'cancel-current-run';
 		const state: PiboLoopJobState = {
@@ -660,16 +664,24 @@ export function createLoopMessagePreflight(options: PiboLoopStoreOptions = {}) {
 			const job = store.getJob(jobId);
 			const run = store.getRun(runId);
 			const status = job?.mode === 'goal' ? goalStatus(job) ?? (job.enabled ? 'active' : 'paused') : undefined;
+			const causalReminder = event.provenance.cause === 'run-reminder';
+			const validMessageBinding = causalReminder
+				? event.source === 'service'
+					&& event.text.startsWith('<pibo_run_notification>')
+					&& typeof event.provenance.rootEventId === 'string'
+					&& run?.messageEventId === event.provenance.rootEventId
+				: run?.messageEventId === event.id;
+			const validRunState = causalReminder
+				? true
+				: run?.status === 'running' && Boolean(job?.state.runningAt) && job?.state.lastRunId === runId;
 			const allowed = Boolean(
 				job
 				&& run
 				&& run.jobId === jobId
-				&& run.status === 'running'
-				&& run.messageEventId === event.id
+				&& validMessageBinding
+				&& validRunState
 				&& (!run.piboSessionId || run.piboSessionId === event.piboSessionId)
 				&& job.enabled
-				&& job.state.runningAt
-				&& job.state.lastRunId === runId
 				&& (job.mode !== 'goal' || status === 'active'),
 			);
 			if (allowed) return { allowed: true };

@@ -20,6 +20,7 @@ import type {
 	PiboJsonObject,
 	PiboInputEvent,
 	PiboMessageEvent,
+	PiboMessageProvenance,
 	PiboOutputEvent,
 	PiboSessionOperationResult,
 	PiboSessionStatus,
@@ -292,7 +293,29 @@ function formatRunReminderMessage(notification: PiboRunNotification): string {
 }
 
 function isRunReminderServiceMessage(event: PiboMessageEvent): boolean {
-	return event.source === "service" && event.capabilityScope === "run-reminder";
+	return event.source === "service" && event.text.startsWith("<pibo_run_notification>");
+}
+
+function yieldedRunOrigin(event: Pick<PiboMessageEvent, "id" | "provenance"> | undefined) {
+	if (!event?.id || event.provenance?.kind !== "loop-run") return undefined;
+	return {
+		eventId: event.provenance.rootEventId ?? event.id,
+		provenance: {
+			kind: event.provenance.kind,
+			jobId: event.provenance.jobId,
+			runId: event.provenance.runId,
+		} satisfies PiboMessageProvenance,
+	};
+}
+
+function runReminderProvenance(notification: PiboRunNotification): PiboMessageProvenance | undefined {
+	const origin = notification.origin;
+	if (!origin || origin.provenance.kind !== "loop-run") return undefined;
+	return {
+		...origin.provenance,
+		cause: "run-reminder",
+		rootEventId: origin.eventId,
+	};
 }
 
 function isTerminalRunStatus(status: string): boolean {
@@ -2059,6 +2082,7 @@ export class PiboSessionRouter {
 						timeoutMs,
 						serviceWarning,
 						resources,
+						origin: yieldedRunOrigin(this.sessions.get(parentPiboSessionId)?.getActiveMessage?.()),
 					});
 				} catch (error) {
 					admission.release();
@@ -2362,8 +2386,8 @@ export class PiboSessionRouter {
 				piboSessionId,
 				text: formatRunReminderMessage(notification),
 				source: "service",
-				capabilityScope: "run-reminder",
 				id: randomUUID(),
+				provenance: runReminderProvenance(notification),
 			});
 		} catch (error) {
 			if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;

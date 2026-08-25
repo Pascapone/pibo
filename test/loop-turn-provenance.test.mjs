@@ -169,6 +169,10 @@ test("stop, cancel, complete, blocked, and budget-limited transitions invalidate
 				const result = createLoopMessagePreflight({ path })(event);
 				assert.equal(result.allowed, false);
 				assert.equal(result.code, "loop_continuation_invalidated");
+				store.completeRun({ jobId: job.id, runId: reserved.run.id, status: "ok", piboSessionId: "ps_goal", goalStatus: "active" });
+				const afterLateCompletion = store.getJob(job.id);
+				assert.equal(afterLateCompletion.enabled, false);
+				assert.equal(afterLateCompletion.state.goalStatus, transition === "stop" || transition === "cancel" ? "paused" : transition);
 			} finally {
 				store.close();
 				await rm(dir, { recursive: true, force: true });
@@ -305,6 +309,75 @@ test("assistant usage is charged to the run bound to its eventId, not the newest
 		assert.equal(store.getJob(newJob.id).state.tokensUsed, 0);
 		assert.equal(store.getRun(oldRun.id).accounting.tokensUsed, 17);
 		assert.equal(store.getRun(newRun.id).accounting.tokensUsed, 0);
+	} finally {
+		service.stop();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("causal run reminders remain authorized only while their originating Goal is active", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-reminder-preflight-"));
+	const path = join(dir, "loops.sqlite");
+	const store = new PiboLoopStore({ path });
+	try {
+		const job = store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "Objective", tokenBudget: 10, initialPiboSessionId: "ps_goal" });
+		const reserved = store.reserveRun(job.id);
+		store.attachRunSession(job.id, reserved.run.id, "ps_goal");
+		store.attachRunMessage(job.id, reserved.run.id, "loop_msg_origin");
+		store.completeRun({ jobId: job.id, runId: reserved.run.id, status: "ok", piboSessionId: "ps_goal", goalStatus: "active" });
+		const reminder = {
+			type: "message",
+			piboSessionId: "ps_goal",
+			id: "run_reminder_1",
+			source: "service",
+			text: "<pibo_run_notification>{}</pibo_run_notification>",
+			provenance: { kind: "loop-run", jobId: job.id, runId: reserved.run.id, cause: "run-reminder", rootEventId: "loop_msg_origin" },
+		};
+
+		assert.deepEqual(createLoopMessagePreflight({ path })(reminder), { allowed: true });
+		const reminderTools = toolsByName(store, () => reminder);
+		assert.equal(details(await reminderTools.get_goal.execute("get_reminder_goal", {})).goal.goalId, job.id);
+		store.recordGoalProgress(job.id, { tokens: 10 });
+		const rejected = createLoopMessagePreflight({ path })(reminder);
+		assert.equal(rejected.allowed, false);
+		assert.equal(rejected.code, "loop_continuation_invalidated");
+	} finally {
+		store.close();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("assistant usage from a causal run reminder is charged to its originating Goal", async () => {
+	const store = new PiboLoopStore({ path: ":memory:" });
+	const listeners = new Set();
+	const context = {
+		async emit(event) { return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} }; },
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		getSession() { return undefined; },
+		createSession() { throw new Error("not used"); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+		getWebApps() { return []; },
+	};
+	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-reminder-usage-provenance-"));
+	const service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), intervalMs: 60_000 });
+	try {
+		const job = store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "Goal", initialPiboSessionId: "ps_shared" });
+		const run = store.reserveRun(job.id).run;
+		store.attachRunSession(job.id, run.id, "ps_shared");
+		store.attachRunMessage(job.id, run.id, "loop_msg_origin");
+		store.completeRun({ jobId: job.id, runId: run.id, status: "ok", piboSessionId: "ps_shared", goalStatus: "active" });
+
+		service.start();
+		for (const listener of listeners) listener({
+			type: "assistant_usage",
+			piboSessionId: "ps_shared",
+			eventId: "run_reminder_1",
+			totalTokens: 23,
+			provenance: { kind: "loop-run", jobId: job.id, runId: run.id, cause: "run-reminder", rootEventId: "loop_msg_origin" },
+		});
+		assert.equal(store.getJob(job.id).state.tokensUsed, 23);
+		assert.equal(store.getRun(run.id).accounting.tokensUsed, 23);
 	} finally {
 		service.stop();
 		await rm(dir, { recursive: true, force: true });
