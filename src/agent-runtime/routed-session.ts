@@ -49,7 +49,7 @@ const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
 // Run reminders are autonomous service wakeups, so their provider/tool loop needs a deterministic boundary.
 const RUN_REMINDER_MAX_TOOL_EXECUTIONS = 64;
 const RUN_REMINDER_MAX_PROVIDER_ROUNDS = 64;
-const RUN_REMINDER_MAX_TOTAL_TOKENS = 2_000_000;
+const RUN_REMINDER_MAX_ACTIVE_TOKENS = 2_000_000;
 const RUN_REMINDER_MAX_DURATION_MS = 15 * 60 * 1000;
 const RUN_REMINDER_MAX_REPEATED_TOOL_CALLS = 12;
 
@@ -57,7 +57,7 @@ type RunReminderTurnGuard = {
 	eventId?: string;
 	toolExecutions: number;
 	providerRounds: number;
-	totalTokens: number;
+	activeTokens: number;
 	toolSignatures: Map<string, number>;
 	tripped: boolean;
 	timer?: ReturnType<typeof setTimeout>;
@@ -647,7 +647,10 @@ export class RuntimeRoutedSession {
 					costUsd: event.usage.costUsd,
 					provenance: this.activeMessage?.provenance,
 				}));
-				this.trackRunReminderTurnGuard("usage", { totalTokens: event.usage.totalTokens });
+				this.trackRunReminderTurnGuard("usage", {
+					totalTokens: event.usage.totalTokens,
+					cacheReadTokens: event.usage.cacheReadTokens,
+				});
 				return;
 			case "compaction_start":
 				this.emit(this.withActiveMessage({
@@ -852,7 +855,7 @@ export class RuntimeRoutedSession {
 			eventId: event.id,
 			toolExecutions: 0,
 			providerRounds: 0,
-			totalTokens: 0,
+			activeTokens: 0,
 			toolSignatures: new Map<string, number>(),
 			tripped: false,
 		};
@@ -870,15 +873,19 @@ export class RuntimeRoutedSession {
 		this.runReminderTurnGuard = undefined;
 	}
 
-	private trackRunReminderTurnGuard(type: "usage" | "tool_execution_started", payload: { totalTokens?: number } | { toolName?: string; args?: unknown }): void {
+	private trackRunReminderTurnGuard(
+		type: "usage" | "tool_execution_started",
+		payload: { totalTokens?: number; cacheReadTokens?: number } | { toolName?: string; args?: unknown },
+	): void {
 		const guard = this.runReminderTurnGuard;
 		if (!guard || guard.tripped || guard.eventId !== this.activeMessage?.id) return;
 		if (type === "usage") {
-			const totalTokens = (payload as { totalTokens?: number }).totalTokens ?? 0;
-			guard.totalTokens += totalTokens;
+			const usage = payload as { totalTokens?: number; cacheReadTokens?: number };
+			const activeTokens = Math.max(0, (usage.totalTokens ?? 0) - (usage.cacheReadTokens ?? 0));
+			guard.activeTokens += activeTokens;
 			guard.providerRounds += 1;
-			if (guard.totalTokens > RUN_REMINDER_MAX_TOTAL_TOKENS) {
-				this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_TOTAL_TOKENS} total tokens`);
+			if (guard.activeTokens > RUN_REMINDER_MAX_ACTIVE_TOKENS) {
+				this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_ACTIVE_TOKENS} active tokens`);
 				return;
 			}
 			if (guard.providerRounds > RUN_REMINDER_MAX_PROVIDER_ROUNDS) {

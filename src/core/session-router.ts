@@ -313,6 +313,24 @@ function isRunReminderServiceMessage(event: PiboMessageEvent): boolean {
 	return event.source === "service" && event.text.startsWith("<pibo_run_notification>");
 }
 
+function isRunReminderContextPressureError(event: Extract<PiboOutputEvent, { type: "session_error" }>): boolean {
+	return event.errorDetails?.category === "context_overflow"
+		|| event.errorDetails?.code === "context_length_exceeded"
+		|| event.errorDetails?.code === "run_reminder_limit_exceeded";
+}
+
+function runReminderRecoveryGroupKey(notification: PiboRunNotification): string {
+	if (notification.origin) return `origin:${JSON.stringify(notification.origin)}`;
+	const runIds = [
+		...notification.completed,
+		...notification.failed,
+		...notification.timedOut,
+		...notification.cancelled,
+		...notification.running,
+	].map((run) => run.runId).sort();
+	return `runs:${JSON.stringify(runIds)}`;
+}
+
 function yieldedRunOrigin(event: Pick<PiboMessageEvent, "id" | "provenance"> | undefined) {
 	if (!event?.id || event.provenance?.kind !== "loop-run") return undefined;
 	return {
@@ -400,6 +418,17 @@ type ScheduledRunReminder = {
 	includeAlreadyNotified: boolean;
 };
 
+type RunReminderDelivery = {
+	piboSessionId: string;
+	generation: number;
+	notification: PiboRunNotification;
+};
+
+type RunReminderRecoveryState = {
+	generation: number;
+	groups: Set<string>;
+};
+
 type StoredAgentObservation = PiboAgentObservation & {
 	managingParentId: string;
 };
@@ -458,6 +487,9 @@ export class PiboSessionRouter {
 	private readonly agentObservationEvictedThroughByParent = new Map<string, number>();
 	private nextAgentObservationSequence = 1;
 	private readonly scheduledRunReminders = new Map<string, ScheduledRunReminder>();
+	private readonly runReminderDeliveries = new Map<string, RunReminderDelivery>();
+	private readonly deferredRunReminders = new Map<string, number>();
+	private readonly runReminderRecoveries = new Map<string, RunReminderRecoveryState>();
 	private readonly runReminderGenerations = new Map<string, number>();
 	private readonly runCancellationHandlers = new Map<string, () => Promise<void>>();
 	private readonly activeRunExecutions = new Set<string>();
@@ -1561,10 +1593,13 @@ export class PiboSessionRouter {
 					if (state.disposed || state.processing || state.queuedMessages > 0) this.clearIdleSessionTimer(piboSession.id);
 					else this.scheduleIdleSessionEvictionIfIdle(piboSession.id);
 				},
-				onMessagesInterrupted: (messages, reason) => this.telemetryRecorder?.recordMessagesInterrupted(messages, {
-					session: this.sessionStore.get(piboSession.id),
-					status: this.sessions.get(piboSession.id)?.getStatus(),
-				}, reason),
+				onMessagesInterrupted: (messages, reason) => {
+					this.telemetryRecorder?.recordMessagesInterrupted(messages, {
+						session: this.sessionStore.get(piboSession.id),
+						status: this.sessions.get(piboSession.id)?.getStatus(),
+					}, reason);
+					this.handleInterruptedRunReminders(messages);
+				},
 				messagePreflight: this.options.messagePreflight,
 				getRuntimeAuthStatus: () => runtimeRegistry.getAgentRuntimeAuthStatus(binding.runtimeInstanceId),
 				startRuntimeAuth: async (input) => {
@@ -2411,10 +2446,124 @@ export class PiboSessionRouter {
 			listener(event);
 		}
 
+		this.handleRunReminderOutput(event);
 		if (event.type === "message_finished" && event.source !== "service") {
 			this.scheduleRunReminder(event.piboSessionId, true);
 		}
 	};
+
+	private handleRunReminderOutput(event: PiboOutputEvent): void {
+		if (event.type === "message_finished") {
+			const delivery = event.eventId ? this.runReminderDeliveries.get(event.eventId) : undefined;
+			if (event.eventId) this.runReminderDeliveries.delete(event.eventId);
+			if (delivery) {
+				this.clearRunReminderRecovery(delivery);
+				this.scheduleRunReminder(delivery.piboSessionId, false, delivery.generation);
+			}
+			return;
+		}
+		if (event.type === "session_error") {
+			const eventId = event.eventId;
+			if (!eventId) return;
+			const delivery = this.runReminderDeliveries.get(eventId);
+			if (!delivery) return;
+			this.runReminderDeliveries.delete(eventId);
+			if (
+				!isRunReminderContextPressureError(event)
+				|| this.closing
+				|| this.quiescingSessions.has(delivery.piboSessionId)
+				|| delivery.generation !== this.runReminderGeneration(delivery.piboSessionId)
+			) {
+				this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
+				return;
+			}
+
+			if (this.hasRunReminderRecovery(delivery)) {
+				const released = this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
+				for (const run of released) this.runRegistry.suppressNotification(delivery.piboSessionId, run.runId);
+				this.clearRunReminderRecovery(delivery);
+				this.deferredRunReminders.delete(delivery.piboSessionId);
+				this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
+				this.scheduleRunReminder(delivery.piboSessionId, false, delivery.generation);
+				return;
+			}
+
+			this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
+			if (!this.runRegistry.hasPendingNotification(delivery.piboSessionId)) return;
+
+			this.recordRunReminderRecovery(delivery);
+			const alreadyDeferred = this.deferredRunReminders.get(delivery.piboSessionId) === delivery.generation;
+			this.deferredRunReminders.set(delivery.piboSessionId, delivery.generation);
+			this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
+			if (!alreadyDeferred) this.queueRunReminderRecoveryCompaction(delivery.piboSessionId, delivery.generation);
+			return;
+		}
+		if (event.type !== "compaction_end" || event.aborted || event.errorMessage) return;
+		const generation = this.deferredRunReminders.get(event.piboSessionId);
+		if (generation === undefined) return;
+		this.deferredRunReminders.delete(event.piboSessionId);
+		if (this.closing || this.quiescingSessions.has(event.piboSessionId)) return;
+		if (generation !== this.runReminderGeneration(event.piboSessionId)) return;
+		this.scheduleRunReminder(event.piboSessionId, true, generation);
+	}
+
+	private hasRunReminderRecovery(delivery: RunReminderDelivery): boolean {
+		const recovery = this.runReminderRecoveries.get(delivery.piboSessionId);
+		return recovery?.generation === delivery.generation
+			&& recovery.groups.has(runReminderRecoveryGroupKey(delivery.notification));
+	}
+
+	private recordRunReminderRecovery(delivery: RunReminderDelivery): void {
+		let recovery = this.runReminderRecoveries.get(delivery.piboSessionId);
+		if (!recovery || recovery.generation !== delivery.generation) {
+			recovery = { generation: delivery.generation, groups: new Set() };
+			this.runReminderRecoveries.set(delivery.piboSessionId, recovery);
+		}
+		recovery.groups.add(runReminderRecoveryGroupKey(delivery.notification));
+	}
+
+	private clearRunReminderRecovery(delivery: RunReminderDelivery): void {
+		const recovery = this.runReminderRecoveries.get(delivery.piboSessionId);
+		if (!recovery || recovery.generation !== delivery.generation) return;
+		recovery.groups.delete(runReminderRecoveryGroupKey(delivery.notification));
+		if (recovery.groups.size === 0) this.runReminderRecoveries.delete(delivery.piboSessionId);
+	}
+
+	private queueRunReminderRecoveryCompaction(piboSessionId: string, generation: number): void {
+		const session = this.sessions.get(piboSessionId);
+		if (!session) return;
+		const eventId = randomUUID();
+		void session.executeAction({
+			type: "execution",
+			piboSessionId,
+			id: eventId,
+			action: "compact",
+			params: {
+				customInstructions: "Preserve the current task and pending yielded-run lifecycle, and leave enough context for the deferred run notification.",
+			},
+		}).catch((error) => {
+			if (this.closing || this.quiescingSessions.has(piboSessionId)) return;
+			if (generation !== this.runReminderGeneration(piboSessionId)) return;
+			const message = error instanceof Error ? error.message : String(error);
+			this.emitOutput({
+				type: "session_error",
+				piboSessionId,
+				eventId,
+				error: message,
+				errorDetails: runtimeSessionErrorDetails(message),
+			});
+		});
+	}
+
+	private handleInterruptedRunReminders(messages: readonly PiboMessageEvent[]): void {
+		for (const message of messages) {
+			if (!isRunReminderServiceMessage(message) || !message.id) continue;
+			const delivery = this.runReminderDeliveries.get(message.id);
+			if (!delivery) continue;
+			this.runReminderDeliveries.delete(message.id);
+			this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
+		}
+	}
 
 	private projectKnownSessionSignals(): void {
 		for (const session of this.sessionStore.list?.() ?? []) {
@@ -2438,6 +2587,11 @@ export class PiboSessionRouter {
 		for (const piboSessionId of piboSessionIds) {
 			this.runReminderGenerations.set(piboSessionId, this.runReminderGeneration(piboSessionId) + 1);
 			this.scheduledRunReminders.delete(piboSessionId);
+			this.deferredRunReminders.delete(piboSessionId);
+			this.runReminderRecoveries.delete(piboSessionId);
+			for (const [eventId, delivery] of this.runReminderDeliveries) {
+				if (delivery.piboSessionId === piboSessionId) this.runReminderDeliveries.delete(eventId);
+			}
 			try {
 				this.sessions.get(piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
 			} catch {
@@ -2466,6 +2620,9 @@ export class PiboSessionRouter {
 	private scheduleRunReminder(piboSessionId: string, includeAlreadyNotified: boolean, expectedGeneration = this.runReminderGeneration(piboSessionId)): void {
 		if (this.closing || this.quiescingSessions.has(piboSessionId)) return;
 		if (expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
+		const deferredGeneration = this.deferredRunReminders.get(piboSessionId);
+		if (deferredGeneration === expectedGeneration) return;
+		if (deferredGeneration !== undefined) this.deferredRunReminders.delete(piboSessionId);
 		if (!this.runRegistry.hasPendingNotification(piboSessionId, { includeAlreadyNotified })) return;
 		const previous = this.scheduledRunReminders.get(piboSessionId);
 		if (previous?.generation === expectedGeneration) {
@@ -2492,21 +2649,27 @@ export class PiboSessionRouter {
 		if (!scheduled || scheduled.generation !== expectedGeneration) return;
 		this.scheduledRunReminders.delete(piboSessionId);
 		if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
-		const notification = this.runRegistry.createNotification(piboSessionId, { includeAlreadyNotified: scheduled.includeAlreadyNotified });
-		if (!notification) return;
 
+		let notification: PiboRunNotification | undefined;
+		let eventId: string | undefined;
 		try {
 			const session = await this.getOrCreateSession(piboSessionId);
 			if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
+			notification = this.runRegistry.createNotification(piboSessionId, { includeAlreadyNotified: scheduled.includeAlreadyNotified });
+			if (!notification) return;
+			eventId = randomUUID();
+			this.runReminderDeliveries.set(eventId, { piboSessionId, generation: expectedGeneration, notification });
 			session.enqueueMessage({
 				type: "message",
 				piboSessionId,
 				text: formatRunReminderMessage(notification),
 				source: "service",
-				id: randomUUID(),
+				id: eventId,
 				provenance: runReminderProvenance(notification),
 			});
 		} catch (error) {
+			if (eventId) this.runReminderDeliveries.delete(eventId);
+			if (notification) this.runRegistry.releaseNotification(piboSessionId, notification);
 			if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
 			const message = error instanceof Error ? error.message : String(error);
 			this.emitOutput({

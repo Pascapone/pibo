@@ -61,6 +61,89 @@ test("run-reminder turns keep the normal toolset and stop repeated identical too
 	await routed.dispose();
 });
 
+test("run-reminder token guard excludes repeated provider cache reads", async () => {
+	const events = [];
+	let listener;
+	let aborts = 0;
+	const runtimeSession = {
+		getNativeCompatibilityHandle() { return this; },
+		subscribe(next) { listener = next; return () => {}; },
+		getStatus() { return { streaming: false }; },
+		async prompt() {
+			for (let round = 0; round < 9; round += 1) {
+				listener({
+					type: "usage",
+					usage: {
+						inputTokens: 4_000,
+						outputTokens: 1_000,
+						cacheReadTokens: 245_000,
+						totalTokens: 250_000,
+					},
+				});
+			}
+		},
+		async abort() { aborts += 1; },
+		async dispose() {},
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_cache_guard",
+		runtimeSession,
+		(event) => events.push(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+	);
+
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "ps_cache_guard",
+		id: "cache-heavy-reminder",
+		text: "<pibo_run_notification>{}</pibo_run_notification>",
+		source: "service",
+	});
+
+	await waitFor(() => events.some((event) => event.type === "message_finished" && event.eventId === "cache-heavy-reminder"));
+	assert.equal(aborts, 0);
+	assert.equal(events.some((event) => event.type === "session_error" && event.errorDetails?.code === "run_reminder_limit_exceeded"), false);
+	await routed.dispose();
+});
+
+test("run-reminder token guard still stops excessive active token usage", async () => {
+	const events = [];
+	let listener;
+	let aborts = 0;
+	const runtimeSession = {
+		getNativeCompatibilityHandle() { return this; },
+		subscribe(next) { listener = next; return () => {}; },
+		getStatus() { return { streaming: false }; },
+		async prompt() {
+			listener({
+				type: "usage",
+				usage: { inputTokens: 2_000_001, outputTokens: 0, cacheReadTokens: 0, totalTokens: 2_000_001 },
+			});
+		},
+		async abort() { aborts += 1; },
+		async dispose() {},
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_active_guard",
+		runtimeSession,
+		(event) => events.push(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+	);
+
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "ps_active_guard",
+		id: "active-heavy-reminder",
+		text: "<pibo_run_notification>{}</pibo_run_notification>",
+		source: "service",
+	});
+
+	await waitFor(() => events.some((event) => event.type === "session_error" && event.errorDetails?.code === "run_reminder_limit_exceeded"));
+	assert.equal(aborts, 1);
+	assert.match(events.find((event) => event.type === "session_error")?.error ?? "", /active tokens/);
+	await routed.dispose();
+});
+
 for (const terminalGroup of ["completed", "failed", "timedOut"]) {
 	test(`${terminalGroup} run reminders enqueued while the previous drain settles are delivered exactly once`, async () => {
 		const events = [];
