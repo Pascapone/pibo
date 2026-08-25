@@ -343,6 +343,22 @@ test("turn-end reminders can repeat until a tracked run is acknowledged", () => 
 	assert.equal(registry.hasPendingNotification("parent"), true);
 });
 
+test("failed notification delivery releases only the unchanged run states for retry", () => {
+	const registry = new PiboRunRegistry();
+	const retryable = startRun(registry);
+	const changed = startRun(registry);
+	const notification = registry.createNotification("parent");
+
+	registry.complete(changed.runId, { text: "done" });
+	const released = registry.releaseNotification("parent", notification);
+
+	assert.deepEqual(released.map((run) => run.runId), [retryable.runId]);
+	assert.equal(registry.hasPendingNotification("parent"), true);
+	const retried = registry.createNotification("parent");
+	assert.deepEqual(retried.running.map((run) => run.runId), [retryable.runId]);
+	assert.deepEqual(retried.completed.map((run) => run.runId), [changed.runId]);
+});
+
 function createRunToolsWithController(overrides = {}) {
 	const controller = {
 		startToolRun() {
