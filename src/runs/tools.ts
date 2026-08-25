@@ -1,9 +1,10 @@
 import { Type } from "typebox";
 import { piboStringEnum } from "../tools/schema.js";
 import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
-import { foregroundServiceWarning, hasMeaningfulTimeoutOutput, isConfiguredTimeoutError, PiboRunExecutionTimeoutError, resolveRunTimeoutMs } from "./lifecycle.js";
+import { foregroundServiceWarning, hasMeaningfulTimeoutOutput, isConfiguredTimeoutError, PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, resolveRunTimeoutMs } from "./lifecycle.js";
 import { PiboRunResourceLimitError, prepareYieldedRunExecution, type PiboRunResourceUsage } from "./resource-isolation.js";
 import type {
+	PiboRunAckResult,
 	PiboRunCompletionPolicy,
 	PiboRunReadResult,
 	PiboRunSnapshot,
@@ -31,7 +32,7 @@ export type PiboRunToolController = {
 	waitForRun(runId: string, timeoutMs: number): Promise<PiboRunWaitResult>;
 	readRun(runId: string): PiboRunReadResult;
 	cancelRun(runId: string): Promise<PiboRunSnapshot>;
-	ackRun(runId: string): PiboRunSnapshot;
+	ackRun(runId: string): PiboRunAckResult;
 };
 
 function resultText(prefix: string, value: unknown): string {
@@ -113,6 +114,7 @@ export function createRunToolDefinitions(
 					resolveExecutionSettled = resolve;
 				});
 				let observedOutput = false;
+				let cancellationFailure: PiboRunCancellationError | undefined;
 				const run = controller.startToolRun({
 					toolName: tool.name,
 					params: params.arguments,
@@ -131,6 +133,7 @@ export function createRunToolDefinitions(
 						}
 						if (processCancellationError) throw processCancellationError;
 						if (executionStarted) await waitForRunCancellationSettlement(executionSettled);
+						if (cancellationFailure) throw cancellationFailure;
 					},
 					async execute() {
 						executionStarted = true;
@@ -147,7 +150,11 @@ export function createRunToolDefinitions(
 							}
 							return { text, details: resultObject.details ?? result };
 						} catch (error) {
-							if (error instanceof PiboRunExecutionTimeoutError || error instanceof PiboRunResourceLimitError) throw error;
+							if (error instanceof PiboRunCancellationError) cancellationFailure = error;
+							if (error instanceof PiboRunExecutionTimeoutError || error instanceof PiboRunResourceLimitError || error instanceof PiboRunCancellationError) throw error;
+							if (runAbortController.signal.aborted) {
+								throw new PiboRunCancelledError("Yielded run was cancelled; execution ended after cancellation.", { cause: error });
+							}
 							if (timeoutMs !== undefined && isConfiguredTimeoutError(error)) throw new PiboRunExecutionTimeoutError(error instanceof Error ? error.message : String(error), observedOutput ? "lifetime" : "startup");
 							throw error;
 						} finally {
@@ -275,8 +282,9 @@ export function createRunToolDefinitions(
 			}),
 			async execute(_toolCallId, params) {
 				const run = controller.ackRun(params.runId);
+				const prefix = run.changed ? `Acknowledged run ${run.runId}.` : `Run ${run.runId} was already acknowledged in state ${run.status}; no state changed.`;
 				return {
-					content: [{ type: "text", text: resultText(`Acknowledged run ${run.runId}.`, run) }],
+					content: [{ type: "text", text: resultText(prefix, run) }],
 					details: run,
 				};
 			},

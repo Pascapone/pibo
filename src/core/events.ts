@@ -2,6 +2,7 @@ import type { PiboThinkingLevel } from "./thinking.js";
 
 export type PiboEventSource = "user" | "ui" | "service" | "actor";
 export type PiboMessageDelivery = "queue" | "steer";
+/** @deprecated Run reminders no longer alter the active agent toolset. */
 export type PiboMessageCapabilityScope = "run-reminder";
 
 export class PiboSteeringUnavailableError extends Error {
@@ -25,6 +26,8 @@ export type PiboLoopMessageProvenance = {
 	kind: "loop-run";
 	jobId: string;
 	runId: string;
+	cause?: "run-reminder";
+	rootEventId?: string;
 };
 
 export type PiboMessageProvenance = PiboLoopMessageProvenance;
@@ -35,6 +38,7 @@ export type PiboMessageEvent = {
 	text: string;
 	delivery?: PiboMessageDelivery;
 	source?: PiboEventSource;
+	/** @deprecated Ignored. Run reminders use the normal active agent toolset. */
 	capabilityScope?: PiboMessageCapabilityScope;
 	id?: string;
 	provenance?: PiboMessageProvenance;

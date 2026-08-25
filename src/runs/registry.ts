@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { PiboMessageProvenance } from "../core/events.js";
 import type { PiboReliabilityStore, PiboRunStoreRecord } from "../reliability/store.js";
 import type { PiboRunTimeoutPhase } from "./lifecycle.js";
 import type { PiboRunResourceUsage } from "./resource-isolation.js";
@@ -6,6 +7,11 @@ import type { PiboRunResourceUsage } from "./resource-isolation.js";
 export type PiboRunStatus = "queued" | "running" | "completed" | "failed" | "timed_out" | "cancelled";
 export type PiboRunKind = "tool";
 export type PiboRunCompletionPolicy = "tracked" | "detached";
+
+export type PiboRunOrigin = {
+	eventId: string;
+	provenance: PiboMessageProvenance;
+};
 
 export type PiboToolRunResult = {
 	text?: string;
@@ -40,7 +46,12 @@ export type PiboRunWaitResult = PiboRunSnapshot & {
 	timedOut: boolean;
 };
 
+export type PiboRunAckResult = PiboRunSnapshot & {
+	changed: boolean;
+};
+
 export type PiboRunNotification = {
+	origin?: PiboRunOrigin;
 	completed: PiboRunSnapshot[];
 	failed: PiboRunSnapshot[];
 	timedOut: PiboRunSnapshot[];
@@ -76,6 +87,7 @@ const DEFAULT_DETACHED_TERMINAL_TTL_MS = 60 * 1000;
 type PiboRunRecord = PiboRunSnapshot & {
 	result?: PiboToolRunResult;
 	error?: string;
+	origin?: PiboRunOrigin;
 	notifiedStatus?: PiboRunStatus;
 	acknowledgedStatus?: PiboRunStatus;
 	jobId?: string;
@@ -93,6 +105,7 @@ type StartToolRunInput = {
 	timeoutMs?: number;
 	serviceWarning?: string;
 	resources?: PiboRunResourceUsage;
+	origin?: PiboRunOrigin;
 };
 
 type Waiter = {
@@ -105,6 +118,16 @@ function now(): string {
 
 function runTimeoutAt(createdAt: string, timeoutMs: number | undefined): string | undefined {
 	return timeoutMs === undefined ? undefined : new Date(Date.parse(createdAt) + timeoutMs).toISOString();
+}
+
+function sameOrigin(left: PiboRunOrigin | undefined, right: PiboRunOrigin | undefined): boolean {
+	if (!left || !right) return left === right;
+	return left.eventId === right.eventId
+		&& left.provenance.kind === right.provenance.kind
+		&& left.provenance.jobId === right.provenance.jobId
+		&& left.provenance.runId === right.provenance.runId
+		&& left.provenance.cause === right.provenance.cause
+		&& left.provenance.rootEventId === right.provenance.rootEventId;
 }
 
 function formatTimeout(timeoutMs: number | undefined): string {
@@ -180,6 +203,7 @@ export class PiboRunRegistry {
 				serviceWarning: input.serviceWarning,
 				resources: input.resources,
 				workerId: this.workerId,
+				origin: input.origin,
 			});
 			const record = recordFromStored(stored);
 			this.runs.set(record.runId, record);
@@ -205,6 +229,7 @@ export class PiboRunRegistry {
 			...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs, timeoutAt: runTimeoutAt(timestamp, input.timeoutMs) } : {}),
 			...(input.serviceWarning ? { serviceWarning: input.serviceWarning } : {}),
 			...(input.resources ? { resources: structuredClone(input.resources) } : {}),
+			...(input.origin ? { origin: structuredClone(input.origin) } : {}),
 		};
 		this.runs.set(runId, record);
 		const output = snapshot(record);
@@ -344,7 +369,7 @@ export class PiboRunRegistry {
 
 	read(controllerPiboSessionId: string, runId: string): PiboRunReadResult {
 		const record = this.requireRunForController(controllerPiboSessionId, runId);
-		if (terminal(record.status)) {
+		if (terminal(record.status) && !record.consumed) {
 			record.consumed = true;
 			record.updatedAt = now();
 			this.options.store?.updateRun(runId, record);
@@ -373,15 +398,17 @@ export class PiboRunRegistry {
 		return output;
 	}
 
-	ack(controllerPiboSessionId: string, runId: string): PiboRunSnapshot {
+	ack(controllerPiboSessionId: string, runId: string): PiboRunAckResult {
 		const record = this.requireRunForController(controllerPiboSessionId, runId);
+		const consumesTerminalRun = terminal(record.status) && !record.consumed;
+		if (record.acknowledgedStatus === record.status && !consumesTerminalRun) return { ...snapshot(record), changed: false };
 		record.acknowledgedStatus = record.status;
 		if (terminal(record.status)) record.consumed = true;
 		record.updatedAt = now();
 		this.options.store?.updateRun(runId, record);
 		const output = snapshot(record);
 		this.notify({ type: "run_acknowledged", run: output });
-		return output;
+		return { ...output, changed: true };
 	}
 
 	suppressNotification(controllerPiboSessionId: string, runId: string): PiboRunSnapshot {
@@ -408,10 +435,12 @@ export class PiboRunRegistry {
 		controllerPiboSessionId: string,
 		options: { includeAlreadyNotified?: boolean } = {},
 	): PiboRunNotification | undefined {
-		const records = [...this.runs.values()].filter((record) =>
+		const pendingRecords = [...this.runs.values()].filter((record) =>
 			this.needsNotification(record, controllerPiboSessionId, options),
 		);
-		if (records.length === 0) return undefined;
+		if (pendingRecords.length === 0) return undefined;
+		const origin = pendingRecords[0].origin;
+		const records = pendingRecords.filter((record) => sameOrigin(record.origin, origin));
 
 		for (const record of records) {
 			record.notifiedStatus = record.status;
@@ -419,6 +448,7 @@ export class PiboRunRegistry {
 		}
 
 		const notification: PiboRunNotification = {
+			...(origin ? { origin: structuredClone(origin) } : {}),
 			completed: [],
 			failed: [],
 			timedOut: [],
@@ -580,5 +610,6 @@ function recordFromStored(record: PiboRunStoreRecord): PiboRunRecord {
 		timeoutPhase: record.timeoutPhase,
 		serviceWarning: record.serviceWarning,
 		resources: record.resources,
+		origin: record.origin,
 	};
 }
