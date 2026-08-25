@@ -86,9 +86,9 @@ code-server \
   /path/to/workspaces
 ```
 
-## Default theme
+## Recommended default theme
 
-Provision the code-server user settings with VS Code's current dark default rather than relying on the browser or operating-system color scheme:
+The integration accepts VS Code's standard light, dark, and high-contrast themes. To match Pibo's dark shell and avoid a visible color transition during startup, provision the code-server user settings with VS Code's current dark default rather than relying on the browser or operating-system color scheme:
 
 ```json
 {
@@ -106,3 +106,5 @@ VS Code recursively watches an opened workspace. Hosts with many repositories or
 ## Security boundary
 
 The embedded IDE has the filesystem and terminal permissions of its server process. Treat access to the VS Code tab as equivalent to shell access for that operating-system account. Scope the process user and accessible workspace roots accordingly; do not expose an unauthenticated code-server port publicly.
+
+The iframe is an unsandboxed same-origin application so Pibo can inspect workbench readiness and support normal IDE behavior. Treat code-server and its installed extensions as part of Pibo's trusted web origin, keep them patched, and never proxy an untrusted IDE service under that origin.
