@@ -358,6 +358,9 @@ export class CodexNativeTurnController {
 			model: modelOptions.model,
 			effort: modelOptions.effort,
 			serviceTier: modelOptions.serviceTier,
+			approvalPolicy: modelOptions.approvalPolicy,
+			sandboxPolicy: modelOptions.sandboxPolicy,
+			...(modelOptions.collaborationMode ? { collaborationMode: modelOptions.collaborationMode } : {}),
 			...(modelOptions.summary !== undefined ? { summary: modelOptions.summary } : {}),
 			...(modelOptions.personality !== undefined ? { personality: modelOptions.personality } : {}),
 		};

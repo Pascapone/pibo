@@ -58,6 +58,7 @@ import {
 	EmptyCatalog,
 	InlineCheckboxToggle,
 	PiPackageCard,
+	SchemaRuntimeOptionsFields,
 	SelectionCheckbox,
 } from "./designer-ui";
 import { AgentsSidebar } from "./AgentsSidebar";
@@ -1197,13 +1198,16 @@ function SubagentDesigner({
 			subagents: current.subagents.map((subagent, itemIndex) => itemIndex === index ? { ...subagent, ...patch } : subagent),
 		}));
 	};
+	const updateSubagentRuntimeOptions = (index: number, runtimeOptions: Record<string, unknown>) => {
+		updateSubagent(index, { runtimeOptions: Object.keys(runtimeOptions).length > 0 ? runtimeOptions : undefined });
+	};
 	const configurationReadOnly = readOnly || Boolean(capabilityUnavailableReason);
 
 	return (
 		<DesignerPanel title="Subagents">
 			{capabilityUnavailableReason ? <RuntimeCapabilityNotice reason={capabilityUnavailableReason} /> : null}
 			<div className="flex items-center justify-between gap-3">
-				<div className="text-xs text-slate-500">Descriptions are shown to the parent agent. Model and thinking settings apply to newly created child sessions.</div>
+				<div className="text-xs text-slate-500">Descriptions are shown to the parent agent. Model, thinking, and runtime overrides apply to newly created child sessions.</div>
 				<button
 					type="button"
 					disabled={configurationReadOnly}
@@ -1247,7 +1251,7 @@ function SubagentDesigner({
 								</label>
 								<label className="grid gap-1">
 									<span className="text-[10px] uppercase tracking-wider text-slate-500">Target profile</span>
-									<select name={`subagents.${index}.targetProfile`} aria-label={`Subagent ${index + 1} target profile`} value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value, model: undefined, thinkingLevel: undefined })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
+									<select name={`subagents.${index}.targetProfile`} aria-label={`Subagent ${index + 1} target profile`} value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value, model: undefined, thinkingLevel: undefined, runtimeOptions: undefined })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
 										{profileOptions.map((profile) => <option key={profile.value} value={profile.value}>{profile.label}</option>)}
 									</select>
 								</label>
@@ -1288,6 +1292,20 @@ function SubagentDesigner({
 								onModelChange={(model) => updateSubagent(index, { model })}
 								onThinkingChange={(thinkingLevel) => updateSubagent(index, { thinkingLevel })}
 							/>
+							{runtime?.capabilities.models.optionsSchema ? (
+								<div className="grid gap-1">
+									<div className="text-[10px] uppercase tracking-wider text-slate-500">Runtime overrides</div>
+									<SchemaRuntimeOptionsFields
+										schema={runtime.capabilities.models.optionsSchema}
+										value={subagent.runtimeOptions ?? {}}
+										readOnly={configurationReadOnly || Boolean(runtimeUnavailableReason)}
+										namePrefix={`subagents.${index}.runtimeOptions`}
+										defaultLabel="Inherit target profile"
+										onChange={(runtimeOptions) => updateSubagentRuntimeOptions(index, runtimeOptions)}
+									/>
+									<div className="text-[10px] text-slate-500">Unset values inherit the target profile. YOLO disables approvals and grants unrestricted host access.</div>
+								</div>
+							) : null}
 						</div>
 					);
 				})}

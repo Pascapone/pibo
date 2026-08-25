@@ -155,14 +155,32 @@ export type CodexAppServerUserInput =
 	| ({ type: "localAudio"; path: string })
 	| ({ type: "skill" | "mention"; name: string; path: string });
 
+export type CodexAppServerApprovalPolicy = "untrusted" | "on-request" | "never";
+
+export type CodexAppServerSandboxPolicy =
+	| { type: "dangerFullAccess" }
+	| { type: "readOnly"; networkAccess?: boolean }
+	| { type: "workspaceWrite"; networkAccess?: boolean; writableRoots?: string[] };
+
+/** Experimental Codex App Server collaboration-mode contract. */
+export type CodexAppServerCollaborationMode = {
+	mode: "plan" | "default";
+	settings: {
+		model: string;
+		reasoning_effort?: string | null;
+		developer_instructions?: string | null;
+	};
+};
+
 export type CodexAppServerTurnStartParams = {
 	threadId: string;
 	input: CodexAppServerUserInput[];
 	clientUserMessageId?: string | null;
 	cwd?: string | null;
-	approvalPolicy?: unknown;
+	approvalPolicy?: CodexAppServerApprovalPolicy | null;
 	approvalsReviewer?: unknown;
-	sandboxPolicy?: unknown;
+	sandboxPolicy?: CodexAppServerSandboxPolicy | null;
+	collaborationMode?: CodexAppServerCollaborationMode | null;
 	model?: string | null;
 	effort?: string | null;
 	summary?: string | null;
@@ -405,8 +423,8 @@ export type CodexAppServerThreadStartParams = {
 	config?: Record<string, CodexAppServerJson> | null;
 	baseInstructions?: string | null;
 	developerInstructions?: string | null;
-	approvalPolicy?: string | null;
-	sandbox?: string | null;
+	approvalPolicy?: CodexAppServerApprovalPolicy | null;
+	sandbox?: "read-only" | "workspace-write" | "danger-full-access" | null;
 };
 
 export type CodexAppServerThreadResumeParams = Omit<CodexAppServerThreadStartParams, "ephemeral"> & {

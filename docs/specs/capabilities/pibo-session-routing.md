@@ -152,7 +152,7 @@ The system MUST use `parentId` for true session hierarchy created by subagent de
 
 #### Current
 
-`PiboSessionRouter.resolveSubagentSession()` creates or reuses a child session with channel `pibo.subagents`, kind `subagent`, `parentId` pointing to the parent Pibo Session, inherited workspace, target profile, thread-key metadata, and optional chat room metadata. Legacy controller compatibility is pinned to the app context value.
+`PiboSessionRouter.resolveSubagentSession()` creates or reuses a child session with channel `pibo.subagents`, kind `subagent`, `parentId` pointing to the parent Pibo Session, inherited workspace, target profile, thread-key metadata, optional chat room metadata, and frozen initial model, thinking, and runtime-option overrides. Legacy controller compatibility is pinned to the app context value.
 
 #### Target
 
@@ -164,6 +164,7 @@ Subagent sessions are visible as children of their parent and can be recursively
 - Reusing the same subagent name, target profile, parent, and thread key returns the existing child session.
 - Child sessions inherit the parent workspace and app context compatibility context.
 - Child sessions inherit parent Chat Web room metadata when present.
+- A new child session merges per-subagent runtime options over its target profile; a reused child retains the options frozen when it was created.
 - Subagent depth is bounded by the subagent profile `maxDepth`.
 - Killing a parent session recursively kills child sessions.
 

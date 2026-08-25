@@ -461,16 +461,20 @@ type RuntimeOptionField = {
 	required: boolean;
 };
 
-function SchemaRuntimeOptionsFields({
+export function SchemaRuntimeOptionsFields({
 	schema,
 	value,
 	readOnly,
 	onChange,
+	namePrefix = "runtimeOption",
+	defaultLabel = "Default",
 }: {
 	schema?: Record<string, unknown>;
 	value: Record<string, unknown>;
 	readOnly: boolean;
 	onChange: (value: Record<string, unknown>) => void;
+	namePrefix?: string;
+	defaultLabel?: string;
 }) {
 	const fields = runtimeOptionFields(schema);
 	if (fields.length === 0) return null;
@@ -490,7 +494,7 @@ function SchemaRuntimeOptionsFields({
 						{field.description ? <span className="text-[10px] text-slate-500">{field.description}</span> : null}
 						{field.enumValues ? (
 							<select
-								name={`runtimeOption.${field.key}`}
+								name={`${namePrefix}.${field.key}`}
 								value={current === undefined ? "" : String(current)}
 								disabled={readOnly}
 								onChange={(event) => {
@@ -499,24 +503,24 @@ function SchemaRuntimeOptionsFields({
 								}}
 								className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1.5 text-xs outline-none focus:border-[#11a4d4] disabled:opacity-60"
 							>
-								<option value="">Default</option>
+								<option value="">{defaultLabel}</option>
 								{field.enumValues.map((option) => <option key={String(option)} value={String(option)}>{String(option)}</option>)}
 							</select>
 						) : field.type === "boolean" ? (
 							<select
-								name={`runtimeOption.${field.key}`}
+								name={`${namePrefix}.${field.key}`}
 								value={typeof current === "boolean" ? String(current) : ""}
 								disabled={readOnly}
 								onChange={(event) => setField(field, event.target.value === "" ? undefined : event.target.value === "true")}
 								className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1.5 text-xs outline-none focus:border-[#11a4d4] disabled:opacity-60"
 							>
-								<option value="">Default</option>
+								<option value="">{defaultLabel}</option>
 								<option value="true">true</option>
 								<option value="false">false</option>
 							</select>
 						) : (
 							<input
-								name={`runtimeOption.${field.key}`}
+								name={`${namePrefix}.${field.key}`}
 								type={field.type === "number" || field.type === "integer" ? "number" : "text"}
 								step={field.type === "integer" ? 1 : undefined}
 								value={typeof current === "string" || typeof current === "number" ? current : ""}
