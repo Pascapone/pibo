@@ -882,6 +882,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			resources: input.services?.resources,
 			nativeSubagentsEnabled: input.profile.nativeSubagents,
 		};
+		const profileOptions = parseCodexNativeProfileOptions(input.profile.runtimeOptions);
 		const startProcessBundle = async (processGeneration: string): Promise<CodexNativeProcessBundle> => {
 			let delivery: CodexNativeResourceDelivery | undefined;
 			let ownedProcess: CodexNativeAppServerProcess | undefined;
@@ -894,6 +895,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					sessionGeneration: processGeneration,
 					workspace: input.workspace,
 					clientVersion: CODEX_NATIVE_ADAPTER_VERSION,
+					experimentalApi: profileOptions.permissionMode === "plan",
 					resourceEnvironment: delivery.environment,
 				});
 				await delivery.configureProcess(ownedProcess.client, input.workspace);
@@ -913,7 +915,6 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			process = initial.process;
 			const compatibility = input.services?.compatibility as CodexNativeCompatibilityServices | undefined;
 			const catalog = await this.loadModelCatalog(process.client);
-			const profileOptions = parseCodexNativeProfileOptions(input.profile.runtimeOptions);
 			const persisted = binding.state === "bound"
 				? readCodexNativePersistedSettings(binding.metadata)
 				: { profileOptions: {} };
@@ -938,6 +939,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					reasoningSummary: Object.hasOwn(persistedOptions, "reasoningSummary")
 						? persistedOptions.reasoningSummary
 						: profileOptions.reasoningSummary,
+					permissionMode: profileOptions.permissionMode,
 				},
 			});
 			const threadSelection = {

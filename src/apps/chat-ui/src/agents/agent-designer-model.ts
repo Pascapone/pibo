@@ -49,6 +49,10 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 				...((item.description ?? "").trim() ? { description: item.description!.trim() } : {}),
 				...(model ? { model } : {}),
 				...(item.thinkingLevel ? { thinkingLevel: item.thinkingLevel } : {}),
+				...(item.runtimeOptions && typeof item.runtimeOptions === "object" && !Array.isArray(item.runtimeOptions)
+					&& Object.keys(item.runtimeOptions).length > 0
+					? { runtimeOptions: structuredClone(item.runtimeOptions) }
+					: {}),
 				...(typeof item.timeoutMs === "number" ? { timeoutMs: Math.round(item.timeoutMs) } : {}),
 				...(typeof item.maxDepth === "number" ? { maxDepth: Math.round(item.maxDepth) } : {}),
 			}];
@@ -146,7 +150,7 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 		nativeTools: agent.nativeTools,
 		skills: agent.skills,
 		contextFiles: agent.contextFiles,
-		subagents: agent.subagents,
+		subagents: structuredClone(agent.subagents),
 		mcpServers: agent.mcpServers,
 		piPackages: agent.piPackages ?? [],
 		mainModel: agent.mainModel,
@@ -179,7 +183,7 @@ export function profileToDraft(profile: BootstrapData["agents"][number], catalog
 		nativeTools: profile.nativeTools ?? [],
 		skills: profile.skills ?? (hasBuiltinSkill(catalog, "pi-agent-harness") ? ["pi-agent-harness"] : []),
 		contextFiles: profile.contextFiles ?? [],
-		subagents: profile.subagents ?? [],
+		subagents: structuredClone(profile.subagents ?? []),
 		mcpServers: profile.mcpServers ?? [],
 		piPackages: profile.piPackages ?? [],
 		mainModel: profile.mainModel ?? profile.model,

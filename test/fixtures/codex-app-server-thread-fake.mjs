@@ -32,6 +32,7 @@ if (args[0] === "--version") {
 			skillRequests: [],
 			injectedItems: [],
 			compactionRequests: [],
+			initializeRequests: [],
 		};
 	const save = (state) => writeFileSync(statePath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
 	const nextTimestamp = (state) => state.clock++;
@@ -192,6 +193,8 @@ if (args[0] === "--version") {
 			multiAgentEnabled: params.config?.features?.multi_agent ?? null,
 			multiAgentV2Enabled: params.config?.features?.multi_agent_v2 ?? null,
 			agentsEnabled: params.config?.agents?.enabled ?? null,
+			approvalPolicy: params.approvalPolicy ?? null,
+			sandbox: params.sandbox ?? null,
 		};
 	};
 	const missing = (id, threadId) => ({ id, error: { code: -32600, message: `no rollout found for thread id ${threadId}` } });
@@ -641,6 +644,10 @@ if (args[0] === "--version") {
 	lines.on("line", (line) => {
 		const message = JSON.parse(line);
 		if (message.method === "initialize") {
+			const state = load();
+			state.initializeRequests ??= [];
+			state.initializeRequests.push({ capabilities: clone(message.params?.capabilities ?? null) });
+			save(state);
 			send({ id: message.id, result: {
 				codexHome: process.env.CODEX_HOME,
 				platformFamily: "unix",
@@ -939,6 +946,9 @@ if (args[0] === "--version") {
 				serviceTier: params.serviceTier ?? null,
 				summary: params.summary ?? null,
 				personality: params.personality ?? null,
+				approvalPolicy: params.approvalPolicy ?? null,
+				sandboxPolicy: clone(params.sandboxPolicy ?? null),
+				collaborationMode: clone(params.collaborationMode ?? null),
 			});
 			const turnId = `turn-${state.nextTurn++}`;
 			const active = {

@@ -139,6 +139,8 @@ test("Codex native advertises and validates its stable model, reasoning, service
 	assert.equal(adapter.descriptor.capabilities.reasoning.supported, true);
 	assert.equal(adapter.descriptor.capabilities.maintenance.contextUsage, true);
 	assert.deepEqual(adapter.descriptor.capabilities.models.optionsSchema.properties.personality.enum, ["none", "friendly", "pragmatic"]);
+	assert.deepEqual(adapter.descriptor.capabilities.models.optionsSchema.properties.permissionMode.enum, ["approval", "yolo", "plan"]);
+	assert.equal(adapter.descriptor.capabilities.models.optionsSchema.properties.permissionMode.default, "approval");
 
 	const catalog = await adapter.listModels();
 	assert.equal(catalog.runtimeInstanceId, instanceId);
@@ -153,6 +155,7 @@ test("Codex native advertises and validates its stable model, reasoning, service
 		serviceTier: "priority",
 		personality: "pragmatic",
 		reasoningSummary: "detailed",
+		permissionMode: "approval",
 	}, (builder) => builder
 		.withModel({ provider: "openai-codex", id: "gpt-5.6-sol" })
 		.withThinkingLevel("high"));
@@ -160,6 +163,8 @@ test("Codex native advertises and validates its stable model, reasoning, service
 
 	const invalidOptions = profile(instanceId, { token: "must-not-be-supported" });
 	assert.equal(adapter.validateProfile({ profile: invalidOptions })[0].code, "codex_native_runtime_options_invalid");
+	const invalidPermissionMode = profile(instanceId, { permissionMode: "unrestricted" });
+	assert.match(adapter.validateProfile({ profile: invalidPermissionMode })[0].message, /approval, yolo, plan/);
 	const invalidProvider = profile(instanceId, {}, (builder) => builder.withModel({ provider: "openai", id: "gpt-5.6-sol" }));
 	assert.equal(adapter.validateProfile({ profile: invalidProvider })[0].code, "codex_native_model_provider_invalid");
 });
@@ -200,6 +205,9 @@ test("Codex native applies profile options and exposes cumulative context usage"
 		serviceTier: "priority",
 		summary: "detailed",
 		personality: "pragmatic",
+		approvalPolicy: "on-request",
+		sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
+		collaborationMode: null,
 	});
 	assert.deepEqual(session.getStatus().contextUsage, {
 		tokens: 20,
@@ -209,6 +217,58 @@ test("Codex native applies profile options and exposes cumulative context usage"
 	assert.equal(session.getBinding().metadata.codexNativeReasoningEffort, "max");
 	assert.equal(session.getBinding().metadata.codexNativeServiceTier, "priority");
 	assert.equal(session.getBinding().metadata.codexNativeReasoningSummary, "detailed");
+});
+
+test("Codex native maps YOLO and Plan permission modes into thread, turn, and initialize settings", async (t) => {
+	const cases = [
+		{
+			mode: "yolo",
+			experimentalApi: false,
+			approvalPolicy: "never",
+			threadSandbox: "danger-full-access",
+			turnSandbox: { type: "dangerFullAccess" },
+			collaborationMode: null,
+		},
+		{
+			mode: "plan",
+			experimentalApi: true,
+			approvalPolicy: "on-request",
+			threadSandbox: "read-only",
+			turnSandbox: { type: "readOnly", networkAccess: false },
+			collaborationMode: {
+				mode: "plan",
+				settings: { model: "gpt-5.6-sol", reasoning_effort: "high", developer_instructions: null },
+			},
+		},
+	];
+
+	for (const expected of cases) {
+		const root = await testRoot();
+		const instanceId = `codex-native-permission-${expected.mode}`;
+		const { registry } = createAdapter(root, instanceId);
+		const selectedProfile = profile(instanceId, { permissionMode: expected.mode });
+		const session = await registry.openSession(instanceId, openInput(
+			instanceId,
+			root,
+			selectedProfile,
+			unboundBinding(instanceId, `ps_codex_permission_${expected.mode}`),
+		));
+		t.after(async () => {
+			await session.dispose();
+			await rm(root, { recursive: true, force: true });
+		});
+
+		await session.prompt({ text: `${expected.mode} permissions`, source: "rpc" });
+		const state = await getCodexNativeClient(session).request("test/getState", {});
+		assert.equal(state.initializeRequests.at(-1).capabilities.experimentalApi, expected.experimentalApi);
+		const threadRequest = state.resourceRequests.find((request) => request.method === "thread/start");
+		assert.equal(threadRequest.approvalPolicy, expected.approvalPolicy);
+		assert.equal(threadRequest.sandbox, expected.threadSandbox);
+		const turnRequest = state.turnRequests.at(-1);
+		assert.equal(turnRequest.approvalPolicy, expected.approvalPolicy);
+		assert.deepEqual(turnRequest.sandboxPolicy, expected.turnSandbox);
+		assert.deepEqual(turnRequest.collaborationMode, expected.collaborationMode);
+	}
 });
 
 test("Codex native model, reasoning, and Fast Mode controls are model-aware and survive native resume", async (t) => {
@@ -252,6 +312,9 @@ test("Codex native model, reasoning, and Fast Mode controls are model-aware and 
 		serviceTier: null,
 		summary: null,
 		personality: null,
+		approvalPolicy: "on-request",
+		sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
+		collaborationMode: null,
 	});
 	const resumedBinding = first.getBinding();
 	assert.equal(resumedBinding.metadata.codexNativeModelId, "gpt-5.2");

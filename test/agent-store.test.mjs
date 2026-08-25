@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createCustomAgentProfileDefinition } from "../dist/apps/chat/agent-profiles.js";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
+import { normalizeAgentSubagents } from "../dist/apps/chat/chat-request-normalizers.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 
@@ -577,7 +578,7 @@ test("custom agent store persists main and legacy subagent model overrides", () 
 	store.close();
 });
 
-test("custom agent store persists per-subagent descriptions, models, and thinking levels", () => {
+test("custom agent store persists per-subagent descriptions, models, thinking levels, and runtime overrides", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);
 	const agent = store.create({
@@ -588,6 +589,7 @@ test("custom agent store persists per-subagent descriptions, models, and thinkin
 			targetProfile: "research-profile",
 			model: { provider: "openai", id: "gpt-5.6-mini" },
 			thinkingLevel: "high",
+			runtimeOptions: { permissionMode: "yolo" },
 			maxDepth: 2,
 		}],
 	});
@@ -598,6 +600,7 @@ test("custom agent store persists per-subagent descriptions, models, and thinkin
 		targetProfile: "research-profile",
 		model: { provider: "openai", id: "gpt-5.6-mini" },
 		thinkingLevel: "high",
+		runtimeOptions: { permissionMode: "yolo" },
 		maxDepth: 2,
 	}]);
 
@@ -612,6 +615,22 @@ test("custom agent store persists per-subagent descriptions, models, and thinkin
 	assert.deepEqual(updated.subagents, [{ name: "researcher", targetProfile: "research-profile" }]);
 
 	store.close();
+});
+
+test("custom agent request normalization accepts JSON subagent runtime overrides", () => {
+	assert.deepEqual(normalizeAgentSubagents([{
+		name: " planner ",
+		targetProfile: " codex-agent ",
+		runtimeOptions: { permissionMode: "plan", nested: { enabled: true } },
+	}]), [{
+		name: "planner",
+		targetProfile: "codex-agent",
+		runtimeOptions: { permissionMode: "plan", nested: { enabled: true } },
+	}]);
+	assert.throws(
+		() => normalizeAgentSubagents([{ name: "planner", targetProfile: "codex-agent", runtimeOptions: [] }]),
+		/subagent runtimeOptions must be a JSON object/,
+	);
 });
 
 function tableColumns(db, table) {
