@@ -7,6 +7,20 @@ export class PiboRunExecutionTimeoutError extends Error {
 	}
 }
 
+export class PiboRunCancellationError extends Error {
+	constructor(message: string, options?: ErrorOptions) {
+		super(message, options);
+		this.name = "PiboRunCancellationError";
+	}
+}
+
+export class PiboRunCancelledError extends Error {
+	constructor(message = "Yielded run was cancelled.", options?: ErrorOptions) {
+		super(message, options);
+		this.name = "PiboRunCancelledError";
+	}
+}
+
 export function resolveRunTimeoutMs(toolName: string, params: unknown): number | undefined {
 	if (!params || typeof params !== "object" || Array.isArray(params)) return undefined;
 	const input = params as Record<string, unknown>;

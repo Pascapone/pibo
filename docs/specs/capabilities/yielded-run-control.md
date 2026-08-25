@@ -2,7 +2,6 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Updated:** 2026-08-23
 **Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`
 
@@ -20,6 +19,17 @@ Pibo MUST expose a session-managed run-control tool package that starts yieldabl
 
 The current implementation defines `PiboRunRegistry` in `src/runs/registry.ts`, generated `pibo_run_*` tool definitions in `src/runs/tools.ts`, runtime integration in `src/core/runtime.ts`, session-router integration in `src/core/session-router.ts`, and durable storage in `src/reliability/store.ts`.
 
+## Decision: Run-reminder turns keep the full active toolset (2026-08)
+
+This decision supersedes the earlier attempt to capability-scope run-reminder service turns. Do not reintroduce it.
+
+- **Never strip an awake agent's tools.** A run-reminder turn MUST retain the same active agent toolset as the session it serves (Bash, file tools, browser, Goal tools, subagents, `pibo_run_start`, and run-control tools). The agent must be able to write, use Bash, and manage its runs while handling a reminder.
+- **Do not cap by capability.** The previous guard that reduced run-reminder turns to only `pibo_run_status/wait/read/cancel/ack` is deprecated. It caused a hard tool-loss failure (see context-guard resume inheriting the narrowed scope) that froze sessions and dead-ended tasks. Revoking tools is not an acceptable control.
+- **Bound autonomously, do not hobble.** An autonomous wake-up is bounded by deterministic per-turn limits (max tool executions, provider rounds, total tokens, wall-clock duration, repeated identical calls) that trip a `run_reminder_limit_exceeded` abort, and by causal provenance binding that keeps the turn tied to its originating Goal run. These bounds stop runaway loops without removing legitimate tools.
+- **Security is via causal scope, not tool denial.** The legitimate risk from an auto-triggered wake-up is autonomous drift after the originating Goal ends. That is controlled by revalidating the turn against active Goal authority and by refusing to reactivate paused or terminal Goals, not by hiding the toolset.
+
+This is the standing product decision. Any future change that proposes to withhold Bash or other tools inside a reminder turn must be reviewed as a regression of this decision.
+
 The capability catalog exposes one package named `pibo-run-control`. When a profile enables it and has yieldable tools, the runtime adds `pibo_run_start`, `pibo_run_list`, `pibo_run_status`, `pibo_run_wait`, `pibo_run_read`, `pibo_run_cancel`, and `pibo_run_ack`.
 
 ## Scope
@@ -32,15 +42,13 @@ The capability catalog exposes one package named `pibo-run-control`. When a prof
 - Tracked and detached completion policies.
 - Compact service reminders for tracked runs.
 - Durable run records and interrupted-run recovery when a reliability store is attached.
-- Gateway-wide and per-controller-session concurrency admission.
-- Persistent concurrency configuration through Chat Web Settings.
 - Controller-session cleanup and router disposal behavior.
 
 ### Out of Scope
 
 - A user-facing Chat Web run management panel beyond existing trace/session output behavior.
 - Distributed execution of yielded runs in a separate worker process.
-- Guaranteed rollback of external side effects that completed before cancellation or tools that ignore cancellation.
+- Guaranteed cancellation of underlying OS processes beyond Pibo's recorded run cancellation.
 - Retrying arbitrary yieldable tools by default.
 - Changing the synchronous behavior of tools that are called directly instead of through `pibo_run_start`.
 
@@ -98,31 +106,6 @@ The parent agent receives a `runId` immediately and uses later run-control calls
 - THEN Pibo returns a run snapshot for the parent session
 - AND the wrapped tool executes without blocking the parent turn on its terminal result.
 
-### Requirement: Yielded-run concurrency is bounded per gateway and session
-
-The gateway MUST enforce both a gateway-wide yielded-run concurrency limit and a limit for each controlling Pibo Session before starting new yielded work.
-
-#### Target
-
-The default gateway limit is `50`. The default per-session limit is `10`. Operators can override the defaults with `PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS` and `PIBO_SESSION_CONCURRENT_YIELDED_RUNS`, or persist effective overrides in Chat Web under **Settings → Concurrency**.
-
-#### Acceptance
-
-- With no environment or persisted override, the gateway admits at most 50 simultaneous yielded runs.
-- One controlling Pibo Session admits at most 10 simultaneous yielded runs by default.
-- A session at its limit does not prevent another session from using remaining gateway capacity.
-- Lowering a limit does not cancel active runs; it blocks new admission until active counts fall below the new limit.
-- Settings changes persist under Pibo Home and apply to new admission attempts without a gateway restart.
-- Persisted Web settings take precedence over environment fallbacks.
-
-#### Scenario: Orchestrator reaches its session limit
-
-- GIVEN one Pibo Session controls 10 active yielded runs
-- AND the gateway still has unused capacity
-- WHEN that session starts another yielded run
-- THEN Pibo rejects the new run with the configured session limit
-- AND a different session can still start a yielded run.
-
 ### Requirement: Run access is scoped to the owning Pibo Session
 
 The system MUST allow only the run controller Pibo Session to inspect, read, acknowledge, wait for, or cancel a run through the run-control controller.
@@ -176,6 +159,33 @@ The model sees enough information to decide whether to wait, read, cancel, ackno
 - WHEN the wrapped tool completes
 - THEN Pibo emits a new completed reminder
 - AND the reminder instructs the agent to call `pibo_run_read` for the result.
+
+### Requirement: Run-reminder turns retain the full active toolset
+
+A run-reminder service turn MUST run with the same active agent toolset as the session it serves. It MUST be able to write files, use Bash, invoke browser/MCP tools, subagents, Goal tools, and start runs while handling a reminder.
+
+#### Current
+
+An earlier guard narrowed reminder turns to the five run-management tools (`pibo_run_status/wait/read/cancel/ack`). This caused a hard tool-loss failure after context-guard resume and is being removed.
+
+#### Target
+
+Reminders keep the full toolset and are instead bounded by deterministic per-turn limits (max tool executions, provider rounds, total tokens, duration, repeated identical calls) that abort with `run_reminder_limit_exceeded`, and by causal provenance that revalidates the turn against active Goal authority.
+
+#### Acceptance
+
+- A run-reminder turn exposes the same tools as the owning session (including Bash and write tools).
+- Reminder turns are never capability-scoped; the toolset is not narrowed.
+- An out-of-control reminder turn stops via `run_reminder_limit_exceeded`, not by having its tools removed.
+- A run reminder whose originating Goal is no longer active cannot resume the old objective.
+- No reminder turn can create new runs purely from a `<pibo_run_notification>` without causal authority.
+
+#### Scenario: Agent keeps Bash while acknowledging a reminder
+
+- GIVEN a tracked run has completed
+- WHEN the run-reminder turn processes the notification
+- THEN the turn can still call `bash`, `pibo_run_read`, and write tools
+- AND the turn reaches a bounded terminal state without losing its toolset.
 
 ### Requirement: Detached runs are inspectable but do not remind
 
@@ -272,29 +282,25 @@ Large or sensitive terminal output is pulled only when the agent asks for it, wh
 - THEN the response contains that text
 - AND later notifications no longer include that run.
 
-### Requirement: Cancellation stops cancellable execution before reporting success
+### Requirement: Cancellation records terminal state and suppresses reminders
 
-`pibo_run_cancel` MUST mark a non-terminal run cancelled, consume it for reminder purposes, propagate cancellation to the active yieldable tool, stop an isolated Bash process tree, and unblock waiters.
+`pibo_run_cancel` MUST mark a non-terminal run cancelled, consume it for reminder purposes, and unblock any waiters.
 
 #### Current
 
-`PiboRunRegistry.cancel()` records terminal state while the run controller invokes the cancellation handler captured by `pibo_run_start`. The handler aborts the active tool signal, terminates any dedicated systemd unit, and waits a bounded interval for execution settlement before returning.
+`PiboRunRegistry.cancel()` changes non-terminal status to `cancelled`, completes timestamps, marks the run consumed, persists the update, and resolves waiters. Router controller cleanup calls `cancelControllerRuns()`.
 
 #### Target
 
-A successful cancellation response means Pibo has stopped cancellable execution and released its gateway work admission, not merely changed the stored run status.
+Cancellation gives the agent a consistent terminal state even when the underlying yieldable tool cannot be forcibly stopped.
 
 #### Acceptance
 
 - Cancelling a running run returns status `cancelled`.
 - The cancelled run is marked consumed.
-- The active yieldable tool receives an aborted signal.
-- An isolated Bash run's complete systemd control group is inactive before successful cancellation returns.
-- Gateway work admission is released before a replacement yielded run is started.
 - Waiters on the run resolve with `timedOut: false` and status `cancelled`.
 - Cancelling a terminal run leaves it terminal and consumed.
-- Cancellation fails explicitly if execution does not settle within the bounded cleanup interval.
-- Disposing or killing a controller session cancels that controller's non-terminal runs.
+- Disposing or killing an controller session cancels that controller's non-terminal runs.
 
 #### Scenario: Controller session is disposed
 
@@ -362,12 +368,12 @@ Run state stays small without losing unread tracked results.
 - A stale queued reminder can exist after the agent reads a run; router cleanup MUST remove queued service reminders that no longer describe pending run state.
 - A session may own both tracked and detached runs; default list output MUST hide detached runs while keeping tracked work visible.
 - Multiple runs can complete close together; reminders MAY coalesce them into one compact service message grouped by status.
-- A tool that ignores its abort signal may not settle; cancellation reports a bounded cleanup failure instead of falsely claiming complete process termination. External side effects that completed before cancellation are not rolled back.
+- Cancelling a run does not guarantee the underlying external side effect stopped immediately; the Pibo record still becomes terminal from the agent's point of view.
 
 ## Constraints
 
 - **Product Boundary:** Pibo owns run ids, lifecycle state, notifications, stewardship, and durable records. Pi tools remain the execution payload.
-- **Security / Privacy:** Agent-facing run-control operations MUST be scoped by owning Pibo Session id.
+- **Security / Privacy:** Agent-facing run-control operations MUST be scoped by owning Pibo Session id. Run-reminder turns MUST keep the owner's full toolset; security comes from causal Goal binding and per-turn bounds, never from withholding Bash or other tools.
 - **Compatibility:** Direct tool calls remain synchronous. Run control wraps tools only when `pibo_run_start` is used.
 - **Context Economy:** Automatic reminders MUST stay compact and MUST NOT include full terminal output.
 - **Reliability:** Store-backed recovery MUST prefer marking arbitrary interrupted runs failed over retrying unsafe side effects.
@@ -383,7 +389,6 @@ Run state stays small without losing unread tracked results.
 - [ ] SC-007: Store-backed interrupted non-retryable runs recover as failed rather than staying running forever.
 - [ ] SC-008: Pruning removes only detached terminal runs or consumed tracked terminal runs after their TTLs.
 - [ ] SC-009: Configured execution timeouts persist at start, terminate as `timed_out`, preserve startup-versus-lifetime classification, and warn for finite foreground service runs.
-- [ ] SC-010: Successful cancellation aborts the active tool, terminates isolated Bash process groups, and releases admission before returning.
 
 ## Assumptions and Open Questions
 
@@ -395,6 +400,7 @@ Run state stays small without losing unread tracked results.
 
 ### Open Questions
 
+- Should future cancellation propagate AbortSignal or process-level termination consistently to every yieldable tool?
 - Should run-control expose per-tool retry declarations instead of the current conservative default?
 - Should Chat Web show a dedicated yielded-run panel for humans, separate from trace nodes and service messages?
 - Should terminal result retention be configurable per profile or per run?
@@ -407,13 +413,14 @@ Run state stays small without losing unread tracked results.
 | REQ-002 Starting a yielded run returns an managed run id | Start a background subagent or shell task | `src/runs/tools.ts`, `src/core/session-router.ts`, `src/runs/registry.ts` | Implemented |
 | REQ-003 Run access is scoped to the owning Pibo Session | Child cannot read parent run | `src/runs/registry.ts`, `src/core/session-router.ts` | Implemented |
 | REQ-004 Tracked runs create compact reminders until handled | Tracked run completes after initial notification | `src/runs/registry.ts`, `src/core/session-router.ts`, `src/shared/trace-engine.ts` | Implemented |
+| REQ-004b Run-reminder turns retain the full active toolset | Agent keeps Bash while acknowledging a reminder | `src/core/session-router.ts`, `src/agent-runtime/routed-session.ts` | In implementation |
 | REQ-005 Detached runs are inspectable but do not remind | Fire-and-forget background work | `src/runs/registry.ts`, `src/runs/tools.ts` | Implemented |
 | REQ-006 Waiting is bounded and timeout is normal | Long command is still running | `src/runs/registry.ts`, `src/runs/tools.ts` | Implemented |
 | REQ-007 Terminal results are read explicitly | Read completed result | `src/runs/registry.ts`, `src/runs/tools.ts` | Implemented |
-| REQ-008 Cancellation stops cancellable execution before reporting success | Controller session is disposed | `src/runs/tools.ts`, `src/runs/resource-isolation.ts`, `src/runs/registry.ts`, `src/core/session-router.ts` | Implemented |
+| REQ-008 Cancellation records terminal state and suppresses reminders | Controller session is disposed | `src/runs/registry.ts`, `src/core/session-router.ts` | Implemented |
 | REQ-009 Durable stores recover interrupted runs conservatively | Gateway process dies during a background run | `src/reliability/store.ts`, `src/runs/registry.ts` | Implemented |
 | REQ-010 Terminal run records are pruned after policy-specific TTLs | Unread completed run remains available | `src/runs/registry.ts`, `src/reliability/store.ts` | Implemented |
 
 ## Verification Basis
 
-Current behavior is covered or illustrated by `test/runs.test.mjs`, `test/subagents.test.mjs`, `test/codex-compat.test.mjs`, `test/debug-cli.test.mjs`, `test/session-router-store.test.mjs`, and `test/web-channel.test.mjs`.
+Current behavior is covered or illustrated by `test/runs.test.mjs`, `test/subagents.test.mjs`, `test/codex-compat.test.mjs`, `test/debug-cli.test.mjs`, `test/session-router-store.test.mjs`, and `test/web-channel.test.mjs`. Reminder toolset and run-reminder bound coverage lives in `test/session-quiescence.test.mjs` and `test/loop-turn-provenance.test.mjs`.

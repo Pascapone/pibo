@@ -20,6 +20,7 @@ import type {
 	PiboJsonObject,
 	PiboInputEvent,
 	PiboMessageEvent,
+	PiboMessageProvenance,
 	PiboOutputEvent,
 	PiboSessionOperationResult,
 	PiboSessionStatus,
@@ -42,7 +43,7 @@ import {
 	piboAgentObservationText,
 } from "../subagents/observations.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
-import { PiboRunExecutionTimeoutError } from "../runs/lifecycle.js";
+import { PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError } from "../runs/lifecycle.js";
 import { PiboRunResourceLimitError } from "../runs/resource-isolation.js";
 import { createPiboSignalRegistry } from "../signals/registry.js";
 import type { PiboSignalPatch, PiboSignalRegistry, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
@@ -292,7 +293,29 @@ function formatRunReminderMessage(notification: PiboRunNotification): string {
 }
 
 function isRunReminderServiceMessage(event: PiboMessageEvent): boolean {
-	return event.source === "service" && event.capabilityScope === "run-reminder";
+	return event.source === "service" && event.text.startsWith("<pibo_run_notification>");
+}
+
+function yieldedRunOrigin(event: Pick<PiboMessageEvent, "id" | "provenance"> | undefined) {
+	if (!event?.id || event.provenance?.kind !== "loop-run") return undefined;
+	return {
+		eventId: event.provenance.rootEventId ?? event.id,
+		provenance: {
+			kind: event.provenance.kind,
+			jobId: event.provenance.jobId,
+			runId: event.provenance.runId,
+		} satisfies PiboMessageProvenance,
+	};
+}
+
+function runReminderProvenance(notification: PiboRunNotification): PiboMessageProvenance | undefined {
+	const origin = notification.origin;
+	if (!origin || origin.provenance.kind !== "loop-run") return undefined;
+	return {
+		...origin.provenance,
+		cause: "run-reminder",
+		rootEventId: origin.eventId,
+	};
 }
 
 function isTerminalRunStatus(status: string): boolean {
@@ -364,6 +387,15 @@ type StoredAgentObservation = PiboAgentObservation & {
 	managingParentId: string;
 };
 
+type ActiveSubagentRequestSettlement =
+	| { status: "fulfilled" }
+	| { status: "rejected"; reason: unknown };
+
+type ActiveSubagentRequest = {
+	abortController: AbortController;
+	settled: Promise<ActiveSubagentRequestSettlement>;
+};
+
 class PiboSessionDisposalTimeoutError extends Error {
 	constructor(readonly piboSessionId: string, readonly timeoutMs: number) {
 		super(`Timed out disposing Pibo session "${piboSessionId}" after ${timeoutMs}ms`);
@@ -403,7 +435,7 @@ export class PiboSessionRouter {
 	private readonly portableHistoryProvider?: AgentRuntimePortableHistoryProvider;
 	private readonly runtimeResourceSessions = new Map<string, PiboRuntimeResourceSession>();
 	private readonly runtimeAuthFingerprints = new Map<string, string>();
-	private readonly activeSubagentChildren = new Map<string, Map<string, number>>();
+	private readonly activeSubagentRequests = new Map<string, Set<ActiveSubagentRequest>>();
 	private readonly agentObservations: StoredAgentObservation[] = [];
 	private readonly agentObservationEvictedThroughByParent = new Map<string, number>();
 	private nextAgentObservationSequence = 1;
@@ -553,11 +585,21 @@ export class PiboSessionRouter {
 				return output;
 			}
 
-			const childAbort = event.action === "abort"
-				? this.abortActiveSubagentSessions(event.piboSessionId)
-				: undefined;
-			const output = await session.executeAction(event);
-			await childAbort;
+			let output: PiboOutputEvent;
+			if (event.action === "abort") {
+				const [sessionAbort, childAbort] = await Promise.allSettled([
+					session.executeAction(event),
+					this.abortActiveSubagentSessions(event.piboSessionId),
+				]);
+				if (sessionAbort.status === "rejected" && childAbort.status === "rejected") {
+					throw new AggregateError([sessionAbort.reason, childAbort.reason], "Failed to abort the session and its active subagent requests.");
+				}
+				if (sessionAbort.status === "rejected") throw sessionAbort.reason;
+				if (childAbort.status === "rejected") throw childAbort.reason;
+				output = sessionAbort.value;
+			} else {
+				output = await session.executeAction(event);
+			}
 			if (event.action === "kill" || event.action === "kill_all") {
 				await this.disposeSessionSubtree(event.piboSessionId, `${event.action} action`, { cancelRuns: event.action === "kill_all" });
 				teardownCompleted = true;
@@ -1028,31 +1070,40 @@ export class PiboSessionRouter {
 
 		return await new Promise<PiboAssistantMessageEvent>((resolve, reject) => {
 			let settled = false;
-			let messageDispatched = false;
+			let dispatchPromise: Promise<PiboOutputEvent> | undefined;
 			let lastAssistantMessage: PiboAssistantMessageEvent | undefined;
 			let timeout: NodeJS.Timeout | undefined;
-			const abortChild = () => {
-				if (!messageDispatched) return;
-				void this.emit({
-					type: "execution",
-					piboSessionId: eventWithId.piboSessionId,
-					action: "abort",
-					id: randomUUID(),
-				}).catch(() => {});
-			};
-			const finish = (result: PiboAssistantMessageEvent | Error): boolean => {
+			const claimSettlement = (): boolean => {
 				if (settled) return false;
 				settled = true;
 				if (timeout) clearTimeout(timeout);
 				signal?.removeEventListener("abort", onAbort);
 				unsubscribe();
-				if (result instanceof Error) reject(result);
-				else resolve(result);
 				return true;
 			};
+			const finish = (result: PiboAssistantMessageEvent | Error): void => {
+				if (!claimSettlement()) return;
+				if (result instanceof Error) reject(result);
+				else resolve(result);
+			};
+			const rejectAfterMessageCancellation = (error: Error): void => {
+				if (!claimSettlement()) return;
+				void (async () => {
+					try {
+						await dispatchPromise;
+						await this.cancelSessionMessage(eventWithId.piboSessionId, eventWithId.id!);
+					} catch (cancellationError) {
+						reject(new PiboRunCancellationError(
+							`Failed to cancel subagent request "${eventWithId.id}" in Pibo session "${eventWithId.piboSessionId}".`,
+							{ cause: cancellationError },
+						));
+						return;
+					}
+					reject(error);
+				})();
+			};
 			const onAbort = () => {
-				if (!finish(subagentAbortError())) return;
-				abortChild();
+				rejectAfterMessageCancellation(subagentAbortError());
 			};
 			const unsubscribe = this.subscribe((output) => {
 				if (
@@ -1072,19 +1123,29 @@ export class PiboSessionRouter {
 			});
 
 			if (signal?.aborted) {
-				onAbort();
+				finish(subagentAbortError());
 				return;
 			}
 			signal?.addEventListener("abort", onAbort, { once: true });
 			timeout = setTimeout(() => {
-				const timeoutError = new Error(`Timed out waiting for assistant reply from Pibo session "${eventWithId.piboSessionId}"`);
-				if (!finish(timeoutError)) return;
-				abortChild();
+				rejectAfterMessageCancellation(new PiboRunExecutionTimeoutError(
+					`Timed out waiting for assistant reply from Pibo session "${eventWithId.piboSessionId}"`,
+					"lifetime",
+				));
 			}, timeoutMs);
 
-			messageDispatched = true;
-			this.emit(eventWithId).catch(finish);
+			dispatchPromise = this.emit(eventWithId);
+			dispatchPromise.catch((error) => {
+				finish(error instanceof Error ? error : new Error(String(error)));
+			});
 		});
+	}
+
+	private async cancelSessionMessage(piboSessionId: string, eventId: string): Promise<void> {
+		const session = this.sessions.get(piboSessionId);
+		if (!session || !await session.cancelMessage(eventId)) {
+			throw new Error(`Pibo session "${piboSessionId}" no longer owns message "${eventId}".`);
+		}
 	}
 
 	async disposeAll(): Promise<void> {
@@ -1131,7 +1192,7 @@ export class PiboSessionRouter {
 			await this.portableToolService.dispose();
 			await this.runtimeResourceService.dispose();
 			this.runtimeResourceSessions.clear();
-			this.activeSubagentChildren.clear();
+			this.activeSubagentRequests.clear();
 			this.agentObservations.length = 0;
 			this.agentObservationEvictedThroughByParent.clear();
 			await this.telemetryWriter?.dispose();
@@ -1775,40 +1836,36 @@ export class PiboSessionRouter {
 		return created;
 	}
 
-	private trackActiveSubagent(parentPiboSessionId: string, childPiboSessionId: string): () => void {
-		let children = this.activeSubagentChildren.get(parentPiboSessionId);
-		if (!children) {
-			children = new Map();
-			this.activeSubagentChildren.set(parentPiboSessionId, children);
+	private trackActiveSubagent(parentPiboSessionId: string, request: ActiveSubagentRequest): () => void {
+		let requests = this.activeSubagentRequests.get(parentPiboSessionId);
+		if (!requests) {
+			requests = new Set();
+			this.activeSubagentRequests.set(parentPiboSessionId, requests);
 		}
-		children.set(childPiboSessionId, (children.get(childPiboSessionId) ?? 0) + 1);
+		requests.add(request);
 		let active = true;
 		return () => {
 			if (!active) return;
 			active = false;
-			const current = this.activeSubagentChildren.get(parentPiboSessionId);
+			const current = this.activeSubagentRequests.get(parentPiboSessionId);
 			if (!current) return;
-			const remaining = (current.get(childPiboSessionId) ?? 1) - 1;
-			if (remaining > 0) current.set(childPiboSessionId, remaining);
-			else current.delete(childPiboSessionId);
-			if (current.size === 0) this.activeSubagentChildren.delete(parentPiboSessionId);
+			current.delete(request);
+			if (current.size === 0) this.activeSubagentRequests.delete(parentPiboSessionId);
 		};
 	}
 
 	private async abortActiveSubagentSessions(parentPiboSessionId: string): Promise<void> {
-		const childIds = [...(this.activeSubagentChildren.get(parentPiboSessionId)?.keys() ?? [])];
-		if (childIds.length === 0) return;
-		await Promise.allSettled(childIds.map(async (childPiboSessionId) => await this.emit({
-			type: "execution",
-			piboSessionId: childPiboSessionId,
-			action: "abort",
-			id: randomUUID(),
-		})));
+		const requests = [...(this.activeSubagentRequests.get(parentPiboSessionId) ?? [])];
+		for (const request of requests) request.abortController.abort();
+		const settlements = await Promise.all(requests.map(async (request) => await request.settled));
+		const failures = settlements.flatMap((settlement) => settlement.status === "rejected" ? [settlement.reason] : []);
+		if (failures.length > 0) throw new AggregateError(failures, "Failed to cancel active subagent requests.");
 	}
 
 	private createAgentsController(parentPiboSessionId: string): PiboAgentsController {
 		return {
 			sendMessage: async ({ subagent, message, threadKey, toolCallId, signal }) => {
+				if (signal?.aborted) throw subagentAbortError();
 				this.assertSubagentDepth(parentPiboSessionId, subagent);
 				const child = this.resolveSubagentSession(parentPiboSessionId, subagent, threadKey);
 				const resolvedThreadKey = typeof child.metadata?.threadKey === "string" ? child.metadata.threadKey : "";
@@ -1830,12 +1887,24 @@ export class PiboSessionRouter {
 					threadKey: resolvedThreadKey,
 				});
 
-				const untrack = this.trackActiveSubagent(parentPiboSessionId, child.id);
+				const parentAbortController = new AbortController();
+				const requestSignal = signal
+					? AbortSignal.any([signal, parentAbortController.signal])
+					: parentAbortController.signal;
+				let resolveSettled: ((settlement: ActiveSubagentRequestSettlement) => void) | undefined;
+				const settled = new Promise<ActiveSubagentRequestSettlement>((resolve) => {
+					resolveSettled = resolve;
+				});
+				const untrack = this.trackActiveSubagent(parentPiboSessionId, {
+					abortController: parentAbortController,
+					settled,
+				});
+				let settlement: ActiveSubagentRequestSettlement = { status: "fulfilled" };
 				try {
 					const reply = await this.emitMessageAndWaitForReply(
 						event,
 						subagent.timeoutMs ?? DEFAULT_SUBAGENT_REPLY_TIMEOUT_MS,
-						signal,
+						requestSignal,
 					);
 					return {
 						agentId: child.id,
@@ -1845,8 +1914,15 @@ export class PiboSessionRouter {
 						eventId: event.id!,
 						reply,
 					};
+				} catch (error) {
+					const confirmedParentCancellation = parentAbortController.signal.aborted
+						&& error instanceof Error
+						&& error.name === "AbortError";
+					if (!confirmedParentCancellation) settlement = { status: "rejected", reason: error };
+					throw error;
 				} finally {
 					untrack();
+					resolveSettled?.(settlement);
 				}
 			},
 			listAgents: () => this.listManagedAgents(parentPiboSessionId),
@@ -1978,8 +2054,8 @@ export class PiboSessionRouter {
 		const results = await Promise.allSettled(runs.map(async (run) => {
 			const cancel = this.runCancellationHandlers.get(run.runId);
 			if (!cancel) return;
-			this.runCancellationHandlers.delete(run.runId);
 			await cancel();
+			if (this.runCancellationHandlers.get(run.runId) === cancel) this.runCancellationHandlers.delete(run.runId);
 		}));
 		const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
 		if (failures.length > 0) throw new AggregateError(failures, "Failed to terminate cancelled yielded runs.");
@@ -2006,12 +2082,32 @@ export class PiboSessionRouter {
 						timeoutMs,
 						serviceWarning,
 						resources,
+						origin: yieldedRunOrigin(this.sessions.get(parentPiboSessionId)?.getActiveMessage?.()),
 					});
 				} catch (error) {
 					admission.release();
 					throw error;
 				}
-				if (cancel) this.runCancellationHandlers.set(run.runId, cancel);
+				const cancellation: {
+					state: "none" | "pending" | "confirmed" | "failed";
+					decision?: Promise<void>;
+				} = { state: "none" };
+				if (cancel) {
+					this.runCancellationHandlers.set(run.runId, async () => {
+						cancellation.state = "pending";
+						let resolveDecision: (() => void) | undefined;
+						cancellation.decision = new Promise<void>((resolve) => { resolveDecision = resolve; });
+						try {
+							await cancel();
+							cancellation.state = "confirmed";
+						} catch (error) {
+							cancellation.state = "failed";
+							throw error;
+						} finally {
+							resolveDecision?.();
+						}
+					});
+				}
 
 				void (async () => {
 					try {
@@ -2020,6 +2116,10 @@ export class PiboSessionRouter {
 						const completed = this.runRegistry.complete(run.runId, result);
 						if (completed) this.handleTerminalRunReminder(parentPiboSessionId, completed.runId, reminderGeneration);
 					} catch (error) {
+						if (error instanceof PiboRunCancelledError) {
+							if (cancellation.state === "pending") await cancellation.decision;
+							if (cancellation.state === "confirmed") return;
+						}
 						const message = error instanceof Error ? error.message : String(error);
 						if (resources) this.runRegistry.updateResources(run.runId, resources);
 						const terminalRun = error instanceof PiboRunExecutionTimeoutError
@@ -2045,13 +2145,13 @@ export class PiboSessionRouter {
 				return run;
 			},
 			cancelRun: async (runId) => {
-				const cancelled = this.runRegistry.cancel(parentPiboSessionId, runId);
+				const current = this.runRegistry.status(parentPiboSessionId, runId);
 				try {
-					await this.invokeRunCancellationHandlers([cancelled]);
+					if (!isTerminalRunStatus(current.status)) await this.invokeRunCancellationHandlers([current]);
+					return this.runRegistry.cancel(parentPiboSessionId, runId);
 				} finally {
 					this.refreshQueuedRunReminders(parentPiboSessionId);
 				}
-				return cancelled;
 			},
 			ackRun: (runId) => {
 				const run = this.runRegistry.ack(parentPiboSessionId, runId);
@@ -2286,8 +2386,8 @@ export class PiboSessionRouter {
 				piboSessionId,
 				text: formatRunReminderMessage(notification),
 				source: "service",
-				capabilityScope: "run-reminder",
 				id: randomUUID(),
+				provenance: runReminderProvenance(notification),
 			});
 		} catch (error) {
 			if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
