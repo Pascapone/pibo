@@ -3,6 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/capabilities.js";
+import { RuntimeRoutedSession } from "../dist/agent-runtime/routed-session.js";
+import { semanticEventFromPibo } from "../dist/agent-runtimes/pi/adapter.js";
+import { normalizeAssistantUsageEvent } from "../dist/agent-runtimes/pi/routed-session.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
@@ -273,6 +277,207 @@ test("Goal session metadata is repaired so it cannot reference removed jobs or r
 	try {
 		service.start();
 		assert.deepEqual(sessions.get("ps_goal").metadata, { loopMode: "goal", keep: "value" });
+	} finally {
+		service.stop();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("runtime-routed child and grandchild usage preserve Loop provenance into recursive accounting", async () => {
+	const store = new PiboLoopStore({ path: ":memory:" });
+	const listeners = new Set();
+	const sessions = new Map([
+		["ps_controller", { id: "ps_controller", kind: "loop" }],
+		["ps_child", { id: "ps_child", kind: "subagent", parentId: "ps_controller" }],
+		["ps_grandchild", { id: "ps_grandchild", kind: "subagent", parentId: "ps_child" }],
+	]);
+	const context = {
+		async emit(event) { return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} }; },
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		getSession(id) { return sessions.get(id); },
+		createSession() { throw new Error("not used"); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+		getWebApps() { return []; },
+	};
+	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-runtime-provenance-"));
+	const service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), intervalMs: 60_000 });
+	const routed = [];
+	try {
+		const job = store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "Recursive", initialPiboSessionId: "ps_controller" });
+		const run = store.reserveRun(job.id).run;
+		store.attachRunSession(job.id, run.id, "ps_controller");
+		store.attachRunMessage(job.id, run.id, "loop_msg_runtime_provenance");
+		service.start();
+
+		const createUsageRuntime = (piboSessionId, usageEvent) => {
+			const runtimeListeners = new Set();
+			return {
+				adapterId: "usage-fixture",
+				runtimeInstanceId: "usage-fixture",
+				cwd: dir,
+				capabilities: createMinimalAgentRuntimeCapabilities(),
+				getBinding() { return { piboSessionId, runtimeInstanceId: "usage-fixture", adapterId: "usage-fixture", state: "bound" }; },
+				subscribe(listener) { runtimeListeners.add(listener); return () => runtimeListeners.delete(listener); },
+				async prompt() { for (const listener of runtimeListeners) listener(usageEvent); },
+				async abort() {},
+				async dispose() { runtimeListeners.clear(); },
+				getStatus() { return { streaming: false, enabledTools: [], cwd: dir }; },
+			};
+		};
+		const emit = (event) => { for (const listener of listeners) listener(event); };
+		const normalizedPiUsage = normalizeAssistantUsageEvent("ps_child", {
+			usage: {
+				input: 20,
+				output: 7,
+				cacheRead: 200,
+				cacheWrite: 4,
+				reasoning: 3,
+				totalTokens: 234,
+				cost: { total: 0.34 },
+			},
+		});
+		const semanticPiUsage = semanticEventFromPibo(normalizedPiUsage);
+		assert.equal(semanticPiUsage.type, "usage");
+		const child = new RuntimeRoutedSession("ps_child", createUsageRuntime("ps_child", semanticPiUsage), emit, new PiboPluginRegistry());
+		const grandchild = new RuntimeRoutedSession("ps_grandchild", createUsageRuntime("ps_grandchild", {
+			type: "usage",
+			usage: {
+				inputTokens: 5,
+				outputTokens: 2,
+				cacheReadTokens: 50,
+				cacheWriteTokens: 1,
+				reasoningTokens: 1,
+				totalTokens: 59,
+				costUsd: 0.08,
+			},
+		}), emit, new PiboPluginRegistry());
+		routed.push(child, grandchild);
+		child.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_child",
+			id: "child_request",
+			text: "child work",
+			source: "actor",
+			provenance: { kind: "subagent-request", requestId: "run_child", controllerPiboSessionId: "ps_controller", loopJobId: job.id, loopRunId: run.id },
+		});
+		grandchild.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_grandchild",
+			id: "grandchild_request",
+			text: "grandchild work",
+			source: "actor",
+			provenance: { kind: "subagent-request", requestId: "run_grandchild", controllerPiboSessionId: "ps_child", loopJobId: job.id, loopRunId: run.id },
+		});
+		await waitFor(() => store.getJob(job.id)?.state.usage?.total.assistantTurns === 2);
+		const usage = store.getJob(job.id).state.usage;
+		assert.equal(usage.controller.assistantTurns, 0);
+		assert.equal(usage.descendants.assistantTurns, 2);
+		assert.equal(usage.descendants.reasoningTokens, 4);
+		assert.equal(usage.descendants.totalTokens, 293);
+		assert.ok(Math.abs(usage.descendants.costUsd - 0.42) < 1e-9);
+		assert.deepEqual(usage.sessionIds, ["ps_child", "ps_grandchild"]);
+		assert.deepEqual(store.getRun(run.id).accounting.usage, usage);
+	} finally {
+		service.stop();
+		await Promise.all(routed.map((session) => session.dispose()));
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("recursive Goal accounting follows subagent request provenance", async () => {
+	const store = new PiboLoopStore({ path: ":memory:" });
+	const listeners = new Set();
+	const sessions = new Map([
+		["ps_controller", { id: "ps_controller", kind: "loop" }],
+		["ps_child", { id: "ps_child", kind: "subagent", parentId: "ps_controller" }],
+		["ps_foreign", { id: "ps_foreign", kind: "chat" }],
+	]);
+	const context = {
+		async emit(event) { return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} }; },
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		getSession(id) { return sessions.get(id); },
+		createSession() { throw new Error("not used"); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+		getWebApps() { return []; },
+	};
+	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-recursive-usage-"));
+	const service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), intervalMs: 60_000 });
+	try {
+		const job = store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "Recursive", initialPiboSessionId: "ps_controller" });
+		const run = store.reserveRun(job.id).run;
+		store.attachRunSession(job.id, run.id, "ps_controller");
+		store.attachRunMessage(job.id, run.id, "loop_msg_recursive");
+		service.start();
+
+		for (const listener of listeners) listener({
+			type: "assistant_usage",
+			piboSessionId: "ps_controller",
+			eventId: "loop_msg_recursive",
+			inputTokens: 10,
+			outputTokens: 5,
+			cacheReadTokens: 100,
+			cacheWriteTokens: 3,
+			reasoningTokens: 2,
+			totalTokens: 118,
+			costUsd: 0.12,
+			provenance: { kind: "loop-run", jobId: job.id, runId: run.id },
+		});
+		for (const listener of listeners) listener({
+			type: "assistant_usage",
+			piboSessionId: "ps_child",
+			inputTokens: 20,
+			outputTokens: 7,
+			cacheReadTokens: 200,
+			cacheWriteTokens: 4,
+			reasoningTokens: 3,
+			totalTokens: 231,
+			costUsd: 0.34,
+			provenance: {
+				kind: "subagent-request",
+				requestId: "run_child_request",
+				controllerPiboSessionId: "ps_controller",
+				loopJobId: job.id,
+				loopRunId: run.id,
+			},
+		});
+		for (const listener of listeners) listener({
+			type: "assistant_usage",
+			piboSessionId: "ps_foreign",
+			eventId: "forged_child_usage",
+			totalTokens: 999,
+			costUsd: 9.99,
+			provenance: {
+				kind: "subagent-request",
+				requestId: "run_forged",
+				controllerPiboSessionId: "ps_controller",
+				loopJobId: job.id,
+				loopRunId: run.id,
+			},
+		});
+
+		const savedJob = store.getJob(job.id);
+		const savedRun = store.getRun(run.id);
+		assert.equal(savedJob.state.tokensUsed, 42);
+		assert.deepEqual(savedJob.state.usage.controller, {
+			inputTokens: 10,
+			outputTokens: 5,
+			cacheReadTokens: 100,
+			cacheWriteTokens: 3,
+			reasoningTokens: 2,
+			totalTokens: 118,
+			costUsd: 0.12,
+			costReportedTurns: 1,
+			assistantTurns: 1,
+		});
+		assert.equal(savedJob.state.usage.descendants.totalTokens, 231);
+		assert.equal(savedJob.state.usage.descendants.costUsd, 0.34);
+		assert.equal(savedJob.state.usage.total.totalTokens, 349);
+		assert.equal(savedJob.state.usage.total.cacheReadTokens, 300);
+		assert.equal(savedJob.state.usage.total.costUsd, 0.46);
+		assert.deepEqual(savedJob.state.usage.sessionIds, ["ps_controller", "ps_child"]);
+		assert.deepEqual(savedRun.accounting.usage, savedJob.state.usage);
 	} finally {
 		service.stop();
 		await rm(dir, { recursive: true, force: true });

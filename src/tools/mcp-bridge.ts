@@ -262,10 +262,12 @@ async function piboResultToMcp(
 		previewBytes: number;
 	},
 ): Promise<CallToolResult> {
-	const converted = await convertContent(result.content, options);
+	const preserveCompleteRunRead = options.tool.name === "pibo_run_read";
+	const conversionOptions = preserveCompleteRunRead ? { ...options, writer: undefined } : options;
+	const converted = await convertContent(result.content, conversionOptions);
 	const payloadRefs = [...new Set([...(result.payloadRefs ?? []), ...converted.payloadRefs])];
 	let structuredContent = result.structuredContent ?? toJsonValue(result.details);
-	if (structuredContent !== undefined && options.writer) {
+	if (structuredContent !== undefined && options.writer && !preserveCompleteRunRead) {
 		const encoded = JSON.stringify(structuredContent);
 		if (Buffer.byteLength(encoded, "utf8") > options.threshold) {
 			const stored = await storeLargeContent({

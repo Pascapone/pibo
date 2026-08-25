@@ -190,6 +190,7 @@ export function createRuntimeToolDefinition(controller: PiboRuntimeToolControlle
 				content: [{ type: "text", text: formatRuntimeResult(result) }],
 				details: result,
 				isError: isErrorStatus(status),
+				...(status === "timeout" ? { metadata: { piboTerminalStatus: "timed_out", piboTimeoutPhase: "startup" } } : {}),
 			};
 		},
 	});

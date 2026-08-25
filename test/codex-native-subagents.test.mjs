@@ -86,7 +86,7 @@ function createRegistry(root, registerProfiles, childDriver) {
 	});
 }
 
-test("Codex native invokes direct and yielded Pibo subagents through scoped MCP on a different runtime", async (t) => {
+test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a different runtime", async (t) => {
 	const root = await fixtureRoot("pibo-codex-subagent-parent-");
 	const workspace = join(root, "workspace");
 	const childDriver = createFakeAgentRuntimeDriver({
@@ -150,19 +150,27 @@ test("Codex native invokes direct and yielded Pibo subagents through scoped MCP 
 	});
 
 	const status = await openStatus(router, "ps_codex_subagent_parent");
-	assert.ok(status.activeTools.includes("pibo-session-tools/pibo_agents_send_message"));
+	assert.equal(status.activeTools.includes("pibo-session-tools/pibo_agents_send_message"), false);
 	assert.ok(status.activeTools.includes("pibo-session-tools/pibo_run_start"));
 	const parent = store.get("ps_codex_subagent_parent");
 	assert.equal(parent.runtimeBinding.adapterId, CODEX_NATIVE_ADAPTER_ID);
 	assert.equal(parent.runtimeBinding.state, "bound");
 	const client = router.sessions.get(parent.id).runtime;
+	const send = async (message, threadKey) => {
+		const started = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_start", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "helper", message, threadKey },
+			completionPolicy: "tracked",
+		});
+		const runId = started.structuredContent.runId;
+		const waited = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_wait", { runId, timeoutMs: 2_000 });
+		assert.equal(waited.structuredContent.status, "completed");
+		const read = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_read", { runId });
+		return { runId, read };
+	};
 
-	const first = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_send_message", {
-		name: "helper",
-		message: "first direct request",
-		threadKey: "shared",
-	});
-	assert.match(first.content[0].text, /fixture child: first direct request/);
+	const first = await send("first yielded request", "shared");
+	assert.match(first.read.content[0].text, /fixture child: first yielded request/);
 	const [firstChild] = childSessions(store, parent.id);
 	assert.ok(firstChild);
 	assert.equal(firstChild.profile, "fixture-subagent-child");
@@ -172,46 +180,34 @@ test("Codex native invokes direct and yielded Pibo subagents through scoped MCP 
 	assert.equal(firstChild.metadata.chatRoomId, "room_codex_subagents");
 	assert.equal(firstChild.metadata.workflowSessionKind, "subagent");
 
-	const second = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_send_message", {
-		name: "helper",
-		message: "second direct request",
-		threadKey: "shared",
-	});
-	assert.match(second.content[0].text, /fixture child: second direct request/);
-	assert.equal(second.structuredContent.agentId, firstChild.id);
+	const second = await send("second yielded request", "shared");
+	assert.match(second.read.content[0].text, /fixture child: second yielded request/);
+	assert.equal(second.read.structuredContent.result.details.agentId, firstChild.id);
 	assert.equal(childSessions(store, parent.id).length, 1);
 
 	const listed = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_list_agents", {});
 	assert.equal(listed.structuredContent.availableAgents[0].name, "helper");
 	assert.equal(listed.structuredContent.agents[0].agentId, firstChild.id);
 	const observed = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_observe", {
+		requestIds: [second.runId],
 		agentIds: [firstChild.id],
 		eventTypes: ["assistant_message"],
 		kinds: ["message"],
-		textContains: "SECOND DIRECT REQUEST",
+		roles: ["assistant"],
+		textContains: "SECOND YIELDED REQUEST",
 		limit: 10,
 	});
 	assert.equal(observed.structuredContent.observations.length, 1);
-	assert.match(observed.structuredContent.observations[0].text, /fixture child: second direct request/);
+	assert.equal(observed.structuredContent.observations[0].requestId, second.runId);
+	assert.match(observed.structuredContent.observations[0].text, /fixture child: second yielded request/);
 	const killed = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_kill", { agentId: firstChild.id });
 	assert.deepEqual(killed.structuredContent.killed, [firstChild.id]);
 	const afterKill = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_list_agents", {});
 	assert.equal(afterKill.structuredContent.agents[0].status, "killed");
 
-	const started = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_start", {
-		toolName: "pibo_agents_send_message",
-		arguments: { name: "helper", message: "yielded request", threadKey: "yielded" },
-		completionPolicy: "tracked",
-	});
-	const runId = started.structuredContent.runId;
-	assert.match(runId, /^run_/);
-	const waited = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_wait", {
-		runId,
-		timeoutMs: 2_000,
-	});
-	assert.equal(waited.structuredContent.status, "completed");
-	const read = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_read", { runId });
-	assert.match(read.content[0].text, /fixture child: yielded request/);
+	const afterKillSend = await send("yielded request after kill", "yielded");
+	assert.match(afterKillSend.runId, /^run_/);
+	assert.match(afterKillSend.read.content[0].text, /fixture child: yielded request after kill/);
 
 	const links = events.filter((event) => event.type === "subagent_session" && event.piboSessionId === parent.id);
 	assert.equal(links.length, 3);
@@ -220,11 +216,11 @@ test("Codex native invokes direct and yielded Pibo subagents through scoped MCP 
 	assert.deepEqual(links.map((event) => event.threadKey), ["shared", "shared", "yielded"]);
 	const childAdapter = registry.requireAgentRuntimeAdapter("fixture-child");
 	assert.equal(childAdapter.sessions.length, 2);
-	assert.deepEqual(childAdapter.sessions[0].prompts.map((prompt) => prompt.text), ["first direct request", "second direct request"]);
-	assert.deepEqual(childAdapter.sessions[1].prompts.map((prompt) => prompt.text), ["yielded request"]);
+	assert.deepEqual(childAdapter.sessions[0].prompts.map((prompt) => prompt.text), ["first yielded request", "second yielded request"]);
+	assert.deepEqual(childAdapter.sessions[1].prompts.map((prompt) => prompt.text), ["yielded request after kill"]);
 });
 
-test("a Pi parent subagent tool creates and reuses a native Codex child binding", async (t) => {
+test("a Pi parent yielded subagent request creates and reuses a native Codex child binding", async (t) => {
 	const root = await fixtureRoot("pibo-pi-codex-subagent-");
 	const workspace = join(root, "workspace");
 	const registry = createRegistry(root, (api) => {
@@ -280,18 +276,26 @@ test("a Pi parent subagent tool creates and reuses a native Codex child binding"
 	});
 
 	const status = await openStatus(router, "ps_pi_subagent_parent");
-	assert.ok(status.activeTools.includes("pibo_agents_send_message"));
+	assert.equal(status.activeTools.includes("pibo_agents_send_message"), false);
+	assert.ok(status.activeTools.includes("pibo_run_start"));
 	const parent = store.get("ps_pi_subagent_parent");
 	assert.equal(parent.runtimeBinding.adapterId, "pi");
 	const piRuntime = router.sessions.get(parent.id).runtime;
-	const tool = piRuntime.session.getToolDefinition("pibo_agents_send_message");
-	assert.ok(tool);
+	const startTool = piRuntime.session.getToolDefinition("pibo_run_start");
+	const waitTool = piRuntime.session.getToolDefinition("pibo_run_wait");
+	const readTool = piRuntime.session.getToolDefinition("pibo_run_read");
+	const send = async (toolCallId, message) => {
+		const started = await startTool.execute(toolCallId, {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "codex", message, threadKey: "shared" },
+			completionPolicy: "tracked",
+		});
+		const waited = await waitTool.execute(`${toolCallId}-wait`, { runId: started.details.runId, timeoutMs: 2_000 });
+		assert.equal(waited.details.status, "completed");
+		return await readTool.execute(`${toolCallId}-read`, { runId: started.details.runId });
+	};
 
-	const first = await tool.execute("pi-codex-tool-1", {
-		name: "codex",
-		message: "native Codex child first turn",
-		threadKey: "shared",
-	});
+	const first = await send("pi-codex-tool-1", "native Codex child first turn");
 	assert.match(first.content[0].text, /Codex answer\./);
 	const [child] = childSessions(store, parent.id);
 	assert.ok(child);
@@ -304,13 +308,9 @@ test("a Pi parent subagent tool creates and reuses a native Codex child binding"
 	assert.equal(child.metadata.chatRoomId, "room_pi_codex_subagents");
 
 	const firstNativeThread = child.runtimeBinding.nativeSessionId;
-	const second = await tool.execute("pi-codex-tool-2", {
-		name: "codex",
-		message: "native Codex child second turn",
-		threadKey: "shared",
-	});
+	const second = await send("pi-codex-tool-2", "native Codex child second turn");
 	assert.match(second.content[0].text, /Codex answer\./);
-	assert.equal(second.details.agentId, child.id);
+	assert.equal(second.details.result.details.agentId, child.id);
 	assert.equal(childSessions(store, parent.id).length, 1);
 	assert.equal(store.get(child.id).runtimeBinding.nativeSessionId, firstNativeThread);
 });

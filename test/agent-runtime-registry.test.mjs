@@ -208,6 +208,15 @@ test("MCP-delivered runtimes reject legacy private tools and explain native-tool
 	const runDiagnostics = await registry.validateAgentRuntimeProfile(runControlProfile);
 	assert.equal(runDiagnostics.some((diagnostic) => diagnostic.severity === "error"), false);
 	assert.ok(runDiagnostics.some((diagnostic) => diagnostic.code === "runtime_native_tool_yielding_unsupported"));
+
+	const delegatedProfile = new InitialSessionContextBuilder("portable-delegated-profile")
+		.withAgentRuntime("mcp-runtime")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addSubagent({ name: "worker", targetProfile: "base" })
+		.createSession();
+	const delegatedDiagnostics = await registry.validateAgentRuntimeProfile(delegatedProfile);
+	assert.ok(delegatedDiagnostics.some((diagnostic) => diagnostic.code === "runtime_delegated_agent_context_unsupported"));
 });
 
 test("runtime feature capabilities independently govern context discovery and native-subagent overrides", async () => {

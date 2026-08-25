@@ -59,6 +59,25 @@ export type PiboLoopResourceCleanupState = 'none' | 'active' | 'released' | 'ret
 export type PiboLoopTokenAccountingBasis = 'total' | 'uncached';
 export type PiboLoopTokenAccounting = { version: 1; basis: PiboLoopTokenAccountingBasis };
 
+export type PiboLoopUsageTotals = {
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens: number;
+	cacheWriteTokens: number;
+	reasoningTokens: number;
+	totalTokens: number;
+	costUsd: number;
+	costReportedTurns: number;
+	assistantTurns: number;
+};
+
+export type PiboLoopRecursiveUsage = {
+	controller: PiboLoopUsageTotals;
+	descendants: PiboLoopUsageTotals;
+	total: PiboLoopUsageTotals;
+	sessionIds: string[];
+};
+
 export type PiboLoopResourceMetadata = {
 	workerId?: string;
 	browserLeaseIds?: string[];
@@ -100,6 +119,7 @@ export type PiboLoopJobState = {
 	stopRequestedAt?: string;
 	cancelRequestedAt?: string;
 	completedIterations?: number;
+	usage?: PiboLoopRecursiveUsage;
 	conditionStates?: Record<string, PiboJsonObject>;
 	lastStopEvaluation?: PiboLoopStopEvaluationSummary;
 };
@@ -139,6 +159,7 @@ export type PiboLoopRunAccounting = {
 	tokensUsed?: number;
 	overshootTokens?: number;
 	activeTimeSeconds?: number;
+	usage?: PiboLoopRecursiveUsage;
 };
 
 export type PiboLoopRun = {

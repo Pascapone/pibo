@@ -122,12 +122,20 @@ function runTimeoutAt(createdAt: string, timeoutMs: number | undefined): string 
 
 function sameOrigin(left: PiboRunOrigin | undefined, right: PiboRunOrigin | undefined): boolean {
 	if (!left || !right) return left === right;
-	return left.eventId === right.eventId
-		&& left.provenance.kind === right.provenance.kind
-		&& left.provenance.jobId === right.provenance.jobId
-		&& left.provenance.runId === right.provenance.runId
-		&& left.provenance.cause === right.provenance.cause
-		&& left.provenance.rootEventId === right.provenance.rootEventId;
+	if (left.eventId !== right.eventId || left.provenance.kind !== right.provenance.kind) return false;
+	if (left.provenance.kind === "loop-run" && right.provenance.kind === "loop-run") {
+		return left.provenance.jobId === right.provenance.jobId
+			&& left.provenance.runId === right.provenance.runId
+			&& left.provenance.cause === right.provenance.cause
+			&& left.provenance.rootEventId === right.provenance.rootEventId;
+	}
+	if (left.provenance.kind === "subagent-request" && right.provenance.kind === "subagent-request") {
+		return left.provenance.requestId === right.provenance.requestId
+			&& left.provenance.controllerPiboSessionId === right.provenance.controllerPiboSessionId
+			&& left.provenance.loopJobId === right.provenance.loopJobId
+			&& left.provenance.loopRunId === right.provenance.loopRunId;
+	}
+	return false;
 }
 
 function formatTimeout(timeoutMs: number | undefined): string {
@@ -331,6 +339,18 @@ export class PiboRunRegistry {
 			.map(snapshot);
 	}
 
+	listActiveControllerRuns(controllerPiboSessionId: string): PiboRunSnapshot[] {
+		return [...this.runs.values()]
+			.filter((record) => record.controllerPiboSessionId === controllerPiboSessionId && !terminal(record.status))
+			.map(snapshot);
+	}
+
+	listActiveRuns(): PiboRunSnapshot[] {
+		return [...this.runs.values()]
+			.filter((record) => !terminal(record.status))
+			.map(snapshot);
+	}
+
 	status(controllerPiboSessionId: string, runId: string): PiboRunSnapshot {
 		return snapshot(this.requireRunForController(controllerPiboSessionId, runId));
 	}
@@ -381,20 +401,21 @@ export class PiboRunRegistry {
 		return output;
 	}
 
-	cancel(controllerPiboSessionId: string, runId: string): PiboRunSnapshot {
+	cancel(controllerPiboSessionId: string, runId: string, reason = "Run was cancelled."): PiboRunSnapshot {
 		const record = this.requireRunForController(controllerPiboSessionId, runId);
 		const previousStatus = record.status;
 		if (!terminal(record.status)) {
 			record.status = "cancelled";
+			record.error = reason;
 			record.summary = `${record.toolName} run cancelled.`;
 			this.finish(record);
-			if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, "Run was cancelled.");
+			if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, reason);
 		}
 		record.consumed = true;
 		record.updatedAt = now();
 		this.options.store?.updateRun(runId, record);
 		const output = snapshot(record);
-		this.notify({ type: "run_changed", run: output, previousStatus, reason: "Run was cancelled." });
+		this.notify({ type: "run_changed", run: output, previousStatus, reason });
 		return output;
 	}
 
@@ -473,42 +494,6 @@ export class PiboRunRegistry {
 		return [...this.runs.values()].some((record) =>
 			this.needsNotification(record, controllerPiboSessionId, options),
 		);
-	}
-
-	cancelControllerRuns(controllerPiboSessionId: string, reason = "Controller Pibo session was disposed."): PiboRunSnapshot[] {
-		const cancelled: PiboRunSnapshot[] = [];
-		for (const record of this.runs.values()) {
-			if (record.controllerPiboSessionId !== controllerPiboSessionId || terminal(record.status)) continue;
-			record.status = "cancelled";
-			record.error = reason;
-			record.consumed = true;
-			record.summary = `${record.toolName} run cancelled.`;
-			this.finish(record);
-			this.options.store?.updateRun(record.runId, record);
-			if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, reason);
-			const output = snapshot(record);
-			this.notify({ type: "run_changed", run: output, previousStatus: "running", reason });
-			cancelled.push(output);
-		}
-		return cancelled;
-	}
-
-	cancelAll(reason = "Run registry was disposed."): PiboRunSnapshot[] {
-		const cancelled: PiboRunSnapshot[] = [];
-		for (const record of this.runs.values()) {
-			if (terminal(record.status)) continue;
-			record.status = "cancelled";
-			record.error = reason;
-			record.consumed = true;
-			record.summary = `${record.toolName} run cancelled.`;
-			this.finish(record);
-			this.options.store?.updateRun(record.runId, record);
-			if (record.jobId) this.options.store?.fail(record.jobId, this.workerId, reason);
-			const output = snapshot(record);
-			this.notify({ type: "run_changed", run: output, previousStatus: "running", reason });
-			cancelled.push(output);
-		}
-		return cancelled;
 	}
 
 	prune(options: PiboRunPruneOptions = {}): number {

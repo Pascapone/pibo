@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboGatewayServer } from "../dist/gateway/server.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { piboCodexCompatPlugin } from "../dist/plugins/codex-compat.js";
@@ -59,6 +60,51 @@ test("gateway starts plugin channels with router and session session context", a
 	assert.equal(startedSession.profile, "base");
 	assert.equal(store.get("ps_web_user_1"), startedSession);
 	assert.equal(stopped, true);
+});
+
+test("gateway channel context exposes the concrete depth-adjusted session profile", async () => {
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const store = new InMemoryPiboSessionStore();
+	let childProfile;
+	registry.registerPlugin(
+		definePiboPlugin({
+			id: "test.channel-runtime-profile",
+			register(api) {
+				api.registerProfile({
+					name: "recursive-channel-profile",
+					create() {
+						return new InitialSessionContextBuilder("recursive-channel-profile")
+							.withBuiltinTools("disabled")
+							.withAutoContextFiles(false)
+							.withToolPackages({ goalControl: false })
+							.addSubagents([
+								{ name: "defaulted", targetProfile: "base" },
+								{ name: "limited", targetProfile: "base", maxDepth: 1 },
+								{ name: "deeper", targetProfile: "base", maxDepth: 2 },
+							])
+							.createSession();
+					},
+				});
+				api.registerChannel({
+					name: "runtime-profile-channel",
+					kind: "local",
+					auth: { mode: "trusted-local" },
+					start(context) {
+						const parent = context.createSession({ id: "ps_profile_parent", channel: "test", kind: "chat", profile: "recursive-channel-profile" });
+						const child = context.createSession({ id: "ps_profile_child", channel: "test", kind: "subagent", profile: "recursive-channel-profile", parentId: parent.id });
+						childProfile = context.getSessionRuntimeProfile(child.id);
+					},
+				});
+			},
+		}),
+	);
+	const server = new PiboGatewayServer({ port: 0, persistSession: false, pluginRegistry: registry, sessionStore: store });
+	try {
+		await server.start();
+		assert.deepEqual(childProfile.subagents.map((subagent) => subagent.name), ["deeper"]);
+	} finally {
+		await server.stop();
+	}
 });
 
 test("gateway session deletion awaits live runtime disposal before removing persistence", async () => {

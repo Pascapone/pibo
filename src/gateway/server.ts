@@ -456,6 +456,7 @@ export class PiboGatewayServer {
 			findSessions: (input) => this.requireSessionStore().find(input),
 			listSessions: () => this.requireSessionStore().list?.() ?? [],
 			getSessionRuntimeBinding: (piboSessionId) => this.requireRouter().getSessionRuntimeBinding(piboSessionId),
+			getSessionRuntimeProfile: (piboSessionId) => this.requireRouter().getSessionRuntimeProfile(piboSessionId),
 			inspectSessionRuntimeHistory: async (piboSessionId) => {
 				const session = this.requireSessionStore().get(piboSessionId);
 				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);

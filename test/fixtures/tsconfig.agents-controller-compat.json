@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../.."
+  },
+  "include": [
+    "../../src/**/*.ts",
+    "./agents-controller-legacy-compat.ts"
+  ],
+  "exclude": [
+    "../../src/apps/chat-ui/**",
+    "../../src/apps/context-files-ui/**",
+    "../../src/apps/chat-vscode/**"
+  ]
+}

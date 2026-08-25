@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { PiboRunRegistry } from "../dist/runs/registry.js";
-import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
+import { isConfiguredTimeoutError, PiboRunCancelledError, PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { createRunToolDefinitions } from "../dist/runs/tools.js";
 import { updatePiboGatewaySettings } from "../dist/core/gateway-settings.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
+import { RuntimeSessionRegistry } from "../dist/tools/runtime/registry.js";
+import { createRuntimeToolDefinition } from "../dist/tools/runtime/tool.js";
 
 function startRun(registry, options = {}) {
 	return registry.startToolRun({
@@ -18,6 +21,10 @@ function startRun(registry, options = {}) {
 		completionPolicy: options.completionPolicy,
 	});
 }
+
+const defaultPythonExecutable = process.platform === "win32" ? "python" : "python3";
+const pythonAvailable = spawnSync(defaultPythonExecutable, ["--version"], { stdio: "ignore" }).status === 0;
+const pythonTest = (name, run) => test(name, { skip: pythonAvailable ? false : `${defaultPythonExecutable} is unavailable` }, run);
 
 function runSnapshot(run, options = {}) {
 	return {
@@ -219,14 +226,17 @@ test("resource-limited runs persist cgroup peaks and expose them through status 
 	}
 });
 
-test("disposing a controller cancels running runs and resolves waiters", async () => {
+test("registry enumerates active controller runs and commits cancellation only when requested", async () => {
 	const registry = new PiboRunRegistry();
 	const run = startRun(registry);
 	const waited = registry.wait("parent", run.runId, 1000);
 
-	const cancelled = registry.cancelControllerRuns("parent", "test dispose");
-	assert.equal(cancelled.length, 1);
-	assert.equal(cancelled[0].status, "cancelled");
+	const active = registry.listActiveControllerRuns("parent");
+	assert.deepEqual(active.map((candidate) => candidate.runId), [run.runId]);
+	assert.equal(registry.status("parent", run.runId).status, "running");
+
+	const cancelled = registry.cancel("parent", run.runId, "test dispose");
+	assert.equal(cancelled.status, "cancelled");
 
 	const result = await waited;
 	assert.equal(result.status, "cancelled");
@@ -486,6 +496,154 @@ test("run cancellation fails visibly and stays non-cancelled when execution does
 		finishExecution();
 		await new Promise((resolve) => setImmediate(resolve));
 		assert.equal(router.runRegistry.status("parent", started.details.runId).status, "completed");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("configured timeout detection accepts terminal timeout variants without matching ordinary failure reports", () => {
+	assert.equal(isConfiguredTimeoutError("Command timed out after 2 seconds"), true);
+	assert.equal(isConfiguredTimeoutError("output\nError: Command timed out after 2 seconds"), true);
+	assert.equal(isConfiguredTimeoutError("Timed out after 10ms"), true);
+	assert.equal(isConfiguredTimeoutError("Error: Timed out after 10ms."), true);
+	assert.equal(isConfiguredTimeoutError("Timeout after 20 seconds"), true);
+	assert.equal(isConfiguredTimeoutError("AssertionError: Timed out waiting for condition\nCommand exited with code 1"), false);
+	assert.equal(isConfiguredTimeoutError("Timeout option is not supported"), false);
+	assert.equal(isConfiguredTimeoutError("Timeout configuration is invalid"), false);
+	assert.equal(isConfiguredTimeoutError("Error: timeout value must be an integer"), false);
+});
+
+test("generic terminal configured-timeout errors become timed_out runs", async () => {
+	const router = new PiboSessionRouter({ persistSession: false });
+	const tools = Object.fromEntries(createRunToolDefinitions([{
+		name: "helper",
+		async execute() { throw new Error("Timed out after 10ms"); },
+	}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+	try {
+		const started = await tools.pibo_run_start.execute("start-generic-timeout", {
+			toolName: "helper",
+			arguments: { timeoutMs: 10 },
+			completionPolicy: "tracked",
+		});
+		const waited = await tools.pibo_run_wait.execute("wait-generic-timeout", { runId: started.details.runId, timeoutMs: 1000 });
+		assert.equal(waited.details.status, "timed_out");
+		assert.equal(waited.details.timeoutMs, 10);
+		assert.equal(waited.details.timeoutPhase, "startup");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+async function assertRealRuntimeTimeout(runtime) {
+	const cwd = mkdtempSync(join(tmpdir(), `pibo-yielded-${runtime}-timeout-`));
+	const runtimeRegistry = new RuntimeSessionRegistry({ cwd });
+	const router = new PiboSessionRouter({ persistSession: false });
+	const runtimeTool = createRuntimeToolDefinition(runtimeRegistry.createController("parent"));
+	const runtimeArguments = {
+		action: "exec",
+		runtime,
+		code: runtime === "node" ? "new Promise(() => {})" : "import time\ntime.sleep(2)",
+		timeoutMs: 1_000,
+		...(runtime === "node" ? { mode: "eval" } : {}),
+	};
+	const runtimeProxy = {
+		name: "runtime-proxy",
+		execute(toolCallId, _params, signal, onUpdate, context) {
+			return runtimeTool.execute(toolCallId, runtimeArguments, signal, onUpdate, context);
+		},
+	};
+	const tools = Object.fromEntries(createRunToolDefinitions(
+		[runtimeProxy],
+		router.createRunToolController("parent"),
+	).map((tool) => [tool.name, tool]));
+	try {
+		const started = await tools.pibo_run_start.execute(`start-${runtime}-runtime-timeout`, {
+			toolName: "runtime-proxy",
+			arguments: {},
+			completionPolicy: "tracked",
+		});
+		const waited = await tools.pibo_run_wait.execute(`wait-${runtime}-runtime-timeout`, {
+			runId: started.details.runId,
+			timeoutMs: 5_000,
+		});
+		assert.equal(waited.details.status, "timed_out");
+		assert.equal(waited.details.timeoutMs, undefined);
+		assert.equal(waited.details.timeoutPhase, "startup");
+		const read = await tools.pibo_run_read.execute(`read-${runtime}-runtime-timeout`, { runId: started.details.runId });
+		assert.match(read.details.error, /status: timeout/);
+		assert.match(read.details.error, /Runtime request exec timed out/);
+	} finally {
+		await runtimeRegistry.closeAll({ force: true });
+		await router.disposeAll();
+		rmSync(cwd, { recursive: true, force: true });
+	}
+}
+
+test("real Node runtime expiry becomes a timed_out yielded run through the structured tool result", async () => {
+	await assertRealRuntimeTimeout("node");
+});
+
+pythonTest("real Python runtime expiry becomes a timed_out yielded run through the structured tool result", async () => {
+	await assertRealRuntimeTimeout("python");
+});
+
+test("structured runtime timeout configuration failures remain failed yielded runs", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pibo-yielded-runtime-config-failure-"));
+	const runtimeRegistry = new RuntimeSessionRegistry({ cwd });
+	const router = new PiboSessionRouter({ persistSession: false });
+	const runtimeTool = createRuntimeToolDefinition(runtimeRegistry.createController("parent"));
+	const runtimeProxy = {
+		name: "runtime-config-proxy",
+		execute(toolCallId, _params, signal, onUpdate, context) {
+			return runtimeTool.execute(toolCallId, {
+				action: "exec",
+				runtime: "node",
+				code: "1 + 1",
+				timeoutMs: 20,
+				target: { type: "unsupported" },
+			}, signal, onUpdate, context);
+		},
+	};
+	const tools = Object.fromEntries(createRunToolDefinitions(
+		[runtimeProxy],
+		router.createRunToolController("parent"),
+	).map((tool) => [tool.name, tool]));
+	try {
+		const started = await tools.pibo_run_start.execute("start-runtime-config-failure", {
+			toolName: "runtime-config-proxy",
+			arguments: {},
+			completionPolicy: "tracked",
+		});
+		const waited = await tools.pibo_run_wait.execute("wait-runtime-config-failure", { runId: started.details.runId, timeoutMs: 5_000 });
+		assert.equal(waited.details.status, "failed");
+		assert.equal(waited.details.timeoutPhase, undefined);
+		const read = await tools.pibo_run_read.execute("read-runtime-config-failure", { runId: started.details.runId });
+		assert.match(read.details.error, /runtime\.target\.type must be local, docker, or ssh/);
+	} finally {
+		await runtimeRegistry.closeAll({ force: true });
+		await router.disposeAll();
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("timeout configuration failures remain failed runs", async () => {
+	const router = new PiboSessionRouter({ persistSession: false });
+	const tools = Object.fromEntries(createRunToolDefinitions([{
+		name: "helper",
+		async execute() { throw new Error("Timeout option is not supported"); },
+	}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+	try {
+		const started = await tools.pibo_run_start.execute("start-timeout-option-failure", {
+			toolName: "helper",
+			arguments: { timeoutMs: 10 },
+			completionPolicy: "tracked",
+		});
+		const waited = await tools.pibo_run_wait.execute("wait-timeout-option-failure", { runId: started.details.runId, timeoutMs: 1000 });
+		assert.equal(waited.details.status, "failed");
+		assert.equal(waited.details.timeoutPhase, undefined);
+		const read = await tools.pibo_run_read.execute("read-timeout-option-failure", { runId: started.details.runId });
+		assert.equal(read.details.error, "Timeout option is not supported");
+		assert.equal(read.details.timeoutPhase, undefined);
 	} finally {
 		await router.disposeAll();
 	}
@@ -1033,30 +1191,174 @@ test("pibo_run_cancel aborts the active tool and releases admission before retur
 	}
 });
 
-test("session disposal terminates active yielded execution before returning", async () => {
-	const router = new PiboSessionRouter({ persistSession: false });
-	let activeSignal;
-	const tools = Object.fromEntries(createRunToolDefinitions([{
-		name: "helper",
-		async execute(_toolCallId, _params, signal) {
-			activeSignal = signal;
-			return await new Promise((_resolve, reject) => {
-				signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+const bulkTeardownScenarios = [
+	{
+		name: "killSession",
+		prepare(router) {
+			router.sessions.set("parent", {
+				async kill() { return "parent"; },
+				async dispose() {},
+				forceDispose() {},
+				removeQueuedMessages() { return 0; },
 			});
 		},
-	}], router.createRunToolController("parent")).map((tool) => [tool.name, tool]));
+		invoke(router) { return router.killSession("parent", { includeRuns: true }); },
+	},
+	{
+		name: "subtree disposal",
+		prepare() {},
+		invoke(router) { return router.disposeSession("parent", "test subtree disposal"); },
+	},
+	{
+		name: "router disposal",
+		prepare() {},
+		invoke(router) { return router.disposeAll(); },
+	},
+];
 
-	const started = await tools.pibo_run_start.execute("start-dispose-cancelled", {
-		toolName: "helper",
-		arguments: {},
-		completionPolicy: "tracked",
+function startBulkTeardownRun(router, mode) {
+	let markCancellationStarted;
+	const cancellationStarted = new Promise((resolve) => { markCancellationStarted = resolve; });
+	let releaseCancellation;
+	const cancellationGate = new Promise((resolve) => { releaseCancellation = resolve; });
+	let resolveExecution;
+	let rejectExecution;
+	const execution = new Promise((resolve, reject) => {
+		resolveExecution = resolve;
+		rejectExecution = reject;
 	});
-	await new Promise((resolve) => setImmediate(resolve));
-	await router.disposeSession("parent", "test disposal");
+	const run = router.createRunToolController("parent").startToolRun({
+		toolName: "helper",
+		completionPolicy: "tracked",
+		async cancel() {
+			markCancellationStarted();
+			if (mode === "rejected") throw new Error("cancellation rejected");
+			if (mode === "nonsettling") return await new Promise(() => {});
+			await cancellationGate;
+			rejectExecution(new PiboRunCancelledError("controlled cancellation settled"));
+		},
+		async execute() {
+			return await execution;
+		},
+	});
+	return {
+		run,
+		cancellationStarted,
+		releaseCancellation,
+		finishExecution: () => resolveExecution({ text: "late completion" }),
+	};
+}
 
-	assert.equal(activeSignal.aborted, true);
-	assert.equal(router.runRegistry.status("parent", started.details.runId).status, "cancelled");
-});
+async function cleanupBulkTeardownFixture(router, store, scenario) {
+	if (scenario.name !== "router disposal") await router.disposeAll();
+	store.close();
+}
+
+for (const scenario of bulkTeardownScenarios) {
+	test(`${scenario.name} publishes cancelled only after confirmed settlement`, async () => {
+		const store = new PiboReliabilityStore(":memory:");
+		const router = new PiboSessionRouter({ persistSession: false, reliabilityStore: store });
+		scenario.prepare(router);
+		const changed = [];
+		router.runRegistry.subscribe((event) => {
+			if (event.type === "run_changed") changed.push(event.run.status);
+		});
+		const controlled = startBulkTeardownRun(router, "confirmed");
+		let waiterSettled = false;
+		const waiter = router.runRegistry.wait("parent", controlled.run.runId, 100_000).then((result) => {
+			waiterSettled = true;
+			return result;
+		});
+		const teardown = scenario.invoke(router);
+		await controlled.cancellationStarted;
+
+		assert.equal(router.runRegistry.status("parent", controlled.run.runId).status, "running");
+		assert.equal(store.getRun(controlled.run.runId).status, "running");
+		assert.equal(waiterSettled, false);
+		assert.equal(changed.includes("cancelled"), false);
+		assert.equal(router.gatewayWorkAdmission.activeReservations.size, 1);
+
+		controlled.releaseCancellation();
+		await teardown;
+		const waited = await waiter;
+		assert.equal(waited.status, "cancelled");
+		assert.equal(waited.timedOut, false);
+		assert.equal(router.runRegistry.status("parent", controlled.run.runId).status, "cancelled");
+		assert.equal(store.getRun(controlled.run.runId).status, "cancelled");
+		assert.deepEqual(changed.filter((status) => status === "cancelled"), ["cancelled"]);
+		assert.equal(router.runRegistry.hasPendingNotification("parent"), false);
+		assert.equal(router.gatewayWorkAdmission.activeReservations.size, 0);
+		await cleanupBulkTeardownFixture(router, store, scenario);
+	});
+
+	test(`${scenario.name} leaves rejected cancellation non-cancelled and admitted until execution settles`, async () => {
+		const store = new PiboReliabilityStore(":memory:");
+		const router = new PiboSessionRouter({ persistSession: false, reliabilityStore: store });
+		scenario.prepare(router);
+		const changed = [];
+		router.runRegistry.subscribe((event) => {
+			if (event.type === "run_changed") changed.push(event.run.status);
+		});
+		const controlled = startBulkTeardownRun(router, "rejected");
+		let waiterSettled = false;
+		const waiter = router.runRegistry.wait("parent", controlled.run.runId, 100_000).then((result) => {
+			waiterSettled = true;
+			return result;
+		});
+		await assert.rejects(scenario.invoke(router), /cancellation rejected|Failed to/);
+		await controlled.cancellationStarted;
+
+		assert.equal(router.runRegistry.status("parent", controlled.run.runId).status, "running");
+		assert.equal(store.getRun(controlled.run.runId).status, "running");
+		assert.equal(waiterSettled, false);
+		assert.equal(changed.includes("cancelled"), false);
+		assert.equal(router.gatewayWorkAdmission.activeReservations.size, 1);
+
+		controlled.finishExecution();
+		const waited = await waiter;
+		assert.equal(waited.status, "completed");
+		assert.equal(router.runRegistry.status("parent", controlled.run.runId).status, "completed");
+		assert.equal(store.getRun(controlled.run.runId).status, "completed");
+		assert.equal(router.gatewayWorkAdmission.activeReservations.size, 0);
+		await cleanupBulkTeardownFixture(router, store, scenario);
+	});
+
+	test(`${scenario.name} bounds non-settling cancellation without a false cancelled state`, async (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout"] });
+		const store = new PiboReliabilityStore(":memory:");
+		const router = new PiboSessionRouter({ persistSession: false, reliabilityStore: store });
+		scenario.prepare(router);
+		const changed = [];
+		router.runRegistry.subscribe((event) => {
+			if (event.type === "run_changed") changed.push(event.run.status);
+		});
+		const controlled = startBulkTeardownRun(router, "nonsettling");
+		let waiterSettled = false;
+		const waiter = router.runRegistry.wait("parent", controlled.run.runId, 100_000).then((result) => {
+			waiterSettled = true;
+			return result;
+		});
+		const teardown = scenario.invoke(router);
+		await controlled.cancellationStarted;
+		await Promise.resolve();
+		t.mock.timers.tick(15_000);
+		await assert.rejects(teardown, /did not settle within 15000ms|Failed to/);
+
+		assert.equal(router.runRegistry.status("parent", controlled.run.runId).status, "running");
+		assert.equal(store.getRun(controlled.run.runId).status, "running");
+		assert.equal(waiterSettled, false);
+		assert.equal(changed.includes("cancelled"), false);
+		assert.equal(router.gatewayWorkAdmission.activeReservations.size, 1);
+
+		controlled.finishExecution();
+		const waited = await waiter;
+		assert.equal(waited.status, "completed");
+		assert.equal(router.runRegistry.status("parent", controlled.run.runId).status, "completed");
+		assert.equal(store.getRun(controlled.run.runId).status, "completed");
+		assert.equal(router.gatewayWorkAdmission.activeReservations.size, 0);
+		await cleanupBulkTeardownFixture(router, store, scenario);
+	});
+}
 
 test("router converts yielded tool errors into failed run notifications", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
