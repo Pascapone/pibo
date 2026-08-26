@@ -15,9 +15,12 @@ import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/codex-app-server-thread-fake.mjs", import.meta.url));
+const fortyCombiningCodePoints = "e\u0301".repeat(20);
+const fortyTwoCombiningCodePoints = "e\u0301".repeat(21);
 
 async function fixtureRoot(prefix) {
 	const root = await mkdtemp(join(tmpdir(), prefix));
@@ -128,6 +131,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 		});
 	}, childDriver);
 	const store = new InMemoryPiboSessionStore();
+	const reliabilityStore = new PiboReliabilityStore(":memory:");
 	store.create({
 		id: "ps_codex_subagent_parent",
 		channel: "test",
@@ -146,6 +150,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 		persistSession: false,
 		pluginRegistry: registry,
 		sessionStore: store,
+		reliabilityStore,
 		cwd: workspace,
 		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
 	});
@@ -153,6 +158,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	router.subscribe((event) => events.push(event));
 	t.after(async () => {
 		await router.disposeAll();
+		reliabilityStore.close();
 		await rm(root, { recursive: true, force: true });
 	});
 
@@ -179,6 +185,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 		["blank", { name: "helper", sessionName: "   ", message: "blank" }],
 		["non-string", { name: "helper", sessionName: 7, message: "wrong type" }],
 		["oversized", { name: "helper", sessionName: "😀".repeat(41), message: "too long" }],
+		["combining-oversized", { name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "too many code points" }],
 	]) {
 		const rejected = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_start", {
 			toolName: "pibo_agents_send_message",
@@ -194,6 +201,9 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	assert.equal(router.scheduledRunReminders.size, 0);
 	assert.equal(router.runReminderDeliveries.size, 0);
 	assert.equal(router.runReminderRecoveries.size, 0);
+	assert.equal(reliabilityStore.listRuns({ includeConsumed: true, includeDetached: true }).length, 0);
+	assert.equal(reliabilityStore.listJobs({ queue: "runs" }).length, 0);
+	assert.equal(registry.requireAgentRuntimeAdapter("fixture-child").sessions.length, 0);
 	assert.equal(events.some((event) => event.type === "subagent_session"), false);
 	const send = async (message, threadKey, sessionName) => {
 		const started = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_start", {
@@ -208,8 +218,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 		return { runId, read };
 	};
 
-	const fortyCodePoints = "😀".repeat(40);
-	const first = await send("first yielded request", "shared", fortyCodePoints);
+	const first = await send("first yielded request", "shared", fortyCombiningCodePoints);
 	assert.match(first.read.content[0].text, /fixture child: first yielded request/);
 	const [firstChild] = childSessions(store, parent.id);
 	assert.ok(firstChild);
@@ -219,9 +228,9 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	assert.equal(firstChild.runtimeBinding.state, "bound");
 	assert.equal(firstChild.metadata.chatRoomId, "room_codex_subagents");
 	assert.equal(firstChild.metadata.workflowSessionKind, "subagent");
-	assert.equal(firstChild.title, fortyCodePoints);
+	assert.equal(firstChild.title, fortyCombiningCodePoints);
 
-	const second = await send("second yielded request", "shared", "Second yielded request");
+	const second = await send("second yielded request", "shared", "  Second yielded request  ");
 	assert.match(second.read.content[0].text, /fixture child: second yielded request/);
 	assert.equal(second.read.structuredContent.result.details.agentId, firstChild.id);
 	assert.equal(childSessions(store, parent.id).length, 1);
@@ -292,6 +301,7 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 		});
 	});
 	const store = new InMemoryPiboSessionStore();
+	const reliabilityStore = new PiboReliabilityStore(":memory:");
 	store.create({
 		id: "ps_pi_subagent_parent",
 		channel: "test",
@@ -310,11 +320,15 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 		persistSession: false,
 		pluginRegistry: registry,
 		sessionStore: store,
+		reliabilityStore,
 		cwd: workspace,
 		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
 	});
+	const events = [];
+	router.subscribe((event) => events.push(event));
 	t.after(async () => {
 		await router.disposeAll();
+		reliabilityStore.close();
 		await rm(root, { recursive: true, force: true });
 	});
 
@@ -334,6 +348,7 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 		{ name: "codex", sessionName: "   ", message: "blank" },
 		{ name: "codex", sessionName: 7, message: "wrong type" },
 		{ name: "codex", sessionName: "😀".repeat(41), message: "too long" },
+		{ name: "codex", sessionName: fortyTwoCombiningCodePoints, message: "too many code points" },
 	]) {
 		await assert.rejects(startTool.execute("pi-invalid-session-name", {
 			toolName: "pibo_agents_send_message",
@@ -344,6 +359,12 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 	assert.equal(childSessions(store, parent.id).length, 0);
 	assert.equal(router.listRuns({ includeConsumed: true, includeDetached: true }).length, 0);
 	assert.equal(router.gatewayWorkAdmission.activeReservations.size, 0);
+	assert.equal(router.scheduledRunReminders.size, 0);
+	assert.equal(router.runReminderDeliveries.size, 0);
+	assert.equal(router.runReminderRecoveries.size, 0);
+	assert.equal(reliabilityStore.listRuns({ includeConsumed: true, includeDetached: true }).length, 0);
+	assert.equal(reliabilityStore.listJobs({ queue: "runs" }).length, 0);
+	assert.equal(events.some((event) => event.type === "subagent_session"), false);
 	const send = async (toolCallId, sessionName, message) => {
 		const started = await startTool.execute(toolCallId, {
 			toolName: "pibo_agents_send_message",
@@ -355,8 +376,7 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 		return await readTool.execute(`${toolCallId}-read`, { runId: started.details.runId });
 	};
 
-	const fortyPiCodePoints = "😀".repeat(40);
-	const first = await send("pi-codex-tool-1", fortyPiCodePoints, "native Codex child first turn");
+	const first = await send("pi-codex-tool-1", fortyCombiningCodePoints, "native Codex child first turn");
 	assert.match(first.content[0].text, /Codex answer\./);
 	const [child] = childSessions(store, parent.id);
 	assert.ok(child);
@@ -367,7 +387,7 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 	assert.equal(child.parentId, parent.id);
 	assert.equal(child.workspace, parent.workspace);
 	assert.equal(child.metadata.chatRoomId, "room_pi_codex_subagents");
-	assert.equal(child.title, fortyPiCodePoints);
+	assert.equal(child.title, fortyCombiningCodePoints);
 
 	const firstNativeThread = child.runtimeBinding.nativeSessionId;
 	const second = await send("pi-codex-tool-2", "Native Codex second turn", "native Codex child second turn");

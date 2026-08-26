@@ -185,6 +185,33 @@ export function normalizePiboAgentSessionName(value: unknown): string {
 	return normalized;
 }
 
+type PiboAgentToolInput = {
+	name: string;
+	sessionName: string;
+	message: string;
+	threadKey?: string;
+};
+
+type PiboDeprecatedSubagentToolInput = Omit<PiboAgentToolInput, "name">;
+
+function preparePiboAgentSessionNameInput(input: unknown): Record<string, unknown> & { sessionName: string } {
+	if (!input || typeof input !== "object" || Array.isArray(input)) {
+		throw new Error("Agent session name is required.");
+	}
+	return {
+		...input,
+		sessionName: normalizePiboAgentSessionName((input as { sessionName?: unknown }).sessionName),
+	};
+}
+
+function preparePiboAgentToolInput(input: unknown): PiboAgentToolInput {
+	return preparePiboAgentSessionNameInput(input) as PiboAgentToolInput;
+}
+
+function preparePiboDeprecatedSubagentToolInput(input: unknown): PiboDeprecatedSubagentToolInput {
+	return preparePiboAgentSessionNameInput(input) as PiboDeprecatedSubagentToolInput;
+}
+
 export function formatAgentObservationsForModel(result: PiboAgentObserveResult): string {
 	const includeTools = result.filters.includeTools === true;
 	const toolDetail = result.filters.toolDetail ?? "summary";
@@ -264,18 +291,19 @@ export function createAgentToolDefinitions(
 					}),
 				),
 			}),
+			prepareInput: preparePiboAgentToolInput,
 			async execute(toolCallId, params, signal, _onUpdate, context) {
 				const subagent = byName.get(params.name);
 				if (!subagent) throw new Error(`Unknown delegated agent "${params.name}"`);
 				if (!context.yieldedRunId) {
 					throw new Error("pibo_agents_send_message is yielded-only. Start it through pibo_run_start.");
 				}
-				const sessionName = normalizePiboAgentSessionName(params.sessionName);
+				const preparedParams = preparePiboAgentToolInput(params);
 				const result = normalizeAgentSendMessageResult(await controller.sendMessage({
 					subagent,
-					sessionName,
-					message: params.message,
-					threadKey: params.threadKey,
+					sessionName: preparedParams.sessionName,
+					message: preparedParams.message,
+					threadKey: preparedParams.threadKey,
 					toolCallId,
 					requestId: context.yieldedRunId,
 					parentProvenance: context.getActiveMessage?.()?.provenance,
@@ -420,9 +448,17 @@ export function createSubagentToolDefinitions(
 					maxLength: 256,
 				})),
 			}),
+			prepareInput: preparePiboDeprecatedSubagentToolInput,
 			async execute(toolCallId, params, signal) {
-				const sessionName = normalizePiboAgentSessionName(params.sessionName);
-				const result = await runner.runSubagent({ subagent, sessionName, message: params.message, threadKey: params.threadKey, toolCallId, signal });
+				const preparedParams = preparePiboDeprecatedSubagentToolInput(params);
+				const result = await runner.runSubagent({
+					subagent,
+					sessionName: preparedParams.sessionName,
+					message: preparedParams.message,
+					threadKey: preparedParams.threadKey,
+					toolCallId,
+					signal,
+				});
 				return { content: [{ type: "text", text: result.reply.text }], details: result };
 			},
 		}));

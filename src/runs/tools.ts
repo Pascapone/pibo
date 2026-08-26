@@ -97,7 +97,13 @@ function validateYieldedToolArguments(tool: PiboToolDefinition, input: unknown):
 		});
 		throw new Error(`Invalid arguments for yielded tool "${tool.name}": ${errors.join("; ")}`);
 	}
-	return tool.prepareInput ? tool.prepareInput(input) : input;
+	if (!tool.prepareInput) return input;
+	try {
+		return tool.prepareInput(input);
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		throw new Error(`Invalid arguments for yielded tool "${tool.name}": ${reason}`, { cause: error });
+	}
 }
 
 export function createRunToolDefinitions(
@@ -144,7 +150,7 @@ export function createRunToolDefinitions(
 				let cancellationFailure: PiboRunCancellationError | undefined;
 				const run = controller.startToolRun({
 					toolName: tool.name,
-					params: params.arguments,
+					params: toolArguments,
 					completionPolicy: params.completionPolicy as PiboRunCompletionPolicy | undefined,
 					timeoutMs,
 					serviceWarning,

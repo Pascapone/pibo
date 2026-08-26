@@ -34,6 +34,8 @@ import { getToolPythonRuntimePaths } from "../dist/tools/python-runtime.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredPartitionField = `${retiredWord}Scope`;
+const fortyCombiningCodePoints = "e\u0301".repeat(20);
+const fortyTwoCombiningCodePoints = "e\u0301".repeat(21);
 
 const noopAgentsController = {
 	async sendMessage(input) {
@@ -231,15 +233,27 @@ test("legacy subagent tool exports remain available, stay outside runtime assemb
 	);
 	assert.equal(tool.name, "pibo_subagent_research_helper");
 	assert.equal(Value.Check(tool.inputSchema, { message: "missing name" }), false);
+	assert.equal(Value.Check(tool.inputSchema, { sessionName: fortyTwoCombiningCodePoints, message: "schema mismatch" }), true);
 	await assert.rejects(
 		tool.execute("tool-legacy-missing", { message: "missing name" }),
 		/Agent session name is required/,
 	);
+	assert.throws(
+		() => tool.prepareInput({ sessionName: fortyTwoCombiningCodePoints, message: "must fail before dispatch" }),
+		/Agent session name must be at most 40 characters/,
+	);
+	await assert.rejects(
+		tool.execute("tool-legacy-combining-long", { sessionName: fortyTwoCombiningCodePoints, message: "must fail before dispatch" }),
+		/Agent session name must be at most 40 characters/,
+	);
+	assert.equal(calls.length, 0);
+	await tool.execute("tool-legacy-combining-exact", { sessionName: fortyCombiningCodePoints, message: "exactly 40 code points" });
+	assert.equal(calls[0].sessionName, fortyCombiningCodePoints);
 	const result = await tool.execute("tool-legacy", { sessionName: "  Legacy research  ", message: "inspect", threadKey: "migration" });
 	assert.equal(result.content[0].text, "legacy reply");
-	assert.equal(calls[0].sessionName, "Legacy research");
-	assert.equal(calls[0].toolCallId, "tool-legacy");
-	assert.equal(calls[0].threadKey, "migration");
+	assert.equal(calls[1].sessionName, "Legacy research");
+	assert.equal(calls[1].toolCallId, "tool-legacy");
+	assert.equal(calls[1].threadKey, "migration");
 	assert.throws(
 		() => createSubagentToolDefinitions([
 			{ name: "same-name", targetProfile: "one" },
@@ -420,7 +434,7 @@ test("direct Pi prompt orders delegated-agent context before installed-tool and 
 });
 
 test("shared agent tool definitions delegate execution and management to the controller", async () => {
-	let observed;
+	const observed = [];
 	const tools = createAgentToolDefinitions(
 		[{
 			name: "helper",
@@ -430,7 +444,7 @@ test("shared agent tool definitions delegate execution and management to the con
 		{
 			...noopAgentsController,
 			async sendMessage(input) {
-				observed = input;
+				observed.push(input);
 				return noopAgentsController.sendMessage(input);
 			},
 			listAgents() {
@@ -453,12 +467,20 @@ test("shared agent tool definitions delegate execution and management to the con
 		["blank", { name: "helper", sessionName: "   ", message: "blank" }],
 		["non-string", { name: "helper", sessionName: 7, message: "wrong type" }],
 		["oversized", { name: "helper", sessionName: "😀".repeat(41), message: "too long" }],
+		["combining-oversized", { name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "too many code points" }],
 	]) {
 		await assert.rejects(
 			send.execute(`tool-call-${label}`, params, controller.signal, undefined, { yieldedRunId: `run_${label}` }),
 			/Agent session name/,
 		);
 	}
+	assert.equal(observed.length, 0);
+	await send.execute("tool-call-combining-exact", {
+		name: "helper",
+		sessionName: fortyCombiningCodePoints,
+		message: "Exactly 40 code points.",
+	}, controller.signal, undefined, { yieldedRunId: "run_combining_exact" });
+	assert.equal(observed[0].sessionName, fortyCombiningCodePoints);
 	const result = await send.execute("tool-call-1", {
 		name: "helper",
 		sessionName: "  Find relevant files  ",
@@ -473,14 +495,14 @@ test("shared agent tool definitions delegate execution and management to the con
 		}),
 	});
 
-	assert.equal(observed.subagent.name, "helper");
-	assert.equal(observed.sessionName, "Find relevant files");
-	assert.equal(observed.message, "Find the relevant files.");
-	assert.equal(observed.threadKey, "files");
-	assert.equal(observed.toolCallId, "tool-call-1");
-	assert.equal(observed.requestId, "run_request_1");
-	assert.deepEqual(observed.parentProvenance, { kind: "loop-run", jobId: "loop_job", runId: "loop_run" });
-	assert.equal(observed.signal, controller.signal);
+	assert.equal(observed[1].subagent.name, "helper");
+	assert.equal(observed[1].sessionName, "Find relevant files");
+	assert.equal(observed[1].message, "Find the relevant files.");
+	assert.equal(observed[1].threadKey, "files");
+	assert.equal(observed[1].toolCallId, "tool-call-1");
+	assert.equal(observed[1].requestId, "run_request_1");
+	assert.deepEqual(observed[1].parentProvenance, { kind: "loop-run", jobId: "loop_job", runId: "loop_run" });
+	assert.equal(observed[1].signal, controller.signal);
 	assert.equal(send.inputSchema.required.includes("sessionName"), true);
 	assert.equal(send.inputSchema.properties.sessionName.minLength, 1);
 	assert.equal(send.inputSchema.properties.sessionName.maxLength, PIBO_AGENT_SESSION_NAME_MAX_LENGTH);
@@ -489,6 +511,11 @@ test("shared agent tool definitions delegate execution and management to the con
 	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "   ", message: "blank" }), false);
 	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "😀".repeat(40), message: "valid" }), true);
 	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "😀".repeat(41), message: "long" }), false);
+	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "schema mismatch" }), true);
+	assert.throws(
+		() => send.prepareInput({ name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "prepared validation" }),
+		/Agent session name must be at most 40 characters/,
+	);
 	assert.equal(send.inputSchema.properties.threadKey.maxLength, 256);
 	assert.equal(result.details.agentId, "ps_child");
 	assert.equal(result.details.requestId, "run_request_1");
@@ -500,6 +527,77 @@ test("shared agent tool definitions delegate execution and management to the con
 	assert.equal(listed.details.availableAgents[0].description, "Ask the helper agent.");
 	assert.equal(listed.details.agents[0].agentId, "ps_child");
 	assert.equal(listed.details.agents[0].sessionName, "Find relevant files");
+});
+
+test("run start prepares selected delegated input before admission and persists the prepared arguments", async () => {
+	let starts = 0;
+	let dispatches = 0;
+	let started;
+	let dispatched;
+	const [send] = createAgentToolDefinitions(
+		[{ name: "helper", targetProfile: "helper-profile" }],
+		{
+			...noopAgentsController,
+			async sendMessage(input) {
+				dispatches += 1;
+				dispatched = input;
+				return noopAgentsController.sendMessage(input);
+			},
+		},
+	);
+	const [start] = createRunToolDefinitions([send], {
+		...noopRunToolController,
+		startToolRun(input) {
+			starts += 1;
+			started = input;
+			return {
+				runId: `run_prepared_${starts}`,
+				kind: "tool",
+				controllerPiboSessionId: "ps_parent",
+				status: "running",
+				completionPolicy: input.completionPolicy ?? "tracked",
+				consumed: false,
+				toolName: input.toolName,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+		},
+	});
+
+	assert.equal(Value.Check(send.inputSchema, {
+		name: "helper",
+		sessionName: fortyTwoCombiningCodePoints,
+		message: "schema admits graphemes",
+	}), true);
+	await assert.rejects(start.execute("run-start-combining-long", {
+		toolName: send.name,
+		arguments: { name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "must not start" },
+		completionPolicy: "tracked",
+	}), /Agent session name must be at most 40 characters/);
+	assert.equal(starts, 0);
+	assert.equal(dispatches, 0);
+
+	await start.execute("run-start-combining-exact", {
+		toolName: send.name,
+		arguments: { name: "helper", sessionName: fortyCombiningCodePoints, message: "exactly 40 code points" },
+		completionPolicy: "tracked",
+	});
+	assert.equal(starts, 1);
+	assert.equal(started.params.sessionName, fortyCombiningCodePoints);
+	await started.execute("run_prepared_1");
+	assert.equal(dispatches, 1);
+	assert.equal(dispatched.sessionName, fortyCombiningCodePoints);
+
+	await start.execute("run-start-trimmed", {
+		toolName: send.name,
+		arguments: { name: "helper", sessionName: "  Prepared title  ", message: "persist prepared input" },
+		completionPolicy: "tracked",
+	});
+	assert.equal(starts, 2);
+	assert.equal(started.params.sessionName, "Prepared title");
+	await started.execute("run_prepared_2");
+	assert.equal(dispatches, 2);
+	assert.equal(dispatched.sessionName, "Prepared title");
 });
 
 test("profiles can expose subagents as active router tools", async () => {
@@ -922,6 +1020,12 @@ test("subagent runner rejects invalid or cancelled requests before creating a ch
 		}), /Agent session name must be at most 40 characters/);
 		await assert.rejects(controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: fortyTwoCombiningCodePoints,
+			message: "must not create a child",
+			requestId: "run_invalid_combining_name",
+		}), /Agent session name must be at most 40 characters/);
+		await assert.rejects(controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
 			sessionName: "Invalid thread key",
 			message: "must not create a child",
 			threadKey: "é".repeat(257),
@@ -956,15 +1060,14 @@ test("agents controller requires bounded Unicode names and updates reused titles
 	});
 	try {
 		const controller = router.createAgentsController("ps_parent");
-		const fortyUnicodeCharacters = "😀".repeat(40);
 		const first = await controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
-			sessionName: fortyUnicodeCharacters,
+			sessionName: fortyCombiningCodePoints,
 			message: "start",
 			threadKey: "named-thread",
 			requestId: "run_named_first",
 		});
-		assert.equal(store.get(first.agentId).title, fortyUnicodeCharacters);
+		assert.equal(store.get(first.agentId).title, fortyCombiningCodePoints);
 
 		const renamed = await controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
