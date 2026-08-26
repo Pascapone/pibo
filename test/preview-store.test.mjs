@@ -124,6 +124,8 @@ test("preview store migrates an existing exposure database before creating manag
 			/'stopping'/,
 		);
 		assert.equal(inspection.prepare("PRAGMA foreign_key_list(preview_tickets)").get().table, "preview_exposures");
+		assert.ok(inspection.prepare("PRAGMA table_info(preview_tickets)").all().some((column) => column.name === "server_generation"));
+		assert.ok(inspection.prepare("PRAGMA table_info(preview_browser_sessions)").all().some((column) => column.name === "server_generation"));
 		assert.deepEqual(inspection.prepare("PRAGMA foreign_key_check").all(), []);
 		inspection.close();
 	} finally {
@@ -158,14 +160,16 @@ test("preview ticket and browser-session registries remain bounded and reject ma
 	}
 });
 
-test("ticket consumption is single-use across concurrent store connections", () => {
+test("ticket exchange is atomic and single-use across concurrent store connections", () => {
 	const { dir, store } = fixture();
 	const second = new PreviewStore(store.path);
 	try {
 		const exposure = createExposure(store);
 		const ticket = store.createTicket(exposure.id, 60, new Date("2026-08-22T12:00:00.000Z"));
-		assert.equal(second.consumeTicket(ticket.token, exposure.id, new Date("2026-08-22T12:00:01.000Z")), true);
-		assert.equal(store.consumeTicket(ticket.token, exposure.id, new Date("2026-08-22T12:00:01.000Z")), false);
+		const session = second.exchangeTicketForBrowserSession(ticket.token, exposure.id, 10, new Date("2026-08-22T12:00:01.000Z"));
+		assert.ok(session);
+		assert.equal(store.exchangeTicketForBrowserSession(ticket.token, exposure.id, 10, new Date("2026-08-22T12:00:01.000Z")), undefined);
+		assert.equal(store.authenticateBrowserSession(session.token, exposure.id, new Date("2026-08-22T12:00:02.000Z")), true);
 	} finally {
 		second.close();
 		store.close();

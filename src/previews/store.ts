@@ -44,11 +44,12 @@ type ExposureRow = {
 
 type TicketRow = {
 	preview_id: string;
+	server_generation: string | null;
 	expires_at: string;
 	used_at: string | null;
 };
 
-export const PREVIEW_SCHEMA_VERSION = 3;
+export const PREVIEW_SCHEMA_VERSION = 4;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES = 256;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES_PER_SESSION = 16;
 export const MAX_OUTSTANDING_PREVIEW_TICKETS = 32;
@@ -136,6 +137,12 @@ function exposureFromRow(row: ExposureRow): PreviewExposure {
 	};
 }
 
+function authorizationGeneration(exposure: PreviewExposure): string | null | undefined {
+	if (exposure.managementMode === "external") return null;
+	if (exposure.serverState !== "running" || !exposure.serverGeneration) return undefined;
+	return exposure.serverGeneration;
+}
+
 export function previewExposureState(exposure: PreviewExposure, now = new Date()): PreviewExposureState {
 	if (exposure.closedAt) return "closed";
 	if (Date.parse(exposure.expiresAt) <= now.getTime()) return "expired";
@@ -214,6 +221,7 @@ export class PreviewStore {
 			CREATE TABLE IF NOT EXISTS preview_tickets (
 				token_hash TEXT PRIMARY KEY,
 				preview_id TEXT NOT NULL,
+				server_generation TEXT,
 				created_at TEXT NOT NULL,
 				expires_at TEXT NOT NULL,
 				used_at TEXT,
@@ -224,6 +232,7 @@ export class PreviewStore {
 			CREATE TABLE IF NOT EXISTS preview_browser_sessions (
 				token_hash TEXT PRIMARY KEY,
 				preview_id TEXT NOT NULL,
+				server_generation TEXT,
 				created_at TEXT NOT NULL,
 				expires_at TEXT NOT NULL,
 				FOREIGN KEY (preview_id) REFERENCES preview_exposures(id) ON DELETE CASCADE
@@ -250,6 +259,10 @@ export class PreviewStore {
 			];
 			for (const [name, declaration] of additions) {
 				if (!columns.has(name)) this.db.exec(`ALTER TABLE preview_exposures ADD COLUMN ${name} ${declaration}`);
+			}
+			for (const table of ["preview_tickets", "preview_browser_sessions"]) {
+				const authorityColumns = new Set((this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((column) => column.name));
+				if (!authorityColumns.has("server_generation")) this.db.exec(`ALTER TABLE ${table} ADD COLUMN server_generation TEXT`);
 			}
 			if (needsStoppingStateMigration) {
 				this.db.exec(`
@@ -462,6 +475,8 @@ export class PreviewStore {
 				manager.processStartTicks ?? null,
 				id,
 			);
+			this.db.prepare("DELETE FROM preview_tickets WHERE preview_id = ?").run(id);
+			this.db.prepare("DELETE FROM preview_browser_sessions WHERE preview_id = ?").run(id);
 			this.db.exec("COMMIT");
 			return { exposure: this.requireExposure(id), reserved: true };
 		} catch (error) {
@@ -510,32 +525,56 @@ export class PreviewStore {
 	}
 
 	markManagedServerStopping(id: string, generation: string): PreviewExposure {
-		this.db.prepare(`
-			UPDATE preview_exposures SET server_state = 'stopping'
-			WHERE id = ? AND management_mode = 'managed'
-				AND server_state IN ('starting', 'running', 'error')
-				AND server_generation = ? AND manager_id IS NOT NULL
-		`).run(id, generation);
-		return this.requireExposure(id);
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const result = this.db.prepare(`
+				UPDATE preview_exposures SET server_state = 'stopping'
+				WHERE id = ? AND management_mode = 'managed'
+					AND server_state IN ('starting', 'running', 'error')
+					AND server_generation = ? AND manager_id IS NOT NULL
+			`).run(id, generation);
+			if (Number(result.changes ?? 0) > 0) {
+				this.db.prepare("DELETE FROM preview_tickets WHERE preview_id = ?").run(id);
+				this.db.prepare("DELETE FROM preview_browser_sessions WHERE preview_id = ?").run(id);
+			}
+			const exposure = this.requireExposure(id);
+			this.db.exec("COMMIT");
+			return exposure;
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
 	}
 
 	markManagedServerStopped(id: string, input: { stoppedAt?: string; error?: string; expectedGeneration?: string } = {}): PreviewExposure {
 		const stoppedAt = input.stoppedAt ?? new Date().toISOString();
 		const generationClause = input.expectedGeneration ? " AND server_generation = ?" : "";
-		this.db.prepare(`
-			UPDATE preview_exposures SET
-				server_state = ?, server_generation = NULL, server_stopped_at = ?, server_error = ?,
-				manager_kind = NULL, manager_id = NULL, manager_pid = NULL, manager_process_start_ticks = NULL,
-				target_process_id = NULL, target_process_start_ticks = NULL
-			WHERE id = ? AND management_mode = 'managed'${generationClause}
-		`).run(
-			input.error ? "error" : "stopped",
-			stoppedAt,
-			input.error ?? null,
-			id,
-			...(input.expectedGeneration ? [input.expectedGeneration] : []),
-		);
-		return this.requireExposure(id);
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const result = this.db.prepare(`
+				UPDATE preview_exposures SET
+					server_state = ?, server_generation = NULL, server_stopped_at = ?, server_error = ?,
+					manager_kind = NULL, manager_id = NULL, manager_pid = NULL, manager_process_start_ticks = NULL,
+					target_process_id = NULL, target_process_start_ticks = NULL
+				WHERE id = ? AND management_mode = 'managed'${generationClause}
+			`).run(
+				input.error ? "error" : "stopped",
+				stoppedAt,
+				input.error ?? null,
+				id,
+				...(input.expectedGeneration ? [input.expectedGeneration] : []),
+			);
+			if (Number(result.changes ?? 0) > 0) {
+				this.db.prepare("DELETE FROM preview_tickets WHERE preview_id = ?").run(id);
+				this.db.prepare("DELETE FROM preview_browser_sessions WHERE preview_id = ?").run(id);
+			}
+			const exposure = this.requireExposure(id);
+			this.db.exec("COMMIT");
+			return exposure;
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
 	}
 
 	closeExposure(id: string, closedAt = new Date().toISOString()): PreviewExposure | undefined {
@@ -582,6 +621,8 @@ export class PreviewStore {
 		try {
 			const exposure = this.requireExposure(previewId);
 			if (previewExposureState(exposure, now) !== "active") throw new Error(`Preview "${previewId}" is not active`);
+			const serverGeneration = authorizationGeneration(exposure);
+			if (serverGeneration === undefined) throw new Error(`Preview "${previewId}" server is not running`);
 			const nowIso = now.toISOString();
 			this.db.prepare("DELETE FROM preview_tickets WHERE preview_id = ? AND (expires_at <= ? OR used_at IS NOT NULL)")
 				.run(previewId, nowIso);
@@ -595,8 +636,8 @@ export class PreviewStore {
 				now.getTime() + ttlSeconds * 1000,
 				Date.parse(exposure.expiresAt),
 			)).toISOString();
-			this.db.prepare("INSERT INTO preview_tickets (token_hash, preview_id, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, NULL)")
-				.run(tokenHash(token), previewId, nowIso, expiresAt);
+			this.db.prepare("INSERT INTO preview_tickets (token_hash, preview_id, server_generation, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, ?, NULL)")
+				.run(tokenHash(token), previewId, serverGeneration, nowIso, expiresAt);
 			this.db.exec("COMMIT");
 			return { token, previewId, expiresAt };
 		} catch (error) {
@@ -610,10 +651,16 @@ export class PreviewStore {
 		const hash = tokenHash(token);
 		this.db.exec("BEGIN IMMEDIATE");
 		try {
-			const row = this.db.prepare("SELECT preview_id, expires_at, used_at FROM preview_tickets WHERE token_hash = ?").get(hash) as TicketRow | undefined;
+			const row = this.db.prepare("SELECT preview_id, server_generation, expires_at, used_at FROM preview_tickets WHERE token_hash = ?").get(hash) as TicketRow | undefined;
+			const exposure = row?.preview_id === previewId ? this.getExposure(previewId) : undefined;
+			const serverGeneration = exposure && previewExposureState(exposure, now) === "active"
+				? authorizationGeneration(exposure)
+				: undefined;
 			const valid = Boolean(
 				row &&
 				row.preview_id === previewId &&
+				serverGeneration !== undefined &&
+				row.server_generation === serverGeneration &&
 				!row.used_at &&
 				Date.parse(row.expires_at) > now.getTime(),
 			);
@@ -634,6 +681,8 @@ export class PreviewStore {
 		try {
 			const exposure = this.requireExposure(previewId);
 			if (previewExposureState(exposure, now) !== "active") throw new Error(`Preview "${previewId}" is not active`);
+			const serverGeneration = authorizationGeneration(exposure);
+			if (serverGeneration === undefined) throw new Error(`Preview "${previewId}" server is not running`);
 			const nowIso = now.toISOString();
 			this.db.prepare("DELETE FROM preview_browser_sessions WHERE preview_id = ? AND expires_at <= ?").run(previewId, nowIso);
 			this.db.prepare(
@@ -646,8 +695,8 @@ export class PreviewStore {
 				now.getTime() + ttlMinutes * 60_000,
 				Date.parse(exposure.expiresAt),
 			)).toISOString();
-			this.db.prepare("INSERT INTO preview_browser_sessions (token_hash, preview_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
-				.run(tokenHash(token), previewId, nowIso, expiresAt);
+			this.db.prepare("INSERT INTO preview_browser_sessions (token_hash, preview_id, server_generation, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+				.run(tokenHash(token), previewId, serverGeneration, nowIso, expiresAt);
 			this.db.exec("COMMIT");
 			return { token, previewId, expiresAt };
 		} catch (error) {
@@ -656,11 +705,73 @@ export class PreviewStore {
 		}
 	}
 
+	exchangeTicketForBrowserSession(
+		token: string,
+		previewId: string,
+		ttlMinutes: number,
+		now = new Date(),
+	): PreviewBrowserSession | undefined {
+		if (!isOpaqueToken(token)) return undefined;
+		if (!Number.isInteger(ttlMinutes) || ttlMinutes < 1 || ttlMinutes > 24 * 60) {
+			throw new Error("Preview browser session lifetime must be between 1 minute and 24 hours");
+		}
+		const hash = tokenHash(token);
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const row = this.db.prepare("SELECT preview_id, server_generation, expires_at, used_at FROM preview_tickets WHERE token_hash = ?")
+				.get(hash) as TicketRow | undefined;
+			const exposure = row?.preview_id === previewId ? this.getExposure(previewId) : undefined;
+			const serverGeneration = exposure && previewExposureState(exposure, now) === "active"
+				? authorizationGeneration(exposure)
+				: undefined;
+			if (
+				!row ||
+				row.preview_id !== previewId ||
+				row.used_at ||
+				Date.parse(row.expires_at) <= now.getTime() ||
+				serverGeneration === undefined ||
+				row.server_generation !== serverGeneration
+			) {
+				this.db.exec("COMMIT");
+				return undefined;
+			}
+			const consumed = this.db.prepare("UPDATE preview_tickets SET used_at = ? WHERE token_hash = ? AND used_at IS NULL")
+				.run(now.toISOString(), hash);
+			if (Number(consumed.changes ?? 0) !== 1) {
+				this.db.exec("COMMIT");
+				return undefined;
+			}
+			const nowIso = now.toISOString();
+			this.db.prepare("DELETE FROM preview_browser_sessions WHERE preview_id = ? AND expires_at <= ?").run(previewId, nowIso);
+			this.db.prepare(
+				"DELETE FROM preview_browser_sessions WHERE token_hash IN (" +
+				"SELECT token_hash FROM preview_browser_sessions WHERE preview_id = ? " +
+				"ORDER BY created_at DESC, token_hash DESC LIMIT -1 OFFSET ?)",
+			).run(previewId, MAX_PREVIEW_BROWSER_SESSIONS - 1);
+			const browserToken = opaqueToken();
+			const expiresAt = new Date(Math.min(
+				now.getTime() + ttlMinutes * 60_000,
+				Date.parse(exposure!.expiresAt),
+			)).toISOString();
+			this.db.prepare("INSERT INTO preview_browser_sessions (token_hash, preview_id, server_generation, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+				.run(tokenHash(browserToken), previewId, serverGeneration, nowIso, expiresAt);
+			this.db.exec("COMMIT");
+			return { token: browserToken, previewId, expiresAt };
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
 	authenticateBrowserSession(token: string | undefined, previewId: string, now = new Date()): boolean {
 		if (!token || !isOpaqueToken(token)) return false;
-		const row = this.db.prepare("SELECT preview_id, expires_at FROM preview_browser_sessions WHERE token_hash = ?")
-			.get(tokenHash(token)) as { preview_id: string; expires_at: string } | undefined;
-		return Boolean(row && row.preview_id === previewId && Date.parse(row.expires_at) > now.getTime());
+		const row = this.db.prepare("SELECT preview_id, server_generation, expires_at FROM preview_browser_sessions WHERE token_hash = ?")
+			.get(tokenHash(token)) as { preview_id: string; server_generation: string | null; expires_at: string } | undefined;
+		if (!row || row.preview_id !== previewId || Date.parse(row.expires_at) <= now.getTime()) return false;
+		const exposure = this.getExposure(previewId);
+		if (!exposure || previewExposureState(exposure, now) !== "active") return false;
+		const serverGeneration = authorizationGeneration(exposure);
+		return serverGeneration !== undefined && row.server_generation === serverGeneration;
 	}
 
 	diagnostics(now = new Date()): {
@@ -691,8 +802,18 @@ export class PreviewStore {
 		const retentionCutoff = new Date(now.getTime() - CLOSED_PREVIEW_RETENTION_DAYS * 24 * 60 * 60_000).toISOString();
 		this.db.exec("BEGIN IMMEDIATE");
 		try {
-			const tickets = this.db.prepare("DELETE FROM preview_tickets WHERE expires_at <= ? OR used_at IS NOT NULL").run(iso);
-			const browserSessions = this.db.prepare("DELETE FROM preview_browser_sessions WHERE expires_at <= ?").run(iso);
+			const inactiveTickets = this.db.prepare(`
+				DELETE FROM preview_tickets WHERE preview_id IN (
+					SELECT id FROM preview_exposures WHERE closed_at IS NOT NULL OR expires_at <= ?
+				)
+			`).run(iso);
+			const expiredTickets = this.db.prepare("DELETE FROM preview_tickets WHERE expires_at <= ? OR used_at IS NOT NULL").run(iso);
+			const inactiveBrowserSessions = this.db.prepare(`
+				DELETE FROM preview_browser_sessions WHERE preview_id IN (
+					SELECT id FROM preview_exposures WHERE closed_at IS NOT NULL OR expires_at <= ?
+				)
+			`).run(iso);
+			const expiredBrowserSessions = this.db.prepare("DELETE FROM preview_browser_sessions WHERE expires_at <= ?").run(iso);
 			const expiredCommands = this.db.prepare(`
 				UPDATE preview_exposures SET start_command = NULL
 				WHERE expires_at <= ? AND start_command IS NOT NULL
@@ -707,8 +828,8 @@ export class PreviewStore {
 			`).run(retentionCutoff, retentionCutoff);
 			this.db.exec("COMMIT");
 			return {
-				tickets: Number(tickets.changes ?? 0),
-				browserSessions: Number(browserSessions.changes ?? 0),
+				tickets: Number(inactiveTickets.changes ?? 0) + Number(expiredTickets.changes ?? 0),
+				browserSessions: Number(inactiveBrowserSessions.changes ?? 0) + Number(expiredBrowserSessions.changes ?? 0),
 				expiredCommands: Number(expiredCommands.changes ?? 0),
 				exposures: Number(exposures.changes ?? 0),
 			};

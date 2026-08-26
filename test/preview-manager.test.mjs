@@ -328,6 +328,7 @@ test("reconciliation handles every persisted owner-bearing lifecycle state", asy
 	assert.equal(store.requireExposure("pv-state-error").managerId, undefined);
 	assert.deepEqual(new Set(stopped), new Set([
 		"fake-reservation-pv-state-starting",
+		"fake-reservation-pv-state-running",
 		"fake-reservation-pv-state-stopping",
 		"fake-reservation-pv-state-error",
 	]));
@@ -383,19 +384,26 @@ test("an old stop generation cannot overwrite a newer start reservation", async 
 	).exposure;
 	assert.ok(first.serverGeneration);
 	store.markManagedServerStopped("pv-generation", { expectedGeneration: first.serverGeneration });
+	const secondManager = reservationIdentity("generation-second");
 	const second = store.reserveManagedServerStart(
 		"pv-generation",
 		1,
 		"2026-08-23T12:01:00.000Z",
 		"2026-08-23T12:11:00.000Z",
-		reservationIdentity("generation-second"),
+		secondManager,
 	).exposure;
 	assert.ok(second.serverGeneration);
 	assert.notEqual(second.serverGeneration, first.serverGeneration);
+	store.markManagedServerRunning("pv-generation", second.serverGeneration, {
+		targetHost: "127.0.0.1",
+		manager: secondManager,
+	});
+	const currentSession = store.createBrowserSession("pv-generation", 10, new Date("2026-08-23T12:01:01.000Z"));
 
 	const afterLateStop = store.markManagedServerStopped("pv-generation", { expectedGeneration: first.serverGeneration });
-	assert.equal(afterLateStop.serverState, "starting");
+	assert.equal(afterLateStop.serverState, "running");
 	assert.equal(afterLateStop.serverGeneration, second.serverGeneration);
+	assert.equal(store.authenticateBrowserSession(currentSession.token, "pv-generation", new Date("2026-08-23T12:01:02.000Z")), true);
 });
 
 test("stale manager publication cannot replace a newer generation owner", async (t) => {
@@ -526,11 +534,9 @@ test("detached process cleanup requires the exact owner token and process creati
 
 	await controller.stop({ ...launched, id: `${launched.id}-unrelated` });
 	assert.equal(await controller.isRunning(launched), true, "a forged owner token must not authorize a PID signal");
-	assert.equal(
-		await controller.isRunning({ ...launched, processStartTicks: `${launched.processStartTicks}-reused` }),
-		false,
-		"a reused PID with different start ticks must not be accepted as the recorded leader",
-	);
+	const reusedLeader = { ...launched, processStartTicks: `${launched.processStartTicks}-reused` };
+	assert.equal(await controller.isManagerRunning(reusedLeader), false, "a reused PID must not be accepted as the recorded leader");
+	assert.equal(await controller.isRunning(reusedLeader), true, "leader reuse must not erase exact-token descendant ownership");
 	await controller.stop(prepared);
 	assert.equal(await controller.isRunning(prepared), false, "the durable token must recover and stop the exact process group");
 });

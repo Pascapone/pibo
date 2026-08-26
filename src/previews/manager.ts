@@ -32,6 +32,7 @@ export type PreviewProcessController = {
 	createIdentity(input: PreviewProcessLaunchInput): PreviewManagerIdentity;
 	launch(input: PreviewProcessLaunchInput, identity: PreviewManagerIdentity): Promise<PreviewManagerIdentity>;
 	isRunning(identity: PreviewManagerIdentity): Promise<boolean>;
+	isManagerRunning?(identity: PreviewManagerIdentity): Promise<boolean>;
 	ownsTarget(identity: PreviewManagerIdentity, targetPid: number): Promise<boolean>;
 	stop(identity: PreviewManagerIdentity): Promise<void>;
 };
@@ -170,6 +171,9 @@ export async function stopManagedPreview(store: PreviewStore, id: string, option
 		(exposure.serverState === "starting" || exposure.serverState === "stopping");
 	if (exposure.serverState !== "stopping") store.markManagedServerStopping(id, exposure.serverGeneration);
 	await controller.stop(identity);
+	if (await controller.isRunning(identity)) {
+		throw new Error(`Preview "${id}" exact owner cleanup is incomplete`);
+	}
 	if (wasStarting || launchMayStillPublish) return store.requireExposure(id);
 	return store.markManagedServerStopped(id, { expectedGeneration: exposure.serverGeneration });
 }
@@ -181,7 +185,7 @@ async function stopManagedPreviewForReconcile(
 ): Promise<boolean> {
 	try {
 		await controller.stop(identity);
-		return true;
+		return !await controller.isRunning(identity);
 	} catch (error) {
 		console.error(
 			`Preview server reconciliation could not stop ${previewId}: ${managedPreviewError(error)}`,
@@ -250,7 +254,13 @@ export async function reconcileManagedPreviews(store: PreviewStore, options: Pre
 			}
 			continue;
 		}
-		if (exposure.serverState !== "starting" && !await controller.isRunning(identity)) {
+		const ownerRunning = await controller.isRunning(identity);
+		const managerRunning = await exactManagerIsRunning(controller, identity);
+		if (exposure.serverState !== "starting" && (!ownerRunning || !managerRunning)) {
+			if (exposure.serverGeneration) {
+				store.markManagedServerStopping(exposure.id, exposure.serverGeneration);
+			}
+			if (!await stopManagedPreviewForReconcile(controller, identity, exposure.id)) continue;
 			store.markManagedServerStopped(exposure.id, {
 				stoppedAt: now.toISOString(),
 				expectedGeneration: exposure.serverGeneration,
@@ -280,7 +290,7 @@ export async function managedPreviewIsOnline(
 	if (previewExposureState(exposure, now) !== "active") return false;
 	if (exposure.managementMode !== "managed" || exposure.serverState !== "running") return false;
 	const identity = managerIdentity(exposure);
-	if (!identity || !await controller.isRunning(identity)) return false;
+	if (!identity || !await exactManagerIsRunning(controller, identity)) return false;
 	if (!isPreviewTargetProcessCurrent(exposure, { cacheMs: 0 })) return false;
 	return Boolean(await probePreviewTarget(exposure.targetPort, { timeoutMs: 500 }));
 }
@@ -313,6 +323,10 @@ export function createDefaultPreviewProcessController(): PreviewProcessControlle
 		},
 		isRunning(identity) {
 			return controllerFor(identity).isRunning(identity);
+		},
+		isManagerRunning(identity) {
+			const controller = controllerFor(identity);
+			return controller.isManagerRunning?.(identity) ?? controller.isRunning(identity);
 		},
 		ownsTarget(identity, targetPid) {
 			return controllerFor(identity).ownsTarget(identity, targetPid);
@@ -363,6 +377,9 @@ const systemdPreviewProcessController: PreviewProcessController = {
 		} catch {
 			return false;
 		}
+	},
+	async isManagerRunning(identity) {
+		return this.isRunning(identity);
 	},
 	async ownsTarget(identity, targetPid) {
 		try {
@@ -421,6 +438,9 @@ const detachedPreviewProcessController: PreviewProcessController = {
 	async isRunning(identity) {
 		return process.platform === "linux" && ownedLinuxProcesses(identity).length > 0;
 	},
+	async isManagerRunning(identity) {
+		return process.platform === "linux" && exactLinuxManagerIsRunning(identity);
+	},
 	async ownsTarget(identity, targetPid) {
 		if (process.platform !== "linux") return false;
 		if (processOwnerToken(targetPid) === identity.id) return true;
@@ -432,17 +452,32 @@ const detachedPreviewProcessController: PreviewProcessController = {
 			throw new Error("Refusing to signal a managed Preview process without verifiable Linux ownership");
 		}
 		const ownGroup = await processGroupId(process.pid);
-		const groups = new Set(ownedLinuxProcesses(identity).map((owned) => owned.processGroupId));
+		const tracked = new Map<number, OwnedLinuxProcess>();
+		const scan = () => {
+			const current = ownedLinuxProcesses(identity);
+			for (const owned of current) tracked.set(owned.pid, owned);
+			return current;
+		};
+		const initial = scan();
+		const groups = verifiedOwnedProcessGroups(identity, initial);
 		if (ownGroup && groups.has(ownGroup)) throw new Error("Refusing to stop the current Pibo process group");
 		for (const group of groups) {
 			try { process.kill(-group, "SIGTERM"); } catch (error) { if (!missingProcess(error)) throw error; }
 		}
-		for (let attempt = 0; attempt < 20 && await this.isRunning(identity); attempt += 1) await delay(100);
-		if (await this.isRunning(identity)) {
-			for (const group of new Set(ownedLinuxProcesses(identity).map((owned) => owned.processGroupId))) {
+		for (let attempt = 0; attempt < 20 && exactTrackedProcessesRemain(tracked, scan()); attempt += 1) await delay(100);
+		let remaining = scan();
+		if (exactTrackedProcessesRemain(tracked, remaining)) {
+			for (const group of verifiedOwnedProcessGroups(identity, remaining)) {
 				try { process.kill(-group, "SIGKILL"); } catch (error) { if (!missingProcess(error)) throw error; }
 			}
+			for (const owned of tracked.values()) {
+				if (previewProcessStartTicks(owned.pid) !== owned.processStartTicks) continue;
+				try { process.kill(owned.pid, "SIGKILL"); } catch (error) { if (!missingProcess(error)) throw error; }
+			}
 		}
+		for (let attempt = 0; attempt < 20 && exactTrackedProcessesRemain(tracked, scan()); attempt += 1) await delay(100);
+		remaining = scan();
+		if (exactTrackedProcessesRemain(tracked, remaining)) throw new Error("Managed Preview exact process group did not terminate");
 	},
 };
 
@@ -454,7 +489,7 @@ async function waitForManagedTarget(
 ): Promise<{ host: PreviewExposure["targetHost"]; process?: { pid: number; startTicks: string } }> {
 	const deadline = Date.now() + options.startupTimeoutMs;
 	while (Date.now() < deadline) {
-		if (!await controller.isRunning(manager)) throw new Error("Managed Preview command exited before opening its port");
+		if (!await exactManagerIsRunning(controller, manager)) throw new Error("Managed Preview command exited before opening its port");
 		const target = await probePreviewTarget(exposure.targetPort, { timeoutMs: Math.min(250, options.pollIntervalMs) });
 		if (target) {
 			const process = findPreviewTargetProcess(target.host, exposure.targetPort);
@@ -526,16 +561,13 @@ function processOwnerToken(pid: number): string | undefined {
 	}
 }
 
-function ownedLinuxProcesses(identity: PreviewManagerIdentity): Array<{ pid: number; processGroupId: number }> {
+type OwnedLinuxProcess = { pid: number; processGroupId: number; processStartTicks: string };
+
+function ownedLinuxProcesses(identity: PreviewManagerIdentity): OwnedLinuxProcess[] {
 	if (process.platform !== "linux" || identity.kind !== "process") return [];
-	if (
-		identity.pid &&
-		identity.processStartTicks &&
-		previewProcessStartTicks(identity.pid) !== identity.processStartTicks
-	) return [];
 	let entries: string[];
 	try { entries = readdirSync("/proc"); } catch { return []; }
-	const owned: Array<{ pid: number; processGroupId: number }> = [];
+	const owned: OwnedLinuxProcess[] = [];
 	for (const entry of entries) {
 		if (!/^\d+$/.test(entry)) continue;
 		const pid = Number(entry);
@@ -544,11 +576,57 @@ function ownedLinuxProcesses(identity: PreviewManagerIdentity): Array<{ pid: num
 			const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
 			const commandEnd = stat.lastIndexOf(") ");
 			if (commandEnd < 0) continue;
-			const processGroupId = Number.parseInt(stat.slice(commandEnd + 2).trim().split(/\s+/)[2] ?? "", 10);
-			if (Number.isInteger(processGroupId) && processGroupId > 0) owned.push({ pid, processGroupId });
+			const fields = stat.slice(commandEnd + 2).trim().split(/\s+/);
+			const processGroupId = Number.parseInt(fields[2] ?? "", 10);
+			const processStartTicks = fields[19];
+			if (Number.isInteger(processGroupId) && processGroupId > 0 && processStartTicks) {
+				owned.push({ pid, processGroupId, processStartTicks });
+			}
 		} catch {}
 	}
 	return owned;
+}
+
+function exactTrackedProcessesRemain(
+	tracked: Map<number, OwnedLinuxProcess>,
+	current: OwnedLinuxProcess[],
+): boolean {
+	if (current.length > 0) return true;
+	for (const owned of tracked.values()) {
+		if (previewProcessStartTicks(owned.pid) === owned.processStartTicks) return true;
+	}
+	return false;
+}
+
+function verifiedOwnedProcessGroups(
+	identity: PreviewManagerIdentity,
+	candidates: OwnedLinuxProcess[],
+): Set<number> {
+	const groups = new Set<number>();
+	for (const owned of candidates) {
+		if (previewProcessStartTicks(owned.pid) !== owned.processStartTicks) continue;
+		if (processOwnerToken(owned.pid) !== identity.id) continue;
+		groups.add(owned.processGroupId);
+	}
+	return groups;
+}
+
+function exactLinuxManagerIsRunning(identity: PreviewManagerIdentity): boolean {
+	if (
+		process.platform !== "linux" ||
+		identity.kind !== "process" ||
+		!identity.pid ||
+		!identity.processStartTicks
+	) return false;
+	return previewProcessStartTicks(identity.pid) === identity.processStartTicks &&
+		processOwnerToken(identity.pid) === identity.id;
+}
+
+function exactManagerIsRunning(
+	controller: PreviewProcessController,
+	identity: PreviewManagerIdentity,
+): Promise<boolean> {
+	return controller.isManagerRunning?.(identity) ?? controller.isRunning(identity);
 }
 
 function sameManagerOwner(first: PreviewManagerIdentity, second: PreviewManagerIdentity): boolean {
@@ -563,7 +641,7 @@ function managedGenerationMatches(exposure: PreviewExposure, generation: string,
 async function stopManagedOwner(controller: PreviewProcessController, identity: PreviewManagerIdentity): Promise<boolean> {
 	try {
 		await controller.stop(identity);
-		return true;
+		return !await controller.isRunning(identity);
 	} catch {
 		return false;
 	}

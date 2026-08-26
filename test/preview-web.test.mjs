@@ -598,6 +598,10 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 	assert.equal(started.serverState, "running");
 	assert.ok(started.serverStopAt);
 	assert.equal("startCommand" in started, false);
+	let generationStore = new PreviewStore(databasePath);
+	const firstGeneration = generationStore.requireExposure("pv-managed-web").serverGeneration;
+	generationStore.close();
+	assert.ok(firstGeneration);
 	const previewHost = `pv-managed-web.preview.localhost:${webPort}`;
 	const opened = await request({
 		port: webPort,
@@ -644,6 +648,11 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 	});
 	assert.equal(restartedResponse.status, 200);
 	assert.equal(JSON.parse(restartedResponse.body).preview.health, "online");
+	generationStore = new PreviewStore(databasePath);
+	const secondGeneration = generationStore.requireExposure("pv-managed-web").serverGeneration;
+	generationStore.close();
+	assert.ok(secondGeneration);
+	assert.notEqual(secondGeneration, firstGeneration);
 	for (const path of ["/", "/sse"]) {
 		assert.equal((await request({ port: webPort, host: previewHost, path, headers: { cookie: oldCookie } })).status, 401);
 	}
@@ -677,7 +686,14 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 	const freshCookie = freshExchange.headers["set-cookie"][0].split(";")[0];
 	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: freshCookie } })).status, 200);
 	assert.equal((await request({ port: webPort, host: previewHost, path: "/sse", headers: { cookie: freshCookie } })).body, "data: managed-web\n\n");
-	assert.match(await rawUpgrade({ port: webPort, host: previewHost, cookie: freshCookie }), /preview-probe/);
+	const freshUpgrade = await openUpgradeSocket({ port: webPort, host: previewHost, cookie: freshCookie });
+	assert.match(freshUpgrade.response, /^HTTP\/1\.1 101 /);
+	freshUpgrade.socket.destroy();
+	await Promise.all([...upgradedSockets].map((socket) => new Promise((resolve) => {
+		if (socket.destroyed) return resolve();
+		socket.once("close", resolve);
+		socket.destroy();
+	})));
 
 	const removedResponse = await request({
 		port: webPort,

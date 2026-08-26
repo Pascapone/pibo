@@ -384,10 +384,8 @@ export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWeb
 					}
 					const body = await readBody(request, 8 * 1024);
 					const ticket = new URLSearchParams(body.toString("utf8")).get("ticket") ?? "";
-					const browserSession = withStore(databasePath, (store) => {
-						if (!store.consumeTicket(ticket, previewId)) return undefined;
-						return store.createBrowserSession(previewId, browserSessionTtlMinutes);
-					});
+					const browserSession = withStore(databasePath, (store) =>
+						store.exchangeTicketForBrowserSession(ticket, previewId, browserSessionTtlMinutes));
 					if (!browserSession) {
 						unauthorizedPreview(response);
 						return;
