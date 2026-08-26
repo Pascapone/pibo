@@ -1,40 +1,54 @@
 /**
- * MCP-CLI Daemon Client - IPC client for communicating with daemon workers
- *
- * Handles spawning daemons, detecting stale connections, and forwarding requests.
+ * MCP daemon client and cross-process lifecycle coordination.
  */
 
-import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import {
+  spawn,
+  type SpawnOptions,
+  type ChildProcess,
+} from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { existsSync, unlinkSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { createConnection } from 'node:net';
-import { dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type ServerConfig,
   debug,
   getConfigHash,
+  getDaemonClaimPath,
+  getDaemonLeasePrefix,
   getDaemonRequestTimeoutMs,
+  getPidPath,
   getSocketDir,
   getSocketPath,
+  usesFilesystemSocket,
 } from './config.js';
 import {
+  type DaemonClaimFileContent,
+  type DaemonIdentity,
+  type DaemonLeaseFileContent,
   type DaemonRequest,
   type DaemonResponse,
+  type PidFileContent,
+  daemonIdentityMatches,
+  getOwnershipFileAgeMs,
   isProcessRunning,
   killProcess,
+  readOwnershipFilePath,
   readPidFile,
+  readPidFilePath,
+  removeOwnershipFile,
   removePidFile,
   removeSocketFile,
+  writeOwnershipFileExclusive,
 } from './daemon.js';
 
-// ============================================================================
-// Daemon Connection
-// ============================================================================
+const OWNERSHIP_POLL_MS = 25;
+const DEAD_OWNER_GRACE_MS = 100;
+const MAX_DAEMON_MESSAGE_BYTES = 1024 * 1024;
 
-/**
- * Represents a daemon connection for a specific server
- */
 export interface DaemonConnection {
   serverName: string;
   listTools: () => Promise<unknown>;
@@ -46,19 +60,35 @@ export interface DaemonConnection {
   close: () => Promise<void>;
 }
 
-/**
- * Generate a unique request ID
- */
 function generateRequestId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return `${Date.now()}-${randomUUID()}`;
 }
 
-/**
- * Send a request to the daemon and wait for response
- */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isDaemonIdentity(value: unknown): value is DaemonIdentity {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<DaemonIdentity>;
+  return (
+    Number.isInteger(candidate.pid) &&
+    (candidate.pid ?? 0) > 0 &&
+    typeof candidate.configHash === 'string' &&
+    typeof candidate.generation === 'string' &&
+    candidate.generation.length > 0 &&
+    typeof candidate.startedAt === 'string'
+  );
+}
+
+function isCompletePidInfo(value: PidFileContent): value is PidFileContent {
+  return isDaemonIdentity(value);
+}
+
 async function sendRequest(
   socketPath: string,
   request: DaemonRequest,
+  timeoutMs: number = getDaemonRequestTimeoutMs(),
 ): Promise<DaemonResponse> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -72,22 +102,28 @@ async function sendRequest(
     };
 
     const socket = createConnection(socketPath, () => {
-      socket.write(JSON.stringify(request));
+      socket.write(`${JSON.stringify(request)}\n`);
     });
 
     socket.on('data', (data) => {
       responseText += data.toString();
-      if (responseText.includes('\n')) {
-        settle(() => {
-          try {
-            resolve(JSON.parse(responseText.trim()));
-          } catch {
-            reject(new Error('Invalid response from daemon'));
-          } finally {
-            socket.end();
-          }
-        });
+      if (responseText.length > MAX_DAEMON_MESSAGE_BYTES) {
+        socket.destroy();
+        settle(() => reject(new Error('Daemon response exceeds 1 MiB')));
+        return;
       }
+      const newlineIndex = responseText.indexOf('\n');
+      if (newlineIndex === -1) return;
+      const responseLine = responseText.slice(0, newlineIndex);
+      settle(() => {
+        try {
+          resolve(JSON.parse(responseLine));
+        } catch {
+          reject(new Error('Invalid response from daemon'));
+        } finally {
+          socket.end();
+        }
+      });
     });
 
     socket.on('end', () => {
@@ -108,249 +144,526 @@ async function sendRequest(
     const timeoutId = setTimeout(() => {
       socket.destroy();
       settle(() => reject(new Error('Daemon request timeout')));
-    }, getDaemonRequestTimeoutMs());
+    }, timeoutMs);
   });
 }
 
-/**
- * Check if daemon is running and has matching config
- */
-function isDaemonValid(serverName: string, config: ServerConfig): boolean {
+async function pingDaemon(
+  serverName: string,
+  timeoutMs: number,
+): Promise<DaemonIdentity | null> {
   const socketPath = getSocketPath(serverName);
-  const pidInfo = readPidFile(serverName);
-
-  // No PID file = no daemon
-  if (!pidInfo) {
-    debug(`[daemon-client] No PID file for ${serverName}`);
-    return false;
-  }
-
-  // Check if process is actually running
-  if (!isProcessRunning(pidInfo.pid)) {
-    debug(`[daemon-client] Process ${pidInfo.pid} not running, cleaning up`);
-    removePidFile(serverName);
-    removeSocketFile(serverName);
-    return false;
-  }
-
-  // Check if config matches
-  const currentHash = getConfigHash(config);
-  if (pidInfo.configHash !== currentHash) {
-    debug(
-      `[daemon-client] Config hash mismatch for ${serverName}, killing old daemon`,
+  if (usesFilesystemSocket() && !existsSync(socketPath)) return null;
+  try {
+    const response = await sendRequest(
+      socketPath,
+      { id: generateRequestId(), type: 'ping' },
+      timeoutMs,
     );
-    killProcess(pidInfo.pid);
-    removePidFile(serverName);
-    removeSocketFile(serverName);
-    return false;
+    return response.success && isDaemonIdentity(response.data)
+      ? response.data
+      : null;
+  } catch {
+    return null;
   }
-
-  // Check if socket exists
-  if (!existsSync(socketPath)) {
-    debug(`[daemon-client] Socket missing for ${serverName}, cleaning up`);
-    killProcess(pidInfo.pid);
-    removePidFile(serverName);
-    return false;
-  }
-
-  return true;
 }
 
-/**
- * Spawn a new daemon process for a server
- */
-async function spawnDaemon(
+async function waitForDaemonReady(
+  serverName: string,
+  expected: DaemonIdentity,
+  timeoutMs: number,
+  isAlive: () => boolean,
+): Promise<DaemonIdentity | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && isAlive()) {
+    const remainingMs = deadline - Date.now();
+    const identity = await pingDaemon(
+      serverName,
+      Math.max(1, Math.min(500, remainingMs)),
+    );
+    if (daemonIdentityMatches(identity, expected)) return identity;
+    await sleep(OWNERSHIP_POLL_MS);
+  }
+  return null;
+}
+
+async function waitForProcessExit(
+  pid: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && isProcessRunning(pid)) {
+    await sleep(50);
+  }
+  return !isProcessRunning(pid);
+}
+
+async function stopDaemon(
+  serverName: string,
+  expected: PidFileContent,
+): Promise<boolean> {
+  try {
+    await sendRequest(
+      getSocketPath(serverName),
+      {
+        id: generateRequestId(),
+        type: 'close',
+        generation: expected.generation,
+      },
+      1000,
+    );
+  } catch {
+    // The daemon may still be starting or may already have crashed.
+  }
+
+  let exited = await waitForProcessExit(expected.pid, 2000);
+  if (!exited) {
+    const current = readPidFile(serverName);
+    if (!daemonIdentityMatches(current, expected)) return false;
+    killProcess(expected.pid);
+    exited = await waitForProcessExit(expected.pid, 1000);
+  }
+
+  if (exited && removePidFile(serverName, expected)) {
+    removeSocketFile(serverName);
+  }
+  return exited;
+}
+
+async function stopLegacyDaemon(
+  serverName: string,
+  pidInfo: PidFileContent,
+): Promise<boolean> {
+  try {
+    await sendRequest(
+      getSocketPath(serverName),
+      { id: generateRequestId(), type: 'close' },
+      1000,
+    );
+  } catch {
+    // Continue to the bounded process check.
+  }
+  let exited = await waitForProcessExit(pidInfo.pid, 2000);
+  if (!exited) {
+    const current = readPidFile(serverName);
+    if (
+      !current ||
+      current.pid !== pidInfo.pid ||
+      current.configHash !== pidInfo.configHash
+    ) {
+      return false;
+    }
+    killProcess(pidInfo.pid);
+    exited = await waitForProcessExit(pidInfo.pid, 1000);
+  }
+  if (exited) {
+    if (removePidFile(serverName, pidInfo)) removeSocketFile(serverName);
+  }
+  return exited;
+}
+
+async function stopUntrackedEndpoint(serverName: string): Promise<boolean> {
+  const identity = await pingDaemon(serverName, 500);
+  if (!identity) {
+    removeSocketFile(serverName);
+    return true;
+  }
+  try {
+    await sendRequest(
+      getSocketPath(serverName),
+      {
+        id: generateRequestId(),
+        type: 'close',
+        generation: identity.generation,
+      },
+      1000,
+    );
+  } catch {
+    return false;
+  }
+  const exited = await waitForProcessExit(identity.pid, 2000);
+  if (exited) removeSocketFile(serverName);
+  return exited;
+}
+
+export function getDaemonSpawnOptions(): SpawnOptions {
+  return {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    env: { ...process.env },
+  };
+}
+
+export function getDaemonSpawnArguments(
+  daemonScript: string,
   serverName: string,
   config: ServerConfig,
-): Promise<boolean> {
-  debug(`[daemon-client] Spawning daemon for ${serverName}`);
-
-  // Find the daemon script next to this module. This is .ts under tsx and .js after build.
-  const modulePath = fileURLToPath(import.meta.url);
-  const daemonScript = join(dirname(modulePath), `daemon${extname(modulePath)}`);
-
-  const configJson = JSON.stringify(config);
-
-  // Spawn detached process
-  const proc = spawn(process.execPath, [
+  generation: string,
+): string[] {
+  return [
     ...process.execArgv,
     daemonScript,
     '--daemon',
     serverName,
-    configJson,
-  ], {
-    detached: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env },
-  });
-
-  // Wait for daemon to signal readiness or fail
-  return new Promise((resolve) => {
-    let resolved = false;
-
-    proc.stdout?.on('data', (data) => {
-      const text = data.toString();
-      if (text.includes('DAEMON_READY') && !resolved) {
-        resolved = true;
-        // Don't await the process, let it run in the background.
-        (proc.stdout as { unref?: () => void } | null)?.unref?.();
-        (proc.stderr as { unref?: () => void } | null)?.unref?.();
-        proc.unref();
-        resolve(true);
-      }
-    });
-
-    // Timeout after 5 seconds (fast fallback to direct connection)
-    setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        debug(`[daemon-client] Daemon spawn timeout for ${serverName}`);
-        resolve(false);
-      }
-    }, 5000);
-
-    // Check for early exit
-    proc.on('exit', (code) => {
-      if (!resolved && code !== 0) {
-        resolved = true;
-        debug(`[daemon-client] Daemon exited with code ${code}`);
-        resolve(false);
-      }
-    });
-  });
+    JSON.stringify(config),
+    generation,
+  ];
 }
 
-/**
- * Get or create a daemon connection for a server
- * Returns null if daemon mode fails (caller should fallback to direct connection)
- */
-export async function getDaemonConnection(
+async function spawnDaemon(
   serverName: string,
   config: ServerConfig,
-): Promise<DaemonConnection | null> {
-  const socketPath = getSocketPath(serverName);
+  configHash: string,
+  generation: string,
+  timeoutMs: number,
+): Promise<DaemonIdentity | null> {
+  debug(`[daemon-client] Spawning daemon for ${serverName}`);
+  const modulePath = fileURLToPath(import.meta.url);
+  const daemonScript = join(
+    dirname(modulePath),
+    `daemon${extname(modulePath)}`,
+  );
+  const proc: ChildProcess = spawn(
+    process.execPath,
+    getDaemonSpawnArguments(daemonScript, serverName, config, generation),
+    getDaemonSpawnOptions(),
+  );
 
-  // Check if valid daemon exists
-  if (!isDaemonValid(serverName, config)) {
-    // Spawn new daemon
-    const spawned = await spawnDaemon(serverName, config);
-    if (!spawned) {
-      debug(`[daemon-client] Failed to spawn daemon for ${serverName}`);
-      return null;
-    }
+  let spawnError: Error | undefined;
+  let exited = false;
+  proc.once('error', (error) => {
+    spawnError = error;
+  });
+  proc.once('exit', () => {
+    exited = true;
+  });
+  proc.unref();
 
-    // Wait a bit for socket to be ready
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  if (proc.pid === undefined) return null;
+  const expected: DaemonIdentity = {
+    pid: proc.pid,
+    configHash,
+    generation,
+    startedAt: '',
+  };
+  const ready = await waitForDaemonReady(
+    serverName,
+    expected,
+    timeoutMs,
+    () => !spawnError && !exited,
+  );
+  if (ready) return ready;
 
-  // Verify socket exists
-  if (!existsSync(socketPath)) {
-    debug(`[daemon-client] Socket not found after spawn for ${serverName}`);
-    return null;
-  }
-
-  // Test connection with ping
-  try {
-    const pingResponse = await sendRequest(socketPath, {
-      id: generateRequestId(),
-      type: 'ping',
-    });
-
-    if (!pingResponse.success) {
-      debug(`[daemon-client] Ping failed for ${serverName}`);
-      return null;
-    }
-  } catch (error) {
+  if (spawnError) {
     debug(
-      `[daemon-client] Connection test failed for ${serverName}: ${(error as Error).message}`,
+      `[daemon-client] Spawn failed for ${serverName}: ${spawnError.message}`,
     );
+  } else if (exited) {
+    debug(`[daemon-client] Daemon exited before readiness for ${serverName}`);
+  } else {
+    debug(`[daemon-client] Daemon startup timed out for ${serverName}`);
+  }
+
+  const pidInfo = readPidFile(serverName);
+  if (pidInfo && daemonIdentityMatches(pidInfo, expected)) {
+    await stopDaemon(serverName, pidInfo);
+  } else if (!exited && isProcessRunning(proc.pid)) {
+    killProcess(proc.pid);
+    await waitForProcessExit(proc.pid, 1000);
+  }
+  return null;
+}
+
+function acquireClaim(
+  serverName: string,
+  configHash: string,
+): DaemonClaimFileContent | null {
+  const claim: DaemonClaimFileContent = {
+    ownerPid: process.pid,
+    generation: randomUUID(),
+    configHash,
+    startedAt: new Date().toISOString(),
+    serverName,
+  };
+  return writeOwnershipFileExclusive(getDaemonClaimPath(serverName), claim)
+    ? claim
+    : null;
+}
+
+function removeStaleOwnershipFile(path: string): boolean {
+  const ownership = readOwnershipFilePath(path);
+  const ageMs = getOwnershipFileAgeMs(path);
+  if (ageMs === null) return false;
+  if (!ownership) {
+    // Without a generation token there is no safe compare-and-delete. Leave a
+    // corrupt claim in place so callers take the direct fallback rather than
+    // risk unlinking a valid owner installed by another process.
+    return false;
+  }
+  if (isProcessRunning(ownership.ownerPid) || ageMs < DEAD_OWNER_GRACE_MS) {
+    return false;
+  }
+  return removeOwnershipFile(path, ownership.generation);
+}
+
+function claimIsOwned(path: string, claim: DaemonClaimFileContent): boolean {
+  return readOwnershipFilePath(path)?.generation === claim.generation;
+}
+
+async function listActiveLeases(
+  serverName: string,
+): Promise<DaemonLeaseFileContent[]> {
+  const prefix = getDaemonLeasePrefix(serverName);
+  const directory = dirname(prefix);
+  const filePrefix = basename(prefix);
+  let files: string[];
+  try {
+    files = (await readdir(directory)).filter((file) =>
+      file.startsWith(filePrefix),
+    );
+  } catch {
+    return [];
+  }
+
+  const active: DaemonLeaseFileContent[] = [];
+  for (const file of files) {
+    const path = join(directory, file);
+    const ownership = readOwnershipFilePath(path);
+    if (!ownership || !('daemonGeneration' in ownership)) {
+      removeStaleOwnershipFile(path);
+      continue;
+    }
+    if (!isProcessRunning(ownership.ownerPid)) {
+      removeStaleOwnershipFile(path);
+      continue;
+    }
+    active.push(ownership);
+  }
+  return active;
+}
+
+function createLease(
+  serverName: string,
+  identity: DaemonIdentity,
+): { path: string; lease: DaemonLeaseFileContent } {
+  for (;;) {
+    const lease: DaemonLeaseFileContent = {
+      ownerPid: process.pid,
+      generation: randomUUID(),
+      daemonGeneration: identity.generation,
+      configHash: identity.configHash,
+      startedAt: new Date().toISOString(),
+      serverName,
+    };
+    const path = `${getDaemonLeasePrefix(serverName)}${lease.generation}`;
+    if (writeOwnershipFileExclusive(path, lease)) return { path, lease };
+  }
+}
+
+async function ensureDaemonAsOwner(
+  serverName: string,
+  config: ServerConfig,
+  configHash: string,
+  claim: DaemonClaimFileContent,
+  deadline: number,
+): Promise<DaemonIdentity | null> {
+  const remaining = () => Math.max(0, deadline - Date.now());
+  const claimPath = getDaemonClaimPath(serverName);
+  if (!claimIsOwned(claimPath, claim)) return null;
+  let pidInfo = readPidFile(serverName);
+
+  if (pidInfo && !isProcessRunning(pidInfo.pid)) {
+    const removed = removePidFile(serverName, pidInfo);
+    if (removed) removeSocketFile(serverName);
+    pidInfo = null;
+  }
+
+  if (pidInfo && isProcessRunning(pidInfo.pid)) {
+    if (isCompletePidInfo(pidInfo) && pidInfo.configHash === configHash) {
+      const ready = await waitForDaemonReady(
+        serverName,
+        pidInfo,
+        remaining(),
+        () => isProcessRunning(pidInfo?.pid ?? 0),
+      );
+      if (ready) return ready;
+    }
+
+    while ((await listActiveLeases(serverName)).length > 0) {
+      if (remaining() <= 0 || !claimIsOwned(claimPath, claim)) return null;
+      await sleep(OWNERSHIP_POLL_MS);
+    }
+
+    if (!claimIsOwned(claimPath, claim)) return null;
+    const stopped = isCompletePidInfo(pidInfo)
+      ? await stopDaemon(serverName, pidInfo)
+      : await stopLegacyDaemon(serverName, pidInfo);
+    if (!stopped) return null;
+  } else if (!(await stopUntrackedEndpoint(serverName))) {
     return null;
   }
 
-  debug(`[daemon-client] Connected to daemon for ${serverName}`);
+  if (remaining() <= 0 || !claimIsOwned(claimPath, claim)) return null;
+  const generation = randomUUID();
+  return spawnDaemon(serverName, config, configHash, generation, remaining());
+}
 
-  // Return connection interface
+function createDaemonConnection(
+  serverName: string,
+  identity: DaemonIdentity,
+  leasePath: string,
+  lease: DaemonLeaseFileContent,
+): DaemonConnection {
+  const socketPath = getSocketPath(serverName);
+  let closed = false;
+  const request = async (
+    requestValue: DaemonRequest,
+  ): Promise<DaemonResponse> => {
+    if (closed) throw new Error('Daemon connection is closed');
+    return sendRequest(socketPath, {
+      ...requestValue,
+      generation: identity.generation,
+    });
+  };
+
   return {
     serverName,
-
     async listTools(): Promise<unknown> {
-      const response = await sendRequest(socketPath, {
+      const response = await request({
         id: generateRequestId(),
         type: 'listTools',
       });
-
       if (!response.success) {
         throw new Error(response.error?.message ?? 'listTools failed');
       }
-
       return response.data;
     },
-
     async callTool(
       toolName: string,
       args: Record<string, unknown>,
     ): Promise<unknown> {
-      const response = await sendRequest(socketPath, {
+      const response = await request({
         id: generateRequestId(),
         type: 'callTool',
         toolName,
         args,
       });
-
       if (!response.success) {
         throw new Error(response.error?.message ?? 'callTool failed');
       }
-
       return response.data;
     },
-
     async getInstructions(): Promise<string | undefined> {
-      const response = await sendRequest(socketPath, {
+      const response = await request({
         id: generateRequestId(),
         type: 'getInstructions',
       });
-
       if (!response.success) {
         throw new Error(response.error?.message ?? 'getInstructions failed');
       }
-
       return response.data as string | undefined;
     },
-
     async close(): Promise<void> {
-      // Just disconnect, don't tell daemon to close (let it idle timeout)
-      debug(`[daemon-client] Disconnecting from ${serverName} daemon`);
+      if (closed) return;
+      closed = true;
+      removeOwnershipFile(leasePath, lease.generation);
+      debug(`[daemon-client] Released ${serverName} daemon lease`);
     },
   };
 }
 
 /**
- * Clean up any orphaned daemon processes and sockets
- * Call this on CLI startup
+ * Converge independent callers on one matching daemon, or return null so the
+ * caller can use its existing direct-connection fallback.
  */
-export async function cleanupOrphanedDaemons(): Promise<void> {
-  const socketDir = getSocketDir();
+export async function getDaemonConnection(
+  serverName: string,
+  config: ServerConfig,
+): Promise<DaemonConnection | null> {
+  const configHash = getConfigHash(config);
+  const deadline = Date.now() + getDaemonRequestTimeoutMs();
+  const claimPath = getDaemonClaimPath(serverName);
 
-  if (!existsSync(socketDir)) {
-    return;
+  while (Date.now() < deadline) {
+    const claim = acquireClaim(serverName, configHash);
+    if (!claim) {
+      removeStaleOwnershipFile(claimPath);
+      await sleep(OWNERSHIP_POLL_MS);
+      continue;
+    }
+
+    try {
+      const identity = await ensureDaemonAsOwner(
+        serverName,
+        config,
+        configHash,
+        claim,
+        deadline,
+      );
+      if (!identity) {
+        if (Date.now() < deadline) continue;
+        return null;
+      }
+      if (!claimIsOwned(claimPath, claim)) continue;
+      const { path, lease } = createLease(serverName, identity);
+      debug(
+        `[daemon-client] Connected to ${serverName} generation ${identity.generation}`,
+      );
+      return createDaemonConnection(serverName, identity, path, lease);
+    } finally {
+      removeOwnershipFile(claimPath, claim.generation);
+    }
   }
 
+  debug(
+    `[daemon-client] Timed out waiting for daemon ownership: ${serverName}`,
+  );
+  return null;
+}
+
+/** Clean dead daemon metadata and abandoned ownership files on CLI startup. */
+export async function cleanupOrphanedDaemons(): Promise<void> {
+  const socketDir = getSocketDir();
+  if (!existsSync(socketDir)) return;
+
   try {
-    const files = (await readdir(socketDir)).filter((file) =>
-      file.endsWith('.pid'),
-    );
-
+    const files = await readdir(socketDir);
     for (const file of files) {
-      const serverName = file.replace('.pid', '');
-      const pidInfo = readPidFile(serverName);
+      const path = join(socketDir, file);
+      if (
+        file.endsWith('.lock') ||
+        file.includes('.lease-') ||
+        file.includes('.delete-')
+      ) {
+        removeStaleOwnershipFile(path);
+        continue;
+      }
+      if (!file.endsWith('.pid')) continue;
 
-      if (pidInfo && !isProcessRunning(pidInfo.pid)) {
-        debug(`[daemon-client] Cleaning up orphaned daemon: ${serverName}`);
-        removePidFile(serverName);
-        removeSocketFile(serverName);
+      const pidInfo = readPidFilePath(path);
+      if (!pidInfo || isProcessRunning(pidInfo.pid)) continue;
+      const serverName = pidInfo.serverName;
+      if (serverName) {
+        removePidFile(serverName, pidInfo);
+        if (path !== getPidPath(serverName) && existsSync(path)) {
+          // Remove a legacy pre-hash PID path after verifying its dead PID.
+          try {
+            unlinkSync(path);
+            if (usesFilesystemSocket()) {
+              const legacySocket = join(
+                socketDir,
+                `${file.slice(0, -'.pid'.length)}.sock`,
+              );
+              if (existsSync(legacySocket)) unlinkSync(legacySocket);
+            }
+          } catch {
+            // Another process may have already cleaned it.
+          }
+        }
       }
     }
   } catch {
-    // Ignore errors during cleanup scan
+    // Cleanup is opportunistic; connection setup performs exact recovery.
   }
 }

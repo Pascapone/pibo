@@ -215,22 +215,46 @@ MCP server connections MUST use bounded timeout/retry behavior and MAY use daemo
 
 #### Current
 
-`getConnection` uses daemon mode unless `MCP_NO_DAEMON=1`. Retry settings come from `MCP_MAX_RETRIES`, `MCP_RETRY_DELAY`, and `MCP_TIMEOUT`. Daemon socket and PID files are keyed by server name and config hash.
+`getConnection` uses daemon mode unless `MCP_NO_DAEMON=1`. Retry settings come from `MCP_MAX_RETRIES`, `MCP_RETRY_DELAY`, and `MCP_TIMEOUT`. Daemons use Unix domain sockets on POSIX and per-user named pipes on Windows. PID metadata is stored in the platform temporary directory. An exclusive per-server claim elects one startup owner across processes; generation-bound PID metadata, requests, and client leases prevent losing or stale processes from clobbering or replacing a daemon still in use. The daemon validates a deterministic hash of the full nested server configuration before reuse.
 
 #### Acceptance
 
 - Transient connection errors can be retried within the total timeout budget.
 - Direct mode is used when daemon mode is disabled.
 - Daemon mode reuses a valid matching daemon when possible.
-- A daemon with a stale config hash or dead process is cleaned up before use.
+- Simultaneous first calls from independent processes converge on one daemon and one MCP server process.
+- A caller that loses startup election waits for the elected generation or safely retries after a dead owner; it does not spawn a competing daemon.
+- PID, endpoint, claim, and lease cleanup removes only state owned by the matching generation.
+- Repeated CLI calls preserve state owned by the reused MCP server process.
+- Windows daemon IPC uses named pipes and does not treat the endpoint as a filesystem entry.
+- Detached daemon creation hides a Windows console window.
+- A daemon with a stale nested config hash or dead process is cleaned up before use.
+- A reachable stale daemon is asked to close gracefully before forced termination.
+- Daemon startup uses the configured request timeout so an authorization prompt does not trigger a duplicate direct connection after five seconds.
 - Request timeouts prevent a daemon call from hanging indefinitely.
 
 #### Scenario: Server config changes
 
 - GIVEN a daemon is running for server `docs`
-- AND the `docs` server config changes
+- AND a top-level or nested value in the `docs` server config changes
 - WHEN the next CLI command uses `docs`
-- THEN Pibo detects the config hash mismatch, kills or ignores the stale daemon, and starts a connection for the new config.
+- THEN Pibo detects the config hash mismatch, stops the stale daemon, and starts a connection for the new config.
+
+#### Scenario: Simultaneous first calls
+
+- GIVEN no daemon is running for server `docs`
+- WHEN independent CLI processes call `docs` at the same time
+- THEN one process atomically owns startup
+- AND all callers use that daemon generation and one MCP server process
+- AND a crashed winner or loser leaves recoverable ownership state without removing another generation's PID metadata or endpoint.
+
+#### Scenario: Stateful calls on Windows
+
+- GIVEN a stdio MCP server is configured on Windows
+- AND its first connection requires manual authorization
+- WHEN an operator makes two sequential `pibo mcp call` invocations within the daemon idle timeout
+- THEN both calls use the same MCP server process through one Windows named pipe
+- AND server-owned state from the first call remains available to the second call.
 
 ### Requirement: Registry presets remain discoverable even when empty
 
@@ -327,7 +351,7 @@ The runtime MUST inject an MCP context file only when the active profile selects
 - MCP server descriptions may come from registry presets; users cannot edit those descriptions through the current UI.
 - The registry can be empty; commands must still be useful for discovery.
 - A selected MCP server can be removed from config after a custom agent is saved; runtime context generation omits it until the selection is repaired or the server is re-added.
-- Daemon cancellation or process cleanup may fail; the next connection attempt must still validate process, socket, and config hash before reuse.
+- Daemon cancellation or process cleanup may fail; the next connection attempt must still validate the process, IPC endpoint, and config hash before reuse.
 
 ## Constraints
 
