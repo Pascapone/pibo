@@ -771,6 +771,54 @@ test("chat web app serves node-bound exact images concurrently and never falls b
 		mixedParams.set("path", imagePath);
 		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${mixedParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
 
+		const inlineBytesA = Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			Buffer.alloc(7 * 1024 - 8, 4),
+		]);
+		const inlineBytesB = Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			Buffer.alloc(7 * 1024 - 8, 5),
+		]);
+		for (const [toolCallId, bytes] of [["inline-image-a", inlineBytesA], ["inline-image-b", inlineBytesB], ["inline-image-c", inlineBytesA]]) {
+			emitOutput({
+				type: "tool_execution_finished",
+				piboSessionId,
+				eventId: `turn-${toolCallId}`,
+				toolCallId,
+				toolName: "view_image",
+				result: { content: [{ type: "image", data: bytes.toString("base64"), mimeType: "image/png" }] },
+				isError: false,
+			});
+		}
+		const inlineTimelineResponse = await fetch(`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(inlineTimelineResponse.status, 200);
+		const inlineTimeline = await inlineTimelineResponse.json();
+		const inlineA = inlineTimeline.nodes.find((node) => node.toolCallId === "inline-image-a");
+		const inlineB = inlineTimeline.nodes.find((node) => node.toolCallId === "inline-image-b");
+		const inlineC = inlineTimeline.nodes.find((node) => node.toolCallId === "inline-image-c");
+		assert.ok(inlineA?.payloadRefs?.output?.ref);
+		assert.ok(inlineB?.payloadRefs?.output?.ref);
+		assert.ok(inlineC?.payloadRefs?.output?.ref);
+		const parsedInlineA = JSON.parse(Buffer.from(inlineA.payloadRefs.output.ref.slice("trace_".length), "base64url").toString("utf8"));
+		const parsedInlineB = JSON.parse(Buffer.from(inlineB.payloadRefs.output.ref.slice("trace_".length), "base64url").toString("utf8"));
+		const parsedInlineC = JSON.parse(Buffer.from(inlineC.payloadRefs.output.ref.slice("trace_".length), "base64url").toString("utf8"));
+		assert.notEqual(parsedInlineA.id, parsedInlineB.id, "different bytes must retain different payload identities");
+		assert.equal(parsedInlineA.id, parsedInlineC.id, "equal bytes use the PayloadStore canonical identity");
+		const forgedEqualContentRef = `trace_${Buffer.from(JSON.stringify({ ...parsedInlineA, n: inlineB.nodeId }), "utf8").toString("base64url")}`;
+		const forgedEqualContentParams = new URLSearchParams({
+			ref: forgedEqualContentRef,
+			nodeId: inlineB.nodeId,
+			piboSessionId,
+			index: "0",
+		});
+		assert.equal(
+			(await fetch(`${baseURL}/api/chat/image-preview?${forgedEqualContentParams}`, { headers: { "x-test-user": "user-1" } })).status,
+			404,
+			"equal content from another node must not authorize a forged payload id",
+		);
+
 		writeFileSync(imagePath, newerPathBytes);
 		const concurrent = await Promise.all(Array.from({ length: 8 }, () => fetch(exactUrl, { headers: { "x-test-user": "user-1" } })));
 		for (const response of concurrent) {

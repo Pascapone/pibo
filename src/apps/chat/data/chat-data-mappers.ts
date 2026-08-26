@@ -7,7 +7,7 @@ import type { PiboDataStore } from "../../../data/pibo-store.js";
 import type { PayloadStore } from "../../../data/payload-store.js";
 import { tracePayloadRefForStoredPayload } from "../trace-v2.js";
 
-type PiboPayloadReader = Pick<PayloadStore, "getPayload" | "readPayloadBytesBounded">;
+type PiboPayloadReader = Pick<PayloadStore, "getPayload" | "readPayloadBytesBounded" | "readPayloadJsonBounded">;
 const MAX_TRACE_EVENT_HYDRATION_BYTES = 1024 * 1024;
 
 export type EventLogRow = {

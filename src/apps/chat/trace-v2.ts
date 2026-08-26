@@ -155,7 +155,7 @@ export function parseTracePayloadRef(ref: string): {
 }
 
 export function tracePayloadRefForStoredPayload(input: {
-	payloadStore: Pick<PayloadStore, "getPayload">;
+	payloadStore: Pick<PayloadStore, "getPayload" | "readPayloadJsonBounded">;
 	piboSessionId: string;
 	payloadId: string;
 	nodeId: string;
@@ -165,6 +165,7 @@ export function tracePayloadRefForStoredPayload(input: {
 	if (!payload) return undefined;
 	const rawPreview = payload.previewText ?? "";
 	const preview = looksLikeImagePayloadPreview(rawPreview) ? "Image payload" : rawPreview;
+	const imageCount = storedImageCount(input.payloadStore, payload);
 	return {
 		ref: encodeTracePayloadRef(input.piboSessionId, payload.id, input.nodeId, input.payloadKind),
 		nodeId: input.nodeId,
@@ -174,7 +175,22 @@ export function tracePayloadRefForStoredPayload(input: {
 		preview,
 		truncatedPreview: Buffer.byteLength(preview, "utf8") < payload.byteSize,
 		hash: payload.sha256,
+		...(imageCount ? { imageCount } : {}),
 	};
+}
+
+function storedImageCount(
+	payloadStore: Pick<PayloadStore, "readPayloadJsonBounded">,
+	payload: NonNullable<ReturnType<PayloadStore["getPayload"]>>,
+): number | undefined {
+	if (!payload.contentType.includes("json") || payload.byteSize > TRACE_IMAGE_MAX_STORED_PAYLOAD_BYTES) return undefined;
+	if (!looksLikeImagePayloadPreview(payload.previewText ?? "")) return undefined;
+	try {
+		const value = payloadStore.readPayloadJsonBounded(payload.id, TRACE_IMAGE_MAX_STORED_PAYLOAD_BYTES);
+		return collectStoredImagePayloads(value).length || undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 export function looksLikeImagePayloadPreview(value: string): boolean {
@@ -344,11 +360,13 @@ function payloadRefForValue(input: PayloadRefInput): TracePayloadRef | undefined
 	if (!truncatedPreview && bytes.byteLength <= TRACE_V2_PAYLOAD_REF_THRESHOLD_BYTES) {
 		return undefined;
 	}
+	const payloadSha256 = createHash("sha256").update(bytes).digest("hex");
 	const payload = input.store.writePayload({
 		value: toPayloadValue(input.value),
 		contentType,
 		retentionClass: "trace_event",
 	});
+	const imageCount = collectStoredImagePayloads(input.value).length || undefined;
 	return {
 		ref: encodeTracePayloadRef(input.piboSessionId, payload.id, input.nodeId, input.kind),
 		nodeId: input.nodeId,
@@ -357,7 +375,8 @@ function payloadRefForValue(input: PayloadRefInput): TracePayloadRef | undefined
 		byteLength: bytes.byteLength,
 		preview,
 		truncatedPreview,
-		hash: createHash("sha256").update(bytes).digest("hex"),
+		hash: payloadSha256,
+		...(imageCount ? { imageCount } : {}),
 	};
 }
 

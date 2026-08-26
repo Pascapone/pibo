@@ -43,7 +43,7 @@ test("shared dialog shell owns accessible modal and focus behavior", async () =>
   assert.match(dialogShell, /event\.target === event\.currentTarget/);
   assert.match(dialogShell, /closeDisabled/);
   assert.match(dialogShell, /focusable\.includes\(activeElement as HTMLElement\)/);
-  assert.match(dialogShell, /max-h-\[calc\(100vh-2rem\)\]/);
+  assert.match(dialogShell, /max-h-\[calc\(100dvh-2rem\)\]/);
 });
 
 test("create dialogs provide controlled fields and accessible validation", async () => {

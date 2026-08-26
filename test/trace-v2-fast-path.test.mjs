@@ -185,6 +185,29 @@ test("trace image payloads bind exact bytes to one session, node, and output ref
 	}
 });
 
+test("inline-derived payload refs remain stable and content-canonical for equal bytes", () => {
+	const store = tempStore();
+	try {
+		const output = {
+			content: [{ type: "image", data: pngBytes(7 * 1024).toString("base64"), mimeType: "image/png" }],
+		};
+		const trace = largeTrace(output);
+		trace.piboSessionId = "ps_equal";
+		trace.nodes = [
+			{ ...trace.nodes[0], id: "tool:equal-a", piboSessionId: "ps_equal", title: "view_image" },
+			{ ...trace.nodes[0], id: "tool:equal-b", piboSessionId: "ps_equal", title: "view_image" },
+		];
+		const first = traceTimelinePageFromView({ trace, payloadStore: store.payloads, limit: 20 });
+		const second = traceTimelinePageFromView({ trace, payloadStore: store.payloads, limit: 20 });
+		const firstRefs = first.nodes.map((node) => node.payloadRefs.output.ref);
+		assert.deepEqual(second.nodes.map((node) => node.payloadRefs.output.ref), firstRefs);
+		assert.equal(parseTracePayloadRef(firstRefs[0]).payloadId, parseTracePayloadRef(firstRefs[1]).payloadId);
+		assert.equal(first.nodes[0].payloadRefs.output.imageCount, 1);
+	} finally {
+		store.close();
+	}
+});
+
 test("trace image decoding rejects malformed base64, MIME mismatches, SVG, and HTML", () => {
 	const store = tempStore();
 	try {
@@ -252,6 +275,7 @@ test("trace image reads enforce decoded, stored-payload, and multi-image bounds"
 			mimeType: "image/png",
 		}));
 		const bounded = writeStoredImageRef(store, { content: images }, "tool:many-images");
+		assert.equal(bounded.ref.imageCount, TRACE_IMAGE_MAX_COUNT);
 		const last = readTraceImagePayload({ payloadStore: store.payloads, ref: bounded.ref.ref, nodeId: "tool:many-images", index: TRACE_IMAGE_MAX_COUNT - 1 });
 		assert.equal(last.ok, true);
 		assert.equal(last.imageCount, TRACE_IMAGE_MAX_COUNT);
@@ -288,11 +312,17 @@ test("trace image exact refs fail closed for missing and corrupt payloads", () =
 
 test("trace image refs survive compaction events and store restart readback", () => {
 	const fixture = tempStoreWithPaths();
-	const bytes = pngBytes(20 * 1024, 5);
+	const firstBytes = pngBytes(600 * 1024, 5);
+	const secondBytes = pngBytes(600 * 1024, 9);
 	let ref;
 	try {
-		const stored = writeStoredImageRef(fixture.store, { content: [{ type: "image", data: bytes.toString("base64"), mimeType: "image/png" }] });
+		const stored = writeStoredImageRef(fixture.store, { content: [
+			{ type: "image", data: firstBytes.toString("base64"), mimeType: "image/png" },
+			{ type: "image", data: secondBytes.toString("base64"), mimeType: "image/png" },
+		] });
 		ref = stored.ref;
+		assert.equal(stored.payload.byteSize > 1024 * 1024, true);
+		assert.equal(ref.imageCount, 2);
 		const trace = buildTraceViewFromEvents({
 			session: { id: "ps_image", piSessionId: "pi_image", title: "Image restart" },
 			events: [
@@ -311,9 +341,10 @@ test("trace image refs survive compaction events and store restart readback", ()
 
 	const reopened = new PiboDataStore(fixture.databasePath, { payloadRootDir: fixture.payloadRoot });
 	try {
-		const result = readTraceImagePayload({ payloadStore: reopened.payloads, ref: ref.ref, nodeId: "tool:call-image", index: 0 });
+		const result = readTraceImagePayload({ payloadStore: reopened.payloads, ref: ref.ref, nodeId: "tool:call-image", index: 1 });
 		assert.equal(result.ok, true);
-		assert.deepEqual(Buffer.from(result.image.bytes), bytes);
+		assert.equal(result.imageCount, 2);
+		assert.deepEqual(Buffer.from(result.image.bytes), secondBytes);
 	} finally {
 		reopened.close();
 		rmSync(fixture.dir, { recursive: true, force: true });

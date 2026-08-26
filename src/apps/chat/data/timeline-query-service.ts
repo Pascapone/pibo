@@ -98,7 +98,11 @@ export class ChatTimelineQueryService {
 			}
 			if (!("inlinePayload" in attributes)) continue;
 			const bytes = Buffer.from(JSON.stringify(attributes.inlinePayload), "utf8");
-			if (createHash("sha256").update(bytes).digest("hex") === payload.sha256) return true;
+			const payloadSha256 = createHash("sha256").update(bytes).digest("hex");
+			if (payload.sha256 !== payloadSha256) continue;
+			// PayloadStore canonicalizes equal bytes to one payload row. Requiring that
+			// canonical id prevents a duplicate metadata row from being rebound by hash.
+			if (this.store.payloads.findBySha256(payloadSha256)?.id === input.payloadId) return true;
 		}
 		return false;
 	}

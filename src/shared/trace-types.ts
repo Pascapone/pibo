@@ -56,6 +56,7 @@ export type TracePayloadRef = {
 	preview: string;
 	truncatedPreview: boolean;
 	hash?: string;
+	imageCount?: number;
 };
 
 export type TraceTimelineNode = {
