@@ -52,7 +52,7 @@ async function render(goalValue) {
 }
 
 test("session Goal indicator shows recorded active time plus the running Goal run", async () => {
-	const markup = await render(goal("active", { state: { runningAt: "2026-08-10T10:04:00.000Z" } }));
+	const markup = await render(goal("active", { state: { activeTimeRunningAt: "2026-08-10T10:04:00.000Z", runningAt: "2026-08-10T10:04:00.000Z" } }));
 	assert.match(markup, /data-pibo-debug="session-goal-indicator"/);
 	assert.match(markup, /data-goal-status="active"/);
 	assert.match(markup, /Pursuing Goal:/);
@@ -60,6 +60,15 @@ test("session Goal indicator shows recorded active time plus the running Goal ru
 	assert.doesNotMatch(markup, />5:57</);
 	assert.match(markup, />254\.6k</);
 	assert.match(markup, /aria-label="Pursuing Goal\. Active time 4:02\. Tokens 254\.6k"/);
+});
+
+test("session Goal indicator freezes accounted time while the run is finalizing", async () => {
+	const markup = await render(goal("active", { tokensUsed: 16_000, tokenBudget: 100_000, state: { activeTimeRunningAt: null, runningAt: "2026-08-10T10:04:00.000Z" } }));
+	assert.match(markup, /data-goal-status="active"/);
+	assert.match(markup, />2:05</);
+	assert.doesNotMatch(markup, />4:02</);
+	assert.match(markup, />16\.0k \/ 100\.0k</);
+	assert.match(markup, /aria-label="Pursuing Goal\. Active time 2:05\. Tokens 16\.0k \/ 100\.0k"/);
 });
 
 test("session Goal indicator shows compact token usage and budget with one decimal place", async () => {

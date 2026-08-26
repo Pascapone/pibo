@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
 import { Target } from "lucide-react";
-import { goalActiveTimeSeconds } from "./goal-time";
+import { goalActiveTimeRunningAt, goalActiveTimeSeconds } from "./goal-time";
 import type { PiboGoalStatus, PiboLoopJob } from "./types";
 
 export function SessionGoalIndicator({ goal }: { goal?: PiboLoopJob | null }) {
 	const status = sessionGoalIndicatorStatus(goal);
+	const activeTimeRunningAt = goal ? goalActiveTimeRunningAt(goal) : undefined;
 	const [nowMs, setNowMs] = useState(() => Date.now());
 
 	useEffect(() => {
 		setNowMs(Date.now());
-		if (!status || !goal?.state.runningAt) return;
+		if (!status || !activeTimeRunningAt) return;
 		const interval = window.setInterval(() => setNowMs(Date.now()), 1_000);
 		return () => window.clearInterval(interval);
-	}, [goal?.id, goal?.state.runningAt, status]);
+	}, [goal?.id, activeTimeRunningAt, status]);
 
 	return <SessionGoalIndicatorView goal={goal} nowMs={nowMs} />;
 }
