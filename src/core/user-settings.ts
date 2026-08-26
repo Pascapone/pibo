@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { piboHomePath } from "./pibo-home.js";
+import { sanitizePreviewServerSettings, type PreviewServerSettings } from "./preview-server-settings.js";
 import { sanitizeTelemetryRetentionSettings, type TelemetryRetentionSettings } from "./telemetry-retention-settings.js";
 import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSettings } from "./telemetry-staleness.js";
 
@@ -28,6 +29,7 @@ export type PiboUserSettings = {
 	shortcuts: PiboShortcutSettings;
 	transcription: PiboTranscriptionSettings;
 	speech: PiboSpeechSettings;
+	previewServers: PreviewServerSettings;
 	telemetryStaleThresholds: TelemetryStaleThresholdSettings;
 	telemetryRetention: TelemetryRetentionSettings;
 };
@@ -117,6 +119,7 @@ function sanitizeUserSettings(value: unknown): PiboUserSettings {
 		shortcuts: sanitizeShortcutSettings(raw.shortcuts),
 		transcription: sanitizeTranscriptionSettings(raw.transcription),
 		speech: sanitizeSpeechSettings(raw.speech),
+		previewServers: sanitizePreviewServerSettings(raw.previewServers),
 		telemetryStaleThresholds: sanitizeTelemetryStaleThresholdSettings(raw.telemetryStaleThresholds),
 		telemetryRetention: sanitizeTelemetryRetentionSettings(raw.telemetryRetention),
 	};

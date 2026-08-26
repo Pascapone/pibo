@@ -92,6 +92,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(current.response.status, 200);
 		assert.equal(current.data.userSettings.timezone, "UTC");
 		assert.deepEqual(current.data.userSettings.transcription, { providerId: "openai-chatgpt" });
+		assert.deepEqual(current.data.userSettings.previewServers, { maxRunningServers: 3, autoStopMinutes: 10 });
 		assert.deepEqual(current.data.userSettings.telemetryRetention, { enabled: true, days: 30, lastPrunedAt });
 
 		const missingOrigin = await fetch(`${baseURL}/api/chat/user-settings`, {
@@ -109,18 +110,28 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(invalidTimezone.response.status, 400);
 		assert.match(invalidTimezone.data.error, /Invalid timezone/);
 
+		const invalidPreviewSettings = await fetchJson(`${baseURL}/api/chat/user-settings`, {
+			method: "PATCH",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ previewServers: { maxRunningServers: 0, autoStopMinutes: 10 } }),
+		});
+		assert.equal(invalidPreviewSettings.response.status, 400);
+		assert.match(invalidPreviewSettings.data.error, /Invalid Preview server settings/);
+
 		const saved = await fetchJson(`${baseURL}/api/chat/user-settings`, {
 			method: "PATCH",
 			headers: authHeaders(baseURL),
 			body: JSON.stringify({
 				timezone: "Europe/Berlin",
 				shortcuts: { webAnnotationsToggle: " Ctrl+Shift+P\u0000" },
+				previewServers: { maxRunningServers: 5, autoStopMinutes: 30 },
 				telemetryRetention: { enabled: true, days: 10 },
 			}),
 		});
 		assert.equal(saved.response.status, 200);
 		assert.equal(saved.data.userSettings.timezone, "Europe/Berlin");
 		assert.equal(saved.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+		assert.deepEqual(saved.data.userSettings.previewServers, { maxRunningServers: 5, autoStopMinutes: 30 });
 		assert.deepEqual(saved.data.userSettings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 
 		const reloaded = await fetchJson(`${baseURL}/api/chat/user-settings`, {
@@ -129,6 +140,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(reloaded.response.status, 200);
 		assert.equal(reloaded.data.userSettings.timezone, "Europe/Berlin");
 		assert.equal(reloaded.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+		assert.deepEqual(reloaded.data.userSettings.previewServers, { maxRunningServers: 5, autoStopMinutes: 30 });
 		assert.deepEqual(reloaded.data.userSettings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 
 		const reloadedOtherAccount = await fetchJson(`${baseURL}/api/chat/user-settings`, {
@@ -140,6 +152,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(persisted.settings.timezone, "Europe/Berlin");
 		assert.equal(persisted.settings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
 		assert.deepEqual(persisted.settings.transcription, { providerId: "openai-chatgpt" });
+		assert.deepEqual(persisted.settings.previewServers, { maxRunningServers: 5, autoStopMinutes: 30 });
 		assert.deepEqual(persisted.settings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 		assert.equal("users" in persisted, false);
 	} finally {

@@ -68,6 +68,10 @@ export type UserSettings = {
 	speech: {
 		providerId: string;
 	};
+	previewServers: {
+		maxRunningServers: number;
+		autoStopMinutes: number;
+	};
 	telemetryRetention: TelemetryRetentionSettings;
 };
 
