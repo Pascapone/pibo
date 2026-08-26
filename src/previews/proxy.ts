@@ -146,11 +146,13 @@ function requestHeaders(
 			continue;
 		}
 		if (normalized === "origin") {
-			headers.origin = rewriteOriginHeader(firstHeader(value), exposure);
+			const origin = rewriteOriginHeader(firstHeader(value), exposure);
+			if (origin) headers.origin = origin;
 			continue;
 		}
 		if (normalized === "referer") {
-			headers.referer = rewriteOriginHeader(firstHeader(value), exposure);
+			const referer = rewriteOriginHeader(firstHeader(value), exposure);
+			if (referer) headers.referer = referer;
 			continue;
 		}
 		headers[normalized] = value;
@@ -188,7 +190,8 @@ function isForbiddenLocalRedirectHost(hostname: string): boolean {
 	return false;
 }
 
-function rewriteLocation(value: string, exposure: PreviewExposure, previewOrigin: string): string | undefined {
+export function sanitizePreviewRedirectLocation(value: string, exposure: PreviewExposure, previewOrigin: string): string | undefined {
+	if (/[\u0000-\u001f\u007f]/.test(value)) return undefined;
 	try {
 		const location = new URL(value, previewOrigin);
 		const upstream = new URL(upstreamOrigin(exposure));
@@ -206,7 +209,8 @@ function rewriteLocation(value: string, exposure: PreviewExposure, previewOrigin
 	}
 }
 
-function rewriteSetCookie(value: string): string | undefined {
+export function sanitizePreviewSetCookie(value: string): string | undefined {
+	if (/[\u0000-\u001f\u007f]/.test(value)) return undefined;
 	const [nameValue, ...attributes] = value.split(";");
 	const separator = nameValue?.indexOf("=") ?? -1;
 	if (!nameValue || separator <= 0 || isPiboCredentialCookie(nameValue.slice(0, separator).trim())) return undefined;
@@ -236,13 +240,13 @@ function responseHeaders(
 		if (HOP_BY_HOP_HEADERS.has(normalized) || normalized === "x-frame-options" || normalized.startsWith("x-pibo-")) continue;
 		if (normalized === "set-cookie") {
 			const values = (Array.isArray(value) ? value : value ? [value] : [])
-				.map(rewriteSetCookie)
+				.map(sanitizePreviewSetCookie)
 				.filter((item): item is string => Boolean(item));
 			if (values.length) headers[normalized] = values;
 			continue;
 		}
 		if (normalized === "location") {
-			const location = rewriteLocation(firstHeader(value) ?? "", exposure, previewOrigin);
+			const location = sanitizePreviewRedirectLocation(firstHeader(value) ?? "", exposure, previewOrigin);
 			if (location) headers.location = location;
 			continue;
 		}
@@ -354,6 +358,7 @@ export function proxyPreviewWebSocket(input: {
 }): Promise<void> {
 	return new Promise<void>((resolve) => {
 		let settled = false;
+		let upstreamSocket: Duplex | undefined;
 		const finish = () => {
 			if (settled) return;
 			settled = true;
@@ -362,27 +367,32 @@ export function proxyPreviewWebSocket(input: {
 		const headers = requestHeaders(input.request.headers, input.exposure, input.requestURL, true);
 		const upstreamRequest = httpRequest(targetOptions(input.exposure, upstreamRequestPath(input.requestURL), headers, "GET"));
 		let upgraded = false;
-		input.socket.once("close", () => {
+		const closeFromClient = () => {
 			upstreamRequest.destroy();
+			upstreamSocket?.destroy();
 			finish();
-		});
+		};
+		input.socket.once("end", closeFromClient);
+		input.socket.once("close", closeFromClient);
+		input.socket.once("error", closeFromClient);
 		upstreamRequest.setTimeout(5_000, () => upstreamRequest.destroy(new Error("Preview WebSocket connection timed out")));
-		upstreamRequest.once("upgrade", (response, upstreamSocket, upstreamHead) => {
+		upstreamRequest.once("upgrade", (response, socket, upstreamHead) => {
 			upgraded = true;
+			upstreamSocket = socket;
 			upstreamRequest.setTimeout(0);
 			writeUpgradeResponse(input.socket, response, input.exposure, input.requestURL.origin);
-			if (input.head.length) upstreamSocket.write(input.head);
+			if (input.head.length) socket.write(input.head);
 			if (upstreamHead.length) input.socket.write(upstreamHead);
-			upstreamSocket.pipe(input.socket);
-			input.socket.pipe(upstreamSocket);
+			socket.pipe(input.socket);
+			input.socket.pipe(socket);
 			const closeBoth = () => {
-				upstreamSocket.destroy();
+				socket.destroy();
 				input.socket.destroy();
+				finish();
 			};
-			upstreamSocket.once("error", closeBoth);
+			socket.once("error", closeBoth);
 			input.socket.once("error", closeBoth);
-			input.socket.once("close", () => upstreamSocket.destroy());
-			upstreamSocket.once("close", () => {
+			socket.once("close", () => {
 				input.socket.destroy();
 				finish();
 			});

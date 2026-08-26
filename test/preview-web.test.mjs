@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
+import { once } from "node:events";
 import { connect } from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,6 +40,64 @@ function request({ port, host, path = "/", method = "GET", headers = {}, body })
 		if (body !== undefined) req.end(body);
 		else req.end();
 	});
+}
+
+function openStreamingRequest({ port, host, path, headers = {} }) {
+	return new Promise((resolve, reject) => {
+		const req = httpRequest({ host: "127.0.0.1", port, path, headers: { host, ...headers } });
+		req.once("error", reject);
+		req.once("response", (response) => {
+			response.once("error", reject);
+			response.once("data", () => resolve({ req, response }));
+		});
+		req.end();
+	});
+}
+
+function openUpgradeSocket({ port, host, cookie }) {
+	return new Promise((resolve, reject) => {
+		const socket = connect({ host: "127.0.0.1", port });
+		let received = "";
+		socket.once("error", reject);
+		socket.on("data", (chunk) => {
+			received += chunk.toString("utf8");
+			if (!received.includes("\r\n\r\n")) return;
+			resolve({ socket, response: received });
+		});
+		socket.once("connect", () => {
+			socket.write([
+				"GET /hmr HTTP/1.1",
+				`Host: ${host}`,
+				"Connection: Upgrade",
+				"Upgrade: websocket",
+				"Sec-WebSocket-Version: 13",
+				"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+				`Cookie: ${cookie}`,
+				"",
+				"",
+			].join("\r\n"));
+		});
+	});
+}
+
+function rawHttp({ port, lines }) {
+	return new Promise((resolve, reject) => {
+		const socket = connect({ host: "127.0.0.1", port });
+		let received = "";
+		socket.once("error", reject);
+		socket.on("data", (chunk) => { received += chunk.toString("utf8"); });
+		socket.once("close", () => resolve(received));
+		socket.once("connect", () => socket.end(`${lines.join("\r\n")}\r\n\r\n`));
+	});
+}
+
+async function waitForPreviewAdmission(input) {
+	for (let attempt = 0; attempt < 50; attempt += 1) {
+		const response = await request(input);
+		if (response.status !== 503) return response;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error("Preview admission was not released");
 }
 
 function ticketFromHtml(html) {
@@ -122,6 +181,11 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 			res.end("data: preview-ready\n\n");
 			return;
 		}
+		if (req.url === "/sse-hold") {
+			res.writeHead(200, { "content-type": "text/event-stream" });
+			res.write("data: held\n\n");
+			return;
+		}
 		res.writeHead(200, {
 			"content-type": "text/html; charset=utf-8",
 			"x-frame-options": "DENY",
@@ -188,6 +252,8 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 		baseURL: "http://preview.localhost",
 		piboBaseURL: "http://pibo.localhost",
 		databasePath,
+		maxProxyConnections: 1,
+		maxProxyConnectionsPerPreview: 1,
 	});
 	const channel = createWebHostChannel({ host: "127.0.0.1", port: 0, announce: false });
 	await channel.start({
@@ -283,6 +349,21 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 	assert.match(page.headers["content-security-policy"], /frame-ancestors http:\/\/pibo\.localhost/);
 	assert.deepEqual(page.headers["set-cookie"], ["app_session=ok; Path=/"]);
 
+	const malformedOrigin = await request({
+		port: webPort,
+		host: previewHost,
+		path: "/malformed-origin",
+		headers: { cookie: sessionCookie, origin: "http://[::1", referer: "not a URL" },
+	});
+	assert.equal(malformedOrigin.status, 200);
+	assert.equal(upstreamHeaders.origin, undefined);
+	assert.equal(upstreamHeaders.referer, undefined);
+	const malformedHost = await rawHttp({
+		port: webPort,
+		lines: ["GET / HTTP/1.1", `Host: ${previewHost},evil.example`, `Cookie: ${sessionCookie}`, "Connection: close"],
+	});
+	assert.doesNotMatch(malformedHost, /preview:\//);
+
 	const redirected = await request({ port: webPort, host: previewHost, path: "/redirect", headers: { cookie: sessionCookie } });
 	assert.equal(redirected.headers.location, `http://pv-webfixture.preview.localhost:${webPort}/next`);
 	const blockedRedirect = await request({ port: webPort, host: previewHost, path: "/redirect-other-loopback", headers: { cookie: sessionCookie } });
@@ -291,11 +372,28 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 	const sse = await request({ port: webPort, host: previewHost, path: "/sse", headers: { cookie: sessionCookie } });
 	assert.equal(sse.status, 200);
 	assert.equal(sse.body, "data: preview-ready\n\n");
+	const heldSse = await openStreamingRequest({ port: webPort, host: previewHost, path: "/sse-hold", headers: { cookie: sessionCookie } });
+	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: sessionCookie } })).status, 503);
+	const heldSseClosed = once(heldSse.response, "close");
+	heldSse.response.destroy();
+	heldSse.req.destroy();
+	await heldSseClosed;
+	assert.equal((await waitForPreviewAdmission({ port: webPort, host: previewHost, headers: { cookie: sessionCookie } })).status, 200);
 
 	const upgraded = await rawUpgrade({ port: webPort, host: previewHost, cookie: sessionCookie });
 	assert.match(upgraded, /preview-probe/);
 	assert.match(upgraded, /set-cookie: ws_app=ok; Path=\//i);
 	assert.doesNotMatch(upgraded, /pibo_dev_session|x-pibo-secret/i);
+	assert.equal((await waitForPreviewAdmission({ port: webPort, host: previewHost, headers: { cookie: sessionCookie } })).status, 200);
+	const heldUpgrade = await openUpgradeSocket({ port: webPort, host: previewHost, cookie: sessionCookie });
+	assert.match(heldUpgrade.response, /^HTTP\/1\.1 101 /);
+	const rejectedUpgrade = await openUpgradeSocket({ port: webPort, host: previewHost, cookie: sessionCookie });
+	assert.match(rejectedUpgrade.response, /^HTTP\/1\.1 503 /);
+	rejectedUpgrade.socket.destroy();
+	const heldUpgradeClosed = once(heldUpgrade.socket, "close");
+	heldUpgrade.socket.destroy();
+	await heldUpgradeClosed;
+	assert.equal((await waitForPreviewAdmission({ port: webPort, host: previewHost, headers: { cookie: sessionCookie } })).status, 200);
 
 	const forwardedHostSpoof = await request({
 		port: webPort,
@@ -470,4 +568,68 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 		headers: { "x-test-user": "account-a" },
 	})).body);
 	assert.deepEqual(afterRemoval.previews, []);
+});
+
+test("Preview app disposal waits for an in-flight reaper and preserves exact reconciliation", async (t) => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-preview-dispose-reaper-"));
+	const databasePath = join(dir, "previews.sqlite");
+	const store = new PreviewStore(databasePath);
+	const now = new Date();
+	store.createExposure({
+		id: "pv-dispose-reaper",
+		piboSessionId: "ps_dispose_reaper",
+		label: "Dispose reaper",
+		targetHost: "127.0.0.1",
+		targetPort: 5173,
+		workspace: dir,
+		managementMode: "managed",
+		startCommand: "node server.js",
+		serverState: "stopped",
+		createdAt: now.toISOString(),
+		expiresAt: new Date(now.getTime() + 60_000).toISOString(),
+	});
+	const identity = { kind: "process", id: "dispose-reaper-owner" };
+	const reserved = store.reserveManagedServerStart(
+		"pv-dispose-reaper",
+		3,
+		now.toISOString(),
+		new Date(now.getTime() + 30_000).toISOString(),
+		identity,
+	).exposure;
+	store.markManagedServerRunning(reserved.id, reserved.serverGeneration, {
+		targetHost: "127.0.0.1",
+		manager: identity,
+	});
+	store.close();
+	const entered = Promise.withResolvers();
+	const release = Promise.withResolvers();
+	const controller = {
+		createIdentity() { return identity; },
+		async launch() { return identity; },
+		async isRunning(candidate) {
+			assert.equal(candidate.id, identity.id);
+			entered.resolve();
+			return release.promise;
+		},
+		async ownsTarget() { return false; },
+		async stop() {},
+	};
+	const app = createPreviewWebApp({
+		baseURL: "http://preview.localhost",
+		databasePath,
+		reaperIntervalMs: 1_000,
+		managerOptions: { controller },
+	});
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	await entered.promise;
+	let disposed = false;
+	const disposing = app.dispose().then(() => { disposed = true; });
+	await Promise.resolve();
+	assert.equal(disposed, false, "dispose must await the exact in-flight reaper");
+	release.resolve(false);
+	await disposing;
+	const reopened = new PreviewStore(databasePath);
+	assert.equal(reopened.requireExposure("pv-dispose-reaper").serverState, "stopped");
+	assert.equal(reopened.requireExposure("pv-dispose-reaper").managerId, undefined);
+	reopened.close();
 });

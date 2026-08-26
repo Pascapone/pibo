@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import {
 	createDefaultPreviewProcessController,
@@ -185,6 +186,90 @@ test("managed Preview capacity reservation is atomic across store connections", 
 		(error) => error instanceof PreviewCapacityError && error.maxRunningServers === 1,
 	);
 	assert.equal(second.requireExposure("pv-second").serverState, "stopped");
+});
+
+test("managed start rejects a listener owned by the wrong process group", async (t) => {
+	const store = new PreviewStore(":memory:");
+	const controller = createFakeController();
+	controller.ownsTarget = async () => false;
+	t.after(async () => { await controller.closeAll(); store.close(); });
+	const now = new Date("2026-08-23T12:00:00.000Z");
+	await createManagedExposure(store, "pv-wrong-process-group", now);
+
+	await assert.rejects(
+		startManagedPreview(store, "pv-wrong-process-group", {
+			controller,
+			settings,
+			now: () => now,
+			startupTimeoutMs: 2_000,
+			pollIntervalMs: 10,
+		}),
+		/owned by a different process/,
+	);
+	const failed = store.requireExposure("pv-wrong-process-group");
+	assert.equal(failed.serverState, "error");
+	assert.equal(failed.serverGeneration, undefined);
+	assert.equal(failed.managerId, undefined);
+	assert.deepEqual(controller.stopped, controller.launched);
+});
+
+test("reconciliation handles every persisted owner-bearing lifecycle state", async (t) => {
+	const directory = mkdtempSync(join(tmpdir(), "pibo-preview-all-states-"));
+	const path = join(directory, "previews.sqlite");
+	const store = new PreviewStore(path);
+	const stopped = [];
+	const controller = {
+		createIdentity() { throw new Error("not used"); },
+		async launch() { throw new Error("not used"); },
+		async isRunning() { return false; },
+		async ownsTarget() { return false; },
+		async stop(identity) { stopped.push(identity.id); },
+	};
+	t.after(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
+	const startedAt = new Date("2026-08-23T12:00:00.000Z");
+	for (const id of ["pv-state-starting", "pv-state-running", "pv-state-stopping", "pv-state-error"]) {
+		await createManagedExposure(store, id, startedAt);
+		store.reserveManagedServerStart(
+			id,
+			10,
+			startedAt.toISOString(),
+			"2026-08-23T12:10:00.000Z",
+			reservationIdentity(id),
+		);
+	}
+	for (const id of ["pv-state-running", "pv-state-stopping"]) {
+		const exposure = store.requireExposure(id);
+		store.markManagedServerRunning(id, exposure.serverGeneration, {
+			targetHost: "127.0.0.1",
+			targetProcessId: 12345,
+			targetProcessStartTicks: "fixture-start-ticks",
+			manager: reservationIdentity(id),
+		});
+	}
+	const stopping = store.requireExposure("pv-state-stopping");
+	store.markManagedServerStopping(stopping.id, stopping.serverGeneration);
+	const inspection = new DatabaseSync(path);
+	inspection.prepare("UPDATE preview_exposures SET server_state = 'error', server_error = ? WHERE id = ?")
+		.run("persisted owner error", "pv-state-error");
+	inspection.close();
+
+	await reconcileManagedPreviews(store, {
+		controller,
+		now: () => new Date("2026-08-23T12:00:21.000Z"),
+		startupTimeoutMs: 15_000,
+	});
+	assert.equal(store.requireExposure("pv-state-starting").serverState, "error");
+	assert.equal(store.requireExposure("pv-state-starting").managerId, undefined);
+	assert.equal(store.requireExposure("pv-state-running").serverState, "stopped");
+	assert.equal(store.requireExposure("pv-state-stopping").serverState, "stopped");
+	assert.equal(store.requireExposure("pv-state-error").serverState, "error");
+	assert.equal(store.requireExposure("pv-state-error").serverError, "persisted owner error");
+	assert.equal(store.requireExposure("pv-state-error").managerId, undefined);
+	assert.deepEqual(new Set(stopped), new Set([
+		"fake-reservation-pv-state-starting",
+		"fake-reservation-pv-state-stopping",
+		"fake-reservation-pv-state-error",
+	]));
 });
 
 test("a stop racing startup cancels the newly launched server instead of orphaning it", async (t) => {

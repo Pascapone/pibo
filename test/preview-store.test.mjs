@@ -72,6 +72,10 @@ test("preview tickets are single-use and preview browser sessions are scoped and
 		const session = store.createBrowserSession(exposure.id, 30, new Date("2026-08-22T12:00:10.000Z"));
 		assert.equal(store.authenticateBrowserSession(session.token, exposure.id, new Date("2026-08-22T12:00:20.000Z")), true);
 		assert.equal(store.authenticateBrowserSession(session.token, "pv-other123", new Date("2026-08-22T12:00:20.000Z")), false);
+		const expiredTicket = store.createTicket(exposure.id, 1, new Date("2026-08-22T12:00:20.000Z"));
+		assert.equal(store.consumeTicket(expiredTicket.token, exposure.id, new Date("2026-08-22T12:00:21.001Z")), false);
+		const expiringSession = store.createBrowserSession(exposure.id, 1, new Date("2026-08-22T12:00:20.000Z"));
+		assert.equal(store.authenticateBrowserSession(expiringSession.token, exposure.id, new Date("2026-08-22T12:01:20.001Z")), false);
 		store.closeExposure(exposure.id, "2026-08-22T12:00:30.000Z");
 		assert.equal(store.authenticateBrowserSession(session.token, exposure.id, new Date("2026-08-22T12:00:31.000Z")), false);
 	} finally {

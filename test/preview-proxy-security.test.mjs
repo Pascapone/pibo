@@ -6,6 +6,8 @@ import {
 	PREVIEW_SESSION_COOKIE,
 	PreviewProxyLimiter,
 	previewSessionCookieName,
+	sanitizePreviewRedirectLocation,
+	sanitizePreviewSetCookie,
 } from "../dist/previews/proxy.js";
 
 test("preview cookie parsing fails closed and production uses a host-prefixed cookie", () => {
@@ -41,4 +43,24 @@ test("preview proxy connection admission is bounded per preview and globally", (
 test("preview proxy connection limits reject invalid configuration", () => {
 	assert.throws(() => new PreviewProxyLimiter(0, 1), /total connection limit/);
 	assert.throws(() => new PreviewProxyLimiter(2, 3), /per-preview connection limit/);
+});
+
+test("preview redirect and cookie sanitizers reject response splitting and alternate loopback targets", () => {
+	const exposure = { targetHost: "127.0.0.1", targetPort: 5173 };
+	const previewOrigin = "https://pv-safe.preview.example";
+	assert.equal(
+		sanitizePreviewRedirectLocation("http://127.0.0.1:5173/next", exposure, previewOrigin),
+		"https://pv-safe.preview.example/next",
+	);
+	for (const location of [
+		"http://127.0.0.1:9/private",
+		"http://localhost/private",
+		"http://[::1]/private",
+		"https://example.test/\r\nx-injected: yes",
+	]) {
+		assert.equal(sanitizePreviewRedirectLocation(location, exposure, previewOrigin), undefined);
+	}
+	assert.equal(sanitizePreviewSetCookie("app_session=ok; Domain=127.0.0.1; Path=/"), "app_session=ok; Path=/");
+	assert.equal(sanitizePreviewSetCookie("pibo_machine_session=secret; Path=/"), undefined);
+	assert.equal(sanitizePreviewSetCookie("app_session=ok\r\nX-Injected: yes; Path=/"), undefined);
 });
