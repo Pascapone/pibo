@@ -5,6 +5,83 @@ import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } 
 import { adaptTrace } from "./tracing/adapt";
 
 export type SessionTraceViewLinks = Pick<ChatSessionViewProps, "sessionBreadcrumbs" | "originSession" | "derivedSessions">;
+export type SessionForkCandidate = { entryId: string; text: string };
+
+export function sessionSupportsFork(
+	bootstrap: BootstrapData,
+	piboSessionId: string | null,
+	profileName: string,
+): boolean {
+	return sessionRuntime(bootstrap, piboSessionId, profileName)?.capabilities.lifecycle.fork === true;
+}
+
+export function traceUserMessageRevision(traceView: PiboSessionTraceView | null): string {
+	if (!traceView) return "none";
+	const users = flattenTraceNodes(traceView.nodes).filter((node) => node.type === "user.message");
+	return `${users.length}:${users.at(-1)?.id ?? ""}`;
+}
+
+export function withSessionForkCandidates(
+	traceView: PiboSessionTraceView | null,
+	candidates: readonly SessionForkCandidate[],
+): PiboSessionTraceView | null {
+	if (!traceView || candidates.length === 0) return traceView;
+	const userNodes = flattenTraceNodes(traceView.nodes).filter((node) => node.type === "user.message");
+	const seenEntryIds = new Set<string>();
+	const usableCandidates = candidates.filter((candidate) => {
+		if (!candidate.entryId.trim() || seenEntryIds.has(candidate.entryId)) return false;
+		seenEntryIds.add(candidate.entryId);
+		return true;
+	});
+	if (usableCandidates.length === 0) return traceView;
+	const assignments = new Map<string, string>();
+	const positionalIdentityIsConsistent = userNodes.length === usableCandidates.length
+		&& userNodes.every((node, index) => !node.entryId || node.entryId === usableCandidates[index]!.entryId);
+	if (positionalIdentityIsConsistent) {
+		for (let index = 0; index < userNodes.length; index += 1) {
+			const node = userNodes[index]!;
+			if (!node.entryId) assignments.set(node.id, usableCandidates[index]!.entryId);
+		}
+	} else {
+		const claimedEntryIds = new Set(userNodes.flatMap((node) => node.entryId ? [node.entryId] : []));
+		const unassignedNodes = userNodes.filter((node) => !node.entryId);
+		const nodeTextCounts = new Map<string, number>();
+		const candidatesByText = new Map<string, SessionForkCandidate[]>();
+		for (const node of unassignedNodes) {
+			const text = traceUserMessageText(node);
+			nodeTextCounts.set(text, (nodeTextCounts.get(text) ?? 0) + 1);
+		}
+		for (const candidate of usableCandidates) {
+			if (claimedEntryIds.has(candidate.entryId)) continue;
+			const matches = candidatesByText.get(candidate.text);
+			if (matches) matches.push(candidate);
+			else candidatesByText.set(candidate.text, [candidate]);
+		}
+		for (const node of unassignedNodes) {
+			const text = traceUserMessageText(node);
+			const matchingCandidates = candidatesByText.get(text) ?? [];
+			if (nodeTextCounts.get(text) !== 1 || matchingCandidates.length !== 1) continue;
+			assignments.set(node.id, matchingCandidates[0]!.entryId);
+		}
+	}
+	if (assignments.size === 0) return traceView;
+	return { ...traceView, nodes: assignForkEntryIds(traceView.nodes, assignments) };
+}
+
+function traceUserMessageText(node: PiboTraceNode): string {
+	if (typeof node.output === "string") return node.output;
+	if (typeof node.summary === "string") return node.summary;
+	return node.title;
+}
+
+function assignForkEntryIds(nodes: readonly PiboTraceNode[], assignments: ReadonlyMap<string, string>): PiboTraceNode[] {
+	return nodes.map((node) => {
+		const children = assignForkEntryIds(node.children, assignments);
+		const entryId = assignments.get(node.id);
+		if (!entryId && children.every((child, index) => child === node.children[index])) return node;
+		return { ...node, ...(entryId ? { entryId } : {}), children };
+	});
+}
 
 function sessionRuntime(
 	bootstrap: BootstrapData,

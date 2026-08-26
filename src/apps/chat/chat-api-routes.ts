@@ -8,7 +8,7 @@ export type WorkflowDraftManualTriggerRunResource = { draftId: string };
 export type WorkflowVersionResource = { workflowId: string; version?: string };
 export type ProjectResourcePath = { projectId: string; child?: string };
 export type ProjectWorkflowSessionResource = { projectId: string; piboSessionId: string };
-export type SessionActionResource = { piboSessionId: string; action: "read" | "kill" | "kill-all" | "runtime-binding" };
+export type SessionActionResource = { piboSessionId: string; action: "read" | "kill" | "kill-all" | "runtime-binding" | "fork-candidates" };
 export type SignalResource = { kind: "session" | "tree"; piboSessionId: string };
 
 export function roomResourcePath(pathname: string): RoomResourcePath | undefined {
@@ -279,7 +279,7 @@ export function sessionActionResource(pathname: string): SessionActionResource |
 	const parts = pathname.slice(prefix.length).split("/");
 	if (parts.length !== 2 || !parts[0]) return undefined;
 	const action = parts[1];
-	if (action !== "read" && action !== "kill" && action !== "kill-all" && action !== "runtime-binding") return undefined;
+	if (action !== "read" && action !== "kill" && action !== "kill-all" && action !== "runtime-binding" && action !== "fork-candidates") return undefined;
 	try {
 		return { piboSessionId: decodeURIComponent(parts[0]), action };
 	} catch {

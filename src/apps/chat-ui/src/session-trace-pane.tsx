@@ -22,7 +22,7 @@ import type {
 } from "./types";
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
-import type { ChatMessageDelivery } from "./api-chat-sessions";
+import { getSessionForkCandidates, type ChatMessageDelivery } from "./api-chat-sessions";
 import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
@@ -47,7 +47,10 @@ import {
   resolveSessionTraceModelBadge,
   resolveSessionTraceTitle,
   sessionCanSteer,
+  sessionSupportsFork,
   sessionSupportsToolIntent,
+  traceUserMessageRevision,
+  withSessionForkCandidates,
 } from "./session-trace-view-props";
 import {
   appendComposerOptimisticEvent,
@@ -298,6 +301,25 @@ export function SessionTracePane({
     liveTraceOverlay: selectedLiveTraceOverlay,
     selectedSessionStatus,
   });
+  const forkSupported = sessionSupportsFork(bootstrap, selectedPiboSessionId, selectedSessionProfile);
+  const forkCandidateRevision = traceUserMessageRevision(currentTraceView);
+  const forkCandidatesEnabled = Boolean(selectedBackendPiboSessionId)
+    && forkSupported
+    && !selectedRoomArchived
+    && selectedSessionStatus !== "running";
+  const forkCandidatesQuery = useQuery({
+    queryKey: selectedBackendPiboSessionId
+      ? ["chat", "fork-candidates", selectedBackendPiboSessionId, forkCandidateRevision]
+      : ["chat", "fork-candidates", "idle", "none"],
+    queryFn: ({ signal }) => getSessionForkCandidates(selectedBackendPiboSessionId!, { signal }),
+    enabled: forkCandidatesEnabled,
+    staleTime: 0,
+    retry: false,
+  });
+  const forkableTraceView = useMemo(
+    () => withSessionForkCandidates(currentTraceView, forkCandidatesEnabled ? forkCandidatesQuery.data?.messages ?? [] : []),
+    [currentTraceView, forkCandidatesEnabled, forkCandidatesQuery.data?.messages],
+  );
 
   useSessionTraceLiveStream({
     selectedPiboSessionId: selectedBackendPiboSessionId,
@@ -482,7 +504,7 @@ export function SessionTracePane({
   const toolIntentSupported = sessionSupportsToolIntent(bootstrap, selectedPiboSessionId, selectedSessionProfile);
   const effectiveToolDisplayMode = toolDisplayMode === "intent" && !toolIntentSupported ? "slim" : toolDisplayMode;
   const sessionViewProps = createSessionTraceViewProps({
-    currentTraceView,
+    currentTraceView: forkableTraceView,
     isLoading: loadingTrace,
     showThinking,
     expandThinking,

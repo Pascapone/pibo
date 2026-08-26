@@ -402,8 +402,8 @@ export const piboCorePlugin = definePiboPlugin({
 			name: "session.fork_candidates",
 			description: "Return user messages that can be used as fork targets.",
 			slashCommands: ["fork-candidates"],
-			execute(context) {
-				return { messages: context.getForkCandidates() };
+			async execute(context) {
+				return { messages: await context.getForkCandidates() };
 			},
 		});
 		api.registerGatewayAction({

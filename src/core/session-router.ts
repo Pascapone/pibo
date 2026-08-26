@@ -17,6 +17,7 @@ import type {
 	PiboAssistantMessageEvent,
 	PiboEventListener,
 	PiboExecutionEvent,
+	PiboForkCandidate,
 	PiboJsonObject,
 	PiboInputEvent,
 	PiboMessageEvent,
@@ -360,6 +361,21 @@ function isTerminalRunStatus(status: string): boolean {
 
 function asJsonObject(value: PiboJsonObject | undefined): PiboJsonObject {
 	return value ?? {};
+}
+
+function derivedSessionMetadata(value: PiboJsonObject | undefined): PiboJsonObject {
+	const metadata = { ...asJsonObject(value) };
+	for (const key of [
+		"workflowSessionKind",
+		"projectSessionKind",
+		"subagentName",
+		"subagentToolName",
+		"agentStatus",
+		"threadKey",
+	]) {
+		delete metadata[key];
+	}
+	return metadata;
 }
 
 function shouldResetSessionAfterAction(action: string, output?: PiboOutputEvent): boolean {
@@ -1074,6 +1090,15 @@ export class PiboSessionRouter {
 		}
 	}
 
+	async getSessionForkCandidates(piboSessionId: string): Promise<PiboForkCandidate[]> {
+		const session = await this.getOrCreateSession(piboSessionId);
+		try {
+			return await session.getForkCandidates();
+		} finally {
+			this.scheduleIdleSessionEvictionIfIdle(piboSessionId);
+		}
+	}
+
 	async setLiveSessionActiveModel(piboSessionId: string, model: ModelProfile | undefined): Promise<ModelProfile | undefined> {
 		const session = this.sessions.get(piboSessionId);
 		if (!session) return model;
@@ -1779,9 +1804,26 @@ export class PiboSessionRouter {
 
 		if (event.action === "session.fork" || event.action === "session.clone") {
 			const action = event.action as "session.fork" | "session.clone";
-			const created = this.createDerivedSession(result, action, currentBinding);
-			result.piboSessionId = created.id;
-			await this.resetCachedSession(event.piboSessionId);
+			let transitionError: unknown;
+			try {
+				const created = this.createDerivedSession(result, action, currentBinding);
+				result.piboSessionId = created.id;
+			} catch (error) {
+				transitionError = error;
+			}
+			// The live adapter moved to the derived native session before Pibo
+			// persisted its product identity. Always discard that live handle so
+			// the source cannot keep routing against the derived binding when
+			// persistence fails or the caller retries.
+			try {
+				await this.resetCachedSession(event.piboSessionId);
+			} catch (resetError) {
+				if (transitionError) {
+					throw new AggregateError([transitionError, resetError], `Failed to persist and reset ${action}.`);
+				}
+				throw resetError;
+			}
+			if (transitionError) throw transitionError;
 			return;
 		}
 
@@ -1802,7 +1844,7 @@ export class PiboSessionRouter {
 			channel: source.channel,
 			kind: "branch",
 			profile: source.profile,
-			parentId: source.kind === "subagent" ? source.parentId : undefined,
+			parentId: source.parentId,
 			originId: source.id,
 			runtimeBinding: {
 				runtimeInstanceId: currentBinding.runtimeInstanceId,
@@ -1819,7 +1861,7 @@ export class PiboSessionRouter {
 			title: source.title,
 			activeModel: source.activeModel,
 			metadata: {
-				...asJsonObject(source.metadata),
+				...derivedSessionMetadata(source.metadata),
 				originAction: action,
 				originRuntimeNativeSessionId: result.previous.piSessionId,
 				...(currentBinding.adapterId === "pi" ? { originPiSessionId: result.previous.piSessionId } : {}),

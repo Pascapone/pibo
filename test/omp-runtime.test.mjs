@@ -290,6 +290,42 @@ test("OMP thread controller reads native session snapshot and commands", async (
 	const commands = await readOmpAvailableCommands(client);
 	assert.ok(commands.some((c) => c.name === "compact"));
 	assert.ok(commands.some((c) => c.name === "model"));
+
+	const candidates = await threads.loadForkCandidates("omp-native");
+	assert.deepEqual(candidates, [
+		{ entryId: "fork-1", text: "hi" },
+		{ entryId: "fork-2", text: "hello" },
+	]);
+	const forked = await threads.forkSession("omp-native", "fork-2");
+	assert.equal(forked.previous.nativeSessionId, "fake-session-1");
+	assert.equal(forked.current.nativeSessionId, "fake-session-fork");
+	assert.equal(forked.selectedText, "hello");
+	assert.equal(forked.summaryEntryId, "fork-2");
+	assert.equal(forked.cancelled, false);
+});
+
+test("OMP thread controller falls back to legacy branch RPC names only when modern fork commands are unsupported", async (t) => {
+	const client = await startClient(t, "thread-legacy-fork", { OMP_FAKE_LEGACY_FORK_RPC: "1" });
+	const threads = new OmpThreadController(client, process.cwd(), { sessionId: "fake-session-1" });
+	const candidates = await threads.loadForkCandidates("omp-native");
+	assert.deepEqual(candidates.map((candidate) => candidate.entryId), ["fork-1", "fork-2"]);
+	const forked = await threads.forkSession("omp-native", "fork-1");
+	assert.equal(forked.current.nativeSessionId, "fake-session-branch");
+	assert.equal(forked.selectedText, "hi");
+});
+
+test("OMP fork candidate reads surface transport failures instead of caching an empty result", async (t) => {
+	const client = await startClient(t, "thread-fork-candidate-error", { OMP_FAKE_FORK_CANDIDATE_ERROR: "1" });
+	const threads = new OmpThreadController(client, process.cwd(), { sessionId: "fake-session-1" });
+	await assert.rejects(() => threads.loadForkCandidates("omp-native"), /fork candidate read failed/);
+});
+
+test("OMP fork restores the source session when post-fork identity refresh fails", async (t) => {
+	const client = await startClient(t, "thread-fork-refresh-rollback", { OMP_FAKE_FORK_REFRESH_FAIL_ONCE: "1" });
+	const threads = new OmpThreadController(client, process.cwd(), { sessionId: "fake-session-1" });
+	await threads.refresh();
+	await assert.rejects(() => threads.forkSession("omp-native", "fork-1"), /fork refresh failed/);
+	assert.equal(threads.getSessionSnapshot("omp-native").nativeSessionId, "fake-session-1");
 });
 
 test("OMP RPC client round-trips state in an error-ish environment", async (t) => {

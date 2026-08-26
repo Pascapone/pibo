@@ -1,4 +1,4 @@
-import type { PiboEventListener, PiboInputEvent, PiboOutputEvent, PiboSessionStatus } from "../core/events.js";
+import type { PiboEventListener, PiboForkCandidate, PiboInputEvent, PiboOutputEvent, PiboSessionStatus } from "../core/events.js";
 import type { PiboRunSnapshot } from "../runs/registry.js";
 import type { PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
 import type {
@@ -65,6 +65,7 @@ export type PiboChannelContext = {
 	rebindSessionRuntime?(piboSessionId: string, input: RuntimeSessionBindingRebindInput): Promise<RuntimeSessionBinding>;
 	getSessionRuntimeStatus?(piboSessionId: string): PiboSessionStatus | undefined;
 	getSessionStatusSnapshot?(piboSessionId: string): Promise<PiboSessionStatus>;
+	getSessionForkCandidates?(piboSessionId: string): Promise<PiboForkCandidate[]>;
 	listSessionRuntimeStatuses?(): PiboSessionStatus[];
 	listRuns?(options?: { includeConsumed?: boolean; includeDetached?: boolean }): PiboRunSnapshot[];
 	snapshotSignalSession?(piboSessionId: string): PiboSignalSnapshot;

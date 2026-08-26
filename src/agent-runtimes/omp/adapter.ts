@@ -239,6 +239,7 @@ export class OmpSession implements AgentRuntimeSession {
 	private thread: OmpThreadController;
 	private hostTools: OmpHostToolBridge;
 	private resourceDelivery: OmpResourceDelivery;
+	private forkCandidatesRequest?: Promise<AgentRuntimeForkCandidate[]>;
 
 	constructor(
 		readonly runtimeInstanceId: string,
@@ -259,12 +260,11 @@ export class OmpSession implements AgentRuntimeSession {
 		this.controls = {
 			getCurrentSession: () => this.thread.getSessionSnapshot(this.runtimeInstanceId),
 			listSessions: () => this.thread.listSessions(this.runtimeInstanceId),
-			getForkCandidates: () => this.forkCandidates(),
+			getForkCandidates: () => this.getForkCandidates(),
 			forkSession: async (entryId) => await this.runIdleOperation(async () => {
-				const previous = this.thread.getSessionSnapshot(this.runtimeInstanceId);
 				const result = await this.thread.forkSession(this.runtimeInstanceId, entryId);
 				this.updateBinding();
-				return { previous, current: result.current, cancelled: result.cancelled };
+				return result;
 			}),
 			getReasoning: () => parseOmpReasoning(undefined),
 			setReasoning: (value) => {
@@ -307,10 +307,6 @@ export class OmpSession implements AgentRuntimeSession {
 			runtimeInstanceId: this.runtimeInstanceId,
 			adapterId: OMP_ADAPTER_ID,
 		};
-	}
-
-	private forkCandidates(): AgentRuntimeForkCandidate[] {
-		return this.thread.cachedForkCandidates();
 	}
 
 	private async setOmpModel(provider: string, modelId: string): Promise<AgentRuntimeModelInfo> {
@@ -388,7 +384,7 @@ export class OmpSession implements AgentRuntimeSession {
 	}
 
 	async prompt(input: AgentRuntimePromptInput): Promise<void> {
-		this.assertActive();
+		this.assertIdle();
 		this.operationInFlight = true;
 		try {
 			await this.turn.prompt(input.text);
@@ -443,6 +439,17 @@ export class OmpSession implements AgentRuntimeSession {
 
 	private assertActive(): void {
 		if (this.disposed) throw new Error("OMP session is disposed.");
+	}
+
+	private async getForkCandidates(): Promise<AgentRuntimeForkCandidate[]> {
+		if (this.forkCandidatesRequest) return await this.forkCandidatesRequest;
+		const request = this.runIdleOperation(async () => await this.thread.loadForkCandidates(this.runtimeInstanceId));
+		this.forkCandidatesRequest = request;
+		try {
+			return await request;
+		} finally {
+			if (this.forkCandidatesRequest === request) this.forkCandidatesRequest = undefined;
+		}
 	}
 
 	private async runIdleOperation<T>(operation: () => Promise<T>): Promise<T> {
@@ -614,9 +621,6 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					// (bindNativeSessionId below still sets the binding.)
 				}
 			}
-
-			// Prime fork candidates (get_branch_messages) for the sync SPI.
-			void threads.loadForkCandidates(this.instanceId);
 		} catch (error) {
 			await client.dispose();
 			await disposeOmpSessionPaths(paths);

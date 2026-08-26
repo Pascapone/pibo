@@ -5774,6 +5774,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseJson({ binding });
 			}
 
+			if (sessionAction?.action === "fork-candidates" && request.method === "GET") {
+				const webSession = await requireSession(request, context);
+				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, sessionAction.piboSessionId);
+				if (!context.channelContext.getSessionForkCandidates) {
+					throw new PiboWebHttpError("Session fork candidates are not available", 501);
+				}
+				return responseJson({ messages: await context.channelContext.getSessionForkCandidates(selectedSession.id) });
+			}
+
 			if (sessionAction?.action === "runtime-binding" && request.method === "PATCH") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);

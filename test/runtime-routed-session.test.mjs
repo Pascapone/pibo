@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/capabilities.js";
+import { RuntimeRoutedSession } from "../dist/agent-runtime/routed-session.js";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
@@ -210,6 +212,122 @@ test("generic routed controls reject unadvertised adapter capabilities explicitl
 		);
 	} finally {
 		await fixture.router.disposeAll();
+	}
+});
+
+test("fork identity reads and transitions reject queued or active routed work", async () => {
+	const releasePrompt = deferred();
+	const releaseFork = deferred();
+	const releasePersistence = deferred();
+	let streaming = false;
+	let candidateReads = 0;
+	let forks = 0;
+	let persistenceStarted = false;
+	const binding = {
+		piboSessionId: "ps_fork_race",
+		runtimeInstanceId: "fork-race",
+		adapterId: "fork-race",
+		nativeSessionId: "native-source",
+		state: "bound",
+	};
+	const runtimeSession = {
+		adapterId: "fork-race",
+		runtimeInstanceId: "fork-race",
+		cwd: process.cwd(),
+		capabilities: {
+			...createMinimalAgentRuntimeCapabilities(),
+			lifecycle: { ...createMinimalAgentRuntimeCapabilities().lifecycle, fork: true },
+		},
+		controls: {
+			getForkCandidates() {
+				candidateReads += 1;
+				return [{ entryId: "native-user", text: "prompt" }];
+			},
+			async forkSession() {
+				forks += 1;
+				await releaseFork.promise;
+				return {
+					previous: { adapterId: "fork-race", runtimeInstanceId: "fork-race", nativeSessionId: "native-source", cwd: process.cwd() },
+					current: { adapterId: "fork-race", runtimeInstanceId: "fork-race", nativeSessionId: "native-fork", cwd: process.cwd() },
+					cancelled: false,
+				};
+			},
+		},
+		getBinding: () => ({ ...binding }),
+		subscribe: () => () => {},
+		async prompt() {
+			streaming = true;
+			await releasePrompt.promise;
+			streaming = false;
+		},
+		async abort() {
+			releasePrompt.resolve();
+			streaming = false;
+		},
+		async dispose() {
+			releasePrompt.resolve();
+			streaming = false;
+		},
+		getStatus: () => ({ streaming, enabledTools: [], cwd: process.cwd() }),
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_fork_race",
+		runtimeSession,
+		() => {},
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		{
+			async onSessionOperation() {
+				persistenceStarted = true;
+				await releasePersistence.promise;
+			},
+		},
+	);
+	try {
+		routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_fork_race",
+			id: "fork-race-message",
+			text: "prompt",
+			source: "service",
+		});
+		await waitFor(() => routed.getStatus().processing && routed.getStatus().streaming);
+		await assert.rejects(() => routed.getForkCandidates(), /must be idle to inspect fork candidates/);
+		await assert.rejects(() => routed.forkSession("native-user"), /must be idle to fork/);
+		assert.equal(candidateReads, 0);
+		assert.equal(forks, 0);
+
+		releasePrompt.resolve();
+		await waitFor(() => !routed.getStatus().processing && routed.getStatus().queuedMessages === 0);
+		const forkAction = routed.executeAction({
+			type: "execution",
+			piboSessionId: "ps_fork_race",
+			action: "session.fork",
+			params: { entryId: "native-user" },
+		});
+		await waitFor(() => forks === 1);
+		assert.throws(() => routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_fork_race",
+			id: "fork-race-during-native-transition",
+			text: "must not cross the native transition",
+			source: "service",
+		}), /session identity operation is in progress/);
+		releaseFork.resolve();
+		await waitFor(() => persistenceStarted);
+		assert.throws(() => routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_fork_race",
+			id: "fork-race-during-persistence",
+			text: "must not cross product persistence",
+			source: "service",
+		}), /session identity operation is in progress/);
+		releasePersistence.resolve();
+		await forkAction;
+	} finally {
+		releasePrompt.resolve();
+		releaseFork.resolve();
+		releasePersistence.resolve();
+		await routed.dispose();
 	}
 });
 

@@ -413,6 +413,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	async prompt(input: AgentRuntimePromptInput): Promise<void> {
 		this.assertActive();
 		await this.ensureFreshResourcesForTurn();
+		this.assertIdle();
 		this.operationInFlight = true;
 		try {
 			await this.turns.start(
@@ -715,7 +716,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 
 	private assertIdle(): void {
 		this.assertActive();
-		if (this.turns.streaming || this.resourceRefresh || this.resourceProcessUnavailable) {
+		if (this.operationInFlight || this.turns.streaming || this.resourceRefresh || this.resourceProcessUnavailable) {
 			throw new Error("Codex runtime controls can only change while the session is idle.");
 		}
 	}

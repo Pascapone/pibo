@@ -116,6 +116,12 @@ export async function getSessionRuntimeBinding(piboSessionId: string): Promise<{
 	return requestJson(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/runtime-binding`, { cache: "no-store" });
 }
 
+export type SessionForkCandidate = { entryId: string; text: string };
+
+export async function getSessionForkCandidates(piboSessionId: string, init?: RequestInit): Promise<{ messages: SessionForkCandidate[] }> {
+	return requestJson(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/fork-candidates`, { ...init, cache: "no-store" });
+}
+
 export async function patchSessionRuntimeBinding(
 	piboSessionId: string,
 	input: {

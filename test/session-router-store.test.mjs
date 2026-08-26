@@ -359,6 +359,149 @@ test("session router creates a visible branch Pibo session for clone operations"
 	}
 });
 
+test("forking a named delegated session preserves lineage and title without copying managed-agent identity", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_parent",
+		piSessionId: "01111111-1111-4111-8111-111111111111",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "test-profile",
+	});
+	createStoredSession(store, {
+		channel: "pibo.subagents",
+		kind: "subagent",
+		parentId: "ps_parent",
+		title: "Named delegated session",
+		metadata: {
+			workflowSessionKind: "subagent",
+			projectSessionKind: "main",
+			subagentName: "researcher",
+			subagentToolName: "pibo_agents_send_message",
+			agentStatus: "active",
+			threadKey: "stable-thread",
+			chatRoomId: "room_1",
+		},
+	});
+	const registry = createTestRegistry("session.fork", (context, event) => {
+		const sourceFork = context.piboSessionId === "ps_source";
+		return {
+		piboSessionId: context.piboSessionId,
+		previous: {
+			piSessionId: sourceFork
+				? "11111111-1111-4111-8111-111111111111"
+				: "22222222-2222-4222-8222-222222222222",
+			leafId: "old-leaf",
+			cwd: "/workspace",
+		},
+		current: {
+			piSessionId: sourceFork
+				? "22222222-2222-4222-8222-222222222222"
+				: "33333333-3333-4333-8333-333333333333",
+			leafId: "fork-leaf",
+			cwd: "/workspace",
+		},
+		cancelled: false,
+		selectedText: "fork target",
+		summaryEntryId: event.params.entryId,
+		};
+	});
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		pluginRegistry: registry,
+		profile: registry.createProfile("test-profile"),
+	});
+
+	try {
+		const output = await router.emit({
+			type: "execution",
+			piboSessionId: "ps_source",
+			action: "session.fork",
+			params: { entryId: "user-entry" },
+		});
+		const branch = store.get(output.result.piboSessionId);
+		assert.equal(branch.kind, "branch");
+		assert.equal(branch.parentId, "ps_parent");
+		assert.equal(branch.originId, "ps_source");
+		assert.equal(branch.title, "Named delegated session");
+		assert.equal(branch.metadata.chatRoomId, "room_1");
+		for (const key of ["workflowSessionKind", "projectSessionKind", "subagentName", "subagentToolName", "agentStatus", "threadKey"]) {
+			assert.equal(branch.metadata[key], undefined);
+		}
+		assert.deepEqual(
+			store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" }).map((session) => session.id),
+			["ps_source"],
+			"a named branch must not become a reusable delegated-agent session",
+		);
+
+		store.update("ps_source", { title: "Renamed delegated session" });
+		assert.equal(store.get(branch.id).title, "Named delegated session", "branch titles are derivation snapshots, not shared identity");
+
+		const nestedOutput = await router.emit({
+			type: "execution",
+			piboSessionId: branch.id,
+			action: "session.fork",
+			params: { entryId: "user-entry-2" },
+		});
+		const nestedBranch = store.get(nestedOutput.result.piboSessionId);
+		assert.equal(nestedBranch.parentId, "ps_parent", "repeated forks retain delegated hierarchy");
+		assert.equal(nestedBranch.originId, branch.id);
+		assert.equal(nestedBranch.title, "Named delegated session");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("session router discards a derived native handle when branch persistence fails", async () => {
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store);
+	const create = store.create.bind(store);
+	store.create = (input) => {
+		if (input.kind === "branch") throw new Error("derived persistence failed");
+		return create(input);
+	};
+	const registry = createTestRegistry("session.clone", (context) => ({
+		piboSessionId: context.piboSessionId,
+		previous: {
+			piSessionId: "11111111-1111-4111-8111-111111111111",
+			leafId: "old-leaf",
+			cwd: "/workspace",
+		},
+		current: {
+			piSessionId: "22222222-2222-4222-8222-222222222222",
+			leafId: "new-leaf",
+			cwd: "/workspace",
+		},
+		cancelled: false,
+	}));
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		pluginRegistry: registry,
+		profile: registry.createProfile("test-profile"),
+	});
+	const resetCachedSession = router.resetCachedSession.bind(router);
+	let resets = 0;
+	router.resetCachedSession = async (piboSessionId) => {
+		resets += 1;
+		await resetCachedSession(piboSessionId);
+	};
+
+	try {
+		await assert.rejects(() => router.emit({
+			type: "execution",
+			piboSessionId: "ps_source",
+			action: "session.clone",
+		}), /derived persistence failed/);
+		assert.equal(resets, 1);
+		assert.equal(store.get("ps_source").piSessionId, "11111111-1111-4111-8111-111111111111");
+		assert.equal(store.list().some((session) => session.kind === "branch"), false);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("session router updates a Pibo session before emitting switch results", async () => {
 	const store = new InMemoryPiboSessionStore();
 	createStoredSession(store);

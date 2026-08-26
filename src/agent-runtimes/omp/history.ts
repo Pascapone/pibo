@@ -40,6 +40,15 @@ function messageEntryRole(message: unknown): "user" | "assistant" | "tool" | "sy
 	return "system";
 }
 
+function messageEntryId(message: unknown): string | undefined {
+	if (!isRecord(message)) return undefined;
+	for (const key of ["entryId", "id", "messageId"]) {
+		const value = message[key];
+		if (typeof value === "string" && value.trim()) return value;
+	}
+	return undefined;
+}
+
 function messageText(message: unknown): string {
 	if (typeof message === "string") return message;
 	if (!isRecord(message)) return "";
@@ -58,14 +67,16 @@ function messageText(message: unknown): string {
 function toHistoryEntry(message: unknown, sequence: number, binding: RuntimeSessionBinding): AgentRuntimeHistoryEntry {
 	const role = messageEntryRole(message);
 	const content = messageText(message);
+	const nativeEntryId = messageEntryId(message);
 	return {
-		id: `${binding.nativeSessionId ?? "omp"}-${sequence}`,
+		id: nativeEntryId ? `omp:${nativeEntryId}` : `${binding.nativeSessionId ?? "omp"}-${sequence}`,
 		type: "message",
 		source: "native",
 		createdAt: isRecord(message) && typeof message.timestamp === "string"
 			? message.timestamp
 			: new Date().toISOString(),
 		sequence,
+		...(nativeEntryId ? { nativeEntryId } : {}),
 		role,
 		content: content || "[empty message]",
 	};

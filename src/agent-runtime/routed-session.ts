@@ -211,6 +211,7 @@ export class RuntimeRoutedSession {
 	private nextAssistantIndex = 0;
 	private activeThinkingIndex?: number;
 	private nextThinkingIndex = 0;
+	private sessionIdentityOperationInFlight = false;
 	private unsubscribe?: () => void;
 
 	constructor(
@@ -226,6 +227,9 @@ export class RuntimeRoutedSession {
 
 	enqueueMessage(event: PiboMessageEvent): PiboOutputEvent {
 		this.assertActive();
+		if (this.sessionIdentityOperationInFlight) {
+			throw new Error("Pibo session cannot accept messages while a session identity operation is in progress.");
+		}
 		this.queue.push({ kind: "message", event });
 		const output: PiboOutputEvent = {
 			type: "message_queued",
@@ -275,17 +279,26 @@ export class RuntimeRoutedSession {
 	async executeAction(event: PiboExecutionEvent): Promise<PiboOutputEvent> {
 		this.assertActive();
 		if (event.action === "compact") return this.enqueueCompactAction(event);
-		const result = await this.runAction(event);
-		if (isSessionOperationResult(result)) await this.options.onSessionOperation?.(result, event);
-		const output: PiboOutputEvent = {
-			type: "execution_result",
-			piboSessionId: this.piboSessionId,
-			eventId: event.id,
-			action: event.action,
-			result,
-		};
-		this.emit(output);
-		return output;
+		const changesSessionIdentity = event.action === "session.fork" || event.action === "session.clone";
+		if (changesSessionIdentity) {
+			this.assertSessionIdentityOperationIdle(event.action === "session.fork" ? "fork" : "clone");
+			this.sessionIdentityOperationInFlight = true;
+		}
+		try {
+			const result = await this.runAction(event);
+			if (isSessionOperationResult(result)) await this.options.onSessionOperation?.(result, event);
+			const output: PiboOutputEvent = {
+				type: "execution_result",
+				piboSessionId: this.piboSessionId,
+				eventId: event.id,
+				action: event.action,
+				result,
+			};
+			this.emit(output);
+			return output;
+		} finally {
+			if (changesSessionIdentity) this.sessionIdentityOperationInFlight = false;
+		}
 	}
 
 	getActiveMessage(): Pick<PiboMessageEvent, "id" | "source" | "provenance"> | undefined {
@@ -415,22 +428,41 @@ export class RuntimeRoutedSession {
 		return (await listSessions()).map((info) => nativeSessionInfoToPiCompatibility(this.runtimeSession, info));
 	}
 
-	getForkCandidates(): PiboForkCandidate[] {
+	async getForkCandidates(): Promise<PiboForkCandidate[]> {
+		this.assertSessionIdentityOperationIdle("inspect fork candidates");
 		const getForkCandidates = this.runtimeSession.controls?.getForkCandidates;
 		if (!getForkCandidates) throw runtimeCapabilityError(this.runtimeSession, "native session fork candidates");
-		return getForkCandidates();
+		const candidates = await getForkCandidates();
+		this.assertSessionIdentityOperationIdle("inspect fork candidates");
+		return candidates;
 	}
 
 	async forkSession(entryId: string): Promise<PiboSessionOperationResult> {
+		this.assertSessionWorkIdle("fork");
 		const forkSession = this.runtimeSession.controls?.forkSession;
 		if (!forkSession) throw runtimeCapabilityError(this.runtimeSession, "native session fork");
 		return nativeOperationToPiCompatibility(this.runtimeSession, this.piboSessionId, await forkSession(entryId));
 	}
 
 	async cloneSession(): Promise<PiboSessionOperationResult> {
+		this.assertSessionWorkIdle("clone");
 		const cloneSession = this.runtimeSession.controls?.cloneSession;
 		if (!cloneSession) throw runtimeCapabilityError(this.runtimeSession, "native session clone");
 		return nativeOperationToPiCompatibility(this.runtimeSession, this.piboSessionId, await cloneSession());
+	}
+
+	private assertSessionIdentityOperationIdle(operation: string): void {
+		if (this.sessionIdentityOperationInFlight) {
+			throw new Error(`Pibo session already has a session identity operation in progress; cannot ${operation}.`);
+		}
+		this.assertSessionWorkIdle(operation);
+	}
+
+	private assertSessionWorkIdle(operation: string): void {
+		const status = this.getStatus();
+		if (status.processing || status.streaming || status.queuedMessages > 0) {
+			throw new Error(`Pibo session must be idle to ${operation}.`);
+		}
 	}
 
 	getSessionTree(): PiboSessionTreeResult {
