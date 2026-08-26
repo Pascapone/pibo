@@ -21,14 +21,24 @@ export type PiboConfig = {
 		machineKeyStorePath?: string;
 		mode?: "better-auth" | "local";
 	};
+	preview?: {
+		baseURL?: string;
+		databasePath?: string;
+		maxRunningServers?: number;
+		autoStopMinutes?: number;
+		maxProxyConnections?: number;
+		maxProxyConnectionsPerPreview?: number;
+	};
 };
 
 export type PiboConfigKeyDefinition = {
 	key: string;
 	description: string;
-	type: "string" | "string[]";
+	type: "string" | "string[]" | "integer";
 	secret?: boolean;
 	values?: readonly string[];
+	minimum?: number;
+	maximum?: number;
 };
 
 export const PIBO_CONFIG_KEYS: PiboConfigKeyDefinition[] = [
@@ -80,6 +90,44 @@ export const PIBO_CONFIG_KEYS: PiboConfigKeyDefinition[] = [
 		description: "Auth service mode. Use 'local' to skip Google OAuth on a loopback bind. Default 'better-auth'.",
 		values: ["better-auth", "local"] as const,
 	},
+	{
+		key: "preview.baseURL",
+		type: "string",
+		description: "Public preview base URL. Preview ids become subdomains, for example https://preview.example.com.",
+	},
+	{
+		key: "preview.databasePath",
+		type: "string",
+		description: "Optional SQLite path for live preview registrations and browser sessions.",
+	},
+	{
+		key: "preview.maxRunningServers",
+		type: "integer",
+		minimum: 1,
+		maximum: 20,
+		description: "Maximum concurrently starting or running managed Preview servers. Default 3.",
+	},
+	{
+		key: "preview.autoStopMinutes",
+		type: "integer",
+		minimum: 1,
+		maximum: 1440,
+		description: "Fixed managed Preview runtime lease in minutes. Default 10.",
+	},
+	{
+		key: "preview.maxProxyConnections",
+		type: "integer",
+		minimum: 1,
+		maximum: 10000,
+		description: "Maximum concurrent Preview HTTP, SSE, and WebSocket connections. Default 128.",
+	},
+	{
+		key: "preview.maxProxyConnectionsPerPreview",
+		type: "integer",
+		minimum: 1,
+		maximum: 10000,
+		description: "Maximum concurrent proxy connections per Preview. Default 32.",
+	},
 ];
 
 function getKeyDefinition(key: string): PiboConfigKeyDefinition {
@@ -112,8 +160,19 @@ function parseListValue(value: string): string[] {
 		.filter(Boolean);
 }
 
-function parseConfigValue(definition: PiboConfigKeyDefinition, value: string): string | string[] {
+function parseConfigValue(definition: PiboConfigKeyDefinition, value: string): string | string[] | number {
 	if (definition.type === "string[]") return parseListValue(value);
+	if (definition.type === "integer") {
+		const parsed = Number(value);
+		if (!Number.isInteger(parsed) ||
+			definition.minimum !== undefined && parsed < definition.minimum ||
+			definition.maximum !== undefined && parsed > definition.maximum) {
+			throw new Error(
+				`${definition.key} must be an integer between ${definition.minimum ?? "-∞"} and ${definition.maximum ?? "∞"}`,
+			);
+		}
+		return parsed;
+	}
 	if (definition.key === "auth.secret" && value.length < 32) {
 		throw new Error("auth.secret must be at least 32 characters");
 	}
@@ -191,11 +250,14 @@ export function setPiboConfigValue(config: PiboConfig, key: string, rawValue: st
 	const definition = getKeyDefinition(key);
 	const value = parseConfigValue(definition, rawValue);
 	const [section, name] = key.split(".");
-	if (section !== "auth" || !name) throw new Error(`Unsupported config key "${key}"`);
+	if (!section || !name || (section !== "auth" && section !== "preview")) {
+		throw new Error(`Unsupported config key "${key}"`);
+	}
+	const currentSection = config[section] as Record<string, unknown> | undefined;
 	return {
 		...config,
-		auth: {
-			...config.auth,
+		[section]: {
+			...currentSection,
 			[name]: value,
 		},
 	};
@@ -208,13 +270,16 @@ export function isPiboConfigKeySecret(key: string): boolean {
 export function deletePiboConfigValue(config: PiboConfig, key: string): PiboConfig {
 	getKeyDefinition(key);
 	const [section, name] = key.split(".");
-	if (section !== "auth" || !name) throw new Error(`Unsupported config key "${key}"`);
-	if (!config.auth || !(name in config.auth)) return config;
+	if (!section || !name || (section !== "auth" && section !== "preview")) {
+		throw new Error(`Unsupported config key "${key}"`);
+	}
+	const currentSection = config[section] as Record<string, unknown> | undefined;
+	if (!currentSection || !(name in currentSection)) return config;
 
-	const auth = { ...config.auth };
-	delete (auth as Record<string, unknown>)[name];
+	const nextSection = { ...currentSection };
+	delete nextSection[name];
 	return {
 		...config,
-		auth: Object.keys(auth).length > 0 ? auth : undefined,
+		[section]: Object.keys(nextSection).length > 0 ? nextSection : undefined,
 	};
 }
