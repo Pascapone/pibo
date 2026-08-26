@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { piboStringEnum } from "../tools/schema.js";
 import { definePiboTool, piboToolTerminalStatus, piboToolTimeoutPhase, type PiboToolDefinition, type PiboToolResult } from "../tools/contract.js";
 import { foregroundServiceWarning, hasMeaningfulTimeoutOutput, isConfiguredTimeoutError, PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, resolveRunTimeoutMs, waitForRunCancellationSettlement } from "./lifecycle.js";
@@ -70,24 +71,54 @@ function requireTool(tools: readonly PiboToolDefinition[], name: string): PiboTo
 	return tool;
 }
 
+function yieldedToolInputSchema(tool: PiboToolDefinition) {
+	const compatibilityTool = tool as PiboToolDefinition & { inputSchema?: PiboToolDefinition["inputSchema"] };
+	return compatibilityTool.inputSchema
+		?? compatibilityTool.parameters
+		?? Type.Any({ description: `Legacy yieldable tool "${tool.name}" has no declared input schema` });
+}
+
+function yieldedToolArgumentsSchema(tools: readonly PiboToolDefinition[]) {
+	if (tools.length === 0) return Type.Never({ description: "No yieldable tools are available" });
+	if (tools.length === 1) return yieldedToolInputSchema(tools[0]!);
+	return Type.Union(tools.map(yieldedToolInputSchema), {
+		description: "Arguments matching the input schema of the selected yieldable tool",
+	});
+}
+
+function validateYieldedToolArguments(tool: PiboToolDefinition, input: unknown): unknown {
+	const inputSchema = yieldedToolInputSchema(tool);
+	if (!Value.Check(inputSchema, input)) {
+		const errors = [...Value.Errors(inputSchema, input)].slice(0, 5).map((error) => {
+			const location = (error as { path?: string; instancePath?: string }).path
+				?? (error as { instancePath?: string }).instancePath
+				?? "/";
+			return `${location || "/"}: ${error.message}`;
+		});
+		throw new Error(`Invalid arguments for yielded tool "${tool.name}": ${errors.join("; ")}`);
+	}
+	return tool.prepareInput ? tool.prepareInput(input) : input;
+}
+
 export function createRunToolDefinitions(
 	yieldableTools: readonly PiboToolDefinition[],
 	controller: PiboRunToolController,
 ): PiboToolDefinition[] {
 	const toolNames = yieldableTools.map((tool) => tool.name);
+	const argumentsSchema = yieldedToolArgumentsSchema(yieldableTools);
 
 	return [
 		definePiboTool({
 			name: "pibo_run_start",
 			title: "Pibo Run Start",
 			description:
-				"Start a yieldable tool as a yielded run. The run records its configured timeout and classifies lifetime expiry separately from command failure. Use detached only for intentional fire-and-forget work.",
+				"Start a yieldable tool as a yielded run. arguments must match the selected toolName schema; invalid target arguments fail before run admission or persistence. The run records its configured timeout and classifies lifetime expiry separately from command failure. Use detached only for intentional fire-and-forget work.",
 			promptSnippet:
-				"Use pibo_run_start to run a yieldable tool in the background. It returns a runId. Use pibo_run_read for completed results and pibo_run_wait/status/list/cancel/ack to manage runs.",
+				"Use pibo_run_start to run a yieldable tool in the background. Provide arguments matching the selected toolName schema; invalid arguments create no run. It returns a runId. Use pibo_run_read for completed results and pibo_run_wait/status/list/cancel/ack to manage runs.",
 			executionMode: "parallel",
 			inputSchema: Type.Object({
 				toolName: piboStringEnum(toolNames, { description: "Yieldable tool name to start" }),
-				arguments: Type.Any({ description: "Arguments object for the selected tool" }),
+				arguments: argumentsSchema,
 				completionPolicy: Type.Optional(
 					piboStringEnum(["tracked", "detached"], {
 						description:
@@ -98,9 +129,10 @@ export function createRunToolDefinitions(
 			}),
 			async execute(toolCallId, params, signal, onUpdate, ctx) {
 				const tool = requireTool(yieldableTools, params.toolName);
-				const timeoutMs = resolveRunTimeoutMs(tool.name, params.arguments);
-				const serviceWarning = foregroundServiceWarning(tool.name, params.arguments, timeoutMs);
-				const prepared = prepareYieldedRunExecution(tool.name, params.arguments);
+				const toolArguments = validateYieldedToolArguments(tool, params.arguments);
+				const timeoutMs = resolveRunTimeoutMs(tool.name, toolArguments);
+				const serviceWarning = foregroundServiceWarning(tool.name, toolArguments, timeoutMs);
+				const prepared = prepareYieldedRunExecution(tool.name, toolArguments);
 				const runAbortController = new AbortController();
 				const runSignal = signal ? AbortSignal.any([signal, runAbortController.signal]) : runAbortController.signal;
 				let executionStarted = false;

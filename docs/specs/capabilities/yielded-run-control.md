@@ -87,7 +87,7 @@ A profile that enables run control can start and manage yielded runs. A profile 
 
 #### Current
 
-`createRunToolDefinitions()` builds `pibo_run_start` with a `toolName` enum derived from visible yieldable tools. `PiboSessionRouter.createRunToolController()` records the run in `PiboRunRegistry` under the parent Pibo Session id and executes the wrapped tool asynchronously.
+`createRunToolDefinitions()` builds `pibo_run_start` with a `toolName` enum and `arguments` schema derived from visible yieldable tools. Dispatch validates `arguments` against the selected target before timeout preparation, admission, or `PiboRunRegistry` persistence. `PiboSessionRouter.createRunToolController()` then records the run under the parent Pibo Session id and executes the wrapped tool asynchronously.
 
 #### Target
 

@@ -26,6 +26,8 @@ export const PIBO_AGENT_TOOL_NAMES = [
 export type PiboAgentToolName = (typeof PIBO_AGENT_TOOL_NAMES)[number];
 export type PiboAgentStatus = "running" | "idle" | "killed";
 
+export const PIBO_AGENT_SESSION_NAME_MAX_LENGTH = 40;
+
 export type PiboAvailableAgent = {
 	name: string;
 	description: string;
@@ -38,6 +40,7 @@ export type PiboManagedAgent = {
 	agentId: string;
 	name: string;
 	profile: string;
+	sessionName?: string;
 	threadKey?: string;
 	status: PiboAgentStatus;
 	createdAt: string;
@@ -47,6 +50,8 @@ export type PiboManagedAgent = {
 
 export type PiboAgentSendMessageInput = {
 	subagent: SubagentProfile;
+	/** Human-readable child Pibo Session title; trimmed and limited to 40 Unicode code points. */
+	sessionName: string;
 	message: string;
 	threadKey?: string;
 	toolCallId?: string;
@@ -125,6 +130,7 @@ export type PiboAgentsController = {
 /** @deprecated Use PiboAgentSendMessageInput with PiboAgentsController. */
 export type PiboSubagentRunInput = {
 	subagent: SubagentProfile;
+	sessionName: string;
 	message: string;
 	threadKey?: string;
 	toolCallId?: string;
@@ -167,6 +173,16 @@ export function formatAvailableAgentsForPrompt(subagents: readonly SubagentProfi
 
 function resultText(prefix: string, value: unknown): string {
 	return `${prefix}\n${JSON.stringify(value, null, 2)}`;
+}
+
+export function normalizePiboAgentSessionName(value: unknown): string {
+	if (typeof value !== "string") throw new Error("Agent session name is required.");
+	if ([...value].length > PIBO_AGENT_SESSION_NAME_MAX_LENGTH) {
+		throw new Error(`Agent session name must be at most ${PIBO_AGENT_SESSION_NAME_MAX_LENGTH} characters.`);
+	}
+	const normalized = value.trim();
+	if (!normalized) throw new Error("Agent session name must not be empty.");
+	return normalized;
 }
 
 export function formatAgentObservationsForModel(result: PiboAgentObserveResult): string {
@@ -226,18 +242,24 @@ export function createAgentToolDefinitions(
 			name: "pibo_agents_send_message",
 			title: "Pibo Agents Send Message",
 			description: [
-				"Yielded-only delegated send. Start this tool through pibo_run_start; bounded waits do not limit the child lifetime.",
+				"Yielded-only delegated send with a required sessionName. It must be a nonblank string of at most 40 Unicode code points and is trimmed before use. name selects the configured agent, sessionName is the human-readable child-session title, and threadKey controls conversation reuse. Invalid arguments fail before a run or child session is created. Start this tool through pibo_run_start; bounded waits do not limit the child lifetime.",
 				"Available agents:",
 				catalog,
 			].join("\n"),
-			promptSnippet: "Start pibo_agents_send_message through pibo_run_start. Reuse threadKey to continue its child session, and use run wait/status/read/cancel plus agent observe for lifecycle control.",
+			promptSnippet: "Start pibo_agents_send_message through pibo_run_start. Provide a nonblank sessionName of at most 40 Unicode code points on every call; Pibo trims it and rejects invalid input before creating a run. Follow-up calls update the reused child title without changing identity. Reuse threadKey to continue its child session, and use run wait/status/read/cancel plus agent observe for lifecycle control.",
 			executionMode: "parallel",
 			inputSchema: Type.Object({
-				name: piboStringEnum(names, { description: "Available delegated agent name" }),
+				name: piboStringEnum(names, { description: "Configured delegated-agent selector; not the child title or reuse key" }),
+				sessionName: Type.String({
+					description: "Required nonblank human-readable child Pibo Session title, trimmed before use and limited to 40 Unicode code points. Follow-up calls update the title without changing thread identity.",
+					minLength: 1,
+					maxLength: PIBO_AGENT_SESSION_NAME_MAX_LENGTH,
+					pattern: "\\S",
+				}),
 				message: Type.String({ description: "Message to send to the delegated agent" }),
 				threadKey: Type.Optional(
 					Type.String({
-						description: "Stable key for continuing one delegated-agent conversation. Omit it to create a new child session.",
+						description: "Stable reuse key for one delegated-agent conversation; independent of sessionName. Omit it to create a new child session.",
 						maxLength: 256,
 					}),
 				),
@@ -248,8 +270,10 @@ export function createAgentToolDefinitions(
 				if (!context.yieldedRunId) {
 					throw new Error("pibo_agents_send_message is yielded-only. Start it through pibo_run_start.");
 				}
+				const sessionName = normalizePiboAgentSessionName(params.sessionName);
 				const result = normalizeAgentSendMessageResult(await controller.sendMessage({
 					subagent,
+					sessionName,
 					message: params.message,
 					threadKey: params.threadKey,
 					toolCallId,
@@ -277,8 +301,8 @@ export function createAgentToolDefinitions(
 		definePiboTool({
 			name: "pibo_agents_list_agents",
 			title: "Pibo Agents List Agents",
-			description: "List available delegated-agent profiles and child agent instances owned by this session.",
-			promptSnippet: "List available delegated agents and existing child instances with their agentId, thread, profile, and running, idle, or killed status.",
+			description: "List available delegated-agent profiles and child agent instances owned by this session, including each current sessionName when available.",
+			promptSnippet: "List available delegated agents and existing child instances with their agentId, current sessionName, threadKey, profile, and running, idle, or killed status.",
 			executionMode: "parallel",
 			annotations: { readOnly: true },
 			inputSchema: Type.Object({}),
@@ -380,10 +404,16 @@ export function createSubagentToolDefinitions(
 		definitions.push(definePiboTool({
 			name: toolName,
 			title: `Pibo Subagent ${subagent.name}`,
-			description: subagent.description ?? `Send a message to the ${subagent.name} subagent. Use threadKey to continue the same subagent session.`,
-			promptSnippet: subagent.description ?? `Send a message to the ${subagent.name} subagent. Pass the same threadKey when you want to continue the same subagent session.`,
+			description: `${subagent.description ?? `Send a message to the ${subagent.name} subagent.`} sessionName is required, trimmed, nonblank, and limited to 40 Unicode code points.`,
+			promptSnippet: `Provide a nonblank sessionName of at most 40 Unicode code points. ${subagent.description ?? `Send a message to the ${subagent.name} subagent.`} Pass the same threadKey when you want to continue the same subagent session.`,
 			executionMode: "parallel",
 			inputSchema: Type.Object({
+				sessionName: Type.String({
+					description: "Required human-readable delegated-session title, trimmed before use and limited to 40 Unicode code points.",
+					minLength: 1,
+					maxLength: PIBO_AGENT_SESSION_NAME_MAX_LENGTH,
+					pattern: "\\S",
+				}),
 				message: Type.String({ description: "Message to send to the subagent" }),
 				threadKey: Type.Optional(Type.String({
 					description: "Stable key for continuing a previous subagent conversation. Omit it to create a new subagent session.",
@@ -391,7 +421,8 @@ export function createSubagentToolDefinitions(
 				})),
 			}),
 			async execute(toolCallId, params, signal) {
-				const result = await runner.runSubagent({ subagent, message: params.message, threadKey: params.threadKey, toolCallId, signal });
+				const sessionName = normalizePiboAgentSessionName(params.sessionName);
+				const result = await runner.runSubagent({ subagent, sessionName, message: params.message, threadKey: params.threadKey, toolCallId, signal });
 				return { content: [{ type: "text", text: result.reply.text }], details: result };
 			},
 		}));
