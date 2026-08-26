@@ -466,6 +466,7 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 
 	let sequence = 0;
 	const servers = new Map();
+	const upgradedSockets = new Set();
 	const controller = {
 		createIdentity() {
 			return { kind: "process", id: `managed-web-${++sequence}` };
@@ -474,7 +475,26 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 			if (input.previewId === "pv-managed-secret") {
 				throw new Error(`failed command: ${input.command} in ${input.workspace}`);
 			}
-			const server = createServer((_request, response) => response.end("managed-web"));
+			const server = createServer((request, response) => {
+				if (request.url === "/sse") {
+					response.writeHead(200, { "content-type": "text/event-stream" });
+					response.end("data: managed-web\n\n");
+					return;
+				}
+				response.end("managed-web");
+			});
+			server.on("upgrade", (_request, socket) => {
+				upgradedSockets.add(socket);
+				socket.once("close", () => upgradedSockets.delete(socket));
+				socket.write([
+					"HTTP/1.1 101 Switching Protocols",
+					"Upgrade: websocket",
+					"Connection: Upgrade",
+					"",
+					"",
+				].join("\r\n"));
+				socket.on("data", (chunk) => socket.write(chunk));
+			});
 			await new Promise((resolve, reject) => {
 				server.once("error", reject);
 				server.listen(input.port, "127.0.0.1", resolve);
@@ -518,6 +538,7 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 	const piboHost = `pibo.localhost:${webPort}`;
 	const origin = `http://${piboHost}`;
 	t.after(async () => {
+		for (const socket of upgradedSockets) socket.destroy();
 		for (const [id] of [...servers]) await controller.stop({ kind: "process", id });
 		await channel.stop();
 		rmSync(dir, { recursive: true, force: true });
@@ -577,6 +598,31 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 	assert.equal(started.serverState, "running");
 	assert.ok(started.serverStopAt);
 	assert.equal("startCommand" in started, false);
+	const previewHost = `pv-managed-web.preview.localhost:${webPort}`;
+	const opened = await request({
+		port: webPort,
+		host: piboHost,
+		path: "/api/previews/pv-managed-web/open",
+		headers: { "x-test-user": "account-a" },
+	});
+	const exchange = await request({
+		port: webPort,
+		host: previewHost,
+		path: "/__pibo/session",
+		method: "POST",
+		headers: { "content-type": "application/x-www-form-urlencoded" },
+		body: new URLSearchParams({ ticket: ticketFromHtml(opened.body) }).toString(),
+	});
+	assert.equal(exchange.status, 303);
+	const oldCookie = exchange.headers["set-cookie"][0].split(";")[0];
+	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: oldCookie } })).status, 200);
+	const unexchangedBeforeStop = await request({
+		port: webPort,
+		host: piboHost,
+		path: "/api/previews/pv-managed-web/open",
+		headers: { "x-test-user": "account-a" },
+	});
+	const staleTicket = ticketFromHtml(unexchangedBeforeStop.body);
 
 	const stoppedResponse = await request({
 		port: webPort,
@@ -587,6 +633,51 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 	});
 	assert.equal(stoppedResponse.status, 200);
 	assert.equal(JSON.parse(stoppedResponse.body).preview.health, "stopped");
+	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: oldCookie } })).status, 401);
+
+	const restartedResponse = await request({
+		port: webPort,
+		host: piboHost,
+		path: "/api/previews/pv-managed-web/start",
+		method: "POST",
+		headers: { "x-test-user": "account-a", origin },
+	});
+	assert.equal(restartedResponse.status, 200);
+	assert.equal(JSON.parse(restartedResponse.body).preview.health, "online");
+	for (const path of ["/", "/sse"]) {
+		assert.equal((await request({ port: webPort, host: previewHost, path, headers: { cookie: oldCookie } })).status, 401);
+	}
+	const rejectedOldUpgrade = await openUpgradeSocket({ port: webPort, host: previewHost, cookie: oldCookie });
+	assert.match(rejectedOldUpgrade.response, /^HTTP\/1\.1 401 /);
+	rejectedOldUpgrade.socket.destroy();
+	const staleExchange = await request({
+		port: webPort,
+		host: previewHost,
+		path: "/__pibo/session",
+		method: "POST",
+		headers: { "content-type": "application/x-www-form-urlencoded" },
+		body: new URLSearchParams({ ticket: staleTicket }).toString(),
+	});
+	assert.equal(staleExchange.status, 401, "a prior-generation ticket must not mint new authority");
+	const reopened = await request({
+		port: webPort,
+		host: piboHost,
+		path: "/api/previews/pv-managed-web/open",
+		headers: { "x-test-user": "account-a" },
+	});
+	const freshExchange = await request({
+		port: webPort,
+		host: previewHost,
+		path: "/__pibo/session",
+		method: "POST",
+		headers: { "content-type": "application/x-www-form-urlencoded" },
+		body: new URLSearchParams({ ticket: ticketFromHtml(reopened.body) }).toString(),
+	});
+	assert.equal(freshExchange.status, 303);
+	const freshCookie = freshExchange.headers["set-cookie"][0].split(";")[0];
+	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: freshCookie } })).status, 200);
+	assert.equal((await request({ port: webPort, host: previewHost, path: "/sse", headers: { cookie: freshCookie } })).body, "data: managed-web\n\n");
+	assert.match(await rawUpgrade({ port: webPort, host: previewHost, cookie: freshCookie }), /preview-probe/);
 
 	const removedResponse = await request({
 		port: webPort,
@@ -597,6 +688,7 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 	});
 	assert.equal(removedResponse.status, 200);
 	assert.equal(JSON.parse(removedResponse.body).removed, true);
+	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: freshCookie } })).status, 401);
 	const afterRemoval = JSON.parse((await request({
 		port: webPort,
 		host: piboHost,

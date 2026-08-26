@@ -12,6 +12,7 @@ import {
 	stopManagedPreview,
 	validatePreviewStartCommand,
 } from "../dist/previews/manager.js";
+import { previewProcessStartTicks, probePreviewTarget } from "../dist/previews/network.js";
 import { PreviewCapacityError, PreviewStore } from "../dist/previews/store.js";
 
 function listen(server, port = 0) {
@@ -26,6 +27,15 @@ async function unusedPort() {
 	const port = await listen(server);
 	await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 	return port;
+}
+
+async function waitFor(predicate, label, timeoutMs = 2_000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (await predicate()) return;
+		await new Promise((resolve) => setImmediate(resolve));
+	}
+	throw new Error(`Timed out waiting for ${label}`);
 }
 
 function createFakeController() {
@@ -523,6 +533,71 @@ test("detached process cleanup requires the exact owner token and process creati
 	);
 	await controller.stop(prepared);
 	assert.equal(await controller.isRunning(prepared), false, "the durable token must recover and stop the exact process group");
+});
+
+test("reconciliation exactly terminates a detached listener after only its supervisor dies", {
+	skip: process.platform !== "linux",
+}, async (t) => {
+	const directory = mkdtempSync(join(tmpdir(), "pibo-preview-supervisor-death-"));
+	const databasePath = join(directory, "previews.sqlite");
+	const controller = createDefaultPreviewProcessController();
+	const port = await unusedPort();
+	const serverScript = [
+		"const { createServer } = require('node:http')",
+		"createServer((_request, response) => response.end('owned-descendant')).listen(Number(process.env.PORT), '127.0.0.1')",
+	].join(";");
+	let store = new PreviewStore(databasePath);
+	store.createExposure({
+		id: "pv-supervisor-death",
+		piboSessionId: "ps_supervisor_death",
+		label: "Supervisor death",
+		targetHost: "127.0.0.1",
+		targetPort: port,
+		workspace: process.cwd(),
+		managementMode: "managed",
+		startCommand: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(serverScript)}`,
+		serverState: "stopped",
+		createdAt: new Date().toISOString(),
+		expiresAt: new Date(Date.now() + 60_000).toISOString(),
+	});
+	let cleanupIdentity;
+	t.after(async () => {
+		if (cleanupIdentity) await controller.stop({ kind: cleanupIdentity.kind, id: cleanupIdentity.id });
+		store.close();
+		rmSync(directory, { recursive: true, force: true });
+	});
+
+	const running = await startManagedPreview(store, "pv-supervisor-death", {
+		controller,
+		settings,
+		startupTimeoutMs: 2_000,
+		pollIntervalMs: 10,
+	});
+	cleanupIdentity = { kind: running.managerKind, id: running.managerId };
+	assert.ok(running.managerPid);
+	assert.ok(running.managerProcessStartTicks);
+	assert.ok(await probePreviewTarget(port, { timeoutMs: 500 }));
+
+	store.close();
+	process.kill(running.managerPid, "SIGKILL");
+	await waitFor(
+		() => previewProcessStartTicks(running.managerPid) !== running.managerProcessStartTicks,
+		"the detached supervisor to exit",
+	);
+	assert.ok(await probePreviewTarget(port, { timeoutMs: 500 }), "the exact-token descendant listener must survive supervisor-only death");
+	assert.equal(await controller.isRunning({
+		kind: running.managerKind,
+		id: running.managerId,
+		pid: running.managerPid,
+		processStartTicks: running.managerProcessStartTicks,
+	}), true, "the surviving exact-token process group must remain owned");
+
+	store = new PreviewStore(databasePath);
+	await reconcileManagedPreviews(store, { controller });
+	assert.equal(await probePreviewTarget(port, { timeoutMs: 250 }), undefined, "reconciliation must terminate the exact descendant listener");
+	const reconciled = store.requireExposure("pv-supervisor-death");
+	assert.equal(reconciled.serverState, "stopped");
+	assert.equal(reconciled.managerId, undefined, "ownership may clear only after exact cleanup");
 });
 
 test("managed Preview reconciliation survives store reopen and records manager crashes", async (t) => {
