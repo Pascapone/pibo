@@ -1,7 +1,7 @@
 export type PreviewExposureState = "active" | "expired" | "closed";
-export type PreviewHealthState = "online" | "offline" | "starting" | "stopped" | "error" | "expired" | "closed";
+export type PreviewHealthState = "online" | "offline" | "starting" | "stopping" | "stopped" | "error" | "expired" | "closed";
 export type PreviewManagementMode = "external" | "managed";
-export type ManagedPreviewServerState = "stopped" | "starting" | "running" | "error";
+export type ManagedPreviewServerState = "stopped" | "starting" | "running" | "stopping" | "error";
 export type PreviewManagerKind = "systemd" | "process";
 
 export type PreviewExposure = {

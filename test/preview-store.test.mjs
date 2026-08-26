@@ -115,6 +115,12 @@ test("preview store migrates an existing exposure database before creating manag
 		reopened.close();
 		const inspection = new DatabaseSync(path, { readOnly: true });
 		assert.equal(inspection.prepare("PRAGMA user_version").get().user_version, PREVIEW_SCHEMA_VERSION);
+		assert.match(
+			inspection.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'preview_exposures'").get().sql,
+			/'stopping'/,
+		);
+		assert.equal(inspection.prepare("PRAGMA foreign_key_list(preview_tickets)").get().table, "preview_exposures");
+		assert.deepEqual(inspection.prepare("PRAGMA foreign_key_check").all(), []);
 		inspection.close();
 	} finally {
 		store.close();

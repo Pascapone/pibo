@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+	createDefaultPreviewProcessController,
 	reconcileManagedPreviews,
 	startManagedPreview,
 	stopManagedPreview,
@@ -30,13 +31,19 @@ function createFakeController() {
 	let sequence = 0;
 	const servers = new Map();
 	const stopped = [];
+	const launched = [];
 	return {
+		launched,
 		stopped,
-		async launch(input) {
-			const id = `fake-${++sequence}`;
+		createIdentity() {
+			return { kind: "process", id: `fake-${++sequence}` };
+		},
+		async launch(input, identity) {
+			const id = identity.id;
 			const server = createServer((_request, response) => response.end("preview"));
 			await listen(server, input.port);
 			servers.set(id, server);
+			launched.push(id);
 			return { kind: "process", id };
 		},
 		async isRunning(identity) {
@@ -75,6 +82,7 @@ async function createManagedExposure(store, id, now = new Date("2026-08-23T12:00
 }
 
 const settings = { maxRunningServers: 3, autoStopMinutes: 10 };
+const reservationIdentity = (id) => ({ kind: "process", id: `fake-reservation-${id}` });
 
 test("managed Preview lifecycle uses a fixed lease and can stop and restart independently", async (t) => {
 	const store = new PreviewStore(":memory:");
@@ -128,9 +136,15 @@ test("managed Preview auto-stop reconciliation terminates the process tree at le
 });
 
 test("reconciliation retains process identity when termination fails so a later pass can retry", async (t) => {
-	const store = new PreviewStore(":memory:");
+	const directory = mkdtempSync(join(tmpdir(), "pibo-preview-stop-retry-"));
+	const path = join(directory, "previews.sqlite");
+	let store = new PreviewStore(path);
 	const controller = createFakeController();
-	t.after(async () => { await controller.closeAll(); store.close(); });
+	t.after(async () => {
+		await controller.closeAll();
+		store.close();
+		rmSync(directory, { recursive: true, force: true });
+	});
 	const startedAt = new Date("2026-08-23T12:00:00.000Z");
 	await createManagedExposure(store, "pv-stop-retry", startedAt);
 	const running = await startManagedPreview(store, "pv-stop-retry", {
@@ -144,9 +158,11 @@ test("reconciliation retains process identity when termination fails so a later 
 	controller.stop = async () => { throw new Error("deterministic stop failure"); };
 	await reconcileManagedPreviews(store, { controller, now: () => new Date("2026-08-23T12:10:01.000Z") });
 	const retained = store.requireExposure("pv-stop-retry");
-	assert.equal(retained.serverState, "running");
+	assert.equal(retained.serverState, "stopping");
 	assert.equal(retained.managerId, running.managerId);
 
+	store.close();
+	store = new PreviewStore(path);
 	controller.stop = originalStop;
 	await reconcileManagedPreviews(store, { controller, now: () => new Date("2026-08-23T12:10:02.000Z") });
 	assert.equal(store.requireExposure("pv-stop-retry").serverState, "stopped");
@@ -163,9 +179,9 @@ test("managed Preview capacity reservation is atomic across store connections", 
 	await createManagedExposure(first, "pv-second", now);
 	const stopAt = new Date(now.getTime() + 10 * 60_000).toISOString();
 
-	assert.equal(first.reserveManagedServerStart("pv-first", 1, now.toISOString(), stopAt).reserved, true);
+	assert.equal(first.reserveManagedServerStart("pv-first", 1, now.toISOString(), stopAt, reservationIdentity("first")).reserved, true);
 	assert.throws(
-		() => second.reserveManagedServerStart("pv-second", 1, now.toISOString(), stopAt),
+		() => second.reserveManagedServerStart("pv-second", 1, now.toISOString(), stopAt, reservationIdentity("second")),
 		(error) => error instanceof PreviewCapacityError && error.maxRunningServers === 1,
 	);
 	assert.equal(second.requireExposure("pv-second").serverState, "stopped");
@@ -177,10 +193,10 @@ test("a stop racing startup cancels the newly launched server instead of orphani
 	const release = Promise.withResolvers();
 	const controller = createFakeController();
 	const originalLaunch = controller.launch.bind(controller);
-	controller.launch = async (input) => {
+	controller.launch = async (input, identity) => {
 		entered.resolve();
 		await release.promise;
-		return originalLaunch(input);
+		return originalLaunch(input, identity);
 	};
 	t.after(async () => { release.resolve(); await controller.closeAll(); store.close(); });
 	const now = new Date("2026-08-23T12:00:00.000Z");
@@ -195,7 +211,12 @@ test("a stop racing startup cancels the newly launched server instead of orphani
 	});
 	await entered.promise;
 	const stopped = await stopManagedPreview(store, "pv-start-stop-race", { controller });
-	assert.equal(stopped.serverState, "stopped");
+	assert.equal(stopped.serverState, "stopping");
+	assert.throws(
+		() => store.closeExposure("pv-start-stop-race"),
+		/must be fully stopped before removal/,
+		"removal must not erase ownership while launch can still publish",
+	);
 	release.resolve();
 	const result = await starting;
 	assert.equal(result.serverState, "stopped");
@@ -207,16 +228,165 @@ test("an old stop generation cannot overwrite a newer start reservation", async 
 	t.after(() => store.close());
 	const now = new Date("2026-08-23T12:00:00.000Z");
 	await createManagedExposure(store, "pv-generation", now);
-	const first = store.reserveManagedServerStart("pv-generation", 1, now.toISOString(), "2026-08-23T12:10:00.000Z").exposure;
+	const first = store.reserveManagedServerStart(
+		"pv-generation",
+		1,
+		now.toISOString(),
+		"2026-08-23T12:10:00.000Z",
+		reservationIdentity("generation-first"),
+	).exposure;
 	assert.ok(first.serverGeneration);
 	store.markManagedServerStopped("pv-generation", { expectedGeneration: first.serverGeneration });
-	const second = store.reserveManagedServerStart("pv-generation", 1, "2026-08-23T12:01:00.000Z", "2026-08-23T12:11:00.000Z").exposure;
+	const second = store.reserveManagedServerStart(
+		"pv-generation",
+		1,
+		"2026-08-23T12:01:00.000Z",
+		"2026-08-23T12:11:00.000Z",
+		reservationIdentity("generation-second"),
+	).exposure;
 	assert.ok(second.serverGeneration);
 	assert.notEqual(second.serverGeneration, first.serverGeneration);
 
 	const afterLateStop = store.markManagedServerStopped("pv-generation", { expectedGeneration: first.serverGeneration });
 	assert.equal(afterLateStop.serverState, "starting");
 	assert.equal(afterLateStop.serverGeneration, second.serverGeneration);
+});
+
+test("stale manager publication cannot replace a newer generation owner", async (t) => {
+	const store = new PreviewStore(":memory:");
+	t.after(() => store.close());
+	const now = new Date("2026-08-23T12:00:00.000Z");
+	await createManagedExposure(store, "pv-stale-publication", now);
+	const firstManager = reservationIdentity("stale-publication-first");
+	const first = store.reserveManagedServerStart(
+		"pv-stale-publication",
+		1,
+		now.toISOString(),
+		"2026-08-23T12:10:00.000Z",
+		firstManager,
+	).exposure;
+	store.markManagedServerStopped("pv-stale-publication", { expectedGeneration: first.serverGeneration });
+	const secondManager = reservationIdentity("stale-publication-second");
+	const second = store.reserveManagedServerStart(
+		"pv-stale-publication",
+		1,
+		"2026-08-23T12:01:00.000Z",
+		"2026-08-23T12:11:00.000Z",
+		secondManager,
+	).exposure;
+
+	store.markManagedServerManager("pv-stale-publication", first.serverGeneration, {
+		...firstManager,
+		pid: 111,
+		processStartTicks: "old-start-ticks",
+	});
+	store.markManagedServerRunning("pv-stale-publication", first.serverGeneration, {
+		targetHost: "127.0.0.1",
+		targetProcessId: 222,
+		targetProcessStartTicks: "old-target-ticks",
+		manager: firstManager,
+	});
+	const retained = store.requireExposure("pv-stale-publication");
+	assert.equal(retained.serverState, "starting");
+	assert.equal(retained.serverGeneration, second.serverGeneration);
+	assert.equal(retained.managerId, secondManager.id);
+	assert.equal(retained.managerPid, undefined);
+	assert.equal(retained.targetProcessId, undefined);
+});
+
+test("a committed running publication followed by a throw still cleans the exact owner", async (t) => {
+	const store = new PreviewStore(":memory:");
+	const controller = createFakeController();
+	t.after(async () => { await controller.closeAll(); store.close(); });
+	const now = new Date("2026-08-23T12:00:00.000Z");
+	await createManagedExposure(store, "pv-commit-then-throw", now);
+	const markRunning = store.markManagedServerRunning.bind(store);
+	store.markManagedServerRunning = (...args) => {
+		markRunning(...args);
+		throw new Error("simulated commit-then-throw after running publication");
+	};
+
+	await assert.rejects(
+		startManagedPreview(store, "pv-commit-then-throw", {
+			controller,
+			settings,
+			now: () => now,
+			startupTimeoutMs: 2_000,
+			pollIntervalMs: 10,
+		}),
+		/commit-then-throw/,
+	);
+	const cleaned = store.requireExposure("pv-commit-then-throw");
+	assert.equal(cleaned.serverState, "error");
+	assert.equal(cleaned.serverGeneration, undefined);
+	assert.equal(cleaned.managerId, undefined);
+	assert.equal(controller.launched.length, 1);
+	assert.deepEqual(controller.stopped, controller.launched);
+});
+
+test("a committed reservation followed by a throw publishes ownership before any launch", async (t) => {
+	const store = new PreviewStore(":memory:");
+	const controller = createFakeController();
+	t.after(async () => { await controller.closeAll(); store.close(); });
+	const now = new Date("2026-08-23T12:00:00.000Z");
+	await createManagedExposure(store, "pv-reservation-commit-throw", now);
+	const reserve = store.reserveManagedServerStart.bind(store);
+	store.reserveManagedServerStart = (...args) => {
+		reserve(...args);
+		throw new Error("simulated commit-then-throw after ownership reservation");
+	};
+
+	await assert.rejects(
+		startManagedPreview(store, "pv-reservation-commit-throw", {
+			controller,
+			settings,
+			now: () => now,
+			startupTimeoutMs: 15_000,
+			pollIntervalMs: 10,
+		}),
+		/commit-then-throw after ownership reservation/,
+	);
+	const reserved = store.requireExposure("pv-reservation-commit-throw");
+	assert.equal(reserved.serverState, "starting");
+	assert.ok(reserved.serverGeneration);
+	assert.ok(reserved.managerId);
+	assert.equal(controller.launched.length, 0, "an ambiguous reservation must not proceed to process launch");
+
+	await reconcileManagedPreviews(store, {
+		controller,
+		now: () => new Date("2026-08-23T12:00:21.000Z"),
+		startupTimeoutMs: 15_000,
+	});
+	assert.equal(store.requireExposure("pv-reservation-commit-throw").serverState, "error");
+});
+
+test("detached process cleanup requires the exact owner token and process creation identity", {
+	skip: process.platform !== "linux",
+}, async (t) => {
+	const controller = createDefaultPreviewProcessController();
+	const port = await unusedPort();
+	const input = {
+		previewId: "pv-exact-process-owner",
+		command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify("setInterval(() => {}, 1000)")}`,
+		workspace: process.cwd(),
+		port,
+	};
+	const prepared = controller.createIdentity(input);
+	const launched = await controller.launch(input, prepared);
+	t.after(async () => { await controller.stop(prepared); });
+	assert.ok(launched.pid);
+	assert.ok(launched.processStartTicks);
+	assert.equal(await controller.isRunning(launched), true);
+
+	await controller.stop({ ...launched, id: `${launched.id}-unrelated` });
+	assert.equal(await controller.isRunning(launched), true, "a forged owner token must not authorize a PID signal");
+	assert.equal(
+		await controller.isRunning({ ...launched, processStartTicks: `${launched.processStartTicks}-reused` }),
+		false,
+		"a reused PID with different start ticks must not be accepted as the recorded leader",
+	);
+	await controller.stop(prepared);
+	assert.equal(await controller.isRunning(prepared), false, "the durable token must recover and stop the exact process group");
 });
 
 test("managed Preview reconciliation survives store reopen and records manager crashes", async (t) => {
@@ -255,12 +425,87 @@ test("managed Preview reconciliation survives store reopen and records manager c
 	assert.equal(store.requireExposure("pv-reopen").serverState, "stopped");
 });
 
+test("an ambiguous launch remains durably owned across restart and can be stopped exactly", async (t) => {
+	const directory = mkdtempSync(join(tmpdir(), "pibo-preview-ambiguous-launch-"));
+	const path = join(directory, "previews.sqlite");
+	const identity = { kind: "process", id: "fake-ambiguous-launch" };
+	let server;
+	let stopUnavailable = true;
+	const controller = {
+		createIdentity() {
+			return identity;
+		},
+		async launch(input, candidate) {
+			assert.equal(candidate.id, identity.id);
+			server = createServer((_request, response) => response.end("preview"));
+			await listen(server, input.port);
+			throw new Error("launch outcome is ambiguous after process creation");
+		},
+		async isRunning(candidate) {
+			return candidate.id === identity.id && server?.listening === true;
+		},
+		async ownsTarget(candidate) {
+			return candidate.id === identity.id && server?.listening === true;
+		},
+		async stop(candidate) {
+			assert.equal(candidate.id, identity.id, "cleanup must target only the durable owner identity");
+			if (stopUnavailable) throw new Error("simulated interruption before cleanup");
+			if (!server?.listening) return;
+			await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+		},
+	};
+	let store = new PreviewStore(path);
+	t.after(async () => {
+		stopUnavailable = false;
+		if (server?.listening) await controller.stop(identity);
+		store.close();
+		rmSync(directory, { recursive: true, force: true });
+	});
+	const startedAt = new Date("2026-08-23T12:00:00.000Z");
+	await createManagedExposure(store, "pv-ambiguous-launch", startedAt);
+
+	await assert.rejects(
+		startManagedPreview(store, "pv-ambiguous-launch", {
+			controller,
+			settings,
+			now: () => startedAt,
+			startupTimeoutMs: 15_000,
+			pollIntervalMs: 10,
+		}),
+		/launch outcome is ambiguous/,
+	);
+	const interrupted = store.requireExposure("pv-ambiguous-launch");
+	assert.equal(interrupted.serverState, "starting");
+	assert.ok(interrupted.serverGeneration);
+	assert.equal(interrupted.managerId, identity.id);
+	assert.equal(server.listening, true);
+
+	store.close();
+	store = new PreviewStore(path);
+	stopUnavailable = false;
+	await reconcileManagedPreviews(store, {
+		controller,
+		now: () => new Date("2026-08-23T12:00:21.000Z"),
+		startupTimeoutMs: 15_000,
+	});
+	assert.equal(server.listening, false);
+	const reconciled = store.requireExposure("pv-ambiguous-launch");
+	assert.equal(reconciled.serverState, "error");
+	assert.equal(reconciled.managerId, undefined);
+});
+
 test("stale starting reservations are reaped after a gateway crash", async (t) => {
 	const store = new PreviewStore(":memory:");
 	t.after(() => store.close());
 	const now = new Date("2026-08-23T12:00:00.000Z");
 	await createManagedExposure(store, "pv-stale-start", now);
-	store.reserveManagedServerStart("pv-stale-start", 1, now.toISOString(), "2026-08-23T12:10:00.000Z");
+	store.reserveManagedServerStart(
+		"pv-stale-start",
+		1,
+		now.toISOString(),
+		"2026-08-23T12:10:00.000Z",
+		reservationIdentity("stale-start"),
+	);
 	await reconcileManagedPreviews(store, {
 		controller: createFakeController(),
 		now: () => new Date("2026-08-23T12:00:21.000Z"),

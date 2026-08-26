@@ -342,7 +342,10 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 	let sequence = 0;
 	const servers = new Map();
 	const controller = {
-		async launch(input) {
+		createIdentity() {
+			return { kind: "process", id: `managed-web-${++sequence}` };
+		},
+		async launch(input, identity) {
 			if (input.previewId === "pv-managed-secret") {
 				throw new Error(`failed command: ${input.command} in ${input.workspace}`);
 			}
@@ -351,7 +354,7 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 				server.once("error", reject);
 				server.listen(input.port, "127.0.0.1", resolve);
 			});
-			const id = `managed-web-${++sequence}`;
+			const id = identity.id;
 			servers.set(id, server);
 			return { kind: "process", id };
 		},

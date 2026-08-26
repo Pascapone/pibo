@@ -48,7 +48,7 @@ type TicketRow = {
 	used_at: string | null;
 };
 
-export const PREVIEW_SCHEMA_VERSION = 2;
+export const PREVIEW_SCHEMA_VERSION = 3;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES = 256;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES_PER_SESSION = 16;
 export const MAX_OUTSTANDING_PREVIEW_TICKETS = 32;
@@ -172,6 +172,14 @@ export class PreviewStore {
 		if (currentVersion > PREVIEW_SCHEMA_VERSION) {
 			throw new Error(`Preview database schema version ${currentVersion} is newer than supported version ${PREVIEW_SCHEMA_VERSION}`);
 		}
+		const existingExposureSql = (this.db.prepare(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'preview_exposures'",
+		).get() as { sql?: string } | undefined)?.sql;
+		const needsStoppingStateMigration = Boolean(existingExposureSql && !existingExposureSql.includes("'stopping'"));
+		if (needsStoppingStateMigration) {
+			this.db.exec("PRAGMA foreign_keys = OFF");
+			this.db.exec("PRAGMA legacy_alter_table = ON");
+		}
 		this.db.exec("BEGIN IMMEDIATE");
 		try {
 			this.db.exec(`
@@ -187,7 +195,7 @@ export class PreviewStore {
 				workspace TEXT NOT NULL,
 				management_mode TEXT NOT NULL DEFAULT 'external' CHECK (management_mode IN ('external', 'managed')),
 				start_command TEXT,
-				server_state TEXT NOT NULL DEFAULT 'external' CHECK (server_state IN ('external', 'stopped', 'starting', 'running', 'error')),
+				server_state TEXT NOT NULL DEFAULT 'external' CHECK (server_state IN ('external', 'stopped', 'starting', 'running', 'stopping', 'error')),
 				server_generation TEXT,
 				server_started_at TEXT,
 				server_stop_at TEXT,
@@ -243,7 +251,57 @@ export class PreviewStore {
 			for (const [name, declaration] of additions) {
 				if (!columns.has(name)) this.db.exec(`ALTER TABLE preview_exposures ADD COLUMN ${name} ${declaration}`);
 			}
+			if (needsStoppingStateMigration) {
+				this.db.exec(`
+					ALTER TABLE preview_exposures RENAME TO preview_exposures_before_stopping;
+					CREATE TABLE preview_exposures (
+						id TEXT PRIMARY KEY,
+						pibo_session_id TEXT NOT NULL,
+						project_id TEXT,
+						label TEXT NOT NULL,
+						target_host TEXT NOT NULL CHECK (target_host IN ('127.0.0.1', '::1')),
+						target_port INTEGER NOT NULL CHECK (target_port BETWEEN 1024 AND 65535),
+						target_process_id INTEGER,
+						target_process_start_ticks TEXT,
+						workspace TEXT NOT NULL,
+						management_mode TEXT NOT NULL DEFAULT 'external' CHECK (management_mode IN ('external', 'managed')),
+						start_command TEXT,
+						server_state TEXT NOT NULL DEFAULT 'external' CHECK (server_state IN ('external', 'stopped', 'starting', 'running', 'stopping', 'error')),
+						server_generation TEXT,
+						server_started_at TEXT,
+						server_stop_at TEXT,
+						server_stopped_at TEXT,
+						server_error TEXT,
+						manager_kind TEXT,
+						manager_id TEXT,
+						manager_pid INTEGER,
+						manager_process_start_ticks TEXT,
+						created_at TEXT NOT NULL,
+						expires_at TEXT NOT NULL,
+						closed_at TEXT
+					);
+					INSERT INTO preview_exposures (
+						id, pibo_session_id, project_id, label, target_host, target_port,
+						target_process_id, target_process_start_ticks, workspace,
+						management_mode, start_command, server_state, server_generation,
+						server_started_at, server_stop_at, server_stopped_at, server_error,
+						manager_kind, manager_id, manager_pid, manager_process_start_ticks,
+						created_at, expires_at, closed_at
+					)
+					SELECT
+						id, pibo_session_id, project_id, label, target_host, target_port,
+						target_process_id, target_process_start_ticks, workspace,
+						management_mode, start_command, server_state, server_generation,
+						server_started_at, server_stop_at, server_stopped_at, server_error,
+						manager_kind, manager_id, manager_pid, manager_process_start_ticks,
+						created_at, expires_at, closed_at
+					FROM preview_exposures_before_stopping;
+					DROP TABLE preview_exposures_before_stopping;
+				`);
+			}
 			this.db.exec(`
+			CREATE INDEX IF NOT EXISTS preview_exposures_session_idx
+				ON preview_exposures (pibo_session_id, created_at DESC);
 			CREATE INDEX IF NOT EXISTS preview_exposures_managed_state_idx
 				ON preview_exposures (management_mode, server_state, expires_at)
 		`);
@@ -252,6 +310,15 @@ export class PreviewStore {
 		} catch (error) {
 			this.db.exec("ROLLBACK");
 			throw error;
+		} finally {
+			if (needsStoppingStateMigration) {
+				this.db.exec("PRAGMA legacy_alter_table = OFF");
+				this.db.exec("PRAGMA foreign_keys = ON");
+			}
+		}
+		if (needsStoppingStateMigration) {
+			const violations = this.db.prepare("PRAGMA foreign_key_check").all();
+			if (violations.length > 0) throw new Error("Preview database migration violated foreign-key integrity");
 		}
 	}
 
@@ -337,25 +404,42 @@ export class PreviewStore {
 		return (this.db.prepare(`
 			SELECT * FROM preview_exposures
 			WHERE management_mode = 'managed'
-				AND server_state IN ('starting', 'running')
+				AND (server_state IN ('starting', 'running', 'stopping') OR manager_id IS NOT NULL)
 			ORDER BY created_at ASC
 		`).all() as ExposureRow[]).map(exposureFromRow);
 	}
 
-	reserveManagedServerStart(id: string, maxRunningServers: number, startedAt: string, stopAt: string): { exposure: PreviewExposure; reserved: boolean } {
+	reserveManagedServerStart(
+		id: string,
+		maxRunningServers: number,
+		startedAt: string,
+		stopAt: string,
+		manager: PreviewManagerIdentity,
+	): { exposure: PreviewExposure; reserved: boolean } {
+		if (
+			!manager.id ||
+			manager.id.length > 256 ||
+			(manager.kind !== "systemd" && manager.kind !== "process")
+		) throw new Error("Managed Preview owner identity is invalid");
 		this.db.exec("BEGIN IMMEDIATE");
 		try {
 			const exposure = this.requireExposure(id);
 			if (previewExposureState(exposure, new Date(startedAt)) !== "active") throw new Error(`Preview "${id}" is not active`);
 			if (exposure.managementMode !== "managed" || !exposure.startCommand) throw new Error(`Preview "${id}" has no managed start command`);
-			if (exposure.serverState === "starting" || exposure.serverState === "running") {
+			if (
+				exposure.serverState === "starting" ||
+				exposure.serverState === "running" ||
+				exposure.serverState === "stopping" ||
+				exposure.serverGeneration ||
+				exposure.managerId
+			) {
 				this.db.exec("COMMIT");
 				return { exposure, reserved: false };
 			}
 			const row = this.db.prepare(`
 				SELECT COUNT(*) AS count FROM preview_exposures
 				WHERE management_mode = 'managed'
-					AND server_state IN ('starting', 'running')
+					AND (server_state IN ('starting', 'running', 'stopping') OR manager_id IS NOT NULL)
 					AND closed_at IS NULL
 					AND expires_at > ?
 			`).get(startedAt) as { count: number };
@@ -365,10 +449,19 @@ export class PreviewStore {
 				UPDATE preview_exposures SET
 					server_state = 'starting', server_generation = ?, server_started_at = ?, server_stop_at = ?,
 					server_stopped_at = NULL, server_error = NULL,
-					manager_kind = NULL, manager_id = NULL, manager_pid = NULL, manager_process_start_ticks = NULL,
+					manager_kind = ?, manager_id = ?, manager_pid = ?, manager_process_start_ticks = ?,
 					target_process_id = NULL, target_process_start_ticks = NULL
 				WHERE id = ?
-			`).run(generation, startedAt, stopAt, id);
+			`).run(
+				generation,
+				startedAt,
+				stopAt,
+				manager.kind,
+				manager.id,
+				manager.pid ?? null,
+				manager.processStartTicks ?? null,
+				id,
+			);
 			this.db.exec("COMMIT");
 			return { exposure: this.requireExposure(id), reserved: true };
 		} catch (error) {
@@ -380,10 +473,11 @@ export class PreviewStore {
 	markManagedServerManager(id: string, generation: string, manager: PreviewManagerIdentity): PreviewExposure {
 		this.db.prepare(`
 			UPDATE preview_exposures SET
-				manager_kind = ?, manager_id = ?, manager_pid = ?, manager_process_start_ticks = ?
+				manager_pid = ?, manager_process_start_ticks = ?
 			WHERE id = ? AND management_mode = 'managed'
 				AND server_state = 'starting' AND server_generation = ? AND closed_at IS NULL
-		`).run(manager.kind, manager.id, manager.pid ?? null, manager.processStartTicks ?? null, id, generation);
+				AND manager_kind = ? AND manager_id = ?
+		`).run(manager.pid ?? null, manager.processStartTicks ?? null, id, generation, manager.kind, manager.id);
 		return this.requireExposure(id);
 	}
 
@@ -397,20 +491,31 @@ export class PreviewStore {
 			UPDATE preview_exposures SET
 				server_state = 'running', server_error = NULL,
 				target_host = ?, target_process_id = ?, target_process_start_ticks = ?,
-				manager_kind = ?, manager_id = ?, manager_pid = ?, manager_process_start_ticks = ?
+				manager_pid = ?, manager_process_start_ticks = ?
 			WHERE id = ? AND management_mode = 'managed'
 				AND server_state = 'starting' AND server_generation = ? AND closed_at IS NULL
+				AND manager_kind = ? AND manager_id = ?
 		`).run(
 			input.targetHost,
 			input.targetProcessId ?? null,
 			input.targetProcessStartTicks ?? null,
-			input.manager.kind,
-			input.manager.id,
 			input.manager.pid ?? null,
 			input.manager.processStartTicks ?? null,
 			id,
 			generation,
+			input.manager.kind,
+			input.manager.id,
 		);
+		return this.requireExposure(id);
+	}
+
+	markManagedServerStopping(id: string, generation: string): PreviewExposure {
+		this.db.prepare(`
+			UPDATE preview_exposures SET server_state = 'stopping'
+			WHERE id = ? AND management_mode = 'managed'
+				AND server_state IN ('starting', 'running', 'error')
+				AND server_generation = ? AND manager_id IS NOT NULL
+		`).run(id, generation);
 		return this.requireExposure(id);
 	}
 
@@ -437,6 +542,13 @@ export class PreviewStore {
 		requireIsoDate(closedAt, "closedAt");
 		this.db.exec("BEGIN IMMEDIATE");
 		try {
+			const current = this.getExposure(id);
+			if (
+				current?.managementMode === "managed" &&
+				(current.serverGeneration || current.managerId || ["starting", "running", "stopping"].includes(current.serverState ?? ""))
+			) {
+				throw new Error(`Managed Preview "${id}" must be fully stopped before removal`);
+			}
 			const result = this.db.prepare(`
 			UPDATE preview_exposures SET
 				closed_at = COALESCE(closed_at, ?), start_command = NULL,
@@ -568,7 +680,7 @@ export class PreviewStore {
 			activeExposures: count("SELECT COUNT(*) AS count FROM preview_exposures WHERE closed_at IS NULL AND expires_at > ?", iso),
 			expiredExposures: count("SELECT COUNT(*) AS count FROM preview_exposures WHERE closed_at IS NULL AND expires_at <= ?", iso),
 			closedExposures: count("SELECT COUNT(*) AS count FROM preview_exposures WHERE closed_at IS NOT NULL"),
-			managedStartingOrRunning: count("SELECT COUNT(*) AS count FROM preview_exposures WHERE management_mode = 'managed' AND server_state IN ('starting', 'running')"),
+			managedStartingOrRunning: count("SELECT COUNT(*) AS count FROM preview_exposures WHERE management_mode = 'managed' AND server_state IN ('starting', 'running', 'stopping')"),
 			outstandingTickets: count("SELECT COUNT(*) AS count FROM preview_tickets WHERE used_at IS NULL AND expires_at > ?", iso),
 			activeBrowserSessions: count("SELECT COUNT(*) AS count FROM preview_browser_sessions WHERE expires_at > ?", iso),
 		};
@@ -584,12 +696,14 @@ export class PreviewStore {
 			const expiredCommands = this.db.prepare(`
 				UPDATE preview_exposures SET start_command = NULL
 				WHERE expires_at <= ? AND start_command IS NOT NULL
-					AND server_state NOT IN ('starting', 'running')
+					AND server_state NOT IN ('starting', 'running', 'stopping')
+					AND server_generation IS NULL AND manager_id IS NULL
 			`).run(iso);
 			const exposures = this.db.prepare(`
 				DELETE FROM preview_exposures
-				WHERE (closed_at IS NOT NULL AND closed_at <= ?)
-					OR (expires_at <= ? AND server_state NOT IN ('starting', 'running'))
+				WHERE server_generation IS NULL AND manager_id IS NULL
+					AND ((closed_at IS NOT NULL AND closed_at <= ?)
+						OR (expires_at <= ? AND server_state NOT IN ('starting', 'running', 'stopping')))
 			`).run(retentionCutoff, retentionCutoff);
 			this.db.exec("COMMIT");
 			return {

@@ -85,6 +85,7 @@ async function exposureHealth(exposure: PreviewExposure): Promise<PreviewHealthS
 	if (state !== "active") return state;
 	if (exposure.managementMode === "managed") {
 		if (exposure.serverState === "starting") return "starting";
+		if (exposure.serverState === "stopping") return "stopping";
 		if (exposure.serverState === "stopped") return "stopped";
 		if (exposure.serverState === "error") return "error";
 	}
@@ -344,7 +345,7 @@ export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWeb
 					const exposure = await withStoreAsync(databasePath, async (store) => {
 						const current = store.getExposure(id);
 						if (!current) return undefined;
-						if (current.managementMode === "managed" && (current.serverState === "running" || current.serverState === "starting")) {
+						if (current.managementMode === "managed" && ["running", "starting", "stopping", "error"].includes(current.serverState ?? "")) {
 							await stopManagedPreview(store, id, managerOptions);
 						}
 						return store.closeExposure(id);

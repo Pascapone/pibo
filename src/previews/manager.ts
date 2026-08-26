@@ -1,6 +1,7 @@
 import { execFile, spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { basename } from "node:path";
 import { promisify } from "node:util";
 import { sanitizePreviewServerSettings, type PreviewServerSettings } from "../core/preview-server-settings.js";
@@ -17,6 +18,8 @@ import type { PreviewExposure, PreviewManagerIdentity } from "./types.js";
 const execFileAsync = promisify(execFile);
 const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
 const DEFAULT_POLL_INTERVAL_MS = 100;
+const PREVIEW_OWNER_ENV = "PIBO_PREVIEW_OWNER_TOKEN";
+const PREVIEW_COMMAND_ENV = "PIBO_PREVIEW_START_COMMAND";
 
 export type PreviewProcessLaunchInput = {
 	previewId: string;
@@ -26,7 +29,8 @@ export type PreviewProcessLaunchInput = {
 };
 
 export type PreviewProcessController = {
-	launch(input: PreviewProcessLaunchInput): Promise<PreviewManagerIdentity>;
+	createIdentity(input: PreviewProcessLaunchInput): PreviewManagerIdentity;
+	launch(input: PreviewProcessLaunchInput, identity: PreviewManagerIdentity): Promise<PreviewManagerIdentity>;
 	isRunning(identity: PreviewManagerIdentity): Promise<boolean>;
 	ownsTarget(identity: PreviewManagerIdentity, targetPid: number): Promise<boolean>;
 	stop(identity: PreviewManagerIdentity): Promise<void>;
@@ -74,26 +78,46 @@ export async function startManagedPreview(store: PreviewStore, id: string, optio
 		now.getTime() + settings.autoStopMinutes * 60_000,
 		Date.parse(current.expiresAt),
 	)).toISOString();
-	const reservation = store.reserveManagedServerStart(id, settings.maxRunningServers, now.toISOString(), stopAt);
+	const launchInput = {
+		previewId: current.id,
+		command: startCommand,
+		workspace: current.workspace,
+		port: current.targetPort,
+	};
+	const preparedManager = controller.createIdentity(launchInput);
+	const reservation = store.reserveManagedServerStart(
+		id,
+		settings.maxRunningServers,
+		now.toISOString(),
+		stopAt,
+		preparedManager,
+	);
 	if (!reservation.reserved) return reservation.exposure;
 	const generation = reservation.exposure.serverGeneration;
 	if (!generation) throw new Error(`Preview "${id}" did not retain its start generation`);
+	const durableManager = managerIdentity(reservation.exposure);
+	if (!durableManager || !sameManagerOwner(durableManager, preparedManager)) {
+		throw new Error(`Preview "${id}" did not durably retain its manager identity`);
+	}
 
-	let manager: PreviewManagerIdentity | undefined;
+	let manager = durableManager;
 	try {
 		if (await probePreviewTarget(current.targetPort, { timeoutMs: 150 })) {
 			throw new Error(`Preview port ${current.targetPort} is already occupied`);
 		}
-		manager = await controller.launch({
-			previewId: current.id,
-			command: startCommand,
-			workspace: current.workspace,
-			port: current.targetPort,
-		});
+		manager = await controller.launch(launchInput, durableManager);
+		if (!sameManagerOwner(manager, durableManager)) {
+			throw new Error("Preview controller changed its durable owner identity during launch");
+		}
 		const assigned = store.markManagedServerManager(id, generation, manager);
-		if (assigned.serverGeneration !== generation || assigned.serverState !== "starting" || assigned.managerId !== manager.id) {
-			await controller.stop(manager).catch(() => undefined);
-			return assigned;
+		if (!managedGenerationMatches(assigned, generation, manager) || assigned.serverState !== "starting") {
+			if (await stopManagedOwner(controller, manager)) {
+				const latest = store.requireExposure(id);
+				if (managedGenerationMatches(latest, generation, manager)) {
+					return store.markManagedServerStopped(id, { expectedGeneration: generation });
+				}
+			}
+			return store.requireExposure(id);
 		}
 		const target = await waitForManagedTarget(current, manager, controller, {
 			startupTimeoutMs: options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS,
@@ -105,19 +129,26 @@ export async function startManagedPreview(store: PreviewStore, id: string, optio
 			targetProcessStartTicks: target.process?.startTicks,
 			manager,
 		});
-		if (running.serverGeneration !== generation || running.serverState !== "running" || running.managerId !== manager.id) {
-			await controller.stop(manager).catch(() => undefined);
+		if (!managedGenerationMatches(running, generation, manager) || running.serverState !== "running") {
+			if (await stopManagedOwner(controller, manager)) {
+				const latest = store.requireExposure(id);
+				if (managedGenerationMatches(latest, generation, manager)) {
+					return store.markManagedServerStopped(id, { expectedGeneration: generation });
+				}
+			}
 		}
 		return running;
 	} catch (error) {
-		if (manager) await controller.stop(manager).catch(() => undefined);
+		const stopped = await stopManagedOwner(controller, manager);
 		const latest = store.requireExposure(id);
-		if (latest.serverGeneration !== generation || latest.serverState !== "starting") return latest;
-		store.markManagedServerStopped(id, {
-			stoppedAt: (options.now?.() ?? new Date()).toISOString(),
-			error: managedPreviewError(error),
-			expectedGeneration: generation,
-		});
+		if (!managedGenerationMatches(latest, generation, durableManager)) return latest;
+		if (stopped) {
+			store.markManagedServerStopped(id, {
+				stoppedAt: (options.now?.() ?? new Date()).toISOString(),
+				error: managedPreviewError(error),
+				expectedGeneration: generation,
+			});
+		}
 		throw error;
 	}
 }
@@ -126,9 +157,17 @@ export async function stopManagedPreview(store: PreviewStore, id: string, option
 	const controller = options.controller ?? createDefaultPreviewProcessController();
 	const exposure = store.requireExposure(id);
 	if (exposure.managementMode !== "managed") throw new Error(`Preview "${id}" is not managed by Pibo`);
-	if (exposure.serverState !== "starting" && exposure.serverState !== "running") return exposure;
+	if (!["starting", "running", "stopping", "error"].includes(exposure.serverState ?? "")) return exposure;
 	const identity = managerIdentity(exposure);
-	if (identity) await controller.stop(identity);
+	if (!identity || !exposure.serverGeneration) {
+		throw new Error(`Preview "${id}" has no durable managed owner identity`);
+	}
+	const wasStarting = exposure.serverState === "starting";
+	const launchMayStillPublish = !exposure.targetProcessId &&
+		(exposure.serverState === "starting" || exposure.serverState === "stopping");
+	if (exposure.serverState !== "stopping") store.markManagedServerStopping(id, exposure.serverGeneration);
+	await controller.stop(identity);
+	if (wasStarting || launchMayStillPublish) return store.requireExposure(id);
 	return store.markManagedServerStopped(id, { expectedGeneration: exposure.serverGeneration });
 }
 
@@ -156,14 +195,43 @@ export async function reconcileManagedPreviews(store: PreviewStore, options: Pre
 		const identity = managerIdentity(exposure);
 		const expired = previewExposureState(exposure, now) !== "active";
 		const leaseEnded = Boolean(exposure.serverStopAt && Date.parse(exposure.serverStopAt) <= now.getTime());
-		const startupTimedOut = exposure.serverState === "starting" &&
+		const startupTimedOut = (
+			exposure.serverState === "starting" ||
+			(exposure.serverState === "stopping" && !exposure.targetProcessId)
+		) &&
 			Boolean(exposure.serverStartedAt) &&
 			now.getTime() - Date.parse(exposure.serverStartedAt!) > startupTimeoutMs + 5_000;
 		if (expired || leaseEnded || startupTimedOut) {
+			if (identity && exposure.serverGeneration && exposure.serverState !== "stopping") {
+				store.markManagedServerStopping(exposure.id, exposure.serverGeneration);
+			}
 			if (identity && !await stopManagedPreviewForReconcile(controller, identity, exposure.id)) continue;
+			if (exposure.serverState === "starting" && !startupTimedOut) continue;
 			store.markManagedServerStopped(exposure.id, {
 				stoppedAt: now.toISOString(),
 				error: startupTimedOut ? "Managed Preview server startup timed out" : undefined,
+				expectedGeneration: exposure.serverGeneration,
+			});
+			continue;
+		}
+		if (exposure.serverState === "stopping") {
+			if (
+				identity &&
+				await stopManagedPreviewForReconcile(controller, identity, exposure.id) &&
+				exposure.targetProcessId
+			) {
+				store.markManagedServerStopped(exposure.id, {
+					stoppedAt: now.toISOString(),
+					expectedGeneration: exposure.serverGeneration,
+				});
+			}
+			continue;
+		}
+		if (exposure.serverState === "error" && identity) {
+			if (!await stopManagedPreviewForReconcile(controller, identity, exposure.id)) continue;
+			store.markManagedServerStopped(exposure.id, {
+				stoppedAt: now.toISOString(),
+				error: exposure.serverError,
 				expectedGeneration: exposure.serverGeneration,
 			});
 			continue;
@@ -179,7 +247,7 @@ export async function reconcileManagedPreviews(store: PreviewStore, options: Pre
 			}
 			continue;
 		}
-		if (!await controller.isRunning(identity)) {
+		if (exposure.serverState !== "starting" && !await controller.isRunning(identity)) {
 			store.markManagedServerStopped(exposure.id, {
 				stoppedAt: now.toISOString(),
 				expectedGeneration: exposure.serverGeneration,
@@ -230,10 +298,15 @@ export function createDefaultPreviewProcessController(): PreviewProcessControlle
 		? systemdPreviewProcessController
 		: detachedPreviewProcessController;
 	return {
-		async launch(input) {
+		createIdentity(input) {
 			return preferSystemd
-				? systemdPreviewProcessController.launch(input)
-				: detachedPreviewProcessController.launch(input);
+				? systemdPreviewProcessController.createIdentity(input)
+				: detachedPreviewProcessController.createIdentity(input);
+		},
+		async launch(input, identity) {
+			return preferSystemd
+				? systemdPreviewProcessController.launch(input, identity)
+				: detachedPreviewProcessController.launch(input, identity);
 		},
 		isRunning(identity) {
 			return controllerFor(identity).isRunning(identity);
@@ -248,8 +321,21 @@ export function createDefaultPreviewProcessController(): PreviewProcessControlle
 }
 
 const systemdPreviewProcessController: PreviewProcessController = {
-	async launch(input) {
-		const unit = `pibo-preview-${input.previewId.replace(/^pv-/, "").slice(0, 18)}-${randomBytes(3).toString("hex")}.service`;
+	createIdentity(input) {
+		if (process.platform !== "linux") {
+			throw new Error("Managed Preview process ownership requires Linux process identity support");
+		}
+		return {
+			kind: "systemd",
+			id: `pibo-preview-${input.previewId.replace(/^pv-/, "").slice(0, 18)}-${randomBytes(12).toString("hex")}.service`,
+		};
+	},
+	async launch(input, identity) {
+		if (process.platform !== "linux") {
+			throw new Error("Managed Preview process ownership requires Linux process identity support");
+		}
+		if (identity.kind !== "systemd") throw new Error("Preview systemd owner identity is invalid");
+		const unit = identity.id;
 		const shell = previewShell();
 		const args = [
 			"--quiet",
@@ -265,7 +351,7 @@ const systemdPreviewProcessController: PreviewProcessController = {
 			...shell.args(input.command),
 		];
 		await execFileAsync("systemd-run", args, { timeout: 10_000, windowsHide: true });
-		return { kind: "systemd", id: unit };
+		return identity;
 	},
 	async isRunning(identity) {
 		try {
@@ -292,11 +378,26 @@ const systemdPreviewProcessController: PreviewProcessController = {
 };
 
 const detachedPreviewProcessController: PreviewProcessController = {
-	async launch(input) {
-		const shell = previewShell();
-		const child = spawn(shell.command, shell.args(input.command), {
+	createIdentity(input) {
+		if (process.platform !== "linux") {
+			throw new Error("Managed Preview process ownership requires Linux process identity support");
+		}
+		return {
+			kind: "process",
+			id: `pibo-preview-${input.previewId.replace(/^pv-/, "").slice(0, 18)}-${randomBytes(24).toString("base64url")}`,
+		};
+	},
+	async launch(input, identity) {
+		if (process.platform !== "linux") {
+			throw new Error("Managed Preview process ownership requires Linux process identity support");
+		}
+		if (identity.kind !== "process") throw new Error("Preview process owner identity is invalid");
+		const child = spawn(process.execPath, [fileURLToPath(new URL("./process-supervisor.js", import.meta.url))], {
 			cwd: input.workspace,
-			env: previewEnvironment(input.port),
+			env: {
+				...previewEnvironment(input.port, identity.id),
+				[PREVIEW_COMMAND_ENV]: input.command,
+			},
 			detached: true,
 			stdio: "ignore",
 			windowsHide: true,
@@ -309,34 +410,35 @@ const detachedPreviewProcessController: PreviewProcessController = {
 		}
 		child.unref();
 		return {
-			kind: "process",
-			id: String(child.pid),
+			...identity,
 			pid: child.pid,
 			processStartTicks,
 		};
 	},
 	async isRunning(identity) {
-		if (!identity.pid || !processIsAlive(identity.pid)) return false;
-		return !identity.processStartTicks || process.platform !== "linux" ||
-			previewProcessStartTicks(identity.pid) === identity.processStartTicks;
+		return process.platform === "linux" && ownedLinuxProcesses(identity).length > 0;
 	},
 	async ownsTarget(identity, targetPid) {
-		if (process.platform === "win32") return true;
-		if (!identity.pid) return false;
-		return await processGroupId(targetPid) === identity.pid;
+		if (process.platform !== "linux") return false;
+		if (processOwnerToken(targetPid) === identity.id) return true;
+		const targetGroup = await processGroupId(targetPid);
+		return targetGroup !== undefined && ownedLinuxProcesses(identity).some((owned) => owned.processGroupId === targetGroup);
 	},
 	async stop(identity) {
-		if (!identity.pid || !await this.isRunning(identity)) return;
-		if (process.platform === "win32") {
-			try { await execFileAsync("taskkill", ["/PID", String(identity.pid), "/T", "/F"], { timeout: 10_000, windowsHide: true }); } catch {}
-			return;
+		if (process.platform !== "linux") {
+			throw new Error("Refusing to signal a managed Preview process without verifiable Linux ownership");
 		}
 		const ownGroup = await processGroupId(process.pid);
-		if (ownGroup === identity.pid) throw new Error("Refusing to stop the current Pibo process group");
-		try { process.kill(-identity.pid, "SIGTERM"); } catch (error) { if (!missingProcess(error)) throw error; }
+		const groups = new Set(ownedLinuxProcesses(identity).map((owned) => owned.processGroupId));
+		if (ownGroup && groups.has(ownGroup)) throw new Error("Refusing to stop the current Pibo process group");
+		for (const group of groups) {
+			try { process.kill(-group, "SIGTERM"); } catch (error) { if (!missingProcess(error)) throw error; }
+		}
 		for (let attempt = 0; attempt < 20 && await this.isRunning(identity); attempt += 1) await delay(100);
 		if (await this.isRunning(identity)) {
-			try { process.kill(-identity.pid, "SIGKILL"); } catch (error) { if (!missingProcess(error)) throw error; }
+			for (const group of new Set(ownedLinuxProcesses(identity).map((owned) => owned.processGroupId))) {
+				try { process.kill(-group, "SIGKILL"); } catch (error) { if (!missingProcess(error)) throw error; }
+			}
 		}
 	},
 };
@@ -381,7 +483,7 @@ function previewShell(): { command: string; args(command: string): string[] } {
 	return { command, args: (value) => basename(command).includes("bash") ? ["-lc", value] : ["-c", value] };
 }
 
-function previewEnvironment(port: number): NodeJS.ProcessEnv {
+function previewEnvironment(port: number, ownerToken?: string): NodeJS.ProcessEnv {
 	const environment: NodeJS.ProcessEnv = {};
 	for (const key of ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP"] as const) {
 		if (process.env[key] !== undefined) environment[key] = process.env[key];
@@ -390,6 +492,7 @@ function previewEnvironment(port: number): NodeJS.ProcessEnv {
 	environment.PIBO_PREVIEW_PORT = String(port);
 	environment.HOST = "127.0.0.1";
 	environment.PORT = String(port);
+	if (ownerToken) environment[PREVIEW_OWNER_ENV] = ownerToken;
 	return environment;
 }
 
@@ -407,9 +510,56 @@ async function processGroupId(pid: number): Promise<number | undefined> {
 	}
 }
 
-function processIsAlive(pid: number): boolean {
+function processOwnerToken(pid: number): string | undefined {
+	if (process.platform !== "linux") return undefined;
 	try {
-		process.kill(pid, 0);
+		const prefix = `${PREVIEW_OWNER_ENV}=`;
+		return readFileSync(`/proc/${pid}/environ`, "utf8")
+			.split("\0")
+			.find((entry) => entry.startsWith(prefix))
+			?.slice(prefix.length);
+	} catch {
+		return undefined;
+	}
+}
+
+function ownedLinuxProcesses(identity: PreviewManagerIdentity): Array<{ pid: number; processGroupId: number }> {
+	if (process.platform !== "linux" || identity.kind !== "process") return [];
+	if (
+		identity.pid &&
+		identity.processStartTicks &&
+		previewProcessStartTicks(identity.pid) !== identity.processStartTicks
+	) return [];
+	let entries: string[];
+	try { entries = readdirSync("/proc"); } catch { return []; }
+	const owned: Array<{ pid: number; processGroupId: number }> = [];
+	for (const entry of entries) {
+		if (!/^\d+$/.test(entry)) continue;
+		const pid = Number(entry);
+		if (processOwnerToken(pid) !== identity.id) continue;
+		try {
+			const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+			const commandEnd = stat.lastIndexOf(") ");
+			if (commandEnd < 0) continue;
+			const processGroupId = Number.parseInt(stat.slice(commandEnd + 2).trim().split(/\s+/)[2] ?? "", 10);
+			if (Number.isInteger(processGroupId) && processGroupId > 0) owned.push({ pid, processGroupId });
+		} catch {}
+	}
+	return owned;
+}
+
+function sameManagerOwner(first: PreviewManagerIdentity, second: PreviewManagerIdentity): boolean {
+	return first.kind === second.kind && first.id === second.id;
+}
+
+function managedGenerationMatches(exposure: PreviewExposure, generation: string, manager: PreviewManagerIdentity): boolean {
+	const current = managerIdentity(exposure);
+	return exposure.serverGeneration === generation && Boolean(current && sameManagerOwner(current, manager));
+}
+
+async function stopManagedOwner(controller: PreviewProcessController, identity: PreviewManagerIdentity): Promise<boolean> {
+	try {
+		await controller.stop(identity);
 		return true;
 	} catch {
 		return false;

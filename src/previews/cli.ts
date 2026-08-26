@@ -60,6 +60,7 @@ async function previewHealth(exposure: PreviewExposure): Promise<PreviewHealthSt
 	if (state !== "active") return state;
 	if (exposure.managementMode === "managed") {
 		if (exposure.serverState === "starting") return "starting";
+		if (exposure.serverState === "stopping") return "stopping";
 		if (exposure.serverState === "stopped") return "stopped";
 		if (exposure.serverState === "error") return "error";
 	}
@@ -323,7 +324,7 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 		let exposure;
 		try {
 			const current = store.requireExposure(id);
-			if (current.managementMode === "managed" && (current.serverState === "running" || current.serverState === "starting")) {
+			if (current.managementMode === "managed" && ["running", "starting", "stopping", "error"].includes(current.serverState ?? "")) {
 				await stopManagedPreview(store, id);
 			}
 			exposure = store.closeExposure(id);
