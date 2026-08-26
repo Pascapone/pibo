@@ -60,17 +60,17 @@ function runtimeConfig(root) {
 	});
 }
 
-function profile(instanceId) {
+function profile(instanceId, runtimeOptions = {}) {
 	return new InitialSessionContextBuilder(`profile-${instanceId}`)
-		.withAgentRuntime(instanceId)
+		.withAgentRuntime(instanceId, runtimeOptions)
 		.withBuiltinTools("disabled")
 		.withAutoContextFiles(false)
 		.withToolPackages({ goalControl: false })
 		.createSession();
 }
 
-function openInput(instanceId, workspace, binding, piboSessionId = binding.piboSessionId) {
-	const selectedProfile = profile(instanceId);
+function openInput(instanceId, workspace, binding, piboSessionId = binding.piboSessionId, runtimeOptions = {}) {
+	const selectedProfile = profile(instanceId, runtimeOptions);
 	const piboSession = createPiboSession({
 		id: piboSessionId,
 		channel: "test",
@@ -365,14 +365,38 @@ test("Codex native thread controls list and fork through stable App Server metho
 	assert.ok(listed.some((thread) => thread.nativeSessionId === "thread-other"));
 	assert.ok(listed.every((thread) => thread.locator?.value === undefined));
 	const candidates = session.controls.getForkCandidates();
-	assert.deepEqual(candidates.map((candidate) => candidate.entryId), ["turn-a", "turn-b", "turn-c"]);
+	assert.deepEqual(candidates.map((candidate) => candidate.entryId), ["user-a", "user-b", "user-c"]);
+	assert.deepEqual(candidates.slice(1).map((candidate) => candidate.text), ["continue", "fail"]);
 	assert.doesNotMatch(JSON.stringify(candidates), /fixture-agent-secret/);
 
-	const result = await session.controls.forkSession("turn-b");
+	const firstMessageSession = await registry.openSession(
+		instanceId,
+		openInput(
+			instanceId,
+			root,
+			boundBinding(instanceId, "ps_codex_first_fork", "thread-source"),
+			"ps_codex_first_fork",
+			{ permissionMode: "yolo", personality: "pragmatic" },
+		),
+	);
+	registerTestDisposer(t, () => firstMessageSession.dispose());
+	const firstMessageResult = await firstMessageSession.controls.forkSession("user-a");
+	assert.equal(firstMessageResult.current.leafId, null);
+	assert.equal(firstMessageResult.summaryEntryId, "user-a");
+	assert.ok(firstMessageResult.selectedText);
+	assert.doesNotMatch(firstMessageResult.selectedText, /fixture-user-secret/);
+	const firstMessageState = await getCodexNativeClient(firstMessageSession).request("test/getState", {});
+	const firstMessageStart = firstMessageState.resourceRequests.findLast((request) => request.method === "thread/start");
+	assert.equal(firstMessageStart.approvalPolicy, "never");
+	assert.equal(firstMessageStart.sandbox, "danger-full-access");
+	assert.equal(firstMessageState.threadSettings[firstMessageResult.current.nativeSessionId].personality, "pragmatic");
+
+	const result = await session.controls.forkSession("user-c");
 	assert.equal(result.previous.nativeSessionId, "thread-source");
 	assert.notEqual(result.current.nativeSessionId, "thread-source");
 	assert.equal(result.current.leafId, "turn-b");
-	assert.equal(result.summaryEntryId, "turn-b");
+	assert.equal(result.selectedText, "fail");
+	assert.equal(result.summaryEntryId, "user-c");
 	const forkBinding = session.getBinding();
 	assert.equal(forkBinding.nativeSessionId, result.current.nativeSessionId);
 	assert.equal(forkBinding.state, "bound");

@@ -333,7 +333,7 @@ export type AgentRuntimeFastModeResult = {
 export type AgentRuntimeControls = {
 	getCurrentSession?(): AgentRuntimeNativeSessionSnapshot;
 	listSessions?(): Promise<AgentRuntimeNativeSessionInfo[]>;
-	getForkCandidates?(): AgentRuntimeForkCandidate[];
+	getForkCandidates?(): AgentRuntimeForkCandidate[] | Promise<AgentRuntimeForkCandidate[]>;
 	forkSession?(entryId: string): Promise<AgentRuntimeSessionOperationResult>;
 	cloneSession?(): Promise<AgentRuntimeSessionOperationResult>;
 	getSessionTree?(): AgentRuntimeSessionTree;

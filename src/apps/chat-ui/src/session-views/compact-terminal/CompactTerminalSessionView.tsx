@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import { ChevronDown, ChevronRight, CircleX, GitBranch, Hammer, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleX, Hammer, MessageSquare } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { AgentDelegationCard } from "../../components/AgentDelegationCard";
+import { MessageForkButton } from "../../components/MessageForkButton";
 import { PendingUserMessageDelivery } from "../../components/PendingUserMessageDelivery";
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
@@ -566,9 +567,10 @@ function TerminalRow({
 						piboSessionId={piboSessionId}
 						onThinkingLevelChange={onThinkingLevelChange}
 						onModelChanged={onModelChanged}
+						onFork={onFork}
 					/>
 				</div>
-				<TerminalRowActions row={row} onFork={onFork} onOpenSession={onOpenSession} />
+				<TerminalRowActions row={row} onOpenSession={onOpenSession} />
 			</div>
 			{expanded ? <TerminalDetails row={row} onOpenSession={onOpenSession} /> : null}
 		</div>
@@ -582,6 +584,7 @@ function TerminalRowContent({
 	piboSessionId,
 	onThinkingLevelChange,
 	onModelChanged,
+	onFork,
 }: {
 	row: CompactTerminalRow;
 	visibleLines: CompactTerminalLine[];
@@ -589,6 +592,7 @@ function TerminalRowContent({
 	piboSessionId: string;
 	onThinkingLevelChange: ChatSessionViewProps["onThinkingLevelChange"];
 	onModelChanged: ChatSessionViewProps["onModelChanged"];
+	onFork: ChatSessionViewProps["onFork"];
 }) {
 	if (row.kind === "message.assistant") {
 		return (
@@ -607,7 +611,7 @@ function TerminalRowContent({
 				{row.pendingMessageDelivery ? (
 					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} className="ml-[1.9rem] mt-2" />
 				) : null}
-				<TerminalMessageMetadata timestamp={row.startedAt} />
+				<TerminalMessageMetadata timestamp={row.startedAt} forkEntryId={row.forkEntryId} onFork={onFork} />
 			</>
 		);
 	}
@@ -647,12 +651,23 @@ function TerminalLines({
 	));
 }
 
-function TerminalMessageMetadata({ timestamp, durationMs }: { timestamp?: string; durationMs?: number }) {
+function TerminalMessageMetadata({
+	timestamp,
+	durationMs,
+	forkEntryId,
+	onFork,
+}: {
+	timestamp?: string;
+	durationMs?: number;
+	forkEntryId?: string;
+	onFork?: ChatSessionViewProps["onFork"];
+}) {
 	const time = formatLocalMessageTime(timestamp);
 	if (!time) return null;
 	return (
-		<div className="mt-1 text-right font-mono text-[10px] tabular-nums text-[#737373]" data-pibo-component="TerminalMessageMetadata">
-			{time}{durationMs === undefined ? null : ` · ${formatTerminalDuration(durationMs)}`}
+		<div className="mt-1 flex items-center justify-end gap-1 font-mono text-[10px] tabular-nums text-[#737373]" data-pibo-component="TerminalMessageMetadata">
+			{forkEntryId && onFork ? <MessageForkButton entryId={forkEntryId} onFork={onFork} /> : null}
+			<span>{time}{durationMs === undefined ? null : ` · ${formatTerminalDuration(durationMs)}`}</span>
 		</div>
 	);
 }
@@ -670,26 +685,17 @@ function formatLocalMessageTime(value: string | undefined): string | undefined {
 
 function TerminalRowActions({
 	row,
-	onFork,
 	onOpenSession,
 }: {
 	row: CompactTerminalRow;
-	onFork: ChatSessionViewProps["onFork"];
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
 }) {
+	if (!row.linkedPiboSessionId) return null;
 	return (
-		<div className={`flex shrink-0 items-start gap-1 transition-opacity ${row.forkEntryId ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}>
-			{row.linkedPiboSessionId ? (
-				<RowAction label="Open linked session" onClick={() => onOpenSession(row.linkedPiboSessionId!)}>
-					Open
-				</RowAction>
-			) : null}
-			{row.forkEntryId ? (
-				<RowAction label="Fork from this user message" onClick={() => onFork(row.forkEntryId!)}>
-					<GitBranch size={13} />
-					Fork
-				</RowAction>
-			) : null}
+		<div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+			<RowAction label="Open linked session" onClick={() => onOpenSession(row.linkedPiboSessionId!)}>
+				Open
+			</RowAction>
 		</div>
 	);
 }

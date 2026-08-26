@@ -210,7 +210,7 @@ export type PiboGatewayActionContext = {
 	dispose(): Promise<void>;
 	getCurrentSession(): PiboSessionOperationResult["current"];
 	listSessions(): Promise<PiboSessionListItem[]>;
-	getForkCandidates(): PiboForkCandidate[];
+	getForkCandidates(): PiboForkCandidate[] | Promise<PiboForkCandidate[]>;
 	forkSession(entryId: string): Promise<PiboSessionOperationResult>;
 	cloneSession(): Promise<PiboSessionOperationResult>;
 	getSessionTree(): PiboSessionTreeResult;

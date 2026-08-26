@@ -55,6 +55,14 @@ function enableFastModeSupport(runtime) {
 	runtime.session.state.model = { api: "openai-codex-responses", provider: "openai-codex", id: "gpt-5.4", reasoning: true };
 }
 
+async function waitFor(predicate, timeoutMs = 1_000) {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() >= deadline) throw new Error("Timed out waiting for condition");
+		await new Promise((resolve) => setTimeout(resolve, 5));
+	}
+}
+
 async function createSessionHarness() {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-session-actions-"));
 	const profile = new InitialSessionContextBuilder("session-actions-test").createSession();
@@ -259,6 +267,69 @@ test("session fork replaces the active Pi session and can switch back", async ()
 		assert.equal(switched.type, "execution_result");
 		assert.equal(switched.result.current.sessionFile, before.sessionFile);
 	} finally {
+		await harness.dispose();
+	}
+});
+
+test("Pi fork identity transition excludes reminders, candidate reads, aborts, and concurrent session operations", async () => {
+	const harness = await createSessionHarness();
+	const releaseFork = deferred();
+	let forkStarted = false;
+	try {
+		const ids = seedConversation(harness.routed.runtime);
+		const nativeFork = harness.routed.runtime.fork.bind(harness.routed.runtime);
+		harness.routed.runtime.fork = async (entryId) => {
+			forkStarted = true;
+			await releaseFork.promise;
+			return await nativeFork(entryId);
+		};
+
+		const fork = harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "session.fork",
+			params: { entryId: ids.secondUserId },
+		});
+		await waitFor(() => forkStarted);
+
+		assert.throws(() => harness.routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "route:test",
+			id: "reminder-during-fork",
+			text: "A scheduled reminder must retry after the identity transition.",
+			source: "service",
+			provenance: { kind: "loop-run", jobId: "loop_job", runId: "loop_run" },
+		}), /session identity operation is in progress/);
+		await assert.rejects(() => harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "session.fork_candidates",
+		}), /session identity operation.*in progress/);
+		await assert.rejects(() => harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "session.clone",
+		}), /session identity operation.*in progress/);
+
+		await harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "abort",
+		});
+		assert.throws(() => harness.routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "route:test",
+			id: "reminder-after-abort-during-fork",
+			text: "Abort must not unlock a still-running identity transition.",
+			source: "service",
+		}), /session identity operation is in progress/);
+
+		releaseFork.resolve();
+		const result = await fork;
+		assert.equal(result.type, "execution_result");
+		assert.notEqual(result.result.current.piSessionId, result.result.previous.piSessionId);
+	} finally {
+		releaseFork.resolve();
 		await harness.dispose();
 	}
 });

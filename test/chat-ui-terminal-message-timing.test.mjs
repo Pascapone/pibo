@@ -298,6 +298,10 @@ test("Compact Terminal preserves message timing and the animated working footer 
 	assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 	assert.doesNotMatch(styles, /\.compact-terminal-working-label/);
 	assert.match(source, /row\.kind === "message\.assistant"[\s\S]*TerminalMessageMetadata/);
-	assert.match(source, /row\.kind === "message\.user"[\s\S]*TerminalMessageMetadata/);
+	assert.match(source, /row\.kind === "message\.user"[\s\S]*TerminalMessageMetadata timestamp=\{row\.startedAt\} forkEntryId=\{row\.forkEntryId\} onFork=\{onFork\}/);
+	assert.match(source, /<MessageForkButton entryId=\{forkEntryId\} onFork=\{onFork\} \/>[\s\S]*<span>\{time\}/, "Fork icon should render immediately left of the user-message timestamp");
 	assert.equal((source.match(/<TerminalMessageMetadata/g) ?? []).length, 2);
+	const forkButtonSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/components/MessageForkButton.tsx"), "utf8");
+	assert.match(forkButtonSource, /aria-label="Fork from this user message"/);
+	assert.match(forkButtonSource, /<GitBranch size=\{12\} \/>/);
 });

@@ -265,6 +265,9 @@ async function startWebHostChannel(options = {}) {
 		...(options.getSessionStatusSnapshot ? {
 			getSessionStatusSnapshot: options.getSessionStatusSnapshot,
 		} : {}),
+		...(options.getSessionForkCandidates ? {
+			getSessionForkCandidates: options.getSessionForkCandidates,
+		} : {}),
 		getGatewayActions() {
 			return [];
 		},
@@ -1413,6 +1416,37 @@ test("chat web app creates app context sessions", async () => {
 		assert.equal(emitted.length, 1);
 		assert.equal(emitted[0].piboSessionId, payload.session.id);
 		assert.equal(emitted[0].text, "hello new session");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app exposes read-only fork candidates for a selected session", async () => {
+	const requested = [];
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		getSessionForkCandidates: async (piboSessionId) => {
+			requested.push(piboSessionId);
+			return [{ entryId: "native-user-1", text: "Fork this prompt" }];
+		},
+	});
+
+	try {
+		const created = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: "{}",
+		});
+		assert.equal(created.status, 201);
+		const payload = await created.json();
+		const response = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(payload.session.id)}/fork-candidates`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(response.status, 200);
+		assert.deepEqual(await response.json(), {
+			messages: [{ entryId: "native-user-1", text: "Fork this prompt" }],
+		});
+		assert.deepEqual(requested, [payload.session.id]);
 	} finally {
 		await channel.stop?.();
 	}
