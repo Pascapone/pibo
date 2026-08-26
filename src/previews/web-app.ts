@@ -219,6 +219,32 @@ async function proxyablePreviewExposure(
 	return await probePreviewTarget(exposure.targetPort, { timeoutMs: 500 }) ? exposure : undefined;
 }
 
+async function authorizedProxyablePreviewExposure(
+	store: PreviewStore,
+	token: string | undefined,
+	expectedExposure: PreviewExposure,
+	managerOptions: PreviewManagerOptions,
+): Promise<
+	{ status: "authorized"; exposure: PreviewExposure } |
+	{ status: "unauthorized" } |
+	{ status: "unavailable" }
+> {
+	await reconcileManagedPreviews(store, managerOptions);
+	const exposure = store.authorizedBrowserSessionExposure(token, expectedExposure.id, expectedExposure);
+	if (!exposure) return { status: "unauthorized" };
+	if (!isPreviewTargetProcessCurrent(expectedExposure)) {
+		if (expectedExposure.managementMode === "external") store.closeExposure(expectedExposure.id);
+		return { status: "unavailable" };
+	}
+	const online = Boolean(await probePreviewTarget(expectedExposure.targetPort, { timeoutMs: 500 }));
+	if (!store.authorizedBrowserSessionExposure(token, expectedExposure.id, expectedExposure)) {
+		return { status: "unauthorized" };
+	}
+	return online
+		? { status: "authorized", exposure: expectedExposure }
+		: { status: "unavailable" };
+}
+
 function lifecycleErrorResponse(error: unknown): Response {
 	const message = error instanceof PreviewCapacityError
 		? error.message
@@ -404,17 +430,15 @@ export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWeb
 
 			const cookie = cookieValue(request.headers.cookie, previewSessionCookieName(requestURL.protocol));
 			const access = await withStoreAsync(databasePath, async (store) => {
-				if (!store.authenticateBrowserSession(cookie, previewId)) return { authenticated: false as const };
-				return {
-					authenticated: true as const,
-					exposure: await proxyablePreviewExposure(store, previewId, managerOptions),
-				};
+				const exposure = store.authorizedBrowserSessionExposure(cookie, previewId);
+				if (!exposure) return { status: "unauthorized" as const };
+				return authorizedProxyablePreviewExposure(store, cookie, exposure, managerOptions);
 			});
-			if (!access.authenticated) {
+			if (access.status === "unauthorized") {
 				unauthorizedPreview(response);
 				return;
 			}
-			if (!access.exposure) {
+			if (access.status === "unavailable") {
 				nodePreviewUnavailable(response);
 				return;
 			}
@@ -424,7 +448,13 @@ export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWeb
 				return;
 			}
 			try {
-				await proxyPreviewHttp({ request, response, requestURL, exposure: access.exposure, piboOrigin });
+				const exposure = withStore(databasePath, (store) =>
+					store.authorizedBrowserSessionExposure(cookie, previewId, access.exposure));
+				if (!exposure) {
+					unauthorizedPreview(response);
+					return;
+				}
+				await proxyPreviewHttp({ request, response, requestURL, exposure, piboOrigin });
 			} finally {
 				release();
 			}
@@ -442,14 +472,15 @@ export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWeb
 			}
 			const cookie = cookieValue(request.headers.cookie, previewSessionCookieName(requestURL.protocol));
 			const access = previewId ? await withStoreAsync(databasePath, async (store) => {
-				if (!store.authenticateBrowserSession(cookie, previewId)) return { authenticated: false as const };
-				return { authenticated: true as const, exposure: await proxyablePreviewExposure(store, previewId, managerOptions) };
+				const exposure = store.authorizedBrowserSessionExposure(cookie, previewId);
+				if (!exposure) return { status: "unauthorized" as const };
+				return authorizedProxyablePreviewExposure(store, cookie, exposure, managerOptions);
 			}) : undefined;
-			if (!access?.authenticated) {
+			if (!access || access.status === "unauthorized") {
 				socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
 				return;
 			}
-			if (!access.exposure) {
+			if (access.status === "unavailable") {
 				socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
 				return;
 			}
@@ -459,7 +490,13 @@ export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWeb
 				return;
 			}
 			try {
-				await proxyPreviewWebSocket({ request, socket, head, requestURL, exposure: access.exposure });
+				const exposure = withStore(databasePath, (store) =>
+					store.authorizedBrowserSessionExposure(cookie, previewId!, access.exposure));
+				if (!exposure) {
+					socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+					return;
+				}
+				await proxyPreviewWebSocket({ request, socket, head, requestURL, exposure });
 			} finally {
 				release();
 			}

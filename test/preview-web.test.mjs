@@ -106,6 +106,12 @@ function ticketFromHtml(html) {
 	return match[1];
 }
 
+function deferred() {
+	let resolve;
+	const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+	return { promise, resolve };
+}
+
 function rawUpgrade({ port, host, cookie }) {
 	return new Promise((resolve, reject) => {
 		const socket = connect({ host: "127.0.0.1", port });
@@ -712,6 +718,217 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 		headers: { "x-test-user": "account-a" },
 	})).body);
 	assert.deepEqual(afterRemoval.previews, []);
+});
+
+test("in-flight HTTP, SSE, and WebSocket requests never cross a managed generation rotation", { timeout: 30_000 }, async (t) => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-preview-generation-race-"));
+	const databasePath = join(dir, "previews.sqlite");
+	const firstPortProbe = createServer();
+	const firstTargetPort = await listen(firstPortProbe);
+	await close(firstPortProbe);
+	const createManagedExposure = (targetPort) => {
+		const store = new PreviewStore(databasePath);
+		store.createExposure({
+			id: "pv-generation-race",
+			piboSessionId: "ps_preview_generation_race",
+			label: "Generation race fixture",
+			targetHost: "127.0.0.1",
+			targetPort,
+			workspace: "/fixture/workspace",
+			managementMode: "managed",
+			startCommand: "fixture-preview-command --serve",
+			serverState: "stopped",
+			createdAt: new Date().toISOString(),
+			expiresAt: new Date(Date.now() + 60_000).toISOString(),
+		});
+		store.close();
+	};
+	createManagedExposure(firstTargetPort);
+
+	let sequence = 0;
+	let barrier;
+	const servers = new Map();
+	const targetHits = new Map();
+	const upgradedSockets = new Set();
+	const controller = {
+		createIdentity() {
+			return { kind: "process", id: `generation-race-${++sequence}` };
+		},
+		async launch(input, identity) {
+			const generationLabel = identity.id;
+			const server = createServer((request, response) => {
+				targetHits.set(generationLabel, (targetHits.get(generationLabel) ?? 0) + 1);
+				if (request.url?.startsWith("/sse")) {
+					response.writeHead(200, { "content-type": "text/event-stream" });
+					response.end(`data: ${generationLabel}\n\n`);
+					return;
+				}
+				response.end(generationLabel);
+			});
+			server.on("upgrade", (_request, socket) => {
+				targetHits.set(generationLabel, (targetHits.get(generationLabel) ?? 0) + 1);
+				upgradedSockets.add(socket);
+				socket.once("close", () => upgradedSockets.delete(socket));
+				socket.write([
+					"HTTP/1.1 101 Switching Protocols",
+					"Upgrade: websocket",
+					"Connection: Upgrade",
+					"",
+					"",
+				].join("\r\n"));
+			});
+			await new Promise((resolve, reject) => {
+				server.once("error", reject);
+				server.listen(input.port, "127.0.0.1", resolve);
+			});
+			servers.set(identity.id, server);
+			return identity;
+		},
+		async isRunning(identity) {
+			if (barrier?.identity === identity.id && barrier.remaining > 0) {
+				barrier.remaining -= 1;
+				if (barrier.remaining === 0) barrier.entered.resolve();
+				await barrier.release.promise;
+			}
+			return servers.has(identity.id);
+		},
+		async isManagerRunning(identity) { return servers.has(identity.id); },
+		async ownsTarget(identity) { return servers.has(identity.id); },
+		async stop(identity) {
+			const server = servers.get(identity.id);
+			if (!server) return;
+			servers.delete(identity.id);
+			await close(server);
+		},
+	};
+	const app = createPreviewWebApp({
+		baseURL: "http://preview.localhost",
+		databasePath,
+		reaperIntervalMs: false,
+		managerOptions: {
+			controller,
+			settings: { maxRunningServers: 3, autoStopMinutes: 10 },
+			startupTimeoutMs: 2_000,
+			pollIntervalMs: 10,
+		},
+	});
+	const channel = createWebHostChannel({ host: "127.0.0.1", port: 0, announce: false });
+	await channel.start({
+		auth: fakeAuth(),
+		getWebApps: () => [app],
+		emit() { throw new Error("not used"); },
+		subscribe() { return () => undefined; },
+		getSession() { return undefined; },
+		createSession() { throw new Error("not used"); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+	});
+	const webPort = channel.getAddress().port;
+	const piboHost = `pibo.localhost:${webPort}`;
+	const previewHost = `pv-generation-race.preview.localhost:${webPort}`;
+	const origin = `http://${piboHost}`;
+	t.after(async () => {
+		barrier?.release.resolve();
+		for (const socket of upgradedSockets) socket.destroy();
+		for (const [id] of [...servers]) await controller.stop({ kind: "process", id });
+		await channel.stop();
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	const lifecycle = (operation) => request({
+		port: webPort,
+		host: piboHost,
+		path: `/api/previews/pv-generation-race/${operation}`,
+		method: "POST",
+		headers: { "x-test-user": "account-a", origin },
+	});
+	const mintCookie = async () => {
+		const opened = await request({
+			port: webPort,
+			host: piboHost,
+			path: "/api/previews/pv-generation-race/open",
+			headers: { "x-test-user": "account-a" },
+		});
+		assert.equal(opened.status, 200);
+		const exchange = await request({
+			port: webPort,
+			host: previewHost,
+			path: "/__pibo/session",
+			method: "POST",
+			headers: { "content-type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({ ticket: ticketFromHtml(opened.body) }).toString(),
+		});
+		assert.equal(exchange.status, 303);
+		return exchange.headers["set-cookie"][0].split(";")[0];
+	};
+
+	assert.equal((await lifecycle("start")).status, 200);
+	const firstIdentity = "generation-race-1";
+	const oldCookie = await mintCookie();
+	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: oldCookie } })).body, firstIdentity);
+
+	const inFlightCount = 6;
+	barrier = {
+		identity: firstIdentity,
+		remaining: inFlightCount,
+		entered: deferred(),
+		release: deferred(),
+	};
+	const staleRequests = [
+		request({ port: webPort, host: previewHost, path: "/http-a", headers: { cookie: oldCookie } }),
+		request({ port: webPort, host: previewHost, path: "/http-b", headers: { cookie: oldCookie } }),
+		request({ port: webPort, host: previewHost, path: "/sse", headers: { cookie: oldCookie } }),
+		request({ port: webPort, host: previewHost, path: "/sse?retry=2", headers: { cookie: oldCookie } }),
+		openUpgradeSocket({ port: webPort, host: previewHost, cookie: oldCookie }),
+		openUpgradeSocket({ port: webPort, host: previewHost, cookie: oldCookie }),
+	];
+	await barrier.entered.promise;
+	assert.equal((await lifecycle("stop")).status, 200);
+	assert.equal((await lifecycle("start")).status, 200);
+	const secondIdentity = "generation-race-2";
+	barrier.release.resolve();
+	const staleResults = await Promise.all(staleRequests);
+	for (const result of staleResults.slice(0, 4)) assert.equal(result.status, 401);
+	for (const result of staleResults.slice(4)) {
+		assert.match(result.response, /^HTTP\/1\.1 401 /);
+		result.socket.destroy();
+	}
+	assert.equal(targetHits.get(secondIdentity) ?? 0, 0, "generation-A work must never reach generation B");
+
+	const freshCookie = await mintCookie();
+	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: freshCookie } })).body, secondIdentity);
+	assert.match((await request({ port: webPort, host: previewHost, path: "/sse", headers: { cookie: freshCookie } })).body, new RegExp(secondIdentity));
+	const freshUpgrade = await openUpgradeSocket({ port: webPort, host: previewHost, cookie: freshCookie });
+	assert.match(freshUpgrade.response, /^HTTP\/1\.1 101 /);
+	freshUpgrade.socket.destroy();
+	await Promise.all([...upgradedSockets].map((socket) => new Promise((resolve) => {
+		if (socket.destroyed) return resolve();
+		socket.once("close", resolve);
+		socket.destroy();
+	})));
+
+	const removed = await request({
+		port: webPort,
+		host: piboHost,
+		path: "/api/previews/pv-generation-race",
+		method: "DELETE",
+		headers: { "x-test-user": "account-a", origin },
+	});
+	assert.equal(removed.status, 200);
+	const secondPortProbe = createServer();
+	const secondTargetPort = await listen(secondPortProbe);
+	await close(secondPortProbe);
+	assert.notEqual(secondTargetPort, firstTargetPort);
+	const reopenedStore = new PreviewStore(databasePath);
+	reopenedStore.prune(new Date(Date.now() + 31 * 24 * 60 * 60_000));
+	assert.equal(reopenedStore.getExposure("pv-generation-race"), undefined);
+	reopenedStore.close();
+	createManagedExposure(secondTargetPort);
+	assert.equal((await lifecycle("start")).status, 200);
+	const thirdIdentity = "generation-race-3";
+	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: freshCookie } })).status, 401);
+	const recreatedCookie = await mintCookie();
+	assert.equal((await request({ port: webPort, host: previewHost, headers: { cookie: recreatedCookie } })).body, thirdIdentity);
 });
 
 test("Preview app disposal waits for an in-flight reaper and preserves exact reconciliation", async (t) => {

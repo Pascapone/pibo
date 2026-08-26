@@ -49,6 +49,12 @@ type TicketRow = {
 	used_at: string | null;
 };
 
+type BrowserAuthorizationRow = ExposureRow & {
+	browser_preview_id: string;
+	browser_server_generation: string | null;
+	browser_expires_at: string;
+};
+
 export const PREVIEW_SCHEMA_VERSION = 4;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES = 256;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES_PER_SESSION = 16;
@@ -141,6 +147,21 @@ function authorizationGeneration(exposure: PreviewExposure): string | null | und
 	if (exposure.managementMode === "external") return null;
 	if (exposure.serverState !== "running" || !exposure.serverGeneration) return undefined;
 	return exposure.serverGeneration;
+}
+
+function sameAuthorizationExposure(first: PreviewExposure, second: PreviewExposure): boolean {
+	return first.id === second.id &&
+		first.createdAt === second.createdAt &&
+		first.managementMode === second.managementMode &&
+		first.serverGeneration === second.serverGeneration &&
+		first.targetHost === second.targetHost &&
+		first.targetPort === second.targetPort &&
+		first.targetProcessId === second.targetProcessId &&
+		first.targetProcessStartTicks === second.targetProcessStartTicks &&
+		first.managerKind === second.managerKind &&
+		first.managerId === second.managerId &&
+		first.managerPid === second.managerPid &&
+		first.managerProcessStartTicks === second.managerProcessStartTicks;
 }
 
 export function previewExposureState(exposure: PreviewExposure, now = new Date()): PreviewExposureState {
@@ -763,15 +784,34 @@ export class PreviewStore {
 		}
 	}
 
-	authenticateBrowserSession(token: string | undefined, previewId: string, now = new Date()): boolean {
-		if (!token || !isOpaqueToken(token)) return false;
-		const row = this.db.prepare("SELECT preview_id, server_generation, expires_at FROM preview_browser_sessions WHERE token_hash = ?")
-			.get(tokenHash(token)) as { preview_id: string; server_generation: string | null; expires_at: string } | undefined;
-		if (!row || row.preview_id !== previewId || Date.parse(row.expires_at) <= now.getTime()) return false;
-		const exposure = this.getExposure(previewId);
-		if (!exposure || previewExposureState(exposure, now) !== "active") return false;
+	authorizedBrowserSessionExposure(
+		token: string | undefined,
+		previewId: string,
+		expectedExposure?: PreviewExposure,
+		now = new Date(),
+	): PreviewExposure | undefined {
+		if (!token || !isOpaqueToken(token)) return undefined;
+		const row = this.db.prepare(`
+			SELECT exposure.*,
+				browser.preview_id AS browser_preview_id,
+				browser.server_generation AS browser_server_generation,
+				browser.expires_at AS browser_expires_at
+			FROM preview_browser_sessions browser
+			JOIN preview_exposures exposure ON exposure.id = browser.preview_id
+			WHERE browser.token_hash = ?
+		`).get(tokenHash(token)) as BrowserAuthorizationRow | undefined;
+		if (!row || row.browser_preview_id !== previewId || Date.parse(row.browser_expires_at) <= now.getTime()) {
+			return undefined;
+		}
+		const exposure = exposureFromRow(row);
+		if (previewExposureState(exposure, now) !== "active") return undefined;
 		const serverGeneration = authorizationGeneration(exposure);
-		return serverGeneration !== undefined && row.server_generation === serverGeneration;
+		if (serverGeneration === undefined || row.browser_server_generation !== serverGeneration) return undefined;
+		return !expectedExposure || sameAuthorizationExposure(exposure, expectedExposure) ? exposure : undefined;
+	}
+
+	authenticateBrowserSession(token: string | undefined, previewId: string, now = new Date()): boolean {
+		return Boolean(this.authorizedBrowserSessionExposure(token, previewId, undefined, now));
 	}
 
 	diagnostics(now = new Date()): {
