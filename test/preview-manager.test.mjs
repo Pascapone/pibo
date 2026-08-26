@@ -211,6 +211,9 @@ test("managed start rejects a listener owned by the wrong process group", async 
 	assert.equal(failed.serverGeneration, undefined);
 	assert.equal(failed.managerId, undefined);
 	assert.deepEqual(controller.stopped, controller.launched);
+	const stopped = await stopManagedPreview(store, failed.id, { controller });
+	assert.equal(stopped.serverState, "stopped");
+	assert.equal(stopped.serverError, undefined);
 });
 
 test("reconciliation handles every persisted owner-bearing lifecycle state", async (t) => {

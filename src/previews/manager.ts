@@ -160,6 +160,9 @@ export async function stopManagedPreview(store: PreviewStore, id: string, option
 	if (!["starting", "running", "stopping", "error"].includes(exposure.serverState ?? "")) return exposure;
 	const identity = managerIdentity(exposure);
 	if (!identity || !exposure.serverGeneration) {
+		if (exposure.serverState === "error" && !identity && !exposure.serverGeneration) {
+			return store.markManagedServerStopped(id);
+		}
 		throw new Error(`Preview "${id}" has no durable managed owner identity`);
 	}
 	const wasStarting = exposure.serverState === "starting";

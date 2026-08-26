@@ -449,6 +449,19 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 		createdAt: new Date().toISOString(),
 		expiresAt: new Date(Date.now() + 60_000).toISOString(),
 	});
+	store.createExposure({
+		id: "pv-managed-secret",
+		piboSessionId: "ps_preview_managed_web",
+		label: "Managed failure fixture",
+		targetHost: "127.0.0.1",
+		targetPort,
+		workspace: "/secret/workspace",
+		managementMode: "managed",
+		startCommand: "secret-preview-command --serve",
+		serverState: "stopped",
+		createdAt: new Date().toISOString(),
+		expiresAt: new Date(Date.now() + 60_000).toISOString(),
+	});
 	store.close();
 
 	let sequence = 0;
@@ -541,6 +554,15 @@ test("Preview lifecycle API starts, stops, and removes managed servers without e
 	assert.equal(failedSecretStart.status, 409);
 	assert.equal(JSON.parse(failedSecretStart.body).error, "Preview server operation failed");
 	assert.doesNotMatch(failedSecretStart.body, /secret-preview-command|secret\/workspace/);
+	const removedFailedStart = await request({
+		port: webPort,
+		host: piboHost,
+		path: "/api/previews/pv-managed-secret",
+		method: "DELETE",
+		headers: { "x-test-user": "account-a", origin },
+	});
+	assert.equal(removedFailedStart.status, 200);
+	assert.equal(JSON.parse(removedFailedStart.body).removed, true);
 
 	const startedResponse = await request({
 		port: webPort,

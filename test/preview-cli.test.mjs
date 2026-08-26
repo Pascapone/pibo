@@ -96,3 +96,23 @@ test("preview CLI starts, stops, restarts, and removes a detached managed server
 	const removed = JSON.parse((await run(home, ["preview", "remove", created.id, "--json"])).stdout);
 	assert.equal(removed.removed, true);
 });
+
+test("preview CLI can remove an ownerless error after managed launch failure", async (t) => {
+	const home = mkdtempSync(join(tmpdir(), "pibo-preview-failed-cli-"));
+	t.after(() => rmSync(home, { recursive: true, force: true }));
+	const sessionStore = new PiboDataSessionStore(join(home, "pibo.sqlite"));
+	sessionStore.create({ id: "ps_cli_failed", channel: "web", kind: "chat", profile: "base", workspace: home });
+	sessionStore.close();
+	await run(home, ["config", "set", "preview.baseURL", "https://preview.example.test"]);
+	const probe = createServer();
+	const port = await listen(probe);
+	await close(probe);
+
+	await assert.rejects(
+		run(home, ["preview", "expose", String(port), "--session", "ps_cli_failed", "--command", `${JSON.stringify(process.execPath)} -e ${JSON.stringify("process.exit(1)")}`, "--json"]),
+		/Managed Preview command exited before opening its port/,
+	);
+	const [failed] = JSON.parse((await run(home, ["preview", "list", "--session", "ps_cli_failed", "--json"])).stdout);
+	assert.equal(failed.serverState, "error");
+	assert.equal(JSON.parse((await run(home, ["preview", "remove", failed.id, "--json"])).stdout).removed, true);
+});
