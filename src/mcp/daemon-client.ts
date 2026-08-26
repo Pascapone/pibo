@@ -8,7 +8,7 @@ import {
   type ChildProcess,
 } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { createConnection } from 'node:net';
 import { basename, dirname, extname, join } from 'node:path';
@@ -31,17 +31,23 @@ import {
   type DaemonLeaseFileContent,
   type DaemonRequest,
   type DaemonResponse,
+  type DaemonStateOwnership,
   type PidFileContent,
+  daemonProcessIdentityMatches,
   daemonIdentityMatches,
   getOwnershipFileAgeMs,
   isProcessRunning,
-  killProcess,
+  pidFileIdentityMatches,
   readOwnershipFilePath,
   readPidFile,
   readPidFilePath,
+  readProcessIdentity,
+  removeDaemonState,
+  removeMalformedOwnershipFile,
   removeOwnershipFile,
-  removePidFile,
-  removeSocketFile,
+  removePidFilePath,
+  removeUntrackedEndpoint,
+  terminateDaemonProcess,
   writeOwnershipFileExclusive,
 } from './daemon.js';
 
@@ -198,9 +204,25 @@ async function waitForProcessExit(
   return !isProcessRunning(pid);
 }
 
+async function waitForDaemonExit(
+  expected: DaemonIdentity,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  const isExpectedProcessRunning = () =>
+    expected.processIdentity
+      ? daemonProcessIdentityMatches(expected)
+      : isProcessRunning(expected.pid);
+  while (Date.now() < deadline && isExpectedProcessRunning()) {
+    await sleep(50);
+  }
+  return !isExpectedProcessRunning();
+}
+
 async function stopDaemon(
   serverName: string,
   expected: PidFileContent,
+  ownership: DaemonStateOwnership,
 ): Promise<boolean> {
   try {
     await sendRequest(
@@ -216,23 +238,21 @@ async function stopDaemon(
     // The daemon may still be starting or may already have crashed.
   }
 
-  let exited = await waitForProcessExit(expected.pid, 2000);
+  let exited = await waitForDaemonExit(expected, 2000);
   if (!exited) {
     const current = readPidFile(serverName);
-    if (!daemonIdentityMatches(current, expected)) return false;
-    killProcess(expected.pid);
-    exited = await waitForProcessExit(expected.pid, 1000);
+    if (!pidFileIdentityMatches(current, expected)) return false;
+    if (!terminateDaemonProcess(expected)) return false;
+    exited = await waitForDaemonExit(expected, 1000);
   }
 
-  if (exited && removePidFile(serverName, expected)) {
-    removeSocketFile(serverName);
-  }
-  return exited;
+  return exited && removeDaemonState(serverName, expected, ownership);
 }
 
 async function stopLegacyDaemon(
   serverName: string,
   pidInfo: PidFileContent,
+  ownership: DaemonStateOwnership,
 ): Promise<boolean> {
   try {
     await sendRequest(
@@ -243,30 +263,17 @@ async function stopLegacyDaemon(
   } catch {
     // Continue to the bounded process check.
   }
-  let exited = await waitForProcessExit(pidInfo.pid, 2000);
-  if (!exited) {
-    const current = readPidFile(serverName);
-    if (
-      !current ||
-      current.pid !== pidInfo.pid ||
-      current.configHash !== pidInfo.configHash
-    ) {
-      return false;
-    }
-    killProcess(pidInfo.pid);
-    exited = await waitForProcessExit(pidInfo.pid, 1000);
-  }
-  if (exited) {
-    if (removePidFile(serverName, pidInfo)) removeSocketFile(serverName);
-  }
-  return exited;
+  const exited = await waitForProcessExit(pidInfo.pid, 2000);
+  return exited && removeDaemonState(serverName, pidInfo, ownership);
 }
 
-async function stopUntrackedEndpoint(serverName: string): Promise<boolean> {
+async function stopUntrackedEndpoint(
+  serverName: string,
+  ownership: DaemonStateOwnership,
+): Promise<boolean> {
   const identity = await pingDaemon(serverName, 500);
   if (!identity) {
-    removeSocketFile(serverName);
-    return true;
+    return removeUntrackedEndpoint(serverName, ownership);
   }
   try {
     await sendRequest(
@@ -281,9 +288,8 @@ async function stopUntrackedEndpoint(serverName: string): Promise<boolean> {
   } catch {
     return false;
   }
-  const exited = await waitForProcessExit(identity.pid, 2000);
-  if (exited) removeSocketFile(serverName);
-  return exited;
+  const exited = await waitForDaemonExit(identity, 2000);
+  return exited && removeUntrackedEndpoint(serverName, ownership);
 }
 
 export function getDaemonSpawnOptions(): SpawnOptions {
@@ -317,6 +323,7 @@ async function spawnDaemon(
   configHash: string,
   generation: string,
   timeoutMs: number,
+  ownership: DaemonStateOwnership,
 ): Promise<DaemonIdentity | null> {
   debug(`[daemon-client] Spawning daemon for ${serverName}`);
   const modulePath = fileURLToPath(import.meta.url);
@@ -346,6 +353,7 @@ async function spawnDaemon(
     configHash,
     generation,
     startedAt: '',
+    processIdentity: readProcessIdentity(proc.pid) ?? undefined,
   };
   const ready = await waitForDaemonReady(
     serverName,
@@ -367,10 +375,10 @@ async function spawnDaemon(
 
   const pidInfo = readPidFile(serverName);
   if (pidInfo && daemonIdentityMatches(pidInfo, expected)) {
-    await stopDaemon(serverName, pidInfo);
+    await stopDaemon(serverName, pidInfo, ownership);
   } else if (!exited && isProcessRunning(proc.pid)) {
-    killProcess(proc.pid);
-    await waitForProcessExit(proc.pid, 1000);
+    terminateDaemonProcess(expected);
+    await waitForDaemonExit(expected, 1000);
   }
   return null;
 }
@@ -396,10 +404,7 @@ function removeStaleOwnershipFile(path: string): boolean {
   const ageMs = getOwnershipFileAgeMs(path);
   if (ageMs === null) return false;
   if (!ownership) {
-    // Without a generation token there is no safe compare-and-delete. Leave a
-    // corrupt claim in place so callers take the direct fallback rather than
-    // risk unlinking a valid owner installed by another process.
-    return false;
+    return removeMalformedOwnershipFile(path, DEAD_OWNER_GRACE_MS);
   }
   if (isProcessRunning(ownership.ownerPid) || ageMs < DEAD_OWNER_GRACE_MS) {
     return false;
@@ -470,12 +475,20 @@ async function ensureDaemonAsOwner(
 ): Promise<DaemonIdentity | null> {
   const remaining = () => Math.max(0, deadline - Date.now());
   const claimPath = getDaemonClaimPath(serverName);
+  const ownership: DaemonStateOwnership = {
+    path: claimPath,
+    generation: claim.generation,
+  };
   if (!claimIsOwned(claimPath, claim)) return null;
   let pidInfo = readPidFile(serverName);
 
-  if (pidInfo && !isProcessRunning(pidInfo.pid)) {
-    const removed = removePidFile(serverName, pidInfo);
-    if (removed) removeSocketFile(serverName);
+  if (
+    pidInfo &&
+    (!isProcessRunning(pidInfo.pid) ||
+      (pidInfo.processIdentity && !daemonProcessIdentityMatches(pidInfo)))
+  ) {
+    const removed = removeDaemonState(serverName, pidInfo, ownership);
+    if (!removed) return null;
     pidInfo = null;
   }
 
@@ -497,16 +510,23 @@ async function ensureDaemonAsOwner(
 
     if (!claimIsOwned(claimPath, claim)) return null;
     const stopped = isCompletePidInfo(pidInfo)
-      ? await stopDaemon(serverName, pidInfo)
-      : await stopLegacyDaemon(serverName, pidInfo);
+      ? await stopDaemon(serverName, pidInfo, ownership)
+      : await stopLegacyDaemon(serverName, pidInfo, ownership);
     if (!stopped) return null;
-  } else if (!(await stopUntrackedEndpoint(serverName))) {
+  } else if (!(await stopUntrackedEndpoint(serverName, ownership))) {
     return null;
   }
 
   if (remaining() <= 0 || !claimIsOwned(claimPath, claim)) return null;
   const generation = randomUUID();
-  return spawnDaemon(serverName, config, configHash, generation, remaining());
+  return spawnDaemon(
+    serverName,
+    config,
+    configHash,
+    generation,
+    remaining(),
+    ownership,
+  );
 }
 
 function createDaemonConnection(
@@ -634,7 +654,8 @@ export async function cleanupOrphanedDaemons(): Promise<void> {
       if (
         file.endsWith('.lock') ||
         file.includes('.lease-') ||
-        file.includes('.delete-')
+        file.includes('.delete-') ||
+        file.includes('.publish-')
       ) {
         removeStaleOwnershipFile(path);
         continue;
@@ -642,24 +663,33 @@ export async function cleanupOrphanedDaemons(): Promise<void> {
       if (!file.endsWith('.pid')) continue;
 
       const pidInfo = readPidFilePath(path);
-      if (!pidInfo || isProcessRunning(pidInfo.pid)) continue;
+      if (
+        !pidInfo ||
+        (isProcessRunning(pidInfo.pid) &&
+          (!pidInfo.processIdentity || daemonProcessIdentityMatches(pidInfo)))
+      ) {
+        continue;
+      }
       const serverName = pidInfo.serverName;
       if (serverName) {
-        removePidFile(serverName, pidInfo);
-        if (path !== getPidPath(serverName) && existsSync(path)) {
-          // Remove a legacy pre-hash PID path after verifying its dead PID.
-          try {
-            unlinkSync(path);
-            if (usesFilesystemSocket()) {
-              const legacySocket = join(
-                socketDir,
-                `${file.slice(0, -'.pid'.length)}.sock`,
-              );
-              if (existsSync(legacySocket)) unlinkSync(legacySocket);
-            }
-          } catch {
-            // Another process may have already cleaned it.
+        const claim = acquireClaim(serverName, pidInfo.configHash);
+        if (!claim) continue;
+        const ownership: DaemonStateOwnership = {
+          path: getDaemonClaimPath(serverName),
+          generation: claim.generation,
+        };
+        try {
+          const current = readPidFilePath(path);
+          if (!pidFileIdentityMatches(current, pidInfo)) continue;
+          if (path === getPidPath(serverName)) {
+            removeDaemonState(serverName, pidInfo, ownership);
+          } else {
+            // Legacy endpoint names cannot be bound to a modern generation.
+            // Remove only their atomically acquired dead PID metadata.
+            removePidFilePath(path, pidInfo);
           }
+        } finally {
+          removeOwnershipFile(ownership.path, ownership.generation);
         }
       }
     }

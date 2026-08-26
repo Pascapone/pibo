@@ -6,10 +6,13 @@
  * requests from CLI invocations.
  */
 
+import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -27,6 +30,7 @@ import {
   type ServerConfig,
   debug,
   getConfigHash,
+  getDaemonClaimPath,
   getDaemonTimeoutMs,
   getPidPath,
   getSocketDir,
@@ -58,6 +62,14 @@ export interface DaemonIdentity {
   configHash: string;
   generation: string;
   startedAt: string;
+  processIdentity?: ProcessIdentity;
+}
+
+export interface ProcessIdentity {
+  platform: NodeJS.Platform;
+  startToken: string;
+  executable: string;
+  commandHash: string;
 }
 
 export interface PidFileContent extends DaemonIdentity {
@@ -84,6 +96,116 @@ export interface DaemonLeaseFileContent {
 export type DaemonOwnershipFileContent =
   DaemonClaimFileContent | DaemonLeaseFileContent;
 
+export interface DaemonStateOwnership {
+  path: string;
+  generation: string;
+}
+
+interface FileIdentity {
+  device: number;
+  inode: number;
+  size: number;
+  modifiedAt: number;
+}
+
+function hashBuffer(value: Buffer): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+/**
+ * Read an OS process creation identity that changes when a PID is reused.
+ * Linux exposes the kernel start tick, executable, and argv through procfs.
+ * Other platforms fail closed: callers may request graceful endpoint shutdown,
+ * but they must not authorize a PID signal from unverifiable metadata.
+ */
+export function readProcessIdentity(pid: number): ProcessIdentity | null {
+  if (process.platform !== 'linux' || !Number.isInteger(pid) || pid <= 0) {
+    return null;
+  }
+
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const commandEnd = stat.lastIndexOf(') ');
+    if (commandEnd === -1) return null;
+    const fieldsAfterCommand = stat.slice(commandEnd + 2).trim().split(/\s+/);
+    const startToken = fieldsAfterCommand[19];
+    if (!startToken) return null;
+    return {
+      platform: 'linux',
+      startToken,
+      executable: readlinkSync(`/proc/${pid}/exe`),
+      commandHash: hashBuffer(readFileSync(`/proc/${pid}/cmdline`)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function processIdentityMatches(
+  actual: ProcessIdentity | null | undefined,
+  expected: ProcessIdentity | null | undefined,
+): boolean {
+  return Boolean(
+    actual &&
+    expected &&
+    actual.platform === expected.platform &&
+    actual.startToken === expected.startToken &&
+    actual.executable === expected.executable &&
+    actual.commandHash === expected.commandHash,
+  );
+}
+
+export function daemonProcessIdentityMatches(
+  expected: DaemonIdentity,
+): boolean {
+  return processIdentityMatches(
+    readProcessIdentity(expected.pid),
+    expected.processIdentity,
+  );
+}
+
+function getFileIdentity(path: string): FileIdentity | null {
+  try {
+    const stat = statSync(path);
+    return {
+      device: stat.dev,
+      inode: stat.ino,
+      size: stat.size,
+      modifiedAt: stat.mtimeMs,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function fileIdentityMatches(
+  actual: FileIdentity | null,
+  expected: FileIdentity | null,
+): boolean {
+  return Boolean(
+    actual &&
+    expected &&
+    actual.device === expected.device &&
+    actual.inode === expected.inode &&
+    actual.size === expected.size &&
+    actual.modifiedAt === expected.modifiedAt,
+  );
+}
+
+function getQuarantinePath(path: string): string {
+  return `${path}.delete-${process.pid}-${Date.now()}-${randomUUID()}`;
+}
+
+function restoreQuarantinedFile(path: string, quarantinePath: string): void {
+  try {
+    if (existsSync(quarantinePath) && !existsSync(path)) {
+      renameSync(quarantinePath, path);
+    }
+  } catch {
+    // A newer owner may already occupy the canonical path.
+  }
+}
+
 // ============================================================================
 // PID File Management
 // ============================================================================
@@ -109,6 +231,7 @@ export function writePidFile(
     generation,
     startedAt: new Date().toISOString(),
     serverName,
+    processIdentity: readProcessIdentity(process.pid) ?? undefined,
   };
 
   writeFileSync(pidPath, JSON.stringify(content), {
@@ -151,6 +274,61 @@ export function daemonIdentityMatches(
   );
 }
 
+export function pidFileIdentityMatches(
+  actual: PidFileContent | null | undefined,
+  expected: PidFileContent | null | undefined,
+): boolean {
+  return Boolean(
+    daemonIdentityMatches(actual, expected) &&
+    actual?.startedAt === expected?.startedAt &&
+    actual?.serverName === expected?.serverName &&
+    ((actual?.processIdentity === undefined &&
+      expected?.processIdentity === undefined) ||
+      processIdentityMatches(
+        actual?.processIdentity,
+        expected?.processIdentity,
+      )),
+  );
+}
+
+function quarantinePidFilePath(
+  pidPath: string,
+  expected?: PidFileContent,
+): string | null {
+  const quarantinePath = getQuarantinePath(pidPath);
+  try {
+    const current = readPidFilePath(pidPath);
+    if (!current || (expected && !pidFileIdentityMatches(current, expected))) {
+      return null;
+    }
+    renameSync(pidPath, quarantinePath);
+    const moved = readPidFilePath(quarantinePath);
+    if (moved && (!expected || pidFileIdentityMatches(moved, expected))) {
+      return quarantinePath;
+    }
+    restoreQuarantinedFile(pidPath, quarantinePath);
+    return null;
+  } catch {
+    restoreQuarantinedFile(pidPath, quarantinePath);
+    return null;
+  }
+}
+
+export function removePidFilePath(
+  pidPath: string,
+  expected?: PidFileContent,
+): boolean {
+  const quarantinePath = quarantinePidFilePath(pidPath, expected);
+  if (!quarantinePath) return false;
+  try {
+    unlinkSync(quarantinePath);
+    return true;
+  } catch {
+    restoreQuarantinedFile(pidPath, quarantinePath);
+    return false;
+  }
+}
+
 /**
  * Remove PID file
  */
@@ -158,24 +336,7 @@ export function removePidFile(
   serverName: string,
   expected?: PidFileContent,
 ): boolean {
-  const pidPath = getPidPath(serverName);
-  try {
-    const current = readPidFilePath(pidPath);
-    if (
-      !current ||
-      (expected &&
-        (current.pid !== expected.pid ||
-          current.configHash !== expected.configHash ||
-          current.generation !== expected.generation))
-    ) {
-      return false;
-    }
-    unlinkSync(pidPath);
-    return true;
-  } catch {
-    // Ignore errors during cleanup
-    return false;
-  }
+  return removePidFilePath(getPidPath(serverName), expected);
 }
 
 export function writeOwnershipFileExclusive(
@@ -186,17 +347,25 @@ export function writeOwnershipFileExclusive(
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
+  const publicationPath = `${path}.publish-${process.pid}-${randomUUID()}`;
   try {
-    writeFileSync(path, JSON.stringify(content), {
+    writeFileSync(publicationPath, JSON.stringify(content), {
       flag: 'wx',
       mode: 0o600,
     });
+    linkSync(publicationPath, path);
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
       return false;
     }
     throw error;
+  } finally {
+    try {
+      unlinkSync(publicationPath);
+    } catch {
+      // The temporary publication name may never have been created.
+    }
   }
 }
 
@@ -222,9 +391,7 @@ export function removeOwnershipFile(
   path: string,
   expectedGeneration: string,
 ): boolean {
-  const quarantinePath = `${path}.delete-${process.pid}-${Date.now()}-${Math.random()
-    .toString(16)
-    .slice(2)}`;
+  const quarantinePath = getQuarantinePath(path);
   try {
     const current = readOwnershipFilePath(path);
     if (!current || current.generation !== expectedGeneration) {
@@ -242,13 +409,41 @@ export function removeOwnershipFile(
     if (!existsSync(path)) renameSync(quarantinePath, path);
     return false;
   } catch {
-    try {
-      if (existsSync(quarantinePath) && !existsSync(path)) {
-        renameSync(quarantinePath, path);
-      }
-    } catch {
-      // A newer owner may already occupy the canonical path.
+    restoreQuarantinedFile(path, quarantinePath);
+    return false;
+  }
+}
+
+/** Remove an old malformed ownership file without racing a replacement. */
+export function removeMalformedOwnershipFile(
+  path: string,
+  minimumAgeMs: number,
+): boolean {
+  const expectedFileIdentity = getFileIdentity(path);
+  const ageMs = getOwnershipFileAgeMs(path);
+  if (
+    !expectedFileIdentity ||
+    ageMs === null ||
+    ageMs < minimumAgeMs ||
+    readOwnershipFilePath(path) !== null
+  ) {
+    return false;
+  }
+
+  const quarantinePath = getQuarantinePath(path);
+  try {
+    renameSync(path, quarantinePath);
+    if (
+      readOwnershipFilePath(quarantinePath) === null &&
+      fileIdentityMatches(getFileIdentity(quarantinePath), expectedFileIdentity)
+    ) {
+      unlinkSync(quarantinePath);
+      return true;
     }
+    restoreQuarantinedFile(path, quarantinePath);
+    return false;
+  } catch {
+    restoreQuarantinedFile(path, quarantinePath);
     return false;
   }
 }
@@ -256,9 +451,9 @@ export function removeOwnershipFile(
 /**
  * Remove socket file
  */
-export function removeSocketFile(serverName: string): void {
+export function removeSocketFile(serverName: string): boolean {
   if (!usesFilesystemSocket()) {
-    return;
+    return true;
   }
 
   const socketPath = getSocketPath(serverName);
@@ -266,9 +461,73 @@ export function removeSocketFile(serverName: string): void {
     if (existsSync(socketPath)) {
       unlinkSync(socketPath);
     }
+    return true;
   } catch {
-    // Ignore errors during cleanup
+    return false;
   }
+}
+
+export function daemonStateOwnershipMatches(
+  ownership: DaemonStateOwnership,
+): boolean {
+  return (
+    readOwnershipFilePath(ownership.path)?.generation === ownership.generation
+  );
+}
+
+/**
+ * Atomically acquire one matching PID generation before deleting its endpoint.
+ * The caller must hold the per-server ownership claim for the whole operation.
+ */
+export function removeDaemonState(
+  serverName: string,
+  expected: PidFileContent,
+  ownership: DaemonStateOwnership,
+): boolean {
+  if (!daemonStateOwnershipMatches(ownership)) return false;
+  const pidPath = getPidPath(serverName);
+  const quarantinePath = quarantinePidFilePath(pidPath, expected);
+  if (!quarantinePath) return false;
+
+  if (!daemonStateOwnershipMatches(ownership) || existsSync(pidPath)) {
+    if (existsSync(pidPath)) {
+      try {
+        unlinkSync(quarantinePath);
+      } catch {
+        // A later cleanup can remove the quarantined old generation.
+      }
+    } else {
+      restoreQuarantinedFile(pidPath, quarantinePath);
+    }
+    return false;
+  }
+
+  if (!removeSocketFile(serverName)) {
+    restoreQuarantinedFile(pidPath, quarantinePath);
+    return false;
+  }
+
+  try {
+    unlinkSync(quarantinePath);
+    return true;
+  } catch {
+    // The endpoint is already gone. Keep the old PID generation unavailable
+    // rather than republishing metadata for a stopped daemon.
+    return false;
+  }
+}
+
+export function removeUntrackedEndpoint(
+  serverName: string,
+  ownership: DaemonStateOwnership,
+): boolean {
+  if (
+    !daemonStateOwnershipMatches(ownership) ||
+    existsSync(getPidPath(serverName))
+  ) {
+    return false;
+  }
+  return removeSocketFile(serverName);
 }
 
 /**
@@ -283,12 +542,11 @@ export function isProcessRunning(pid: number): boolean {
   }
 }
 
-/**
- * Kill a process by PID
- */
-export function killProcess(pid: number): boolean {
+/** Signal only the process creation identity recorded by the daemon itself. */
+export function terminateDaemonProcess(expected: DaemonIdentity): boolean {
+  if (!daemonProcessIdentityMatches(expected)) return false;
   try {
-    process.kill(pid, 'SIGTERM');
+    process.kill(expected.pid, 'SIGTERM');
     return true;
   } catch {
     return false;
@@ -357,11 +615,27 @@ export async function runDaemon(
       server = null;
     }
 
-    // A daemon may only remove metadata and the endpoint that still belong to
-    // its own generation. A delayed loser must never clobber its replacement.
-    if (identity && daemonIdentityMatches(readPidFile(serverName), identity)) {
-      removeSocketFile(serverName);
-      removePidFile(serverName, identity);
+    // Self-cleanup uses the same per-server ownership boundary as elected
+    // clients. If another owner is replacing this daemon, leave cleanup to it.
+    if (identity) {
+      const claimPath = getDaemonClaimPath(serverName);
+      const cleanupClaim: DaemonClaimFileContent = {
+        ownerPid: process.pid,
+        generation: randomUUID(),
+        configHash: identity.configHash,
+        startedAt: new Date().toISOString(),
+        serverName,
+      };
+      if (writeOwnershipFileExclusive(claimPath, cleanupClaim)) {
+        try {
+          removeDaemonState(serverName, identity, {
+            path: claimPath,
+            generation: cleanupClaim.generation,
+          });
+        } finally {
+          removeOwnershipFile(claimPath, cleanupClaim.generation);
+        }
+      }
     }
 
     debug(`[daemon:${serverName}] Cleanup complete`);

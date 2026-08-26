@@ -215,7 +215,7 @@ MCP server connections MUST use bounded timeout/retry behavior and MAY use daemo
 
 #### Current
 
-`getConnection` uses daemon mode unless `MCP_NO_DAEMON=1`. Retry settings come from `MCP_MAX_RETRIES`, `MCP_RETRY_DELAY`, and `MCP_TIMEOUT`. Daemons use Unix domain sockets on POSIX and per-user named pipes on Windows. PID metadata is stored in the platform temporary directory. An exclusive per-server claim elects one startup owner across processes; generation-bound PID metadata, requests, and client leases prevent losing or stale processes from clobbering or replacing a daemon still in use. The daemon validates a deterministic hash of the full nested server configuration before reuse.
+`getConnection` uses daemon mode unless `MCP_NO_DAEMON=1`. Retry settings come from `MCP_MAX_RETRIES`, `MCP_RETRY_DELAY`, and `MCP_TIMEOUT`. Daemons use Unix domain sockets on POSIX and per-user named pipes on Windows. PID metadata is stored in the platform temporary directory. An exclusive per-server claim elects one startup owner across processes; generation-bound PID metadata, requests, and client leases prevent losing or stale processes from clobbering or replacing a daemon still in use. PID metadata records a Linux process-creation identity so a reused PID cannot authorize a signal to an unrelated process; platforms without an independently verifiable identity fail closed instead of forcing termination. Claim-owned cleanup atomically quarantines the matching PID generation before removing its POSIX endpoint, and ownership files are atomically published and quarantined. The daemon validates a deterministic hash of the full nested server configuration before reuse.
 
 #### Acceptance
 
@@ -225,6 +225,9 @@ MCP server connections MUST use bounded timeout/retry behavior and MAY use daemo
 - Simultaneous first calls from independent processes converge on one daemon and one MCP server process.
 - A caller that loses startup election waits for the elected generation or safely retries after a dead owner; it does not spawn a competing daemon.
 - PID, endpoint, claim, and lease cleanup removes only state owned by the matching generation.
+- A stale PID that now belongs to another process never authorizes a signal, and unverifiable PID metadata is never used for forced termination.
+- Delayed cleanup cannot remove a replacement PID record or its POSIX endpoint; matching state is quarantined while the cleanup owner still holds the per-server claim.
+- Old malformed claims are recoverable without deleting a concurrently published valid replacement.
 - Repeated CLI calls preserve state owned by the reused MCP server process.
 - Windows daemon IPC uses named pipes and does not treat the endpoint as a filesystem entry.
 - Detached daemon creation hides a Windows console window.
