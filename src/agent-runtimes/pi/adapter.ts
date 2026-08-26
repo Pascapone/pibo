@@ -66,6 +66,7 @@ import {
 import { PiAgentRuntimeAuthController } from "./auth.js";
 import { importPortableHistoryIntoPi } from "./portable-history.js";
 import { piIntentTracingEnabled } from "./intent-tracing.js";
+import { isWebSearchProviderTool } from "../../tools/web-search.js";
 
 const PI_ADAPTER_ID = "pi";
 export const PI_PROTOCOL_VERSION = "0.84.2";
@@ -343,6 +344,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 		private readonly runtime: AgentSessionRuntime,
 		private readonly binding: RuntimeSessionBinding,
 		initialFastMode: boolean,
+		providerWebSearchEnabled: boolean,
 	) {
 		this.cwd = runtime.cwd;
 		this.bindingNativeSessionId = runtime.session.sessionId;
@@ -359,6 +361,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 			undefined,
 			(state) => this.handleEngineState(state),
 		);
+		if (providerWebSearchEnabled) this.routed.enableProviderWebSearchObservation();
 		this.controls = this.createControls();
 		this.compatibilityHandle = this.createCompatibilityHandle();
 	}
@@ -789,6 +792,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			runtime,
 			binding,
 			compatibility?.initialFastMode ?? false,
+			profile.tools.some((tool) => tool.enabled !== false && isWebSearchProviderTool(tool)),
 		);
 	}
 

@@ -28,6 +28,8 @@ export type TerminalInlineToken = {
 	tone?: "default" | "dim" | "cyan" | "green" | "red" | "magenta" | "yellow" | "blue" | "amber";
 	weight?: "normal" | "semibold" | "bold";
 	italic?: boolean;
+	href?: string;
+	ariaLabel?: string;
 };
 
 export type CompactTerminalLine = {
@@ -467,19 +469,49 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 
 function createWebSearchToolRow(node: PiboTraceNode): CompactTerminalRow {
 	const status = mapStatus(node.status);
+	const actionType = webSearchActionType(node);
 	const query = webSearchQuery(node);
+	const queries = webSearchQueries(node);
+	const url = webSearchUrl(node);
+	const pattern = webSearchPattern(node);
+	const sources = webSearchSources(node.output);
 	const sourceCount = webSearchSourceCount(node.output);
 	const lines: CompactTerminalLine[] = [
 		{
 			prefix: "bullet",
-			tokens: [token(webSearchVerb(node.status), toneForStatus(node.status), node.status === "error" ? "bold" : "semibold")],
+			tokens: [token(webSearchVerb(node.status, actionType), toneForStatus(node.status), node.status === "error" ? "bold" : "semibold")],
 		},
 	];
 	if (query) {
 		lines.push({ prefix: "detail", tokens: [token(`query: ${JSON.stringify(query)}`, "cyan")] });
+	} else if (queries?.length) {
+		lines.push({ prefix: "detail", tokens: [token(`queries: ${JSON.stringify(queries)}`, "cyan")] });
+	}
+	if (url) {
+		lines.push({
+			prefix: "detail",
+			tokens: [token("page: ", "dim"), webLinkToken(url, `Open web page: ${url}`)],
+		});
+	}
+	if (pattern) {
+		lines.push({ prefix: "detail", tokens: [token(`find: ${JSON.stringify(pattern)}`, "cyan")] });
 	}
 	if (node.status === "done" && sourceCount !== undefined) {
 		lines.push({ prefix: "detail", tokens: [token(`sources: ${sourceCount}`, "dim")] });
+	}
+	const visibleSources = sources.slice(0, 3);
+	for (const source of visibleSources) {
+		lines.push({
+			prefix: "detail",
+			tokens: [
+				...(source.title ? [token(`${source.title}: `, "dim")] : []),
+				webLinkToken(source.url, `Open source: ${source.title ?? source.url}`),
+			],
+		});
+	}
+	const hiddenSourceCount = Math.max(0, (sourceCount ?? sources.length) - visibleSources.length);
+	if (visibleSources.length > 0 && hiddenSourceCount > 0) {
+		lines.push({ prefix: "detail", tokens: [token(`+${hiddenSourceCount} more sources`, "dim")] });
 	}
 	if (node.status === "error" && node.error) {
 		lines.push({ prefix: "detail", tokens: [token(node.error, "red")] });
@@ -1367,10 +1399,26 @@ function isWebSearchToolName(name: string | undefined): boolean {
 	return (name ?? "").trim().toLowerCase() === "web_search";
 }
 
-function webSearchVerb(status: PiboTraceNode["status"]): string {
+function webSearchVerb(status: PiboTraceNode["status"], actionType: string | undefined): string {
+	if (actionType === "open_page") {
+		if (status === "running") return "Opening web page";
+		if (status === "error") return "Opening web page failed";
+		return "Opened web page";
+	}
+	if (actionType === "find_in_page") {
+		if (status === "running") return "Finding in web page";
+		if (status === "error") return "Finding in web page failed";
+		return "Found in web page";
+	}
 	if (status === "running") return "Searching web";
 	if (status === "error") return "Web search failed";
 	return "Searched web";
+}
+
+function webSearchActionType(node: PiboTraceNode): string | undefined {
+	const input = isRecord(node.input) ? node.input : undefined;
+	const output = isRecord(node.output) ? node.output : undefined;
+	return stringValue(input?.actionType) ?? stringValue(output?.actionType);
 }
 
 function webSearchQuery(node: PiboTraceNode): string | undefined {
@@ -1379,12 +1427,79 @@ function webSearchQuery(node: PiboTraceNode): string | undefined {
 	return stringValue(input?.query) ?? stringValue(output?.query) ?? stringValue(node.summary);
 }
 
+function webSearchQueries(node: PiboTraceNode): string[] | undefined {
+	const input = isRecord(node.input) ? node.input : undefined;
+	const output = isRecord(node.output) ? node.output : undefined;
+	for (const value of [input?.queries, output?.queries]) {
+		if (!Array.isArray(value)) continue;
+		const queries = [...new Set(value.flatMap((candidate) => {
+			const normalized = stringValue(candidate)?.trim();
+			return normalized ? [normalized] : [];
+		}))];
+		if (queries.length) return queries;
+	}
+	return undefined;
+}
+
+function webSearchUrl(node: PiboTraceNode): string | undefined {
+	const input = isRecord(node.input) ? node.input : undefined;
+	const output = isRecord(node.output) ? node.output : undefined;
+	return stringValue(input?.url) ?? stringValue(output?.url);
+}
+
+function webSearchPattern(node: PiboTraceNode): string | undefined {
+	const input = isRecord(node.input) ? node.input : undefined;
+	const output = isRecord(node.output) ? node.output : undefined;
+	return stringValue(input?.pattern) ?? stringValue(output?.pattern);
+}
+
+type WebSearchSource = { url: string; title?: string };
+
+function webSearchSources(output: unknown): WebSearchSource[] {
+	if (!isRecord(output)) return [];
+	const candidates = output.sources ?? output.citations ?? output.results;
+	if (!Array.isArray(candidates)) return [];
+	const sources = new Map<string, WebSearchSource>();
+	for (const candidate of candidates) {
+		const record = isRecord(candidate) ? candidate : undefined;
+		const rawUrl = typeof candidate === "string"
+			? candidate
+			: stringValue(record?.url) ?? stringValue(record?.href) ?? stringValue(record?.link);
+		const url = safeWebHref(rawUrl, true);
+		if (!url) continue;
+		const title = stringValue(record?.title)?.trim() ?? stringValue(record?.name)?.trim();
+		const existing = sources.get(url);
+		if (!existing || (!existing.title && title)) sources.set(url, { url, ...(title ? { title } : {}) });
+	}
+	return [...sources.values()];
+}
+
 function webSearchSourceCount(output: unknown): number | undefined {
 	if (!isRecord(output)) return undefined;
 	const explicit = output.sourceCount ?? output.sourcesCount;
 	if (typeof explicit === "number" && Number.isFinite(explicit)) return explicit;
 	const sources = output.sources ?? output.citations ?? output.results;
 	return Array.isArray(sources) ? sources.length : undefined;
+}
+
+function safeWebHref(value: string | undefined, stripHash = false): string | undefined {
+	if (!value) return undefined;
+	try {
+		const url = new URL(value.trim());
+		if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) return undefined;
+		if (stripHash) url.hash = "";
+		return url.href;
+	} catch {
+		return undefined;
+	}
+}
+
+function webLinkToken(value: string, ariaLabel: string): TerminalInlineToken {
+	const href = safeWebHref(value);
+	return {
+		...token(value, href ? "blue" : "dim"),
+		...(href ? { href, ariaLabel } : {}),
+	};
 }
 
 function shellCommandValue(value: unknown): string | undefined {

@@ -12,14 +12,25 @@ const MAX_TERMINAL_LINE_TOKEN_SPANS = 120;
 export function TerminalLine({ line, status, clampLines }: TerminalLineProps) {
 	const contentClassName = `min-w-0 whitespace-pre-wrap break-words ${clampLines ? "block overflow-hidden" : ""}`;
 	const tokens = compactTerminalLineTokens(line.tokens);
-	const renderPlainText = tokens.length > MAX_TERMINAL_LINE_TOKEN_SPANS;
+	const renderPlainText = tokens.length > MAX_TERMINAL_LINE_TOKEN_SPANS && !tokens.some((token) => token.href);
 	return (
 		<div className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 leading-[1.45]">
 			<span className={`whitespace-pre ${prefixClassName(line.prefix, status)}`}>{prefixText(line.prefix)}</span>
 			<span className={contentClassName} style={clampLines ? { maxHeight: `${clampLines * 1.45}em` } : undefined}>
 				{renderPlainText
 					? <span className="text-[#d4d4d4]">{tokens.map((token) => token.text).join("")}</span>
-					: tokens.map((token, index) => (
+					: tokens.map((token, index) => token.href ? (
+						<a
+							key={`${index}:${token.href}:${token.text}`}
+							href={token.href}
+							target="_blank"
+							rel="noreferrer noopener"
+							aria-label={token.ariaLabel}
+							className={`${tokenClassName(token)} underline decoration-[#60a5fa]/40 underline-offset-2 hover:decoration-[#60a5fa] focus:outline-none focus:ring-1 focus:ring-[#38bdf8]`}
+						>
+							{token.text}
+						</a>
+					) : (
 						<span key={`${index}:${token.text}`} className={tokenClassName(token)}>
 							{token.text}
 						</span>
@@ -91,6 +102,8 @@ function compactTerminalLineTokens(tokens: readonly TerminalInlineToken[]): Term
 			&& previous.tone === token.tone
 			&& previous.weight === token.weight
 			&& previous.italic === token.italic
+			&& previous.href === token.href
+			&& previous.ariaLabel === token.ariaLabel
 		) {
 			previous.text += token.text;
 			continue;
