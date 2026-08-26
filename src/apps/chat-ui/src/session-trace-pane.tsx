@@ -275,8 +275,8 @@ export function SessionTracePane({
     refetchInterval: (query) => selectedBackendPiboSessionId && query.state.data?.configured !== false ? 5_000 : false,
     retry: false,
   });
-  const livePreviewAuthority = resolveSessionLivePreviewAuthority({
-    selectedPiboSessionId: selectedBackendPiboSessionId,
+	const livePreviewAuthority = resolveSessionLivePreviewAuthority({
+		selectedPiboSessionId: selectedBackendPiboSessionId ?? undefined,
     data: livePreviewsQuery.data,
     loading: livePreviewsQuery.isPending && Boolean(selectedBackendPiboSessionId),
     error: livePreviewsQuery.isError ? errorMessage(livePreviewsQuery.error) : undefined,
