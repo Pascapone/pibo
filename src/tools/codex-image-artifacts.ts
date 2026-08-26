@@ -2,6 +2,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getPiboHome } from "../core/pibo-home.js";
 
+export function codexImageArtifactRoot(): string {
+	return join(getPiboHome(), "generated_images");
+}
+
 export function codexImageArtifactPath(
 	sessionId: string | undefined,
 	toolCallId: string,
@@ -11,7 +15,7 @@ export function codexImageArtifactPath(
 	const artifactId = `${safeSessionId}/${safeToolCallId}.png`;
 	return {
 		artifactId,
-		savedPath: join(getPiboHome(), "generated_images", safeSessionId, `${safeToolCallId}.png`),
+		savedPath: join(codexImageArtifactRoot(), safeSessionId, `${safeToolCallId}.png`),
 	};
 }
 

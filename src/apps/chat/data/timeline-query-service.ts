@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ChatEventListInput, StoredChatEvent } from "../types/event-store.js";
 import type { ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
@@ -64,6 +65,42 @@ export class ChatTimelineQueryService {
 			ORDER BY session_sequence ASC, stream_id ASC
 		`).all(...values, limit) as EventLogRow[];
 		return rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+	}
+
+	isPayloadAttachedToTraceNode(input: {
+		piboSessionId: string;
+		payloadId: string;
+		nodeId: string;
+		payloadKind: "output";
+	}): boolean {
+		if (!input.nodeId.startsWith("tool:")) return false;
+		const toolCallId = input.nodeId.slice("tool:".length);
+		if (!toolCallId) return false;
+		const payload = this.store.payloads.getPayload(input.payloadId);
+		if (!payload) return false;
+		const rows = this.store.db.prepare(`
+			SELECT payload_ref, attributes_json
+			FROM event_log
+			WHERE session_id = ?
+				AND type IN ('tool_execution_updated', 'tool_execution_finished')
+				AND json_extract(attributes_json, '$.toolCallId') = ?
+			ORDER BY session_sequence DESC, stream_id DESC
+		`).all(input.piboSessionId, toolCallId) as Array<{ payload_ref: string | null; attributes_json: string }>;
+		for (const row of rows) {
+			if (row.payload_ref === input.payloadId) return true;
+			let attributes: Record<string, unknown>;
+			try {
+				const parsed = JSON.parse(row.attributes_json) as unknown;
+				if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+				attributes = parsed as Record<string, unknown>;
+			} catch {
+				continue;
+			}
+			if (!("inlinePayload" in attributes)) continue;
+			const bytes = Buffer.from(JSON.stringify(attributes.inlinePayload), "utf8");
+			if (createHash("sha256").update(bytes).digest("hex") === payload.sha256) return true;
+		}
+		return false;
 	}
 
 	countEventsByType(input: { piboSessionId?: string; eventTypes?: string[] } = {}): Array<{ eventType: string; count: number }> {

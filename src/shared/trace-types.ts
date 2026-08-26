@@ -49,6 +49,8 @@ export type PiboTraceNode = {
 
 export type TracePayloadRef = {
 	ref: string;
+	nodeId?: string;
+	payloadKind?: "input" | "output" | "reasoning" | "error" | "raw";
 	contentType: "text/markdown" | "text/plain" | "application/json" | "application/x-ndjson" | "application/octet-stream";
 	byteLength: number;
 	preview: string;
@@ -148,6 +150,7 @@ export type ChatWebStoredEvent<T = unknown> = {
 	streamId?: number;
 	streamFrameIndex?: number;
 	traceSource?: Extract<TraceSource, "live">;
+	storedPayloadRef?: TracePayloadRef;
 	type: string;
 	createdAt: string;
 	payload: T;

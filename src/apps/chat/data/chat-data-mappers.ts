@@ -5,8 +5,10 @@ import { roomWorkspaceFromMetadata, type PiboRoom } from "../types/rooms.js";
 import type { ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import type { PayloadStore } from "../../../data/payload-store.js";
+import { tracePayloadRefForStoredPayload } from "../trace-v2.js";
 
-type PiboPayloadReader = Pick<PayloadStore, "getPayload" | "readPayloadText" | "readPayloadJson">;
+type PiboPayloadReader = Pick<PayloadStore, "getPayload" | "readPayloadBytesBounded">;
+const MAX_TRACE_EVENT_HYDRATION_BYTES = 1024 * 1024;
 
 export type EventLogRow = {
 	stream_id: number;
@@ -60,7 +62,16 @@ export function storedPiboEventFromV2Row(row: EventLogRow, payloadStore?: PiboPa
 	const attributes = parseJsonObject(row.attributes_json);
 	const payload = outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore));
 	if (!payload) return undefined;
-	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, eventId: row.event_id ?? undefined, streamId: row.stream_id, type: row.type, createdAt: row.created_at, payload };
+	const payloadIdentity = tracePayloadIdentityForEvent(row, attributes);
+	const storedPayloadRef = row.payload_ref && row.session_id && payloadStore && payloadIdentity
+		? tracePayloadRefForStoredPayload({
+			payloadStore,
+			piboSessionId: row.session_id,
+			payloadId: row.payload_ref,
+			...payloadIdentity,
+		})
+		: undefined;
+	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, eventId: row.event_id ?? undefined, streamId: row.stream_id, storedPayloadRef, type: row.type, createdAt: row.created_at, payload };
 }
 
 export function storedChatEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader): StoredChatEvent {
@@ -120,13 +131,23 @@ function readPersistedPayload(row: EventLogRow, payloadStore: PiboPayloadReader 
 	if (!row.payload_ref || !payloadStore) return undefined;
 	try {
 		const metadata = payloadStore.getPayload(row.payload_ref);
-		if (!metadata) return undefined;
-		return metadata.contentType.includes("json")
-			? payloadStore.readPayloadJson(row.payload_ref)
-			: payloadStore.readPayloadText(row.payload_ref);
+		if (!metadata || metadata.byteSize > MAX_TRACE_EVENT_HYDRATION_BYTES) return undefined;
+		const text = Buffer.from(payloadStore.readPayloadBytesBounded(row.payload_ref, MAX_TRACE_EVENT_HYDRATION_BYTES)).toString("utf8");
+		return metadata.contentType.includes("json") ? JSON.parse(text) as PiboJsonValue : text;
 	} catch {
 		return undefined;
 	}
+}
+
+function tracePayloadIdentityForEvent(
+	row: EventLogRow,
+	attributes: PiboJsonObject,
+): { nodeId: string; payloadKind: "input" | "output" } | undefined {
+	const toolCallId = stringAttribute(attributes, "toolCallId");
+	if (!toolCallId) return undefined;
+	if (row.type === "tool_call" || row.type === "tool_execution_started") return { nodeId: `tool:${toolCallId}`, payloadKind: "input" };
+	if (row.type === "tool_execution_updated" || row.type === "tool_execution_finished") return { nodeId: `tool:${toolCallId}`, payloadKind: "output" };
+	return undefined;
 }
 
 export function sessionFromRow(row: SessionRow): ChatWebSessionIndexItem { return { piboSessionId: row.id, piSessionId: row.pi_session_id ?? "", runtimeInstanceId: row.runtime_instance_id ?? undefined, runtimeAdapterId: row.runtime_adapter_id ?? undefined, runtimeBindingState: isRuntimeBindingState(row.binding_state) ? row.binding_state : undefined, nativeSessionId: row.native_session_id ?? undefined, parentId: row.parent_id ?? undefined, profile: row.profile, channel: row.channel, kind: row.kind, createdAt: row.created_at, updatedAt: row.updated_at, lastActivityAt: row.last_activity_at, status: row.status === "running" || row.status === "error" ? row.status : "idle" }; }

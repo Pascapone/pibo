@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { request as nodeHttpRequest } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -352,6 +352,7 @@ async function startWebHostChannel(options = {}) {
 		unregisteredSkills,
 		storageDir,
 		dataStorePath,
+		dataPayloadRootDir,
 		projectStorePath,
 		baseURL: `http://${address.host}:${address.port}`, 
 	};
@@ -606,6 +607,197 @@ test("chat web app downloads files relative to the selected session workspace", 
 		assert.match(response.headers.get("content-type") ?? "", /^text\/plain/);
 		assert.match(response.headers.get("content-disposition") ?? "", /report\.txt/);
 		assert.equal(await response.text(), "download body");
+	} finally {
+		rmSync(workspace, { recursive: true, force: true });
+		await channel.stop?.();
+	}
+});
+
+test("chat web app image paths stay authenticated, bounded, sniffed, and non-cacheable", async () => {
+	const { channel, baseURL } = await startWebHostChannel({ auth: createFakeAuthService() });
+	const workspace = mkdtempSync(join(tmpdir(), "pibo-chat-image-path-"));
+	const outsideDir = mkdtempSync(join(tmpdir(), "pibo-chat-image-outside-"));
+	const outsidePath = join(outsideDir, "private.png");
+	let uploadedPreviewPath;
+	const png = Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		Buffer.alloc(32, 3),
+	]);
+	writeFileSync(join(workspace, "preview.png"), png);
+	writeFileSync(join(workspace, "unsafe.svg"), "<svg xmlns='http://www.w3.org/2000/svg'><script/></svg>");
+	writeFileSync(join(workspace, "unsafe.html"), "<html><script/></html>");
+	writeFileSync(join(workspace, "oversized.png"), Buffer.alloc(10 * 1024 * 1024 + 1, 1));
+	writeFileSync(outsidePath, png);
+	symlinkSync(outsidePath, join(workspace, "escaped-link.png"));
+
+	try {
+		const roomResponse = await fetch(`${baseURL}/api/chat/rooms`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ name: "Image Path Room", workspace }),
+		});
+		const roomPayload = await roomResponse.json();
+		const sessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ roomId: roomPayload.room.id }),
+		});
+		const sessionPayload = await sessionResponse.json();
+		const previewUrl = `${baseURL}/api/chat/image-preview?path=preview.png&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`;
+		const uploadForm = new FormData();
+		uploadForm.append("files", new File([png], "private-preview.png", { type: "image/png" }));
+		const uploadResponse = await fetch(`${baseURL}/api/chat/upload`, {
+			method: "POST",
+			headers: { origin: baseURL, "x-test-user": "user-1" },
+			body: uploadForm,
+		});
+		assert.equal(uploadResponse.status, 201);
+		uploadedPreviewPath = (await uploadResponse.json()).files[0].path;
+
+		assert.equal((await fetch(previewUrl)).status, 401);
+		const response = await fetch(previewUrl, { headers: { "x-test-user": "user-1" } });
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("content-type"), "image/png");
+		assert.match(response.headers.get("content-disposition") ?? "", /^inline;/);
+		assert.equal(response.headers.get("cache-control"), "no-store");
+		assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+		assert.equal(response.headers.get("cross-origin-resource-policy"), "same-origin");
+		assert.deepEqual(Buffer.from(await response.arrayBuffer()), png);
+		const uploadedPreview = await fetch(`${baseURL}/api/chat/image-preview?path=${encodeURIComponent(uploadedPreviewPath)}&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(uploadedPreview.status, 200);
+		assert.deepEqual(Buffer.from(await uploadedPreview.arrayBuffer()), png);
+
+		for (const unsafePath of ["unsafe.svg", "unsafe.html"]) {
+			const unsafe = await fetch(`${baseURL}/api/chat/image-preview?path=${unsafePath}&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(unsafe.status, 415, unsafePath);
+		}
+		const oversized = await fetch(`${baseURL}/api/chat/image-preview?path=oversized.png&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(oversized.status, 413);
+		for (const forbiddenPath of [outsidePath, join("..", basename(outsideDir), "private.png"), "escaped-link.png"]) {
+			const forbidden = await fetch(`${baseURL}/api/chat/image-preview?path=${encodeURIComponent(forbiddenPath)}&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(forbidden.status, 403, forbiddenPath);
+		}
+	} finally {
+		rmSync(workspace, { recursive: true, force: true });
+		rmSync(outsideDir, { recursive: true, force: true });
+		if (uploadedPreviewPath) rmSync(uploadedPreviewPath, { force: true });
+		await channel.stop?.();
+	}
+});
+
+test("chat web app serves node-bound exact images concurrently and never falls back to changed path bytes", async () => {
+	const { channel, baseURL, emitOutput, dataStorePath, dataPayloadRootDir } = await startWebHostChannel({ auth: createFakeAuthService() });
+	const workspace = mkdtempSync(join(tmpdir(), "pibo-chat-exact-image-"));
+	const exactBytes = Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		Buffer.alloc(20 * 1024, 5),
+	]);
+	const newerPathBytes = Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		Buffer.alloc(64, 9),
+	]);
+	const imagePath = join(workspace, "mutable.png");
+	writeFileSync(imagePath, exactBytes);
+
+	try {
+		const roomResponse = await fetch(`${baseURL}/api/chat/rooms`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ name: "Exact Image Room", workspace }),
+		});
+		const roomPayload = await roomResponse.json();
+		const sessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ roomId: roomPayload.room.id }),
+		});
+		const sessionPayload = await sessionResponse.json();
+		const piboSessionId = sessionPayload.session.id;
+		emitOutput({
+			type: "tool_execution_finished",
+			piboSessionId,
+			eventId: "image-turn",
+			toolCallId: "image-call",
+			toolName: "view_image",
+			result: {
+				content: [{ type: "image", data: exactBytes.toString("base64"), mimeType: "image/png" }],
+				details: { path: imagePath },
+			},
+			isError: false,
+		});
+
+		const timelineResponse = await fetch(`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(timelineResponse.status, 200);
+		const timeline = await timelineResponse.json();
+		const imageNode = timeline.nodes.find((node) => node.toolCallId === "image-call");
+		assert.ok(imageNode?.payloadRefs?.output?.ref);
+		assert.equal(imageNode.payloadRefs.output.nodeId, "tool:image-call");
+		assert.equal(JSON.stringify(timeline).includes(exactBytes.toString("base64").slice(0, 80)), false);
+		const params = new URLSearchParams({
+			ref: imageNode.payloadRefs.output.ref,
+			nodeId: imageNode.payloadRefs.output.nodeId,
+			piboSessionId,
+			index: "0",
+		});
+		const exactUrl = `${baseURL}/api/chat/image-preview?${params}`;
+
+		assert.equal((await fetch(exactUrl)).status, 401);
+		const secondSessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ roomId: roomPayload.room.id }),
+		});
+		const secondSession = await secondSessionResponse.json();
+		const mismatchParams = new URLSearchParams(params);
+		mismatchParams.set("piboSessionId", secondSession.session.id);
+		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${mismatchParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
+		const nodeMismatchParams = new URLSearchParams(params);
+		nodeMismatchParams.set("nodeId", "tool:other-call");
+		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${nodeMismatchParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
+		const outOfBoundsParams = new URLSearchParams(params);
+		outOfBoundsParams.set("index", "20");
+		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${outOfBoundsParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
+		const mixedParams = new URLSearchParams(params);
+		mixedParams.set("path", imagePath);
+		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${mixedParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
+
+		writeFileSync(imagePath, newerPathBytes);
+		const concurrent = await Promise.all(Array.from({ length: 8 }, () => fetch(exactUrl, { headers: { "x-test-user": "user-1" } })));
+		for (const response of concurrent) {
+			assert.equal(response.status, 200);
+			assert.equal(response.headers.get("cache-control"), "private, max-age=31536000, immutable");
+			assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+			assert.deepEqual(Buffer.from(await response.arrayBuffer()), exactBytes);
+		}
+		const mutable = await fetch(`${baseURL}/api/chat/image-preview?path=${encodeURIComponent(imagePath)}&piboSessionId=${encodeURIComponent(piboSessionId)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.deepEqual(Buffer.from(await mutable.arrayBuffer()), newerPathBytes);
+
+		const database = new DatabaseSync(dataStorePath, { readOnly: true });
+		let storedPath;
+		try {
+			const row = database.prepare(`
+				SELECT p.storage_path
+				FROM event_log e JOIN payloads p ON p.id = e.payload_ref
+				WHERE e.session_id = ? AND json_extract(e.attributes_json, '$.toolCallId') = ?
+			`).get(piboSessionId, "image-call");
+			storedPath = row.storage_path;
+		} finally {
+			database.close();
+		}
+		rmSync(join(dataPayloadRootDir, storedPath), { force: true });
+		assert.equal((await fetch(exactUrl, { headers: { "x-test-user": "user-1" } })).status, 404);
 	} finally {
 		rmSync(workspace, { recursive: true, force: true });
 		await channel.stop?.();
