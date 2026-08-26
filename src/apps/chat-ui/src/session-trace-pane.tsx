@@ -317,8 +317,10 @@ export function SessionTracePane({
     retry: false,
   });
   const forkableTraceView = useMemo(
-    () => withSessionForkCandidates(currentTraceView, forkCandidatesEnabled ? forkCandidatesQuery.data?.messages ?? [] : []),
-    [currentTraceView, forkCandidatesEnabled, forkCandidatesQuery.data?.messages],
+    () => forkCandidatesEnabled && forkCandidatesQuery.data
+      ? withSessionForkCandidates(currentTraceView, forkCandidatesQuery.data.messages)
+      : currentTraceView,
+    [currentTraceView, forkCandidatesEnabled, forkCandidatesQuery.data],
   );
 
   useSessionTraceLiveStream({

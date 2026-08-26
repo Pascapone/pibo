@@ -25,7 +25,7 @@ export function withSessionForkCandidates(
 	traceView: PiboSessionTraceView | null,
 	candidates: readonly SessionForkCandidate[],
 ): PiboSessionTraceView | null {
-	if (!traceView || candidates.length === 0) return traceView;
+	if (!traceView) return traceView;
 	const userNodes = flattenTraceNodes(traceView.nodes).filter((node) => node.type === "user.message");
 	const seenEntryIds = new Set<string>();
 	const usableCandidates = candidates.filter((candidate) => {
@@ -33,18 +33,22 @@ export function withSessionForkCandidates(
 		seenEntryIds.add(candidate.entryId);
 		return true;
 	});
-	if (usableCandidates.length === 0) return traceView;
+	const authoritativeEntryIds = new Set(usableCandidates.map((candidate) => candidate.entryId));
+	const currentEntryId = (node: PiboTraceNode): string | undefined =>
+		node.entryId && authoritativeEntryIds.has(node.entryId) ? node.entryId : undefined;
 	const assignments = new Map<string, string>();
 	const positionalIdentityIsConsistent = userNodes.length === usableCandidates.length
-		&& userNodes.every((node, index) => !node.entryId || node.entryId === usableCandidates[index]!.entryId);
+		&& userNodes.every((node, index) => !currentEntryId(node) || currentEntryId(node) === usableCandidates[index]!.entryId);
 	if (positionalIdentityIsConsistent) {
 		for (let index = 0; index < userNodes.length; index += 1) {
-			const node = userNodes[index]!;
-			if (!node.entryId) assignments.set(node.id, usableCandidates[index]!.entryId);
+			assignments.set(userNodes[index]!.id, usableCandidates[index]!.entryId);
 		}
 	} else {
-		const claimedEntryIds = new Set(userNodes.flatMap((node) => node.entryId ? [node.entryId] : []));
-		const unassignedNodes = userNodes.filter((node) => !node.entryId);
+		const claimedEntryIds = new Set(userNodes.flatMap((node) => {
+			const entryId = currentEntryId(node);
+			return entryId ? [entryId] : [];
+		}));
+		const unassignedNodes = userNodes.filter((node) => !currentEntryId(node));
 		const nodeTextCounts = new Map<string, number>();
 		const candidatesByText = new Map<string, SessionForkCandidate[]>();
 		for (const node of unassignedNodes) {
@@ -64,8 +68,8 @@ export function withSessionForkCandidates(
 			assignments.set(node.id, matchingCandidates[0]!.entryId);
 		}
 	}
-	if (assignments.size === 0) return traceView;
-	return { ...traceView, nodes: assignForkEntryIds(traceView.nodes, assignments) };
+	const nodes = reconcileForkEntryIds(traceView.nodes, assignments, authoritativeEntryIds);
+	return nodes.every((node, index) => node === traceView.nodes[index]) ? traceView : { ...traceView, nodes };
 }
 
 function traceUserMessageText(node: PiboTraceNode): string {
@@ -74,12 +78,21 @@ function traceUserMessageText(node: PiboTraceNode): string {
 	return node.title;
 }
 
-function assignForkEntryIds(nodes: readonly PiboTraceNode[], assignments: ReadonlyMap<string, string>): PiboTraceNode[] {
+function reconcileForkEntryIds(
+	nodes: readonly PiboTraceNode[],
+	assignments: ReadonlyMap<string, string>,
+	authoritativeEntryIds: ReadonlySet<string>,
+): PiboTraceNode[] {
 	return nodes.map((node) => {
-		const children = assignForkEntryIds(node.children, assignments);
-		const entryId = assignments.get(node.id);
-		if (!entryId && children.every((child, index) => child === node.children[index])) return node;
-		return { ...node, ...(entryId ? { entryId } : {}), children };
+		const children = reconcileForkEntryIds(node.children, assignments, authoritativeEntryIds);
+		const assignedEntryId = assignments.get(node.id);
+		const entryId = node.type === "user.message"
+			? assignedEntryId ?? (node.entryId && authoritativeEntryIds.has(node.entryId) ? node.entryId : undefined)
+			: node.entryId;
+		const childrenChanged = children.some((child, index) => child !== node.children[index]);
+		if (entryId === node.entryId && !childrenChanged) return node;
+		const { entryId: _discardedEntryId, ...withoutEntryId } = node;
+		return { ...withoutEntryId, ...(entryId ? { entryId } : {}), children };
 	});
 }
 

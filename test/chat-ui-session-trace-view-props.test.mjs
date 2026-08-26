@@ -269,6 +269,26 @@ async function runSessionTraceViewPropsScenario() {
 		assert.equal(safelyMappedTrace.nodes[1].entryId, undefined, "ambiguous duplicate text must fail closed");
 		assert.equal(safelyMappedTrace.nodes[2].entryId, undefined, "a mismatched candidate must never be assigned by position");
 
+		const staleAnchors = {
+			...productTrace,
+			nodes: [
+				traceNode({ id: "stale-user", type: "user.message", title: "User", output: "current prompt", entryId: "native-stale" }),
+				traceNode({ id: "current-user", type: "user.message", title: "User", output: "later prompt", entryId: "native-current" }),
+			],
+		};
+		const authoritativeAnchors = withSessionForkCandidates(staleAnchors, [
+			{ entryId: "native-replacement", text: "current prompt" },
+			{ entryId: "native-current", text: "later prompt" },
+			{ entryId: "", text: "blank ids are unusable" },
+			{ entryId: "native-current", text: "duplicate ids are unusable" },
+		]);
+		assert.equal(authoritativeAnchors.nodes[0].entryId, "native-replacement");
+		assert.equal(authoritativeAnchors.nodes[1].entryId, "native-current");
+		assert.equal(JSON.stringify(authoritativeAnchors).includes("native-stale"), false, "successful reads remove stale native anchors");
+		const noForkCandidates = withSessionForkCandidates(authoritativeAnchors, []);
+		assert.equal(noForkCandidates.nodes[0].entryId, undefined);
+		assert.equal(noForkCandidates.nodes[1].entryId, undefined, "an empty successful candidate set is authoritative");
+
 		const calls = [];
 		const props = createSessionTraceViewProps({
 			currentTraceView: traceView,
@@ -317,5 +337,6 @@ test("composer delivery choices use explicit steering eligibility instead of pre
 	assert.match(source, /const canSteer = sessionCanSteer\(/);
 	assert.match(source, /if \(canSteer\) \{/);
 	assert.doesNotMatch(source, /if \(selectedSessionStatus === "running"\)/);
-	assert.match(source, /forkCandidatesEnabled \? forkCandidatesQuery\.data\?\.messages \?\? \[\] : \[\]/);
+	assert.match(source, /forkCandidatesEnabled && forkCandidatesQuery\.data[\s\S]*withSessionForkCandidates\(currentTraceView, forkCandidatesQuery\.data\.messages\)[\s\S]*: currentTraceView/);
+	assert.doesNotMatch(source, /forkCandidatesQuery\.data\?\.messages \?\? \[\]/, "loading and failed reads must not masquerade as an authoritative empty result");
 });

@@ -331,6 +331,104 @@ test("fork identity reads and transitions reject queued or active routed work", 
 	}
 });
 
+test("fork-candidate page reads serialize accepted message drain behind OMP-style idle work", async () => {
+	const releaseCandidates = deferred();
+	let operationInFlight = false;
+	let candidateReads = 0;
+	let prompts = 0;
+	let aborts = 0;
+	const outputs = [];
+	const routedStates = [];
+	const runtimeSession = {
+		adapterId: "omp-race-fixture",
+		runtimeInstanceId: "omp-race-fixture",
+		cwd: process.cwd(),
+		capabilities: {
+			...createMinimalAgentRuntimeCapabilities(),
+			lifecycle: { ...createMinimalAgentRuntimeCapabilities().lifecycle, fork: true },
+		},
+		controls: {
+			async getForkCandidates() {
+				candidateReads += 1;
+				operationInFlight = true;
+				try {
+					await releaseCandidates.promise;
+					return [{ entryId: "omp-user-1", text: "page prompt" }];
+				} finally {
+					operationInFlight = false;
+				}
+			},
+		},
+		getBinding: () => ({
+			piboSessionId: "ps_omp_candidate_race",
+			runtimeInstanceId: "omp-race-fixture",
+			adapterId: "omp-race-fixture",
+			nativeSessionId: "omp-native-source",
+			state: "bound",
+		}),
+		subscribe: () => () => {},
+		async prompt() {
+			prompts += 1;
+			if (operationInFlight) throw new Error("OMP session is busy with another operation");
+		},
+		async abort() { aborts += 1; },
+		async dispose() {},
+		getStatus: () => ({ streaming: false, enabledTools: [], cwd: process.cwd() }),
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_omp_candidate_race",
+		runtimeSession,
+		(event) => outputs.push(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		{ onStateChange: (state) => routedStates.push(state) },
+	);
+	try {
+		const firstRead = routed.getForkCandidates();
+		const secondRead = routed.getForkCandidates();
+		await waitFor(() => operationInFlight);
+		assert.equal(candidateReads, 1, "concurrent page readers share one reserved native read");
+		let queuedMessageAccepted = false;
+		const queued = routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_omp_candidate_race",
+			id: "send-during-candidate-read",
+			text: "must wait behind candidate discovery",
+			source: "user",
+		}, () => { queuedMessageAccepted = true; });
+		assert.equal(queued.type, "message_queued");
+		assert.equal(queuedMessageAccepted, true, "candidate discovery may accept only into the serialized routed queue");
+		assert.equal(outputs.some((event) => event.type === "message_queued" && event.eventId === "send-during-candidate-read"), true);
+		assert.equal(prompts, 0);
+		await routed.executeAction({
+			type: "execution",
+			piboSessionId: "ps_omp_candidate_race",
+			id: "abort-during-candidate-read",
+			action: "abort",
+		});
+		assert.equal(aborts, 1, "abort remains available while a read-only identity reservation is pending");
+		assert.equal(operationInFlight, true, "abort does not corrupt the independent candidate read");
+
+		releaseCandidates.resolve();
+		assert.deepEqual(await firstRead, [{ entryId: "omp-user-1", text: "page prompt" }]);
+		assert.deepEqual(await secondRead, [{ entryId: "omp-user-1", text: "page prompt" }]);
+		await waitFor(() => prompts === 1 && !routed.getStatus().processing);
+		routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_omp_candidate_race",
+			id: "send-after-candidate-read",
+			text: "accepted after reservation",
+			source: "user",
+		});
+		await waitFor(() => prompts === 2 && !routed.getStatus().processing);
+		assert.equal(outputs.some((event) => event.type === "session_error"), false);
+		assert.equal(routedStates.some((state) => state.sessionIdentityOperationInFlight), true);
+		assert.equal(routedStates.at(-1).sessionIdentityOperationInFlight, false, "unlock is observable for reminder and eviction scheduling");
+	} finally {
+		releaseCandidates.resolve();
+		await routed.dispose();
+	}
+});
+
 test("adapter-shared auth mutations recycle every affected configured runtime session", async () => {
 	const baseDriver = createFakeAgentRuntimeDriver({ adapterId: "router-shared-auth-fake" });
 	baseDriver.descriptor.capabilities.auth = {

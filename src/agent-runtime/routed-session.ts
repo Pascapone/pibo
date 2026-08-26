@@ -102,11 +102,12 @@ export type RuntimeRoutedSessionOptions = {
 		context: { status?: PiboSessionStatus; activeEventId?: string },
 	) => void;
 	onSessionOperation?: PiboSessionOperationListener;
+	onBeforeSessionIdentityOperation?: (event: PiboExecutionEvent) => void | Promise<void>;
 	onKillChildren?: (
 		piboSessionId: string,
 		options?: { includeRuns?: boolean },
 	) => Promise<{ killed: string[]; cancelledRuns: string[] }>;
-	onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean }) => void;
+	onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean; sessionIdentityOperationInFlight: boolean }) => void;
 	onMessagesInterrupted?: PiboMessageInterruptionListener;
 	messagePreflight?: PiboMessagePreflight;
 	getRuntimeAuthStatus?: () => Promise<readonly AgentRuntimeAuthStatus[]>;
@@ -212,6 +213,7 @@ export class RuntimeRoutedSession {
 	private activeThinkingIndex?: number;
 	private nextThinkingIndex = 0;
 	private sessionIdentityOperationInFlight = false;
+	private forkCandidatesRequest?: Promise<PiboForkCandidate[]>;
 	private unsubscribe?: () => void;
 
 	constructor(
@@ -225,11 +227,12 @@ export class RuntimeRoutedSession {
 		this.unsubscribe = runtimeSession.subscribe((event) => this.handleRuntimeEvent(event));
 	}
 
-	enqueueMessage(event: PiboMessageEvent): PiboOutputEvent {
+	enqueueMessage(event: PiboMessageEvent, onAccepted: () => void = () => {}): PiboOutputEvent {
 		this.assertActive();
-		if (this.sessionIdentityOperationInFlight) {
+		if (this.sessionIdentityOperationInFlight && !this.forkCandidatesRequest) {
 			throw new Error("Pibo session cannot accept messages while a session identity operation is in progress.");
 		}
+		onAccepted();
 		this.queue.push({ kind: "message", event });
 		const output: PiboOutputEvent = {
 			type: "message_queued",
@@ -283,8 +286,10 @@ export class RuntimeRoutedSession {
 		if (changesSessionIdentity) {
 			this.assertSessionIdentityOperationIdle(event.action === "session.fork" ? "fork" : "clone");
 			this.sessionIdentityOperationInFlight = true;
+			this.notifyState();
 		}
 		try {
+			if (changesSessionIdentity) await this.options.onBeforeSessionIdentityOperation?.(event);
 			const result = await this.runAction(event);
 			if (isSessionOperationResult(result)) await this.options.onSessionOperation?.(result, event);
 			const output: PiboOutputEvent = {
@@ -297,7 +302,11 @@ export class RuntimeRoutedSession {
 			this.emit(output);
 			return output;
 		} finally {
-			if (changesSessionIdentity) this.sessionIdentityOperationInFlight = false;
+			if (changesSessionIdentity) {
+				this.sessionIdentityOperationInFlight = false;
+				this.notifyState();
+				this.startDrain();
+			}
 		}
 	}
 
@@ -429,12 +438,22 @@ export class RuntimeRoutedSession {
 	}
 
 	async getForkCandidates(): Promise<PiboForkCandidate[]> {
+		if (this.forkCandidatesRequest) return await this.forkCandidatesRequest;
 		this.assertSessionIdentityOperationIdle("inspect fork candidates");
 		const getForkCandidates = this.runtimeSession.controls?.getForkCandidates;
 		if (!getForkCandidates) throw runtimeCapabilityError(this.runtimeSession, "native session fork candidates");
-		const candidates = await getForkCandidates();
-		this.assertSessionIdentityOperationIdle("inspect fork candidates");
-		return candidates;
+		this.sessionIdentityOperationInFlight = true;
+		this.notifyState();
+		const request = Promise.resolve().then(async () => await getForkCandidates());
+		this.forkCandidatesRequest = request;
+		try {
+			return await request;
+		} finally {
+			if (this.forkCandidatesRequest === request) this.forkCandidatesRequest = undefined;
+			this.sessionIdentityOperationInFlight = false;
+			this.notifyState();
+			this.startDrain();
+		}
 	}
 
 	async forkSession(entryId: string): Promise<PiboSessionOperationResult> {
@@ -768,7 +787,7 @@ export class RuntimeRoutedSession {
 	}
 
 	private startDrain(): void {
-		if (this.drainPromise) return;
+		if (this.drainPromise || this.sessionIdentityOperationInFlight) return;
 		const drain = this.drain();
 		this.drainPromise = drain;
 		void drain.finally(() => {
@@ -1167,6 +1186,7 @@ export class RuntimeRoutedSession {
 			processing: this.processing,
 			queuedMessages: this.queue.length,
 			disposed: this.disposed,
+			sessionIdentityOperationInFlight: this.sessionIdentityOperationInFlight,
 		});
 	}
 
