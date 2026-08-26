@@ -22,7 +22,7 @@ export type NavigationOptions = {
 type SessionViewSearch = { view: ChatSessionViewId };
 type ContextSearch = { piboSessionId?: string };
 
-type SettingsNavigationTo = "/settings/concurrency" | "/settings/transcription" | "/settings/shortcuts" | "/settings/maintenance" | "/settings/pi-packages" | "/settings/skills" | "/settings/providers" | "/settings";
+type SettingsNavigationTo = "/settings/concurrency" | "/settings/transcription" | "/settings/speech" | "/settings/shortcuts" | "/settings/maintenance" | "/settings/pi-packages" | "/settings/skills" | "/settings/providers" | "/settings";
 
 type ChatRouteNavigationRequest =
 	| { to: "/projects/$projectId/sessions/$piboSessionId"; params: { projectId: string; piboSessionId: string }; search: SessionViewSearch; replace: boolean }
@@ -37,6 +37,7 @@ type ChatRouteNavigationRequest =
 	| { to: "/context"; search: ContextSearch; replace: boolean }
 	| { to: "/settings/concurrency"; replace: boolean }
 	| { to: "/settings/transcription"; replace: boolean }
+	| { to: "/settings/speech"; replace: boolean }
 	| { to: "/settings/shortcuts"; replace: boolean }
 	| { to: "/settings/maintenance"; replace: boolean }
 	| { to: "/settings/pi-packages"; replace: boolean }
@@ -174,6 +175,7 @@ export function navigateToChatRoute(
 function settingsPanelFromPathPart(part: string | undefined): SettingsPanel {
 	if (part === "concurrency") return "concurrency";
 	if (part === "transcription") return "transcription";
+	if (part === "speech") return "speech";
 	if (part === "shortcuts") return "shortcuts";
 	if (part === "maintenance") return "maintenance";
 	if (part === "pi-packages") return "pi-packages";
@@ -185,6 +187,7 @@ function settingsPanelFromPathPart(part: string | undefined): SettingsPanel {
 function settingsPathForPanel(panel: SettingsPanel | undefined): SettingsNavigationTo {
 	if (panel === "concurrency") return "/settings/concurrency";
 	if (panel === "transcription") return "/settings/transcription";
+	if (panel === "speech") return "/settings/speech";
 	if (panel === "shortcuts") return "/settings/shortcuts";
 	if (panel === "maintenance") return "/settings/maintenance";
 	if (panel === "pi-packages") return "/settings/pi-packages";

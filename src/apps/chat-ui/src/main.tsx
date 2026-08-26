@@ -105,6 +105,10 @@ const settingsTranscriptionRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings/transcription",
 });
+const settingsSpeechRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "settings/speech",
+});
 const settingsShortcutsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings/shortcuts",
@@ -126,7 +130,7 @@ const settingsProvidersRoute = createRoute({
 	path: "settings/providers",
 });
 const router = createRouter({
-	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, vscodeRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsConcurrencyRoute, settingsTranscriptionRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
+	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, vscodeRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsConcurrencyRoute, settingsTranscriptionRoute, settingsSpeechRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
 	basepath: "/apps/chat",
 	stringifySearch: stringifyChatSearch,
 });

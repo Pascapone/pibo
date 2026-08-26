@@ -18,5 +18,8 @@ test("normal test workers receive only the isolated suite home", () => {
 		tmpdir: tmpdir(),
 		piboHome: process.env.PIBO_HOME,
 		nodeEnv: process.env.NODE_ENV,
+		computeWorker: process.env.PIBO_COMPUTE_WORKER,
+		computeWorkerRole: process.env.PIBO_COMPUTE_WORKER_ROLE,
+		yieldedRunIsolation: process.env.PIBO_YIELDED_RUN_ISOLATION,
 	}), "utf8");
 });

@@ -6,6 +6,7 @@ import { chatImagePreviewUrls } from "../../api-chat-files";
 import { AgentDelegationCard } from "../../components/AgentDelegationCard";
 import { DialogShell } from "../../components/DialogShell";
 import { MessageForkButton } from "../../components/MessageForkButton";
+import { MessageSpeechButton } from "../../components/MessageSpeechButton";
 import { PendingUserMessageDelivery } from "../../components/PendingUserMessageDelivery";
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
@@ -627,7 +628,14 @@ function TerminalRowContent({
 				<div className="compact-terminal-markdown" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="assistant-message">
 					<MarkdownRenderer streaming={row.status === "running"}>{typeof row.output === "string" ? row.output : ""}</MarkdownRenderer>
 				</div>
-				{row.status === "running" ? null : <TerminalMessageMetadata timestamp={row.completedAt} durationMs={row.durationMs} />}
+				{row.status === "running" ? null : (
+					<TerminalMessageMetadata
+						timestamp={row.completedAt}
+						durationMs={row.durationMs}
+						speechText={typeof row.output === "string" ? row.output : undefined}
+						speechScopeKey={`${piboSessionId}:${row.id}`}
+					/>
+				)}
 			</div>
 		);
 	}
@@ -683,18 +691,23 @@ function TerminalMessageMetadata({
 	durationMs,
 	forkEntryId,
 	onFork,
+	speechText,
+	speechScopeKey,
 }: {
 	timestamp?: string;
 	durationMs?: number;
 	forkEntryId?: string;
 	onFork?: ChatSessionViewProps["onFork"];
+	speechText?: string;
+	speechScopeKey?: string;
 }) {
 	const time = formatLocalMessageTime(timestamp);
-	if (!time) return null;
+	if (!time && !forkEntryId && !speechText?.trim()) return null;
 	return (
 		<div className="mt-1 flex items-center justify-end gap-1 font-mono text-[10px] tabular-nums text-[#737373]" data-pibo-component="TerminalMessageMetadata">
 			{forkEntryId && onFork ? <MessageForkButton entryId={forkEntryId} onFork={onFork} /> : null}
-			<span>{time}{durationMs === undefined ? null : ` · ${formatTerminalDuration(durationMs)}`}</span>
+			{speechText?.trim() ? <MessageSpeechButton text={speechText} scopeKey={speechScopeKey} /> : null}
+			{time ? <span>{time}{durationMs === undefined ? null : ` · ${formatTerminalDuration(durationMs)}`}</span> : null}
 		</div>
 	);
 }

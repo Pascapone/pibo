@@ -272,9 +272,16 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 	};
 
 	const handleRequest = async (nodeRequest: IncomingMessage, nodeResponse: ServerResponse): Promise<void> => {
+		const requestController = new AbortController();
+		const abortRequest = () => requestController.abort(new Error("HTTP client disconnected"));
+		const abortPrematureResponse = () => {
+			if (!nodeResponse.writableFinished) abortRequest();
+		};
+		nodeRequest.once("aborted", abortRequest);
+		nodeResponse.once("close", abortPrematureResponse);
 		try {
 			const baseURL = createRequestBaseURL(nodeRequest, host, port, options.canonicalBaseURL);
-			const baseRequest = await nodeRequestToWebRequest(nodeRequest, baseURL);
+			const baseRequest = await nodeRequestToWebRequest(nodeRequest, baseURL, requestController.signal);
 			// Inject the TCP socket peer into every request so the local auth
 			// plugin can apply the same loopback predicate from `getSession`
 			// regardless of whether the call came from a browser cookie, the
@@ -346,10 +353,15 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			await sendResponse(nodeResponse, notFound());
 		} catch (error) {
 			const status = error instanceof PiboAuthError || error instanceof PiboWebHttpError ? error.statusCode : 500;
-			await sendResponse(
-				nodeResponse,
-				responseJson({ error: error instanceof Error ? error.message : String(error) }, { status }),
-			);
+			if (!nodeResponse.destroyed) {
+				await sendResponse(
+					nodeResponse,
+					responseJson({ error: error instanceof Error ? error.message : String(error) }, { status }),
+				);
+			}
+		} finally {
+			nodeRequest.removeListener("aborted", abortRequest);
+			nodeResponse.removeListener("close", abortPrematureResponse);
 		}
 	};
 

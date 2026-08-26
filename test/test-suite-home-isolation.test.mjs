@@ -31,6 +31,9 @@ test("the canonical test runner cannot read from or write to the invoking Pibo h
 				TEMP: callerTemp,
 				TMP: callerTemp,
 				PIBO_TEST_PROBE_PATH: probePath,
+				PIBO_COMPUTE_WORKER: "1",
+				PIBO_COMPUTE_WORKER_ROLE: "dev",
+				PIBO_YIELDED_RUN_ISOLATION: "systemd",
 			},
 		});
 		assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -45,6 +48,9 @@ test("the canonical test runner cannot read from or write to the invoking Pibo h
 		if (process.platform === "win32") assert.notEqual(resolve(probe.tmpdir), resolve(callerTemp));
 		assert.notEqual(resolve(probe.piboHome), resolve(callerPiboHome));
 		assert.equal(probe.nodeEnv, "test");
+		assert.equal(probe.computeWorker, undefined);
+		assert.equal(probe.computeWorkerRole, undefined);
+		assert.equal(probe.yieldedRunIsolation, "off");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
