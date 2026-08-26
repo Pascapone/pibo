@@ -19,7 +19,7 @@ const {
 	getSocketPath,
 	usesFilesystemSocket,
 } = await import("../dist/mcp/config.js");
-const { getDaemonSpawnArguments, getDaemonSpawnOptions } =
+const { filterDaemonExecArgv, getDaemonSpawnArguments, getDaemonSpawnOptions } =
 	await import("../dist/mcp/daemon-client.js");
 const {
 	isProcessRunning,
@@ -338,6 +338,44 @@ test("detached daemon spawn hides Windows consoles and preserves argv boundaries
 		"generation-value",
 	]);
 	assert.deepEqual(JSON.parse(args.at(-2)), config);
+
+	const parentExecArgv = [
+		"--trace-warnings",
+		"--max-old-space-size=256",
+		"--eval",
+		"console.log('parent eval')",
+		"-econsole.log('attached parent eval')",
+		"--print=process.version",
+		"-p=process.platform",
+		"--test",
+		"--test-name-pattern",
+		"daemon",
+		"--input-type=module",
+		"--watch-path",
+		"test",
+	];
+	assert.deepEqual(filterDaemonExecArgv(parentExecArgv), [
+		"--trace-warnings",
+		"--max-old-space-size=256",
+	]);
+	assert.deepEqual(
+		getDaemonSpawnArguments(
+			"/package/dist/mcp/daemon.js",
+			"eval-parent",
+			{ command: process.execPath },
+			"daemon-generation",
+			parentExecArgv,
+		),
+		[
+			"--trace-warnings",
+			"--max-old-space-size=256",
+			"/package/dist/mcp/daemon.js",
+			"--daemon",
+			"eval-parent",
+			JSON.stringify({ command: process.execPath }),
+			"daemon-generation",
+		],
+	);
 });
 
 test("MCP daemon Windows IPC abstraction handles escaping, errors, and cleanup", async () => {

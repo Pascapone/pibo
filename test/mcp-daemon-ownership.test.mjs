@@ -10,9 +10,9 @@ const configModuleUrl = pathToFileURL(resolve("dist/mcp/config.js")).href;
 const daemonModuleUrl = pathToFileURL(resolve("dist/mcp/daemon.js")).href;
 const clientModuleUrl = pathToFileURL(resolve("dist/mcp/daemon-client.js")).href;
 
-async function runProbe(source) {
+async function runProbe(source, env = {}) {
 	return execFileAsync(process.execPath, ["--input-type=module", "--eval", source], {
-		env: { ...process.env, MCP_DAEMON_REQUEST_TIMEOUT: "1" },
+		env: { ...process.env, MCP_DAEMON_REQUEST_TIMEOUT: "1", ...env },
 		maxBuffer: 4 * 1024 * 1024,
 	});
 }
@@ -87,6 +87,307 @@ process.stdout.write(JSON.stringify(result));
 		{ label: "unverifiable", survivedCleanup: true },
 		{ label: "mismatched-creation", survivedCleanup: true },
 	]);
+});
+
+test("reused claim and lease owner PIDs recover without blocking a live process", async () => {
+	const fixtureSource = `
+let buffer = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  while (buffer.includes("\\n")) {
+    const index = buffer.indexOf("\\n");
+    const line = buffer.slice(0, index).trim();
+    buffer = buffer.slice(index + 1);
+    if (!line) continue;
+    const message = JSON.parse(line);
+    if (message.id === undefined) continue;
+    const send = (result) => process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0", id: message.id, result,
+    }) + "\\n");
+    if (message.method === "initialize") {
+      setTimeout(() => send({
+        protocolVersion: "2025-11-25",
+        capabilities: { tools: {} },
+        serverInfo: { name: "ownership-reuse", version: "1" },
+      }), Number(process.env.INIT_DELAY_MS ?? 0));
+    } else if (message.method === "tools/list") {
+      send({ tools: [] });
+    } else {
+      send({});
+    }
+  }
+});
+`;
+	const probe = String.raw`
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { createConnection } from "node:net";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
+
+const {
+  getConfigHash,
+  getDaemonClaimPath,
+  getDaemonLeasePrefix,
+  getPidPath,
+  getSocketPath,
+} = await import(${JSON.stringify(configModuleUrl)});
+const {
+  isProcessRunning,
+  processIdentityMatches,
+  readOwnershipFilePath,
+  readPidFile,
+  readProcessIdentity,
+  removeOwnershipFile,
+  removePidFile,
+  removeSocketFile,
+  writeOwnershipFileExclusive,
+} = await import(${JSON.stringify(daemonModuleUrl)});
+const {
+  cleanupOrphanedDaemons,
+  getDaemonConnection,
+} = await import(${JSON.stringify(clientModuleUrl)});
+
+const fixtureSource = ${JSON.stringify(fixtureSource)};
+
+async function waitFor(predicate, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return true;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+  }
+  return false;
+}
+
+async function closeDaemon(serverName, identity) {
+  try {
+    await new Promise((resolveClose) => {
+      let settled = false;
+      const socket = createConnection(getSocketPath(serverName), () => {
+        socket.write(JSON.stringify({
+          id: "cleanup",
+          type: "close",
+          generation: identity.generation,
+        }) + "\\n");
+      });
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        socket.destroy();
+        resolveClose();
+      };
+      const timeout = setTimeout(finish, 1000);
+      let response = "";
+      socket.on("data", (chunk) => {
+        response += chunk.toString();
+        if (response.includes("\\n")) {
+          finish();
+        }
+      });
+      socket.on("error", finish);
+    });
+  } catch {}
+  await waitFor(() => !isProcessRunning(identity.pid), 1000);
+  removePidFile(serverName, identity);
+  removeSocketFile(serverName);
+}
+
+const cwd = await mkdtemp(join(tmpdir(), "pibo-ownership-pid-reuse-"));
+const fixturePath = join(cwd, "fixture.mjs");
+const serverName = "ownership-reused-pid-" + process.pid;
+const claimPath = getDaemonClaimPath(serverName);
+const leasePrefix = getDaemonLeasePrefix(serverName);
+let unrelated;
+let unrelatedExit;
+let activeConnection;
+let finalIdentity;
+
+try {
+  await writeFile(fixturePath, fixtureSource);
+  unrelated = spawn("sleep", ["30"], { stdio: "ignore" });
+  assert.ok(unrelated.pid);
+  unrelatedExit = new Promise((resolveExit) =>
+    unrelated.once("exit", (code, signal) => resolveExit({ code, signal })),
+  );
+  const unrelatedIdentity = readProcessIdentity(unrelated.pid);
+  assert.ok(unrelatedIdentity);
+
+  const configA = {
+    command: process.execPath,
+    args: [fixturePath],
+    env: { MARKER: "A", INIT_DELAY_MS: "300" },
+  };
+  const staleClaim = {
+    ownerPid: unrelated.pid,
+    generation: "legacy-stale-claim",
+    configHash: getConfigHash(configA),
+    startedAt: "2000-01-01T00:00:00.000Z",
+    serverName,
+  };
+  assert.equal(writeOwnershipFileExclusive(claimPath, staleClaim), true);
+
+  const claimStarted = Date.now();
+  const pendingConnection = getDaemonConnection(serverName, configA);
+  assert.equal(await waitFor(() => {
+    const current = readOwnershipFilePath(claimPath);
+    return current !== null && current.generation !== staleClaim.generation;
+  }, 1000), true);
+  const liveClaim = readOwnershipFilePath(claimPath);
+  assert.ok(liveClaim && !("daemonGeneration" in liveClaim));
+  assert.equal(liveClaim.ownerPid, process.pid);
+  assert.ok(liveClaim.ownerNonce);
+  assert.equal(processIdentityMatches(
+    readProcessIdentity(process.pid),
+    liveClaim.ownerProcessIdentity,
+  ), true);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 150));
+  await cleanupOrphanedDaemons();
+  assert.equal(readOwnershipFilePath(claimPath)?.generation, liveClaim.generation);
+
+  activeConnection = await pendingConnection;
+  const claimElapsedMs = Date.now() - claimStarted;
+  assert.ok(activeConnection);
+  assert.ok(claimElapsedMs < 2000, "stale claim must not consume the request timeout");
+  assert.equal(existsSync(claimPath), false);
+
+  const leaseDirectory = dirname(leasePrefix);
+  const leaseNamePrefix = basename(leasePrefix);
+  const liveLeaseNames = (await readdir(leaseDirectory)).filter((name) =>
+    name.startsWith(leaseNamePrefix),
+  );
+  assert.equal(liveLeaseNames.length, 1);
+  const liveLeasePath = join(leaseDirectory, liveLeaseNames[0]);
+  const liveLease = readOwnershipFilePath(liveLeasePath);
+  assert.ok(liveLease && "daemonGeneration" in liveLease);
+  assert.ok(liveLease.ownerNonce);
+  assert.equal(processIdentityMatches(
+    readProcessIdentity(process.pid),
+    liveLease.ownerProcessIdentity,
+  ), true);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 150));
+  await cleanupOrphanedDaemons();
+  assert.equal(readOwnershipFilePath(liveLeasePath)?.generation, liveLease.generation);
+
+  const firstIdentity = readPidFile(serverName);
+  assert.ok(firstIdentity);
+  await activeConnection.close();
+  activeConnection = undefined;
+
+  const mismatchedIdentity = {
+    ...unrelatedIdentity,
+    startToken: unrelatedIdentity.startToken + "-stale",
+  };
+  const staleLeases = [
+    {
+      ownerPid: unrelated.pid,
+      generation: "legacy-stale-lease",
+      daemonGeneration: firstIdentity.generation,
+      configHash: firstIdentity.configHash,
+      startedAt: "2000-01-01T00:00:00.000Z",
+      serverName,
+    },
+    {
+      ownerPid: unrelated.pid,
+      ownerProcessIdentity: mismatchedIdentity,
+      ownerNonce: "expired-stale-owner",
+      generation: "identity-stale-lease",
+      daemonGeneration: firstIdentity.generation,
+      configHash: firstIdentity.configHash,
+      startedAt: "2000-01-01T00:00:00.000Z",
+      serverName,
+    },
+  ];
+  for (const lease of staleLeases) {
+    assert.equal(writeOwnershipFileExclusive(leasePrefix + lease.generation, lease), true);
+  }
+
+  const configB = {
+    command: process.execPath,
+    args: [fixturePath],
+    env: { MARKER: "B", INIT_DELAY_MS: "0" },
+  };
+  const replacementStarted = Date.now();
+  const replacement = await getDaemonConnection(serverName, configB);
+  const replacementElapsedMs = Date.now() - replacementStarted;
+  assert.ok(replacement);
+  assert.ok(replacementElapsedMs < 2000, "stale leases must not consume the request timeout");
+  finalIdentity = readPidFile(serverName);
+  assert.ok(finalIdentity);
+  assert.equal(finalIdentity.configHash, getConfigHash(configB));
+  assert.notEqual(finalIdentity.generation, firstIdentity.generation);
+  for (const lease of staleLeases) {
+    assert.equal(existsSync(leasePrefix + lease.generation), false);
+  }
+  process.kill(unrelated.pid, 0);
+
+  await replacement.close();
+  await closeDaemon(serverName, finalIdentity);
+  finalIdentity = undefined;
+  unrelated.kill("SIGTERM");
+  const unrelatedResult = await unrelatedExit;
+  unrelated = undefined;
+  assert.equal(unrelatedResult.signal, "SIGTERM");
+
+  process.stdout.write(JSON.stringify({
+    claimRecovered: true,
+    claimElapsedMs,
+    liveClaimPreserved: true,
+    liveLeasePreserved: true,
+    configReplacementRecovered: true,
+    replacementElapsedMs,
+    unrelatedProcessSurvived: true,
+  }));
+} finally {
+  if (activeConnection) await activeConnection.close();
+  if (finalIdentity) await closeDaemon(serverName, finalIdentity);
+  if (unrelated?.pid && isProcessRunning(unrelated.pid)) {
+    unrelated.kill("SIGTERM");
+    await unrelatedExit;
+  }
+  try {
+    for (const name of await readdir(dirname(leasePrefix))) {
+      if (name.startsWith(basename(leasePrefix))) {
+        const path = join(dirname(leasePrefix), name);
+        const ownership = readOwnershipFilePath(path);
+        if (ownership) removeOwnershipFile(path, ownership.generation);
+      }
+    }
+  } catch {}
+  const remaining = readPidFile(serverName);
+  if (remaining) await closeDaemon(serverName, remaining);
+  await rm(claimPath, { force: true });
+  await rm(getPidPath(serverName), { force: true });
+  await rm(cwd, { recursive: true, force: true });
+}
+`;
+
+	const { stdout } = await runProbe(probe, {
+		MCP_DAEMON_REQUEST_TIMEOUT: "5",
+		MCP_DAEMON_TIMEOUT: "30",
+	});
+	const result = JSON.parse(stdout);
+	assert.deepEqual(
+		{
+			claimRecovered: result.claimRecovered,
+			liveClaimPreserved: result.liveClaimPreserved,
+			liveLeasePreserved: result.liveLeasePreserved,
+			configReplacementRecovered: result.configReplacementRecovered,
+			unrelatedProcessSurvived: result.unrelatedProcessSurvived,
+		},
+		{
+			claimRecovered: true,
+			liveClaimPreserved: true,
+			liveLeasePreserved: true,
+			configReplacementRecovered: true,
+			unrelatedProcessSurvived: true,
+		},
+	);
+	assert.ok(result.claimElapsedMs < 2000);
+	assert.ok(result.replacementElapsedMs < 2000);
 });
 
 test("PID and endpoint cleanup preserve a newer generation in every owner path", async () => {

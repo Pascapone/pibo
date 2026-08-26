@@ -38,10 +38,12 @@ import {
   getOwnershipFileAgeMs,
   isProcessRunning,
   pidFileIdentityMatches,
+  processIdentityMatches,
   readOwnershipFilePath,
   readPidFile,
   readPidFilePath,
   readProcessIdentity,
+  refreshOwnershipFile,
   removeDaemonState,
   removeMalformedOwnershipFile,
   removeOwnershipFile,
@@ -53,6 +55,7 @@ import {
 
 const OWNERSHIP_POLL_MS = 25;
 const DEAD_OWNER_GRACE_MS = 100;
+const OWNERSHIP_HEARTBEAT_MS = 25;
 const MAX_DAEMON_MESSAGE_BYTES = 1024 * 1024;
 
 export interface DaemonConnection {
@@ -306,15 +309,70 @@ export function getDaemonSpawnArguments(
   serverName: string,
   config: ServerConfig,
   generation: string,
+  execArgv: readonly string[] = process.execArgv,
 ): string[] {
   return [
-    ...process.execArgv,
+    ...filterDaemonExecArgv(execArgv),
     daemonScript,
     '--daemon',
     serverName,
     JSON.stringify(config),
     generation,
   ];
+}
+
+const EXECUTION_FLAGS_WITH_VALUE = new Set([
+  '-e',
+  '--eval',
+  '-p',
+  '--print',
+  '--run',
+  '--input-type',
+  '--entry-url',
+  '--test-name-pattern',
+  '--test-skip-pattern',
+  '--test-reporter',
+  '--test-reporter-destination',
+  '--test-shard',
+  '--watch-path',
+]);
+
+const EXECUTION_FLAGS = new Set([
+  '-c',
+  '--check',
+  '-i',
+  '--interactive',
+  '--test',
+  '--watch',
+]);
+
+/** Preserve runtime flags while removing selectors that execute something
+ * other than the daemon script or turn the detached child into a test/watch
+ * runner. */
+export function filterDaemonExecArgv(execArgv: readonly string[]): string[] {
+  const filtered: string[] = [];
+  for (let index = 0; index < execArgv.length; index += 1) {
+    const argument = execArgv[index];
+    if (EXECUTION_FLAGS_WITH_VALUE.has(argument)) {
+      index += 1;
+      continue;
+    }
+    if (
+      EXECUTION_FLAGS.has(argument) ||
+      argument.startsWith('--eval=') ||
+      argument.startsWith('--print=') ||
+      argument.startsWith('--run=') ||
+      argument.startsWith('--input-type=') ||
+      argument.startsWith('--entry-url=') ||
+      argument.startsWith('--test-') ||
+      argument.startsWith('--watch-') ||
+      /^-[ep](?:=|.)/.test(argument)
+    ) {
+      continue;
+    }
+    filtered.push(argument);
+  }
+  return filtered;
 }
 
 async function spawnDaemon(
@@ -389,6 +447,8 @@ function acquireClaim(
 ): DaemonClaimFileContent | null {
   const claim: DaemonClaimFileContent = {
     ownerPid: process.pid,
+    ownerProcessIdentity: readProcessIdentity(process.pid) ?? undefined,
+    ownerNonce: randomUUID(),
     generation: randomUUID(),
     configHash,
     startedAt: new Date().toISOString(),
@@ -399,6 +459,38 @@ function acquireClaim(
     : null;
 }
 
+function ownershipIsLive(
+  path: string,
+  ownership: DaemonClaimFileContent | DaemonLeaseFileContent,
+): boolean {
+  if (
+    processIdentityMatches(
+      readProcessIdentity(ownership.ownerPid),
+      ownership.ownerProcessIdentity,
+    )
+  ) {
+    return true;
+  }
+  const ageMs = getOwnershipFileAgeMs(path);
+  return Boolean(
+    ownership.ownerNonce &&
+      ageMs !== null &&
+      ageMs < DEAD_OWNER_GRACE_MS,
+  );
+}
+
+function startOwnershipHeartbeat(
+  path: string,
+  ownership: DaemonClaimFileContent | DaemonLeaseFileContent,
+): () => void {
+  if (ownership.ownerProcessIdentity) return () => {};
+  const timer = setInterval(() => {
+    refreshOwnershipFile(path, ownership.generation, ownership.ownerNonce);
+  }, OWNERSHIP_HEARTBEAT_MS);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
 function removeStaleOwnershipFile(path: string): boolean {
   const ownership = readOwnershipFilePath(path);
   const ageMs = getOwnershipFileAgeMs(path);
@@ -406,7 +498,7 @@ function removeStaleOwnershipFile(path: string): boolean {
   if (!ownership) {
     return removeMalformedOwnershipFile(path, DEAD_OWNER_GRACE_MS);
   }
-  if (isProcessRunning(ownership.ownerPid) || ageMs < DEAD_OWNER_GRACE_MS) {
+  if (ownershipIsLive(path, ownership) || ageMs < DEAD_OWNER_GRACE_MS) {
     return false;
   }
   return removeOwnershipFile(path, ownership.generation);
@@ -439,8 +531,9 @@ async function listActiveLeases(
       removeStaleOwnershipFile(path);
       continue;
     }
-    if (!isProcessRunning(ownership.ownerPid)) {
-      removeStaleOwnershipFile(path);
+    if (!ownershipIsLive(path, ownership)) {
+      const removed = removeStaleOwnershipFile(path);
+      if (!removed && existsSync(path)) active.push(ownership);
       continue;
     }
     active.push(ownership);
@@ -455,6 +548,8 @@ function createLease(
   for (;;) {
     const lease: DaemonLeaseFileContent = {
       ownerPid: process.pid,
+      ownerProcessIdentity: readProcessIdentity(process.pid) ?? undefined,
+      ownerNonce: randomUUID(),
       generation: randomUUID(),
       daemonGeneration: identity.generation,
       configHash: identity.configHash,
@@ -534,6 +629,7 @@ function createDaemonConnection(
   identity: DaemonIdentity,
   leasePath: string,
   lease: DaemonLeaseFileContent,
+  stopLeaseHeartbeat: () => void,
 ): DaemonConnection {
   const socketPath = getSocketPath(serverName);
   let closed = false;
@@ -587,6 +683,7 @@ function createDaemonConnection(
     async close(): Promise<void> {
       if (closed) return;
       closed = true;
+      stopLeaseHeartbeat();
       removeOwnershipFile(leasePath, lease.generation);
       debug(`[daemon-client] Released ${serverName} daemon lease`);
     },
@@ -613,6 +710,8 @@ export async function getDaemonConnection(
       continue;
     }
 
+    const stopClaimHeartbeat = startOwnershipHeartbeat(claimPath, claim);
+
     try {
       const identity = await ensureDaemonAsOwner(
         serverName,
@@ -627,11 +726,19 @@ export async function getDaemonConnection(
       }
       if (!claimIsOwned(claimPath, claim)) continue;
       const { path, lease } = createLease(serverName, identity);
+      const stopLeaseHeartbeat = startOwnershipHeartbeat(path, lease);
       debug(
         `[daemon-client] Connected to ${serverName} generation ${identity.generation}`,
       );
-      return createDaemonConnection(serverName, identity, path, lease);
+      return createDaemonConnection(
+        serverName,
+        identity,
+        path,
+        lease,
+        stopLeaseHeartbeat,
+      );
     } finally {
+      stopClaimHeartbeat();
       removeOwnershipFile(claimPath, claim.generation);
     }
   }

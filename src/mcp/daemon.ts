@@ -8,9 +8,13 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  closeSync,
   existsSync,
+  fstatSync,
+  futimesSync,
   linkSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readlinkSync,
   renameSync,
@@ -78,6 +82,8 @@ export interface PidFileContent extends DaemonIdentity {
 
 export interface DaemonClaimFileContent {
   ownerPid: number;
+  ownerProcessIdentity?: ProcessIdentity;
+  ownerNonce?: string;
   generation: string;
   configHash: string;
   startedAt: string;
@@ -86,6 +92,8 @@ export interface DaemonClaimFileContent {
 
 export interface DaemonLeaseFileContent {
   ownerPid: number;
+  ownerProcessIdentity?: ProcessIdentity;
+  ownerNonce?: string;
   generation: string;
   daemonGeneration: string;
   configHash: string;
@@ -384,6 +392,48 @@ export function getOwnershipFileAgeMs(path: string): number | null {
     return Math.max(0, Date.now() - statSync(path).mtimeMs);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Refresh one ownership generation through an opened inode. A concurrent path
+ * replacement is never refreshed because the descriptor remains bound to the
+ * original file and the canonical inode is checked before reporting success.
+ */
+export function refreshOwnershipFile(
+  path: string,
+  expectedGeneration: string,
+  expectedOwnerNonce?: string,
+): boolean {
+  let handle: number | undefined;
+  try {
+    handle = openSync(path, 'r');
+    const opened = fstatSync(handle);
+    const current = JSON.parse(
+      readFileSync(handle, { encoding: 'utf8' }),
+    ) as DaemonOwnershipFileContent;
+    if (
+      current.generation !== expectedGeneration ||
+      (expectedOwnerNonce !== undefined &&
+        current.ownerNonce !== expectedOwnerNonce)
+    ) {
+      return false;
+    }
+
+    const now = new Date();
+    futimesSync(handle, now, now);
+    const canonical = statSync(path);
+    return canonical.dev === opened.dev && canonical.ino === opened.ino;
+  } catch {
+    return false;
+  } finally {
+    if (handle !== undefined) {
+      try {
+        closeSync(handle);
+      } catch {
+        // A failed close cannot make the ownership refresh authoritative.
+      }
+    }
   }
 }
 
