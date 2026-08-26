@@ -53,6 +53,7 @@ import {
 import { PiAgentRuntimeAuthController } from "./auth.js";
 import { piIntentTracingInstalled, piToolIntentField, splitPiToolIntentArguments } from "./intent-tracing.js";
 import { loadModelCatalog as loadPiModelCatalog } from "./model-catalog.js";
+import { withOpenAiResponseEventObserver } from "./openai-response-observer.js";
 import {
 	PIBO_TRANSCRIPT_INTEGRITY_RESUME_MESSAGE_TYPE,
 	PIBO_TRANSCRIPT_INTEGRITY_RESUME_PROMPT,
@@ -72,8 +73,9 @@ type ProviderRequestPayload = Record<string, unknown>;
 type ProviderStreamOptions = Record<string, unknown> | undefined;
 type ProviderStreamFunction = (model: ProviderRequestModel, context: unknown, options?: ProviderStreamOptions) => unknown;
 
-type FastModePatchableAgent = {
+type ProviderRequestPatchableAgent = {
 	streamFn?: ProviderStreamFunction;
+	streamFunction?: ProviderStreamFunction;
 	onPayload?: (payload: unknown, model: ProviderRequestModel) => unknown | undefined | Promise<unknown | undefined>;
 };
 
@@ -90,6 +92,11 @@ function modelSupportsFastServiceTier(model: ProviderRequestModel | undefined): 
 	if (!model) return false;
 	if (model.api === "openai-codex-responses") return true;
 	return model.api === "openai-responses" && (model.provider === "openai" || model.provider === "openai-codex");
+}
+
+function modelUsesOpenAiResponses(model: ProviderRequestModel | undefined): boolean {
+	if (model?.api === "openai-codex-responses") return true;
+	return model?.api === "openai-responses" && (model.provider === "openai" || model.provider === "openai-codex");
 }
 
 function withFastServiceTier(payload: unknown): unknown {
@@ -402,6 +409,20 @@ function normalizeToolExecutionEvent(piboSessionId: string, candidate: PiEventCa
 }
 
 type ProviderWebSearchStatus = "running" | "done" | "error";
+type ProviderWebSearchStartEvent = Extract<PiboOutputEvent, { type: "tool_execution_started" }>;
+type ProviderWebSearchUpdateEvent = Extract<PiboOutputEvent, { type: "tool_execution_updated" }>;
+type ProviderWebSearchFinishEvent = Extract<PiboOutputEvent, { type: "tool_execution_finished" }>;
+type ProviderWebSearchLifecycle = {
+	started: boolean;
+	finished: boolean;
+	argsKey?: string;
+	providerObserved?: boolean;
+	pendingFinish?: ProviderWebSearchFinishEvent;
+};
+
+function providerWebSearchToolCallId(rawId: string): string {
+	return rawId.startsWith("provider:web_search:") ? rawId : `provider:web_search:${rawId}`;
+}
 
 function normalizeProviderWebSearchEvent(piboSessionId: string, candidate: PiEventCandidate): PiboOutputEvent | undefined {
 	const item = recordValue(candidate.item) ?? recordValue(candidate.assistantMessageEvent?.item);
@@ -423,15 +444,35 @@ function normalizeProviderWebSearchEvent(piboSessionId: string, candidate: PiEve
 			? `content-${candidate.assistantMessageEvent.contentIndex}`
 			: undefined) ??
 		"active";
-	const toolCallId = rawId.startsWith("provider:web_search:") ? rawId : `provider:web_search:${rawId}`;
-	const query =
-		stringValue(candidate.query) ??
-		stringValue(candidate.assistantMessageEvent?.query) ??
-		stringValue(action?.query) ??
-		stringValue(item?.query) ??
-		stringValue(item?.search_query);
-	const sources = firstArray(candidate.sources, candidate.assistantMessageEvent?.sources, item?.sources, item?.results, item?.citations);
-	const args = { providerTool: "web_search", ...(query ? { query } : {}) };
+	const toolCallId = providerWebSearchToolCallId(rawId);
+	const query = firstTrimmedString(
+		candidate.query,
+		candidate.assistantMessageEvent?.query,
+		action?.query,
+		item?.query,
+		item?.search_query,
+	);
+	const queries = firstStringArray(action?.queries, item?.queries);
+	const url = normalizeProviderWebUrl(firstTrimmedString(action?.url, item?.url));
+	const pattern = firstTrimmedString(action?.pattern, item?.pattern);
+	const actionType = normalizeProviderWebSearchActionType(action?.type, { query, queries, url, pattern });
+	const rawSources = firstArray(
+		candidate.sources,
+		candidate.assistantMessageEvent?.sources,
+		action?.sources,
+		item?.sources,
+		item?.results,
+		item?.citations,
+	);
+	const sources = normalizeProviderWebSearchSources(rawSources);
+	const details = {
+		...(actionType ? { actionType } : {}),
+		...(query ? { query } : {}),
+		...(queries ? { queries } : {}),
+		...(url ? { url } : {}),
+		...(pattern ? { pattern } : {}),
+	};
+	const args = { providerTool: "web_search", ...details };
 
 	if (status === "running") {
 		return {
@@ -452,11 +493,114 @@ function normalizeProviderWebSearchEvent(piboSessionId: string, candidate: PiEve
 		result: status === "error"
 			? (error ?? "Web search failed")
 			: {
-					...(query ? { query } : {}),
-					...(sources ? { sources, sourceCount: sources.length } : {}),
+					...details,
+					...(rawSources ? { sources, sourceCount: sources.length } : {}),
 				},
 		isError: status === "error",
 	};
+}
+
+function inferProviderWebSearchActionType(details: {
+	query?: string;
+	queries?: string[];
+	url?: string;
+	pattern?: string;
+}): string | undefined {
+	if (details.pattern) return "find_in_page";
+	if (details.url) return "open_page";
+	if (details.query || details.queries) return "search";
+	return undefined;
+}
+
+function normalizeProviderWebSearchActionType(
+	value: unknown,
+	details: { query?: string; queries?: string[]; url?: string; pattern?: string },
+): string | undefined {
+	const explicit = firstTrimmedString(value)?.toLowerCase();
+	if (explicit === "search") return "search";
+	if (explicit === "open" || explicit === "open_page") return "open_page";
+	if (explicit === "find" || explicit === "find_in_page") return "find_in_page";
+	if (explicit === "other") return "other";
+	return inferProviderWebSearchActionType(details);
+}
+
+type ProviderWebSearchSource = { url: string; title?: string };
+
+function normalizeProviderWebSearchSources(candidates: unknown[] | undefined): ProviderWebSearchSource[] {
+	if (!candidates) return [];
+	const sources = new Map<string, ProviderWebSearchSource>();
+	for (const candidate of candidates) {
+		const record = recordValue(candidate);
+		const rawUrl = typeof candidate === "string"
+			? candidate
+			: firstTrimmedString(record?.url, record?.href, record?.link);
+		const url = normalizeProviderWebUrl(rawUrl, true);
+		if (!url) continue;
+		const title = firstTrimmedString(record?.title, record?.name);
+		const existing = sources.get(url);
+		if (!existing || (!existing.title && title)) sources.set(url, { url, ...(title ? { title } : {}) });
+	}
+	return [...sources.values()];
+}
+
+function normalizeProviderWebUrl(value: string | undefined, stripHash = false): string | undefined {
+	if (!value) return undefined;
+	try {
+		const url = new URL(value);
+		if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) return undefined;
+		if (stripHash) url.hash = "";
+		return url.href;
+	} catch {
+		return undefined;
+	}
+}
+
+function providerWebSearchCompletionIsProvisional(candidate: PiEventCandidate): boolean {
+	const rawEventType = (stringValue(candidate.type) ?? stringValue(candidate.assistantMessageEvent?.type))?.toLowerCase();
+	if (!rawEventType?.includes("web_search_call.completed")) return false;
+	return !recordValue(candidate.item) && !recordValue(candidate.assistantMessageEvent?.item);
+}
+
+function providerResponseCompleted(candidate: PiEventCandidate): boolean {
+	const rawEventType = (stringValue(candidate.type) ?? stringValue(candidate.assistantMessageEvent?.type))?.toLowerCase();
+	return rawEventType === "response.completed";
+}
+
+function normalizeNativeProviderWebSearchEvent(event: PiboOutputEvent | undefined):
+	| ProviderWebSearchStartEvent
+	| ProviderWebSearchUpdateEvent
+	| ProviderWebSearchFinishEvent
+	| undefined {
+	if (
+		!event ||
+		(event.type !== "tool_execution_started" &&
+			event.type !== "tool_execution_updated" &&
+			event.type !== "tool_execution_finished") ||
+		event.toolName !== "web_search"
+	) {
+		return undefined;
+	}
+	return { ...event, toolCallId: providerWebSearchToolCallId(event.toolCallId) };
+}
+
+function providerWebSearchArgsFromResult(result: unknown): Record<string, unknown> {
+	const details = recordValue(result);
+	return {
+		providerTool: "web_search",
+		...(details?.actionType ? { actionType: details.actionType } : {}),
+		...(details?.query ? { query: details.query } : {}),
+		...(details?.queries ? { queries: details.queries } : {}),
+		...(details?.url ? { url: details.url } : {}),
+		...(details?.pattern ? { pattern: details.pattern } : {}),
+	};
+}
+
+function providerWebSearchArgsKey(args: unknown): string {
+	try {
+		return JSON.stringify(args);
+	} catch {
+		return String(args);
+	}
 }
 
 function providerWebSearchStatus(rawType: string, rawStatus: unknown): ProviderWebSearchStatus | undefined {
@@ -475,6 +619,27 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
 function firstArray(...values: unknown[]): unknown[] | undefined {
 	for (const value of values) {
 		if (Array.isArray(value)) return value;
+	}
+	return undefined;
+}
+
+function firstStringArray(...values: unknown[]): string[] | undefined {
+	for (const value of values) {
+		if (!Array.isArray(value)) continue;
+		const strings = [...new Set(value.flatMap((item) => {
+			const normalized = firstTrimmedString(item);
+			return normalized ? [normalized] : [];
+		}))];
+		if (strings.length > 0) return strings;
+	}
+	return undefined;
+}
+
+function firstTrimmedString(...values: unknown[]): string | undefined {
+	for (const value of values) {
+		if (typeof value !== "string") continue;
+		const trimmed = value.trim();
+		if (trimmed) return trimmed;
 	}
 	return undefined;
 }
@@ -632,7 +797,9 @@ export class RoutedSession {
 	private drainPromise?: Promise<void>;
 	private inFlightMessage?: PiInFlightMessage;
 	private fastMode = false;
-	private readonly fastModePatchedAgents = new WeakSet<object>();
+	private readonly providerRequestPatchedAgents = new WeakSet<object>();
+	private providerWebSearchObservationEnabled = false;
+	private readonly providerWebSearchLifecycle = new Map<string, ProviderWebSearchLifecycle>();
 	private activeMessage?: PiboMessageEvent;
 	private activeExecutionEvent?: PiboExecutionEvent;
 	private activeAssistantIndex?: number;
@@ -670,27 +837,42 @@ export class RoutedSession {
 	) {
 		this.fastMode = initialFastMode && this.fastModeSupported();
 		this.bindRuntimeSession();
-		this.patchFastModeProviderRequest();
+		this.patchProviderRequest();
 		this.patchAgentContinue();
 		this.runtime.setRebindSession(async () => {
 			this.bindRuntimeSession();
-			this.patchFastModeProviderRequest();
+			this.patchProviderRequest();
 			this.patchAgentContinue();
 		});
 	}
 
-	private patchFastModeProviderRequest(): void {
-		const agent = this.runtime.session.agent as unknown as FastModePatchableAgent | undefined;
-		if (!agent || typeof agent !== "object") return;
-		if (this.fastModePatchedAgents.has(agent)) return;
-		this.fastModePatchedAgents.add(agent);
+	enableProviderWebSearchObservation(): void {
+		this.providerWebSearchObservationEnabled = true;
+	}
 
-		const originalStreamFn = typeof agent.streamFn === "function" ? agent.streamFn.bind(agent) : undefined;
-		if (originalStreamFn) {
-			agent.streamFn = (model, context, options) => {
-				const nextOptions = this.shouldUseFastServiceTier(model) ? withFastServiceTierOption(options) : options;
+	private patchProviderRequest(): void {
+		const agent = this.runtime.session.agent as unknown as ProviderRequestPatchableAgent | undefined;
+		if (!agent || typeof agent !== "object") return;
+		if (this.providerRequestPatchedAgents.has(agent)) return;
+		this.providerRequestPatchedAgents.add(agent);
+
+		const streamFunctionKey = typeof agent.streamFunction === "function"
+			? "streamFunction"
+			: typeof agent.streamFn === "function"
+				? "streamFn"
+				: undefined;
+		const originalStreamFn = streamFunctionKey ? agent[streamFunctionKey]?.bind(agent) : undefined;
+		if (streamFunctionKey && originalStreamFn) {
+			const wrappedStreamFn: ProviderStreamFunction = (model, context, options) => {
+				let nextOptions = this.shouldUseFastServiceTier(model) ? withFastServiceTierOption(options) : options;
+				if (this.providerWebSearchObservationEnabled && modelUsesOpenAiResponses(model)) {
+					const activeEventId = this.activeMessage?.id;
+					nextOptions = withOpenAiResponseEventObserver(nextOptions, (event) => this.observeProviderResponseEvent(event, activeEventId));
+				}
 				return originalStreamFn(model, context, nextOptions);
 			};
+			if (streamFunctionKey === "streamFunction") agent.streamFunction = wrappedStreamFn;
+			else agent.streamFn = wrappedStreamFn;
 		}
 
 		const originalOnPayload = agent.onPayload?.bind(agent);
@@ -700,6 +882,115 @@ export class RoutedSession {
 			const nextPayload = originalOnPayload ? await originalOnPayload(payloadForHooks, model) : payloadForHooks;
 			return useFastTier ? withFastServiceTier(nextPayload) : nextPayload;
 		};
+	}
+
+	private observeProviderResponseEvent(event: unknown, activeEventId?: string): void {
+		if (!event || typeof event !== "object") return;
+		if (activeEventId && this.activeMessage?.id !== activeEventId) return;
+		const candidate = event as PiEventCandidate;
+		if (providerResponseCompleted(candidate)) {
+			this.flushPendingProviderWebSearchFinishes();
+			return;
+		}
+		this.emitProviderWebSearchEvent(candidate, undefined, "provider");
+	}
+
+	private emitProviderWebSearchEvent(
+		candidate: PiEventCandidate,
+		normalized = normalizeProviderWebSearchEvent(this.piboSessionId, candidate),
+		source: "provider" | "pi" = "provider",
+	): boolean {
+		if (!normalized || (
+			normalized.type !== "tool_execution_started" &&
+			normalized.type !== "tool_execution_updated" &&
+			normalized.type !== "tool_execution_finished"
+		)) return false;
+		const lifecycle = this.providerWebSearchLifecycle.get(normalized.toolCallId) ?? { started: false, finished: false };
+		if (source === "provider") lifecycle.providerObserved = true;
+		else if (lifecycle.providerObserved) {
+			if (normalized.type === "tool_execution_finished" && !lifecycle.finished && !lifecycle.pendingFinish) {
+				lifecycle.pendingFinish = normalized;
+				this.providerWebSearchLifecycle.set(normalized.toolCallId, lifecycle);
+			}
+			return true;
+		}
+
+		if (normalized.type === "tool_execution_started" || normalized.type === "tool_execution_updated") {
+			if (lifecycle.finished) return true;
+			const argsKey = providerWebSearchArgsKey(normalized.args);
+			if (!lifecycle.started) {
+				lifecycle.started = true;
+				lifecycle.argsKey = argsKey;
+				this.emit(this.withActiveMessage(normalized.type === "tool_execution_started" ? normalized : {
+					type: "tool_execution_started",
+					piboSessionId: normalized.piboSessionId,
+					toolCallId: normalized.toolCallId,
+					toolName: normalized.toolName,
+					args: normalized.args,
+				}));
+			} else if (argsKey !== lifecycle.argsKey) {
+				lifecycle.argsKey = argsKey;
+				this.emit(this.withActiveMessage({
+					type: "tool_execution_updated",
+					piboSessionId: this.piboSessionId,
+					toolCallId: normalized.toolCallId,
+					toolName: normalized.toolName,
+					args: normalized.args,
+					partialResult: normalized.args,
+				}));
+			}
+			this.providerWebSearchLifecycle.set(normalized.toolCallId, lifecycle);
+			return true;
+		}
+
+		if (providerWebSearchCompletionIsProvisional(candidate) || (source === "pi" && this.providerWebSearchObservationEnabled)) {
+			if (!lifecycle.started) {
+				const args = providerWebSearchArgsFromResult(normalized.result);
+				lifecycle.started = true;
+				lifecycle.argsKey = providerWebSearchArgsKey(args);
+				this.emit(this.withActiveMessage({
+					type: "tool_execution_started",
+					piboSessionId: this.piboSessionId,
+					toolCallId: normalized.toolCallId,
+					toolName: normalized.toolName,
+					args,
+				}));
+			}
+			lifecycle.pendingFinish = normalized;
+			this.providerWebSearchLifecycle.set(normalized.toolCallId, lifecycle);
+			return true;
+		}
+		if (lifecycle.finished) return true;
+		lifecycle.pendingFinish = undefined;
+		this.finishProviderWebSearchLifecycle(normalized, lifecycle);
+		return true;
+	}
+
+	private finishProviderWebSearchLifecycle(normalized: ProviderWebSearchFinishEvent, lifecycle: ProviderWebSearchLifecycle): void {
+		if (!lifecycle.started) {
+			const args = providerWebSearchArgsFromResult(normalized.result);
+			lifecycle.started = true;
+			lifecycle.argsKey = providerWebSearchArgsKey(args);
+			this.emit(this.withActiveMessage({
+				type: "tool_execution_started",
+				piboSessionId: this.piboSessionId,
+				toolCallId: normalized.toolCallId,
+				toolName: normalized.toolName,
+				args,
+			}));
+		}
+		lifecycle.finished = true;
+		this.providerWebSearchLifecycle.set(normalized.toolCallId, lifecycle);
+		this.emit(this.withActiveMessage(normalized));
+	}
+
+	private flushPendingProviderWebSearchFinishes(): void {
+		for (const lifecycle of this.providerWebSearchLifecycle.values()) {
+			const pending = lifecycle.pendingFinish;
+			if (!pending || lifecycle.finished) continue;
+			lifecycle.pendingFinish = undefined;
+			this.finishProviderWebSearchLifecycle(pending, lifecycle);
+		}
 	}
 
 	private shouldUseFastServiceTier(model: ProviderRequestModel | undefined): boolean {
@@ -759,13 +1050,16 @@ export class RoutedSession {
 		this.unsubscribe = session.subscribe((event) => {
 			this.onPiEventTelemetry?.(this.piboSessionId, event, { status: this.getStatus(), activeEventId: this.activeMessage?.id ?? this.activeExecutionEvent?.id });
 			const model = this.runtime.session.model as { contextWindow?: unknown } | undefined;
-			const normalized = normalizePiEvent(this.piboSessionId, event, {
+			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
+			const providerWebSearchEvent = candidate ? normalizeProviderWebSearchEvent(this.piboSessionId, candidate) : undefined;
+			const normalized = providerWebSearchEvent ?? normalizePiEvent(this.piboSessionId, event, {
 				contextWindow: numberValue(model?.contextWindow),
 				intentTracing: piIntentTracingInstalled(session),
 				intentFieldForTool: (toolName) => piToolIntentField(session, toolName),
 			});
-			const candidate = event && typeof event === "object" ? event as PiEventCandidate : undefined;
 			const assistantMessageEnded = candidate?.type === "message_end" && isAssistantMessage(candidate.message);
+			const assistantMessageFailed = assistantMessageEnded && normalized?.type === "session_error";
+			if (assistantMessageEnded && !assistantMessageFailed) this.flushPendingProviderWebSearchFinishes();
 			const usageEvent = assistantMessageEnded ? normalizeAssistantUsageEvent(this.piboSessionId, candidate?.message as AssistantErrorMessage) : undefined;
 			if (usageEvent) this.emit(this.withActiveMessage(usageEvent));
 			// Pi gets the first chance to recover through its short retry/compaction loop.
@@ -778,7 +1072,16 @@ export class RoutedSession {
 					this.pendingAssistantError = undefined;
 					this.pendingAssistantErrorRetryable = false;
 				}
-				if (normalized) this.emit(this.withActiveMessage(normalized));
+				const nativeProviderWebSearchEvent = this.providerWebSearchObservationEnabled
+					? normalizeNativeProviderWebSearchEvent(normalized)
+					: undefined;
+				if (providerWebSearchEvent && candidate) {
+					this.emitProviderWebSearchEvent(candidate, providerWebSearchEvent, "provider");
+				} else if (nativeProviderWebSearchEvent && candidate) {
+					this.emitProviderWebSearchEvent(candidate, nativeProviderWebSearchEvent, "pi");
+				} else if (normalized) {
+					this.emit(this.withActiveMessage(normalized));
+				}
 			}
 			if (this.forwardPiEvents) {
 				this.emit({ type: "pi_event", piboSessionId: this.piboSessionId, event });
@@ -1444,6 +1747,7 @@ export class RoutedSession {
 			if (this.disposed || inFlight.cancelled) return;
 
 			this.activeMessage = event;
+			this.providerWebSearchLifecycle.clear();
 			this.providerRecoveryCancelled = false;
 			this.pendingAssistantError = undefined;
 			this.pendingAssistantErrorRetryable = false;
@@ -1476,6 +1780,7 @@ export class RoutedSession {
 			if (this.disposed || inFlight.cancelled) return;
 			this.flushPendingAssistantError();
 			if (!this.activeMessageFailed) {
+				this.flushPendingProviderWebSearchFinishes();
 				this.emit({
 					type: "message_finished",
 					piboSessionId: this.piboSessionId,
@@ -1506,6 +1811,7 @@ export class RoutedSession {
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
+			this.providerWebSearchLifecycle.clear();
 			if (this.inFlightMessage === inFlight) this.inFlightMessage = undefined;
 			inFlight.resolveSettled();
 		}
