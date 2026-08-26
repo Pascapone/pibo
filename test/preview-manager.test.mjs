@@ -188,6 +188,54 @@ test("managed Preview capacity reservation is atomic across store connections", 
 	assert.equal(second.requireExposure("pv-second").serverState, "stopped");
 });
 
+test("ownerless error recovery rejects every partially persisted owner", async (t) => {
+	const directory = mkdtempSync(join(tmpdir(), "pibo-preview-partial-owner-"));
+	const path = join(directory, "previews.sqlite");
+	const store = new PreviewStore(path);
+	let stopCalls = 0;
+	const controller = {
+		createIdentity() { throw new Error("not used"); },
+		async launch() { throw new Error("not used"); },
+		async isRunning() { return false; },
+		async ownsTarget() { return false; },
+		async stop() { stopCalls += 1; },
+	};
+	t.after(() => { store.close(); rmSync(directory, { recursive: true, force: true }); });
+	const now = new Date("2026-08-23T12:00:00.000Z");
+	for (const id of ["pv-generation-only", "pv-identity-only"]) {
+		await createManagedExposure(store, id, now);
+		store.reserveManagedServerStart(
+			id,
+			3,
+			now.toISOString(),
+			"2026-08-23T12:10:00.000Z",
+			reservationIdentity(id),
+		);
+	}
+	const inspection = new DatabaseSync(path);
+	inspection.prepare(`
+		UPDATE preview_exposures
+		SET server_state = 'error', manager_kind = NULL, manager_id = NULL,
+			manager_pid = NULL, manager_process_start_ticks = NULL
+		WHERE id = ?
+	`).run("pv-generation-only");
+	inspection.prepare(`
+		UPDATE preview_exposures
+		SET server_state = 'error', server_generation = NULL
+		WHERE id = ?
+	`).run("pv-identity-only");
+	inspection.close();
+
+	for (const id of ["pv-generation-only", "pv-identity-only"]) {
+		await assert.rejects(
+			stopManagedPreview(store, id, { controller }),
+			/no durable managed owner identity/,
+		);
+		assert.equal(store.requireExposure(id).serverState, "error");
+	}
+	assert.equal(stopCalls, 0, "partial ownership must never authorize process termination");
+});
+
 test("managed start rejects a listener owned by the wrong process group", async (t) => {
 	const store = new PreviewStore(":memory:");
 	const controller = createFakeController();

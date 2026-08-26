@@ -90,6 +90,84 @@ test("live preview panel keeps the iframe isolated and exposes trusted lifecycle
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 });
 
+test("Preview fullscreen restores focus after Escape, click, and session replacement", async () => {
+	const script = `
+		import assert from "node:assert/strict";
+		import React from "react";
+		import TestRenderer from "react-test-renderer";
+		import { PreviewFullscreenTopBar } from "./src/apps/chat-ui/src/session-live-preview.tsx";
+		const { act, create } = TestRenderer;
+		globalThis.React = React;
+		globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+		class MockElement {
+			constructor(name, documentMock) { this.name = name; this.documentMock = documentMock; this.isConnected = true; this.focusCount = 0; }
+			focus() { this.focusCount += 1; this.documentMock.activeElement = this; }
+		}
+		globalThis.HTMLElement = MockElement;
+		const preview = {
+			id: "pv-focus", piboSessionId: "ps_focus", label: "Focus Preview", managed: true,
+			createdAt: "2026-08-22T00:00:00.000Z", expiresAt: "2026-08-23T00:00:00.000Z",
+			state: "active", health: "online", serverState: "running",
+			publicUrl: "https://pv-focus.preview.test/", openUrl: "/api/previews/pv-focus/open",
+		};
+		async function scenario(trigger) {
+			const listeners = new Map();
+			const timers = [];
+			const documentMock = { activeElement: undefined, queryResult: undefined,
+				querySelector(selector) {
+					assert.equal(selector, '[data-pibo-debug="session-live-preview"] [aria-label="Enter Preview fullscreen"]');
+					return this.queryResult;
+				},
+			};
+			const prior = new MockElement("prior", documentMock);
+			const enter = new MockElement("enter-current-session", documentMock);
+			const exit = new MockElement("exit", documentMock);
+			documentMock.activeElement = prior;
+			documentMock.queryResult = enter;
+			globalThis.document = documentMock;
+			globalThis.window = {
+				location: { origin: "https://chat.example.test" },
+				open() {},
+				addEventListener(type, listener) { listeners.set(type, listener); },
+				removeEventListener(type, listener) { if (listeners.get(type) === listener) listeners.delete(type); },
+				setTimeout(callback) { timers.push(callback); return timers.length; },
+			};
+			let exits = 0;
+			let renderer;
+			await act(async () => {
+				renderer = create(React.createElement(PreviewFullscreenTopBar, {
+					preview, onReload() {}, onStart() {}, onStop() {}, onExit() { exits += 1; },
+				}), {
+					createNodeMock(element) {
+						return element.props?.["aria-label"] === "Exit Preview fullscreen"
+							? exit
+							: new MockElement("host", documentMock);
+					},
+				});
+			});
+			assert.equal(exit.focusCount, 1, "fullscreen entry must focus the exit control");
+			if (trigger === "escape") {
+				const event = { key: "Escape", prevented: false, preventDefault() { this.prevented = true; } };
+				await act(async () => listeners.get("keydown")(event));
+				assert.equal(event.prevented, true);
+				assert.equal(exits, 1);
+			} else if (trigger === "click") {
+				await act(async () => renderer.root.findByProps({ "aria-label": "Exit Preview fullscreen" }).props.onClick());
+				assert.equal(exits, 1);
+			}
+			await act(async () => renderer.unmount());
+			assert.equal(listeners.has("keydown"), false);
+			for (const callback of timers.splice(0)) callback();
+			assert.equal(enter.focusCount, 1, "cleanup must focus the current session's newly mounted Enter control");
+			assert.equal(prior.focusCount, 0, "cleanup must not return focus to an unmounted stale control");
+		}
+		await scenario("escape");
+		await scenario("click");
+		await scenario("session-replacement");
+	`;
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+});
+
 test("Session and Project trace panes scope lifecycle state and fullscreen to the selected Pibo Session", () => {
 	const pane = readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
 	const layout = readFileSync("src/apps/chat-ui/src/session-trace-layout.tsx", "utf8");
