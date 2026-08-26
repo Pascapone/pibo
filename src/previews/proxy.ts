@@ -296,6 +296,7 @@ export function proxyPreviewHttp(input: {
 			settled = true;
 			resolve();
 		};
+		input.response.once("finish", finish);
 		const headers = requestHeaders(input.request.headers, input.exposure, input.requestURL, false);
 		const upstream = httpRequest(
 			targetOptions(input.exposure, upstreamRequestPath(input.requestURL), headers, input.request.method),
@@ -307,10 +308,8 @@ export function proxyPreviewHttp(input: {
 					responseHeaders(upstreamResponse.headers, input.exposure, input.requestURL.origin, input.piboOrigin),
 				);
 				upstreamResponse.pipe(input.response);
-				upstreamResponse.once("end", finish);
 				upstreamResponse.once("error", () => {
 					if (!input.response.writableEnded) input.response.destroy();
-					finish();
 				});
 			},
 		);
@@ -321,7 +320,6 @@ export function proxyPreviewHttp(input: {
 				input.response.writeHead(502, { "content-type": "application/json", "cache-control": "no-store" });
 				input.response.end(JSON.stringify({ error: "Preview upstream unavailable" }));
 			} else if (!input.response.writableEnded) input.response.destroy(error);
-			finish();
 		});
 		input.request.once("aborted", () => upstream.destroy());
 		input.response.once("close", () => {

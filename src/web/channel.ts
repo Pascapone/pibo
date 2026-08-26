@@ -67,20 +67,36 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
 	return raw?.split(",")[0]?.trim() || undefined;
 }
 
-function rawRequestHostname(request: IncomingMessage): string | undefined {
-	const rawAuthority = request.headers.host;
-	if (Array.isArray(rawAuthority) || !rawAuthority) return undefined;
+function strictAuthorityHostname(rawAuthority: string | undefined): string | undefined {
+	if (!rawAuthority) return undefined;
 	const authority = rawAuthority.trim();
 	if (!authority || authority.includes(",") || /[\\/@?#\s]/.test(authority)) return undefined;
-	const forwardedHost = request.headers["x-forwarded-host"];
-	if (Array.isArray(forwardedHost) || forwardedHost?.includes(",")) return undefined;
-	const forwardedProto = request.headers["x-forwarded-proto"];
-	if (Array.isArray(forwardedProto) || forwardedProto?.includes(",")) return undefined;
 	try {
 		return new URL(`http://${authority}`).hostname.toLowerCase();
 	} catch {
 		return undefined;
 	}
+}
+
+function rawRequestHostname(request: IncomingMessage): string | undefined {
+	const rawAuthority = request.headers.host;
+	if (Array.isArray(rawAuthority)) return undefined;
+	const directHostname = strictAuthorityHostname(rawAuthority);
+	if (!directHostname) return undefined;
+	const forwardedHost = request.headers["x-forwarded-host"];
+	if (Array.isArray(forwardedHost) || forwardedHost?.includes(",")) return undefined;
+	const forwardedProto = request.headers["x-forwarded-proto"];
+	if (Array.isArray(forwardedProto) || forwardedProto?.includes(",")) return undefined;
+	if (Boolean(forwardedHost) !== Boolean(forwardedProto)) return undefined;
+	if (forwardedProto && forwardedProto !== "http" && forwardedProto !== "https") return undefined;
+	if (
+		isLoopbackAddress(request.socket.remoteAddress) &&
+		forwardedHost &&
+		forwardedProto
+	) {
+		return strictAuthorityHostname(forwardedHost);
+	}
+	return directHostname;
 }
 
 function isLoopbackAddress(address: string | undefined): boolean {

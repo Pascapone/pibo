@@ -395,13 +395,27 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 	await heldUpgradeClosed;
 	assert.equal((await waitForPreviewAdmission({ port: webPort, host: previewHost, headers: { cookie: sessionCookie } })).status, 200);
 
-	const forwardedHostSpoof = await request({
+	const forwardedProxyRequest = await request({
 		port: webPort,
 		host: `pibo.localhost:${webPort}`,
 		path: "/",
 		headers: { "x-forwarded-host": previewHost, "x-forwarded-proto": "http", cookie: sessionCookie },
 	});
-	assert.notEqual(forwardedHostSpoof.body, "preview:/");
+	assert.equal(forwardedProxyRequest.body, "preview:/");
+	const malformedForwardedHost = await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/",
+		headers: { "x-forwarded-host": `${previewHost},evil.example`, "x-forwarded-proto": "http", cookie: sessionCookie },
+	});
+	assert.notEqual(malformedForwardedHost.body, "preview:/");
+	for (const headers of [
+		{ "x-forwarded-host": previewHost, "x-forwarded-proto": "javascript", cookie: sessionCookie },
+		{ "x-forwarded-proto": "http", cookie: sessionCookie },
+	]) {
+		const malformedForwardingPair = await request({ port: webPort, host: previewHost, path: "/", headers });
+		assert.notEqual(malformedForwardingPair.body, "preview:/");
+	}
 
 	const replay = await request({
 		port: webPort,
