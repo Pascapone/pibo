@@ -149,6 +149,13 @@ export function PreviewFullscreenTopBar({
 	onExitRef.current = onExit;
 	useEffect(() => {
 		const priorFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+		const restoreFocus = () => {
+			const enterButton = document.querySelector<HTMLButtonElement>(
+				'[data-pibo-debug="session-live-preview"] [aria-label="Enter Preview fullscreen"]',
+			);
+			if (enterButton) enterButton.focus();
+			else if (priorFocus?.isConnected) priorFocus.focus();
+		};
 		exitButtonRef.current?.focus();
 		const handleKeyDown = (event: globalThis.KeyboardEvent) => {
 			if (event.key !== "Escape") return;
@@ -158,7 +165,7 @@ export function PreviewFullscreenTopBar({
 		window.addEventListener("keydown", handleKeyDown, true);
 		return () => {
 			window.removeEventListener("keydown", handleKeyDown, true);
-			if (priorFocus?.isConnected) priorFocus.focus();
+			window.setTimeout(restoreFocus, 0);
 		};
 	}, []);
 

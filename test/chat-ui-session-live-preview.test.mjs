@@ -93,6 +93,7 @@ test("live preview panel keeps the iframe isolated and exposes trusted lifecycle
 test("Session and Project trace panes scope lifecycle state and fullscreen to the selected Pibo Session", () => {
 	const pane = readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
 	const layout = readFileSync("src/apps/chat-ui/src/session-trace-layout.tsx", "utf8");
+	const preview = readFileSync("src/apps/chat-ui/src/session-live-preview.tsx", "utf8");
 	assert.match(pane, /selectedPreviewSessionRef\.current = selectedBackendPiboSessionId/);
 	assert.match(pane, /resolveSessionLivePreviewAuthority/);
 	assert.match(pane, /requirePreviewActionAuthority/);
@@ -103,4 +104,7 @@ test("Session and Project trace panes scope lifecycle state and fullscreen to th
 	assert.match(layout, /fullscreenTopBar/);
 	assert.match(layout, /fullscreenContent/);
 	assert.match(layout, /hideComposer \? null : <Composer/);
+	assert.match(preview, /window\.addEventListener\("keydown", handleKeyDown, true\)/);
+	assert.match(preview, /\[aria-label="Enter Preview fullscreen"\]/);
+	assert.match(preview, /window\.setTimeout\(restoreFocus, 0\)/);
 });
