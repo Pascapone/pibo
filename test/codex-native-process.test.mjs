@@ -322,6 +322,62 @@ test("Codex native process opts into structured user input only through explicit
 	await runtime.close();
 });
 
+test("Codex native process scopes realtime feature and endpoint overrides to one process", async (t) => {
+	const root = await testRoot(t);
+	const runtime = await startCodexNativeAppServer({
+		config: config(root),
+		runtimeInstanceId: "codex-native-realtime",
+		piboSessionId: "ps_process_realtime",
+		sessionGeneration: "generation-realtime",
+		workspace: root,
+		clientVersion: "1.7.2-test",
+		baseEnvironment: fakeEnvironment(),
+		realtimeConversation: true,
+		realtimeSidebandBaseUrl: "https://api.openai.com/v1",
+		realtimeWebrtcCallBaseUrl: "http://127.0.0.1:54321/private/backend-api/codex",
+	});
+	t.after(() => runtime.close());
+	const response = await runtime.client.request("test/process", {});
+	assert.deepEqual(response.args, [
+		"app-server",
+		"--stdio",
+		"--strict-config",
+		"-c",
+		"tools.experimental_request_user_input.enabled=false",
+		"-c",
+		"features.default_mode_request_user_input=false",
+		"-c",
+		"features.realtime_conversation=true",
+		"-c",
+		"experimental_realtime_ws_base_url=\"https://api.openai.com/v1\"",
+		"-c",
+		"experimental_realtime_webrtc_call_base_url=\"http://127.0.0.1:54321/private/backend-api/codex\"",
+	]);
+	assert.doesNotMatch(await readFile(runtime.paths.configFile, "utf8"), /api\.openai\.com|54321|realtime_conversation/);
+});
+
+test("Codex native process cancellation before publication leaves no generation state", async (t) => {
+	const root = await testRoot(t);
+	const runtimeConfig = config(root);
+	const controller = new AbortController();
+	controller.abort(new Error("speech request disconnected"));
+	await assert.rejects(
+		startCodexNativeAppServer({
+			config: runtimeConfig,
+			runtimeInstanceId: "codex-native",
+			piboSessionId: "speech",
+			sessionGeneration: "cancelled-generation",
+			workspace: root,
+			clientVersion: "test",
+			baseEnvironment: fakeEnvironment(),
+			signal: controller.signal,
+		}),
+		(error) => error instanceof CodexNativeProcessError && error.code === "start_failed",
+	);
+	const instance = await prepareCodexNativeInstancePaths(runtimeConfig, "codex-native");
+	assert.deepEqual(await readdir(instance.sessions), []);
+});
+
 test("Codex native processes isolate configured instances, session environments, and cleanup", async (t) => {
 	const root = await testRoot(t);
 	const runtimeConfig = config(root);

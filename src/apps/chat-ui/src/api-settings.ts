@@ -65,6 +65,9 @@ export type UserSettings = {
 	transcription: {
 		providerId: string;
 	};
+	speech: {
+		providerId: string;
+	};
 	telemetryRetention: TelemetryRetentionSettings;
 };
 

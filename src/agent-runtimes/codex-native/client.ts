@@ -109,6 +109,7 @@ export type CodexAppServerClientOptions = {
 	overloadRetry?: CodexAppServerOverloadRetryOptions;
 	random?: () => number;
 	onDiagnostic?: (diagnostic: CodexAppServerDiagnostic) => void;
+	signal?: AbortSignal;
 };
 
 export type CodexAppServerClientSnapshot = {
@@ -262,17 +263,24 @@ function timeoutError(label: string): CodexAppServerClientError {
 	return new CodexAppServerClientError("timeout", `${label} timed out`);
 }
 
-async function waitWithTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+async function waitWithTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string, signal?: AbortSignal): Promise<T> {
+	if (signal?.aborted) throw new CodexAppServerClientError("aborted", `${label} was aborted`);
 	let timer: NodeJS.Timeout | undefined;
+	let onAbort: (() => void) | undefined;
 	try {
 		return await Promise.race([
 			promise,
 			new Promise<T>((_resolve, reject) => {
-				timer = setTimeout(() => reject(timeoutError(label)), timeoutMs);
-			}),
+					timer = setTimeout(() => reject(timeoutError(label)), timeoutMs);
+				}),
+			...(signal ? [new Promise<T>((_resolve, reject) => {
+				onAbort = () => reject(new CodexAppServerClientError("aborted", `${label} was aborted`));
+				signal.addEventListener("abort", onAbort, { once: true });
+			})] : []),
 		]);
 	} finally {
 		if (timer) clearTimeout(timer);
+		if (onAbort) signal?.removeEventListener("abort", onAbort);
 	}
 }
 
@@ -352,6 +360,7 @@ export class CodexAppServerClient {
 
 	static async start(options: CodexAppServerClientOptions): Promise<CodexAppServerClient> {
 		validateClientOptions(options);
+		if (options.signal?.aborted) throw new CodexAppServerClientError("aborted", "Codex App Server startup was aborted");
 		let previousMask: number | undefined;
 		if (options.fileCreationMask !== undefined && globalThis.process.platform !== "win32") {
 			previousMask = globalThis.process.umask(options.fileCreationMask);
@@ -374,10 +383,14 @@ export class CodexAppServerClient {
 		};
 		const client = new CodexAppServerClient(process, options, placeholder);
 		client.attachProcessListeners();
+		const onAbort = () => {
+			void client.stopProcess(false).catch(() => {});
+		};
+		options.signal?.addEventListener("abort", onAbort, { once: true });
 		const deadline = Date.now() + client.startupTimeoutMs;
 
 		try {
-			await waitWithTimeout(client.spawned.promise, client.startupTimeoutMs, "Codex App Server spawn");
+			await waitWithTimeout(client.spawned.promise, client.startupTimeoutMs, "Codex App Server spawn", options.signal);
 			client.state = "initializing";
 			const initializeResult = await client.requestWithRetry<unknown>(
 				"initialize",
@@ -388,6 +401,7 @@ export class CodexAppServerClient {
 				{
 					timeoutMs: Math.max(1, deadline - Date.now()),
 					retryOverloaded: true,
+					signal: options.signal,
 				},
 				true,
 			);
@@ -398,6 +412,7 @@ export class CodexAppServerClient {
 				client.writeMessage({ method: "initialized" }, true),
 				Math.max(1, deadline - Date.now()),
 				"Codex App Server initialized notification",
+				options.signal,
 			);
 			client.state = "ready";
 			return client;
@@ -406,6 +421,8 @@ export class CodexAppServerClient {
 			client.failAll(normalized);
 			await client.stopProcess(false).catch(() => {});
 			throw normalized;
+		} finally {
+			options.signal?.removeEventListener("abort", onAbort);
 		}
 	}
 

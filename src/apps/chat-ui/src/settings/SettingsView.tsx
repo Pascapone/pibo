@@ -16,11 +16,13 @@ import {
 	PowerOff,
 	Settings,
 	Trash2,
+	Volume2,
 	Wrench,
 } from "lucide-react";
 import { createUserSkill, deletePiPackage, deleteUserSkill, getUserSkill, installUserSkill, patchPiPackage, postPiPackage, updateUserSkill } from "../api-agent-designer";
 import { getGatewaySettings, getUserSettings, patchGatewaySettings, patchModelDefaults, patchUserSettings, pruneTelemetryRetention } from "../api-settings";
 import { getTranscriptionProviders } from "../api-transcription";
+import { getSpeechProviders } from "../api-speech";
 import { piPackageMeta, type PiPackageCatalogItem } from "../agents/agent-designer-model";
 import { AgentRuntimeOptions, DesignerPanel, EmptyCatalog, InlineCheckboxToggle, PiPackageDetails } from "../agents/designer-ui";
 import { writeStoredExpandThinking, writeStoredShowThinking } from "../app-storage";
@@ -118,6 +120,20 @@ export function SettingsView({
 				</h1>
 				<DesignerPanel title="Audio transcription">
 					<TranscriptionProviderSettings />
+				</DesignerPanel>
+			</div>
+		);
+	}
+
+	if (activePanel === "speech") {
+		return (
+			<div className="p-6 overflow-auto">
+				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+					<Volume2 size={16} />
+					Speech
+				</h1>
+				<DesignerPanel title="Text-to-speech">
+					<SpeechProviderSettings />
 				</DesignerPanel>
 			</div>
 		);
@@ -436,6 +452,81 @@ function TranscriptionProviderSettings() {
 			{providersQuery.error ? <div className="mt-2 text-xs text-red-300">{providersQuery.error instanceof Error ? providersQuery.error.message : String(providersQuery.error)}</div> : null}
 			{saving ? <div className="mt-2 text-xs text-slate-400">Saving…</div> : null}
 			{error ? <div className="mt-2 text-xs text-red-300">{error}</div> : null}
+		</div>
+	);
+}
+
+function SpeechProviderSettings() {
+	const queryClient = useQueryClient();
+	const settingsQuery = useQuery({ queryKey: ["user-settings"], queryFn: getUserSettings });
+	const providersQuery = useQuery({ queryKey: ["speech-providers"], queryFn: getSpeechProviders });
+	const providers = providersQuery.data?.providers ?? [];
+	const selectedProviderId = settingsQuery.data?.speech.providerId ?? providersQuery.data?.selectedProviderId ?? "";
+	const [draft, setDraft] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (selectedProviderId) setDraft(selectedProviderId);
+	}, [selectedProviderId]);
+
+	const save = async (providerId: string) => {
+		const provider = providers.find((candidate) => candidate.id === providerId);
+		if (!provider?.configured) {
+			setError(provider ? `${provider.name} requires authentication` : `Unknown speech provider "${providerId}"`);
+			return;
+		}
+		setDraft(providerId);
+		setSaving(true);
+		setError(null);
+		try {
+			const saved = await patchUserSettings({ speech: { providerId } });
+			queryClient.setQueryData(["user-settings"], saved);
+			queryClient.setQueryData(["speech-providers"], (current: typeof providersQuery.data) => current
+				? { ...current, selectedProviderId: saved.speech.providerId }
+				: current);
+			setDraft(saved.speech.providerId);
+		} catch (caught) {
+			setDraft(selectedProviderId);
+			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const selectedProvider = providers.find((provider) => provider.id === draft);
+	const currentProviderAvailable = Boolean(selectedProvider);
+	return (
+		<div>
+			<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Speech provider</div>
+			<div className="max-w-xl">
+				<select
+					value={draft}
+					disabled={settingsQuery.isLoading || providersQuery.isLoading || saving || providers.length === 0}
+					onChange={(event) => void save(event.target.value)}
+					aria-describedby="speech-provider-help speech-provider-status"
+					className="w-full min-w-0 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+				>
+					{draft && !currentProviderAvailable ? <option value={draft}>{draft} (unavailable)</option> : null}
+					{providers.map((provider) => (
+						<option key={provider.id} value={provider.id} disabled={!provider.configured}>
+							{provider.name}{provider.configured ? "" : " — authentication required"}
+						</option>
+					))}
+				</select>
+			</div>
+			<div id="speech-provider-help" className="mt-2 text-[11px] text-slate-500">
+				Assistant-message audio uses this provider independently from transcription, chat-model providers, and future preview settings. The initial provider uses the ChatGPT/Codex subscription configured under Providers for the Native Codex runtime.
+			</div>
+			{selectedProvider?.description ? <div className="mt-2 text-[11px] text-slate-400">{selectedProvider.description}</div> : null}
+			<div id="speech-provider-status" aria-live="polite">
+				{providers.length === 0 && !providersQuery.isLoading && !providersQuery.error ? <div className="mt-2 text-xs text-amber-300">No speech providers are registered.</div> : null}
+				{providersQuery.error ? <div className="mt-2 text-xs text-red-300" role="alert">{providersQuery.error instanceof Error ? providersQuery.error.message : String(providersQuery.error)}</div> : null}
+				{draft && !currentProviderAvailable && !providersQuery.isLoading && !providersQuery.error ? <div className="mt-2 text-xs text-amber-300">The selected speech provider is unavailable. Choose a configured provider.</div> : null}
+				{selectedProvider && !selectedProvider.configured ? <div className="mt-2 text-xs text-amber-300">{selectedProvider.name} requires authentication before it can read messages aloud.</div> : null}
+				{saving ? <div className="mt-2 text-xs text-slate-400">Saving…</div> : null}
+				{error ? <div className="mt-2 text-xs text-red-300" role="alert">{error}</div> : null}
+			</div>
 		</div>
 	);
 }
