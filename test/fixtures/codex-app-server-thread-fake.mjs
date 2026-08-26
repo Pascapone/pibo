@@ -731,6 +731,39 @@ if (args[0] === "--version") {
 			})();
 			return;
 		}
+		if (message.method === "test/listMcpTools") {
+			const server = threadConfigs[params.threadId]?.mcp_servers?.[params.server];
+			if (!server || typeof server.url !== "string") {
+				send({ id: message.id, error: { code: -32602, message: "fixture MCP server is unavailable" } });
+				return;
+			}
+			const headers = {
+				accept: "application/json, text/event-stream",
+				"content-type": "application/json",
+				...(server.http_headers && typeof server.http_headers === "object" ? server.http_headers : {}),
+			};
+			if (server.env_http_headers && typeof server.env_http_headers === "object") {
+				for (const [name, environmentName] of Object.entries(server.env_http_headers)) {
+					if (typeof environmentName === "string" && process.env[environmentName] !== undefined) headers[name] = process.env[environmentName];
+				}
+			}
+			if (typeof server.bearer_token_env_var === "string" && process.env[server.bearer_token_env_var] !== undefined) {
+				headers.authorization = `Bearer ${process.env[server.bearer_token_env_var]}`;
+			}
+			void (async () => {
+				const transport = new StreamableHTTPClientTransport(new URL(server.url), { requestInit: { headers } });
+				const client = new Client({ name: "codex-app-server-thread-fixture", version: "1" });
+				try {
+					await client.connect(transport);
+					send({ id: message.id, result: await client.listTools() });
+				} catch {
+					send({ id: message.id, error: { code: -32603, message: "fixture MCP list failed" } });
+				} finally {
+					await transport.close().catch(() => {});
+				}
+			})();
+			return;
+		}
 		if (message.method === "mcpServerStatus/list") {
 			const servers = threadConfigs[params.threadId]?.mcp_servers;
 			const data = process.env.PIBO_CODEX_FIXTURE_RESOURCE_MODE === "omit-mcp"

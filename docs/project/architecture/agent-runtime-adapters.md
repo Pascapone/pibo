@@ -134,7 +134,7 @@ Pi uses its native loaders. Codex receives selected skills through isolated extr
 
 ### Subagents, workflows, and jobs
 
-Pibo-managed delegated agents remain Pibo capabilities. `pibo_agents_send_message` is dispatched only through `pibo_run_start`; list, observe, and kill remain direct management tools. A send creates or reuses a child Pibo Session with its own frozen target-profile binding. Stable thread keys are bounded, and parent interruption cancels active child work recursively while preserving reusable child identity. Normal parent-turn completion, bounded `pibo_run_wait` expiry, and stale telemetry do not cancel the child request.
+Pibo-managed delegated agents remain Pibo capabilities. `pibo_agents_send_message` is dispatched only through `pibo_run_start`; list, observe, and kill remain direct management tools. Every send requires a nonblank `sessionName` of at most 40 Unicode code points; Pibo trims it and rejects invalid nested target arguments before creating a run. A send creates or reuses a child Pibo Session with its own frozen target-profile binding and uses the normalized name as its title. Stable thread keys are bounded, and parent interruption cancels active child work recursively while preserving reusable child identity. Normal parent-turn completion, bounded `pibo_run_wait` expiry, and stale telemetry do not cancel the child request.
 
 Cron, Loop, and workflow execution create normal Pibo Sessions through the same router. Their runtime is selected by profile and requires no harness-specific product fork.
 

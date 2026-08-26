@@ -343,6 +343,8 @@ export {
 	createSubagentToolName,
 	formatAvailableAgentsForPrompt,
 	listAvailableAgents,
+	normalizePiboAgentSessionName,
+	PIBO_AGENT_SESSION_NAME_MAX_LENGTH,
 	PIBO_AGENT_TOOL_NAMES,
 } from "./subagents/tool.js";
 export type {

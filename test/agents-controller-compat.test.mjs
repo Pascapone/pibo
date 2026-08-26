@@ -7,7 +7,7 @@ const fixtureConfigPath = fileURLToPath(new URL("./fixtures/tsconfig.agents-cont
 const compilerPath = fileURLToPath(new URL("../node_modules/typescript/bin/tsc", import.meta.url));
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 
-test("legacy agents-controller input and result shapes remain TypeScript-compatible", () => {
+test("agents-controller input and result shapes compile with required session names", () => {
 	const result = spawnSync(process.execPath, [
 		"--max-old-space-size=1200",
 		compilerPath,

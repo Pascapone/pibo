@@ -31,4 +31,14 @@ const controller: PiboAgentsController = {
 	},
 };
 
+async function callControllerWithRequiredSessionName(): Promise<void> {
+	await controller.sendMessage({
+		subagent: { name: "legacy", targetProfile: "legacy-profile" },
+		sessionName: "Legacy request",
+		message: "legacy request",
+		requestId: "run_legacy",
+	});
+}
+
 void controller;
+void callControllerWithRequiredSessionName;

@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { Value } from "typebox/value";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
@@ -10,10 +11,13 @@ import { normalizePiEvent } from "../dist/agent-runtimes/pi/routed-session.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { createRunToolDefinitions } from "../dist/runs/tools.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
+import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
+import { getDelegatedAgentContextFile } from "../dist/subagents/context.js";
 import {
 	createAgentToolDefinitions,
 	createSubagentToolDefinitions,
 	createSubagentToolName,
+	PIBO_AGENT_SESSION_NAME_MAX_LENGTH,
 	PIBO_AGENT_TOOL_NAMES,
 } from "../dist/subagents/tool.js";
 import {
@@ -30,6 +34,8 @@ import { getToolPythonRuntimePaths } from "../dist/tools/python-runtime.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredPartitionField = `${retiredWord}Scope`;
+const fortyCombiningCodePoints = "e\u0301".repeat(20);
+const fortyTwoCombiningCodePoints = "e\u0301".repeat(21);
 
 const noopAgentsController = {
 	async sendMessage(input) {
@@ -207,7 +213,7 @@ test("agent observation tool summaries bound oversized and malformed values", ()
 	assert.match(malformed, /"isError":true/);
 });
 
-test("legacy subagent tool exports remain source-compatible without entering runtime assembly", async () => {
+test("legacy subagent tool exports remain available, stay outside runtime assembly, and require session names", async () => {
 	assert.equal(createSubagentToolName("Research Helper"), "pibo_subagent_research_helper");
 	assert.equal(isGeneratedPiboTool("pibo_subagent_research_helper"), true);
 	assert.equal(isGeneratedPiboTool("pibo_agents_send_message"), true);
@@ -226,10 +232,28 @@ test("legacy subagent tool exports remain source-compatible without entering run
 		},
 	);
 	assert.equal(tool.name, "pibo_subagent_research_helper");
-	const result = await tool.execute("tool-legacy", { message: "inspect", threadKey: "migration" });
+	assert.equal(Value.Check(tool.inputSchema, { message: "missing name" }), false);
+	assert.equal(Value.Check(tool.inputSchema, { sessionName: fortyTwoCombiningCodePoints, message: "schema mismatch" }), true);
+	await assert.rejects(
+		tool.execute("tool-legacy-missing", { message: "missing name" }),
+		/Agent session name is required/,
+	);
+	assert.throws(
+		() => tool.prepareInput({ sessionName: fortyTwoCombiningCodePoints, message: "must fail before dispatch" }),
+		/Agent session name must be at most 40 characters/,
+	);
+	await assert.rejects(
+		tool.execute("tool-legacy-combining-long", { sessionName: fortyTwoCombiningCodePoints, message: "must fail before dispatch" }),
+		/Agent session name must be at most 40 characters/,
+	);
+	assert.equal(calls.length, 0);
+	await tool.execute("tool-legacy-combining-exact", { sessionName: fortyCombiningCodePoints, message: "exactly 40 code points" });
+	assert.equal(calls[0].sessionName, fortyCombiningCodePoints);
+	const result = await tool.execute("tool-legacy", { sessionName: "  Legacy research  ", message: "inspect", threadKey: "migration" });
 	assert.equal(result.content[0].text, "legacy reply");
-	assert.equal(calls[0].toolCallId, "tool-legacy");
-	assert.equal(calls[0].threadKey, "migration");
+	assert.equal(calls[1].sessionName, "Legacy research");
+	assert.equal(calls[1].toolCallId, "tool-legacy");
+	assert.equal(calls[1].threadKey, "migration");
 	assert.throws(
 		() => createSubagentToolDefinitions([
 			{ name: "same-name", targetProfile: "one" },
@@ -267,6 +291,7 @@ test("shared send tool normalizes the legacy agents-controller result shape", as
 	);
 	const result = await send.execute("legacy-controller-send", {
 		name: "helper",
+		sessionName: "Legacy controller request",
 		message: "work",
 	}, undefined, undefined, { yieldedRunId: "run_legacy_controller" });
 	assert.equal(observedInput.requestId, "run_legacy_controller");
@@ -409,7 +434,7 @@ test("direct Pi prompt orders delegated-agent context before installed-tool and 
 });
 
 test("shared agent tool definitions delegate execution and management to the controller", async () => {
-	let observed;
+	const observed = [];
 	const tools = createAgentToolDefinitions(
 		[{
 			name: "helper",
@@ -419,11 +444,11 @@ test("shared agent tool definitions delegate execution and management to the con
 		{
 			...noopAgentsController,
 			async sendMessage(input) {
-				observed = input;
+				observed.push(input);
 				return noopAgentsController.sendMessage(input);
 			},
 			listAgents() {
-				return [{ agentId: "ps_child", name: "helper", profile: "helper-profile", threadKey: "files", status: "idle", createdAt: "2026-08-23T00:00:00.000Z", updatedAt: "2026-08-23T00:00:00.000Z" }];
+				return [{ agentId: "ps_child", name: "helper", profile: "helper-profile", sessionName: "Find relevant files", threadKey: "files", status: "idle", createdAt: "2026-08-23T00:00:00.000Z", updatedAt: "2026-08-23T00:00:00.000Z" }];
 			},
 		},
 	);
@@ -437,8 +462,28 @@ test("shared agent tool definitions delegate execution and management to the con
 		send.execute("tool-call-direct", { name: "helper", message: "direct" }, controller.signal, undefined, {}),
 		/yielded-only/,
 	);
+	for (const [label, params] of [
+		["missing", { name: "helper", message: "missing" }],
+		["blank", { name: "helper", sessionName: "   ", message: "blank" }],
+		["non-string", { name: "helper", sessionName: 7, message: "wrong type" }],
+		["oversized", { name: "helper", sessionName: "😀".repeat(41), message: "too long" }],
+		["combining-oversized", { name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "too many code points" }],
+	]) {
+		await assert.rejects(
+			send.execute(`tool-call-${label}`, params, controller.signal, undefined, { yieldedRunId: `run_${label}` }),
+			/Agent session name/,
+		);
+	}
+	assert.equal(observed.length, 0);
+	await send.execute("tool-call-combining-exact", {
+		name: "helper",
+		sessionName: fortyCombiningCodePoints,
+		message: "Exactly 40 code points.",
+	}, controller.signal, undefined, { yieldedRunId: "run_combining_exact" });
+	assert.equal(observed[0].sessionName, fortyCombiningCodePoints);
 	const result = await send.execute("tool-call-1", {
 		name: "helper",
+		sessionName: "  Find relevant files  ",
 		message: "Find the relevant files.",
 		threadKey: "files",
 	}, controller.signal, undefined, {
@@ -450,13 +495,27 @@ test("shared agent tool definitions delegate execution and management to the con
 		}),
 	});
 
-	assert.equal(observed.subagent.name, "helper");
-	assert.equal(observed.message, "Find the relevant files.");
-	assert.equal(observed.threadKey, "files");
-	assert.equal(observed.toolCallId, "tool-call-1");
-	assert.equal(observed.requestId, "run_request_1");
-	assert.deepEqual(observed.parentProvenance, { kind: "loop-run", jobId: "loop_job", runId: "loop_run" });
-	assert.equal(observed.signal, controller.signal);
+	assert.equal(observed[1].subagent.name, "helper");
+	assert.equal(observed[1].sessionName, "Find relevant files");
+	assert.equal(observed[1].message, "Find the relevant files.");
+	assert.equal(observed[1].threadKey, "files");
+	assert.equal(observed[1].toolCallId, "tool-call-1");
+	assert.equal(observed[1].requestId, "run_request_1");
+	assert.deepEqual(observed[1].parentProvenance, { kind: "loop-run", jobId: "loop_job", runId: "loop_run" });
+	assert.equal(observed[1].signal, controller.signal);
+	assert.equal(send.inputSchema.required.includes("sessionName"), true);
+	assert.equal(send.inputSchema.properties.sessionName.minLength, 1);
+	assert.equal(send.inputSchema.properties.sessionName.maxLength, PIBO_AGENT_SESSION_NAME_MAX_LENGTH);
+	assert.equal(send.inputSchema.properties.sessionName.pattern, "\\S");
+	assert.equal(Value.Check(send.inputSchema, { name: "helper", message: "missing" }), false);
+	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "   ", message: "blank" }), false);
+	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "😀".repeat(40), message: "valid" }), true);
+	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "😀".repeat(41), message: "long" }), false);
+	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "schema mismatch" }), true);
+	assert.throws(
+		() => send.prepareInput({ name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "prepared validation" }),
+		/Agent session name must be at most 40 characters/,
+	);
 	assert.equal(send.inputSchema.properties.threadKey.maxLength, 256);
 	assert.equal(result.details.agentId, "ps_child");
 	assert.equal(result.details.requestId, "run_request_1");
@@ -467,6 +526,78 @@ test("shared agent tool definitions delegate execution and management to the con
 	const listed = await list.execute("tool-call-2", {});
 	assert.equal(listed.details.availableAgents[0].description, "Ask the helper agent.");
 	assert.equal(listed.details.agents[0].agentId, "ps_child");
+	assert.equal(listed.details.agents[0].sessionName, "Find relevant files");
+});
+
+test("run start prepares selected delegated input before admission and persists the prepared arguments", async () => {
+	let starts = 0;
+	let dispatches = 0;
+	let started;
+	let dispatched;
+	const [send] = createAgentToolDefinitions(
+		[{ name: "helper", targetProfile: "helper-profile" }],
+		{
+			...noopAgentsController,
+			async sendMessage(input) {
+				dispatches += 1;
+				dispatched = input;
+				return noopAgentsController.sendMessage(input);
+			},
+		},
+	);
+	const [start] = createRunToolDefinitions([send], {
+		...noopRunToolController,
+		startToolRun(input) {
+			starts += 1;
+			started = input;
+			return {
+				runId: `run_prepared_${starts}`,
+				kind: "tool",
+				controllerPiboSessionId: "ps_parent",
+				status: "running",
+				completionPolicy: input.completionPolicy ?? "tracked",
+				consumed: false,
+				toolName: input.toolName,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+		},
+	});
+
+	assert.equal(Value.Check(send.inputSchema, {
+		name: "helper",
+		sessionName: fortyTwoCombiningCodePoints,
+		message: "schema admits graphemes",
+	}), true);
+	await assert.rejects(start.execute("run-start-combining-long", {
+		toolName: send.name,
+		arguments: { name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "must not start" },
+		completionPolicy: "tracked",
+	}), /Agent session name must be at most 40 characters/);
+	assert.equal(starts, 0);
+	assert.equal(dispatches, 0);
+
+	await start.execute("run-start-combining-exact", {
+		toolName: send.name,
+		arguments: { name: "helper", sessionName: fortyCombiningCodePoints, message: "exactly 40 code points" },
+		completionPolicy: "tracked",
+	});
+	assert.equal(starts, 1);
+	assert.equal(started.params.sessionName, fortyCombiningCodePoints);
+	await started.execute("run_prepared_1");
+	assert.equal(dispatches, 1);
+	assert.equal(dispatched.sessionName, fortyCombiningCodePoints);
+
+	await start.execute("run-start-trimmed", {
+		toolName: send.name,
+		arguments: { name: "helper", sessionName: "  Prepared title  ", message: "persist prepared input" },
+		completionPolicy: "tracked",
+	});
+	assert.equal(starts, 2);
+	assert.equal(started.params.sessionName, "Prepared title");
+	await started.execute("run_prepared_2");
+	assert.equal(dispatches, 2);
+	assert.equal(dispatched.sessionName, "Prepared title");
 });
 
 test("profiles can expose subagents as active router tools", async () => {
@@ -537,6 +668,13 @@ test("profiles can expose subagents as active router tools", async () => {
 		active: true,
 	}]);
 	assert.equal(inspection.contextFiles.some((file) => file.path === "pibo://runtime/delegated-agents.md"), true);
+	const delegatedContext = getDelegatedAgentContextFile(registry.createProfile("parent-profile").subagents);
+	assert.ok(delegatedContext);
+	assert.match(delegatedContext.content, /arguments: \{ name, sessionName, message, threadKey\? \}/);
+	assert.match(delegatedContext.content, /sessionName.*human-readable child title/);
+	assert.match(delegatedContext.content, /at most 40 Unicode code points/);
+	assert.match(delegatedContext.content, /trims surrounding whitespace/);
+	assert.match(delegatedContext.content, /before creating a yielded run or child session/);
 
 	const store = new InMemoryPiboSessionStore();
 	store.create({
@@ -708,6 +846,7 @@ test("router omits subagent tools that have reached their max depth", async () =
 		await assert.rejects(
 			router.createAgentsController("ps_child").sendMessage({
 				subagent: { name: "defaulted", targetProfile: "recursive-profile" },
+				sessionName: "Depth rejection",
 				message: "must not create another child",
 				requestId: "run_depth_rejected",
 			}),
@@ -743,6 +882,7 @@ test("agents controller emits a parent link event before waiting for the child r
 		const controller = router.createAgentsController("ps_parent");
 		const result = await controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "  Inspect delegation  ",
 			message: "check this",
 			threadKey: "inspect",
 			toolCallId: "tool-1",
@@ -763,6 +903,7 @@ test("agents controller emits a parent link event before waiting for the child r
 		assert.equal(store.get(result.agentId).metadata.chatRoomId, "room_parent");
 		assert.equal(store.get(result.agentId).metadata.workflowSessionKind, "subagent");
 		assert.equal(store.get(result.agentId).metadata.subagentToolName, "pibo_agents_send_message");
+		assert.equal(store.get(result.agentId).title, "Inspect delegation");
 		assert.equal(result.requestId, "run_request_link");
 		assert.equal(result.finalMessage, "child reply");
 	} finally {
@@ -801,11 +942,13 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 				thinkingLevel: "high",
 				runtimeOptions: { permissionMode: "yolo" },
 			},
+			sessionName: "  Research plan  ",
 			message: "research this",
 			threadKey: "research-thread",
 			requestId: "run_research_first",
 		});
 		const child = store.get(first.agentId);
+		assert.equal(child.title, "Research plan");
 		assert.deepEqual(child.activeModel, { provider: "openai", id: "gpt-5.6-mini" });
 		assert.equal(child.metadata.initialThinkingLevel, "high");
 		assert.deepEqual(child.metadata.initialRuntimeOptions, { permissionMode: "yolo" });
@@ -819,21 +962,25 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 				thinkingLevel: "low",
 				runtimeOptions: { permissionMode: "approval" },
 			},
+			sessionName: "Refined research",
 			message: "continue",
 			threadKey: "research-thread",
 			requestId: "run_research_reuse",
 		});
 		assert.equal(reused.agentId, first.agentId);
+		assert.equal(store.get(reused.agentId).title, "Refined research");
 		assert.deepEqual(store.get(reused.agentId).activeModel, { provider: "openai", id: "gpt-5.6-mini" });
 		assert.equal(store.get(reused.agentId).metadata.initialThinkingLevel, "high");
 		assert.deepEqual(router.getSessionRuntimeProfile(reused.agentId).runtimeOptions, { permissionMode: "yolo" });
 
 		const fallback = await controller.sendMessage({
 			subagent: { name: "worker", targetProfile: "base" },
+			sessionName: "Default worker",
 			message: "use defaults",
 			threadKey: "default-thread",
 			requestId: "run_research_default",
 		});
+		assert.equal(store.get(fallback.agentId).title, "Default worker");
 		assert.deepEqual(store.get(fallback.agentId).activeModel, { provider: "default-provider", id: "default-subagent" });
 		assert.equal(store.get(fallback.agentId).metadata.initialThinkingLevel, undefined);
 		assert.equal(store.get(fallback.agentId).metadata.initialRuntimeOptions, undefined);
@@ -856,10 +1003,30 @@ test("subagent runner rejects invalid or cancelled requests before creating a ch
 		const controller = router.createAgentsController("ps_parent");
 		await assert.rejects(controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "Missing request ID",
 			message: "must identify the request",
 		}), /requestId is required/);
 		await assert.rejects(controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "   ",
+			message: "must not create a child",
+			requestId: "run_invalid_blank_name",
+		}), /Agent session name must not be empty/);
+		await assert.rejects(controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "😀".repeat(41),
+			message: "must not create a child",
+			requestId: "run_invalid_long_name",
+		}), /Agent session name must be at most 40 characters/);
+		await assert.rejects(controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: fortyTwoCombiningCodePoints,
+			message: "must not create a child",
+			requestId: "run_invalid_combining_name",
+		}), /Agent session name must be at most 40 characters/);
+		await assert.rejects(controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "Invalid thread key",
 			message: "must not create a child",
 			threadKey: "é".repeat(257),
 			requestId: "run_invalid_thread",
@@ -869,6 +1036,7 @@ test("subagent runner rejects invalid or cancelled requests before creating a ch
 		abortController.abort();
 		await assert.rejects(controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "Pre-aborted request",
 			message: "must not create a child",
 			threadKey: "cancelled",
 			requestId: "run_preaborted",
@@ -877,6 +1045,147 @@ test("subagent runner rejects invalid or cancelled requests before creating a ch
 		assert.equal(store.list().length, 1);
 	} finally {
 		await router.disposeAll();
+	}
+});
+
+test("agents controller requires bounded Unicode names and updates reused titles", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	router.emitMessageAndWaitForReply = async (event) => ({
+		type: "assistant_message",
+		piboSessionId: event.piboSessionId,
+		eventId: event.id,
+		text: "child reply",
+	});
+	try {
+		const controller = router.createAgentsController("ps_parent");
+		const first = await controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: fortyCombiningCodePoints,
+			message: "start",
+			threadKey: "named-thread",
+			requestId: "run_named_first",
+		});
+		assert.equal(store.get(first.agentId).title, fortyCombiningCodePoints);
+
+		const renamed = await controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "  Updated title  ",
+			message: "continue",
+			threadKey: "named-thread",
+			requestId: "run_named_second",
+		});
+		assert.equal(renamed.agentId, first.agentId);
+		assert.equal(store.get(first.agentId).title, "Updated title");
+
+		await assert.rejects(controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			message: "missing name",
+			threadKey: "named-thread",
+			requestId: "run_missing_name",
+		}), /Agent session name is required/);
+		assert.equal(store.get(first.agentId).title, "Updated title");
+		assert.equal(controller.listAgents()[0].sessionName, "Updated title");
+		assert.equal(store.list().length, 2);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("named sends reuse and upgrade existing legacy child sessions", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	store.create({
+		id: "ps_legacy_child",
+		channel: "pibo.subagents",
+		kind: "subagent",
+		profile: "base",
+		parentId: "ps_parent",
+		metadata: {
+			subagentName: "explorer",
+			threadKey: "legacy-thread",
+			subagentToolName: "pibo_subagent_explorer",
+		},
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	router.emitMessageAndWaitForReply = async (event) => ({
+		type: "assistant_message",
+		piboSessionId: event.piboSessionId,
+		eventId: event.id,
+		text: "legacy child reply",
+	});
+	try {
+		const controller = router.createAgentsController("ps_parent");
+		const result = await controller.sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "Continue legacy research",
+			message: "continue",
+			threadKey: "legacy-thread",
+			requestId: "run_legacy_upgrade",
+		});
+		assert.equal(result.agentId, "ps_legacy_child");
+		assert.equal(store.list().length, 2);
+		assert.equal(store.get(result.agentId).title, "Continue legacy research");
+		assert.equal(store.get(result.agentId).metadata.subagentToolName, "pibo_agents_send_message");
+		assert.equal(controller.listAgents()[0].sessionName, "Continue legacy research");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("named child titles survive PiboDataSessionStore reopen and remain reusable", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-subagent-session-name-reopen-"));
+	const dbPath = join(root, "pibo.sqlite");
+	let childId;
+	let firstStore = new PiboDataSessionStore(dbPath);
+	firstStore.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	let firstRouter = new PiboSessionRouter({ persistSession: false, sessionStore: firstStore });
+	firstRouter.emitMessageAndWaitForReply = async (event) => ({
+		type: "assistant_message",
+		piboSessionId: event.piboSessionId,
+		eventId: event.id,
+		text: "first persisted reply",
+	});
+	try {
+		const first = await firstRouter.createAgentsController("ps_parent").sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "  Persisted research  ",
+			message: "start",
+			threadKey: "persisted-thread",
+			requestId: "run_persisted_first",
+		});
+		childId = first.agentId;
+		assert.equal(firstStore.get(childId).title, "Persisted research");
+	} finally {
+		await firstRouter.disposeAll();
+		firstStore.close();
+	}
+
+	let reopenedStore = new PiboDataSessionStore(dbPath);
+	let reopenedRouter = new PiboSessionRouter({ persistSession: false, sessionStore: reopenedStore });
+	reopenedRouter.emitMessageAndWaitForReply = async (event) => ({
+		type: "assistant_message",
+		piboSessionId: event.piboSessionId,
+		eventId: event.id,
+		text: "reopened reply",
+	});
+	try {
+		assert.equal(reopenedStore.get(childId).title, "Persisted research");
+		const reused = await reopenedRouter.createAgentsController("ps_parent").sendMessage({
+			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "Reopened research",
+			message: "continue",
+			threadKey: "persisted-thread",
+			requestId: "run_persisted_reuse",
+		});
+		assert.equal(reused.agentId, childId);
+		assert.equal(reopenedStore.get(childId).title, "Reopened research");
+		assert.equal(reopenedRouter.createAgentsController("ps_parent").listAgents()[0].sessionName, "Reopened research");
+	} finally {
+		await reopenedRouter.disposeAll();
+		reopenedStore.close();
+		rmSync(root, { recursive: true, force: true });
 	}
 });
 
@@ -901,12 +1210,14 @@ test("agents controller lists, filters observations, kills owned children, and d
 		const controller = router.createAgentsController("ps_parent");
 		const explorer = await controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
+			sessionName: "Explore alpha",
 			message: "explore",
 			threadKey: "alpha",
 			requestId: "run_explorer",
 		});
 		const worker = await controller.sendMessage({
 			subagent: { name: "worker", targetProfile: "base" },
+			sessionName: "Work beta",
 			message: "work",
 			threadKey: "beta",
 			requestId: "run_worker",
@@ -1067,6 +1378,7 @@ test("agents controller lists, filters observations, kills owned children, and d
 		assert.equal(controller.listAgents().find((agent) => agent.agentId === worker.agentId).status, "killed");
 		const replacement = await controller.sendMessage({
 			subagent: { name: "worker", targetProfile: "base" },
+			sessionName: "Retry beta",
 			message: "retry",
 			threadKey: "beta",
 			requestId: "run_worker_replacement",
@@ -1238,7 +1550,7 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 		const startTool = runtime.session.getToolDefinition("pibo_run_start");
 		const started = await startTool.execute("subagent-abort-tool", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "hold until parent abort", threadKey: "hold" },
+			arguments: { name: "worker", sessionName: "Hold until parent abort", message: "hold until parent abort", threadKey: "hold" },
 			completionPolicy: "tracked",
 		});
 		const childAdapter = registry.requireAgentRuntimeAdapter("subagent-abort-child");
@@ -1264,7 +1576,7 @@ test("parent abort reports rejected child cancellation instead of silently succe
 		const tools = await yieldedSubagentTools(fixture);
 		const started = await tools.start.execute("start-parent-abort-rejected", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "hold", threadKey: "hold" },
+			arguments: { name: "worker", sessionName: "Hold request", message: "hold", threadKey: "hold" },
 			completionPolicy: "tracked",
 		});
 		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
@@ -1296,7 +1608,7 @@ test("cancelling an active delegated run settles before the next queued request 
 		const tools = await yieldedSubagentTools(fixture);
 		const first = await tools.start.execute("start-active-a", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "A", threadKey: "shared" },
+			arguments: { name: "worker", sessionName: "Request A", message: "A", threadKey: "shared" },
 			completionPolicy: "tracked",
 		});
 		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
@@ -1306,7 +1618,7 @@ test("cancelling an active delegated run settles before the next queued request 
 
 		const second = await tools.start.execute("start-active-b", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "B", threadKey: "shared" },
+			arguments: { name: "worker", sessionName: "Request B", message: "B", threadKey: "shared" },
 			completionPolicy: "tracked",
 		});
 		await waitFor(() => fixture.router.sessions.get(child.id)?.getStatus().queuedMessages === 1);
@@ -1381,14 +1693,14 @@ test("cancelling a queued delegated run leaves the active request on the shared 
 		const cancelTool = runtime.session.getToolDefinition("pibo_run_cancel");
 		const first = await startTool.execute("start-shared-a", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "A", threadKey: "shared" },
+			arguments: { name: "worker", sessionName: "Queued request A", message: "A", threadKey: "shared" },
 			completionPolicy: "tracked",
 		});
 		const childAdapter = registry.requireAgentRuntimeAdapter("subagent-targeted-cancel-child");
 		await waitFor(() => childAdapter.sessions[0]?.getStatus().streaming === true);
 		const second = await startTool.execute("start-shared-b", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "B", threadKey: "shared" },
+			arguments: { name: "worker", sessionName: "Queued request B", message: "B", threadKey: "shared" },
 			completionPolicy: "tracked",
 		});
 		await new Promise((resolve) => setImmediate(resolve));
@@ -1416,7 +1728,7 @@ test("delegated run cancellation fails when the child rejects targeted abort", a
 		const tools = await yieldedSubagentTools(fixture);
 		const started = await tools.start.execute("start-abort-rejection", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "wait", threadKey: "abort-rejection" },
+			arguments: { name: "worker", sessionName: "Abort rejection", message: "wait", threadKey: "abort-rejection" },
 			completionPolicy: "tracked",
 		});
 		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
@@ -1446,7 +1758,7 @@ test("delegated run cancellation is bounded when an adapter never settles its ac
 		const tools = await yieldedSubagentTools(fixture);
 		const started = await tools.start.execute("start-abort-nonsettling", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "wait", threadKey: "abort-nonsettling" },
+			arguments: { name: "worker", sessionName: "Abort settlement", message: "wait", threadKey: "abort-nonsettling" },
 			completionPolicy: "tracked",
 		});
 		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
@@ -1506,7 +1818,7 @@ test("yielded delegated run read returns the complete final message and request 
 		).map((tool) => [tool.name, tool]));
 		const started = await runTools.pibo_run_start.execute("start-agent-complete", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "produce complete result", threadKey: "complete" },
+			arguments: { name: "worker", sessionName: "Complete result", message: "produce complete result", threadKey: "complete" },
 			completionPolicy: "tracked",
 		});
 		const waited = await runTools.pibo_run_wait.execute("wait-agent-complete", {
@@ -1552,7 +1864,7 @@ test("bounded run waits do not cancel delegated agents and explicit cancellation
 		).map((tool) => [tool.name, tool]));
 		const started = await runTools.pibo_run_start.execute("start-agent-timeout", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", message: "wait", threadKey: "reusable" },
+			arguments: { name: "worker", sessionName: "Reusable request", message: "wait", threadKey: "reusable" },
 			completionPolicy: "tracked",
 		});
 		const waited = await runTools.pibo_run_wait.execute("wait-agent-timeout", {
@@ -1566,11 +1878,13 @@ test("bounded run waits do not cancel delegated agents and explicit cancellation
 		assert.equal(cancellations.length, 0);
 		const activeChild = store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" })[0];
 		assert.ok(activeChild);
+		assert.equal(activeChild.title, "Reusable request");
 
 		const cancelStartedAt = Date.now();
 		const cancelled = await runTools.pibo_run_cancel.execute("cancel-agent-request", { runId: started.details.runId });
 		assert.ok(Date.now() - cancelStartedAt >= 35, "run cancellation must await confirmed child settlement");
 		assert.equal(cancelled.details.status, "cancelled");
+		assert.equal(store.get(activeChild.id).title, "Reusable request");
 		const delegatedMessage = emitted.find((event) => event.type === "message");
 		assert.deepEqual(cancellations, [{ piboSessionId: activeChild.id, eventId: delegatedMessage.id }]);
 
@@ -1582,11 +1896,13 @@ test("bounded run waits do not cancel delegated agents and explicit cancellation
 		});
 		const reused = await agentsController.sendMessage({
 			subagent,
+			sessionName: "Reusable request",
 			message: "continue",
 			threadKey: "reusable",
 			requestId: "run_reused_thread",
 		});
 		assert.equal(reused.agentId, activeChild.id);
+		assert.equal(store.get(reused.agentId).title, "Reusable request");
 		assert.equal(store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" }).length, 1);
 	} finally {
 		await router.disposeAll();

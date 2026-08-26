@@ -133,17 +133,17 @@ The adapter preserves Codex's native system prompt and standard tools. Pibo cont
 ## Subagent branch
 
 ```text
-model calls pibo_run_start(toolName: pibo_agents_send_message, arguments: ...)
+model calls pibo_run_start(toolName: pibo_agents_send_message, arguments: { name, sessionName, message, threadKey? })
   -> yielded-run wrapper returns run ID
   -> shared Pibo delegated-send target
   -> Pibo delegated-agent router
-  -> create/reuse child Pibo Session by bounded thread key
+  -> create/reuse child Pibo Session by bounded thread key and set its title from trimmed sessionName
   -> child freezes target profile runtime binding
   -> normal router/runtime flow
   -> child result settles the yielded run
 ```
 
-`pibo_agents_send_message` is not directly callable. `pibo_agents_list_agents`, `pibo_agents_observe`, and `pibo_agents_kill` manage direct child agents. Parent interruption cancels active child work recursively but does not delete reusable child identity; normal parent-turn completion, bounded `pibo_run_wait` expiry, and stale telemetry leave the child request running.
+`pibo_agents_send_message` is not directly callable. `name` selects the configured agent, `threadKey` selects reusable child identity, and required `sessionName` is its mutable human-readable title. The name is trimmed, must contain non-whitespace text, and is limited to 40 Unicode code points. `pibo_run_start` exposes the yielded target's argument schema and rejects invalid target input before admission or run persistence. `pibo_agents_list_agents`, `pibo_agents_observe`, and `pibo_agents_kill` manage direct child agents. Parent interruption cancels active child work recursively but does not delete reusable child identity; normal parent-turn completion, bounded `pibo_run_wait` expiry, and stale telemetry leave the child request running.
 
 ## Failure paths
 
