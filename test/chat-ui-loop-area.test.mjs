@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import test from "node:test";
 
 const execFileAsync = promisify(execFile);
+
+test("Loop UI displays active Goal time without wall-clock or paused-time totals", async () => {
+	const source = await readFile(new URL("../src/apps/chat-ui/src/LoopArea.tsx", import.meta.url), "utf8");
+	assert.match(source, /Active Goal time/);
+	assert.doesNotMatch(source, /Wall-clock elapsed/);
+	assert.doesNotMatch(source, /Included in wall clock/);
+	assert.doesNotMatch(source, /goalElapsedWallClockSeconds/);
+});
 
 test("new Loop UI defaults to same-session goal mode and exposes legacy Ralph mode", async () => {
 	const script = `
