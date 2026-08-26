@@ -8,7 +8,7 @@ import {
 	isSubagentToolName,
 	type TraceChildSession,
 } from "./trace-subagent-links.js";
-import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus } from "./trace-types.js";
+import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
 
 export type PersistedHistoryMode = "none" | "product" | "native";
 
@@ -108,6 +108,7 @@ export function applySingleEventToNodes(
 		storedEvent.traceSource,
 	);
 	if (!node) return;
+	applyStoredPayloadRef(node, payload, storedEvent.storedPayloadRef);
 	if (
 		node.type === "user.message" &&
 		node.status === "running" &&
@@ -194,6 +195,20 @@ export function applySingleEventToNodes(
 	attachAsyncAgentRunNode(node, piboSessionId, storedEvent.createdAt);
 	nodes.push(node);
 	for (const indexed of flattenTraceNodes([node])) byId.set(indexed.id, indexed);
+}
+
+function applyStoredPayloadRef(
+	node: PiboTraceNode,
+	event: PiboOutputEvent,
+	storedPayloadRef: TracePayloadRef | undefined,
+): void {
+	if (!storedPayloadRef) return;
+	if (event.type === "tool_call" || event.type === "tool_execution_started") {
+		node.payloadRefs = { ...node.payloadRefs, input: storedPayloadRef };
+	}
+	if (event.type === "tool_execution_finished" || event.type === "tool_execution_updated") {
+		node.payloadRefs = { ...node.payloadRefs, output: storedPayloadRef };
+	}
 }
 
 function assistantMessageNodeFromEvent(
@@ -1132,6 +1147,7 @@ function mergeToolEvent(target: PiboTraceNode, update: PiboTraceNode): void {
 	target.output = update.output ?? target.output;
 	target.error = update.error ?? target.error;
 	target.completedAt = update.completedAt ?? target.completedAt;
+	target.payloadRefs = { ...target.payloadRefs, ...update.payloadRefs };
 	target.linkedPiboSessionId = update.linkedPiboSessionId ?? target.linkedPiboSessionId;
 }
 

@@ -207,6 +207,7 @@ test("compact image tool rows hide binary blobs and show the image path", () => 
 			title: "view_image",
 			input: { path: "/tmp/screenshot.png", detail: "original" },
 			output: { content: [{ type: "image", data: base64, mimeType: "image/png" }], details: { path: "/tmp/screenshot.png", detail: "original" } },
+			payloadRefs: { output: { ref: "trace-payload-ref", nodeId: "node-image", payloadKind: "output" } },
 		}),
 	]), { showThinking: false });
 
@@ -219,6 +220,56 @@ test("compact image tool rows hide binary blobs and show the image path", () => 
 	assert.equal(rows[0].output.path, "/tmp/screenshot.png");
 	assert.equal(rows[0].output.mimeType, "image/png");
 	assert.equal(rows[0].output.detail, "Image data hidden in terminal view.");
+	assert.deepEqual(rows[0].imagePreviews, [{
+		id: "node-image:image:0",
+		label: "/tmp/screenshot.png",
+		path: "/tmp/screenshot.png",
+		artifactId: undefined,
+		payloadRef: "trace-payload-ref",
+		payloadImageIndex: 0,
+		traceNodeId: "node-image",
+		generatedToolCallId: undefined,
+		mimeType: "image/png",
+	}]);
+});
+
+test("compact read rows expose deferred image paths without requiring inline bytes", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "node-read-image", {
+			order: 1,
+			title: "read",
+			input: { path: "/tmp/deferred.webp" },
+			output: { details: { path: "/tmp/deferred.webp" } },
+		}),
+	]), { showThinking: false });
+
+	assert.equal(rows[0].kind, "tool.image");
+	assert.equal(rows[0].imagePreviews.length, 1);
+	assert.equal(rows[0].imagePreviews[0].path, "/tmp/deferred.webp");
+	assert.equal(rows[0].imagePreviews[0].payloadRef, undefined);
+});
+
+test("compact image rows retain persisted multi-image indexes without hydrated output", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "node-persisted-images", {
+			order: 1,
+			title: "view_image",
+			input: { path: "/tmp/persisted.png" },
+			output: null,
+			payloadRefs: { output: {
+				ref: "trace-persisted-images",
+				nodeId: "node-persisted-images",
+				payloadKind: "output",
+				imageCount: 2,
+			} },
+		}),
+	]), { showThinking: false });
+
+	assert.equal(rows[0].kind, "tool.image");
+	assert.equal(rows[0].output.type, "images");
+	assert.equal(rows[0].output.count, 2);
+	assert.deepEqual(rows[0].imagePreviews.map((preview) => preview.payloadImageIndex), [0, 1]);
+	assert.deepEqual(rows[0].imagePreviews.map((preview) => preview.payloadRef), ["trace-persisted-images", "trace-persisted-images"]);
 });
 
 test("compact Codex image generation rows show generate/edit labels and hide binary blobs", () => {
@@ -228,6 +279,7 @@ test("compact Codex image generation rows show generate/edit labels and hide bin
 		traceNode("tool.call", "node-generated-image", {
 			order: 1,
 			title: "codex_image_generation",
+			toolCallId: "call_generate",
 			input: { prompt: "paint a blue whale" },
 			output: {
 				content: [{ type: "image", data: generatedBase64, mimeType: "image/png" }],
@@ -243,6 +295,7 @@ test("compact Codex image generation rows show generate/edit labels and hide bin
 		traceNode("tool.call", "node-edited-image", {
 			order: 2,
 			title: "codex_image_generation",
+			toolCallId: "call_edit",
 			input: { prompt: "make it cinematic", referenced_image_paths: ["/tmp/input.png"] },
 			output: {
 				content: [{ type: "image", data: editedBase64, mimeType: "image/png" }],
@@ -273,6 +326,8 @@ test("compact Codex image generation rows show generate/edit labels and hide bin
 	assert.equal(rows[0].output.referencedImageCount, 0);
 	assert.equal(rows[0].output.mimeType, "image/png");
 	assert.equal(rows[0].output.detail, "Image data hidden in terminal view.");
+	assert.equal(rows[0].imagePreviews[0].generatedToolCallId, "call_generate");
+	assert.equal(rows[0].imagePreviews[0].path, "/home/pibo/generated_images/ps_1/call_generate.png");
 
 	assert.equal(rows[1].kind, "tool.image");
 	assert.match(rowText(rows[1]), /Edited image/);
@@ -281,6 +336,7 @@ test("compact Codex image generation rows show generate/edit labels and hide bin
 	assert.doesNotMatch(JSON.stringify(rows[1]), /iVBOR/);
 	assert.equal(rows[1].output.operation, "edit");
 	assert.equal(rows[1].output.referencedImageCount, 1);
+	assert.equal(rows[1].imagePreviews[0].generatedToolCallId, "call_edit");
 });
 
 test("compact Codex image generation running rows infer generate/edit labels from input", () => {
@@ -341,7 +397,23 @@ test("compact image tool rows group consecutive image reads", () => {
 	]);
 	assert.equal(group.detailItems.length, 3);
 	assert.deepEqual(group.detailItems.map((item) => item.output.path), ["/tmp/image-1.png", "/tmp/image-2.png", "/tmp/image-3.png"]);
+	assert.deepEqual(group.imagePreviews.map((preview) => preview.path), ["/tmp/image-1.png", "/tmp/image-2.png", "/tmp/image-3.png"]);
 	assert.doesNotMatch(JSON.stringify(group), /abcabc|iVBOR/);
+});
+
+test("compact image preview metadata is bounded to twenty images", () => {
+	const content = Array.from({ length: 30 }, (_, index) => ({ type: "image", data: `image-${index}`, mimeType: "image/png" }));
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "node-many-images", {
+			order: 1,
+			title: "view_image",
+			output: { content, details: { path: "/tmp/many.png" } },
+			payloadRefs: { output: { ref: "many-ref", nodeId: "node-many-images", payloadKind: "output" } },
+		}),
+	]), { showThinking: false });
+
+	assert.equal(rows[0].imagePreviews.length, 20);
+	assert.equal(rows[0].imagePreviews.at(-1).payloadImageIndex, 19);
 });
 
 test("compact exploring groups expose six collapsed summaries and full detail metadata", () => {

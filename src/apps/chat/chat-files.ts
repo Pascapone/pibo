@@ -1,9 +1,10 @@
-import { createReadStream, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, constants, createReadStream, existsSync, fstatSync, mkdirSync, openSync, readSync, realpathSync, rmSync, statSync, writeFileSync, type Stats } from "node:fs";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { piboHomePath } from "../../core/pibo-home.js";
 import { protectPrivateDirectorySync, protectPrivateFileSync } from "../../core/private-path.js";
 import { PiboWebHttpError } from "../../web/http.js";
+import { imageMimeTypeFromBytes, TRACE_IMAGE_MAX_DECODED_BYTES, type TraceImagePayload } from "./trace-v2.js";
 
 export const CHAT_UPLOAD_DIR = piboHomePath("uploads");
 const CHAT_FILE_ATTACHMENT_LIMIT = 10;
@@ -66,14 +67,36 @@ export function resolveDownloadPath(path: string, basePath: string): string {
 	return isAbsolute(path) ? resolve(path) : resolve(basePath, path);
 }
 
-export function responseChatFileDownload(absolutePath: string): Response {
-	let stats;
+export type ResolvedImagePreviewPath = {
+	path: string;
+	allowedRoots: readonly string[];
+};
+
+export function resolveImagePreviewPath(path: string, basePath: string): ResolvedImagePreviewPath {
+	return resolveImagePreviewPathWithinRoots(resolveDownloadPath(path, basePath), [basePath, CHAT_UPLOAD_DIR]);
+}
+
+export function resolveImagePreviewPathWithinRoots(path: string, allowedRootPaths: readonly string[]): ResolvedImagePreviewPath {
+	let canonicalPath: string;
 	try {
-		stats = statSync(absolutePath);
+		canonicalPath = realpathSync(path);
 	} catch {
-		throw new PiboWebHttpError("File not found: " + absolutePath, 404);
+		throw new PiboWebHttpError("Image preview file was not found", 404);
 	}
-	if (!stats.isFile()) throw new PiboWebHttpError("Path is not a file: " + absolutePath, 400);
+	const allowedRoots: string[] = [];
+	for (const allowedRoot of allowedRootPaths) {
+		if (!existsSync(allowedRoot)) continue;
+		const canonicalRoot = realpathSync(allowedRoot);
+		allowedRoots.push(canonicalRoot);
+	}
+	if (allowedRoots.some((allowedRoot) => isPathInsideRoot(canonicalPath, allowedRoot))) {
+		return { path: canonicalPath, allowedRoots };
+	}
+	throw new PiboWebHttpError("Image preview path is outside its authorized roots", 403);
+}
+
+export function responseChatFileDownload(absolutePath: string): Response {
+	const stats = requireChatFile(absolutePath);
 	return new Response(Readable.toWeb(createReadStream(absolutePath)) as any, {
 		headers: {
 			"content-type": contentTypeForDownload(absolutePath),
@@ -82,6 +105,107 @@ export function responseChatFileDownload(absolutePath: string): Response {
 			"cache-control": "no-store",
 		},
 	});
+}
+
+export function responseChatImagePreview(absolutePath: string, allowedRoots?: readonly string[]): Response {
+	const { bytes, stats } = readBoundedImageFile(absolutePath, TRACE_IMAGE_MAX_DECODED_BYTES, allowedRoots);
+	const mimeType = imageMimeTypeFromBytes(bytes.subarray(0, Math.min(32, bytes.byteLength)));
+	if (!mimeType) throw new PiboWebHttpError("Unsupported image preview format", 415);
+	return new Response(bytes, {
+		headers: imagePreviewHeaders({
+			mimeType,
+			contentLength: stats.size,
+			filename: basename(absolutePath),
+			cacheControl: "no-store",
+		}),
+	});
+}
+
+export function responseChatTraceImage(image: TraceImagePayload): Response {
+	return new Response(image.bytes, {
+		headers: imagePreviewHeaders({
+			mimeType: image.mimeType,
+			contentLength: image.bytes.byteLength,
+			cacheControl: "private, max-age=31536000, immutable",
+		}),
+	});
+}
+
+function requireChatFile(absolutePath: string): Stats {
+	let stats: Stats;
+	try {
+		stats = statSync(absolutePath);
+	} catch {
+		throw new PiboWebHttpError("File not found: " + absolutePath, 404);
+	}
+	if (!stats.isFile()) throw new PiboWebHttpError("Path is not a file: " + absolutePath, 400);
+	return stats;
+}
+
+function readBoundedImageFile(absolutePath: string, maxBytes: number, allowedRoots?: readonly string[]): { bytes: Buffer; stats: Stats } {
+	let descriptor: number;
+	try {
+		descriptor = openSync(absolutePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+	} catch (error) {
+		if (isFileSystemError(error) && error.code === "ELOOP") throw new PiboWebHttpError("Image preview path changed during authorization", 409);
+		throw new PiboWebHttpError("File not found: " + absolutePath, 404);
+	}
+	try {
+		const stats = fstatSync(descriptor);
+		if (!stats.isFile()) throw new PiboWebHttpError("Path is not a file: " + absolutePath, 400);
+		if (allowedRoots?.length) assertOpenedImagePathAuthority(absolutePath, stats, allowedRoots);
+		if (stats.size > maxBytes) throw new PiboWebHttpError(`Image preview exceeds the ${maxBytes}-byte limit`, 413);
+		const bytes = Buffer.alloc(stats.size);
+		let offset = 0;
+		while (offset < bytes.byteLength) {
+			const read = readSync(descriptor, bytes, offset, bytes.byteLength - offset, offset);
+			if (read === 0) break;
+			offset += read;
+		}
+		if (offset !== bytes.byteLength) throw new PiboWebHttpError("Image changed while it was being read", 409);
+		const extra = Buffer.alloc(1);
+		if (readSync(descriptor, extra, 0, 1, offset) !== 0) throw new PiboWebHttpError(`Image preview exceeds the ${maxBytes}-byte limit`, 413);
+		return { bytes, stats };
+	} finally {
+		closeSync(descriptor);
+	}
+}
+
+function assertOpenedImagePathAuthority(absolutePath: string, openedStats: Stats, allowedRoots: readonly string[]): void {
+	let currentPath: string;
+	let currentStats: Stats;
+	try {
+		currentPath = realpathSync(absolutePath);
+		currentStats = statSync(currentPath);
+	} catch {
+		throw new PiboWebHttpError("Image preview path changed during authorization", 409);
+	}
+	if (currentStats.dev !== openedStats.dev || currentStats.ino !== openedStats.ino) {
+		throw new PiboWebHttpError("Image preview file changed during authorization", 409);
+	}
+	if (!allowedRoots.some((allowedRoot) => isPathInsideRoot(currentPath, allowedRoot))) {
+		throw new PiboWebHttpError("Image preview path escaped its authorized root", 403);
+	}
+}
+
+function isFileSystemError(error: unknown): error is NodeJS.ErrnoException {
+	return error instanceof Error && "code" in error;
+}
+
+function imagePreviewHeaders(input: {
+	mimeType: string;
+	contentLength: number;
+	filename?: string;
+	cacheControl: string;
+}): Record<string, string> {
+	return {
+		"content-type": input.mimeType,
+		"content-length": String(input.contentLength),
+		...(input.filename ? { "content-disposition": "inline; filename*=UTF-8''" + encodeURIComponent(input.filename) } : {}),
+		"cache-control": input.cacheControl,
+		"x-content-type-options": "nosniff",
+		"cross-origin-resource-policy": "same-origin",
+	};
 }
 
 function normalizeChatFileAttachmentPaths(value: unknown): string[] {
@@ -112,8 +236,12 @@ function chatFileAttachmentForPath(path: string): ChatFileMessageAttachment {
 }
 
 function isPathInsideUploadDir(path: string): boolean {
-	const uploadRelative = relative(CHAT_UPLOAD_DIR, path);
-	return uploadRelative !== "" && !uploadRelative.startsWith("..") && !isAbsolute(uploadRelative);
+	return isPathInsideRoot(path, CHAT_UPLOAD_DIR);
+}
+
+function isPathInsideRoot(path: string, root: string): boolean {
+	const child = relative(root, path);
+	return child !== "" && child !== ".." && !child.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) && !isAbsolute(child);
 }
 
 function renderAttachedChatFiles(attachments: readonly ChatFileMessageAttachment[]): string {

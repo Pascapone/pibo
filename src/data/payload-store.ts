@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
@@ -141,9 +141,53 @@ export class PayloadStore {
 		return JSON.parse(this.readPayloadText(id)) as PiboJsonValue;
 	}
 
+	readPayloadBytesBounded(id: string, maxBytes: number): Uint8Array {
+		if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new RangeError("maxBytes must be a positive safe integer");
+		const payload = this.getPayload(id);
+		if (!payload) throw new Error(`Unknown payload \"${id}\"`);
+		if (!payload.storagePath) throw new Error(`Payload \"${id}\" has no storage path`);
+		if (payload.byteSize > maxBytes) throw new RangeError(`Payload \"${id}\" exceeds the ${maxBytes}-byte read limit`);
+		const absolutePath = this.rootDir === ":memory:" ? payload.storagePath : join(this.rootDir, payload.storagePath);
+		const storedBytes = readFileBounded(absolutePath, maxBytes + 64 * 1024);
+		let bytes: Uint8Array;
+		if (payload.encoding === "gzip") bytes = gunzipSync(storedBytes, { maxOutputLength: maxBytes });
+		else if (payload.encoding === "identity") bytes = storedBytes;
+		else throw new Error(`Unsupported payload encoding \"${payload.encoding}\"`);
+		if (bytes.byteLength !== payload.byteSize) throw new Error(`Payload \"${id}\" byte length does not match its metadata`);
+		const sha256 = createHash("sha256").update(bytes).digest("hex");
+		if (sha256 !== payload.sha256) throw new Error(`Payload \"${id}\" checksum does not match its metadata`);
+		return bytes;
+	}
+
+	readPayloadJsonBounded(id: string, maxBytes: number): PiboJsonValue {
+		return JSON.parse(Buffer.from(this.readPayloadBytesBounded(id, maxBytes)).toString("utf8")) as PiboJsonValue;
+	}
+
 	findBySha256(sha256: string): StoredPayload | undefined {
 		const row = this.db.prepare("SELECT * FROM payloads WHERE sha256 = ?").get(sha256) as PayloadRow | undefined;
 		return row ? payloadFromRow(row) : undefined;
+	}
+}
+
+function readFileBounded(path: string, maxBytes: number): Buffer {
+	const descriptor = openSync(path, "r");
+	try {
+		const stats = fstatSync(descriptor);
+		if (!stats.isFile()) throw new Error(`Payload path is not a file: ${path}`);
+		if (stats.size > maxBytes) throw new RangeError(`Stored payload exceeds the ${maxBytes}-byte read limit`);
+		const bytes = Buffer.alloc(stats.size);
+		let offset = 0;
+		while (offset < bytes.byteLength) {
+			const read = readSync(descriptor, bytes, offset, bytes.byteLength - offset, offset);
+			if (read === 0) break;
+			offset += read;
+		}
+		if (offset !== bytes.byteLength) throw new Error(`Stored payload changed while it was being read: ${path}`);
+		const extra = Buffer.alloc(1);
+		if (readSync(descriptor, extra, 0, 1, offset) !== 0) throw new RangeError(`Stored payload exceeds the ${maxBytes}-byte read limit`);
+		return bytes;
+	} finally {
+		closeSync(descriptor);
 	}
 }
 
