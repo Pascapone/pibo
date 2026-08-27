@@ -61,7 +61,8 @@ test("timeline query retains full-history steering message identity metadata", (
 		assert.deepEqual(timeline.listMessageTurnTimings(piboSession.id), [{
 			eventId: "steer-1",
 			userText: "Adjust course",
-			startedAt: undefined,
+			startedAt: "2026-05-09T00:00:02.000Z",
+			activeEventId: "turn-1",
 			completedAt: undefined,
 			durationMs: undefined,
 			userMessageType: "message_steered",

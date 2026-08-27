@@ -1335,6 +1335,110 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 	}
 });
 
+test("origin branch older native-history pages reconcile repeated prompts by start time", async () => {
+	const oldStartedAt = "2026-08-27T12:00:00.000Z";
+	const newStartedAt = "2026-08-27T13:00:00.000Z";
+	const stableEventIds = ["stable-old", "stable-new"];
+	let emittedMessageCount = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const { channel, baseURL, sessions, emitOutput, dataStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		async emit(event) {
+			const eventId = stableEventIds[emittedMessageCount++];
+			assert.ok(eventId);
+			return { type: "message_queued", piboSessionId: event.piboSessionId, eventId, source: "user", text: event.text, queuedMessages: 1 };
+		},
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("codex-native", { adapterId: "codex-native", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async readSessionRuntimeHistory(piboSessionId, input = {}) {
+			const older = input.cursor === "provider-old-page";
+			const suffix = older ? "old" : "new";
+			const createdAt = older ? oldStartedAt : newStartedAt;
+			return {
+				runtimeInstanceId: "codex-native",
+				adapterId: "codex-native",
+				source: "native",
+				entries: [
+					{ id: `codex:thread:runtime-${suffix}:user-${suffix}`, type: "message", source: "native", createdAt, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, nativeEntryId: `user-${suffix}`, role: "user", content: "identical prompt" },
+					{ id: `codex:thread:runtime-${suffix}:assistant-${suffix}`, type: "message", source: "native", createdAt, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, nativeEntryId: `assistant-${suffix}`, role: "assistant", content: `${suffix} answer`, status: "complete" },
+				],
+				nextCursor: older ? undefined : "provider-old-page",
+				hasMore: !older,
+				inspection: {
+					runtimeInstanceId: "codex-native",
+					adapterId: "codex-native",
+					bindingState: "bound",
+					available: true,
+					version: `native-${piboSessionId}-${suffix}`,
+					diagnostics: [],
+				},
+			};
+		},
+	});
+
+	try {
+		const source = sessions.create({ channel: "pibo.chat-web", kind: "chat", profile: "default" });
+		const branch = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "branch",
+			profile: "codex-native",
+			originId: source.id,
+			runtimeBinding: {
+				runtimeInstanceId: "codex-native",
+				adapterId: "codex-native",
+				nativeSessionId: "thread-repeated",
+				state: "bound",
+				protocol: "codex-app-server",
+			},
+		});
+		for (const eventId of stableEventIds) {
+			const messageResponse = await fetch(`${baseURL}/api/chat/message`, {
+				method: "POST",
+				headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+				body: JSON.stringify({ piboSessionId: branch.id, text: "identical prompt", clientTxnId: `txn-${eventId}` }),
+			});
+			assert.equal(messageResponse.status, 200);
+			assert.equal((await messageResponse.json()).output.eventId, eventId);
+			emitOutput({ type: "message_started", piboSessionId: branch.id, eventId, source: "user", text: "identical prompt" });
+		}
+		await new Promise((resolve) => setImmediate(resolve));
+		const db = new DatabaseSync(dataStorePath);
+		try {
+			assert.ok(db.prepare("UPDATE event_log SET created_at = ? WHERE session_id = ? AND event_id = ?")
+				.run(oldStartedAt, branch.id, "stable-old").changes >= 1);
+			assert.ok(db.prepare("UPDATE event_log SET created_at = ? WHERE session_id = ? AND event_id = ?")
+				.run(newStartedAt, branch.id, "stable-new").changes >= 1);
+		} finally {
+			db.close();
+		}
+
+		const tailResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(branch.id)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(tailResponse.status, 200);
+		const tail = await tailResponse.json();
+		assert.match(tail.cursor.before, /^runtime-history:/);
+
+		const olderResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(branch.id)}&before=${encodeURIComponent(tail.cursor.before)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(olderResponse.status, 200);
+		const older = await olderResponse.json();
+		const messages = older.nodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+		assert.deepEqual(messages.map((node) => ({ nodeId: node.nodeId, eventId: node.eventId, nativeTurnId: node.nativeTurnId })), [
+			{ nodeId: "event:message_queued:stable-old", eventId: "stable-old", nativeTurnId: "runtime-old" },
+			{ nodeId: "event:assistant:stable-old:assistant:0", eventId: "stable-old", nativeTurnId: "runtime-old" },
+		]);
+		assert.equal(older.cursor.hasOlder, false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("legacy Pi traces use the adapter history provider without direct Chat Web JSONL access", async () => {
 	let inspectHistoryCalls = 0;
 	let readHistoryCalls = 0;

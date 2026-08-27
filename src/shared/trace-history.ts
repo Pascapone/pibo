@@ -19,10 +19,34 @@ type IndexedHistoryMessageEntry = {
 type TranscriptTurnTimingTarget = {
 	prompt?: string;
 	userEntryIndex?: number;
+	userAt?: number;
 	assistantAt?: number;
 	settled: boolean;
 	turnId?: string;
+	nativeTurnId?: string;
 };
+
+type HistoryUserTimingTarget = {
+	entryIndex: number;
+	entryId?: string;
+	turnId?: string;
+	prompt?: string;
+	userAt?: number;
+	assistantAt?: number;
+};
+
+type TimingMatch = {
+	timing: TraceMessageTurnTiming;
+	timingIndex: number;
+	confidence: "identity" | "timestamp" | "unique-prompt";
+};
+
+type AssistantTurnProjectionState = {
+	assistantPartOrdinal: number;
+	reasoningPartOrdinal: number;
+};
+
+const MAX_CONFIDENT_TIMESTAMP_DISTANCE_MS = 5 * 60 * 1_000;
 
 export function projectHistoryEntries(
 	entries: readonly AgentRuntimeHistoryEntry[],
@@ -51,8 +75,9 @@ export function traceNodesFromHistoryEntries(
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): PiboTraceNode[] {
 	const nodes: PiboTraceNode[] = [];
-	const turnTimingAssignments = assignHistoryTurnTimings(entries, turnTimings);
 	const userTimingAssignments = assignHistoryUserTimings(entries, turnTimings);
+	const turnTimingAssignments = assignHistoryTurnTimings(entries, turnTimings, userTimingAssignments);
+	const projectionStateByEventId = new Map<string, AssistantTurnProjectionState>();
 	let assistantTurnIndex = 0;
 	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index]!;
@@ -63,7 +88,13 @@ export function traceNodesFromHistoryEntries(
 				const turn = collectAssistantTurn(entries, index);
 				const hasAssistant = turn.entries.some(({ entry: turnEntry }) => turnEntry.role === "assistant");
 				const timing = hasAssistant ? turnTimingAssignments[assistantTurnIndex] : undefined;
-				nodes.push(...createAssistantTurnNodes(piboSessionId, turn.entries, timing));
+				const firstAssistant = turn.entries.find(({ entry: turnEntry }) => turnEntry.role === "assistant");
+				const eventId = firstAssistant ? canonicalProductTurnId(firstAssistant.entry, timing) : undefined;
+				const projectionState = eventId
+					? projectionStateByEventId.get(eventId) ?? { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 }
+					: { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 };
+				nodes.push(...createAssistantTurnNodes(piboSessionId, turn.entries, timing, projectionState));
+				if (eventId) projectionStateByEventId.set(eventId, projectionState);
 				if (hasAssistant) assistantTurnIndex += 1;
 				index = turn.nextIndex - 1;
 			}
@@ -95,14 +126,18 @@ function collectHistoryTurnTimingTargets(entries: readonly AgentRuntimeHistoryEn
 	const targets: TranscriptTurnTimingTarget[] = [];
 	let latestUserText: string | undefined;
 	let latestUserEntryIndex: number | undefined;
+	let latestUserAt: number | undefined;
 	let latestTurnId: string | undefined;
+	let latestNativeTurnId: string | undefined;
 	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index]!;
 		if (entry.type !== "message") continue;
 		if (entry.role === "user") {
 			latestUserText = normalizedPrompt(historyMessageText(entry));
 			latestUserEntryIndex = index;
+			latestUserAt = parsedTimestamp(entry.createdAt);
 			latestTurnId = entry.turnId;
+			latestNativeTurnId = nativeHistoryTurnId(entry);
 			continue;
 		}
 		if (entry.role !== "assistant" && entry.role !== "tool") continue;
@@ -112,9 +147,11 @@ function collectHistoryTurnTimingTargets(entries: readonly AgentRuntimeHistoryEn
 			targets.push({
 				prompt: latestUserText,
 				userEntryIndex: latestUserEntryIndex,
+				userAt: latestUserAt,
 				assistantAt: parsedTimestamp(lastAssistant.entry.createdAt),
 				settled: isSettledAssistantEntry(lastAssistant.entry),
 				turnId: lastAssistant.entry.turnId ?? latestTurnId,
+				nativeTurnId: nativeHistoryTurnId(lastAssistant.entry) ?? latestNativeTurnId,
 			});
 		}
 		index = turn.nextIndex - 1;
@@ -125,37 +162,37 @@ function collectHistoryTurnTimingTargets(entries: readonly AgentRuntimeHistoryEn
 function assignHistoryTurnTimings(
 	entries: readonly AgentRuntimeHistoryEntry[],
 	turnTimings: readonly TraceMessageTurnTiming[],
+	userTimingAssignments: ReadonlyMap<number, TraceMessageTurnTiming>,
 ): Array<TraceMessageTurnTiming | undefined> {
 	const messageTurnTimings = turnTimings.filter((timing) => timing.userMessageType !== "message_steered");
 	const timingByEventId = new Map(messageTurnTimings.map((timing) => [timing.eventId, timing]));
 	const historyTurns = collectHistoryTurnTimingTargets(entries);
-	const assignments: Array<TraceMessageTurnTiming | undefined> = historyTurns.map((turn) => turn.turnId ? timingByEventId.get(turn.turnId) : undefined);
-	let timingCursor = messageTurnTimings.length - 1;
-	for (let turnIndex = historyTurns.length - 1; turnIndex >= 0; turnIndex -= 1) {
-		if (assignments[turnIndex]) {
-			const assignedIndex = messageTurnTimings.indexOf(assignments[turnIndex]!);
-			if (assignedIndex >= 0) timingCursor = Math.min(timingCursor, assignedIndex - 1);
-			continue;
-		}
-		const historyTurn = historyTurns[turnIndex];
-		if (!historyTurn?.prompt) continue;
-		let matchedIndex: number | undefined;
-		let matchedDistance = Number.POSITIVE_INFINITY;
-		for (let timingIndex = timingCursor; timingIndex >= 0; timingIndex -= 1) {
-			const timing = messageTurnTimings[timingIndex];
-			if (normalizedPrompt(timing?.userText) !== historyTurn.prompt) continue;
-			const completedAt = parsedTimestamp(timing?.completedAt);
-			const distance = completedAt === undefined || historyTurn.assistantAt === undefined
-				? Number.POSITIVE_INFINITY
-				: Math.abs(completedAt - historyTurn.assistantAt);
-			if (matchedIndex === undefined || distance < matchedDistance) {
-				matchedIndex = timingIndex;
-				matchedDistance = distance;
+	const assignments: Array<TraceMessageTurnTiming | undefined> = historyTurns.map(() => undefined);
+	const timingOwner = new Map<string, string>();
+	const timingByNativeTurnId = new Map<string, TraceMessageTurnTiming>();
+	for (let turnIndex = 0; turnIndex < historyTurns.length; turnIndex += 1) {
+		const historyTurn = historyTurns[turnIndex]!;
+		const nativeTurnId = historyTurn.nativeTurnId ?? historyTurn.turnId;
+		const existingNativeTiming = nativeTurnId ? timingByNativeTurnId.get(nativeTurnId) : undefined;
+		let timing = existingNativeTiming;
+		if (!timing && historyTurn.userEntryIndex !== undefined) {
+			const userTiming = userTimingAssignments.get(historyTurn.userEntryIndex);
+			if (userTiming?.userMessageType === "message_steered") {
+				timing = userTiming.activeEventId ? timingByEventId.get(userTiming.activeEventId) : undefined;
+			} else {
+				timing = userTiming;
 			}
 		}
-		if (matchedIndex === undefined) continue;
-		assignments[turnIndex] = messageTurnTimings[matchedIndex];
-		timingCursor = matchedIndex - 1;
+		if (!timing) {
+			timing = findConfidentTimingMatch(historyTurn, messageTurnTimings)?.timing;
+		}
+		if (!timing) continue;
+		const owner = timingOwner.get(timing.eventId);
+		const nativeOwner = nativeTurnId ? `native:${nativeTurnId}` : `group:${turnIndex}`;
+		if (owner !== undefined && owner !== nativeOwner) continue;
+		assignments[turnIndex] = timing;
+		timingOwner.set(timing.eventId, nativeOwner);
+		if (nativeTurnId) timingByNativeTurnId.set(nativeTurnId, timing);
 	}
 	return assignments;
 }
@@ -164,113 +201,87 @@ function assignHistoryUserTimings(
 	entries: readonly AgentRuntimeHistoryEntry[],
 	turnTimings: readonly TraceMessageTurnTiming[],
 ): Map<number, TraceMessageTurnTiming> {
-	const users: Array<{ entryIndex: number; entryId?: string; turnId?: string; prompt?: string }> = [];
-	const userPositionByEntryIndex = new Map<number, number>();
+	const users: HistoryUserTimingTarget[] = [];
 	for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
 		const entry = entries[entryIndex]!;
 		if (entry.type !== "message" || entry.role !== "user") continue;
-		userPositionByEntryIndex.set(entryIndex, users.length);
 		users.push({
 			entryIndex,
 			entryId: entry.nativeEntryId,
 			turnId: entry.turnId,
 			prompt: normalizedPrompt(historyMessageText(entry)),
+			userAt: parsedTimestamp(entry.createdAt),
 		});
 	}
 	if (!users.length || !turnTimings.length) return new Map();
 
-	const timingIndexByEventId = new Map(turnTimings.map((timing, timingIndex) => [timing.eventId, timingIndex]));
-	const anchorByUserPosition = new Map<number, number>();
-	const assignedTimingIndexes = new Set<number>();
-	for (let userPosition = 0; userPosition < users.length; userPosition += 1) {
-		const user = users[userPosition]!;
-		const timingIndex = timingIndexByEventId.get(user.turnId ?? user.entryId ?? "");
-		if (timingIndex === undefined || assignedTimingIndexes.has(timingIndex)) continue;
-		anchorByUserPosition.set(userPosition, timingIndex);
-		assignedTimingIndexes.add(timingIndex);
+	for (const historyTurn of collectHistoryTurnTimingTargets(entries)) {
+		if (historyTurn.userEntryIndex === undefined || historyTurn.assistantAt === undefined) continue;
+		const user = users.find((candidate) => candidate.entryIndex === historyTurn.userEntryIndex);
+		if (user) user.assistantAt ??= historyTurn.assistantAt;
 	}
 
-	const historyTurns = collectHistoryTurnTimingTargets(entries);
-	let timingUpperBound = turnTimings.length - 1;
-	for (let turnIndex = historyTurns.length - 1; turnIndex >= 0; turnIndex -= 1) {
-		const historyTurn = historyTurns[turnIndex];
-		const userPosition = historyTurn?.userEntryIndex === undefined
-			? undefined
-			: userPositionByEntryIndex.get(historyTurn.userEntryIndex);
-		if (!historyTurn?.prompt || userPosition === undefined) continue;
-		const exactAnchor = anchorByUserPosition.get(userPosition);
-		if (exactAnchor !== undefined) {
-			timingUpperBound = Math.min(timingUpperBound, exactAnchor - 1);
-			continue;
+	const matches = users.map((user) => findConfidentTimingMatch(user, turnTimings));
+	const invalidUserPositions = new Set<number>();
+	for (let leftPosition = 0; leftPosition < matches.length; leftPosition += 1) {
+		const left = matches[leftPosition];
+		if (!left) continue;
+		for (let rightPosition = leftPosition + 1; rightPosition < matches.length; rightPosition += 1) {
+			const right = matches[rightPosition];
+			if (!right || left.timingIndex < right.timingIndex) continue;
+			if (left.confidence !== "identity") invalidUserPositions.add(leftPosition);
+			if (right.confidence !== "identity") invalidUserPositions.add(rightPosition);
 		}
-
-		let steeringTimingIndex: number | undefined;
-		for (let timingIndex = timingUpperBound; timingIndex >= 0; timingIndex -= 1) {
-			const timing = turnTimings[timingIndex]!;
-			if (assignedTimingIndexes.has(timingIndex) || timing.userMessageType !== "message_steered") continue;
-			if (normalizedPrompt(timing.userText) !== historyTurn.prompt) continue;
-			steeringTimingIndex = timingIndex;
-			break;
-		}
-		if (steeringTimingIndex !== undefined) {
-			anchorByUserPosition.set(userPosition, steeringTimingIndex);
-			assignedTimingIndexes.add(steeringTimingIndex);
-			timingUpperBound = steeringTimingIndex - 1;
-			continue;
-		}
-		if (!historyTurn.settled) continue;
-
-		let matchedTimingIndex: number | undefined;
-		let matchedDistance = Number.POSITIVE_INFINITY;
-		for (let timingIndex = timingUpperBound; timingIndex >= 0; timingIndex -= 1) {
-			const timing = turnTimings[timingIndex]!;
-			if (assignedTimingIndexes.has(timingIndex) || timing.userMessageType === "message_steered" || !timing.completedAt) continue;
-			if (normalizedPrompt(timing.userText) !== historyTurn.prompt) continue;
-			const completedAt = parsedTimestamp(timing.completedAt);
-			const distance = completedAt === undefined || historyTurn.assistantAt === undefined
-				? Number.POSITIVE_INFINITY
-				: Math.abs(completedAt - historyTurn.assistantAt);
-			if (matchedTimingIndex === undefined || distance < matchedDistance) {
-				matchedTimingIndex = timingIndex;
-				matchedDistance = distance;
-			}
-		}
-		if (matchedTimingIndex === undefined) continue;
-		anchorByUserPosition.set(userPosition, matchedTimingIndex);
-		assignedTimingIndexes.add(matchedTimingIndex);
-		timingUpperBound = matchedTimingIndex - 1;
 	}
 
 	const assignments = new Map<number, TraceMessageTurnTiming>();
-	const anchors = [...anchorByUserPosition.entries()]
-		.map(([userPosition, timingIndex]) => ({ userPosition, timingIndex }))
-		.sort((left, right) => left.userPosition - right.userPosition);
-	for (const anchor of anchors) assignments.set(users[anchor.userPosition]!.entryIndex, turnTimings[anchor.timingIndex]!);
-
-	const boundaries = [
-		{ userPosition: -1, timingIndex: -1 },
-		...anchors,
-		{ userPosition: users.length, timingIndex: turnTimings.length },
-	];
-	for (let boundaryIndex = 0; boundaryIndex < boundaries.length - 1; boundaryIndex += 1) {
-		const previous = boundaries[boundaryIndex]!;
-		const next = boundaries[boundaryIndex + 1]!;
-		let timingCursor = next.timingIndex - 1;
-		for (let userPosition = next.userPosition - 1; userPosition > previous.userPosition; userPosition -= 1) {
-			const user = users[userPosition]!;
-			if (assignments.has(user.entryIndex) || !user.prompt) continue;
-			for (let timingIndex = timingCursor; timingIndex > previous.timingIndex; timingIndex -= 1) {
-				if (assignedTimingIndexes.has(timingIndex)) continue;
-				const timing = turnTimings[timingIndex]!;
-				if (normalizedPrompt(timing.userText) !== user.prompt) continue;
-				assignments.set(user.entryIndex, timing);
-				assignedTimingIndexes.add(timingIndex);
-				timingCursor = timingIndex - 1;
-				break;
-			}
-		}
+	for (let userPosition = 0; userPosition < users.length; userPosition += 1) {
+		const match = matches[userPosition];
+		if (!match || invalidUserPositions.has(userPosition)) continue;
+		assignments.set(users[userPosition]!.entryIndex, match.timing);
 	}
 	return assignments;
+}
+
+function findConfidentTimingMatch(
+	target: Pick<HistoryUserTimingTarget, "entryId" | "turnId" | "prompt" | "userAt" | "assistantAt">,
+	turnTimings: readonly TraceMessageTurnTiming[],
+): TimingMatch | undefined {
+	const identity = target.turnId ?? target.entryId;
+	if (identity) {
+		const timingIndex = turnTimings.findIndex((timing) => timing.eventId === identity);
+		if (timingIndex >= 0) return { timing: turnTimings[timingIndex]!, timingIndex, confidence: "identity" };
+	}
+	if (!target.prompt) return undefined;
+	const candidates = turnTimings.flatMap((timing, timingIndex) =>
+		normalizedPrompt(timing.userText) === target.prompt ? [{ timing, timingIndex }] : []
+	);
+	if (!candidates.length) return undefined;
+
+	const timestampCandidates = candidates.flatMap((candidate) => {
+		const startedAt = parsedTimestamp(candidate.timing.startedAt);
+		const completedAt = parsedTimestamp(candidate.timing.completedAt);
+		const startDistance = startedAt === undefined || target.userAt === undefined
+			? undefined
+			: Math.abs(startedAt - target.userAt);
+		const completionDistance = completedAt === undefined || target.assistantAt === undefined
+			? undefined
+			: Math.abs(completedAt - target.assistantAt);
+		const bestDistance = startDistance !== undefined && startDistance <= MAX_CONFIDENT_TIMESTAMP_DISTANCE_MS
+			? startDistance
+			: completionDistance !== undefined && completionDistance <= MAX_CONFIDENT_TIMESTAMP_DISTANCE_MS
+				? completionDistance
+				: undefined;
+		return bestDistance === undefined ? [] : [{ ...candidate, distance: bestDistance }];
+	}).sort((left, right) => left.distance - right.distance || left.timingIndex - right.timingIndex);
+	const best = timestampCandidates[0];
+	if (best && timestampCandidates[1]?.distance !== best.distance) {
+		return { timing: best.timing, timingIndex: best.timingIndex, confidence: "timestamp" };
+	}
+	if (candidates.length === 1) {
+		return { timing: candidates[0]!.timing, timingIndex: candidates[0]!.timingIndex, confidence: "unique-prompt" };
+	}
+	return undefined;
 }
 
 function collectAssistantTurn(
@@ -320,6 +331,9 @@ function createUserMessageNode(
 		nativeTurnId: nativeHistoryTurnId(entry),
 		piboSessionId,
 		eventId,
+		parentId: timing?.userMessageType === "message_steered" && timing.activeEventId
+			? messageTurnNodeId(timing.activeEventId)
+			: undefined,
 		type: "user.message",
 		title: "User Message",
 		status: entry.status === "running" ? "running" : entry.status === "error" ? "error" : "done",
@@ -338,14 +352,13 @@ function createAssistantTurnNodes(
 	piboSessionId: string,
 	entries: IndexedHistoryMessageEntry[],
 	timing?: TraceMessageTurnTiming,
+	projectionState: AssistantTurnProjectionState = { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 },
 ): PiboTraceNode[] {
 	const firstAssistant = entries.find(({ entry }) => entry.role === "assistant");
 	if (!firstAssistant) return [];
 	const eventId = canonicalProductTurnId(firstAssistant.entry, timing);
 	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
-	let assistantPartOrdinal = 0;
-	let reasoningPartOrdinal = 0;
 
 	for (const { entry, index: entryIndex } of entries) {
 		if (entry.role === "tool") {
@@ -357,7 +370,8 @@ function createAssistantTurnNodes(
 		const parts = historyMessageParts(entry);
 		for (const [contentPartIndex, part] of parts.entries()) {
 			if (part.type === "reasoning" && hasVisibleText(part.text)) {
-				const thinkingIndex = timing?.reasoningIndices?.[reasoningPartOrdinal] ?? reasoningPartOrdinal;
+				const thinkingIndex = timing?.reasoningIndices?.[projectionState.reasoningPartOrdinal]
+					?? projectionState.reasoningPartOrdinal;
 				orderedNodes.push(createReasoningNode({
 					piboSessionId,
 					entry,
@@ -367,10 +381,12 @@ function createAssistantTurnNodes(
 					eventId,
 					thinking: part.text,
 				}));
-				reasoningPartOrdinal += 1;
+				projectionState.reasoningPartOrdinal += 1;
 			} else if (part.type === "text" && part.text !== "") {
 				if (!responseNode) {
-					const assistantIndex = entry.assistantIndex ?? timing?.assistantIndices?.[assistantPartOrdinal] ?? assistantPartOrdinal;
+					const assistantIndex = timing?.assistantIndices?.[projectionState.assistantPartOrdinal]
+						?? entry.assistantIndex
+						?? projectionState.assistantPartOrdinal;
 					responseNode = createAssistantMessageNode({
 						piboSessionId,
 						entry,
@@ -398,7 +414,7 @@ function createAssistantTurnNodes(
 		if (responseNode) {
 			responseNode.status = responseStatus;
 			responseNode.error = entry.error;
-			assistantPartOrdinal += 1;
+			projectionState.assistantPartOrdinal += 1;
 		}
 	}
 	const finalNode = orderedNodes.at(-1);

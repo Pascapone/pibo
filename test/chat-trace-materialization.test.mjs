@@ -287,6 +287,169 @@ test("matched native runtime turns use stable product identity across legacy, V2
 	]);
 });
 
+test("steering keeps split native outputs on the base product turn with monotonic indices", () => {
+	const historyEntries = [
+		{
+			id: "codex:thread:runtime-X:user-base",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:02.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "user-base",
+			role: "user",
+			content: "base prompt",
+		},
+		{
+			id: "codex:thread:runtime-X:assistant-base",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:03.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "assistant-base",
+			role: "assistant",
+			content: [
+				{ type: "reasoning", text: "base reasoning" },
+				{ type: "text", text: "base answer" },
+			],
+			status: "complete",
+		},
+		{
+			id: "codex:thread:runtime-X:user-steer",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:05.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "user-steer",
+			role: "user",
+			content: "steering prompt",
+		},
+		{
+			id: "codex:thread:runtime-X:assistant-steered",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:07.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "assistant-steered",
+			role: "assistant",
+			content: [
+				{ type: "reasoning", text: "steered reasoning" },
+				{ type: "tool_call", toolCallId: "tool-steered", toolName: "read", input: { path: "steered.txt" } },
+				{ type: "text", text: "steered answer" },
+			],
+			status: "complete",
+		},
+		{
+			id: "codex:thread:runtime-X:tool-steered",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:08.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "tool-steered",
+			role: "tool",
+			content: "steered result",
+			toolCallId: "tool-steered",
+			toolName: "read",
+			result: { content: "steered result" },
+			status: "complete",
+		},
+	];
+	const events = [
+		outputEvent(1, { type: "message_queued", piboSessionId: "ps_root", eventId: "stable-base", source: "user", text: "base prompt" }),
+		outputEvent(2, { type: "message_started", piboSessionId: "ps_root", eventId: "stable-base", source: "user", text: "base prompt" }),
+		outputEvent(3, { type: "thinking_finished", piboSessionId: "ps_root", eventId: "stable-base", thinkingIndex: 0, text: "base reasoning" }),
+		outputEvent(4, { type: "assistant_message", piboSessionId: "ps_root", eventId: "stable-base", assistantIndex: 0, text: "base answer" }),
+		outputEvent(5, { type: "message_steered", piboSessionId: "ps_root", eventId: "stable-steer", activeEventId: "stable-base", source: "user", text: "steering prompt" }),
+		outputEvent(6, { type: "thinking_finished", piboSessionId: "ps_root", eventId: "stable-base", thinkingIndex: 1, text: "steered reasoning" }),
+		outputEvent(7, { type: "tool_call", piboSessionId: "ps_root", eventId: "stable-base", toolCallId: "tool-steered", toolName: "read", args: { path: "steered.txt" } }),
+		outputEvent(8, { type: "tool_execution_finished", piboSessionId: "ps_root", eventId: "stable-base", toolCallId: "tool-steered", toolName: "read", result: { content: "steered result" }, isError: false }),
+		outputEvent(9, { type: "assistant_message", piboSessionId: "ps_root", eventId: "stable-base", assistantIndex: 1, text: "steered answer" }),
+		outputEvent(10, { type: "message_finished", piboSessionId: "ps_root", eventId: "stable-base", source: "user" }),
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events,
+		historyEntries,
+		status: "idle",
+	});
+	const nodes = flattenTraceNodes(view.nodes);
+	const users = nodes.filter((node) => node.type === "user.message");
+	const assistants = nodes.filter((node) => node.type === "assistant.message");
+	const reasoning = nodes.filter((node) => node.type === "model.reasoning");
+	const tool = nodes.find((node) => node.toolCallId === "tool-steered");
+	assert.deepEqual(users.map((node) => ({ id: node.id, eventId: node.eventId, parentId: node.parentId, nativeTurnId: node.nativeTurnId })), [
+		{ id: "event:message_queued:stable-base", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X" },
+		{ id: "event:message_steered:stable-steer", eventId: "stable-steer", parentId: "event:message:stable-base", nativeTurnId: "runtime-X" },
+	]);
+	assert.deepEqual(assistants.map((node) => ({ id: node.id, eventId: node.eventId, parentId: node.parentId, nativeTurnId: node.nativeTurnId })), [
+		{ id: "event:assistant:stable-base:assistant:0", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X" },
+		{ id: "event:assistant:stable-base:assistant:1", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X" },
+	]);
+	assert.deepEqual(reasoning.map((node) => ({ id: node.id, eventId: node.eventId, nativeTurnId: node.nativeTurnId })), [
+		{ id: "event:thinking:stable-base:thinking:0", eventId: "stable-base", nativeTurnId: "runtime-X" },
+		{ id: "event:thinking:stable-base:thinking:1", eventId: "stable-base", nativeTurnId: "runtime-X" },
+	]);
+	assert.deepEqual(
+		{ id: tool?.id, eventId: tool?.eventId, parentId: tool?.parentId, nativeTurnId: tool?.nativeTurnId, status: tool?.status },
+		{ id: "tool:tool-steered", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X", status: "done" },
+	);
+
+	const timeline = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 });
+	const timelineSteer = timeline.nodes.find((node) => node.nodeId === "event:message_steered:stable-steer");
+	assert.deepEqual(
+		{ eventId: timelineSteer?.eventId, parentId: timelineSteer?.parentId, nativeTurnId: timelineSteer?.nativeTurnId },
+		{ eventId: "stable-steer", parentId: "event:message:stable-base", nativeTurnId: "runtime-X" },
+	);
+	assert.ok(timeline.nodes
+		.filter((node) => node.type === "assistant.message" || node.type === "model.reasoning" || node.toolCallId === "tool-steered")
+		.every((node) => node.eventId === "stable-base" && node.nativeTurnId === "runtime-X"));
+	assert.deepEqual(timeline.nodes
+		.filter((node) => node.type === "assistant.message" || node.type === "model.reasoning")
+		.map((node) => node.nodeId)
+		.sort(), [
+			"event:assistant:stable-base:assistant:0",
+			"event:thinking:stable-base:thinking:0",
+			"event:assistant:stable-base:assistant:1",
+			"event:thinking:stable-base:thinking:1",
+		].sort());
+	const terminalMessages = buildCompactTerminalRows(view, { showThinking: true })
+		.filter((row) => row.kind === "message.user" || row.kind === "message.assistant");
+	assert.deepEqual(terminalMessages.map((row) => row.id), [
+		"event:message_queued:stable-base",
+		"terminal:assistant:stable-base:assistant:0",
+		"event:message_steered:stable-steer",
+		"terminal:assistant:stable-base:assistant:1",
+	]);
+});
+
+test("ambiguous repeated prompt timings fail closed to native identity", () => {
+	const historyEntries = [
+		{ id: "native:user", type: "message", source: "native", createdAt: "2026-01-01T00:00:01.000Z", turnId: "runtime-old", nativeTurnId: "runtime-old", nativeEntryId: "user-old", role: "user", content: "identical prompt" },
+		{ id: "native:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:00:02.000Z", turnId: "runtime-old", nativeTurnId: "runtime-old", nativeEntryId: "assistant-old", role: "assistant", content: "old answer", status: "complete" },
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [
+			{ eventId: "stable-old", userText: "identical prompt" },
+			{ eventId: "stable-new", userText: "identical prompt" },
+		],
+	});
+	const messages = flattenTraceNodes(view.nodes)
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(messages.map((node) => node.id), [
+		"event:message_queued:runtime-old",
+		"event:assistant:runtime-old:assistant:0",
+	]);
+	assert.deepEqual(messages.map((node) => node.eventId), ["runtime-old", "runtime-old"]);
+	assert.deepEqual(messages.map((node) => node.nativeTurnId), ["runtime-old", "runtime-old"]);
+});
+
 test("repeated identical native turns retain distinct matched product identities", () => {
 	const historyEntries = [
 		...[

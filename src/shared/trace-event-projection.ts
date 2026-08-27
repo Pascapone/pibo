@@ -882,6 +882,7 @@ export type TraceMessageTurnTiming = {
 	eventId: string;
 	userText?: string;
 	userMessageType?: "message_steered";
+	activeEventId?: string;
 	startedAt?: string;
 	completedAt?: string;
 	durationMs?: number;
@@ -903,6 +904,7 @@ export function mergeMessageTurnTimings(...groups: readonly TraceMessageTurnTimi
 			eventId: timing.eventId,
 			userText: timing.userText ?? existing.userText,
 			userMessageType: timing.userMessageType ?? existing.userMessageType,
+			activeEventId: timing.activeEventId ?? existing.activeEventId,
 			startedAt: timing.startedAt ?? existing.startedAt,
 			completedAt: timing.completedAt ?? existing.completedAt,
 			durationMs: timing.durationMs ?? existing.durationMs,
@@ -935,6 +937,7 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 	const timings = new Map<string, {
 		userText?: string;
 		userMessageType?: "message_steered";
+		activeEventId?: string;
 		startedAt?: string;
 		completedAt?: string;
 		reasoningIndices?: number[];
@@ -971,6 +974,8 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 		} else if (event.type === "message_steered") {
 			timing.userText ??= event.text;
 			timing.userMessageType = "message_steered";
+			timing.activeEventId ??= event.activeEventId;
+			timing.startedAt ??= storedEvent.createdAt;
 		} else if (event.type === "message_started") {
 			timing.userText ??= event.text;
 			timing.startedAt ??= storedEvent.createdAt;
@@ -995,6 +1000,7 @@ export function messageTurnTimingsFromEvents(events: readonly ChatWebStoredEvent
 			userText: timing.userText,
 			startedAt: timing.startedAt,
 			...(timing.userMessageType ? { userMessageType: timing.userMessageType } : {}),
+			...(timing.activeEventId ? { activeEventId: timing.activeEventId } : {}),
 			completedAt: timing.completedAt,
 			durationMs: startedAtMs === undefined || completedAtMs === undefined
 				? undefined
