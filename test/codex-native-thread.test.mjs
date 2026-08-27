@@ -20,6 +20,7 @@ import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.j
 import * as sessionStoreModule from "../dist/sessions/store.js";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
+import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import {
 	createAgentRuntimeBindingPersistence,
@@ -36,12 +37,14 @@ import { parseCodexNativeRuntimeConfig } from "../dist/agent-runtimes/codex-nati
 import { startCodexNativeAppServer } from "../dist/agent-runtimes/codex-native/process.js";
 import { isCodexNativeThreadMissingError } from "../dist/agent-runtimes/codex-native/thread.js";
 import {
+	isExactCodexNativeFirstUseDeliveryReplay,
 	assertCodexNativePendingFirstUseTurn,
 	beginCodexNativeFirstUseAttempt,
 	canonicalizeCodexNativeFirstUsePrompt,
 	codexNativePendingFirstUseOwnerLiveness,
 	endCodexNativeFirstUseAttempt,
 	hashCanonicalCodexNativeFirstUsePrompt,
+	readCodexNativeFirstUseDeliveryReceipt,
 	readCodexNativePendingFirstUse,
 } from "../dist/agent-runtimes/codex-native/first-use.js";
 
@@ -66,6 +69,15 @@ function registerTestDisposer(t, dispose) {
 	const disposers = testDisposers.get(t);
 	if (!disposers) throw new Error("Codex native thread test root is not initialized");
 	disposers.push(dispose);
+}
+
+function persistRouterOutputs(router, store) {
+	const ingest = new ChatDataIngestService(store.getDataStore());
+	return router.subscribe((event) => {
+		const session = store.get(event.piboSessionId);
+		if (!session) return;
+		ingest.ingestOutputEvent({ session, actorId: session.id, event });
+	});
 }
 
 async function waitFor(predicate, timeoutMs = 5_000) {
@@ -229,6 +241,16 @@ function pendingFirstUseMetadata(overrides = {}) {
 	};
 }
 
+function deliveredFirstUseReceipt(overrides = {}) {
+	return {
+		version: 3,
+		state: "delivered",
+		messageId: "message-delivered",
+		promptHash: hashCanonicalCodexNativeFirstUsePrompt("delivered prompt"),
+		...overrides,
+	};
+}
+
 function hashLegacyByteExactPrompt(prompt) {
 	return createHash("sha256").update(prompt, "utf8").digest("hex");
 }
@@ -384,6 +406,78 @@ test("Codex native pending first-use metadata rejects every malformed or unbound
 			);
 		}
 	}
+});
+
+test("Codex native delivered first-use receipts are strict, bounded, and version-aware", () => {
+	const bindingFor = (receipt, overrides = {}) => ({
+		piboSessionId: "ps_delivered_validation",
+		runtimeInstanceId: "codex-native-delivered-validation",
+		adapterId: CODEX_NATIVE_ADAPTER_ID,
+		nativeSessionId: "thread-delivered",
+		state: "bound",
+		metadata: { codexNativeFirstUse: receipt },
+		...overrides,
+	});
+	for (const version of [1, 2, 3]) {
+		const receipt = deliveredFirstUseReceipt({ version });
+		assert.deepEqual(readCodexNativeFirstUseDeliveryReceipt(bindingFor(receipt)), receipt);
+	}
+	for (const invalid of [
+		{ version: 0 },
+		{ version: "1" },
+		{ state: "pending" },
+		{ messageId: "" },
+		{ messageId: "m".repeat(513) },
+		{ promptHash: "A".repeat(64) },
+		{ unexpected: true },
+		{ ownerPid: process.pid },
+	]) {
+		assert.throws(
+			() => readCodexNativeFirstUseDeliveryReceipt(bindingFor(deliveredFirstUseReceipt(invalid))),
+			/receipt is invalid/,
+		);
+	}
+	for (const malformed of [null, [], "delivered", 1]) {
+		assert.throws(() => readCodexNativeFirstUseDeliveryReceipt(bindingFor(malformed)), /receipt is invalid/);
+	}
+	assert.throws(
+		() => readCodexNativeFirstUseDeliveryReceipt(bindingFor(deliveredFirstUseReceipt(), { state: "unbound" })),
+		/receipt is invalid/,
+	);
+	assert.throws(
+		() => readCodexNativeFirstUseDeliveryReceipt({
+			...bindingFor(deliveredFirstUseReceipt()),
+			metadata: {
+				codexNativeFirstUse: deliveredFirstUseReceipt(),
+				piboPendingNativeSession: true,
+			},
+		}),
+		/receipt is invalid/,
+	);
+
+	const byteExactPrompt = "caf\u00e9\r\nlegacy";
+	const normalizedEquivalent = "cafe\u0301\nlegacy";
+	for (const version of [1, 2]) {
+		const receipt = deliveredFirstUseReceipt({
+			version,
+			messageId: `legacy-v${version}`,
+			promptHash: hashLegacyByteExactPrompt(byteExactPrompt),
+		});
+		assert.equal(isExactCodexNativeFirstUseDeliveryReplay(receipt, receipt.messageId, byteExactPrompt), true);
+		assert.throws(
+			() => isExactCodexNativeFirstUseDeliveryReplay(receipt, receipt.messageId, normalizedEquivalent),
+			/delivered message id with a different prompt/,
+		);
+		assert.equal(isExactCodexNativeFirstUseDeliveryReplay(receipt, "normal-followup", normalizedEquivalent), false);
+	}
+	const canonical = deliveredFirstUseReceipt({
+		messageId: "canonical-delivered",
+		promptHash: hashCanonicalCodexNativeFirstUsePrompt(byteExactPrompt),
+	});
+	assert.equal(
+		isExactCodexNativeFirstUseDeliveryReplay(canonical, canonical.messageId, normalizedEquivalent),
+		true,
+	);
 });
 
 test("Codex native canonical first-use prompts normalize line endings and Unicode NFC", () => {
@@ -890,6 +984,7 @@ test("Codex native first-message branches bind only when their first message bec
 		runtimeResourceService: resources,
 	});
 	registerTestDisposer(t, () => firstUseRouter.disposeAll());
+	persistRouterOutputs(firstUseRouter, store);
 	const reply = await firstUseRouter.emitMessageAndWaitForReply({
 		type: "message",
 		piboSessionId: branchPiboSessionId,
@@ -902,6 +997,13 @@ test("Codex native first-message branches bind only when their first message bec
 	assert.equal(durableBranchBinding.state, "bound");
 	assert.match(durableBranchBinding.nativeSessionId, /^thread-/);
 	assert.notEqual(durableBranchBinding.nativeSessionId, "thread-first-message-source");
+	assert.deepEqual(durableBranchBinding.metadata.codexNativeFirstUse, {
+		version: 3,
+		state: "delivered",
+		messageId: "codex-first-message-after-reopen",
+		promptHash: hashCanonicalCodexNativeFirstUsePrompt("first message after source reset"),
+	});
+	assert.equal(durableBranchBinding.metadata.piboPendingNativeSession, undefined);
 	assert.equal(store.getRuntimeBinding(sourcePiboSessionId).nativeSessionId, "thread-first-message-source");
 	const firstMessageState = await startCodexNativeAppServer({
 		config,
@@ -926,6 +1028,7 @@ test("Codex native first-message branches bind only when their first message bec
 		runtimeResourceService: resources,
 	});
 	registerTestDisposer(t, () => reopenedRouter.disposeAll());
+	persistRouterOutputs(reopenedRouter, store);
 	const reopened = await reopenedRouter.emit({
 		type: "execution",
 		piboSessionId: branchPiboSessionId,
@@ -933,6 +1036,21 @@ test("Codex native first-message branches bind only when their first message bec
 	});
 	assert.equal(reopened.type, "execution_result");
 	assert.equal(store.getRuntimeBinding(branchPiboSessionId).nativeSessionId, durableBranchBinding.nativeSessionId);
+	const normalReplay = await reopenedRouter.emitMessageAndWaitForReply({
+		type: "message",
+		piboSessionId: branchPiboSessionId,
+		id: "codex-first-message-after-reopen",
+		text: "first message after source reset",
+		source: "user",
+	}, 5_000);
+	assert.equal(normalReplay.text, "Codex answer.");
+	const normalReplayRows = store.getDataStore().eventLog.listEvents({
+		sessionId: branchPiboSessionId,
+		topic: "pibo.output",
+		limit: 100,
+	}).filter((event) => event.eventId === "codex-first-message-after-reopen");
+	assert.equal(normalReplayRows.filter((event) => event.type === "assistant_message").length, 1);
+	assert.equal(normalReplayRows.filter((event) => event.type === "message_finished").length, 1);
 	await reopenedRouter.disposeAll();
 
 	const raceBranchRouter = new PiboSessionRouter({
@@ -1029,6 +1147,11 @@ test("Codex native first-message branches bind only when their first message bec
 		raceState.turnRequestMessageIds.filter((request) =>
 			request.clientUserMessageId === "codex-concurrent-first-use-a"
 			|| request.clientUserMessageId === "codex-concurrent-first-use-b").length,
+		1,
+	);
+	assert.equal(
+		raceState.turnRequestMessageIds.filter((request) =>
+			request.clientUserMessageId === "codex-first-message-after-reopen").length,
 		1,
 	);
 	assert.equal(
@@ -1460,15 +1583,127 @@ test("Codex native recovers the exact first turn after a child crashes between n
 		runtimeResourceService: resources,
 	});
 	registerTestDisposer(t, () => router.disposeAll());
-	const status = await router.emit({ type: "execution", piboSessionId, action: "status" });
-	assert.equal(status.type, "execution_result");
+	persistRouterOutputs(router, store);
+	const replayedOutputs = [];
+	router.subscribe((event) => {
+		if (event.eventId === "codex-crash-first-message") replayedOutputs.push(event);
+	});
+	const replayed = await router.emit({
+		type: "message",
+		piboSessionId,
+		id: "codex-crash-first-message",
+		text: "durable first turn before binding promotion",
+		source: "user",
+	});
+	assert.equal(replayed.type, "message_queued");
+	await waitFor(() => replayedOutputs.some((event) => event.type === "message_finished"));
+	const afterReplayInspection = await startCodexNativeAppServer({
+		config,
+		runtimeInstanceId: instanceId,
+		piboSessionId: "ps_codex_crash_replay_inspection",
+		sessionGeneration: "crash-replay",
+		workspace: root,
+		clientVersion: "thread-test",
+	});
+	registerTestDisposer(t, () => afterReplayInspection.close());
+	const afterReplayState = await afterReplayInspection.client.request("test/getState", {});
+	assert.equal(
+		afterReplayState.turnRequestMessageIds.filter((request) =>
+			request.clientUserMessageId === "codex-crash-first-message").length,
+		1,
+		"cold replay after terminal durability must not start the first native turn twice",
+	);
+	await afterReplayInspection.close();
+	assert.deepEqual(
+		replayedOutputs.filter((event) => event.type === "assistant_message").map((event) => event.text),
+		["Codex answer."],
+	);
+	assert.equal(replayedOutputs.filter((event) => event.type === "message_finished").length, 1);
+	assert.equal(replayedOutputs.some((event) => event.type === "session_error"), false);
+	const replayedProductEvents = store.getDataStore().eventLog.listEvents({
+		sessionId: piboSessionId,
+		topic: "pibo.output",
+		limit: 100,
+	});
+	assert.equal(replayedProductEvents.filter((event) => event.type === "assistant_message").length, 1);
+	assert.equal(replayedProductEvents.filter((event) => event.type === "message_finished").length, 1);
 	const recovered = store.getRuntimeBinding(piboSessionId);
 	assert.equal(recovered.revision, 3);
 	assert.equal(recovered.state, "bound");
 	assert.equal(recovered.nativeSessionId, pending.nativeSessionId);
-	assert.equal(recovered.metadata.codexNativeFirstUse, undefined);
+	assert.deepEqual(recovered.metadata.codexNativeFirstUse, {
+		version: 3,
+		state: "delivered",
+		messageId: "codex-crash-first-message",
+		promptHash: pending.metadata.codexNativeFirstUse.promptHash,
+	});
+	assert.equal(recovered.metadata.piboPendingNativeSession, undefined);
+	await router.disposeAll();
 
-	const followup = await router.emitMessageAndWaitForReply({
+	const statusRouter = new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry,
+		sessionStore: store,
+		runtimeResourceService: resources,
+	});
+	registerTestDisposer(t, () => statusRouter.disposeAll());
+	const status = await statusRouter.emit({ type: "execution", piboSessionId, action: "status" });
+	assert.equal(status.type, "execution_result");
+	assert.deepEqual(store.getRuntimeBinding(piboSessionId).metadata.codexNativeFirstUse, recovered.metadata.codexNativeFirstUse);
+	await statusRouter.disposeAll();
+
+	for (let restart = 0; restart < 2; restart += 1) {
+		const replayRouter = new PiboSessionRouter({
+			persistSession: false,
+			pluginRegistry,
+			sessionStore: store,
+			runtimeResourceService: resources,
+		});
+		registerTestDisposer(t, () => replayRouter.disposeAll());
+		persistRouterOutputs(replayRouter, store);
+		const replay = await replayRouter.emitMessageAndWaitForReply({
+			type: "message",
+			piboSessionId,
+			id: "codex-crash-first-message",
+			text: "durable first turn before binding promotion",
+			source: "user",
+		}, 5_000);
+		assert.equal(replay.text, "Codex answer.");
+		assert.deepEqual(store.getRuntimeBinding(piboSessionId).metadata.codexNativeFirstUse, recovered.metadata.codexNativeFirstUse);
+		await replayRouter.disposeAll();
+	}
+	const afterRepeatedReplayEvents = store.getDataStore().eventLog.listEvents({
+		sessionId: piboSessionId,
+		topic: "pibo.output",
+		limit: 100,
+	}).filter((event) => event.eventId === "codex-crash-first-message");
+	assert.equal(afterRepeatedReplayEvents.filter((event) => event.type === "assistant_message").length, 1);
+	assert.equal(afterRepeatedReplayEvents.filter((event) => event.type === "message_finished").length, 1);
+
+	const mismatchRouter = new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry,
+		sessionStore: store,
+		runtimeResourceService: resources,
+	});
+	registerTestDisposer(t, () => mismatchRouter.disposeAll());
+	await assert.rejects(mismatchRouter.emitMessageAndWaitForReply({
+		type: "message",
+		piboSessionId,
+		id: "codex-crash-first-message",
+		text: "different prompt under the delivered message id",
+		source: "user",
+	}, 5_000), /delivered message id with a different prompt/);
+	await mismatchRouter.disposeAll();
+
+	const followupRouter = new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry,
+		sessionStore: store,
+		runtimeResourceService: resources,
+	});
+	registerTestDisposer(t, () => followupRouter.disposeAll());
+	const followup = await followupRouter.emitMessageAndWaitForReply({
 		type: "message",
 		piboSessionId,
 		id: "codex-crash-followup",
@@ -1476,6 +1711,24 @@ test("Codex native recovers the exact first turn after a child crashes between n
 		source: "user",
 	}, 5_000);
 	assert.equal(followup.text, "Codex answer.");
+	await followupRouter.disposeAll();
+	const laterReplayRouter = new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry,
+		sessionStore: store,
+		runtimeResourceService: resources,
+	});
+	registerTestDisposer(t, () => laterReplayRouter.disposeAll());
+	persistRouterOutputs(laterReplayRouter, store);
+	const laterReplay = await laterReplayRouter.emitMessageAndWaitForReply({
+		type: "message",
+		piboSessionId,
+		id: "codex-crash-first-message",
+		text: "durable first turn before binding promotion",
+		source: "user",
+	}, 5_000);
+	assert.equal(laterReplay.text, "Codex answer.");
+	await laterReplayRouter.disposeAll();
 	const afterRecovery = await startCodexNativeAppServer({
 		config,
 		runtimeInstanceId: instanceId,
@@ -1489,9 +1742,22 @@ test("Codex native recovers the exact first turn after a child crashes between n
 	assert.deepEqual(Object.keys(afterState.threads), [pending.nativeSessionId]);
 	assert.equal(afterState.threads[pending.nativeSessionId].turns.length, 2);
 	assert.equal(
+		afterState.turnRequestMessageIds.filter((request) =>
+			request.clientUserMessageId === "codex-crash-first-message").length,
+		1,
+		"cold replay after terminal durability must not start the first native turn twice",
+	);
+	assert.equal(
 		afterState.turnRequestMessageIds.find((request) => request.clientUserMessageId === "codex-crash-followup")?.threadId,
 		pending.nativeSessionId,
 	);
+	const finalReplayRows = store.getDataStore().eventLog.listEvents({
+		sessionId: piboSessionId,
+		topic: "pibo.output",
+		limit: 100,
+	}).filter((event) => event.eventId === "codex-crash-first-message");
+	assert.equal(finalReplayRows.filter((event) => event.type === "assistant_message").length, 1);
+	assert.equal(finalReplayRows.filter((event) => event.type === "message_finished").length, 1);
 	await afterRecovery.close();
 });
 
@@ -1502,7 +1768,7 @@ test("Codex native pending recovery proves exact SQLite message and prompt ident
 	const store = new PiboDataSessionStore(join(root, "pibo.sqlite"));
 	registerTestDisposer(t, () => store.close());
 	const config = runtimeConfig(root);
-	const terminalTurn = ({ id, messageId, text, extraUserItems = [] }) => ({
+	const terminalTurn = ({ id, messageId, text, assistantText, extraUserItems = [] }) => ({
 		id: `turn-${id}`,
 		status: "completed",
 		startedAt: 1_780_000_100,
@@ -1515,6 +1781,7 @@ test("Codex native pending recovery proves exact SQLite message and prompt ident
 				content: [{ type: "text", text }],
 			},
 			...extraUserItems,
+			...(assistantText ? [{ id: `agent-${id}`, type: "agentMessage", text: assistantText }] : []),
 		],
 	});
 	const createPendingCase = async ({
@@ -1591,7 +1858,12 @@ test("Codex native pending recovery proves exact SQLite message and prompt ident
 			id,
 			metadataVersion,
 			includeMarker: metadataVersion !== 1,
-			turns: [terminalTurn({ id, messageId: `message-${id}`, text: `prompt-${id}` })],
+			turns: [terminalTurn({
+				id,
+				messageId: `message-${id}`,
+				text: `prompt-${id}`,
+				assistantText: `legacy answer ${metadataVersion}`,
+			})],
 		});
 		const session = await registry.openSession(instanceId, exactParent.input);
 		assert.equal(session.getBinding().state, "bound");
@@ -1604,9 +1876,76 @@ test("Codex native pending recovery proves exact SQLite message and prompt ident
 		);
 		assert.equal(migrated.state, "bound");
 		assert.equal(migrated.nativeSessionId, exactParent.threadId);
-		assert.equal(migrated.metadata.codexNativeFirstUse, undefined);
+		assert.deepEqual(migrated.metadata.codexNativeFirstUse, {
+			version: metadataVersion,
+			state: "delivered",
+			messageId: `message-${id}`,
+			promptHash: hashLegacyByteExactPrompt(`prompt-${id}`),
+		});
 		assert.equal(migrated.metadata.piboPendingNativeSession, undefined);
 		await session.dispose();
+		const replayInput = openInput(instanceId, root, migrated, exactParent.piboSessionId, {}, "branch");
+		replayInput.productContext = {
+			piboSessionId: exactParent.piboSessionId,
+			getActiveMessage: () => ({ id: `message-${id}`, source: "user" }),
+		};
+		const replaySession = await registry.openSession(instanceId, replayInput);
+		const replayEvents = [];
+		replaySession.subscribe((event) => replayEvents.push(event));
+		await replaySession.prompt({ text: `prompt-${id}`, source: "rpc" });
+		assert.deepEqual(
+			replayEvents.filter((event) => event.type === "assistant_message").map((event) => event.text),
+			[`legacy answer ${metadataVersion}`],
+		);
+		assert.deepEqual(replaySession.getBinding().metadata.codexNativeFirstUse, migrated.metadata.codexNativeFirstUse);
+		await replaySession.dispose();
+	}
+
+	const invalidReceiptThreadId = "thread-invalid-delivery-receipt";
+	await seedThread(config, {
+		runtimeInstanceId: instanceId,
+		threadId: invalidReceiptThreadId,
+		workspace: root,
+		cwd: root,
+		turns: [terminalTurn({
+			id: "invalid-delivery-receipt",
+			messageId: "message-invalid-delivery-receipt",
+			text: "prompt-invalid-delivery-receipt",
+			assistantText: "receipt answer",
+		})],
+	});
+	for (const [id, receipt, extraMetadata = {}] of [
+		["malformed", null],
+		["extra", deliveredFirstUseReceipt({
+			messageId: "message-invalid-delivery-receipt",
+			promptHash: hashCanonicalCodexNativeFirstUsePrompt("prompt-invalid-delivery-receipt"),
+			unexpected: true,
+		})],
+		["oversized", deliveredFirstUseReceipt({ messageId: "m".repeat(513) })],
+		["pending-marker", deliveredFirstUseReceipt({
+			messageId: "message-invalid-delivery-receipt",
+			promptHash: hashCanonicalCodexNativeFirstUsePrompt("prompt-invalid-delivery-receipt"),
+		}), { piboPendingNativeSession: true }],
+		["contradictory", deliveredFirstUseReceipt({
+			messageId: "message-invalid-delivery-receipt",
+			promptHash: hashCanonicalCodexNativeFirstUsePrompt("different prompt"),
+		})],
+	]) {
+		const invalidBinding = {
+			...boundBinding(instanceId, `ps_invalid_delivery_receipt_${id}`, invalidReceiptThreadId),
+			metadata: { codexNativeFirstUse: receipt, ...extraMetadata },
+		};
+		await assert.rejects(
+			registry.openSession(instanceId, openInput(
+				instanceId,
+				root,
+				invalidBinding,
+				invalidBinding.piboSessionId,
+				{},
+				"branch",
+			)),
+			/receipt is invalid|does not match the persisted prompt hash/,
+		);
 	}
 
 	const canonicalClaim = "caf\u00e9\r\ncanonical";

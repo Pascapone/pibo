@@ -88,13 +88,18 @@ import {
 	CODEX_FIRST_USE_METADATA_KEY,
 	CODEX_FIRST_USE_METADATA_VERSION,
 	assertCodexNativeFirstUseMessageId,
+	assertCodexNativeFirstUseDeliveryReceiptTurn,
 	assertCodexNativePendingFirstUseRequest,
 	assertCodexNativePendingFirstUseTurn,
 	beginCodexNativeFirstUseAttempt,
+	codexNativeFirstUseDeliveryReceipt,
 	codexNativePendingFirstUseOwnerLiveness,
 	endCodexNativeFirstUseAttempt,
 	hashCanonicalCodexNativeFirstUsePrompt,
+	isExactCodexNativeFirstUseDeliveryReplay,
+	readCodexNativeFirstUseDeliveryReceipt,
 	readCodexNativePendingFirstUse,
+	type CodexNativeFirstUseDeliveryReceipt,
 	type CodexNativePendingFirstUse,
 } from "./first-use.js";
 
@@ -111,6 +116,30 @@ function readPendingFirstUse(binding: RuntimeSessionBinding): CodexNativePending
 			error instanceof Error ? error.message : "The pending native Codex first-use metadata is invalid.",
 		);
 	}
+}
+
+function readFirstUseDeliveryReceipt(
+	binding: RuntimeSessionBinding,
+): CodexNativeFirstUseDeliveryReceipt | undefined {
+	try {
+		return readCodexNativeFirstUseDeliveryReceipt(binding);
+	} catch (error) {
+		throw new AgentRuntimeUnavailableError(
+			binding.runtimeInstanceId,
+			error instanceof Error ? error.message : "The delivered native Codex first-use receipt is invalid.",
+		);
+	}
+}
+
+function deliveryReceiptForBinding(
+	binding: RuntimeSessionBinding,
+): CodexNativeFirstUseDeliveryReceipt | undefined {
+	if (binding.metadata?.[CODEX_FIRST_USE_METADATA_KEY] === undefined) return undefined;
+	if (binding.state === "unbound") {
+		const pending = readPendingFirstUse(binding);
+		return pending ? codexNativeFirstUseDeliveryReceipt(pending) : undefined;
+	}
+	return readFirstUseDeliveryReceipt(binding);
 }
 
 function pendingFirstUseBinding(
@@ -261,6 +290,7 @@ function safeThreadMetadata(
 	thread: CodexAppServerThread,
 	previous: PiboJsonObject = {},
 	settings: PiboJsonObject = {},
+	deliveryReceipt?: CodexNativeFirstUseDeliveryReceipt,
 ): PiboJsonObject {
 	const {
 		diagnosticCode: _diagnosticCode,
@@ -278,6 +308,7 @@ function safeThreadMetadata(
 		threadUpdatedAt: timestamp(thread.updatedAt),
 		threadStatus: thread.status.type,
 		modelProvider: thread.modelProvider,
+		...(deliveryReceipt ? { [CODEX_FIRST_USE_METADATA_KEY]: deliveryReceipt } : {}),
 	};
 }
 
@@ -288,6 +319,7 @@ function bindingForThread(input: {
 	thread: CodexAppServerThread;
 	settings?: PiboJsonObject;
 }): RuntimeSessionBinding {
+	const deliveryReceipt = input.previous ? deliveryReceiptForBinding(input.previous) : undefined;
 	return {
 		...(input.previous ? structuredClone(input.previous) : {}),
 		piboSessionId: input.piboSessionId,
@@ -299,7 +331,7 @@ function bindingForThread(input: {
 		protocolVersion: CODEX_APP_SERVER_VERSION,
 		adapterVersion: CODEX_NATIVE_ADAPTER_VERSION,
 		locator: { kind: "adapter-resolved" },
-		metadata: safeThreadMetadata(input.thread, input.previous?.metadata, input.settings),
+		metadata: safeThreadMetadata(input.thread, input.previous?.metadata, input.settings, deliveryReceipt),
 	};
 }
 
@@ -330,6 +362,7 @@ function validateOpenBinding(
 	if (binding.state === "bound" && !binding.nativeSessionId) {
 		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "The persisted Codex binding has no native thread id.");
 	}
+	if (binding.state === "bound") readFirstUseDeliveryReceipt(binding);
 	if (binding.state === "unbound" && binding.nativeSessionId) {
 		const pending = readPendingFirstUse(binding);
 		const hasCurrentPendingMarker = binding.metadata?.[PENDING_NATIVE_SESSION_METADATA_KEY] === true;
@@ -528,7 +561,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 				this.settings.turnOptions,
 			);
 			await this.firstUseTestFailpoints?.afterNativeTerminalDurable?.();
-			const pending = readPendingFirstUse(this.binding);
+			const pending = this.binding.state === "unbound" ? readPendingFirstUse(this.binding) : undefined;
 			if (pending) assertCodexNativePendingFirstUseTurn(pending, this.threads.thread);
 			this.promoteBindingFromCurrentThread();
 		} finally {
@@ -820,7 +853,15 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		messageId: string;
 		startTurn: boolean;
 	}> {
-		if (this.binding.state !== "unbound") return { messageId, startTurn: true };
+		if (this.binding.state !== "unbound") {
+			const receipt = readFirstUseDeliveryReceipt(this.binding);
+			if (!receipt || !isExactCodexNativeFirstUseDeliveryReplay(receipt, messageId, prompt)) {
+				return { messageId, startTurn: true };
+			}
+			const firstTurn = assertCodexNativeFirstUseDeliveryReceiptTurn(receipt, this.threads.thread);
+			this.turns.replayTerminalTurn(firstTurn);
+			return { messageId: receipt.messageId, startTurn: false };
+		}
 		assertCodexNativeFirstUseMessageId(messageId);
 		const promptHash = hashCanonicalCodexNativeFirstUsePrompt(prompt);
 		const currentPending = readPendingFirstUse(this.binding);
@@ -1139,7 +1180,8 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					? { developerInstructions: resourceDelivery.developerInstructions }
 					: {}),
 			};
-			const pendingFirstUse = readPendingFirstUse(binding);
+			const pendingFirstUse = binding.state === "unbound" ? readPendingFirstUse(binding) : undefined;
+			const deliveryReceipt = binding.state === "bound" ? readFirstUseDeliveryReceipt(binding) : undefined;
 			let sessionBinding = binding;
 			let pendingTerminalVerified = false;
 			let threads: CodexNativeThreadController;
@@ -1182,6 +1224,16 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					throw new AgentRuntimeUnavailableError(
 						this.instanceId,
 						error instanceof Error ? error.message : "The pending native Codex first turn cannot be verified.",
+					);
+				}
+			}
+			if (deliveryReceipt) {
+				try {
+					assertCodexNativeFirstUseDeliveryReceiptTurn(deliveryReceipt, threads.thread);
+				} catch (error) {
+					throw new AgentRuntimeUnavailableError(
+						this.instanceId,
+						error instanceof Error ? error.message : "The delivered native Codex first turn cannot be verified.",
 					);
 				}
 			}

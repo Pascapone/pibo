@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { RuntimeSessionBinding } from "../../sessions/runtime-binding.js";
-import type { CodexAppServerThread, CodexAppServerThreadItem } from "./protocol-types.js";
+import {
+	PENDING_NATIVE_SESSION_METADATA_KEY,
+	type RuntimeSessionBinding,
+} from "../../sessions/runtime-binding.js";
+import type { CodexAppServerThread, CodexAppServerThreadItem, CodexAppServerTurn } from "./protocol-types.js";
 
 export const CODEX_FIRST_USE_METADATA_KEY = "codexNativeFirstUse";
 export const CODEX_FIRST_USE_METADATA_VERSION = 3;
@@ -29,6 +32,13 @@ export type CodexNativePendingFirstUse = {
 	ownerPid: number;
 	ownerProcessStartId?: string;
 	ownerProcessInstanceId: string;
+};
+
+export type CodexNativeFirstUseDeliveryReceipt = {
+	version: 1 | 2 | typeof CODEX_FIRST_USE_METADATA_VERSION;
+	state: "delivered";
+	messageId: string;
+	promptHash: string;
 };
 
 export type CodexNativeFirstUseOwnerLiveness = "active" | "dead" | "ambiguous";
@@ -118,10 +128,24 @@ export function hashCanonicalCodexNativeFirstUsePrompt(prompt: string): string {
 	return hashUtf8(canonicalizeCodexNativeFirstUsePrompt(prompt));
 }
 
-function hashPersistedPromptEvidence(pending: CodexNativePendingFirstUse, prompt: string): string {
-	return LEGACY_BYTE_EXACT_METADATA_VERSIONS.has(pending.version)
+function hashPersistedPromptEvidence(
+	identity: Pick<CodexNativePendingFirstUse | CodexNativeFirstUseDeliveryReceipt, "version">,
+	prompt: string,
+): string {
+	return LEGACY_BYTE_EXACT_METADATA_VERSIONS.has(identity.version)
 		? hashUtf8(prompt)
 		: hashCanonicalCodexNativeFirstUsePrompt(prompt);
+}
+
+export function codexNativeFirstUseDeliveryReceipt(
+	pending: CodexNativePendingFirstUse,
+): CodexNativeFirstUseDeliveryReceipt {
+	return {
+		version: pending.version,
+		state: "delivered",
+		messageId: pending.messageId,
+		promptHash: pending.promptHash,
+	};
 }
 
 export function readCodexNativePendingFirstUse(
@@ -170,6 +194,35 @@ export function readCodexNativePendingFirstUse(
 		throw new Error("The pending native Codex first-use metadata is invalid.");
 	}
 	return record as CodexNativePendingFirstUse;
+}
+
+export function readCodexNativeFirstUseDeliveryReceipt(
+	binding: RuntimeSessionBinding,
+): CodexNativeFirstUseDeliveryReceipt | undefined {
+	const value = binding.metadata?.[CODEX_FIRST_USE_METADATA_KEY];
+	if (value === undefined) return undefined;
+	if (
+		binding.state !== "bound"
+		|| binding.metadata?.[PENDING_NATIVE_SESSION_METADATA_KEY] !== undefined
+		|| !value
+		|| typeof value !== "object"
+		|| Array.isArray(value)
+	) {
+		throw new Error("The delivered native Codex first-use receipt is invalid.");
+	}
+	const record = value as Record<string, unknown>;
+	const allowedKeys = new Set(["version", "state", "messageId", "promptHash"]);
+	if (
+		Object.keys(record).some((key) => !allowedKeys.has(key))
+		|| (record.version !== 1 && record.version !== 2 && record.version !== CODEX_FIRST_USE_METADATA_VERSION)
+		|| record.state !== "delivered"
+		|| !boundedNonEmptyString(record.messageId, MAX_MESSAGE_ID_LENGTH)
+		|| typeof record.promptHash !== "string"
+		|| !SHA256_PATTERN.test(record.promptHash)
+	) {
+		throw new Error("The delivered native Codex first-use receipt is invalid.");
+	}
+	return record as CodexNativeFirstUseDeliveryReceipt;
 }
 
 export function beginCodexNativeFirstUseAttempt(): Pick<
@@ -233,6 +286,52 @@ function exactTextUserItem(item: CodexAppServerThreadItem): { clientId?: string 
 	return { ...(item.clientId !== undefined ? { clientId: item.clientId as string | null } : {}), text: record.text };
 }
 
+function assertCodexNativeFirstUseTurnEvidence(
+	identity: Pick<CodexNativePendingFirstUse | CodexNativeFirstUseDeliveryReceipt, "messageId" | "promptHash" | "version">,
+	turn: CodexAppServerTurn,
+	state: "pending" | "delivered",
+): void {
+	if (!TERMINAL_TURN_STATUSES.has(turn.status)) {
+		throw new Error(`The ${state} native Codex first turn is not terminal and cannot be reconciled safely.`);
+	}
+	const userItems = turn.items.filter((item) => item.type === "userMessage");
+	const evidence = userItems.map(exactTextUserItem);
+	if (evidence.length === 0 || evidence.some((item) => !item)) {
+		throw new Error(`The ${state} native Codex first turn has ambiguous user input evidence.`);
+	}
+	const exactEvidence = evidence as Array<{ clientId?: string | null; text: string }>;
+	const evidenceWithClientIds = exactEvidence.filter((item) => item.clientId !== undefined && item.clientId !== null);
+	let firstRequestEvidence: { clientId?: string | null; text: string };
+	if (evidenceWithClientIds.length > 0) {
+		if (evidenceWithClientIds.length !== exactEvidence.length) {
+			throw new Error(`The ${state} native Codex first turn has ambiguous user input evidence.`);
+		}
+		const matches = evidenceWithClientIds.filter((item) => item.clientId === identity.messageId);
+		if (matches.length === 0) {
+			throw new Error(`The ${state} native Codex first turn does not match the persisted message id.`);
+		}
+		if (matches.length > 1) {
+			throw new Error(`The ${state} native Codex first turn has ambiguous user input evidence.`);
+		}
+		firstRequestEvidence = matches[0]!;
+	} else {
+		if (exactEvidence.length !== 1) {
+			throw new Error(`The ${state} native Codex first turn has ambiguous user input evidence.`);
+		}
+		firstRequestEvidence = exactEvidence[0]!;
+	}
+	if (hashPersistedPromptEvidence(identity, firstRequestEvidence.text) !== identity.promptHash) {
+		throw new Error(`The ${state} native Codex first turn does not match the persisted prompt hash.`);
+	}
+	if (
+		firstRequestEvidence.clientId !== undefined
+		&& firstRequestEvidence.clientId !== null
+		&& !boundedNonEmptyString(firstRequestEvidence.clientId, MAX_MESSAGE_ID_LENGTH)
+	) {
+		throw new Error(`The ${state} native Codex first turn has invalid message identity evidence.`);
+	}
+}
+
 export function assertCodexNativePendingFirstUseTurn(
 	pending: CodexNativePendingFirstUse,
 	thread: CodexAppServerThread,
@@ -240,44 +339,29 @@ export function assertCodexNativePendingFirstUseTurn(
 	if (thread.id !== pending.threadId || thread.turns.length !== 1) {
 		throw new Error("The pending native Codex first turn is missing, multiple, or belongs to another thread.");
 	}
-	const turn = thread.turns[0]!;
-	if (!TERMINAL_TURN_STATUSES.has(turn.status)) {
-		throw new Error("The pending native Codex first turn is not terminal and cannot be reconciled safely.");
+	assertCodexNativeFirstUseTurnEvidence(pending, thread.turns[0]!, "pending");
+}
+
+export function assertCodexNativeFirstUseDeliveryReceiptTurn(
+	receipt: CodexNativeFirstUseDeliveryReceipt,
+	thread: CodexAppServerThread,
+): CodexAppServerTurn {
+	const firstTurn = thread.turns[0];
+	if (!firstTurn) throw new Error("The delivered native Codex first turn is missing.");
+	assertCodexNativeFirstUseTurnEvidence(receipt, firstTurn, "delivered");
+	return firstTurn;
+}
+
+export function isExactCodexNativeFirstUseDeliveryReplay(
+	receipt: CodexNativeFirstUseDeliveryReceipt,
+	messageId: string,
+	prompt: string,
+): boolean {
+	if (messageId !== receipt.messageId) return false;
+	if (hashPersistedPromptEvidence(receipt, prompt) !== receipt.promptHash) {
+		throw new Error("Native Codex first-use replay reuses the delivered message id with a different prompt.");
 	}
-	const userItems = turn.items.filter((item) => item.type === "userMessage");
-	const evidence = userItems.map(exactTextUserItem);
-	if (evidence.length === 0 || evidence.some((item) => !item)) {
-		throw new Error("The pending native Codex first turn has ambiguous user input evidence.");
-	}
-	const exactEvidence = evidence as Array<{ clientId?: string | null; text: string }>;
-	const evidenceWithClientIds = exactEvidence.filter((item) => item.clientId !== undefined && item.clientId !== null);
-	let firstRequestEvidence: { clientId?: string | null; text: string };
-	if (evidenceWithClientIds.length > 0) {
-		if (evidenceWithClientIds.length !== exactEvidence.length) {
-			throw new Error("The pending native Codex first turn has ambiguous user input evidence.");
-		}
-		const matches = evidenceWithClientIds.filter((item) => item.clientId === pending.messageId);
-		if (matches.length === 0) {
-			throw new Error("The pending native Codex first turn does not match the persisted message id.");
-		}
-		if (matches.length > 1) throw new Error("The pending native Codex first turn has ambiguous user input evidence.");
-		firstRequestEvidence = matches[0]!;
-	} else {
-		if (exactEvidence.length !== 1) {
-			throw new Error("The pending native Codex first turn has ambiguous user input evidence.");
-		}
-		firstRequestEvidence = exactEvidence[0]!;
-	}
-	if (hashPersistedPromptEvidence(pending, firstRequestEvidence.text) !== pending.promptHash) {
-		throw new Error("The pending native Codex first turn does not match the persisted prompt hash.");
-	}
-	if (
-		firstRequestEvidence.clientId !== undefined
-		&& firstRequestEvidence.clientId !== null
-		&& !boundedNonEmptyString(firstRequestEvidence.clientId, MAX_MESSAGE_ID_LENGTH)
-	) {
-		throw new Error("The pending native Codex first turn has invalid message identity evidence.");
-	}
+	return true;
 }
 
 export function assertCodexNativePendingFirstUseRequest(

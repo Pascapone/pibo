@@ -66,7 +66,18 @@ function binding(instanceId, piboSessionId, previous) {
 	};
 }
 
-function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBinding, portableTools, resources, kind = "chat", testContext }) {
+function openInput({
+	instanceId,
+	piboSessionId,
+	workspace,
+	profile,
+	runtimeBinding,
+	portableTools,
+	resources,
+	kind = "chat",
+	testContext,
+	getActiveMessage = () => ({ id: "resource-message", source: "user" }),
+}) {
 	let runtimeBindingPersistence;
 	if (kind === "branch") {
 		assert.ok(testContext, "branch resource tests require a cleanup context");
@@ -97,7 +108,7 @@ function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBindi
 		workspace,
 		productContext: {
 			piboSessionId,
-			getActiveMessage: () => ({ id: "resource-message", source: "user" }),
+			getActiveMessage,
 		},
 		services: {
 			portableTools,
@@ -598,6 +609,7 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 		},
 	};
 	const runtimeBinding = binding(instanceId, "ps_codex_resource_rollover");
+	let activeMessageId = "resource-message";
 	const session = await registry.openSession(instanceId, openInput({
 		instanceId,
 		piboSessionId: "ps_codex_resource_rollover",
@@ -608,6 +620,7 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 		resources: undefined,
 		kind: "branch",
 		testContext: t,
+		getActiveMessage: () => ({ id: activeMessageId, source: "user" }),
 	}));
 	t.after(async () => session.dispose());
 	const initialClient = getCodexNativeClient(session);
@@ -634,6 +647,7 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 	const durableThreadId = session.getBinding().nativeSessionId;
 	assert.match(durableThreadId, /^thread-/);
 	await waitFor(() => accesses.length === 3 && getCodexNativeClient(session) !== secondClient, 10_000);
+	activeMessageId = "resource-followup-message";
 	await session.prompt({ text: "verify resumed rollover thread", source: "rpc" });
 	assert.equal(session.getBinding().nativeSessionId, durableThreadId);
 	assert.equal(session.getStatus().warnings.length, 0);
