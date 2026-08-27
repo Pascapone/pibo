@@ -45,6 +45,8 @@ type TimingMatch = {
 type HistoryTimingAssignments = {
 	userAssignments: Map<number, TraceMessageTurnTiming>;
 	turnAssignments: Array<TraceMessageTurnTiming | undefined>;
+	forceNativeUserEntryIndexes: Set<number>;
+	forceNativeTurnIndexes: Set<number>;
 };
 
 type AssistantTurnProjectionState = {
@@ -53,6 +55,8 @@ type AssistantTurnProjectionState = {
 };
 
 const MAX_CONFIDENT_TIMESTAMP_DISTANCE_MS = 5 * 60 * 1_000;
+const PERSISTED_TIMESTAMP_PATTERN =
+	/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|([+-])(\d{2}):(\d{2}))$/;
 
 export function projectHistoryEntries(
 	entries: readonly AgentRuntimeHistoryEntry[],
@@ -61,14 +65,14 @@ export function projectHistoryEntries(
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): AgentRuntimeHistoryEntry[] {
 	if (sessionStatus !== "running" || openHistoryEventIds.size === 0) return [...entries];
-	const { userAssignments } = assignHistoryTimings(entries, turnTimings);
+	const { userAssignments, forceNativeUserEntryIndexes } = assignHistoryTimings(entries, turnTimings);
 	let lastUserMessageIndex = -1;
 	let lastUserEventId: string | undefined;
 	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index]!;
 		if (entry.type !== "message" || entry.role !== "user") continue;
 		lastUserMessageIndex = index;
-		lastUserEventId = canonicalProductTurnId(entry, userAssignments.get(index));
+		lastUserEventId = canonicalProductTurnId(entry, userAssignments.get(index), forceNativeUserEntryIndexes.has(index));
 	}
 	return lastUserMessageIndex !== -1 && lastUserEventId && openHistoryEventIds.has(lastUserEventId)
 		? entries.slice(0, lastUserMessageIndex)
@@ -81,24 +85,40 @@ export function traceNodesFromHistoryEntries(
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
 ): PiboTraceNode[] {
 	const nodes: PiboTraceNode[] = [];
-	const { userAssignments, turnAssignments } = assignHistoryTimings(entries, turnTimings);
+	const { userAssignments, turnAssignments, forceNativeUserEntryIndexes, forceNativeTurnIndexes } =
+		assignHistoryTimings(entries, turnTimings);
 	const projectionStateByEventId = new Map<string, AssistantTurnProjectionState>();
 	let assistantTurnIndex = 0;
 	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index]!;
 		if (entry.type === "message") {
 			if (entry.role === "user") {
-				nodes.push(createUserMessageNode(piboSessionId, entry, index, userAssignments.get(index)));
+				nodes.push(createUserMessageNode(
+					piboSessionId,
+					entry,
+					index,
+					userAssignments.get(index),
+					forceNativeUserEntryIndexes.has(index),
+				));
 			} else if (entry.role === "assistant" || entry.role === "tool") {
 				const turn = collectAssistantTurn(entries, index);
 				const hasAssistant = turn.entries.some(({ entry: turnEntry }) => turnEntry.role === "assistant");
 				const timing = hasAssistant ? turnAssignments[assistantTurnIndex] : undefined;
+				const forceNativeIdentity = hasAssistant && forceNativeTurnIndexes.has(assistantTurnIndex);
 				const firstAssistant = turn.entries.find(({ entry: turnEntry }) => turnEntry.role === "assistant");
-				const eventId = firstAssistant ? canonicalProductTurnId(firstAssistant.entry, timing) : undefined;
+				const eventId = firstAssistant
+					? canonicalProductTurnId(firstAssistant.entry, timing, forceNativeIdentity)
+					: undefined;
 				const projectionState = eventId
 					? projectionStateByEventId.get(eventId) ?? { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 }
 					: { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 };
-				nodes.push(...createAssistantTurnNodes(piboSessionId, turn.entries, timing, projectionState));
+				nodes.push(...createAssistantTurnNodes(
+					piboSessionId,
+					turn.entries,
+					timing,
+					projectionState,
+					forceNativeIdentity,
+				));
 				if (eventId) projectionStateByEventId.set(eventId, projectionState);
 				if (hasAssistant) assistantTurnIndex += 1;
 				index = turn.nextIndex - 1;
@@ -190,6 +210,22 @@ function assignHistoryTimings(
 
 	const matches = users.map((user) => findConfidentTimingMatch(user, turnTimings));
 	const invalidUserPositions = invalidHistoryUserMatchPositions(users, matches);
+	const rejectedUserEntryIndexes = new Set(
+		[...invalidUserPositions].map((position) => users[position]!.entryIndex),
+	);
+	const forceNativeUserEntryIndexes = new Set(
+		[...invalidUserPositions].flatMap((position) => {
+			const user = users[position]!;
+			const match = matches[position];
+			return user.turnId && user.nativeTurnId && user.turnId !== user.nativeTurnId &&
+				match?.timing.eventId === user.turnId
+				? [user.entryIndex]
+				: [];
+		}),
+	);
+	const rejectedNativeTurnIds = new Set(
+		[...invalidUserPositions].flatMap((position) => users[position]!.nativeTurnId ? [users[position]!.nativeTurnId] : []),
+	);
 	const userAssignments = new Map<number, TraceMessageTurnTiming>();
 	for (let userPosition = 0; userPosition < users.length; userPosition += 1) {
 		const match = matches[userPosition];
@@ -216,15 +252,31 @@ function assignHistoryTimings(
 		timingByNativeTurnId.set(user.nativeTurnId, outputTiming);
 	}
 	for (const nativeTurnId of conflictedNativeTurnIds) {
+		rejectedNativeTurnIds.add(nativeTurnId);
 		timingByNativeTurnId.delete(nativeTurnId);
 		for (const user of users) {
-			if (user.nativeTurnId === nativeTurnId) userAssignments.delete(user.entryIndex);
+			if (user.nativeTurnId !== nativeTurnId) continue;
+			userAssignments.delete(user.entryIndex);
+			rejectedUserEntryIndexes.add(user.entryIndex);
+			if (user.turnId && user.turnId !== nativeTurnId) {
+				forceNativeUserEntryIndexes.add(user.entryIndex);
+			}
 		}
 	}
 
+	const forceNativeTurnIndexes = new Set<number>();
 	for (let turnIndex = 0; turnIndex < historyTurns.length; turnIndex += 1) {
 		const historyTurn = historyTurns[turnIndex]!;
 		const nativeTurnId = historyTurn.nativeTurnId ?? historyTurn.turnId;
+		if (
+			(nativeTurnId && rejectedNativeTurnIds.has(nativeTurnId)) ||
+			(historyTurn.userEntryIndex !== undefined && rejectedUserEntryIndexes.has(historyTurn.userEntryIndex))
+		) {
+			if (nativeTurnId && historyTurn.turnId && historyTurn.turnId !== nativeTurnId) {
+				forceNativeTurnIndexes.add(turnIndex);
+			}
+			continue;
+		}
 		let timing = nativeTurnId ? timingByNativeTurnId.get(nativeTurnId) : undefined;
 		if (!timing && !nativeTurnId && historyTurn.userEntryIndex !== undefined) {
 			const userTiming = userAssignments.get(historyTurn.userEntryIndex);
@@ -233,7 +285,7 @@ function assignHistoryTimings(
 		if (!timing) continue;
 		turnAssignments[turnIndex] = timing;
 	}
-	return { userAssignments, turnAssignments };
+	return { userAssignments, turnAssignments, forceNativeUserEntryIndexes, forceNativeTurnIndexes };
 }
 
 function invalidHistoryUserMatchPositions(
@@ -266,7 +318,7 @@ function invalidHistoryUserMatchPositions(
 		));
 		if (nativeOwners.size <= 1) continue;
 		for (const position of positions) {
-			if (matches[position]?.confidence !== "identity") invalidUserPositions.add(position);
+			invalidUserPositions.add(position);
 		}
 	}
 	return invalidUserPositions;
@@ -344,6 +396,7 @@ function createUserMessageNode(
 	entry: AgentRuntimeHistoryMessageEntry,
 	entryIndex: number,
 	timing?: TraceMessageTurnTiming,
+	forceNativeIdentity = false,
 ): PiboTraceNode {
 	const text = historyMessageText(entry);
 	const notification = parseRunNotificationText(text);
@@ -362,7 +415,7 @@ function createUserMessageNode(
 		});
 	}
 	const userMessageType = timing?.userMessageType ?? "message_queued";
-	const eventId = canonicalProductTurnId(entry, timing);
+	const eventId = canonicalProductTurnId(entry, timing, forceNativeIdentity);
 	const eventIdentity = eventId ? `event:${userMessageType}:${eventId}` : undefined;
 	return {
 		id: eventIdentity ?? historyEntryNodeId(entry),
@@ -392,10 +445,11 @@ function createAssistantTurnNodes(
 	entries: IndexedHistoryMessageEntry[],
 	timing?: TraceMessageTurnTiming,
 	projectionState: AssistantTurnProjectionState = { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 },
+	forceNativeIdentity = false,
 ): PiboTraceNode[] {
 	const firstAssistant = entries.find(({ entry }) => entry.role === "assistant");
 	if (!firstAssistant) return [];
-	const eventId = canonicalProductTurnId(firstAssistant.entry, timing);
+	const eventId = canonicalProductTurnId(firstAssistant.entry, timing, forceNativeIdentity);
 	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
 
@@ -641,7 +695,9 @@ function isSettledAssistantEntry(entry: AgentRuntimeHistoryMessageEntry): boolea
 function canonicalProductTurnId(
 	entry: AgentRuntimeHistoryMessageEntry,
 	timing: TraceMessageTurnTiming | undefined,
+	forceNativeIdentity = false,
 ): string | undefined {
+	if (forceNativeIdentity) return nativeHistoryTurnId(entry);
 	return timing?.eventId ?? entry.turnId;
 }
 
@@ -675,8 +731,43 @@ function normalizedPrompt(value: string | undefined): string | undefined {
 }
 
 function parsedTimestamp(value: string | undefined): number | undefined {
-	if (!value) return undefined;
-	const timestamp = new Date(value).getTime();
+	if (typeof value !== "string") return undefined;
+	const match = PERSISTED_TIMESTAMP_PATTERN.exec(value);
+	if (!match) return undefined;
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	const hour = Number(match[4]);
+	const minute = Number(match[5]);
+	const second = Number(match[6]);
+	const millisecond = Number((match[7] ?? "").padEnd(3, "0").slice(0, 3));
+	const offsetHour = Number(match[10] ?? 0);
+	const offsetMinute = Number(match[11] ?? 0);
+	if (
+		month < 1 || month > 12 ||
+		day < 1 || day > 31 ||
+		hour > 23 ||
+		minute > 59 ||
+		second > 59 ||
+		offsetHour > 23 ||
+		offsetMinute > 59
+	) return undefined;
+	const local = new Date(0);
+	local.setUTCFullYear(year, month - 1, day);
+	local.setUTCHours(hour, minute, second, millisecond);
+	if (
+		local.getUTCFullYear() !== year ||
+		local.getUTCMonth() !== month - 1 ||
+		local.getUTCDate() !== day ||
+		local.getUTCHours() !== hour ||
+		local.getUTCMinutes() !== minute ||
+		local.getUTCSeconds() !== second
+	) return undefined;
+	const offsetSign = match[9] === "-" ? -1 : 1;
+	const offsetMs = match[8] === "Z"
+		? 0
+		: offsetSign * (offsetHour * 60 + offsetMinute) * 60_000;
+	const timestamp = local.getTime() - offsetMs;
 	return Number.isFinite(timestamp) ? timestamp : undefined;
 }
 

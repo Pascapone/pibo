@@ -512,6 +512,79 @@ test("over-five-minute start and completion evidence fails closed across project
 	]);
 });
 
+test("partial and implementation-dependent timestamps cannot authorize product identity", () => {
+	const invalidTimestamps = [
+		["date-only", "2026-01-01"],
+		["timezone-less", "2026-01-01T00:00:00"],
+		["space-separated", "2026-01-01 00:00:00Z"],
+		["slash-date", "01/01/2026 00:00:00 GMT"],
+		["month-only", "2026-01"],
+		["invalid-calendar-date", "2026-02-30T00:00:00Z"],
+		["non-finite", "Infinity"],
+	];
+
+	for (const [suffix, timestamp] of invalidTimestamps) {
+		const runtimeId = `runtime-partial-${suffix}`;
+		const view = buildTraceViewFromEvents({
+			session: { id: "ps_root", piSessionId: "", title: "Root" },
+			events: [],
+			historyEntries: [
+				{ id: `native:${suffix}:user`, type: "message", source: "native", createdAt: timestamp, turnId: runtimeId, nativeTurnId: runtimeId, nativeEntryId: `user-${suffix}`, role: "user", content: `partial timestamp ${suffix}` },
+				{ id: `native:${suffix}:assistant`, type: "message", source: "native", createdAt: "2026-01-01T00:00:01.000Z", turnId: runtimeId, nativeTurnId: runtimeId, nativeEntryId: `assistant-${suffix}`, role: "assistant", content: `${suffix} answer`, status: "complete" },
+			],
+			turnTimings: [{
+				eventId: `stable-partial-${suffix}`,
+				userText: `partial timestamp ${suffix}`,
+				startedAt: timestamp,
+			}],
+		});
+
+		assertMessageProjectionIds(view, [
+			`event:message_queued:${runtimeId}`,
+			`event:assistant:${runtimeId}:assistant:0`,
+		], [
+			`event:message_queued:${runtimeId}`,
+			`terminal:assistant:${runtimeId}:assistant:0`,
+		]);
+	}
+});
+
+test("explicit UTC and offset timestamps retain bounded reconciliation", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries: [
+			{ id: "native:boundary:user", type: "message", source: "native", createdAt: "2026-01-01T00:05:00Z", sequence: 0, turnId: "runtime-boundary", nativeTurnId: "runtime-boundary", nativeEntryId: "user-boundary", role: "user", content: "five minute boundary" },
+			{ id: "native:boundary:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:05:01Z", sequence: 1, turnId: "runtime-boundary", nativeTurnId: "runtime-boundary", nativeEntryId: "assistant-boundary", role: "assistant", content: "boundary answer", status: "complete" },
+			{ id: "native:offset:user", type: "message", source: "native", createdAt: "2026-01-01T00:10:00Z", sequence: 2, turnId: "runtime-offset", nativeTurnId: "runtime-offset", nativeEntryId: "user-offset", role: "user", content: "explicit offset" },
+			{ id: "native:offset:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:10:01Z", sequence: 3, turnId: "runtime-offset", nativeTurnId: "runtime-offset", nativeEntryId: "assistant-offset", role: "assistant", content: "offset answer", status: "complete" },
+			{ id: "native:valid-completion:user", type: "message", source: "native", createdAt: "not a timestamp", sequence: 4, turnId: "runtime-valid-completion", nativeTurnId: "runtime-valid-completion", nativeEntryId: "user-valid-completion", role: "user", content: "valid completion" },
+			{ id: "native:valid-completion:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:20:00-04:00", sequence: 5, turnId: "runtime-valid-completion", nativeTurnId: "runtime-valid-completion", nativeEntryId: "assistant-valid-completion", role: "assistant", content: "valid completion answer", status: "complete" },
+		],
+		turnTimings: [
+			{ eventId: "stable-boundary", userText: "five minute boundary", startedAt: "2026-01-01T00:00:00Z" },
+			{ eventId: "stable-offset", userText: "explicit offset", startedAt: "2026-01-01T02:40:00+02:30" },
+			{ eventId: "stable-valid-completion", userText: "valid completion", startedAt: "also invalid", completedAt: "2026-01-01T04:20:00Z" },
+		],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:stable-boundary",
+		"event:assistant:stable-boundary:assistant:0",
+		"event:message_queued:stable-offset",
+		"event:assistant:stable-offset:assistant:0",
+		"event:message_queued:stable-valid-completion",
+		"event:assistant:stable-valid-completion:assistant:0",
+	], [
+		"event:message_queued:stable-boundary",
+		"terminal:assistant:stable-boundary:assistant:0",
+		"event:message_queued:stable-offset",
+		"terminal:assistant:stable-offset:assistant:0",
+		"event:message_queued:stable-valid-completion",
+		"terminal:assistant:stable-valid-completion:assistant:0",
+	]);
+});
+
 test("equal best evidence split across start and completion endpoints fails closed", () => {
 	const view = buildTraceViewFromEvents({
 		session: { id: "ps_root", piSessionId: "", title: "Root" },
@@ -632,6 +705,64 @@ test("conflicting product owners fail one native turn closed as a unit", () => {
 	const terminalMessages = buildCompactTerminalRows(view, { showThinking: true })
 		.filter((row) => row.kind === "message.user" || row.kind === "message.assistant");
 	assert.ok(terminalMessages.every((row) => !row.id.includes("stable-owner")));
+});
+
+test("multiple native exact claims for one product identity fail closed without projection loss", () => {
+	const historyEntries = ["a", "b"].flatMap((suffix, turnIndex) => {
+		const runtimeId = `runtime-exact-${suffix}`;
+		const sequence = turnIndex * 3;
+		return [
+			{ id: `native:exact:${suffix}:user`, type: "message", source: "native", createdAt: `2026-01-01T00:0${turnIndex}:00.000Z`, sequence, turnId: "stable-shared-exact", nativeTurnId: runtimeId, nativeEntryId: `user-exact-${suffix}`, role: "user", content: `exact collision ${suffix}` },
+			{
+				id: `native:exact:${suffix}:assistant`,
+				type: "message",
+				source: "native",
+				createdAt: `2026-01-01T00:0${turnIndex}:01.000Z`,
+				sequence: sequence + 1,
+				turnId: "stable-shared-exact",
+				nativeTurnId: runtimeId,
+				nativeEntryId: `assistant-exact-${suffix}`,
+				role: "assistant",
+				content: [
+					{ type: "reasoning", text: `exact ${suffix} reasoning` },
+					{ type: "tool_call", toolCallId: `tool-exact-${suffix}`, toolName: "read", input: { path: `${suffix}.txt` } },
+					{ type: "text", text: `exact ${suffix} answer` },
+				],
+				status: "complete",
+			},
+			{ id: `native:exact:${suffix}:tool`, type: "message", source: "native", createdAt: `2026-01-01T00:0${turnIndex}:02.000Z`, sequence: sequence + 2, turnId: "stable-shared-exact", nativeTurnId: runtimeId, nativeEntryId: `tool-exact-${suffix}`, role: "tool", content: `exact ${suffix} result`, toolCallId: `tool-exact-${suffix}`, toolName: "read", result: { content: `exact ${suffix} result` }, status: "complete" },
+		];
+	});
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [{ eventId: "stable-shared-exact", userText: "irrelevant for exact identity" }],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:runtime-exact-a",
+		"event:assistant:runtime-exact-a:assistant:0",
+		"event:message_queued:runtime-exact-b",
+		"event:assistant:runtime-exact-b:assistant:0",
+	], [
+		"event:message_queued:runtime-exact-a",
+		"terminal:assistant:runtime-exact-a:assistant:0",
+		"event:message_queued:runtime-exact-b",
+		"terminal:assistant:runtime-exact-b:assistant:0",
+	]);
+	const legacyNodes = flattenTraceNodes(view.nodes);
+	assert.equal(legacyNodes.filter((node) => node.type === "user.message" || node.type === "assistant.message").length, 4);
+	assert.equal(traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 }).nodes
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message").length, 4);
+	assert.equal(buildCompactTerminalRows(view, { showThinking: true })
+		.filter((row) => row.kind === "message.user" || row.kind === "message.assistant").length, 4);
+	for (const suffix of ["a", "b"]) {
+		const runtimeId = `runtime-exact-${suffix}`;
+		const turnNodes = legacyNodes.filter((node) => node.nativeTurnId === runtimeId);
+		assert.ok(turnNodes.length >= 4);
+		assert.ok(turnNodes.every((node) => node.eventId === runtimeId));
+	}
 });
 
 test("exact identity and unique bounded endpoint evidence remain authoritative", () => {
