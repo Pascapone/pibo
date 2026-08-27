@@ -58,6 +58,7 @@ import type { PiboRunToolController } from "../runs/tools.js";
 import { createDefaultPiboReliabilityStore, type PiboReliabilityStore } from "../reliability/store.js";
 import {
 	InMemoryPiboSessionStore,
+	hasAuditedDurableRuntimeBindingCas,
 	createPiboSessionId,
 	type CreatePiboSessionInput,
 	type PiboSession,
@@ -81,6 +82,7 @@ import type {
 	LogoutAgentRuntimeAuthInput,
 	StartAgentRuntimeAuthInput,
 } from "../agent-runtime/types.js";
+import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../agent-runtime/types.js";
 import { validateAgentRuntimeProfileCapabilities } from "../agent-runtime/profile-validation.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
@@ -1560,6 +1562,9 @@ export class PiboSessionRouter {
 			throw error;
 		}
 		const bindingSync = { expectedRevision: binding.revision };
+		const durableRuntimeBindingCasStore = hasAuditedDurableRuntimeBindingCas(this.sessionStore)
+			? this.sessionStore
+			: undefined;
 		let runtimeSession: AgentRuntimeSession;
 		try {
 			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
@@ -1585,14 +1590,15 @@ export class PiboSessionRouter {
 					codeRuntimeToolController,
 					portableTools,
 					resources,
-					...(this.sessionStore.updateRuntimeBinding ? {
+					...(durableRuntimeBindingCasStore ? {
 						runtimeBindingPersistence: {
+							guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
 							compareAndSet: async (nextBinding, expectedRevision) => {
 								const currentSession = this.sessionStore.get(piboSession.id);
 								if (!currentSession) {
 									throw new Error(`Pibo session "${piboSession.id}" no longer exists.`);
 								}
-								const updated = this.sessionStore.updateRuntimeBinding!(
+								const updated = durableRuntimeBindingCasStore.updateRuntimeBinding(
 									piboSession.id,
 									{ ...structuredClone(nextBinding), piboSessionId: piboSession.id },
 									{ expectedRevision },

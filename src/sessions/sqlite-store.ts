@@ -4,6 +4,7 @@ import { piboHomePath } from "../core/pibo-home.js";
 import { DatabaseSync } from "node:sqlite";
 import {
 	createPiboSession,
+	registerAuditedDurableRuntimeBindingCasStore,
 	matchesFindInput,
 	type CreatePiboSessionInput,
 	type FindPiboSessionsInput,
@@ -86,6 +87,7 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 		this.ensureNullablePiSessionId();
 		this.applySchema();
 		this.applyRuntimeBindingSchema();
+		registerAuditedDurableRuntimeBindingCasStore(this);
 	}
 
 	private applySchema(): void {

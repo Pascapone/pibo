@@ -4,7 +4,9 @@ import type { RuntimeSessionBinding } from "../../sessions/runtime-binding.js";
 import type { CodexAppServerThread, CodexAppServerThreadItem } from "./protocol-types.js";
 
 export const CODEX_FIRST_USE_METADATA_KEY = "codexNativeFirstUse";
-export const CODEX_FIRST_USE_METADATA_VERSION = 2;
+export const CODEX_FIRST_USE_METADATA_VERSION = 3;
+
+const LEGACY_BYTE_EXACT_METADATA_VERSIONS = new Set([1, 2]);
 
 const MAX_NATIVE_ID_LENGTH = 512;
 const MAX_MESSAGE_ID_LENGTH = 512;
@@ -18,7 +20,7 @@ const PROCESS_INSTANCE_ID = randomUUID();
 const activeAttemptIds = new Set<string>();
 
 export type CodexNativePendingFirstUse = {
-	version: typeof CODEX_FIRST_USE_METADATA_VERSION;
+	version: 1 | 2 | typeof CODEX_FIRST_USE_METADATA_VERSION;
 	state: "pending";
 	threadId: string;
 	messageId: string;
@@ -100,8 +102,26 @@ function defaultProbePid(pid: number): void {
 	process.kill(pid, 0);
 }
 
-export function hashCodexNativeFirstUsePrompt(prompt: string): string {
-	return createHash("sha256").update(prompt, "utf8").digest("hex");
+function hashUtf8(value: string): string {
+	return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+/**
+ * Canonical first-use prompts use LF line endings and Unicode NFC. Pibo hashes
+ * this representation before native execution and when proving native history.
+ */
+export function canonicalizeCodexNativeFirstUsePrompt(prompt: string): string {
+	return prompt.replace(/\r\n?/g, "\n").normalize("NFC");
+}
+
+export function hashCanonicalCodexNativeFirstUsePrompt(prompt: string): string {
+	return hashUtf8(canonicalizeCodexNativeFirstUsePrompt(prompt));
+}
+
+function hashPersistedPromptEvidence(pending: CodexNativePendingFirstUse, prompt: string): string {
+	return LEGACY_BYTE_EXACT_METADATA_VERSIONS.has(pending.version)
+		? hashUtf8(prompt)
+		: hashCanonicalCodexNativeFirstUsePrompt(prompt);
 }
 
 export function readCodexNativePendingFirstUse(
@@ -130,7 +150,7 @@ export function readCodexNativePendingFirstUse(
 		: undefined;
 	if (
 		Object.keys(record).some((key) => !allowedKeys.has(key))
-		|| record.version !== CODEX_FIRST_USE_METADATA_VERSION
+		|| (record.version !== 1 && record.version !== 2 && record.version !== CODEX_FIRST_USE_METADATA_VERSION)
 		|| record.state !== "pending"
 		|| !boundedNonEmptyString(record.threadId, MAX_NATIVE_ID_LENGTH)
 		|| !boundedNonEmptyString(record.messageId, MAX_MESSAGE_ID_LENGTH)
@@ -248,7 +268,7 @@ export function assertCodexNativePendingFirstUseTurn(
 		}
 		firstRequestEvidence = exactEvidence[0]!;
 	}
-	if (hashCodexNativeFirstUsePrompt(firstRequestEvidence.text) !== pending.promptHash) {
+	if (hashPersistedPromptEvidence(pending, firstRequestEvidence.text) !== pending.promptHash) {
 		throw new Error("The pending native Codex first turn does not match the persisted prompt hash.");
 	}
 	if (
@@ -265,7 +285,7 @@ export function assertCodexNativePendingFirstUseRequest(
 	messageId: string,
 	prompt: string,
 ): void {
-	if (messageId !== pending.messageId || hashCodexNativeFirstUsePrompt(prompt) !== pending.promptHash) {
+	if (messageId !== pending.messageId || hashPersistedPromptEvidence(pending, prompt) !== pending.promptHash) {
 		throw new Error("Native Codex first-use retry does not match the persisted message id and prompt.");
 	}
 }

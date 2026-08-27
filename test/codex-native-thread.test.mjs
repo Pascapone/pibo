@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
+import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../dist/agent-runtime/types.js";
 import {
 	AgentRuntimeBindingMissingError,
 	AgentRuntimeUnavailableError,
@@ -30,9 +32,10 @@ import { isCodexNativeThreadMissingError } from "../dist/agent-runtimes/codex-na
 import {
 	assertCodexNativePendingFirstUseTurn,
 	beginCodexNativeFirstUseAttempt,
+	canonicalizeCodexNativeFirstUsePrompt,
 	codexNativePendingFirstUseOwnerLiveness,
 	endCodexNativeFirstUseAttempt,
-	hashCodexNativeFirstUsePrompt,
+	hashCanonicalCodexNativeFirstUsePrompt,
 	readCodexNativePendingFirstUse,
 } from "../dist/agent-runtimes/codex-native/first-use.js";
 
@@ -141,6 +144,7 @@ function profile(instanceId, runtimeOptions = {}) {
 function testBindingPersistence(initialBinding) {
 	let current = { ...structuredClone(initialBinding), revision: initialBinding.revision ?? 1 };
 	return {
+		guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
 		async compareAndSet(nextBinding, expectedRevision) {
 			assert.equal(current.revision, expectedRevision);
 			current = {
@@ -156,6 +160,7 @@ function testBindingPersistence(initialBinding) {
 
 function storeBindingPersistence(store, piboSessionId) {
 	return {
+		guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
 		async compareAndSet(nextBinding, expectedRevision) {
 			const updated = store.updateRuntimeBinding(piboSessionId, nextBinding, { expectedRevision });
 			if (!updated) throw new Error(`Pibo Session ${piboSessionId} disappeared during binding CAS`);
@@ -227,17 +232,21 @@ function boundBinding(instanceId, piboSessionId, nativeSessionId) {
 
 function pendingFirstUseMetadata(overrides = {}) {
 	return {
-		version: 2,
+		version: 3,
 		state: "pending",
 		threadId: "thread-pending",
 		messageId: "message-pending",
-		promptHash: hashCodexNativeFirstUsePrompt("pending prompt"),
+		promptHash: hashCanonicalCodexNativeFirstUsePrompt("pending prompt"),
 		attemptId: "11111111-1111-4111-8111-111111111111",
 		ownerPid: 2_147_483_647,
 		ownerProcessStartId: "2147483647:1",
 		ownerProcessInstanceId: "22222222-2222-4222-8222-222222222222",
 		...overrides,
 	};
+}
+
+function hashLegacyByteExactPrompt(prompt) {
+	return createHash("sha256").update(prompt, "utf8").digest("hex");
 }
 
 function linuxProcStat(pid, state, startTicks) {
@@ -362,9 +371,13 @@ test("Codex native pending first-use metadata rejects every malformed or unbound
 		state: "unbound",
 		metadata: { codexNativeFirstUse: pending },
 	});
-	assert.deepEqual(readCodexNativePendingFirstUse(bindingFor(pendingFirstUseMetadata())), pendingFirstUseMetadata());
+	for (const version of [1, 2, 3]) {
+		const pending = pendingFirstUseMetadata({ version });
+		assert.deepEqual(readCodexNativePendingFirstUse(bindingFor(pending)), pending);
+	}
 	for (const invalid of [
-		{ version: 1 },
+		{ version: 0 },
+		{ version: "1" },
 		{ state: "ready" },
 		{ threadId: "" },
 		{ threadId: "t".repeat(513) },
@@ -380,11 +393,58 @@ test("Codex native pending first-use metadata rejects every malformed or unbound
 		{ ownerProcessInstanceId: "not-a-uuid" },
 		{ unexpected: true },
 	]) {
-		assert.throws(
-			() => readCodexNativePendingFirstUse(bindingFor(pendingFirstUseMetadata(invalid))),
-			/metadata is invalid/,
-		);
+		for (const version of [1, 2, 3]) {
+			assert.throws(
+				() => readCodexNativePendingFirstUse(bindingFor(pendingFirstUseMetadata({ version, ...invalid }))),
+				/metadata is invalid/,
+			);
+		}
 	}
+});
+
+test("Codex native canonical first-use prompts normalize line endings and Unicode NFC", () => {
+	const composed = "caf\u00e9\r\nnext\rline";
+	const decomposed = "cafe\u0301\nnext\nline";
+	assert.equal(canonicalizeCodexNativeFirstUsePrompt(composed), "caf\u00e9\nnext\nline");
+	assert.equal(canonicalizeCodexNativeFirstUsePrompt(decomposed), "caf\u00e9\nnext\nline");
+	assert.equal(
+		hashCanonicalCodexNativeFirstUsePrompt(composed),
+		hashCanonicalCodexNativeFirstUsePrompt(decomposed),
+	);
+	assert.notEqual(
+		hashCanonicalCodexNativeFirstUsePrompt(composed),
+		hashCanonicalCodexNativeFirstUsePrompt(`${decomposed} `),
+	);
+	const pending = pendingFirstUseMetadata({
+		messageId: "canonical-message",
+		promptHash: hashCanonicalCodexNativeFirstUsePrompt(composed),
+	});
+	assert.doesNotThrow(() => assertCodexNativePendingFirstUseTurn(pending, {
+		id: pending.threadId,
+		turns: [{
+			id: "canonical-turn",
+			status: "completed",
+			items: [{
+				id: "canonical-user",
+				type: "userMessage",
+				clientId: pending.messageId,
+				content: [{ type: "text", text: decomposed }],
+			}],
+		}],
+	}));
+	assert.throws(() => assertCodexNativePendingFirstUseTurn(pending, {
+		id: pending.threadId,
+		turns: [{
+			id: "different-turn",
+			status: "completed",
+			items: [{
+				id: "different-user",
+				type: "userMessage",
+				clientId: pending.messageId,
+				content: [{ type: "text", text: `${decomposed} ` }],
+			}],
+		}],
+	}), /does not match the persisted prompt hash/);
 });
 
 test("Codex App Server fixture recovers a state lock left by a killed owner", async (t) => {
@@ -428,15 +488,22 @@ test("Codex App Server fixture lock excludes live and ambiguous owners and prese
 	await oldLive.stop();
 	assert.match((await runFixtureChild(lockChildFixturePath, ["try-acquire", oldLivePath])).stdout, /^acquired$/m);
 
-	const ownerlessPath = lockState("ownerless");
-	const ownerless = await startReadyFixtureChild(lockChildFixturePath, ["stall-owner-creation", ownerlessPath]);
-	registerTestDisposer(t, ownerless.stop);
-	assert.match(
-		(await runFixtureChild(lockChildFixturePath, ["try-acquire", ownerlessPath])).stdout,
-		/^blocked:Timed out waiting.*unknown/m,
-	);
-	await ownerless.stop();
-	await rm(`${ownerlessPath}.lock`, { recursive: true, force: true });
+	for (const boundary of [
+		"before-owner-write",
+		"after-owner-write",
+		"after-owner-linked",
+		"after-owner-published",
+	]) {
+		const boundaryPath = lockState(boundary);
+		const owner = await startReadyFixtureChild(lockChildFixturePath, [`stall-${boundary}`, boundaryPath]);
+		registerTestDisposer(t, owner.stop);
+		await owner.stop();
+		assert.match(
+			(await runFixtureChild(lockChildFixturePath, ["try-acquire", boundaryPath])).stdout,
+			/^acquired$/m,
+			`a contender must recover after owner death at ${boundary}`,
+		);
+	}
 
 	const deadPath = lockState("dead");
 	assert.equal((await runFixtureChild(lockChildFixturePath, ["acquire-and-exit", deadPath])).code, 23);
@@ -748,7 +815,8 @@ test("Codex native first-message branches bind only when their first message bec
 			},
 		})],
 	});
-	const store = new InMemoryPiboSessionStore();
+	const store = new PiboDataSessionStore(join(root, "first-message-branch.sqlite"));
+	registerTestDisposer(t, () => store.close());
 	store.create({
 		id: sourcePiboSessionId,
 		channel: "test",
@@ -987,7 +1055,7 @@ test("Codex native first-message branches bind only when their first message bec
 	await Promise.all([raceRouterA.disposeAll(), raceRouterB.disposeAll()]);
 });
 
-test("Codex native router rejects first use when the session store lacks durable binding CAS", async (t) => {
+test("Codex native router rejects absent and structurally similar non-atomic binding CAS before native start", async (t) => {
 	const root = await testRoot(t);
 	const instanceId = "codex-native-no-binding-cas";
 	const profileName = "codex-native-no-binding-cas-profile";
@@ -1052,11 +1120,74 @@ test("Codex native router rejects first use when the session store lacks durable
 		id: "codex-no-binding-cas-message",
 		text: "must fail before native execution",
 		source: "user",
-	}, 5_000), /requires revisioned runtime-binding persistence/);
+	}, 5_000), /requires audited durable cross-process atomic runtime-binding CAS/);
 	assert.deepEqual(assistantReplies, []);
 	assert.equal(backing.getRuntimeBinding(piboSessionId).revision, 1);
 	assert.equal(backing.getRuntimeBinding(piboSessionId).state, "unbound");
 	assert.equal(backing.getRuntimeBinding(piboSessionId).nativeSessionId, undefined);
+
+	const nonAtomicSessionId = "ps_codex_non_atomic_binding_cas";
+	backing.create({
+		id: nonAtomicSessionId,
+		channel: "test",
+		kind: "branch",
+		profile: profileName,
+		workspace: root,
+		runtimeBinding: {
+			runtimeInstanceId: instanceId,
+			adapterId: CODEX_NATIVE_ADAPTER_ID,
+			state: "unbound",
+		},
+	});
+	let nonAtomicUpdateCalls = 0;
+	const structurallySimilarNonAtomicStore = {
+		...storeWithoutBindingUpdates,
+		durableRuntimeBindingCas: {
+			guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
+			atomicity: "cross-process",
+			durability: "durable",
+		},
+		updateRuntimeBinding(id, nextBinding, { expectedRevision } = {}) {
+			nonAtomicUpdateCalls += 1;
+			return {
+				...structuredClone(nextBinding),
+				piboSessionId: id,
+				revision: (expectedRevision ?? 1) + 1,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+		},
+	};
+	const nonAtomicRouters = [0, 1].map((index) => new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry,
+		sessionStore: structurallySimilarNonAtomicStore,
+		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, `non-atomic-resources-${index}`) }),
+	}));
+	registerTestDisposer(t, () => Promise.all(nonAtomicRouters.map((candidate) => candidate.disposeAll())));
+	const nonAtomicReplies = [];
+	for (const candidate of nonAtomicRouters) {
+		candidate.subscribe((event) => {
+			if (event.type === "assistant_message") nonAtomicReplies.push(event);
+		});
+	}
+	const nonAtomicResults = await Promise.allSettled(nonAtomicRouters.map((candidate, index) =>
+		candidate.emitMessageAndWaitForReply({
+			type: "message",
+			piboSessionId: nonAtomicSessionId,
+			id: "codex-non-atomic-same-message",
+			text: "identical legitimate first request",
+			source: "user",
+		}, 5_000 + index)));
+	assert.equal(nonAtomicResults.filter((result) => result.status === "fulfilled").length, 0);
+	for (const result of nonAtomicResults) {
+		assert.equal(result.status, "rejected");
+		assert.match(result.reason.message, /requires audited durable cross-process atomic runtime-binding CAS/);
+	}
+	assert.equal(nonAtomicUpdateCalls, 0, "an unaudited method-shaped provider must never be invoked");
+	assert.deepEqual(nonAtomicReplies, []);
+	assert.equal(backing.getRuntimeBinding(nonAtomicSessionId).revision, 1);
+	assert.equal(backing.getRuntimeBinding(nonAtomicSessionId).state, "unbound");
 
 	const inspection = await startCodexNativeAppServer({
 		config,
@@ -1068,6 +1199,7 @@ test("Codex native router rejects first use when the session store lacks durable
 	});
 	registerTestDisposer(t, () => inspection.close());
 	const state = await inspection.client.request("test/getState", {});
+	assert.deepEqual(Object.keys(state.threads), [], "rejection must precede thread/start");
 	assert.equal(
 		state.turnRequestMessageIds.some((request) => request.clientUserMessageId === "codex-no-binding-cas-message"),
 		false,
@@ -1233,7 +1365,15 @@ test("Codex native pending recovery proves exact SQLite message and prompt ident
 			...extraUserItems,
 		],
 	});
-	const createPendingCase = async ({ id, pending = {}, turns, seed = true }) => {
+	const createPendingCase = async ({
+		id,
+		pending = {},
+		turns,
+		seed = true,
+		metadataVersion = 3,
+		includeMarker = metadataVersion !== 1,
+		claimedPrompt = `prompt-${id}`,
+	}) => {
 		const piboSessionId = `ps_codex_exact_${id}`;
 		const threadId = `thread-exact-${id}`;
 		if (seed) {
@@ -1260,11 +1400,14 @@ test("Codex native pending recovery proves exact SQLite message and prompt ident
 				protocol: "codex-app-server-v2",
 				protocolVersion: "0.147.0",
 				metadata: {
-					piboPendingNativeSession: true,
+					...(includeMarker ? { piboPendingNativeSession: true } : {}),
 					codexNativeFirstUse: pendingFirstUseMetadata({
+						version: metadataVersion,
 						threadId,
 						messageId: `message-${id}`,
-						promptHash: hashCodexNativeFirstUsePrompt(`prompt-${id}`),
+						promptHash: metadataVersion < 3
+							? hashLegacyByteExactPrompt(claimedPrompt)
+							: hashCanonicalCodexNativeFirstUsePrompt(claimedPrompt),
 						...pending,
 					}),
 				},
@@ -1289,6 +1432,84 @@ test("Codex native pending recovery proves exact SQLite message and prompt ident
 		assert.equal(store.getRuntimeBinding(exact.piboSessionId).state, "unbound");
 		await session.dispose();
 	}
+
+	for (const metadataVersion of [1, 2]) {
+		const id = `exact_legacy_v${metadataVersion}`;
+		const exactParent = await createPendingCase({
+			id,
+			metadataVersion,
+			includeMarker: metadataVersion !== 1,
+			turns: [terminalTurn({ id, messageId: `message-${id}`, text: `prompt-${id}` })],
+		});
+		const session = await registry.openSession(instanceId, exactParent.input);
+		assert.equal(session.getBinding().state, "bound");
+		assert.equal(session.getBinding().nativeSessionId, exactParent.threadId);
+		assert.equal(store.getRuntimeBinding(exactParent.piboSessionId).metadata.codexNativeFirstUse.version, metadataVersion);
+		const migrated = store.updateRuntimeBinding(
+			exactParent.piboSessionId,
+			session.getBinding(),
+			{ expectedRevision: 1 },
+		);
+		assert.equal(migrated.state, "bound");
+		assert.equal(migrated.nativeSessionId, exactParent.threadId);
+		assert.equal(migrated.metadata.codexNativeFirstUse, undefined);
+		assert.equal(migrated.metadata.piboPendingNativeSession, undefined);
+		await session.dispose();
+	}
+
+	const canonicalClaim = "caf\u00e9\r\ncanonical";
+	const canonicalHistory = "cafe\u0301\ncanonical";
+	const canonical = await createPendingCase({
+		id: "canonical_history",
+		claimedPrompt: canonicalClaim,
+		turns: [terminalTurn({
+			id: "canonical_history",
+			messageId: "message-canonical_history",
+			text: canonicalHistory,
+		})],
+	});
+	const canonicalSession = await registry.openSession(instanceId, canonical.input);
+	assert.equal(canonicalSession.getBinding().state, "bound");
+	await canonicalSession.dispose();
+
+	const legacyRetry = await createPendingCase({
+		id: "legacy_v1_empty_retry",
+		metadataVersion: 1,
+		includeMarker: false,
+		turns: [],
+	});
+	legacyRetry.input.productContext = {
+		piboSessionId: legacyRetry.piboSessionId,
+		getActiveMessage: () => ({ id: "message-legacy_v1_empty_retry", source: "user" }),
+	};
+	const legacyRetrySession = await registry.openSession(instanceId, legacyRetry.input);
+	await legacyRetrySession.prompt({ text: "prompt-legacy_v1_empty_retry", source: "rpc" });
+	const migratedPending = store.getRuntimeBinding(legacyRetry.piboSessionId);
+	assert.equal(migratedPending.revision, 2);
+	assert.equal(migratedPending.metadata.piboPendingNativeSession, true);
+	assert.equal(migratedPending.metadata.codexNativeFirstUse.version, 3);
+	assert.equal(
+		migratedPending.metadata.codexNativeFirstUse.promptHash,
+		hashCanonicalCodexNativeFirstUsePrompt("prompt-legacy_v1_empty_retry"),
+	);
+	assert.equal(legacyRetrySession.getBinding().state, "bound");
+	assert.equal(legacyRetrySession.getBinding().nativeSessionId, legacyRetry.threadId);
+	await legacyRetrySession.dispose();
+
+	const canonicalRetry = await createPendingCase({
+		id: "canonical_empty_retry",
+		claimedPrompt: canonicalClaim,
+		turns: [],
+	});
+	canonicalRetry.input.productContext = {
+		piboSessionId: canonicalRetry.piboSessionId,
+		getActiveMessage: () => ({ id: "message-canonical_empty_retry", source: "user" }),
+	};
+	const canonicalRetrySession = await registry.openSession(instanceId, canonicalRetry.input);
+	await canonicalRetrySession.prompt({ text: canonicalHistory, source: "rpc" });
+	assert.equal(canonicalRetrySession.getBinding().state, "bound");
+	assert.equal(canonicalRetrySession.getBinding().nativeSessionId, canonicalRetry.threadId);
+	await canonicalRetrySession.dispose();
 
 	const mismatchedMessage = await createPendingCase({
 		id: "message_mismatch",
@@ -1341,6 +1562,15 @@ test("Codex native pending recovery proves exact SQLite message and prompt ident
 		assert.throws(() => readCodexNativePendingFirstUse(invalid.binding), /metadata is invalid/);
 		await assert.rejects(registry.openSession(instanceId, invalid.input), /metadata is invalid/);
 	}
+	const corruptLegacy = await createPendingCase({
+		id: "corrupt_legacy_v1",
+		metadataVersion: 1,
+		includeMarker: false,
+		pending: { promptHash: "not-a-sha256" },
+		turns: [],
+		seed: false,
+	});
+	await assert.rejects(registry.openSession(instanceId, corruptLegacy.input), /metadata is invalid/);
 
 	const currentOwner = beginCodexNativeFirstUseAttempt();
 	endCodexNativeFirstUseAttempt(currentOwner.attemptId);
@@ -1415,6 +1645,7 @@ test("Codex native reconciles pending first use across pre-turn failures, proces
 	const retryId = "ps_codex_pending_retry";
 	createBranch(retryId);
 	const beforePending = await openStored(retryId, "pending-retry-message", undefined, {
+		guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
 		async compareAndSet() { throw new Error("fixture failure before pending persistence"); },
 	});
 	await assert.rejects(
@@ -1737,6 +1968,7 @@ test("Codex native concurrent first use promotes one branch binding through revi
 	assert.equal(firstInitial.revision, 1);
 	assert.equal(secondInitial.revision, 1);
 	const persistenceFor = (store) => ({
+		guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
 		async compareAndSet(nextBinding, expectedRevision) {
 			const updated = store.updateRuntimeBinding(piboSessionId, nextBinding, { expectedRevision });
 			if (!updated) throw new Error("CAS fixture session disappeared");

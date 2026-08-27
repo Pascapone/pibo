@@ -17,9 +17,20 @@ if (mode === "hold-old-live") {
 		signalReady("ready");
 		block();
 	});
-} else if (mode === "stall-owner-creation") {
+} else if ([
+	"stall-before-owner-write",
+	"stall-after-owner-write",
+	"stall-after-owner-linked",
+	"stall-after-owner-published",
+].includes(mode)) {
+	const hookName = {
+		"stall-before-owner-write": "testOnlyBeforeOwnerWrite",
+		"stall-after-owner-write": "testOnlyAfterOwnerWrite",
+		"stall-after-owner-linked": "testOnlyAfterOwnerLinked",
+		"stall-after-owner-published": "testOnlyAfterOwnerPublished",
+	}[mode];
 	const lock = createCodexAppServerStateLock(statePath, {
-		testOnlyAfterDirectoryCreated() {
+		[hookName]() {
 			signalReady("ready");
 			block();
 		},

@@ -8,6 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Type } from "typebox";
 import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
+import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../dist/agent-runtime/types.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
 import {
 	CODEX_NATIVE_ADAPTER_ID,
@@ -86,6 +87,7 @@ function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBindi
 			portableTools,
 			resources,
 			runtimeBindingPersistence: {
+				guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
 				async compareAndSet(nextBinding, expectedRevision) {
 					assert.equal(persistedBinding.revision, expectedRevision);
 					persistedBinding = { ...structuredClone(nextBinding), revision: expectedRevision + 1 };

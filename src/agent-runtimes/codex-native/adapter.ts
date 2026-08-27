@@ -8,6 +8,7 @@ import {
 	AgentRuntimeUnavailableError,
 } from "../../agent-runtime/errors.js";
 import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
+import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../../agent-runtime/types.js";
 import type {
 	AgentRuntimeAdapter,
 	AgentRuntimeAuthOperationResult,
@@ -92,7 +93,7 @@ import {
 	beginCodexNativeFirstUseAttempt,
 	codexNativePendingFirstUseOwnerLiveness,
 	endCodexNativeFirstUseAttempt,
-	hashCodexNativeFirstUsePrompt,
+	hashCanonicalCodexNativeFirstUsePrompt,
 	readCodexNativePendingFirstUse,
 	type CodexNativePendingFirstUse,
 } from "./first-use.js";
@@ -100,6 +101,12 @@ import {
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
 export const CODEX_NATIVE_ADAPTER_VERSION = "1.0.0";
+
+function hasDurableRuntimeBindingPersistence(
+	persistence: AgentRuntimeBindingPersistence | undefined,
+): persistence is AgentRuntimeBindingPersistence {
+	return persistence?.guarantee === AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE;
+}
 
 function readPendingFirstUse(binding: RuntimeSessionBinding): CodexNativePendingFirstUse | undefined {
 	try {
@@ -331,13 +338,25 @@ function validateOpenBinding(
 	}
 	if (binding.state === "unbound" && binding.nativeSessionId) {
 		const pending = readPendingFirstUse(binding);
+		const hasCurrentPendingMarker = binding.metadata?.[PENDING_NATIVE_SESSION_METADATA_KEY] === true;
+		const isExactParentLegacyPending = pending?.version === 1
+			&& binding.metadata?.[PENDING_NATIVE_SESSION_METADATA_KEY] === undefined;
 		if (
 			!pending
 			|| pending.threadId !== binding.nativeSessionId
-			|| binding.metadata?.[PENDING_NATIVE_SESSION_METADATA_KEY] !== true
+			|| (!hasCurrentPendingMarker && !isExactParentLegacyPending)
 			|| input.piboSession.kind !== "branch"
 		) {
 			throw new AgentRuntimeUnavailableError(runtimeInstanceId, "An unbound Codex binding contains an invalid pending native thread identity.");
+		}
+		if (isExactParentLegacyPending) {
+			return {
+				...binding,
+				metadata: {
+					...(binding.metadata ?? {}),
+					[PENDING_NATIVE_SESSION_METADATA_KEY]: true,
+				},
+			};
 		}
 	} else if (binding.state === "unbound" && binding.metadata?.[CODEX_FIRST_USE_METADATA_KEY] !== undefined) {
 		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "An unbound Codex binding contains pending metadata without a native thread identity.");
@@ -809,7 +828,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	}> {
 		if (this.binding.state !== "unbound") return { messageId, startTurn: true };
 		assertCodexNativeFirstUseMessageId(messageId);
-		const promptHash = hashCodexNativeFirstUsePrompt(prompt);
+		const promptHash = hashCanonicalCodexNativeFirstUsePrompt(prompt);
 		const currentPending = readPendingFirstUse(this.binding);
 		if (currentPending && this.threads.thread.turns.length > 0) {
 			assertCodexNativePendingFirstUseTurn(currentPending, this.threads.thread);
@@ -827,8 +846,8 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			}
 			assertCodexNativePendingFirstUseRequest(currentPending, messageId, prompt);
 		}
-		if (!this.bindingPersistence) {
-			throw new Error("Native Codex first use requires revisioned runtime-binding persistence before turn/start.");
+		if (!hasDurableRuntimeBindingPersistence(this.bindingPersistence)) {
+			throw new Error("Native Codex first use requires audited durable cross-process atomic runtime-binding CAS before turn/start.");
 		}
 		const owner = beginCodexNativeFirstUseAttempt();
 		const proposed = pendingFirstUseBinding(
@@ -1039,6 +1058,17 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
 		const binding = validateOpenBinding(input, this.instanceId);
+		const activeFirstMessage = input.productContext.getActiveMessage?.();
+		const messageStartsLazyFirstUse = binding.state === "unbound"
+			&& input.piboSession.kind === "branch"
+			&& input.historyHandoff?.mode !== "import"
+			&& Boolean(activeFirstMessage?.id);
+		if (messageStartsLazyFirstUse && !hasDurableRuntimeBindingPersistence(input.services?.runtimeBindingPersistence)) {
+			throw new AgentRuntimeUnavailableError(
+				this.instanceId,
+				"Native Codex first use requires audited durable cross-process atomic runtime-binding CAS before thread/start.",
+			);
+		}
 		const sessionGeneration = input.services?.resources?.sessionGeneration
 			?? input.services?.portableTools?.sessionGeneration
 			?? randomUUID();

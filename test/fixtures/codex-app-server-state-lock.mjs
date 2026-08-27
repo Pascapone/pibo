@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { linkSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 
 const MAX_PID = 0x7fff_ffff;
 const TOKEN_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -80,13 +79,18 @@ function ownerLiveness(owner, testOnlyProbeOwner) {
 
 function removeIfTokenMatches(lockPath, ownerPath, token) {
 	if (readOwner(ownerPath)?.token !== token) return false;
-	rmSync(lockPath, { recursive: true, force: true });
-	return true;
+	try {
+		unlinkSync(lockPath);
+		return true;
+	} catch (error) {
+		if (errorCode(error) === "ENOENT") return false;
+		throw error;
+	}
 }
 
 export function createCodexAppServerStateLock(statePath, options = {}) {
 	const lockPath = `${statePath}.lock`;
-	const ownerPath = join(lockPath, "owner.json");
+	const ownerPath = lockPath;
 	const timeoutMs = options.timeoutMs ?? 5_000;
 	const waitMs = options.waitMs ?? 2;
 	let heldToken;
@@ -101,20 +105,28 @@ export function createCodexAppServerStateLock(statePath, options = {}) {
 		const token = randomUUID();
 		const deadline = Date.now() + timeoutMs;
 		while (true) {
+			const processStartId = currentFixtureProcessStartId();
+			const temporaryOwnerPath = `${lockPath}.${process.pid}.${token}.owner.tmp`;
 			try {
-				mkdirSync(lockPath);
-				options.testOnlyAfterDirectoryCreated?.({ lockPath, ownerPath, token });
-				const processStartId = currentFixtureProcessStartId();
-				const temporaryOwnerPath = join(lockPath, `owner.${token}.tmp`);
+				options.testOnlyBeforeOwnerWrite?.({ lockPath, ownerPath, temporaryOwnerPath, token });
 				writeFileSync(temporaryOwnerPath, `${JSON.stringify({
 					pid: process.pid,
 					token,
 					acquiredAt: Date.now(),
 					...(processStartId ? { processStartId } : {}),
-				})}\n`, { mode: 0o600 });
-				renameSync(temporaryOwnerPath, ownerPath);
+				})}\n`, { mode: 0o600, flag: "wx" });
+				options.testOnlyAfterOwnerWrite?.({ lockPath, ownerPath, temporaryOwnerPath, token });
+				linkSync(temporaryOwnerPath, lockPath);
+				options.testOnlyAfterOwnerLinked?.({ lockPath, ownerPath, temporaryOwnerPath, token });
+				unlinkSync(temporaryOwnerPath);
+				options.testOnlyAfterOwnerPublished?.({ lockPath, ownerPath, token });
 				break;
 			} catch (error) {
+				try {
+					unlinkSync(temporaryOwnerPath);
+				} catch (cleanupError) {
+					if (errorCode(cleanupError) !== "ENOENT") throw cleanupError;
+				}
 				if (errorCode(error) !== "EEXIST") throw error;
 				const owner = readOwner(ownerPath);
 				if (owner && ownerLiveness(owner, options.testOnlyProbeOwner) === "dead") {

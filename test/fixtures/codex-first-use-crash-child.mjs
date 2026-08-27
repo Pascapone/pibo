@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { join } from "node:path";
 import { AgentRuntimeAdapterRegistry } from "../../dist/agent-runtime/registry.js";
+import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../../dist/agent-runtime/types.js";
 import { InitialSessionContextBuilder } from "../../dist/core/profiles.js";
 import { PiboDataSessionStore } from "../../dist/sessions/pibo-data-store.js";
 import {
@@ -54,6 +55,7 @@ const session = await registry.openSession(instanceId, {
 	},
 	services: {
 		runtimeBindingPersistence: {
+			guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
 			async compareAndSet(nextBinding, expectedRevision) {
 				const updated = store.updateRuntimeBinding(piboSessionId, nextBinding, { expectedRevision });
 				if (!updated) throw new Error("Crash fixture Pibo Session disappeared during CAS.");

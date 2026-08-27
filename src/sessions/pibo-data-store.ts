@@ -6,6 +6,7 @@ import type { StoredTelemetryTurn, TelemetryInterruptedTurnOutcome } from "../da
 import type { PiboRunSnapshot } from "../runs/registry.js";
 import {
 	createPiboSession,
+	registerAuditedDurableRuntimeBindingCasStore,
 	matchesFindInput,
 	type CreatePiboSessionInput,
 	type FindPiboSessionsInput,
@@ -93,6 +94,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			this.ownsDataStore = false;
 		}
 		this.db = this.dataStore.db;
+		registerAuditedDurableRuntimeBindingCasStore(this);
 	}
 
 	get(id: string): PiboSession | undefined {
