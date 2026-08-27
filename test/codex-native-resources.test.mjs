@@ -64,12 +64,12 @@ function binding(instanceId, piboSessionId, previous) {
 	};
 }
 
-function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBinding, portableTools, resources }) {
+function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBinding, portableTools, resources, kind = "chat" }) {
 	return {
 		piboSession: createPiboSession({
 			id: piboSessionId,
 			channel: "test",
-			kind: "chat",
+			kind,
 			profile: profile.profileName,
 			workspace,
 			runtimeBinding,
@@ -580,16 +580,27 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 		runtimeBinding,
 		portableTools: portable,
 		resources: undefined,
+		kind: "branch",
 	}));
 	t.after(async () => session.dispose());
 	const initialClient = getCodexNativeClient(session);
-	const initialThreadId = session.getBinding().nativeSessionId;
+	const initialThreadId = session.controls.getCurrentSession().nativeSessionId;
+	assert.equal(session.getBinding().state, "unbound");
+	assert.equal(session.getBinding().nativeSessionId, undefined);
 	await waitFor(() => accesses.length === 2 && getCodexNativeClient(session) !== initialClient);
-	assert.notEqual(session.getBinding().nativeSessionId, initialThreadId);
+	assert.notEqual(session.controls.getCurrentSession().nativeSessionId, initialThreadId);
+	assert.equal(session.getBinding().state, "unbound");
+	assert.equal(session.getBinding().nativeSessionId, undefined);
 	const secondClient = getCodexNativeClient(session);
+	const prePromptState = await secondClient.request("test/getState", {});
+	const prePromptResourceRequests = prePromptState.resourceRequests.filter((request) =>
+		request.method === "thread/start" || request.method === "thread/resume");
+	assert.ok(prePromptResourceRequests.filter((request) => request.method === "thread/start").length >= 2);
+	assert.equal(prePromptResourceRequests.filter((request) => request.method === "thread/resume").length, 0);
 	await session.prompt({ text: "materialize rollover thread", source: "rpc" });
 	await expectCredentialRevoked(accesses[0]);
 	const durableThreadId = session.getBinding().nativeSessionId;
+	assert.match(durableThreadId, /^thread-/);
 	await waitFor(() => accesses.length === 3 && getCodexNativeClient(session) !== secondClient);
 	await session.prompt({ text: "verify resumed rollover thread", source: "rpc" });
 	assert.equal(session.getBinding().nativeSessionId, durableThreadId);
@@ -597,8 +608,12 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 	await expectCredentialRevoked(accesses[1]);
 	assert.equal(await callAlpha(accesses[2], "fresh"), "rolled:fresh");
 	const state = await getCodexNativeClient(session).request("test/getState", {});
-	assert.equal(state.resourceRequests.filter((request) => request.method === "thread/start").length, 2);
-	assert.equal(state.resourceRequests.filter((request) => request.method === "thread/resume").length, 1);
+	const startRequests = state.resourceRequests.filter((request) => request.method === "thread/start");
+	const resumeRequests = state.resourceRequests.filter((request) => request.method === "thread/resume");
+	assert.ok(startRequests.length >= prePromptResourceRequests.length);
+	assert.deepEqual(resumeRequests.map((request) => request.threadId), [durableThreadId]);
+	assert.ok(state.turnRequests.length >= 1);
+	assert.ok(state.turnRequests.every((request) => request.threadId === durableThreadId));
 	await session.dispose();
 	await expectCredentialRevoked(accesses[2]);
 	portable.dispose();

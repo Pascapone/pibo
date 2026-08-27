@@ -1653,6 +1653,7 @@ export class PiboSessionRouter {
 			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
 			throw error;
 		}
+		const bindingSync = { expectedRevision: binding.revision };
 		session = new RoutedSession(
 			piboSession.id,
 			runtimeSession,
@@ -1678,7 +1679,7 @@ export class PiboSessionRouter {
 						queuedMessages: state.queuedMessages,
 					});
 					if (!state.processing && state.queuedMessages === 0 && !state.disposed && !state.sessionIdentityOperationInFlight) {
-						this.syncLiveSessionRuntimeBinding(piboSession.id, runtimeSession);
+						this.syncLiveSessionRuntimeBinding(piboSession.id, runtimeSession, bindingSync);
 						this.scheduleRunReminder(piboSession.id, false);
 					}
 					if (state.disposed || state.processing || state.queuedMessages > 0 || state.sessionIdentityOperationInFlight) this.clearIdleSessionTimer(piboSession.id);
@@ -1774,22 +1775,38 @@ export class PiboSessionRouter {
 		};
 	}
 
-	private syncLiveSessionRuntimeBinding(piboSessionId: string, runtimeSession: { getBinding(): RuntimeSessionBinding }): void {
+	private syncLiveSessionRuntimeBinding(
+		piboSessionId: string,
+		runtimeSession: { getBinding(): RuntimeSessionBinding },
+		state: { expectedRevision: number | undefined },
+	): void {
 		const session = this.sessionStore.get(piboSessionId);
 		if (!session) return;
 		try {
 			const persisted = this.resolveSessionRuntimeBinding(session);
-			this.persistSessionRuntimeBinding(
+			const updated = this.persistSessionRuntimeBinding(
 				session,
 				withPersistedPortableHistoryAuditMetadata(persisted, runtimeSession.getBinding()),
+				{ expectedRevision: state.expectedRevision },
 			);
+			state.expectedRevision = updated.revision;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			const reset = this.resetCachedSession(piboSessionId, "runtime binding synchronization failed");
 			this.emitOutput({
 				type: "session_error",
 				piboSessionId,
 				error: `Failed to persist the live runtime binding: ${message}`,
 				errorDetails: runtimeSessionErrorDetails(message),
+			});
+			void reset.catch((resetError) => {
+				const resetMessage = resetError instanceof Error ? resetError.message : String(resetError);
+				this.emitOutput({
+					type: "session_error",
+					piboSessionId,
+					error: `Failed to discard a runtime after binding synchronization failed: ${resetMessage}`,
+					errorDetails: runtimeSessionErrorDetails(resetMessage),
+				});
 			});
 		}
 	}

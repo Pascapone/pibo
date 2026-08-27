@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import readline from "node:readline";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -10,6 +10,7 @@ if (args[0] === "--version") {
 	process.stdout.write("codex-cli 0.147.0\n");
 } else {
 	const statePath = join(process.env.CODEX_HOME, "fake-thread-state.json");
+	const stateLockPath = `${statePath}.lock`;
 	const loadedThreads = {};
 	const activeTurns = {};
 	const threadConfigs = {};
@@ -28,13 +29,61 @@ if (args[0] === "--version") {
 			threadTokenUsage: {},
 			missingRollouts: [],
 			turnRequests: [],
+			turnRequestMessageIds: [],
 			resourceRequests: [],
 			skillRequests: [],
 			injectedItems: [],
 			compactionRequests: [],
 			initializeRequests: [],
 		};
-	const save = (state) => writeFileSync(statePath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
+	const withStateLock = (operation) => {
+		while (true) {
+			try {
+				mkdirSync(stateLockPath);
+				break;
+			} catch (error) {
+				if (error?.code !== "EEXIST") throw error;
+				Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
+			}
+		}
+		try {
+			return operation();
+		} finally {
+			rmSync(stateLockPath, { recursive: true, force: true });
+		}
+	};
+	const writeState = (state) => {
+		const temporaryPath = `${statePath}.${process.pid}.tmp`;
+		writeFileSync(temporaryPath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
+		renameSync(temporaryPath, statePath);
+	};
+	const save = (state) => withStateLock(() => writeState(state));
+	const mergeConcurrentDurableState = (state) => {
+		const latest = load();
+		const merged = {
+			...latest,
+			...state,
+			nextThread: Math.max(latest.nextThread ?? 1, state.nextThread ?? 1),
+			nextTurn: Math.max(latest.nextTurn ?? 1, state.nextTurn ?? 1),
+			clock: Math.max(latest.clock ?? 0, state.clock ?? 0),
+			threads: { ...(latest.threads ?? {}), ...(state.threads ?? {}) },
+			threadSettings: { ...(latest.threadSettings ?? {}), ...(state.threadSettings ?? {}) },
+			threadTokenUsage: { ...(latest.threadTokenUsage ?? {}), ...(state.threadTokenUsage ?? {}) },
+		};
+		for (const [key, value] of Object.entries(state)) {
+			if (!Array.isArray(value) || !Array.isArray(latest[key])) continue;
+			const seen = new Set();
+			merged[key] = [...latest[key], ...value].filter((entry) => {
+				const serialized = JSON.stringify(entry);
+				if (seen.has(serialized)) return false;
+				seen.add(serialized);
+				return true;
+			});
+		}
+		Object.assign(state, merged);
+		return state;
+	};
+	const saveConcurrentDurableState = (state) => withStateLock(() => writeState(mergeConcurrentDurableState(state)));
 	const nextTimestamp = (state) => state.clock++;
 	const clone = (value) => structuredClone(value);
 	const makeThread = (state, id, cwd, overrides = {}) => {
@@ -390,7 +439,7 @@ if (args[0] === "--version") {
 			modelContextWindow: 200_000,
 		};
 		state.threadTokenUsage[active.threadId] = { turnId: active.turnId, tokenUsage };
-		save(state);
+		saveConcurrentDurableState(state);
 		notify("thread/tokenUsage/updated", {
 			threadId: active.threadId,
 			turnId: active.turnId,
@@ -456,7 +505,7 @@ if (args[0] === "--version") {
 		thread.path ??= `/private/fake-codex/${thread.id}.jsonl`;
 		loadedThreads[thread.id] = thread;
 		state.threads[thread.id] = clone(thread);
-		save(state);
+		saveConcurrentDurableState(state);
 	};
 	const completeActive = (active, status, finalAssistant) => {
 		if (!active || active.terminal) return;
@@ -695,6 +744,7 @@ if (args[0] === "--version") {
 		state.threadSettings ??= {};
 		state.threadTokenUsage ??= {};
 		state.turnRequests ??= [];
+		state.turnRequestMessageIds ??= [];
 		state.resourceRequests ??= [];
 		const params = message.params ?? {};
 		if (message.method === "test/callMcpTool") {
@@ -982,6 +1032,10 @@ if (args[0] === "--version") {
 				approvalPolicy: params.approvalPolicy ?? null,
 				sandboxPolicy: clone(params.sandboxPolicy ?? null),
 				collaborationMode: clone(params.collaborationMode ?? null),
+			});
+			state.turnRequestMessageIds.push({
+				threadId: params.threadId,
+				clientUserMessageId: params.clientUserMessageId ?? null,
 			});
 			const turnId = `turn-${state.nextTurn++}`;
 			const active = {

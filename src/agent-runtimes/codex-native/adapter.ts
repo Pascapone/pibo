@@ -331,7 +331,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 				);
 				if (result.current.nativeSessionId) {
 					this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
-					this.updateBindingFromCurrentThread();
+					this.promoteBindingFromCurrentThread();
 				}
 				return result;
 			}),
@@ -342,7 +342,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 					async (threadId) => await this.resourceDelivery.verifyThread(this.process.client, threadId),
 				);
 				this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
-				this.updateBindingFromCurrentThread();
+				this.promoteBindingFromCurrentThread();
 				return result;
 			}),
 			getReasoning: () => this.settings.reasoning,
@@ -372,7 +372,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 					});
 				}
 				await this.turns.compact();
-				this.updateBindingFromCurrentThread();
+				this.refreshBoundBindingFromCurrentThread();
 				return {
 					native: true,
 					method: "thread/compact/start",
@@ -402,7 +402,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	}
 
 	getBinding(): RuntimeSessionBinding {
-		this.updateBindingFromCurrentThread();
+		this.refreshBoundBindingFromCurrentThread();
 		return structuredClone(this.binding);
 	}
 
@@ -423,7 +423,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 				this.productContext?.getActiveMessage?.()?.id ?? randomUUID(),
 				this.settings.turnOptions,
 			);
-			this.updateBindingFromCurrentThread();
+			this.promoteBindingFromCurrentThread();
 		} finally {
 			this.operationInFlight = false;
 			if (this.recycleProcessAfterInterruptedTurn && !this.disposed) {
@@ -657,7 +657,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			this.requests = this.createRequestController(next.process);
 			previousRequests.dispose();
 			previousTurns.dispose();
-			this.updateBindingFromCurrentThread();
+			this.refreshBoundBindingFromCurrentThread();
 			this.resourceProcessUnavailable = false;
 			this.resourceWarning = undefined;
 			next = undefined;
@@ -702,7 +702,12 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		}
 	}
 
-	private updateBindingFromCurrentThread(): void {
+	private refreshBoundBindingFromCurrentThread(): void {
+		if (this.binding.state !== "bound") return;
+		this.promoteBindingFromCurrentThread();
+	}
+
+	private promoteBindingFromCurrentThread(): void {
 		this.binding = bindingForThread({
 			piboSessionId: this.binding.piboSessionId,
 			runtimeInstanceId: this.runtimeInstanceId,
@@ -980,13 +985,15 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				threads,
 				settings,
 				resourceDelivery,
-				bindingForThread({
-					piboSessionId: input.piboSession.id,
-					runtimeInstanceId: this.instanceId,
-					previous: binding,
-					thread: threads.thread,
-					settings: settings.bindingMetadata,
-				}),
+				binding.state === "unbound" && input.piboSession.kind === "branch" && input.historyHandoff?.mode !== "import"
+					? binding
+					: bindingForThread({
+						piboSessionId: input.piboSession.id,
+						runtimeInstanceId: this.instanceId,
+						previous: binding,
+						thread: threads.thread,
+						settings: settings.bindingMetadata,
+					}),
 				this.config.experimentalUserInput,
 				async () => await startProcessBundle(`${sessionGeneration}-credential-${randomUUID()}`),
 				input.productContext,
