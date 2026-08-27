@@ -8,7 +8,6 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Type } from "typebox";
 import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
-import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../dist/agent-runtime/types.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
 import {
 	CODEX_NATIVE_ADAPTER_ID,
@@ -17,6 +16,8 @@ import {
 } from "../dist/agent-runtimes/codex-native/adapter.js";
 import { parseCodexNativeRuntimeConfig } from "../dist/agent-runtimes/codex-native/config.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
+import { createAgentRuntimeBindingPersistence } from "../dist/sessions/runtime-binding-persistence.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 import { definePiboTool } from "../dist/tools/contract.js";
 import { PiboPortableToolService } from "../dist/tools/session-service.js";
@@ -65,8 +66,23 @@ function binding(instanceId, piboSessionId, previous) {
 	};
 }
 
-function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBinding, portableTools, resources, kind = "chat" }) {
-	let persistedBinding = { ...structuredClone(runtimeBinding), revision: runtimeBinding.revision ?? 1 };
+function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBinding, portableTools, resources, kind = "chat", testContext }) {
+	let runtimeBindingPersistence;
+	if (kind === "branch") {
+		assert.ok(testContext, "branch resource tests require a cleanup context");
+		const store = new PiboDataSessionStore(":memory:");
+		store.create({
+			id: piboSessionId,
+			channel: "test",
+			kind,
+			profile: profile.profileName,
+			workspace,
+			runtimeBinding,
+		});
+		testContext.after(() => store.close());
+		runtimeBindingPersistence = createAgentRuntimeBindingPersistence(store, { piboSessionId });
+		assert.ok(runtimeBindingPersistence);
+	}
 	return {
 		piboSession: createPiboSession({
 			id: piboSessionId,
@@ -86,14 +102,7 @@ function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBindi
 		services: {
 			portableTools,
 			resources,
-			runtimeBindingPersistence: {
-				guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
-				async compareAndSet(nextBinding, expectedRevision) {
-					assert.equal(persistedBinding.revision, expectedRevision);
-					persistedBinding = { ...structuredClone(nextBinding), revision: expectedRevision + 1 };
-					return structuredClone(persistedBinding);
-				},
-			},
+			...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
 		},
 	};
 }
@@ -598,6 +607,7 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 		portableTools: portable,
 		resources: undefined,
 		kind: "branch",
+		testContext: t,
 	}));
 	t.after(async () => session.dispose());
 	const initialClient = getCodexNativeClient(session);

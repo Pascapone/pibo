@@ -58,12 +58,12 @@ import type { PiboRunToolController } from "../runs/tools.js";
 import { createDefaultPiboReliabilityStore, type PiboReliabilityStore } from "../reliability/store.js";
 import {
 	InMemoryPiboSessionStore,
-	hasAuditedDurableRuntimeBindingCas,
 	createPiboSessionId,
 	type CreatePiboSessionInput,
 	type PiboSession,
 	type PiboSessionStore,
 } from "../sessions/store.js";
+import { createAgentRuntimeBindingPersistence } from "../sessions/runtime-binding-persistence.js";
 import {
 	createLegacyPiRuntimeSessionBinding,
 	RuntimeSessionBindingConflictError,
@@ -82,7 +82,6 @@ import type {
 	LogoutAgentRuntimeAuthInput,
 	StartAgentRuntimeAuthInput,
 } from "../agent-runtime/types.js";
-import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../agent-runtime/types.js";
 import { validateAgentRuntimeProfileCapabilities } from "../agent-runtime/profile-validation.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
@@ -1562,9 +1561,15 @@ export class PiboSessionRouter {
 			throw error;
 		}
 		const bindingSync = { expectedRevision: binding.revision };
-		const durableRuntimeBindingCasStore = hasAuditedDurableRuntimeBindingCas(this.sessionStore)
-			? this.sessionStore
-			: undefined;
+		const runtimeBindingPersistence = createAgentRuntimeBindingPersistence(this.sessionStore, {
+			piboSessionId: piboSession.id,
+			onPersisted: (updated) => {
+				binding = updated;
+				bindingSync.expectedRevision = updated.revision;
+				const updatedSession = this.sessionStore.get(piboSession.id);
+				if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
+			},
+		});
 		let runtimeSession: AgentRuntimeSession;
 		try {
 			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
@@ -1590,28 +1595,7 @@ export class PiboSessionRouter {
 					codeRuntimeToolController,
 					portableTools,
 					resources,
-					...(durableRuntimeBindingCasStore ? {
-						runtimeBindingPersistence: {
-							guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
-							compareAndSet: async (nextBinding, expectedRevision) => {
-								const currentSession = this.sessionStore.get(piboSession.id);
-								if (!currentSession) {
-									throw new Error(`Pibo session "${piboSession.id}" no longer exists.`);
-								}
-								const updated = durableRuntimeBindingCasStore.updateRuntimeBinding(
-									piboSession.id,
-									{ ...structuredClone(nextBinding), piboSessionId: piboSession.id },
-									{ expectedRevision },
-								);
-								if (!updated) throw new Error(`Pibo session "${piboSession.id}" no longer exists.`);
-								const updatedSession = this.sessionStore.get(piboSession.id);
-								if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
-								binding = updated;
-								bindingSync.expectedRevision = updated.revision;
-								return updated;
-							},
-						},
-					} : {}),
+					...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
 					compatibility: {
 						persistSession: this.options.persistSession,
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,

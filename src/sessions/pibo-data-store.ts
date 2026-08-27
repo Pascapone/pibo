@@ -6,7 +6,6 @@ import type { StoredTelemetryTurn, TelemetryInterruptedTurnOutcome } from "../da
 import type { PiboRunSnapshot } from "../runs/registry.js";
 import {
 	createPiboSession,
-	registerAuditedDurableRuntimeBindingCasStore,
 	matchesFindInput,
 	type CreatePiboSessionInput,
 	type FindPiboSessionsInput,
@@ -81,11 +80,13 @@ const SESSION_SELECT = `
 `;
 
 export class PiboDataSessionStore implements PiboSessionStore {
+	readonly #concreteRuntimeBindingCasIdentity: boolean;
 	private readonly dataStore: PiboDataStore;
 	private readonly db: DatabaseSync;
 	private readonly ownsDataStore: boolean;
 
 	constructor(dataStore: PiboDataStore | string = new PiboDataStore()) {
+		this.#concreteRuntimeBindingCasIdentity = new.target === PiboDataSessionStore;
 		if (typeof dataStore === "string") {
 			this.dataStore = new PiboDataStore(dataStore);
 			this.ownsDataStore = true;
@@ -94,7 +95,14 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			this.ownsDataStore = false;
 		}
 		this.db = this.dataStore.db;
-		registerAuditedDurableRuntimeBindingCasStore(this);
+	}
+
+	/** @internal Read-only concrete-construction identity; it cannot mint authorization. */
+	static hasConcreteRuntimeBindingCasIdentity(store: unknown): store is PiboDataSessionStore {
+		return typeof store === "object"
+			&& store !== null
+			&& #concreteRuntimeBindingCasIdentity in store
+			&& store.#concreteRuntimeBindingCasIdentity;
 	}
 
 	get(id: string): PiboSession | undefined {
@@ -407,6 +415,36 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			binding.updatedAt ?? binding.createdAt ?? new Date().toISOString(),
 		);
 	}
+}
+
+const auditedPiboDataGet = PiboDataSessionStore.prototype.get;
+const auditedPiboDataGetRuntimeBinding = PiboDataSessionStore.prototype.getRuntimeBinding;
+const auditedPiboDataRuntimeBindingCas = PiboDataSessionStore.prototype.updateRuntimeBinding;
+const hasConcretePiboDataRuntimeBindingCasIdentity = PiboDataSessionStore.hasConcreteRuntimeBindingCasIdentity;
+
+/** @internal Resolves only the original CAS of an exact, genuinely constructed built-in store. */
+export function resolvePiboDataRuntimeBindingCas(
+	store: unknown,
+): typeof auditedPiboDataRuntimeBindingCas | undefined {
+	if (
+		!hasConcretePiboDataRuntimeBindingCasIdentity(store)
+		|| Object.getPrototypeOf(store) !== PiboDataSessionStore.prototype
+		|| Object.prototype.hasOwnProperty.call(store, "get")
+		|| Object.prototype.hasOwnProperty.call(store, "getRuntimeBinding")
+		|| Object.prototype.hasOwnProperty.call(store, "updateRuntimeBinding")
+		|| PiboDataSessionStore.prototype.get !== auditedPiboDataGet
+		|| PiboDataSessionStore.prototype.getRuntimeBinding !== auditedPiboDataGetRuntimeBinding
+		|| PiboDataSessionStore.prototype.updateRuntimeBinding !== auditedPiboDataRuntimeBindingCas
+	) return undefined;
+	const auditedStore = new Proxy(store, {
+		get(target, property) {
+			if (property === "get") return auditedPiboDataGet;
+			if (property === "getRuntimeBinding") return auditedPiboDataGetRuntimeBinding;
+			if (property === "updateRuntimeBinding") return auditedPiboDataRuntimeBindingCas;
+			return Reflect.get(target, property, target);
+		},
+	});
+	return auditedPiboDataRuntimeBindingCas.bind(auditedStore);
 }
 
 export function createDefaultPiboDataSessionStore(): PiboDataSessionStore {

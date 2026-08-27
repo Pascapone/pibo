@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { join } from "node:path";
 import { AgentRuntimeAdapterRegistry } from "../../dist/agent-runtime/registry.js";
-import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../../dist/agent-runtime/types.js";
 import { InitialSessionContextBuilder } from "../../dist/core/profiles.js";
 import { PiboDataSessionStore } from "../../dist/sessions/pibo-data-store.js";
+import { createAgentRuntimeBindingPersistence } from "../../dist/sessions/runtime-binding-persistence.js";
 import {
 	CODEX_NATIVE_ADAPTER_ID,
 	CODEX_NATIVE_AGENT_RUNTIME_DRIVER,
@@ -43,6 +43,8 @@ const store = new PiboDataSessionStore(dbPath);
 const piboSession = store.get(piboSessionId);
 const binding = store.getRuntimeBinding(piboSessionId);
 if (!piboSession || !binding) throw new Error("Crash fixture Pibo Session is missing.");
+const runtimeBindingPersistence = createAgentRuntimeBindingPersistence(store, { piboSessionId });
+if (!runtimeBindingPersistence) throw new Error("Crash fixture store did not receive audited binding persistence.");
 
 const session = await registry.openSession(instanceId, {
 	piboSession,
@@ -54,14 +56,7 @@ const session = await registry.openSession(instanceId, {
 		getActiveMessage: () => ({ id: "codex-crash-first-message", source: "user" }),
 	},
 	services: {
-		runtimeBindingPersistence: {
-			guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
-			async compareAndSet(nextBinding, expectedRevision) {
-				const updated = store.updateRuntimeBinding(piboSessionId, nextBinding, { expectedRevision });
-				if (!updated) throw new Error("Crash fixture Pibo Session disappeared during CAS.");
-				return updated;
-			},
-		},
+		runtimeBindingPersistence,
 		compatibility: {
 			testOnlyFirstUseFailpoints: {
 				afterNativeTerminalDurable: () => process.exit(86),

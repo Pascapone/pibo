@@ -8,7 +8,6 @@ import {
 	AgentRuntimeUnavailableError,
 } from "../../agent-runtime/errors.js";
 import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
-import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../../agent-runtime/types.js";
 import type {
 	AgentRuntimeAdapter,
 	AgentRuntimeAuthOperationResult,
@@ -33,6 +32,7 @@ import type {
 	StartAgentRuntimeAuthInput,
 	ValidateAgentRuntimeProfileInput,
 } from "../../agent-runtime/types.js";
+import { isAgentRuntimeBindingPersistence } from "../../sessions/runtime-binding-persistence.js";
 import type { PiboJsonObject } from "../../core/events.js";
 import { PENDING_NATIVE_SESSION_METADATA_KEY } from "../../sessions/runtime-binding.js";
 import {
@@ -101,12 +101,6 @@ import {
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
 export const CODEX_NATIVE_ADAPTER_VERSION = "1.0.0";
-
-function hasDurableRuntimeBindingPersistence(
-	persistence: AgentRuntimeBindingPersistence | undefined,
-): persistence is AgentRuntimeBindingPersistence {
-	return persistence?.guarantee === AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE;
-}
 
 function readPendingFirstUse(binding: RuntimeSessionBinding): CodexNativePendingFirstUse | undefined {
 	try {
@@ -846,7 +840,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			}
 			assertCodexNativePendingFirstUseRequest(currentPending, messageId, prompt);
 		}
-		if (!hasDurableRuntimeBindingPersistence(this.bindingPersistence)) {
+		if (!isAgentRuntimeBindingPersistence(this.bindingPersistence)) {
 			throw new Error("Native Codex first use requires audited durable cross-process atomic runtime-binding CAS before turn/start.");
 		}
 		const owner = beginCodexNativeFirstUseAttempt();
@@ -1063,7 +1057,7 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			&& input.piboSession.kind === "branch"
 			&& input.historyHandoff?.mode !== "import"
 			&& Boolean(activeFirstMessage?.id);
-		if (messageStartsLazyFirstUse && !hasDurableRuntimeBindingPersistence(input.services?.runtimeBindingPersistence)) {
+		if (messageStartsLazyFirstUse && !isAgentRuntimeBindingPersistence(input.services?.runtimeBindingPersistence)) {
 			throw new AgentRuntimeUnavailableError(
 				this.instanceId,
 				"Native Codex first use requires audited durable cross-process atomic runtime-binding CAS before thread/start.",

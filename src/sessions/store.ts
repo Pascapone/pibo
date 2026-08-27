@@ -81,31 +81,6 @@ export type PiboSessionStore = {
 	close?(): void;
 };
 
-export type DurableRuntimeBindingCasStore = PiboSessionStore & Required<Pick<
-	PiboSessionStore,
-	"getRuntimeBinding" | "updateRuntimeBinding"
->>;
-
-const auditedDurableRuntimeBindingCasStores = new WeakSet<object>();
-
-/**
- * Registers a store only after its runtime-binding update has been audited as a
- * durable, cross-process atomic compare-and-set operation. Method shape alone
- * is intentionally insufficient to authorize native first-use execution.
- * @internal
- */
-export function registerAuditedDurableRuntimeBindingCasStore(store: DurableRuntimeBindingCasStore): void {
-	auditedDurableRuntimeBindingCasStores.add(store);
-}
-
-export function hasAuditedDurableRuntimeBindingCas(
-	store: PiboSessionStore,
-): store is DurableRuntimeBindingCasStore {
-	return auditedDurableRuntimeBindingCasStores.has(store)
-		&& typeof store.getRuntimeBinding === "function"
-		&& typeof store.updateRuntimeBinding === "function";
-}
-
 export function createPiboSessionId(): string {
 	return `ps_${randomUUID()}`;
 }

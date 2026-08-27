@@ -137,10 +137,8 @@ export type AgentRuntimeProductContext = {
 	getActiveMessage?: () => { id?: string; source?: string; provenance?: unknown } | undefined;
 };
 
-export const AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE = "durable-cross-process-atomic-cas-v1";
-
+/** Runtime-authorized opaque capability; structural look-alikes are rejected. */
 export type AgentRuntimeBindingPersistence = {
-	readonly guarantee: typeof AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE;
 	compareAndSet(
 		binding: RuntimeSessionBinding,
 		expectedRevision: number,

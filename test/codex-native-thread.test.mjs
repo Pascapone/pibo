@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
-import { AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE } from "../dist/agent-runtime/types.js";
+import * as agentRuntimeTypesModule from "../dist/agent-runtime/types.js";
 import {
 	AgentRuntimeBindingMissingError,
 	AgentRuntimeUnavailableError,
@@ -17,8 +17,14 @@ import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import * as sessionStoreModule from "../dist/sessions/store.js";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
+import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
+import {
+	createAgentRuntimeBindingPersistence,
+	isAgentRuntimeBindingPersistence,
+} from "../dist/sessions/runtime-binding-persistence.js";
 import {
 	CODEX_NATIVE_ADAPTER_ID,
 	CODEX_NATIVE_AGENT_RUNTIME_DRIVER,
@@ -141,32 +147,10 @@ function profile(instanceId, runtimeOptions = {}) {
 		.createSession();
 }
 
-function testBindingPersistence(initialBinding) {
-	let current = { ...structuredClone(initialBinding), revision: initialBinding.revision ?? 1 };
-	return {
-		guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
-		async compareAndSet(nextBinding, expectedRevision) {
-			assert.equal(current.revision, expectedRevision);
-			current = {
-				...structuredClone(nextBinding),
-				revision: expectedRevision + 1,
-				createdAt: current.createdAt ?? new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-			};
-			return structuredClone(current);
-		},
-	};
-}
-
-function storeBindingPersistence(store, piboSessionId) {
-	return {
-		guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
-		async compareAndSet(nextBinding, expectedRevision) {
-			const updated = store.updateRuntimeBinding(piboSessionId, nextBinding, { expectedRevision });
-			if (!updated) throw new Error(`Pibo Session ${piboSessionId} disappeared during binding CAS`);
-			return updated;
-		},
-	};
+function storeBindingPersistence(store, piboSessionId, options = {}) {
+	const persistence = createAgentRuntimeBindingPersistence(store, { piboSessionId, ...options });
+	assert.ok(persistence, "expected an audited built-in runtime-binding persistence capability");
+	return persistence;
 }
 
 function openInput(instanceId, workspace, binding, piboSessionId = binding.piboSessionId, runtimeOptions = {}, kind = "chat") {
@@ -185,7 +169,7 @@ function openInput(instanceId, workspace, binding, piboSessionId = binding.piboS
 		binding,
 		workspace,
 		productContext: { piboSessionId },
-		services: { runtimeBindingPersistence: testBindingPersistence(binding) },
+		services: {},
 	};
 }
 
@@ -1055,6 +1039,138 @@ test("Codex native first-message branches bind only when their first message bec
 	await Promise.all([raceRouterA.disposeAll(), raceRouterB.disposeAll()]);
 });
 
+test("runtime-binding persistence authorization is opaque and fixed to original concrete built-in CAS methods", async (t) => {
+	const root = await testRoot(t);
+	assert.equal("registerAuditedDurableRuntimeBindingCasStore" in sessionStoreModule, false);
+	assert.equal("hasAuditedDurableRuntimeBindingCas" in sessionStoreModule, false);
+	assert.equal("AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE" in agentRuntimeTypesModule, false);
+	const shippedSources = await Promise.all([
+		"../dist/sessions/store.js",
+		"../dist/sessions/pibo-data-store.js",
+		"../dist/sessions/sqlite-store.js",
+	].map((path) => readFile(new URL(path, import.meta.url), "utf8")));
+	for (const source of shippedSources) {
+		assert.doesNotMatch(source, /registerAuditedDurableRuntimeBindingCasStore|hasAuditedDurableRuntimeBindingCas/);
+	}
+
+	const fakeCapability = Object.freeze({
+		async compareAndSet(binding) { return binding; },
+	});
+	assert.equal(isAgentRuntimeBindingPersistence(fakeCapability), false);
+
+	for (const [name, Store] of [
+		["pibo-data", PiboDataSessionStore],
+		["sqlite", SqlitePiboSessionStore],
+	]) {
+		const storePath = join(root, `${name}.sqlite`);
+		const primary = new Store(storePath);
+		const beforeMutation = new Store(storePath);
+		const piboSessionId = `ps_codex_capability_${name.replaceAll("-", "_")}`;
+		primary.create({
+			id: piboSessionId,
+			channel: "test",
+			kind: "branch",
+			profile: "codex-capability-test",
+			workspace: root,
+			runtimeBinding: {
+				runtimeInstanceId: "codex-capability-test",
+				adapterId: CODEX_NATIVE_ADAPTER_ID,
+				state: "unbound",
+			},
+		});
+		t.after(() => {
+			primary.close();
+			beforeMutation.close();
+		});
+
+		assert.equal(createAgentRuntimeBindingPersistence(Object.create(Store.prototype), { piboSessionId }), undefined);
+		assert.equal(createAgentRuntimeBindingPersistence(new Proxy(primary, {}), { piboSessionId }), undefined);
+		assert.equal(createAgentRuntimeBindingPersistence({ ...primary }, { piboSessionId }), undefined);
+
+		class StoreSubclass extends Store {
+			updateRuntimeBinding(...args) {
+				return super.updateRuntimeBinding(...args);
+			}
+		}
+		const subclass = new StoreSubclass(join(root, `${name}-subclass.sqlite`));
+		t.after(() => subclass.close());
+		assert.equal(createAgentRuntimeBindingPersistence(subclass, { piboSessionId }), undefined);
+
+		const originalPrototype = Store.prototype;
+		try {
+			Object.setPrototypeOf(beforeMutation, {});
+			assert.equal(createAgentRuntimeBindingPersistence(beforeMutation, { piboSessionId }), undefined);
+		} finally {
+			Object.setPrototypeOf(beforeMutation, originalPrototype);
+		}
+
+		const originalGet = Store.prototype.get;
+		const originalGetRuntimeBinding = Store.prototype.getRuntimeBinding;
+		const originalCas = Store.prototype.updateRuntimeBinding;
+		let replacementCalls = 0;
+		const replacement = () => {
+			replacementCalls += 1;
+			throw new Error("mutable replacement store method must never run");
+		};
+		for (const property of ["get", "getRuntimeBinding", "updateRuntimeBinding"]) {
+			Object.defineProperty(beforeMutation, property, {
+				configurable: true,
+				value: replacement,
+				writable: true,
+			});
+			try {
+				assert.equal(createAgentRuntimeBindingPersistence(beforeMutation, { piboSessionId }), undefined);
+			} finally {
+				delete beforeMutation[property];
+			}
+		}
+		Store.prototype.get = replacement;
+		Store.prototype.getRuntimeBinding = replacement;
+		Store.prototype.updateRuntimeBinding = replacement;
+		try {
+			assert.equal(createAgentRuntimeBindingPersistence(beforeMutation, { piboSessionId }), undefined);
+		} finally {
+			Store.prototype.get = originalGet;
+			Store.prototype.getRuntimeBinding = originalGetRuntimeBinding;
+			Store.prototype.updateRuntimeBinding = originalCas;
+		}
+
+		const capability = createAgentRuntimeBindingPersistence(primary, { piboSessionId });
+		assert.ok(capability);
+		assert.equal(Object.isFrozen(capability), true);
+		assert.equal(isAgentRuntimeBindingPersistence(capability), true);
+		const current = primary.getRuntimeBinding(piboSessionId);
+		for (const property of ["get", "getRuntimeBinding", "updateRuntimeBinding"]) {
+			Object.defineProperty(primary, property, {
+				configurable: true,
+				value: replacement,
+				writable: true,
+			});
+		}
+		Store.prototype.get = replacement;
+		Store.prototype.getRuntimeBinding = replacement;
+		Store.prototype.updateRuntimeBinding = replacement;
+		try {
+			assert.equal(isAgentRuntimeBindingPersistence(capability), true);
+			const updated = await capability.compareAndSet({
+				...current,
+				state: "bound",
+				nativeSessionId: `thread-${name}`,
+			}, 1);
+			assert.equal(updated.revision, 2);
+			assert.equal(updated.nativeSessionId, `thread-${name}`);
+			assert.equal(replacementCalls, 0);
+		} finally {
+			Store.prototype.get = originalGet;
+			Store.prototype.getRuntimeBinding = originalGetRuntimeBinding;
+			Store.prototype.updateRuntimeBinding = originalCas;
+			delete primary.get;
+			delete primary.getRuntimeBinding;
+			delete primary.updateRuntimeBinding;
+		}
+	}
+});
+
 test("Codex native router rejects absent and structurally similar non-atomic binding CAS before native start", async (t) => {
 	const root = await testRoot(t);
 	const instanceId = "codex-native-no-binding-cas";
@@ -1143,7 +1259,7 @@ test("Codex native router rejects absent and structurally similar non-atomic bin
 	const structurallySimilarNonAtomicStore = {
 		...storeWithoutBindingUpdates,
 		durableRuntimeBindingCas: {
-			guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
+			guarantee: "durable-cross-process-atomic-cas-v1",
 			atomicity: "cross-process",
 			durability: "durable",
 		},
@@ -1189,6 +1305,38 @@ test("Codex native router rejects absent and structurally similar non-atomic bin
 	assert.equal(backing.getRuntimeBinding(nonAtomicSessionId).revision, 1);
 	assert.equal(backing.getRuntimeBinding(nonAtomicSessionId).state, "unbound");
 
+	let shapedPersistenceCalls = 0;
+	const guaranteeShapedPersistence = {
+		guarantee: "durable-cross-process-atomic-cas-v1",
+		async compareAndSet(nextBinding, expectedRevision) {
+			shapedPersistenceCalls += 1;
+			return { ...structuredClone(nextBinding), revision: expectedRevision + 1 };
+		},
+	};
+	const directRegistry = createAdapter(root, instanceId).registry;
+	const directResults = await Promise.allSettled([0, 1].map(async (index) => {
+		const directBinding = {
+			piboSessionId: `ps_codex_shaped_persistence_${index}`,
+			runtimeInstanceId: instanceId,
+			adapterId: CODEX_NATIVE_ADAPTER_ID,
+			state: "unbound",
+			revision: 1,
+		};
+		const input = openInput(instanceId, root, directBinding, directBinding.piboSessionId, {}, "branch");
+		input.productContext = {
+			piboSessionId: directBinding.piboSessionId,
+			getActiveMessage: () => ({ id: "codex-guarantee-shaped-same-message", source: "user" }),
+		};
+		input.services.runtimeBindingPersistence = guaranteeShapedPersistence;
+		return await directRegistry.openSession(instanceId, input);
+	}));
+	assert.equal(directResults.filter((result) => result.status === "fulfilled").length, 0);
+	for (const result of directResults) {
+		assert.equal(result.status, "rejected");
+		assert.match(result.reason.message, /requires audited durable cross-process atomic runtime-binding CAS/);
+	}
+	assert.equal(shapedPersistenceCalls, 0, "a guarantee-shaped service must not reach CAS");
+
 	const inspection = await startCodexNativeAppServer({
 		config,
 		runtimeInstanceId: instanceId,
@@ -1202,6 +1350,10 @@ test("Codex native router rejects absent and structurally similar non-atomic bin
 	assert.deepEqual(Object.keys(state.threads), [], "rejection must precede thread/start");
 	assert.equal(
 		state.turnRequestMessageIds.some((request) => request.clientUserMessageId === "codex-no-binding-cas-message"),
+		false,
+	);
+	assert.equal(
+		state.turnRequestMessageIds.some((request) => request.clientUserMessageId === "codex-guarantee-shaped-same-message"),
 		false,
 	);
 	await inspection.close();
@@ -1644,13 +1796,13 @@ test("Codex native reconciles pending first use across pre-turn failures, proces
 
 	const retryId = "ps_codex_pending_retry";
 	createBranch(retryId);
-	const beforePending = await openStored(retryId, "pending-retry-message", undefined, {
-		guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
-		async compareAndSet() { throw new Error("fixture failure before pending persistence"); },
-	});
+	const closedStore = new PiboDataSessionStore(join(root, "pibo.sqlite"));
+	const closedPersistence = storeBindingPersistence(closedStore, retryId);
+	closedStore.close();
+	const beforePending = await openStored(retryId, "pending-retry-message", undefined, closedPersistence);
 	await assert.rejects(
 		beforePending.prompt({ text: "idempotent pending retry", source: "rpc" }),
-		/fixture failure before pending persistence/,
+		/database is not open|closed/i,
 	);
 	assert.equal(store.getRuntimeBinding(retryId).revision, 1);
 	assert.equal(store.getRuntimeBinding(retryId).nativeSessionId, undefined);
@@ -1940,69 +2092,71 @@ test("Codex native router resumes a durable binding after restart and marks dele
 	await inspection.close();
 });
 
-test("Codex native concurrent first use promotes one branch binding through revisioned CAS", async (t) => {
+test("Codex native identical first-use contenders select one winner through PiboData and SQLite CAS", async (t) => {
 	const root = await testRoot(t);
 	const { registry, instanceId } = createAdapter(root);
-	const dbPath = join(root, "pibo.sqlite");
-	const firstStore = new PiboDataSessionStore(dbPath);
-	const secondStore = new PiboDataSessionStore(dbPath);
-	registerTestDisposer(t, () => {
-		firstStore.close();
-		secondStore.close();
-	});
-	const piboSessionId = "ps_codex_cas";
-	firstStore.create({
-		id: piboSessionId,
-		channel: "test",
-		kind: "chat",
-		profile: profile(instanceId).profileName,
-		workspace: root,
-		runtimeBinding: {
-			runtimeInstanceId: instanceId,
-			adapterId: CODEX_NATIVE_ADAPTER_ID,
-			state: "unbound",
-		},
-	});
-	const firstInitial = firstStore.getRuntimeBinding(piboSessionId);
-	const secondInitial = secondStore.getRuntimeBinding(piboSessionId);
-	assert.equal(firstInitial.revision, 1);
-	assert.equal(secondInitial.revision, 1);
-	const persistenceFor = (store) => ({
-		guarantee: AGENT_RUNTIME_BINDING_PERSISTENCE_GUARANTEE,
-		async compareAndSet(nextBinding, expectedRevision) {
-			const updated = store.updateRuntimeBinding(piboSessionId, nextBinding, { expectedRevision });
-			if (!updated) throw new Error("CAS fixture session disappeared");
-			return updated;
-		},
-	});
-	const firstInput = openInput(instanceId, root, firstInitial, piboSessionId, {}, "branch");
-	const secondInput = openInput(instanceId, root, secondInitial, piboSessionId, {}, "branch");
-	firstInput.services.runtimeBindingPersistence = persistenceFor(firstStore);
-	secondInput.services.runtimeBindingPersistence = persistenceFor(secondStore);
-	const first = await registry.openSession(instanceId, firstInput);
-	const second = await registry.openSession(instanceId, secondInput);
-	registerTestDisposer(t, () => Promise.allSettled([first.dispose(), second.dispose()]));
-	assert.equal(first.getBinding().state, "unbound");
-	assert.equal(second.getBinding().state, "unbound");
-	assert.notEqual(first.controls.getCurrentSession().nativeSessionId, second.controls.getCurrentSession().nativeSessionId);
-	const results = await Promise.allSettled([
-		first.prompt({ text: "concurrent first use a", source: "rpc" }),
-		second.prompt({ text: "concurrent first use b", source: "rpc" }),
-	]);
-	assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
-	assert.equal(results.filter((result) => result.status === "rejected").length, 1);
-	assert.match(results.find((result) => result.status === "rejected")?.reason?.message ?? "", /changed concurrently/);
-	const winner = results[0].status === "fulfilled" ? first : second;
-	const loser = winner === first ? second : first;
-	assert.equal(winner.getBinding().state, "bound");
-	assert.equal(loser.getBinding().state, "unbound");
-	const pending = firstStore.getRuntimeBinding(piboSessionId);
-	assert.equal(pending.revision, 2);
-	assert.equal(pending.state, "unbound");
-	assert.equal(pending.nativeSessionId, winner.getBinding().nativeSessionId);
-	const persisted = firstStore.updateRuntimeBinding(piboSessionId, winner.getBinding(), { expectedRevision: 2 });
-	assert.equal(persisted.revision, 3);
-	assert.equal(persisted.nativeSessionId, winner.getBinding().nativeSessionId);
+	for (const [name, Store] of [
+		["pibo-data", PiboDataSessionStore],
+		["sqlite", SqlitePiboSessionStore],
+	]) {
+		const dbPath = join(root, `${name}-cas.sqlite`);
+		const firstStore = new Store(dbPath);
+		const secondStore = new Store(dbPath);
+		registerTestDisposer(t, () => {
+			firstStore.close();
+			secondStore.close();
+		});
+		const suffix = name.replaceAll("-", "_");
+		const piboSessionId = `ps_codex_cas_${suffix}`;
+		const messageId = `codex-identical-cas-${name}`;
+		firstStore.create({
+			id: piboSessionId,
+			channel: "test",
+			kind: "branch",
+			profile: profile(instanceId).profileName,
+			workspace: root,
+			runtimeBinding: {
+				runtimeInstanceId: instanceId,
+				adapterId: CODEX_NATIVE_ADAPTER_ID,
+				state: "unbound",
+			},
+		});
+		const firstInitial = firstStore.getRuntimeBinding(piboSessionId);
+		const secondInitial = secondStore.getRuntimeBinding(piboSessionId);
+		assert.equal(firstInitial.revision, 1, `${name} first contender must start at revision 1`);
+		assert.equal(secondInitial.revision, 1, `${name} second contender must start at revision 1`);
+		const firstInput = openInput(instanceId, root, firstInitial, piboSessionId, {}, "branch");
+		const secondInput = openInput(instanceId, root, secondInitial, piboSessionId, {}, "branch");
+		firstInput.productContext.getActiveMessage = () => ({ id: messageId, source: "user" });
+		secondInput.productContext.getActiveMessage = () => ({ id: messageId, source: "user" });
+		firstInput.services.runtimeBindingPersistence = storeBindingPersistence(firstStore, piboSessionId);
+		secondInput.services.runtimeBindingPersistence = storeBindingPersistence(secondStore, piboSessionId);
+		const first = await registry.openSession(instanceId, firstInput);
+		const second = await registry.openSession(instanceId, secondInput);
+		registerTestDisposer(t, () => Promise.allSettled([first.dispose(), second.dispose()]));
+		assert.equal(first.getBinding().state, "unbound");
+		assert.equal(second.getBinding().state, "unbound");
+		assert.notEqual(first.controls.getCurrentSession().nativeSessionId, second.controls.getCurrentSession().nativeSessionId);
+		const results = await Promise.allSettled([
+			first.prompt({ text: "identical legitimate first request", source: "rpc" }),
+			second.prompt({ text: "identical legitimate first request", source: "rpc" }),
+		]);
+		assert.equal(results.filter((result) => result.status === "fulfilled").length, 1, `${name} must select one winner`);
+		assert.equal(results.filter((result) => result.status === "rejected").length, 1, `${name} must reject one loser`);
+		assert.match(results.find((result) => result.status === "rejected")?.reason?.message ?? "", /changed concurrently/);
+		const winner = results[0].status === "fulfilled" ? first : second;
+		const loser = winner === first ? second : first;
+		assert.equal(winner.getBinding().state, "bound");
+		assert.equal(loser.getBinding().state, "unbound");
+		const pending = firstStore.getRuntimeBinding(piboSessionId);
+		assert.equal(pending.revision, 2);
+		assert.equal(pending.state, "unbound");
+		assert.equal(pending.nativeSessionId, winner.getBinding().nativeSessionId);
+		const persisted = firstStore.updateRuntimeBinding(piboSessionId, winner.getBinding(), { expectedRevision: 2 });
+		assert.equal(persisted.revision, 3);
+		assert.equal(persisted.nativeSessionId, winner.getBinding().nativeSessionId);
+		await Promise.allSettled([first.dispose(), second.dispose()]);
+	}
 	const inspection = await startCodexNativeAppServer({
 		config: runtimeConfig(root),
 		runtimeInstanceId: instanceId,
@@ -2013,6 +2167,12 @@ test("Codex native concurrent first use promotes one branch binding through revi
 	});
 	registerTestDisposer(t, () => inspection.close());
 	const state = await inspection.client.request("test/getState", {});
-	assert.equal(state.turnRequests.length, 1);
+	for (const name of ["pibo-data", "sqlite"]) {
+		assert.equal(
+			state.turnRequestMessageIds.filter((request) => request.clientUserMessageId === `codex-identical-cas-${name}`).length,
+			1,
+			`${name} must execute exactly one native first turn`,
+		);
+	}
 	await inspection.close();
 });
