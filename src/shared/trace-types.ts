@@ -24,6 +24,7 @@ export type PiboTraceNode = {
 	id: string;
 	parentId?: string;
 	entryId?: string;
+	nativeTurnId?: string;
 	piboSessionId: string;
 	eventId?: string;
 	toolCallId?: string;
@@ -86,6 +87,7 @@ export type TraceTimelineNode = {
 	intent?: string;
 	eventId?: string;
 	entryId?: string;
+	nativeTurnId?: string;
 	source?: PiboTraceSource;
 	stableKey?: string;
 };

@@ -3,6 +3,9 @@ import test from "node:test";
 import { buildTraceViewFromEvents } from "./helpers/pi-history.mjs";
 import { storedPiboEventFromV2Row } from "../dist/apps/chat/data/chat-data-mappers.js";
 import { createTraceViewVersion } from "../dist/apps/chat/trace.js";
+import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
+import { flattenTraceNodes } from "../dist/shared/trace-engine.js";
+import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
 
 const now = "2026-01-01T00:00:00.000Z";
 
@@ -192,6 +195,152 @@ test("bounded-tail user events preserve repeated prompt identities assigned from
 	]);
 	assert.deepEqual(users.map((node) => node.entryId), ["entry-user-one", "entry-user-two"]);
 	assert.deepEqual(assistants.map((node) => node.output), ["first answer", "second answer"]);
+});
+
+test("matched native runtime turns use stable product identity across legacy, V2, and terminal projections", () => {
+	const historyEntries = [
+		{
+			id: "codex:thread:runtime-X:user-X",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:02.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "user-X",
+			role: "user",
+			content: "stable prompt",
+		},
+		{
+			id: "codex:thread:runtime-X:assistant-X",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:05.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "assistant-X",
+			role: "assistant",
+			content: [
+				{ type: "reasoning", text: "stable reasoning" },
+				{ type: "tool_call", toolCallId: "tool-X", toolName: "read", input: { path: "stable.txt" } },
+				{ type: "text", text: "stable answer" },
+			],
+			status: "complete",
+		},
+		{
+			id: "codex:thread:runtime-X:tool-X",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:05.500Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "tool-X",
+			role: "tool",
+			content: "stable result",
+			toolCallId: "tool-X",
+			toolName: "read",
+			result: { content: "stable result" },
+			status: "complete",
+		},
+	];
+	const events = [
+		outputEvent(1, { type: "message_queued", piboSessionId: "ps_root", eventId: "stable-Y", source: "user", text: "stable prompt" }),
+		outputEvent(2, { type: "message_started", piboSessionId: "ps_root", eventId: "stable-Y", source: "user", text: "stable prompt" }),
+		outputEvent(3, { type: "tool_call", piboSessionId: "ps_root", eventId: "stable-Y", toolCallId: "tool-X", toolName: "read", args: { path: "stable.txt" } }),
+		outputEvent(4, { type: "thinking_finished", piboSessionId: "ps_root", eventId: "stable-Y", thinkingIndex: 0, text: "stable reasoning" }),
+		outputEvent(5, { type: "assistant_message", piboSessionId: "ps_root", eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "stable answer" }),
+		outputEvent(6, { type: "message_finished", piboSessionId: "ps_root", eventId: "stable-Y", source: "user" }),
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events,
+		historyEntries,
+		status: "idle",
+	});
+	const legacyNodes = flattenTraceNodes(view.nodes);
+	const legacyMessages = legacyNodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(legacyMessages.map((node) => node.id), [
+		"event:message_queued:stable-Y",
+		"event:assistant:stable-Y:assistant:0",
+	]);
+	assert.deepEqual(legacyMessages.map((node) => node.eventId), ["stable-Y", "stable-Y"]);
+	assert.deepEqual(legacyMessages.map((node) => node.nativeTurnId), ["runtime-X", "runtime-X"]);
+	assert.deepEqual(legacyMessages.map((node) => node.entryId), ["user-X", "assistant-X"]);
+	assert.equal(legacyNodes.filter((node) => node.type === "model.reasoning").length, 1);
+	assert.equal(legacyNodes.filter((node) => node.toolCallId === "tool-X").length, 1);
+	assert.ok(legacyNodes
+		.filter((node) => node.type === "model.reasoning" || node.toolCallId === "tool-X")
+		.every((node) => node.eventId === "stable-Y" && node.nativeTurnId === "runtime-X"));
+
+	const timeline = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 });
+	const timelineMessages = timeline.nodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(timelineMessages.map((node) => node.nodeId), [
+		"event:message_queued:stable-Y",
+		"event:assistant:stable-Y:assistant:0",
+	]);
+	assert.deepEqual(timelineMessages.map((node) => node.nativeTurnId), ["runtime-X", "runtime-X"]);
+
+	const terminalMessages = buildCompactTerminalRows(view, { showThinking: true })
+		.filter((row) => row.kind === "message.user" || row.kind === "message.assistant");
+	assert.deepEqual(terminalMessages.map((row) => row.id), [
+		"event:message_queued:stable-Y",
+		"terminal:assistant:stable-Y:assistant:0",
+	]);
+});
+
+test("repeated identical native turns retain distinct matched product identities", () => {
+	const historyEntries = [
+		...[
+			["one", "2026-01-01T00:00:01.000Z", "2026-01-01T00:00:03.000Z"],
+			["two", "2026-01-01T00:00:04.000Z", "2026-01-01T00:00:06.000Z"],
+		].flatMap(([suffix, userAt, assistantAt]) => [
+			{
+				id: `codex:thread:runtime-${suffix}:user-${suffix}`,
+				type: "message",
+				source: "native",
+				createdAt: userAt,
+				turnId: `runtime-${suffix}`,
+				nativeTurnId: `runtime-${suffix}`,
+				nativeEntryId: `user-${suffix}`,
+				role: "user",
+				content: "identical prompt",
+			},
+			{
+				id: `codex:thread:runtime-${suffix}:assistant-${suffix}`,
+				type: "message",
+				source: "native",
+				createdAt: assistantAt,
+				turnId: `runtime-${suffix}`,
+				nativeTurnId: `runtime-${suffix}`,
+				nativeEntryId: `assistant-${suffix}`,
+				role: "assistant",
+				content: "identical answer",
+				status: "complete",
+			},
+		]),
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [
+			{ eventId: "stable-one", userText: "identical prompt", completedAt: "2026-01-01T00:00:03.000Z" },
+			{ eventId: "stable-two", userText: "identical prompt", completedAt: "2026-01-01T00:00:06.000Z" },
+		],
+	});
+	const messages = flattenTraceNodes(view.nodes)
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(messages.map((node) => node.id), [
+		"event:message_queued:stable-one",
+		"event:assistant:stable-one:assistant:0",
+		"event:message_queued:stable-two",
+		"event:assistant:stable-two:assistant:0",
+	]);
+	assert.deepEqual(messages.map((node) => node.nativeTurnId), [
+		"runtime-one",
+		"runtime-one",
+		"runtime-two",
+		"runtime-two",
+	]);
 });
 
 test("active repeated prompts do not reuse settled canonical transcript identities", () => {

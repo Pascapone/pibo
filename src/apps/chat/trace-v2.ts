@@ -329,6 +329,7 @@ function compactTraceNode(node: PiboTraceNode, payloadStore: PayloadStore, piboS
 		intent: node.intent,
 		eventId: node.eventId,
 		entryId: node.entryId,
+		nativeTurnId: node.nativeTurnId,
 		source: node.source,
 		stableKey: node.stableKey,
 	}) as TraceTimelineNode;

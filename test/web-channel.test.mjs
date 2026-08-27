@@ -119,6 +119,10 @@ function assertStructuredMissingRefDiagnostic(diagnostics, expected) {
 	assert.ok(diagnostic.message.includes(expected.registryRef));
 }
 
+function flattenTraceResponseNodes(nodes) {
+	return nodes.flatMap((node) => [node, ...flattenTraceResponseNodes(node.children ?? [])]);
+}
+
 async function startLandingChannel(apps, landingAppName) {
 	const channel = createWebHostChannel({ port: 0, announce: false, ...(landingAppName ? { landingAppName } : {}) });
 	await channel.start({
@@ -1199,6 +1203,133 @@ test("new Chat Web traces use Pibo product history without reading native runtim
 		assert.match(JSON.stringify(page.nodes), /product-owned prompt/);
 		assert.match(JSON.stringify(page.nodes), /product-owned answer/);
 		assert.ok(page.nodes.some((node) => node.source === "product-history") || page.nodes.some((node) => node.children?.some((child) => child.source === "product-history")));
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("origin branch trace routes reconcile native runtime turns to stable product identities", async () => {
+	let readHistoryCalls = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		async emit(event) {
+			return {
+				type: "message_queued",
+				piboSessionId: event.piboSessionId,
+				eventId: "stable-Y",
+				queuedMessages: 1,
+				text: event.text,
+			};
+		},
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("codex-native", { adapterId: "codex-native", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async readSessionRuntimeHistory(piboSessionId) {
+			readHistoryCalls += 1;
+			return {
+				runtimeInstanceId: "codex-native",
+				adapterId: "codex-native",
+				source: "native",
+				entries: [
+					{
+						id: "codex:thread:runtime-X:user-X",
+						type: "message",
+						source: "native",
+						createdAt: "2026-08-27T12:00:00.000Z",
+						turnId: "runtime-X",
+						nativeTurnId: "runtime-X",
+						nativeEntryId: "user-X",
+						role: "user",
+						content: "branch prompt",
+					},
+					{
+						id: "codex:thread:runtime-X:assistant-X",
+						type: "message",
+						source: "native",
+						createdAt: "2026-08-27T12:00:01.000Z",
+						turnId: "runtime-X",
+						nativeTurnId: "runtime-X",
+						nativeEntryId: "assistant-X",
+						role: "assistant",
+						content: "branch answer",
+						status: "complete",
+					},
+				],
+				hasMore: false,
+				inspection: {
+					runtimeInstanceId: "codex-native",
+					adapterId: "codex-native",
+					bindingState: "bound",
+					available: true,
+					version: `native-${piboSessionId}`,
+					diagnostics: [],
+				},
+			};
+		},
+	});
+
+	try {
+		const source = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "default",
+		});
+		const branch = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "branch",
+			profile: "codex-native",
+			originId: source.id,
+			runtimeBinding: {
+				runtimeInstanceId: "codex-native",
+				adapterId: "codex-native",
+				nativeSessionId: "thread-X",
+				state: "bound",
+				protocol: "codex-app-server",
+			},
+		});
+		const messageResponse = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({ piboSessionId: branch.id, text: "branch prompt", clientTxnId: "txn-origin-runtime-product-identity" }),
+		});
+		assert.equal(messageResponse.status, 200);
+		assert.equal((await messageResponse.json()).output.eventId, "stable-Y");
+		emitOutput({ type: "message_started", piboSessionId: branch.id, eventId: "stable-Y", text: "branch prompt", source: "user" });
+		emitOutput({ type: "assistant_message", piboSessionId: branch.id, eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "branch answer" });
+		emitOutput({ type: "message_finished", piboSessionId: branch.id, eventId: "stable-Y", source: "user" });
+
+		const legacyResponse = await fetch(
+			`${baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(branch.id)}`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(legacyResponse.status, 200);
+		const legacy = await legacyResponse.json();
+		const legacyMessages = flattenTraceResponseNodes(legacy.nodes)
+			.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+		assert.deepEqual(legacyMessages.map((node) => node.id), [
+			"event:message_queued:stable-Y",
+			"event:assistant:stable-Y:assistant:0",
+		]);
+		assert.deepEqual(legacyMessages.map((node) => node.nativeTurnId), ["runtime-X", "runtime-X"]);
+		assert.ok(legacyMessages.every((node) => node.source === "transcript"));
+
+		const timelineResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(branch.id)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(timelineResponse.status, 200);
+		const timeline = await timelineResponse.json();
+		const timelineMessages = timeline.nodes
+			.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+		assert.deepEqual(timelineMessages.map((node) => node.nodeId), [
+			"event:message_queued:stable-Y",
+			"event:assistant:stable-Y:assistant:0",
+		]);
+		assert.deepEqual(timelineMessages.map((node) => node.nativeTurnId), ["runtime-X", "runtime-X"]);
+		assert.ok(timelineMessages.every((node) => node.source === "transcript"));
+		assert.ok(readHistoryCalls >= 1);
 	} finally {
 		await channel.stop?.();
 	}

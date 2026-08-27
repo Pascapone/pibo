@@ -38,9 +38,7 @@ export function projectHistoryEntries(
 		const entry = entries[index]!;
 		if (entry.type !== "message" || entry.role !== "user") continue;
 		lastUserMessageIndex = index;
-		lastUserEventId = entry.turnId && openHistoryEventIds.has(entry.turnId)
-			? entry.turnId
-			: userTimingAssignments.get(index)?.eventId;
+		lastUserEventId = canonicalProductTurnId(entry, userTimingAssignments.get(index));
 	}
 	return lastUserMessageIndex !== -1 && lastUserEventId && openHistoryEventIds.has(lastUserEventId)
 		? entries.slice(0, lastUserMessageIndex)
@@ -314,11 +312,12 @@ function createUserMessageNode(
 		});
 	}
 	const userMessageType = timing?.userMessageType ?? "message_queued";
-	const eventId = entry.turnId ?? timing?.eventId;
+	const eventId = canonicalProductTurnId(entry, timing);
 	const eventIdentity = eventId ? `event:${userMessageType}:${eventId}` : undefined;
 	return {
 		id: eventIdentity ?? historyEntryNodeId(entry),
 		entryId: entry.nativeEntryId,
+		nativeTurnId: nativeHistoryTurnId(entry),
 		piboSessionId,
 		eventId,
 		type: "user.message",
@@ -342,6 +341,7 @@ function createAssistantTurnNodes(
 ): PiboTraceNode[] {
 	const firstAssistant = entries.find(({ entry }) => entry.role === "assistant");
 	if (!firstAssistant) return [];
+	const eventId = canonicalProductTurnId(firstAssistant.entry, timing);
 	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
 	let assistantPartOrdinal = 0;
@@ -349,7 +349,7 @@ function createAssistantTurnNodes(
 
 	for (const { entry, index: entryIndex } of entries) {
 		if (entry.role === "tool") {
-			mergePersistedToolResult(toolsByCallId, orderedNodes, entry, piboSessionId, entryIndex);
+			mergePersistedToolResult(toolsByCallId, orderedNodes, entry, piboSessionId, entryIndex, eventId);
 			continue;
 		}
 		const responseStatus = historyMessageStatus(entry);
@@ -364,7 +364,7 @@ function createAssistantTurnNodes(
 					entryIndex,
 					contentPartIndex,
 					thinkingIndex,
-					eventId: entry.turnId ?? timing?.eventId,
+					eventId,
 					thinking: part.text,
 				}));
 				reasoningPartOrdinal += 1;
@@ -377,7 +377,7 @@ function createAssistantTurnNodes(
 						entryIndex,
 						contentPartIndex,
 						assistantIndex,
-						eventId: entry.turnId ?? timing?.eventId,
+						eventId,
 						status: responseStatus,
 						text: part.text,
 						error: entry.error,
@@ -390,7 +390,7 @@ function createAssistantTurnNodes(
 					responseNode.output = `${typeof responseNode.output === "string" ? responseNode.output : ""}${part.text}`;
 				}
 			} else if (part.type === "tool_call") {
-				const toolNode = createToolCallNode(piboSessionId, entry, entryIndex, contentPartIndex, part);
+				const toolNode = createToolCallNode(piboSessionId, entry, entryIndex, contentPartIndex, part, eventId);
 				orderedNodes.push(toolNode);
 				toolsByCallId.set(part.toolCallId, toolNode);
 			}
@@ -423,9 +423,10 @@ function createReasoningNode(input: {
 	return {
 		id: eventIdentity ? thinkingNodeId(eventIdentity) : `${historyEntryNodeId(input.entry)}:thinking:${input.contentPartIndex}`,
 		entryId: input.entry.nativeEntryId,
+		nativeTurnId: nativeHistoryTurnId(input.entry),
 		piboSessionId: input.piboSessionId,
 		eventId: input.eventId,
-		parentId: input.entry.source === "product" && input.eventId ? messageTurnNodeId(input.eventId) : undefined,
+		parentId: historyTurnParentId(input.entry, input.eventId),
 		type: "model.reasoning",
 		title: "Thinking",
 		status: "done",
@@ -445,14 +446,16 @@ function createToolCallNode(
 	entryIndex: number,
 	contentPartIndex: number,
 	part: Extract<AgentRuntimeHistoryContentPart, { type: "tool_call" }>,
+	eventId?: string,
 ): PiboTraceNode {
 	const source = traceSource(entry.source);
 	return {
 		id: `tool:${part.toolCallId}`,
 		entryId: entry.nativeEntryId,
+		nativeTurnId: nativeHistoryTurnId(entry),
 		piboSessionId,
-		eventId: entry.turnId,
-		parentId: entry.source === "product" && entry.turnId ? messageTurnNodeId(entry.turnId) : undefined,
+		eventId,
+		parentId: historyTurnParentId(entry, eventId),
 		toolCallId: part.toolCallId,
 		type: isSubagentToolName(part.toolName) ? "agent.delegation" : "tool.call",
 		title: part.toolName,
@@ -477,15 +480,18 @@ function mergePersistedToolResult(
 	entry: AgentRuntimeHistoryMessageEntry,
 	piboSessionId: string,
 	entryIndex: number,
+	eventId?: string,
 ): void {
 	const toolCallId = entry.toolCallId;
 	if (!toolCallId) return;
 	let toolNode = toolsByCallId.get(toolCallId);
 	if (!toolNode) {
-		toolNode = createMissingToolResultNode(piboSessionId, entry, entryIndex, toolCallId);
+		toolNode = createMissingToolResultNode(piboSessionId, entry, entryIndex, toolCallId, eventId);
 		childNodes.push(toolNode);
 		toolsByCallId.set(toolCallId, toolNode);
 	}
+	toolNode.eventId ??= eventId;
+	toolNode.nativeTurnId ??= nativeHistoryTurnId(entry);
 	toolNode.status = entry.isError === true || entry.status === "error" ? "error" : "done";
 	toolNode.completedAt = entry.createdAt;
 	toolNode.output = entry.result ?? { content: entry.content };
@@ -498,13 +504,16 @@ function createMissingToolResultNode(
 	entry: AgentRuntimeHistoryMessageEntry,
 	entryIndex: number,
 	toolCallId: string,
+	eventId?: string,
 ): PiboTraceNode {
 	const source = traceSource(entry.source);
 	return {
 		id: `tool:${toolCallId}`,
 		entryId: entry.nativeEntryId,
+		nativeTurnId: nativeHistoryTurnId(entry),
 		piboSessionId,
-		eventId: entry.turnId,
+		eventId,
+		parentId: historyTurnParentId(entry, eventId),
 		toolCallId,
 		type: "tool.result",
 		title: entry.toolName ?? "Tool Result",
@@ -536,9 +545,10 @@ function createAssistantMessageNode(input: {
 	return {
 		id: eventIdentity ? assistantMessageNodeId(eventIdentity) : `${historyEntryNodeId(input.entry)}:response`,
 		entryId: input.entry.nativeEntryId,
+		nativeTurnId: nativeHistoryTurnId(input.entry),
 		piboSessionId: input.piboSessionId,
 		eventId: input.eventId,
-		parentId: input.entry.source === "product" && input.eventId ? messageTurnNodeId(input.eventId) : undefined,
+		parentId: historyTurnParentId(input.entry, input.eventId),
 		type: "assistant.message",
 		title: "Agent Message",
 		status: input.status,
@@ -571,6 +581,21 @@ function historyMessageStatus(entry: AgentRuntimeHistoryMessageEntry): PiboTrace
 
 function isSettledAssistantEntry(entry: AgentRuntimeHistoryMessageEntry): boolean {
 	return entry.status !== "running" && entry.metadata?.stopReason !== "toolUse" && entry.metadata?.stopReason !== "tool_use";
+}
+
+function canonicalProductTurnId(
+	entry: AgentRuntimeHistoryMessageEntry,
+	timing: TraceMessageTurnTiming | undefined,
+): string | undefined {
+	return timing?.eventId ?? entry.turnId;
+}
+
+function nativeHistoryTurnId(entry: AgentRuntimeHistoryMessageEntry): string | undefined {
+	return entry.nativeTurnId ?? (entry.source === "native" ? entry.turnId : undefined);
+}
+
+function historyTurnParentId(entry: AgentRuntimeHistoryMessageEntry, eventId: string | undefined): string | undefined {
+	return entry.source === "product" && eventId ? messageTurnNodeId(eventId) : undefined;
 }
 
 function historyEntryNodeId(entry: AgentRuntimeHistoryEntry): string {
