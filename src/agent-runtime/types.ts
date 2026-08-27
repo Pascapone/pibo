@@ -137,12 +137,20 @@ export type AgentRuntimeProductContext = {
 	getActiveMessage?: () => { id?: string; source?: string; provenance?: unknown } | undefined;
 };
 
+export type AgentRuntimeBindingPersistence = {
+	compareAndSet(
+		binding: RuntimeSessionBinding,
+		expectedRevision: number,
+	): Promise<RuntimeSessionBinding>;
+};
+
 export type AgentRuntimeOpenServices = {
 	agentsController?: unknown;
 	runToolController?: unknown;
 	codeRuntimeToolController?: unknown;
 	portableTools?: PiboPortableToolSession;
 	resources?: PiboRuntimeResourceSession;
+	runtimeBindingPersistence?: AgentRuntimeBindingPersistence;
 	telemetry?: unknown;
 	compatibility?: unknown;
 };

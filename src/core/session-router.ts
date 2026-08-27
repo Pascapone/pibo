@@ -1559,6 +1559,7 @@ export class PiboSessionRouter {
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			throw error;
 		}
+		const bindingSync = { expectedRevision: binding.revision };
 		let runtimeSession: AgentRuntimeSession;
 		try {
 			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
@@ -1584,6 +1585,18 @@ export class PiboSessionRouter {
 					codeRuntimeToolController,
 					portableTools,
 					resources,
+					runtimeBindingPersistence: {
+						compareAndSet: async (nextBinding, expectedRevision) => {
+							const currentSession = this.sessionStore.get(piboSession.id);
+							if (!currentSession) {
+								throw new Error(`Pibo session "${piboSession.id}" no longer exists.`);
+							}
+							const updated = this.persistSessionRuntimeBinding(currentSession, nextBinding, { expectedRevision });
+							binding = updated;
+							bindingSync.expectedRevision = updated.revision;
+							return updated;
+						},
+					},
 					compatibility: {
 						persistSession: this.options.persistSession,
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
@@ -1644,6 +1657,7 @@ export class PiboSessionRouter {
 				binding = this.persistSessionRuntimeBinding(piboSession, openedBinding, {
 					expectedRevision: binding.revision,
 				});
+				bindingSync.expectedRevision = binding.revision;
 			}
 		} catch (error) {
 			await runtimeSession.dispose().catch(() => {});
@@ -1653,7 +1667,6 @@ export class PiboSessionRouter {
 			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
 			throw error;
 		}
-		const bindingSync = { expectedRevision: binding.revision };
 		session = new RoutedSession(
 			piboSession.id,
 			runtimeSession,

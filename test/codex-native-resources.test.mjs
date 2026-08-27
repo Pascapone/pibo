@@ -65,6 +65,7 @@ function binding(instanceId, piboSessionId, previous) {
 }
 
 function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBinding, portableTools, resources, kind = "chat" }) {
+	let persistedBinding = { ...structuredClone(runtimeBinding), revision: runtimeBinding.revision ?? 1 };
 	return {
 		piboSession: createPiboSession({
 			id: piboSessionId,
@@ -81,7 +82,17 @@ function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBindi
 			piboSessionId,
 			getActiveMessage: () => ({ id: "resource-message", source: "user" }),
 		},
-		services: { portableTools, resources },
+		services: {
+			portableTools,
+			resources,
+			runtimeBindingPersistence: {
+				async compareAndSet(nextBinding, expectedRevision) {
+					assert.equal(persistedBinding.revision, expectedRevision);
+					persistedBinding = { ...structuredClone(nextBinding), revision: expectedRevision + 1 };
+					return structuredClone(persistedBinding);
+				},
+			},
+		},
 	};
 }
 
@@ -554,6 +565,7 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 	const tracked = trackedPortableSession(base, accesses);
 	let issued = 0;
 	let rejectedRenewals = 0;
+	let allowPostPromptMaintenance = false;
 	const portable = {
 		...tracked,
 		async issueMcpAccess(options) {
@@ -564,7 +576,10 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 			return access;
 		},
 		renewMcpAccess(token, ttlMs) {
-			if (rejectedRenewals < 2) {
+			if (issued === 2 && !allowPostPromptMaintenance) {
+				return { ...accesses[1], expiresAt: new Date(Date.now() + 100).toISOString() };
+			}
+			if (rejectedRenewals < 3) {
 				rejectedRenewals += 1;
 				throw new Error("fixture renewal boundary");
 			}
@@ -597,11 +612,16 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 		request.method === "thread/start" || request.method === "thread/resume");
 	assert.ok(prePromptResourceRequests.filter((request) => request.method === "thread/start").length >= 2);
 	assert.equal(prePromptResourceRequests.filter((request) => request.method === "thread/resume").length, 0);
-	await session.prompt({ text: "materialize rollover thread", source: "rpc" });
+	const firstPrompt = session.prompt({ text: "hold steer materialize rollover thread", source: "rpc" });
+	await waitFor(() => session.getStatus().streaming);
+	allowPostPromptMaintenance = true;
+	await waitFor(() => rejectedRenewals === 2);
+	await session.steer({ text: "complete synchronized rollover boundary", source: "rpc" });
+	await firstPrompt;
 	await expectCredentialRevoked(accesses[0]);
 	const durableThreadId = session.getBinding().nativeSessionId;
 	assert.match(durableThreadId, /^thread-/);
-	await waitFor(() => accesses.length === 3 && getCodexNativeClient(session) !== secondClient);
+	await waitFor(() => accesses.length === 3 && getCodexNativeClient(session) !== secondClient, 10_000);
 	await session.prompt({ text: "verify resumed rollover thread", source: "rpc" });
 	assert.equal(session.getBinding().nativeSessionId, durableThreadId);
 	assert.equal(session.getStatus().warnings.length, 0);

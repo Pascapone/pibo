@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
 	unsupportedAgentRuntimeCapability,
 	type AgentRuntimeCapabilities,
@@ -12,6 +13,7 @@ import type {
 	AgentRuntimeAdapter,
 	AgentRuntimeAuthOperationResult,
 	AgentRuntimeAuthStatus,
+	AgentRuntimeBindingPersistence,
 	CancelAgentRuntimeAuthInput,
 	CompleteAgentRuntimeAuthInput,
 	AgentRuntimeDiagnostic,
@@ -85,6 +87,117 @@ import { injectPortableHistoryIntoCodex } from "./portable-history.js";
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
 export const CODEX_NATIVE_ADAPTER_VERSION = "1.0.0";
+
+const CODEX_FIRST_USE_METADATA_KEY = "codexNativeFirstUse";
+const CODEX_FIRST_USE_METADATA_VERSION = 1;
+const CODEX_FIRST_USE_PROCESS_INSTANCE_ID = randomUUID();
+const activeFirstUseAttempts = new Set<string>();
+
+type CodexNativePendingFirstUse = {
+	version: number;
+	state: "pending";
+	threadId: string;
+	messageId: string;
+	promptHash: string;
+	attemptId: string;
+	ownerPid: number;
+	ownerProcessStartId?: string;
+	ownerProcessInstanceId: string;
+};
+
+function processStartId(pid: number): string | undefined {
+	if (process.platform !== "linux" || !Number.isSafeInteger(pid) || pid <= 0) return undefined;
+	try {
+		const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+		const fields = stat.slice(stat.lastIndexOf(")") + 2).trim().split(/\s+/);
+		if (fields[0] === "Z") return undefined;
+		const startTicks = fields[19];
+		return startTicks ? `${pid}:${startTicks}` : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+const CODEX_FIRST_USE_PROCESS_START_ID = processStartId(process.pid);
+
+function readPendingFirstUse(binding: RuntimeSessionBinding): CodexNativePendingFirstUse | undefined {
+	const value = binding.metadata?.[CODEX_FIRST_USE_METADATA_KEY];
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const record = value as Record<string, unknown>;
+	if (
+		record.version !== CODEX_FIRST_USE_METADATA_VERSION
+		|| record.state !== "pending"
+		|| typeof record.threadId !== "string"
+		|| typeof record.messageId !== "string"
+		|| typeof record.promptHash !== "string"
+		|| typeof record.attemptId !== "string"
+		|| typeof record.ownerPid !== "number"
+		|| !Number.isSafeInteger(record.ownerPid)
+		|| typeof record.ownerProcessInstanceId !== "string"
+		|| (record.ownerProcessStartId !== undefined && typeof record.ownerProcessStartId !== "string")
+	) return undefined;
+	return record as CodexNativePendingFirstUse;
+}
+
+function pendingFirstUseOwnerIsActive(pending: CodexNativePendingFirstUse): boolean {
+	if (
+		pending.ownerPid === process.pid
+		&& (!pending.ownerProcessStartId || pending.ownerProcessStartId === CODEX_FIRST_USE_PROCESS_START_ID)
+		&& pending.ownerProcessInstanceId === CODEX_FIRST_USE_PROCESS_INSTANCE_ID
+	) return activeFirstUseAttempts.has(pending.attemptId);
+	const currentStartId = processStartId(pending.ownerPid);
+	if (pending.ownerProcessStartId) return pending.ownerProcessStartId === currentStartId;
+	try {
+		process.kill(pending.ownerPid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function pendingFirstUseBinding(
+	binding: RuntimeSessionBinding,
+	threadId: string,
+	messageId: string,
+	promptHash: string,
+	attemptId: string,
+): RuntimeSessionBinding {
+	return {
+		...structuredClone(binding),
+		nativeSessionId: threadId,
+		state: "unbound",
+		protocol: CODEX_APP_SERVER_PROTOCOL_NAME,
+		protocolVersion: CODEX_APP_SERVER_VERSION,
+		adapterVersion: CODEX_NATIVE_ADAPTER_VERSION,
+		locator: { kind: "adapter-resolved" },
+		metadata: {
+			...(binding.metadata ?? {}),
+			[CODEX_FIRST_USE_METADATA_KEY]: {
+				version: CODEX_FIRST_USE_METADATA_VERSION,
+				state: "pending",
+				threadId,
+				messageId,
+				promptHash,
+				attemptId,
+				ownerPid: process.pid,
+				...(CODEX_FIRST_USE_PROCESS_START_ID ? { ownerProcessStartId: CODEX_FIRST_USE_PROCESS_START_ID } : {}),
+				ownerProcessInstanceId: CODEX_FIRST_USE_PROCESS_INSTANCE_ID,
+			},
+		},
+	};
+}
+
+function clearPendingFirstUse(binding: RuntimeSessionBinding): RuntimeSessionBinding {
+	const metadata = { ...(binding.metadata ?? {}) };
+	delete metadata[CODEX_FIRST_USE_METADATA_KEY];
+	return {
+		...structuredClone(binding),
+		nativeSessionId: undefined,
+		state: "unbound",
+		locator: undefined,
+		metadata,
+	};
+}
 
 function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapabilities {
 	return {
@@ -197,6 +310,7 @@ function safeThreadMetadata(
 		diagnosticMessage: _diagnosticMessage,
 		...metadata
 	} = previous;
+	delete metadata[CODEX_FIRST_USE_METADATA_KEY];
 	return {
 		...metadata,
 		...settings,
@@ -259,7 +373,10 @@ function validateOpenBinding(
 		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "The persisted Codex binding has no native thread id.");
 	}
 	if (binding.state === "unbound" && binding.nativeSessionId) {
-		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "An unbound Codex binding cannot contain a native thread id.");
+		const pending = readPendingFirstUse(binding);
+		if (!pending || pending.threadId !== binding.nativeSessionId || input.piboSession.kind !== "branch") {
+			throw new AgentRuntimeUnavailableError(runtimeInstanceId, "An unbound Codex binding contains an invalid pending native thread identity.");
+		}
 	}
 	return binding;
 }
@@ -308,6 +425,8 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		private readonly structuredUserInput: boolean,
 		private readonly reloadProcess: CodexNativeProcessReloader,
 		private readonly productContext?: AgentRuntimeProductContext,
+		private readonly bindingPersistence?: AgentRuntimeBindingPersistence,
+		private readonly firstUseTestFailpoints?: CodexNativeFirstUseTestFailpoints,
 	) {
 		this.process = process;
 		this.threads = threads;
@@ -417,14 +536,24 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		await this.ensureFreshResourcesForTurn();
 		this.assertIdle();
 		this.operationInFlight = true;
+		let ownedFirstUseAttempt: string | undefined;
 		try {
+			const firstUse = await this.acquirePendingFirstUse(
+				this.productContext?.getActiveMessage?.()?.id ?? randomUUID(),
+				input.text,
+			);
+			ownedFirstUseAttempt = firstUse.attemptId;
+			if (!firstUse.startTurn) return;
+			await this.firstUseTestFailpoints?.afterPendingBindingPersisted?.();
 			await this.turns.start(
 				input.text,
-				this.productContext?.getActiveMessage?.()?.id ?? randomUUID(),
+				firstUse.messageId,
 				this.settings.turnOptions,
 			);
+			await this.firstUseTestFailpoints?.afterNativeTerminalDurable?.();
 			this.promoteBindingFromCurrentThread();
 		} finally {
+			if (ownedFirstUseAttempt) activeFirstUseAttempts.delete(ownedFirstUseAttempt);
 			this.operationInFlight = false;
 			if (this.recycleProcessAfterInterruptedTurn && !this.disposed) {
 				this.recycleProcessAfterInterruptedTurn = false;
@@ -707,6 +836,53 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		this.promoteBindingFromCurrentThread();
 	}
 
+	private async acquirePendingFirstUse(messageId: string, prompt: string): Promise<{
+		attemptId?: string;
+		messageId: string;
+		startTurn: boolean;
+	}> {
+		if (this.binding.state !== "unbound") return { messageId, startTurn: true };
+		const currentPending = readPendingFirstUse(this.binding);
+		if (currentPending && this.threads.thread.turns.length > 0) {
+			this.promoteBindingFromCurrentThread();
+			return { messageId: currentPending.messageId, startTurn: false };
+		}
+		if (currentPending && pendingFirstUseOwnerIsActive(currentPending)) {
+			throw new Error("Native Codex first use is already owned by another live router.");
+		}
+		if (!this.bindingPersistence) {
+			throw new Error("Native Codex first use requires revisioned runtime-binding persistence before turn/start.");
+		}
+		const attemptId = randomUUID();
+		const promptHash = createHash("sha256").update(prompt, "utf8").digest("hex");
+		activeFirstUseAttempts.add(attemptId);
+		const proposed = pendingFirstUseBinding(
+			this.binding,
+			this.threads.thread.id,
+			messageId,
+			promptHash,
+			attemptId,
+		);
+		try {
+			const expectedRevision = this.binding.revision ?? 1;
+			const persisted = await this.bindingPersistence.compareAndSet(proposed, expectedRevision);
+			const pending = readPendingFirstUse(persisted);
+			if (
+				persisted.revision !== expectedRevision + 1
+				|| persisted.state !== "unbound"
+				|| persisted.nativeSessionId !== proposed.nativeSessionId
+				|| pending?.attemptId !== attemptId
+			) {
+				throw new Error("Runtime-binding persistence returned an inconsistent Codex first-use claim.");
+			}
+			this.binding = structuredClone(persisted);
+			return { attemptId, messageId, startTurn: true };
+		} catch (error) {
+			activeFirstUseAttempts.delete(attemptId);
+			throw error;
+		}
+	}
+
 	private promoteBindingFromCurrentThread(): void {
 		this.binding = bindingForThread({
 			piboSessionId: this.binding.piboSessionId,
@@ -733,6 +909,12 @@ type CodexNativeCompatibilityServices = {
 	thinkingLevel?: string;
 	modelDefaults?: PiboModelDefaults;
 	initialFastMode?: boolean;
+	testOnlyFirstUseFailpoints?: CodexNativeFirstUseTestFailpoints;
+};
+
+type CodexNativeFirstUseTestFailpoints = {
+	afterPendingBindingPersisted?: () => void | Promise<void>;
+	afterNativeTerminalDurable?: () => void | Promise<void>;
 };
 
 export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
@@ -957,9 +1139,11 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					? { developerInstructions: resourceDelivery.developerInstructions }
 					: {}),
 			};
+			const pendingFirstUse = readPendingFirstUse(binding);
+			let sessionBinding = binding;
 			let threads: CodexNativeThreadController;
 			try {
-				threads = binding.state === "bound"
+				threads = binding.state === "bound" || pendingFirstUse
 					? await CodexNativeThreadController.resume(
 						process.client,
 						binding.nativeSessionId!,
@@ -968,8 +1152,19 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					)
 					: await CodexNativeThreadController.start(process.client, input.workspace, threadSelection);
 			} catch (error) {
-				if (error instanceof CodexNativeThreadMissingError || !resourceDelivery.hasMcpServers) throw error;
-				throw new Error("Codex could not initialize every selected MCP server.");
+				if (pendingFirstUse && error instanceof CodexNativeThreadMissingError) {
+					if (pendingFirstUseOwnerIsActive(pendingFirstUse)) {
+						throw new AgentRuntimeUnavailableError(
+							this.instanceId,
+							"Native Codex first use is owned by another live router and is not yet restart-reconcilable.",
+						);
+					}
+					threads = await CodexNativeThreadController.start(process.client, input.workspace, threadSelection);
+					sessionBinding = clearPendingFirstUse(binding);
+				} else {
+					if (error instanceof CodexNativeThreadMissingError || !resourceDelivery.hasMcpServers) throw error;
+					throw new Error("Codex could not initialize every selected MCP server.");
+				}
 			}
 			if (input.historyHandoff?.mode === "import") {
 				if (binding.state === "bound") {
@@ -979,24 +1174,38 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			}
 			settings.attachThread(threads.thread.id, threads.configuration);
 			await resourceDelivery.verifyThread(process.client, threads.thread.id);
+			const lazyFirstMessageBranch = sessionBinding.state === "unbound"
+				&& input.piboSession.kind === "branch"
+				&& input.historyHandoff?.mode !== "import";
+			const openedBinding = lazyFirstMessageBranch
+				? readPendingFirstUse(sessionBinding) && threads.thread.turns.length > 0
+					? bindingForThread({
+						piboSessionId: input.piboSession.id,
+						runtimeInstanceId: this.instanceId,
+						previous: sessionBinding,
+						thread: threads.thread,
+						settings: settings.bindingMetadata,
+					})
+					: sessionBinding
+				: bindingForThread({
+					piboSessionId: input.piboSession.id,
+					runtimeInstanceId: this.instanceId,
+					previous: sessionBinding,
+					thread: threads.thread,
+					settings: settings.bindingMetadata,
+				});
 			return new CodexNativeThreadSession(
 				this.instanceId,
 				process,
 				threads,
 				settings,
 				resourceDelivery,
-				binding.state === "unbound" && input.piboSession.kind === "branch" && input.historyHandoff?.mode !== "import"
-					? binding
-					: bindingForThread({
-						piboSessionId: input.piboSession.id,
-						runtimeInstanceId: this.instanceId,
-						previous: binding,
-						thread: threads.thread,
-						settings: settings.bindingMetadata,
-					}),
+				openedBinding,
 				this.config.experimentalUserInput,
 				async () => await startProcessBundle(`${sessionGeneration}-credential-${randomUUID()}`),
 				input.productContext,
+				input.services?.runtimeBindingPersistence,
+				compatibility?.testOnlyFirstUseFailpoints,
 			);
 		} catch (error) {
 			settings?.dispose();
