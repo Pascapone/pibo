@@ -1,20 +1,17 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import readline from "node:readline";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { createCodexAppServerStateLock } from "./codex-app-server-state-lock.mjs";
 
 const args = process.argv.slice(2);
 if (args[0] === "--version") {
 	process.stdout.write("codex-cli 0.147.0\n");
 } else {
 	const statePath = join(process.env.CODEX_HOME, "fake-thread-state.json");
-	const stateLockPath = `${statePath}.lock`;
-	const stateLockOwnerPath = join(stateLockPath, "owner.json");
-	const stateLockTimeoutMs = 5_000;
-	const stateLockStaleMs = 2_000;
+	const { withStateLock } = createCodexAppServerStateLock(statePath);
 	const loadedThreads = {};
 	const activeTurns = {};
 	const threadConfigs = {};
@@ -41,66 +38,6 @@ if (args[0] === "--version") {
 			initializeRequests: [],
 			crashedMessageIds: [],
 		};
-	let heldStateLockToken;
-	const lockOwnerIsAlive = (owner) => {
-		if (
-			!owner
-			|| !Number.isSafeInteger(owner.pid)
-			|| owner.pid <= 0
-			|| !Number.isFinite(owner.acquiredAt)
-			|| Date.now() - owner.acquiredAt >= stateLockStaleMs
-		) return false;
-		try {
-			process.kill(owner.pid, 0);
-			return true;
-		} catch {
-			return false;
-		}
-	};
-	const readLockOwner = () => {
-		try {
-			return JSON.parse(readFileSync(stateLockOwnerPath, "utf8"));
-		} catch {
-			return undefined;
-		}
-	};
-	const ownerlessLockIsStale = () => {
-		try {
-			return Date.now() - statSync(stateLockPath).mtimeMs >= 100;
-		} catch {
-			return true;
-		}
-	};
-	const withStateLock = (operation) => {
-		if (heldStateLockToken) return operation();
-		const token = randomUUID();
-		const deadline = Date.now() + stateLockTimeoutMs;
-		while (true) {
-			try {
-				mkdirSync(stateLockPath);
-				writeFileSync(stateLockOwnerPath, `${JSON.stringify({ pid: process.pid, token, acquiredAt: Date.now() })}\n`, { mode: 0o600 });
-				break;
-			} catch (error) {
-				if (error?.code !== "EEXIST") throw error;
-				const owner = readLockOwner();
-				if ((!owner && ownerlessLockIsStale()) || (owner && !lockOwnerIsAlive(owner))) {
-					rmSync(stateLockPath, { recursive: true, force: true });
-					continue;
-				}
-				if (Date.now() >= deadline) {
-					throw new Error(`Timed out waiting for fixture state lock owned by pid ${owner?.pid ?? "unknown"} (${owner?.token ?? "unknown"}).`);
-				}
-				Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
-			}
-		}
-		heldStateLockToken = token;
-		try {
-			return operation();
-		} finally {
-			heldStateLockToken = undefined;
-			if (readLockOwner()?.token === token) rmSync(stateLockPath, { recursive: true, force: true });
-		}
-	};
 	const writeState = (state) => {
 		const temporaryPath = `${statePath}.${process.pid}.tmp`;
 		writeFileSync(temporaryPath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
@@ -317,11 +254,12 @@ if (args[0] === "--version") {
 		notify("thread/status/changed", { threadId: active.threadId, status: { type: "active", activeFlags: [] } });
 		notify("turn/started", { threadId: active.threadId, turn: turnSnapshot(active) });
 	};
-	const emitUserItem = (active, text, suffix = "user") => {
+	const emitUserItem = (active, text, suffix = "user", clientId) => {
 		const item = {
 			id: `${active.turnId}-${suffix}`,
 			type: "userMessage",
 			content: [{ type: "text", text }],
+			...(clientId ? { clientId } : {}),
 		};
 		itemStarted(active, item);
 		itemCompleted(active, item);
@@ -559,7 +497,7 @@ if (args[0] === "--version") {
 	const runActive = (active) => {
 		emitTurnStarted(active);
 		notify("turn/started", { threadId: "foreign-thread", turn: turnSnapshot({ ...active, threadId: "foreign-thread", turnId: "foreign-turn" }) });
-		emitUserItem(active, active.userText);
+		emitUserItem(active, active.userText, "user", active.clientUserMessageId);
 		if (active.mode.includes("crash-once")) {
 			const shouldCrash = updateState((state) => {
 				state.crashedMessageIds ??= [];
@@ -1120,7 +1058,7 @@ if (args[0] === "--version") {
 			}
 			send({ id: message.id, result: { turnId: active.turnId } });
 			const text = inputText(params.input);
-			emitUserItem(active, text, `steer-${active.eventSequence}`);
+			emitUserItem(active, text, `steer-${active.eventSequence}`, params.clientUserMessageId);
 			if (active.mode.includes("steer")) {
 				const finalAssistant = emitAssistant(active, "Steered answer.");
 				emitUsage(active);

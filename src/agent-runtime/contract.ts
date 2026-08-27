@@ -1,5 +1,6 @@
 import { AgentRuntimeContractError } from "./errors.js";
 import type { AgentRuntimeSession } from "./types.js";
+import { hasPendingNativeSession } from "../sessions/runtime-binding.js";
 
 export function validateAgentRuntimeSessionContract(session: AgentRuntimeSession): string[] {
 	const errors: string[] = [];
@@ -38,7 +39,7 @@ export function validateAgentRuntimeSessionContract(session: AgentRuntimeSession
 	if (binding.state === "bound" && !binding.nativeSessionId) {
 		errors.push("a bound session requires binding.nativeSessionId");
 	}
-	if (binding.state === "unbound" && binding.nativeSessionId) {
+	if (binding.state === "unbound" && binding.nativeSessionId && !hasPendingNativeSession(binding)) {
 		errors.push("an unbound session must not expose binding.nativeSessionId");
 	}
 	return errors;

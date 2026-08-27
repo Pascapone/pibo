@@ -1585,18 +1585,27 @@ export class PiboSessionRouter {
 					codeRuntimeToolController,
 					portableTools,
 					resources,
-					runtimeBindingPersistence: {
-						compareAndSet: async (nextBinding, expectedRevision) => {
-							const currentSession = this.sessionStore.get(piboSession.id);
-							if (!currentSession) {
-								throw new Error(`Pibo session "${piboSession.id}" no longer exists.`);
-							}
-							const updated = this.persistSessionRuntimeBinding(currentSession, nextBinding, { expectedRevision });
-							binding = updated;
-							bindingSync.expectedRevision = updated.revision;
-							return updated;
+					...(this.sessionStore.updateRuntimeBinding ? {
+						runtimeBindingPersistence: {
+							compareAndSet: async (nextBinding, expectedRevision) => {
+								const currentSession = this.sessionStore.get(piboSession.id);
+								if (!currentSession) {
+									throw new Error(`Pibo session "${piboSession.id}" no longer exists.`);
+								}
+								const updated = this.sessionStore.updateRuntimeBinding!(
+									piboSession.id,
+									{ ...structuredClone(nextBinding), piboSessionId: piboSession.id },
+									{ expectedRevision },
+								);
+								if (!updated) throw new Error(`Pibo session "${piboSession.id}" no longer exists.`);
+								const updatedSession = this.sessionStore.get(piboSession.id);
+								if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
+								binding = updated;
+								bindingSync.expectedRevision = updated.revision;
+								return updated;
+							},
 						},
-					},
+					} : {}),
 					compatibility: {
 						persistSession: this.options.persistSession,
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,

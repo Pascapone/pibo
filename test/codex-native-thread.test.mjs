@@ -27,9 +27,18 @@ import { CodexAppServerRpcResponseError } from "../dist/agent-runtimes/codex-nat
 import { parseCodexNativeRuntimeConfig } from "../dist/agent-runtimes/codex-native/config.js";
 import { startCodexNativeAppServer } from "../dist/agent-runtimes/codex-native/process.js";
 import { isCodexNativeThreadMissingError } from "../dist/agent-runtimes/codex-native/thread.js";
+import {
+	assertCodexNativePendingFirstUseTurn,
+	beginCodexNativeFirstUseAttempt,
+	codexNativePendingFirstUseOwnerLiveness,
+	endCodexNativeFirstUseAttempt,
+	hashCodexNativeFirstUsePrompt,
+	readCodexNativePendingFirstUse,
+} from "../dist/agent-runtimes/codex-native/first-use.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/codex-app-server-thread-fake.mjs", import.meta.url));
 const crashChildFixturePath = fileURLToPath(new URL("./fixtures/codex-first-use-crash-child.mjs", import.meta.url));
+const lockChildFixturePath = fileURLToPath(new URL("./fixtures/codex-state-lock-child.mjs", import.meta.url));
 const testDisposers = new WeakMap();
 
 async function testRoot(t) {
@@ -59,7 +68,11 @@ async function waitFor(predicate, timeoutMs = 5_000) {
 }
 
 async function runCrashChild(args) {
-	const child = spawn(process.execPath, [crashChildFixturePath, ...args], {
+	return await runFixtureChild(crashChildFixturePath, args);
+}
+
+async function runFixtureChild(path, args) {
+	const child = spawn(process.execPath, [path, ...args], {
 		cwd: process.cwd(),
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -74,6 +87,33 @@ async function runCrashChild(args) {
 		child.once("exit", (code, signal) => resolve({ code, signal }));
 	});
 	return { ...result, stdout, stderr };
+}
+
+async function startReadyFixtureChild(path, args) {
+	const child = spawn(process.execPath, [path, ...args], {
+		cwd: process.cwd(),
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	child.stdout.setEncoding("utf8");
+	child.stderr.setEncoding("utf8");
+	let stdout = "";
+	let stderr = "";
+	child.stdout.on("data", (chunk) => { stdout += chunk; });
+	child.stderr.on("data", (chunk) => { stderr += chunk; });
+	await waitFor(() => stdout.includes("ready\n"));
+	let stopped = false;
+	return {
+		child,
+		getOutput: () => ({ stdout, stderr }),
+		stop: async () => {
+			if (stopped) return;
+			stopped = true;
+			if (child.exitCode !== null || child.signalCode !== null) return;
+			const exited = new Promise((resolve) => child.once("exit", resolve));
+			child.kill("SIGKILL");
+			await exited;
+		},
+	};
 }
 
 function runtimeConfig(root) {
@@ -185,6 +225,25 @@ function boundBinding(instanceId, piboSessionId, nativeSessionId) {
 	};
 }
 
+function pendingFirstUseMetadata(overrides = {}) {
+	return {
+		version: 2,
+		state: "pending",
+		threadId: "thread-pending",
+		messageId: "message-pending",
+		promptHash: hashCodexNativeFirstUsePrompt("pending prompt"),
+		attemptId: "11111111-1111-4111-8111-111111111111",
+		ownerPid: 2_147_483_647,
+		ownerProcessStartId: "2147483647:1",
+		ownerProcessInstanceId: "22222222-2222-4222-8222-222222222222",
+		...overrides,
+	};
+}
+
+function linuxProcStat(pid, state, startTicks) {
+	return `${pid} (codex owner) ${state} ${Array.from({ length: 18 }, () => "0").join(" ")} ${startTicks}\n`;
+}
+
 function seededTurns() {
 	return [
 		{
@@ -250,6 +309,84 @@ test("Codex native missing-thread detection covers exact stable App Server error
 	);
 });
 
+test("Codex native first-use owner liveness distinguishes active, dead, and ambiguous evidence", () => {
+	const external = pendingFirstUseMetadata({ ownerPid: 4242, ownerProcessStartId: "4242:100" });
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(external, {
+		platform: "linux", currentPid: 9999, readProcStat: () => linuxProcStat(4242, "S", 100),
+	}), "active");
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(external, {
+		platform: "linux", currentPid: 9999, readProcStat: () => linuxProcStat(4242, "S", 101),
+	}), "dead", "PID reuse proves the recorded owner is dead");
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(external, {
+		platform: "linux", currentPid: 9999, readProcStat: () => linuxProcStat(4242, "Z", 100),
+	}), "dead", "zombies cannot own a first-use attempt");
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(external, {
+		platform: "linux", currentPid: 9999, readProcStat: () => "malformed proc stat",
+	}), "ambiguous");
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(external, {
+		platform: "linux", currentPid: 9999,
+		readProcStat: () => { throw Object.assign(new Error("missing"), { code: "ENOENT" }); },
+	}), "dead");
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(external, {
+		platform: "linux", currentPid: 9999,
+		readProcStat: () => { throw Object.assign(new Error("denied"), { code: "EACCES" }); },
+	}), "ambiguous");
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(external, {
+		platform: "darwin", currentPid: 9999, probePid: () => {},
+	}), "active");
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(external, {
+		platform: "darwin", currentPid: 9999,
+		probePid: () => { throw Object.assign(new Error("missing"), { code: "ESRCH" }); },
+	}), "dead");
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(external, {
+		platform: "darwin", currentPid: 9999,
+		probePid: () => { throw Object.assign(new Error("denied"), { code: "EPERM" }); },
+	}), "ambiguous");
+
+	const owner = beginCodexNativeFirstUseAttempt();
+	const sameProcess = pendingFirstUseMetadata({ ...owner, threadId: "thread-same-process" });
+	try {
+		assert.equal(codexNativePendingFirstUseOwnerLiveness(sameProcess), "active");
+	} finally {
+		endCodexNativeFirstUseAttempt(owner.attemptId);
+	}
+	assert.equal(codexNativePendingFirstUseOwnerLiveness(sameProcess), "dead");
+});
+
+test("Codex native pending first-use metadata rejects every malformed or unbounded field", () => {
+	const bindingFor = (pending) => ({
+		piboSessionId: "ps_pending_validation",
+		runtimeInstanceId: "codex-native-pending-validation",
+		adapterId: CODEX_NATIVE_ADAPTER_ID,
+		nativeSessionId: "thread-pending",
+		state: "unbound",
+		metadata: { codexNativeFirstUse: pending },
+	});
+	assert.deepEqual(readCodexNativePendingFirstUse(bindingFor(pendingFirstUseMetadata())), pendingFirstUseMetadata());
+	for (const invalid of [
+		{ version: 1 },
+		{ state: "ready" },
+		{ threadId: "" },
+		{ threadId: "t".repeat(513) },
+		{ messageId: "" },
+		{ messageId: "m".repeat(513) },
+		{ promptHash: "A".repeat(64) },
+		{ attemptId: "not-a-uuid" },
+		{ ownerPid: 0 },
+		{ ownerPid: 1.5 },
+		{ ownerPid: 2_147_483_648 },
+		{ ownerProcessStartId: "2147483646:1" },
+		{ ownerProcessStartId: `2147483647:${"1".repeat(64)}` },
+		{ ownerProcessInstanceId: "not-a-uuid" },
+		{ unexpected: true },
+	]) {
+		assert.throws(
+			() => readCodexNativePendingFirstUse(bindingFor(pendingFirstUseMetadata(invalid))),
+			/metadata is invalid/,
+		);
+	}
+});
+
 test("Codex App Server fixture recovers a state lock left by a killed owner", async (t) => {
 	const root = await testRoot(t);
 	const config = runtimeConfig(root);
@@ -275,6 +412,56 @@ test("Codex App Server fixture recovers a state lock left by a killed owner", as
 	const state = await replacement.client.request("test/getState", {});
 	assert.equal(typeof state.nextThread, "number");
 	await replacement.close();
+});
+
+test("Codex App Server fixture lock excludes live and ambiguous owners and preserves ownership semantics", async (t) => {
+	const root = await testRoot(t);
+	const lockState = (name) => join(root, `${name}.json`);
+
+	const oldLivePath = lockState("old-live");
+	const oldLive = await startReadyFixtureChild(lockChildFixturePath, ["hold-old-live", oldLivePath]);
+	registerTestDisposer(t, oldLive.stop);
+	const oldLiveContender = await runFixtureChild(lockChildFixturePath, ["try-acquire", oldLivePath]);
+	assert.equal(oldLiveContender.code, 0);
+	assert.match(oldLiveContender.stdout, /^blocked:Timed out waiting/);
+	assert.equal(oldLive.getOutput().stderr, "");
+	await oldLive.stop();
+	assert.match((await runFixtureChild(lockChildFixturePath, ["try-acquire", oldLivePath])).stdout, /^acquired$/m);
+
+	const ownerlessPath = lockState("ownerless");
+	const ownerless = await startReadyFixtureChild(lockChildFixturePath, ["stall-owner-creation", ownerlessPath]);
+	registerTestDisposer(t, ownerless.stop);
+	assert.match(
+		(await runFixtureChild(lockChildFixturePath, ["try-acquire", ownerlessPath])).stdout,
+		/^blocked:Timed out waiting.*unknown/m,
+	);
+	await ownerless.stop();
+	await rm(`${ownerlessPath}.lock`, { recursive: true, force: true });
+
+	const deadPath = lockState("dead");
+	assert.equal((await runFixtureChild(lockChildFixturePath, ["acquire-and-exit", deadPath])).code, 23);
+	assert.match((await runFixtureChild(lockChildFixturePath, ["try-acquire", deadPath])).stdout, /^acquired$/m);
+
+	const ambiguousPath = lockState("ambiguous");
+	assert.equal((await runFixtureChild(lockChildFixturePath, ["acquire-and-exit", ambiguousPath])).code, 23);
+	assert.match(
+		(await runFixtureChild(lockChildFixturePath, ["try-ambiguous", ambiguousPath])).stdout,
+		/^blocked:Timed out waiting/m,
+	);
+	assert.match((await runFixtureChild(lockChildFixturePath, ["try-acquire", ambiguousPath])).stdout, /^acquired$/m);
+
+	const successorPath = lockState("successor");
+	assert.match(
+		(await runFixtureChild(lockChildFixturePath, ["successor-token", successorPath])).stdout,
+		/^successor-preserved$/m,
+	);
+	await rm(`${successorPath}.lock`, { recursive: true, force: true });
+
+	const asyncPath = lockState("async");
+	assert.match(
+		(await runFixtureChild(lockChildFixturePath, ["async-callback", asyncPath])).stdout,
+		/^Fixture state-lock callbacks must be synchronous\.:lock-released$/m,
+	);
 });
 
 test("Codex native driver declares implemented lifecycle, turn-output, and history capabilities", async (t) => {
@@ -800,6 +987,94 @@ test("Codex native first-message branches bind only when their first message bec
 	await Promise.all([raceRouterA.disposeAll(), raceRouterB.disposeAll()]);
 });
 
+test("Codex native router rejects first use when the session store lacks durable binding CAS", async (t) => {
+	const root = await testRoot(t);
+	const instanceId = "codex-native-no-binding-cas";
+	const profileName = "codex-native-no-binding-cas-profile";
+	const piboSessionId = "ps_codex_no_binding_cas";
+	const config = runtimeConfig(root);
+	const pluginRegistry = PiboPluginRegistry.create({
+		plugins: [piboCorePlugin, definePiboPlugin({
+			id: "test.codex-native-no-binding-cas",
+			register(api) {
+				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
+				api.registerAgentRuntimeInstance({ id: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, config });
+				api.registerProfile({
+					name: profileName,
+					create() {
+						return new InitialSessionContextBuilder(profileName)
+							.withAgentRuntime(instanceId)
+							.withBuiltinTools("disabled")
+							.withAutoContextFiles(false)
+							.withToolPackages({ goalControl: false })
+							.createSession();
+					},
+				});
+			},
+		})],
+	});
+	const backing = new InMemoryPiboSessionStore();
+	backing.create({
+		id: piboSessionId,
+		channel: "test",
+		kind: "branch",
+		profile: profileName,
+		workspace: root,
+		runtimeBinding: {
+			runtimeInstanceId: instanceId,
+			adapterId: CODEX_NATIVE_ADAPTER_ID,
+			state: "unbound",
+		},
+	});
+	const storeWithoutBindingUpdates = {
+		get: backing.get.bind(backing),
+		list: backing.list.bind(backing),
+		create: backing.create.bind(backing),
+		update: backing.update.bind(backing),
+		delete: backing.delete.bind(backing),
+		find: backing.find.bind(backing),
+		getRuntimeBinding: backing.getRuntimeBinding.bind(backing),
+	};
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry,
+		sessionStore: storeWithoutBindingUpdates,
+		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
+	});
+	registerTestDisposer(t, () => router.disposeAll());
+	const assistantReplies = [];
+	router.subscribe((event) => {
+		if (event.type === "assistant_message") assistantReplies.push(event);
+	});
+	await assert.rejects(router.emitMessageAndWaitForReply({
+		type: "message",
+		piboSessionId,
+		id: "codex-no-binding-cas-message",
+		text: "must fail before native execution",
+		source: "user",
+	}, 5_000), /requires revisioned runtime-binding persistence/);
+	assert.deepEqual(assistantReplies, []);
+	assert.equal(backing.getRuntimeBinding(piboSessionId).revision, 1);
+	assert.equal(backing.getRuntimeBinding(piboSessionId).state, "unbound");
+	assert.equal(backing.getRuntimeBinding(piboSessionId).nativeSessionId, undefined);
+
+	const inspection = await startCodexNativeAppServer({
+		config,
+		runtimeInstanceId: instanceId,
+		piboSessionId: "ps_codex_no_binding_cas_inspection",
+		sessionGeneration: "no-binding-cas-inspection",
+		workspace: root,
+		clientVersion: "thread-test",
+	});
+	registerTestDisposer(t, () => inspection.close());
+	const state = await inspection.client.request("test/getState", {});
+	assert.equal(
+		state.turnRequestMessageIds.some((request) => request.clientUserMessageId === "codex-no-binding-cas-message"),
+		false,
+	);
+	await inspection.close();
+});
+
 test("Codex native recovers the exact first turn after a child crashes between native durability and binding promotion", async (t) => {
 	const root = await testRoot(t);
 	const dbPath = join(root, "pibo.sqlite");
@@ -934,6 +1209,178 @@ test("Codex native recovers the exact first turn after a child crashes between n
 		pending.nativeSessionId,
 	);
 	await afterRecovery.close();
+});
+
+test("Codex native pending recovery proves exact SQLite message and prompt identity", async (t) => {
+	const root = await testRoot(t);
+	const instanceId = "codex-native-exact-pending";
+	const { registry } = createAdapter(root, instanceId);
+	const store = new PiboDataSessionStore(join(root, "pibo.sqlite"));
+	registerTestDisposer(t, () => store.close());
+	const config = runtimeConfig(root);
+	const terminalTurn = ({ id, messageId, text, extraUserItems = [] }) => ({
+		id: `turn-${id}`,
+		status: "completed",
+		startedAt: 1_780_000_100,
+		completedAt: 1_780_000_101,
+		items: [
+			{
+				id: `user-${id}`,
+				type: "userMessage",
+				...(messageId === null ? {} : { clientId: messageId }),
+				content: [{ type: "text", text }],
+			},
+			...extraUserItems,
+		],
+	});
+	const createPendingCase = async ({ id, pending = {}, turns, seed = true }) => {
+		const piboSessionId = `ps_codex_exact_${id}`;
+		const threadId = `thread-exact-${id}`;
+		if (seed) {
+			await seedThread(config, {
+				runtimeInstanceId: instanceId,
+				threadId,
+				workspace: root,
+				cwd: root,
+				preview: id,
+				turns,
+			});
+		}
+		store.create({
+			id: piboSessionId,
+			channel: "test",
+			kind: "branch",
+			profile: profile(instanceId).profileName,
+			workspace: root,
+			runtimeBinding: {
+				runtimeInstanceId: instanceId,
+				adapterId: CODEX_NATIVE_ADAPTER_ID,
+				nativeSessionId: threadId,
+				state: "unbound",
+				protocol: "codex-app-server-v2",
+				protocolVersion: "0.147.0",
+				metadata: {
+					piboPendingNativeSession: true,
+					codexNativeFirstUse: pendingFirstUseMetadata({
+						threadId,
+						messageId: `message-${id}`,
+						promptHash: hashCodexNativeFirstUsePrompt(`prompt-${id}`),
+						...pending,
+					}),
+				},
+			},
+		});
+		const binding = store.getRuntimeBinding(piboSessionId);
+		const input = openInput(instanceId, root, binding, piboSessionId, {}, "branch");
+		input.piboSession = store.get(piboSessionId);
+		input.services.runtimeBindingPersistence = storeBindingPersistence(store, piboSessionId);
+		return { binding, input, piboSessionId, threadId };
+	};
+
+	for (const fallback of [false, true]) {
+		const id = fallback ? "exact_hash_fallback" : "exact_client_id";
+		const exact = await createPendingCase({
+			id,
+			turns: [terminalTurn({ id, messageId: fallback ? null : `message-${id}`, text: `prompt-${id}` })],
+		});
+		const session = await registry.openSession(instanceId, exact.input);
+		assert.equal(session.getBinding().state, "bound");
+		assert.equal(session.getBinding().nativeSessionId, exact.threadId);
+		assert.equal(store.getRuntimeBinding(exact.piboSessionId).state, "unbound");
+		await session.dispose();
+	}
+
+	const mismatchedMessage = await createPendingCase({
+		id: "message_mismatch",
+		turns: [terminalTurn({ id: "message_mismatch", messageId: "another-message", text: "prompt-message_mismatch" })],
+	});
+	await assert.rejects(registry.openSession(instanceId, mismatchedMessage.input), /does not match the persisted message id/);
+
+	const mismatchedPrompt = await createPendingCase({
+		id: "prompt_mismatch",
+		turns: [terminalTurn({ id: "prompt_mismatch", messageId: "message-prompt_mismatch", text: "another prompt" })],
+	});
+	await assert.rejects(registry.openSession(instanceId, mismatchedPrompt.input), /does not match the persisted prompt hash/);
+
+	const unrelated = await createPendingCase({
+		id: "unrelated",
+		turns: [terminalTurn({ id: "unrelated", messageId: "unrelated-message", text: "unrelated prompt" })],
+	});
+	await assert.rejects(registry.openSession(instanceId, unrelated.input), /does not match the persisted (?:message id|prompt hash)/);
+
+	const multiple = await createPendingCase({
+		id: "multiple",
+		turns: [
+			terminalTurn({ id: "multiple-a", messageId: "message-multiple", text: "prompt-multiple" }),
+			terminalTurn({ id: "multiple-b", messageId: "message-multiple", text: "prompt-multiple" }),
+		],
+	});
+	await assert.rejects(registry.openSession(instanceId, multiple.input), /missing, multiple, or belongs to another thread/);
+
+	const ambiguous = await createPendingCase({
+		id: "ambiguous",
+		turns: [terminalTurn({
+			id: "ambiguous",
+			messageId: "message-ambiguous",
+			text: "prompt-ambiguous",
+			extraUserItems: [{
+				id: "user-ambiguous-extra",
+				type: "userMessage",
+				clientId: "message-ambiguous",
+				content: [{ type: "text", text: "prompt-ambiguous" }],
+			}],
+		})],
+	});
+	await assert.rejects(registry.openSession(instanceId, ambiguous.input), /ambiguous user input evidence/);
+
+	for (const [id, pending] of [
+		["malformed", { attemptId: "not-a-uuid" }],
+		["oversized", { messageId: "m".repeat(513) }],
+	]) {
+		const invalid = await createPendingCase({ id, pending, turns: [], seed: false });
+		assert.throws(() => readCodexNativePendingFirstUse(invalid.binding), /metadata is invalid/);
+		await assert.rejects(registry.openSession(instanceId, invalid.input), /metadata is invalid/);
+	}
+
+	const currentOwner = beginCodexNativeFirstUseAttempt();
+	endCodexNativeFirstUseAttempt(currentOwner.attemptId);
+	const ambiguousOwner = await createPendingCase({
+		id: "ambiguous_owner",
+		pending: {
+			...currentOwner,
+			ownerProcessInstanceId: "33333333-3333-4333-8333-333333333333",
+		},
+		turns: [],
+		seed: false,
+	});
+	await assert.rejects(registry.openSession(instanceId, ambiguousOwner.input), /ownership is ambiguous/);
+	assert.equal(store.getRuntimeBinding(ambiguousOwner.piboSessionId).nativeSessionId, ambiguousOwner.threadId);
+	assert.equal(store.getRuntimeBinding(ambiguousOwner.piboSessionId).state, "unbound");
+
+	for (const [id, activeMessageId, promptText] of [
+		["retry_message_mismatch", "different-message", "prompt-retry_message_mismatch"],
+		["retry_prompt_mismatch", "message-retry_prompt_mismatch", "different prompt"],
+	]) {
+		const retry = await createPendingCase({ id, turns: [] });
+		retry.input.productContext = {
+			piboSessionId: retry.piboSessionId,
+			getActiveMessage: () => ({ id: activeMessageId, source: "user" }),
+		};
+		const session = await registry.openSession(instanceId, retry.input);
+		await assert.rejects(session.prompt({ text: promptText, source: "rpc" }), /does not match the persisted message id and prompt/);
+		await session.dispose();
+	}
+
+	const exactRetry = await createPendingCase({ id: "exact_retry", turns: [] });
+	exactRetry.input.productContext = {
+		piboSessionId: exactRetry.piboSessionId,
+		getActiveMessage: () => ({ id: "message-exact_retry", source: "user" }),
+	};
+	const retrySession = await registry.openSession(instanceId, exactRetry.input);
+	await retrySession.prompt({ text: "prompt-exact_retry", source: "rpc" });
+	assert.equal(retrySession.getBinding().state, "bound");
+	assert.equal(retrySession.getBinding().nativeSessionId, exactRetry.threadId);
+	await retrySession.dispose();
 });
 
 test("Codex native reconciles pending first use across pre-turn failures, process exit, failed turns, retries, and deletion", async (t) => {
