@@ -122,9 +122,10 @@ test("transcript projection keeps a nonzero reasoning identity when an empty ear
 	];
 	const projected = view([
 		event(1, "message_queued", "2026-07-14T10:00:00.000Z", { eventId: "turn-parts", text: "Inspect", source: "user", queuedMessages: 1 }),
-		event(2, "thinking_finished", "2026-07-14T10:00:01.000Z", { eventId: "turn-parts", thinkingIndex: 0, contentIndex: 0, text: "" }),
-		event(3, "thinking_finished", "2026-07-14T10:00:02.000Z", { eventId: "turn-parts", thinkingIndex: 1, contentIndex: 0, text: "Visible reasoning" }),
-		event(4, "assistant_message", "2026-07-14T10:00:03.000Z", { eventId: "turn-parts", assistantIndex: 2, contentIndex: 1, text: "Visible answer" }),
+		event(2, "message_started", "2026-07-14T10:00:00.000Z", { eventId: "turn-parts", text: "Inspect", source: "user" }),
+		event(3, "thinking_finished", "2026-07-14T10:00:01.000Z", { eventId: "turn-parts", thinkingIndex: 0, contentIndex: 0, text: "" }),
+		event(4, "thinking_finished", "2026-07-14T10:00:02.000Z", { eventId: "turn-parts", thinkingIndex: 1, contentIndex: 0, text: "Visible reasoning" }),
+		event(5, "assistant_message", "2026-07-14T10:00:03.000Z", { eventId: "turn-parts", assistantIndex: 2, contentIndex: 1, text: "Visible answer" }),
 	], "idle", transcriptEntries);
 	const reasoning = projected.nodes.find((node) => node.type === "model.reasoning");
 	const assistant = projected.nodes.find((node) => node.type === "assistant.message");

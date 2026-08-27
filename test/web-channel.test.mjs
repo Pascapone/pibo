@@ -1211,7 +1211,7 @@ test("new Chat Web traces use Pibo product history without reading native runtim
 test("origin branch trace routes reconcile native runtime turns to stable product identities", async () => {
 	let readHistoryCalls = 0;
 	const capabilities = fakeRuntimeCapabilities();
-	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, sessions, emitOutput, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		async emit(event) {
 			return {
@@ -1299,6 +1299,14 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 		emitOutput({ type: "message_started", piboSessionId: branch.id, eventId: "stable-Y", text: "branch prompt", source: "user" });
 		emitOutput({ type: "assistant_message", piboSessionId: branch.id, eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "branch answer" });
 		emitOutput({ type: "message_finished", piboSessionId: branch.id, eventId: "stable-Y", source: "user" });
+		await new Promise((resolve) => setImmediate(resolve));
+		const db = new DatabaseSync(dataStorePath);
+		try {
+			assert.ok(db.prepare("UPDATE event_log SET created_at = ? WHERE session_id = ? AND event_id = ?")
+				.run("2026-08-27T12:00:00.000Z", branch.id, "stable-Y").changes >= 1);
+		} finally {
+			db.close();
+		}
 
 		const legacyResponse = await fetch(
 			`${baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(branch.id)}`,
