@@ -1856,15 +1856,19 @@ export class PiboSessionRouter {
 		const source = this.resolvePiboSession(event.piboSessionId);
 		const previousBinding = this.resolveSessionRuntimeBinding(source);
 		const liveBinding = this.sessions.get(event.piboSessionId)?.getRuntimeBinding();
+		const currentNativeSessionId = result.current.piSessionId || undefined;
 		const currentBinding: RuntimeSessionBinding = {
 			...previousBinding,
 			...liveBinding,
 			piboSessionId: source.id,
-			nativeSessionId: result.current.piSessionId,
-			state: "bound",
-			locator: result.current.sessionFile
+			nativeSessionId: currentNativeSessionId,
+			state: currentNativeSessionId ? "bound" : "unbound",
+			locator: currentNativeSessionId && result.current.sessionFile
 				? { kind: "local-file", value: result.current.sessionFile }
-				: liveBinding?.locator ?? previousBinding.locator,
+				: currentNativeSessionId
+					? liveBinding?.locator ?? previousBinding.locator
+					: undefined,
+			metadata: currentNativeSessionId ? liveBinding?.metadata ?? previousBinding.metadata : undefined,
 		};
 
 		if (event.action === "session.fork" || event.action === "session.clone") {
@@ -1876,10 +1880,9 @@ export class PiboSessionRouter {
 			} catch (error) {
 				transitionError = error;
 			}
-			// The live adapter moved to the derived native session before Pibo
-			// persisted its product identity. Always discard that live handle so
-			// the source cannot keep routing against the derived binding when
-			// persistence fails or the caller retries.
+			// Always discard the source live handle after derivation. Bound native
+			// branches move that handle to the derived session; first-message Codex
+			// branches intentionally leave it on the source and persist unbound.
 			try {
 				await this.resetCachedSession(event.piboSessionId);
 			} catch (resetError) {
@@ -1915,8 +1918,8 @@ export class PiboSessionRouter {
 			runtimeBinding: {
 				runtimeInstanceId: currentBinding.runtimeInstanceId,
 				adapterId: currentBinding.adapterId,
-				nativeSessionId: currentBinding.nativeSessionId ?? result.current.piSessionId,
-				state: "bound",
+				nativeSessionId: currentBinding.nativeSessionId,
+				state: currentBinding.state,
 				protocol: currentBinding.protocol,
 				protocolVersion: currentBinding.protocolVersion,
 				adapterVersion: currentBinding.adapterVersion,

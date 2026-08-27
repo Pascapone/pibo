@@ -156,10 +156,23 @@ function nativeOperationToPiCompatibility(
 	piboSessionId: string,
 	result: AgentRuntimeSessionOperationResult,
 ): PiboSessionOperationResult {
+	// Keep the legacy Pi-shaped result while allowing an adapter-native fork to
+	// describe a fresh branch that has no native session yet.
+	const current = result.current.nativeSessionId
+		? nativeSnapshotToPiCompatibility(session, result.current)
+		: {
+			piSessionId: "",
+			leafId: result.current.leafId ?? null,
+			cwd: result.current.cwd,
+			sessionName: result.current.name,
+			parentSessionFile: result.current.parentLocator?.kind === "local-file"
+				? result.current.parentLocator.value
+				: undefined,
+		};
 	return {
 		piboSessionId,
 		previous: nativeSnapshotToPiCompatibility(session, result.previous),
-		current: nativeSnapshotToPiCompatibility(session, result.current),
+		current,
 		cancelled: result.cancelled,
 		selectedText: result.selectedText,
 		editorText: result.editorText,

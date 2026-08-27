@@ -381,15 +381,14 @@ test("Codex native thread controls list and fork through stable App Server metho
 	);
 	registerTestDisposer(t, () => firstMessageSession.dispose());
 	const firstMessageResult = await firstMessageSession.controls.forkSession("user-a");
+	assert.equal(firstMessageResult.current.nativeSessionId, undefined);
 	assert.equal(firstMessageResult.current.leafId, null);
 	assert.equal(firstMessageResult.summaryEntryId, "user-a");
 	assert.ok(firstMessageResult.selectedText);
 	assert.doesNotMatch(firstMessageResult.selectedText, /fixture-user-secret/);
 	const firstMessageState = await getCodexNativeClient(firstMessageSession).request("test/getState", {});
-	const firstMessageStart = firstMessageState.resourceRequests.findLast((request) => request.method === "thread/start");
-	assert.equal(firstMessageStart.approvalPolicy, "never");
-	assert.equal(firstMessageStart.sandbox, "danger-full-access");
-	assert.equal(firstMessageState.threadSettings[firstMessageResult.current.nativeSessionId].personality, "pragmatic");
+	assert.equal(firstMessageState.resourceRequests.some((request) => request.method === "thread/start"), false);
+	assert.equal(firstMessageSession.getBinding().nativeSessionId, "thread-source");
 
 	const result = await session.controls.forkSession("user-c");
 	assert.equal(result.previous.nativeSessionId, "thread-source");
@@ -406,6 +405,8 @@ test("Codex native thread controls list and fork through stable App Server metho
 	assert.equal(cloned.current.leafId, "turn-b");
 	const cloneBinding = session.getBinding();
 	assert.equal(cloneBinding.nativeSessionId, cloned.current.nativeSessionId);
+	const lifecycleState = await getCodexNativeClient(session).request("test/getState", {});
+	assert.equal(lifecycleState.resourceRequests.filter((request) => request.method === "thread/fork").length, 2);
 	const forkHistory = await adapter.readHistory({ binding: cloneBinding, workspace: root, limit: 2 });
 	assert.equal(forkHistory.entries.some((entry) => entry.type === "message" && entry.nativeTurnId === "turn-c"), false);
 	assert.equal(forkHistory.entries.some((entry) => entry.type === "message" && entry.nativeTurnId === "turn-b"), true);
@@ -436,6 +437,157 @@ test("Codex native binding inspection marks a missing thread without creating a 
 		adapter.openSession(openInput(instanceId, root, resolved)),
 		(error) => error instanceof AgentRuntimeBindingMissingError,
 	);
+});
+
+test("Codex native first-message branches bind only when their first message becomes durable", async (t) => {
+	const root = await testRoot(t);
+	const instanceId = "codex-native-first-message-branch";
+	const profileName = "codex-native-first-message-branch-profile";
+	const sourcePiboSessionId = "ps_codex_first_message_source";
+	const config = runtimeConfig(root);
+	await seedThread(config, {
+		runtimeInstanceId: instanceId,
+		threadId: "thread-first-message-source",
+		workspace: root,
+		cwd: root,
+		name: "First-message source",
+		preview: "hello",
+		turns: seededTurns(),
+	});
+	const pluginRegistry = PiboPluginRegistry.create({
+		plugins: [piboCorePlugin, definePiboPlugin({
+			id: "test.codex-native-first-message-branch",
+			register(api) {
+				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
+				api.registerAgentRuntimeInstance({
+					id: instanceId,
+					adapterId: CODEX_NATIVE_ADAPTER_ID,
+					config,
+				});
+				api.registerProfile({
+					name: profileName,
+					create() {
+						return new InitialSessionContextBuilder(profileName)
+							.withAgentRuntime(instanceId)
+							.withBuiltinTools("disabled")
+							.withAutoContextFiles(false)
+							.withToolPackages({ goalControl: false })
+							.createSession();
+					},
+				});
+			},
+		})],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: sourcePiboSessionId,
+		channel: "test",
+		kind: "chat",
+		profile: profileName,
+		workspace: root,
+		title: "Durable first-message branch",
+		activeModel: { provider: "openai-codex", id: "gpt-5.6-sol" },
+		metadata: { chatRoomId: "room_first_message", branchFixture: "preserved" },
+		runtimeBinding: boundBinding(instanceId, sourcePiboSessionId, "thread-first-message-source"),
+	});
+	const resources = new PiboRuntimeResourceService({ rootDir: join(root, "resources") });
+	const sourceRouter = new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry,
+		sessionStore: store,
+		runtimeResourceService: resources,
+	});
+	const forked = await sourceRouter.emit({
+		type: "execution",
+		piboSessionId: sourcePiboSessionId,
+		action: "session.fork",
+		params: { entryId: "user-a" },
+	});
+	assert.equal(forked.type, "execution_result");
+	const branchPiboSessionId = forked.result.piboSessionId;
+	const branch = store.get(branchPiboSessionId);
+	assert.equal(branch.kind, "branch");
+	assert.equal(branch.originId, sourcePiboSessionId);
+	assert.equal(branch.title, "Durable first-message branch");
+	assert.equal(branch.workspace, root);
+	assert.deepEqual(branch.activeModel, { provider: "openai-codex", id: "gpt-5.6-sol" });
+	assert.equal(branch.metadata.chatRoomId, "room_first_message");
+	assert.equal(branch.metadata.branchFixture, "preserved");
+	assert.equal(branch.metadata.originAction, "session.fork");
+	assert.equal(branch.metadata.originRuntimeNativeSessionId, "thread-first-message-source");
+	assert.equal(branch.runtimeBinding.state, "unbound");
+	assert.equal(branch.runtimeBinding.nativeSessionId, undefined);
+	assert.equal(branch.runtimeBinding.protocol, "codex-app-server-v2");
+	assert.equal(branch.runtimeBinding.protocolVersion, "0.147.0");
+	assert.equal(store.getRuntimeBinding(sourcePiboSessionId).nativeSessionId, "thread-first-message-source");
+	const emptyHistory = await pluginRegistry.requireAgentRuntimeAdapter(instanceId).readHistory({
+		binding: branch.runtimeBinding,
+		workspace: root,
+		limit: 20,
+	});
+	assert.deepEqual(emptyHistory.entries, []);
+
+	const beforeFirstMessage = await startCodexNativeAppServer({
+		config,
+		runtimeInstanceId: instanceId,
+		piboSessionId: "ps_codex_first_message_inspection",
+		sessionGeneration: "before-first-message",
+		workspace: root,
+		clientVersion: "thread-test",
+	});
+	const beforeState = await beforeFirstMessage.client.request("test/getState", {});
+	assert.equal(beforeState.resourceRequests.some((request) => request.method === "thread/start"), false);
+	await beforeFirstMessage.close();
+	await sourceRouter.disposeAll();
+
+	const firstUseRouter = new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry,
+		sessionStore: store,
+		runtimeResourceService: resources,
+	});
+	const reply = await firstUseRouter.emitMessageAndWaitForReply({
+		type: "message",
+		piboSessionId: branchPiboSessionId,
+		id: "codex-first-message-after-reopen",
+		text: "first message after source reset",
+		source: "user",
+	}, 5_000);
+	assert.equal(reply.text, "Codex answer.");
+	const durableBranchBinding = store.getRuntimeBinding(branchPiboSessionId);
+	assert.equal(durableBranchBinding.state, "bound");
+	assert.match(durableBranchBinding.nativeSessionId, /^thread-/);
+	assert.notEqual(durableBranchBinding.nativeSessionId, "thread-first-message-source");
+	assert.equal(store.getRuntimeBinding(sourcePiboSessionId).nativeSessionId, "thread-first-message-source");
+	const firstMessageState = await startCodexNativeAppServer({
+		config,
+		runtimeInstanceId: instanceId,
+		piboSessionId: "ps_codex_first_message_durable_inspection",
+		sessionGeneration: "after-first-message",
+		workspace: root,
+		clientVersion: "thread-test",
+	});
+	const durableState = await firstMessageState.client.request("test/getState", {});
+	assert.equal(durableState.resourceRequests.filter((request) => request.method === "thread/start").length, 1);
+	assert.ok(durableState.threads[durableBranchBinding.nativeSessionId]);
+	assert.equal(durableState.turnRequests.at(-1).threadId, durableBranchBinding.nativeSessionId);
+	await firstMessageState.close();
+	await firstUseRouter.disposeAll();
+
+	const reopenedRouter = new PiboSessionRouter({
+		persistSession: false,
+		pluginRegistry,
+		sessionStore: store,
+		runtimeResourceService: resources,
+	});
+	const reopened = await reopenedRouter.emit({
+		type: "execution",
+		piboSessionId: branchPiboSessionId,
+		action: "status",
+	});
+	assert.equal(reopened.type, "execution_result");
+	assert.equal(store.getRuntimeBinding(branchPiboSessionId).nativeSessionId, durableBranchBinding.nativeSessionId);
+	await reopenedRouter.disposeAll();
 });
 
 test("Codex native router resumes a durable binding after restart and marks deletion missing", async (t) => {

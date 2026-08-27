@@ -441,7 +441,7 @@ export class CodexNativeThreadController {
 		const target = codexThreadForkTargets(this.currentThread).find((candidate) => candidate.entryId === entryId);
 		if (target) {
 			if (!target.previousTurnId) {
-				return await this.startBeforeFirstTurn(runtimeInstanceId, workspace, target, validateThread);
+				return this.branchBeforeFirstTurn(runtimeInstanceId, workspace, target);
 			}
 			return await this.forkAt(runtimeInstanceId, workspace, target.previousTurnId, validateThread, target);
 		}
@@ -507,41 +507,23 @@ export class CodexNativeThreadController {
 		}
 	}
 
-	private async startBeforeFirstTurn(
+	private branchBeforeFirstTurn(
 		runtimeInstanceId: string,
 		workspace: string,
 		target: AgentRuntimeForkCandidate,
-		validateThread?: (threadId: string) => Promise<void>,
-	): Promise<AgentRuntimeSessionOperationResult> {
+	): AgentRuntimeSessionOperationResult {
 		const previousThread = this.currentThread;
-		const previous = codexThreadSnapshot(runtimeInstanceId, previousThread);
-		try {
-			const started = await CodexNativeThreadController.start(this.client, workspace, {
-				model: this.currentConfiguration.model,
-				serviceTier: this.currentConfiguration.serviceTier,
-				...(this.inheritedSelection.personality !== undefined ? { personality: this.inheritedSelection.personality } : {}),
-				...(this.inheritedSelection.approvalPolicy ? { approvalPolicy: this.inheritedSelection.approvalPolicy } : {}),
-				...(this.inheritedSelection.sandbox ? { sandbox: this.inheritedSelection.sandbox } : {}),
-				...(this.inheritedSelection.config ? { config: structuredClone(this.inheritedSelection.config) } : {}),
-				...(this.inheritedSelection.developerInstructions
-					? { developerInstructions: this.inheritedSelection.developerInstructions }
-					: {}),
-			});
-			const forked = started.thread;
-			await validateThread?.(forked.id);
-			this.knownThreads.set(previousThread.id, structuredClone(previousThread));
-			this.knownThreads.set(forked.id, structuredClone(forked));
-			this.currentThread = forked;
-			this.currentConfiguration = started.configuration;
-			return {
-				previous,
-				current: codexThreadSnapshot(runtimeInstanceId, forked),
-				cancelled: false,
-				selectedText: target.text,
-				summaryEntryId: target.entryId,
-			};
-		} catch (error) {
-			return normalizeThreadError(error, previousThread.id);
-		}
+		return {
+			previous: codexThreadSnapshot(runtimeInstanceId, previousThread),
+			current: {
+				adapterId: CODEX_NATIVE_ADAPTER_ID,
+				runtimeInstanceId,
+				cwd: workspace,
+				leafId: null,
+			},
+			cancelled: false,
+			selectedText: target.text,
+			summaryEntryId: target.entryId,
+		};
 	}
 }

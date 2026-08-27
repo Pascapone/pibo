@@ -329,8 +329,10 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 					entryId,
 					async (threadId) => await this.resourceDelivery.verifyThread(this.process.client, threadId),
 				);
-				this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
-				this.updateBindingFromCurrentThread();
+				if (result.current.nativeSessionId) {
+					this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
+					this.updateBindingFromCurrentThread();
+				}
 				return result;
 			}),
 			cloneSession: async () => await this.runIdleOperation(async () => {
