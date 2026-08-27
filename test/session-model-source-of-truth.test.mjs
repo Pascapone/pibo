@@ -8,7 +8,11 @@ import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
 import { InitialSessionContext } from "../dist/core/profiles.js";
-import { resolvePiboSessionActiveModel } from "../dist/core/session-model.js";
+import {
+	resolvePiboSessionActiveModel,
+	resolvePiboSessionModelFallbacks,
+	withPiboSessionModelFallbacksMetadata,
+} from "../dist/core/session-model.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 
@@ -96,6 +100,51 @@ test("profile model pins win over defaults when first frozen", () => {
 			modelDefaults: { subagent },
 		}),
 		subagentPin,
+	);
+});
+
+test("provider fallback order is cloned, de-duplicated, and frozen in session metadata", () => {
+	const store = new InMemoryPiboSessionStore();
+	const profile = new InitialSessionContext({
+		profileName: "fallbacks",
+		mainModel: gpt,
+		mainModelFallbacks: [kimi, gpt, subagent, kimi],
+	});
+	const session = store.create({ channel: "test", kind: "chat", profile: "fallbacks", activeModel: gpt });
+	const configured = resolvePiboSessionModelFallbacks({ profile, piboSession: session, activeModel: gpt });
+	assert.deepEqual(configured, [kimi, subagent]);
+	configured[0].id = "mutated";
+	assert.deepEqual(profile.mainModelFallbacks, [kimi, gpt, subagent, kimi]);
+
+	const frozen = store.update(session.id, {
+		metadata: withPiboSessionModelFallbacksMetadata(session.metadata, [subagent, kimi]),
+	});
+	assert.deepEqual(
+		resolvePiboSessionModelFallbacks({
+			profile: new InitialSessionContext({ profileName: "fallbacks", mainModelFallbacks: [{ provider: "google", id: "gemini" }] }),
+			piboSession: frozen,
+			activeModel: gpt,
+		}),
+		[subagent, kimi],
+	);
+});
+
+test("subagent provider fallbacks come from the child session metadata", () => {
+	const store = new InMemoryPiboSessionStore();
+	const session = store.create({
+		channel: "test",
+		kind: "subagent",
+		profile: "child",
+		metadata: withPiboSessionModelFallbacksMetadata(undefined, [kimi, subagent]),
+	});
+	assert.deepEqual(
+		resolvePiboSessionModelFallbacks({
+			profile: new InitialSessionContext({ profileName: "child", mainModelFallbacks: [gpt] }),
+			piboSession: session,
+			parentPiSessionId: "parent",
+			activeModel: gpt,
+		}),
+		[kimi, subagent],
 	);
 });
 

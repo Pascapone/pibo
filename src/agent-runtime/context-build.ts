@@ -30,6 +30,7 @@ export function profileWithRuntimeInstance(profile: InitialSessionContext, runti
 		parentSessionId: profile.parentSessionId,
 		model: undefined,
 		mainModel: undefined,
+		mainModelFallbacks: [],
 		subagentModel: undefined,
 		thinkingLevel: profile.thinkingLevel,
 		mainThinkingLevel: profile.mainThinkingLevel,
@@ -254,6 +255,7 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		metadata: {
 			activeModel: runtimeManifest.effectiveModel,
 			mainModel: profile.mainModel,
+			mainModelFallbacks: profile.mainModelFallbacks,
 			subagentModel: profile.subagentModel,
 			mainThinkingLevel: profile.mainThinkingLevel ?? profile.thinkingLevel,
 			subagentThinkingLevel: profile.subagentThinkingLevel ?? profile.thinkingLevel,

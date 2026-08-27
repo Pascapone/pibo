@@ -92,6 +92,9 @@ function readPendingAgentDraft(): PendingAgentDraft | null {
 			nativeSubagents: typeof parsed.draft.nativeSubagents === "boolean"
 				? parsed.draft.nativeSubagents
 				: undefined,
+			mainModelFallbacks: Array.isArray(parsed.draft.mainModelFallbacks)
+				? parsed.draft.mainModelFallbacks
+				: [],
 			autoContextFiles: typeof parsed.draft.autoContextFiles === "boolean"
 				? parsed.draft.autoContextFiles
 				: true,
@@ -837,6 +840,7 @@ export function AgentsView({
 							title="Model & Reasoning"
 							modelTitle="Main Agent Model"
 							model={draft.mainModel}
+							modelFallbacks={draft.mainModelFallbacks}
 							thinking={draft.mainThinkingLevel}
 							fast={draft.mainFast ?? false}
 							modelCatalog={runtimeModelCatalog}
@@ -846,6 +850,7 @@ export function AgentsView({
 							thinkingUnavailableReason={mainReasoningUnavailableReason}
 							thinkingValues={mainReasoningValues}
 							onModelChange={(mainModel) => setDraft((current) => ({ ...current, mainModel }))}
+							onModelFallbacksChange={(mainModelFallbacks) => setDraft((current) => ({ ...current, mainModelFallbacks }))}
 							onThinkingChange={(mainThinkingLevel) => setDraft((current) => ({ ...current, mainThinkingLevel }))}
 							onFastChange={(mainFast) => setDraft((current) => ({ ...current, mainFast }))}
 						/>
@@ -1251,7 +1256,7 @@ function SubagentDesigner({
 								</label>
 								<label className="grid gap-1">
 									<span className="text-[10px] uppercase tracking-wider text-slate-500">Target profile</span>
-									<select name={`subagents.${index}.targetProfile`} aria-label={`Subagent ${index + 1} target profile`} value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value, model: undefined, thinkingLevel: undefined, runtimeOptions: undefined })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
+									<select name={`subagents.${index}.targetProfile`} aria-label={`Subagent ${index + 1} target profile`} value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value, model: undefined, modelFallbacks: undefined, thinkingLevel: undefined, runtimeOptions: undefined })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
 										{profileOptions.map((profile) => <option key={profile.value} value={profile.value}>{profile.label}</option>)}
 									</select>
 								</label>
@@ -1281,6 +1286,7 @@ function SubagentDesigner({
 								title={`Execution / ${runtime?.displayName ?? runtimeInstanceId}`}
 								modelTitle="Subagent Model"
 								model={subagent.model}
+								modelFallbacks={subagent.modelFallbacks ?? []}
 								thinking={subagent.thinkingLevel}
 								modelCatalog={targetModelCatalog}
 								readOnly={configurationReadOnly}
@@ -1290,6 +1296,7 @@ function SubagentDesigner({
 								thinkingValues={reasoningValues}
 								showFast={false}
 								onModelChange={(model) => updateSubagent(index, { model })}
+								onModelFallbacksChange={(modelFallbacks) => updateSubagent(index, { modelFallbacks })}
 								onThinkingChange={(thinkingLevel) => updateSubagent(index, { thinkingLevel })}
 							/>
 							{runtime?.capabilities.models.optionsSchema ? (

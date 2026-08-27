@@ -159,6 +159,7 @@ export type PiboProfileInspection = {
 	runtimeOptions: PiboJsonObject;
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
+	mainModelFallbacks: ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	mainThinkingLevel?: PiboThinkingLevel;
@@ -671,6 +672,7 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 			runtimeOptions: structuredClone(profile.runtimeOptions),
 			...(profile.model ? { model: { ...profile.model } } : {}),
 			...(profile.mainModel ? { mainModel: { ...profile.mainModel } } : {}),
+			mainModelFallbacks: profile.mainModelFallbacks.map((model) => ({ ...model })),
 			...(profile.subagentModel ? { subagentModel: { ...profile.subagentModel } } : {}),
 			...(profile.thinkingLevel ? { thinkingLevel: profile.thinkingLevel } : {}),
 			...(profile.mainThinkingLevel ? { mainThinkingLevel: profile.mainThinkingLevel } : {}),

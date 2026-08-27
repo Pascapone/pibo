@@ -834,6 +834,7 @@ export class RoutedSession {
 		private readonly onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean }) => void,
 		private readonly onMessagesInterrupted?: PiboMessageInterruptionListener,
 		private readonly messagePreflight?: PiboMessagePreflight,
+		private readonly providerFallbacksEnabled = false,
 	) {
 		this.fastMode = initialFastMode && this.fastModeSupported();
 		this.bindRuntimeSession();
@@ -1776,7 +1777,7 @@ export class RoutedSession {
 			if (this.disposed || inFlight.cancelled) return;
 			await this.resumeContextGuardRecovery(session);
 			if (this.disposed || inFlight.cancelled) return;
-			await this.recoverTransientProviderErrors(session);
+			if (!this.providerFallbacksEnabled) await this.recoverTransientProviderErrors(session);
 			if (this.disposed || inFlight.cancelled) return;
 			this.flushPendingAssistantError();
 			if (!this.activeMessageFailed) {

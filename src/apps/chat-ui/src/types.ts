@@ -580,6 +580,7 @@ export type AgentProfile = {
 	piPackages?: string[];
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
+	mainModelFallbacks?: ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: ThinkingLevel;
 	mainThinkingLevel?: ThinkingLevel;
@@ -758,6 +759,7 @@ export type AgentCatalog = {
 		description?: string;
 		targetProfile: string;
 		model?: ModelProfile;
+		modelFallbacks?: ModelProfile[];
 		thinkingLevel?: ThinkingLevel;
 		timeoutMs?: number;
 		maxDepth?: number;
@@ -818,6 +820,7 @@ export type CustomAgentSubagent = {
 	description?: string;
 	targetProfile: string;
 	model?: ModelProfile;
+	modelFallbacks?: ModelProfile[];
 	thinkingLevel?: ThinkingLevel;
 	runtimeOptions?: Record<string, unknown>;
 	timeoutMs?: number;
@@ -840,6 +843,7 @@ export type CustomAgent = {
 	mcpServers: string[];
 	piPackages: string[];
 	mainModel?: ModelProfile;
+	mainModelFallbacks: ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: ThinkingLevel;
 	mainThinkingLevel?: ThinkingLevel;

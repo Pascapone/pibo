@@ -939,6 +939,10 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 				name: "researcher",
 				targetProfile: "base",
 				model: { provider: "openai", id: "gpt-5.6-mini" },
+				modelFallbacks: [
+					{ provider: "anthropic", id: "claude-haiku-5" },
+					{ provider: "moonshot", id: "kimi-k2" },
+				],
 				thinkingLevel: "high",
 				runtimeOptions: { permissionMode: "yolo" },
 			},
@@ -950,6 +954,10 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 		const child = store.get(first.agentId);
 		assert.equal(child.title, "Research plan");
 		assert.deepEqual(child.activeModel, { provider: "openai", id: "gpt-5.6-mini" });
+		assert.deepEqual(child.metadata.initialModelFallbacks, [
+			{ provider: "anthropic", id: "claude-haiku-5" },
+			{ provider: "moonshot", id: "kimi-k2" },
+		]);
 		assert.equal(child.metadata.initialThinkingLevel, "high");
 		assert.deepEqual(child.metadata.initialRuntimeOptions, { permissionMode: "yolo" });
 		assert.deepEqual(router.getSessionRuntimeProfile(child.id).runtimeOptions, { permissionMode: "yolo" });
@@ -959,6 +967,7 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 				name: "researcher",
 				targetProfile: "base",
 				model: { provider: "other", id: "changed-model" },
+				modelFallbacks: [{ provider: "google", id: "changed-fallback" }],
 				thinkingLevel: "low",
 				runtimeOptions: { permissionMode: "approval" },
 			},
@@ -970,6 +979,10 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 		assert.equal(reused.agentId, first.agentId);
 		assert.equal(store.get(reused.agentId).title, "Refined research");
 		assert.deepEqual(store.get(reused.agentId).activeModel, { provider: "openai", id: "gpt-5.6-mini" });
+		assert.deepEqual(store.get(reused.agentId).metadata.initialModelFallbacks, [
+			{ provider: "anthropic", id: "claude-haiku-5" },
+			{ provider: "moonshot", id: "kimi-k2" },
+		]);
 		assert.equal(store.get(reused.agentId).metadata.initialThinkingLevel, "high");
 		assert.deepEqual(router.getSessionRuntimeProfile(reused.agentId).runtimeOptions, { permissionMode: "yolo" });
 

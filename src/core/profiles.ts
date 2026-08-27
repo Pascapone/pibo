@@ -56,6 +56,7 @@ export type SubagentProfile = {
 	description?: string;
 	targetProfile: string;
 	model?: ModelProfile;
+	modelFallbacks?: ModelProfile[];
 	thinkingLevel?: PiboThinkingLevel;
 	runtimeOptions?: PiboJsonObject;
 	enabled?: boolean;
@@ -109,10 +110,15 @@ export type ModelProfile = {
 	id: string;
 };
 
+function cloneModelProfiles(models: readonly ModelProfile[]): ModelProfile[] {
+	return models.map((model) => ({ ...model }));
+}
+
 function cloneSubagentProfile(subagent: SubagentProfile): SubagentProfile {
 	return {
 		...subagent,
 		...(subagent.model ? { model: { ...subagent.model } } : {}),
+		...(subagent.modelFallbacks ? { modelFallbacks: cloneModelProfiles(subagent.modelFallbacks) } : {}),
 		...(subagent.runtimeOptions ? { runtimeOptions: structuredClone(subagent.runtimeOptions) } : {}),
 	};
 }
@@ -141,6 +147,7 @@ export type InitialSessionContextOptions = {
 	parentSessionId?: string;
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
+	mainModelFallbacks?: readonly ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	mainThinkingLevel?: PiboThinkingLevel;
@@ -169,6 +176,7 @@ export class InitialSessionContext {
 	readonly parentSessionId?: string;
 	readonly model?: ModelProfile;
 	readonly mainModel?: ModelProfile;
+	readonly mainModelFallbacks: readonly ModelProfile[];
 	readonly subagentModel?: ModelProfile;
 	readonly thinkingLevel?: PiboThinkingLevel;
 	readonly mainThinkingLevel?: PiboThinkingLevel;
@@ -196,6 +204,7 @@ export class InitialSessionContext {
 		this.parentSessionId = options.parentSessionId;
 		this.model = options.model ? { ...options.model } : undefined;
 		this.mainModel = options.mainModel ? { ...options.mainModel } : undefined;
+		this.mainModelFallbacks = cloneModelProfiles(options.mainModelFallbacks ?? []);
 		this.subagentModel = options.subagentModel ? { ...options.subagentModel } : undefined;
 		this.thinkingLevel = options.thinkingLevel;
 		this.mainThinkingLevel = options.mainThinkingLevel;
@@ -225,6 +234,7 @@ export class InitialSessionContextBuilder {
 	private parentSessionId?: string;
 	private model?: ModelProfile;
 	private mainModel?: ModelProfile;
+	private mainModelFallbacks: ModelProfile[] = [];
 	private subagentModel?: ModelProfile;
 	private thinkingLevel?: PiboThinkingLevel;
 	private mainThinkingLevel?: PiboThinkingLevel;
@@ -271,6 +281,11 @@ export class InitialSessionContextBuilder {
 
 	withMainModel(model: ModelProfile): this {
 		this.mainModel = { ...model };
+		return this;
+	}
+
+	withMainModelFallbacks(models: readonly ModelProfile[]): this {
+		this.mainModelFallbacks = cloneModelProfiles(models);
 		return this;
 	}
 
@@ -403,6 +418,7 @@ export class InitialSessionContextBuilder {
 			parentSessionId: this.parentSessionId,
 			model: this.model,
 			mainModel: this.mainModel,
+			mainModelFallbacks: this.mainModelFallbacks,
 			subagentModel: this.subagentModel,
 			thinkingLevel: this.thinkingLevel,
 			mainThinkingLevel: this.mainThinkingLevel,
