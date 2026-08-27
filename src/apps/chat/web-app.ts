@@ -6147,6 +6147,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							events: [],
 							status: traceStatus,
 							historyEntries: history.entries,
+							historyReconciliationProof: history.reconciliationProof ?? { complete: false, entries: history.entries },
 							historyInspection: history.inspection,
 							historyOrderOffset: history.orderOffset,
 							turnTimings,
@@ -6199,6 +6200,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							events,
 							status: traceStatus,
 							historyEntries,
+							historyReconciliationProof: nativeHistory
+								? nativeHistory.reconciliationProof ?? { complete: false, entries: nativeHistory.entries }
+								: undefined,
 							historyInspection,
 							historyOrderOffset: nativeHistory?.orderOffset,
 							turnTimings,
@@ -6388,6 +6392,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						events,
 						status: traceStatus,
 						historyEntries,
+						historyReconciliationProof: nativeHistory
+							? nativeHistory.reconciliationProof ?? { complete: false, entries: nativeHistory.entries }
+							: undefined,
 						historyInspection: nativeHistory?.inspection,
 						historyOrderOffset: nativeHistory?.orderOffset,
 						turnTimings,

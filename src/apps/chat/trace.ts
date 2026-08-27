@@ -3,6 +3,7 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type {
 	AgentRuntimeHistoryEntry,
 	AgentRuntimeHistoryInspection,
+	AgentRuntimeHistoryReconciliationProof,
 } from "../../agent-runtime/history.js";
 import {
 	PI_HISTORY_PAGE_MAX_BYTES,
@@ -103,6 +104,7 @@ type TraceBuildInput = {
 	status?: PiboWebSessionStatus;
 	cwd?: string;
 	historyEntries?: readonly AgentRuntimeHistoryEntry[];
+	historyReconciliationProof?: AgentRuntimeHistoryReconciliationProof;
 	historyInspection?: AgentRuntimeHistoryInspection;
 	historyOrderOffset?: number;
 	/** @deprecated Pi compatibility input. Use historyEntries. */
@@ -223,6 +225,7 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 		events: input.events as unknown as import("../../shared/trace-types.js").ChatWebStoredEvent[],
 		turnTimings: input.turnTimings,
 		historyEntries: entries,
+		historyReconciliationProof: input.historyReconciliationProof,
 		sessions: input.sessions.map((session) => ({
 			id: session.id,
 			parentId: session.parentId ?? null,

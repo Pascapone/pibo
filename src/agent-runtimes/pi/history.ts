@@ -26,6 +26,7 @@ export type PiHistoryMetadata = {
 
 export type PiTranscriptHistoryPage = {
 	entries: SessionEntry[];
+	entryPositions: string[];
 	nextBeforeByte?: number;
 	hasOlder: boolean;
 	scannedBytes: number;
@@ -142,11 +143,21 @@ export async function readPiAgentRuntimeHistory(
 		beforeTimestamp: input.beforeTimestamp ?? decoded.beforeTimestamp,
 		limit: input.limit,
 	});
+	const entries = piSessionEntriesToAgentRuntimeHistoryEntries(page.entries, page.entryPositions);
+	const completeProof = inspection.sizeBytes !== undefined && inspection.sizeBytes <= PI_HISTORY_SCAN_MAX_BYTES
+		? readPiTranscriptEntriesWithPositions(inspection.locator.value, PI_HISTORY_SCAN_MAX_BYTES)
+		: undefined;
 	return {
 		runtimeInstanceId,
 		adapterId: "pi",
 		source: "native",
-		entries: piSessionEntriesToAgentRuntimeHistoryEntries(page.entries),
+		entries,
+		reconciliationProof: {
+			complete: Boolean(completeProof),
+			entries: completeProof
+				? piSessionEntriesToAgentRuntimeHistoryEntries(completeProof.entries, completeProof.entryPositions)
+				: entries,
+		},
 		orderOffset: page.startByte,
 		nextCursor: page.hasOlder && page.nextBeforeByte !== undefined
 			? encodePiHistoryCursor({ beforeByte: page.nextBeforeByte, beforeTimestamp: input.beforeTimestamp ?? decoded.beforeTimestamp })
@@ -158,11 +169,13 @@ export async function readPiAgentRuntimeHistory(
 
 export function piSessionEntriesToAgentRuntimeHistoryEntries(
 	entries: readonly SessionEntry[],
+	historyPositions: readonly string[] = [],
 ): AgentRuntimeHistoryEntry[] {
 	const normalized: AgentRuntimeHistoryEntry[] = [];
 	let nativeTurnId: string | undefined;
 	for (let sequence = 0; sequence < entries.length; sequence += 1) {
 		const entry = entries[sequence]!;
+		const historyPosition = historyPositions[sequence];
 		if (entry.type === "session_info" && entry.name) {
 			normalized.push({
 				id: `pi:${entry.id}`,
@@ -170,6 +183,7 @@ export function piSessionEntriesToAgentRuntimeHistoryEntries(
 				source: "native",
 				createdAt: entry.timestamp,
 				sequence,
+				...(historyPosition ? { historyPosition } : {}),
 				nativeEntryId: entry.id,
 				name: entry.name,
 			});
@@ -185,6 +199,7 @@ export function piSessionEntriesToAgentRuntimeHistoryEntries(
 				source: "native",
 				createdAt: entry.timestamp,
 				sequence,
+				...(historyPosition ? { historyPosition } : {}),
 				nativeTurnId,
 				nativeEntryId: entry.id,
 				role: "user",
@@ -200,6 +215,7 @@ export function piSessionEntriesToAgentRuntimeHistoryEntries(
 				source: "native",
 				createdAt: entry.timestamp,
 				sequence,
+				...(historyPosition ? { historyPosition } : {}),
 				nativeTurnId,
 				nativeEntryId: entry.id,
 				role: "assistant",
@@ -227,6 +243,7 @@ export function piSessionEntriesToAgentRuntimeHistoryEntries(
 				source: "native",
 				createdAt: entry.timestamp,
 				sequence,
+				...(historyPosition ? { historyPosition } : {}),
 				nativeTurnId,
 				nativeEntryId: entry.id,
 				role: "tool",
@@ -315,7 +332,7 @@ export function readPiTranscriptHistoryPage(
 		maxScanBytes?: number;
 	} = {},
 ): PiTranscriptHistoryPage {
-	if (!existsSync(path)) return { entries: [], hasOlder: false, scannedBytes: 0, startByte: 0, endByte: 0 };
+	if (!existsSync(path)) return { entries: [], entryPositions: [], hasOlder: false, scannedBytes: 0, startByte: 0, endByte: 0 };
 	const stats = statSync(path);
 	const fileSize = Math.max(0, stats.size);
 	const initialEnd = input.beforeByte === undefined
@@ -325,7 +342,7 @@ export function readPiTranscriptHistoryPage(
 	const pageBytes = Math.max(1024, Math.min(input.pageBytes ?? PI_HISTORY_PAGE_MAX_BYTES, PI_HISTORY_SCAN_MAX_BYTES));
 	const maxScanBytes = Math.max(pageBytes, Math.min(input.maxScanBytes ?? PI_HISTORY_SCAN_MAX_BYTES, 32 * 1024 * 1024));
 	const beforeTime = input.beforeTimestamp ? Date.parse(input.beforeTimestamp) : undefined;
-	const entries: Array<{ entry: SessionEntry; startByte: number }> = [];
+	const entries: Array<{ entry: SessionEntry; startByte: number; parsedIndex: number }> = [];
 	let cursorEnd = initialEnd;
 	let scannedBytes = 0;
 	const fd = openSync(path, "r");
@@ -346,7 +363,7 @@ export function readPiTranscriptHistoryPage(
 			for (let entryIndex = parsed.length - 1; entryIndex >= 0; entryIndex -= 1) {
 				const entry = parsed[entryIndex]!;
 				if (beforeTime !== undefined && entryTimestampMs(entry) >= beforeTime) continue;
-				entries.push({ entry, startByte: record.startByte });
+				entries.push({ entry, startByte: record.startByte, parsedIndex: entryIndex });
 				if (entries.length >= limit) break;
 			}
 		}
@@ -355,14 +372,39 @@ export function readPiTranscriptHistoryPage(
 	}
 
 	const nextBeforeByte = cursorEnd > 0 ? cursorEnd : undefined;
+	const orderedEntries = entries.reverse();
 	return {
-		entries: entries.reverse().map((item) => item.entry),
+		entries: orderedEntries.map((item) => item.entry),
+		entryPositions: orderedEntries.map((item) => `pi-byte:${item.startByte}:${item.parsedIndex}`),
 		nextBeforeByte,
 		hasOlder: nextBeforeByte !== undefined,
 		scannedBytes,
 		startByte: nextBeforeByte ?? 0,
 		endByte: initialEnd,
 	};
+}
+
+function readPiTranscriptEntriesWithPositions(
+	path: string,
+	maxBytes: number,
+): { entries: SessionEntry[]; entryPositions: string[] } | undefined {
+	if (statSync(path).size > maxBytes) return undefined;
+	const content = readFileSync(path);
+	if (content.length > maxBytes) return undefined;
+	const entries: SessionEntry[] = [];
+	const entryPositions: string[] = [];
+	let lineStart = 0;
+	for (let cursor = 0; cursor <= content.length; cursor += 1) {
+		if (cursor < content.length && content[cursor] !== 0x0a) continue;
+		const line = content.subarray(lineStart, cursor).toString("utf8");
+		const parsed = parseTranscriptLine(line);
+		for (let parsedIndex = 0; parsedIndex < parsed.length; parsedIndex += 1) {
+			entries.push(parsed[parsedIndex]!);
+			entryPositions.push(`pi-byte:${lineStart}:${parsedIndex}`);
+		}
+		lineStart = cursor + 1;
+	}
+	return { entries, entryPositions };
 }
 
 function normalizePiAssistantContent(content: unknown): AgentRuntimeHistoryContentPart[] {

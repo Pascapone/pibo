@@ -111,6 +111,7 @@ export async function readOmpHistory(
 			adapterId: OMP_ADAPTER_ID,
 			source: "native",
 			entries,
+			reconciliationProof: { complete: false, entries },
 			...(typeof data.nextCursor === "string" ? { nextCursor: data.nextCursor } : {}),
 			hasMore: typeof data.nextCursor === "string" && data.nextCursor.length > 0,
 		};
@@ -125,6 +126,7 @@ function emptyPage(runtimeInstanceId: string): AgentRuntimeHistoryPage {
 		adapterId: OMP_ADAPTER_ID,
 		source: "native",
 		entries: [],
+		reconciliationProof: { complete: false, entries: [] },
 		hasMore: false,
 	};
 }
@@ -134,6 +136,7 @@ export function emptyOmpHistoryPage(runtimeInstanceId: string): AgentRuntimeHist
 		adapterId: OMP_ADAPTER_ID,
 		source: "native",
 		entries: [],
+		reconciliationProof: { complete: false, entries: [] },
 		hasMore: false,
 	};
 }

@@ -1228,35 +1228,39 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 		},
 		async readSessionRuntimeHistory(piboSessionId) {
 			readHistoryCalls += 1;
+			const entries = [
+				{
+					id: "codex:thread:runtime-X:user-X",
+					historyPosition: "codex:thread-X:entry:0",
+					type: "message",
+					source: "native",
+					createdAt: "2026-08-27T12:00:00.000Z",
+					turnId: "runtime-X",
+					nativeTurnId: "runtime-X",
+					nativeEntryId: "user-X",
+					role: "user",
+					content: "branch prompt",
+				},
+				{
+					id: "codex:thread:runtime-X:assistant-X",
+					historyPosition: "codex:thread-X:entry:1",
+					type: "message",
+					source: "native",
+					createdAt: "2026-08-27T12:00:01.000Z",
+					turnId: "runtime-X",
+					nativeTurnId: "runtime-X",
+					nativeEntryId: "assistant-X",
+					role: "assistant",
+					content: "branch answer",
+					status: "complete",
+				},
+			];
 			return {
 				runtimeInstanceId: "codex-native",
 				adapterId: "codex-native",
 				source: "native",
-				entries: [
-					{
-						id: "codex:thread:runtime-X:user-X",
-						type: "message",
-						source: "native",
-						createdAt: "2026-08-27T12:00:00.000Z",
-						turnId: "runtime-X",
-						nativeTurnId: "runtime-X",
-						nativeEntryId: "user-X",
-						role: "user",
-						content: "branch prompt",
-					},
-					{
-						id: "codex:thread:runtime-X:assistant-X",
-						type: "message",
-						source: "native",
-						createdAt: "2026-08-27T12:00:01.000Z",
-						turnId: "runtime-X",
-						nativeTurnId: "runtime-X",
-						nativeEntryId: "assistant-X",
-						role: "assistant",
-						content: "branch answer",
-						status: "complete",
-					},
-				],
+				entries,
+				reconciliationProof: { complete: true, entries },
 				hasMore: false,
 				inspection: {
 					runtimeInstanceId: "codex-native",
@@ -1364,14 +1368,20 @@ test("origin branch older native-history pages reconcile repeated prompts by sta
 			const older = input.cursor === "provider-old-page";
 			const suffix = older ? "old" : "new";
 			const createdAt = older ? oldStartedAt : newStartedAt;
+			const allEntries = [
+				["old", oldStartedAt],
+				["new", newStartedAt],
+			].flatMap(([entrySuffix, entryCreatedAt], groupIndex) => [
+				{ id: `codex:thread:runtime-${entrySuffix}:user-${entrySuffix}`, historyPosition: `codex:thread-repeated:entry:${groupIndex * 2}`, type: "message", source: "native", createdAt: entryCreatedAt, turnId: `runtime-${entrySuffix}`, nativeTurnId: `runtime-${entrySuffix}`, nativeEntryId: `user-${entrySuffix}`, role: "user", content: "identical prompt" },
+				{ id: `codex:thread:runtime-${entrySuffix}:assistant-${entrySuffix}`, historyPosition: `codex:thread-repeated:entry:${groupIndex * 2 + 1}`, type: "message", source: "native", createdAt: entryCreatedAt, turnId: `runtime-${entrySuffix}`, nativeTurnId: `runtime-${entrySuffix}`, nativeEntryId: `assistant-${entrySuffix}`, role: "assistant", content: `${entrySuffix} answer`, status: "complete" },
+			]);
+			const entries = allEntries.slice(older ? 0 : 2, older ? 2 : 4);
 			return {
 				runtimeInstanceId: "codex-native",
 				adapterId: "codex-native",
 				source: "native",
-				entries: [
-					{ id: `codex:thread:runtime-${suffix}:user-${suffix}`, type: "message", source: "native", createdAt, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, nativeEntryId: `user-${suffix}`, role: "user", content: "identical prompt" },
-					{ id: `codex:thread:runtime-${suffix}:assistant-${suffix}`, type: "message", source: "native", createdAt, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, nativeEntryId: `assistant-${suffix}`, role: "assistant", content: `${suffix} answer`, status: "complete" },
-				],
+				entries,
+				reconciliationProof: { complete: true, entries: allEntries },
 				nextCursor: older ? undefined : "provider-old-page",
 				hasMore: !older,
 				inspection: {

@@ -80,8 +80,25 @@ test("Pi history provider resolves, paginates, and normalizes native JSONL behin
 		assert.equal(firstPage.hasMore, true);
 		assert.equal(typeof firstPage.nextCursor, "string");
 		assert.equal(typeof firstPage.orderOffset, "number");
+		assert.equal(firstPage.reconciliationProof.complete, true);
+		assert.equal(firstPage.reconciliationProof.entries.length, 5);
+		assert.ok(firstPage.entries.every((entry) => typeof entry.historyPosition === "string"));
+		assert.ok(firstPage.entries.every((entry) => firstPage.reconciliationProof.entries.some((proofEntry) =>
+			proofEntry.historyPosition === entry.historyPosition
+		)));
+		const firstView = buildTraceViewFromEvents({
+			session: { id: "ps_history", piSessionId: nativeSessionId },
+			events: [],
+			historyEntries: firstPage.entries,
+			historyReconciliationProof: firstPage.reconciliationProof,
+			turnTimings: [{ eventId: "stable-pi-history", userText: "first", startedAt: "2026-08-15T00:00:01.000Z", completedAt: "2026-08-15T00:00:04.000Z" }],
+		});
+		assert.ok(flattenTraceNodes(firstView.nodes)
+			.filter((node) => node.type === "assistant.message" || node.toolCallId === "tool-1")
+			.every((node) => node.eventId === "stable-pi-history"));
 
 		const secondPage = await readPiAgentRuntimeHistory("pi", { ...input, cursor: firstPage.nextCursor, limit: 10 });
+		assert.deepEqual(secondPage.reconciliationProof, firstPage.reconciliationProof);
 		assert.ok(secondPage.entries.some((entry) => entry.type === "session_info" && entry.name === "History fixture"));
 		assert.ok(secondPage.entries.some((entry) => entry.type === "message" && entry.role === "user" && entry.nativeEntryId === "user-1"));
 		const assistant = secondPage.entries.find((entry) => entry.type === "message" && entry.nativeEntryId === "assistant-1");

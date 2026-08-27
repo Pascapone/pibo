@@ -18,6 +18,7 @@ import { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 const CODEX_HISTORY_CURSOR_PREFIX = "codex-history:";
 const DEFAULT_HISTORY_LIMIT = 100;
 const MAX_HISTORY_LIMIT = 200;
+const MAX_RECONCILIATION_PROOF_ENTRIES = 2_000;
 
 type CodexHistoryCursor = {
 	v: 1;
@@ -93,6 +94,7 @@ function itemEntry(
 		source: "native" as const,
 		createdAt,
 		sequence,
+		historyPosition: `codex:${thread.id}:entry:${sequence}`,
 		turnId: turn.id,
 		nativeTurnId: turn.id,
 		nativeEntryId: item.id,
@@ -187,6 +189,7 @@ export function codexThreadHistoryEntries(thread: CodexAppServerThread): AgentRu
 			source: "native",
 			createdAt: isoFromSeconds(thread.createdAt, thread.createdAt),
 			sequence: sequence++,
+			historyPosition: `codex:${thread.id}:entry:0`,
 			nativeEntryId: thread.id,
 			name: redactCodexNativeSensitiveText(thread.name),
 		});
@@ -204,7 +207,8 @@ export function codexThreadHistoryEntries(thread: CodexAppServerThread): AgentRu
 				type: "message",
 				source: "native",
 				createdAt: isoFromSeconds(turn.completedAt ?? turn.startedAt, thread.updatedAt),
-				sequence: sequence++,
+				sequence,
+				historyPosition: `codex:${thread.id}:entry:${sequence++}`,
 				turnId: turn.id,
 				nativeTurnId: turn.id,
 				nativeEntryId: `${turn.id}:error`,
@@ -304,11 +308,16 @@ export function pageCodexThreadHistory(input: {
 	const start = Math.max(0, end - limit);
 	const entries = filtered.slice(start, end);
 	const hasMore = start > 0;
+	const proofComplete = allEntries.length <= MAX_RECONCILIATION_PROOF_ENTRIES;
 	return {
 		runtimeInstanceId: input.runtimeInstanceId,
 		adapterId: CODEX_NATIVE_ADAPTER_ID,
 		source: "native",
 		entries,
+		reconciliationProof: {
+			complete: proofComplete,
+			entries: proofComplete ? allEntries : entries,
+		},
 		orderOffset: start,
 		...(hasMore ? { nextCursor: encodeCursor({ v: 1, threadId: input.thread.id, beforeIndex: start }) } : {}),
 		hasMore,

@@ -34,6 +34,8 @@ export type AgentRuntimeHistoryMessageEntry = {
 	source: AgentRuntimeHistorySource;
 	createdAt: string;
 	sequence?: number;
+	/** Adapter-stable position in the native history, independent of page slicing. */
+	historyPosition?: string;
 	turnId?: string;
 	nativeTurnId?: string;
 	nativeEntryId?: string;
@@ -56,6 +58,8 @@ export type AgentRuntimeHistorySessionInfoEntry = {
 	source: AgentRuntimeHistorySource;
 	createdAt: string;
 	sequence?: number;
+	/** Adapter-stable position in the native history, independent of page slicing. */
+	historyPosition?: string;
 	nativeEntryId?: string;
 	name: string;
 	metadata?: PiboJsonObject;
@@ -64,6 +68,17 @@ export type AgentRuntimeHistorySessionInfoEntry = {
 export type AgentRuntimeHistoryEntry =
 	| AgentRuntimeHistoryMessageEntry
 	| AgentRuntimeHistorySessionInfoEntry;
+
+/**
+ * Bounded evidence used to prove product timing ownership for a history page.
+ * A complete proof contains every native entry in the adapter's current
+ * reconciliation scope. Incomplete proofs deliberately disable product-ID
+ * reconciliation; callers must never infer completeness from page shape.
+ */
+export type AgentRuntimeHistoryReconciliationProof = {
+	complete: boolean;
+	entries: readonly AgentRuntimeHistoryEntry[];
+};
 
 export type AgentRuntimeHistoryInspection = {
 	runtimeInstanceId: string;
@@ -86,6 +101,7 @@ export type AgentRuntimeHistoryPage = {
 	adapterId: string;
 	source: "native";
 	entries: readonly AgentRuntimeHistoryEntry[];
+	reconciliationProof?: AgentRuntimeHistoryReconciliationProof;
 	orderOffset?: number;
 	nextCursor?: string;
 	hasMore: boolean;

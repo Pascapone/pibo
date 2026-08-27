@@ -1,4 +1,4 @@
-import type { AgentRuntimeHistoryEntry } from "../agent-runtime/history.js";
+import type { AgentRuntimeHistoryEntry, AgentRuntimeHistoryReconciliationProof } from "../agent-runtime/history.js";
 import type { PiboOutputEvent } from "../core/events.js";
 import { isRunStartToolNode, reconcileAsyncAgentRunStatuses } from "./trace-async-agent-runs.js";
 import {
@@ -54,6 +54,7 @@ type TraceBuildInput = {
 	events: ChatWebStoredEvent[];
 	turnTimings?: TraceMessageTurnTiming[];
 	historyEntries?: readonly AgentRuntimeHistoryEntry[];
+	historyReconciliationProof?: AgentRuntimeHistoryReconciliationProof;
 	sessions?: Array<{
 		id: string;
 		parentId?: string | null;
@@ -74,8 +75,8 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	const allEntries = input.historyEntries ?? [];
 	const openHistoryEventIds = findOpenTranscriptEventIds(events, sessionStatus);
 	const turnTimings = mergeMessageTurnTimings(input.turnTimings ?? [], messageTurnTimingsFromEvents(events));
-	const entries = projectHistoryEntries(allEntries, sessionStatus, openHistoryEventIds, turnTimings);
-	const nodes = traceNodesFromHistoryEntries(input.session.id, entries, turnTimings);
+	const entries = projectHistoryEntries(allEntries, sessionStatus, openHistoryEventIds, turnTimings, input.historyReconciliationProof);
+	const nodes = traceNodesFromHistoryEntries(input.session.id, entries, turnTimings, input.historyReconciliationProof);
 	reconcileTranscriptUserMessages(nodes, events, turnTimings);
 	const byId = mapTraceNodesById(nodes);
 	const childByParent = mapTraceChildSessionsByParent(input.sessions ?? []);

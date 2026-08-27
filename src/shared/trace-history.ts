@@ -2,6 +2,7 @@ import type {
 	AgentRuntimeHistoryContentPart,
 	AgentRuntimeHistoryEntry,
 	AgentRuntimeHistoryMessageEntry,
+	AgentRuntimeHistoryReconciliationProof,
 } from "../agent-runtime/history.js";
 import { historyTraceOrder } from "./trace-order.js";
 import { attachAsyncAgentRunNode, reconcileAsyncAgentRunStatuses } from "./trace-async-agent-runs.js";
@@ -22,6 +23,7 @@ type TranscriptTurnTimingTarget = {
 	userAt?: number;
 	assistantAt?: number;
 	providerNativeTurnId?: string;
+	entryIndexes: number[];
 };
 
 type HistoryUserTimingTarget = {
@@ -44,13 +46,15 @@ type HistoryTimingAssignments = {
 	turnAssignments: Array<TraceMessageTurnTiming | undefined>;
 	userFallbackEventIds: Map<number, string>;
 	turnFallbackEventIds: Map<number, string>;
+	turnProjectionStates: Map<number, AssistantTurnProjectionState>;
 };
 
 type HistoryTurnGroup = {
 	index: number;
-	userPosition: number;
-	userEntryIndex: number;
+	userPosition?: number;
+	userEntryIndex?: number;
 	assistantTurnIndexes: number[];
+	entryIndexes: number[];
 	providerNativeTurnIds: Set<string>;
 	fallbackEventId: string;
 };
@@ -69,9 +73,10 @@ export function projectHistoryEntries(
 	sessionStatus: PiboWebSessionStatus,
 	openHistoryEventIds: ReadonlySet<string>,
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
+	reconciliationProof?: AgentRuntimeHistoryReconciliationProof,
 ): AgentRuntimeHistoryEntry[] {
 	if (sessionStatus !== "running" || openHistoryEventIds.size === 0) return [...entries];
-	const { userAssignments, userFallbackEventIds } = assignHistoryTimings(entries, turnTimings);
+	const { userAssignments, userFallbackEventIds } = assignHistoryTimings(entries, turnTimings, reconciliationProof);
 	let lastUserMessageIndex = -1;
 	let lastUserEventId: string | undefined;
 	for (let index = 0; index < entries.length; index += 1) {
@@ -89,10 +94,11 @@ export function traceNodesFromHistoryEntries(
 	piboSessionId: string,
 	entries: readonly AgentRuntimeHistoryEntry[],
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
+	reconciliationProof?: AgentRuntimeHistoryReconciliationProof,
 ): PiboTraceNode[] {
 	const nodes: PiboTraceNode[] = [];
-	const { userAssignments, turnAssignments, userFallbackEventIds, turnFallbackEventIds } =
-		assignHistoryTimings(entries, turnTimings);
+	const { userAssignments, turnAssignments, userFallbackEventIds, turnFallbackEventIds, turnProjectionStates } =
+		assignHistoryTimings(entries, turnTimings, reconciliationProof);
 	const projectionStateByEventId = new Map<string, AssistantTurnProjectionState>();
 	let assistantTurnIndex = 0;
 	for (let index = 0; index < entries.length; index += 1) {
@@ -108,15 +114,17 @@ export function traceNodesFromHistoryEntries(
 				));
 			} else if (entry.role === "assistant" || entry.role === "tool") {
 				const turn = collectAssistantTurn(entries, index);
-				const hasAssistant = turn.entries.some(({ entry: turnEntry }) => turnEntry.role === "assistant");
-				const timing = hasAssistant ? turnAssignments[assistantTurnIndex] : undefined;
-				const fallbackEventId = hasAssistant ? turnFallbackEventIds.get(assistantTurnIndex) : undefined;
-				const firstAssistant = turn.entries.find(({ entry: turnEntry }) => turnEntry.role === "assistant");
-				const eventId = firstAssistant
-					? canonicalProductTurnId(firstAssistant.entry, timing, fallbackEventId)
+				const timing = turnAssignments[assistantTurnIndex];
+				const fallbackEventId = turnFallbackEventIds.get(assistantTurnIndex);
+				const identityEntry = turn.entries.find(({ entry: turnEntry }) => turnEntry.role === "assistant")
+					?? turn.entries[0];
+				const eventId = identityEntry
+					? canonicalProductTurnId(identityEntry.entry, timing, fallbackEventId)
 					: undefined;
 				const projectionState = eventId
-					? projectionStateByEventId.get(eventId) ?? { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 }
+					? turnProjectionStates.get(assistantTurnIndex)
+						?? projectionStateByEventId.get(eventId)
+						?? { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 }
 					: { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 };
 				nodes.push(...createAssistantTurnNodes(
 					piboSessionId,
@@ -126,7 +134,7 @@ export function traceNodesFromHistoryEntries(
 					fallbackEventId,
 				));
 				if (eventId) projectionStateByEventId.set(eventId, projectionState);
-				if (hasAssistant) assistantTurnIndex += 1;
+				assistantTurnIndex += 1;
 				index = turn.nextIndex - 1;
 			}
 		} else if (entry.type === "session_info" && entry.name) {
@@ -172,15 +180,15 @@ function collectHistoryTurnTimingTargets(entries: readonly AgentRuntimeHistoryEn
 		if (entry.role !== "assistant" && entry.role !== "tool") continue;
 		const turn = collectAssistantTurn(entries, index);
 		const lastAssistant = [...turn.entries].reverse().find(({ entry: turnEntry }) => turnEntry.role === "assistant");
-		if (lastAssistant) {
-			targets.push({
-				prompt: latestUserText,
-				userEntryIndex: latestUserEntryIndex,
-				userAt: latestUserAt,
-				assistantAt: parsedTimestamp(lastAssistant.entry.createdAt),
-				providerNativeTurnId: lastAssistant.entry.nativeTurnId ?? latestProviderNativeTurnId,
-			});
-		}
+		const identityEntry = lastAssistant ?? turn.entries[0];
+		targets.push({
+			prompt: latestUserText,
+			userEntryIndex: latestUserEntryIndex,
+			userAt: latestUserAt,
+			assistantAt: lastAssistant ? parsedTimestamp(lastAssistant.entry.createdAt) : undefined,
+			providerNativeTurnId: identityEntry?.entry.nativeTurnId ?? latestProviderNativeTurnId,
+			entryIndexes: turn.entries.map(({ index: entryIndex }) => entryIndex),
+		});
 		index = turn.nextIndex - 1;
 	}
 	return targets;
@@ -189,6 +197,35 @@ function collectHistoryTurnTimingTargets(entries: readonly AgentRuntimeHistoryEn
 function assignHistoryTimings(
 	entries: readonly AgentRuntimeHistoryEntry[],
 	turnTimings: readonly TraceMessageTurnTiming[],
+	reconciliationProof?: AgentRuntimeHistoryReconciliationProof,
+): HistoryTimingAssignments {
+	// Direct callers hand us a complete in-memory history. Paged production
+	// callers must provide an explicit adapter proof: complete proof decisions
+	// are computed once over the whole bounded scope and then projected back by
+	// stable position; incomplete proof can never authorize a product identity.
+	if (!reconciliationProof) return assignHistoryTimingsWithinScope(entries, turnTimings);
+	if (!reconciliationProof.complete || !hasUniqueStableHistoryPositions(reconciliationProof.entries)) {
+		return hasUniqueStableHistoryPositions(entries)
+			? assignHistoryTimingsWithinScope(entries, turnTimings, true)
+			: emptyHistoryTimingAssignments(entries);
+	}
+	return assignmentsFromCompleteProof(entries, turnTimings, reconciliationProof.entries);
+}
+
+function emptyHistoryTimingAssignments(entries: readonly AgentRuntimeHistoryEntry[]): HistoryTimingAssignments {
+	return {
+		userAssignments: new Map(),
+		turnAssignments: collectHistoryTurnTimingTargets(entries).map(() => undefined),
+		userFallbackEventIds: new Map(),
+		turnFallbackEventIds: new Map(),
+		turnProjectionStates: new Map(),
+	};
+}
+
+function assignHistoryTimingsWithinScope(
+	entries: readonly AgentRuntimeHistoryEntry[],
+	turnTimings: readonly TraceMessageTurnTiming[],
+	failClosed = false,
 ): HistoryTimingAssignments {
 	const users: HistoryUserTimingTarget[] = [];
 	for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
@@ -214,27 +251,172 @@ function assignHistoryTimings(
 	const invalidUserPositions = invalidHistoryUserMatchPositions(matches);
 	const messageTurnTimings = turnTimings.filter((timing) => timing.userMessageType !== "message_steered");
 	const timingByEventId = new Map(messageTurnTimings.map((timing) => [timing.eventId, timing]));
-	const conflictingGroupIndexes = conflictingHistoryGroupIndexes(groups, matches, timingByEventId);
+	const conflictingGroupIndexes = conflictingHistoryGroupIndexes(groups, matches, timingByEventId, invalidUserPositions);
 	const userAssignments = new Map<number, TraceMessageTurnTiming>();
 	const turnAssignments: Array<TraceMessageTurnTiming | undefined> = historyTurns.map(() => undefined);
 	const userFallbackEventIds = new Map<number, string>();
 	const turnFallbackEventIds = new Map<number, string>();
+	const turnProjectionStates = new Map<number, AssistantTurnProjectionState>();
 	for (const group of groups) {
-		const match = matches[group.userPosition];
-		if (conflictingGroupIndexes.has(group.index)) {
-			userFallbackEventIds.set(group.userEntryIndex, group.fallbackEventId);
+		const userPosition = group.userPosition;
+		const match = userPosition === undefined ? undefined : matches[userPosition];
+		if (failClosed || conflictingGroupIndexes.has(group.index)) {
+			if (group.userEntryIndex !== undefined) userFallbackEventIds.set(group.userEntryIndex, group.fallbackEventId);
 			for (const turnIndex of group.assistantTurnIndexes) {
 				turnFallbackEventIds.set(turnIndex, group.fallbackEventId);
 			}
 			continue;
 		}
-		if (!match || invalidUserPositions.has(group.userPosition)) continue;
-		userAssignments.set(group.userEntryIndex, match.timing);
+		if (!match || userPosition === undefined || invalidUserPositions.has(userPosition)) continue;
+		if (group.userEntryIndex !== undefined) userAssignments.set(group.userEntryIndex, match.timing);
 		const outputTiming = outputTimingForUserTiming(match.timing, timingByEventId);
 		if (!outputTiming) continue;
 		for (const turnIndex of group.assistantTurnIndexes) turnAssignments[turnIndex] = outputTiming;
 	}
-	return { userAssignments, turnAssignments, userFallbackEventIds, turnFallbackEventIds };
+	return { userAssignments, turnAssignments, userFallbackEventIds, turnFallbackEventIds, turnProjectionStates };
+}
+
+type ProofEntryDecision = {
+	timing?: TraceMessageTurnTiming;
+	fallbackEventId?: string;
+};
+
+function assignmentsFromCompleteProof(
+	entries: readonly AgentRuntimeHistoryEntry[],
+	turnTimings: readonly TraceMessageTurnTiming[],
+	proofEntries: readonly AgentRuntimeHistoryEntry[],
+): HistoryTimingAssignments {
+	if (!hasUniqueStableHistoryPositions(entries)) {
+		return assignHistoryTimingsWithinScope(entries, turnTimings, true);
+	}
+	const proofAssignments = assignHistoryTimingsWithinScope(proofEntries, turnTimings);
+	const decisionsByPosition = new Map<string, ProofEntryDecision>();
+	for (let entryIndex = 0; entryIndex < proofEntries.length; entryIndex += 1) {
+		const entry = proofEntries[entryIndex]!;
+		if (entry.type !== "message" || entry.role !== "user") continue;
+		decisionsByPosition.set(entry.historyPosition!, {
+			timing: proofAssignments.userAssignments.get(entryIndex),
+			fallbackEventId: proofAssignments.userFallbackEventIds.get(entryIndex),
+		});
+	}
+	const proofTurns = collectHistoryTurnTimingTargets(proofEntries);
+	for (let turnIndex = 0; turnIndex < proofTurns.length; turnIndex += 1) {
+		const decision = {
+			timing: proofAssignments.turnAssignments[turnIndex],
+			fallbackEventId: proofAssignments.turnFallbackEventIds.get(turnIndex),
+		};
+		for (const entryIndex of proofTurns[turnIndex]!.entryIndexes) {
+			decisionsByPosition.set(proofEntries[entryIndex]!.historyPosition!, decision);
+		}
+	}
+
+	const userAssignments = new Map<number, TraceMessageTurnTiming>();
+	const userFallbackEventIds = new Map<number, string>();
+	for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+		const entry = entries[entryIndex]!;
+		if (entry.type !== "message" || entry.role !== "user") continue;
+		const decision = decisionsByPosition.get(entry.historyPosition!);
+		if (decision?.timing) userAssignments.set(entryIndex, decision.timing);
+		if (decision?.fallbackEventId) userFallbackEventIds.set(entryIndex, decision.fallbackEventId);
+		if (!decision) userFallbackEventIds.set(entryIndex, historyGroupFallbackEventId(entries, entry, entryIndex));
+	}
+
+	const localTurns = collectHistoryTurnTimingTargets(entries);
+	const turnAssignments: Array<TraceMessageTurnTiming | undefined> = localTurns.map(() => undefined);
+	const turnFallbackEventIds = new Map<number, string>();
+	const turnProjectionStates = projectionStatesFromCompleteProof(
+		entries,
+		localTurns,
+		proofEntries,
+		proofTurns,
+		proofAssignments,
+	);
+	for (let turnIndex = 0; turnIndex < localTurns.length; turnIndex += 1) {
+		const turn = localTurns[turnIndex]!;
+		const decisions = turn.entryIndexes.map((entryIndex) =>
+			decisionsByPosition.get(entries[entryIndex]!.historyPosition!)
+		);
+		const decision = oneConsistentProofDecision(decisions);
+		if (decision?.timing) turnAssignments[turnIndex] = decision.timing;
+		if (decision?.fallbackEventId) {
+			turnFallbackEventIds.set(turnIndex, decision.fallbackEventId);
+		} else if (!decision) {
+			const firstEntryIndex = turn.entryIndexes[0]!;
+			turnFallbackEventIds.set(turnIndex, historyGroupFallbackEventId(entries, entries[firstEntryIndex]!, firstEntryIndex));
+		}
+	}
+	return { userAssignments, turnAssignments, userFallbackEventIds, turnFallbackEventIds, turnProjectionStates };
+}
+
+function projectionStatesFromCompleteProof(
+	entries: readonly AgentRuntimeHistoryEntry[],
+	localTurns: readonly TranscriptTurnTimingTarget[],
+	proofEntries: readonly AgentRuntimeHistoryEntry[],
+	proofTurns: readonly TranscriptTurnTimingTarget[],
+	proofAssignments: HistoryTimingAssignments,
+): Map<number, AssistantTurnProjectionState> {
+	const stateByEventId = new Map<string, AssistantTurnProjectionState>();
+	const stateByPosition = new Map<string, AssistantTurnProjectionState>();
+	for (let turnIndex = 0; turnIndex < proofTurns.length; turnIndex += 1) {
+		const turn = proofTurns[turnIndex]!;
+		const firstAssistantIndex = turn.entryIndexes.find((entryIndex) => {
+			const entry = proofEntries[entryIndex];
+			return entry?.type === "message" && entry.role === "assistant";
+		});
+		const identityEntryIndex = firstAssistantIndex ?? turn.entryIndexes[0];
+		if (identityEntryIndex === undefined) continue;
+		const identityEntry = proofEntries[identityEntryIndex];
+		if (!identityEntry || identityEntry.type !== "message") continue;
+		const eventId = canonicalProductTurnId(
+			identityEntry,
+			proofAssignments.turnAssignments[turnIndex],
+			proofAssignments.turnFallbackEventIds.get(turnIndex),
+		);
+		const state = eventId
+			? stateByEventId.get(eventId) ?? { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 }
+			: { assistantPartOrdinal: 0, reasoningPartOrdinal: 0 };
+		for (const entryIndex of turn.entryIndexes) {
+			const entry = proofEntries[entryIndex];
+			if (!entry || entry.type !== "message" || !entry.historyPosition) continue;
+			stateByPosition.set(entry.historyPosition, { ...state });
+			if (entry.role !== "assistant") continue;
+			const parts = historyMessageParts(entry);
+			state.reasoningPartOrdinal += parts.filter((part) => part.type === "reasoning" && hasVisibleText(part.text)).length;
+			if (parts.some((part) => part.type === "text" && part.text !== "")) state.assistantPartOrdinal += 1;
+		}
+		if (eventId) stateByEventId.set(eventId, state);
+	}
+
+	const localStates = new Map<number, AssistantTurnProjectionState>();
+	for (let turnIndex = 0; turnIndex < localTurns.length; turnIndex += 1) {
+		const firstEntryIndex = localTurns[turnIndex]!.entryIndexes[0];
+		if (firstEntryIndex === undefined) continue;
+		const position = entries[firstEntryIndex]?.historyPosition;
+		const state = position ? stateByPosition.get(position) : undefined;
+		if (state) localStates.set(turnIndex, { ...state });
+	}
+	return localStates;
+}
+
+function hasUniqueStableHistoryPositions(entries: readonly AgentRuntimeHistoryEntry[]): boolean {
+	const positions = new Set<string>();
+	for (const entry of entries) {
+		if (!entry.historyPosition || positions.has(entry.historyPosition)) return false;
+		positions.add(entry.historyPosition);
+	}
+	return true;
+}
+
+function oneConsistentProofDecision(
+	decisions: readonly (ProofEntryDecision | undefined)[],
+): ProofEntryDecision | undefined {
+	const first = decisions[0];
+	if (!first || decisions.some((decision) => !decision)) return undefined;
+	const firstTimingId = first.timing?.eventId;
+	return decisions.every((decision) =>
+		decision?.timing?.eventId === firstTimingId
+		&& decision?.fallbackEventId === first.fallbackEventId
+	) ? first : undefined;
 }
 
 function invalidHistoryUserMatchPositions(
@@ -266,39 +448,69 @@ function collectHistoryTurnGroups(
 			userPosition,
 			userEntryIndex: user.entryIndex,
 			assistantTurnIndexes: [],
+			entryIndexes: [user.entryIndex],
 			providerNativeTurnIds: new Set(entry.type === "message" && entry.nativeTurnId ? [entry.nativeTurnId] : []),
-			fallbackEventId: `native-history-group:${historyEntryNodeId(entry)}`,
+			fallbackEventId: historyGroupFallbackEventId(entries, entry, user.entryIndex),
 		};
 	});
 	const groupByUserEntryIndex = new Map(groups.map((group) => [group.userEntryIndex, group]));
 	for (let turnIndex = 0; turnIndex < historyTurns.length; turnIndex += 1) {
 		const userEntryIndex = historyTurns[turnIndex]!.userEntryIndex;
-		if (userEntryIndex === undefined) continue;
-		const group = groupByUserEntryIndex.get(userEntryIndex);
-		if (!group) continue;
+		const group = userEntryIndex === undefined ? undefined : groupByUserEntryIndex.get(userEntryIndex);
+		if (!group) {
+			const firstEntryIndex = historyTurns[turnIndex]!.entryIndexes[0];
+			const firstEntry = firstEntryIndex === undefined ? undefined : entries[firstEntryIndex];
+			if (!firstEntry) continue;
+			groups.push({
+				index: groups.length,
+				assistantTurnIndexes: [turnIndex],
+				entryIndexes: [...historyTurns[turnIndex]!.entryIndexes],
+				providerNativeTurnIds: new Set(historyTurns[turnIndex]!.providerNativeTurnId
+					? [historyTurns[turnIndex]!.providerNativeTurnId!]
+					: []),
+				fallbackEventId: historyGroupFallbackEventId(entries, firstEntry, firstEntryIndex),
+			});
+			continue;
+		}
 		group.assistantTurnIndexes.push(turnIndex);
+		group.entryIndexes.push(...historyTurns[turnIndex]!.entryIndexes);
 		const providerNativeTurnId = historyTurns[turnIndex]!.providerNativeTurnId;
 		if (providerNativeTurnId) group.providerNativeTurnIds.add(providerNativeTurnId);
 	}
 	return groups;
 }
 
+function historyGroupFallbackEventId(
+	entries: readonly AgentRuntimeHistoryEntry[],
+	entry: AgentRuntimeHistoryEntry,
+	entryIndex: number,
+): string {
+	if (entry.historyPosition) return `native-history-group:${entry.historyPosition}`;
+	if (entry.sequence !== undefined && entries.filter((candidate) => candidate.sequence === entry.sequence).length === 1) {
+		return `native-history-group:position:${entry.sequence}`;
+	}
+	return `native-history-group:position:${entryIndex}`;
+}
+
 function conflictingHistoryGroupIndexes(
 	groups: readonly HistoryTurnGroup[],
 	matches: readonly (TimingMatch | undefined)[],
 	timingByEventId: ReadonlyMap<string, TraceMessageTurnTiming>,
+	invalidUserPositions: ReadonlySet<number>,
 ): Set<number> {
 	const conflictingGroupIndexes = new Set<number>();
 	const directClaimants = new Map<number, HistoryTurnGroup[]>();
 	const outputClaimants = new Map<string, HistoryTurnGroup[]>();
 	for (const group of groups) {
+		if (
+			group.userPosition === undefined
+			|| (invalidUserPositions.has(group.userPosition) && group.assistantTurnIndexes.length === 0)
+		) continue;
 		const match = matches[group.userPosition];
 		if (!match) continue;
-		if (match.confidence === "identity" || group.assistantTurnIndexes.length > 0) {
-			const timingClaimants = directClaimants.get(match.timingIndex) ?? [];
-			timingClaimants.push(group);
-			directClaimants.set(match.timingIndex, timingClaimants);
-		}
+		const timingClaimants = directClaimants.get(match.timingIndex) ?? [];
+		timingClaimants.push(group);
+		directClaimants.set(match.timingIndex, timingClaimants);
 		if (group.assistantTurnIndexes.length === 0) continue;
 		const outputTiming = outputTimingForUserTiming(match.timing, timingByEventId);
 		if (!outputTiming) continue;
@@ -329,7 +541,7 @@ function isLegitimateSteeringCohort(
 	let baseClaimants = 0;
 	let steeringClaimants = 0;
 	for (const group of groups) {
-		const timing = matches[group.userPosition]?.timing;
+		const timing = group.userPosition === undefined ? undefined : matches[group.userPosition]?.timing;
 		if (!timing) return false;
 		if (timing.userMessageType === "message_steered" && timing.activeEventId === outputEventId) {
 			steeringClaimants += 1;
@@ -466,8 +678,9 @@ function createAssistantTurnNodes(
 	fallbackEventId?: string,
 ): PiboTraceNode[] {
 	const firstAssistant = entries.find(({ entry }) => entry.role === "assistant");
-	if (!firstAssistant) return [];
-	const eventId = canonicalProductTurnId(firstAssistant.entry, timing, fallbackEventId);
+	const identityEntry = firstAssistant ?? entries[0];
+	if (!identityEntry) return [];
+	const eventId = canonicalProductTurnId(identityEntry.entry, timing, fallbackEventId);
 	const orderedNodes: PiboTraceNode[] = [];
 	const toolsByCallId = new Map<string, PiboTraceNode>();
 
