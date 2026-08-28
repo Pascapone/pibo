@@ -857,6 +857,7 @@ export type CustomAgent = {
 	nativeSubagents?: boolean;
 	runControl: boolean;
 	goalControl: boolean;
+	brokenNativeTools?: string[];
 	brokenContextFiles?: string[];
 	createdAt: string;
 	updatedAt: string;

@@ -54,3 +54,35 @@ test("web gateway registry loads custom agent profiles before channels start", a
 		});
 	}
 });
+
+test("stale custom agent tool references do not break the profile catalog", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-stale-custom-agent-tool-"));
+	const agentStorePath = join(dir, "chat-agents.sqlite");
+	let agent;
+	{
+		const store = new CustomAgentStore(agentStorePath);
+		try {
+			agent = store.create({ displayName: "stale-tool-agent", nativeTools: ["retired-tool"] });
+		} finally {
+			store.close();
+		}
+	}
+
+	const warnings = [];
+	const originalWarn = console.warn;
+	console.warn = (message) => warnings.push(String(message));
+	try {
+		const registry = createWebPiboPluginRegistry({ authMode: "local", chat: { agentStorePath } });
+		const profileInfos = registry.getProfileInfos();
+		const profileInfo = profileInfos.find((profile) => profile.name === agent.profileName);
+		assert.ok(profileInfo);
+		assert.deepEqual(profileInfo.nativeTools, []);
+		assert.doesNotThrow(() => createPiboProfileFromRegistryOrDefault(registry, agent.profileName));
+		assert.ok(warnings.some((warning) => warning.includes(`Skipping unknown tool "retired-tool" for custom agent "${agent.profileName}"`)));
+	} finally {
+		console.warn = originalWarn;
+		await rm(dir, { recursive: true, force: true }).catch((error) => {
+			if (error?.code !== "EBUSY") throw error;
+		});
+	}
+});

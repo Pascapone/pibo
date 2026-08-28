@@ -7327,11 +7327,13 @@ test("chat web app surfaces broken custom agent context files and allows cleanup
 			},
 			body: JSON.stringify({
 				displayName: "broken-context-agent",
+				nativeTools: ["retired-tool"],
 				contextFiles: ["ctx:git-projekt", "ctx:pibo-docker-development"],
 			}),
 		});
 		assert.equal(createdAgent.status, 201);
 		const createdPayload = await createdAgent.json();
+		assert.deepEqual(createdPayload.agent.brokenNativeTools, ["retired-tool"]);
 		assert.deepEqual(createdPayload.agent.brokenContextFiles, ["ctx:pibo-docker-development"]);
 
 		const bootstrap = await fetch(`${baseURL}/api/chat/bootstrap`, {
@@ -7339,6 +7341,7 @@ test("chat web app surfaces broken custom agent context files and allows cleanup
 		});
 		assert.equal(bootstrap.status, 200);
 		const bootstrapPayload = await bootstrap.json();
+		assert.deepEqual(bootstrapPayload.customAgents[0].brokenNativeTools, ["retired-tool"]);
 		assert.deepEqual(bootstrapPayload.customAgents[0].brokenContextFiles, ["ctx:pibo-docker-development"]);
 
 		const patchedAgent = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
@@ -7349,11 +7352,13 @@ test("chat web app surfaces broken custom agent context files and allows cleanup
 				"x-test-user": "user-1",
 			},
 			body: JSON.stringify({
+				nativeTools: [],
 				contextFiles: ["ctx:git-projekt"],
 			}),
 		});
 		assert.equal(patchedAgent.status, 200);
 		const patchedPayload = await patchedAgent.json();
+		assert.deepEqual(patchedPayload.agent.brokenNativeTools, []);
 		assert.deepEqual(patchedPayload.agent.brokenContextFiles, []);
 		assert.deepEqual(patchedPayload.agent.contextFiles, ["ctx:git-projekt"]);
 	} finally {
