@@ -21,7 +21,7 @@ test("hiding archived agents switches the designer away from a hidden archived s
 	assert.match(handler, /if \(next \|\| !archivedDraft\) return;/);
 	assert.match(handler, /const nextDraft = selectExistingAgentDraft\(agents, customAgents, catalog \?\? undefined\);/);
 	assert.match(handler, /activateDraft\(nextDraft, agentDraftSignature\(nextDraft\), false\);/);
-	assert.match(handler, /if \(nextDraft\.profileName\) onSelect\(nextDraft\.profileName\);/);
+	assert.doesNotMatch(handler, /onSelect|writeStoredNewSessionProfile/);
 });
 
 test("the archived-agent visibility control uses the reconciled toggle handler", () => {

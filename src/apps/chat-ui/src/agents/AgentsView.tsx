@@ -138,7 +138,6 @@ export function AgentsView({
 	initialAgentFolders,
 	initialCatalog,
 	modelCatalog,
-	onSelect,
 	onCreateSession,
 	onEditContextFile,
 	onEditMcpServer,
@@ -154,7 +153,6 @@ export function AgentsView({
 	initialAgentFolders: CustomAgentFolder[];
 	initialCatalog?: AgentCatalog;
 	modelCatalog?: ModelCatalog;
-	onSelect: (profile: string) => void;
 	onCreateSession: (profile: string) => void;
 	onEditContextFile: (key: string) => void;
 	onEditMcpServer: (name: string) => void;
@@ -198,16 +196,14 @@ export function AgentsView({
 	const autosaveTimerRef = useRef<number | null>(null);
 	const mountedRef = useRef(true);
 	const catalogRef = useRef<AgentCatalog | null>(catalog);
-	const onSelectRef = useRef(onSelect);
 	const onAgentsChangedRef = useRef(onAgentsChanged);
 	const designerAvailable = Boolean(catalog);
 
 	useEffect(() => {
 		catalogRef.current = catalog;
 		customAgentsRef.current = customAgents;
-		onSelectRef.current = onSelect;
 		onAgentsChangedRef.current = onAgentsChanged;
-	}, [catalog, customAgents, onAgentsChanged, onSelect]);
+	}, [catalog, customAgents, onAgentsChanged]);
 
 	const clearAutosaveTimer = useCallback(() => {
 		if (autosaveTimerRef.current !== null) {
@@ -312,7 +308,6 @@ export function AgentsView({
 				setCustomAgents(nextAgents);
 				setLocalError(null);
 			}
-			onSelectRef.current(savedAgent.profileName);
 			onAgentsChangedRef.current();
 		};
 		const savePromise = (async () => {
@@ -535,7 +530,6 @@ export function AgentsView({
 
 		const nextDraft = selectExistingAgentDraft(agents, customAgents, catalog ?? undefined);
 		activateDraft(nextDraft, agentDraftSignature(nextDraft), false);
-		if (nextDraft.profileName) onSelect(nextDraft.profileName);
 	};
 
 	const setDraftArchived = async (archived: boolean) => {
@@ -653,7 +647,6 @@ export function AgentsView({
 			setCustomAgents(remainingAgents);
 			const nextDraft = selectExistingAgentDraft(agents.filter((agent) => agent.name !== draft.profileName), remainingAgents, catalog ?? undefined);
 			activateDraft(nextDraft, agentDraftSignature(nextDraft), false);
-			if (nextDraft.profileName) onSelectRef.current(nextDraft.profileName);
 			setDeleteConfirmName("");
 			onAgentsChangedRef.current();
 			setLocalError(null);
@@ -700,7 +693,6 @@ export function AgentsView({
 						const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
 						const nextDraft = agentToDraft(latestAgent);
 						activateDraft(nextDraft, agentDraftSignature(nextDraft));
-						if (!latestAgent.archivedAt) onSelect(latestAgent.profileName);
 						onCloseMobileSidebar();
 					});
 				}}
@@ -711,14 +703,12 @@ export function AgentsView({
 				})}
 				onMoveAgent={moveAgent}
 				onCreateAgentSession={(agent) => void runAfterAutosave(() => {
-					onSelect(agent.profileName);
 					onCreateSession(agent.profileName);
 					onCloseMobileSidebar();
 				})}
 				onSelectProfile={(profile) => void runAfterAutosave(() => {
 					const nextDraft = profileToDraft(profile, catalog ?? undefined);
 					activateDraft(nextDraft, agentDraftSignature(nextDraft));
-					onSelect(profile.name);
 					onCloseMobileSidebar();
 				})}
 				onCopyProfile={(profile) => void runAfterAutosave(() => {
@@ -726,7 +716,6 @@ export function AgentsView({
 					onCloseMobileSidebar();
 				})}
 				onCreateProfileSession={(profile) => void runAfterAutosave(() => {
-					onSelect(profile.name);
 					onCreateSession(profile.name);
 					onCloseMobileSidebar();
 				})}
@@ -750,7 +739,7 @@ export function AgentsView({
 								Retry
 							</button>
 						) : null}
-						<button type="button" onClick={() => void runAfterAutosave(() => { if (draft.profileName) { onSelect(draft.profileName); onCreateSession(draft.profileName); } })} disabled={!draft.profileName || creatingSession || archivedDraft} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
+						<button type="button" onClick={() => void runAfterAutosave(() => { if (draft.profileName) onCreateSession(draft.profileName); })} disabled={!draft.profileName || creatingSession || archivedDraft} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
 							<MessageSquarePlus size={14} />
 						</button>
 						{draft.source === "custom" && draft.id ? (
