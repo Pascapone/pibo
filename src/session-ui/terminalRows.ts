@@ -1,4 +1,4 @@
-import { compareTraceNodes } from "../shared/trace-engine.js";
+import { compareTraceNodes } from "../shared/trace-nodes.js";
 import type { PiboSessionTraceView, PiboTraceNode, TracePayloadRef } from "../shared/trace-types.js";
 import { terminalTextValue } from "./terminalValue.js";
 

@@ -40,6 +40,10 @@ import { defaultOmpRuntimeConfig, OMP_RUNTIME_CONFIG_SCHEMA, parseOmpRuntimeConf
 import { OmpHostToolBridge } from "./host-tools.js";
 import { emptyOmpHistoryPage, inspectOmpHistory, readOmpHistory } from "./history.js";
 import {
+	historyReconciliationDigest,
+	type AgentRuntimeHistoryReconciliationProof,
+} from "../../agent-runtime/history.js";
+import {
 	OMP_MODEL_OPTIONS_SCHEMA,
 	OMP_MODEL_PROVIDER_ID,
 	OMP_REASONING_VALUES,
@@ -65,6 +69,40 @@ export { OMP_ADAPTER_ID } from "./thread.js";
 
 export const OMP_RUNTIME_PROTOCOL_NAME = "omp-rpc";
 export const OMP_RUNTIME_SUPPORTED_RANGE = "2";
+
+const ompCompleteHistoryProofs = new WeakMap<
+	AgentRuntimeHistoryReconciliationProof,
+	{ scopeId?: string; fullScope: NonNullable<AgentRuntimeHistoryReconciliationProof["fullScope"]> }
+>();
+const ompRpcRequestImplementation = OmpRpcClient.prototype.request;
+const ompBuiltInHistoryClients = new WeakMap<
+	OmpSession,
+	{ owner: object; client: Pick<OmpRpcClient, "request"> }
+>();
+const ompBuiltInAdapterHistoryClients = new WeakMap<object, Pick<OmpRpcClient, "request">>();
+
+function bindOmpCompleteHistoryProof(page: AgentRuntimeHistoryPage): AgentRuntimeHistoryPage {
+	const claim = page.reconciliationProof;
+	if (!claim?.complete) return page;
+	const entries = Object.freeze([...claim.entries]);
+	const fullScope = Object.freeze({ entryCount: entries.length, digest: historyReconciliationDigest(entries) });
+	const proof = Object.freeze({
+		complete: true,
+		...(claim.scopeId ? { scopeId: claim.scopeId } : {}),
+		fullScope,
+		entries,
+	}) satisfies AgentRuntimeHistoryReconciliationProof;
+	ompCompleteHistoryProofs.set(proof, { ...(claim.scopeId ? { scopeId: claim.scopeId } : {}), fullScope });
+	return { ...page, reconciliationProof: proof };
+}
+
+export function isOmpBuiltInHistoryReconciliationProof(proof: AgentRuntimeHistoryReconciliationProof): boolean {
+	const bound = ompCompleteHistoryProofs.get(proof);
+	return proof.complete
+		&& bound !== undefined
+		&& proof.scopeId === bound.scopeId
+		&& proof.fullScope === bound.fullScope;
+}
 
 function ompCapabilities(): AgentRuntimeCapabilities {
 	return {
@@ -463,7 +501,7 @@ export class OmpSession implements AgentRuntimeSession {
 	}
 }
 
-export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
+class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly instanceId: string;
 	readonly descriptor: AgentRuntimeDriver<OmpRuntimeConfig>["descriptor"];
 	readonly config: PiboJsonObject;
@@ -567,6 +605,11 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		const session = new OmpSession(this.instanceId, bundle, this.parsed, (m) => {
 			// Warning surfaced via session events is delivered by the turn controller.
 		}, this);
+		const historyClient = Object.freeze({
+			request: ((...args: Parameters<OmpRpcClient["request"]>) =>
+				Reflect.apply(ompRpcRequestImplementation, client, args)) as OmpRpcClient["request"],
+		});
+		ompBuiltInHistoryClients.set(session, { owner: this, client: historyClient });
 		session.setPiboSessionId(input.piboSession.id);
 
 		// Wire host tools after session construction so the executor is available.
@@ -635,11 +678,18 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	/** Record the live session so adapter-level reads can route to it. */
 	attachLiveSession(session: OmpSession): void {
+		const history = ompBuiltInHistoryClients.get(session);
+		if (!history || history.owner !== this) {
+			throw new AgentRuntimeUnavailableError(this.instanceId, "OMP history requires a session created by this built-in adapter instance.");
+		}
 		this.live = session;
+		ompBuiltInAdapterHistoryClients.set(this, history.client);
 	}
 
 	detachLiveSession(session: OmpSession): void {
-		if (this.live === session) this.live = undefined;
+		if (this.live !== session) return;
+		this.live = undefined;
+		ompBuiltInAdapterHistoryClients.delete(this);
 	}
 
 	async listModels(): Promise<AgentRuntimeModelCatalog> {
@@ -682,8 +732,11 @@ export class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async readHistory(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage> {
-		if (this.live) {
-			return await readOmpHistory(this.live.getClient(), input, this.instanceId, input.binding);
+		const historyClient = ompBuiltInAdapterHistoryClients.get(this);
+		if (historyClient) {
+			return bindOmpCompleteHistoryProof(
+				await readOmpHistory(historyClient, input, this.instanceId, input.binding),
+			);
 		}
 		return emptyOmpHistoryPage(this.instanceId);
 	}

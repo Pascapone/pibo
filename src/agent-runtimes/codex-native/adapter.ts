@@ -58,6 +58,10 @@ import {
 	unavailableCodexThreadHistoryInspection,
 } from "./history.js";
 import {
+	historyReconciliationDigest,
+	type AgentRuntimeHistoryReconciliationProof,
+} from "../../agent-runtime/history.js";
+import {
 	CODEX_NATIVE_ADAPTER_ID,
 	CodexNativeThreadController,
 	CodexNativeThreadMissingError,
@@ -947,7 +951,41 @@ type CodexNativeFirstUseTestFailpoints = {
 	afterNativeTerminalDurable?: () => void | Promise<void>;
 };
 
-export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
+const codexNativeCompleteHistoryProofs = new WeakMap<
+	AgentRuntimeHistoryReconciliationProof,
+	{ scopeId?: string; fullScope: NonNullable<AgentRuntimeHistoryReconciliationProof["fullScope"]> }
+>();
+const codexNativeHistoryReaders = new WeakMap<
+	object,
+	(piboSessionId: string, workspace: string, threadId: string, includeTurns: boolean) => Promise<CodexAppServerThread>
+>();
+const startCodexNativeHistoryProcess = startCodexNativeAppServer;
+const readCodexNativeHistoryThread = CodexNativeThreadController.read;
+
+function bindCodexNativeCompleteHistoryProof(page: AgentRuntimeHistoryPage): AgentRuntimeHistoryPage {
+	const claim = page.reconciliationProof;
+	if (!claim?.complete) return page;
+	const entries = Object.freeze([...claim.entries]);
+	const fullScope = Object.freeze({ entryCount: entries.length, digest: historyReconciliationDigest(entries) });
+	const proof = Object.freeze({
+		complete: true,
+		...(claim.scopeId ? { scopeId: claim.scopeId } : {}),
+		fullScope,
+		entries,
+	}) satisfies AgentRuntimeHistoryReconciliationProof;
+	codexNativeCompleteHistoryProofs.set(proof, { ...(claim.scopeId ? { scopeId: claim.scopeId } : {}), fullScope });
+	return { ...page, reconciliationProof: proof };
+}
+
+export function isCodexNativeBuiltInHistoryReconciliationProof(proof: AgentRuntimeHistoryReconciliationProof): boolean {
+	const bound = codexNativeCompleteHistoryProofs.get(proof);
+	return proof.complete
+		&& bound !== undefined
+		&& proof.scopeId === bound.scopeId
+		&& proof.fullScope === bound.fullScope;
+}
+
+class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly descriptor: AgentRuntimeDriver<CodexNativeRuntimeConfig>["descriptor"];
 	readonly config: CodexNativeRuntimeConfig;
 	readonly displayName: string;
@@ -968,6 +1006,23 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		};
 		this.displayName = displayName ?? this.descriptor.displayName;
 		this.enabled = enabled;
+		const historyConfig = structuredClone(this.config);
+		const historyInstanceId = this.instanceId;
+		codexNativeHistoryReaders.set(this, async (piboSessionId, workspace, threadId, includeTurns) => {
+			const process = await startCodexNativeHistoryProcess({
+				config: historyConfig,
+				runtimeInstanceId: historyInstanceId,
+				piboSessionId,
+				sessionGeneration: `history-${randomUUID()}`,
+				workspace,
+				clientVersion: CODEX_NATIVE_ADAPTER_VERSION,
+			});
+			try {
+				return await readCodexNativeHistoryThread(process.client, threadId, includeTurns);
+			} finally {
+				await process.close();
+			}
+		});
 		this.authController = new CodexNativeAuthController({
 			config: this.config,
 			startProcess: async (sessionGeneration) => await startCodexNativeAppServer({
@@ -1300,8 +1355,9 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			);
 		}
 		try {
-			const thread = await this.withProcess(input.binding.piboSessionId, input.workspace, async (process) =>
-				await CodexNativeThreadController.read(process.client, threadId, false));
+			const readHistory = codexNativeHistoryReaders.get(this);
+			if (!readHistory) throw new Error("Codex built-in history reader is unavailable.");
+			const thread = await readHistory(input.binding.piboSessionId, input.workspace, threadId, false);
 			return inspectCodexThreadHistory(this.instanceId, input.binding, thread);
 		} catch (error) {
 			return unavailableCodexThreadHistoryInspection(
@@ -1329,16 +1385,17 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			};
 		}
 		try {
-			const thread = await this.withProcess(input.binding.piboSessionId, input.workspace, async (process) =>
-				await CodexNativeThreadController.read(process.client, threadId, true));
-			return pageCodexThreadHistory({
+			const readHistory = codexNativeHistoryReaders.get(this);
+			if (!readHistory) throw new Error("Codex built-in history reader is unavailable.");
+			const thread = await readHistory(input.binding.piboSessionId, input.workspace, threadId, true);
+			return bindCodexNativeCompleteHistoryProof(pageCodexThreadHistory({
 				runtimeInstanceId: this.instanceId,
 				binding: input.binding,
 				thread,
 				cursor: input.cursor,
 				beforeTimestamp: input.beforeTimestamp,
 				limit: input.limit,
-			});
+			}));
 		} catch (error) {
 			if (error instanceof CodexNativeThreadMissingError) {
 				const inspection = unavailableCodexThreadHistoryInspection(

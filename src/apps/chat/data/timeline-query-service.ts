@@ -4,6 +4,8 @@ import type { ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import { messageTurnTimingsFromEvents, type TraceMessageTurnTiming } from "../../../shared/trace-event-projection.js";
 import { storedChatEventFromV2Row, storedPiboEventFromV2Row, type EventLogRow } from "./chat-data-mappers.js";
+import { TRACE_RECONCILIATION_ENTRY_CAP, TRACE_RECONCILIATION_TIMING_CAP } from "../../../shared/trace-limits.js";
+import { parseTraceToolNodeIdentity } from "../../../shared/trace-tool-identity.js";
 
 export class ChatTimelineQueryService {
 	constructor(private readonly store: PiboDataStore) {}
@@ -34,7 +36,9 @@ export class ChatTimelineQueryService {
 			WHERE session_id = ?
 				AND type IN ('message_queued', 'message_steered', 'message_started', 'message_finished', 'session_error', 'thinking_finished', 'assistant_message')
 			ORDER BY session_sequence ASC, stream_id ASC
-		`).all(piboSessionId) as EventLogRow[];
+			LIMIT ?
+		`).all(piboSessionId, TRACE_RECONCILIATION_TIMING_CAP + 1) as EventLogRow[];
+		if (rows.length > TRACE_RECONCILIATION_TIMING_CAP) return [];
 		const events = rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
 		return messageTurnTimingsFromEvents(events);
 	}
@@ -73,38 +77,69 @@ export class ChatTimelineQueryService {
 		nodeId: string;
 		payloadKind: "output";
 	}): boolean {
-		if (!input.nodeId.startsWith("tool:")) return false;
-		const toolCallId = input.nodeId.slice("tool:".length);
-		if (!toolCallId) return false;
+		const nodeIdentity = parseTraceToolNodeIdentity(input.nodeId);
+		if (!nodeIdentity) return false;
 		const payload = this.store.payloads.getPayload(input.payloadId);
 		if (!payload) return false;
+		const eventClause = nodeIdentity.qualifier ? "AND event_id = ?" : "";
+		const values = nodeIdentity.qualifier
+			? [input.piboSessionId, nodeIdentity.toolCallId, nodeIdentity.qualifier.eventId]
+			: [input.piboSessionId, nodeIdentity.toolCallId];
 		const rows = this.store.db.prepare(`
-			SELECT payload_ref, attributes_json
+			SELECT type, event_id, payload_ref, attributes_json
 			FROM event_log
 			WHERE session_id = ?
-				AND type IN ('tool_execution_updated', 'tool_execution_finished')
-				AND json_extract(attributes_json, '$.toolCallId') = ?
-			ORDER BY session_sequence DESC, stream_id DESC
-		`).all(input.piboSessionId, toolCallId) as Array<{ payload_ref: string | null; attributes_json: string }>;
+				AND tool_call_id = ?
+				AND type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished')
+				${eventClause}
+			ORDER BY session_sequence ASC, stream_id ASC
+			LIMIT ?
+		`).all(...values, TRACE_RECONCILIATION_ENTRY_CAP + 1) as Array<{
+			type: string;
+			event_id: string | null;
+			payload_ref: string | null;
+			attributes_json: string;
+		}>;
+		if (rows.length > TRACE_RECONCILIATION_ENTRY_CAP) return false;
+		const lifecycles = new Map<string | null, {
+			nextOrdinal: number;
+			active?: { eventId: string | null; invocationOrdinal: number; payloadMatches: boolean };
+		}>();
+		const invocations: Array<{ eventId: string | null; invocationOrdinal: number; payloadMatches: boolean }> = [];
 		for (const row of rows) {
-			if (row.payload_ref === input.payloadId) return true;
-			let attributes: Record<string, unknown>;
-			try {
-				const parsed = JSON.parse(row.attributes_json) as unknown;
-				if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
-				attributes = parsed as Record<string, unknown>;
-			} catch {
-				continue;
+			const lifecycle = lifecycles.get(row.event_id) ?? { nextOrdinal: 0 };
+			lifecycles.set(row.event_id, lifecycle);
+			if (row.type === "tool_execution_started") {
+				if (lifecycle.active) return false;
+				lifecycle.active = {
+					eventId: row.event_id,
+					invocationOrdinal: lifecycle.nextOrdinal,
+					payloadMatches: false,
+				};
+				lifecycle.nextOrdinal += 1;
+				invocations.push(lifecycle.active);
+			} else if (!lifecycle.active) {
+				lifecycle.active = {
+					eventId: row.event_id,
+					invocationOrdinal: lifecycle.nextOrdinal,
+					payloadMatches: false,
+				};
+				lifecycle.nextOrdinal += 1;
+				invocations.push(lifecycle.active);
 			}
-			if (!("inlinePayload" in attributes)) continue;
-			const bytes = Buffer.from(JSON.stringify(attributes.inlinePayload), "utf8");
-			const payloadSha256 = createHash("sha256").update(bytes).digest("hex");
-			if (payload.sha256 !== payloadSha256) continue;
-			// PayloadStore canonicalizes equal bytes to one payload row. Requiring that
-			// canonical id prevents a duplicate metadata row from being rebound by hash.
-			if (this.store.payloads.findBySha256(payloadSha256)?.id === input.payloadId) return true;
+			if (
+				row.type !== "tool_execution_started"
+				&& payloadMatchesEventRow(this.store, payload.sha256, input.payloadId, row)
+			) lifecycle.active.payloadMatches = true;
+			if (row.type === "tool_execution_finished") lifecycle.active = undefined;
 		}
-		return false;
+		if (!nodeIdentity.qualifier) {
+			return invocations.length === 1 && invocations[0]!.payloadMatches;
+		}
+		const exact = invocations.filter((invocation) =>
+			invocation.eventId === nodeIdentity.qualifier!.eventId
+			&& invocation.invocationOrdinal === nodeIdentity.qualifier!.invocationOrdinal);
+		return exact.length === 1 && exact[0]!.payloadMatches;
 	}
 
 	countEventsByType(input: { piboSessionId?: string; eventTypes?: string[] } = {}): Array<{ eventType: string; count: number }> {
@@ -137,4 +172,26 @@ export class ChatTimelineQueryService {
 		const row = this.store.db.prepare(`SELECT MAX(stream_id) AS stream_id FROM event_log ${where}`).get(...values) as { stream_id: number | null } | undefined;
 		return row?.stream_id ?? undefined;
 	}
+}
+
+function payloadMatchesEventRow(
+	store: PiboDataStore,
+	payloadSha256: string,
+	payloadId: string,
+	row: { payload_ref: string | null; attributes_json: string },
+): boolean {
+	if (row.payload_ref === payloadId) return true;
+	let attributes: Record<string, unknown>;
+	try {
+		const parsed = JSON.parse(row.attributes_json) as unknown;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+		attributes = parsed as Record<string, unknown>;
+	} catch {
+		return false;
+	}
+	if (!("inlinePayload" in attributes)) return false;
+	const bytes = Buffer.from(JSON.stringify(attributes.inlinePayload), "utf8");
+	const inlineSha256 = createHash("sha256").update(bytes).digest("hex");
+	if (payloadSha256 !== inlineSha256) return false;
+	return store.payloads.findBySha256(inlineSha256)?.id === payloadId;
 }
