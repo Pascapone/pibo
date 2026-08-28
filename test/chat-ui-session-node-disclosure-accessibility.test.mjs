@@ -112,3 +112,76 @@ async function runSessionNodeDisclosureScenario() {
 test("session Subsessions disclosures identify parents and retain lazy controlled regions", async () => {
 	await assert.doesNotReject(runSessionNodeDisclosureScenario());
 });
+
+async function runSessionNodeSelectionChangeScenario() {
+	const script = String.raw`
+		import assert from "node:assert/strict";
+		import React from "react";
+		import TestRenderer from "react-test-renderer";
+
+		globalThis.React = React;
+		globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+		const { act, create } = TestRenderer;
+		const rootId = "ps_11111111-1111-4111-8111-111111111111";
+		const childId = "ps_22222222-2222-4222-8222-222222222222";
+		const otherRootId = "ps_33333333-3333-4333-8333-333333333333";
+		const noop = () => {};
+		const tree = {
+			piboSessionId: rootId,
+			piSessionId: "pi-root",
+			profile: "pibo-agent",
+			title: "Rework Langgraph",
+			status: "idle",
+			children: [{
+				piboSessionId: childId,
+				piSessionId: "pi-child",
+				profile: "helper",
+				title: "Research Notes",
+				status: "idle",
+				children: [],
+				derivedSessions: [],
+			}],
+			derivedSessions: [],
+		};
+
+		function element(selectedPiboSessionId, selectedSessionPathIds) {
+			return React.createElement(SessionNode, {
+				node: tree,
+				signalNow: 0,
+				selectedPiboSessionId,
+				selectedSessionPathIds,
+				onSelect: noop,
+				onRename: noop,
+				onArchive: noop,
+				onDelete: noop,
+				onViewContext: noop,
+			});
+		}
+
+		const { SessionNode } = await import("./src/apps/chat-ui/src/session-node.tsx");
+		let renderer;
+		await act(async () => {
+			renderer = create(element(rootId, new Set([rootId])));
+		});
+		const disclosure = () => renderer.root.findByProps({ "aria-label": "Subsessions for Rework Langgraph" });
+		assert.equal(disclosure().props["aria-expanded"], false);
+
+		await act(async () => disclosure().props.onClick());
+		assert.equal(disclosure().props["aria-expanded"], true);
+		assert.equal(renderer.root.findAllByProps({ "data-pibo-session-id": childId }).length, 1);
+
+		await act(async () => {
+			renderer.update(element(otherRootId, new Set([otherRootId])));
+		});
+		assert.equal(disclosure().props["aria-expanded"], false);
+		assert.equal(renderer.root.findAllByProps({ "data-pibo-session-id": childId }).length, 0);
+	`;
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
+		cwd: process.cwd(),
+		env: { ...process.env, NODE_ENV: "development" },
+	});
+}
+
+test("session Subsessions collapse when the selected session changes", async () => {
+	await assert.doesNotReject(runSessionNodeSelectionChangeScenario());
+});
