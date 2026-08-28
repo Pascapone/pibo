@@ -2,11 +2,10 @@ import { CHAT_WEB_APP_NAME } from "../apps/chat/web-app.js";
 import { createDefaultPiboPlugins } from "../plugins/builtin.js";
 import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import { createPiboBetterAuthPlugin } from "../plugins/better-auth.js";
-import { createPiboChatCustomAgentProfilesPlugin } from "../plugins/chat-custom-agents.js";
-import { createPiboChatUserSkillsPlugin } from "../plugins/chat-user-skills.js";
 import { createPiboChatWebPlugin, type ChatWebAppOptions } from "../plugins/chat-web.js";
 import { createPiboChatVscodeWebPlugin } from "../plugins/chat-vscode-web.js";
-import { createPiboContextFilesPlugin, type ContextFilesPluginOptions } from "../plugins/context-files.js";
+import type { ContextFilesPluginOptions } from "../plugins/context-files.js";
+import { createPiboUserProfileResourcePlugins } from "../plugins/user-profile-resources.js";
 import { createPiboPreviewPlugin } from "../previews/plugin.js";
 import { createPiboCronPlugin } from "../cron/plugin.js";
 import { createPiboLoopPlugin } from "../loops/plugin.js";
@@ -188,13 +187,15 @@ export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {
 				landingAppName: CHAT_WEB_APP_NAME,
 			}),
 			createPiboCronPlugin({ cronStorePath: resolvedOptions.chat?.cronStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
-			createPiboChatUserSkillsPlugin({
-				globalRoot: resolvedOptions.chat?.userSkillGlobalRoot,
-				workspaceRoot: resolvedOptions.chat?.userSkillWorkspaceRoot,
+			...createPiboUserProfileResourcePlugins({
+				userSkills: {
+					globalRoot: resolvedOptions.chat?.userSkillGlobalRoot,
+					workspaceRoot: resolvedOptions.chat?.userSkillWorkspaceRoot,
+				},
+				contextFiles: resolvedOptions.contextFiles,
+				customAgents: { agentStorePath: resolvedOptions.chat?.agentStorePath },
 			}),
-			createPiboChatCustomAgentProfilesPlugin({ agentStorePath: resolvedOptions.chat?.agentStorePath }),
 			createPiboLoopPlugin({ loopStorePath: resolvedOptions.chat?.ralphStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
-			createPiboContextFilesPlugin(resolvedOptions.contextFiles),
 			createPiboPreviewPlugin(),
 			createPiboChatWebPlugin(resolvedOptions.chat),
 			createPiboChatVscodeWebPlugin(),

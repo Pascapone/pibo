@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
+import { ContextFileMetadataStore } from "../dist/plugins/context-files-store.js";
+import { UserSkillManager } from "../dist/user-skills/manager.js";
 
 const execFileAsync = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
@@ -41,6 +43,28 @@ test("pibo profile resolves active saved Chat custom agents", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-profile-custom-agent-"));
 	const piboHome = join(cwd, "pibo-home");
 	await mkdir(piboHome, { recursive: true });
+	const userSkill = new UserSkillManager(cwd, "global").create({
+		name: "unity-user-skill",
+		description: "Unity user instructions",
+		markdown: "---\nname: unity-user-skill\ndescription: Unity user instructions\n---\n\n# Unity\n",
+	});
+	const contextPath = join(piboHome, "context-files", "global", "unity-context.md");
+	await mkdir(join(piboHome, "context-files", "global"), { recursive: true });
+	await writeFile(contextPath, "# Unity context\n");
+	{
+		const contextStore = new ContextFileMetadataStore(join(piboHome, "context-files", "context-files.sqlite"));
+		try {
+			contextStore.createFile({
+				key: "ctx:unity-context",
+				label: "Unity context",
+				managedPath: contextPath,
+				scope: "global",
+				workingContent: "# Unity context\n",
+			});
+		} finally {
+			contextStore.close();
+		}
+	}
 	let live;
 	{
 		const store = new CustomAgentStore(join(piboHome, "chat-agents.sqlite"));
@@ -52,8 +76,8 @@ test("pibo profile resolves active saved Chat custom agents", async () => {
 				mainThinkingLevel: "xhigh",
 				fast: false,
 				nativeTools: ["web_search"],
-				skills: ["graphify", "missing-skill"],
-				contextFiles: ["ctx:missing-context"],
+				skills: ["graphify", "unity-user-skill", "missing-skill"],
+				contextFiles: ["ctx:unity-context", "ctx:missing-context"],
 				mcpServers: ["unity"],
 				runControl: true,
 			});
@@ -76,7 +100,11 @@ test("pibo profile resolves active saved Chat custom agents", async () => {
 		assert.equal(profile.toolPackages.runControl, true);
 		assert.deepEqual(profile.mcpServers, ["unity"]);
 		assert.ok(profile.skills.some((skill) => skill.name === "graphify"));
+		assert.ok(profile.skills.some((skill) => skill.name === "unity-user-skill" && skill.path === userSkill.path));
+		assert.ok(profile.contextFiles.some((file) => file.path === contextPath));
 		assert.ok(profile.tools.some((tool) => tool.name === "web_search" && tool.active));
+		assert.ok(profile.diagnostics.some((diagnostic) => diagnostic.message.includes("[custom_agent_unknown_skill]") && diagnostic.message.includes("missing-skill")));
+		assert.ok(profile.diagnostics.some((diagnostic) => diagnostic.message.includes("[custom_agent_unknown_context_file]") && diagnostic.message.includes("ctx:missing-context")));
 		assert.match(result.stderr, /Skipping unknown skill "missing-skill" for custom agent "unity-agent"/);
 		assert.match(result.stderr, /Skipping unknown context file "ctx:missing-context" for custom agent "unity-agent"/);
 

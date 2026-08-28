@@ -7,8 +7,9 @@ import type {
 } from "../core/events.js";
 import type { PiboRuntimeOptions } from "../core/runtime.js";
 import { PiboSessionRouter } from "../core/session-router.js";
-import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
+import { createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
+import { createDefaultPiboUserProfileRegistry } from "../plugins/user-profile-resources.js";
 import type { PiboGatewayActionInfo } from "../plugins/types.js";
 import { getDefaultPiboWorkspace } from "../core/workspace.js";
 import {
@@ -97,7 +98,7 @@ export class LocalRoutedTuiClient implements LocalRoutedTuiClientLike {
 }
 
 export function createLocalRoutedTuiClient(options: LocalRoutedTuiOptions = {}): LocalRoutedTuiClient {
-	const registry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+	const registry = options.pluginRegistry ?? createDefaultPiboUserProfileRegistry();
 	const profileName = resolvePiboProfileNameFromRegistryOrDefault(registry, options.profile);
 	const profile = createPiboProfileFromRegistryOrDefault(registry, profileName);
 	const sessionName = options.sessionName ?? "default";
