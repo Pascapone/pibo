@@ -427,6 +427,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	private recycleProcessAfterInterruptedTurn = false;
 	private selectedToolNames = new Set<string>();
 	private readonly observedToolNames = new Set<string>();
+	private readonly emittedResourceWarnings = new Set<string>();
 	private toolInventoryWarning?: string;
 
 	constructor(
@@ -549,6 +550,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		this.assertActive();
 		await this.ensureFreshResourcesForTurn();
 		this.assertIdle();
+		this.emitPendingResourceWarnings();
 		this.operationInFlight = true;
 		let ownedFirstUseAttempt: string | undefined;
 		try {
@@ -634,6 +636,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			contextUsage: this.settings.currentContextUsage,
 			warnings: [
 				...diagnostics.filter((entry) => entry.level === "warning").map((entry) => entry.message),
+				...this.resourceDelivery.warnings.map((entry) => entry.message),
 				...(this.resourceWarning ? [this.resourceWarning] : []),
 				...(this.toolInventoryWarning ? [this.toolInventoryWarning] : []),
 			],
@@ -817,6 +820,15 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 				next.resourceDelivery.dispose();
 			}
 			throw new Error(`Native Codex portable-resource credential refresh failed while ${phase}; Pibo will retry while the session remains idle.`);
+		}
+	}
+
+	private emitPendingResourceWarnings(): void {
+		for (const warning of this.resourceDelivery.warnings) {
+			const key = `${warning.code}\0${warning.message}`;
+			if (this.emittedResourceWarnings.has(key)) continue;
+			this.emittedResourceWarnings.add(key);
+			this.emit({ type: "warning", message: warning.message, details: { code: warning.code } });
 		}
 	}
 

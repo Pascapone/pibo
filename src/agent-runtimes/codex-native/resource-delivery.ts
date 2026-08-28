@@ -43,6 +43,11 @@ type ExpectedMcpServer = {
 	toolNames: string[];
 };
 
+export type CodexNativeResourceWarning = {
+	code: "codex_native_skill_name_collision";
+	message: string;
+};
+
 type MaterializedMcpConfig = {
 	mcpServers?: Record<string, unknown>;
 };
@@ -303,12 +308,14 @@ export class CodexNativeResourceDelivery {
 		readonly threadConfig: Record<string, PiboJsonValue> | undefined,
 		readonly developerInstructions: string | undefined,
 		private readonly skillRoots: string[],
-		private readonly selectedSkills: Array<{ name: string; path: string }>,
+		private readonly selectedSkills: Array<{ contributionId: string; name: string; path: string }>,
 		private readonly expectedMcpServers: ExpectedMcpServer[],
+		private readonly resources?: PiboRuntimeResourceSession,
 		private readonly portableTools?: PiboPortableToolSession,
 		private readonly mcpAccess?: PiboToolMcpAccess,
 		private readonly credentialIssuedAtMs?: number,
 		private credentialExpiresAtMs?: number,
+		private resourceWarnings: CodexNativeResourceWarning[] = [],
 	) {}
 
 	static async prepare(input: CodexNativeResourceDeliveryInput): Promise<CodexNativeResourceDelivery> {
@@ -366,7 +373,7 @@ export class CodexNativeResourceDelivery {
 			const selectedSkills = input.resources
 				? await Promise.all(input.resources.getInspection().skills.flatMap((skill) => {
 					const path = skill.materializedPath;
-					return path ? [{ name: skill.name, path }] : [];
+					return path ? [{ contributionId: skill.contributionId, name: skill.name, path }] : [];
 				}).map(async (skill) => ({ ...skill, path: await realpath(skill.path) })))
 				: [];
 			const materializedSkillsRoot = input.resources?.getInspection().paths?.skills;
@@ -388,6 +395,7 @@ export class CodexNativeResourceDelivery {
 				skillRoots,
 				selectedSkills,
 				expectedMcpServers,
+				input.resources,
 				input.portableTools,
 				mcpAccess,
 				credentialIssuedAtMs,
@@ -401,6 +409,10 @@ export class CodexNativeResourceDelivery {
 
 	get hasMcpServers(): boolean {
 		return this.expectedMcpServers.length > 0;
+	}
+
+	get warnings(): readonly CodexNativeResourceWarning[] {
+		return this.resourceWarnings;
 	}
 
 	get enabledToolNames(): readonly string[] {
@@ -438,6 +450,7 @@ export class CodexNativeResourceDelivery {
 	}
 
 	async configureProcess(client: CodexAppServerClient, workspace: string): Promise<void> {
+		this.resourceWarnings = [];
 		if (this.skillRoots.length === 0) return;
 		let response: CodexAppServerSkillsListResponse;
 		try {
@@ -471,14 +484,33 @@ export class CodexNativeResourceDelivery {
 				}
 			}
 		}
+		const collisions = new Set<string>();
 		for (const skill of this.selectedSkills) {
 			const sameNamePaths = loadedSkills.get(skill.name) ?? new Set<string>();
 			const conflictingPath = [...sameNamePaths].find((path) => path !== skill.path);
-			if (conflictingPath) {
-				throw new Error(`Selected Pibo skill "${skill.name}" conflicts with a native Codex skill; explicit Pibo-skill precedence cannot be guaranteed.`);
-			}
-			if (!loadedPaths.has(skill.path)) throw new Error(`Codex did not load selected Pibo skill "${skill.name}".`);
+			if (conflictingPath) collisions.add(skill.name);
+			if (!loadedPaths.has(skill.path) && !conflictingPath) throw new Error(`Codex did not load selected Pibo skill "${skill.name}".`);
 		}
+		let collisionMessage: string | undefined;
+		if (collisions.size > 0) {
+			const names = [...collisions].sort().map((name) => `"${name}"`).join(", ");
+			collisionMessage = `Codex native skill name collision for ${names}: the selected Pibo skill remains materialized, but precedence is ambiguous. Rename or disable one source to remove the collision.`;
+			this.resourceWarnings = [{
+				code: "codex_native_skill_name_collision",
+				message: collisionMessage,
+			}];
+		}
+		this.resources?.recordAdapterDelivery?.(this.selectedSkills.map((skill) => {
+			const collided = collisions.has(skill.name);
+			return {
+				contributionId: skill.contributionId,
+				status: collided ? "degraded" : "delivered",
+				mode: "codex-extra-roots",
+				fidelity: collided ? "lossy" : "exact",
+				target: skill.path,
+				...(collided && collisionMessage ? { diagnostic: collisionMessage } : {}),
+			};
+		}));
 	}
 
 	async verifyThread(client: CodexAppServerClient, threadId: string): Promise<void> {
