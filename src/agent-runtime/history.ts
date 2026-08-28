@@ -83,8 +83,87 @@ export type AgentRuntimeHistoryReconciliationProof = {
 	complete: boolean;
 	/** Adapter-owned scope shared by every entry in a production proof/page. */
 	scopeId?: string;
+	/** Independently bound summary of the complete adapter scope. */
+	fullScope?: AgentRuntimeHistoryReconciliationScope;
 	entries: readonly AgentRuntimeHistoryEntry[];
 };
+
+export type AgentRuntimeHistoryReconciliationScope = {
+	entryCount: number;
+	digest: string;
+};
+
+const completeReconciliationProofs = new WeakMap<
+	AgentRuntimeHistoryReconciliationProof,
+	{ scopeId?: string; fullScope: AgentRuntimeHistoryReconciliationScope }
+>();
+
+/** Mint a complete in-process proof from an adapter-owned full history snapshot. */
+export function createCompleteHistoryReconciliationProof(
+	entries: readonly AgentRuntimeHistoryEntry[],
+	scopeId?: string,
+): AgentRuntimeHistoryReconciliationProof {
+	const proofEntries = Object.freeze([...entries]);
+	const fullScope = Object.freeze({
+		entryCount: proofEntries.length,
+		digest: historyReconciliationDigest(proofEntries),
+	});
+	const proof: AgentRuntimeHistoryReconciliationProof = {
+		complete: true,
+		...(scopeId ? { scopeId } : {}),
+		fullScope,
+		entries: proofEntries,
+	};
+	completeReconciliationProofs.set(proof, { ...(scopeId ? { scopeId } : {}), fullScope });
+	return proof;
+}
+
+/** Complete proofs are trusted only when they were minted by a production adapter path. */
+export function isBoundCompleteHistoryReconciliationProof(
+	proof: AgentRuntimeHistoryReconciliationProof,
+): boolean {
+	const bound = completeReconciliationProofs.get(proof);
+	return proof.complete
+		&& bound !== undefined
+		&& proof.scopeId === bound.scopeId
+		&& proof.fullScope === bound.fullScope;
+}
+
+export function historyReconciliationDigest(entries: readonly AgentRuntimeHistoryEntry[]): string {
+	const mask = 0xffff_ffff_ffff_ffffn;
+	const prime = 0x100000001b3n;
+	const hashes = [
+		0xcbf29ce484222325n,
+		0x84222325cbf29ce4n,
+		0x9e3779b97f4a7c15n,
+		0x517cc1b727220a95n,
+	];
+	for (const entry of entries) {
+		const signature = `${historyReconciliationEntrySignature(entry)}\n`;
+		for (let index = 0; index < signature.length; index += 1) {
+			const codeUnit = BigInt(signature.charCodeAt(index));
+			for (let hashIndex = 0; hashIndex < hashes.length; hashIndex += 1) {
+				hashes[hashIndex] = ((hashes[hashIndex]! ^ codeUnit) * prime) & mask;
+			}
+		}
+	}
+	return hashes.map((hash) => hash.toString(16).padStart(16, "0")).join("");
+}
+
+export function historyReconciliationEntrySignature(entry: AgentRuntimeHistoryEntry): string {
+	const { sequence: _pageLocalSequence, ...proofContent } = entry;
+	return stableHistoryJson(proofContent);
+}
+
+function stableHistoryJson(value: unknown): string {
+	if (value === null || typeof value !== "object") return JSON.stringify(value);
+	if (Array.isArray(value)) return `[${value.map(stableHistoryJson).join(",")}]`;
+	return `{${Object.entries(value as Record<string, unknown>)
+		.filter(([, child]) => child !== undefined)
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, child]) => `${JSON.stringify(key)}:${stableHistoryJson(child)}`)
+		.join(",")}}`;
+}
 
 export type AgentRuntimeHistoryInspection = {
 	runtimeInstanceId: string;

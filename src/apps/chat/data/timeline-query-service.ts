@@ -4,7 +4,8 @@ import type { ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import { messageTurnTimingsFromEvents, type TraceMessageTurnTiming } from "../../../shared/trace-event-projection.js";
 import { storedChatEventFromV2Row, storedPiboEventFromV2Row, type EventLogRow } from "./chat-data-mappers.js";
-import { TRACE_RECONCILIATION_TIMING_CAP } from "../../../shared/trace-limits.js";
+import { TRACE_RECONCILIATION_ENTRY_CAP, TRACE_RECONCILIATION_TIMING_CAP } from "../../../shared/trace-limits.js";
+import { parseTraceToolNodeIdentity } from "../../../shared/trace-tool-identity.js";
 
 export class ChatTimelineQueryService {
 	constructor(private readonly store: PiboDataStore) {}
@@ -76,35 +77,49 @@ export class ChatTimelineQueryService {
 		nodeId: string;
 		payloadKind: "output";
 	}): boolean {
-		const toolCallId = toolCallIdFromTraceNodeId(input.nodeId);
-		if (!toolCallId) return false;
+		const nodeIdentity = parseTraceToolNodeIdentity(input.nodeId);
+		if (!nodeIdentity) return false;
 		const payload = this.store.payloads.getPayload(input.payloadId);
 		if (!payload) return false;
+		const eventClause = nodeIdentity.qualifier ? "AND event_id = ?" : "";
+		const values = nodeIdentity.qualifier
+			? [input.piboSessionId, nodeIdentity.toolCallId, nodeIdentity.qualifier.eventId]
+			: [input.piboSessionId, nodeIdentity.toolCallId];
 		const rows = this.store.db.prepare(`
-			SELECT payload_ref, attributes_json
+			SELECT type, event_id, payload_ref, attributes_json
 			FROM event_log
 			WHERE session_id = ?
-				AND type IN ('tool_execution_updated', 'tool_execution_finished')
+				AND type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished')
 				AND json_extract(attributes_json, '$.toolCallId') = ?
-			ORDER BY session_sequence DESC, stream_id DESC
-		`).all(input.piboSessionId, toolCallId) as Array<{ payload_ref: string | null; attributes_json: string }>;
+				${eventClause}
+			ORDER BY session_sequence ASC, stream_id ASC
+			LIMIT ?
+		`).all(...values, TRACE_RECONCILIATION_ENTRY_CAP + 1) as Array<{
+			type: string;
+			event_id: string | null;
+			payload_ref: string | null;
+			attributes_json: string;
+		}>;
+		if (rows.length > TRACE_RECONCILIATION_ENTRY_CAP) return false;
+		let nextInvocationOrdinal = 0;
+		let activeInvocationOrdinal: number | undefined;
 		for (const row of rows) {
-			if (row.payload_ref === input.payloadId) return true;
-			let attributes: Record<string, unknown>;
-			try {
-				const parsed = JSON.parse(row.attributes_json) as unknown;
-				if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
-				attributes = parsed as Record<string, unknown>;
-			} catch {
-				continue;
+			if (row.type === "tool_execution_started") {
+				if (activeInvocationOrdinal !== undefined) return false;
+				activeInvocationOrdinal = nextInvocationOrdinal;
+				nextInvocationOrdinal += 1;
+			} else if (activeInvocationOrdinal === undefined) {
+				activeInvocationOrdinal = nextInvocationOrdinal;
+				nextInvocationOrdinal += 1;
 			}
-			if (!("inlinePayload" in attributes)) continue;
-			const bytes = Buffer.from(JSON.stringify(attributes.inlinePayload), "utf8");
-			const payloadSha256 = createHash("sha256").update(bytes).digest("hex");
-			if (payload.sha256 !== payloadSha256) continue;
-			// PayloadStore canonicalizes equal bytes to one payload row. Requiring that
-			// canonical id prevents a duplicate metadata row from being rebound by hash.
-			if (this.store.payloads.findBySha256(payloadSha256)?.id === input.payloadId) return true;
+			const exactInvocation = !nodeIdentity.qualifier
+				|| activeInvocationOrdinal === nodeIdentity.qualifier.invocationOrdinal;
+			if (
+				exactInvocation
+				&& row.type !== "tool_execution_started"
+				&& payloadMatchesEventRow(this.store, payload.sha256, input.payloadId, row)
+			) return true;
+			if (row.type === "tool_execution_finished") activeInvocationOrdinal = undefined;
 		}
 		return false;
 	}
@@ -141,19 +156,24 @@ export class ChatTimelineQueryService {
 	}
 }
 
-function toolCallIdFromTraceNodeId(nodeId: string): string | undefined {
-	if (nodeId.startsWith("tool:")) return nodeId.slice("tool:".length) || undefined;
-	if (!nodeId.startsWith("history-tool:")) return undefined;
+function payloadMatchesEventRow(
+	store: PiboDataStore,
+	payloadSha256: string,
+	payloadId: string,
+	row: { payload_ref: string | null; attributes_json: string },
+): boolean {
+	if (row.payload_ref === payloadId) return true;
+	let attributes: Record<string, unknown>;
 	try {
-		const decoded = JSON.parse(decodeURIComponent(nodeId.slice("history-tool:".length))) as unknown;
-		return Array.isArray(decoded)
-			&& decoded.length === 2
-			&& typeof decoded[0] === "string"
-			&& decoded[0].length > 0
-			&& typeof decoded[1] === "string"
-			? decoded[0]
-			: undefined;
+		const parsed = JSON.parse(row.attributes_json) as unknown;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+		attributes = parsed as Record<string, unknown>;
 	} catch {
-		return undefined;
+		return false;
 	}
+	if (!("inlinePayload" in attributes)) return false;
+	const bytes = Buffer.from(JSON.stringify(attributes.inlinePayload), "utf8");
+	const inlineSha256 = createHash("sha256").update(bytes).digest("hex");
+	if (payloadSha256 !== inlineSha256) return false;
+	return store.payloads.findBySha256(inlineSha256)?.id === payloadId;
 }

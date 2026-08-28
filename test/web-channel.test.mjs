@@ -12,6 +12,7 @@ import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
+import { createCompleteHistoryReconciliationProof } from "../dist/agent-runtime/history.js";
 import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 
 const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
@@ -1260,7 +1261,7 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 				adapterId: "codex-native",
 				source: "native",
 				entries,
-				reconciliationProof: { complete: true, entries },
+				reconciliationProof: createCompleteHistoryReconciliationProof(entries),
 				hasMore: false,
 				inspection: {
 					runtimeInstanceId: "codex-native",
@@ -1368,7 +1369,7 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 				adapterId: "codex-native",
 				source: "native",
 				entries,
-				reconciliationProof: { complete: true, entries },
+				reconciliationProof: createCompleteHistoryReconciliationProof(entries),
 				hasMore: false,
 			};
 		},
@@ -1442,7 +1443,7 @@ test("origin branch older native-history pages reconcile repeated prompts by sta
 				adapterId: "codex-native",
 				source: "native",
 				entries,
-				reconciliationProof: { complete: true, entries: allEntries },
+				reconciliationProof: createCompleteHistoryReconciliationProof(allEntries),
 				nextCursor: older ? undefined : "provider-old-page",
 				hasMore: !older,
 				inspection: {

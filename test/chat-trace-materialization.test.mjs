@@ -7,6 +7,10 @@ import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
 import { flattenTraceNodes } from "../dist/shared/trace-engine.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
 import { pageCodexThreadHistory } from "../dist/agent-runtimes/codex-native/history.js";
+import {
+	createCompleteHistoryReconciliationProof,
+	historyReconciliationDigest,
+} from "../dist/agent-runtime/history.js";
 
 const now = "2026-01-01T00:00:00.000Z";
 
@@ -1129,6 +1133,87 @@ test("complete proof is bound to exact normalized page content and provenance", 
 	]);
 });
 
+test("a self-consistent page subset cannot mint a complete reconciliation proof", () => {
+	const scopeId = "proof:global-subset";
+	const allEntries = ["a", "b"].flatMap((suffix, index) => [
+		{ id: `subset-${suffix}-user`, historyPosition: `subset:${index * 2}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${index}:00Z`, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, role: "user", content: "same prompt" },
+		{ id: `subset-${suffix}-assistant`, historyPosition: `subset:${index * 2 + 1}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${index}:01Z`, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, role: "assistant", content: `${suffix} answer`, status: "complete" },
+	]);
+	const entries = allEntries.slice(2);
+	const selfConsistentSubsetProof = {
+		complete: true,
+		scopeId,
+		fullScope: { entryCount: entries.length, digest: historyReconciliationDigest(entries) },
+		entries,
+	};
+	const staleBoundProof = createCompleteHistoryReconciliationProof(allEntries, scopeId);
+	staleBoundProof.entries = entries;
+	for (const proof of [
+		selfConsistentSubsetProof,
+		staleBoundProof,
+		createCompleteHistoryReconciliationProof(allEntries, scopeId),
+	]) {
+		const view = buildTraceViewFromEvents({
+			session: { id: "ps_root", piSessionId: "" },
+			events: [],
+			historyEntries: entries,
+			historyReconciliationProof: proof,
+			turnTimings: [{ eventId: "stable-subset-owner", userText: "same prompt", startedAt: "2026-01-01T00:01:00Z", completedAt: "2026-01-01T00:01:01Z" }],
+		});
+		assertMessageProjectionIds(view, [
+			"event:message_queued:native-history-group:subset:2",
+			"event:assistant:native-history-group:subset:2:assistant:0",
+		], [
+			"event:message_queued:native-history-group:subset:2",
+			"terminal:assistant:native-history-group:subset:2:assistant:0",
+		]);
+	}
+});
+
+test("repeated provider turn IDs preserve every structurally distinct native message", () => {
+	const scopeId = "proof:repeated-provider-turn";
+	const entries = ["a", "b"].flatMap((suffix, index) => [
+		{ id: `repeated-${suffix}-user`, historyPosition: `repeated:${index * 2}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${index}:00Z`, turnId: "runtime-repeated-provider", nativeTurnId: "runtime-repeated-provider", nativeEntryId: `user-${suffix}`, role: "user", content: `${suffix} prompt` },
+		{ id: `repeated-${suffix}-assistant`, historyPosition: `repeated:${index * 2 + 1}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${index}:01Z`, turnId: "runtime-repeated-provider", nativeTurnId: "runtime-repeated-provider", nativeEntryId: `assistant-${suffix}`, role: "assistant", content: `${suffix} answer`, status: "complete" },
+	]);
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: entries,
+		historyReconciliationProof: createCompleteHistoryReconciliationProof(entries, scopeId),
+	});
+	const legacy = flattenTraceNodes(view.nodes).filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	const v2 = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 }).nodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	const terminal = buildCompactTerminalRows(view, { showThinking: true }).filter((row) => row.kind === "message.user" || row.kind === "message.assistant");
+	for (const projection of [legacy, v2, terminal]) {
+		assert.equal(projection.length, 4);
+		const ids = projection.map((item) => item.id ?? item.nodeId);
+		assert.equal(new Set(ids).size, 4);
+	}
+	assert.ok(legacy.every((node) => node.nativeTurnId === "runtime-repeated-provider"));
+});
+
+test("qualified duplicate tool identity pairs calls and results across page edges", () => {
+	const toolCallId = `history-tool:tool:%25:[\"tuple\"]:工具`;
+	const scopeId = "proof:tool-page-edges";
+	const entries = ["a", "b"].flatMap((suffix, groupIndex) => [
+		{ id: `tool-${suffix}-user`, historyPosition: `tool-edge:${groupIndex * 3}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${groupIndex}:00Z`, turnId: `runtime-tool-${suffix}`, nativeTurnId: `runtime-tool-${suffix}`, role: "user", content: `${suffix} prompt` },
+		{ id: `tool-${suffix}-call`, historyPosition: `tool-edge:${groupIndex * 3 + 1}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${groupIndex}:01Z`, turnId: `runtime-tool-${suffix}`, nativeTurnId: `runtime-tool-${suffix}`, role: "assistant", content: [{ type: "tool_call", toolCallId, toolName: "read", input: { path: `${suffix}.txt` } }], status: "complete" },
+		{ id: `tool-${suffix}-result`, historyPosition: `tool-edge:${groupIndex * 3 + 2}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${groupIndex}:02Z`, turnId: `runtime-tool-${suffix}`, nativeTurnId: `runtime-tool-${suffix}`, role: "tool", content: `${suffix} result`, toolCallId, toolName: "read", result: { content: `${suffix} result` }, status: "complete" },
+	]);
+	const proof = createCompleteHistoryReconciliationProof(entries, scopeId);
+	const projectedTool = (entry) => {
+		const view = buildTraceViewFromEvents({ session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: [entry], historyReconciliationProof: proof });
+		return flattenTraceNodes(view.nodes).find((node) => node.toolCallId === toolCallId);
+	};
+	const callA = projectedTool(entries[1]);
+	const resultA = projectedTool(entries[2]);
+	const callB = projectedTool(entries[4]);
+	const resultB = projectedTool(entries[5]);
+	assert.equal(callA.id, resultA.id);
+	assert.equal(callB.id, resultB.id);
+	assert.notEqual(callA.id, callB.id);
+	assert.ok([callA, resultA, callB, resultB].every((node) => node.id.startsWith("history-tool:") && node.toolCallId === toolCallId));
+});
+
 test("missing or duplicate proof positions fail closed with distinct group-local identities", () => {
 	for (const mode of ["missing", "duplicate"]) {
 		const entries = ["a", "b"].flatMap((suffix, groupIndex) => [
@@ -1137,7 +1222,7 @@ test("missing or duplicate proof positions fail closed with distinct group-local
 		]);
 		const view = buildTraceViewFromEvents({
 			session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: entries,
-			historyReconciliationProof: { complete: true, entries },
+			historyReconciliationProof: createCompleteHistoryReconciliationProof(entries),
 			turnTimings: [{ eventId: "repeated-provider-turn", userText: "irrelevant" }],
 		});
 		const legacy = flattenTraceNodes(view.nodes).filter((node) => node.type === "user.message" || node.type === "assistant.message");
@@ -1188,7 +1273,10 @@ test("an incomplete page proof fails closed while a complete single claimant sti
 	const turnTimings = [{ eventId: "stable-bounded-proof", userText: "bounded proof prompt", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z" }];
 	const build = (complete) => buildTraceViewFromEvents({
 		session: { id: "ps_root", piSessionId: "", title: "Root" }, events: [], historyEntries: entries,
-		historyReconciliationProof: { complete, entries }, turnTimings,
+		historyReconciliationProof: complete
+			? createCompleteHistoryReconciliationProof(entries)
+			: { complete: false, entries },
+		turnTimings,
 	});
 	assertMessageProjectionIds(build(false), [
 		"event:message_queued:native-history-group:bounded:0",
@@ -1223,7 +1311,7 @@ test("three ambiguous user-only claimants in a complete proof remain distinct on
 		session: { id: "ps_root", piSessionId: "", title: "Root" },
 		events: [],
 		historyEntries: entries,
-		historyReconciliationProof: { complete: true, entries },
+		historyReconciliationProof: createCompleteHistoryReconciliationProof(entries),
 		turnTimings: [{ eventId: "stable-open-shared", userText: "open repeated prompt", startedAt: "2026-01-01T00:00:00Z" }],
 	});
 	const legacy = flattenTraceNodes(view.nodes).filter((node) => node.type === "user.message");

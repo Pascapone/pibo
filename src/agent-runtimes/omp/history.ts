@@ -5,6 +5,7 @@ import type {
 	InspectAgentRuntimeHistoryInput,
 	ReadAgentRuntimeHistoryInput,
 } from "../../agent-runtime/history.js";
+import { createCompleteHistoryReconciliationProof } from "../../agent-runtime/history.js";
 import type { PiboJsonObject, PiboJsonValue } from "../../core/events.js";
 import type { RuntimeSessionBinding } from "../../sessions/runtime-binding.js";
 import { TRACE_RECONCILIATION_ENTRY_CAP } from "../../shared/trace-limits.js";
@@ -187,7 +188,12 @@ async function readCompleteOmpMessages(client: OmpRpcClient): Promise<unknown[]>
 	let cursor: string | undefined;
 	let expectedTotal: number | undefined;
 	let collected = 0;
+	let pageRequests = 0;
 	do {
+		pageRequests += 1;
+		if (pageRequests > TRACE_RECONCILIATION_ENTRY_CAP + 1) {
+			throw new OmpHistoryResponseError("OMP native history exceeded the bounded provider page sequence.");
+		}
 		const result = await client.request({
 			type: "get_messages_page",
 			...(cursor ? { cursor } : {}),
@@ -206,9 +212,6 @@ async function readCompleteOmpMessages(client: OmpRpcClient): Promise<unknown[]>
 		}
 		if (collected + page.messages.length > expectedTotal) {
 			throw new OmpHistoryResponseError("OMP native history pages exceed their declared total.");
-		}
-		if (page.messages.length === 0 && collected < expectedTotal) {
-			throw new OmpHistoryResponseError("OMP native history ended before its declared total.");
 		}
 		pages.push(page.messages);
 		collected += page.messages.length;
@@ -258,7 +261,7 @@ export async function readOmpHistory(
 			adapterId: OMP_ADAPTER_ID,
 			source: "native",
 			entries,
-			reconciliationProof: { complete: true, scopeId: historyScopeId, entries: allEntries },
+			reconciliationProof: createCompleteHistoryReconciliationProof(allEntries, historyScopeId),
 			orderOffset: start,
 			...(start > 0 ? { nextCursor: encodeCursor({ v: 1, nativeSessionId, beforeIndex: start }) } : {}),
 			hasMore: start > 0,

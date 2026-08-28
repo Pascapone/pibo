@@ -9,6 +9,9 @@ import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatTimelineQueryService } from "../dist/apps/chat/data/timeline-query-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
+import { createCompleteHistoryReconciliationProof } from "../dist/agent-runtime/history.js";
+import { buildTraceViewFromEvents, flattenTraceNodes } from "../dist/shared/trace-engine.js";
+import { qualifiedHistoryToolNodeId } from "../dist/shared/trace-tool-identity.js";
 
 function tempStore(prefix) {
 	const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -77,7 +80,18 @@ test("timeline query preserves deferred payload identity on its exact tool node"
 	try {
 		const timeline = new ChatTimelineQueryService(store);
 		const providerToolCallId = `history:${encodeURIComponent(JSON.stringify(["legitimate", "provider-id"]))}`;
-		const qualifiedNodeId = `history-tool:${encodeURIComponent(JSON.stringify([providerToolCallId, "native-owner"]))}`;
+		const historyEntries = ["deferred", "other"].flatMap((suffix, index) => [
+			{ id: `${suffix}-user`, historyPosition: `payload:${index * 3}`, type: "message", source: "native", createdAt: `2026-05-09T00:0${index}:00Z`, turnId: `turn-${suffix}`, nativeTurnId: `runtime-${suffix}`, role: "user", content: `${suffix} prompt` },
+			{ id: `${suffix}-call`, historyPosition: `payload:${index * 3 + 1}`, type: "message", source: "native", createdAt: `2026-05-09T00:0${index}:01Z`, turnId: `turn-${suffix}`, nativeTurnId: `runtime-${suffix}`, role: "assistant", content: [{ type: "tool_call", toolCallId: providerToolCallId, toolName: "read", input: { path: `${suffix}.png` } }], status: "complete" },
+			{ id: `${suffix}-result`, historyPosition: `payload:${index * 3 + 2}`, type: "message", source: "native", createdAt: `2026-05-09T00:0${index}:02Z`, turnId: `turn-${suffix}`, nativeTurnId: `runtime-${suffix}`, role: "tool", content: `${suffix} result`, toolCallId: providerToolCallId, toolName: "read", result: { content: `${suffix} result` }, status: "complete" },
+		]);
+		const trace = buildTraceViewFromEvents({
+			session: { id: "ps_deferred", piSessionId: "" }, events: [], historyEntries,
+			historyReconciliationProof: createCompleteHistoryReconciliationProof(historyEntries),
+		});
+		const qualifiedNodeId = flattenTraceNodes(trace.nodes)
+			.find((node) => node.eventId === "turn-deferred" && node.toolCallId === providerToolCallId)?.id;
+		assert.ok(qualifiedNodeId?.startsWith("history-tool:"));
 		const payload = store.payloads.writePayload({
 			value: { content: [{ type: "image", data: "a".repeat(20_000), mimeType: "image/png" }] },
 			contentType: "application/json",
@@ -86,6 +100,19 @@ test("timeline query preserves deferred payload identity on its exact tool node"
 		store.eventLog.appendEvent({
 			sessionId: "ps_deferred",
 			sessionSequence: 1,
+			roomId: "room_deferred",
+			topic: "pibo.output",
+			type: "tool_execution_started",
+			source: "actor",
+			eventId: "turn-deferred",
+			toolCallId: providerToolCallId,
+			retentionClass: "trace_event",
+			previewText: "read",
+			attributes: { toolCallId: providerToolCallId, toolName: "read" },
+		});
+		store.eventLog.appendEvent({
+			sessionId: "ps_deferred",
+			sessionSequence: 2,
 			roomId: "room_deferred",
 			topic: "pibo.output",
 			type: "tool_execution_finished",
@@ -98,7 +125,9 @@ test("timeline query preserves deferred payload identity on its exact tool node"
 			attributes: { toolCallId: providerToolCallId, toolName: "read", isError: false },
 		});
 
-		const [event] = timeline.listTraceEvents({ piboSessionId: "ps_deferred", includeLive: true });
+		const event = timeline.listTraceEvents({ piboSessionId: "ps_deferred", includeLive: true })
+			.find((candidate) => candidate.type === "tool_execution_finished");
+		assert.ok(event);
 		assert.equal(event.payload.type, "tool_execution_finished");
 		assert.equal(event.storedPayloadRef.nodeId, `tool:${providerToolCallId}`);
 		assert.equal(event.storedPayloadRef.payloadKind, "output");
@@ -119,13 +148,50 @@ test("timeline query preserves deferred payload identity on its exact tool node"
 		assert.equal(timeline.isPayloadAttachedToTraceNode({
 			piboSessionId: "ps_deferred",
 			payloadId: payload.id,
-			nodeId: "history-tool:opaque-projection-identity",
+			nodeId: qualifiedHistoryToolNodeId(providerToolCallId, "attacker-controlled-identity", 0),
+			payloadKind: "output",
+		}), false);
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred",
+			payloadId: payload.id,
+			nodeId: qualifiedHistoryToolNodeId(providerToolCallId, "turn-deferred", 1),
 			payloadKind: "output",
 		}), false);
 		assert.equal(timeline.isPayloadAttachedToTraceNode({
 			piboSessionId: "ps_deferred",
 			payloadId: payload.id,
 			nodeId: "tool:another-call",
+			payloadKind: "output",
+		}), false);
+	} finally {
+		store.close();
+	}
+});
+
+test("deferred payload authorization fails closed when its SQL evidence exceeds the bound", () => {
+	const store = tempStore("pibo-chat-v2-deferred-bound-");
+	try {
+		const timeline = new ChatTimelineQueryService(store);
+		const payload = store.payloads.writePayload({ value: { content: "bounded" }, contentType: "application/json", retentionClass: "trace_event" });
+		for (let index = 0; index < 501; index += 1) {
+			store.eventLog.appendEvent({
+				sessionId: "ps_deferred_bound",
+				sessionSequence: index + 1,
+				roomId: "room_deferred_bound",
+				topic: "pibo.output",
+				type: "tool_execution_updated",
+				source: "actor",
+				eventId: "turn-deferred-bound",
+				toolCallId: "bounded-tool",
+				retentionClass: "trace_event",
+				...(index === 0 ? { payloadRef: payload.id } : {}),
+				attributes: { toolCallId: "bounded-tool", toolName: "read" },
+			});
+		}
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred_bound",
+			payloadId: payload.id,
+			nodeId: "tool:bounded-tool",
 			payloadKind: "output",
 		}), false);
 	} finally {

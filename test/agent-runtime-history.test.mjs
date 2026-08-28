@@ -285,6 +285,51 @@ test("OMP explicitly rejects histories whose declared total exceeds the shared p
 	);
 });
 
+test("OMP bounded pagination accepts advancing empty pages and rejects contradictory progress", async () => {
+	const binding = ompBinding("omp-empty-intermediate");
+	const messages = [
+		{ role: "assistant", content: "newest", timestamp: "2026-01-01T00:01:00Z" },
+		{ role: "user", content: "oldest", timestamp: "2026-01-01T00:00:00Z" },
+	];
+	const pages = [
+		{ messages: [messages[0]], totalMessages: 2, nextCursor: "provider-page:1" },
+		{ messages: [], totalMessages: 2, nextCursor: "provider-page:2" },
+		{ messages: [messages[1]], totalMessages: 2 },
+	];
+	let requests = 0;
+	const client = {
+		async request(command) {
+			requests += 1;
+			const index = command.cursor ? Number(command.cursor.slice("provider-page:".length)) : 0;
+			return { data: pages[index] };
+		},
+	};
+	const page = await readOmpHistory(client, { binding, workspace: "/workspace" }, "omp", binding);
+	assert.equal(requests, 3);
+	assert.deepEqual(page.entries.map((entry) => entry.content), ["oldest", "newest"]);
+	assert.equal(page.reconciliationProof.complete, true);
+	assert.equal(page.reconciliationProof.fullScope.entryCount, 2);
+
+	const malformedCases = [
+		[
+			{ messages: [messages[0]], totalMessages: 2, nextCursor: "repeat" },
+			{ messages: [], totalMessages: 2, nextCursor: "repeat" },
+		],
+		[
+			{ messages: [messages[0]], totalMessages: 2, nextCursor: "next" },
+			{ messages: [messages[1]], totalMessages: 3 },
+		],
+		[{ messages: [], totalMessages: 1 }],
+		[{ messages, totalMessages: 2, nextCursor: "beyond-exact" }],
+	];
+	for (const malformedPages of malformedCases) {
+		let index = 0;
+		await assert.rejects(readOmpHistory({
+			async request() { return { data: malformedPages[index++] ?? malformedPages.at(-1) }; },
+		}, { binding, workspace: "/workspace" }, "omp", binding), /OMP native history/);
+	}
+});
+
 test("Pi complete reconciliation proof accepts 500 entries and fails closed at 501", async () => {
 	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 	try {
