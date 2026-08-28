@@ -69,6 +69,41 @@ test("sendGatewayEvent sends a request event and resolves the gateway response",
 	}
 });
 
+test("sendGatewayEvent preserves steering delivery and returns the active turn", async () => {
+	const gateway = await withMockGateway((frame, socket) => {
+		socket.write(
+			`${JSON.stringify({
+				type: "res",
+				id: frame.id,
+				ok: true,
+				payload: {
+					type: "message_steered",
+					piboSessionId: frame.event.piboSessionId,
+					eventId: frame.event.id,
+					activeEventId: "active-turn",
+					text: frame.event.text,
+					source: frame.event.source,
+				},
+			})}\n`,
+		);
+	});
+
+	try {
+		const response = await sendGatewayEvent(
+			{ type: "message", piboSessionId: "receiver", text: "change course", source: "user", delivery: "steer" },
+			{ port: gateway.port },
+		);
+
+		assert.equal(response.ok, true);
+		assert.equal(response.payload.type, "message_steered");
+		assert.equal(response.payload.activeEventId, "active-turn");
+		assert.equal(gateway.receivedFrames[0].event.delivery, "steer");
+		assert.equal(gateway.receivedFrames[0].event.text, "change course");
+	} finally {
+		await gateway.close();
+	}
+});
+
 test("sendGatewayEvent ignores responses with a different request id", async () => {
 	const gateway = await withMockGateway((frame, socket) => {
 		socket.write(

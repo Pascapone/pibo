@@ -2,8 +2,9 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
+**Updated:** 2026-08-25
 **Controller / Source:** Current Pibo codebase
-**Related docs:** `GLOSSARY.md`, `docs/specs/README.md`, `docs/specs/capabilities/context-files.md`, `docs/specs/capabilities/yielded-run-control.md`
+**Related docs:** `GLOSSARY.md`, `docs/specs/README.md`, `docs/specs/capabilities/context-files.md`, `docs/specs/capabilities/subagent-delegation.md`, `docs/specs/capabilities/yielded-run-control.md`
 
 ## Why
 
@@ -28,7 +29,7 @@ Custom agents are persisted in `chat-agents.sqlite`. Each active record is regis
 - App-context custom-agent listing, creation, update, archive, restore, and permanent deletion.
 - Dynamic profile registration for active custom agents.
 - Agent Designer catalog data for selectable capabilities.
-- Selections for runtime instances, native tools, skills, context files, Pibo subagents with per-entry descriptions and execution settings, harness-native subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
+- Selections for runtime instances, native tools, skills, context files, Pibo subagents with per-entry descriptions and runtime settings, harness-native subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
 - Read-only display and copy flow for plugin profiles.
 - App-wide organizational folders for custom agents, including folder creation, rename, assignment, and safe deletion.
 - Agent-scoped context-file creation from the Agent Designer.
@@ -137,7 +138,7 @@ A dynamic custom-agent profile MUST translate saved agent selections into `Initi
 
 #### Current
 
-`createCustomAgentProfileDefinition` builds a profile with built-in tool mode and names, automatic context-file setting, MCP servers, Pi packages, run-control package selection, main-agent model and thinking options, compatibility-only legacy subagent profile defaults, fast-mode options, skills, context files, native tools, and subagent definitions with per-entry descriptions, models, thinking levels, and runtime-option overrides.
+`createCustomAgentProfileDefinition` builds a profile with built-in tool mode and names, automatic context-file setting, MCP servers, Pi packages, run-control package selection, main-agent model and thinking options, compatibility-only legacy subagent profile defaults, fast-mode options, skills, context files, native tools, and subagent definitions with per-entry descriptions, models, thinking levels, and runtime-option overrides. Legacy saved `timeoutMs` values may remain readable and persistable for schema compatibility, but they do not impose a delegated request or yielded-run lifetime.
 
 #### Acceptance
 
@@ -146,6 +147,7 @@ A dynamic custom-agent profile MUST translate saved agent selections into `Initi
 - Run control is enabled only when the custom agent has `runControl: true`.
 - Main-agent model overrides are applied when present.
 - Legacy profile-level subagent model and thinking fields remain valid compatibility fallbacks for previously saved agents but are not the primary Agent Designer control.
+- Legacy per-subagent `timeoutMs` data is compatibility-only and does not create a runtime deadline.
 - Global and main thinking/fast options are applied when present.
 - Selected native tools and subagent definitions are added to the runtime profile, including each subagent's description, model, thinking level, and runtime-option overrides.
 
@@ -166,7 +168,8 @@ Each subagent card contains identity, target, depth, description, model, thinkin
 #### Acceptance
 
 - Two entries in one parent agent can select different providers, models, thinking levels, and runtime overrides.
-- The description is persisted and becomes the generated subagent tool description visible to the parent agent.
+- The description is persisted and becomes the delegated-agent catalog description visible to the parent agent.
+- The designer does not expose a delegated-agent lifetime timeout; long-running sends are controlled through yielded-run status, wait, read, cancel, observe, and kill operations.
 - Leaving model, thinking, or a runtime option unset uses the target profile and Settings fallback chain.
 - A newly created child session freezes the selected subagent runtime overrides; reusing that child does not silently adopt later edits.
 - The designer does not show one editable global Subagent Model section in Basics.

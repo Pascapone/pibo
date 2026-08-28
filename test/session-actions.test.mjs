@@ -55,6 +55,14 @@ function enableFastModeSupport(runtime) {
 	runtime.session.state.model = { api: "openai-codex-responses", provider: "openai-codex", id: "gpt-5.4", reasoning: true };
 }
 
+async function waitFor(predicate, timeoutMs = 1_000) {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() >= deadline) throw new Error("Timed out waiting for condition");
+		await new Promise((resolve) => setTimeout(resolve, 5));
+	}
+}
+
 async function createSessionHarness() {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-session-actions-"));
 	const profile = new InitialSessionContextBuilder("session-actions-test").createSession();
@@ -259,6 +267,69 @@ test("session fork replaces the active Pi session and can switch back", async ()
 		assert.equal(switched.type, "execution_result");
 		assert.equal(switched.result.current.sessionFile, before.sessionFile);
 	} finally {
+		await harness.dispose();
+	}
+});
+
+test("Pi fork identity transition excludes reminders, candidate reads, aborts, and concurrent session operations", async () => {
+	const harness = await createSessionHarness();
+	const releaseFork = deferred();
+	let forkStarted = false;
+	try {
+		const ids = seedConversation(harness.routed.runtime);
+		const nativeFork = harness.routed.runtime.fork.bind(harness.routed.runtime);
+		harness.routed.runtime.fork = async (entryId) => {
+			forkStarted = true;
+			await releaseFork.promise;
+			return await nativeFork(entryId);
+		};
+
+		const fork = harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "session.fork",
+			params: { entryId: ids.secondUserId },
+		});
+		await waitFor(() => forkStarted);
+
+		assert.throws(() => harness.routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "route:test",
+			id: "reminder-during-fork",
+			text: "A scheduled reminder must retry after the identity transition.",
+			source: "service",
+			provenance: { kind: "loop-run", jobId: "loop_job", runId: "loop_run" },
+		}), /session identity operation is in progress/);
+		await assert.rejects(() => harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "session.fork_candidates",
+		}), /session identity operation.*in progress/);
+		await assert.rejects(() => harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "session.clone",
+		}), /session identity operation.*in progress/);
+
+		await harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "abort",
+		});
+		assert.throws(() => harness.routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "route:test",
+			id: "reminder-after-abort-during-fork",
+			text: "Abort must not unlock a still-running identity transition.",
+			source: "service",
+		}), /session identity operation is in progress/);
+
+		releaseFork.resolve();
+		const result = await fork;
+		assert.equal(result.type, "execution_result");
+		assert.notEqual(result.result.current.piSessionId, result.result.previous.piSessionId);
+	} finally {
+		releaseFork.resolve();
 		await harness.dispose();
 	}
 });
@@ -873,6 +944,54 @@ function createDelayedContextGuardRuntime(order, agentSettlement, secondPrompt) 
 		async dispose() {},
 	};
 }
+
+test("Pi routed sessions re-arm a settled drain for a late run reminder exactly once", async () => {
+	const events = [];
+	const order = [];
+	const reminderText = '<pibo_run_notification>{"completed":[{"runId":"run-pi"}]}</pibo_run_notification>';
+	const runtime = createQueuedCompactRuntime(order, [], deferred());
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	let routed;
+	routed = new RoutedSession(
+		"route:test",
+		runtime,
+		(event) => {
+			events.push(event);
+			if (event.type !== "message_finished" || event.eventId !== "message-a") return;
+			queueMicrotask(() => {
+				void Promise.resolve().then(() => {
+					routed.enqueueMessage({
+						type: "message",
+						piboSessionId: "route:test",
+						id: "run-reminder-pi",
+						text: reminderText,
+						source: "service",
+					});
+				});
+			});
+		},
+		registry,
+		false,
+	);
+
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "route:test",
+		id: "message-a",
+		text: "A",
+		source: "actor",
+	});
+	await new Promise((resolve) => setImmediate(resolve));
+	await new Promise((resolve) => setImmediate(resolve));
+
+	assert.deepEqual(order, ["prompt:A", `prompt:${reminderText}`]);
+	for (const type of ["message_queued", "message_started", "message_finished"]) {
+		assert.equal(events.filter((event) => event.type === type && event.eventId === "run-reminder-pi").length, 1);
+	}
+	assert.equal(routed.getStatus().processing, false);
+	assert.equal(routed.getStatus().queuedMessages, 0);
+	await routed.dispose();
+});
 
 test("compact action is serialized between queued messages", async () => {
 	const events = [];

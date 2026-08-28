@@ -60,3 +60,147 @@ test("run-reminder turns keep the normal toolset and stop repeated identical too
 	assert.equal(events.some((event) => event.type === "session_error" && /capabil/i.test(String(event.error))), false);
 	await routed.dispose();
 });
+
+test("run-reminder token guard excludes repeated provider cache reads", async () => {
+	const events = [];
+	let listener;
+	let aborts = 0;
+	const runtimeSession = {
+		getNativeCompatibilityHandle() { return this; },
+		subscribe(next) { listener = next; return () => {}; },
+		getStatus() { return { streaming: false }; },
+		async prompt() {
+			for (let round = 0; round < 9; round += 1) {
+				listener({
+					type: "usage",
+					usage: {
+						inputTokens: 4_000,
+						outputTokens: 1_000,
+						cacheReadTokens: 245_000,
+						totalTokens: 250_000,
+					},
+				});
+			}
+		},
+		async abort() { aborts += 1; },
+		async dispose() {},
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_cache_guard",
+		runtimeSession,
+		(event) => events.push(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+	);
+
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "ps_cache_guard",
+		id: "cache-heavy-reminder",
+		text: "<pibo_run_notification>{}</pibo_run_notification>",
+		source: "service",
+	});
+
+	await waitFor(() => events.some((event) => event.type === "message_finished" && event.eventId === "cache-heavy-reminder"));
+	assert.equal(aborts, 0);
+	assert.equal(events.some((event) => event.type === "session_error" && event.errorDetails?.code === "run_reminder_limit_exceeded"), false);
+	await routed.dispose();
+});
+
+test("run-reminder token guard still stops excessive active token usage", async () => {
+	const events = [];
+	let listener;
+	let aborts = 0;
+	const runtimeSession = {
+		getNativeCompatibilityHandle() { return this; },
+		subscribe(next) { listener = next; return () => {}; },
+		getStatus() { return { streaming: false }; },
+		async prompt() {
+			listener({
+				type: "usage",
+				usage: { inputTokens: 2_000_001, outputTokens: 0, cacheReadTokens: 0, totalTokens: 2_000_001 },
+			});
+		},
+		async abort() { aborts += 1; },
+		async dispose() {},
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_active_guard",
+		runtimeSession,
+		(event) => events.push(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+	);
+
+	routed.enqueueMessage({
+		type: "message",
+		piboSessionId: "ps_active_guard",
+		id: "active-heavy-reminder",
+		text: "<pibo_run_notification>{}</pibo_run_notification>",
+		source: "service",
+	});
+
+	await waitFor(() => events.some((event) => event.type === "session_error" && event.errorDetails?.code === "run_reminder_limit_exceeded"));
+	assert.equal(aborts, 1);
+	assert.match(events.find((event) => event.type === "session_error")?.error ?? "", /active tokens/);
+	await routed.dispose();
+});
+
+for (const terminalGroup of ["completed", "failed", "timedOut"]) {
+	test(`${terminalGroup} run reminders enqueued while the previous drain settles are delivered exactly once`, async () => {
+		const events = [];
+		const prompts = [];
+		const reminderText = `<pibo_run_notification>{"${terminalGroup}":[{"runId":"run-terminal","toolName":"helper"}]}</pibo_run_notification>`;
+		let routed;
+		const runtimeSession = {
+			getNativeCompatibilityHandle() { return this; },
+			subscribe() { return () => {}; },
+			getStatus() { return { streaming: false }; },
+			async prompt(input) { prompts.push(input.text); },
+			async abort() {},
+			async dispose() {},
+		};
+		const emit = (event) => {
+			events.push(event);
+			if (event.type !== "message_finished" || event.eventId !== "initial-message") return;
+			// The nested microtask runs after drain() has observed an empty queue but before
+			// drainPromise.finally() clears the settled drain ownership marker.
+			queueMicrotask(() => {
+				void Promise.resolve().then(() => {
+					routed.enqueueMessage({
+						type: "message",
+						piboSessionId: "ps_reminder_race",
+						id: `run-reminder-${terminalGroup}`,
+						text: reminderText,
+						source: "service",
+					});
+				});
+			});
+		};
+		routed = new RuntimeRoutedSession(
+			"ps_reminder_race",
+			runtimeSession,
+			emit,
+			PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		);
+		const reminderId = `run-reminder-${terminalGroup}`;
+
+		routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_reminder_race",
+			id: "initial-message",
+			text: "start work",
+			source: "actor",
+		});
+
+		await waitFor(() => events.some((event) => event.type === "message_finished" && event.eventId === reminderId));
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.deepEqual(prompts, ["start work", reminderText]);
+		for (const type of ["message_queued", "message_started", "message_finished"]) {
+			assert.equal(
+				events.filter((event) => event.type === type && event.eventId === reminderId).length,
+				1,
+				`${terminalGroup} reminder must emit exactly one ${type}`,
+			);
+		}
+		await routed.dispose();
+	});
+}

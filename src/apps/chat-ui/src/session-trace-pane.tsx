@@ -5,10 +5,11 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type KeyboardEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   BootstrapData,
   PiboProjectSession,
@@ -21,7 +22,8 @@ import type {
 } from "./types";
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
-import type { ChatMessageDelivery } from "./api-chat-sessions";
+import { getSessionForkCandidates, type ChatMessageDelivery } from "./api-chat-sessions";
+import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
 import {
@@ -45,7 +47,10 @@ import {
   resolveSessionTraceModelBadge,
   resolveSessionTraceTitle,
   sessionCanSteer,
+  sessionSupportsFork,
   sessionSupportsToolIntent,
+  traceUserMessageRevision,
+  withSessionForkCandidates,
 } from "./session-trace-view-props";
 import {
   appendComposerOptimisticEvent,
@@ -68,11 +73,30 @@ import {
   openCurrentPwaSessionWindow,
 } from "./pwa-session-window";
 import { RuntimeRequestPanel } from "./runtime-request-panel";
+import {
+  getSessionLivePreviews,
+  removeSessionLivePreview,
+  startSessionLivePreview,
+  stopSessionLivePreview,
+  type SessionLivePreview,
+} from "./api-previews";
+import {
+  requirePreviewActionAuthority,
+  resolveSessionLivePreviewAuthority,
+  selectAuthoritativeLivePreview,
+  type SessionLivePreviewQueryEnvelope,
+  type SessionLivePreviewSelection,
+} from "./session-live-preview-authority";
+import { PreviewFullscreenTopBar, PreviewMessage, SessionLivePreviewPanel } from "./session-live-preview";
+
+const livePreviewQueryKey = (piboSessionId: string) => ["chat", "session-live-previews", piboSessionId] as const;
 
 export function SessionTracePane({
   bootstrap,
   selectedPiboSessionId,
   selectedRoomId,
+  contextKind = "room",
+  contextLabel,
   selectedRoomArchived,
   roomNavigationPending,
   sessionNavigationPending,
@@ -123,6 +147,8 @@ export function SessionTracePane({
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
   selectedRoomId: string | null;
+  contextKind?: "room" | "project";
+  contextLabel?: string;
   selectedRoomArchived: boolean;
   roomNavigationPending?: boolean;
   sessionNavigationPending?: boolean;
@@ -176,6 +202,7 @@ export function SessionTracePane({
   ) => Promise<void>;
   onError: (message: string | null) => void;
 }) {
+  const queryClient = useQueryClient();
   const liveEventSeqRef = useRef(0);
   const liveTraceOverlayCacheRef = useRef<Map<string, LiveTraceOverlay>>(new Map());
   const [liveTraceOverlay, setLiveTraceOverlayState] =
@@ -195,6 +222,7 @@ export function SessionTracePane({
   const [runtimeUserInputs, setRuntimeUserInputs] = useState<PiboRuntimeUserInputRequest[]>([]);
   const deliverySendIdsRef = useRef(new Set<string>());
   const queueButtonRef = useRef<HTMLButtonElement>(null);
+  const steerButtonRef = useRef<HTMLButtonElement>(null);
   const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
   useEffect(() => {
     const status = bootstrap.runtimeStatus?.piboSessionId === selectedBackendPiboSessionId
@@ -227,6 +255,54 @@ export function SessionTracePane({
     enabled: Boolean(selectedBackendPiboSessionId),
     refetchInterval: selectedBackendPiboSessionId ? 5_000 : false,
   });
+  const selectedPreviewSessionRef = useRef<string | undefined>(selectedBackendPiboSessionId);
+  selectedPreviewSessionRef.current = selectedBackendPiboSessionId;
+  const [livePreviewViewSessionId, setLivePreviewViewSessionId] = useState<string | null>(null);
+  const [selectedLivePreview, setSelectedLivePreview] = useState<SessionLivePreviewSelection | undefined>();
+  const [livePreviewReload, setLivePreviewReload] = useState<{ piboSessionId: string; value: number } | undefined>();
+  const pendingLivePreviewActionsRef = useRef(new Set<string>());
+  const [pendingLivePreviewActions, setPendingLivePreviewActions] = useState<ReadonlySet<string>>(new Set());
+  const livePreviewsQuery = useQuery({
+    queryKey: selectedBackendPiboSessionId
+      ? livePreviewQueryKey(selectedBackendPiboSessionId)
+      : livePreviewQueryKey("idle"),
+    queryFn: async ({ signal }) => {
+      const piboSessionId = selectedBackendPiboSessionId!;
+      const response = await getSessionLivePreviews(piboSessionId, { signal });
+      return { piboSessionId, ...response } satisfies SessionLivePreviewQueryEnvelope;
+    },
+    enabled: Boolean(selectedBackendPiboSessionId),
+    refetchInterval: (query) => selectedBackendPiboSessionId && query.state.data?.configured !== false ? 5_000 : false,
+    retry: false,
+  });
+	const livePreviewAuthority = resolveSessionLivePreviewAuthority({
+		selectedPiboSessionId: selectedBackendPiboSessionId ?? undefined,
+    data: livePreviewsQuery.data,
+    loading: livePreviewsQuery.isPending && Boolean(selectedBackendPiboSessionId),
+    error: livePreviewsQuery.isError ? errorMessage(livePreviewsQuery.error) : undefined,
+  });
+  const livePreviews = livePreviewAuthority.kind === "ready" ? livePreviewAuthority.previews : [];
+  const selectedLivePreviewRecord = selectAuthoritativeLivePreview(livePreviewAuthority, selectedLivePreview);
+  const livePreviewSelected = Boolean(selectedBackendPiboSessionId && livePreviewViewSessionId === selectedBackendPiboSessionId);
+  const livePreviewReloadKey = livePreviewReload?.piboSessionId === selectedBackendPiboSessionId ? livePreviewReload.value : 0;
+
+  useEffect(() => {
+    if (!selectedBackendPiboSessionId || livePreviewViewSessionId === selectedBackendPiboSessionId) return;
+    if (livePreviewViewSessionId && terminalFullscreen) onExitTerminalFullscreen?.();
+    setLivePreviewViewSessionId(null);
+    setSelectedLivePreview(undefined);
+    setLivePreviewReload(undefined);
+  }, [livePreviewViewSessionId, onExitTerminalFullscreen, selectedBackendPiboSessionId, terminalFullscreen]);
+
+  useEffect(() => {
+    if (livePreviewAuthority.kind !== "ready") return;
+    if (selectedLivePreview?.piboSessionId === livePreviewAuthority.piboSessionId
+      && livePreviewAuthority.previews.some((preview) => preview.id === selectedLivePreview.previewId)) return;
+    setSelectedLivePreview({
+      piboSessionId: livePreviewAuthority.piboSessionId,
+      previewId: livePreviewAuthority.previews[0]!.id,
+    });
+  }, [livePreviewAuthority, selectedLivePreview]);
   const openSessionWindowAvailable = Boolean(selectedBackendPiboSessionId) && canOpenDesktopPwaSessionWindow();
   const openSelectedSessionWindow = useCallback(() => {
     if (openCurrentPwaSessionWindow()) return;
@@ -291,6 +367,27 @@ export function SessionTracePane({
     liveTraceOverlay: selectedLiveTraceOverlay,
     selectedSessionStatus,
   });
+  const forkSupported = sessionSupportsFork(bootstrap, selectedPiboSessionId, selectedSessionProfile);
+  const forkCandidateRevision = traceUserMessageRevision(currentTraceView);
+  const forkCandidatesEnabled = Boolean(selectedBackendPiboSessionId)
+    && forkSupported
+    && !selectedRoomArchived
+    && selectedSessionStatus !== "running";
+  const forkCandidatesQuery = useQuery({
+    queryKey: selectedBackendPiboSessionId
+      ? ["chat", "fork-candidates", selectedBackendPiboSessionId, forkCandidateRevision]
+      : ["chat", "fork-candidates", "idle", "none"],
+    queryFn: ({ signal }) => getSessionForkCandidates(selectedBackendPiboSessionId!, { signal }),
+    enabled: forkCandidatesEnabled,
+    staleTime: 0,
+    retry: false,
+  });
+  const forkableTraceView = useMemo(
+    () => forkCandidatesEnabled && forkCandidatesQuery.data
+      ? withSessionForkCandidates(currentTraceView, forkCandidatesQuery.data.messages)
+      : currentTraceView,
+    [currentTraceView, forkCandidatesEnabled, forkCandidatesQuery.data],
+  );
 
   useSessionTraceLiveStream({
     selectedPiboSessionId: selectedBackendPiboSessionId,
@@ -330,8 +427,9 @@ export function SessionTracePane({
   const composerDisabled = isSessionComposerDisabled(
     selectedPiboSessionId,
     selectedRoomArchived,
-  );
+  ) || Boolean(roomNavigationPending || sessionNavigationPending);
   const terminalFileDropEnabled =
+    !livePreviewSelected &&
     !composerDisabled &&
     currentSessionView.id === "terminal" &&
     (activeViewId ?? sessionViewId) === "terminal";
@@ -462,10 +560,20 @@ export function SessionTracePane({
     }
   };
 
+  const moveDeliveryChoiceFocus = (
+    currentDelivery: ChatMessageDelivery,
+    event: KeyboardEvent<HTMLButtonElement>,
+  ) => {
+    const nextDelivery = adjacentMessageDeliveryChoice(currentDelivery, event);
+    if (!nextDelivery) return;
+    event.preventDefault();
+    (nextDelivery === "queue" ? queueButtonRef : steerButtonRef).current?.focus();
+  };
+
   const toolIntentSupported = sessionSupportsToolIntent(bootstrap, selectedPiboSessionId, selectedSessionProfile);
   const effectiveToolDisplayMode = toolDisplayMode === "intent" && !toolIntentSupported ? "slim" : toolDisplayMode;
   const sessionViewProps = createSessionTraceViewProps({
-    currentTraceView,
+    currentTraceView: forkableTraceView,
     isLoading: loadingTrace,
     showThinking,
     expandThinking,
@@ -499,6 +607,148 @@ export function SessionTracePane({
     onError,
   });
 
+  const setLivePreviewActionPending = (key: string, pending: boolean) => {
+    if (pending) pendingLivePreviewActionsRef.current.add(key);
+    else pendingLivePreviewActionsRef.current.delete(key);
+    setPendingLivePreviewActions(new Set(pendingLivePreviewActionsRef.current));
+  };
+  const runLivePreviewAction = async (
+    previewId: string,
+    action: "start" | "stop" | "remove",
+  ) => {
+    const piboSessionId = selectedBackendPiboSessionId;
+    if (!piboSessionId) return;
+    const actionKey = `${piboSessionId}:${previewId}`;
+    if (pendingLivePreviewActionsRef.current.has(actionKey)) return;
+    setLivePreviewActionPending(actionKey, true);
+    try {
+      const result = action === "start"
+        ? await startSessionLivePreview(previewId)
+        : action === "stop"
+          ? await stopSessionLivePreview(previewId)
+          : (await removeSessionLivePreview(previewId)).preview;
+      const preview = requirePreviewActionAuthority(piboSessionId, result);
+      queryClient.setQueryData<SessionLivePreviewQueryEnvelope>(livePreviewQueryKey(piboSessionId), (current) => {
+        if (!current || current.piboSessionId !== piboSessionId) return current;
+        return {
+          ...current,
+          previews: action === "remove"
+            ? current.previews.filter((candidate) => candidate.id !== preview.id)
+            : current.previews.map((candidate) => candidate.id === preview.id ? preview : candidate),
+        };
+      });
+      if (selectedPreviewSessionRef.current === piboSessionId) {
+        if (action === "start") {
+          setLivePreviewReload((current) => ({
+            piboSessionId,
+            value: current?.piboSessionId === piboSessionId ? current.value + 1 : 1,
+          }));
+        }
+        if (action === "remove" && selectedLivePreview?.piboSessionId === piboSessionId && selectedLivePreview.previewId === preview.id) {
+          setSelectedLivePreview(undefined);
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: livePreviewQueryKey(piboSessionId), exact: true });
+    } catch (caught) {
+      if (selectedPreviewSessionRef.current === piboSessionId) onError(errorMessage(caught));
+    } finally {
+      setLivePreviewActionPending(actionKey, false);
+    }
+  };
+  const refreshLivePreviewFrame = () => {
+    if (!selectedBackendPiboSessionId) return;
+    setLivePreviewReload((current) => ({
+      piboSessionId: selectedBackendPiboSessionId,
+      value: current?.piboSessionId === selectedBackendPiboSessionId ? current.value + 1 : 1,
+    }));
+  };
+  const selectLivePreview = (previewId: string) => {
+    if (!selectedBackendPiboSessionId) return;
+    setSelectedLivePreview({ piboSessionId: selectedBackendPiboSessionId, previewId });
+  };
+  const selectedLivePreviewActionPending = selectedLivePreviewRecord
+    ? pendingLivePreviewActions.has(`${selectedLivePreviewRecord.piboSessionId}:${selectedLivePreviewRecord.id}`)
+    : false;
+  const parentExtraViewTabs = extraViewTabs?.map((tab) => ({
+    ...tab,
+    onSelect: () => {
+      setLivePreviewViewSessionId(null);
+      tab.onSelect();
+    },
+  })) ?? [];
+  const previewTabVisible = livePreviewAuthority.kind === "ready" || livePreviewSelected;
+  const combinedExtraViewTabs: SessionTraceHeaderExtraViewTab[] = previewTabVisible
+    ? [
+        ...parentExtraViewTabs,
+        {
+          id: "preview",
+          label: "Preview",
+          description: "Open the live development preview attached to this Pibo Session.",
+          active: livePreviewSelected,
+          onSelect: () => {
+            if (selectedBackendPiboSessionId) setLivePreviewViewSessionId(selectedBackendPiboSessionId);
+          },
+        },
+      ]
+    : parentExtraViewTabs;
+  const previewAuthorityMessage = livePreviewAuthority.kind === "loading"
+    ? <PreviewMessage label="Loading live previews…" />
+    : livePreviewAuthority.kind === "error"
+      ? <PreviewMessage label={livePreviewAuthority.message} tone="error" />
+      : livePreviewAuthority.kind === "unconfigured"
+        ? <PreviewMessage label="Live previews are not configured on this Pibo instance." />
+        : <PreviewMessage label="No active live preview is attached to this Pibo Session." />;
+  const livePreviewPanel = livePreviewSelected
+    ? livePreviewAuthority.kind === "ready" && selectedLivePreviewRecord
+      ? (
+          <SessionLivePreviewPanel
+            previews={livePreviews}
+            selectedPreview={selectedLivePreviewRecord}
+            loading={false}
+            reloadKey={livePreviewReloadKey}
+            onSelect={selectLivePreview}
+            onReload={refreshLivePreviewFrame}
+            onRefresh={() => void livePreviewsQuery.refetch()}
+            onStart={(previewId) => void runLivePreviewAction(previewId, "start")}
+            onStop={(previewId) => void runLivePreviewAction(previewId, "stop")}
+            onRemove={(previewId) => void runLivePreviewAction(previewId, "remove")}
+            actionPending={selectedLivePreviewActionPending}
+            onEnterFullscreen={onEnterTerminalFullscreen}
+          />
+        )
+      : previewAuthorityMessage
+    : projectModulePanel;
+  const previewFullscreenContent = livePreviewSelected
+    ? livePreviewAuthority.kind === "ready" && selectedLivePreviewRecord
+      ? (
+          <SessionLivePreviewPanel
+            previews={livePreviews}
+            selectedPreview={selectedLivePreviewRecord}
+            loading={false}
+            reloadKey={livePreviewReloadKey}
+            fullscreen
+            onSelect={selectLivePreview}
+            onReload={refreshLivePreviewFrame}
+            onRefresh={() => void livePreviewsQuery.refetch()}
+            onStart={(previewId) => void runLivePreviewAction(previewId, "start")}
+            onStop={(previewId) => void runLivePreviewAction(previewId, "stop")}
+            onRemove={(previewId) => void runLivePreviewAction(previewId, "remove")}
+            actionPending={selectedLivePreviewActionPending}
+          />
+        )
+      : previewAuthorityMessage
+    : undefined;
+  const previewFullscreenTopBar = livePreviewSelected && selectedLivePreviewRecord ? (
+    <PreviewFullscreenTopBar
+      preview={selectedLivePreviewRecord}
+      onReload={refreshLivePreviewFrame}
+      onStart={() => void runLivePreviewAction(selectedLivePreviewRecord.id, "start")}
+      onStop={() => void runLivePreviewAction(selectedLivePreviewRecord.id, "stop")}
+      actionPending={selectedLivePreviewActionPending}
+      onExit={onExitTerminalFullscreen ?? (() => undefined)}
+    />
+  ) : undefined;
+
   return (
     <>
       {pendingSendPlan ? (
@@ -513,16 +763,19 @@ export function SessionTracePane({
               ref={queueButtonRef}
               type="button"
               onClick={() => void chooseDelivery("queue")}
-              className="rounded-sm border border-slate-700 bg-[#151f24] p-3 text-left transition hover:border-[#11a4d4] hover:bg-[#11a4d4]/10 disabled:opacity-50"
+              onKeyDown={(event) => moveDeliveryChoiceFocus("queue", event)}
+              className="rounded-sm border border-slate-700 bg-[#151f24] p-3 text-left transition hover:border-[#11a4d4] hover:bg-[#11a4d4]/10 focus-visible:border-[#11a4d4] focus-visible:bg-[#11a4d4]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]/50 disabled:opacity-50"
               data-pibo-debug="message-delivery-queue"
             >
               <span className="block text-xs font-bold uppercase tracking-wider text-[#11a4d4]">Queue</span>
               <span className="mt-1 block text-xs leading-5 text-slate-400">Run it as the next turn after the active turn finishes.</span>
             </button>
             <button
+              ref={steerButtonRef}
               type="button"
               onClick={() => void chooseDelivery("steer")}
-              className="rounded-sm border border-amber-500/50 bg-amber-500/5 p-3 text-left transition hover:border-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+              onKeyDown={(event) => moveDeliveryChoiceFocus("steer", event)}
+              className="rounded-sm border border-amber-500/50 bg-amber-500/5 p-3 text-left transition hover:border-amber-400 hover:bg-amber-500/10 focus-visible:border-amber-400 focus-visible:bg-amber-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 disabled:opacity-50"
               data-pibo-debug="message-delivery-steer"
             >
               <span className="block text-xs font-bold uppercase tracking-wider text-amber-400">Steer</span>
@@ -540,12 +793,15 @@ export function SessionTracePane({
       roomNavigationPending={roomNavigationPending}
       sessionNavigationPending={sessionNavigationPending}
       traceError={traceError}
-      showRawEvents={showRawEvents}
+      showRawEvents={showRawEvents && !livePreviewSelected}
       currentTraceView={currentTraceView}
       rawEventLimit={rawEventLimit}
       tracePageFetching={showRawEvents ? rawEventsQuery.isFetching : tracePageQuery.isFetching}
       onLoadMoreRawEvents={loadMoreRawEvents}
       terminalFullscreen={terminalFullscreen}
+      fullscreenTopBar={previewFullscreenTopBar}
+      fullscreenContent={previewFullscreenContent}
+      hideComposer={livePreviewSelected}
       terminalFileDropEnabled={terminalFileDropEnabled}
       onTerminalFilesDropped={handleTerminalFilesDropped}
       onOpenSessionWindow={onOpenSessionWindow}
@@ -555,9 +811,16 @@ export function SessionTracePane({
           sessionNodes: bootstrap.sessions,
           selectedPiboSessionId,
           traceTitle: currentTraceView?.title,
-          fallback: bootstrap.room?.name ?? selectedRoomId ?? undefined,
+          fallback: "No session selected",
         }),
-        roomLabel: bootstrap.room?.name ?? selectedRoomId ?? "Room",
+        contextKind,
+        contextLabel:
+          contextLabel ??
+          (bootstrap.room?.id === selectedRoomId
+            ? bootstrap.room.name
+            : undefined) ??
+          selectedRoomId ??
+          "Unknown room",
         headerPiboSessionId,
         piboSessionId: selectedPiboSessionId,
         piboRoomId: selectedRoomId ?? bootstrap.selectedRoomId ?? undefined,
@@ -568,9 +831,9 @@ export function SessionTracePane({
         sessionViews,
         currentSessionView,
         allowedSessionViewIds,
-        extraViewTabs,
-        activeViewId,
-        terminalFullscreenAvailable: currentSessionView.id === "terminal" && (activeViewId ?? sessionViewId) === "terminal",
+        extraViewTabs: combinedExtraViewTabs,
+        activeViewId: livePreviewSelected ? "preview" : activeViewId,
+        terminalFullscreenAvailable: !livePreviewSelected && currentSessionView.id === "terminal" && (activeViewId ?? sessionViewId) === "terminal",
         onEnterTerminalFullscreen,
         onOpenSessionWindow,
         showRawEvents,
@@ -581,7 +844,10 @@ export function SessionTracePane({
         onToolDisplayModeChange,
         onShowWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(true),
         onHideWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(false),
-        onSelectSessionView,
+        onSelectSessionView: (viewId) => {
+          setLivePreviewViewSessionId(null);
+          onSelectSessionView(viewId);
+        },
         onToggleRawEvents,
         onToggleThinking,
         onToggleExpandThinking,
@@ -589,10 +855,10 @@ export function SessionTracePane({
       }}
       projectSessionCreatePanel={projectSessionCreatePanel}
       workflowStartPanel={workflowStartPanel}
-      projectModulePanel={projectModulePanel}
+      projectModulePanel={livePreviewPanel}
       currentSessionView={currentSessionView}
       sessionViewProps={sessionViewProps}
-      webAnnotationsPanelRendered={webAnnotationsPanelRendered}
+      webAnnotationsPanelRendered={webAnnotationsPanelRendered && !livePreviewSelected}
       webAnnotationsPanelProps={{
         piboSessionId: selectedPiboSessionId,
         annotations: visibleWebAnnotations,
@@ -611,7 +877,7 @@ export function SessionTracePane({
         onCollapse: toggleWebAnnotationsPanelCollapsed,
         onClose: () => setWebAnnotationsPanelVisible(false),
       }}
-      runtimeRequestPanel={selectedBackendPiboSessionId ? (
+      runtimeRequestPanel={selectedBackendPiboSessionId && !livePreviewSelected ? (
         <RuntimeRequestPanel
           piboSessionId={selectedBackendPiboSessionId}
           approvals={runtimeApprovals}

@@ -67,7 +67,9 @@ import {
 	TRACE_V2_RAW_EVENTS_DEFAULT_LIMIT,
 	TRACE_V2_RAW_EVENTS_MAX_LIMIT,
 	TRACE_V2_TIMELINE_HARD_BYTES,
+	TRACE_IMAGE_MAX_COUNT,
 	parseTracePayloadRef,
+	readTraceImagePayload,
 	readTracePayloadChunk,
 	traceRawEventsPageFromEvents,
 	traceTimelinePageFromView,
@@ -120,8 +122,15 @@ import {
 	providerAuthActionResponse,
 	readProviderAuthCatalog,
 } from "./provider-auth-actions.js";
-import { ensurePrivateChatUploadDirectory, prepareChatFileAttachments, resolveDownloadPath, responseChatFileDownload, saveUploadedChatFiles } from "./chat-files.js";
+import { ensurePrivateChatUploadDirectory, prepareChatFileAttachments, resolveDownloadPath, resolveImagePreviewPath, resolveImagePreviewPathWithinRoots, responseChatFileDownload, responseChatImagePreview, responseChatTraceImage, saveUploadedChatFiles } from "./chat-files.js";
+import { codexImageArtifactPath, codexImageArtifactRoot } from "../../tools/codex-image-artifacts.js";
 import { responseChatTranscription, responseChatTranscriptionProviders } from "./chat-transcription.js";
+import {
+	responseChatSpeechProviders,
+	responseChatSpeechSessionSpeak,
+	responseChatSpeechSessionStart,
+	responseChatSpeechSessionStop,
+} from "./chat-speech.js";
 import {
 	chatSettingsRoute,
 	chatSettingsRouteInvalidatesBootstrapCatalog,
@@ -374,6 +383,7 @@ type ChatTimelineQuery = {
 	listAllSessionEvents(piboSessionId: string): ChatWebStoredPiboEvent[];
 	listMessageTurnTimings(piboSessionId: string): TraceMessageTurnTiming[];
 	listTraceEvents(input: { piboSessionId: string; limit?: number; beforeOrAtSequence?: number; beforeSequence?: number; includeLive?: boolean } | string): ChatWebStoredPiboEvent[];
+	isPayloadAttachedToTraceNode(input: { piboSessionId: string; payloadId: string; nodeId: string; payloadKind: "output" }): boolean;
 	countEventsByType(input?: { piboSessionId?: string; eventTypes?: string[] }): Array<{ eventType: string; count: number }>;
 	getLatestEventSequence(piboSessionId: string): number;
 	getLatestStreamId(input?: { roomId?: string; piboSessionId?: string }): number | undefined;
@@ -1593,6 +1603,15 @@ function parseNonNegativeIntSearchParam(url: URL, name: string, fallback: number
 	const parsed = Number.parseInt(raw, 10);
 	if (!Number.isFinite(parsed) || parsed < 0) return fallback;
 	return Math.min(parsed, max);
+}
+
+function parseBoundedNonNegativeIntSearchParam(url: URL, name: string, fallback: number, max: number): number {
+	const raw = url.searchParams.get(name);
+	if (raw === null || raw === "") return fallback;
+	if (!/^\d+$/.test(raw)) throw new PiboWebHttpError(`${name} must be a non-negative integer`, 400);
+	const parsed = Number(raw);
+	if (!Number.isSafeInteger(parsed) || parsed > max) throw new PiboWebHttpError(`${name} must be between 0 and ${max}`, 400);
+	return parsed;
 }
 
 function parseOptionalPositiveIntSearchParam(url: URL, name: string): number | undefined {
@@ -4545,9 +4564,81 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseJson(await saveUploadedChatFiles(request), { status: 201 });
 			}
 
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/image-preview` && request.method === "GET") {
+				const webSession = await requireSession(request, context);
+				const ref = url.searchParams.get("ref")?.trim();
+				const requestedPath = url.searchParams.get("path")?.trim();
+				const generatedToolCallId = url.searchParams.get("generatedToolCallId")?.trim();
+				const requestedSessionId = url.searchParams.get("piboSessionId")?.trim();
+				if (ref) {
+					if (requestedPath || generatedToolCallId) throw new PiboWebHttpError("Exact trace image requests cannot include fallback sources", 400);
+					const parsed = parseTracePayloadRef(ref);
+					if (!parsed) throw new PiboWebHttpError("Invalid trace payload ref", 400);
+					if (!requestedSessionId || requestedSessionId !== parsed.piboSessionId) throw new PiboWebHttpError("Trace image session does not match the payload ref", 400);
+					const nodeId = url.searchParams.get("nodeId")?.trim();
+					if (!nodeId || parsed.nodeId !== nodeId || parsed.payloadKind !== "output") throw new PiboWebHttpError("Trace image node does not match the payload ref", 400);
+					resolveRequestedSession(state, context, webSession, defaultProfile, parsed.piboSessionId);
+					if (!state.timelineQuery.isPayloadAttachedToTraceNode({
+						piboSessionId: parsed.piboSessionId,
+						payloadId: parsed.payloadId,
+						nodeId,
+						payloadKind: "output",
+					})) throw new PiboWebHttpError("Trace image is not attached to the requested node", 404);
+					const index = parseBoundedNonNegativeIntSearchParam(url, "index", 0, TRACE_IMAGE_MAX_COUNT - 1);
+					const result = readTraceImagePayload({ payloadStore: state.dataStore.payloads, ref, nodeId, index });
+					if (!result.ok) {
+						const status = result.reason === "payload-too-large" || result.reason === "image-too-large"
+							? 413
+							: result.reason === "malformed-base64" || result.reason === "unsupported-payload" || result.reason === "unsupported-image" || result.reason === "mime-mismatch"
+								? 415
+								: result.reason === "invalid-ref" ? 400 : 404;
+						throw new PiboWebHttpError("Exact trace image is unavailable", status);
+					}
+					return responseChatTraceImage(result.image);
+				}
+
+				if (!requestedSessionId) throw new PiboWebHttpError("Image preview session is required", 400);
+				if (requestedPath && generatedToolCallId) throw new PiboWebHttpError("Image preview source is ambiguous", 400);
+				if (!requestedPath && !generatedToolCallId) throw new PiboWebHttpError("Image preview source is required", 400);
+				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, requestedSessionId);
+				const room = ensureSessionRoom(state, context, selectedSession, webSession);
+				const basePath = roomWorkspaceFromMetadata(room.metadata) ?? selectedSession.workspace ?? getDefaultPiboWorkspace();
+					const resolvedPreview = generatedToolCallId
+						? resolveImagePreviewPathWithinRoots(
+							codexImageArtifactPath(selectedSession.id, generatedToolCallId).savedPath,
+							[codexImageArtifactRoot()],
+						)
+						: resolveImagePreviewPath(requestedPath!, basePath);
+					return responseChatImagePreview(resolvedPreview.path, resolvedPreview.allowedRoots);
+			}
+
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/transcription/providers` && request.method === "GET") {
 				await requireSession(request, context);
 				return await responseChatTranscriptionProviders(context);
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/speech/providers` && request.method === "GET") {
+				await requireSession(request, context);
+				return await responseChatSpeechProviders(context);
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/speech/sessions` && request.method === "POST") {
+				requireSameOriginJsonRequest(request);
+				await requireSession(request, context);
+				return await responseChatSpeechSessionStart(request, context);
+			}
+
+			const speechSessionMatch = url.pathname.match(/^\/api\/chat\/speech\/sessions\/([^/]+)(?:\/(speak))?$/);
+			if (speechSessionMatch && (request.method === "POST" || request.method === "DELETE")) {
+				requireSameOriginJsonRequest(request);
+				await requireSession(request, context);
+				const sessionId = speechSessionMatch[1]!;
+				if (speechSessionMatch[2] === "speak" && request.method === "POST") {
+					return await responseChatSpeechSessionSpeak(request, context, sessionId);
+				}
+				if (!speechSessionMatch[2] && request.method === "DELETE") {
+					return await responseChatSpeechSessionStop(context, sessionId);
+				}
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/transcription` && request.method === "POST") {
@@ -5418,8 +5509,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (settingsRoute) {
 				if (chatSettingsRouteRequiresSameOrigin(settingsRoute)) requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
-				const transcriptionProviderIds = settingsRoute.kind === "user-settings" && settingsRoute.action === "update"
+				const updatingUserSettings = settingsRoute.kind === "user-settings" && settingsRoute.action === "update";
+				const transcriptionProviderIds = updatingUserSettings
 					? (await context.channelContext.getTranscriptionProviderInfos?.())?.map((provider) => provider.id)
+					: undefined;
+				const speechProviderIds = updatingUserSettings
+					? context.channelContext.getSpeechProviderIds?.()
 					: undefined;
 				const response = await handleChatSettingsRoute({
 					route: settingsRoute,
@@ -5427,6 +5522,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					cwd: process.cwd(),
 					dataStore: state.dataStore,
 					transcriptionProviderIds,
+					speechProviderIds,
 				});
 				if (chatSettingsRouteInvalidatesBootstrapCatalog(settingsRoute)) invalidateBootstrapCatalogCache(state);
 				return response;
@@ -5774,6 +5870,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseJson({ binding });
 			}
 
+			if (sessionAction?.action === "fork-candidates" && request.method === "GET") {
+				const webSession = await requireSession(request, context);
+				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, sessionAction.piboSessionId);
+				if (!context.channelContext.getSessionForkCandidates) {
+					throw new PiboWebHttpError("Session fork candidates are not available", 501);
+				}
+				return responseJson({ messages: await context.channelContext.getSessionForkCandidates(selectedSession.id) });
+			}
+
 			if (sessionAction?.action === "runtime-binding" && request.method === "PATCH") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
@@ -6042,6 +6147,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							events: [],
 							status: traceStatus,
 							historyEntries: history.entries,
+							historyReconciliationProof: history.reconciliationProof ?? { complete: false, entries: history.entries },
 							historyInspection: history.inspection,
 							historyOrderOffset: history.orderOffset,
 							turnTimings,
@@ -6094,6 +6200,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							events,
 							status: traceStatus,
 							historyEntries,
+							historyReconciliationProof: nativeHistory
+								? nativeHistory.reconciliationProof ?? { complete: false, entries: nativeHistory.entries }
+								: undefined,
 							historyInspection,
 							historyOrderOffset: nativeHistory?.orderOffset,
 							turnTimings,
@@ -6283,6 +6392,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						events,
 						status: traceStatus,
 						historyEntries,
+						historyReconciliationProof: nativeHistory
+							? nativeHistory.reconciliationProof ?? { complete: false, entries: nativeHistory.entries }
+							: undefined,
 						historyInspection: nativeHistory?.inspection,
 						historyOrderOffset: nativeHistory?.orderOffset,
 						turnTimings,

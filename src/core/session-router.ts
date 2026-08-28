@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
 	InitialSessionContext,
 	type InitialSessionContextOptions,
@@ -17,6 +18,7 @@ import type {
 	PiboAssistantMessageEvent,
 	PiboEventListener,
 	PiboExecutionEvent,
+	PiboForkCandidate,
 	PiboJsonObject,
 	PiboInputEvent,
 	PiboMessageEvent,
@@ -26,21 +28,26 @@ import type {
 	PiboSessionStatus,
 } from "./events.js";
 import {
+	normalizePiboAgentSessionName,
 	type PiboAgentObservation,
 	type PiboAgentObserveInput,
 	type PiboAgentsController,
 	type PiboManagedAgent,
 } from "../subagents/tool.js";
 import {
+	PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES,
+	PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES,
 	normalizePiboAgentObservationCursor,
 	normalizePiboAgentObservationLimit,
 	normalizePiboAgentObservationOrder,
+	normalizePiboAgentObservationToolDetail,
 	parsePiboAgentObservationTimestamp,
 	piboAgentObservationDetails,
 	piboAgentObservationKind,
 	piboAgentObservationRole,
 	piboAgentObservationSourceFromEvent,
 	piboAgentObservationText,
+	piboAgentObservationToolSummary,
 } from "../subagents/observations.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
 import { PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, waitForRunCancellationSettlement } from "../runs/lifecycle.js";
@@ -51,9 +58,12 @@ import type { PiboRunToolController } from "../runs/tools.js";
 import { createDefaultPiboReliabilityStore, type PiboReliabilityStore } from "../reliability/store.js";
 import {
 	InMemoryPiboSessionStore,
+	createPiboSessionId,
+	type CreatePiboSessionInput,
 	type PiboSession,
 	type PiboSessionStore,
 } from "../sessions/store.js";
+import { createAgentRuntimeBindingPersistence } from "../sessions/runtime-binding-persistence.js";
 import {
 	createLegacyPiRuntimeSessionBinding,
 	RuntimeSessionBindingConflictError,
@@ -309,6 +319,24 @@ function isRunReminderServiceMessage(event: PiboMessageEvent): boolean {
 	return event.source === "service" && event.text.startsWith("<pibo_run_notification>");
 }
 
+function isRunReminderContextPressureError(event: Extract<PiboOutputEvent, { type: "session_error" }>): boolean {
+	return event.errorDetails?.category === "context_overflow"
+		|| event.errorDetails?.code === "context_length_exceeded"
+		|| event.errorDetails?.code === "run_reminder_limit_exceeded";
+}
+
+function runReminderRecoveryGroupKey(notification: PiboRunNotification): string {
+	if (notification.origin) return `origin:${JSON.stringify(notification.origin)}`;
+	const runIds = [
+		...notification.completed,
+		...notification.failed,
+		...notification.timedOut,
+		...notification.cancelled,
+		...notification.running,
+	].map((run) => run.runId).sort();
+	return `runs:${JSON.stringify(runIds)}`;
+}
+
 function yieldedRunOrigin(event: Pick<PiboMessageEvent, "id" | "provenance"> | undefined) {
 	if (!event?.id || event.provenance?.kind !== "loop-run") return undefined;
 	return {
@@ -337,6 +365,60 @@ function isTerminalRunStatus(status: string): boolean {
 
 function asJsonObject(value: PiboJsonObject | undefined): PiboJsonObject {
 	return value ?? {};
+}
+
+const DERIVED_SESSION_RECONCILIATION_METADATA_KEY = "pibo.sessionIdentityReconciliation.v1";
+
+function unresolvedDerivedSessionSource(session: PiboSession): string | undefined {
+	const marker = session.metadata?.[DERIVED_SESSION_RECONCILIATION_METADATA_KEY];
+	if (!marker || typeof marker !== "object" || Array.isArray(marker)) return undefined;
+	return marker.state === "cleanup-required" && typeof marker.sourcePiboSessionId === "string"
+		? marker.sourcePiboSessionId
+		: undefined;
+}
+
+function derivedSessionMetadata(value: PiboJsonObject | undefined): PiboJsonObject {
+	const metadata = { ...asJsonObject(value) };
+	for (const key of [
+		DERIVED_SESSION_RECONCILIATION_METADATA_KEY,
+		"workflowSessionKind",
+		"projectSessionKind",
+		"subagentName",
+		"subagentToolName",
+		"agentStatus",
+		"threadKey",
+	]) {
+		delete metadata[key];
+	}
+	return metadata;
+}
+
+function matchesDerivedSessionIntent(session: PiboSession, input: CreatePiboSessionInput): boolean {
+	const binding = session.runtimeBinding;
+	const expectedBinding = input.runtimeBinding;
+	if (!binding || !expectedBinding) return false;
+	const expectedPiSessionId = expectedBinding.adapterId === "pi" ? expectedBinding.nativeSessionId ?? "" : "";
+	return session.id === input.id
+		&& session.piSessionId === expectedPiSessionId
+		&& session.channel === input.channel
+		&& session.kind === input.kind
+		&& session.profile === input.profile
+		&& session.parentId === input.parentId
+		&& session.originId === input.originId
+		&& session.workspace === input.workspace
+		&& (session.title === input.title || (input.title === undefined && session.title === "Untitled Session"))
+		&& isDeepStrictEqual(session.metadata ?? {}, input.metadata ?? {})
+		&& isDeepStrictEqual(session.activeModel, input.activeModel)
+		&& binding.piboSessionId === input.id
+		&& binding.runtimeInstanceId === expectedBinding.runtimeInstanceId
+		&& binding.adapterId === expectedBinding.adapterId
+		&& binding.nativeSessionId === expectedBinding.nativeSessionId
+		&& binding.state === (expectedBinding.state ?? "unbound")
+		&& binding.protocol === expectedBinding.protocol
+		&& binding.protocolVersion === expectedBinding.protocolVersion
+		&& binding.adapterVersion === expectedBinding.adapterVersion
+		&& isDeepStrictEqual(binding.locator, expectedBinding.locator)
+		&& isDeepStrictEqual(binding.metadata ?? {}, expectedBinding.metadata ?? {});
 }
 
 function shouldResetSessionAfterAction(action: string, output?: PiboOutputEvent): boolean {
@@ -394,6 +476,22 @@ type RuntimeRecoverySessionStore = PiboSessionStore & {
 type ScheduledRunReminder = {
 	generation: number;
 	includeAlreadyNotified: boolean;
+};
+
+type RunReminderDelivery = {
+	piboSessionId: string;
+	generation: number;
+	notification: PiboRunNotification;
+};
+
+type RunReminderRecoveryState = {
+	generation: number;
+	groups: Set<string>;
+};
+
+type UnresolvedDerivedSessionTransition = {
+	piboSessionId: string;
+	cause: unknown;
 };
 
 type StoredAgentObservation = PiboAgentObservation & {
@@ -454,10 +552,14 @@ export class PiboSessionRouter {
 	private readonly agentObservationEvictedThroughByParent = new Map<string, number>();
 	private nextAgentObservationSequence = 1;
 	private readonly scheduledRunReminders = new Map<string, ScheduledRunReminder>();
+	private readonly runReminderDeliveries = new Map<string, RunReminderDelivery>();
+	private readonly deferredRunReminders = new Map<string, number>();
+	private readonly runReminderRecoveries = new Map<string, RunReminderRecoveryState>();
 	private readonly runReminderGenerations = new Map<string, number>();
 	private readonly runCancellationHandlers = new Map<string, () => Promise<void>>();
 	private readonly activeRunExecutions = new Set<string>();
 	private readonly quiescingSessions = new Set<string>();
+	private readonly unresolvedDerivedSessionTransitions = new Map<string, UnresolvedDerivedSessionTransition>();
 	private readonly disposingSessions = new Map<string, Promise<void>>();
 	private readonly idleSessionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly routedSessionIdleTimeoutMs: number | false;
@@ -537,6 +639,12 @@ export class PiboSessionRouter {
 
 	async emit(event: PiboInputEvent): Promise<PiboOutputEvent> {
 		if (this.closing) throw new Error("Pibo session router is disposed.");
+		let messageSignalAccepted = false;
+		const acceptMessageSignal = () => {
+			if (event.type !== "message" || !event.id || messageSignalAccepted) return;
+			messageSignalAccepted = true;
+			this.signalRegistry.project({ type: "message_accepted", piboSessionId: event.piboSessionId, eventId: event.id, source: event.source });
+		};
 		const teardownAction = event.type === "execution" && (event.action === "dispose" || event.action === "kill" || event.action === "kill_all");
 		const teardownIds = teardownAction
 			? [event.piboSessionId, ...this.descendantSessionIds(event.piboSessionId)]
@@ -549,7 +657,13 @@ export class PiboSessionRouter {
 		if (event.type === "message" && event.id) {
 			const stored = this.sessionStore.get(event.piboSessionId);
 			if (stored) this.signalRegistry.project({ type: "session_created", session: stored });
-			this.signalRegistry.project({ type: "message_accepted", piboSessionId: event.piboSessionId, eventId: event.id, source: event.source });
+			// Cold runtime creation and steering retain their established eager
+			// signal lifecycle. Cached queued messages are accepted inside the
+			// routed session's synchronous admission boundary so an identity
+			// reservation can reject without first publishing acceptance.
+			if (event.delivery === "steer" || (!this.sessions.has(event.piboSessionId) && !this.pendingSessions.has(event.piboSessionId))) {
+				acceptMessageSignal();
+			}
 		}
 		let session: RoutedSession;
 		try {
@@ -576,9 +690,12 @@ export class PiboSessionRouter {
 				throw new Error(`Pibo session "${event.piboSessionId}" is quiescing.`);
 			}
 			if (event.type === "message") {
-				return event.delivery === "steer"
-					? await session.steerMessage(event)
-					: session.enqueueMessage(event);
+				if (event.delivery === "steer") return await session.steerMessage(event);
+				const output = session.enqueueMessage(event, acceptMessageSignal);
+				// Test doubles and compatibility shims may ignore the optional
+				// callback; production routed sessions invoke it before queueing.
+				acceptMessageSignal();
+				return output;
 			}
 
 			if (event.action === "abort") {
@@ -1037,6 +1154,15 @@ export class PiboSessionRouter {
 		}
 	}
 
+	async getSessionForkCandidates(piboSessionId: string): Promise<PiboForkCandidate[]> {
+		const session = await this.getOrCreateSession(piboSessionId);
+		try {
+			return await session.getForkCandidates();
+		} finally {
+			this.scheduleIdleSessionEvictionIfIdle(piboSessionId);
+		}
+	}
+
 	async setLiveSessionActiveModel(piboSessionId: string, model: ModelProfile | undefined): Promise<ModelProfile | undefined> {
 		const session = this.sessions.get(piboSessionId);
 		if (!session) return model;
@@ -1434,6 +1560,16 @@ export class PiboSessionRouter {
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			throw error;
 		}
+		const bindingSync = { expectedRevision: binding.revision };
+		const runtimeBindingPersistence = createAgentRuntimeBindingPersistence(this.sessionStore, {
+			piboSessionId: piboSession.id,
+			onPersisted: (updated) => {
+				binding = updated;
+				bindingSync.expectedRevision = updated.revision;
+				const updatedSession = this.sessionStore.get(piboSession.id);
+				if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
+			},
+		});
 		let runtimeSession: AgentRuntimeSession;
 		try {
 			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
@@ -1459,6 +1595,7 @@ export class PiboSessionRouter {
 					codeRuntimeToolController,
 					portableTools,
 					resources,
+					...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
 					compatibility: {
 						persistSession: this.options.persistSession,
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
@@ -1519,6 +1656,7 @@ export class PiboSessionRouter {
 				binding = this.persistSessionRuntimeBinding(piboSession, openedBinding, {
 					expectedRevision: binding.revision,
 				});
+				bindingSync.expectedRevision = binding.revision;
 			}
 		} catch (error) {
 			await runtimeSession.dispose().catch(() => {});
@@ -1543,6 +1681,7 @@ export class PiboSessionRouter {
 					})
 					: undefined,
 				onSessionOperation: (result, event) => this.handleSessionOperation(result, event),
+				onBeforeSessionIdentityOperation: (event) => this.retryUnresolvedDerivedSessionCompensation(event.piboSessionId),
 				onKillChildren: (id, opts) => this.killChildSessions(id, opts),
 				onStateChange: (state) => {
 					this.signalRegistry.project({
@@ -1551,16 +1690,20 @@ export class PiboSessionRouter {
 						processing: state.processing,
 						queuedMessages: state.queuedMessages,
 					});
-					if (!state.processing && state.queuedMessages === 0 && !state.disposed) {
-						this.syncLiveSessionRuntimeBinding(piboSession.id, runtimeSession);
+					if (!state.processing && state.queuedMessages === 0 && !state.disposed && !state.sessionIdentityOperationInFlight) {
+						this.syncLiveSessionRuntimeBinding(piboSession.id, runtimeSession, bindingSync);
+						this.scheduleRunReminder(piboSession.id, false);
 					}
-					if (state.disposed || state.processing || state.queuedMessages > 0) this.clearIdleSessionTimer(piboSession.id);
+					if (state.disposed || state.processing || state.queuedMessages > 0 || state.sessionIdentityOperationInFlight) this.clearIdleSessionTimer(piboSession.id);
 					else this.scheduleIdleSessionEvictionIfIdle(piboSession.id);
 				},
-				onMessagesInterrupted: (messages, reason) => this.telemetryRecorder?.recordMessagesInterrupted(messages, {
-					session: this.sessionStore.get(piboSession.id),
-					status: this.sessions.get(piboSession.id)?.getStatus(),
-				}, reason),
+				onMessagesInterrupted: (messages, reason) => {
+					this.telemetryRecorder?.recordMessagesInterrupted(messages, {
+						session: this.sessionStore.get(piboSession.id),
+						status: this.sessions.get(piboSession.id)?.getStatus(),
+					}, reason);
+					this.handleInterruptedRunReminders(messages);
+				},
 				messagePreflight: this.options.messagePreflight,
 				getRuntimeAuthStatus: () => runtimeRegistry.getAgentRuntimeAuthStatus(binding.runtimeInstanceId),
 				startRuntimeAuth: async (input) => {
@@ -1644,22 +1787,38 @@ export class PiboSessionRouter {
 		};
 	}
 
-	private syncLiveSessionRuntimeBinding(piboSessionId: string, runtimeSession: { getBinding(): RuntimeSessionBinding }): void {
+	private syncLiveSessionRuntimeBinding(
+		piboSessionId: string,
+		runtimeSession: { getBinding(): RuntimeSessionBinding },
+		state: { expectedRevision: number | undefined },
+	): void {
 		const session = this.sessionStore.get(piboSessionId);
 		if (!session) return;
 		try {
 			const persisted = this.resolveSessionRuntimeBinding(session);
-			this.persistSessionRuntimeBinding(
+			const updated = this.persistSessionRuntimeBinding(
 				session,
 				withPersistedPortableHistoryAuditMetadata(persisted, runtimeSession.getBinding()),
+				{ expectedRevision: state.expectedRevision },
 			);
+			state.expectedRevision = updated.revision;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			const reset = this.resetCachedSession(piboSessionId, "runtime binding synchronization failed");
 			this.emitOutput({
 				type: "session_error",
 				piboSessionId,
 				error: `Failed to persist the live runtime binding: ${message}`,
 				errorDetails: runtimeSessionErrorDetails(message),
+			});
+			void reset.catch((resetError) => {
+				const resetMessage = resetError instanceof Error ? resetError.message : String(resetError);
+				this.emitOutput({
+					type: "session_error",
+					piboSessionId,
+					error: `Failed to discard a runtime after binding synchronization failed: ${resetMessage}`,
+					errorDetails: runtimeSessionErrorDetails(resetMessage),
+				});
 			});
 		}
 	}
@@ -1726,22 +1885,42 @@ export class PiboSessionRouter {
 		const source = this.resolvePiboSession(event.piboSessionId);
 		const previousBinding = this.resolveSessionRuntimeBinding(source);
 		const liveBinding = this.sessions.get(event.piboSessionId)?.getRuntimeBinding();
+		const currentNativeSessionId = result.current.piSessionId || undefined;
 		const currentBinding: RuntimeSessionBinding = {
 			...previousBinding,
 			...liveBinding,
 			piboSessionId: source.id,
-			nativeSessionId: result.current.piSessionId,
-			state: "bound",
-			locator: result.current.sessionFile
+			nativeSessionId: currentNativeSessionId,
+			state: currentNativeSessionId ? "bound" : "unbound",
+			locator: currentNativeSessionId && result.current.sessionFile
 				? { kind: "local-file", value: result.current.sessionFile }
-				: liveBinding?.locator ?? previousBinding.locator,
+				: currentNativeSessionId
+					? liveBinding?.locator ?? previousBinding.locator
+					: undefined,
+			metadata: currentNativeSessionId ? liveBinding?.metadata ?? previousBinding.metadata : undefined,
 		};
 
 		if (event.action === "session.fork" || event.action === "session.clone") {
 			const action = event.action as "session.fork" | "session.clone";
-			const created = this.createDerivedSession(result, action, currentBinding);
-			result.piboSessionId = created.id;
-			await this.resetCachedSession(event.piboSessionId);
+			let transitionError: unknown;
+			try {
+				const created = this.createDerivedSession(result, action, currentBinding);
+				result.piboSessionId = created.id;
+			} catch (error) {
+				transitionError = error;
+			}
+			// Always discard the source live handle after derivation. Bound native
+			// branches move that handle to the derived session; first-message Codex
+			// branches intentionally leave it on the source and persist unbound.
+			try {
+				await this.resetCachedSession(event.piboSessionId);
+			} catch (resetError) {
+				if (transitionError) {
+					throw new AggregateError([transitionError, resetError], `Failed to persist and reset ${action}.`);
+				}
+				throw resetError;
+			}
+			if (transitionError) throw transitionError;
 			return;
 		}
 
@@ -1758,17 +1937,18 @@ export class PiboSessionRouter {
 		currentBinding: RuntimeSessionBinding,
 	): PiboSession {
 		const source = this.resolvePiboSession(result.piboSessionId);
-		return this.sessionStore.create({
+		const input: CreatePiboSessionInput = {
+			id: createPiboSessionId(),
 			channel: source.channel,
 			kind: "branch",
 			profile: source.profile,
-			parentId: source.kind === "subagent" ? source.parentId : undefined,
+			parentId: source.parentId,
 			originId: source.id,
 			runtimeBinding: {
 				runtimeInstanceId: currentBinding.runtimeInstanceId,
 				adapterId: currentBinding.adapterId,
-				nativeSessionId: currentBinding.nativeSessionId ?? result.current.piSessionId,
-				state: "bound",
+				nativeSessionId: currentBinding.nativeSessionId,
+				state: currentBinding.state,
 				protocol: currentBinding.protocol,
 				protocolVersion: currentBinding.protocolVersion,
 				adapterVersion: currentBinding.adapterVersion,
@@ -1779,12 +1959,122 @@ export class PiboSessionRouter {
 			title: source.title,
 			activeModel: source.activeModel,
 			metadata: {
-				...asJsonObject(source.metadata),
+				...derivedSessionMetadata(source.metadata),
 				originAction: action,
 				originRuntimeNativeSessionId: result.previous.piSessionId,
 				...(currentBinding.adapterId === "pi" ? { originPiSessionId: result.previous.piSessionId } : {}),
 			},
+		};
+		let created: PiboSession;
+		try {
+			created = this.sessionStore.create(input);
+		} catch (error) {
+			let persisted: PiboSession | undefined;
+			try {
+				persisted = this.sessionStore.get(input.id!);
+			} catch (lookupError) {
+				const failure = new AggregateError(
+					[error, lookupError],
+					`Branch persistence for "${input.id}" failed and its commit state could not be reconciled.`,
+				);
+				this.unresolvedDerivedSessionTransitions.set(source.id, { piboSessionId: input.id!, cause: failure });
+				throw failure;
+			}
+			if (!persisted) throw error;
+			if (matchesDerivedSessionIntent(persisted, input)) return persisted;
+			return this.rejectDerivedSessionAfterCompensation(source.id, input.id!, error);
+		}
+		if (matchesDerivedSessionIntent(created, input)) return created;
+		return this.rejectDerivedSessionAfterCompensation(
+			source.id,
+			input.id!,
+			new Error(`Session store returned a branch that does not match the intended derivation "${input.id}".`),
+		);
+	}
+
+	private retryUnresolvedDerivedSessionCompensation(sourcePiboSessionId: string): void {
+		const remembered = this.unresolvedDerivedSessionTransitions.get(sourcePiboSessionId);
+		const persisted = this.sessionStore.find({ originId: sourcePiboSessionId })
+			.filter((session) => unresolvedDerivedSessionSource(session) === sourcePiboSessionId)
+			.map((session) => ({
+				piboSessionId: session.id,
+				cause: new Error(`Branch "${session.id}" has a persisted session identity reconciliation marker.`),
+			}));
+		const unresolved = [
+			...(remembered ? [remembered] : []),
+			...persisted.filter((candidate) => candidate.piboSessionId !== remembered?.piboSessionId),
+		];
+		for (const candidate of unresolved) {
+			try {
+				if (!this.sessionStore.get(candidate.piboSessionId)) {
+					if (remembered?.piboSessionId === candidate.piboSessionId) {
+						this.unresolvedDerivedSessionTransitions.delete(sourcePiboSessionId);
+					}
+					continue;
+				}
+				if (!this.sessionStore.delete) throw new Error("Session store does not support compensating deletion.");
+				this.sessionStore.delete(candidate.piboSessionId);
+				if (this.sessionStore.get(candidate.piboSessionId)) {
+					throw new Error(`Compensating deletion left branch "${candidate.piboSessionId}" persisted.`);
+				}
+				if (remembered?.piboSessionId === candidate.piboSessionId) {
+					this.unresolvedDerivedSessionTransitions.delete(sourcePiboSessionId);
+				}
+			} catch (error) {
+				this.unresolvedDerivedSessionTransitions.set(sourcePiboSessionId, candidate);
+				throw new AggregateError(
+					[candidate.cause, error],
+					`Branch "${candidate.piboSessionId}" still requires compensation; refusing another session identity operation for source "${sourcePiboSessionId}".`,
+				);
+			}
+		}
+	}
+
+	private persistDerivedSessionReconciliationMarker(sourcePiboSessionId: string, piboSessionId: string): void {
+		const residual = this.sessionStore.get(piboSessionId);
+		if (!residual) return;
+		const updated = this.sessionStore.update(piboSessionId, {
+			metadata: {
+				...(residual.metadata ?? {}),
+				[DERIVED_SESSION_RECONCILIATION_METADATA_KEY]: {
+					state: "cleanup-required",
+					sourcePiboSessionId,
+				},
+			},
 		});
+		if (!updated || unresolvedDerivedSessionSource(updated) !== sourcePiboSessionId) {
+			throw new Error(`Failed to persist the reconciliation marker for branch "${piboSessionId}".`);
+		}
+	}
+
+	private rejectDerivedSessionAfterCompensation(sourcePiboSessionId: string, piboSessionId: string, cause: unknown): never {
+		let cleanupError: unknown;
+		try {
+			if (!this.sessionStore.delete) {
+				throw new Error("Session store does not support compensating deletion.");
+			}
+			this.sessionStore.delete(piboSessionId);
+			if (this.sessionStore.get(piboSessionId)) {
+				throw new Error(`Compensating deletion left branch "${piboSessionId}" persisted.`);
+			}
+		} catch (error) {
+			cleanupError = error;
+		}
+		if (cleanupError) {
+			let markerError: unknown;
+			try {
+				this.persistDerivedSessionReconciliationMarker(sourcePiboSessionId, piboSessionId);
+			} catch (error) {
+				markerError = error;
+			}
+			const failure = new AggregateError(
+				[cause, cleanupError, ...(markerError ? [markerError] : [])],
+				`Branch persistence for "${piboSessionId}" was inconsistent and compensation failed.`,
+			);
+			this.unresolvedDerivedSessionTransitions.set(sourcePiboSessionId, { piboSessionId, cause: failure });
+			throw failure;
+		}
+		throw cause;
 	}
 
 	private runtimeAuthAffectedInstanceIds(runtimeInstanceId: string): string[] {
@@ -1892,11 +2182,12 @@ export class PiboSessionRouter {
 
 	private createAgentsController(parentPiboSessionId: string): PiboAgentsController {
 		return {
-			sendMessage: async ({ subagent, message, threadKey, toolCallId, requestId, parentProvenance, signal }) => {
+			sendMessage: async ({ subagent, sessionName, message, threadKey, toolCallId, requestId, parentProvenance, signal }) => {
 				if (signal?.aborted) throw subagentAbortError();
 				if (typeof requestId !== "string" || !requestId.trim()) throw new Error("Delegated agent requestId is required.");
 				this.assertSubagentDepth(parentPiboSessionId, subagent);
-				const child = this.resolveSubagentSession(parentPiboSessionId, subagent, threadKey);
+				const normalizedSessionName = normalizePiboAgentSessionName(sessionName);
+				const child = this.resolveSubagentSession(parentPiboSessionId, subagent, normalizedSessionName, threadKey);
 				const resolvedThreadKey = typeof child.metadata?.threadKey === "string" ? child.metadata.threadKey : "";
 				const loopJobId = parentProvenance?.kind === "loop-run"
 					? parentProvenance.jobId
@@ -1991,6 +2282,7 @@ export class PiboSessionRouter {
 				agentId: session.id,
 				name: typeof session.metadata?.subagentName === "string" ? session.metadata.subagentName : session.profile,
 				profile: session.profile,
+				...(session.title ? { sessionName: session.title } : {}),
 				...(typeof session.metadata?.threadKey === "string" ? { threadKey: session.metadata.threadKey } : {}),
 				status: killed ? "killed" : running ? "running" : "idle",
 				createdAt: session.createdAt,
@@ -2016,6 +2308,7 @@ export class PiboSessionRouter {
 	private observeManagedAgents(parentPiboSessionId: string, input: PiboAgentObserveInput) {
 		const order = normalizePiboAgentObservationOrder(input.order);
 		const limit = normalizePiboAgentObservationLimit(input.limit);
+		const toolDetail = normalizePiboAgentObservationToolDetail(input.toolDetail);
 		const afterSequence = normalizePiboAgentObservationCursor(input.afterSequence);
 		const since = parsePiboAgentObservationTimestamp(input.since, "since");
 		const until = parsePiboAgentObservationTimestamp(input.until, "until");
@@ -2033,12 +2326,22 @@ export class PiboSessionRouter {
 		const kinds = input.kinds ? new Set(input.kinds) : undefined;
 		const roles = input.roles ? new Set(input.roles) : undefined;
 		const textContains = input.textContains?.toLowerCase();
+		const defaultMessageView = eventTypes === undefined && kinds === undefined;
+		const explicitlySelectsTools = input.eventTypes?.some((eventType) => piboAgentObservationKind(eventType) === "tool") === true
+			|| input.kinds?.includes("tool") === true;
+		const includeTools = input.includeTools === true || (input.includeTools === undefined && explicitlySelectsTools);
+		const defaultEventTypes = includeTools
+			? [...PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES, ...PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES]
+			: [...PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES];
+		const defaultEventTypeSet = new Set<string>(defaultEventTypes);
 		const matches = this.agentObservations.filter((observation) => {
 			if (observation.managingParentId !== parentPiboSessionId) return false;
 			if (requestIds && (!observation.requestId || !requestIds.has(observation.requestId))) return false;
 			if (agentIds && !agentIds.has(observation.agentId)) return false;
 			if (names && !names.has(observation.name)) return false;
 			if (threadKeys && (!observation.threadKey || !threadKeys.has(observation.threadKey))) return false;
+			if (observation.kind === "tool" && !includeTools) return false;
+			if (defaultMessageView && !defaultEventTypeSet.has(observation.eventType)) return false;
 			if (eventTypes && !eventTypes.has(observation.eventType)) return false;
 			if (kinds && !kinds.has(observation.kind)) return false;
 			if (roles && (!observation.role || !roles.has(observation.role))) return false;
@@ -2056,7 +2359,10 @@ export class PiboSessionRouter {
 		if (cursorPolling && order === "desc") ordered.reverse();
 		const selected = ordered.map((observation) => {
 			const { managingParentId: _managingParentId, details, ...visible } = observation;
-			return input.includeDetails === true && details !== undefined ? { ...visible, details } : visible;
+			const compact = visible.kind === "tool" && toolDetail === "summary"
+				? { ...visible, text: piboAgentObservationToolSummary(visible.text, visible.isError, details) }
+				: visible;
+			return input.includeDetails === true && details !== undefined ? { ...compact, details } : compact;
 		});
 		const evictedThrough = this.agentObservationEvictedThroughByParent.get(parentPiboSessionId) ?? 0;
 		const retentionTruncated = afterSequence === undefined ? evictedThrough > 0 : afterSequence < evictedThrough;
@@ -2067,9 +2373,12 @@ export class PiboSessionRouter {
 		return {
 			filters: {
 				...input,
+				...(defaultMessageView ? { eventTypes: defaultEventTypes } : {}),
 				...(afterSequence !== undefined ? { afterSequence } : {}),
 				order,
 				limit,
+				includeTools,
+				toolDetail,
 				includeDetails: input.includeDetails === true,
 			},
 			observations: selected,
@@ -2270,6 +2579,7 @@ export class PiboSessionRouter {
 	private resolveSubagentSession(
 		parentPiboSessionId: string,
 		subagent: SubagentProfile,
+		sessionName: string,
 		threadKey?: string,
 	): PiboSession {
 		const targetProfile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, subagent.targetProfile);
@@ -2310,8 +2620,8 @@ export class PiboSessionRouter {
 				},
 				"subagent",
 			);
-			if (JSON.stringify(updatedMetadata) !== JSON.stringify(existing.metadata ?? {})) {
-				return this.sessionStore.update(existing.id, { metadata: updatedMetadata }) ?? existing;
+			if (existing.title !== sessionName || JSON.stringify(updatedMetadata) !== JSON.stringify(existing.metadata ?? {})) {
+				return this.sessionStore.update(existing.id, { title: sessionName, metadata: updatedMetadata }) ?? existing;
 			}
 			return existing;
 		}
@@ -2324,6 +2634,7 @@ export class PiboSessionRouter {
 			parentId: parent.id,
 			runtimeBinding: this.createRuntimeBindingInput(childProfile),
 			workspace: parent.workspace,
+			title: sessionName,
 			metadata: newSessionMetadata,
 			activeModel: subagent.model,
 		});
@@ -2336,7 +2647,7 @@ export class PiboSessionRouter {
 			modelDefaults: this.resolveModelDefaults(),
 		});
 		return activeModel ? this.sessionStore.update(childSession.id, { activeModel }) ?? childSession : childSession;
-		}
+	}
 
 	private recordAgentObservation(event: PiboOutputEvent, session: PiboSession | undefined): void {
 		if (!session || session.kind !== "subagent" || session.channel !== "pibo.subagents" || !session.parentId) return;
@@ -2390,10 +2701,124 @@ export class PiboSessionRouter {
 			listener(event);
 		}
 
+		this.handleRunReminderOutput(event);
 		if (event.type === "message_finished" && event.source !== "service") {
 			this.scheduleRunReminder(event.piboSessionId, true);
 		}
 	};
+
+	private handleRunReminderOutput(event: PiboOutputEvent): void {
+		if (event.type === "message_finished") {
+			const delivery = event.eventId ? this.runReminderDeliveries.get(event.eventId) : undefined;
+			if (event.eventId) this.runReminderDeliveries.delete(event.eventId);
+			if (delivery) {
+				this.clearRunReminderRecovery(delivery);
+				this.scheduleRunReminder(delivery.piboSessionId, false, delivery.generation);
+			}
+			return;
+		}
+		if (event.type === "session_error") {
+			const eventId = event.eventId;
+			if (!eventId) return;
+			const delivery = this.runReminderDeliveries.get(eventId);
+			if (!delivery) return;
+			this.runReminderDeliveries.delete(eventId);
+			if (
+				!isRunReminderContextPressureError(event)
+				|| this.closing
+				|| this.quiescingSessions.has(delivery.piboSessionId)
+				|| delivery.generation !== this.runReminderGeneration(delivery.piboSessionId)
+			) {
+				this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
+				return;
+			}
+
+			if (this.hasRunReminderRecovery(delivery)) {
+				const released = this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
+				for (const run of released) this.runRegistry.suppressNotification(delivery.piboSessionId, run.runId);
+				this.clearRunReminderRecovery(delivery);
+				this.deferredRunReminders.delete(delivery.piboSessionId);
+				this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
+				this.scheduleRunReminder(delivery.piboSessionId, false, delivery.generation);
+				return;
+			}
+
+			this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
+			if (!this.runRegistry.hasPendingNotification(delivery.piboSessionId)) return;
+
+			this.recordRunReminderRecovery(delivery);
+			const alreadyDeferred = this.deferredRunReminders.get(delivery.piboSessionId) === delivery.generation;
+			this.deferredRunReminders.set(delivery.piboSessionId, delivery.generation);
+			this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
+			if (!alreadyDeferred) this.queueRunReminderRecoveryCompaction(delivery.piboSessionId, delivery.generation);
+			return;
+		}
+		if (event.type !== "compaction_end" || event.aborted || event.errorMessage) return;
+		const generation = this.deferredRunReminders.get(event.piboSessionId);
+		if (generation === undefined) return;
+		this.deferredRunReminders.delete(event.piboSessionId);
+		if (this.closing || this.quiescingSessions.has(event.piboSessionId)) return;
+		if (generation !== this.runReminderGeneration(event.piboSessionId)) return;
+		this.scheduleRunReminder(event.piboSessionId, true, generation);
+	}
+
+	private hasRunReminderRecovery(delivery: RunReminderDelivery): boolean {
+		const recovery = this.runReminderRecoveries.get(delivery.piboSessionId);
+		return recovery?.generation === delivery.generation
+			&& recovery.groups.has(runReminderRecoveryGroupKey(delivery.notification));
+	}
+
+	private recordRunReminderRecovery(delivery: RunReminderDelivery): void {
+		let recovery = this.runReminderRecoveries.get(delivery.piboSessionId);
+		if (!recovery || recovery.generation !== delivery.generation) {
+			recovery = { generation: delivery.generation, groups: new Set() };
+			this.runReminderRecoveries.set(delivery.piboSessionId, recovery);
+		}
+		recovery.groups.add(runReminderRecoveryGroupKey(delivery.notification));
+	}
+
+	private clearRunReminderRecovery(delivery: RunReminderDelivery): void {
+		const recovery = this.runReminderRecoveries.get(delivery.piboSessionId);
+		if (!recovery || recovery.generation !== delivery.generation) return;
+		recovery.groups.delete(runReminderRecoveryGroupKey(delivery.notification));
+		if (recovery.groups.size === 0) this.runReminderRecoveries.delete(delivery.piboSessionId);
+	}
+
+	private queueRunReminderRecoveryCompaction(piboSessionId: string, generation: number): void {
+		const session = this.sessions.get(piboSessionId);
+		if (!session) return;
+		const eventId = randomUUID();
+		void session.executeAction({
+			type: "execution",
+			piboSessionId,
+			id: eventId,
+			action: "compact",
+			params: {
+				customInstructions: "Preserve the current task and pending yielded-run lifecycle, and leave enough context for the deferred run notification.",
+			},
+		}).catch((error) => {
+			if (this.closing || this.quiescingSessions.has(piboSessionId)) return;
+			if (generation !== this.runReminderGeneration(piboSessionId)) return;
+			const message = error instanceof Error ? error.message : String(error);
+			this.emitOutput({
+				type: "session_error",
+				piboSessionId,
+				eventId,
+				error: message,
+				errorDetails: runtimeSessionErrorDetails(message),
+			});
+		});
+	}
+
+	private handleInterruptedRunReminders(messages: readonly PiboMessageEvent[]): void {
+		for (const message of messages) {
+			if (!isRunReminderServiceMessage(message) || !message.id) continue;
+			const delivery = this.runReminderDeliveries.get(message.id);
+			if (!delivery) continue;
+			this.runReminderDeliveries.delete(message.id);
+			this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
+		}
+	}
 
 	private projectKnownSessionSignals(): void {
 		for (const session of this.sessionStore.list?.() ?? []) {
@@ -2417,6 +2842,11 @@ export class PiboSessionRouter {
 		for (const piboSessionId of piboSessionIds) {
 			this.runReminderGenerations.set(piboSessionId, this.runReminderGeneration(piboSessionId) + 1);
 			this.scheduledRunReminders.delete(piboSessionId);
+			this.deferredRunReminders.delete(piboSessionId);
+			this.runReminderRecoveries.delete(piboSessionId);
+			for (const [eventId, delivery] of this.runReminderDeliveries) {
+				if (delivery.piboSessionId === piboSessionId) this.runReminderDeliveries.delete(eventId);
+			}
 			try {
 				this.sessions.get(piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
 			} catch {
@@ -2445,6 +2875,9 @@ export class PiboSessionRouter {
 	private scheduleRunReminder(piboSessionId: string, includeAlreadyNotified: boolean, expectedGeneration = this.runReminderGeneration(piboSessionId)): void {
 		if (this.closing || this.quiescingSessions.has(piboSessionId)) return;
 		if (expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
+		const deferredGeneration = this.deferredRunReminders.get(piboSessionId);
+		if (deferredGeneration === expectedGeneration) return;
+		if (deferredGeneration !== undefined) this.deferredRunReminders.delete(piboSessionId);
 		if (!this.runRegistry.hasPendingNotification(piboSessionId, { includeAlreadyNotified })) return;
 		const previous = this.scheduledRunReminders.get(piboSessionId);
 		if (previous?.generation === expectedGeneration) {
@@ -2471,21 +2904,27 @@ export class PiboSessionRouter {
 		if (!scheduled || scheduled.generation !== expectedGeneration) return;
 		this.scheduledRunReminders.delete(piboSessionId);
 		if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
-		const notification = this.runRegistry.createNotification(piboSessionId, { includeAlreadyNotified: scheduled.includeAlreadyNotified });
-		if (!notification) return;
 
+		let notification: PiboRunNotification | undefined;
+		let eventId: string | undefined;
 		try {
 			const session = await this.getOrCreateSession(piboSessionId);
 			if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
+			notification = this.runRegistry.createNotification(piboSessionId, { includeAlreadyNotified: scheduled.includeAlreadyNotified });
+			if (!notification) return;
+			eventId = randomUUID();
+			this.runReminderDeliveries.set(eventId, { piboSessionId, generation: expectedGeneration, notification });
 			session.enqueueMessage({
 				type: "message",
 				piboSessionId,
 				text: formatRunReminderMessage(notification),
 				source: "service",
-				id: randomUUID(),
+				id: eventId,
 				provenance: runReminderProvenance(notification),
 			});
 		} catch (error) {
+			if (eventId) this.runReminderDeliveries.delete(eventId);
+			if (notification) this.runRegistry.releaseNotification(piboSessionId, notification);
 			if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
 			const message = error instanceof Error ? error.message : String(error);
 			this.emitOutput({

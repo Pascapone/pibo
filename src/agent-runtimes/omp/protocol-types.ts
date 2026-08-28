@@ -116,8 +116,8 @@ export type OmpRpcCommand =
 	| { id?: string; type: "get_session_stats" }
 	| { id?: string; type: "export_html"; outputPath?: string }
 	| { id?: string; type: "switch_session"; sessionPath: string }
-	| { id?: string; type: "branch"; entryId: string }
-	| { id?: string; type: "get_branch_messages" }
+	| { id?: string; type: "fork" | "branch"; entryId: string }
+	| { id?: string; type: "get_fork_messages" | "get_branch_messages" }
 	| { id?: string; type: "get_last_assistant_text" }
 	| { id?: string; type: "set_session_name"; name: string }
 	| { id?: string; type: "handoff"; customInstructions?: string }
@@ -245,8 +245,8 @@ export type OmpRpcResponse =
 	| { id?: string; type: "response"; command: "get_session_stats"; success: true; data: unknown }
 	| { id?: string; type: "response"; command: "export_html"; success: true; data: { path: string } }
 	| { id?: string; type: "response"; command: "switch_session"; success: true; data: { cancelled: boolean } }
-	| { id?: string; type: "response"; command: "branch"; success: true; data: { text: string; cancelled: boolean } }
-	| { id?: string; type: "response"; command: "get_branch_messages"; success: true; data: { messages: Array<{ entryId: string; text: string }> } }
+	| { id?: string; type: "response"; command: "fork" | "branch"; success: true; data: { text: string; cancelled: boolean } }
+	| { id?: string; type: "response"; command: "get_fork_messages" | "get_branch_messages"; success: true; data: { messages: Array<{ entryId: string; text: string }> } }
 	| { id?: string; type: "response"; command: "get_last_assistant_text"; success: true; data: { text: string | null } }
 	| { id?: string; type: "response"; command: "handoff"; success: true; data: unknown }
 	| { id?: string; type: "response"; command: "get_messages"; success: true; data: { messages: unknown[] } }

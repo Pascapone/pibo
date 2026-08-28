@@ -24,7 +24,7 @@
     {
       "id": "US-002",
       "title": "Add provider/profile stale threshold settings",
-      "description": "As an operator, I want minimal provider/profile stale threshold config so long-running providers are not judged by one global timeout.",
+      "description": "As an operator, I want minimal provider/profile stale threshold config so long-running providers are not judged by one global diagnostic threshold that could be mistaken for a runtime timeout.",
       "acceptanceCriteria": [
         "Add a minimal Provider Settings config option for telemetry stale threshold per provider/profile",
         "Config supports a safe default and provider/profile overrides without requiring a Chat Web telemetry UI in V1",

@@ -31,6 +31,7 @@ type ActionMenuProps = {
 	label: string;
 	children: ReactNode;
 	estimatedHeight?: number;
+	disabled?: boolean;
 };
 
 type ActionMenuItemProps = {
@@ -75,7 +76,7 @@ export function consumeActionMenuEscape(event: ActionMenuEscapeEvent, closeMenu:
 	return true;
 }
 
-export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDTH }: ActionMenuProps) {
+export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDTH, disabled = false }: ActionMenuProps) {
 	const reactId = useId();
 	const triggerId = `${reactId}-trigger`;
 	const menuId = `${reactId}-menu`;
@@ -105,6 +106,7 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 	}, []);
 
 	const openMenu = (initialFocus: InitialMenuFocus) => {
+		if (disabled) return;
 		initialFocusRef.current = initialFocus;
 		updatePosition();
 		setOpen(true);
@@ -137,6 +139,10 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 	}, [open, updatePosition]);
 
 	useEffect(() => {
+		if (disabled && open) {
+			closeMenu();
+			return;
+		}
 		if (!open) {
 			setPosition(null);
 			return;
@@ -148,7 +154,7 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 			window.removeEventListener("resize", handleViewportChange);
 			window.removeEventListener("scroll", handleViewportChange, true);
 		};
-	}, [open, updatePosition]);
+	}, [closeMenu, disabled, open, updatePosition]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -210,6 +216,7 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 				ref={triggerRef}
 				id={triggerId}
 				type="button"
+				disabled={disabled}
 				onClick={() => open ? closeMenu() : openMenu("first")}
 				onKeyDown={handleTriggerKeyDown}
 				title={label}
@@ -217,11 +224,11 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 				aria-haspopup="menu"
 				aria-expanded={open}
 				aria-controls={menuId}
-				className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center rounded-sm text-slate-400 hover:text-[#11a4d4]"
+				className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center rounded-sm text-slate-400 hover:text-[#11a4d4] disabled:cursor-not-allowed disabled:opacity-50"
 			>
 				<MoreVertical size={12} className="max-[980px]:h-4 max-[980px]:w-4" />
 			</button>
-			{open && position && typeof document !== "undefined" ? createPortal(
+			{!disabled && open && position && typeof document !== "undefined" ? createPortal(
 				<ActionMenuCloseContext.Provider value={closeMenu}>
 					<div
 						ref={menuRef}

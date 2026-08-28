@@ -54,7 +54,7 @@ export async function readJsonBody<T extends object>(request: Request): Promise<
 	}
 }
 
-export async function nodeRequestToWebRequest(request: IncomingMessage, baseURL: string): Promise<Request> {
+export async function nodeRequestToWebRequest(request: IncomingMessage, baseURL: string, signal?: AbortSignal): Promise<Request> {
 	const url = new URL(request.url ?? "/", baseURL);
 	const headers = new Headers();
 	for (const [key, value] of Object.entries(request.headers)) {
@@ -84,6 +84,7 @@ export async function nodeRequestToWebRequest(request: IncomingMessage, baseURL:
 		method: request.method,
 		headers,
 		body,
+		signal,
 	});
 }
 

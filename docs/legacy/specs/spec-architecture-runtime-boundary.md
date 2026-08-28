@@ -9,7 +9,9 @@ tags: [architecture, runtime, plugins, profiles, channels, subagents, runs]
 
 # Introduction
 
-This specification describes the current Pibo runtime boundary as implemented in the TypeScript source code. The code is the source of truth. This document exists so agents can reason about the system without re-deriving the same boundaries from implementation files.
+> **Legacy notice (2026-08-25):** This document records the former generated-subagent contract. Its delegated timeout requirement is superseded by [`docs/specs/capabilities/subagent-delegation.md`](../../specs/capabilities/subagent-delegation.md): delegated sends are yielded-only, have no implicit or profile-driven lifetime deadline, and are not cancelled by `pibo_run_wait` expiry or stale telemetry.
+
+This specification describes the runtime boundary that existed when this document was maintained. The linked current capability specs are the source of truth for later behavior.
 
 ## 1. Purpose & Scope
 
@@ -75,7 +77,7 @@ This specification does not define future marketplace behavior, remote deploymen
 - **REQ-030**: Running yielded runs MUST be cancelled when the owning session or router is disposed.
 - **REQ-031**: A generated subagent tool MUST pass its `toolCallId` into the subagent runner.
 - **REQ-032**: The subagent runner MUST emit a parent `subagent_session` link event before waiting for the child reply.
-- **REQ-033**: Subagent calls MUST use the configured `timeoutMs` when present and otherwise use a bounded default timeout.
+- **REQ-033 (superseded)**: This legacy contract used configured `timeoutMs` or a bounded default. Current delegated sends ignore legacy `SubagentProfile.timeoutMs` for request lifetime and have no implicit wall-clock deadline.
 - **REQ-034**: Yielded-run wrapping MUST preserve the wrapped yieldable tool identity and arguments in run results or run snapshots.
 - **REQ-035**: If `pibo_run_start` starts a generated `pibo_subagent_*` tool, the runtime MUST retain enough metadata for Chat Web trace reconstruction to show both the yielded run context and the underlying subagent delegation.
 - **CON-001**: External MCP servers, Python runtimes, and third-party CLI tools are optional integrations and MUST NOT be bundled into normal Pibo profiles by default.

@@ -40,8 +40,12 @@ write({
 });
 
 let streaming = false;
+let sessionId = "fake-session-1";
 const hangAfterPrompt = process.env.OMP_FAKE_HANG_AFTER_PROMPT === "1";
 const omitUsageTotal = process.env.OMP_FAKE_OMIT_USAGE_TOTAL === "1";
+const legacyForkRpc = process.env.OMP_FAKE_LEGACY_FORK_RPC === "1";
+const forkCandidateError = process.env.OMP_FAKE_FORK_CANDIDATE_ERROR === "1";
+let forkRefreshFailurePending = process.env.OMP_FAKE_FORK_REFRESH_FAIL_ONCE === "1";
 let turnStarted = false;
 const emitTurn = (message) => {
 	if (streaming) return;
@@ -125,13 +129,18 @@ rl.on("line", (line) => {
 			write({ id, type: "response", command: "negotiate_protocol", success: true, data: { protocolVersion: 2 } });
 			break;
 		case "get_state":
+			if (forkRefreshFailurePending && sessionId !== "fake-session-1") {
+				forkRefreshFailurePending = false;
+				write({ id, type: "response", command: "get_state", success: false, error: "fork refresh failed", code: "internal_error" });
+				break;
+			}
 			write({
 				id,
 				type: "response",
 				command: "get_state",
 				success: true,
 				data: {
-					sessionId: "fake-session-1",
+					sessionId,
 					sessionName: "Fake OMP session",
 					sessionFile: "/tmp/fake/session.jsonl",
 					isStreaming: streaming,
@@ -198,13 +207,23 @@ rl.on("line", (line) => {
 			write({ id, type: "response", command: "set_fast_mode", success: true, data: { enabled: Boolean(cmd.enabled), active: Boolean(cmd.enabled) } });
 			break;
 		case "switch_session":
+			sessionId = "fake-session-1";
 			write({ id, type: "response", command: "switch_session", success: true, data: { cancelled: false, sessionPath: cmd.sessionPath } });
 			break;
+		case "get_fork_messages":
+			if (forkCandidateError) {
+				write({ id, type: "response", command: cmd.type, success: false, error: "fork candidate read failed", code: "internal_error" });
+				break;
+			}
+			if (legacyForkRpc) {
+				write({ id, type: "response", command: cmd.type, success: false, error: "Unknown command: get_fork_messages", code: "UNKNOWN_COMMAND" });
+				break;
+			}
 		case "get_branch_messages":
 			write({
 				id,
 				type: "response",
-				command: "get_branch_messages",
+				command: cmd.type,
 				success: true,
 				data: {
 					messages: [
@@ -212,6 +231,21 @@ rl.on("line", (line) => {
 						{ entryId: "fork-2", text: "hello" },
 					],
 				},
+			});
+			break;
+		case "fork":
+			if (legacyForkRpc) {
+				write({ id, type: "response", command: cmd.type, success: false, error: "Unknown command: fork", code: "UNKNOWN_COMMAND" });
+				break;
+			}
+		case "branch":
+			sessionId = `fake-session-${cmd.type}`;
+			write({
+				id,
+				type: "response",
+				command: cmd.type,
+				success: true,
+				data: { text: cmd.entryId === "fork-2" ? "hello" : "hi", cancelled: false },
 			});
 			break;
 		case "get_login_providers":
@@ -241,7 +275,7 @@ rl.on("line", (line) => {
 					commands: [
 						{ name: "compact", description: "Compact the session", source: "builtin" },
 						{ name: "model", description: "Switch model", source: "builtin" },
-						{ name: "branch", description: "Branch", source: "builtin" },
+						{ name: "fork", description: "Fork", source: "builtin" },
 					],
 				},
 			});

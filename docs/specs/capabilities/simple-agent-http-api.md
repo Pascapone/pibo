@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Updated:** 2026-05-11
+**Updated:** 2026-08-25
 **Controller / Source:** Scheduled Pibo Source Specs Coverage; current workspace code
 **Related docs:** [Web Auth and Same-Origin Host](./web-auth-and-same-origin-host.md), [Pibo Session Routing](./pibo-session-routing.md), [Local Gateway Protocol and Lifecycle](./local-gateway-protocol-and-lifecycle.md)
 
@@ -176,7 +176,7 @@ The API MUST remember the latest correlated `assistant_message` text and return 
 
 ### Requirement: Correlated errors and timeouts become HTTP failures
 
-The API MUST convert a correlated `session_error` into a `500` response and MUST return `504` if no correlated finish or error event arrives before the configured timeout.
+The API MUST convert a correlated `session_error` into a `500` response and MUST return `504` if no correlated finish or error event arrives before the configured timeout. This timeout bounds only the `/api/send-message` HTTP response wait; it does not define delegated-agent or yielded-run lifetime.
 
 #### Acceptance
 
@@ -185,7 +185,7 @@ The API MUST convert a correlated `session_error` into a `500` response and MUST
 - An explicit `timeoutMs` option overrides the default.
 - Timeout cleanup unsubscribes from future events.
 
-#### Scenario: Agent run times out
+#### Scenario: HTTP response wait times out
 
 - GIVEN an accepted service message has no correlated finish or error event
 - WHEN the configured timeout elapses
@@ -257,7 +257,7 @@ This section records the current verification state for the Simple Agent HTTP AP
 | REQ-006 Target session must already exist | Client addresses an unknown session | `src/api/simple-agent-api.ts`, `src/channels/types.ts` | Dedicated test missing | Source-inspected only |
 | REQ-007 Submitted service messages use a generated correlation id | Concurrent service requests do not cross replies | `src/api/simple-agent-api.ts`, `src/core/events.ts` | Dedicated test missing | Source-inspected only |
 | REQ-008 The response returns the final correlated assistant message | Agent finishes normally | `src/api/simple-agent-api.ts`, `src/core/events.ts` | Dedicated test missing | Source-inspected only |
-| REQ-009 Correlated errors and timeouts become HTTP failures | Agent run times out | `src/api/simple-agent-api.ts`, `src/core/events.ts` | Dedicated test missing | Source-inspected only |
+| REQ-009 Correlated errors and timeouts become HTTP failures | HTTP response wait times out | `src/api/simple-agent-api.ts`, `src/core/events.ts` | Dedicated test missing | Source-inspected only |
 
 ## Verification Basis
 

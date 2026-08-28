@@ -59,6 +59,7 @@ export type SubagentProfile = {
 	thinkingLevel?: PiboThinkingLevel;
 	runtimeOptions?: PiboJsonObject;
 	enabled?: boolean;
+	/** @deprecated Compatibility-only. Does not limit delegated request or yielded-run lifetime. */
 	timeoutMs?: number;
 	maxDepth?: number;
 };

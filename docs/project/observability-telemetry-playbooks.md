@@ -7,7 +7,7 @@ Use these playbooks when a Pibo session stalls or telemetry looks suspicious. St
 - Work from Pibo Session ids, turn ids, provider request ids, and tool call ids.
 - Prefer `--json` for agent loops and plain text for humans.
 - Keep `--limit` small when streams are noisy.
-- Do not expect telemetry to fix a hang. Automatic timeout, abort, retry, and recovery are separate runtime-hardening work.
+- Do not expect telemetry to fix a hang. A stale threshold is not a runtime deadline: crossing it does not time out, abort, cancel, retry, or recover work. Those behaviors require separate runtime policy or explicit operator action.
 - Treat `pibo debug telemetry prune --apply` as destructive. Run the same prune command without `--apply` first.
 - Provider raw stream events are aggregate-only by default. Pibo keeps provider request counters, byte totals, event type counts, parse counts, and timestamps without persisting one row per provider event.
 - Persist per-provider-event detail only during a short incident window by starting the gateway with `PIBO_TELEMETRY_PROVIDER_EVENTS=1` or `PIBO_TELEMETRY_PROVIDER_EVENTS=detailed`; turn it off again after capture.
@@ -99,7 +99,7 @@ pibo debug telemetry stale --limit 20 --json
 pibo debug telemetry tool <tool-call-id> --json
 ```
 
-Check `activePhase=tool_execution`, `staleForMs`, `thresholdMs`, `thresholdSource`, execution start/end timestamps, and safe error summary fields. The stale detector is read-only; it never aborts or clears a session.
+Check `activePhase=tool_execution`, `staleForMs`, `thresholdMs`, `thresholdSource`, execution start/end timestamps, and safe error summary fields. The stale detector is read-only; it never aborts or clears a session, and its threshold is not a delegated-agent lifetime timeout.
 
 ## Preview unavailable
 

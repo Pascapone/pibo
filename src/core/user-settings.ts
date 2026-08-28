@@ -1,12 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { piboHomePath } from "./pibo-home.js";
+import { sanitizePreviewServerSettings, type PreviewServerSettings } from "./preview-server-settings.js";
 import { sanitizeTelemetryRetentionSettings, type TelemetryRetentionSettings } from "./telemetry-retention-settings.js";
 import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSettings } from "./telemetry-staleness.js";
 
 export const DEFAULT_USER_TIMEZONE = "UTC";
 export const DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT = "Alt+Shift+A";
 export const DEFAULT_TRANSCRIPTION_PROVIDER_ID = "openai-chatgpt";
+export const DEFAULT_SPEECH_PROVIDER_ID = "openai-codex";
 const LEGACY_OPENAI_TRANSCRIPTION_PROVIDER_ID = "openai";
 export const DEFAULT_PIBO_USER_SETTINGS_PATH = "user-settings.json";
 
@@ -18,10 +20,16 @@ export type PiboTranscriptionSettings = {
 	providerId: string;
 };
 
+export type PiboSpeechSettings = {
+	providerId: string;
+};
+
 export type PiboUserSettings = {
 	timezone: string;
 	shortcuts: PiboShortcutSettings;
 	transcription: PiboTranscriptionSettings;
+	speech: PiboSpeechSettings;
+	previewServers: PreviewServerSettings;
 	telemetryStaleThresholds: TelemetryStaleThresholdSettings;
 	telemetryRetention: TelemetryRetentionSettings;
 };
@@ -83,6 +91,13 @@ export function sanitizeTranscriptionSettings(value: unknown): PiboTranscription
 	};
 }
 
+export function sanitizeSpeechSettings(value: unknown): PiboSpeechSettings {
+	const raw = value && typeof value === "object" && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: {};
+	return { providerId: sanitizeTranscriptionProviderId(raw.providerId) ?? DEFAULT_SPEECH_PROVIDER_ID };
+}
+
 export function sanitizeTimezone(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const timezone = value.trim();
@@ -103,6 +118,8 @@ function sanitizeUserSettings(value: unknown): PiboUserSettings {
 		timezone: sanitizeTimezone(raw.timezone) ?? DEFAULT_USER_TIMEZONE,
 		shortcuts: sanitizeShortcutSettings(raw.shortcuts),
 		transcription: sanitizeTranscriptionSettings(raw.transcription),
+		speech: sanitizeSpeechSettings(raw.speech),
+		previewServers: sanitizePreviewServerSettings(raw.previewServers),
 		telemetryStaleThresholds: sanitizeTelemetryStaleThresholdSettings(raw.telemetryStaleThresholds),
 		telemetryRetention: sanitizeTelemetryRetentionSettings(raw.telemetryRetention),
 	};

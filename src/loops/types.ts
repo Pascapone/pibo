@@ -106,6 +106,8 @@ export type PiboLoopJobState = {
 	timeUsedSeconds?: number;
 	goalStartedAt?: string;
 	goalEndedAt?: string;
+	/** Execution interval currently excluded from activeTimeSeconds; null means the reserved run is finalizing. */
+	activeTimeRunningAt?: string | null;
 	runningAt?: string;
 	lastRunAt?: string;
 	lastStatus?: 'ok' | 'error' | 'cancelled';

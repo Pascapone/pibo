@@ -5,7 +5,14 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 
-async function renderSessionTraceHeader({ showRawEvents, showThinking, expandThinking }) {
+async function renderSessionTraceHeader({
+	showRawEvents,
+	showThinking,
+	expandThinking,
+	contextKind = "room",
+	contextLabel = "Test room",
+	title = "Test session",
+}) {
 	const script = `
 		import React from "react";
 		globalThis.React = React;
@@ -13,8 +20,9 @@ async function renderSessionTraceHeader({ showRawEvents, showThinking, expandThi
 		const { SessionTraceHeader } = await import("./src/apps/chat-ui/src/session-trace-header.tsx");
 		const noop = () => {};
 		const markup = renderToStaticMarkup(React.createElement(SessionTraceHeader, {
-			title: "Test session",
-			roomLabel: "Test room",
+			title: ${JSON.stringify(title)},
+			contextKind: ${JSON.stringify(contextKind)},
+			contextLabel: ${JSON.stringify(contextLabel)},
 			headerPiboSessionId: "ps-test",
 			piboSessionId: "ps-test",
 			webAnnotationsDisabled: true,
@@ -61,6 +69,10 @@ test("trace header toggle names stay stable across false and true states", async
 		expandThinking: false,
 	});
 	assert.match(collapsed, /max-\[980px\]:flex-wrap/);
+	assert.match(collapsed, /data-pibo-debug="session-context"/);
+	assert.match(collapsed, /data-pibo-context-kind="room"/);
+	assert.match(collapsed, />Room</);
+	assert.match(collapsed, />Test room</);
 	assertToggle(collapsed, { name: "Raw Events", pressed: false, title: "Show Raw Events" });
 	assertToggle(collapsed, { name: "Thinking", pressed: true, title: "Hide Thinking" });
 	assertToggle(collapsed, { name: "Thinking expansion", pressed: false, title: "Expand Thinking" });
@@ -73,6 +85,22 @@ test("trace header toggle names stay stable across false and true states", async
 	assertToggle(expanded, { name: "Raw Events", pressed: true, title: "Hide Raw Events" });
 	assertToggle(expanded, { name: "Thinking", pressed: true, title: "Hide Thinking" });
 	assertToggle(expanded, { name: "Thinking expansion", pressed: true, title: "Collapse Thinking" });
+});
+
+test("long context names keep their full accessible name and wrap controls on narrow viewports", async () => {
+	const longProjectName = "Project with a deliberately long workspace name that must not widen the viewport";
+	const markup = await renderSessionTraceHeader({
+		showRawEvents: false,
+		showThinking: true,
+		expandThinking: false,
+		contextKind: "project",
+		contextLabel: longProjectName,
+		title: "Long-running implementation session",
+	});
+	assert.match(markup, new RegExp(`aria-label="Project: ${longProjectName}"`));
+	assert.match(markup, /inline-flex min-w-0 max-w-full/);
+	assert.match(markup, /max-\[980px\]:w-full max-\[980px\]:flex-wrap/);
+	assert.match(markup, /class="truncate text-slate-400"/);
 });
 
 test("thinking expansion visibility preserves the supplied expansion state", async () => {

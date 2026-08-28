@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteProject,
   getProjectsBootstrap,
@@ -37,9 +37,17 @@ import { ProjectsSidebar } from "./ProjectsSidebar";
 import { CreateProjectDialog } from "./CreateProjectDialog";
 import {
   createProjectsTraceBootstrap,
+  resolveProjectsCanonicalRoute,
+  resolveProjectsTraceSelection,
   splitProjectsByArchive,
 } from "./ProjectsAreaModel";
 import { projectModules } from "./project-modules";
+import {
+  LatestProjectsNavigationGate,
+  LatestProjectsRequestGate,
+  projectsBootstrapRequestKey,
+  projectsNavigationRouteKey,
+} from "./projects-request-gate";
 
 type NavigationOptions = {
   closeMobileSidebar?: boolean;
@@ -127,49 +135,93 @@ export function ProjectsArea({
     routePiboSessionId ? readStoredComposerDraft(routePiboSessionId) : "",
   );
   const [composerFocusSignal, setComposerFocusSignal] = useState(0);
+  const includeArchived = showArchivedProjects || showArchivedSessions;
+  const navigationRouteKey = projectsNavigationRouteKey(
+    routeProjectId,
+    routePiboSessionId,
+  );
+  const projectsNavigationGateRef = useRef<LatestProjectsNavigationGate | null>(
+    null,
+  );
+  if (!projectsNavigationGateRef.current) {
+    projectsNavigationGateRef.current = new LatestProjectsNavigationGate(
+      navigationRouteKey,
+    );
+  } else {
+    projectsNavigationGateRef.current.sync(navigationRouteKey);
+  }
+  const bootstrapRequestKey = projectsBootstrapRequestKey(
+    routeProjectId,
+    routePiboSessionId,
+    includeArchived,
+  );
+  const bootstrapRequestKeyRef = useRef(bootstrapRequestKey);
+  bootstrapRequestKeyRef.current = bootstrapRequestKey;
+  const projectsRequestGateRef = useRef<LatestProjectsRequestGate | null>(null);
+  if (!projectsRequestGateRef.current)
+    projectsRequestGateRef.current = new LatestProjectsRequestGate();
 
   const load = useCallback(
     async (input: { projectId?: string; piboSessionId?: string } = {}) => {
+      if (bootstrapRequestKey !== bootstrapRequestKeyRef.current) return null;
+      const requestGate = projectsRequestGateRef.current!;
+      const request = requestGate.begin(bootstrapRequestKey);
       setLoading(true);
       try {
-        const next = await getProjectsBootstrap({
-          projectId: input.projectId ?? routeProjectId,
-          piboSessionId: input.piboSessionId ?? routePiboSessionId,
-          includeArchived: showArchivedProjects || showArchivedSessions,
-        });
+        const next = await getProjectsBootstrap(
+          {
+            projectId: input.projectId ?? routeProjectId,
+            piboSessionId: input.piboSessionId ?? routePiboSessionId,
+            includeArchived,
+          },
+          { signal: request.signal },
+        );
+        if (!requestGate.isCurrent(request, bootstrapRequestKeyRef.current))
+          return null;
         setData(next);
-        if (
-          !routeProjectId ||
-          next.selectedProjectId !== routeProjectId ||
-          (next.selectedPiboSessionId &&
-            next.selectedPiboSessionId !== routePiboSessionId)
-        ) {
-          onNavigate(next.selectedProjectId, next.selectedPiboSessionId, true, {
-            closeMobileSidebar: false,
-          });
+        const canonicalRoute = resolveProjectsCanonicalRoute(
+          next,
+          routeProjectId,
+          routePiboSessionId,
+        );
+        if (canonicalRoute) {
+          onNavigate(
+            canonicalRoute.projectId,
+            canonicalRoute.piboSessionId,
+            true,
+            { closeMobileSidebar: false },
+          );
         }
         onError(null);
         return next;
       } catch (caught) {
+        if (!requestGate.isCurrent(request, bootstrapRequestKeyRef.current))
+          return null;
         onError(errorMessage(caught));
         throw caught;
       } finally {
-        setLoading(false);
+        if (requestGate.isCurrent(request, bootstrapRequestKeyRef.current))
+          setLoading(false);
       }
     },
     [
+      bootstrapRequestKey,
+      includeArchived,
       onError,
       onNavigate,
       routePiboSessionId,
       routeProjectId,
-      showArchivedProjects,
-      showArchivedSessions,
     ],
   );
 
   useEffect(() => {
     void load().catch(() => undefined);
   }, [load]);
+
+  useEffect(
+    () => () => projectsRequestGateRef.current?.abort(),
+    [],
+  );
 
   useEffect(() => {
     setComposerText(
@@ -178,10 +230,24 @@ export function ProjectsArea({
   }, [routePiboSessionId]);
 
   const selectedProject = data?.project;
+  const traceSelection = resolveProjectsTraceSelection(
+    data,
+    routeProjectId,
+    routePiboSessionId,
+  );
+  const navigationPendingRef = useRef(traceSelection.navigationPending);
+  navigationPendingRef.current = traceSelection.navigationPending;
+  const traceProject = traceSelection.project;
+  const selectedProjectDisplayName = traceProject
+    ? traceProject.metadata?.default === true
+      ? "Project Manager"
+      : traceProject.name
+    : "Unknown project";
   const selectedPiboSessionId = data?.selectedPiboSessionId ?? null;
+  const tracePiboSessionId = traceSelection.selectedPiboSessionId;
   const selectedSessionNode =
-    selectedPiboSessionId && data
-      ? findSessionNode(data.sessions, selectedPiboSessionId)
+    tracePiboSessionId && data
+      ? findSessionNode(data.sessions, tracePiboSessionId)
       : undefined;
   const selectedSessionProfile =
     selectedSessionNode?.profile ?? defaultProfileFromBootstrap(baseBootstrap);
@@ -216,7 +282,9 @@ export function ProjectsArea({
     [],
   );
   const projectInfoPanel =
-    activeProjectViewTab === "info" && selectedProject ? (
+    !traceSelection.navigationPending &&
+    activeProjectViewTab === "info" &&
+    selectedProject ? (
       <ProjectInfoPanel
         project={selectedProject}
         sessionCount={projectSessions.length}
@@ -228,11 +296,12 @@ export function ProjectsArea({
         id: "project-info",
         label: "Info",
         description: "Project workspace and project-scoped module overview.",
-        active: activeProjectViewTab === "info",
+        active:
+          !traceSelection.navigationPending && activeProjectViewTab === "info",
         onSelect: () => setActiveProjectViewTab("info"),
       },
     ],
-    [activeProjectViewTab],
+    [activeProjectViewTab, traceSelection.navigationPending],
   );
   const selectProjectSessionView = (viewId: ChatSessionViewId) => {
     setActiveProjectViewTab(null);
@@ -244,30 +313,34 @@ export function ProjectsArea({
     projectFolder: string;
     description?: string;
   }) => {
+    if (navigationPendingRef.current)
+      throw new Error("Wait for project navigation to finish.");
     const { project } = await postProject({ ...input, createFolder: true });
     return project.id;
   };
 
-  const openCreatedProject = async (projectId: string) => {
-    await load({ projectId });
+  const openCreatedProject = (projectId: string) => {
+    if (navigationPendingRef.current) return;
     onNavigate(projectId, undefined);
   };
 
   const createProjectSession = async () => {
-    if (!selectedProject) return;
+    if (!selectedProject || navigationPendingRef.current) return;
+    const navigationGeneration = projectsNavigationGateRef.current!.capture();
+    const projectId = selectedProject.id;
     setCreatingSession(true);
     try {
-      const created = await postProjectSession(selectedProject.id, {
+      const created = await postProjectSession(projectId, {
         profile: selectedSessionProfile,
         workflowId: "simple-chat",
       });
+      if (
+        !projectsNavigationGateRef.current!.isCurrent(navigationGeneration)
+      )
+        return;
       setAutoRenameSessionId(created.session.id);
-      onNavigate(selectedProject.id, created.session.id, false, {
+      onNavigate(projectId, created.session.id, false, {
         closeMobileSidebar: false,
-      });
-      await load({
-        projectId: selectedProject.id,
-        piboSessionId: created.session.id,
       });
     } catch (caught) {
       onError(errorMessage(caught));
@@ -277,6 +350,7 @@ export function ProjectsArea({
   };
 
   const renameSession = async (piboSessionId: string, title: string | null) => {
+    if (navigationPendingRef.current) return;
     try {
       await patchProjectSession(piboSessionId, { title });
       await load({ projectId: selectedProject?.id, piboSessionId });
@@ -286,6 +360,7 @@ export function ProjectsArea({
   };
 
   const renameProject = async (project: PiboProject, name: string) => {
+    if (navigationPendingRef.current) return;
     try {
       await patchProject(project.id, { name });
       await load({
@@ -301,10 +376,11 @@ export function ProjectsArea({
     project: PiboProject,
     archived: boolean,
   ) => {
+    if (navigationPendingRef.current) return;
     try {
       await patchProject(project.id, { archived });
       const next = await load({ projectId: archived ? undefined : project.id });
-      if (archived && selectedProject?.id === project.id)
+      if (next && archived && selectedProject?.id === project.id)
         onNavigate(next.selectedProjectId, next.selectedPiboSessionId);
     } catch (caught) {
       onError(errorMessage(caught));
@@ -312,6 +388,7 @@ export function ProjectsArea({
   };
 
   const deleteArchivedProject = async (project: PiboProject) => {
+    if (navigationPendingRef.current) return;
     const confirmName = window.prompt(
       `Type the project name to permanently delete "${project.name}".`,
     );
@@ -325,7 +402,7 @@ export function ProjectsArea({
         projectId:
           selectedProject?.id === project.id ? undefined : selectedProject?.id,
       });
-      if (selectedProject?.id === project.id)
+      if (next && selectedProject?.id === project.id)
         onNavigate(next.selectedProjectId, next.selectedPiboSessionId);
     } catch (caught) {
       onError(errorMessage(caught));
@@ -333,7 +410,7 @@ export function ProjectsArea({
   };
 
   const runCommand = async (text: string) => {
-    if (!selectedPiboSessionId) return false;
+    if (!tracePiboSessionId || traceSelection.navigationPending) return false;
     const commandText = text.trim().split(/\s+/)[0];
     const command = commands.find(
       (candidate) => candidate.slash === commandText,
@@ -343,10 +420,10 @@ export function ProjectsArea({
       command.action,
       text.slice(commandText.length).trim(),
     );
-    await postAction(selectedPiboSessionId, command.action, params);
+    await postAction(tracePiboSessionId, command.action, params);
     await load({
-      projectId: selectedProject?.id,
-      piboSessionId: selectedPiboSessionId,
+      projectId: traceProject?.id,
+      piboSessionId: tracePiboSessionId,
     });
     return true;
   };
@@ -386,12 +463,10 @@ export function ProjectsArea({
   return (
     <>
       <CreateProjectDialog
-        open={createProjectDialogOpen}
+        open={createProjectDialogOpen && !traceSelection.navigationPending}
         onClose={() => setCreateProjectDialogOpen(false)}
         onCreate={createProject}
-        onCreated={(projectId) =>
-          void openCreatedProject(projectId).catch(() => undefined)
-        }
+        onCreated={openCreatedProject}
       />
       {terminalFullscreen ? null : (
         <>
@@ -415,12 +490,15 @@ export function ProjectsArea({
         selectedSessionPathIds={selectedSessionPathIds}
         autoRenameSessionId={autoRenameSessionId}
         creatingSession={creatingSession}
+        navigationPending={traceSelection.navigationPending}
         showArchivedProjects={showArchivedProjects}
         showArchivedSessions={showArchivedSessions}
         mobileSidebarOpen={mobileSidebarOpen}
         onRefresh={() => void load()}
         onCloseMobileSidebar={onCloseMobileSidebar}
-        onCreateProject={() => setCreateProjectDialogOpen(true)}
+        onCreateProject={() => {
+          if (!navigationPendingRef.current) setCreateProjectDialogOpen(true);
+        }}
         onToggleArchivedProjects={() => {
           const next = !showArchivedProjects;
           setShowArchivedProjects(next);
@@ -452,16 +530,18 @@ export function ProjectsArea({
         onRenameSession={(piboSessionId, title) =>
           void renameSession(piboSessionId, title)
         }
-        onArchiveSession={(piboSessionId, archived) =>
+        onArchiveSession={(piboSessionId, archived) => {
+          if (navigationPendingRef.current) return;
           void patchProjectSession(piboSessionId, { archived }).then(() =>
             load({ projectId: selectedProject?.id }),
-          )
-        }
-        onDeleteSession={(node) =>
+          );
+        }}
+        onDeleteSession={(node) => {
+          if (navigationPendingRef.current) return;
           void patchProjectSession(node.piboSessionId, { archived: true }).then(
             () => load({ projectId: selectedProject?.id }),
-          )
-        }
+          );
+        }}
         onViewContext={onViewContext}
         onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
       />
@@ -469,9 +549,12 @@ export function ProjectsArea({
       )}
       <SessionTracePane
         bootstrap={traceBootstrap}
-        selectedPiboSessionId={selectedPiboSessionId}
+        selectedPiboSessionId={tracePiboSessionId}
         selectedRoomId={null}
-        selectedRoomArchived={Boolean(selectedProject?.archivedAt)}
+        contextKind="project"
+        contextLabel={selectedProjectDisplayName}
+        selectedRoomArchived={Boolean(traceProject?.archivedAt)}
+        sessionNavigationPending={traceSelection.navigationPending}
         selectedSessionProfile={selectedSessionProfile}
         selectedSessionActiveModel={resolveSessionActiveModelLabel(
           traceBootstrap,
@@ -484,10 +567,12 @@ export function ProjectsArea({
         allowedSessionViewIds={["terminal"]}
         extraViewTabs={projectExtraViewTabs}
         activeViewId={
-          activeProjectViewTab ? `project-${activeProjectViewTab}` : "terminal"
+          !traceSelection.navigationPending && activeProjectViewTab
+            ? `project-${activeProjectViewTab}`
+            : "terminal"
         }
         projectModulePanel={projectInfoPanel}
-        creatingSession={creatingSession}
+        creatingSession={creatingSession || traceSelection.navigationPending}
         terminalFullscreen={terminalFullscreen}
         onEnterTerminalFullscreen={onEnterTerminalFullscreen}
         onExitTerminalFullscreen={onExitTerminalFullscreen}
@@ -509,8 +594,8 @@ export function ProjectsArea({
         onToggleExpandThinking={onToggleExpandThinking}
         onToolDisplayModeChange={onToolDisplayModeChange}
         onSessionAgentProfileChange={async (profile) => {
-          if (selectedPiboSessionId)
-            await patchSession(selectedPiboSessionId, { profile });
+          if (tracePiboSessionId && !traceSelection.navigationPending)
+            await patchSession(tracePiboSessionId, { profile });
         }}
         onFork={() => undefined}
         onOpenSession={(piboSessionId) =>
@@ -522,8 +607,8 @@ export function ProjectsArea({
         onRefreshTrace={async () => undefined}
         onRefreshBootstrap={async () => {
           await load({
-            projectId: selectedProject?.id,
-            piboSessionId: selectedPiboSessionId ?? undefined,
+            projectId: traceProject?.id,
+            piboSessionId: tracePiboSessionId ?? undefined,
           });
         }}
         onSend={async (
@@ -533,8 +618,8 @@ export function ProjectsArea({
           clientTxnId,
           delivery,
         ) => {
-          if (!selectedPiboSessionId) return;
-          await postProjectMessage(selectedPiboSessionId, text, clientTxnId, delivery);
+          if (!tracePiboSessionId || traceSelection.navigationPending) return;
+          await postProjectMessage(tracePiboSessionId, text, clientTxnId, delivery);
         }}
         onError={onError}
       />

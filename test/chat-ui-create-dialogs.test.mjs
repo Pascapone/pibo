@@ -23,7 +23,7 @@ test("project and workflow create handlers use app-owned dialogs instead of prom
   assert.doesNotMatch(projectCreateHandler, /window\.prompt/);
   assert.doesNotMatch(workflowCreateHandler, /window\.prompt/);
   assert.match(projectsArea, /<CreateProjectDialog/);
-  assert.match(projectsArea, /onCreateProject=\{\(\) => setCreateProjectDialogOpen\(true\)\}/);
+  assert.match(projectsArea, /onCreateProject=\{\(\) => \{[\s\S]*?!navigationPendingRef\.current[\s\S]*?setCreateProjectDialogOpen\(true\)/);
   assert.match(workflowsArea, /<CreateWorkflowDialog/);
   assert.match(workflowsArea, /setCreateWorkflowDialogOpen\(true\)/);
 });
@@ -43,7 +43,7 @@ test("shared dialog shell owns accessible modal and focus behavior", async () =>
   assert.match(dialogShell, /event\.target === event\.currentTarget/);
   assert.match(dialogShell, /closeDisabled/);
   assert.match(dialogShell, /focusable\.includes\(activeElement as HTMLElement\)/);
-  assert.match(dialogShell, /max-h-\[calc\(100vh-2rem\)\]/);
+  assert.match(dialogShell, /max-h-\[calc\(100dvh-2rem\)\]/);
 });
 
 test("create dialogs provide controlled fields and accessible validation", async () => {

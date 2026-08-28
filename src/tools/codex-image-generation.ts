@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { platform, release, arch } from "node:os";
-import { dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { extname, isAbsolute, resolve } from "node:path";
 import { Type } from "typebox";
 import {
 	readPiCredential,
@@ -8,7 +8,7 @@ import {
 } from "../agent-runtimes/pi/credentials.js";
 import { definePiboTool, type PiboToolDefinition, type PiboToolDefinitionContext } from "./contract.js";
 import type { ToolProfile } from "../core/profiles.js";
-import { getPiboHome } from "../core/pibo-home.js";
+import { saveCodexGeneratedImage } from "./codex-image-artifacts.js";
 
 type ImageContent = { type: "image"; data: string; mimeType: string };
 
@@ -193,27 +193,6 @@ function validateImageArgs(params: {
 	}
 }
 
-function sanitizePathPart(value: string): string {
-	return value.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120) || "unknown";
-}
-
-function artifactPath(sessionId: string | undefined, toolCallId: string): { artifactId: string; savedPath: string } {
-	const safeSessionId = sanitizePathPart(sessionId?.trim() || "local");
-	const safeToolCallId = sanitizePathPart(toolCallId || `image_${Date.now()}`);
-	const artifactId = `${safeSessionId}/${safeToolCallId}.png`;
-	return {
-		artifactId,
-		savedPath: join(getPiboHome(), "generated_images", safeSessionId, `${safeToolCallId}.png`),
-	};
-}
-
-async function saveGeneratedImage(sessionId: string | undefined, toolCallId: string, b64Json: string): Promise<{ artifactId: string; savedPath: string }> {
-	const target = artifactPath(sessionId, toolCallId);
-	await mkdir(dirname(target.savedPath), { recursive: true });
-	await writeFile(target.savedPath, Buffer.from(b64Json.trim(), "base64"));
-	return target;
-}
-
 function truncateErrorBody(text: string): string {
 	const compact = text.replace(/\s+/g, " ").trim();
 	return compact.length > 1000 ? `${compact.slice(0, 1000)}…` : compact;
@@ -316,7 +295,7 @@ export function createCodexImageGenerationToolDefinition(context: PiboToolDefini
 			const auth = await getCodexImageAuth();
 			const response = await postCodexImageRequest(endpoint, createRequest(params.prompt, images), auth, signal, options.baseUrl);
 			const result = firstImageB64(response);
-			const saved = await saveGeneratedImage(context.piboSessionId, toolCallId, result);
+			const saved = await saveCodexGeneratedImage(context.piboSessionId, toolCallId, result);
 
 			const details: CodexImageGenerationDetails = {
 				provider: OPENAI_CODEX_PROVIDER,

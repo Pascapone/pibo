@@ -359,6 +359,322 @@ test("session router creates a visible branch Pibo session for clone operations"
 	}
 });
 
+test("forking a named delegated session preserves lineage and title without copying managed-agent identity", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_parent",
+		piSessionId: "01111111-1111-4111-8111-111111111111",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "test-profile",
+	});
+	createStoredSession(store, {
+		channel: "pibo.subagents",
+		kind: "subagent",
+		parentId: "ps_parent",
+		title: "Named delegated session",
+		metadata: {
+			workflowSessionKind: "subagent",
+			projectSessionKind: "main",
+			subagentName: "researcher",
+			subagentToolName: "pibo_agents_send_message",
+			agentStatus: "active",
+			threadKey: "stable-thread",
+			chatRoomId: "room_1",
+		},
+	});
+	const registry = createTestRegistry("session.fork", (context, event) => {
+		const sourceFork = context.piboSessionId === "ps_source";
+		return {
+		piboSessionId: context.piboSessionId,
+		previous: {
+			piSessionId: sourceFork
+				? "11111111-1111-4111-8111-111111111111"
+				: "22222222-2222-4222-8222-222222222222",
+			leafId: "old-leaf",
+			cwd: "/workspace",
+		},
+		current: {
+			piSessionId: sourceFork
+				? "22222222-2222-4222-8222-222222222222"
+				: "33333333-3333-4333-8333-333333333333",
+			leafId: "fork-leaf",
+			cwd: "/workspace",
+		},
+		cancelled: false,
+		selectedText: "fork target",
+		summaryEntryId: event.params.entryId,
+		};
+	});
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		pluginRegistry: registry,
+		profile: registry.createProfile("test-profile"),
+	});
+
+	try {
+		const output = await router.emit({
+			type: "execution",
+			piboSessionId: "ps_source",
+			action: "session.fork",
+			params: { entryId: "user-entry" },
+		});
+		const branch = store.get(output.result.piboSessionId);
+		assert.equal(branch.kind, "branch");
+		assert.equal(branch.parentId, "ps_parent");
+		assert.equal(branch.originId, "ps_source");
+		assert.equal(branch.title, "Named delegated session");
+		assert.equal(branch.metadata.chatRoomId, "room_1");
+		for (const key of ["workflowSessionKind", "projectSessionKind", "subagentName", "subagentToolName", "agentStatus", "threadKey"]) {
+			assert.equal(branch.metadata[key], undefined);
+		}
+		assert.deepEqual(
+			store.find({ channel: "pibo.subagents", kind: "subagent", parentId: "ps_parent" }).map((session) => session.id),
+			["ps_source"],
+			"a named branch must not become a reusable delegated-agent session",
+		);
+
+		store.update("ps_source", { title: "Renamed delegated session" });
+		assert.equal(store.get(branch.id).title, "Named delegated session", "branch titles are derivation snapshots, not shared identity");
+
+		const nestedOutput = await router.emit({
+			type: "execution",
+			piboSessionId: branch.id,
+			action: "session.fork",
+			params: { entryId: "user-entry-2" },
+		});
+		const nestedBranch = store.get(nestedOutput.result.piboSessionId);
+		assert.equal(nestedBranch.parentId, "ps_parent", "repeated forks retain delegated hierarchy");
+		assert.equal(nestedBranch.originId, branch.id);
+		assert.equal(nestedBranch.title, "Named delegated session");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("session router discards a derived native handle when branch persistence fails", async () => {
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store);
+	const create = store.create.bind(store);
+	store.create = (input) => {
+		if (input.kind === "branch") throw new Error("derived persistence failed");
+		return create(input);
+	};
+	const registry = createTestRegistry("session.clone", (context) => ({
+		piboSessionId: context.piboSessionId,
+		previous: {
+			piSessionId: "11111111-1111-4111-8111-111111111111",
+			leafId: "old-leaf",
+			cwd: "/workspace",
+		},
+		current: {
+			piSessionId: "22222222-2222-4222-8222-222222222222",
+			leafId: "new-leaf",
+			cwd: "/workspace",
+		},
+		cancelled: false,
+	}));
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		pluginRegistry: registry,
+		profile: registry.createProfile("test-profile"),
+	});
+	const resetCachedSession = router.resetCachedSession.bind(router);
+	let resets = 0;
+	router.resetCachedSession = async (piboSessionId) => {
+		resets += 1;
+		await resetCachedSession(piboSessionId);
+	};
+
+	try {
+		await assert.rejects(() => router.emit({
+			type: "execution",
+			piboSessionId: "ps_source",
+			action: "session.clone",
+		}), /derived persistence failed/);
+		assert.equal(resets, 1);
+		assert.equal(store.get("ps_source").piSessionId, "11111111-1111-4111-8111-111111111111");
+		assert.equal(store.list().some((session) => session.kind === "branch"), false);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("session router reconciles a branch that persisted exactly before create threw", async () => {
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store);
+	const create = store.create.bind(store);
+	let ambiguousCreates = 0;
+	store.create = (input) => {
+		const created = create(input);
+		if (input.kind === "branch") {
+			ambiguousCreates += 1;
+			throw new Error("storage acknowledgement lost after commit");
+		}
+		return created;
+	};
+	const registry = createTestRegistry("session.clone", (context) => ({
+		piboSessionId: context.piboSessionId,
+		previous: { piSessionId: "11111111-1111-4111-8111-111111111111", leafId: "old-leaf", cwd: "/workspace" },
+		current: { piSessionId: "22222222-2222-4222-8222-222222222222", leafId: "new-leaf", cwd: "/workspace" },
+		cancelled: false,
+	}));
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		pluginRegistry: registry,
+		profile: registry.createProfile("test-profile"),
+	});
+	try {
+		const output = await router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" });
+		assert.equal(ambiguousCreates, 1);
+		assert.equal(output.result.piboSessionId.startsWith("ps_"), true);
+		assert.equal(store.get(output.result.piboSessionId).originId, "ps_source");
+		assert.equal(store.list().filter((session) => session.kind === "branch").length, 1, "the committed branch is disclosed instead of duplicated on retry");
+		assert.equal(store.get("ps_source").piSessionId, "11111111-1111-4111-8111-111111111111");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("session router compensates an uninspectable commit before allowing a retry", async () => {
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store);
+	const create = store.create.bind(store);
+	const get = store.get.bind(store);
+	let firstAmbiguousBranchId;
+	let failFirstReconciliationLookup = true;
+	store.create = (input) => {
+		const created = create(input);
+		if (input.kind === "branch") {
+			firstAmbiguousBranchId ??= input.id;
+			throw new Error("commit acknowledgement unavailable");
+		}
+		return created;
+	};
+	store.get = (id) => {
+		if (id === firstAmbiguousBranchId && failFirstReconciliationLookup) {
+			failFirstReconciliationLookup = false;
+			throw new Error("commit lookup unavailable");
+		}
+		return get(id);
+	};
+	let nativeClones = 0;
+	const registry = createTestRegistry("session.clone", (context) => {
+		nativeClones += 1;
+		return {
+			piboSessionId: context.piboSessionId,
+			previous: { piSessionId: "11111111-1111-4111-8111-111111111111", leafId: "old-leaf", cwd: "/workspace" },
+			current: { piSessionId: `22222222-2222-4222-8222-${String(nativeClones).padStart(12, "0")}`, leafId: "new-leaf", cwd: "/workspace" },
+			cancelled: false,
+		};
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
+	try {
+		await assert.rejects(
+			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
+			(error) => error instanceof AggregateError && /commit state could not be reconciled/.test(error.message),
+		);
+		assert.equal(store.list().filter((session) => session.kind === "branch").length, 1);
+
+		const retry = await router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" });
+		assert.equal(nativeClones, 2);
+		assert.notEqual(retry.result.piboSessionId, firstAmbiguousBranchId);
+		assert.equal(store.get(firstAmbiguousBranchId), undefined, "retry first compensates the undisclosed ambiguous branch");
+		assert.equal(store.list().filter((session) => session.kind === "branch").length, 1, "retry leaves only its disclosed branch");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("session router compensates mismatched post-commit branches before rejecting", async () => {
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store);
+	const create = store.create.bind(store);
+	store.create = (input) => {
+		if (input.kind !== "branch") return create(input);
+		create({ ...input, title: "partially persisted wrong title" });
+		throw new Error("branch create failed after a partial commit");
+	};
+	const registry = createTestRegistry("session.clone", (context) => ({
+		piboSessionId: context.piboSessionId,
+		previous: { piSessionId: "11111111-1111-4111-8111-111111111111", leafId: "old-leaf", cwd: "/workspace" },
+		current: { piSessionId: "22222222-2222-4222-8222-222222222222", leafId: "new-leaf", cwd: "/workspace" },
+		cancelled: false,
+	}));
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
+	try {
+		await assert.rejects(
+			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
+			/branch create failed after a partial commit/,
+		);
+		assert.equal(store.list().some((session) => session.kind === "branch"), false, "mismatched state is removed before the caller can retry");
+		assert.equal(store.get("ps_source").piSessionId, "11111111-1111-4111-8111-111111111111");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("session router reports reconciliation cleanup failure without rebinding the source", async () => {
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store);
+	const create = store.create.bind(store);
+	const remove = store.delete.bind(store);
+	let induceAmbiguousCommit = true;
+	store.create = (input) => {
+		if (input.kind !== "branch" || !induceAmbiguousCommit) return create(input);
+		create({ ...input, title: "incomplete branch" });
+		throw new Error("ambiguous branch commit");
+	};
+	store.delete = () => { throw new Error("compensating delete unavailable"); };
+	let nativeClones = 0;
+	const registry = createTestRegistry("session.clone", (context) => {
+		nativeClones += 1;
+		return {
+			piboSessionId: context.piboSessionId,
+			previous: { piSessionId: "11111111-1111-4111-8111-111111111111", leafId: "old-leaf", cwd: "/workspace" },
+			current: { piSessionId: "22222222-2222-4222-8222-222222222222", leafId: "new-leaf", cwd: "/workspace" },
+			cancelled: false,
+		};
+	});
+	const createRouter = () => new PiboSessionRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
+	let router = createRouter();
+	try {
+		await assert.rejects(
+			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
+			(error) => error instanceof AggregateError
+				&& /compensation failed/.test(error.message)
+				&& /ps_/.test(error.message)
+				&& error.errors.some((item) => /compensating delete unavailable/.test(item.message)),
+		);
+		assert.equal(store.get("ps_source").piSessionId, "11111111-1111-4111-8111-111111111111", "source ownership remains on the pre-clone native session");
+		const residual = store.list().find((session) => session.kind === "branch");
+		assert.ok(residual, "the residual branch is explicitly identified by the failure");
+		assert.equal(residual.metadata["pibo.sessionIdentityReconciliation.v1"].state, "cleanup-required");
+
+		await router.disposeAll();
+		router = createRouter();
+		await assert.rejects(
+			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
+			/refusing another session identity operation/,
+		);
+		assert.equal(nativeClones, 1, "a persisted residual marker blocks retry after router recovery and before another native branch is created");
+		assert.equal(store.list().filter((session) => session.kind === "branch").length, 1);
+
+		store.delete = remove;
+		induceAmbiguousCommit = false;
+		const retry = await router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" });
+		assert.equal(nativeClones, 2);
+		assert.equal(store.get(residual.id), undefined, "retry compensates the quarantined residual before native branching");
+		assert.equal(store.get(retry.result.piboSessionId).originId, "ps_source");
+		assert.equal(store.list().filter((session) => session.kind === "branch").length, 1, "only the disclosed retry branch remains");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("session router updates a Pibo session before emitting switch results", async () => {
 	const store = new InMemoryPiboSessionStore();
 	createStoredSession(store);
@@ -522,6 +838,45 @@ test("message acceptance starts a signal turn before cold runtime creation resol
 		assert.equal(immediate.latestTurn.eventId, "m-cold");
 		assert.equal(immediate.localStatus, "running");
 		await pending;
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("cached identity reservations reject queued messages before signal acceptance", async () => {
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store, { id: "ps_identity_signal_admission", profile: "base" });
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+
+	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_identity_signal_admission", action: "status" });
+		const routed = router.sessions.get("ps_identity_signal_admission");
+		assert.ok(routed);
+		routed.sessionIdentityOperationInFlight = true;
+		await assert.rejects(
+			router.emit({
+				type: "message",
+				piboSessionId: "ps_identity_signal_admission",
+				id: "m-identity-rejected",
+				text: "must fail before acceptance",
+				source: "user",
+			}),
+			/session identity operation is in progress/,
+		);
+		const rejected = router.snapshotSignalSession("ps_identity_signal_admission").sessions.ps_identity_signal_admission;
+		assert.notEqual(rejected.latestTurn?.eventId, "m-identity-rejected");
+		assert.equal(rejected.localStatus, "idle");
+
+		routed.sessionIdentityOperationInFlight = false;
+		await router.emit({
+			type: "message",
+			piboSessionId: "ps_identity_signal_admission",
+			id: "m-after-identity",
+			text: "accepted after reservation",
+			source: "user",
+		});
+		const accepted = router.snapshotSignalSession("ps_identity_signal_admission").sessions.ps_identity_signal_admission;
+		assert.equal(accepted.latestTurn.eventId, "m-after-identity");
 	} finally {
 		await router.disposeAll();
 	}

@@ -49,7 +49,7 @@ const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
 // Run reminders are autonomous service wakeups, so their provider/tool loop needs a deterministic boundary.
 const RUN_REMINDER_MAX_TOOL_EXECUTIONS = 64;
 const RUN_REMINDER_MAX_PROVIDER_ROUNDS = 64;
-const RUN_REMINDER_MAX_TOTAL_TOKENS = 2_000_000;
+const RUN_REMINDER_MAX_ACTIVE_TOKENS = 2_000_000;
 const RUN_REMINDER_MAX_DURATION_MS = 15 * 60 * 1000;
 const RUN_REMINDER_MAX_REPEATED_TOOL_CALLS = 12;
 
@@ -57,7 +57,7 @@ type RunReminderTurnGuard = {
 	eventId?: string;
 	toolExecutions: number;
 	providerRounds: number;
-	totalTokens: number;
+	activeTokens: number;
 	toolSignatures: Map<string, number>;
 	tripped: boolean;
 	timer?: ReturnType<typeof setTimeout>;
@@ -102,11 +102,12 @@ export type RuntimeRoutedSessionOptions = {
 		context: { status?: PiboSessionStatus; activeEventId?: string },
 	) => void;
 	onSessionOperation?: PiboSessionOperationListener;
+	onBeforeSessionIdentityOperation?: (event: PiboExecutionEvent) => void | Promise<void>;
 	onKillChildren?: (
 		piboSessionId: string,
 		options?: { includeRuns?: boolean },
 	) => Promise<{ killed: string[]; cancelledRuns: string[] }>;
-	onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean }) => void;
+	onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean; sessionIdentityOperationInFlight: boolean }) => void;
 	onMessagesInterrupted?: PiboMessageInterruptionListener;
 	messagePreflight?: PiboMessagePreflight;
 	getRuntimeAuthStatus?: () => Promise<readonly AgentRuntimeAuthStatus[]>;
@@ -155,10 +156,23 @@ function nativeOperationToPiCompatibility(
 	piboSessionId: string,
 	result: AgentRuntimeSessionOperationResult,
 ): PiboSessionOperationResult {
+	// Keep the legacy Pi-shaped result while allowing an adapter-native fork to
+	// describe a fresh branch that has no native session yet.
+	const current = result.current.nativeSessionId
+		? nativeSnapshotToPiCompatibility(session, result.current)
+		: {
+			piSessionId: "",
+			leafId: result.current.leafId ?? null,
+			cwd: result.current.cwd,
+			sessionName: result.current.name,
+			parentSessionFile: result.current.parentLocator?.kind === "local-file"
+				? result.current.parentLocator.value
+				: undefined,
+		};
 	return {
 		piboSessionId,
 		previous: nativeSnapshotToPiCompatibility(session, result.previous),
-		current: nativeSnapshotToPiCompatibility(session, result.current),
+		current,
 		cancelled: result.cancelled,
 		selectedText: result.selectedText,
 		editorText: result.editorText,
@@ -211,6 +225,8 @@ export class RuntimeRoutedSession {
 	private nextAssistantIndex = 0;
 	private activeThinkingIndex?: number;
 	private nextThinkingIndex = 0;
+	private sessionIdentityOperationInFlight = false;
+	private forkCandidatesRequest?: Promise<PiboForkCandidate[]>;
 	private unsubscribe?: () => void;
 
 	constructor(
@@ -224,8 +240,12 @@ export class RuntimeRoutedSession {
 		this.unsubscribe = runtimeSession.subscribe((event) => this.handleRuntimeEvent(event));
 	}
 
-	enqueueMessage(event: PiboMessageEvent): PiboOutputEvent {
+	enqueueMessage(event: PiboMessageEvent, onAccepted: () => void = () => {}): PiboOutputEvent {
 		this.assertActive();
+		if (this.sessionIdentityOperationInFlight && !this.forkCandidatesRequest) {
+			throw new Error("Pibo session cannot accept messages while a session identity operation is in progress.");
+		}
+		onAccepted();
 		this.queue.push({ kind: "message", event });
 		const output: PiboOutputEvent = {
 			type: "message_queued",
@@ -275,17 +295,32 @@ export class RuntimeRoutedSession {
 	async executeAction(event: PiboExecutionEvent): Promise<PiboOutputEvent> {
 		this.assertActive();
 		if (event.action === "compact") return this.enqueueCompactAction(event);
-		const result = await this.runAction(event);
-		if (isSessionOperationResult(result)) await this.options.onSessionOperation?.(result, event);
-		const output: PiboOutputEvent = {
-			type: "execution_result",
-			piboSessionId: this.piboSessionId,
-			eventId: event.id,
-			action: event.action,
-			result,
-		};
-		this.emit(output);
-		return output;
+		const changesSessionIdentity = event.action === "session.fork" || event.action === "session.clone";
+		if (changesSessionIdentity) {
+			this.assertSessionIdentityOperationIdle(event.action === "session.fork" ? "fork" : "clone");
+			this.sessionIdentityOperationInFlight = true;
+			this.notifyState();
+		}
+		try {
+			if (changesSessionIdentity) await this.options.onBeforeSessionIdentityOperation?.(event);
+			const result = await this.runAction(event);
+			if (isSessionOperationResult(result)) await this.options.onSessionOperation?.(result, event);
+			const output: PiboOutputEvent = {
+				type: "execution_result",
+				piboSessionId: this.piboSessionId,
+				eventId: event.id,
+				action: event.action,
+				result,
+			};
+			this.emit(output);
+			return output;
+		} finally {
+			if (changesSessionIdentity) {
+				this.sessionIdentityOperationInFlight = false;
+				this.notifyState();
+				this.startDrain();
+			}
+		}
 	}
 
 	getActiveMessage(): Pick<PiboMessageEvent, "id" | "source" | "provenance"> | undefined {
@@ -415,22 +450,51 @@ export class RuntimeRoutedSession {
 		return (await listSessions()).map((info) => nativeSessionInfoToPiCompatibility(this.runtimeSession, info));
 	}
 
-	getForkCandidates(): PiboForkCandidate[] {
+	async getForkCandidates(): Promise<PiboForkCandidate[]> {
+		if (this.forkCandidatesRequest) return await this.forkCandidatesRequest;
+		this.assertSessionIdentityOperationIdle("inspect fork candidates");
 		const getForkCandidates = this.runtimeSession.controls?.getForkCandidates;
 		if (!getForkCandidates) throw runtimeCapabilityError(this.runtimeSession, "native session fork candidates");
-		return getForkCandidates();
+		this.sessionIdentityOperationInFlight = true;
+		this.notifyState();
+		const request = Promise.resolve().then(async () => await getForkCandidates());
+		this.forkCandidatesRequest = request;
+		try {
+			return await request;
+		} finally {
+			if (this.forkCandidatesRequest === request) this.forkCandidatesRequest = undefined;
+			this.sessionIdentityOperationInFlight = false;
+			this.notifyState();
+			this.startDrain();
+		}
 	}
 
 	async forkSession(entryId: string): Promise<PiboSessionOperationResult> {
+		this.assertSessionWorkIdle("fork");
 		const forkSession = this.runtimeSession.controls?.forkSession;
 		if (!forkSession) throw runtimeCapabilityError(this.runtimeSession, "native session fork");
 		return nativeOperationToPiCompatibility(this.runtimeSession, this.piboSessionId, await forkSession(entryId));
 	}
 
 	async cloneSession(): Promise<PiboSessionOperationResult> {
+		this.assertSessionWorkIdle("clone");
 		const cloneSession = this.runtimeSession.controls?.cloneSession;
 		if (!cloneSession) throw runtimeCapabilityError(this.runtimeSession, "native session clone");
 		return nativeOperationToPiCompatibility(this.runtimeSession, this.piboSessionId, await cloneSession());
+	}
+
+	private assertSessionIdentityOperationIdle(operation: string): void {
+		if (this.sessionIdentityOperationInFlight) {
+			throw new Error(`Pibo session already has a session identity operation in progress; cannot ${operation}.`);
+		}
+		this.assertSessionWorkIdle(operation);
+	}
+
+	private assertSessionWorkIdle(operation: string): void {
+		const status = this.getStatus();
+		if (status.processing || status.streaming || status.queuedMessages > 0) {
+			throw new Error(`Pibo session must be idle to ${operation}.`);
+		}
 	}
 
 	getSessionTree(): PiboSessionTreeResult {
@@ -647,7 +711,10 @@ export class RuntimeRoutedSession {
 					costUsd: event.usage.costUsd,
 					provenance: this.activeMessage?.provenance,
 				}));
-				this.trackRunReminderTurnGuard("usage", { totalTokens: event.usage.totalTokens });
+				this.trackRunReminderTurnGuard("usage", {
+					totalTokens: event.usage.totalTokens,
+					cacheReadTokens: event.usage.cacheReadTokens,
+				});
 				return;
 			case "compaction_start":
 				this.emit(this.withActiveMessage({
@@ -733,11 +800,13 @@ export class RuntimeRoutedSession {
 	}
 
 	private startDrain(): void {
-		if (this.drainPromise) return;
+		if (this.drainPromise || this.sessionIdentityOperationInFlight) return;
 		const drain = this.drain();
 		this.drainPromise = drain;
 		void drain.finally(() => {
-			if (this.drainPromise === drain) this.drainPromise = undefined;
+			if (this.drainPromise !== drain) return;
+			this.drainPromise = undefined;
+			if (this.queue.length > 0 && !this.disposed) this.startDrain();
 		});
 	}
 
@@ -850,7 +919,7 @@ export class RuntimeRoutedSession {
 			eventId: event.id,
 			toolExecutions: 0,
 			providerRounds: 0,
-			totalTokens: 0,
+			activeTokens: 0,
 			toolSignatures: new Map<string, number>(),
 			tripped: false,
 		};
@@ -868,15 +937,19 @@ export class RuntimeRoutedSession {
 		this.runReminderTurnGuard = undefined;
 	}
 
-	private trackRunReminderTurnGuard(type: "usage" | "tool_execution_started", payload: { totalTokens?: number } | { toolName?: string; args?: unknown }): void {
+	private trackRunReminderTurnGuard(
+		type: "usage" | "tool_execution_started",
+		payload: { totalTokens?: number; cacheReadTokens?: number } | { toolName?: string; args?: unknown },
+	): void {
 		const guard = this.runReminderTurnGuard;
 		if (!guard || guard.tripped || guard.eventId !== this.activeMessage?.id) return;
 		if (type === "usage") {
-			const totalTokens = (payload as { totalTokens?: number }).totalTokens ?? 0;
-			guard.totalTokens += totalTokens;
+			const usage = payload as { totalTokens?: number; cacheReadTokens?: number };
+			const activeTokens = Math.max(0, (usage.totalTokens ?? 0) - (usage.cacheReadTokens ?? 0));
+			guard.activeTokens += activeTokens;
 			guard.providerRounds += 1;
-			if (guard.totalTokens > RUN_REMINDER_MAX_TOTAL_TOKENS) {
-				this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_TOTAL_TOKENS} total tokens`);
+			if (guard.activeTokens > RUN_REMINDER_MAX_ACTIVE_TOKENS) {
+				this.tripRunReminderTurnGuard(guard, `exceeded ${RUN_REMINDER_MAX_ACTIVE_TOKENS} active tokens`);
 				return;
 			}
 			if (guard.providerRounds > RUN_REMINDER_MAX_PROVIDER_ROUNDS) {
@@ -1126,6 +1199,7 @@ export class RuntimeRoutedSession {
 			processing: this.processing,
 			queuedMessages: this.queue.length,
 			disposed: this.disposed,
+			sessionIdentityOperationInFlight: this.sessionIdentityOperationInFlight,
 		});
 	}
 

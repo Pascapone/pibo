@@ -384,6 +384,30 @@ export class CodexNativeTurnController {
 		}
 	}
 
+	replayTerminalTurn(turn: CodexAppServerTurn): void {
+		if (this.disposed) throw new Error("Codex native turn controller is disposed.");
+		if (this.pending) throw new Error("Codex native session already has an active turn.");
+		if (turn.status === "inProgress") {
+			throw new CodexNativeTurnProtocolError("Codex cannot replay a non-terminal native turn.");
+		}
+		const replay = newPendingTurn();
+		this.assignTurnId(replay, turn.id);
+		replay.started = true;
+		for (const item of turn.items) this.completeItem(replay, item);
+		this.finishIncompleteItems(replay, turn.status);
+		if (turn.status === "failed") {
+			const message = errorMessage(turn.error);
+			this.emit({
+				type: "turn_failed",
+				message,
+				details: providerErrorDetails(turn.error, message, false),
+				turnId: turn.id,
+			});
+		} else {
+			this.emit({ type: "turn_completed", status: turn.status, turnId: turn.id });
+		}
+	}
+
 	async compact(): Promise<void> {
 		if (this.disposed) throw new Error("Codex native turn controller is disposed.");
 		if (this.pending) throw new Error("Codex native session already has an active turn.");

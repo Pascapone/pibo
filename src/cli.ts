@@ -74,6 +74,18 @@ function parsePort(value: string): number {
 	return port;
 }
 
+function parsePiboSessionId(value: string): string {
+	const piboSessionId = value.trim();
+	if (!piboSessionId) throw new Error("Pibo Session ID must not be empty");
+	return piboSessionId;
+}
+
+function parseGatewayClientHost(value: string): string {
+	const host = value.trim();
+	if (!host) throw new Error("Gateway host must not be empty");
+	return host;
+}
+
 function parsePositiveInteger(value: string): number {
 	const parsed = Number(value);
 	if (!Number.isInteger(parsed) || parsed < 1) {
@@ -164,6 +176,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 	if (argv[2] === "resources") {
 		const { runResourcesCli } = await import("./resources/cli.js");
 		await runResourcesCli([argv[0] ?? "node", "pibo resources", ...argv.slice(3)]);
+		return;
+	}
+
+	if (argv[2] === "preview") {
+		const { runPreviewCli } = await import("./previews/cli.js");
+		await runPreviewCli([argv[0] ?? "node", "pibo preview", ...argv.slice(3)]);
 		return;
 	}
 
@@ -299,6 +317,18 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.action(async (args: string[]) => {
 			const { runResourcesCli } = await import("./resources/cli.js");
 			await runResourcesCli([argv[0] ?? "node", "pibo resources", ...args]);
+		});
+
+	program
+		.command("preview")
+		.description("Expose session-linked live development previews")
+		.helpOption(false)
+		.allowUnknownOption(true)
+		.allowExcessArguments(true)
+		.argument("[args...]")
+		.action(async (args: string[]) => {
+			const { runPreviewCli } = await import("./previews/cli.js");
+			await runPreviewCli([argv[0] ?? "node", "pibo preview", ...args]);
 		});
 
 	program
@@ -518,11 +548,26 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		});
 	program
 		.command("client")
-		.argument("[piboSessionId]", "Pibo session id", "default")
-		.description("Start a console gateway client")
-		.action(async (piboSessionId: string) => {
-			const { runGatewayClient } = await import("./gateway/client.js");
-			await runGatewayClient({ piboSessionId });
+		.argument("[piboSessionId]", "Pibo Session ID", parsePiboSessionId, "default")
+		.description("Start a console client for one Pibo Session")
+		.helpOption("-h, --help", "Display help for command")
+		.option("--host <host>", "Gateway host", parseGatewayClientHost)
+		.option("--port <port>", "Gateway port", parsePort)
+		.addHelpText(
+			"after",
+			"\nMessages queue by default. Use /steer <message> for the active turn or /queue <message> explicitly. " +
+				"Piped EOF waits for acknowledgements and terminal completion while assistant output keeps streaming. Prompts are shown only in a TTY.\n" +
+				"Security: raw gateway TCP is unauthenticated and unencrypted; use remote hosts only on trusted networks or through a secure tunnel.\n",
+		)
+		.action(async (piboSessionId: string, options: { host?: string; port?: number }) => {
+			const { isGatewayClientExpectedError, runGatewayClient } = await import("./gateway/client.js");
+			try {
+				await runGatewayClient({ piboSessionId, host: options.host, port: options.port });
+			} catch (error) {
+				if (!isGatewayClientExpectedError(error)) throw error;
+				console.error(`error: ${error.message}`);
+				process.exitCode = 1;
+			}
 		});
 
 	if (argv.length <= 2) {
@@ -553,6 +598,7 @@ Commands:
   data         Inspect and maintain Pibo data stores
   compute      Manage Pibo Docker compute workers
   resources    Inspect and safely reap managed compute and browser resources
+  preview      Expose session-linked live development previews
   setup        Plan user-host installs and developer-host upgrades
   skills       Manage Pibo user skills
   cron         Manage scheduled Pibo jobs
@@ -563,6 +609,7 @@ Commands:
   tui          Start the direct Pi TUI
   tui:routed   Start the local routed Pibo TUI
   tui:sessions  Start the reduced Web Chat-derived session UI
+  client       Send queued or steering messages to one Pibo Session
   gateway      Inspect and restart host gateways through safe CLI commands
   gateway:web  Start a web gateway runtime (use --auth=local for loopback-only local auth)
 

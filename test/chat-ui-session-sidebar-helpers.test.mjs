@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 async function runRoomFallbackScenarios() {
 	const script = `
 		import assert from "node:assert/strict";
-		const { fallbackRoomIdWhenHidingArchived } = await import("./src/apps/chat-ui/src/session-sidebar-helpers.ts");
+		const { fallbackRoomIdWhenHidingArchived, resolveRoomContextLabel } = await import("./src/apps/chat-ui/src/session-sidebar-helpers.ts");
 
 		const room = (id, metadata = {}, children = []) => ({
 			id,
@@ -34,6 +34,15 @@ async function runRoomFallbackScenarios() {
 		assert.equal(fallbackRoomIdWhenHidingArchived(rooms, "missing"), undefined);
 		assert.equal(fallbackRoomIdWhenHidingArchived(rooms, null), undefined);
 		assert.equal(fallbackRoomIdWhenHidingArchived([room("archived", archived)], "archived"), undefined);
+
+		const staleBootstrapRoom = room("room-alpha");
+		staleBootstrapRoom.name = "Alpha";
+		const targetRoom = room("room-beta");
+		targetRoom.name = "Beta";
+		assert.equal(resolveRoomContextLabel([staleBootstrapRoom, targetRoom], "room-beta", staleBootstrapRoom), "Beta");
+		assert.equal(resolveRoomContextLabel([staleBootstrapRoom], "room-missing", staleBootstrapRoom), "room-missing");
+		assert.equal(resolveRoomContextLabel([staleBootstrapRoom], "room-alpha", staleBootstrapRoom), "Alpha");
+		assert.equal(resolveRoomContextLabel([], null, staleBootstrapRoom), "Alpha");
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }

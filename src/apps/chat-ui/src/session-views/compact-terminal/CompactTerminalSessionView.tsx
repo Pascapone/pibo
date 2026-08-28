@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import { ChevronDown, ChevronRight, CircleX, GitBranch, Hammer, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, CircleX, Hammer, Images, MessageSquare } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
+import { chatImagePreviewUrls } from "../../api-chat-files";
 import { AgentDelegationCard } from "../../components/AgentDelegationCard";
+import { DialogShell } from "../../components/DialogShell";
+import { MessageForkButton } from "../../components/MessageForkButton";
+import { MessageSpeechButton } from "../../components/MessageSpeechButton";
 import { PendingUserMessageDelivery } from "../../components/PendingUserMessageDelivery";
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
-import { SessionGoalIndicator, sessionGoalIndicatorStatus } from "../../session-goal-indicator";
+import { SessionGoalIndicator, formatSessionGoalTokenUsage, sessionGoalIndicatorStatus } from "../../session-goal-indicator";
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
 import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tracing/snapshotCollector";
 import type { ChatSessionViewProps } from "../types";
@@ -17,7 +21,7 @@ import { TerminalModelCard } from "./TerminalModelCard";
 import { TerminalStatusCard } from "./TerminalStatusCard";
 import { TerminalThinkingCard } from "./TerminalThinkingCard";
 import { readTerminalReadingPosition, writeTerminalReadingPosition, type TerminalReadingPosition } from "./terminal-reading-position";
-import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
+import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS, type CompactTerminalImagePreview, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
 const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 4_800;
@@ -28,6 +32,10 @@ const DEFAULT_ROW_HEIGHT_PX = 84;
 const OLDER_TRACE_INTENT_SETTLE_MS = 700;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
 type TerminalNavigationKind = "system" | "tool" | "user";
+type TerminalImageDialogState = {
+	images: readonly CompactTerminalImagePreview[];
+	index: number;
+};
 
 export function CompactTerminalSessionView({
 	traceView,
@@ -66,6 +74,7 @@ export function CompactTerminalSessionView({
 	const [reloadReadingPosition, setReloadReadingPosition] = useState<TerminalReadingPosition | undefined>();
 	const requestedRestorePageRef = useRef<string | undefined>(undefined);
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+	const [imageDialog, setImageDialog] = useState<TerminalImageDialogState | null>(null);
 	const renderedContentKey = useMemo(() => [rows, expandedRows] as const, [expandedRows, rows]);
 	const [focusedNavigationRowId, setFocusedNavigationRowId] = useState<string | null>(null);
 	const navigationCursorRef = useRef<Partial<Record<TerminalNavigationKind, string>>>({});
@@ -179,6 +188,7 @@ export function CompactTerminalSessionView({
 		scrollbarDragActiveRef.current = false;
 		scrollbarDragDeferredLoadRef.current = false;
 		setReloadReadingPosition(piboSessionId ? readTerminalReadingPosition(piboSessionId) : undefined);
+		setImageDialog(null);
 	}, [piboSessionId]);
 
 	useEffect(() => {
@@ -264,6 +274,10 @@ export function CompactTerminalSessionView({
 			return next;
 		});
 	};
+	const openImagePreviews = useCallback((images: readonly CompactTerminalImagePreview[]) => {
+		const previewable = previewableTerminalImages(images);
+		if (previewable.length) setImageDialog({ images: previewable, index: 0 });
+	}, []);
 	const renderRow = useCallback((_: number, row: CompactTerminalRow) => (
 		<div className="px-4">
 			<TerminalRow
@@ -276,10 +290,11 @@ export function CompactTerminalSessionView({
 				onOpenSession={onOpenSession}
 				onThinkingLevelChange={onThinkingLevelChange}
 				onModelChanged={onModelChanged}
+				onViewImages={openImagePreviews}
 				signals={signals}
 			/>
 		</div>
-	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, signals, traceView?.piboSessionId]);
+	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, signals, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
 		Footer: isStreaming || showGoalIndicator
@@ -354,6 +369,18 @@ export function CompactTerminalSessionView({
 			</div>
 
 			{rows.length === 0 && showGoalIndicator ? <TerminalStreamingFooter isWorking={false} goal={sessionGoal} /> : null}
+
+			{imageDialog ? (
+				<TerminalImageDialog
+					state={imageDialog}
+					piboSessionId={piboSessionId}
+					onClose={() => setImageDialog(null)}
+					onIndexChange={(index) => setImageDialog((current) => current ? {
+						...current,
+						index: Math.min(Math.max(index, 0), current.images.length - 1),
+					} : null)}
+				/>
+			) : null}
 
 			{!stickyView.isSticky ? (
 				<button
@@ -471,6 +498,7 @@ function TerminalRow({
 	onOpenSession,
 	onThinkingLevelChange,
 	onModelChanged,
+	onViewImages,
 	signals,
 }: {
 	row: CompactTerminalRow;
@@ -482,6 +510,7 @@ function TerminalRow({
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
 	onThinkingLevelChange: ChatSessionViewProps["onThinkingLevelChange"];
 	onModelChanged: ChatSessionViewProps["onModelChanged"];
+	onViewImages: (images: readonly CompactTerminalImagePreview[]) => void;
 	signals: ChatSessionViewProps["signals"];
 }) {
 	const collapseToolCallPreview = !expanded && isToolCallLikeRow(row);
@@ -566,9 +595,10 @@ function TerminalRow({
 						piboSessionId={piboSessionId}
 						onThinkingLevelChange={onThinkingLevelChange}
 						onModelChanged={onModelChanged}
+						onFork={onFork}
 					/>
 				</div>
-				<TerminalRowActions row={row} onFork={onFork} onOpenSession={onOpenSession} />
+				<TerminalRowActions row={row} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 			</div>
 			{expanded ? <TerminalDetails row={row} onOpenSession={onOpenSession} /> : null}
 		</div>
@@ -582,6 +612,7 @@ function TerminalRowContent({
 	piboSessionId,
 	onThinkingLevelChange,
 	onModelChanged,
+	onFork,
 }: {
 	row: CompactTerminalRow;
 	visibleLines: CompactTerminalLine[];
@@ -589,6 +620,7 @@ function TerminalRowContent({
 	piboSessionId: string;
 	onThinkingLevelChange: ChatSessionViewProps["onThinkingLevelChange"];
 	onModelChanged: ChatSessionViewProps["onModelChanged"];
+	onFork: ChatSessionViewProps["onFork"];
 }) {
 	if (row.kind === "message.assistant") {
 		return (
@@ -596,7 +628,14 @@ function TerminalRowContent({
 				<div className="compact-terminal-markdown" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="assistant-message">
 					<MarkdownRenderer streaming={row.status === "running"}>{typeof row.output === "string" ? row.output : ""}</MarkdownRenderer>
 				</div>
-				{row.status === "running" ? null : <TerminalMessageMetadata timestamp={row.completedAt} durationMs={row.durationMs} />}
+				{row.status === "running" ? null : (
+					<TerminalMessageMetadata
+						timestamp={row.completedAt}
+						durationMs={row.durationMs}
+						speechText={typeof row.output === "string" ? row.output : undefined}
+						speechScopeKey={`${piboSessionId}:${row.id}`}
+					/>
+				)}
 			</div>
 		);
 	}
@@ -607,7 +646,7 @@ function TerminalRowContent({
 				{row.pendingMessageDelivery ? (
 					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} className="ml-[1.9rem] mt-2" />
 				) : null}
-				<TerminalMessageMetadata timestamp={row.startedAt} />
+				<TerminalMessageMetadata timestamp={row.startedAt} forkEntryId={row.forkEntryId} onFork={onFork} />
 			</>
 		);
 	}
@@ -647,12 +686,28 @@ function TerminalLines({
 	));
 }
 
-function TerminalMessageMetadata({ timestamp, durationMs }: { timestamp?: string; durationMs?: number }) {
+function TerminalMessageMetadata({
+	timestamp,
+	durationMs,
+	forkEntryId,
+	onFork,
+	speechText,
+	speechScopeKey,
+}: {
+	timestamp?: string;
+	durationMs?: number;
+	forkEntryId?: string;
+	onFork?: ChatSessionViewProps["onFork"];
+	speechText?: string;
+	speechScopeKey?: string;
+}) {
 	const time = formatLocalMessageTime(timestamp);
-	if (!time) return null;
+	if (!time && !forkEntryId && !speechText?.trim()) return null;
 	return (
-		<div className="mt-1 text-right font-mono text-[10px] tabular-nums text-[#737373]" data-pibo-component="TerminalMessageMetadata">
-			{time}{durationMs === undefined ? null : ` · ${formatTerminalDuration(durationMs)}`}
+		<div className="mt-1 flex items-center justify-end gap-1 font-mono text-[10px] tabular-nums text-[#737373]" data-pibo-component="TerminalMessageMetadata">
+			{forkEntryId && onFork ? <MessageForkButton entryId={forkEntryId} onFork={onFork} /> : null}
+			{speechText?.trim() ? <MessageSpeechButton text={speechText} scopeKey={speechScopeKey} /> : null}
+			{time ? <span>{time}{durationMs === undefined ? null : ` · ${formatTerminalDuration(durationMs)}`}</span> : null}
 		</div>
 	);
 }
@@ -670,28 +725,118 @@ function formatLocalMessageTime(value: string | undefined): string | undefined {
 
 function TerminalRowActions({
 	row,
-	onFork,
 	onOpenSession,
+	onViewImages,
 }: {
 	row: CompactTerminalRow;
-	onFork: ChatSessionViewProps["onFork"];
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
+	onViewImages: (images: readonly CompactTerminalImagePreview[]) => void;
 }) {
+	const images = previewableTerminalImages(row.imagePreviews ?? []);
+	if (!row.linkedPiboSessionId && images.length === 0) return null;
 	return (
-		<div className={`flex shrink-0 items-start gap-1 transition-opacity ${row.forkEntryId ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}>
+		<div className="flex shrink-0 items-start gap-1">
+			{images.length ? (
+				<RowAction label={images.length === 1 ? "View image preview" : `View ${images.length} image previews`} onClick={() => onViewImages(images)}>
+					<Images size={13} aria-hidden="true" /> View
+				</RowAction>
+			) : null}
 			{row.linkedPiboSessionId ? (
 				<RowAction label="Open linked session" onClick={() => onOpenSession(row.linkedPiboSessionId!)}>
 					Open
 				</RowAction>
 			) : null}
-			{row.forkEntryId ? (
-				<RowAction label="Fork from this user message" onClick={() => onFork(row.forkEntryId!)}>
-					<GitBranch size={13} />
-					Fork
-				</RowAction>
-			) : null}
 		</div>
 	);
+}
+
+function TerminalImageDialog({
+	state,
+	piboSessionId,
+	onClose,
+	onIndexChange,
+}: {
+	state: TerminalImageDialogState;
+	piboSessionId: string;
+	onClose: () => void;
+	onIndexChange: (index: number) => void;
+}) {
+	const image = state.images[state.index];
+	const source = image ? chatImagePreviewUrls(image, piboSessionId)[0] : undefined;
+	const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
+	const navigationFocusRef = useRef<HTMLDivElement>(null);
+	const hasPrevious = state.index > 0;
+	const hasNext = state.index + 1 < state.images.length;
+	useEffect(() => setLoadState(source ? "loading" : "error"), [image?.id, source]);
+
+	const navigate = (index: number) => {
+		if (index < 0 || index >= state.images.length) return;
+		onIndexChange(index);
+		window.requestAnimationFrame(() => navigationFocusRef.current?.focus());
+	};
+	const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+		if (event.key === "ArrowLeft" && hasPrevious) navigate(state.index - 1);
+		else if (event.key === "ArrowRight" && hasNext) navigate(state.index + 1);
+		else if (event.key === "Home" && hasPrevious) navigate(0);
+		else if (event.key === "End" && hasNext) navigate(state.images.length - 1);
+		else return;
+		event.preventDefault();
+	};
+
+	return (
+		<DialogShell
+				title="Image preview"
+				description={`${image?.label ?? "Image"} · ${state.index + 1} of ${state.images.length}`}
+				onClose={onClose}
+				initialFocusRef={navigationFocusRef}
+				onKeyDown={handleKeyDown}
+			closeLabel="Close image preview"
+			maxWidthClassName="max-w-6xl"
+		>
+			<div
+				ref={navigationFocusRef}
+				tabIndex={-1}
+					className="flex min-h-[12rem] flex-col bg-[#0b0b0b] outline-none sm:min-h-[18rem]"
+					data-pibo-component="TerminalImageDialog"
+				>
+				<div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-2 sm:p-4">
+					{source ? (
+						<img
+							key={source}
+							src={source}
+							alt={`Tool image: ${image?.label ?? "image preview"}`}
+							loading="lazy"
+							decoding="async"
+							onLoad={() => setLoadState("loaded")}
+							onError={() => setLoadState("error")}
+							className={`max-h-[calc(100dvh-12rem)] max-w-full object-contain ${loadState === "loaded" ? "block" : "invisible"}`}
+						/>
+					) : null}
+					{loadState === "loading" ? (
+						<div className="absolute inset-0 grid place-items-center text-xs text-[#a3a3a3]" role="status">Loading image preview…</div>
+					) : null}
+					{loadState === "error" ? (
+						<div className="absolute inset-0 grid place-items-center px-6 text-center text-xs text-[#f87171]" role="alert">Image preview is unavailable.</div>
+					) : null}
+				</div>
+				<div className="flex items-center justify-between gap-3 border-t border-[#2a2a2a] px-3 py-2">
+					<RowAction label="Previous image" onClick={() => navigate(state.index - 1)} disabled={!hasPrevious}>
+						<ChevronLeft size={14} aria-hidden="true" /> Previous
+					</RowAction>
+					<span className="text-[11px] tabular-nums text-[#a3a3a3]" aria-live="polite">{state.index + 1} / {state.images.length}</span>
+					<RowAction label="Next image" onClick={() => navigate(state.index + 1)} disabled={!hasNext}>
+						Next <ChevronRight size={14} aria-hidden="true" />
+					</RowAction>
+				</div>
+			</div>
+		</DialogShell>
+	);
+}
+
+function previewableTerminalImages(images: readonly CompactTerminalImagePreview[]): CompactTerminalImagePreview[] {
+	return images
+		.filter((image) => Boolean(image.payloadRef ? image.traceNodeId : image.generatedToolCallId || image.path))
+		.slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS);
 }
 
 function terminalRowClassName(row: CompactTerminalRow, focused = false): string {
@@ -783,14 +928,19 @@ function isInteractiveEventTarget(event: MouseEvent<HTMLElement> | KeyboardEvent
 	return Boolean(interactiveTarget && interactiveTarget !== event.currentTarget);
 }
 
-const WORKING_LABEL = "Working...";
+const WORKING_SCRAMBLE_TARGET = "Working...";
+const WORKING_SCRAMBLE_ASCII_START = 33;
+const WORKING_SCRAMBLE_ASCII_END = 126;
 
 function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: string; isWorking: boolean; goal?: ChatSessionViewProps["sessionGoal"] }) {
 	const elapsed = useActiveTurnElapsed(isWorking ? startedAt : undefined);
+	const { chars, activeIndex } = useWorkingScramble(WORKING_SCRAMBLE_TARGET, isWorking);
 	const goalStatus = sessionGoalIndicatorStatus(goal);
+	const goalTokenUsage = goal && goalStatus === "active" ? formatSessionGoalTokenUsage(goal) : undefined;
 	const footerAriaLabel = [
 		isWorking ? "Working" : undefined,
 		goalStatus === "active" ? "Pursuing Goal" : goalStatus === "paused" ? "Goal Paused" : undefined,
+		goalTokenUsage ? `Tokens ${goalTokenUsage}` : undefined,
 	].filter(Boolean).join(". ");
 
 	return (
@@ -802,13 +952,22 @@ function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: s
 			data-pibo-component="TerminalStreamingFooter"
 			data-pibo-active-turn-started-at={isWorking ? startedAt : undefined}
 		>
-			<div className="flex min-w-0 items-baseline justify-between gap-4" aria-hidden="true">
+			<div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1" aria-hidden="true">
 				{isWorking ? (
 					<div className="grid min-w-0 flex-1 grid-cols-[1.9rem_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words">
 						<span className="whitespace-pre text-[#737373]">•</span>
 						<span className="inline-flex min-w-0 items-baseline gap-2">
 							{elapsed ? <span className="shrink-0 tabular-nums text-[#737373]">{elapsed}</span> : null}
-							<span className="compact-terminal-working-label">{WORKING_LABEL}</span>
+							<span className="compact-terminal-working-scramble">
+								{chars.map((char, index) => (
+									<span
+										key={index}
+										className={index === activeIndex ? "compact-terminal-working-scramble-active" : undefined}
+									>
+										{char}
+									</span>
+								))}
+							</span>
 						</span>
 					</div>
 				) : <span className="min-w-0 flex-1" />}
@@ -816,6 +975,89 @@ function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: s
 			</div>
 		</div>
 	);
+}
+
+function useWorkingScramble(target: string, enabled: boolean) {
+	const targetChars = useMemo(() => Array.from(target), [target]);
+	const [chars, setChars] = useState(() => targetChars);
+	const [activeIndex, setActiveIndex] = useState(-1);
+
+	useEffect(() => {
+		if (!enabled || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+			setChars(targetChars);
+			setActiveIndex(-1);
+			return;
+		}
+
+		let index = 0;
+		let rotationFrame = 0;
+		let rotationsForChar = randomRotationCount();
+		let pauseTicks = 0;
+		setChars(randomAsciiChars(targetChars));
+		setActiveIndex(0);
+
+		const interval = window.setInterval(() => {
+			if (pauseTicks > 0) {
+				pauseTicks--;
+				return;
+			}
+
+			if (index >= targetChars.length) {
+				index = 0;
+				rotationFrame = 0;
+				rotationsForChar = randomRotationCount();
+				setChars(randomAsciiChars(targetChars));
+				setActiveIndex(0);
+				return;
+			}
+
+			const currentIndex = index;
+			const targetChar = targetChars[currentIndex] ?? " ";
+			setActiveIndex(currentIndex);
+			rotationFrame++;
+			if (rotationFrame < rotationsForChar) {
+				setChars((current) => replaceChar(current, currentIndex, randomAsciiChar(targetChar)));
+				return;
+			}
+
+			setChars((current) => replaceChar(current, currentIndex, targetChar));
+			index++;
+			rotationFrame = 0;
+			rotationsForChar = randomRotationCount();
+			if (index >= targetChars.length) {
+				setChars(targetChars);
+				setActiveIndex(-1);
+				pauseTicks = 18;
+			}
+		}, 55);
+
+		return () => window.clearInterval(interval);
+	}, [enabled, targetChars]);
+
+	return { chars, activeIndex };
+}
+
+function replaceChar(chars: string[], index: number, char: string): string[] {
+	const next = [...chars];
+	next[index] = char;
+	return next;
+}
+
+function randomAsciiChars(targetChars: string[]): string[] {
+	return targetChars.map((targetChar) => randomAsciiChar(targetChar));
+}
+
+function randomAsciiChar(exclude?: string): string {
+	let char = "";
+	do {
+		const code = WORKING_SCRAMBLE_ASCII_START + Math.floor(Math.random() * (WORKING_SCRAMBLE_ASCII_END - WORKING_SCRAMBLE_ASCII_START + 1));
+		char = String.fromCharCode(code);
+	} while (char === exclude);
+	return char;
+}
+
+function randomRotationCount(): number {
+	return 2 + Math.floor(Math.random() * 11);
 }
 
 function useActiveTurnElapsed(startedAt: string | undefined): string | undefined {
@@ -887,19 +1129,22 @@ function TerminalBadge({
 function RowAction({
 	label,
 	onClick,
+	disabled = false,
 	children,
 }: {
 	label: string;
 	onClick: () => void;
+	disabled?: boolean;
 	children: ReactNode;
 }) {
 	return (
 		<button
 			type="button"
 			onClick={onClick}
+			disabled={disabled}
 			aria-label={label}
 			title={label}
-			className="inline-flex min-h-7 min-w-7 items-center gap-1 border border-[#3a3a3a] px-2 text-[11px] text-[#737373] hover:border-[#38bdf8] hover:text-[#38bdf8]"
+			className="inline-flex min-h-7 min-w-7 items-center gap-1 border border-[#3a3a3a] px-2 text-[11px] text-[#a3a3a3] hover:border-[#38bdf8] hover:text-[#38bdf8] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#3a3a3a] disabled:hover:text-[#a3a3a3]"
 		>
 			{children}
 		</button>

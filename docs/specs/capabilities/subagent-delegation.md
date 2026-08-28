@@ -2,7 +2,7 @@
 
 **Status:** Done
 **Created:** 2026-05-10
-**Revised:** 2026-08-24
+**Revised:** 2026-08-25
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Custom Agents and Agent Designer](./custom-agents.md), [Yielded Run Control](./yielded-run-control.md), [Agent Management Tool Design](../../plans/agent-management-tool-design.md)
 
 ## Why
@@ -21,6 +21,16 @@ Replace generated per-subagent tools with four stable Pibo-managed capabilities:
 - direct management tool `pibo_agents_kill`
 
 The model context must identify every currently available delegated agent by configured `name` and profile description. Sends are started only through `pibo_run_start`; the returned run ID is also the request ID used for observation, reading, and explicit cancellation.
+
+## Lifetime Contract
+
+Delegated-agent lifetime is independent from foreground waiting and diagnostic freshness:
+
+- Delegated sends have no implicit wall-clock deadline and may run for hours.
+- Legacy `SubagentProfile.timeoutMs` values are compatibility data only; they do not become request or yielded-run execution deadlines.
+- `pibo_run_wait` defaults to 30 seconds and is capped at 300 seconds per call. An expired wait reports that the run is still active; it does not cancel the run or child request.
+- A stale telemetry or signal threshold is diagnostic only. It does not create a timeout, cancellation, retry, or recovery action.
+- Normal completion or failure settles the request. Explicit run cancellation, agent kill, parent abort, or session/router disposal may stop active delegated work. Normal completion of the parent model turn does not.
 
 ## Scope
 
@@ -70,16 +80,18 @@ A generated delegated-agent management context MUST contain each enabled, depth-
 
 ### Requirement: Yielded send selects by name and returns stable identity
 
-`pibo_agents_send_message` MUST accept `name`, `message`, and optional `threadKey` only as a `pibo_run_start` target. It MUST resolve `name` only against the current profile's enabled, depth-eligible agents, route the message with source `actor`, wait without an implicit lifetime deadline, and return an `agentId` equal to the child Pibo Session ID.
+`pibo_agents_send_message` MUST accept `name`, required `sessionName`, `message`, and optional `threadKey` only as a `pibo_run_start` target. `name` selects an enabled, depth-eligible configured agent; it is not a child title or reuse key. `threadKey` is the stable child-conversation reuse key scoped by parent, selected agent, and target profile. `sessionName` is human-readable presentation state, does not participate in child identity, MUST contain non-whitespace text, MUST be at most 40 Unicode characters, MUST be trimmed before persistence, and MUST become the child Pibo Session title for every send. The tool MUST route the message with source `actor`, wait without an implicit lifetime deadline, and return an `agentId` equal to the child Pibo Session ID.
 
 #### Acceptance
 
 - Unknown names fail schema validation or execution without creating a child.
-- The first explicit thread creates a child; the same parent, name, target profile, and thread reuses it.
+- Missing, blank, or longer-than-40-Unicode-character session names fail schema validation or execution without creating a child.
+- The first explicit thread creates a child with `sessionName` as its title; the same parent, name, target profile, and thread reuses it regardless of later title changes.
+- A follow-up send on a reused thread updates the existing child title to that call's trimmed `sessionName`.
 - Omitting or blanking `threadKey` creates a new generated thread.
 - The yielded run ID is the request ID.
-- Expiring a bounded `pibo_run_wait` leaves the request and child running.
-- Only explicit run cancellation, agent kill, parent abort, or session disposal ends active delegated work.
+- Expiring a bounded `pibo_run_wait`, completing the parent model turn, or crossing a stale threshold leaves the request and child running.
+- Natural completion or failure settles the request; explicit run cancellation, agent kill, parent abort, or session/router disposal may stop active delegated work.
 - Run cancellation targets the exact queued or active child message event; cancelling one request cannot abort another request sharing the child thread.
 - Successful cancellation waits for request settlement; rejected abort and bounded-settlement failure remain explicit errors.
 - Legacy `SubagentProfile.timeoutMs` does not impose request lifetime.
@@ -95,6 +107,7 @@ Each instance MUST expose:
 - `agentId`
 - `name`
 - `profile`
+- current `sessionName` when the child has a title
 - `threadKey`
 - `status`: `running`, `idle`, or `killed`
 - timestamps and active model when available
@@ -122,16 +135,25 @@ Each instance MUST expose:
 - `afterSequence`
 - `order`: `asc` or `desc`
 - bounded `limit`
+- optional `includeTools`
+- `toolDetail`: `summary` or `full`
 - optional full `details`
 
-The result MUST report the applied filters, observations, `nextAfterSequence`, and whether the requested result was truncated by the page limit or live-journal retention.
+The default view MUST return the newest 20 completed `assistant_message` observations. It MUST hide tools, `assistant_delta`, duplicate `tool_execution_started`, and streaming `tool_execution_updated` progress events. `includeTools: true` MUST add compact `tool_call` and terminal `tool_execution_finished` observations to the default message view. Explicit `eventTypes` or `kinds` filters MUST retain access to matching progress events for compatibility and diagnostics. `toolDetail: full` MAY expose bounded raw tool text for explicit diagnostics.
+
+The result MUST report the applied filters, observations, `nextAfterSequence`, and whether the requested result was truncated by the page limit or live-journal retention. The model-facing tool content MUST render concise observation entries instead of duplicating the full structured result as formatted JSON.
 
 #### Acceptance
 
+- With no view filters, the result contains only completed assistant messages, ordered newest first, with a limit of 20.
+- `includeTools` defaults to false; callers can request 50 or more bounded messages and tool records explicitly.
+- `assistant_delta`, `tool_execution_started`, and `tool_execution_updated` do not appear by default but remain available through explicit broad-kind or exact-event filters.
+- Compact tool summaries include bounded identifying, status, and output-preview fields instead of full command output.
+- `toolDetail: full` retains the existing 4 KiB observation-text bound.
 - Filters combine with AND semantics between fields and OR semantics within each array field.
 - Unknown or foreign `agentIds` fail instead of being ignored.
 - Invalid timestamp ranges fail.
-- Default output omits large raw details while retaining useful text, tool, and error summaries.
+- Default output omits tools and large raw details; explicit tool inspection defaults to compact summaries.
 - Observations have a router-global monotonic sequence so callers can poll with `afterSequence` without duplicates.
 - Cursor pages consume the oldest unseen matching observations before applying presentation order; `order: desc` cannot advance the cursor past unseen records.
 - If the caller's cursor predates retained live history, `truncated` is true and `nextAfterSequence` advances through the known eviction boundary even when no retained observation matches.
@@ -153,17 +175,19 @@ The result MUST report the applied filters, observations, `nextAfterSequence`, a
 
 ### Requirement: Existing delegation guarantees remain intact
 
-Shared tools MUST retain existing behavior for depth limits, workspace and room inheritance, app-context compatibility, per-agent model/thinking settings, persistent thread reuse, and `subagent_session` trace linkage. Delegated request lifetime MUST be unbounded unless explicitly cancelled.
+Shared tools MUST retain existing behavior for depth limits, workspace and room inheritance, app-context compatibility, per-agent model/thinking settings, persistent thread reuse, and `subagent_session` trace linkage. Delegated requests MUST have no implicit wall-clock deadline and MUST remain active until natural settlement, explicit cancellation, or owning-session/router disposal.
 
 The link event MUST use `toolName: "pibo_agents_send_message"` and continue to identify `subagentName`, child Pibo Session ID, resolved thread key, and optional tool call ID. Turn-scoped child outputs MUST retain the active message provenance so recursively delegated usage remains attributable to its originating Loop run.
 
-### Requirement: Legacy library callers have an explicit migration path
+### Requirement: Legacy library callers have an explicit 3.0 migration path
 
-The public legacy naming and tool-factory exports MUST remain available as deprecated compatibility APIs, while Pibo-owned runtime assembly MUST use only the four shared agent capabilities and MUST keep send yielded-only. Deprecated runtime and portable-session `subagentRunner` options MUST remain source-visible and fail with a direct instruction to provide `agentsController` rather than disappearing or being silently ignored.
+The public legacy naming and tool-factory exports MUST remain available as deprecated migration APIs, while Pibo-owned runtime assembly MUST use only the four shared agent capabilities and MUST keep send yielded-only. Deprecated runtime and portable-session `subagentRunner` options MUST remain source-visible and fail with a direct instruction to provide `agentsController` rather than disappearing or being silently ignored. Pibo 3.0 intentionally requires `sessionName` in `PiboAgentSendMessageInput`, `PiboAgentsController.sendMessage`, the deprecated `PiboSubagentRunInput`, and every generated delegated-agent tool; 2.x callers that omitted it must migrate. The generated `pibo_run_start` contract MUST expose the selected yielded-target schemas, and dispatch MUST validate the selected target before run admission, persistence, reminders, retries, or child creation.
 
 #### Acceptance
 
-- `createSubagentToolName`, `createSubagentToolDefinitions`, and their runner input/result types remain exported.
+- `createSubagentToolName`, `createSubagentToolDefinitions`, and their runner input/result types remain exported, but delegated calls require `sessionName` consistently.
+- Controller and tool-schema callers must provide `sessionName`; omission is an explicit 3.0 compile-time and runtime break.
+- Invalid nested yielded-tool arguments fail synchronously before any run lifecycle state or child session exists.
 - Legacy generated-tool names remain recognizable for inspection and historical trace compatibility.
 - No Pibo-owned runtime path assembles a generated `pibo_subagent_*` tool.
 - A caller that passes only the deprecated runtime controller receives a deterministic migration error.
@@ -183,7 +207,8 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 ## Edge Cases
 
 - Two configured agent names may target the same profile and remain separate identities.
-- Existing legacy child sessions with `subagentToolName: pibo_subagent_*` remain discoverable by metadata but all new link events use the shared send tool name.
+- Session names are trimmed before persistence; exactly 40 Unicode characters are accepted.
+- Existing legacy child sessions with `subagentToolName: pibo_subagent_*` remain discoverable and reusable by identity metadata; their first named shared-tool follow-up assigns the required title and upgrades the stored tool metadata.
 - Deprecated public legacy factories remain callable for external migration code but are never selected by Pibo runtime assembly.
 - A killed legacy child is excluded from thread reuse.
 - Parent-link cycles do not cause unbounded depth or ownership traversal.
@@ -202,8 +227,8 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 
 - [x] SC-001: Two configured agents produce three direct management tools, one yielded-only send target, and zero `pibo_subagent_*` tools.
 - [x] SC-002: Conditional runtime context shows each available name, description, and yielded management lifecycle.
-- [x] SC-003: Yielded send returns a reusable child `agentId`; bounded waits are non-destructive and `pibo_run_read` returns the complete final message.
-- [x] SC-004: List reports available definitions and running/idle/killed instances accurately.
+- [x] SC-003: Yielded send returns a reusable child `agentId`; the required bounded `sessionName` creates and updates its title; bounded waits are non-destructive and `pibo_run_read` returns the complete final message.
+- [x] SC-004: List reports available definitions and running/idle/killed instances accurately, including current child session names when available.
 - [x] SC-005: Observe combines all documented filters and cursor pagination without cross-parent leakage.
 - [x] SC-006: Kill interrupts active work, marks the instance killed, and prevents thread reuse.
 - [x] SC-007: Existing trace/UI delegation cards still link to child sessions under the shared send tool.

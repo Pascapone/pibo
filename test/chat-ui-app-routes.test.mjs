@@ -35,6 +35,10 @@ async function runAppRoutesScenario() {
 			{ area: "settings", panel: "transcription" },
 		);
 		assert.deepEqual(
+			chatRouteFromLocation("/settings/previews", {}),
+			{ area: "settings", panel: "previews" },
+		);
+		assert.deepEqual(
 			chatRouteFromLocation("/settings/concurrency", {}),
 			{ area: "settings", panel: "concurrency" },
 		);
@@ -80,6 +84,10 @@ async function runAppRoutesScenario() {
 		assert.deepEqual(
 			chatNavigationRequest({ area: "settings", panel: "transcription" }, true, "terminal"),
 			{ to: "/settings/transcription", replace: true },
+		);
+		assert.deepEqual(
+			chatNavigationRequest({ area: "settings", panel: "previews" }, true, "terminal"),
+			{ to: "/settings/previews", replace: true },
 		);
 		assert.deepEqual(
 			chatNavigationRequest({ area: "settings", panel: "concurrency" }, true, "terminal"),
