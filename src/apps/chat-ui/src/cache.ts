@@ -1,3 +1,4 @@
+import type { QueryClient } from "@tanstack/react-query";
 import type { BootstrapData, ChatSessionPage, NavigationData, PiboWebSessionNode } from "./types";
 
 export const BOOTSTRAP_STALE_TIME_MS = 30_000;
@@ -31,6 +32,41 @@ export function chatSessionNavigationQueryKey(
 	piboSessionId?: string,
 ): readonly [string, string, string, string, string] {
 	return ["chat", "sessions", includeArchived ? "archived" : "active", roomId ?? "", piboSessionId ?? ""];
+}
+
+const chatSessionNavigationGenerations = new WeakMap<QueryClient, number>();
+
+export function chatSessionNavigationGeneration(queryClient: QueryClient): number {
+	return chatSessionNavigationGenerations.get(queryClient) ?? 0;
+}
+
+export async function invalidateChatSessionNavigationCache(queryClient: QueryClient): Promise<void> {
+	chatSessionNavigationGenerations.set(queryClient, chatSessionNavigationGeneration(queryClient) + 1);
+	await queryClient.cancelQueries({ queryKey: ["chat", "sessions"] });
+	queryClient.removeQueries({ queryKey: ["chat", "sessions"] });
+}
+
+export async function loadChatSessionNavigationQueryData(
+	queryClient: QueryClient,
+	input: {
+		piboSessionId?: string;
+		includeArchived?: boolean;
+		roomId?: string;
+		force?: boolean;
+	},
+	load: () => Promise<NavigationData>,
+): Promise<NavigationData> {
+	const queryKey = chatSessionNavigationQueryKey(input.includeArchived, input.roomId, input.piboSessionId);
+	const generation = chatSessionNavigationGeneration(queryClient);
+	if (!input.force) {
+		const cached = queryClient.getQueryData<NavigationData>(queryKey);
+		if (cached) return cached;
+	} else {
+		queryClient.removeQueries({ queryKey, exact: true });
+	}
+	const navigation = await load();
+	if (generation === chatSessionNavigationGeneration(queryClient)) queryClient.setQueryData(queryKey, navigation);
+	return navigation;
 }
 
 export function chatTraceSummaryQueryKey(piboSessionId: string): readonly [string, string, string] {

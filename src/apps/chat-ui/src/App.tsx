@@ -78,8 +78,10 @@ import {
 } from "./app-bootstrap-mutations";
 import {
 	chatBootstrapQueryKey,
-	chatSessionNavigationQueryKey,
+	chatSessionNavigationGeneration,
 	chatSessionPageQueryKey,
+	invalidateChatSessionNavigationCache,
+	loadChatSessionNavigationQueryData,
 	tracePageQueriesForSession,
 	traceSummaryQueriesForSession,
 } from "./cache";
@@ -247,16 +249,11 @@ async function loadNavigationQueryData(
 		signal?: AbortSignal;
 	},
 ): Promise<NavigationData> {
-	const queryKey = chatSessionNavigationQueryKey(input.includeArchived, input.roomId, input.piboSessionId);
-	if (!input.force) {
-		const cached = queryClient.getQueryData<NavigationData>(queryKey);
-		if (cached) return cached;
-	} else {
-		await queryClient.removeQueries({ queryKey, exact: true });
-	}
-	const navigation = await getNavigation(input.piboSessionId, input.includeArchived, input.roomId, { signal: input.signal });
-	queryClient.setQueryData(queryKey, navigation);
-	return navigation;
+	return loadChatSessionNavigationQueryData(
+		queryClient,
+		input,
+		() => getNavigation(input.piboSessionId, input.includeArchived, input.roomId, { signal: input.signal }),
+	);
 }
 
 export function App({ route }: { route: ChatAppRoute }) {
@@ -684,6 +681,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			input.includeArchived === true ? "archived" : "active",
 			input.roomId ?? "",
 			input.force === true ? "force" : "cached",
+			chatSessionNavigationGeneration(queryClient),
 		]);
 		if (input.signal) return loadNavigationQueryData(queryClient, input);
 		const inFlight = navigationInFlightRef.current.get(key);
@@ -928,6 +926,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 			current ? applyBootstrapUpdateForRoom(current, roomId, updater) : current,
 		);
 	}, [queryClient]);
+	const prepareSessionNavigationMutation = useCallback(async () => {
+		bootstrapRequestId.current += 1;
+		navigationInFlightRef.current.clear();
+		await Promise.all([
+			queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] }),
+			invalidateChatSessionNavigationCache(queryClient),
+		]);
+	}, [queryClient]);
 
 	const latestRoomStreamId = bootstrap?.latestRoomStreamId;
 
@@ -1020,7 +1026,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		mutationFn: ({ profile, roomId }: { profile: string; roomId?: string }) => postSession(profile || undefined, roomId),
 		onMutate: async ({ profile, roomId }) => {
 			optimisticSessionCreateOutcomeRef.current = null;
-			await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
+			await prepareSessionNavigationMutation();
 			const originRoomId = roomId ?? bootstrap?.selectedRoomId ?? "";
 			const previousSelectedPiboSessionId = selectedPiboSessionIdRef.current;
 			const tempId = `optimistic-session-${createClientTxnId()}`;
@@ -1068,7 +1074,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const renameSessionMutation = useMutation({
 		mutationFn: ({ piboSessionId, title }: { piboSessionId: string; title: string | null }) => patchSession(piboSessionId, { title }),
 		onMutate: async ({ piboSessionId, title }) => {
-			await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
+			await prepareSessionNavigationMutation();
 			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
 			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, piboSessionId, (node) => ({ ...node, title: title || "Untitled Session" })));
 			return { snapshot };
@@ -1080,7 +1086,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const archiveSessionMutation = useMutation({
 		mutationFn: ({ piboSessionId, archived }: { piboSessionId: string; archived: boolean }) => patchSession(piboSessionId, { archived }),
 		onMutate: async ({ piboSessionId, archived }) => {
-			await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
+			await prepareSessionNavigationMutation();
 			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
 			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, piboSessionId, (node) => ({ ...node, archived, unreadCount: archived ? 0 : node.unreadCount })));
 			return { snapshot };
