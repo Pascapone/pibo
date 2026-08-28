@@ -43,6 +43,11 @@ type ExpectedMcpServer = {
 	toolNames: string[];
 };
 
+export type CodexNativeResourceWarning = {
+	code: "codex_native_skill_name_collision";
+	message: string;
+};
+
 type MaterializedMcpConfig = {
 	mcpServers?: Record<string, unknown>;
 };
@@ -309,6 +314,7 @@ export class CodexNativeResourceDelivery {
 		private readonly mcpAccess?: PiboToolMcpAccess,
 		private readonly credentialIssuedAtMs?: number,
 		private credentialExpiresAtMs?: number,
+		private resourceWarnings: CodexNativeResourceWarning[] = [],
 	) {}
 
 	static async prepare(input: CodexNativeResourceDeliveryInput): Promise<CodexNativeResourceDelivery> {
@@ -403,6 +409,10 @@ export class CodexNativeResourceDelivery {
 		return this.expectedMcpServers.length > 0;
 	}
 
+	get warnings(): readonly CodexNativeResourceWarning[] {
+		return this.resourceWarnings;
+	}
+
 	get enabledToolNames(): readonly string[] {
 		return this.expectedMcpServers
 			.flatMap((server) => server.toolNames.map((toolName) => `${server.name}/${toolName}`))
@@ -438,6 +448,7 @@ export class CodexNativeResourceDelivery {
 	}
 
 	async configureProcess(client: CodexAppServerClient, workspace: string): Promise<void> {
+		this.resourceWarnings = [];
 		if (this.skillRoots.length === 0) return;
 		let response: CodexAppServerSkillsListResponse;
 		try {
@@ -471,13 +482,19 @@ export class CodexNativeResourceDelivery {
 				}
 			}
 		}
+		const collisions = new Set<string>();
 		for (const skill of this.selectedSkills) {
 			const sameNamePaths = loadedSkills.get(skill.name) ?? new Set<string>();
 			const conflictingPath = [...sameNamePaths].find((path) => path !== skill.path);
-			if (conflictingPath) {
-				throw new Error(`Selected Pibo skill "${skill.name}" conflicts with a native Codex skill; explicit Pibo-skill precedence cannot be guaranteed.`);
-			}
-			if (!loadedPaths.has(skill.path)) throw new Error(`Codex did not load selected Pibo skill "${skill.name}".`);
+			if (conflictingPath) collisions.add(skill.name);
+			if (!loadedPaths.has(skill.path) && !conflictingPath) throw new Error(`Codex did not load selected Pibo skill "${skill.name}".`);
+		}
+		if (collisions.size > 0) {
+			const names = [...collisions].sort().map((name) => `"${name}"`).join(", ");
+			this.resourceWarnings = [{
+				code: "codex_native_skill_name_collision",
+				message: `Codex native skill name collision for ${names}: the selected Pibo skill remains materialized, but precedence is ambiguous. Rename or disable one source to remove the collision.`,
+			}];
 		}
 	}
 
