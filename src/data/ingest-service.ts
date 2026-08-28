@@ -39,6 +39,19 @@ export type OutputEventIngestResult = {
 	observationId?: string;
 };
 
+export class PiboOutputIdentityCollisionError extends Error {
+	readonly code = "pibo_output_identity_collision";
+
+	constructor(
+		readonly idempotencyKey: string,
+		readonly existingFingerprint: string,
+		readonly incomingFingerprint: string,
+	) {
+		super(`Pibo output identity collision for "${idempotencyKey}"`);
+		this.name = "PiboOutputIdentityCollisionError";
+	}
+}
+
 const INLINE_MESSAGE_PAYLOAD_THRESHOLD_BYTES = 16 * 1024;
 const INLINE_JSON_PAYLOAD_THRESHOLD_BYTES = 16 * 1024;
 
@@ -120,9 +133,39 @@ export class ChatDataIngestService {
 	ingestOutputEvent(input: OutputEventIngestInput): OutputEventIngestResult {
 		const event = input.event;
 		const idempotencyKey = outputIdempotencyKey(event);
+		const identityFingerprint = outputEventFingerprint(event);
 		if (idempotencyKey) {
 			const existing = this.store.eventLog.findByIdempotencyKey(idempotencyKey);
 			if (existing) {
+				const existingFingerprint = typeof existing.attributes.identityFingerprint === "string"
+					? existing.attributes.identityFingerprint
+					: undefined;
+				if (existingFingerprint && existingFingerprint !== identityFingerprint) {
+					const now = input.createdAt ?? new Date().toISOString();
+					this.store.eventLog.appendEvent({
+						sessionId: input.session.id,
+						sessionSequence: this.nextEventSequence(input.session.id),
+						roomId: input.roomId,
+						topic: "pibo.diagnostic",
+						type: "pibo.output.identity_collision",
+						source: "pibo-ingest",
+						actorType: "system",
+						actorId: input.actorId,
+						eventId: eventIdForOutputEvent(event),
+						idempotencyKey: `${idempotencyKey}:collision:${identityFingerprint}`,
+						retentionClass: "audit_event",
+						previewText: `Output identity collision for ${event.type}`,
+						attributes: {
+							outputIdempotencyKey: idempotencyKey,
+							existingFingerprint,
+							incomingFingerprint: identityFingerprint,
+							incomingType: event.type,
+						},
+						createdAt: now,
+						indexedAt: now,
+					});
+					throw new PiboOutputIdentityCollisionError(idempotencyKey, existingFingerprint, identityFingerprint);
+				}
 				return {
 					streamId: existing.streamId,
 					duplicate: true,
@@ -157,6 +200,7 @@ export class ChatDataIngestService {
 				payloadRef,
 				previewText: previewTextForOutputEvent(event),
 				attributes: compactObject({
+					identityFingerprint,
 					legacyStreamId: input.legacyStreamId,
 					inlinePayload: payloadRef ? undefined : toPiboJsonValue(payload?.value),
 					...attributesForOutputEvent(event),
@@ -276,7 +320,22 @@ function deterministicId(prefix: string, value: string): string {
 }
 
 function hashJson(value: unknown): string {
-	return createHash("sha256").update(JSON.stringify(value) ?? "null").digest("hex").slice(0, 16);
+	return createHash("sha256").update(canonicalJson(value)).digest("hex").slice(0, 16);
+}
+
+function outputEventFingerprint(event: PiboOutputEvent): string {
+	return createHash("sha256").update(canonicalJson(event)).digest("hex");
+}
+
+function canonicalJson(value: unknown): string {
+	if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+	if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+	const record = value as Record<string, unknown>;
+	const entries = Object.keys(record)
+		.sort()
+		.filter((key) => record[key] !== undefined)
+		.map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`);
+	return `{${entries.join(",")}}`;
 }
 
 function previewText(text: string): string | undefined {
@@ -299,7 +358,9 @@ function outputPartKey(event: PiboOutputEvent): string {
 	if ("toolCallId" in event) return event.toolCallId ?? "main";
 	if (event.type === "assistant_message") return String(event.assistantIndex ?? event.contentIndex ?? 0);
 	if (event.type === "assistant_delta") return String(event.assistantIndex ?? event.contentIndex ?? 0);
+	if (event.type === "assistant_usage") return String(event.usageIndex ?? hashJson({ inputTokens: event.inputTokens, outputTokens: event.outputTokens, cacheReadTokens: event.cacheReadTokens, cacheWriteTokens: event.cacheWriteTokens, reasoningTokens: event.reasoningTokens, totalTokens: event.totalTokens, costUsd: event.costUsd }));
 	if (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished") return String(event.thinkingIndex ?? event.contentIndex ?? 0);
+	if (event.type === "compaction_start" || event.type === "compaction_end") return String(event.compactionIndex ?? 0);
 	if (event.type === "execution_result") return event.action;
 	return "main";
 }
@@ -365,11 +426,14 @@ function attributesForOutputEvent(event: PiboOutputEvent): Record<string, unknow
 	if (event.type === "message_finished") return { source: event.source };
 	if (event.type === "assistant_message" || event.type === "assistant_delta") return { assistantIndex: event.assistantIndex, contentIndex: event.contentIndex };
 	if (event.type === "assistant_usage") return {
+		usageIndex: event.usageIndex,
 		inputTokens: event.inputTokens,
 		outputTokens: event.outputTokens,
 		cacheReadTokens: event.cacheReadTokens,
 		cacheWriteTokens: event.cacheWriteTokens,
+		reasoningTokens: event.reasoningTokens,
 		totalTokens: event.totalTokens,
+		costUsd: event.costUsd,
 	};
 	if (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished") return { thinkingIndex: event.thinkingIndex, contentIndex: event.contentIndex };
 	if (event.type === "tool_call") return { toolCallId: event.toolCallId, toolName: event.toolName, argsComplete: event.argsComplete, intent: event.intent };
@@ -377,7 +441,7 @@ function attributesForOutputEvent(event: PiboOutputEvent): Record<string, unknow
 	if (event.type === "subagent_session") return { toolCallId: event.toolCallId, toolName: event.toolName, subagentName: event.subagentName, childPiboSessionId: event.childPiboSessionId, threadKey: event.threadKey };
 	if (event.type === "execution_result") return { action: event.action };
 	if (event.type === "session_error") return { error: event.error, ...(event.errorDetails ? { errorDetails: event.errorDetails } : {}) };
-	if (event.type === "compaction_start" || event.type === "compaction_end") return { reason: event.reason, aborted: "aborted" in event ? event.aborted : undefined, errorMessage: "errorMessage" in event ? event.errorMessage : undefined };
+	if (event.type === "compaction_start" || event.type === "compaction_end") return { compactionIndex: event.compactionIndex, reason: event.reason, aborted: "aborted" in event ? event.aborted : undefined, errorMessage: "errorMessage" in event ? event.errorMessage : undefined };
 	return {};
 }
 

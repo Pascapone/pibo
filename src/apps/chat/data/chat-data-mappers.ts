@@ -98,6 +98,20 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 	if (row.type === "message_steered") return { ...base, type: "message_steered", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", activeEventId: stringAttribute(attributes, "activeEventId") } as PiboOutputEvent;
 	if (row.type === "message_started") return { ...base, type: "message_started", text: row.preview_text ?? "" };
 	if (row.type === "message_finished") return { ...base, type: "message_finished" };
+	if (row.type === "assistant_usage") {
+		return compactObject({
+			...base,
+			type: "assistant_usage",
+			usageIndex: numberAttribute(attributes, "usageIndex"),
+			inputTokens: numberAttribute(attributes, "inputTokens"),
+			outputTokens: numberAttribute(attributes, "outputTokens"),
+			cacheReadTokens: numberAttribute(attributes, "cacheReadTokens"),
+			cacheWriteTokens: numberAttribute(attributes, "cacheWriteTokens"),
+			reasoningTokens: numberAttribute(attributes, "reasoningTokens"),
+			totalTokens: numberAttribute(attributes, "totalTokens") ?? 0,
+			costUsd: numberAttribute(attributes, "costUsd"),
+		}) as PiboOutputEvent;
+	}
 	if (row.type === "thinking_started" || row.type === "thinking_delta" || row.type === "thinking_finished") {
 		return compactObject({
 			...base,
@@ -119,6 +133,8 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 		return { ...base, type: "subagent_session", toolCallId: stringAttribute(attributes, "toolCallId"), toolName, subagentName, childPiboSessionId, threadKey: stringAttribute(attributes, "threadKey") };
 	}
 	if (row.type === "execution_result") return { ...base, type: "execution_result", action: row.preview_text ?? stringAttribute(attributes, "action") ?? "execution", result: inlinePayload ?? null };
+	if (row.type === "compaction_start") return { ...base, type: "compaction_start", compactionIndex: numberAttribute(attributes, "compactionIndex"), reason: stringAttribute(attributes, "reason") ?? row.preview_text ?? "unknown" } as PiboOutputEvent;
+	if (row.type === "compaction_end") return { ...base, type: "compaction_end", compactionIndex: numberAttribute(attributes, "compactionIndex"), reason: stringAttribute(attributes, "reason") ?? row.preview_text ?? "unknown", result: inlinePayload, aborted: booleanAttribute(attributes, "aborted") ?? false, errorMessage: stringAttribute(attributes, "errorMessage") } as PiboOutputEvent;
 	if (row.type === "session_error") {
 		const error = stringAttribute(attributes, "error") ?? row.preview_text ?? "Error";
 		return { ...base, type: "session_error", error, errorDetails: normalizeSessionErrorDetails(error, isRecord(attributes.errorDetails) ? attributes.errorDetails : undefined) } as PiboOutputEvent;
