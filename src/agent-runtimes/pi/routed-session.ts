@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { SessionManager, type AgentSessionRuntime, shouldCompact } from "@earendil-works/pi-coding-agent";
 import type { PiboPluginRegistry } from "../../plugins/registry.js";
 import { PiboSteeringUnavailableError } from "../../core/events.js";
@@ -87,6 +89,21 @@ const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
 	"pibo_run_cancel",
 	"pibo_run_ack",
 ]);
+
+function materializeForkedSession(sessionManager: SessionManager): void {
+	const sessionFile = sessionManager.getSessionFile();
+	const header = sessionManager.getHeader();
+	if (!sessionManager.isPersisted() || !sessionFile || !header || existsSync(sessionFile)) return;
+
+	mkdirSync(dirname(sessionFile), { recursive: true });
+	writeFileSync(
+		sessionFile,
+		`${[header, ...sessionManager.getEntries()].map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+		{ encoding: "utf8", flag: "wx" },
+	);
+	// Reload through the public API so Pi also records that the file is flushed.
+	sessionManager.setSessionFile(sessionFile);
+}
 
 function modelSupportsFastServiceTier(model: ProviderRequestModel | undefined): boolean {
 	if (!model) return false;
@@ -1443,6 +1460,11 @@ export class RoutedSession {
 		this.assertSessionWorkIdle("fork");
 		const previous = this.createSessionSnapshot();
 		const result = await this.runtime.fork(entryId);
+		if (!result.cancelled) {
+			// Pi defers persistence until an assistant message. Materialize an empty
+			// first-message branch so history readers can use its advertised path.
+			materializeForkedSession(this.runtime.session.sessionManager);
+		}
 		return {
 			piboSessionId: this.piboSessionId,
 			previous,
