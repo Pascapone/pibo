@@ -59,6 +59,7 @@ function createCustomAgentBuilder(agent: CustomAgentDefinition): InitialSessionC
 		.withPiPackages(agent.piPackages.map((id) => ({ id })))
 		.withToolPackages({ runControl: agent.runControl, goalControl: agent.goalControl ?? true });
 	if (agent.mainModel) builder.withMainModel(agent.mainModel);
+	builder.withMainModelFallbacks(agent.mainModelFallbacks ?? []);
 	if (agent.subagentModel) builder.withSubagentModel(agent.subagentModel);
 	if (agent.thinkingLevel) builder.withThinkingLevel(agent.thinkingLevel);
 	if (agent.mainThinkingLevel) builder.withMainThinkingLevel(agent.mainThinkingLevel);

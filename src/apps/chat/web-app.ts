@@ -1668,6 +1668,7 @@ const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
 	"mcpServers",
 	"piPackages",
 	"mainModel",
+	"mainModelFallbacks",
 	"subagentModel",
 	"thinkingLevel",
 	"mainThinkingLevel",

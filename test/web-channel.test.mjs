@@ -3561,11 +3561,17 @@ test("chat web app creates custom agents from the native capability catalog", as
 				builtinToolNames: ["read", "bash"],
 				autoContextFiles: false,
 				runControl: true,
+				mainModel: { provider: "openai", id: "gpt-5.6" },
+				mainModelFallbacks: [
+					{ provider: "anthropic", id: "claude-sonnet-5" },
+					{ provider: "moonshot", id: "kimi-k2" },
+				],
 				subagents: [{
 					name: "helper",
 					description: "Research evidence for the parent agent.",
 					targetProfile: "codex-compat-openai-web",
 					model: { provider: "openai", id: "gpt-5.6-mini" },
+					modelFallbacks: [{ provider: "anthropic", id: "claude-haiku-5" }],
 					thinkingLevel: "high",
 				}],
 			}),
@@ -3578,11 +3584,17 @@ test("chat web app creates custom agents from the native capability catalog", as
 		assert.deepEqual(agentPayload.agent.builtinToolNames, ["read", "bash"]);
 		assert.equal(agentPayload.agent.autoContextFiles, false);
 		assert.equal(agentPayload.agent.runControl, true);
+		assert.deepEqual(agentPayload.agent.mainModel, { provider: "openai", id: "gpt-5.6" });
+		assert.deepEqual(agentPayload.agent.mainModelFallbacks, [
+			{ provider: "anthropic", id: "claude-sonnet-5" },
+			{ provider: "moonshot", id: "kimi-k2" },
+		]);
 		assert.deepEqual(agentPayload.agent.subagents, [{
 			name: "helper",
 			description: "Research evidence for the parent agent.",
 			targetProfile: "codex-compat-openai-web",
 			model: { provider: "openai", id: "gpt-5.6-mini" },
+			modelFallbacks: [{ provider: "anthropic", id: "claude-haiku-5" }],
 			thinkingLevel: "high",
 		}]);
 		assert.equal(retiredPartitionField in agentPayload.agent, false);

@@ -13,6 +13,7 @@ export type CustomAgentSubagent = {
 	description?: string;
 	targetProfile: string;
 	model?: ModelProfile;
+	modelFallbacks?: ModelProfile[];
 	thinkingLevel?: PiboThinkingLevel;
 	runtimeOptions?: PiboJsonObject;
 	/** @deprecated Compatibility-only. Does not limit delegated request or yielded-run lifetime. */
@@ -44,6 +45,7 @@ export type CustomAgentDefinition = {
 	mcpServers: string[];
 	piPackages: string[];
 	mainModel?: ModelProfile;
+	mainModelFallbacks: ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	mainThinkingLevel?: PiboThinkingLevel;
@@ -77,6 +79,7 @@ export type CreateCustomAgentInput = {
 	mcpServers?: string[];
 	piPackages?: string[];
 	mainModel?: ModelProfile;
+	mainModelFallbacks?: ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	mainThinkingLevel?: PiboThinkingLevel;
@@ -122,6 +125,7 @@ type AgentRow = {
 	mcp_servers_json: string;
 	pi_packages_json: string;
 	main_model_json: string | null;
+	main_model_fallbacks_json: string;
 	subagent_model_json: string | null;
 	thinking_level: string | null;
 	main_thinking_level: string | null;
@@ -162,6 +166,7 @@ export function previewCustomAgentCreate(
 		mcpServers: uniqueStrings(input.mcpServers ?? []),
 		piPackages: sanitizePiPackages(input.piPackages ?? []),
 		mainModel: sanitizeModelProfile(input.mainModel),
+		mainModelFallbacks: sanitizeModelFallbacks(input.mainModelFallbacks ?? [], input.mainModel),
 		subagentModel: sanitizeModelProfile(input.subagentModel),
 		thinkingLevel: sanitizeThinkingLevel(input.thinkingLevel),
 		mainThinkingLevel: sanitizeThinkingLevel(input.mainThinkingLevel),
@@ -201,6 +206,10 @@ export function previewCustomAgentUpdate(
 		mcpServers: input.mcpServers ? uniqueStrings(input.mcpServers) : existing.mcpServers,
 		piPackages: input.piPackages ? sanitizePiPackages(input.piPackages) : existing.piPackages,
 		mainModel: input.mainModel === undefined ? existing.mainModel : sanitizeModelProfile(input.mainModel),
+		mainModelFallbacks: sanitizeModelFallbacks(
+			input.mainModelFallbacks ?? existing.mainModelFallbacks,
+			input.mainModel === undefined ? existing.mainModel : input.mainModel,
+		),
 		subagentModel: input.subagentModel === undefined ? existing.subagentModel : sanitizeModelProfile(input.subagentModel),
 		thinkingLevel: input.thinkingLevel === undefined ? existing.thinkingLevel : sanitizeThinkingLevel(input.thinkingLevel),
 		mainThinkingLevel: input.mainThinkingLevel === undefined ? existing.mainThinkingLevel : sanitizeThinkingLevel(input.mainThinkingLevel),
@@ -253,6 +262,7 @@ export class CustomAgentStore {
 				mcp_servers_json TEXT NOT NULL DEFAULT '[]',
 				pi_packages_json TEXT NOT NULL DEFAULT '[]',
 				main_model_json TEXT,
+				main_model_fallbacks_json TEXT NOT NULL DEFAULT '[]',
 				subagent_model_json TEXT,
 				thinking_level TEXT,
 				main_thinking_level TEXT,
@@ -280,6 +290,7 @@ export class CustomAgentStore {
 		this.migrateRuntimeColumns();
 		this.migratePiPackagesColumn();
 		this.migrateModelColumns();
+		this.migrateModelFallbackColumns();
 		this.migrateThinkingLevelColumn();
 		this.migrateThinkingOptionColumns();
 		this.migrateBuiltinToolNamesColumn();
@@ -375,6 +386,7 @@ export class CustomAgentStore {
 					mcp_servers_json = ?,
 					pi_packages_json = ?,
 					main_model_json = ?,
+					main_model_fallbacks_json = ?,
 					subagent_model_json = ?,
 					thinking_level = ?,
 					main_thinking_level = ?,
@@ -405,6 +417,7 @@ export class CustomAgentStore {
 				JSON.stringify(updated.mcpServers),
 				JSON.stringify(updated.piPackages),
 				updated.mainModel ? JSON.stringify(updated.mainModel) : null,
+				JSON.stringify(updated.mainModelFallbacks),
 				updated.subagentModel ? JSON.stringify(updated.subagentModel) : null,
 				updated.thinkingLevel ?? null,
 				updated.mainThinkingLevel ?? null,
@@ -463,6 +476,7 @@ export class CustomAgentStore {
 					mcp_servers_json,
 					pi_packages_json,
 					main_model_json,
+					main_model_fallbacks_json,
 					subagent_model_json,
 					thinking_level,
 					main_thinking_level,
@@ -478,7 +492,7 @@ export class CustomAgentStore {
 					created_at,
 					updated_at,
 					archived_at
-				) VALUES (${Array.from({ length: 30 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 31 }, () => "?").join(", ")})
 			`)
 			.run(
 				agent.id,
@@ -496,6 +510,7 @@ export class CustomAgentStore {
 				JSON.stringify(agent.mcpServers),
 				JSON.stringify(agent.piPackages),
 				agent.mainModel ? JSON.stringify(agent.mainModel) : null,
+				JSON.stringify(agent.mainModelFallbacks),
 				agent.subagentModel ? JSON.stringify(agent.subagentModel) : null,
 				agent.thinkingLevel ?? null,
 				agent.mainThinkingLevel ?? null,
@@ -693,6 +708,15 @@ export class CustomAgentStore {
 		}
 		if (!columns.has("subagent_model_json")) {
 			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN subagent_model_json TEXT").run();
+		}
+	}
+
+	private migrateModelFallbackColumns(): void {
+		const columns = new Set(
+			(this.db.prepare("PRAGMA table_info(chat_agents)").all() as Array<{ name: string }>).map((column) => column.name),
+		);
+		if (!columns.has("main_model_fallbacks_json")) {
+			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN main_model_fallbacks_json TEXT NOT NULL DEFAULT '[]'").run();
 		}
 	}
 
@@ -901,6 +925,7 @@ function agentFromRow(row: AgentRow, profileAliases: readonly string[]): CustomA
 		mcpServers: parseStringArray(row.mcp_servers_json),
 		piPackages: parseStringArray(row.pi_packages_json),
 		mainModel: parseModelProfile(row.main_model_json),
+		mainModelFallbacks: parseModelFallbacks(row.main_model_fallbacks_json, row.main_model_json),
 		subagentModel: parseModelProfile(row.subagent_model_json),
 		thinkingLevel: sanitizeThinkingLevel(row.thinking_level),
 		mainThinkingLevel: sanitizeThinkingLevel(row.main_thinking_level),
@@ -1029,6 +1054,28 @@ function sanitizeModelProfile(value: unknown): ModelProfile | undefined {
 	return { provider, id };
 }
 
+function parseModelFallbacks(value: string, primaryValue: string | null): ModelProfile[] {
+	try {
+		return sanitizeModelFallbacks(JSON.parse(value), parseModelProfile(primaryValue));
+	} catch {
+		return [];
+	}
+}
+
+function sanitizeModelFallbacks(value: unknown, primary?: unknown): ModelProfile[] {
+	if (!Array.isArray(value)) return [];
+	const primaryModel = sanitizeModelProfile(primary);
+	const seen = new Set(primaryModel ? [`${primaryModel.provider}\u0000${primaryModel.id}`] : []);
+	return value.flatMap((item) => {
+		const model = sanitizeModelProfile(item);
+		if (!model) return [];
+		const key = `${model.provider}\u0000${model.id}`;
+		if (seen.has(key)) return [];
+		seen.add(key);
+		return [model];
+	});
+}
+
 function sanitizeSubagents(value: unknown[]): CustomAgentSubagent[] {
 	return value.flatMap((item) => {
 		if (!item || typeof item !== "object" || Array.isArray(item)) return [];
@@ -1041,6 +1088,8 @@ function sanitizeSubagents(value: unknown[]): CustomAgentSubagent[] {
 		if (typeof candidate.description === "string") subagent.description = candidate.description;
 		const model = sanitizeModelProfile(candidate.model);
 		if (model) subagent.model = model;
+		const modelFallbacks = sanitizeModelFallbacks(candidate.modelFallbacks, model);
+		if (modelFallbacks.length > 0) subagent.modelFallbacks = modelFallbacks;
 		const thinkingLevel = sanitizeThinkingLevel(candidate.thinkingLevel);
 		if (thinkingLevel) subagent.thinkingLevel = thinkingLevel;
 		if (candidate.runtimeOptions && typeof candidate.runtimeOptions === "object" && !Array.isArray(candidate.runtimeOptions)) {

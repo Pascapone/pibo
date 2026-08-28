@@ -662,6 +662,7 @@ export class PiboPluginRegistry {
 				piPackages: sessionContext.piPackages.filter((pkg) => pkg.enabled !== false).map((pkg) => pkg.id),
 				model: sessionContext.model ? { ...sessionContext.model } : undefined,
 				mainModel: sessionContext.mainModel ? { ...sessionContext.mainModel } : undefined,
+				mainModelFallbacks: sessionContext.mainModelFallbacks.map((model) => ({ ...model })),
 				subagentModel: sessionContext.subagentModel ? { ...sessionContext.subagentModel } : undefined,
 				thinkingLevel: sessionContext.thinkingLevel,
 				mainThinkingLevel: sessionContext.mainThinkingLevel,

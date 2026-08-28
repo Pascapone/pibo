@@ -18,6 +18,10 @@ test("web gateway registry loads custom agent profiles before channels start", a
 				displayName: "unity-agent",
 				description: "Unity runtime agent",
 				mainModel: { provider: "openai-codex", id: "gpt-5.5" },
+				mainModelFallbacks: [
+					{ provider: "anthropic", id: "claude-sonnet-5" },
+					{ provider: "moonshot", id: "kimi-k2" },
+				],
 				mainThinkingLevel: "xhigh",
 				runControl: true,
 			});
@@ -39,6 +43,10 @@ test("web gateway registry loads custom agent profiles before channels start", a
 		const profile = createPiboProfileFromRegistryOrDefault(registry, "unity-agent");
 		assert.equal(profile.profileName, "unity-agent");
 		assert.deepEqual(profile.mainModel, { provider: "openai-codex", id: "gpt-5.5" });
+		assert.deepEqual(profile.mainModelFallbacks, [
+			{ provider: "anthropic", id: "claude-sonnet-5" },
+			{ provider: "moonshot", id: "kimi-k2" },
+		]);
 		assert.equal(profile.mainThinkingLevel, "xhigh");
 	} finally {
 		await rm(dir, { recursive: true, force: true }).catch((error) => {

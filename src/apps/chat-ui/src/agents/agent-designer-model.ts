@@ -26,6 +26,17 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 		const id = model.id.trim();
 		return provider && id ? { provider, id } : undefined;
 	};
+	const normalizeFallbacks = (models: ModelProfile[] | undefined, primary?: ModelProfile): ModelProfile[] => {
+		const seen = new Set(primary ? [`${primary.provider}\u0000${primary.id}`] : []);
+		return (models ?? []).flatMap((candidate) => {
+			const model = normalizeModel(candidate);
+			if (!model) return [];
+			const key = `${model.provider}\u0000${model.id}`;
+			if (seen.has(key)) return [];
+			seen.add(key);
+			return [model];
+		});
+	};
 	return {
 		displayName: draft.displayName.trim(),
 		description: (draft.description ?? "").trim() || undefined,
@@ -42,12 +53,14 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 			const name = item.name.trim();
 			const targetProfile = item.targetProfile.trim();
 			const model = normalizeModel(item.model);
+			const modelFallbacks = normalizeFallbacks(item.modelFallbacks, model);
 			if (!name || !targetProfile) return [];
 			return [{
 				name,
 				targetProfile,
 				...((item.description ?? "").trim() ? { description: item.description!.trim() } : {}),
 				...(model ? { model } : {}),
+				...(modelFallbacks.length > 0 ? { modelFallbacks } : {}),
 				...(item.thinkingLevel ? { thinkingLevel: item.thinkingLevel } : {}),
 				...(item.runtimeOptions && typeof item.runtimeOptions === "object" && !Array.isArray(item.runtimeOptions)
 					&& Object.keys(item.runtimeOptions).length > 0
@@ -60,6 +73,7 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 		mcpServers: uniqueNames(draft.mcpServers),
 		piPackages: uniqueNames(draft.piPackages),
 		mainModel: normalizeModel(draft.mainModel) ?? null,
+		mainModelFallbacks: normalizeFallbacks(draft.mainModelFallbacks, normalizeModel(draft.mainModel)),
 		subagentModel: normalizeModel(draft.subagentModel) ?? null,
 		thinkingLevel: draft.thinkingLevel ?? null,
 		mainThinkingLevel: draft.mainThinkingLevel ?? null,
@@ -90,6 +104,7 @@ export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new
 		mcpServers: [],
 		piPackages: [],
 		mainModel: undefined,
+		mainModelFallbacks: [],
 		subagentModel: undefined,
 		thinkingLevel: undefined,
 		mainThinkingLevel: undefined,
@@ -154,6 +169,7 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 		mcpServers: agent.mcpServers,
 		piPackages: agent.piPackages ?? [],
 		mainModel: agent.mainModel,
+		mainModelFallbacks: agent.mainModelFallbacks ?? [],
 		subagentModel: agent.subagentModel,
 		thinkingLevel: agent.thinkingLevel,
 		mainThinkingLevel: agent.mainThinkingLevel,
@@ -187,6 +203,7 @@ export function profileToDraft(profile: BootstrapData["agents"][number], catalog
 		mcpServers: profile.mcpServers ?? [],
 		piPackages: profile.piPackages ?? [],
 		mainModel: profile.mainModel ?? profile.model,
+		mainModelFallbacks: profile.mainModelFallbacks ?? [],
 		subagentModel: profile.subagentModel ?? profile.model,
 		thinkingLevel: profile.thinkingLevel,
 		mainThinkingLevel: profile.mainThinkingLevel ?? profile.thinkingLevel,
@@ -277,16 +294,17 @@ export function modelCatalogForRuntime(runtime: AgentRuntimeCatalogEntry | undef
 }
 
 export function compatibleModelSelectionsForRuntime(
-	draft: Pick<AgentDraft, "mainModel" | "subagentModel">,
+	draft: Pick<AgentDraft, "mainModel" | "mainModelFallbacks" | "subagentModel">,
 	runtime: AgentRuntimeCatalogEntry | undefined,
 	legacyPiCatalog?: ModelCatalog,
-): Pick<AgentDraft, "mainModel" | "subagentModel"> {
+): Pick<AgentDraft, "mainModel" | "mainModelFallbacks" | "subagentModel"> {
 	const catalog = modelCatalogForRuntime(runtime, legacyPiCatalog);
 	const isSupported = (model: ModelProfile | undefined): boolean => !model || Boolean(catalog?.providers.some(
 		(provider) => provider.id === model.provider && provider.models.some((entry) => entry.id === model.id),
 	));
 	return {
 		mainModel: isSupported(draft.mainModel) ? draft.mainModel : undefined,
+		mainModelFallbacks: (draft.mainModelFallbacks ?? []).filter((model) => isSupported(model)),
 		subagentModel: isSupported(draft.subagentModel) ? draft.subagentModel : undefined,
 	};
 }

@@ -75,6 +75,7 @@ export type SaveCustomAgentInput = {
 	mcpServers: string[];
 	piPackages: string[];
 	mainModel?: ModelProfile | null;
+	mainModelFallbacks: ModelProfile[];
 	subagentModel?: ModelProfile | null;
 	thinkingLevel?: CustomAgent["thinkingLevel"] | null;
 	mainThinkingLevel?: CustomAgent["mainThinkingLevel"] | null;

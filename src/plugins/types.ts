@@ -82,6 +82,7 @@ export type PiboProfileInfo = {
 	piPackages: string[];
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
+	mainModelFallbacks: ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	mainThinkingLevel?: PiboThinkingLevel;

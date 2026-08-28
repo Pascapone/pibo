@@ -87,7 +87,12 @@ import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
 import { loadPiboGatewaySettings } from "./gateway-settings.js";
 import { loadPiboUserSettings } from "./user-settings.js";
-import { resolvePiboSessionActiveModel } from "./session-model.js";
+import {
+	PIBO_INITIAL_MODEL_FALLBACKS_METADATA_KEY,
+	resolvePiboSessionActiveModel,
+	resolvePiboSessionModelFallbacks,
+	withPiboSessionModelFallbacksMetadata,
+} from "./session-model.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "./thinking.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 import { GatewayWorkAdmissionController } from "./gateway-resource-guard.js";
@@ -242,6 +247,7 @@ function profileForSession(
 		parentSessionId: parentNativeSessionId,
 		model: usesProfileRuntime ? baseProfile.model : undefined,
 		mainModel: usesProfileRuntime ? baseProfile.mainModel : undefined,
+		mainModelFallbacks: usesProfileRuntime ? baseProfile.mainModelFallbacks : undefined,
 		subagentModel: usesProfileRuntime ? baseProfile.subagentModel : undefined,
 		thinkingLevel: baseProfile.thinkingLevel,
 		mainThinkingLevel: baseProfile.mainThinkingLevel,
@@ -1464,6 +1470,9 @@ export class PiboSessionRouter {
 		const activeModel = changesRuntimeModelNamespace
 			? undefined
 			: this.ensureSessionActiveModel(piboSession, sessionProfile, parentModelScopeId, modelDefaults);
+		const modelFallbacks = changesRuntimeModelNamespace
+			? []
+			: this.ensureSessionModelFallbacks(piboSession, sessionProfile, parentModelScopeId, activeModel);
 		const userSettings = loadPiboUserSettings();
 		const telemetryExtension = this.telemetryStore
 			? createPiboProviderTelemetryExtension({ store: this.telemetryStore, writer: this.telemetryWriter, session: piboSession, model: activeModel })
@@ -1606,6 +1615,7 @@ export class PiboSessionRouter {
 						],
 						modelDefaults,
 						initialFastMode,
+						providerFallbacksEnabled: modelFallbacks.length > 0,
 					},
 				},
 			});
@@ -1705,6 +1715,7 @@ export class PiboSessionRouter {
 					this.handleInterruptedRunReminders(messages);
 				},
 				messagePreflight: this.options.messagePreflight,
+				modelFallbacks,
 				getRuntimeAuthStatus: () => runtimeRegistry.getAgentRuntimeAuthStatus(binding.runtimeInstanceId),
 				startRuntimeAuth: async (input) => {
 					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.startAgentRuntimeAuth(binding.runtimeInstanceId, input);
@@ -1869,6 +1880,26 @@ export class PiboSessionRouter {
 			this.sessionStore.update(piboSession.id, { activeModel });
 		}
 		return activeModel;
+	}
+
+	private ensureSessionModelFallbacks(
+		piboSession: PiboSession,
+		profile: InitialSessionContext,
+		parentPiSessionId: string | undefined,
+		activeModel: ModelProfile | undefined,
+	): ModelProfile[] {
+		const modelFallbacks = resolvePiboSessionModelFallbacks({
+			profile,
+			piboSession,
+			parentPiSessionId,
+			activeModel,
+		});
+		if (piboSession.metadata?.[PIBO_INITIAL_MODEL_FALLBACKS_METADATA_KEY] === undefined) {
+			this.sessionStore.update(piboSession.id, {
+				metadata: withPiboSessionModelFallbacksMetadata(piboSession.metadata, modelFallbacks),
+			});
+		}
+		return modelFallbacks;
 	}
 
 	private resolveModelDefaults(): PiboModelDefaults {
@@ -2596,13 +2627,13 @@ export class PiboSessionRouter {
 		}, "subagent");
 		const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
 		if (parentChatRoomId) metadata.chatRoomId = parentChatRoomId;
-		const newSessionMetadata: PiboJsonObject = {
+		const newSessionMetadata: PiboJsonObject = withPiboSessionModelFallbacksMetadata({
 			...metadata,
 			...(subagent.thinkingLevel ? { initialThinkingLevel: subagent.thinkingLevel } : {}),
 			...(subagent.runtimeOptions && Object.keys(subagent.runtimeOptions).length > 0
 				? { initialRuntimeOptions: structuredClone(subagent.runtimeOptions) }
 				: {}),
-		};
+		}, subagent.modelFallbacks ?? []);
 		const existing = this.sessionStore.find({
 			channel: "pibo.subagents",
 			kind: "subagent",
