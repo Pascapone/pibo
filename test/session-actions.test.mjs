@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -266,6 +266,41 @@ test("session fork replaces the active Pi session and can switch back", async ()
 		});
 		assert.equal(switched.type, "execution_result");
 		assert.equal(switched.result.current.sessionFile, before.sessionFile);
+	} finally {
+		await harness.dispose();
+	}
+});
+
+test("Pi fork before the first user message materializes the empty branch transcript", async () => {
+	const harness = await createSessionHarness();
+	try {
+		const ids = seedConversation(harness.routed.runtime);
+		const before = harness.routed.getCurrentSession();
+
+		const forked = await harness.routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:test",
+			action: "session.fork",
+			params: { entryId: ids.firstUserId },
+		});
+
+		assert.equal(forked.type, "execution_result");
+		assert.equal(forked.result.selectedText, "first user turn");
+		const manager = harness.routed.runtime.session.sessionManager;
+		assert.equal(manager.buildSessionContext().messages.length, 0);
+		await access(forked.result.current.sessionFile);
+		const [headerLine] = (await readFile(forked.result.current.sessionFile, "utf8")).trim().split("\n");
+		const header = JSON.parse(headerLine);
+		assert.equal(header.type, "session");
+		assert.equal(header.id, forked.result.current.piSessionId);
+		assert.equal(header.cwd, harness.cwd);
+		assert.equal(header.parentSession, before.sessionFile);
+
+		manager.appendMessage(userMessage("replacement user turn"));
+		manager.appendMessage(assistantMessage("replacement assistant turn"));
+		const persisted = await readFile(forked.result.current.sessionFile, "utf8");
+		assert.match(persisted, /replacement user turn/);
+		assert.match(persisted, /replacement assistant turn/);
 	} finally {
 		await harness.dispose();
 	}
