@@ -333,7 +333,7 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 
 	program
 		.command("setup")
-		.description("Plan user-host installs and developer-host upgrades")
+		.description("Plan and manage supported host installation profiles")
 		.helpOption(false)
 		.allowUnknownOption(true)
 		.allowExcessArguments(true)
@@ -599,7 +599,7 @@ Commands:
   compute      Manage Pibo Docker compute workers
   resources    Inspect and safely reap managed compute and browser resources
   preview      Expose session-linked live development previews
-  setup        Plan user-host installs and developer-host upgrades
+  setup        Plan and manage supported host installation profiles
   skills       Manage Pibo user skills
   cron         Manage scheduled Pibo jobs
   loop         Manage continuous agent loops (goal mode by default)
