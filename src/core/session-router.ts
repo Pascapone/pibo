@@ -63,6 +63,7 @@ import {
 	type PiboSession,
 	type PiboSessionStore,
 } from "../sessions/store.js";
+import { createAgentRuntimeBindingPersistence } from "../sessions/runtime-binding-persistence.js";
 import {
 	createLegacyPiRuntimeSessionBinding,
 	RuntimeSessionBindingConflictError,
@@ -1559,6 +1560,16 @@ export class PiboSessionRouter {
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			throw error;
 		}
+		const bindingSync = { expectedRevision: binding.revision };
+		const runtimeBindingPersistence = createAgentRuntimeBindingPersistence(this.sessionStore, {
+			piboSessionId: piboSession.id,
+			onPersisted: (updated) => {
+				binding = updated;
+				bindingSync.expectedRevision = updated.revision;
+				const updatedSession = this.sessionStore.get(piboSession.id);
+				if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
+			},
+		});
 		let runtimeSession: AgentRuntimeSession;
 		try {
 			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
@@ -1584,6 +1595,7 @@ export class PiboSessionRouter {
 					codeRuntimeToolController,
 					portableTools,
 					resources,
+					...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
 					compatibility: {
 						persistSession: this.options.persistSession,
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
@@ -1644,6 +1656,7 @@ export class PiboSessionRouter {
 				binding = this.persistSessionRuntimeBinding(piboSession, openedBinding, {
 					expectedRevision: binding.revision,
 				});
+				bindingSync.expectedRevision = binding.revision;
 			}
 		} catch (error) {
 			await runtimeSession.dispose().catch(() => {});
@@ -1678,7 +1691,7 @@ export class PiboSessionRouter {
 						queuedMessages: state.queuedMessages,
 					});
 					if (!state.processing && state.queuedMessages === 0 && !state.disposed && !state.sessionIdentityOperationInFlight) {
-						this.syncLiveSessionRuntimeBinding(piboSession.id, runtimeSession);
+						this.syncLiveSessionRuntimeBinding(piboSession.id, runtimeSession, bindingSync);
 						this.scheduleRunReminder(piboSession.id, false);
 					}
 					if (state.disposed || state.processing || state.queuedMessages > 0 || state.sessionIdentityOperationInFlight) this.clearIdleSessionTimer(piboSession.id);
@@ -1774,22 +1787,38 @@ export class PiboSessionRouter {
 		};
 	}
 
-	private syncLiveSessionRuntimeBinding(piboSessionId: string, runtimeSession: { getBinding(): RuntimeSessionBinding }): void {
+	private syncLiveSessionRuntimeBinding(
+		piboSessionId: string,
+		runtimeSession: { getBinding(): RuntimeSessionBinding },
+		state: { expectedRevision: number | undefined },
+	): void {
 		const session = this.sessionStore.get(piboSessionId);
 		if (!session) return;
 		try {
 			const persisted = this.resolveSessionRuntimeBinding(session);
-			this.persistSessionRuntimeBinding(
+			const updated = this.persistSessionRuntimeBinding(
 				session,
 				withPersistedPortableHistoryAuditMetadata(persisted, runtimeSession.getBinding()),
+				{ expectedRevision: state.expectedRevision },
 			);
+			state.expectedRevision = updated.revision;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			const reset = this.resetCachedSession(piboSessionId, "runtime binding synchronization failed");
 			this.emitOutput({
 				type: "session_error",
 				piboSessionId,
 				error: `Failed to persist the live runtime binding: ${message}`,
 				errorDetails: runtimeSessionErrorDetails(message),
+			});
+			void reset.catch((resetError) => {
+				const resetMessage = resetError instanceof Error ? resetError.message : String(resetError);
+				this.emitOutput({
+					type: "session_error",
+					piboSessionId,
+					error: `Failed to discard a runtime after binding synchronization failed: ${resetMessage}`,
+					errorDetails: runtimeSessionErrorDetails(resetMessage),
+				});
 			});
 		}
 	}
@@ -1856,15 +1885,19 @@ export class PiboSessionRouter {
 		const source = this.resolvePiboSession(event.piboSessionId);
 		const previousBinding = this.resolveSessionRuntimeBinding(source);
 		const liveBinding = this.sessions.get(event.piboSessionId)?.getRuntimeBinding();
+		const currentNativeSessionId = result.current.piSessionId || undefined;
 		const currentBinding: RuntimeSessionBinding = {
 			...previousBinding,
 			...liveBinding,
 			piboSessionId: source.id,
-			nativeSessionId: result.current.piSessionId,
-			state: "bound",
-			locator: result.current.sessionFile
+			nativeSessionId: currentNativeSessionId,
+			state: currentNativeSessionId ? "bound" : "unbound",
+			locator: currentNativeSessionId && result.current.sessionFile
 				? { kind: "local-file", value: result.current.sessionFile }
-				: liveBinding?.locator ?? previousBinding.locator,
+				: currentNativeSessionId
+					? liveBinding?.locator ?? previousBinding.locator
+					: undefined,
+			metadata: currentNativeSessionId ? liveBinding?.metadata ?? previousBinding.metadata : undefined,
 		};
 
 		if (event.action === "session.fork" || event.action === "session.clone") {
@@ -1876,10 +1909,9 @@ export class PiboSessionRouter {
 			} catch (error) {
 				transitionError = error;
 			}
-			// The live adapter moved to the derived native session before Pibo
-			// persisted its product identity. Always discard that live handle so
-			// the source cannot keep routing against the derived binding when
-			// persistence fails or the caller retries.
+			// Always discard the source live handle after derivation. Bound native
+			// branches move that handle to the derived session; first-message Codex
+			// branches intentionally leave it on the source and persist unbound.
 			try {
 				await this.resetCachedSession(event.piboSessionId);
 			} catch (resetError) {
@@ -1915,8 +1947,8 @@ export class PiboSessionRouter {
 			runtimeBinding: {
 				runtimeInstanceId: currentBinding.runtimeInstanceId,
 				adapterId: currentBinding.adapterId,
-				nativeSessionId: currentBinding.nativeSessionId ?? result.current.piSessionId,
-				state: "bound",
+				nativeSessionId: currentBinding.nativeSessionId,
+				state: currentBinding.state,
 				protocol: currentBinding.protocol,
 				protocolVersion: currentBinding.protocolVersion,
 				adapterVersion: currentBinding.adapterVersion,

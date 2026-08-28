@@ -1,15 +1,17 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import readline from "node:readline";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { createCodexAppServerStateLock } from "./codex-app-server-state-lock.mjs";
 
 const args = process.argv.slice(2);
 if (args[0] === "--version") {
 	process.stdout.write("codex-cli 0.147.0\n");
 } else {
 	const statePath = join(process.env.CODEX_HOME, "fake-thread-state.json");
+	const { withStateLock } = createCodexAppServerStateLock(statePath);
 	const loadedThreads = {};
 	const activeTurns = {};
 	const threadConfigs = {};
@@ -28,13 +30,26 @@ if (args[0] === "--version") {
 			threadTokenUsage: {},
 			missingRollouts: [],
 			turnRequests: [],
+			turnRequestMessageIds: [],
 			resourceRequests: [],
 			skillRequests: [],
 			injectedItems: [],
 			compactionRequests: [],
 			initializeRequests: [],
+			crashedMessageIds: [],
 		};
-	const save = (state) => writeFileSync(statePath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
+	const writeState = (state) => {
+		const temporaryPath = `${statePath}.${process.pid}.tmp`;
+		writeFileSync(temporaryPath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
+		renameSync(temporaryPath, statePath);
+	};
+	const save = (state) => withStateLock(() => writeState(state));
+	const updateState = (operation) => withStateLock(() => {
+		const state = load();
+		const result = operation(state);
+		writeState(state);
+		return result;
+	});
 	const nextTimestamp = (state) => state.clock++;
 	const clone = (value) => structuredClone(value);
 	const makeThread = (state, id, cwd, overrides = {}) => {
@@ -239,11 +254,12 @@ if (args[0] === "--version") {
 		notify("thread/status/changed", { threadId: active.threadId, status: { type: "active", activeFlags: [] } });
 		notify("turn/started", { threadId: active.threadId, turn: turnSnapshot(active) });
 	};
-	const emitUserItem = (active, text, suffix = "user") => {
+	const emitUserItem = (active, text, suffix = "user", clientId) => {
 		const item = {
 			id: `${active.turnId}-${suffix}`,
 			type: "userMessage",
 			content: [{ type: "text", text }],
+			...(clientId ? { clientId } : {}),
 		};
 		itemStarted(active, item);
 		itemCompleted(active, item);
@@ -373,24 +389,25 @@ if (args[0] === "--version") {
 		return item;
 	};
 	const emitUsage = (active) => {
-		const state = load();
-		state.threadTokenUsage ??= {};
-		const previous = state.threadTokenUsage[active.threadId]?.tokenUsage?.total?.totalTokens ?? 0;
-		const totalTokens = previous + 20;
-		const tokenUsage = {
-			last: { cacheWriteInputTokens: 2, cachedInputTokens: 3, inputTokens: 11, outputTokens: 7, reasoningOutputTokens: 2, totalTokens: 20 },
-			total: {
-				cacheWriteInputTokens: Math.round(totalTokens * 0.1),
-				cachedInputTokens: Math.round(totalTokens * 0.15),
-				inputTokens: Math.round(totalTokens * 0.55),
-				outputTokens: Math.round(totalTokens * 0.35),
-				reasoningOutputTokens: Math.round(totalTokens * 0.1),
-				totalTokens,
-			},
-			modelContextWindow: 200_000,
-		};
-		state.threadTokenUsage[active.threadId] = { turnId: active.turnId, tokenUsage };
-		save(state);
+		const tokenUsage = updateState((state) => {
+			state.threadTokenUsage ??= {};
+			const previous = state.threadTokenUsage[active.threadId]?.tokenUsage?.total?.totalTokens ?? 0;
+			const totalTokens = previous + 20;
+			const usage = {
+				last: { cacheWriteInputTokens: 2, cachedInputTokens: 3, inputTokens: 11, outputTokens: 7, reasoningOutputTokens: 2, totalTokens: 20 },
+				total: {
+					cacheWriteInputTokens: Math.round(totalTokens * 0.1),
+					cachedInputTokens: Math.round(totalTokens * 0.15),
+					inputTokens: Math.round(totalTokens * 0.55),
+					outputTokens: Math.round(totalTokens * 0.35),
+					reasoningOutputTokens: Math.round(totalTokens * 0.1),
+					totalTokens,
+				},
+				modelContextWindow: 200_000,
+			};
+			state.threadTokenUsage[active.threadId] = { turnId: active.turnId, tokenUsage: usage };
+			return usage;
+		});
 		notify("thread/tokenUsage/updated", {
 			threadId: active.threadId,
 			turnId: active.turnId,
@@ -443,20 +460,20 @@ if (args[0] === "--version") {
 		active.pendingServerRequestIds = [];
 	};
 	const persistTurn = (active, status) => {
-		const state = load();
-		const thread = loadedThreads[active.threadId] ?? state.threads[active.threadId];
-		if (!thread) return;
-		active.completedAt = nextTimestamp(state);
-		const fullTurn = turnSnapshot(active, status, active.items);
-		thread.turns = [...thread.turns.filter((turn) => turn.id !== active.turnId), fullTurn];
-		thread.preview ||= active.userText.slice(0, 120);
-		thread.updatedAt = active.completedAt;
-		thread.recencyAt = active.completedAt;
-		thread.status = { type: "idle" };
-		thread.path ??= `/private/fake-codex/${thread.id}.jsonl`;
-		loadedThreads[thread.id] = thread;
-		state.threads[thread.id] = clone(thread);
-		save(state);
+		updateState((state) => {
+			const thread = state.threads[active.threadId] ?? loadedThreads[active.threadId];
+			if (!thread) return;
+			active.completedAt = nextTimestamp(state);
+			const fullTurn = turnSnapshot(active, status, active.items);
+			thread.turns = [...thread.turns.filter((turn) => turn.id !== active.turnId), fullTurn];
+			thread.preview ||= active.userText.slice(0, 120);
+			thread.updatedAt = active.completedAt;
+			thread.recencyAt = active.completedAt;
+			thread.status = { type: "idle" };
+			thread.path ??= `/private/fake-codex/${thread.id}.jsonl`;
+			loadedThreads[thread.id] = thread;
+			state.threads[thread.id] = clone(thread);
+		});
 	};
 	const completeActive = (active, status, finalAssistant) => {
 		if (!active || active.terminal) return;
@@ -480,8 +497,19 @@ if (args[0] === "--version") {
 	const runActive = (active) => {
 		emitTurnStarted(active);
 		notify("turn/started", { threadId: "foreign-thread", turn: turnSnapshot({ ...active, threadId: "foreign-thread", turnId: "foreign-turn" }) });
-		emitUserItem(active, active.userText);
-		if (active.mode.includes("crash") && !active.mode.includes("approval-crash")) {
+		emitUserItem(active, active.userText, "user", active.clientUserMessageId);
+		if (active.mode.includes("crash-once")) {
+			const shouldCrash = updateState((state) => {
+				state.crashedMessageIds ??= [];
+				if (state.crashedMessageIds.includes(active.clientUserMessageId)) return false;
+				state.crashedMessageIds.push(active.clientUserMessageId);
+				return true;
+			});
+			if (shouldCrash) {
+				setImmediate(() => process.exit(17));
+				return;
+			}
+		} else if (active.mode.includes("crash") && !active.mode.includes("approval-crash")) {
 			setImmediate(() => process.exit(17));
 			return;
 		}
@@ -641,7 +669,7 @@ if (args[0] === "--version") {
 	};
 
 	const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-	lines.on("line", (line) => {
+	lines.on("line", (line) => withStateLock(() => {
 		const message = JSON.parse(line);
 		if (message.method === "initialize") {
 			const state = load();
@@ -695,8 +723,10 @@ if (args[0] === "--version") {
 		state.threadSettings ??= {};
 		state.threadTokenUsage ??= {};
 		state.turnRequests ??= [];
+		state.turnRequestMessageIds ??= [];
 		state.resourceRequests ??= [];
 		const params = message.params ?? {};
+		if (message.method === "test/exitWithStateLock") process.exit(23);
 		if (message.method === "test/callMcpTool") {
 			const server = threadConfigs[params.threadId]?.mcp_servers?.[params.server];
 			if (!server || typeof server.url !== "string" || typeof params.tool !== "string") {
@@ -983,6 +1013,10 @@ if (args[0] === "--version") {
 				sandboxPolicy: clone(params.sandboxPolicy ?? null),
 				collaborationMode: clone(params.collaborationMode ?? null),
 			});
+			state.turnRequestMessageIds.push({
+				threadId: params.threadId,
+				clientUserMessageId: params.clientUserMessageId ?? null,
+			});
 			const turnId = `turn-${state.nextTurn++}`;
 			const active = {
 				threadId: params.threadId,
@@ -1024,7 +1058,7 @@ if (args[0] === "--version") {
 			}
 			send({ id: message.id, result: { turnId: active.turnId } });
 			const text = inputText(params.input);
-			emitUserItem(active, text, `steer-${active.eventSequence}`);
+			emitUserItem(active, text, `steer-${active.eventSequence}`, params.clientUserMessageId);
 			if (active.mode.includes("steer")) {
 				const finalAssistant = emitAssistant(active, "Steered answer.");
 				emitUsage(active);
@@ -1098,6 +1132,6 @@ if (args[0] === "--version") {
 			return;
 		}
 		send({ id: message.id, result: {} });
-	});
+	}));
 	lines.on("close", () => process.exit(0));
 }

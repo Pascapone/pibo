@@ -5,6 +5,14 @@ export type AgentRuntimeAdapterId = string;
 export type AgentRuntimeInstanceId = string;
 export type AgentRuntimeBindingState = "unbound" | "bound" | "missing" | "error";
 
+export const PENDING_NATIVE_SESSION_METADATA_KEY = "piboPendingNativeSession";
+
+export function hasPendingNativeSession(binding: RuntimeSessionBinding): boolean {
+	return binding.state === "unbound"
+		&& Boolean(binding.nativeSessionId)
+		&& binding.metadata?.[PENDING_NATIVE_SESSION_METADATA_KEY] === true;
+}
+
 export type AgentRuntimeBindingLocator = {
 	kind: "local-file" | "local-directory" | "uri" | "remote" | "adapter-resolved";
 	value?: string;

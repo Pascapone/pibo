@@ -12,6 +12,7 @@ import type {
 	AgentRuntimeAdapter,
 	AgentRuntimeAuthOperationResult,
 	AgentRuntimeAuthStatus,
+	AgentRuntimeBindingPersistence,
 	CancelAgentRuntimeAuthInput,
 	CompleteAgentRuntimeAuthInput,
 	AgentRuntimeDiagnostic,
@@ -31,7 +32,9 @@ import type {
 	StartAgentRuntimeAuthInput,
 	ValidateAgentRuntimeProfileInput,
 } from "../../agent-runtime/types.js";
+import { isAgentRuntimeBindingPersistence } from "../../sessions/runtime-binding-persistence.js";
 import type { PiboJsonObject } from "../../core/events.js";
+import { PENDING_NATIVE_SESSION_METADATA_KEY } from "../../sessions/runtime-binding.js";
 import {
 	selectRequestedFastMode,
 	selectRequestedModelProfile,
@@ -81,10 +84,106 @@ import {
 } from "./models.js";
 import { CodexNativeAuthController } from "./auth.js";
 import { injectPortableHistoryIntoCodex } from "./portable-history.js";
+import {
+	CODEX_FIRST_USE_METADATA_KEY,
+	CODEX_FIRST_USE_METADATA_VERSION,
+	assertCodexNativeFirstUseMessageId,
+	assertCodexNativeFirstUseDeliveryReceiptTurn,
+	assertCodexNativePendingFirstUseRequest,
+	assertCodexNativePendingFirstUseTurn,
+	beginCodexNativeFirstUseAttempt,
+	codexNativeFirstUseDeliveryReceipt,
+	codexNativePendingFirstUseOwnerLiveness,
+	endCodexNativeFirstUseAttempt,
+	hashCanonicalCodexNativeFirstUsePrompt,
+	isExactCodexNativeFirstUseDeliveryReplay,
+	readCodexNativeFirstUseDeliveryReceipt,
+	readCodexNativePendingFirstUse,
+	type CodexNativeFirstUseDeliveryReceipt,
+	type CodexNativePendingFirstUse,
+} from "./first-use.js";
 
 export { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
 
 export const CODEX_NATIVE_ADAPTER_VERSION = "1.0.0";
+
+function readPendingFirstUse(binding: RuntimeSessionBinding): CodexNativePendingFirstUse | undefined {
+	try {
+		return readCodexNativePendingFirstUse(binding);
+	} catch (error) {
+		throw new AgentRuntimeUnavailableError(
+			binding.runtimeInstanceId,
+			error instanceof Error ? error.message : "The pending native Codex first-use metadata is invalid.",
+		);
+	}
+}
+
+function readFirstUseDeliveryReceipt(
+	binding: RuntimeSessionBinding,
+): CodexNativeFirstUseDeliveryReceipt | undefined {
+	try {
+		return readCodexNativeFirstUseDeliveryReceipt(binding);
+	} catch (error) {
+		throw new AgentRuntimeUnavailableError(
+			binding.runtimeInstanceId,
+			error instanceof Error ? error.message : "The delivered native Codex first-use receipt is invalid.",
+		);
+	}
+}
+
+function deliveryReceiptForBinding(
+	binding: RuntimeSessionBinding,
+): CodexNativeFirstUseDeliveryReceipt | undefined {
+	if (binding.metadata?.[CODEX_FIRST_USE_METADATA_KEY] === undefined) return undefined;
+	if (binding.state === "unbound") {
+		const pending = readPendingFirstUse(binding);
+		return pending ? codexNativeFirstUseDeliveryReceipt(pending) : undefined;
+	}
+	return readFirstUseDeliveryReceipt(binding);
+}
+
+function pendingFirstUseBinding(
+	binding: RuntimeSessionBinding,
+	threadId: string,
+	messageId: string,
+	promptHash: string,
+	owner: Pick<CodexNativePendingFirstUse, "attemptId" | "ownerPid" | "ownerProcessStartId" | "ownerProcessInstanceId">,
+): RuntimeSessionBinding {
+	return {
+		...structuredClone(binding),
+		nativeSessionId: threadId,
+		state: "unbound",
+		protocol: CODEX_APP_SERVER_PROTOCOL_NAME,
+		protocolVersion: CODEX_APP_SERVER_VERSION,
+		adapterVersion: CODEX_NATIVE_ADAPTER_VERSION,
+		locator: { kind: "adapter-resolved" },
+		metadata: {
+			...(binding.metadata ?? {}),
+			[PENDING_NATIVE_SESSION_METADATA_KEY]: true,
+			[CODEX_FIRST_USE_METADATA_KEY]: {
+				version: CODEX_FIRST_USE_METADATA_VERSION,
+				state: "pending",
+				threadId,
+				messageId,
+				promptHash,
+				...owner,
+			},
+		},
+	};
+}
+
+function clearPendingFirstUse(binding: RuntimeSessionBinding): RuntimeSessionBinding {
+	const metadata = { ...(binding.metadata ?? {}) };
+	delete metadata[CODEX_FIRST_USE_METADATA_KEY];
+	delete metadata[PENDING_NATIVE_SESSION_METADATA_KEY];
+	return {
+		...structuredClone(binding),
+		nativeSessionId: undefined,
+		state: "unbound",
+		locator: undefined,
+		metadata,
+	};
+}
 
 function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapabilities {
 	return {
@@ -191,12 +290,15 @@ function safeThreadMetadata(
 	thread: CodexAppServerThread,
 	previous: PiboJsonObject = {},
 	settings: PiboJsonObject = {},
+	deliveryReceipt?: CodexNativeFirstUseDeliveryReceipt,
 ): PiboJsonObject {
 	const {
 		diagnosticCode: _diagnosticCode,
 		diagnosticMessage: _diagnosticMessage,
 		...metadata
 	} = previous;
+	delete metadata[CODEX_FIRST_USE_METADATA_KEY];
+	delete metadata[PENDING_NATIVE_SESSION_METADATA_KEY];
 	return {
 		...metadata,
 		...settings,
@@ -206,6 +308,7 @@ function safeThreadMetadata(
 		threadUpdatedAt: timestamp(thread.updatedAt),
 		threadStatus: thread.status.type,
 		modelProvider: thread.modelProvider,
+		...(deliveryReceipt ? { [CODEX_FIRST_USE_METADATA_KEY]: deliveryReceipt } : {}),
 	};
 }
 
@@ -216,6 +319,7 @@ function bindingForThread(input: {
 	thread: CodexAppServerThread;
 	settings?: PiboJsonObject;
 }): RuntimeSessionBinding {
+	const deliveryReceipt = input.previous ? deliveryReceiptForBinding(input.previous) : undefined;
 	return {
 		...(input.previous ? structuredClone(input.previous) : {}),
 		piboSessionId: input.piboSessionId,
@@ -227,7 +331,7 @@ function bindingForThread(input: {
 		protocolVersion: CODEX_APP_SERVER_VERSION,
 		adapterVersion: CODEX_NATIVE_ADAPTER_VERSION,
 		locator: { kind: "adapter-resolved" },
-		metadata: safeThreadMetadata(input.thread, input.previous?.metadata, input.settings),
+		metadata: safeThreadMetadata(input.thread, input.previous?.metadata, input.settings, deliveryReceipt),
 	};
 }
 
@@ -258,8 +362,31 @@ function validateOpenBinding(
 	if (binding.state === "bound" && !binding.nativeSessionId) {
 		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "The persisted Codex binding has no native thread id.");
 	}
+	if (binding.state === "bound") readFirstUseDeliveryReceipt(binding);
 	if (binding.state === "unbound" && binding.nativeSessionId) {
-		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "An unbound Codex binding cannot contain a native thread id.");
+		const pending = readPendingFirstUse(binding);
+		const hasCurrentPendingMarker = binding.metadata?.[PENDING_NATIVE_SESSION_METADATA_KEY] === true;
+		const isExactParentLegacyPending = pending?.version === 1
+			&& binding.metadata?.[PENDING_NATIVE_SESSION_METADATA_KEY] === undefined;
+		if (
+			!pending
+			|| pending.threadId !== binding.nativeSessionId
+			|| (!hasCurrentPendingMarker && !isExactParentLegacyPending)
+			|| input.piboSession.kind !== "branch"
+		) {
+			throw new AgentRuntimeUnavailableError(runtimeInstanceId, "An unbound Codex binding contains an invalid pending native thread identity.");
+		}
+		if (isExactParentLegacyPending) {
+			return {
+				...binding,
+				metadata: {
+					...(binding.metadata ?? {}),
+					[PENDING_NATIVE_SESSION_METADATA_KEY]: true,
+				},
+			};
+		}
+	} else if (binding.state === "unbound" && binding.metadata?.[CODEX_FIRST_USE_METADATA_KEY] !== undefined) {
+		throw new AgentRuntimeUnavailableError(runtimeInstanceId, "An unbound Codex binding contains pending metadata without a native thread identity.");
 	}
 	return binding;
 }
@@ -308,6 +435,8 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		private readonly structuredUserInput: boolean,
 		private readonly reloadProcess: CodexNativeProcessReloader,
 		private readonly productContext?: AgentRuntimeProductContext,
+		private readonly bindingPersistence?: AgentRuntimeBindingPersistence,
+		private readonly firstUseTestFailpoints?: CodexNativeFirstUseTestFailpoints,
 	) {
 		this.process = process;
 		this.threads = threads;
@@ -329,8 +458,10 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 					entryId,
 					async (threadId) => await this.resourceDelivery.verifyThread(this.process.client, threadId),
 				);
-				this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
-				this.updateBindingFromCurrentThread();
+				if (result.current.nativeSessionId) {
+					this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
+					this.promoteBindingFromCurrentThread();
+				}
 				return result;
 			}),
 			cloneSession: async () => await this.runIdleOperation(async () => {
@@ -340,7 +471,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 					async (threadId) => await this.resourceDelivery.verifyThread(this.process.client, threadId),
 				);
 				this.settings.attachThread(this.threads.thread.id, this.threads.configuration);
-				this.updateBindingFromCurrentThread();
+				this.promoteBindingFromCurrentThread();
 				return result;
 			}),
 			getReasoning: () => this.settings.reasoning,
@@ -370,7 +501,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 					});
 				}
 				await this.turns.compact();
-				this.updateBindingFromCurrentThread();
+				this.refreshBoundBindingFromCurrentThread();
 				return {
 					native: true,
 					method: "thread/compact/start",
@@ -400,7 +531,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 	}
 
 	getBinding(): RuntimeSessionBinding {
-		this.updateBindingFromCurrentThread();
+		this.refreshBoundBindingFromCurrentThread();
 		return structuredClone(this.binding);
 	}
 
@@ -415,14 +546,26 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		await this.ensureFreshResourcesForTurn();
 		this.assertIdle();
 		this.operationInFlight = true;
+		let ownedFirstUseAttempt: string | undefined;
 		try {
+			const firstUse = await this.acquirePendingFirstUse(
+				this.productContext?.getActiveMessage?.()?.id ?? randomUUID(),
+				input.text,
+			);
+			ownedFirstUseAttempt = firstUse.attemptId;
+			if (!firstUse.startTurn) return;
+			await this.firstUseTestFailpoints?.afterPendingBindingPersisted?.();
 			await this.turns.start(
 				input.text,
-				this.productContext?.getActiveMessage?.()?.id ?? randomUUID(),
+				firstUse.messageId,
 				this.settings.turnOptions,
 			);
-			this.updateBindingFromCurrentThread();
+			await this.firstUseTestFailpoints?.afterNativeTerminalDurable?.();
+			const pending = this.binding.state === "unbound" ? readPendingFirstUse(this.binding) : undefined;
+			if (pending) assertCodexNativePendingFirstUseTurn(pending, this.threads.thread);
+			this.promoteBindingFromCurrentThread();
 		} finally {
+			if (ownedFirstUseAttempt) endCodexNativeFirstUseAttempt(ownedFirstUseAttempt);
 			this.operationInFlight = false;
 			if (this.recycleProcessAfterInterruptedTurn && !this.disposed) {
 				this.recycleProcessAfterInterruptedTurn = false;
@@ -655,7 +798,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			this.requests = this.createRequestController(next.process);
 			previousRequests.dispose();
 			previousTurns.dispose();
-			this.updateBindingFromCurrentThread();
+			this.refreshBoundBindingFromCurrentThread();
 			this.resourceProcessUnavailable = false;
 			this.resourceWarning = undefined;
 			next = undefined;
@@ -700,7 +843,77 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		}
 	}
 
-	private updateBindingFromCurrentThread(): void {
+	private refreshBoundBindingFromCurrentThread(): void {
+		if (this.binding.state !== "bound") return;
+		this.promoteBindingFromCurrentThread();
+	}
+
+	private async acquirePendingFirstUse(messageId: string, prompt: string): Promise<{
+		attemptId?: string;
+		messageId: string;
+		startTurn: boolean;
+	}> {
+		if (this.binding.state !== "unbound") {
+			const receipt = readFirstUseDeliveryReceipt(this.binding);
+			if (!receipt || !isExactCodexNativeFirstUseDeliveryReplay(receipt, messageId, prompt)) {
+				return { messageId, startTurn: true };
+			}
+			const firstTurn = assertCodexNativeFirstUseDeliveryReceiptTurn(receipt, this.threads.thread);
+			this.turns.replayTerminalTurn(firstTurn);
+			return { messageId: receipt.messageId, startTurn: false };
+		}
+		assertCodexNativeFirstUseMessageId(messageId);
+		const promptHash = hashCanonicalCodexNativeFirstUsePrompt(prompt);
+		const currentPending = readPendingFirstUse(this.binding);
+		if (currentPending && this.threads.thread.turns.length > 0) {
+			assertCodexNativePendingFirstUseTurn(currentPending, this.threads.thread);
+			assertCodexNativePendingFirstUseRequest(currentPending, messageId, prompt);
+			this.promoteBindingFromCurrentThread();
+			return { messageId: currentPending.messageId, startTurn: false };
+		}
+		if (currentPending) {
+			const ownerLiveness = codexNativePendingFirstUseOwnerLiveness(currentPending);
+			if (ownerLiveness === "active") {
+				throw new Error("Native Codex first use is already owned by another live router.");
+			}
+			if (ownerLiveness === "ambiguous") {
+				throw new Error("Native Codex first-use ownership is ambiguous and cannot be replaced safely.");
+			}
+			assertCodexNativePendingFirstUseRequest(currentPending, messageId, prompt);
+		}
+		if (!isAgentRuntimeBindingPersistence(this.bindingPersistence)) {
+			throw new Error("Native Codex first use requires audited durable cross-process atomic runtime-binding CAS before turn/start.");
+		}
+		const owner = beginCodexNativeFirstUseAttempt();
+		const proposed = pendingFirstUseBinding(
+			this.binding,
+			this.threads.thread.id,
+			messageId,
+			promptHash,
+			owner,
+		);
+		try {
+			const expectedRevision = this.binding.revision ?? 1;
+			const persisted = await this.bindingPersistence.compareAndSet(proposed, expectedRevision);
+			const pending = readPendingFirstUse(persisted);
+			if (
+				persisted.revision !== expectedRevision + 1
+				|| persisted.state !== "unbound"
+				|| persisted.nativeSessionId !== proposed.nativeSessionId
+				|| !pending
+				|| JSON.stringify(pending) !== JSON.stringify(readPendingFirstUse(proposed))
+			) {
+				throw new Error("Runtime-binding persistence returned an inconsistent Codex first-use claim.");
+			}
+			this.binding = structuredClone(persisted);
+			return { attemptId: owner.attemptId, messageId, startTurn: true };
+		} catch (error) {
+			endCodexNativeFirstUseAttempt(owner.attemptId);
+			throw error;
+		}
+	}
+
+	private promoteBindingFromCurrentThread(): void {
 		this.binding = bindingForThread({
 			piboSessionId: this.binding.piboSessionId,
 			runtimeInstanceId: this.runtimeInstanceId,
@@ -726,6 +939,12 @@ type CodexNativeCompatibilityServices = {
 	thinkingLevel?: string;
 	modelDefaults?: PiboModelDefaults;
 	initialFastMode?: boolean;
+	testOnlyFirstUseFailpoints?: CodexNativeFirstUseTestFailpoints;
+};
+
+type CodexNativeFirstUseTestFailpoints = {
+	afterPendingBindingPersisted?: () => void | Promise<void>;
+	afterNativeTerminalDurable?: () => void | Promise<void>;
 };
 
 export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
@@ -874,6 +1093,17 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
 		const binding = validateOpenBinding(input, this.instanceId);
+		const activeFirstMessage = input.productContext.getActiveMessage?.();
+		const messageStartsLazyFirstUse = binding.state === "unbound"
+			&& input.piboSession.kind === "branch"
+			&& input.historyHandoff?.mode !== "import"
+			&& Boolean(activeFirstMessage?.id);
+		if (messageStartsLazyFirstUse && !isAgentRuntimeBindingPersistence(input.services?.runtimeBindingPersistence)) {
+			throw new AgentRuntimeUnavailableError(
+				this.instanceId,
+				"Native Codex first use requires audited durable cross-process atomic runtime-binding CAS before thread/start.",
+			);
+		}
 		const sessionGeneration = input.services?.resources?.sessionGeneration
 			?? input.services?.portableTools?.sessionGeneration
 			?? randomUUID();
@@ -950,9 +1180,13 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					? { developerInstructions: resourceDelivery.developerInstructions }
 					: {}),
 			};
+			const pendingFirstUse = binding.state === "unbound" ? readPendingFirstUse(binding) : undefined;
+			const deliveryReceipt = binding.state === "bound" ? readFirstUseDeliveryReceipt(binding) : undefined;
+			let sessionBinding = binding;
+			let pendingTerminalVerified = false;
 			let threads: CodexNativeThreadController;
 			try {
-				threads = binding.state === "bound"
+				threads = binding.state === "bound" || pendingFirstUse
 					? await CodexNativeThreadController.resume(
 						process.client,
 						binding.nativeSessionId!,
@@ -961,8 +1195,47 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					)
 					: await CodexNativeThreadController.start(process.client, input.workspace, threadSelection);
 			} catch (error) {
-				if (error instanceof CodexNativeThreadMissingError || !resourceDelivery.hasMcpServers) throw error;
-				throw new Error("Codex could not initialize every selected MCP server.");
+				if (pendingFirstUse && error instanceof CodexNativeThreadMissingError) {
+					const ownerLiveness = codexNativePendingFirstUseOwnerLiveness(pendingFirstUse);
+					if (ownerLiveness === "active") {
+						throw new AgentRuntimeUnavailableError(
+							this.instanceId,
+							"Native Codex first use is owned by another live router and is not yet restart-reconcilable.",
+						);
+					}
+					if (ownerLiveness === "ambiguous") {
+						throw new AgentRuntimeUnavailableError(
+							this.instanceId,
+							"Native Codex first-use ownership is ambiguous; the pending identity was retained.",
+						);
+					}
+					threads = await CodexNativeThreadController.start(process.client, input.workspace, threadSelection);
+					sessionBinding = clearPendingFirstUse(binding);
+				} else {
+					if (error instanceof CodexNativeThreadMissingError || !resourceDelivery.hasMcpServers) throw error;
+					throw new Error("Codex could not initialize every selected MCP server.");
+				}
+			}
+			if (pendingFirstUse && threads.thread.turns.length > 0) {
+				try {
+					assertCodexNativePendingFirstUseTurn(pendingFirstUse, threads.thread);
+					pendingTerminalVerified = true;
+				} catch (error) {
+					throw new AgentRuntimeUnavailableError(
+						this.instanceId,
+						error instanceof Error ? error.message : "The pending native Codex first turn cannot be verified.",
+					);
+				}
+			}
+			if (deliveryReceipt) {
+				try {
+					assertCodexNativeFirstUseDeliveryReceiptTurn(deliveryReceipt, threads.thread);
+				} catch (error) {
+					throw new AgentRuntimeUnavailableError(
+						this.instanceId,
+						error instanceof Error ? error.message : "The delivered native Codex first turn cannot be verified.",
+					);
+				}
 			}
 			if (input.historyHandoff?.mode === "import") {
 				if (binding.state === "bound") {
@@ -972,22 +1245,38 @@ export class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			}
 			settings.attachThread(threads.thread.id, threads.configuration);
 			await resourceDelivery.verifyThread(process.client, threads.thread.id);
+			const lazyFirstMessageBranch = sessionBinding.state === "unbound"
+				&& input.piboSession.kind === "branch"
+				&& input.historyHandoff?.mode !== "import";
+			const openedBinding = lazyFirstMessageBranch
+				? pendingTerminalVerified
+					? bindingForThread({
+						piboSessionId: input.piboSession.id,
+						runtimeInstanceId: this.instanceId,
+						previous: sessionBinding,
+						thread: threads.thread,
+						settings: settings.bindingMetadata,
+					})
+					: sessionBinding
+				: bindingForThread({
+					piboSessionId: input.piboSession.id,
+					runtimeInstanceId: this.instanceId,
+					previous: sessionBinding,
+					thread: threads.thread,
+					settings: settings.bindingMetadata,
+				});
 			return new CodexNativeThreadSession(
 				this.instanceId,
 				process,
 				threads,
 				settings,
 				resourceDelivery,
-				bindingForThread({
-					piboSessionId: input.piboSession.id,
-					runtimeInstanceId: this.instanceId,
-					previous: binding,
-					thread: threads.thread,
-					settings: settings.bindingMetadata,
-				}),
+				openedBinding,
 				this.config.experimentalUserInput,
 				async () => await startProcessBundle(`${sessionGeneration}-credential-${randomUUID()}`),
 				input.productContext,
+				input.services?.runtimeBindingPersistence,
+				compatibility?.testOnlyFirstUseFailpoints,
 			);
 		} catch (error) {
 			settings?.dispose();

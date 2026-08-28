@@ -16,6 +16,8 @@ import {
 } from "../dist/agent-runtimes/codex-native/adapter.js";
 import { parseCodexNativeRuntimeConfig } from "../dist/agent-runtimes/codex-native/config.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
+import { createAgentRuntimeBindingPersistence } from "../dist/sessions/runtime-binding-persistence.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 import { definePiboTool } from "../dist/tools/contract.js";
 import { PiboPortableToolService } from "../dist/tools/session-service.js";
@@ -64,12 +66,39 @@ function binding(instanceId, piboSessionId, previous) {
 	};
 }
 
-function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBinding, portableTools, resources }) {
+function openInput({
+	instanceId,
+	piboSessionId,
+	workspace,
+	profile,
+	runtimeBinding,
+	portableTools,
+	resources,
+	kind = "chat",
+	testContext,
+	getActiveMessage = () => ({ id: "resource-message", source: "user" }),
+}) {
+	let runtimeBindingPersistence;
+	if (kind === "branch") {
+		assert.ok(testContext, "branch resource tests require a cleanup context");
+		const store = new PiboDataSessionStore(":memory:");
+		store.create({
+			id: piboSessionId,
+			channel: "test",
+			kind,
+			profile: profile.profileName,
+			workspace,
+			runtimeBinding,
+		});
+		testContext.after(() => store.close());
+		runtimeBindingPersistence = createAgentRuntimeBindingPersistence(store, { piboSessionId });
+		assert.ok(runtimeBindingPersistence);
+	}
 	return {
 		piboSession: createPiboSession({
 			id: piboSessionId,
 			channel: "test",
-			kind: "chat",
+			kind,
 			profile: profile.profileName,
 			workspace,
 			runtimeBinding,
@@ -79,9 +108,13 @@ function openInput({ instanceId, piboSessionId, workspace, profile, runtimeBindi
 		workspace,
 		productContext: {
 			piboSessionId,
-			getActiveMessage: () => ({ id: "resource-message", source: "user" }),
+			getActiveMessage,
 		},
-		services: { portableTools, resources },
+		services: {
+			portableTools,
+			resources,
+			...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
+		},
 	};
 }
 
@@ -554,6 +587,7 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 	const tracked = trackedPortableSession(base, accesses);
 	let issued = 0;
 	let rejectedRenewals = 0;
+	let allowPostPromptMaintenance = false;
 	const portable = {
 		...tracked,
 		async issueMcpAccess(options) {
@@ -564,7 +598,10 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 			return access;
 		},
 		renewMcpAccess(token, ttlMs) {
-			if (rejectedRenewals < 2) {
+			if (issued === 2 && !allowPostPromptMaintenance) {
+				return { ...accesses[1], expiresAt: new Date(Date.now() + 100).toISOString() };
+			}
+			if (rejectedRenewals < 3) {
 				rejectedRenewals += 1;
 				throw new Error("fixture renewal boundary");
 			}
@@ -572,6 +609,7 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 		},
 	};
 	const runtimeBinding = binding(instanceId, "ps_codex_resource_rollover");
+	let activeMessageId = "resource-message";
 	const session = await registry.openSession(instanceId, openInput({
 		instanceId,
 		piboSessionId: "ps_codex_resource_rollover",
@@ -580,25 +618,48 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 		runtimeBinding,
 		portableTools: portable,
 		resources: undefined,
+		kind: "branch",
+		testContext: t,
+		getActiveMessage: () => ({ id: activeMessageId, source: "user" }),
 	}));
 	t.after(async () => session.dispose());
 	const initialClient = getCodexNativeClient(session);
-	const initialThreadId = session.getBinding().nativeSessionId;
+	const initialThreadId = session.controls.getCurrentSession().nativeSessionId;
+	assert.equal(session.getBinding().state, "unbound");
+	assert.equal(session.getBinding().nativeSessionId, undefined);
 	await waitFor(() => accesses.length === 2 && getCodexNativeClient(session) !== initialClient);
-	assert.notEqual(session.getBinding().nativeSessionId, initialThreadId);
+	assert.notEqual(session.controls.getCurrentSession().nativeSessionId, initialThreadId);
+	assert.equal(session.getBinding().state, "unbound");
+	assert.equal(session.getBinding().nativeSessionId, undefined);
 	const secondClient = getCodexNativeClient(session);
-	await session.prompt({ text: "materialize rollover thread", source: "rpc" });
+	const prePromptState = await secondClient.request("test/getState", {});
+	const prePromptResourceRequests = prePromptState.resourceRequests.filter((request) =>
+		request.method === "thread/start" || request.method === "thread/resume");
+	assert.ok(prePromptResourceRequests.filter((request) => request.method === "thread/start").length >= 2);
+	assert.equal(prePromptResourceRequests.filter((request) => request.method === "thread/resume").length, 0);
+	const firstPrompt = session.prompt({ text: "hold steer materialize rollover thread", source: "rpc" });
+	await waitFor(() => session.getStatus().streaming);
+	allowPostPromptMaintenance = true;
+	await waitFor(() => rejectedRenewals === 2);
+	await session.steer({ text: "complete synchronized rollover boundary", source: "rpc" });
+	await firstPrompt;
 	await expectCredentialRevoked(accesses[0]);
 	const durableThreadId = session.getBinding().nativeSessionId;
-	await waitFor(() => accesses.length === 3 && getCodexNativeClient(session) !== secondClient);
+	assert.match(durableThreadId, /^thread-/);
+	await waitFor(() => accesses.length === 3 && getCodexNativeClient(session) !== secondClient, 10_000);
+	activeMessageId = "resource-followup-message";
 	await session.prompt({ text: "verify resumed rollover thread", source: "rpc" });
 	assert.equal(session.getBinding().nativeSessionId, durableThreadId);
 	assert.equal(session.getStatus().warnings.length, 0);
 	await expectCredentialRevoked(accesses[1]);
 	assert.equal(await callAlpha(accesses[2], "fresh"), "rolled:fresh");
 	const state = await getCodexNativeClient(session).request("test/getState", {});
-	assert.equal(state.resourceRequests.filter((request) => request.method === "thread/start").length, 2);
-	assert.equal(state.resourceRequests.filter((request) => request.method === "thread/resume").length, 1);
+	const startRequests = state.resourceRequests.filter((request) => request.method === "thread/start");
+	const resumeRequests = state.resourceRequests.filter((request) => request.method === "thread/resume");
+	assert.ok(startRequests.length >= prePromptResourceRequests.length);
+	assert.deepEqual(resumeRequests.map((request) => request.threadId), [durableThreadId]);
+	assert.ok(state.turnRequests.length >= 1);
+	assert.ok(state.turnRequests.every((request) => request.threadId === durableThreadId));
 	await session.dispose();
 	await expectCredentialRevoked(accesses[2]);
 	portable.dispose();
