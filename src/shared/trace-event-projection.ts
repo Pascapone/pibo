@@ -543,7 +543,6 @@ function traceNodeFromEvent(
 		}
 		case "message_started":
 		case "message_finished":
-			if (event.source === "service") return undefined;
 			return {
 				...base,
 				id: eventId ? messageTurnNodeId(eventId) : id,
