@@ -20,6 +20,14 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 					builder.addSkill(context.getSkill(skillName));
 				} catch (error) {
 					if (!isUnknownSkillError(error, skillName)) throw error;
+					const message = `Unknown skill "${skillName}" referenced by custom agent "${agent.profileName}"`;
+					builder.addDiagnostic({
+						severity: "warning",
+						code: "custom_agent_unknown_skill",
+						message,
+						resourceKind: "skill",
+						resourceName: skillName,
+					});
 					if (shouldWarnMissingReferences) console.warn(`Skipping unknown skill "${skillName}" for custom agent "${agent.profileName}"`);
 				}
 			}
@@ -28,6 +36,14 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 					builder.addContextFile(context.getContextFile(contextFileKey));
 				} catch (error) {
 					if (!isUnknownContextFileError(error, contextFileKey)) throw error;
+					const message = `Unknown context file "${contextFileKey}" referenced by custom agent "${agent.profileName}"`;
+					builder.addDiagnostic({
+						severity: "warning",
+						code: "custom_agent_unknown_context_file",
+						message,
+						resourceKind: "context-file",
+						resourceName: contextFileKey,
+					});
 					if (shouldWarnMissingReferences) console.warn(`Skipping unknown context file "${contextFileKey}" for custom agent "${agent.profileName}"`);
 				}
 			}

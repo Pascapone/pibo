@@ -19,6 +19,7 @@ import {
 	buildContextFileDiff,
 	ContextFileMetadataStore,
 	hashContextFileContent,
+	readContextFileCatalog,
 	type ContextFileDiffChunk,
 	type ContextFileLinkState,
 	type StoredContextFileRecord,
@@ -273,7 +274,7 @@ function labelFromManagedPath(path: string): string {
 	return words.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function profileForManaged(file: StoredContextFileRecord): ContextFileProfile {
+function profileForManaged(file: Pick<StoredContextFileRecord, "key" | "label" | "managedPath" | "scope" | "agentProfileName">): ContextFileProfile {
 	return {
 		key: file.key,
 		label: file.label,
@@ -1195,6 +1196,54 @@ function createContextFilesWebApp(service: ContextFileService) {
 			return undefined;
 		},
 	};
+}
+
+export function createPiboContextFilesCatalogPlugin(options: ContextFilesPluginOptions = {}): PiboPlugin {
+	const paths = resolveContextFilesPaths(options);
+	return definePiboPlugin({
+		id: "pibo.context-files-catalog",
+		name: "Pibo Context Files Catalog",
+		register(api) {
+			const registeredPaths = new Set<string>();
+			const registeredKeys = new Set<string>();
+			try {
+				for (const file of readContextFileCatalog(paths.metadataPath)) {
+					api.upsertContextFile(profileForManaged(file));
+					registeredPaths.add(resolve(file.managedPath));
+					registeredKeys.add(file.key);
+				}
+			} catch (error) {
+				console.warn(`[pibo] Skipping managed context-file catalog registration: ${error instanceof Error ? error.message : String(error)}`);
+			}
+
+			let entries: Array<{ name: string; isFile(): boolean }> = [];
+			try {
+				entries = readdirSync(paths.globalDir, { withFileTypes: true });
+			} catch (error) {
+				const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : undefined;
+				if (code !== "ENOENT") {
+					console.warn(`[pibo] Skipping global context-file discovery: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}
+			const usedKeys = new Set(registeredKeys);
+			for (const entry of entries) {
+				if (!entry.isFile()) continue;
+				const extension = extname(entry.name).toLowerCase();
+				if (extension !== ".md" && extension !== ".markdown") continue;
+				const path = resolve(paths.globalDir, entry.name);
+				if (registeredPaths.has(path)) continue;
+				const key = uniqueKey(`ctx:${slugSegment(entry.name.slice(0, -extension.length) || entry.name)}`, usedKeys);
+				usedKeys.add(key);
+				api.upsertContextFile({
+					key,
+					label: labelFromManagedPath(entry.name),
+					path,
+					source: "managed",
+					scope: "global",
+				});
+			}
+		},
+	});
 }
 
 export function createPiboContextFilesPlugin(options: ContextFilesPluginOptions = {}): PiboPlugin {

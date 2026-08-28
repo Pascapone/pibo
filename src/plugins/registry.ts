@@ -657,6 +657,7 @@ export class PiboPluginRegistry {
 				nativeTools: sessionContext.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.name),
 				skills: sessionContext.skills.filter((skill) => skill.enabled !== false).map((skill) => skill.name),
 				contextFiles: sessionContext.contextFiles.filter((contextFile) => contextFile.enabled !== false).map(contextFileKey),
+				diagnostics: sessionContext.diagnostics.map((diagnostic) => ({ ...diagnostic })),
 				subagents: sessionContext.subagents.filter((subagent) => subagent.enabled !== false),
 				mcpServers: [...sessionContext.mcpServers],
 				piPackages: sessionContext.piPackages.filter((pkg) => pkg.enabled !== false).map((pkg) => pkg.id),

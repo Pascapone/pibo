@@ -233,6 +233,7 @@ function cloneProfileForPiSession(input: OpenAgentRuntimeSessionInput): InitialS
 		mcpServers: profile.mcpServers,
 		piPackages: profile.piPackages,
 		contextFiles: profile.contextFiles,
+		diagnostics: profile.diagnostics,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,

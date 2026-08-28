@@ -517,6 +517,10 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 
 		const resourceLoader = services.resourceLoader;
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
+			...profile.diagnostics.map((diagnostic) => ({
+				type: diagnostic.severity,
+				message: `[${diagnostic.code}] ${diagnostic.message}`,
+			})),
 			...piPackageOptions.diagnostics,
 			...services.diagnostics,
 			...collectResourceDiagnostics(resourceLoader.getSkills().diagnostics),
@@ -628,6 +632,7 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 		mcpServers: profile.mcpServers,
 		piPackages: profile.piPackages,
 		contextFiles: profile.contextFiles,
+		diagnostics: profile.diagnostics,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,

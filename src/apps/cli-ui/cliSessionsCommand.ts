@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import React from "react";
 import { render } from "ink";
-import { createCustomAgentProfileDefinition } from "../../apps/chat/agent-profiles.js";
 import { createDefaultCustomAgentStore } from "../../apps/chat/agent-store.js";
 import { createDefaultFakeCliSessionSource, LocalCliSessionSource, type CliRoomSummary, type CliSessionSource, type LocalCliSessionRouter } from "../../cli-session/index.js";
 import type { PiboEventListener, PiboInputEvent, PiboOutputEvent, PiboSessionStatus } from "../../core/events.js";
 import { PiboSessionRouter } from "../../core/session-router.js";
 import { PiboDataStore } from "../../data/pibo-store.js";
 import { createDefaultPiboPluginRegistry } from "../../plugins/builtin.js";
+import { registerPiboUserProfileResources } from "../../plugins/user-profile-resources.js";
 import { PiboDataSessionStore } from "../../sessions/pibo-data-store.js";
 import { cliCommandSummaryText, InkSessionApp } from "./InkSessionApp.js";
 
@@ -87,13 +87,10 @@ function createLocalCliSessionSourceContext(): { dataStore: PiboDataStore; sessi
 	const sessionStore = new PiboDataSessionStore(dataStore);
 	const pluginRegistry = createDefaultPiboPluginRegistry();
 	const builtInAgentSummaries = pluginRegistry.getProfileInfos().map((profile) => ({ id: profile.name, name: profile.name, description: profile.description, profileName: profile.name }));
+	registerPiboUserProfileResources(pluginRegistry, { contextFilesMode: "catalog" });
 	const customAgentStore = createDefaultCustomAgentStore();
 	const customAgents = customAgentStore.list();
-	try {
-		for (const agent of customAgents) pluginRegistry.upsertProfile(createCustomAgentProfileDefinition(agent, { missingReferenceMode: "silent" }));
-	} finally {
-		customAgentStore.close();
-	}
+	customAgentStore.close();
 	const agentSummaries = [
 		...builtInAgentSummaries,
 		...customAgents.map((agent) => ({ id: agent.profileName, name: agent.profileName, description: agent.description || agent.displayName, profileName: agent.profileName })),

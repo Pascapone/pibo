@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import {
 	PIBO_CONFIG_KEYS,
@@ -12,16 +12,12 @@ import {
 } from "./config/config.js";
 import type { PiboRuntimeOptions } from "./core/runtime.js";
 import { parsePiboThinkingLevel } from "./core/thinking.js";
-import { ensurePrivatePiboHome, piboHomePath } from "./core/pibo-home.js";
+import { ensurePrivatePiboHome } from "./core/pibo-home.js";
 
 async function resolveCliProfile(profileName?: string) {
-	const { createDefaultPiboPluginRegistry, createGatewayProducerPiboProfile, createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
-	const registry = createDefaultPiboPluginRegistry();
-	const chatAgentStorePath = piboHomePath("chat-agents.sqlite");
-	if (existsSync(chatAgentStorePath)) {
-		const { createPiboChatCustomAgentProfilesPlugin } = await import("./plugins/chat-custom-agents.js");
-		registry.registerPlugin(createPiboChatCustomAgentProfilesPlugin({ agentStorePath: chatAgentStorePath }));
-	}
+	const { createGatewayProducerPiboProfile, createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
+	const { createDefaultPiboUserProfileRegistry } = await import("./plugins/user-profile-resources.js");
+	const registry = createDefaultPiboUserProfileRegistry();
 	const profile = profileName === "gateway-producer" || profileName === "pibo-gateway-producer"
 		? createGatewayProducerPiboProfile()
 		: createPiboProfileFromRegistryOrDefault(registry, profileName);

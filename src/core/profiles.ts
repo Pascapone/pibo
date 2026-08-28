@@ -105,6 +105,14 @@ export type ToolPackageProfile = {
 	goalControl?: boolean;
 };
 
+export type PiboProfileDiagnostic = {
+	severity: "warning" | "error";
+	code: string;
+	message: string;
+	resourceKind?: "skill" | "context-file";
+	resourceName?: string;
+};
+
 export type ModelProfile = {
 	provider: string;
 	id: string;
@@ -161,6 +169,7 @@ export type InitialSessionContextOptions = {
 	mcpServers?: readonly string[];
 	piPackages?: readonly PiPackageProfile[];
 	contextFiles?: readonly ContextFileProfile[];
+	diagnostics?: readonly PiboProfileDiagnostic[];
 	builtinTools?: BuiltinToolsMode;
 	builtinToolNames?: readonly string[];
 	autoContextFiles?: boolean;
@@ -190,6 +199,7 @@ export class InitialSessionContext {
 	readonly mcpServers: readonly string[];
 	readonly piPackages: readonly PiPackageProfile[];
 	readonly contextFiles: readonly ContextFileProfile[];
+	readonly diagnostics: readonly PiboProfileDiagnostic[];
 	readonly builtinTools: BuiltinToolsMode;
 	readonly builtinToolNames: readonly string[];
 	readonly autoContextFiles: boolean;
@@ -218,6 +228,7 @@ export class InitialSessionContext {
 		this.mcpServers = [...(options.mcpServers ?? [])];
 		this.piPackages = [...(options.piPackages ?? [])];
 		this.contextFiles = [...(options.contextFiles ?? [])];
+		this.diagnostics = (options.diagnostics ?? []).map((diagnostic) => ({ ...diagnostic }));
 		this.builtinTools = options.builtinTools ?? "default";
 		this.builtinToolNames = [...(options.builtinToolNames ?? DEFAULT_BUILTIN_TOOL_NAMES)];
 		this.autoContextFiles = options.autoContextFiles ?? true;
@@ -248,6 +259,7 @@ export class InitialSessionContextBuilder {
 	private mcpServers: string[] = [];
 	private piPackages: PiPackageProfile[] = [];
 	private contextFiles: ContextFileProfile[] = [];
+	private diagnostics: PiboProfileDiagnostic[] = [];
 	private builtinTools: BuiltinToolsMode = "default";
 	private builtinToolNames: string[] = [...DEFAULT_BUILTIN_TOOL_NAMES];
 	private autoContextFiles = true;
@@ -409,6 +421,16 @@ export class InitialSessionContextBuilder {
 		return this;
 	}
 
+	addDiagnostic(diagnostic: PiboProfileDiagnostic): this {
+		this.diagnostics.push({ ...diagnostic });
+		return this;
+	}
+
+	addDiagnostics(diagnostics: readonly PiboProfileDiagnostic[]): this {
+		this.diagnostics.push(...diagnostics.map((diagnostic) => ({ ...diagnostic })));
+		return this;
+	}
+
 	createSession(): InitialSessionContext {
 		return new InitialSessionContext({
 			profileName: this.profileName,
@@ -432,6 +454,7 @@ export class InitialSessionContextBuilder {
 			mcpServers: this.mcpServers,
 			piPackages: this.piPackages,
 			contextFiles: this.contextFiles,
+			diagnostics: this.diagnostics,
 			builtinTools: this.builtinTools,
 			builtinToolNames: this.builtinToolNames,
 			autoContextFiles: this.autoContextFiles,

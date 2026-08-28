@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
   DEFAULT_PIBO_PROFILE_NAME,
-  createDefaultPiboPluginRegistry,
   resolvePiboProfileNameFromRegistryOrDefault,
 } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
+import { createDefaultPiboUserProfileRegistry } from "../plugins/user-profile-resources.js";
 import { createDefaultPiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import type { PiboSession, PiboSessionStore } from "../sessions/store.js";
 import type {
@@ -116,7 +116,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       options.ownsSessionStore ?? options.sessionStore === undefined;
     this.roomProvider = options.roomProvider;
     this.pluginRegistry =
-      options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+      options.pluginRegistry ?? createDefaultPiboUserProfileRegistry();
     this.router = options.router;
     this.ownsRouter = options.ownsRouter ?? false;
     this.unsubscribeRouter = this.router?.subscribe((event) =>
