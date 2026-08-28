@@ -1111,7 +1111,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 		if (!selectedPiboSessionId || !bootstrap || profile === defaultProfileFromBootstrap(bootstrap)) return;
 		try {
 			await patchSession(selectedPiboSessionId, { profile });
-			setPreferredNewSessionProfile(profile);
 			const data = await loadBootstrap(selectedPiboSessionId, showArchivedRef.current, selectedRoomId ?? undefined);
 			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
 			await refreshTrace(selectedPiboSessionId);
@@ -1119,7 +1118,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
 		}
-	}, [area, bootstrap, loadBootstrap, navigateToSelectedSession, refreshTrace, selectedPiboSessionId, selectedRoomId, setPreferredNewSessionProfile]);
+	}, [area, bootstrap, loadBootstrap, navigateToSelectedSession, refreshTrace, selectedPiboSessionId, selectedRoomId]);
 
 	const slashCommands = useMemo(() => buildSlashCommands(bootstrap?.capabilities.actions ?? []), [bootstrap]);
 	const skills = useMemo(() => availableSkillsForSession(bootstrap, selectedPiboSessionId), [bootstrap, selectedPiboSessionId]);
@@ -1629,7 +1628,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 						initialAgentFolders={bootstrap.agentFolders}
 						initialCatalog={bootstrap.agentCatalog}
 						modelCatalog={bootstrap.modelCatalog}
-						onSelect={setPreferredNewSessionProfile}
 						onCreateSession={(profile) => void createSession(profile)}
 						onEditContextFile={openContextFileEditor}
 						onEditMcpServer={openMcpToolsEditor}
