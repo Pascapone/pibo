@@ -151,7 +151,15 @@ The `files` whitelist in `package.json` controls what is published:
 - `docs/ops/**` — operator runbooks.
 - `README.md` and `src/mcp/LICENSE.mcp-cli`.
 
-The `.vsix` is **not** in the npm package. It lives on the GitHub Release and (after the maintainer uploads it) on the VS Code Marketplace.
+The `.vsix` is **not** in the npm package. The `package.json#files` whitelist explicitly excludes `dist/apps/vscode-artifacts/**` even when the release workflow creates the versioned VSIX and `latest.vsix` before `npm publish`. Those files remain in the workspace for GitHub Release and Marketplace upload.
+
+Verify the package boundary before publishing:
+
+```bash
+npm pack --dry-run --json --ignore-scripts | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk).on("end", () => { const files = JSON.parse(input)[0].files.map(file => file.path); if (files.some(file => file.startsWith("dist/apps/vscode-artifacts/"))) process.exit(1); })'
+```
+
+The VSIX lives on the GitHub Release and (after the maintainer uploads it) on the VS Code Marketplace.
 
 ## Why the WebView bundle is in the npm package
 
