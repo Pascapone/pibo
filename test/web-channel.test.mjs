@@ -1347,6 +1347,67 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 	}
 });
 
+test("public trace routes fail closed when persisted timing evidence exceeds the SQL bound", async () => {
+	const startedAt = new Date().toISOString();
+	const assistantAt = new Date(Date.parse(startedAt) + 1_000).toISOString();
+	const capabilities = fakeRuntimeCapabilities();
+	const entries = [
+		{ id: "native-overflow-user", historyPosition: "overflow:0", type: "message", source: "native", createdAt: startedAt, turnId: "runtime-overflow", nativeTurnId: "runtime-overflow", nativeEntryId: "overflow-user", role: "user", content: "overflow prompt" },
+		{ id: "native-overflow-assistant", historyPosition: "overflow:1", type: "message", source: "native", createdAt: assistantAt, turnId: "runtime-overflow", nativeTurnId: "runtime-overflow", nativeEntryId: "overflow-assistant", role: "assistant", content: "overflow answer", status: "complete" },
+	];
+	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		async emit() { throw new Error("message input is not used"); },
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("codex-native", { adapterId: "codex-native", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async readSessionRuntimeHistory() {
+			return {
+				runtimeInstanceId: "codex-native",
+				adapterId: "codex-native",
+				source: "native",
+				entries,
+				reconciliationProof: { complete: true, entries },
+				hasMore: false,
+			};
+		},
+	});
+	try {
+		const source = sessions.create({ channel: "pibo.chat-web", kind: "chat", profile: "default" });
+		const branch = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "branch",
+			profile: "codex-native",
+			originId: source.id,
+			runtimeBinding: { runtimeInstanceId: "codex-native", adapterId: "codex-native", nativeSessionId: "overflow-thread", state: "bound", protocol: "codex-app-server" },
+		});
+		for (let index = 0; index < 501; index += 1) {
+			emitOutput({
+				type: "message_started",
+				piboSessionId: branch.id,
+				eventId: index === 0 ? "stable-overflow" : `noise-${index}`,
+				text: index === 0 ? "overflow prompt" : `noise ${index}`,
+				source: "user",
+			});
+		}
+		await new Promise((resolve) => setImmediate(resolve));
+		for (const path of ["/api/chat/trace", "/api/chat/trace/timeline?limit=50"]) {
+			const separator = path.includes("?") ? "&" : "?";
+			const response = await fetch(`${baseURL}${path}${separator}piboSessionId=${encodeURIComponent(branch.id)}`, { headers: { "x-test-user": "user-1" } });
+			assert.equal(response.status, 200);
+			const payload = await response.json();
+			const nativeMessages = (path.includes("timeline") ? payload.nodes : flattenTraceResponseNodes(payload.nodes))
+				.filter((node) => node.nativeTurnId === "runtime-overflow" && (node.type === "user.message" || node.type === "assistant.message"));
+			assert.equal(nativeMessages.length, 2);
+			assert.ok(nativeMessages.every((node) => node.eventId === "runtime-overflow"));
+			assert.ok(nativeMessages.every((node) => node.eventId !== "stable-overflow"));
+		}
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("origin branch older native-history pages reconcile repeated prompts by start time", async () => {
 	const oldStartedAt = "2026-08-27T12:00:00.000Z";
 	const newStartedAt = "2026-08-27T13:00:00.000Z";

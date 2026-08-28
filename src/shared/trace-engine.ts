@@ -23,6 +23,7 @@ import {
 	type TraceChildSession,
 } from "./trace-subagent-links.js";
 import { projectHistoryEntries, traceNodesFromHistoryEntries } from "./trace-history.js";
+import { TRACE_RECONCILIATION_TIMING_CAP } from "./trace-limits.js";
 export { isRunStartToolNode } from "./trace-async-agent-runs.js";
 export {
 	assistantMessageNodeId,
@@ -74,9 +75,15 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	const events = dedupeTraceEvents(input.events);
 	const allEntries = input.historyEntries ?? [];
 	const openHistoryEventIds = findOpenTranscriptEventIds(events, sessionStatus);
-	const turnTimings = mergeMessageTurnTimings(input.turnTimings ?? [], messageTurnTimingsFromEvents(events));
-	const entries = projectHistoryEntries(allEntries, sessionStatus, openHistoryEventIds, turnTimings, input.historyReconciliationProof);
-	const nodes = traceNodesFromHistoryEntries(input.session.id, entries, turnTimings, input.historyReconciliationProof);
+	const suppliedTurnTimings = input.turnTimings ?? [];
+	const eventTurnTimings = messageTurnTimingsFromEvents(events);
+	const timingOverflow = suppliedTurnTimings.length + eventTurnTimings.length > TRACE_RECONCILIATION_TIMING_CAP;
+	const turnTimings = timingOverflow
+		? []
+		: mergeMessageTurnTimings(suppliedTurnTimings, eventTurnTimings);
+	const historyTurnTimings = timingOverflow ? [...suppliedTurnTimings, ...eventTurnTimings] : turnTimings;
+	const entries = projectHistoryEntries(allEntries, sessionStatus, openHistoryEventIds, historyTurnTimings, input.historyReconciliationProof);
+	const nodes = traceNodesFromHistoryEntries(input.session.id, entries, historyTurnTimings, input.historyReconciliationProof);
 	reconcileTranscriptUserMessages(nodes, events, turnTimings);
 	const byId = mapTraceNodesById(nodes);
 	const childByParent = mapTraceChildSessionsByParent(input.sessions ?? []);

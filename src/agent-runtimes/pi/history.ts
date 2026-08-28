@@ -12,6 +12,7 @@ import type {
 	InspectAgentRuntimeHistoryInput,
 	ReadAgentRuntimeHistoryInput,
 } from "../../agent-runtime/history.js";
+import { TRACE_RECONCILIATION_ENTRY_CAP } from "../../shared/trace-limits.js";
 
 export type PiHistoryMetadata = {
 	sessionPath?: string;
@@ -143,10 +144,26 @@ export async function readPiAgentRuntimeHistory(
 		beforeTimestamp: input.beforeTimestamp ?? decoded.beforeTimestamp,
 		limit: input.limit,
 	});
-	const entries = piSessionEntriesToAgentRuntimeHistoryEntries(page.entries, page.entryPositions);
+	const historyScopeId = `pi:${runtimeInstanceId}:${input.binding.nativeSessionId ?? "unbound"}`;
 	const completeProof = inspection.sizeBytes !== undefined && inspection.sizeBytes <= PI_HISTORY_SCAN_MAX_BYTES
-		? readPiTranscriptEntriesWithPositions(inspection.locator.value, PI_HISTORY_SCAN_MAX_BYTES)
+		? readPiTranscriptEntriesWithPositions(
+			inspection.locator.value,
+			PI_HISTORY_SCAN_MAX_BYTES,
+			TRACE_RECONCILIATION_ENTRY_CAP,
+		)
 		: undefined;
+	const proofEntries = completeProof
+		? piSessionEntriesToAgentRuntimeHistoryEntries(completeProof.entries, completeProof.entryPositions, historyScopeId)
+		: undefined;
+	const proofEntriesByPosition = proofEntries
+		? new Map(proofEntries.map((entry) => [entry.historyPosition, entry]))
+		: undefined;
+	const entries = proofEntriesByPosition
+		? page.entryPositions.flatMap((position) => {
+			const entry = proofEntriesByPosition.get(position);
+			return entry ? [entry] : [];
+		})
+		: piSessionEntriesToAgentRuntimeHistoryEntries(page.entries, page.entryPositions, historyScopeId);
 	return {
 		runtimeInstanceId,
 		adapterId: "pi",
@@ -154,9 +171,8 @@ export async function readPiAgentRuntimeHistory(
 		entries,
 		reconciliationProof: {
 			complete: Boolean(completeProof),
-			entries: completeProof
-				? piSessionEntriesToAgentRuntimeHistoryEntries(completeProof.entries, completeProof.entryPositions)
-				: entries,
+			scopeId: historyScopeId,
+			entries: proofEntries ?? entries,
 		},
 		orderOffset: page.startByte,
 		nextCursor: page.hasOlder && page.nextBeforeByte !== undefined
@@ -170,6 +186,7 @@ export async function readPiAgentRuntimeHistory(
 export function piSessionEntriesToAgentRuntimeHistoryEntries(
 	entries: readonly SessionEntry[],
 	historyPositions: readonly string[] = [],
+	historyScopeId?: string,
 ): AgentRuntimeHistoryEntry[] {
 	const normalized: AgentRuntimeHistoryEntry[] = [];
 	let nativeTurnId: string | undefined;
@@ -184,6 +201,7 @@ export function piSessionEntriesToAgentRuntimeHistoryEntries(
 				createdAt: entry.timestamp,
 				sequence,
 				...(historyPosition ? { historyPosition } : {}),
+				...(historyScopeId ? { historyScopeId } : {}),
 				nativeEntryId: entry.id,
 				name: entry.name,
 			});
@@ -200,6 +218,7 @@ export function piSessionEntriesToAgentRuntimeHistoryEntries(
 				createdAt: entry.timestamp,
 				sequence,
 				...(historyPosition ? { historyPosition } : {}),
+				...(historyScopeId ? { historyScopeId } : {}),
 				nativeTurnId,
 				nativeEntryId: entry.id,
 				role: "user",
@@ -216,6 +235,7 @@ export function piSessionEntriesToAgentRuntimeHistoryEntries(
 				createdAt: entry.timestamp,
 				sequence,
 				...(historyPosition ? { historyPosition } : {}),
+				...(historyScopeId ? { historyScopeId } : {}),
 				nativeTurnId,
 				nativeEntryId: entry.id,
 				role: "assistant",
@@ -244,6 +264,7 @@ export function piSessionEntriesToAgentRuntimeHistoryEntries(
 				createdAt: entry.timestamp,
 				sequence,
 				...(historyPosition ? { historyPosition } : {}),
+				...(historyScopeId ? { historyScopeId } : {}),
 				nativeTurnId,
 				nativeEntryId: entry.id,
 				role: "tool",
@@ -387,6 +408,7 @@ export function readPiTranscriptHistoryPage(
 function readPiTranscriptEntriesWithPositions(
 	path: string,
 	maxBytes: number,
+	maxEntries: number,
 ): { entries: SessionEntry[]; entryPositions: string[] } | undefined {
 	if (statSync(path).size > maxBytes) return undefined;
 	const content = readFileSync(path);
@@ -399,6 +421,7 @@ function readPiTranscriptEntriesWithPositions(
 		const line = content.subarray(lineStart, cursor).toString("utf8");
 		const parsed = parseTranscriptLine(line);
 		for (let parsedIndex = 0; parsedIndex < parsed.length; parsedIndex += 1) {
+			if (entries.length >= maxEntries) return undefined;
 			entries.push(parsed[parsedIndex]!);
 			entryPositions.push(`pi-byte:${lineStart}:${parsedIndex}`);
 		}

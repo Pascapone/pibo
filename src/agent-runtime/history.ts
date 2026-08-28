@@ -36,6 +36,8 @@ export type AgentRuntimeHistoryMessageEntry = {
 	sequence?: number;
 	/** Adapter-stable position in the native history, independent of page slicing. */
 	historyPosition?: string;
+	/** Adapter-owned provenance binding this entry to one reconciliation scope. */
+	historyScopeId?: string;
 	turnId?: string;
 	nativeTurnId?: string;
 	nativeEntryId?: string;
@@ -60,6 +62,8 @@ export type AgentRuntimeHistorySessionInfoEntry = {
 	sequence?: number;
 	/** Adapter-stable position in the native history, independent of page slicing. */
 	historyPosition?: string;
+	/** Adapter-owned provenance binding this entry to one reconciliation scope. */
+	historyScopeId?: string;
 	nativeEntryId?: string;
 	name: string;
 	metadata?: PiboJsonObject;
@@ -77,6 +81,8 @@ export type AgentRuntimeHistoryEntry =
  */
 export type AgentRuntimeHistoryReconciliationProof = {
 	complete: boolean;
+	/** Adapter-owned scope shared by every entry in a production proof/page. */
+	scopeId?: string;
 	entries: readonly AgentRuntimeHistoryEntry[];
 };
 

@@ -4,6 +4,7 @@ import type { ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import { messageTurnTimingsFromEvents, type TraceMessageTurnTiming } from "../../../shared/trace-event-projection.js";
 import { storedChatEventFromV2Row, storedPiboEventFromV2Row, type EventLogRow } from "./chat-data-mappers.js";
+import { TRACE_RECONCILIATION_TIMING_CAP } from "../../../shared/trace-limits.js";
 
 export class ChatTimelineQueryService {
 	constructor(private readonly store: PiboDataStore) {}
@@ -34,7 +35,9 @@ export class ChatTimelineQueryService {
 			WHERE session_id = ?
 				AND type IN ('message_queued', 'message_steered', 'message_started', 'message_finished', 'session_error', 'thinking_finished', 'assistant_message')
 			ORDER BY session_sequence ASC, stream_id ASC
-		`).all(piboSessionId) as EventLogRow[];
+			LIMIT ?
+		`).all(piboSessionId, TRACE_RECONCILIATION_TIMING_CAP + 1) as EventLogRow[];
+		if (rows.length > TRACE_RECONCILIATION_TIMING_CAP) return [];
 		const events = rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
 		return messageTurnTimingsFromEvents(events);
 	}
@@ -73,8 +76,7 @@ export class ChatTimelineQueryService {
 		nodeId: string;
 		payloadKind: "output";
 	}): boolean {
-		if (!input.nodeId.startsWith("tool:")) return false;
-		const toolCallId = input.nodeId.slice("tool:".length);
+		const toolCallId = toolCallIdFromTraceNodeId(input.nodeId);
 		if (!toolCallId) return false;
 		const payload = this.store.payloads.getPayload(input.payloadId);
 		if (!payload) return false;
@@ -136,5 +138,22 @@ export class ChatTimelineQueryService {
 		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 		const row = this.store.db.prepare(`SELECT MAX(stream_id) AS stream_id FROM event_log ${where}`).get(...values) as { stream_id: number | null } | undefined;
 		return row?.stream_id ?? undefined;
+	}
+}
+
+function toolCallIdFromTraceNodeId(nodeId: string): string | undefined {
+	if (nodeId.startsWith("tool:")) return nodeId.slice("tool:".length) || undefined;
+	if (!nodeId.startsWith("history-tool:")) return undefined;
+	try {
+		const decoded = JSON.parse(decodeURIComponent(nodeId.slice("history-tool:".length))) as unknown;
+		return Array.isArray(decoded)
+			&& decoded.length === 2
+			&& typeof decoded[0] === "string"
+			&& decoded[0].length > 0
+			&& typeof decoded[1] === "string"
+			? decoded[0]
+			: undefined;
+	} catch {
+		return undefined;
 	}
 }
