@@ -9,9 +9,19 @@ import {
 	readPiTranscriptHistoryPage,
 } from "../dist/agent-runtimes/pi/history.js";
 import { readOmpHistory } from "../dist/agent-runtimes/omp/history.js";
-import { buildTraceViewFromEvents, flattenTraceNodes } from "../dist/shared/trace-engine.js";
+import { PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
+import { buildTraceViewFromEvents as buildRuntimeNeutralTraceView, flattenTraceNodes } from "../dist/shared/trace-engine.js";
+import { isBuiltInHistoryReconciliationProof } from "../dist/agent-runtimes/history-proof.js";
 import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
+import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
+
+function buildTraceViewFromEvents(input) {
+	return buildRuntimeNeutralTraceView({
+		...input,
+		historyReconciliationAuthoritative: isBuiltInHistoryReconciliationProof(input.historyReconciliationProof),
+	});
+}
 
 function binding(nativeSessionId, locator) {
 	return {
@@ -72,7 +82,20 @@ test("Pi history provider resolves, paginates, and normalizes native JSONL behin
 		assert.ok(inspection.sizeBytes > 0);
 		assert.equal(typeof inspection.version, "string");
 
-		const firstPage = await readPiAgentRuntimeHistory("pi", { ...input, limit: 2 });
+		const directFirstPage = await readPiAgentRuntimeHistory("pi", { ...input, limit: 2 });
+		const directView = buildTraceViewFromEvents({
+			session: { id: "ps_history", piSessionId: nativeSessionId },
+			events: [],
+			historyEntries: directFirstPage.entries,
+			historyReconciliationProof: directFirstPage.reconciliationProof,
+			turnTimings: [{ eventId: "stable-pi-history", userText: "first", startedAt: "2026-08-15T00:00:01.000Z", completedAt: "2026-08-15T00:00:04.000Z" }],
+		});
+		assert.ok(flattenTraceNodes(directView.nodes)
+			.filter((node) => node.type === "assistant.message" || node.toolCallId === "tool-1")
+			.every((node) => node.eventId !== "stable-pi-history"));
+
+		const adapter = PI_AGENT_RUNTIME_DRIVER.create({ instanceId: "pi", enabled: true, config: {} });
+		const firstPage = await adapter.readHistory({ ...input, limit: 2 });
 		assert.equal(firstPage.source, "native");
 		assert.equal(firstPage.entries.length, 2);
 		assert.equal(firstPage.entries[0].type, "message");
@@ -100,7 +123,7 @@ test("Pi history provider resolves, paginates, and normalizes native JSONL behin
 			.filter((node) => node.type === "assistant.message" || node.toolCallId === "tool-1")
 			.every((node) => node.eventId === "stable-pi-history"));
 
-		const secondPage = await readPiAgentRuntimeHistory("pi", { ...input, cursor: firstPage.nextCursor, limit: 10 });
+		const secondPage = await adapter.readHistory({ ...input, cursor: firstPage.nextCursor, limit: 10 });
 		assert.deepEqual(secondPage.reconciliationProof, firstPage.reconciliationProof);
 		assert.ok(secondPage.entries.some((entry) => entry.type === "session_info" && entry.name === "History fixture"));
 		assert.ok(secondPage.entries.some((entry) => entry.type === "message" && entry.role === "user" && entry.nativeEntryId === "user-1"));
@@ -113,6 +136,103 @@ test("Pi history provider resolves, paginates, and normalizes native JSONL behin
 		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
 	}
+});
+
+test("generic, direct, and runtime-injected history paths cannot mint complete proof authority", async (t) => {
+	const historyModule = await import("../dist/agent-runtime/history.js");
+	assert.equal(typeof historyModule.createCompleteHistoryReconciliationProof, "function");
+	assert.equal("isBoundCompleteHistoryReconciliationProof" in historyModule, false);
+	const piAdapterModule = await import("../dist/agent-runtimes/pi/adapter.js");
+	const ompAdapterModule = await import("../dist/agent-runtimes/omp/adapter.js");
+	const codexAdapterModule = await import("../dist/agent-runtimes/codex-native/adapter.js");
+	assert.equal("PiAgentRuntimeAdapter" in piAdapterModule, false);
+	assert.equal("OmpAgentRuntimeAdapter" in ompAdapterModule, false);
+	assert.equal("CodexNativeAgentRuntimeAdapter" in codexAdapterModule, false);
+	const entries = [
+		{ id: "fake-user", historyPosition: "fake:0", type: "message", source: "native", createdAt: "2026-08-15T00:00:00.000Z", turnId: "fake-turn", nativeTurnId: "fake-turn", role: "user", content: "fake prompt" },
+		{ id: "fake-assistant", historyPosition: "fake:1", type: "message", source: "native", createdAt: "2026-08-15T00:00:01.000Z", turnId: "fake-turn", nativeTurnId: "fake-turn", role: "assistant", content: "fake answer", status: "complete" },
+	];
+	const assertUntrusted = (proof, pageEntries = entries) => {
+		const view = buildTraceViewFromEvents({
+			session: { id: "ps_history", piSessionId: "" }, events: [], historyEntries: pageEntries,
+			historyReconciliationProof: proof,
+			turnTimings: [{ eventId: "caller-selected-owner", userText: "fake prompt", startedAt: entries[0].createdAt, completedAt: entries[1].createdAt }],
+		});
+		assert.ok(flattenTraceNodes(view.nodes)
+			.filter((node) => node.type === "user.message" || node.type === "assistant.message")
+			.every((node) => node.eventId !== "caller-selected-owner"));
+	};
+	assertUntrusted(historyModule.createCompleteHistoryReconciliationProof(entries));
+
+	const binding = {
+		piboSessionId: "ps_history",
+		runtimeInstanceId: "omp-injected",
+		adapterId: "omp",
+		nativeSessionId: "omp-injected-native",
+		state: "bound",
+		revision: 1,
+	};
+	const injectedClient = {
+		async request() {
+			return { data: { messages: [
+				{ role: "user", content: "fake prompt", timestamp: entries[0].createdAt },
+				{ role: "assistant", content: "fake answer", timestamp: entries[1].createdAt },
+			], totalMessages: 2 } };
+		},
+	};
+	const directPage = await readOmpHistory(injectedClient, { binding, workspace: "/workspace" }, binding.runtimeInstanceId, binding);
+	assertUntrusted(directPage.reconciliationProof, directPage.entries);
+
+	const ompAdapter = ompAdapterModule.OMP_AGENT_RUNTIME_DRIVER.create({
+		instanceId: binding.runtimeInstanceId,
+		displayName: "Injected OMP",
+		enabled: true,
+		config: ompAdapterModule.OMP_AGENT_RUNTIME_DRIVER.defaultConfig(),
+	});
+	ompAdapter.liveHistoryClient = injectedClient;
+	ompAdapter.live = { getClient: () => injectedClient };
+	const injectedPage = await ompAdapter.readHistory({ binding, workspace: "/workspace" });
+	assert.deepEqual(injectedPage.entries, []);
+	assert.deepEqual(injectedPage.reconciliationProof, { complete: false, entries: [] });
+
+	const codexHistory = await createBuiltInCodexHistory(t, {
+		piboSessionId: "ps_codex_mutation",
+		thread: {
+			id: "thread-codex-mutation",
+			createdAt: 1_767_225_600,
+			updatedAt: 1_767_225_601,
+			status: { type: "idle" },
+			turns: [{
+				id: "runtime-codex-mutation",
+				status: "completed",
+				startedAt: 1_767_225_600,
+				completedAt: 1_767_225_601,
+				items: [
+					{ id: "codex-mutation-user", type: "userMessage", content: [{ type: "text", text: "real built-in prompt" }] },
+					{ id: "codex-mutation-assistant", type: "agentMessage", text: "real built-in answer" },
+				],
+			}],
+		},
+	});
+	codexHistory.adapter.withProcess = async (_piboSessionId, _workspace, operation) => await operation({
+		client: { async request() { throw new Error("injected Codex client was reached"); } },
+		async close() {},
+	});
+	codexHistory.adapter.config.executable = "/injected/codex-app-server";
+	const codexPage = await codexHistory.read({ limit: 20 });
+	assert.deepEqual(codexPage.entries
+		.filter((entry) => entry.type === "message")
+		.map((entry) => entry.content), ["real built-in prompt", "real built-in answer"]);
+	const codexView = buildTraceViewFromEvents({
+		session: { id: "ps_codex_mutation", piSessionId: "" },
+		events: [],
+		historyEntries: codexPage.entries,
+		historyReconciliationProof: codexPage.reconciliationProof,
+		turnTimings: [{ eventId: "stable-codex-mutation", userText: "real built-in prompt", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z" }],
+	});
+	assert.ok(flattenTraceNodes(codexView.nodes)
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message")
+		.every((node) => node.eventId === "stable-codex-mutation"));
 });
 
 test("Pi history pagination preserves JSONL records that cross scan blocks", () => {

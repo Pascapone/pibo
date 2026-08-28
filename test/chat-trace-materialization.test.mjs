@@ -7,12 +7,23 @@ import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
 import { flattenTraceNodes } from "../dist/shared/trace-engine.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
 import { pageCodexThreadHistory } from "../dist/agent-runtimes/codex-native/history.js";
+import { historyReconciliationDigest } from "../dist/agent-runtime/history.js";
 import {
-	createCompleteHistoryReconciliationProof,
-	historyReconciliationDigest,
-} from "../dist/agent-runtime/history.js";
+	createBuiltInCodexHistory,
+	createBuiltInPiHistory,
+	piTranscriptMessage,
+} from "./fixtures/built-in-history.mjs";
 
 const now = "2026-01-01T00:00:00.000Z";
+
+function selfCertifiedCompleteProof(entries, scopeId) {
+	return {
+		complete: true,
+		...(scopeId ? { scopeId } : {}),
+		fullScope: { entryCount: entries.length, digest: historyReconciliationDigest(entries) },
+		entries,
+	};
+}
 
 function session(overrides = {}) {
 	return {
@@ -898,7 +909,7 @@ test("duplicate or missing provider entry metadata cannot collapse rejected hist
 	}
 });
 
-test("Codex cursor pages use complete ownership proof and globally stable group positions", () => {
+test("Codex cursor pages use complete ownership proof and globally stable group positions", async (t) => {
 	const thread = {
 		id: "thread-page-proof",
 		createdAt: 1_767_225_600,
@@ -915,14 +926,18 @@ test("Codex cursor pages use complete ownership proof and globally stable group 
 			],
 		})),
 	};
-	const binding = { piboSessionId: "ps_root", runtimeInstanceId: "codex", adapterId: "codex-native", nativeSessionId: thread.id, state: "bound", revision: 1 };
+	const history = await createBuiltInCodexHistory(t, {
+		thread,
+		piboSessionId: "ps_root",
+		runtimeInstanceId: "codex",
+	});
 	const timing = [{
 		eventId: "stable-page-shared",
 		userText: "identical page prompt",
 		startedAt: "2026-01-01T00:00:00Z",
 		completedAt: "2026-01-01T00:00:01Z",
 	}];
-	const page = (cursor, limit) => pageCodexThreadHistory({ runtimeInstanceId: "codex", binding, thread, cursor, limit });
+	const page = (cursor, limit) => history.read({ cursor, limit });
 	const build = (historyPage) => buildTraceViewFromEvents({
 		session: { id: "ps_root", piSessionId: "", title: "Root" },
 		events: [],
@@ -931,7 +946,7 @@ test("Codex cursor pages use complete ownership proof and globally stable group 
 		turnTimings: timing,
 	});
 
-	const fullPage = page(undefined, 20);
+	const fullPage = await page(undefined, 20);
 	const fullIds = flattenTraceNodes(build(fullPage).nodes)
 		.filter((node) => node.type === "user.message" || node.type === "assistant.message")
 		.map((node) => node.id);
@@ -940,9 +955,9 @@ test("Codex cursor pages use complete ownership proof and globally stable group 
 		return [`event:message_queued:${fallback}`, `event:assistant:${fallback}:assistant:0`];
 	}));
 
-	const newest = page(undefined, 2);
-	const middle = page(newest.nextCursor, 3);
-	const oldest = page(middle.nextCursor, 4);
+	const newest = await page(undefined, 2);
+	const middle = await page(newest.nextCursor, 3);
+	const oldest = await page(middle.nextCursor, 4);
 	assert.deepEqual([newest.entries.length, middle.entries.length, oldest.entries.length], [2, 3, 1]);
 	const accumulatedIds = [newest, middle, oldest].flatMap((historyPage) =>
 		flattenTraceNodes(build(historyPage).nodes)
@@ -961,7 +976,7 @@ test("Codex cursor pages use complete ownership proof and globally stable group 
 	}
 });
 
-test("complete proof preserves output ownership and ordinals across assistant and tool-only Codex page edges", () => {
+test("complete proof preserves output ownership and ordinals across assistant and tool-only Codex page edges", async (t) => {
 	const thread = {
 		id: "thread-split-output-proof",
 		createdAt: 1_767_225_600,
@@ -981,12 +996,16 @@ test("complete proof preserves output ownership and ordinals across assistant an
 			],
 		}],
 	};
-	const binding = { piboSessionId: "ps_root", runtimeInstanceId: "codex", adapterId: "codex-native", nativeSessionId: thread.id, state: "bound", revision: 1 };
+	const history = await createBuiltInCodexHistory(t, {
+		thread,
+		piboSessionId: "ps_root",
+		runtimeInstanceId: "codex",
+	});
 	const turnTimings = [{ eventId: "stable-split-output", userText: "split output prompt", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z" }];
 	const pages = [];
 	let cursor;
 	do {
-		const page = pageCodexThreadHistory({ runtimeInstanceId: "codex", binding, thread, cursor, limit: 1 });
+		const page = await history.read({ cursor, limit: 1 });
 		pages.push(page);
 		cursor = page.nextCursor;
 	} while (cursor);
@@ -1146,12 +1165,12 @@ test("a self-consistent page subset cannot mint a complete reconciliation proof"
 		fullScope: { entryCount: entries.length, digest: historyReconciliationDigest(entries) },
 		entries,
 	};
-	const staleBoundProof = createCompleteHistoryReconciliationProof(allEntries, scopeId);
+	const staleBoundProof = selfCertifiedCompleteProof(allEntries, scopeId);
 	staleBoundProof.entries = entries;
 	for (const proof of [
 		selfConsistentSubsetProof,
 		staleBoundProof,
-		createCompleteHistoryReconciliationProof(allEntries, scopeId),
+		selfCertifiedCompleteProof(allEntries, scopeId),
 	]) {
 		const view = buildTraceViewFromEvents({
 			session: { id: "ps_root", piSessionId: "" },
@@ -1170,15 +1189,31 @@ test("a self-consistent page subset cannot mint a complete reconciliation proof"
 	}
 });
 
-test("repeated provider turn IDs preserve every structurally distinct native message", () => {
-	const scopeId = "proof:repeated-provider-turn";
-	const entries = ["a", "b"].flatMap((suffix, index) => [
-		{ id: `repeated-${suffix}-user`, historyPosition: `repeated:${index * 2}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${index}:00Z`, turnId: "runtime-repeated-provider", nativeTurnId: "runtime-repeated-provider", nativeEntryId: `user-${suffix}`, role: "user", content: `${suffix} prompt` },
-		{ id: `repeated-${suffix}-assistant`, historyPosition: `repeated:${index * 2 + 1}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${index}:01Z`, turnId: "runtime-repeated-provider", nativeTurnId: "runtime-repeated-provider", nativeEntryId: `assistant-${suffix}`, role: "assistant", content: `${suffix} answer`, status: "complete" },
-	]);
+test("repeated provider turn IDs preserve every structurally distinct native message", async (t) => {
+	const history = await createBuiltInCodexHistory(t, {
+		thread: {
+			id: "thread-repeated-provider-turn",
+			createdAt: 1_767_225_600,
+			updatedAt: 1_767_225_601,
+			status: { type: "idle" },
+			turns: ["a", "b"].map((suffix) => ({
+				id: "runtime-repeated-provider",
+				status: "completed",
+				startedAt: 1_767_225_600,
+				completedAt: 1_767_225_601,
+				items: [
+					{ id: `user-${suffix}`, type: "userMessage", content: [{ type: "text", text: `${suffix} prompt` }] },
+					{ id: `assistant-${suffix}`, type: "agentMessage", text: `${suffix} answer` },
+				],
+			})),
+		},
+		piboSessionId: "ps_root",
+	});
+	const page = await history.read({ limit: 20 });
+	const entries = page.entries;
 	const view = buildTraceViewFromEvents({
 		session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: entries,
-		historyReconciliationProof: createCompleteHistoryReconciliationProof(entries, scopeId),
+		historyReconciliationProof: page.reconciliationProof,
 	});
 	const legacy = flattenTraceNodes(view.nodes).filter((node) => node.type === "user.message" || node.type === "assistant.message");
 	const v2 = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 }).nodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
@@ -1191,23 +1226,26 @@ test("repeated provider turn IDs preserve every structurally distinct native mes
 	assert.ok(legacy.every((node) => node.nativeTurnId === "runtime-repeated-provider"));
 });
 
-test("qualified duplicate tool identity pairs calls and results across page edges", () => {
+test("qualified duplicate tool identity pairs calls and results across page edges", async (t) => {
 	const toolCallId = `history-tool:tool:%25:[\"tuple\"]:工具`;
-	const scopeId = "proof:tool-page-edges";
-	const entries = ["a", "b"].flatMap((suffix, groupIndex) => [
-		{ id: `tool-${suffix}-user`, historyPosition: `tool-edge:${groupIndex * 3}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${groupIndex}:00Z`, turnId: `runtime-tool-${suffix}`, nativeTurnId: `runtime-tool-${suffix}`, role: "user", content: `${suffix} prompt` },
-		{ id: `tool-${suffix}-call`, historyPosition: `tool-edge:${groupIndex * 3 + 1}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${groupIndex}:01Z`, turnId: `runtime-tool-${suffix}`, nativeTurnId: `runtime-tool-${suffix}`, role: "assistant", content: [{ type: "tool_call", toolCallId, toolName: "read", input: { path: `${suffix}.txt` } }], status: "complete" },
-		{ id: `tool-${suffix}-result`, historyPosition: `tool-edge:${groupIndex * 3 + 2}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${groupIndex}:02Z`, turnId: `runtime-tool-${suffix}`, nativeTurnId: `runtime-tool-${suffix}`, role: "tool", content: `${suffix} result`, toolCallId, toolName: "read", result: { content: `${suffix} result` }, status: "complete" },
+	const rawEntries = ["a", "b"].flatMap((suffix, groupIndex) => [
+		piTranscriptMessage(`tool-${suffix}-user`, "user", `${suffix} prompt`, `2026-01-01T00:0${groupIndex}:00.000Z`),
+		piTranscriptMessage(`tool-${suffix}-call`, "assistant", [{ type: "toolCall", id: toolCallId, name: "read", arguments: { path: `${suffix}.txt` } }], `2026-01-01T00:0${groupIndex}:01.000Z`),
+		piTranscriptMessage(`tool-${suffix}-result`, "toolResult", `${suffix} result`, `2026-01-01T00:0${groupIndex}:02.000Z`, { toolCallId, toolName: "read" }),
 	]);
-	const proof = createCompleteHistoryReconciliationProof(entries, scopeId);
+	const history = createBuiltInPiHistory(t, { nativeSessionId: "pi-tool-page-edges", entries: rawEntries, piboSessionId: "ps_root" });
+	const page = await history.read({ limit: 20 });
+	const entries = page.entries;
+	const proof = page.reconciliationProof;
 	const projectedTool = (entry) => {
 		const view = buildTraceViewFromEvents({ session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: [entry], historyReconciliationProof: proof });
 		return flattenTraceNodes(view.nodes).find((node) => node.toolCallId === toolCallId);
 	};
-	const callA = projectedTool(entries[1]);
-	const resultA = projectedTool(entries[2]);
-	const callB = projectedTool(entries[4]);
-	const resultB = projectedTool(entries[5]);
+	const byNativeId = new Map(entries.map((entry) => [entry.nativeEntryId, entry]));
+	const callA = projectedTool(byNativeId.get("tool-a-call"));
+	const resultA = projectedTool(byNativeId.get("tool-a-result"));
+	const callB = projectedTool(byNativeId.get("tool-b-call"));
+	const resultB = projectedTool(byNativeId.get("tool-b-result"));
 	assert.equal(callA.id, resultA.id);
 	assert.equal(callB.id, resultB.id);
 	assert.notEqual(callA.id, callB.id);
@@ -1222,7 +1260,7 @@ test("missing or duplicate proof positions fail closed with distinct group-local
 		]);
 		const view = buildTraceViewFromEvents({
 			session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: entries,
-			historyReconciliationProof: createCompleteHistoryReconciliationProof(entries),
+			historyReconciliationProof: selfCertifiedCompleteProof(entries),
 			turnTimings: [{ eventId: "repeated-provider-turn", userText: "irrelevant" }],
 		});
 		const legacy = flattenTraceNodes(view.nodes).filter((node) => node.type === "user.message" || node.type === "assistant.message");
@@ -1265,25 +1303,32 @@ test("proof and timing overflow fail closed before inspecting timing records", (
 	}
 });
 
-test("an incomplete page proof fails closed while a complete single claimant still reconciles", () => {
-	const entries = [
-		{ id: "incomplete-user", historyPosition: "bounded:0", type: "message", source: "native", createdAt: "2026-01-01T00:00:00Z", turnId: "runtime-incomplete", nativeTurnId: "runtime-incomplete", nativeEntryId: "incomplete-user", role: "user", content: "bounded proof prompt" },
-		{ id: "incomplete-assistant", historyPosition: "bounded:1", type: "message", source: "native", createdAt: "2026-01-01T00:00:01Z", turnId: "runtime-incomplete", nativeTurnId: "runtime-incomplete", nativeEntryId: "incomplete-assistant", role: "assistant", content: "bounded proof answer", status: "complete" },
-	];
+test("an incomplete page proof fails closed while a complete single claimant still reconciles", async (t) => {
+	const history = createBuiltInPiHistory(t, {
+		nativeSessionId: "pi-bounded-proof",
+		piboSessionId: "ps_root",
+		entries: [
+			piTranscriptMessage("incomplete-user", "user", "bounded proof prompt", "2026-01-01T00:00:00.000Z"),
+			piTranscriptMessage("incomplete-assistant", "assistant", "bounded proof answer", "2026-01-01T00:00:01.000Z"),
+		],
+	});
+	const page = await history.read({ limit: 20 });
+	const entries = page.entries;
 	const turnTimings = [{ eventId: "stable-bounded-proof", userText: "bounded proof prompt", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z" }];
+	const fallbackEventId = `native-history-group:${entries[0].historyPosition}`;
 	const build = (complete) => buildTraceViewFromEvents({
 		session: { id: "ps_root", piSessionId: "", title: "Root" }, events: [], historyEntries: entries,
 		historyReconciliationProof: complete
-			? createCompleteHistoryReconciliationProof(entries)
+			? page.reconciliationProof
 			: { complete: false, entries },
 		turnTimings,
 	});
 	assertMessageProjectionIds(build(false), [
-		"event:message_queued:native-history-group:bounded:0",
-		"event:assistant:native-history-group:bounded:0:assistant:0",
+		`event:message_queued:${fallbackEventId}`,
+		`event:assistant:${fallbackEventId}:assistant:0`,
 	], [
-		"event:message_queued:native-history-group:bounded:0",
-		"terminal:assistant:native-history-group:bounded:0:assistant:0",
+		`event:message_queued:${fallbackEventId}`,
+		`terminal:assistant:${fallbackEventId}:assistant:0`,
 	]);
 	assertMessageProjectionIds(build(true), [
 		"event:message_queued:stable-bounded-proof",
@@ -1294,32 +1339,30 @@ test("an incomplete page proof fails closed while a complete single claimant sti
 	]);
 });
 
-test("three ambiguous user-only claimants in a complete proof remain distinct on native identity", () => {
-	const entries = ["a", "b", "c"].map((suffix, index) => ({
-		id: `open-${suffix}`,
-		historyPosition: `open:${index}`,
-		type: "message",
-		source: "native",
-		createdAt: "2026-01-01T00:00:00Z",
-		turnId: `runtime-open-${suffix}`,
-		nativeTurnId: `runtime-open-${suffix}`,
-		role: "user",
-		content: "open repeated prompt",
-		status: "running",
-	}));
+test("three ambiguous user-only claimants in a complete proof remain distinct on native identity", async (t) => {
+	const history = createBuiltInPiHistory(t, {
+		nativeSessionId: "pi-open-claimants",
+		piboSessionId: "ps_root",
+		entries: ["a", "b", "c"].map((suffix) =>
+			piTranscriptMessage(`open-${suffix}`, "user", "open repeated prompt", "2026-01-01T00:00:00.000Z")),
+	});
+	const page = await history.read({ limit: 20 });
+	const entries = page.entries;
 	const view = buildTraceViewFromEvents({
 		session: { id: "ps_root", piSessionId: "", title: "Root" },
 		events: [],
 		historyEntries: entries,
-		historyReconciliationProof: createCompleteHistoryReconciliationProof(entries),
+		historyReconciliationProof: page.reconciliationProof,
 		turnTimings: [{ eventId: "stable-open-shared", userText: "open repeated prompt", startedAt: "2026-01-01T00:00:00Z" }],
 	});
 	const legacy = flattenTraceNodes(view.nodes).filter((node) => node.type === "user.message");
-	assert.deepEqual(legacy.map((node) => node.eventId), [
-		"runtime-open-a",
-		"runtime-open-b",
-		"runtime-open-c",
+	assert.deepEqual(legacy.map((node) => node.nativeTurnId), [
+		"open-a",
+		"open-b",
+		"open-c",
 	]);
+	assert.ok(legacy.every((node) => node.eventId !== "stable-open-shared"));
+	assert.equal(new Set(legacy.map((node) => node.id)).size, 3);
 	assert.equal(traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 }).nodes.filter((node) => node.type === "user.message").length, 3);
 	assert.equal(buildCompactTerminalRows(view, { showThinking: true }).filter((row) => row.kind === "message.user").length, 3);
 });

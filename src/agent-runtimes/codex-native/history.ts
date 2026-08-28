@@ -6,7 +6,7 @@ import type {
 	AgentRuntimeHistoryMessageEntry,
 	AgentRuntimeHistoryPage,
 } from "../../agent-runtime/history.js";
-import { createCompleteHistoryReconciliationProof } from "../../agent-runtime/history.js";
+import { historyReconciliationDigest } from "../../agent-runtime/history.js";
 import type { RuntimeSessionBinding } from "../../agent-runtime/types.js";
 import type {
 	CodexAppServerThread,
@@ -333,7 +333,12 @@ export function pageCodexThreadHistory(input: {
 		source: "native",
 		entries,
 		reconciliationProof: proofComplete
-			? createCompleteHistoryReconciliationProof(allEntries, historyScopeId)
+			? {
+				complete: true,
+				scopeId: historyScopeId,
+				fullScope: { entryCount: allEntries.length, digest: historyReconciliationDigest(allEntries) },
+				entries: allEntries,
+			}
 			: { complete: false, scopeId: historyScopeId, entries },
 		orderOffset: start,
 		...(hasMore ? { nextCursor: encodeCursor({ v: 1, threadId: input.thread.id, beforeIndex: start }) } : {}),

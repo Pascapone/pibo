@@ -12,8 +12,8 @@ import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
-import { createCompleteHistoryReconciliationProof } from "../dist/agent-runtime/history.js";
 import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
+import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
 
 const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
 
@@ -1209,9 +1209,29 @@ test("new Chat Web traces use Pibo product history without reading native runtim
 	}
 });
 
-test("origin branch trace routes reconcile native runtime turns to stable product identities", async () => {
+test("origin branch trace routes reconcile native runtime turns to stable product identities", async (t) => {
 	let readHistoryCalls = 0;
 	const capabilities = fakeRuntimeCapabilities();
+	const history = await createBuiltInCodexHistory(t, {
+		piboSessionId: "ps_web_origin",
+		thread: {
+			id: "thread-X",
+			createdAt: Date.parse("2026-08-27T12:00:00.000Z") / 1_000,
+			updatedAt: Date.parse("2026-08-27T12:00:01.000Z") / 1_000,
+			status: { type: "idle" },
+			turns: [{
+				id: "runtime-X",
+				status: "completed",
+				startedAt: Date.parse("2026-08-27T12:00:00.000Z") / 1_000,
+				completedAt: Date.parse("2026-08-27T12:00:01.000Z") / 1_000,
+				items: [
+					{ id: "user-X", type: "userMessage", content: [{ type: "text", text: "branch prompt" }] },
+					{ id: "assistant-X", type: "agentMessage", text: "branch answer" },
+				],
+			}],
+		},
+	});
+	assert.equal((await history.read({ limit: 20 })).entries.length, 2);
 	const { channel, baseURL, sessions, emitOutput, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		async emit(event) {
@@ -1227,51 +1247,9 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 			agentRuntimes: [fakeRuntimeInspection("codex-native", { adapterId: "codex-native", capabilities })],
 			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
 		},
-		async readSessionRuntimeHistory(piboSessionId) {
+		async readSessionRuntimeHistory(_piboSessionId, input = {}) {
 			readHistoryCalls += 1;
-			const entries = [
-				{
-					id: "codex:thread:runtime-X:user-X",
-					historyPosition: "codex:thread-X:entry:0",
-					type: "message",
-					source: "native",
-					createdAt: "2026-08-27T12:00:00.000Z",
-					turnId: "runtime-X",
-					nativeTurnId: "runtime-X",
-					nativeEntryId: "user-X",
-					role: "user",
-					content: "branch prompt",
-				},
-				{
-					id: "codex:thread:runtime-X:assistant-X",
-					historyPosition: "codex:thread-X:entry:1",
-					type: "message",
-					source: "native",
-					createdAt: "2026-08-27T12:00:01.000Z",
-					turnId: "runtime-X",
-					nativeTurnId: "runtime-X",
-					nativeEntryId: "assistant-X",
-					role: "assistant",
-					content: "branch answer",
-					status: "complete",
-				},
-			];
-			return {
-				runtimeInstanceId: "codex-native",
-				adapterId: "codex-native",
-				source: "native",
-				entries,
-				reconciliationProof: createCompleteHistoryReconciliationProof(entries),
-				hasMore: false,
-				inspection: {
-					runtimeInstanceId: "codex-native",
-					adapterId: "codex-native",
-					bindingState: "bound",
-					available: true,
-					version: `native-${piboSessionId}`,
-					diagnostics: [],
-				},
-			};
+			return await history.read(input);
 		},
 	});
 
@@ -1348,14 +1326,31 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 	}
 });
 
-test("public trace routes fail closed when persisted timing evidence exceeds the SQL bound", async () => {
-	const startedAt = new Date().toISOString();
+test("public trace routes fail closed when persisted timing evidence exceeds the SQL bound", async (t) => {
+	const startedAt = "2026-08-27T14:00:00.000Z";
 	const assistantAt = new Date(Date.parse(startedAt) + 1_000).toISOString();
 	const capabilities = fakeRuntimeCapabilities();
-	const entries = [
-		{ id: "native-overflow-user", historyPosition: "overflow:0", type: "message", source: "native", createdAt: startedAt, turnId: "runtime-overflow", nativeTurnId: "runtime-overflow", nativeEntryId: "overflow-user", role: "user", content: "overflow prompt" },
-		{ id: "native-overflow-assistant", historyPosition: "overflow:1", type: "message", source: "native", createdAt: assistantAt, turnId: "runtime-overflow", nativeTurnId: "runtime-overflow", nativeEntryId: "overflow-assistant", role: "assistant", content: "overflow answer", status: "complete" },
-	];
+	const history = await createBuiltInCodexHistory(t, {
+		piboSessionId: "ps_web_overflow",
+		thread: {
+			id: "overflow-thread",
+			createdAt: Date.parse(startedAt) / 1_000,
+			updatedAt: Date.parse(assistantAt) / 1_000,
+			status: { type: "idle" },
+			turns: [{
+				id: "runtime-overflow",
+				status: "completed",
+				startedAt: Date.parse(startedAt) / 1_000,
+				completedAt: Date.parse(assistantAt) / 1_000,
+				items: [
+					{ id: "overflow-user", type: "userMessage", content: [{ type: "text", text: "overflow prompt" }] },
+					{ id: "overflow-assistant", type: "agentMessage", text: "overflow answer" },
+				],
+			}],
+		},
+	});
+	assert.equal((await history.read({ limit: 20 })).entries.length, 2);
+	let readHistoryCalls = 0;
 	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		async emit() { throw new Error("message input is not used"); },
@@ -1363,15 +1358,9 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 			agentRuntimes: [fakeRuntimeInspection("codex-native", { adapterId: "codex-native", capabilities })],
 			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
 		},
-		async readSessionRuntimeHistory() {
-			return {
-				runtimeInstanceId: "codex-native",
-				adapterId: "codex-native",
-				source: "native",
-				entries,
-				reconciliationProof: createCompleteHistoryReconciliationProof(entries),
-				hasMore: false,
-			};
+		async readSessionRuntimeHistory(_piboSessionId, input = {}) {
+			readHistoryCalls += 1;
+			return await history.read(input);
 		},
 	});
 	try {
@@ -1387,7 +1376,7 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 			emitOutput({
 				type: "message_started",
 				piboSessionId: branch.id,
-				eventId: index === 0 ? "stable-overflow" : `noise-${index}`,
+				eventId: index === 0 ? "stable-overflow" : "timing-overflow-noise",
 				text: index === 0 ? "overflow prompt" : `noise ${index}`,
 				source: "user",
 			});
@@ -1398,23 +1387,47 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 			const response = await fetch(`${baseURL}${path}${separator}piboSessionId=${encodeURIComponent(branch.id)}`, { headers: { "x-test-user": "user-1" } });
 			assert.equal(response.status, 200);
 			const payload = await response.json();
-			const nativeMessages = (path.includes("timeline") ? payload.nodes : flattenTraceResponseNodes(payload.nodes))
+			const projectedNodes = path.includes("timeline") ? payload.nodes : flattenTraceResponseNodes(payload.nodes);
+			const nativeMessages = projectedNodes
 				.filter((node) => node.nativeTurnId === "runtime-overflow" && (node.type === "user.message" || node.type === "assistant.message"));
 			assert.equal(nativeMessages.length, 2);
 			assert.ok(nativeMessages.every((node) => node.eventId === "runtime-overflow"));
 			assert.ok(nativeMessages.every((node) => node.eventId !== "stable-overflow"));
 		}
+		assert.ok(readHistoryCalls >= 2);
 	} finally {
 		await channel.stop?.();
 	}
 });
 
-test("origin branch older native-history pages reconcile repeated prompts by start time", async () => {
+test("origin branch older native-history pages reconcile repeated prompts by start time", async (t) => {
 	const oldStartedAt = "2026-08-27T12:00:00.000Z";
 	const newStartedAt = "2026-08-27T13:00:00.000Z";
 	const stableEventIds = ["stable-old", "stable-new"];
 	let emittedMessageCount = 0;
 	const capabilities = fakeRuntimeCapabilities();
+	const history = await createBuiltInCodexHistory(t, {
+		piboSessionId: "ps_web_repeated",
+		thread: {
+			id: "thread-repeated",
+			createdAt: Date.parse(oldStartedAt) / 1_000,
+			updatedAt: Date.parse(newStartedAt) / 1_000,
+			status: { type: "idle" },
+			turns: [
+				["old", oldStartedAt],
+				["new", newStartedAt],
+			].map(([suffix, startedAt]) => ({
+				id: `runtime-${suffix}`,
+				status: "completed",
+				startedAt: Date.parse(startedAt) / 1_000,
+				completedAt: Date.parse(startedAt) / 1_000,
+				items: [
+					{ id: `user-${suffix}`, type: "userMessage", content: [{ type: "text", text: "identical prompt" }] },
+					{ id: `assistant-${suffix}`, type: "agentMessage", text: `${suffix} answer` },
+				],
+			})),
+		},
+	});
 	const { channel, baseURL, sessions, emitOutput, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		async emit(event) {
@@ -1426,35 +1439,8 @@ test("origin branch older native-history pages reconcile repeated prompts by sta
 			agentRuntimes: [fakeRuntimeInspection("codex-native", { adapterId: "codex-native", capabilities })],
 			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
 		},
-		async readSessionRuntimeHistory(piboSessionId, input = {}) {
-			const older = input.cursor === "provider-old-page";
-			const suffix = older ? "old" : "new";
-			const createdAt = older ? oldStartedAt : newStartedAt;
-			const allEntries = [
-				["old", oldStartedAt],
-				["new", newStartedAt],
-			].flatMap(([entrySuffix, entryCreatedAt], groupIndex) => [
-				{ id: `codex:thread:runtime-${entrySuffix}:user-${entrySuffix}`, historyPosition: `codex:thread-repeated:entry:${groupIndex * 2}`, type: "message", source: "native", createdAt: entryCreatedAt, turnId: `runtime-${entrySuffix}`, nativeTurnId: `runtime-${entrySuffix}`, nativeEntryId: `user-${entrySuffix}`, role: "user", content: "identical prompt" },
-				{ id: `codex:thread:runtime-${entrySuffix}:assistant-${entrySuffix}`, historyPosition: `codex:thread-repeated:entry:${groupIndex * 2 + 1}`, type: "message", source: "native", createdAt: entryCreatedAt, turnId: `runtime-${entrySuffix}`, nativeTurnId: `runtime-${entrySuffix}`, nativeEntryId: `assistant-${entrySuffix}`, role: "assistant", content: `${entrySuffix} answer`, status: "complete" },
-			]);
-			const entries = allEntries.slice(older ? 0 : 2, older ? 2 : 4);
-			return {
-				runtimeInstanceId: "codex-native",
-				adapterId: "codex-native",
-				source: "native",
-				entries,
-				reconciliationProof: createCompleteHistoryReconciliationProof(allEntries),
-				nextCursor: older ? undefined : "provider-old-page",
-				hasMore: !older,
-				inspection: {
-					runtimeInstanceId: "codex-native",
-					adapterId: "codex-native",
-					bindingState: "bound",
-					available: true,
-					version: `native-${piboSessionId}-${suffix}`,
-					diagnostics: [],
-				},
-			};
+		async readSessionRuntimeHistory(_piboSessionId, input = {}) {
+			return await history.read({ ...input, limit: 2 });
 		},
 	});
 

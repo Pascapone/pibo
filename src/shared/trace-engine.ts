@@ -1,13 +1,9 @@
 import type { AgentRuntimeHistoryEntry, AgentRuntimeHistoryReconciliationProof } from "../agent-runtime/history.js";
-import type { PiboOutputEvent } from "../core/events.js";
 import { isRunStartToolNode, reconcileAsyncAgentRunStatuses } from "./trace-async-agent-runs.js";
 import {
 	applySingleEventToNodes,
-	contentDeltaPatchNodeId,
 	dedupeTraceEvents,
-	eventsCanAffectAsyncAgentRunStatus,
 	findOpenTranscriptEventIds,
-	isConfirmedUserMessageEcho,
 	latestTraceStreamId,
 	mergeMessageTurnTimings,
 	messageTurnTimingsFromEvents,
@@ -16,15 +12,14 @@ import {
 	traceEventDedupeKey,
 } from "./trace-event-projection.js";
 import { flattenTraceNodes, mapTraceNodesById, nestTraceNodes } from "./trace-nodes.js";
-import { nestMutableCopiedTraceNodes, shareUnchangedTraceNodes } from "./trace-patch-nodes.js";
 import {
 	mapTraceChildSessionsByParent,
 	mapTraceSubagentSessionLinks,
-	type TraceChildSession,
 } from "./trace-subagent-links.js";
 import { projectHistoryEntries, traceNodesFromHistoryEntries } from "./trace-history.js";
 import { TRACE_RECONCILIATION_TIMING_CAP } from "./trace-limits.js";
 export { isRunStartToolNode } from "./trace-async-agent-runs.js";
+export { patchTraceViewWithEvent, patchTraceViewWithEvents } from "./trace-live-patch.js";
 export {
 	assistantMessageNodeId,
 	dedupeTraceEvents,
@@ -56,6 +51,7 @@ type TraceBuildInput = {
 	turnTimings?: TraceMessageTurnTiming[];
 	historyEntries?: readonly AgentRuntimeHistoryEntry[];
 	historyReconciliationProof?: AgentRuntimeHistoryReconciliationProof;
+	historyReconciliationAuthoritative?: boolean;
 	sessions?: Array<{
 		id: string;
 		parentId?: string | null;
@@ -82,8 +78,21 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 		? []
 		: mergeMessageTurnTimings(suppliedTurnTimings, eventTurnTimings);
 	const historyTurnTimings = timingOverflow ? [...suppliedTurnTimings, ...eventTurnTimings] : turnTimings;
-	const entries = projectHistoryEntries(allEntries, sessionStatus, openHistoryEventIds, historyTurnTimings, input.historyReconciliationProof);
-	const nodes = traceNodesFromHistoryEntries(input.session.id, entries, historyTurnTimings, input.historyReconciliationProof);
+	const entries = projectHistoryEntries(
+		allEntries,
+		sessionStatus,
+		openHistoryEventIds,
+		historyTurnTimings,
+		input.historyReconciliationProof,
+		input.historyReconciliationAuthoritative,
+	);
+	const nodes = traceNodesFromHistoryEntries(
+		input.session.id,
+		entries,
+		historyTurnTimings,
+		input.historyReconciliationProof,
+		input.historyReconciliationAuthoritative,
+	);
 	reconcileTranscriptUserMessages(nodes, events, turnTimings);
 	const byId = mapTraceNodesById(nodes);
 	const childByParent = mapTraceChildSessionsByParent(input.sessions ?? []);
@@ -126,85 +135,5 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 			input.includeRawEvents === true
 				? events.slice(-(input.rawEventsLimit ?? events.length))
 				: [],
-	};
-}
-
-// ── transcript helpers ───────────────────────────────────────────
-
-export function patchTraceViewWithEvent(
-	view: PiboSessionTraceView,
-	event: ChatWebStoredEvent,
-	sessionStatus: PiboWebSessionStatus,
-): PiboSessionTraceView {
-	return patchTraceViewWithEvents(view, [event], sessionStatus);
-}
-
-export function patchTraceViewWithEvents(
-	view: PiboSessionTraceView,
-	events: readonly ChatWebStoredEvent[],
-	sessionStatus: PiboWebSessionStatus,
-): PiboSessionTraceView {
-	if (!events.length) return view;
-
-	const seenEventKeys = new Set(view.rawEvents.map((event) => traceEventDedupeKey(event)));
-	const candidateEvents: ChatWebStoredEvent[] = [];
-	for (const event of events) {
-		const eventKey = traceEventDedupeKey(event);
-		if (seenEventKeys.has(eventKey)) continue;
-		seenEventKeys.add(eventKey);
-		candidateEvents.push(event);
-	}
-	if (!candidateEvents.length) return view;
-
-	const previousFlatNodes = flattenTraceNodes(view.nodes);
-	const allNodes: PiboTraceNode[] = [];
-	const byId = new Map<string, PiboTraceNode>();
-	const previousById = new Map<string, PiboTraceNode>();
-	for (const previousNode of previousFlatNodes) {
-		previousById.set(previousNode.id, previousNode);
-		const nextNode = { ...previousNode, children: [] };
-		allNodes.push(nextNode);
-		byId.set(nextNode.id, nextNode);
-	}
-	const childByParent = new Map<string, TraceChildSession[]>();
-	const linkedChildByToolCallId = new Map<string, string>();
-	const openTranscriptEventIds = new Set<string>();
-	const emptyHistoryCoverage = { mode: "none" as const, eventIds: new Set<string>(), toolCallIds: new Set<string>() };
-	const appliedEvents: ChatWebStoredEvent[] = [];
-	let contentDeltaChangedNodeIds: Set<string> | undefined = new Set();
-
-	for (const event of candidateEvents) {
-		if (isConfirmedUserMessageEcho(allNodes, event)) continue;
-
-		appliedEvents.push(event);
-		const contentDeltaNodeId = contentDeltaPatchNodeId(event.payload as PiboOutputEvent);
-		if (contentDeltaChangedNodeIds && contentDeltaNodeId) contentDeltaChangedNodeIds.add(contentDeltaNodeId);
-		else contentDeltaChangedNodeIds = undefined;
-		applySingleEventToNodes(
-			allNodes,
-			byId,
-			view.piboSessionId,
-			event,
-			childByParent,
-			linkedChildByToolCallId,
-			emptyHistoryCoverage,
-			openTranscriptEventIds,
-			sessionStatus,
-		);
-	}
-
-	if (!appliedEvents.length) return view;
-
-	const nestedNodes = nestMutableCopiedTraceNodes(allNodes);
-	if (eventsCanAffectAsyncAgentRunStatus(appliedEvents)) {
-		reconcileAsyncAgentRunStatuses(nestedNodes);
-	}
-	const sharedNodes = shareUnchangedTraceNodes(previousById, nestedNodes, contentDeltaChangedNodeIds);
-
-	return {
-		...view,
-		rawEvents: view.rawEvents.length ? [...view.rawEvents, ...appliedEvents] : appliedEvents,
-		nodes: sharedNodes,
-		latestStreamId: latestTraceStreamId(appliedEvents, view.latestStreamId),
 	};
 }

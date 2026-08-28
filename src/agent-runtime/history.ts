@@ -93,40 +93,26 @@ export type AgentRuntimeHistoryReconciliationScope = {
 	digest: string;
 };
 
-const completeReconciliationProofs = new WeakMap<
-	AgentRuntimeHistoryReconciliationProof,
-	{ scopeId?: string; fullScope: AgentRuntimeHistoryReconciliationScope }
->();
-
-/** Mint a complete in-process proof from an adapter-owned full history snapshot. */
+/**
+ * Build a structural complete-history claim for compatibility callers.
+ *
+ * This function does not grant reconciliation authority. Only an exact built-in
+ * adapter can bind a returned claim to its provider-local runtime registry.
+ */
 export function createCompleteHistoryReconciliationProof(
 	entries: readonly AgentRuntimeHistoryEntry[],
 	scopeId?: string,
 ): AgentRuntimeHistoryReconciliationProof {
 	const proofEntries = Object.freeze([...entries]);
-	const fullScope = Object.freeze({
-		entryCount: proofEntries.length,
-		digest: historyReconciliationDigest(proofEntries),
-	});
-	const proof: AgentRuntimeHistoryReconciliationProof = {
+	return {
 		complete: true,
 		...(scopeId ? { scopeId } : {}),
-		fullScope,
+		fullScope: {
+			entryCount: proofEntries.length,
+			digest: historyReconciliationDigest(proofEntries),
+		},
 		entries: proofEntries,
 	};
-	completeReconciliationProofs.set(proof, { ...(scopeId ? { scopeId } : {}), fullScope });
-	return proof;
-}
-
-/** Complete proofs are trusted only when they were minted by a production adapter path. */
-export function isBoundCompleteHistoryReconciliationProof(
-	proof: AgentRuntimeHistoryReconciliationProof,
-): boolean {
-	const bound = completeReconciliationProofs.get(proof);
-	return proof.complete
-		&& bound !== undefined
-		&& proof.scopeId === bound.scopeId
-		&& proof.fullScope === bound.fullScope;
 }
 
 export function historyReconciliationDigest(entries: readonly AgentRuntimeHistoryEntry[]): string {

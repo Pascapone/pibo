@@ -12,7 +12,7 @@ import type {
 	InspectAgentRuntimeHistoryInput,
 	ReadAgentRuntimeHistoryInput,
 } from "../../agent-runtime/history.js";
-import { createCompleteHistoryReconciliationProof } from "../../agent-runtime/history.js";
+import { historyReconciliationDigest } from "../../agent-runtime/history.js";
 import { TRACE_RECONCILIATION_ENTRY_CAP } from "../../shared/trace-limits.js";
 
 export type PiHistoryMetadata = {
@@ -171,7 +171,12 @@ export async function readPiAgentRuntimeHistory(
 		source: "native",
 		entries,
 		reconciliationProof: completeProof && proofEntries
-			? createCompleteHistoryReconciliationProof(proofEntries, historyScopeId)
+			? {
+				complete: true,
+				scopeId: historyScopeId,
+				fullScope: { entryCount: proofEntries.length, digest: historyReconciliationDigest(proofEntries) },
+				entries: proofEntries,
+			}
 			: { complete: false, scopeId: historyScopeId, entries },
 		orderOffset: page.startByte,
 		nextCursor: page.hasOlder && page.nextBeforeByte !== undefined

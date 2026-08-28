@@ -89,8 +89,8 @@ export class ChatTimelineQueryService {
 			SELECT type, event_id, payload_ref, attributes_json
 			FROM event_log
 			WHERE session_id = ?
+				AND tool_call_id = ?
 				AND type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished')
-				AND json_extract(attributes_json, '$.toolCallId') = ?
 				${eventClause}
 			ORDER BY session_sequence ASC, stream_id ASC
 			LIMIT ?
@@ -101,27 +101,45 @@ export class ChatTimelineQueryService {
 			attributes_json: string;
 		}>;
 		if (rows.length > TRACE_RECONCILIATION_ENTRY_CAP) return false;
-		let nextInvocationOrdinal = 0;
-		let activeInvocationOrdinal: number | undefined;
+		const lifecycles = new Map<string | null, {
+			nextOrdinal: number;
+			active?: { eventId: string | null; invocationOrdinal: number; payloadMatches: boolean };
+		}>();
+		const invocations: Array<{ eventId: string | null; invocationOrdinal: number; payloadMatches: boolean }> = [];
 		for (const row of rows) {
+			const lifecycle = lifecycles.get(row.event_id) ?? { nextOrdinal: 0 };
+			lifecycles.set(row.event_id, lifecycle);
 			if (row.type === "tool_execution_started") {
-				if (activeInvocationOrdinal !== undefined) return false;
-				activeInvocationOrdinal = nextInvocationOrdinal;
-				nextInvocationOrdinal += 1;
-			} else if (activeInvocationOrdinal === undefined) {
-				activeInvocationOrdinal = nextInvocationOrdinal;
-				nextInvocationOrdinal += 1;
+				if (lifecycle.active) return false;
+				lifecycle.active = {
+					eventId: row.event_id,
+					invocationOrdinal: lifecycle.nextOrdinal,
+					payloadMatches: false,
+				};
+				lifecycle.nextOrdinal += 1;
+				invocations.push(lifecycle.active);
+			} else if (!lifecycle.active) {
+				lifecycle.active = {
+					eventId: row.event_id,
+					invocationOrdinal: lifecycle.nextOrdinal,
+					payloadMatches: false,
+				};
+				lifecycle.nextOrdinal += 1;
+				invocations.push(lifecycle.active);
 			}
-			const exactInvocation = !nodeIdentity.qualifier
-				|| activeInvocationOrdinal === nodeIdentity.qualifier.invocationOrdinal;
 			if (
-				exactInvocation
-				&& row.type !== "tool_execution_started"
+				row.type !== "tool_execution_started"
 				&& payloadMatchesEventRow(this.store, payload.sha256, input.payloadId, row)
-			) return true;
-			if (row.type === "tool_execution_finished") activeInvocationOrdinal = undefined;
+			) lifecycle.active.payloadMatches = true;
+			if (row.type === "tool_execution_finished") lifecycle.active = undefined;
 		}
-		return false;
+		if (!nodeIdentity.qualifier) {
+			return invocations.length === 1 && invocations[0]!.payloadMatches;
+		}
+		const exact = invocations.filter((invocation) =>
+			invocation.eventId === nodeIdentity.qualifier!.eventId
+			&& invocation.invocationOrdinal === nodeIdentity.qualifier!.invocationOrdinal);
+		return exact.length === 1 && exact[0]!.payloadMatches;
 	}
 
 	countEventsByType(input: { piboSessionId?: string; eventTypes?: string[] } = {}): Array<{ eventType: string; count: number }> {

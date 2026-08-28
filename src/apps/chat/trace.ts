@@ -21,6 +21,7 @@ import {
 import type { ModelProfile } from "../../core/profiles.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
 import type { PiboSession } from "../../sessions/store.js";
+import { isBuiltInHistoryReconciliationProof } from "../../agent-runtimes/history-proof.js";
 import { buildTraceViewFromEvents, traceNodesFromHistoryEntries } from "../../shared/trace-engine.js";
 import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { PiboSessionTraceView, PiboTraceNode } from "../../shared/trace-types.js";
@@ -226,6 +227,7 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 		turnTimings: input.turnTimings,
 		historyEntries: entries,
 		historyReconciliationProof: input.historyReconciliationProof,
+		historyReconciliationAuthoritative: isBuiltInHistoryReconciliationProof(input.historyReconciliationProof),
 		sessions: input.sessions.map((session) => ({
 			id: session.id,
 			parentId: session.parentId ?? null,

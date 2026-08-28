@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 5;
+export const PIBO_DATA_SCHEMA_VERSION = 6;
 
 export function applyPiboDataSchema(db: DatabaseSync): void {
 	const previousVersion = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
@@ -426,6 +426,23 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			ON event_log(session_id, session_sequence DESC, stream_id DESC);
 		CREATE INDEX IF NOT EXISTS idx_event_log_session_type_sequence_stream
 			ON event_log(session_id, type, session_sequence ASC, stream_id ASC);
+		CREATE INDEX IF NOT EXISTS idx_event_log_session_tool_event_sequence_stream
+			ON event_log(session_id, tool_call_id, event_id, session_sequence ASC, stream_id ASC)
+			WHERE tool_call_id IS NOT NULL
+				AND type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished');
+		CREATE INDEX IF NOT EXISTS idx_event_log_session_tool_sequence_stream
+			ON event_log(session_id, tool_call_id, session_sequence ASC, stream_id ASC)
+			WHERE tool_call_id IS NOT NULL
+				AND type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished');
+		CREATE INDEX IF NOT EXISTS idx_event_log_session_attribute_tool_event_sequence_stream
+			ON event_log(
+				session_id,
+				json_extract(attributes_json, '$.toolCallId'),
+				event_id,
+				session_sequence ASC,
+				stream_id ASC
+			)
+			WHERE type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished');
 		CREATE INDEX IF NOT EXISTS idx_event_log_room_stream
 			ON event_log(room_id, stream_id);
 		CREATE INDEX IF NOT EXISTS idx_event_log_topic_stream

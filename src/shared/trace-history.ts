@@ -7,7 +7,6 @@ import type {
 import {
 	historyReconciliationDigest,
 	historyReconciliationEntrySignature,
-	isBoundCompleteHistoryReconciliationProof,
 } from "../agent-runtime/history.js";
 import { historyTraceOrder } from "./trace-order.js";
 import { attachAsyncAgentRunNode, reconcileAsyncAgentRunStatuses } from "./trace-async-agent-runs.js";
@@ -83,9 +82,15 @@ export function projectHistoryEntries(
 	openHistoryEventIds: ReadonlySet<string>,
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
 	reconciliationProof?: AgentRuntimeHistoryReconciliationProof,
+	reconciliationAuthoritative = false,
 ): AgentRuntimeHistoryEntry[] {
 	if (sessionStatus !== "running" || openHistoryEventIds.size === 0) return [...entries];
-	const { userAssignments, userFallbackEventIds } = assignHistoryTimings(entries, turnTimings, reconciliationProof);
+	const { userAssignments, userFallbackEventIds } = assignHistoryTimings(
+		entries,
+		turnTimings,
+		reconciliationProof,
+		reconciliationAuthoritative,
+	);
 	let lastUserMessageIndex = -1;
 	let lastUserEventId: string | undefined;
 	for (let index = 0; index < entries.length; index += 1) {
@@ -104,10 +109,11 @@ export function traceNodesFromHistoryEntries(
 	entries: readonly AgentRuntimeHistoryEntry[],
 	turnTimings: readonly TraceMessageTurnTiming[] = [],
 	reconciliationProof?: AgentRuntimeHistoryReconciliationProof,
+	reconciliationAuthoritative = false,
 ): PiboTraceNode[] {
 	const nodes: PiboTraceNode[] = [];
 	const { userAssignments, turnAssignments, userFallbackEventIds, turnFallbackEventIds, turnProjectionStates } =
-		assignHistoryTimings(entries, turnTimings, reconciliationProof);
+		assignHistoryTimings(entries, turnTimings, reconciliationProof, reconciliationAuthoritative);
 	const qualifiedNativeToolCallIds = nativeToolCallIdsRequiringQualification(entries, reconciliationProof);
 	const projectionStateByEventId = new Map<string, AssistantTurnProjectionState>();
 	let assistantTurnIndex = 0;
@@ -209,6 +215,7 @@ function assignHistoryTimings(
 	entries: readonly AgentRuntimeHistoryEntry[],
 	turnTimings: readonly TraceMessageTurnTiming[],
 	reconciliationProof?: AgentRuntimeHistoryReconciliationProof,
+	reconciliationAuthoritative = false,
 ): HistoryTimingAssignments {
 	// Direct callers hand us a complete in-memory history. Paged production
 	// callers must provide an explicit adapter proof: complete proof decisions
@@ -222,9 +229,21 @@ function assignHistoryTimings(
 	if (!reconciliationProof) return assignHistoryTimingsWithinScope(entries, turnTimings);
 	if (
 		!reconciliationProof.complete
-		|| !proofMatchesPage(entries, reconciliationProof)
+		|| !structuralClaimMatchesPage(entries, reconciliationProof)
 	) return assignHistoryTimingsWithinScope(entries, [], true);
-	return assignmentsFromCompleteProof(entries, turnTimings, reconciliationProof.entries);
+	// A compatibility claim may carry bounded structural context, but it cannot
+	// assign product ownership to native output. User-only history has no output
+	// ownership to transfer, so its independently persisted timing evidence may
+	// still reconcile the user messages exactly as the direct-history path does.
+	const userOnlyClaim = reconciliationProof.entries.every((entry) =>
+		entry.type !== "message" || entry.role === "user"
+	);
+	return assignmentsFromCompleteProof(
+		entries,
+		reconciliationAuthoritative || userOnlyClaim ? turnTimings : [],
+		reconciliationProof.entries,
+		!reconciliationAuthoritative && !userOnlyClaim,
+	);
 }
 
 function assignHistoryTimingsWithinScope(
@@ -312,11 +331,12 @@ function assignmentsFromCompleteProof(
 	entries: readonly AgentRuntimeHistoryEntry[],
 	turnTimings: readonly TraceMessageTurnTiming[],
 	proofEntries: readonly AgentRuntimeHistoryEntry[],
+	proofFailClosed = false,
 ): HistoryTimingAssignments {
 	if (!hasUniqueStableHistoryPositions(entries)) {
 		return assignHistoryTimingsWithinScope(entries, turnTimings, true);
 	}
-	const proofAssignments = assignHistoryTimingsWithinScope(proofEntries, turnTimings);
+	const proofAssignments = assignHistoryTimingsWithinScope(proofEntries, turnTimings, proofFailClosed);
 	const localFallbackEventIds = historyGroupFallbackEventIds(entries);
 	const decisionsByPosition = new Map<string, ProofEntryDecision>();
 	for (let entryIndex = 0; entryIndex < proofEntries.length; entryIndex += 1) {
@@ -376,11 +396,10 @@ function assignmentsFromCompleteProof(
 	return { userAssignments, turnAssignments, userFallbackEventIds, turnFallbackEventIds, turnProjectionStates };
 }
 
-function proofMatchesPage(
+function structuralClaimMatchesPage(
 	entries: readonly AgentRuntimeHistoryEntry[],
 	proof: AgentRuntimeHistoryReconciliationProof,
 ): boolean {
-	if (!isBoundCompleteHistoryReconciliationProof(proof)) return false;
 	if (
 		!proof.fullScope
 		|| !Number.isSafeInteger(proof.fullScope.entryCount)
@@ -1170,7 +1189,7 @@ function nativeToolCallIdsRequiringQualification(
 	if (
 		!reconciliationProof.complete
 		|| reconciliationProof.entries.length > TRACE_RECONCILIATION_ENTRY_CAP
-		|| !proofMatchesPage(entries, reconciliationProof)
+		|| !structuralClaimMatchesPage(entries, reconciliationProof)
 	) return localNativeToolCallIds;
 	return duplicateNativeToolCallIds(reconciliationProof.entries);
 }

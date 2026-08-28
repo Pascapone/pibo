@@ -5,7 +5,7 @@ import type {
 	InspectAgentRuntimeHistoryInput,
 	ReadAgentRuntimeHistoryInput,
 } from "../../agent-runtime/history.js";
-import { createCompleteHistoryReconciliationProof } from "../../agent-runtime/history.js";
+import { historyReconciliationDigest } from "../../agent-runtime/history.js";
 import type { PiboJsonObject, PiboJsonValue } from "../../core/events.js";
 import type { RuntimeSessionBinding } from "../../sessions/runtime-binding.js";
 import { TRACE_RECONCILIATION_ENTRY_CAP } from "../../shared/trace-limits.js";
@@ -182,7 +182,7 @@ function messagesPageData(result: unknown): { messages: unknown[]; nextCursor?: 
 	};
 }
 
-async function readCompleteOmpMessages(client: OmpRpcClient): Promise<unknown[]> {
+async function readCompleteOmpMessages(client: Pick<OmpRpcClient, "request">): Promise<unknown[]> {
 	const pages: unknown[][] = [];
 	const seenCursors = new Set<string>();
 	let cursor: string | undefined;
@@ -232,7 +232,7 @@ async function readCompleteOmpMessages(client: OmpRpcClient): Promise<unknown[]>
 }
 
 export async function readOmpHistory(
-	client: OmpRpcClient,
+	client: Pick<OmpRpcClient, "request">,
 	input: ReadAgentRuntimeHistoryInput,
 	runtimeInstanceId: string,
 	binding: RuntimeSessionBinding,
@@ -261,7 +261,12 @@ export async function readOmpHistory(
 			adapterId: OMP_ADAPTER_ID,
 			source: "native",
 			entries,
-			reconciliationProof: createCompleteHistoryReconciliationProof(allEntries, historyScopeId),
+			reconciliationProof: {
+				complete: true,
+				scopeId: historyScopeId,
+				fullScope: { entryCount: allEntries.length, digest: historyReconciliationDigest(allEntries) },
+				entries: allEntries,
+			},
 			orderOffset: start,
 			...(start > 0 ? { nextCursor: encodeCursor({ v: 1, nativeSessionId, beforeIndex: start }) } : {}),
 			hasMore: start > 0,
