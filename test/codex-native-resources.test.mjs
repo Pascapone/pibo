@@ -701,6 +701,7 @@ test("Codex native keeps same-name Pibo skills materialized and reports one acti
 	const registry = new AgentRuntimeAdapterRegistry();
 	registry.registerDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
 	registry.registerInstance({ id: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, config: runtimeConfig(root) });
+	const deliveryReports = [];
 	const resources = {
 		piboSessionId,
 		runtimeInstanceId: instanceId,
@@ -711,6 +712,7 @@ test("Codex native keeps same-name Pibo skills materialized and reports one acti
 		getMcpConfigPath: () => undefined,
 		getAdapterEnvironment: () => ({ PIBO_CODEX_FIXTURE_NATIVE_SKILL_NAME: "collision-skill" }),
 		getExternalMcpServerConfigs: () => ({}),
+		recordAdapterDelivery: (reports) => deliveryReports.push(...reports),
 		getInspection: () => ({
 			piboSessionId,
 			runtimeInstanceId: instanceId,
@@ -749,6 +751,23 @@ test("Codex native keeps same-name Pibo skills materialized and reports one acti
 	assert.equal(session.getStatus().warnings.length, 1);
 	assert.match(session.getStatus().warnings[0], /collision-skill/);
 	assert.match(session.getStatus().warnings[0], /Rename or disable one source/);
+	assert.deepEqual(deliveryReports, [
+		{
+			contributionId: "skill:collision-skill",
+			status: "degraded",
+			mode: "codex-extra-roots",
+			fidelity: "lossy",
+			target: selectedSkillPath,
+			diagnostic: session.getStatus().warnings[0],
+		},
+		{
+			contributionId: "skill:unrelated-skill",
+			status: "delivered",
+			mode: "codex-extra-roots",
+			fidelity: "exact",
+			target: unrelatedSkillPath,
+		},
+	]);
 	assert.ok(session.getStatus().enabledTools.some((name) => name.endsWith("/alpha")));
 	assert.equal(await callAlpha(accesses[0], "still-available"), "collision:still-available");
 	const events = [];
