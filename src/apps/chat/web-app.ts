@@ -1633,6 +1633,7 @@ function ensureCustomAgentProfiles(state: ChatWebAppState, context: PiboWebAppCo
 function serializeCustomAgent(agent: CustomAgentDefinition, context: PiboWebAppContext) {
 	return {
 		...agent,
+		brokenNativeTools: listBrokenNativeTools(agent.nativeTools, context),
 		brokenContextFiles: listBrokenContextFiles(agent.contextFiles, context),
 	};
 }
@@ -1741,6 +1742,13 @@ async function requireValidCustomAgentRuntime(agent: CustomAgentDefinition, cont
 		`Agent runtime selection is invalid: ${errors.map((diagnostic) => diagnostic.message).join(" ")}`,
 		400,
 	);
+}
+
+function listBrokenNativeTools(names: readonly string[], context: PiboWebAppContext): string[] {
+	const catalog = context.channelContext.getCapabilityCatalog?.();
+	if (!catalog) return [];
+	const knownNames = new Set(catalog.nativeTools.map((tool) => tool.name));
+	return names.filter((name) => !knownNames.has(name));
 }
 
 function listBrokenContextFiles(keys: readonly string[], context: PiboWebAppContext): string[] {

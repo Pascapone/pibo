@@ -879,6 +879,41 @@ export function AgentsView({
 					</DesignerPanel>
 					<DesignerPanel title="Tools">
 						{piboToolsUnavailableReason ? <RuntimeCapabilityNotice reason={piboToolsUnavailableReason} /> : null}
+						{draft.brokenNativeTools?.length ? (
+							<div className="border border-red-500/60 bg-red-500/10 rounded-sm p-3 space-y-2">
+								<div className="flex items-start gap-2 text-red-100">
+									<AlertTriangle size={14} className="mt-0.5 shrink-0" />
+									<div>
+										<div className="text-sm font-medium">This agent references tools that are no longer registered.</div>
+										<div className="text-xs text-red-200/90">The agent remains available, but these tools will not be loaded.</div>
+									</div>
+								</div>
+								<div className="grid gap-2">
+									{draft.brokenNativeTools.map((toolName) => (
+										<div key={toolName} className="flex items-center gap-2 border border-red-500/40 bg-[#2a1417] rounded-sm px-3 py-2">
+											<div className="min-w-0 flex-1">
+												<div className="truncate text-sm text-red-100">{toolName}</div>
+												<div className="text-[11px] uppercase tracking-wider text-red-300/80">Missing tool</div>
+											</div>
+											<button
+												type="button"
+												disabled={readOnly}
+												onClick={() => setDraft((current) => ({
+													...current,
+													nativeTools: current.nativeTools.filter((item) => item !== toolName),
+													brokenNativeTools: (current.brokenNativeTools ?? []).filter((item) => item !== toolName),
+												}))}
+												className="h-8 w-8 inline-flex items-center justify-center border border-red-500/60 rounded-sm text-red-200 hover:border-red-400 hover:text-red-100 disabled:opacity-50"
+												title="Remove Missing Tool"
+												aria-label="Remove Missing Tool"
+											>
+												<X size={14} />
+											</button>
+										</div>
+									))}
+								</div>
+							</div>
+						) : null}
 						<CatalogGroupGrid
 							groups={nativeToolGroups}
 							empty={catalog ? <EmptyCatalog message="No native tools registered" /> : <EmptyCatalog />}

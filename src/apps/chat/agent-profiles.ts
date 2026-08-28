@@ -47,7 +47,14 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 					if (shouldWarnMissingReferences) console.warn(`Skipping unknown context file "${contextFileKey}" for custom agent "${agent.profileName}"`);
 				}
 			}
-			for (const toolName of agent.nativeTools) builder.addTool(context.getTool(toolName));
+			for (const toolName of agent.nativeTools) {
+				try {
+					builder.addTool(context.getTool(toolName));
+				} catch (error) {
+					if (!isUnknownToolError(error, toolName)) throw error;
+					if (shouldWarnMissingReferences) console.warn(`Skipping unknown tool "${toolName}" for custom agent "${agent.profileName}"`);
+				}
+			}
 			for (const subagent of agent.subagents) builder.addSubagent(subagent);
 
 			return builder.createSession();
@@ -88,6 +95,10 @@ function createCustomAgentBuilder(agent: CustomAgentDefinition): InitialSessionC
 
 function uniqueAliases(aliases: readonly string[], profileName: string): string[] {
 	return [...new Set(aliases.filter((alias) => alias && alias !== profileName))];
+}
+
+function isUnknownToolError(error: unknown, toolName: string): boolean {
+	return error instanceof Error && error.message === `Unknown tool "${toolName}"`;
 }
 
 function isUnknownContextFileError(error: unknown, contextFileKey: string): boolean {

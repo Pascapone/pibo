@@ -14,6 +14,7 @@ export type AgentDraft = Omit<SaveCustomAgentInput, "mainModel" | "subagentModel
 	fast?: boolean;
 	mainFast?: boolean;
 	subagentFast?: boolean;
+	brokenNativeTools?: string[];
 	brokenContextFiles?: string[];
 	source: "custom" | "profile";
 };
@@ -117,6 +118,7 @@ export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new
 		autoContextFiles: true,
 		runControl: false,
 		goalControl: true,
+		brokenNativeTools: [],
 		brokenContextFiles: [],
 		hardPinnedModel: undefined,
 		source: "custom",
@@ -182,6 +184,7 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 		autoContextFiles: agent.autoContextFiles ?? true,
 		runControl: agent.runControl,
 		goalControl: agent.goalControl ?? true,
+		brokenNativeTools: agent.brokenNativeTools ?? [],
 		brokenContextFiles: agent.brokenContextFiles ?? [],
 		archivedAt: agent.archivedAt,
 		hardPinnedModel: undefined,
@@ -216,6 +219,7 @@ export function profileToDraft(profile: BootstrapData["agents"][number], catalog
 		autoContextFiles: profile.autoContextFiles ?? true,
 		runControl: profile.runControl ?? false,
 		goalControl: profile.goalControl ?? true,
+		brokenNativeTools: [],
 		brokenContextFiles: [],
 		hardPinnedModel: profile.model,
 		profileName: profile.name,
