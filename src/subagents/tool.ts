@@ -90,6 +90,7 @@ export type PiboAgentObservation = {
 
 export type PiboAgentObserveInput = {
 	requestIds?: string[];
+	toolCallIds?: string[];
 	agentIds?: string[];
 	names?: string[];
 	threadKeys?: string[];
@@ -232,7 +233,10 @@ export function formatAgentObservationsForModel(result: PiboAgentObserveResult):
 		const event = observation.kind === "tool"
 			? `${observation.eventType}${observation.toolName ? ` ${observation.toolName}` : ""}`
 			: observation.eventType;
-		lines.push("", `#${observation.sequence} ${scope} — ${event}${observation.isError ? " [error]" : ""}`);
+		const toolCall = observation.kind === "tool" && observation.toolCallId
+			? `; toolCallId=${observation.toolCallId}`
+			: "";
+		lines.push("", `#${observation.sequence} ${scope} — ${event}${toolCall}${observation.isError ? " [error]" : ""}`);
 		if (observation.text) lines.push(observation.text);
 	}
 	return lines.join("\n");
@@ -348,13 +352,14 @@ export function createAgentToolDefinitions(
 			description: [
 				"Read completed delegated-agent messages with bounded cursor, identity, event, time, text, order, and limit filters.",
 				"Default: the newest 20 completed assistant messages, with streaming deltas and tools hidden.",
-				"Set includeTools=true to add compact tool calls and terminal results; set toolDetail=full only for bounded diagnostic inspection.",
+				"Set includeTools=true to add compact tool calls and terminal results, or pass toolCallIds to retrieve only those exact tool observations. Set toolDetail=full only for bounded diagnostic inspection.",
 			].join("\n"),
-			promptSnippet: "Observe child-agent progress through completed assistant messages. Defaults: newest 20 messages, no streaming deltas, no duplicate tool progress events, no tools. Set includeTools=true for compact tool call/result summaries, toolDetail=full for bounded raw tool text, or eventTypes/kinds for explicit progress diagnostics. Pass afterSequence from the previous result for cursor polling; cursor pages consume the oldest unseen matches even when order is desc.",
+			promptSnippet: "Observe child-agent progress through completed assistant messages. Defaults: newest 20 messages, no streaming deltas, no duplicate tool progress events, no tools. Set includeTools=true for compact tool call/result summaries, pass up to 50 exact toolCallIds to retrieve only those tool observations, use toolDetail=full for bounded raw tool text, or eventTypes/kinds for explicit progress diagnostics. Compact tool entries expose their toolCallId for follow-up queries. Pass afterSequence from the previous result for cursor polling; cursor pages consume the oldest unseen matches even when order is desc.",
 			executionMode: "parallel",
 			annotations: { readOnly: true },
 			inputSchema: Type.Object({
 				requestIds: Type.Optional(Type.Array(Type.String({ description: "Exact yielded run/request ID" }), { maxItems: 50 })),
+				toolCallIds: Type.Optional(Type.Array(Type.String({ description: "Exact existing toolCallId. Multiple values use OR semantics and return only matching tool observations." }), { maxItems: 50 })),
 				agentIds: Type.Optional(Type.Array(Type.String({ description: "Owned child agentId" }), { maxItems: 50 })),
 				names: Type.Optional(Type.Array(piboStringEnum(names), { maxItems: 50 })),
 				threadKeys: Type.Optional(Type.Array(Type.String(), { maxItems: 50 })),

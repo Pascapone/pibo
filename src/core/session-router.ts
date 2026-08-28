@@ -2316,6 +2316,10 @@ export class PiboSessionRouter {
 			throw new Error("Agent observation since must not be after until.");
 		}
 		const requestIds = input.requestIds ? new Set(input.requestIds) : undefined;
+		if (input.toolCallIds && input.toolCallIds.length > 50) {
+			throw new Error("Agent observation toolCallIds must contain at most 50 entries.");
+		}
+		const toolCallIds = input.toolCallIds ? new Set(input.toolCallIds) : undefined;
 		const agentIds = input.agentIds ? new Set(input.agentIds) : undefined;
 		if (agentIds) {
 			for (const agentId of agentIds) this.requireManagedAgent(parentPiboSessionId, agentId);
@@ -2328,7 +2332,8 @@ export class PiboSessionRouter {
 		const textContains = input.textContains?.toLowerCase();
 		const defaultMessageView = eventTypes === undefined && kinds === undefined;
 		const explicitlySelectsTools = input.eventTypes?.some((eventType) => piboAgentObservationKind(eventType) === "tool") === true
-			|| input.kinds?.includes("tool") === true;
+			|| input.kinds?.includes("tool") === true
+			|| toolCallIds !== undefined;
 		const includeTools = input.includeTools === true || (input.includeTools === undefined && explicitlySelectsTools);
 		const defaultEventTypes = includeTools
 			? [...PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES, ...PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES]
@@ -2337,6 +2342,7 @@ export class PiboSessionRouter {
 		const matches = this.agentObservations.filter((observation) => {
 			if (observation.managingParentId !== parentPiboSessionId) return false;
 			if (requestIds && (!observation.requestId || !requestIds.has(observation.requestId))) return false;
+			if (toolCallIds && (!observation.toolCallId || !toolCallIds.has(observation.toolCallId))) return false;
 			if (agentIds && !agentIds.has(observation.agentId)) return false;
 			if (names && !names.has(observation.name)) return false;
 			if (threadKeys && (!observation.threadKey || !threadKeys.has(observation.threadKey))) return false;
