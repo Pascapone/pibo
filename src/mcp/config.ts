@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import {
   ErrorCode,
@@ -298,37 +298,142 @@ export function getDaemonRequestTimeoutMs(): number {
   return DEFAULT_DAEMON_REQUEST_TIMEOUT_SECONDS * 1000;
 }
 
-/**
- * Get the socket directory for daemon connections
- * Uses platform-appropriate temp directory
- */
-export function getSocketDir(): string {
-  const uid = process.getuid?.() ?? 'unknown';
-  // macOS uses /var/folders which is auto-cleaned, Linux uses /tmp
-  const base = process.platform === 'darwin' ? '/tmp' : '/tmp';
-  return join(base, `mcp-cli-${uid}`);
+function getDaemonUserKey(platform: NodeJS.Platform): string {
+  const uid = process.getuid?.();
+  if (platform !== 'win32' && uid !== undefined) {
+    return String(uid);
+  }
+
+  const identity = `${homedir()}\0${process.env.USERNAME ?? process.env.USER ?? ''}`;
+  return createHash('sha256').update(identity).digest('hex').slice(0, 12);
+}
+
+function getDaemonServerKey(serverName: string): string {
+  // Node replaces unpaired UTF-16 surrogates when encoding a string as UTF-8.
+  // Hash those names as explicit code units so distinct JavaScript strings do
+  // not collapse onto the same daemon endpoint.
+  const hasUnpairedSurrogate = Array.from(
+    { length: serverName.length },
+    (_, index) => serverName.charCodeAt(index),
+  ).some((codeUnit, index, codeUnits) => {
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = codeUnits[index + 1];
+      return next === undefined || next < 0xdc00 || next > 0xdfff;
+    }
+    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      const previous = codeUnits[index - 1];
+      return previous === undefined || previous < 0xd800 || previous > 0xdbff;
+    }
+    return false;
+  });
+
+  const hash = createHash('sha256');
+  if (hasUnpairedSurrogate) {
+    hash.update('pibo-mcp-utf16\0');
+    const codeUnits = Buffer.allocUnsafe(serverName.length * 2);
+    for (let index = 0; index < serverName.length; index += 1) {
+      codeUnits.writeUInt16LE(serverName.charCodeAt(index), index * 2);
+    }
+    hash.update(codeUnits);
+  } else {
+    hash.update(serverName);
+  }
+  return hash.digest('hex').slice(0, 16);
+}
+
+function getDaemonFileName(serverName: string): string {
+  // Keep every filesystem path bounded. Unix-domain socket limits are much
+  // shorter than ordinary filesystem path limits, and server names are input.
+  return getDaemonServerKey(serverName);
 }
 
 /**
- * Get socket path for a specific server
+ * Get the directory for daemon PID files and POSIX sockets.
  */
-export function getSocketPath(serverName: string): string {
-  return join(getSocketDir(), `${serverName}.sock`);
+export function getSocketDir(
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return join(tmpdir(), `mcp-cli-${getDaemonUserKey(platform)}`);
 }
 
 /**
- * Get PID file path for a specific server daemon
+ * Whether the platform represents daemon IPC as a filesystem socket.
  */
-export function getPidPath(serverName: string): string {
-  return join(getSocketDir(), `${serverName}.pid`);
+export function usesFilesystemSocket(
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform !== 'win32';
 }
 
 /**
- * Generate a hash of server config for stale detection
- * Returns consistent hash for identical configs
+ * Get the IPC endpoint for a specific server.
+ * POSIX uses Unix domain sockets; Windows uses named pipes.
+ */
+export function getSocketPath(
+  serverName: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform === 'win32') {
+    const userKey = getDaemonUserKey(platform);
+    return `\\\\.\\pipe\\pibo-mcp-${userKey}-${getDaemonServerKey(serverName)}`;
+  }
+
+  return join(getSocketDir(platform), `${getDaemonFileName(serverName)}.sock`);
+}
+
+/**
+ * Get PID file path for a specific server daemon.
+ */
+export function getPidPath(
+  serverName: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return join(getSocketDir(platform), `${getDaemonFileName(serverName)}.pid`);
+}
+
+/**
+ * Get the atomic startup-election claim path for a server daemon.
+ */
+export function getDaemonClaimPath(
+  serverName: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return join(getSocketDir(platform), `${getDaemonFileName(serverName)}.lock`);
+}
+
+/**
+ * Get the prefix shared by active client lease files for a server daemon.
+ */
+export function getDaemonLeasePrefix(
+  serverName: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return join(
+    getSocketDir(platform),
+    `${getDaemonFileName(serverName)}.lease-`,
+  );
+}
+
+function normalizeForHash(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(normalizeForHash);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([key, nestedValue]) => [key, normalizeForHash(nestedValue)]),
+    );
+  }
+  return value;
+}
+
+/**
+ * Generate a hash of server config for stale detection.
+ * Nested object key order does not affect the hash.
  */
 export function getConfigHash(config: ServerConfig): string {
-  const str = JSON.stringify(config, Object.keys(config).sort());
+  const str = JSON.stringify(normalizeForHash(config));
   return createHash('sha256').update(str).digest('hex').slice(0, 16);
 }
 
@@ -475,7 +580,10 @@ export async function ensureConfigExists(
 
   const configPath = getPreferredConfigPath(explicitPath);
   await mkdir(dirname(configPath), { recursive: true });
-  await writeFile(configPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
+  await writeFile(
+    configPath,
+    `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`,
+  );
   return configPath;
 }
 
@@ -498,7 +606,10 @@ async function readRawConfig(configPath: string): Promise<McpServersConfig> {
   return config;
 }
 
-function validateServerConfig(serverName: string, serverConfig: ServerConfig): void {
+function validateServerConfig(
+  serverName: string,
+  serverConfig: ServerConfig,
+): void {
   if (!serverConfig || typeof serverConfig !== 'object') {
     throw new Error(
       formatCliError({
@@ -567,7 +678,9 @@ export async function loadConfigUnresolved(
   const merged: McpServersConfig = { mcpServers: {} };
   for (const configPath of existingPaths) {
     const config = await readRawConfig(configPath);
-    for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
+    for (const [serverName, serverConfig] of Object.entries(
+      config.mcpServers,
+    )) {
       if (!(serverName in merged.mcpServers)) {
         merged.mcpServers[serverName] = serverConfig;
       }

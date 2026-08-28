@@ -48,7 +48,7 @@
 9. **Provider-aware stale configuration**
    - Stale thresholds should be configurable per provider/profile.
    - Add a minimal Provider Settings config option for telemetry stale threshold behavior.
-   - V1 may use a small config shape first, but it must support provider-specific thresholds rather than one hard-coded global timeout.
+   - V1 may use a small config shape first, but it must support provider-specific thresholds rather than one hard-coded global staleness threshold. These thresholds are diagnostic and do not stop work.
    - Stale/status output should show the applied threshold and whether it came from provider/profile config or a default.
 
 10. **Dependency instrumentation policy**

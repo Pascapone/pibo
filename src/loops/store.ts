@@ -237,7 +237,7 @@ export class PiboLoopStore {
 		const enabled = input.enabled === true;
 		const state: PiboLoopJobState = {
 			completedIterations: 0,
-			...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokenAccounting: newGoalTokenAccounting(), tokensUsed: 0, activeTimeSeconds: 0, ...(enabled ? { goalStartedAt: timestamp } : {}) } : {}),
+			...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokenAccounting: newGoalTokenAccounting(), tokensUsed: 0, activeTimeSeconds: 0, activeTimeRunningAt: null, ...(enabled ? { goalStartedAt: timestamp } : {}) } : {}),
 			...(input.initialPiboSessionId?.trim() ? { lastPiboSessionId: input.initialPiboSessionId.trim() } : {}),
 		};
 		const job: PiboLoopJob = { id: mode === 'ralph' ? `ralph_${randomUUID()}` : `loop_${randomUUID()}`, mode, name: (input.name ?? defaultName(input.prompt)).trim(), description: input.description?.trim() || undefined, enabled, target, profile: input.profile, prompt: input.prompt, maxIterations: normalizeMaxIterations(input.maxIterations), tokenBudget: normalizeTokenBudget(input.tokenBudget), tokenReserve: normalizeTokenReserve(input.tokenReserve), stopPolicy: normalizeLoopStopPolicy(input.stopPolicy), ...runtimeOptions, ...(resources ? { resources } : {}), state, createdAt: timestamp, updatedAt: timestamp };
@@ -300,7 +300,7 @@ export class PiboLoopStore {
 				createdAt: timestamp,
 			};
 			this.db.prepare('INSERT INTO pibo_ralph_run_facts (id, job_id, run_id, pibo_session_id, type, source, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(fact.id, fact.jobId, null, piboSessionId, fact.type, fact.source, JSON.stringify(fact.payload), fact.createdAt);
-			const state: PiboLoopJobState = { ...job.state, goalStatus: 'active', goalEndedAt: undefined, stopRequestedAt: undefined, cancelRequestedAt: undefined, runningAt: undefined };
+			const state: PiboLoopJobState = { ...job.state, goalStatus: 'active', goalEndedAt: undefined, stopRequestedAt: undefined, cancelRequestedAt: undefined, activeTimeRunningAt: null, runningAt: undefined };
 			this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = 1, state_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(state), timestamp, job.id);
 			this.db.exec('COMMIT');
 			return this.getJob(id)!;
@@ -405,6 +405,7 @@ export class PiboLoopStore {
 		try {
 			const job = this.recordGoalProgress(id, { activeTimeSeconds: seconds }, now);
 			if (job?.mode === 'goal') {
+				this.updateJobStateLocked(id, { ...job.state, activeTimeRunningAt: null }, nowIso(now));
 				const row = this.db.prepare('SELECT * FROM pibo_ralph_runs WHERE id = ? AND job_id = ?').get(runId, id) as LoopRunRow | undefined;
 				if (row) {
 					const accounting = { ...(parseRunAccounting(row.accounting_json) ?? { tokenAccounting: normalizeLoopTokenAccounting(job.state.tokenAccounting) }), activeTimeSeconds: seconds };
@@ -412,7 +413,7 @@ export class PiboLoopStore {
 				}
 			}
 			this.db.exec('COMMIT');
-			return job;
+			return this.getJob(id) ?? job;
 		} catch (error) { this.db.exec('ROLLBACK'); throw error; }
 	}
 	listJobs(input: { includeDisabled?: boolean } = {}): PiboLoopJob[] {
@@ -555,6 +556,7 @@ export class PiboLoopStore {
 		const shouldDisable = terminalGoalStatus || reachedMaxIterations || input.stopAfterRun === true || input.stopEvaluation?.finalAction === 'stop-after-run' || input.stopEvaluation?.finalAction === 'cancel-current-run';
 		const state: PiboLoopJobState = {
 			...job.state,
+			...(job.mode === 'goal' ? { activeTimeRunningAt: null } : {}),
 			runningAt: undefined,
 			completedIterations,
 			lastRunAt: timestamp,
@@ -628,7 +630,7 @@ export class PiboLoopStore {
 				}
 			}
 			const run = this.createRunLocked(job, timestamp);
-			const state = { ...job.state, runningAt: timestamp, lastRunAt: timestamp, lastRunId: run.id, nextAttemptAt: undefined, retryBackoffMs: undefined };
+			const state = { ...job.state, ...(job.mode === 'goal' ? { activeTimeRunningAt: timestamp } : {}), runningAt: timestamp, lastRunAt: timestamp, lastRunId: run.id, nextAttemptAt: undefined, retryBackoffMs: undefined };
 			this.updateJobStateLocked(job.id, state, timestamp);
 			this.db.exec('COMMIT');
 			return { job: { ...job, state, updatedAt: timestamp }, run };

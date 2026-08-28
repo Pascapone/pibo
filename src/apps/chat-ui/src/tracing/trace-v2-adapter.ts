@@ -52,6 +52,7 @@ function traceNodeFromTimelineNode(row: TraceTimelineNode): PiboTraceNode {
 		id: row.nodeId,
 		parentId: row.parentId,
 		entryId: row.entryId,
+		nativeTurnId: row.nativeTurnId,
 		piboSessionId: row.piboSessionId,
 		eventId: row.eventId,
 		toolCallId: row.toolCallId,

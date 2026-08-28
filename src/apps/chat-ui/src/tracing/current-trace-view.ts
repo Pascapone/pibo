@@ -1,4 +1,4 @@
-import { patchTraceViewWithEvents } from "../../../../shared/trace-engine.js";
+import { patchTraceViewWithEvents } from "../../../../shared/trace-live-patch.js";
 import type { PiboSessionTraceView, PiboWebSessionStatus } from "../types";
 import { trimLiveOverlayForBaseTrace, type LiveTraceOverlay } from "./live-overlay";
 import {

@@ -70,9 +70,11 @@ const SESSION_SELECT = `
 `;
 
 export class SqlitePiboSessionStore implements PiboSessionStore {
+	readonly #concreteRuntimeBindingCasIdentity: boolean;
 	private readonly db: DatabaseSync;
 
 	constructor(path: string) {
+		this.#concreteRuntimeBindingCasIdentity = new.target === SqlitePiboSessionStore;
 		const resolvedPath = path === ":memory:" ? path : resolve(path);
 		if (resolvedPath !== ":memory:") {
 			mkdirSync(dirname(resolvedPath), { recursive: true });
@@ -86,6 +88,14 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 		this.ensureNullablePiSessionId();
 		this.applySchema();
 		this.applyRuntimeBindingSchema();
+	}
+
+	/** @internal Read-only concrete-construction identity; it cannot mint authorization. */
+	static hasConcreteRuntimeBindingCasIdentity(store: unknown): store is SqlitePiboSessionStore {
+		return typeof store === "object"
+			&& store !== null
+			&& #concreteRuntimeBindingCasIdentity in store
+			&& store.#concreteRuntimeBindingCasIdentity;
 	}
 
 	private applySchema(): void {
@@ -466,6 +476,36 @@ export class SqlitePiboSessionStore implements PiboSessionStore {
 	close(): void {
 		this.db.close();
 	}
+}
+
+const auditedSqliteGet = SqlitePiboSessionStore.prototype.get;
+const auditedSqliteGetRuntimeBinding = SqlitePiboSessionStore.prototype.getRuntimeBinding;
+const auditedSqliteRuntimeBindingCas = SqlitePiboSessionStore.prototype.updateRuntimeBinding;
+const hasConcreteSqliteRuntimeBindingCasIdentity = SqlitePiboSessionStore.hasConcreteRuntimeBindingCasIdentity;
+
+/** @internal Resolves only the original CAS of an exact, genuinely constructed built-in store. */
+export function resolveSqliteRuntimeBindingCas(
+	store: unknown,
+): typeof auditedSqliteRuntimeBindingCas | undefined {
+	if (
+		!hasConcreteSqliteRuntimeBindingCasIdentity(store)
+		|| Object.getPrototypeOf(store) !== SqlitePiboSessionStore.prototype
+		|| Object.prototype.hasOwnProperty.call(store, "get")
+		|| Object.prototype.hasOwnProperty.call(store, "getRuntimeBinding")
+		|| Object.prototype.hasOwnProperty.call(store, "updateRuntimeBinding")
+		|| SqlitePiboSessionStore.prototype.get !== auditedSqliteGet
+		|| SqlitePiboSessionStore.prototype.getRuntimeBinding !== auditedSqliteGetRuntimeBinding
+		|| SqlitePiboSessionStore.prototype.updateRuntimeBinding !== auditedSqliteRuntimeBindingCas
+	) return undefined;
+	const auditedStore = new Proxy(store, {
+		get(target, property) {
+			if (property === "get") return auditedSqliteGet;
+			if (property === "getRuntimeBinding") return auditedSqliteGetRuntimeBinding;
+			if (property === "updateRuntimeBinding") return auditedSqliteRuntimeBindingCas;
+			return Reflect.get(target, property, target);
+		},
+	});
+	return auditedSqliteRuntimeBindingCas.bind(auditedStore);
 }
 
 export function createDefaultPiboSessionStore(_cwd?: string): SqlitePiboSessionStore {

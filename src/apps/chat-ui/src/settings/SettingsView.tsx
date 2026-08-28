@@ -11,16 +11,19 @@ import {
 	Keyboard,
 	Layers,
 	Mic,
+	MonitorPlay,
 	Plus,
 	Power,
 	PowerOff,
 	Settings,
 	Trash2,
+	Volume2,
 	Wrench,
 } from "lucide-react";
 import { createUserSkill, deletePiPackage, deleteUserSkill, getUserSkill, installUserSkill, patchPiPackage, postPiPackage, updateUserSkill } from "../api-agent-designer";
 import { getGatewaySettings, getUserSettings, patchGatewaySettings, patchModelDefaults, patchUserSettings, pruneTelemetryRetention } from "../api-settings";
 import { getTranscriptionProviders } from "../api-transcription";
+import { getSpeechProviders } from "../api-speech";
 import { piPackageMeta, type PiPackageCatalogItem } from "../agents/agent-designer-model";
 import { AgentRuntimeOptions, DesignerPanel, EmptyCatalog, InlineCheckboxToggle, PiPackageDetails } from "../agents/designer-ui";
 import { writeStoredExpandThinking, writeStoredShowThinking } from "../app-storage";
@@ -118,6 +121,34 @@ export function SettingsView({
 				</h1>
 				<DesignerPanel title="Audio transcription">
 					<TranscriptionProviderSettings />
+				</DesignerPanel>
+			</div>
+		);
+	}
+
+	if (activePanel === "previews") {
+		return (
+			<div className="overflow-auto p-6 max-[640px]:p-3">
+				<h1 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+					<MonitorPlay size={16} />
+					Previews
+				</h1>
+				<DesignerPanel title="Managed Preview servers">
+					<PreviewServerSettings />
+				</DesignerPanel>
+			</div>
+		);
+	}
+
+	if (activePanel === "speech") {
+		return (
+			<div className="p-6 overflow-auto">
+				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+					<Volume2 size={16} />
+					Speech
+				</h1>
+				<DesignerPanel title="Text-to-speech">
+					<SpeechProviderSettings />
 				</DesignerPanel>
 			</div>
 		);
@@ -292,6 +323,100 @@ function YieldedRunConcurrencySettings() {
 	);
 }
 
+function PreviewServerSettings() {
+	const queryClient = useQueryClient();
+	const settingsQuery = useQuery({ queryKey: ["user-settings"], queryFn: getUserSettings });
+	const [maxRunningServersDraft, setMaxRunningServersDraft] = useState("3");
+	const [autoStopMinutesDraft, setAutoStopMinutesDraft] = useState("10");
+	const [saving, setSaving] = useState(false);
+	const [message, setMessage] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!settingsQuery.data?.previewServers) return;
+		setMaxRunningServersDraft(String(settingsQuery.data.previewServers.maxRunningServers));
+		setAutoStopMinutesDraft(String(settingsQuery.data.previewServers.autoStopMinutes));
+	}, [settingsQuery.data?.previewServers]);
+
+	const save = async () => {
+		const maxRunningServers = Number(maxRunningServersDraft);
+		const autoStopMinutes = Number(autoStopMinutesDraft);
+		if (!Number.isSafeInteger(maxRunningServers) || maxRunningServers < 1 || maxRunningServers > 20) {
+			setError("Maximum running servers must be an integer from 1 to 20.");
+			return;
+		}
+		if (!Number.isSafeInteger(autoStopMinutes) || autoStopMinutes < 1 || autoStopMinutes > 1440) {
+			setError("Automatic stop must be an integer from 1 to 1440 minutes.");
+			return;
+		}
+		setSaving(true);
+		setMessage(null);
+		setError(null);
+		try {
+			const saved = await patchUserSettings({ previewServers: { maxRunningServers, autoStopMinutes } });
+			queryClient.setQueryData(["user-settings"], saved);
+			setMaxRunningServersDraft(String(saved.previewServers.maxRunningServers));
+			setAutoStopMinutesDraft(String(saved.previewServers.autoStopMinutes));
+			setMessage("Preview server settings saved.");
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<div className="max-w-2xl space-y-5">
+			<label className="block" htmlFor="preview-max-running">
+				<span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">Maximum running servers</span>
+				<input
+					id="preview-max-running"
+					type="number"
+					min="1"
+					max="20"
+					step="1"
+					value={maxRunningServersDraft}
+					disabled={settingsQuery.isLoading || saving}
+					onChange={(event) => setMaxRunningServersDraft(event.target.value)}
+					className="w-32 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 font-mono text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+				/>
+				<span className="mt-1 block text-[11px] text-slate-500">Managed starts fail when the instance-wide pool is full. Existing servers are never stopped to make room.</span>
+			</label>
+			<label className="block" htmlFor="preview-auto-stop">
+				<span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">Automatic stop after each start</span>
+				<span className="flex items-center gap-2">
+					<input
+						id="preview-auto-stop"
+						type="number"
+						min="1"
+						max="1440"
+						step="1"
+						value={autoStopMinutesDraft}
+						disabled={settingsQuery.isLoading || saving}
+						onChange={(event) => setAutoStopMinutesDraft(event.target.value)}
+						className="w-32 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 font-mono text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+					/>
+					<span className="text-xs text-slate-500">minutes</span>
+				</span>
+				<span className="mt-1 block text-[11px] text-slate-500">This is a fixed runtime lease, not an inactivity timer. A stopped Preview remains restartable.</span>
+			</label>
+			<div className="flex items-center gap-3">
+				<button
+					type="button"
+					disabled={settingsQuery.isLoading || saving}
+					onClick={() => void save()}
+					className="rounded-sm bg-[#11a4d4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0d8db7] disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					{saving ? "Saving…" : "Save Preview settings"}
+				</button>
+				{message ? <span className="text-xs text-green-400" role="status">{message}</span> : null}
+			</div>
+			{settingsQuery.error ? <div className="text-xs text-red-300" role="alert">{settingsQuery.error instanceof Error ? settingsQuery.error.message : String(settingsQuery.error)}</div> : null}
+			{error ? <div className="text-xs text-red-300" role="alert">{error}</div> : null}
+		</div>
+	);
+}
+
 const FALLBACK_TIMEZONES = [
 	"UTC",
 	"Europe/Berlin",
@@ -436,6 +561,81 @@ function TranscriptionProviderSettings() {
 			{providersQuery.error ? <div className="mt-2 text-xs text-red-300">{providersQuery.error instanceof Error ? providersQuery.error.message : String(providersQuery.error)}</div> : null}
 			{saving ? <div className="mt-2 text-xs text-slate-400">Saving…</div> : null}
 			{error ? <div className="mt-2 text-xs text-red-300">{error}</div> : null}
+		</div>
+	);
+}
+
+function SpeechProviderSettings() {
+	const queryClient = useQueryClient();
+	const settingsQuery = useQuery({ queryKey: ["user-settings"], queryFn: getUserSettings });
+	const providersQuery = useQuery({ queryKey: ["speech-providers"], queryFn: getSpeechProviders });
+	const providers = providersQuery.data?.providers ?? [];
+	const selectedProviderId = settingsQuery.data?.speech.providerId ?? providersQuery.data?.selectedProviderId ?? "";
+	const [draft, setDraft] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (selectedProviderId) setDraft(selectedProviderId);
+	}, [selectedProviderId]);
+
+	const save = async (providerId: string) => {
+		const provider = providers.find((candidate) => candidate.id === providerId);
+		if (!provider?.configured) {
+			setError(provider ? `${provider.name} requires authentication` : `Unknown speech provider "${providerId}"`);
+			return;
+		}
+		setDraft(providerId);
+		setSaving(true);
+		setError(null);
+		try {
+			const saved = await patchUserSettings({ speech: { providerId } });
+			queryClient.setQueryData(["user-settings"], saved);
+			queryClient.setQueryData(["speech-providers"], (current: typeof providersQuery.data) => current
+				? { ...current, selectedProviderId: saved.speech.providerId }
+				: current);
+			setDraft(saved.speech.providerId);
+		} catch (caught) {
+			setDraft(selectedProviderId);
+			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const selectedProvider = providers.find((provider) => provider.id === draft);
+	const currentProviderAvailable = Boolean(selectedProvider);
+	return (
+		<div>
+			<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Speech provider</div>
+			<div className="max-w-xl">
+				<select
+					value={draft}
+					disabled={settingsQuery.isLoading || providersQuery.isLoading || saving || providers.length === 0}
+					onChange={(event) => void save(event.target.value)}
+					aria-describedby="speech-provider-help speech-provider-status"
+					className="w-full min-w-0 rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+				>
+					{draft && !currentProviderAvailable ? <option value={draft}>{draft} (unavailable)</option> : null}
+					{providers.map((provider) => (
+						<option key={provider.id} value={provider.id} disabled={!provider.configured}>
+							{provider.name}{provider.configured ? "" : " — authentication required"}
+						</option>
+					))}
+				</select>
+			</div>
+			<div id="speech-provider-help" className="mt-2 text-[11px] text-slate-500">
+				Assistant-message audio uses this provider independently from transcription, chat-model providers, and future preview settings. The initial provider uses the ChatGPT/Codex subscription configured under Providers for the Native Codex runtime.
+			</div>
+			{selectedProvider?.description ? <div className="mt-2 text-[11px] text-slate-400">{selectedProvider.description}</div> : null}
+			<div id="speech-provider-status" aria-live="polite">
+				{providers.length === 0 && !providersQuery.isLoading && !providersQuery.error ? <div className="mt-2 text-xs text-amber-300">No speech providers are registered.</div> : null}
+				{providersQuery.error ? <div className="mt-2 text-xs text-red-300" role="alert">{providersQuery.error instanceof Error ? providersQuery.error.message : String(providersQuery.error)}</div> : null}
+				{draft && !currentProviderAvailable && !providersQuery.isLoading && !providersQuery.error ? <div className="mt-2 text-xs text-amber-300">The selected speech provider is unavailable. Choose a configured provider.</div> : null}
+				{selectedProvider && !selectedProvider.configured ? <div className="mt-2 text-xs text-amber-300">{selectedProvider.name} requires authentication before it can read messages aloud.</div> : null}
+				{saving ? <div className="mt-2 text-xs text-slate-400">Saving…</div> : null}
+				{error ? <div className="mt-2 text-xs text-red-300" role="alert">{error}</div> : null}
+			</div>
 		</div>
 	);
 }

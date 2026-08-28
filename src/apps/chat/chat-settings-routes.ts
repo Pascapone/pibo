@@ -5,6 +5,7 @@ import {
 	sanitizeConcurrentYieldedRuns,
 	updatePiboGatewaySettings,
 } from "../../core/gateway-settings.js";
+import { sanitizePreviewServerSettings } from "../../core/preview-server-settings.js";
 import { sanitizeTelemetryRetentionDays, sanitizeTelemetryRetentionSettings } from "../../core/telemetry-retention-settings.js";
 import { loadPiboUserSettings, sanitizeShortcutSettings, sanitizeTimezone, sanitizeTranscriptionProviderId, updatePiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
@@ -61,6 +62,7 @@ export async function handleChatSettingsRoute(input: {
 	cwd?: string;
 	dataStore?: import("../../data/pibo-store.js").PiboDataStore;
 	transcriptionProviderIds?: readonly string[];
+	speechProviderIds?: readonly string[];
 }): Promise<Response> {
 	const cwd = input.cwd ?? process.cwd();
 	const { route, request } = input;
@@ -73,7 +75,9 @@ export async function handleChatSettingsRoute(input: {
 	if (route.kind === "user-settings") {
 		if (route.action === "read") return responseJson({ userSettings: loadPiboUserSettings() });
 		const body = await readJsonBody<ChatUserSettingsBody>(request);
-		return responseJson({ userSettings: updatePiboUserSettings(userSettingsPatch(body, input.transcriptionProviderIds)) });
+		return responseJson({
+			userSettings: updatePiboUserSettings(userSettingsPatch(body, input.transcriptionProviderIds, input.speechProviderIds)),
+		});
 	}
 
 	if (route.kind === "gateway-settings") {
@@ -125,7 +129,11 @@ function gatewaySettingsPatch(body: ChatGatewaySettingsBody): Parameters<typeof 
 	return patch;
 }
 
-function userSettingsPatch(body: ChatUserSettingsBody, transcriptionProviderIds?: readonly string[]): Parameters<typeof updatePiboUserSettings>[0] {
+function userSettingsPatch(
+	body: ChatUserSettingsBody,
+	transcriptionProviderIds?: readonly string[],
+	speechProviderIds?: readonly string[],
+): Parameters<typeof updatePiboUserSettings>[0] {
 	const patch: Parameters<typeof updatePiboUserSettings>[0] = {};
 	if (body.timezone !== undefined) {
 		const timezone = sanitizeTimezone(body.timezone);
@@ -143,6 +151,27 @@ function userSettingsPatch(body: ChatUserSettingsBody, transcriptionProviderIds?
 			throw new PiboWebHttpError(`Unknown transcription provider "${providerId}"`, 400);
 		}
 		patch.transcription = { providerId };
+	}
+	if (body.speech !== undefined) {
+		const raw = body.speech && typeof body.speech === "object" && !Array.isArray(body.speech)
+			? body.speech as Record<string, unknown>
+			: {};
+		const providerId = sanitizeTranscriptionProviderId(raw.providerId);
+		if (!providerId) throw new PiboWebHttpError("Invalid speech provider", 400);
+		if (speechProviderIds && !speechProviderIds.includes(providerId)) {
+			throw new PiboWebHttpError(`Unknown speech provider "${providerId}"`, 400);
+		}
+		patch.speech = { providerId };
+	}
+	if (body.previewServers !== undefined) {
+		const sanitized = sanitizePreviewServerSettings(body.previewServers);
+		const raw = body.previewServers && typeof body.previewServers === "object" && !Array.isArray(body.previewServers)
+			? body.previewServers as Record<string, unknown>
+			: {};
+		if (raw.maxRunningServers !== sanitized.maxRunningServers || raw.autoStopMinutes !== sanitized.autoStopMinutes) {
+			throw new PiboWebHttpError("Invalid Preview server settings", 400);
+		}
+		patch.previewServers = sanitized;
 	}
 	if (body.telemetryRetention !== undefined) {
 		const current = loadPiboUserSettings().telemetryRetention;

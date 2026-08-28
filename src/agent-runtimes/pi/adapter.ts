@@ -63,12 +63,45 @@ import {
 	inspectPiAgentRuntimeHistory,
 	readPiAgentRuntimeHistory,
 } from "./history.js";
+import {
+	historyReconciliationDigest,
+	type AgentRuntimeHistoryReconciliationProof,
+} from "../../agent-runtime/history.js";
 import { PiAgentRuntimeAuthController } from "./auth.js";
 import { importPortableHistoryIntoPi } from "./portable-history.js";
 import { piIntentTracingEnabled } from "./intent-tracing.js";
+import { isWebSearchProviderTool } from "../../tools/web-search.js";
 
 const PI_ADAPTER_ID = "pi";
 export const PI_PROTOCOL_VERSION = "0.84.2";
+
+const piCompleteHistoryProofs = new WeakMap<
+	AgentRuntimeHistoryReconciliationProof,
+	{ scopeId?: string; fullScope: NonNullable<AgentRuntimeHistoryReconciliationProof["fullScope"]> }
+>();
+
+function bindPiCompleteHistoryProof(page: AgentRuntimeHistoryPage): AgentRuntimeHistoryPage {
+	const claim = page.reconciliationProof;
+	if (!claim?.complete) return page;
+	const entries = Object.freeze([...claim.entries]);
+	const fullScope = Object.freeze({ entryCount: entries.length, digest: historyReconciliationDigest(entries) });
+	const proof = Object.freeze({
+		complete: true,
+		...(claim.scopeId ? { scopeId: claim.scopeId } : {}),
+		fullScope,
+		entries,
+	}) satisfies AgentRuntimeHistoryReconciliationProof;
+	piCompleteHistoryProofs.set(proof, { ...(claim.scopeId ? { scopeId: claim.scopeId } : {}), fullScope });
+	return { ...page, reconciliationProof: proof };
+}
+
+export function isPiBuiltInHistoryReconciliationProof(proof: AgentRuntimeHistoryReconciliationProof): boolean {
+	const bound = piCompleteHistoryProofs.get(proof);
+	return proof.complete
+		&& bound !== undefined
+		&& proof.scopeId === bound.scopeId
+		&& proof.fullScope === bound.fullScope;
+}
 
 export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 	lifecycle: {
@@ -343,6 +376,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 		private readonly runtime: AgentSessionRuntime,
 		private readonly binding: RuntimeSessionBinding,
 		initialFastMode: boolean,
+		providerWebSearchEnabled: boolean,
 	) {
 		this.cwd = runtime.cwd;
 		this.bindingNativeSessionId = runtime.session.sessionId;
@@ -359,6 +393,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 			undefined,
 			(state) => this.handleEngineState(state),
 		);
+		if (providerWebSearchEnabled) this.routed.enableProviderWebSearchObservation();
 		this.controls = this.createControls();
 		this.compatibilityHandle = this.createCompatibilityHandle();
 	}
@@ -643,7 +678,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async readHistory(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage> {
-		return await readPiAgentRuntimeHistory(this.instanceId, input);
+		return bindPiCompleteHistoryProof(await readPiAgentRuntimeHistory(this.instanceId, input));
 	}
 
 	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] {
@@ -789,6 +824,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			runtime,
 			binding,
 			compatibility?.initialFastMode ?? false,
+			profile.tools.some((tool) => tool.enabled !== false && isWebSearchProviderTool(tool)),
 		);
 	}
 

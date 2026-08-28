@@ -24,6 +24,12 @@ test("pibo config stores and reads supported keys", () => {
 		config = setPiboConfigValue(config, "auth.allowedEmails", "you@example.com,friend@example.com");
 		config = setPiboConfigValue(config, "auth.trustedOrigins", "http://4788.192.168.0.204.sslip.io");
 		config = setPiboConfigValue(config, "auth.databasePath", "/tmp/pibo-auth.sqlite");
+		config = setPiboConfigValue(config, "preview.baseURL", "https://preview.example.test");
+		config = setPiboConfigValue(config, "preview.databasePath", "/tmp/pibo-previews.sqlite");
+		config = setPiboConfigValue(config, "preview.maxRunningServers", "4");
+		config = setPiboConfigValue(config, "preview.autoStopMinutes", "15");
+		config = setPiboConfigValue(config, "preview.maxProxyConnections", "96");
+		config = setPiboConfigValue(config, "preview.maxProxyConnectionsPerPreview", "24");
 		savePiboConfig(config, path);
 
 		const loaded = loadPiboConfig(path);
@@ -33,11 +39,19 @@ test("pibo config stores and reads supported keys", () => {
 			"http://4788.192.168.0.204.sslip.io",
 		]);
 		assert.equal(getPiboConfigValue(loaded, "auth.databasePath"), "/tmp/pibo-auth.sqlite");
+		assert.equal(getPiboConfigValue(loaded, "preview.baseURL"), "https://preview.example.test");
+		assert.equal(getPiboConfigValue(loaded, "preview.databasePath"), "/tmp/pibo-previews.sqlite");
+		assert.equal(getPiboConfigValue(loaded, "preview.maxRunningServers"), 4);
+		assert.equal(getPiboConfigValue(loaded, "preview.autoStopMinutes"), 15);
+		assert.equal(getPiboConfigValue(loaded, "preview.maxProxyConnections"), 96);
+		assert.equal(getPiboConfigValue(loaded, "preview.maxProxyConnectionsPerPreview"), 24);
 
 		const withoutBaseURL = deletePiboConfigValue(loaded, "auth.baseURL");
 		assert.equal(getPiboConfigValue(withoutBaseURL, "auth.baseURL"), undefined);
 		const withoutDatabasePath = deletePiboConfigValue(loaded, "auth.databasePath");
 		assert.equal(getPiboConfigValue(withoutDatabasePath, "auth.databasePath"), undefined);
+		const withoutPreview = deletePiboConfigValue(loaded, "preview.baseURL");
+		assert.equal(getPiboConfigValue(withoutPreview, "preview.baseURL"), undefined);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
@@ -82,6 +96,8 @@ test("pibo config accepts a leading UTF-8 BOM from Windows PowerShell 5.1", () =
 test("pibo config validates supported keys and auth secret length", () => {
 	assert.throws(() => setPiboConfigValue({}, "unknown.key", "value"), /Unknown config key/);
 	assert.throws(() => setPiboConfigValue({}, "auth.secret", "too-short"), /auth.secret must be at least 32 characters/);
+	assert.throws(() => setPiboConfigValue({}, "preview.maxRunningServers", "0"), /integer between 1 and 20/);
+	assert.throws(() => setPiboConfigValue({}, "preview.autoStopMinutes", "1.5"), /integer between 1 and 1440/);
 });
 
 test("pibo config parses JSON string arrays and rejects invalid array values", () => {

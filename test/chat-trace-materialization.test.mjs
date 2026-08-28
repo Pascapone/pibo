@@ -3,8 +3,27 @@ import test from "node:test";
 import { buildTraceViewFromEvents } from "./helpers/pi-history.mjs";
 import { storedPiboEventFromV2Row } from "../dist/apps/chat/data/chat-data-mappers.js";
 import { createTraceViewVersion } from "../dist/apps/chat/trace.js";
+import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
+import { flattenTraceNodes } from "../dist/shared/trace-engine.js";
+import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
+import { pageCodexThreadHistory } from "../dist/agent-runtimes/codex-native/history.js";
+import { historyReconciliationDigest } from "../dist/agent-runtime/history.js";
+import {
+	createBuiltInCodexHistory,
+	createBuiltInPiHistory,
+	piTranscriptMessage,
+} from "./fixtures/built-in-history.mjs";
 
 const now = "2026-01-01T00:00:00.000Z";
+
+function selfCertifiedCompleteProof(entries, scopeId) {
+	return {
+		complete: true,
+		...(scopeId ? { scopeId } : {}),
+		fullScope: { entryCount: entries.length, digest: historyReconciliationDigest(entries) },
+		entries,
+	};
+}
 
 function session(overrides = {}) {
 	return {
@@ -39,6 +58,20 @@ function outputEvent(sequence, payload) {
 		createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, sequence)).toISOString(),
 		payload,
 	};
+}
+
+function assertMessageProjectionIds(view, legacyIds, terminalIds) {
+	const legacyMessages = flattenTraceNodes(view.nodes)
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(legacyMessages.map((node) => node.id), legacyIds);
+
+	const timelineMessages = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 }).nodes
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(timelineMessages.map((node) => node.nodeId), legacyIds);
+
+	const terminalMessages = buildCompactTerminalRows(view, { showThinking: true })
+		.filter((row) => row.kind === "message.user" || row.kind === "message.assistant");
+	assert.deepEqual(terminalMessages.map((row) => row.id), terminalIds);
 }
 
 function runNotificationText(notification) {
@@ -192,6 +225,1354 @@ test("bounded-tail user events preserve repeated prompt identities assigned from
 	]);
 	assert.deepEqual(users.map((node) => node.entryId), ["entry-user-one", "entry-user-two"]);
 	assert.deepEqual(assistants.map((node) => node.output), ["first answer", "second answer"]);
+});
+
+test("matched native runtime turns use stable product identity across legacy, V2, and terminal projections", () => {
+	const historyEntries = [
+		{
+			id: "codex:thread:runtime-X:user-X",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:02.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "user-X",
+			role: "user",
+			content: "stable prompt",
+		},
+		{
+			id: "codex:thread:runtime-X:assistant-X",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:05.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "assistant-X",
+			role: "assistant",
+			content: [
+				{ type: "reasoning", text: "stable reasoning" },
+				{ type: "tool_call", toolCallId: "tool-X", toolName: "read", input: { path: "stable.txt" } },
+				{ type: "text", text: "stable answer" },
+			],
+			status: "complete",
+		},
+		{
+			id: "codex:thread:runtime-X:tool-X",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:05.500Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "tool-X",
+			role: "tool",
+			content: "stable result",
+			toolCallId: "tool-X",
+			toolName: "read",
+			result: { content: "stable result" },
+			status: "complete",
+		},
+	];
+	const events = [
+		outputEvent(1, { type: "message_queued", piboSessionId: "ps_root", eventId: "stable-Y", source: "user", text: "stable prompt" }),
+		outputEvent(2, { type: "message_started", piboSessionId: "ps_root", eventId: "stable-Y", source: "user", text: "stable prompt" }),
+		outputEvent(3, { type: "tool_call", piboSessionId: "ps_root", eventId: "stable-Y", toolCallId: "tool-X", toolName: "read", args: { path: "stable.txt" } }),
+		outputEvent(4, { type: "thinking_finished", piboSessionId: "ps_root", eventId: "stable-Y", thinkingIndex: 0, text: "stable reasoning" }),
+		outputEvent(5, { type: "assistant_message", piboSessionId: "ps_root", eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "stable answer" }),
+		outputEvent(6, { type: "message_finished", piboSessionId: "ps_root", eventId: "stable-Y", source: "user" }),
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events,
+		historyEntries,
+		status: "idle",
+	});
+	const legacyNodes = flattenTraceNodes(view.nodes);
+	const legacyMessages = legacyNodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(legacyMessages.map((node) => node.id), [
+		"event:message_queued:stable-Y",
+		"event:assistant:stable-Y:assistant:0",
+	]);
+	assert.deepEqual(legacyMessages.map((node) => node.eventId), ["stable-Y", "stable-Y"]);
+	assert.deepEqual(legacyMessages.map((node) => node.nativeTurnId), ["runtime-X", "runtime-X"]);
+	assert.deepEqual(legacyMessages.map((node) => node.entryId), ["user-X", "assistant-X"]);
+	assert.equal(legacyNodes.filter((node) => node.type === "model.reasoning").length, 1);
+	assert.equal(legacyNodes.filter((node) => node.toolCallId === "tool-X").length, 1);
+	assert.ok(legacyNodes
+		.filter((node) => node.type === "model.reasoning" || node.toolCallId === "tool-X")
+		.every((node) => node.eventId === "stable-Y" && node.nativeTurnId === "runtime-X"));
+
+	const timeline = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 });
+	const timelineMessages = timeline.nodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(timelineMessages.map((node) => node.nodeId), [
+		"event:message_queued:stable-Y",
+		"event:assistant:stable-Y:assistant:0",
+	]);
+	assert.deepEqual(timelineMessages.map((node) => node.nativeTurnId), ["runtime-X", "runtime-X"]);
+
+	const terminalMessages = buildCompactTerminalRows(view, { showThinking: true })
+		.filter((row) => row.kind === "message.user" || row.kind === "message.assistant");
+	assert.deepEqual(terminalMessages.map((row) => row.id), [
+		"event:message_queued:stable-Y",
+		"terminal:assistant:stable-Y:assistant:0",
+	]);
+});
+
+test("steering keeps split native outputs on the base product turn with monotonic indices", () => {
+	const historyEntries = [
+		{
+			id: "codex:thread:runtime-X:user-base",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:02.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "user-base",
+			role: "user",
+			content: "base prompt",
+		},
+		{
+			id: "codex:thread:runtime-X:assistant-base",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:03.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "assistant-base",
+			role: "assistant",
+			content: [
+				{ type: "reasoning", text: "base reasoning" },
+				{ type: "text", text: "base answer" },
+			],
+			status: "complete",
+		},
+		{
+			id: "codex:thread:runtime-X:user-steer",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:05.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "user-steer",
+			role: "user",
+			content: "steering prompt",
+		},
+		{
+			id: "codex:thread:runtime-X:assistant-steered",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:07.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "assistant-steered",
+			role: "assistant",
+			content: [
+				{ type: "reasoning", text: "steered reasoning" },
+				{ type: "tool_call", toolCallId: "tool-steered", toolName: "read", input: { path: "steered.txt" } },
+				{ type: "text", text: "steered answer" },
+			],
+			status: "complete",
+		},
+		{
+			id: "codex:thread:runtime-X:tool-steered",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:08.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "tool-steered",
+			role: "tool",
+			content: "steered result",
+			toolCallId: "tool-steered",
+			toolName: "read",
+			result: { content: "steered result" },
+			status: "complete",
+		},
+		{
+			id: "codex:thread:runtime-X:user-steer-two",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:09.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "user-steer-two",
+			role: "user",
+			content: "second steering prompt",
+		},
+		{
+			id: "codex:thread:runtime-X:assistant-steered-two",
+			type: "message",
+			source: "native",
+			createdAt: "2026-01-01T00:00:11.000Z",
+			turnId: "runtime-X",
+			nativeTurnId: "runtime-X",
+			nativeEntryId: "assistant-steered-two",
+			role: "assistant",
+			content: [
+				{ type: "reasoning", text: "second steered reasoning" },
+				{ type: "text", text: "second steered answer" },
+			],
+			status: "complete",
+		},
+	];
+	const events = [
+		outputEvent(1, { type: "message_queued", piboSessionId: "ps_root", eventId: "stable-base", source: "user", text: "base prompt" }),
+		outputEvent(2, { type: "message_started", piboSessionId: "ps_root", eventId: "stable-base", source: "user", text: "base prompt" }),
+		outputEvent(3, { type: "thinking_finished", piboSessionId: "ps_root", eventId: "stable-base", thinkingIndex: 0, text: "base reasoning" }),
+		outputEvent(4, { type: "assistant_message", piboSessionId: "ps_root", eventId: "stable-base", assistantIndex: 0, text: "base answer" }),
+		outputEvent(5, { type: "message_steered", piboSessionId: "ps_root", eventId: "stable-steer", activeEventId: "stable-base", source: "user", text: "steering prompt" }),
+		outputEvent(6, { type: "thinking_finished", piboSessionId: "ps_root", eventId: "stable-base", thinkingIndex: 1, text: "steered reasoning" }),
+		outputEvent(7, { type: "tool_call", piboSessionId: "ps_root", eventId: "stable-base", toolCallId: "tool-steered", toolName: "read", args: { path: "steered.txt" } }),
+		outputEvent(8, { type: "tool_execution_finished", piboSessionId: "ps_root", eventId: "stable-base", toolCallId: "tool-steered", toolName: "read", result: { content: "steered result" }, isError: false }),
+		outputEvent(9, { type: "assistant_message", piboSessionId: "ps_root", eventId: "stable-base", assistantIndex: 1, text: "steered answer" }),
+		outputEvent(10, { type: "message_steered", piboSessionId: "ps_root", eventId: "stable-steer-two", activeEventId: "stable-base", source: "user", text: "second steering prompt" }),
+		outputEvent(11, { type: "thinking_finished", piboSessionId: "ps_root", eventId: "stable-base", thinkingIndex: 2, text: "second steered reasoning" }),
+		outputEvent(12, { type: "assistant_message", piboSessionId: "ps_root", eventId: "stable-base", assistantIndex: 2, text: "second steered answer" }),
+		outputEvent(13, { type: "message_finished", piboSessionId: "ps_root", eventId: "stable-base", source: "user" }),
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events,
+		historyEntries,
+		status: "idle",
+	});
+	const nodes = flattenTraceNodes(view.nodes);
+	const users = nodes.filter((node) => node.type === "user.message");
+	const assistants = nodes.filter((node) => node.type === "assistant.message");
+	const reasoning = nodes.filter((node) => node.type === "model.reasoning");
+	const tool = nodes.find((node) => node.toolCallId === "tool-steered");
+	assert.deepEqual(users.map((node) => ({ id: node.id, eventId: node.eventId, parentId: node.parentId, nativeTurnId: node.nativeTurnId })), [
+		{ id: "event:message_queued:stable-base", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X" },
+		{ id: "event:message_steered:stable-steer", eventId: "stable-steer", parentId: "event:message:stable-base", nativeTurnId: "runtime-X" },
+		{ id: "event:message_steered:stable-steer-two", eventId: "stable-steer-two", parentId: "event:message:stable-base", nativeTurnId: "runtime-X" },
+	]);
+	assert.deepEqual(assistants.map((node) => ({ id: node.id, eventId: node.eventId, parentId: node.parentId, nativeTurnId: node.nativeTurnId })), [
+		{ id: "event:assistant:stable-base:assistant:0", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X" },
+		{ id: "event:assistant:stable-base:assistant:1", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X" },
+		{ id: "event:assistant:stable-base:assistant:2", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X" },
+	]);
+	assert.deepEqual(reasoning.map((node) => ({ id: node.id, eventId: node.eventId, nativeTurnId: node.nativeTurnId })), [
+		{ id: "event:thinking:stable-base:thinking:0", eventId: "stable-base", nativeTurnId: "runtime-X" },
+		{ id: "event:thinking:stable-base:thinking:1", eventId: "stable-base", nativeTurnId: "runtime-X" },
+		{ id: "event:thinking:stable-base:thinking:2", eventId: "stable-base", nativeTurnId: "runtime-X" },
+	]);
+	assert.deepEqual(
+		{ id: tool?.id, eventId: tool?.eventId, parentId: tool?.parentId, nativeTurnId: tool?.nativeTurnId, status: tool?.status },
+		{ id: "tool:tool-steered", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X", status: "done" },
+	);
+
+	const timeline = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 });
+	const timelineSteer = timeline.nodes.find((node) => node.nodeId === "event:message_steered:stable-steer");
+	assert.deepEqual(
+		{ eventId: timelineSteer?.eventId, parentId: timelineSteer?.parentId, nativeTurnId: timelineSteer?.nativeTurnId },
+		{ eventId: "stable-steer", parentId: "event:message:stable-base", nativeTurnId: "runtime-X" },
+	);
+	assert.ok(timeline.nodes
+		.filter((node) => node.type === "assistant.message" || node.type === "model.reasoning" || node.toolCallId === "tool-steered")
+		.every((node) => node.eventId === "stable-base" && node.nativeTurnId === "runtime-X"));
+	assert.deepEqual(timeline.nodes
+		.filter((node) => node.type === "assistant.message" || node.type === "model.reasoning")
+		.map((node) => node.nodeId)
+		.sort(), [
+			"event:assistant:stable-base:assistant:0",
+			"event:thinking:stable-base:thinking:0",
+			"event:assistant:stable-base:assistant:1",
+			"event:thinking:stable-base:thinking:1",
+			"event:assistant:stable-base:assistant:2",
+			"event:thinking:stable-base:thinking:2",
+		].sort());
+	const terminalMessages = buildCompactTerminalRows(view, { showThinking: true })
+		.filter((row) => row.kind === "message.user" || row.kind === "message.assistant");
+	assert.deepEqual(terminalMessages.map((row) => row.id), [
+		"event:message_queued:stable-base",
+		"terminal:assistant:stable-base:assistant:0",
+		"event:message_steered:stable-steer",
+		"terminal:assistant:stable-base:assistant:1",
+		"event:message_steered:stable-steer-two",
+		"terminal:assistant:stable-base:assistant:2",
+	]);
+});
+
+test("ambiguous repeated prompt timings fail closed to native identity", () => {
+	const historyEntries = [
+		{ id: "native:user", type: "message", source: "native", createdAt: "2026-01-01T00:00:01.000Z", turnId: "runtime-old", nativeTurnId: "runtime-old", nativeEntryId: "user-old", role: "user", content: "identical prompt" },
+		{ id: "native:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:00:02.000Z", turnId: "runtime-old", nativeTurnId: "runtime-old", nativeEntryId: "assistant-old", role: "assistant", content: "old answer", status: "complete" },
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [
+			{ eventId: "stable-old", userText: "identical prompt" },
+			{ eventId: "stable-new", userText: "identical prompt" },
+		],
+	});
+	const messages = flattenTraceNodes(view.nodes)
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(messages.map((node) => node.id), [
+		"event:message_queued:runtime-old",
+		"event:assistant:runtime-old:assistant:0",
+	]);
+	assert.deepEqual(messages.map((node) => node.eventId), ["runtime-old", "runtime-old"]);
+	assert.deepEqual(messages.map((node) => node.nativeTurnId), ["runtime-old", "runtime-old"]);
+});
+
+test("missing timestamp evidence fails a unique prompt match closed across projections", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries: [
+			{ id: "native:missing:user", type: "message", source: "native", createdAt: "2026-01-01T00:00:01.000Z", turnId: "runtime-missing", nativeTurnId: "runtime-missing", nativeEntryId: "user-missing", role: "user", content: "missing timestamp prompt" },
+			{ id: "native:missing:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:00:02.000Z", turnId: "runtime-missing", nativeTurnId: "runtime-missing", nativeEntryId: "assistant-missing", role: "assistant", content: "missing timestamp answer", status: "complete" },
+		],
+		turnTimings: [{ eventId: "stable-missing", userText: "missing timestamp prompt" }],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:runtime-missing",
+		"event:assistant:runtime-missing:assistant:0",
+	], [
+		"event:message_queued:runtime-missing",
+		"terminal:assistant:runtime-missing:assistant:0",
+	]);
+	assert.ok(flattenTraceNodes(view.nodes)
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message")
+		.every((node) => node.eventId === "runtime-missing" && node.nativeTurnId === "runtime-missing"));
+});
+
+test("over-five-minute start and completion evidence fails closed across projections", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries: [
+			{ id: "native:distant:user", type: "message", source: "native", createdAt: "2026-01-01T00:20:00.000Z", turnId: "runtime-distant", nativeTurnId: "runtime-distant", nativeEntryId: "user-distant", role: "user", content: "distant prompt" },
+			{ id: "native:distant:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:21:00.000Z", turnId: "runtime-distant", nativeTurnId: "runtime-distant", nativeEntryId: "assistant-distant", role: "assistant", content: "distant answer", status: "complete" },
+		],
+		turnTimings: [{
+			eventId: "stable-distant",
+			userText: "distant prompt",
+			startedAt: "2026-01-01T00:00:00.000Z",
+			completedAt: "2026-01-01T00:01:00.000Z",
+		}],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:runtime-distant",
+		"event:assistant:runtime-distant:assistant:0",
+	], [
+		"event:message_queued:runtime-distant",
+		"terminal:assistant:runtime-distant:assistant:0",
+	]);
+});
+
+test("partial and implementation-dependent timestamps cannot authorize product identity", () => {
+	const invalidTimestamps = [
+		["date-only", "2026-01-01"],
+		["timezone-less", "2026-01-01T00:00:00"],
+		["space-separated", "2026-01-01 00:00:00Z"],
+		["slash-date", "01/01/2026 00:00:00 GMT"],
+		["month-only", "2026-01"],
+		["invalid-calendar-date", "2026-02-30T00:00:00Z"],
+		["non-finite", "Infinity"],
+		["empty-fraction", "2026-01-01T00:00:00.Z"],
+		["multiple-fractions", "2026-01-01T00:00:00.1.2Z"],
+		["excess-fraction", "2026-01-01T00:00:00.1234567890Z"],
+	];
+
+	for (const [suffix, timestamp] of invalidTimestamps) {
+		const runtimeId = `runtime-partial-${suffix}`;
+		const view = buildTraceViewFromEvents({
+			session: { id: "ps_root", piSessionId: "", title: "Root" },
+			events: [],
+			historyEntries: [
+				{ id: `native:${suffix}:user`, type: "message", source: "native", createdAt: timestamp, turnId: runtimeId, nativeTurnId: runtimeId, nativeEntryId: `user-${suffix}`, role: "user", content: `partial timestamp ${suffix}` },
+				{ id: `native:${suffix}:assistant`, type: "message", source: "native", createdAt: "2026-01-01T00:00:01.000Z", turnId: runtimeId, nativeTurnId: runtimeId, nativeEntryId: `assistant-${suffix}`, role: "assistant", content: `${suffix} answer`, status: "complete" },
+			],
+			turnTimings: [{
+				eventId: `stable-partial-${suffix}`,
+				userText: `partial timestamp ${suffix}`,
+				startedAt: timestamp,
+			}],
+		});
+
+		assertMessageProjectionIds(view, [
+			`event:message_queued:${runtimeId}`,
+			`event:assistant:${runtimeId}:assistant:0`,
+		], [
+			`event:message_queued:${runtimeId}`,
+			`terminal:assistant:${runtimeId}:assistant:0`,
+		]);
+	}
+});
+
+test("explicit UTC and offset timestamps retain bounded reconciliation", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries: [
+			{ id: "native:boundary:user", type: "message", source: "native", createdAt: "2026-01-01T00:05:00Z", sequence: 0, turnId: "runtime-boundary", nativeTurnId: "runtime-boundary", nativeEntryId: "user-boundary", role: "user", content: "five minute boundary" },
+			{ id: "native:boundary:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:05:01Z", sequence: 1, turnId: "runtime-boundary", nativeTurnId: "runtime-boundary", nativeEntryId: "assistant-boundary", role: "assistant", content: "boundary answer", status: "complete" },
+			{ id: "native:offset:user", type: "message", source: "native", createdAt: "2026-01-01T00:10:00Z", sequence: 2, turnId: "runtime-offset", nativeTurnId: "runtime-offset", nativeEntryId: "user-offset", role: "user", content: "explicit offset" },
+			{ id: "native:offset:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:10:01Z", sequence: 3, turnId: "runtime-offset", nativeTurnId: "runtime-offset", nativeEntryId: "assistant-offset", role: "assistant", content: "offset answer", status: "complete" },
+			{ id: "native:valid-completion:user", type: "message", source: "native", createdAt: "not a timestamp", sequence: 4, turnId: "runtime-valid-completion", nativeTurnId: "runtime-valid-completion", nativeEntryId: "user-valid-completion", role: "user", content: "valid completion" },
+			{ id: "native:valid-completion:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:20:00-04:00", sequence: 5, turnId: "runtime-valid-completion", nativeTurnId: "runtime-valid-completion", nativeEntryId: "assistant-valid-completion", role: "assistant", content: "valid completion answer", status: "complete" },
+		],
+		turnTimings: [
+			{ eventId: "stable-boundary", userText: "five minute boundary", startedAt: "2026-01-01T00:00:00Z" },
+			{ eventId: "stable-offset", userText: "explicit offset", startedAt: "2026-01-01T02:40:00+02:30" },
+			{ eventId: "stable-valid-completion", userText: "valid completion", startedAt: "also invalid", completedAt: "2026-01-01T04:20:00Z" },
+		],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:stable-boundary",
+		"event:assistant:stable-boundary:assistant:0",
+		"event:message_queued:stable-offset",
+		"event:assistant:stable-offset:assistant:0",
+		"event:message_queued:stable-valid-completion",
+		"event:assistant:stable-valid-completion:assistant:0",
+	], [
+		"event:message_queued:stable-boundary",
+		"terminal:assistant:stable-boundary:assistant:0",
+		"event:message_queued:stable-offset",
+		"terminal:assistant:stable-offset:assistant:0",
+		"event:message_queued:stable-valid-completion",
+		"terminal:assistant:stable-valid-completion:assistant:0",
+	]);
+});
+
+test("no-fraction and one-to-nine-digit fractions authorize bounded UTC and offset evidence", () => {
+	const validTimestamps = [
+		["no-fraction", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"],
+		["leap-day", "2024-02-29T00:00:00Z", "2024-02-29T00:00:00Z"],
+		["one-digit", "2026-01-01T00:00:00.1Z", "2026-01-01T00:00:00.100Z"],
+		["nine-digits", "2026-01-01T00:00:00.123456789Z", "2026-01-01T00:00:00.123Z"],
+		["offset-nine-digits", "2026-01-01T02:30:00.123456789+02:30", "2026-01-01T00:00:00.123Z"],
+	];
+
+	for (const [suffix, nativeTimestamp, productTimestamp] of validTimestamps) {
+		const view = buildTraceViewFromEvents({
+			session: { id: "ps_root", piSessionId: "", title: "Root" },
+			events: [],
+			historyEntries: [
+				{ id: `native:fraction:${suffix}:user`, type: "message", source: "native", createdAt: nativeTimestamp, turnId: `runtime-fraction-${suffix}`, nativeTurnId: `runtime-fraction-${suffix}`, nativeEntryId: `user-fraction-${suffix}`, role: "user", content: `fraction ${suffix}` },
+				{ id: `native:fraction:${suffix}:assistant`, type: "message", source: "native", createdAt: "2026-01-01T00:00:01Z", turnId: `runtime-fraction-${suffix}`, nativeTurnId: `runtime-fraction-${suffix}`, nativeEntryId: `assistant-fraction-${suffix}`, role: "assistant", content: `${suffix} answer`, status: "complete" },
+			],
+			turnTimings: [{ eventId: `stable-fraction-${suffix}`, userText: `fraction ${suffix}`, startedAt: productTimestamp }],
+		});
+
+		assertMessageProjectionIds(view, [
+			`event:message_queued:stable-fraction-${suffix}`,
+			`event:assistant:stable-fraction-${suffix}:assistant:0`,
+		], [
+			`event:message_queued:stable-fraction-${suffix}`,
+			`terminal:assistant:stable-fraction-${suffix}:assistant:0`,
+		]);
+	}
+});
+
+test("equal best evidence split across start and completion endpoints fails closed", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries: [
+			{ id: "native:cross-tie:user", type: "message", source: "native", createdAt: "2026-01-01T00:10:00.000Z", turnId: "runtime-cross-tie", nativeTurnId: "runtime-cross-tie", nativeEntryId: "user-cross-tie", role: "user", content: "cross endpoint tie" },
+			{ id: "native:cross-tie:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:20:00.000Z", turnId: "runtime-cross-tie", nativeTurnId: "runtime-cross-tie", nativeEntryId: "assistant-cross-tie", role: "assistant", content: "cross endpoint answer", status: "complete" },
+		],
+		turnTimings: [
+			{ eventId: "stable-by-start", userText: "cross endpoint tie", startedAt: "2026-01-01T00:09:59.000Z", completedAt: "2026-01-01T00:00:00.000Z" },
+			{ eventId: "stable-by-completion", userText: "cross endpoint tie", startedAt: "2026-01-01T00:00:00.000Z", completedAt: "2026-01-01T00:20:01.000Z" },
+		],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:runtime-cross-tie",
+		"event:assistant:runtime-cross-tie:assistant:0",
+	], [
+		"event:message_queued:runtime-cross-tie",
+		"terminal:assistant:runtime-cross-tie:assistant:0",
+	]);
+});
+
+test("non-monotonic matches fail each native turn closed without splitting outputs", () => {
+	const historyEntries = [
+		...[
+			["new", "2026-01-01T00:20:00.000Z", "2026-01-01T00:20:01.000Z"],
+			["old", "2026-01-01T00:10:00.000Z", "2026-01-01T00:10:01.000Z"],
+		].flatMap(([suffix, userAt, assistantAt]) => [
+			{ id: `native:${suffix}:user`, type: "message", source: "native", createdAt: userAt, sequence: suffix === "new" ? 0 : 3, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, nativeEntryId: `user-${suffix}`, role: "user", content: "out of order prompt" },
+			{
+				id: `native:${suffix}:assistant`,
+				type: "message",
+				source: "native",
+				createdAt: assistantAt,
+				sequence: suffix === "new" ? 1 : 4,
+				turnId: `runtime-${suffix}`,
+				nativeTurnId: `runtime-${suffix}`,
+				nativeEntryId: `assistant-${suffix}`,
+				role: "assistant",
+				content: [
+					{ type: "reasoning", text: `${suffix} reasoning` },
+					{ type: "tool_call", toolCallId: `tool-${suffix}`, toolName: "read", input: { path: `${suffix}.txt` } },
+					{ type: "text", text: `${suffix} answer` },
+				],
+				status: "complete",
+			},
+			{ id: `native:${suffix}:tool`, type: "message", source: "native", createdAt: assistantAt, sequence: suffix === "new" ? 2 : 5, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, nativeEntryId: `tool-${suffix}`, role: "tool", content: `${suffix} result`, toolCallId: `tool-${suffix}`, toolName: "read", result: { content: `${suffix} result` }, status: "complete" },
+		]),
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [
+			{ eventId: "stable-old", userText: "out of order prompt", startedAt: "2026-01-01T00:10:00.000Z", completedAt: "2026-01-01T00:10:01.000Z" },
+			{ eventId: "stable-new", userText: "out of order prompt", startedAt: "2026-01-01T00:20:00.000Z", completedAt: "2026-01-01T00:20:01.000Z" },
+		],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:runtime-new",
+		"event:assistant:runtime-new:assistant:0",
+		"event:message_queued:runtime-old",
+		"event:assistant:runtime-old:assistant:0",
+	], [
+		"event:message_queued:runtime-new",
+		"terminal:assistant:runtime-new:assistant:0",
+		"event:message_queued:runtime-old",
+		"terminal:assistant:runtime-old:assistant:0",
+	]);
+	for (const suffix of ["new", "old"]) {
+		const outputNodes = flattenTraceNodes(view.nodes).filter((node) =>
+			node.nativeTurnId === `runtime-${suffix}` &&
+			(node.type === "assistant.message" || node.type === "model.reasoning" || node.toolCallId === `tool-${suffix}`)
+		);
+		assert.ok(outputNodes.length >= 3);
+		assert.ok(outputNodes.every((node) => node.eventId === `runtime-${suffix}`));
+	}
+});
+
+test("repeated provider turn IDs do not merge distinct groups with different product owners", () => {
+	const historyEntries = [
+		...[
+			["one", "first owner prompt", "2026-01-01T00:10:00.000Z", "2026-01-01T00:10:01.000Z"],
+			["two", "second owner prompt", "2026-01-01T00:20:00.000Z", "2026-01-01T00:20:01.000Z"],
+		].flatMap(([suffix, prompt, userAt, assistantAt], turnIndex) => [
+			{ id: `native:conflict:${suffix}:user`, type: "message", source: "native", createdAt: userAt, sequence: turnIndex * 2, turnId: "runtime-conflict", nativeTurnId: "runtime-conflict", nativeEntryId: `user-conflict-${suffix}`, role: "user", content: prompt },
+			{ id: `native:conflict:${suffix}:assistant`, type: "message", source: "native", createdAt: assistantAt, sequence: turnIndex * 2 + 1, turnId: "runtime-conflict", nativeTurnId: "runtime-conflict", nativeEntryId: `assistant-conflict-${suffix}`, role: "assistant", content: `${suffix} conflict answer`, status: "complete" },
+		]),
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [
+			{ eventId: "stable-owner-one", userText: "first owner prompt", startedAt: "2026-01-01T00:10:00.000Z", completedAt: "2026-01-01T00:10:01.000Z" },
+			{ eventId: "stable-owner-two", userText: "second owner prompt", startedAt: "2026-01-01T00:20:00.000Z", completedAt: "2026-01-01T00:20:01.000Z" },
+		],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:stable-owner-one",
+		"event:assistant:stable-owner-one:assistant:0",
+		"event:message_queued:stable-owner-two",
+		"event:assistant:stable-owner-two:assistant:0",
+	], [
+		"event:message_queued:stable-owner-one",
+		"terminal:assistant:stable-owner-one:assistant:0",
+		"event:message_queued:stable-owner-two",
+		"terminal:assistant:stable-owner-two:assistant:0",
+	]);
+	assert.ok(flattenTraceNodes(view.nodes)
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message")
+		.every((node) => node.nativeTurnId === "runtime-conflict"));
+});
+
+test("multiple native exact claims for one product identity fail closed without projection loss", () => {
+	const historyEntries = ["a", "b"].flatMap((suffix, turnIndex) => {
+		const runtimeId = `runtime-exact-${suffix}`;
+		const sequence = turnIndex * 3;
+		return [
+			{ id: `native:exact:${suffix}:user`, type: "message", source: "native", createdAt: `2026-01-01T00:0${turnIndex}:00.000Z`, sequence, turnId: "stable-shared-exact", nativeTurnId: runtimeId, nativeEntryId: `user-exact-${suffix}`, role: "user", content: `exact collision ${suffix}` },
+			{
+				id: `native:exact:${suffix}:assistant`,
+				type: "message",
+				source: "native",
+				createdAt: `2026-01-01T00:0${turnIndex}:01.000Z`,
+				sequence: sequence + 1,
+				turnId: "stable-shared-exact",
+				nativeTurnId: runtimeId,
+				nativeEntryId: `assistant-exact-${suffix}`,
+				role: "assistant",
+				content: [
+					{ type: "reasoning", text: `exact ${suffix} reasoning` },
+					{ type: "tool_call", toolCallId: `tool-exact-${suffix}`, toolName: "read", input: { path: `${suffix}.txt` } },
+					{ type: "text", text: `exact ${suffix} answer` },
+				],
+				status: "complete",
+			},
+			{ id: `native:exact:${suffix}:tool`, type: "message", source: "native", createdAt: `2026-01-01T00:0${turnIndex}:02.000Z`, sequence: sequence + 2, turnId: "stable-shared-exact", nativeTurnId: runtimeId, nativeEntryId: `tool-exact-${suffix}`, role: "tool", content: `exact ${suffix} result`, toolCallId: `tool-exact-${suffix}`, toolName: "read", result: { content: `exact ${suffix} result` }, status: "complete" },
+		];
+	});
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [{ eventId: "stable-shared-exact", userText: "irrelevant for exact identity" }],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:native-history-group:position:0",
+		"event:assistant:native-history-group:position:0:assistant:0",
+		"event:message_queued:native-history-group:position:3",
+		"event:assistant:native-history-group:position:3:assistant:0",
+	], [
+		"event:message_queued:native-history-group:position:0",
+		"terminal:assistant:native-history-group:position:0:assistant:0",
+		"event:message_queued:native-history-group:position:3",
+		"terminal:assistant:native-history-group:position:3:assistant:0",
+	]);
+	const legacyNodes = flattenTraceNodes(view.nodes);
+	assert.equal(legacyNodes.filter((node) => node.type === "user.message" || node.type === "assistant.message").length, 4);
+	assert.equal(traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 }).nodes
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message").length, 4);
+	assert.equal(buildCompactTerminalRows(view, { showThinking: true })
+		.filter((row) => row.kind === "message.user" || row.kind === "message.assistant").length, 4);
+	for (const suffix of ["a", "b"]) {
+		const runtimeId = `runtime-exact-${suffix}`;
+		const fallbackEventId = `native-history-group:position:${suffix === "a" ? 0 : 3}`;
+		const turnNodes = legacyNodes.filter((node) => node.nativeTurnId === runtimeId);
+		assert.ok(turnNodes.length >= 4);
+		assert.ok(turnNodes.every((node) => node.eventId === fallbackEventId));
+	}
+});
+
+test("duplicate or missing provider entry metadata cannot collapse rejected history groups", () => {
+	for (const mode of ["duplicate-native-entry", "duplicate-fallback-id"]) {
+		const historyEntries = ["a", "b"].flatMap((suffix, groupIndex) => [
+			{
+				id: mode === "duplicate-fallback-id" ? "duplicate-entry-id" : `duplicate-entry-${suffix}`,
+				type: "message",
+				source: "native",
+				createdAt: `2026-01-01T00:0${groupIndex}:00Z`,
+				sequence: groupIndex * 2,
+				turnId: "stable-duplicate-owner",
+				nativeTurnId: `runtime-duplicate-${suffix}`,
+				...(mode === "duplicate-native-entry" ? { nativeEntryId: "duplicate-user" } : {}),
+				role: "user",
+				content: `duplicate prompt ${suffix}`,
+			},
+			{
+				id: mode === "duplicate-fallback-id" ? "duplicate-entry-id" : `duplicate-assistant-${suffix}`,
+				type: "message",
+				source: "native",
+				createdAt: `2026-01-01T00:0${groupIndex}:01Z`,
+				sequence: groupIndex * 2 + 1,
+				turnId: "stable-duplicate-owner",
+				nativeTurnId: `runtime-duplicate-${suffix}`,
+				nativeEntryId: `duplicate-assistant-${suffix}`,
+				role: "assistant",
+				content: `duplicate answer ${suffix}`,
+				status: "complete",
+			},
+		]);
+		const build = () => buildTraceViewFromEvents({
+			session: { id: "ps_root", piSessionId: "", title: "Root" },
+			events: [],
+			historyEntries,
+			turnTimings: [{ eventId: "stable-duplicate-owner", userText: "exact identity ignores prompt" }],
+		});
+		const view = build();
+		const fallbackA = "native-history-group:position:0";
+		const fallbackB = "native-history-group:position:2";
+		assertMessageProjectionIds(view, [
+			`event:message_queued:${fallbackA}`,
+			`event:assistant:${fallbackA}:assistant:0`,
+			`event:message_queued:${fallbackB}`,
+			`event:assistant:${fallbackB}:assistant:0`,
+		], [
+			`event:message_queued:${fallbackA}`,
+			`terminal:assistant:${fallbackA}:assistant:0`,
+			`event:message_queued:${fallbackB}`,
+			`terminal:assistant:${fallbackB}:assistant:0`,
+		]);
+		const messages = flattenTraceNodes(view.nodes)
+			.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+		assert.equal(messages.length, 4);
+		assert.equal(new Set(messages.map((node) => node.id)).size, 4);
+		assert.deepEqual(messages.map((node) => node.nativeTurnId), [
+			"runtime-duplicate-a", "runtime-duplicate-a", "runtime-duplicate-b", "runtime-duplicate-b",
+		]);
+		assert.deepEqual(
+			flattenTraceNodes(build().nodes).filter((node) => node.type === "user.message" || node.type === "assistant.message").map((node) => node.id),
+			messages.map((node) => node.id),
+		);
+	}
+});
+
+test("Codex cursor pages use complete ownership proof and globally stable group positions", async (t) => {
+	const thread = {
+		id: "thread-page-proof",
+		createdAt: 1_767_225_600,
+		updatedAt: 1_767_225_601,
+		status: { type: "idle" },
+		turns: ["a", "b", "c"].map((suffix) => ({
+			id: `runtime-page-${suffix}`,
+			status: "completed",
+			startedAt: 1_767_225_600,
+			completedAt: 1_767_225_601,
+			items: [
+				{ id: `page-user-${suffix}`, type: "userMessage", content: [{ type: "text", text: "identical page prompt" }] },
+				{ id: `page-assistant-${suffix}`, type: "agentMessage", text: `page answer ${suffix}` },
+			],
+		})),
+	};
+	const history = await createBuiltInCodexHistory(t, {
+		thread,
+		piboSessionId: "ps_root",
+		runtimeInstanceId: "codex",
+	});
+	const timing = [{
+		eventId: "stable-page-shared",
+		userText: "identical page prompt",
+		startedAt: "2026-01-01T00:00:00Z",
+		completedAt: "2026-01-01T00:00:01Z",
+	}];
+	const page = (cursor, limit) => history.read({ cursor, limit });
+	const build = (historyPage) => buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries: historyPage.entries,
+		historyReconciliationProof: historyPage.reconciliationProof,
+		turnTimings: timing,
+	});
+
+	const fullPage = await page(undefined, 20);
+	const fullIds = flattenTraceNodes(build(fullPage).nodes)
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message")
+		.map((node) => node.id);
+	assert.deepEqual(fullIds, ["a", "b", "c"].flatMap((suffix, index) => {
+		const fallback = `native-history-group:codex:${thread.id}:turn:${index}:item:0:userMessage`;
+		return [`event:message_queued:${fallback}`, `event:assistant:${fallback}:assistant:0`];
+	}));
+
+	const newest = await page(undefined, 2);
+	const middle = await page(newest.nextCursor, 3);
+	const oldest = await page(middle.nextCursor, 4);
+	assert.deepEqual([newest.entries.length, middle.entries.length, oldest.entries.length], [2, 3, 1]);
+	const accumulatedIds = [newest, middle, oldest].flatMap((historyPage) =>
+		flattenTraceNodes(build(historyPage).nodes)
+			.filter((node) => node.type === "user.message" || node.type === "assistant.message")
+			.map((node) => node.id)
+	);
+	assert.equal(accumulatedIds.length, 6);
+	assert.equal(new Set(accumulatedIds).size, 6);
+	assert.deepEqual([...accumulatedIds].sort(), [...fullIds].sort());
+	for (const historyPage of [oldest, middle, newest]) {
+		assert.equal(historyPage.reconciliationProof?.complete, true);
+		assert.equal(historyPage.reconciliationProof?.entries.length, 6);
+		assert.ok(flattenTraceNodes(build(historyPage).nodes)
+			.filter((node) => node.type === "user.message" || node.type === "assistant.message")
+			.every((node) => node.eventId !== "stable-page-shared"));
+	}
+});
+
+test("complete proof preserves output ownership and ordinals across assistant and tool-only Codex page edges", async (t) => {
+	const thread = {
+		id: "thread-split-output-proof",
+		createdAt: 1_767_225_600,
+		updatedAt: 1_767_225_601,
+		status: { type: "idle" },
+		turns: [{
+			id: "runtime-split-output",
+			status: "completed",
+			startedAt: 1_767_225_600,
+			completedAt: 1_767_225_601,
+			items: [
+				{ id: "split-user", type: "userMessage", content: [{ type: "text", text: "split output prompt" }] },
+				{ id: "split-reasoning", type: "reasoning", summary: ["split reasoning"], content: [] },
+				{ id: "split-tool", type: "commandExecution", command: "true", aggregatedOutput: "ok", commandActions: [], cwd: "/workspace", status: "completed" },
+				{ id: "split-assistant-0", type: "agentMessage", text: "first output" },
+				{ id: "split-assistant-1", type: "agentMessage", text: "second output" },
+			],
+		}],
+	};
+	const history = await createBuiltInCodexHistory(t, {
+		thread,
+		piboSessionId: "ps_root",
+		runtimeInstanceId: "codex",
+	});
+	const turnTimings = [{ eventId: "stable-split-output", userText: "split output prompt", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z" }];
+	const pages = [];
+	let cursor;
+	do {
+		const page = await history.read({ cursor, limit: 1 });
+		pages.push(page);
+		cursor = page.nextCursor;
+	} while (cursor);
+	const projected = pages.flatMap((page) => flattenTraceNodes(buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries: page.entries,
+		historyReconciliationProof: page.reconciliationProof,
+		turnTimings,
+	}).nodes));
+	assert.deepEqual(projected.filter((node) => node.type === "assistant.message").map((node) => node.id).sort(), [
+		"event:assistant:stable-split-output:assistant:0",
+		"event:assistant:stable-split-output:assistant:1",
+	]);
+	assert.deepEqual(projected.filter((node) => node.type === "model.reasoning").map((node) => node.id), [
+		"event:thinking:stable-split-output:thinking:0",
+	]);
+	const tool = projected.find((node) => node.toolCallId === "split-tool");
+	assert.equal(tool?.eventId, "stable-split-output");
+	assert.equal(tool?.nativeTurnId, "runtime-split-output");
+	assert.equal(projected.filter((node) => node.type === "user.message").at(0)?.eventId, "stable-split-output");
+});
+
+test("oversized evolving Codex history keeps raw structural tail positions stable", () => {
+	const thread = {
+		id: "thread-evolving-positions",
+		createdAt: 1_767_225_600,
+		updatedAt: 1_767_225_601,
+		status: { type: "idle" },
+		turns: [
+			{ id: "runtime-hidden", status: "inProgress", startedAt: 1_767_225_600, items: [
+				{ id: "early-reasoning", type: "reasoning", summary: [], content: [] },
+			] },
+			...Array.from({ length: 251 }, (_, index) => ({
+				id: `runtime-tail-${index}`,
+				status: "completed",
+				startedAt: 1_767_225_600 + index,
+				completedAt: 1_767_225_601 + index,
+				items: [
+					{ id: `tail-user-${index}`, type: "userMessage", content: [{ type: "text", text: `tail ${index}` }] },
+					{ id: `tail-assistant-${index}`, type: "agentMessage", text: `answer ${index}` },
+				],
+			})),
+		],
+	};
+	const binding = { piboSessionId: "ps_root", runtimeInstanceId: "codex", adapterId: "codex-native", nativeSessionId: thread.id, state: "bound", revision: 1 };
+	const page = () => pageCodexThreadHistory({ runtimeInstanceId: "codex", binding, thread, limit: 2 });
+	const before = page();
+	const beforeView = buildTraceViewFromEvents({ session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: before.entries, historyReconciliationProof: before.reconciliationProof });
+	thread.name = "A title that appears later";
+	thread.turns[0].items[0].summary = ["reasoning now visible"];
+	const after = page();
+	const afterView = buildTraceViewFromEvents({ session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: after.entries, historyReconciliationProof: after.reconciliationProof });
+	assert.equal(before.reconciliationProof.complete, false);
+	assert.equal(after.reconciliationProof.complete, false);
+	assert.deepEqual(after.entries.map((entry) => entry.historyPosition), before.entries.map((entry) => entry.historyPosition));
+	assert.deepEqual(
+		flattenTraceNodes(afterView.nodes).filter((node) => node.type.endsWith(".message")).map((node) => node.id),
+		flattenTraceNodes(beforeView.nodes).filter((node) => node.type.endsWith(".message")).map((node) => node.id),
+	);
+	thread.turns.push({
+		id: "runtime-appended",
+		status: "completed",
+		startedAt: 1_767_226_000,
+		completedAt: 1_767_226_001,
+		items: [
+			{ id: "appended-user", type: "userMessage", content: [{ type: "text", text: "appended" }] },
+			{ id: "appended-assistant", type: "agentMessage", text: "appended answer" },
+		],
+	});
+	const grown = pageCodexThreadHistory({ runtimeInstanceId: "codex", binding, thread, limit: 4 });
+	assert.deepEqual(grown.entries.slice(0, 2).map((entry) => entry.historyPosition), after.entries.map((entry) => entry.historyPosition));
+});
+
+test("duplicate Codex tool item IDs in distinct oversized groups retain two scoped tool nodes", () => {
+	const duplicateToolCallId = "duplicate-tool:history:provider%id";
+	const filler = Array.from({ length: 249 }, (_, index) => ({
+		id: `runtime-filler-${index}`,
+		status: "completed",
+		startedAt: 1_767_225_600 + index,
+		completedAt: 1_767_225_601 + index,
+		items: [
+			{ id: `filler-user-${index}`, type: "userMessage", content: [{ type: "text", text: `filler ${index}` }] },
+			{ id: `filler-assistant-${index}`, type: "agentMessage", text: "done" },
+		],
+	}));
+	const thread = {
+		id: "thread-duplicate-tools",
+		createdAt: 1_767_225_600,
+		updatedAt: 1_767_225_601,
+		status: { type: "idle" },
+		turns: [...filler, ...["a", "b"].map((suffix) => ({
+			id: "runtime-tool-repeated",
+			status: "completed",
+			startedAt: 1_767_226_000,
+			completedAt: 1_767_226_001,
+			items: [
+				{ id: `user-tool-${suffix}`, type: "userMessage", content: [{ type: "text", text: `tool ${suffix}` }] },
+				{ id: duplicateToolCallId, type: "commandExecution", command: "true", aggregatedOutput: suffix, commandActions: [], cwd: "/workspace", status: "completed" },
+			],
+		}))],
+	};
+	const binding = { piboSessionId: "ps_root", runtimeInstanceId: "codex", adapterId: "codex-native", nativeSessionId: thread.id, state: "bound", revision: 1 };
+	const page = pageCodexThreadHistory({ runtimeInstanceId: "codex", binding, thread, limit: 4 });
+	const view = buildTraceViewFromEvents({ session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: page.entries, historyReconciliationProof: page.reconciliationProof });
+	const tools = flattenTraceNodes(view.nodes).filter((node) => node.toolCallId === duplicateToolCallId);
+	assert.equal(page.reconciliationProof.complete, false);
+	assert.equal(tools.length, 2);
+	assert.equal(new Set(tools.map((node) => node.id)).size, 2);
+	assert.ok(tools.every((node) => node.id.startsWith("history-tool:")));
+	const qualifiedIdentities = tools.map((node) => JSON.parse(decodeURIComponent(node.id.slice("history-tool:".length))));
+	assert.ok(qualifiedIdentities.every((identity) => identity[0] === duplicateToolCallId));
+	assert.equal(new Set(qualifiedIdentities.map((identity) => identity[1])).size, 2);
+	assert.ok(tools.every((node) => node.toolCallId === duplicateToolCallId));
+	assert.deepEqual(tools.map((node) => node.eventId), [
+		"native-history-group:codex:thread-duplicate-tools:turn:249:item:0:userMessage",
+		"native-history-group:codex:thread-duplicate-tools:turn:250:item:0:userMessage",
+	]);
+	assert.ok(tools.every((node) => node.entryId === duplicateToolCallId));
+	assert.ok(tools.every((node) => node.nativeTurnId === "runtime-tool-repeated"));
+});
+
+test("complete proof is bound to exact normalized page content and provenance", () => {
+	const scopeId = "proof:scope";
+	const proofEntries = [
+		{ id: "proof-user", historyPosition: "proof:0", historyScopeId: scopeId, type: "message", source: "native", createdAt: "2026-01-01T00:00:00Z", turnId: "runtime-proof", nativeTurnId: "runtime-proof", nativeEntryId: "proof-user", role: "user", content: "proof prompt" },
+		{ id: "proof-assistant", historyPosition: "proof:1", historyScopeId: scopeId, type: "message", source: "native", createdAt: "2026-01-01T00:00:01Z", turnId: "runtime-proof", nativeTurnId: "runtime-proof", nativeEntryId: "proof-assistant", role: "assistant", content: "proof answer", status: "complete" },
+	];
+	const pageEntries = [
+		{ ...proofEntries[0], id: "page-user", turnId: "runtime-page", nativeTurnId: "runtime-page", nativeEntryId: "page-user", content: "unrelated prompt" },
+		{ ...proofEntries[1], id: "page-assistant", turnId: "runtime-page", nativeTurnId: "runtime-page", nativeEntryId: "page-assistant", content: "unrelated answer" },
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: pageEntries,
+		historyReconciliationProof: { complete: true, scopeId, entries: proofEntries },
+		turnTimings: [{ eventId: "stable-proof-owner", userText: "proof prompt", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z" }],
+	});
+	assertMessageProjectionIds(view, [
+		"event:message_queued:native-history-group:proof:0",
+		"event:assistant:native-history-group:proof:0:assistant:0",
+	], [
+		"event:message_queued:native-history-group:proof:0",
+		"terminal:assistant:native-history-group:proof:0:assistant:0",
+	]);
+});
+
+test("a self-consistent page subset cannot mint a complete reconciliation proof", () => {
+	const scopeId = "proof:global-subset";
+	const allEntries = ["a", "b"].flatMap((suffix, index) => [
+		{ id: `subset-${suffix}-user`, historyPosition: `subset:${index * 2}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${index}:00Z`, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, role: "user", content: "same prompt" },
+		{ id: `subset-${suffix}-assistant`, historyPosition: `subset:${index * 2 + 1}`, historyScopeId: scopeId, type: "message", source: "native", createdAt: `2026-01-01T00:0${index}:01Z`, turnId: `runtime-${suffix}`, nativeTurnId: `runtime-${suffix}`, role: "assistant", content: `${suffix} answer`, status: "complete" },
+	]);
+	const entries = allEntries.slice(2);
+	const selfConsistentSubsetProof = {
+		complete: true,
+		scopeId,
+		fullScope: { entryCount: entries.length, digest: historyReconciliationDigest(entries) },
+		entries,
+	};
+	const staleBoundProof = selfCertifiedCompleteProof(allEntries, scopeId);
+	staleBoundProof.entries = entries;
+	for (const proof of [
+		selfConsistentSubsetProof,
+		staleBoundProof,
+		selfCertifiedCompleteProof(allEntries, scopeId),
+	]) {
+		const view = buildTraceViewFromEvents({
+			session: { id: "ps_root", piSessionId: "" },
+			events: [],
+			historyEntries: entries,
+			historyReconciliationProof: proof,
+			turnTimings: [{ eventId: "stable-subset-owner", userText: "same prompt", startedAt: "2026-01-01T00:01:00Z", completedAt: "2026-01-01T00:01:01Z" }],
+		});
+		assertMessageProjectionIds(view, [
+			"event:message_queued:native-history-group:subset:2",
+			"event:assistant:native-history-group:subset:2:assistant:0",
+		], [
+			"event:message_queued:native-history-group:subset:2",
+			"terminal:assistant:native-history-group:subset:2:assistant:0",
+		]);
+	}
+});
+
+test("repeated provider turn IDs preserve every structurally distinct native message", async (t) => {
+	const history = await createBuiltInCodexHistory(t, {
+		thread: {
+			id: "thread-repeated-provider-turn",
+			createdAt: 1_767_225_600,
+			updatedAt: 1_767_225_601,
+			status: { type: "idle" },
+			turns: ["a", "b"].map((suffix) => ({
+				id: "runtime-repeated-provider",
+				status: "completed",
+				startedAt: 1_767_225_600,
+				completedAt: 1_767_225_601,
+				items: [
+					{ id: `user-${suffix}`, type: "userMessage", content: [{ type: "text", text: `${suffix} prompt` }] },
+					{ id: `assistant-${suffix}`, type: "agentMessage", text: `${suffix} answer` },
+				],
+			})),
+		},
+		piboSessionId: "ps_root",
+	});
+	const page = await history.read({ limit: 20 });
+	const entries = page.entries;
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: entries,
+		historyReconciliationProof: page.reconciliationProof,
+	});
+	const legacy = flattenTraceNodes(view.nodes).filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	const v2 = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 }).nodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	const terminal = buildCompactTerminalRows(view, { showThinking: true }).filter((row) => row.kind === "message.user" || row.kind === "message.assistant");
+	for (const projection of [legacy, v2, terminal]) {
+		assert.equal(projection.length, 4);
+		const ids = projection.map((item) => item.id ?? item.nodeId);
+		assert.equal(new Set(ids).size, 4);
+	}
+	assert.ok(legacy.every((node) => node.nativeTurnId === "runtime-repeated-provider"));
+});
+
+test("qualified duplicate tool identity pairs calls and results across page edges", async (t) => {
+	const toolCallId = `history-tool:tool:%25:[\"tuple\"]:工具`;
+	const rawEntries = ["a", "b"].flatMap((suffix, groupIndex) => [
+		piTranscriptMessage(`tool-${suffix}-user`, "user", `${suffix} prompt`, `2026-01-01T00:0${groupIndex}:00.000Z`),
+		piTranscriptMessage(`tool-${suffix}-call`, "assistant", [{ type: "toolCall", id: toolCallId, name: "read", arguments: { path: `${suffix}.txt` } }], `2026-01-01T00:0${groupIndex}:01.000Z`),
+		piTranscriptMessage(`tool-${suffix}-result`, "toolResult", `${suffix} result`, `2026-01-01T00:0${groupIndex}:02.000Z`, { toolCallId, toolName: "read" }),
+	]);
+	const history = createBuiltInPiHistory(t, { nativeSessionId: "pi-tool-page-edges", entries: rawEntries, piboSessionId: "ps_root" });
+	const page = await history.read({ limit: 20 });
+	const entries = page.entries;
+	const proof = page.reconciliationProof;
+	const projectedTool = (entry) => {
+		const view = buildTraceViewFromEvents({ session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: [entry], historyReconciliationProof: proof });
+		return flattenTraceNodes(view.nodes).find((node) => node.toolCallId === toolCallId);
+	};
+	const byNativeId = new Map(entries.map((entry) => [entry.nativeEntryId, entry]));
+	const callA = projectedTool(byNativeId.get("tool-a-call"));
+	const resultA = projectedTool(byNativeId.get("tool-a-result"));
+	const callB = projectedTool(byNativeId.get("tool-b-call"));
+	const resultB = projectedTool(byNativeId.get("tool-b-result"));
+	assert.equal(callA.id, resultA.id);
+	assert.equal(callB.id, resultB.id);
+	assert.notEqual(callA.id, callB.id);
+	assert.ok([callA, resultA, callB, resultB].every((node) => node.id.startsWith("history-tool:") && node.toolCallId === toolCallId));
+});
+
+test("missing or duplicate proof positions fail closed with distinct group-local identities", () => {
+	for (const mode of ["missing", "duplicate"]) {
+		const entries = ["a", "b"].flatMap((suffix, groupIndex) => [
+			{ id: "repeated-id", ...(mode === "duplicate" ? { historyPosition: "duplicate-position" } : {}), type: "message", source: "native", createdAt: `2026-01-01T00:0${groupIndex}:00Z`, sequence: groupIndex * 2, turnId: "repeated-provider-turn", nativeTurnId: `runtime-${suffix}`, nativeEntryId: "repeated-entry", role: "user", content: `prompt ${suffix}` },
+			{ id: "repeated-id", ...(mode === "duplicate" ? { historyPosition: "duplicate-position" } : {}), type: "message", source: "native", createdAt: `2026-01-01T00:0${groupIndex}:01Z`, sequence: groupIndex * 2 + 1, turnId: "repeated-provider-turn", nativeTurnId: `runtime-${suffix}`, nativeEntryId: "repeated-entry", role: "assistant", content: `answer ${suffix}`, status: "complete" },
+		]);
+		const view = buildTraceViewFromEvents({
+			session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: entries,
+			historyReconciliationProof: selfCertifiedCompleteProof(entries),
+			turnTimings: [{ eventId: "repeated-provider-turn", userText: "irrelevant" }],
+		});
+		const legacy = flattenTraceNodes(view.nodes).filter((node) => node.type === "user.message" || node.type === "assistant.message");
+		const v2 = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 }).nodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+		const terminal = buildCompactTerminalRows(view, { showThinking: true }).filter((row) => row.kind === "message.user" || row.kind === "message.assistant");
+		assert.deepEqual([legacy.length, v2.length, terminal.length], [4, 4, 4]);
+		assert.equal(new Set(legacy.map((node) => node.id)).size, 4);
+		assert.equal(new Set(v2.map((node) => node.nodeId)).size, 4);
+		assert.equal(new Set(terminal.map((row) => row.id)).size, 4);
+		assert.deepEqual(legacy.map((node) => node.nativeTurnId), ["runtime-a", "runtime-a", "runtime-b", "runtime-b"]);
+	}
+});
+
+test("proof and timing overflow fail closed before inspecting timing records", () => {
+	const entries = [
+		{ id: "bounded-user", historyPosition: "bounded:0", type: "message", source: "native", createdAt: "2026-01-01T00:00:00Z", turnId: "stable-overflow", nativeTurnId: "runtime-overflow", role: "user", content: "overflow" },
+		{ id: "bounded-assistant", historyPosition: "bounded:1", type: "message", source: "native", createdAt: "2026-01-01T00:00:01Z", turnId: "stable-overflow", nativeTurnId: "runtime-overflow", role: "assistant", content: "answer", status: "complete" },
+	];
+	const unreadableTiming = Object.defineProperty({}, "eventId", { get() { throw new Error("timing was inspected"); } });
+	const turnTimings = Array.from({ length: 501 }, () => unreadableTiming);
+	const oversizedProofEntries = [...entries, ...Array.from({ length: 499 }, (_, index) => ({
+		id: `extra-${index}`, historyPosition: `extra:${index}`, type: "session_info", source: "native", createdAt: "2026-01-01T00:00:00Z", name: `extra ${index}`,
+	}))];
+	for (const { proof, timings } of [
+		{ proof: undefined, timings: turnTimings },
+		{ proof: { complete: true, entries: oversizedProofEntries }, timings: [{ eventId: "stable-overflow", userText: "overflow" }] },
+	]) {
+		const view = buildTraceViewFromEvents({
+			session: { id: "ps_root", piSessionId: "" }, events: [], historyEntries: entries,
+			...(proof ? { historyReconciliationProof: proof } : {}),
+			turnTimings: timings,
+		});
+		assertMessageProjectionIds(view, [
+			"event:message_queued:native-history-group:bounded:0",
+			"event:assistant:native-history-group:bounded:0:assistant:0",
+		], [
+			"event:message_queued:native-history-group:bounded:0",
+			"terminal:assistant:native-history-group:bounded:0:assistant:0",
+		]);
+	}
+});
+
+test("an incomplete page proof fails closed while a complete single claimant still reconciles", async (t) => {
+	const history = createBuiltInPiHistory(t, {
+		nativeSessionId: "pi-bounded-proof",
+		piboSessionId: "ps_root",
+		entries: [
+			piTranscriptMessage("incomplete-user", "user", "bounded proof prompt", "2026-01-01T00:00:00.000Z"),
+			piTranscriptMessage("incomplete-assistant", "assistant", "bounded proof answer", "2026-01-01T00:00:01.000Z"),
+		],
+	});
+	const page = await history.read({ limit: 20 });
+	const entries = page.entries;
+	const turnTimings = [{ eventId: "stable-bounded-proof", userText: "bounded proof prompt", startedAt: "2026-01-01T00:00:00Z", completedAt: "2026-01-01T00:00:01Z" }];
+	const fallbackEventId = `native-history-group:${entries[0].historyPosition}`;
+	const build = (complete) => buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" }, events: [], historyEntries: entries,
+		historyReconciliationProof: complete
+			? page.reconciliationProof
+			: { complete: false, entries },
+		turnTimings,
+	});
+	assertMessageProjectionIds(build(false), [
+		`event:message_queued:${fallbackEventId}`,
+		`event:assistant:${fallbackEventId}:assistant:0`,
+	], [
+		`event:message_queued:${fallbackEventId}`,
+		`terminal:assistant:${fallbackEventId}:assistant:0`,
+	]);
+	assertMessageProjectionIds(build(true), [
+		"event:message_queued:stable-bounded-proof",
+		"event:assistant:stable-bounded-proof:assistant:0",
+	], [
+		"event:message_queued:stable-bounded-proof",
+		"terminal:assistant:stable-bounded-proof:assistant:0",
+	]);
+});
+
+test("three ambiguous user-only claimants in a complete proof remain distinct on native identity", async (t) => {
+	const history = createBuiltInPiHistory(t, {
+		nativeSessionId: "pi-open-claimants",
+		piboSessionId: "ps_root",
+		entries: ["a", "b", "c"].map((suffix) =>
+			piTranscriptMessage(`open-${suffix}`, "user", "open repeated prompt", "2026-01-01T00:00:00.000Z")),
+	});
+	const page = await history.read({ limit: 20 });
+	const entries = page.entries;
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries: entries,
+		historyReconciliationProof: page.reconciliationProof,
+		turnTimings: [{ eventId: "stable-open-shared", userText: "open repeated prompt", startedAt: "2026-01-01T00:00:00Z" }],
+	});
+	const legacy = flattenTraceNodes(view.nodes).filter((node) => node.type === "user.message");
+	assert.deepEqual(legacy.map((node) => node.nativeTurnId), [
+		"open-a",
+		"open-b",
+		"open-c",
+	]);
+	assert.ok(legacy.every((node) => node.eventId !== "stable-open-shared"));
+	assert.equal(new Set(legacy.map((node) => node.id)).size, 3);
+	assert.equal(traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 }).nodes.filter((node) => node.type === "user.message").length, 3);
+	assert.equal(buildCompactTerminalRows(view, { showThinking: true }).filter((row) => row.kind === "message.user").length, 3);
+});
+
+test("exact product collisions without native turn IDs retain every group on distinct stable fallbacks", () => {
+	const historyEntries = ["a", "b"].flatMap((suffix, turnIndex) => [
+		{ id: `native:no-turn-id:${suffix}:user`, type: "message", source: "native", createdAt: `2026-01-01T00:0${turnIndex}:00Z`, sequence: turnIndex * 3, turnId: "stable-no-turn-id", nativeEntryId: `user-no-turn-id-${suffix}`, role: "user", content: `no turn id ${suffix}` },
+		{
+			id: `native:no-turn-id:${suffix}:assistant`,
+			type: "message",
+			source: "native",
+			createdAt: `2026-01-01T00:0${turnIndex}:01Z`,
+			sequence: turnIndex * 3 + 1,
+			turnId: "stable-no-turn-id",
+			nativeEntryId: `assistant-no-turn-id-${suffix}`,
+			role: "assistant",
+			content: [
+				{ type: "reasoning", text: `no turn id ${suffix} reasoning` },
+				{ type: "tool_call", toolCallId: `tool-no-turn-id-${suffix}`, toolName: "read", input: { path: `${suffix}.txt` } },
+				{ type: "text", text: `no turn id ${suffix} answer` },
+			],
+			status: suffix === "a" ? "running" : "error",
+			error: suffix === "b" ? "expected error" : undefined,
+		},
+		{ id: `native:no-turn-id:${suffix}:tool`, type: "message", source: "native", createdAt: `2026-01-01T00:0${turnIndex}:02Z`, sequence: turnIndex * 3 + 2, turnId: "stable-no-turn-id", nativeEntryId: `tool-no-turn-id-${suffix}`, role: "tool", content: `${suffix} result`, toolCallId: `tool-no-turn-id-${suffix}`, toolName: "read", result: { content: `${suffix} result` }, status: suffix === "a" ? "running" : "error", isError: suffix === "b" },
+	]);
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [{ eventId: "stable-no-turn-id", userText: "exact identity ignores text" }],
+	});
+	const fallbackA = "native-history-group:position:0";
+	const fallbackB = "native-history-group:position:3";
+
+	assertMessageProjectionIds(view, [
+		`event:message_queued:${fallbackA}`,
+		`event:assistant:${fallbackA}:assistant:0`,
+		`event:message_queued:${fallbackB}`,
+		`event:assistant:${fallbackB}:assistant:0`,
+	], [
+		`event:message_queued:${fallbackA}`,
+		`terminal:assistant:${fallbackA}:assistant:0`,
+		`event:message_queued:${fallbackB}`,
+		`terminal:assistant:${fallbackB}:assistant:0`,
+	]);
+	const nodes = flattenTraceNodes(view.nodes);
+	for (const [suffix, fallbackEventId] of [["a", fallbackA], ["b", fallbackB]]) {
+		const groupNodes = nodes.filter((node) => node.entryId?.includes(`no-turn-id-${suffix}`) || node.toolCallId === `tool-no-turn-id-${suffix}`);
+		assert.ok(groupNodes.length >= 4);
+		assert.ok(groupNodes.every((node) => node.eventId === fallbackEventId));
+		assert.ok(groupNodes.every((node) => node.nativeTurnId === "stable-no-turn-id"));
+	}
+	assert.equal(nodes.find((node) => node.entryId === "assistant-no-turn-id-a" && node.type === "assistant.message")?.status, "running");
+	assert.equal(nodes.find((node) => node.entryId === "assistant-no-turn-id-b" && node.type === "assistant.message")?.status, "error");
+});
+
+test("repeated native turn IDs cannot merge distinct exact product claimants", () => {
+	const historyEntries = ["a", "b"].flatMap((suffix, turnIndex) => [
+		{ id: `native:repeated-turn:${suffix}:user`, type: "message", source: "native", createdAt: `2026-01-01T00:0${turnIndex}:00Z`, sequence: turnIndex * 2, turnId: "stable-repeated-exact", nativeTurnId: "runtime-repeated", nativeEntryId: `user-repeated-${suffix}`, role: "user", content: `repeated ${suffix}` },
+		{ id: `native:repeated-turn:${suffix}:assistant`, type: "message", source: "native", createdAt: `2026-01-01T00:0${turnIndex}:01Z`, sequence: turnIndex * 2 + 1, turnId: "stable-repeated-exact", nativeTurnId: "runtime-repeated", nativeEntryId: `assistant-repeated-${suffix}`, role: "assistant", content: [{ type: "reasoning", text: `${suffix} reasoning` }, { type: "text", text: `${suffix} answer` }], status: "complete" },
+	]);
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [{ eventId: "stable-repeated-exact", userText: "exact ignores text" }],
+	});
+	const fallbackA = "native-history-group:position:0";
+	const fallbackB = "native-history-group:position:2";
+
+	assertMessageProjectionIds(view, [
+		`event:message_queued:${fallbackA}`,
+		`event:assistant:${fallbackA}:assistant:0`,
+		`event:message_queued:${fallbackB}`,
+		`event:assistant:${fallbackB}:assistant:0`,
+	], [
+		`event:message_queued:${fallbackA}`,
+		`terminal:assistant:${fallbackA}:assistant:0`,
+		`event:message_queued:${fallbackB}`,
+		`terminal:assistant:${fallbackB}:assistant:0`,
+	]);
+	const nodes = flattenTraceNodes(view.nodes);
+	assert.equal(nodes.filter((node) => node.nativeTurnId === "runtime-repeated" && node.type === "model.reasoning").length, 2);
+	assert.ok(nodes.filter((node) => node.nativeTurnId === "runtime-repeated").every((node) =>
+		node.eventId === fallbackA || node.eventId === fallbackB
+	));
+});
+
+test("distinct native steering and base groups cannot converge on one product output owner", () => {
+	const historyEntries = [
+		{ id: "native:base-owner:user", type: "message", source: "native", createdAt: "2026-01-01T00:00:00Z", sequence: 0, turnId: "stable-base-owner", nativeTurnId: "runtime-base-owner", nativeEntryId: "user-base-owner", role: "user", content: "base owner" },
+		{ id: "native:base-owner:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:00:01Z", sequence: 1, turnId: "stable-base-owner", nativeTurnId: "runtime-base-owner", nativeEntryId: "assistant-base-owner", role: "assistant", content: [{ type: "reasoning", text: "base owner reasoning" }, { type: "text", text: "base owner answer" }], status: "complete" },
+		{ id: "native:steering-owner:user", type: "message", source: "native", createdAt: "2026-01-01T00:00:02Z", sequence: 2, turnId: "stable-steering-owner", nativeTurnId: "runtime-steering-owner", nativeEntryId: "user-steering-owner", role: "user", content: "steering owner" },
+		{ id: "native:steering-owner:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:00:03Z", sequence: 3, turnId: "stable-steering-owner", nativeTurnId: "runtime-steering-owner", nativeEntryId: "assistant-steering-owner", role: "assistant", content: [{ type: "reasoning", text: "steering owner reasoning" }, { type: "tool_call", toolCallId: "tool-steering-owner", toolName: "read", input: {} }, { type: "text", text: "steering owner answer" }], status: "complete" },
+		{ id: "native:steering-owner:tool", type: "message", source: "native", createdAt: "2026-01-01T00:00:04Z", sequence: 4, turnId: "stable-steering-owner", nativeTurnId: "runtime-steering-owner", nativeEntryId: "tool-steering-owner", role: "tool", content: "steering result", toolCallId: "tool-steering-owner", toolName: "read", result: { content: "steering result" }, status: "complete" },
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [
+			{ eventId: "stable-base-owner", userText: "base owner" },
+			{ eventId: "stable-steering-owner", userText: "steering owner", userMessageType: "message_steered", activeEventId: "stable-base-owner" },
+		],
+	});
+	const baseFallback = "native-history-group:position:0";
+	const steeringFallback = "native-history-group:position:2";
+
+	assertMessageProjectionIds(view, [
+		`event:message_queued:${baseFallback}`,
+		`event:assistant:${baseFallback}:assistant:0`,
+		`event:message_queued:${steeringFallback}`,
+		`event:assistant:${steeringFallback}:assistant:0`,
+	], [
+		`event:message_queued:${baseFallback}`,
+		`terminal:assistant:${baseFallback}:assistant:0`,
+		`event:message_queued:${steeringFallback}`,
+		`terminal:assistant:${steeringFallback}:assistant:0`,
+	]);
+	const nodes = flattenTraceNodes(view.nodes);
+	assert.ok(nodes.filter((node) => node.nativeTurnId === "runtime-base-owner").every((node) => node.eventId === baseFallback));
+	assert.ok(nodes.filter((node) => node.nativeTurnId === "runtime-steering-owner").every((node) => node.eventId === steeringFallback));
+	assert.equal(nodes.filter((node) => node.type === "model.reasoning").length, 2);
+	assert.equal(nodes.filter((node) => node.toolCallId === "tool-steering-owner").length, 1);
+});
+
+test("exact identity and unique bounded endpoint evidence remain authoritative", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries: [
+			{ id: "native:exact:user", type: "message", source: "native", createdAt: "2026-01-01T00:00:01.000Z", turnId: "stable-exact", nativeTurnId: "runtime-exact", nativeEntryId: "user-exact", role: "user", content: "exact prompt" },
+			{ id: "native:exact:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:00:02.000Z", turnId: "stable-exact", nativeTurnId: "runtime-exact", nativeEntryId: "assistant-exact", role: "assistant", content: "exact answer", status: "complete" },
+			{ id: "native:bounded:user", type: "message", source: "native", createdAt: "2026-01-01T00:10:00.000Z", turnId: "runtime-bounded", nativeTurnId: "runtime-bounded", nativeEntryId: "user-bounded", role: "user", content: "bounded prompt" },
+			{ id: "native:bounded:assistant", type: "message", source: "native", createdAt: "2026-01-01T00:10:02.000Z", turnId: "runtime-bounded", nativeTurnId: "runtime-bounded", nativeEntryId: "assistant-bounded", role: "assistant", content: "bounded answer", status: "complete" },
+		],
+		turnTimings: [
+			{ eventId: "stable-exact", userText: "different text without timestamps" },
+			{ eventId: "stable-bounded", userText: "bounded prompt", completedAt: "2026-01-01T00:10:03.000Z" },
+		],
+	});
+
+	assertMessageProjectionIds(view, [
+		"event:message_queued:stable-exact",
+		"event:assistant:stable-exact:assistant:0",
+		"event:message_queued:stable-bounded",
+		"event:assistant:stable-bounded:assistant:0",
+	], [
+		"event:message_queued:stable-exact",
+		"terminal:assistant:stable-exact:assistant:0",
+		"event:message_queued:stable-bounded",
+		"terminal:assistant:stable-bounded:assistant:0",
+	]);
+});
+
+test("repeated identical native turns retain distinct matched product identities", () => {
+	const historyEntries = [
+		...[
+			["one", "2026-01-01T00:00:01.000Z", "2026-01-01T00:00:03.000Z"],
+			["two", "2026-01-01T00:00:04.000Z", "2026-01-01T00:00:06.000Z"],
+		].flatMap(([suffix, userAt, assistantAt]) => [
+			{
+				id: `codex:thread:runtime-${suffix}:user-${suffix}`,
+				type: "message",
+				source: "native",
+				createdAt: userAt,
+				turnId: `runtime-${suffix}`,
+				nativeTurnId: `runtime-${suffix}`,
+				nativeEntryId: `user-${suffix}`,
+				role: "user",
+				content: "identical prompt",
+			},
+			{
+				id: `codex:thread:runtime-${suffix}:assistant-${suffix}`,
+				type: "message",
+				source: "native",
+				createdAt: assistantAt,
+				turnId: `runtime-${suffix}`,
+				nativeTurnId: `runtime-${suffix}`,
+				nativeEntryId: `assistant-${suffix}`,
+				role: "assistant",
+				content: "identical answer",
+				status: "complete",
+			},
+		]),
+	];
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "", title: "Root" },
+		events: [],
+		historyEntries,
+		turnTimings: [
+			{ eventId: "stable-one", userText: "identical prompt", completedAt: "2026-01-01T00:00:03.000Z" },
+			{ eventId: "stable-two", userText: "identical prompt", completedAt: "2026-01-01T00:00:06.000Z" },
+		],
+	});
+	const messages = flattenTraceNodes(view.nodes)
+		.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+	assert.deepEqual(messages.map((node) => node.id), [
+		"event:message_queued:stable-one",
+		"event:assistant:stable-one:assistant:0",
+		"event:message_queued:stable-two",
+		"event:assistant:stable-two:assistant:0",
+	]);
+	assert.deepEqual(messages.map((node) => node.nativeTurnId), [
+		"runtime-one",
+		"runtime-one",
+		"runtime-two",
+		"runtime-two",
+	]);
 });
 
 test("active repeated prompts do not reuse settled canonical transcript identities", () => {

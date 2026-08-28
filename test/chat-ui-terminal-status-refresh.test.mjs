@@ -8,9 +8,11 @@ const execFileAsync = promisify(execFile);
 async function runStatusRefreshScenario() {
 	const script = String.raw`
 		import React from "react";
-		import { create } from "react-test-renderer";
+		import TestRenderer from "react-test-renderer";
 		import { TerminalStatusCard } from "./src/apps/chat-ui/src/session-views/compact-terminal/TerminalStatusCard.tsx";
+		const { act, create } = TestRenderer;
 		globalThis.React = React;
+		globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 		const requests = [];
 		globalThis.fetch = async (path, init) => {
 			requests.push({ path: String(path), cache: init?.cache });
@@ -54,27 +56,32 @@ async function runStatusRefreshScenario() {
 			return "";
 		}
 
-		const renderer = create(React.createElement(TerminalStatusCard, {
-			row,
-			piboSessionId: "ps_status_refresh",
-		}));
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		let renderer;
+		await act(async () => {
+			renderer = create(React.createElement(TerminalStatusCard, {
+				row,
+				piboSessionId: "ps_status_refresh",
+			}));
+		});
 		const beforeText = textOf(renderer.toJSON());
 		const beforeCardCount = renderer.root.findAllByProps({ "data-pibo-component": "TerminalStatusCard" }).length;
 		const refreshButton = renderer.root.findByProps({ "aria-label": "Refresh status" });
 
-		refreshButton.props.onClick();
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await act(async () => {
+			refreshButton.props.onClick();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		});
 
 		const afterText = textOf(renderer.toJSON());
 		const afterCardCount = renderer.root.findAllByProps({ "data-pibo-component": "TerminalStatusCard" }).length;
 		const updatedButton = renderer.root.findByProps({ "aria-label": "Refresh status" });
 
-		renderer.update(React.createElement(TerminalStatusCard, {
-			row: { ...row, output: { ...row.output, cwd: "/workspace/canonical" } },
-			piboSessionId: "ps_status_refresh",
-		}));
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		await act(async () => {
+			renderer.update(React.createElement(TerminalStatusCard, {
+				row: { ...row, output: { ...row.output, cwd: "/workspace/canonical" } },
+				piboSessionId: "ps_status_refresh",
+			}));
+		});
 		const canonicalText = textOf(renderer.toJSON());
 		console.log(JSON.stringify({
 			beforeText,

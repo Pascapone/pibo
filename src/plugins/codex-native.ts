@@ -3,6 +3,7 @@ import {
 	CODEX_NATIVE_AGENT_RUNTIME_DRIVER,
 } from "../agent-runtimes/codex-native/adapter.js";
 import { InitialSessionContextBuilder } from "../core/profiles.js";
+import { createOpenAiCodexSpeechProvider } from "../speech/openai-codex.js";
 import { definePiboPlugin } from "./registry.js";
 
 export const CODEX_NATIVE_RUNTIME_INSTANCE_ID = "codex-native";
@@ -18,6 +19,7 @@ export const piboCodexNativePlugin = definePiboPlugin({
 			adapterId: CODEX_NATIVE_ADAPTER_ID,
 			displayName: "Native Codex App Server",
 		});
+		api.registerSpeechProvider(createOpenAiCodexSpeechProvider());
 		api.registerProfile({
 			name: CODEX_NATIVE_PROFILE_NAME,
 			description: "Native Codex App Server profile. Distinct from the Pi-backed Codex compatibility profile.",

@@ -92,6 +92,7 @@ import {
 	fallbackRoomIdWhenHidingArchived,
 	findRoomById,
 	isArchivedRoom,
+	resolveRoomContextLabel,
 	limitSessionNodesForSidebar,
 	nextRecentSessionSignalExpiryMs,
 	splitSessionNodesByArchive,
@@ -341,6 +342,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const roomSwitchGenerationRef = useRef(0);
 	const activeRoomId = selectedRoomId ?? bootstrap?.selectedRoomId ?? null;
 	const selectedRoom = activeRoomId && bootstrap ? findRoomById(bootstrap.rooms, activeRoomId) ?? bootstrap.room : undefined;
+	const selectedRoomContextLabel = resolveRoomContextLabel(
+		bootstrap?.rooms ?? [],
+		activeRoomId,
+		bootstrap?.room,
+	);
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
 	const loadingSelectedRoom = Boolean(loadingRoomId && loadingRoomId === selectedRoomId);
 	const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
@@ -1795,6 +1801,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						bootstrap={bootstrap}
 						selectedPiboSessionId={selectedPiboSessionId}
 						selectedRoomId={selectedRoomId}
+						contextLabel={selectedRoomContextLabel}
 						selectedRoomArchived={selectedRoomArchived}
 						roomNavigationPending={loadingSelectedRoom}
 						sessionNavigationPending={Boolean(loadingPiboSessionId && loadingPiboSessionId === selectedPiboSessionId)}

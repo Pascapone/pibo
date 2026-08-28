@@ -137,12 +137,21 @@ export type AgentRuntimeProductContext = {
 	getActiveMessage?: () => { id?: string; source?: string; provenance?: unknown } | undefined;
 };
 
+/** Runtime-authorized opaque capability; structural look-alikes are rejected. */
+export type AgentRuntimeBindingPersistence = {
+	compareAndSet(
+		binding: RuntimeSessionBinding,
+		expectedRevision: number,
+	): Promise<RuntimeSessionBinding>;
+};
+
 export type AgentRuntimeOpenServices = {
 	agentsController?: unknown;
 	runToolController?: unknown;
 	codeRuntimeToolController?: unknown;
 	portableTools?: PiboPortableToolSession;
 	resources?: PiboRuntimeResourceSession;
+	runtimeBindingPersistence?: AgentRuntimeBindingPersistence;
 	telemetry?: unknown;
 	compatibility?: unknown;
 };
@@ -333,7 +342,7 @@ export type AgentRuntimeFastModeResult = {
 export type AgentRuntimeControls = {
 	getCurrentSession?(): AgentRuntimeNativeSessionSnapshot;
 	listSessions?(): Promise<AgentRuntimeNativeSessionInfo[]>;
-	getForkCandidates?(): AgentRuntimeForkCandidate[];
+	getForkCandidates?(): AgentRuntimeForkCandidate[] | Promise<AgentRuntimeForkCandidate[]>;
 	forkSession?(entryId: string): Promise<AgentRuntimeSessionOperationResult>;
 	cloneSession?(): Promise<AgentRuntimeSessionOperationResult>;
 	getSessionTree?(): AgentRuntimeSessionTree;

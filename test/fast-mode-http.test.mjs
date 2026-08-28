@@ -10,8 +10,11 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
+import { getPiAgentRuntimeCompatibilityHandle, PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
+import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { createPiboSession } from "../dist/sessions/store.js";
 
 const CODEX_AUTH_CLAIM = "https://api.openai.com/auth";
 
@@ -43,10 +46,10 @@ function readRequestBody(req) {
 	});
 }
 
-async function startFakeCodexHttpApi() {
+async function startFakeCodexHttpApi({ includeWebSearch = false, responsePath = "/codex/responses" } = {}) {
 	const requests = [];
 	const server = createServer(async (req, res) => {
-		if (req.method !== "POST" || req.url !== "/codex/responses") {
+		if (req.method !== "POST" || req.url !== responsePath) {
 			res.writeHead(404).end("not found");
 			return;
 		}
@@ -60,8 +63,61 @@ async function startFakeCodexHttpApi() {
 			connection: "close",
 		});
 		res.end([
+			...(includeWebSearch ? [
+				`data: ${JSON.stringify({
+					type: "response.output_item.added",
+					output_index: 0,
+					item: { type: "web_search_call", id: "ws_http", status: "in_progress" },
+				})}`,
+				"",
+				`data: ${JSON.stringify({ type: "response.web_search_call.searching", item_id: "ws_http" })}`,
+				"",
+				`data: ${JSON.stringify({ type: "response.web_search_call.searching", item_id: "ws_http" })}`,
+				"",
+				`data: ${JSON.stringify({ type: "response.web_search_call.completed", item_id: "ws_http" })}`,
+				"",
+				`data: ${JSON.stringify({ type: "response.web_search_call.completed", item_id: "ws_http" })}`,
+				"",
+				`data: ${JSON.stringify({
+					type: "response.output_item.done",
+					output_index: 0,
+					item: {
+						type: "web_search_call",
+						id: "ws_http",
+						status: "completed",
+						action: {
+							type: "search",
+							query: "OpenAI API documentation",
+							sources: [
+								{ title: "API docs", url: "https://platform.openai.com/docs" },
+								{ title: "OpenAI developers", url: "https://developers.openai.com/" },
+							],
+						},
+					},
+				})}`,
+				"",
+				`data: ${JSON.stringify({
+					type: "response.output_item.done",
+					output_index: 0,
+					item: {
+						type: "web_search_call",
+						id: "ws_http",
+						status: "completed",
+						action: {
+							type: "search",
+							query: "OpenAI API documentation",
+							sources: [
+								{ title: "API docs", url: "https://platform.openai.com/docs" },
+								{ title: "OpenAI developers", url: "https://developers.openai.com/" },
+							],
+						},
+					},
+				})}`,
+				"",
+			] : []),
 			`data: ${JSON.stringify({
 				type: "response.output_item.added",
+				output_index: includeWebSearch ? 1 : 0,
 				item: { type: "message", id: "msg_http_fast", role: "assistant", content: [], status: "in_progress" },
 			})}`,
 			"",
@@ -74,6 +130,7 @@ async function startFakeCodexHttpApi() {
 			"",
 			`data: ${JSON.stringify({
 				type: "response.output_item.done",
+				output_index: includeWebSearch ? 1 : 0,
 				item: {
 					type: "message",
 					id: "msg_http_fast",
@@ -221,6 +278,170 @@ test("fast mode sends priority service tier through the HTTP provider request", 
 	} finally {
 		if (routed) await routed.dispose();
 		else if (runtime) await runtime.dispose();
+		await rm(cwd, { recursive: true, force: true });
+		await closeServer(fakeApi.server);
+	}
+});
+
+test("provider web search SSE events surface as one routed span", async () => {
+	const fakeApi = await startFakeCodexHttpApi({ includeWebSearch: true });
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-web-search-http-api-"));
+	const events = [];
+	let runtime;
+	let routed;
+
+	try {
+		const profile = new InitialSessionContextBuilder("web-search-http-api-test")
+			.withBuiltinTools("disabled")
+			.withAutoContextFiles(false)
+			.addTool(createWebSearchToolProfile({ includeSources: true }))
+			.createSession();
+		const credentials = new InMemoryCredentialStore();
+		await credentials.modify("openai-codex", async () => ({
+			type: "oauth",
+			access: fakeCodexToken(),
+			refresh: "deterministic-refresh-token",
+			expires: Date.now() + 60 * 60 * 1000,
+			accountId: "acct_http_test",
+		}));
+		const modelRuntime = await ModelRuntime.create({ credentials, allowModelNetwork: false });
+		runtime = await createPiboRuntime({
+			cwd,
+			modelRuntime,
+			persistSession: false,
+			profile,
+			modelDefaults: {},
+		});
+
+		// Observation must override this shared-socket preference only for this request.
+		runtime.session.agent.transport = "websocket-cached";
+		runtime.session.state.model = {
+			api: "openai-codex-responses",
+			provider: "openai-codex",
+			id: "gpt-5.5",
+			name: "GPT-5.5 web search test",
+			baseUrl: fakeApi.baseUrl,
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
+			contextWindow: 272000,
+			maxTokens: 128000,
+		};
+
+		const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+		routed = new RoutedSession("route:http-web-search", runtime, (event) => events.push(event), registry, false, undefined, false);
+		routed.enableProviderWebSearchObservation();
+		const fastMode = await routed.executeAction({
+			type: "execution",
+			piboSessionId: "route:http-web-search",
+			action: "fast_mode",
+		});
+		assert.deepEqual(fastMode.result, { mode: "fast", supported: true, changed: true });
+
+		const messageId = "msg-http-web-search-test";
+		routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "route:http-web-search",
+			id: messageId,
+			text: "Search the web",
+			source: "user",
+		});
+		await waitForEvent(events, (event) => event.type === "message_finished" && event.eventId === messageId);
+
+		const starts = events.filter((event) => event.type === "tool_execution_started" && event.toolName === "web_search");
+		const finishes = events.filter((event) => event.type === "tool_execution_finished" && event.toolName === "web_search");
+		assert.equal(starts.length, 1);
+		assert.equal(finishes.length, 1);
+		assert.equal(starts[0].eventId, messageId);
+		assert.ok(events.indexOf(starts[0]) < events.indexOf(finishes[0]));
+		assert.ok(events.indexOf(finishes[0]) < events.findIndex((event) => event.type === "message_finished" && event.eventId === messageId));
+		assert.deepEqual(finishes[0].result, {
+			actionType: "search",
+			query: "OpenAI API documentation",
+			sources: [
+				{ title: "API docs", url: "https://platform.openai.com/docs" },
+				{ title: "OpenAI developers", url: "https://developers.openai.com/" },
+			],
+			sourceCount: 2,
+		});
+
+		assert.equal(fakeApi.requests.length, 1);
+		assert.equal(fakeApi.requests[0].body.service_tier, "priority");
+		assert.ok(fakeApi.requests[0].body.tools.some((tool) => tool.type === "web_search"));
+		assert.ok(fakeApi.requests[0].body.include.includes("web_search_call.action.sources"));
+	} finally {
+		if (routed) await routed.dispose();
+		else if (runtime) await runtime.dispose();
+		await rm(cwd, { recursive: true, force: true });
+		await closeServer(fakeApi.server);
+	}
+});
+
+test("Pi adapter profile gating observes the openai-responses provider path automatically", async () => {
+	const fakeApi = await startFakeCodexHttpApi({ includeWebSearch: true, responsePath: "/responses" });
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-web-search-adapter-http-api-"));
+	const profile = new InitialSessionContextBuilder("web-search-adapter-http-api-test")
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.addTool(createWebSearchToolProfile({ includeSources: true }))
+		.createSession();
+	const piboSession = createPiboSession({
+		id: "ps_web_search_adapter_http",
+		piSessionId: "11111111-1111-4111-8111-111111111472",
+		channel: "test",
+		kind: "chat",
+		profile: profile.profileName,
+		workspace: cwd,
+	});
+	const adapter = PI_AGENT_RUNTIME_DRIVER.create({ instanceId: "pi", config: {}, enabled: true });
+	let session;
+
+	try {
+		session = await adapter.openSession({
+			piboSession,
+			profile,
+			workspace: cwd,
+			productContext: { piboSessionId: piboSession.id },
+			services: { compatibility: { persistSession: false } },
+		});
+		const events = [];
+		session.subscribe((event) => events.push(event));
+		const runtime = getPiAgentRuntimeCompatibilityHandle(session);
+		assert.ok(runtime);
+		const stream = await runtime.session.agent.streamFunction(
+			{
+				api: "openai-responses",
+				provider: "openai",
+				id: "gpt-5.5",
+				name: "GPT-5.5 adapter web search test",
+				baseUrl: fakeApi.baseUrl,
+				reasoning: true,
+				input: ["text"],
+				cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
+				contextWindow: 272000,
+				maxTokens: 128000,
+			},
+			{
+				systemPrompt: "Test request-scoped provider observation.",
+				messages: [{ role: "user", content: "Search the web", timestamp: Date.now() }],
+				tools: [],
+			},
+			{
+				apiKey: "test-openai-api-key",
+				transport: "websocket-cached",
+				fetch: globalThis.fetch,
+			},
+		);
+		for await (const _event of stream) {
+			// Consuming the provider stream drives the request-local observer.
+		}
+
+		assert.equal(fakeApi.requests.length, 1, "forced SSE must use the request-local fetch instead of a shared socket");
+		assert.equal(fakeApi.requests[0].url, "/responses");
+		assert.equal(events.filter((event) => event.type === "tool_execution_started" && event.toolName === "web_search").length, 1);
+		assert.equal(events.filter((event) => event.type === "tool_execution_finished" && event.toolName === "web_search").length, 1);
+	} finally {
+		if (session) await session.dispose();
 		await rm(cwd, { recursive: true, force: true });
 		await closeServer(fakeApi.server);
 	}

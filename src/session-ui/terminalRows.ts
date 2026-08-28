@@ -1,4 +1,4 @@
-import { compareTraceNodes } from "../shared/trace-engine.js";
+import { compareTraceNodes } from "../shared/trace-nodes.js";
 import type { PiboSessionTraceView, PiboTraceNode, TracePayloadRef } from "../shared/trace-types.js";
 import { terminalTextValue } from "./terminalValue.js";
 
@@ -28,6 +28,8 @@ export type TerminalInlineToken = {
 	tone?: "default" | "dim" | "cyan" | "green" | "red" | "magenta" | "yellow" | "blue" | "amber";
 	weight?: "normal" | "semibold" | "bold";
 	italic?: boolean;
+	href?: string;
+	ariaLabel?: string;
 };
 
 export type CompactTerminalLine = {
@@ -47,6 +49,20 @@ export type CompactTerminalPreviewOmission = {
 	maxVisibleLineCount: number;
 };
 
+export const MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS = 20;
+
+export type CompactTerminalImagePreview = {
+	id: string;
+	label: string;
+	path?: string;
+	artifactId?: string;
+	payloadRef?: string;
+	payloadImageIndex?: number;
+	traceNodeId?: string;
+	generatedToolCallId?: string;
+	mimeType?: string;
+};
+
 export type CompactTerminalDetailItem = {
 	id: string;
 	label: string;
@@ -57,6 +73,7 @@ export type CompactTerminalDetailItem = {
 	linkedPiboSessionId?: string;
 	payloadRefs?: Partial<Record<"input" | "output" | "reasoning" | "error" | "raw", TracePayloadRef>>;
 	previewOmission?: CompactTerminalPreviewOmission;
+	imagePreviews?: readonly CompactTerminalImagePreview[];
 };
 
 export type CompactTerminalRow = {
@@ -89,6 +106,7 @@ export type CompactTerminalRow = {
 	singleLine?: boolean;
 	previewOmission?: CompactTerminalPreviewOmission;
 	detailItems?: readonly CompactTerminalDetailItem[];
+	imagePreviews?: readonly CompactTerminalImagePreview[];
 };
 
 export type ToolDisplayMode = "default" | "hide" | "slim" | "intent";
@@ -331,10 +349,25 @@ function reconcileConceptualRowCandidates(candidates: readonly RowCandidate[]): 
 				output: candidate.row.output ?? existing.row.output,
 				error: candidate.row.error ?? existing.row.error,
 				payloadRefs: { ...existing.row.payloadRefs, ...candidate.row.payloadRefs },
+				imagePreviews: mergeImagePreviews(existing.row.imagePreviews, candidate.row.imagePreviews),
 			},
 		};
 	}
 	return reconciled;
+}
+
+function mergeImagePreviews(
+	existing: readonly CompactTerminalImagePreview[] | undefined,
+	candidate: readonly CompactTerminalImagePreview[] | undefined,
+): readonly CompactTerminalImagePreview[] | undefined {
+	if (!existing?.length) return candidate?.slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS);
+	if (!candidate?.length) return existing.slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS);
+	const merged = new Map(existing.map((preview) => [preview.id, preview]));
+	for (const preview of candidate) {
+		merged.set(preview.id, { ...merged.get(preview.id), ...preview });
+		if (merged.size >= MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS) break;
+	}
+	return [...merged.values()];
 }
 
 function applyCompletedTurnTiming(
@@ -467,19 +500,49 @@ function createToolRowCandidate(node: PiboTraceNode, turnId?: string): RowCandid
 
 function createWebSearchToolRow(node: PiboTraceNode): CompactTerminalRow {
 	const status = mapStatus(node.status);
+	const actionType = webSearchActionType(node);
 	const query = webSearchQuery(node);
+	const queries = webSearchQueries(node);
+	const url = webSearchUrl(node);
+	const pattern = webSearchPattern(node);
+	const sources = webSearchSources(node.output);
 	const sourceCount = webSearchSourceCount(node.output);
 	const lines: CompactTerminalLine[] = [
 		{
 			prefix: "bullet",
-			tokens: [token(webSearchVerb(node.status), toneForStatus(node.status), node.status === "error" ? "bold" : "semibold")],
+			tokens: [token(webSearchVerb(node.status, actionType), toneForStatus(node.status), node.status === "error" ? "bold" : "semibold")],
 		},
 	];
 	if (query) {
 		lines.push({ prefix: "detail", tokens: [token(`query: ${JSON.stringify(query)}`, "cyan")] });
+	} else if (queries?.length) {
+		lines.push({ prefix: "detail", tokens: [token(`queries: ${JSON.stringify(queries)}`, "cyan")] });
+	}
+	if (url) {
+		lines.push({
+			prefix: "detail",
+			tokens: [token("page: ", "dim"), webLinkToken(url, `Open web page: ${url}`)],
+		});
+	}
+	if (pattern) {
+		lines.push({ prefix: "detail", tokens: [token(`find: ${JSON.stringify(pattern)}`, "cyan")] });
 	}
 	if (node.status === "done" && sourceCount !== undefined) {
 		lines.push({ prefix: "detail", tokens: [token(`sources: ${sourceCount}`, "dim")] });
+	}
+	const visibleSources = sources.slice(0, 3);
+	for (const source of visibleSources) {
+		lines.push({
+			prefix: "detail",
+			tokens: [
+				...(source.title ? [token(`${source.title}: `, "dim")] : []),
+				webLinkToken(source.url, `Open source: ${source.title ?? source.url}`),
+			],
+		});
+	}
+	const hiddenSourceCount = Math.max(0, (sourceCount ?? sources.length) - visibleSources.length);
+	if (visibleSources.length > 0 && hiddenSourceCount > 0) {
+		lines.push({ prefix: "detail", tokens: [token(`+${hiddenSourceCount} more sources`, "dim")] });
 	}
 	if (node.status === "error" && node.error) {
 		lines.push({ prefix: "detail", tokens: [token(node.error, "red")] });
@@ -521,6 +584,7 @@ function createImageToolRow(node: PiboTraceNode, image: ImageToolClassification)
 		output: image.summary,
 		error: node.error,
 		expandable: node.input !== undefined || image.summary !== undefined || Boolean(node.error),
+		imagePreviews: image.previews,
 	};
 }
 
@@ -1036,6 +1100,7 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 		orderStreamFrameIndex: firstRow?.orderStreamFrameIndex,
 		detailItems,
 		expandable: detailItems.some((item) => item.input !== undefined || item.output !== undefined || Boolean(item.error)),
+		imagePreviews: detailItems.flatMap((item) => item.imagePreviews ?? []).slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS),
 		previewOmission: omittedDetailCount > 0 ? {
 			source: "details",
 			visibleLineCount: visibleDetailItems.length,
@@ -1059,6 +1124,7 @@ function detailItemsForGroup(candidates: readonly RowCandidate[], kind: "explori
 			payloadRefs: candidate.row.payloadRefs,
 			linkedPiboSessionId: candidate.row.linkedPiboSessionId,
 			previewOmission: candidate.row.previewOmission,
+			imagePreviews: candidate.row.imagePreviews,
 		};
 	});
 }
@@ -1072,6 +1138,7 @@ type ImageToolClassification = {
 	verb: string;
 	groupable: boolean;
 	summary: unknown;
+	previews: readonly CompactTerminalImagePreview[];
 	detail: CompactTerminalDetailItem;
 };
 
@@ -1101,14 +1168,17 @@ function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undef
 		: previewPath(args) ?? previewPath(details) ?? previewPath(output);
 	const artifactId = codexOperation ? stringValue(details?.artifactId) : undefined;
 	const query = previewQuery(args);
-	const images = collectImagePayloads(node.output);
-	const isImageTool = matchesTool(normalized, ["view_image", "image", "screenshot"]);
-	if (!images.length && !isImageTool && !codexOperation) return undefined;
+	const images = collectImagePayloads(node.output).slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS);
+	const payloadRef = node.payloadRefs?.output;
+	const persistedImageCount = Math.min(payloadRef?.imageCount ?? 0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS);
+	const isImageTool = matchesTool(normalized, ["view_image", "image", "screenshot"])
+		|| (normalized === "read" && isPreviewableImagePath(path));
+	if (!images.length && !persistedImageCount && !isImageTool && !codexOperation) return undefined;
 
 	const mimeType = images.map((image) => image.mimeType).find((value): value is string => Boolean(value));
-	const count = Math.max(1, images.length);
+	const count = Math.max(1, images.length, persistedImageCount);
 	const summary: ImagePayloadSummary = {
-		type: images.length > 1 ? "images" : images.length === 1 ? "image" : "image_reference",
+		type: count > 1 ? "images" : images.length === 1 ? "image" : "image_reference",
 		toolName: codexOperation ? node.title : undefined,
 		operation: codexOperation,
 		path,
@@ -1119,10 +1189,24 @@ function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undef
 		query,
 		mimeType,
 		count: count > 1 ? count : undefined,
-		detail: images.length ? "Image data hidden in terminal view." : "Image path only; binary data is hidden in terminal view.",
+		detail: images.length || persistedImageCount ? "Image data hidden in terminal view." : "Image path only; binary data is hidden in terminal view.",
 	};
 	const labelTarget = path ?? artifactId ?? query ?? mimeType ?? "image";
 	const verb = codexOperation ? codexImageVerb(node.status, codexOperation) : imageToolVerb(node.status, count);
+	const previewImages = images.length
+		? images
+		: Array.from({ length: Math.max(1, persistedImageCount) }, () => ({ mimeType }));
+	const previews = previewImages.map((image, index): CompactTerminalImagePreview => ({
+		id: `${node.id}:image:${index}`,
+		label: previewImages.length > 1 ? `${labelTarget} (${index + 1}/${previewImages.length})` : labelTarget,
+		path,
+		artifactId,
+		payloadRef: payloadRef?.ref,
+		payloadImageIndex: payloadRef ? index : undefined,
+		traceNodeId: payloadRef ? payloadRef.nodeId ?? node.id : undefined,
+		generatedToolCallId: codexOperation ? node.toolCallId : undefined,
+		mimeType: image.mimeType ?? mimeType,
+	}));
 	return {
 		count,
 		path,
@@ -1132,6 +1216,7 @@ function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undef
 		verb,
 		groupable: !codexOperation,
 		summary,
+		previews,
 		detail: {
 			id: node.id,
 			label: `${verb} ${labelTarget}`,
@@ -1139,16 +1224,29 @@ function classifyImageTool(node: PiboTraceNode): ImageToolClassification | undef
 			input: sanitizeImagePayload(node.input),
 			output: summary,
 			error: node.error,
+			imagePreviews: previews,
 		},
 	};
 }
 
+function isPreviewableImagePath(path: string | undefined): boolean {
+	if (!path) return false;
+	return /\.(?:png|jpe?g|gif|webp|bmp|avif)$/i.test(path.split(/[?#]/, 1)[0] ?? "");
+}
+
 function collectImagePayloads(value: unknown, depth = 0, seen = new Set<unknown>()): Array<{ mimeType?: string }> {
-	if (depth > 5 || value === undefined || value === null) return [];
+	if (depth > 5 || seen.size >= 1_000 || value === undefined || value === null) return [];
 	if (typeof value !== "object") return [];
 	if (seen.has(value)) return [];
 	seen.add(value);
-	if (Array.isArray(value)) return value.flatMap((item) => collectImagePayloads(item, depth + 1, seen));
+	if (Array.isArray(value)) {
+		const images: Array<{ mimeType?: string }> = [];
+		for (const item of value) {
+			images.push(...collectImagePayloads(item, depth + 1, seen));
+			if (images.length >= MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS) return images.slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS);
+		}
+		return images;
+	}
 	const record = value as Record<string, unknown>;
 	const type = typeof record.type === "string" ? record.type.toLowerCase() : undefined;
 	const mimeType = typeof record.mimeType === "string" ? record.mimeType : typeof record.mime_type === "string" ? record.mime_type : undefined;
@@ -1163,7 +1261,12 @@ function collectImagePayloads(value: unknown, depth = 0, seen = new Set<unknown>
 	if ("message" in record) nested.push(record.message);
 	if ("result" in record) nested.push(record.result);
 	if ("output" in record) nested.push(record.output);
-	return nested.flatMap((item) => collectImagePayloads(item, depth + 1, seen));
+	const images: Array<{ mimeType?: string }> = [];
+	for (const item of nested) {
+		images.push(...collectImagePayloads(item, depth + 1, seen));
+		if (images.length >= MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS) break;
+	}
+	return images.slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS);
 }
 
 function sanitizeImagePayload(value: unknown): unknown {
@@ -1367,10 +1470,26 @@ function isWebSearchToolName(name: string | undefined): boolean {
 	return (name ?? "").trim().toLowerCase() === "web_search";
 }
 
-function webSearchVerb(status: PiboTraceNode["status"]): string {
+function webSearchVerb(status: PiboTraceNode["status"], actionType: string | undefined): string {
+	if (actionType === "open_page") {
+		if (status === "running") return "Opening web page";
+		if (status === "error") return "Opening web page failed";
+		return "Opened web page";
+	}
+	if (actionType === "find_in_page") {
+		if (status === "running") return "Finding in web page";
+		if (status === "error") return "Finding in web page failed";
+		return "Found in web page";
+	}
 	if (status === "running") return "Searching web";
 	if (status === "error") return "Web search failed";
 	return "Searched web";
+}
+
+function webSearchActionType(node: PiboTraceNode): string | undefined {
+	const input = isRecord(node.input) ? node.input : undefined;
+	const output = isRecord(node.output) ? node.output : undefined;
+	return stringValue(input?.actionType) ?? stringValue(output?.actionType);
 }
 
 function webSearchQuery(node: PiboTraceNode): string | undefined {
@@ -1379,12 +1498,79 @@ function webSearchQuery(node: PiboTraceNode): string | undefined {
 	return stringValue(input?.query) ?? stringValue(output?.query) ?? stringValue(node.summary);
 }
 
+function webSearchQueries(node: PiboTraceNode): string[] | undefined {
+	const input = isRecord(node.input) ? node.input : undefined;
+	const output = isRecord(node.output) ? node.output : undefined;
+	for (const value of [input?.queries, output?.queries]) {
+		if (!Array.isArray(value)) continue;
+		const queries = [...new Set(value.flatMap((candidate) => {
+			const normalized = stringValue(candidate)?.trim();
+			return normalized ? [normalized] : [];
+		}))];
+		if (queries.length) return queries;
+	}
+	return undefined;
+}
+
+function webSearchUrl(node: PiboTraceNode): string | undefined {
+	const input = isRecord(node.input) ? node.input : undefined;
+	const output = isRecord(node.output) ? node.output : undefined;
+	return stringValue(input?.url) ?? stringValue(output?.url);
+}
+
+function webSearchPattern(node: PiboTraceNode): string | undefined {
+	const input = isRecord(node.input) ? node.input : undefined;
+	const output = isRecord(node.output) ? node.output : undefined;
+	return stringValue(input?.pattern) ?? stringValue(output?.pattern);
+}
+
+type WebSearchSource = { url: string; title?: string };
+
+function webSearchSources(output: unknown): WebSearchSource[] {
+	if (!isRecord(output)) return [];
+	const candidates = output.sources ?? output.citations ?? output.results;
+	if (!Array.isArray(candidates)) return [];
+	const sources = new Map<string, WebSearchSource>();
+	for (const candidate of candidates) {
+		const record = isRecord(candidate) ? candidate : undefined;
+		const rawUrl = typeof candidate === "string"
+			? candidate
+			: stringValue(record?.url) ?? stringValue(record?.href) ?? stringValue(record?.link);
+		const url = safeWebHref(rawUrl, true);
+		if (!url) continue;
+		const title = stringValue(record?.title)?.trim() ?? stringValue(record?.name)?.trim();
+		const existing = sources.get(url);
+		if (!existing || (!existing.title && title)) sources.set(url, { url, ...(title ? { title } : {}) });
+	}
+	return [...sources.values()];
+}
+
 function webSearchSourceCount(output: unknown): number | undefined {
 	if (!isRecord(output)) return undefined;
 	const explicit = output.sourceCount ?? output.sourcesCount;
 	if (typeof explicit === "number" && Number.isFinite(explicit)) return explicit;
 	const sources = output.sources ?? output.citations ?? output.results;
 	return Array.isArray(sources) ? sources.length : undefined;
+}
+
+function safeWebHref(value: string | undefined, stripHash = false): string | undefined {
+	if (!value) return undefined;
+	try {
+		const url = new URL(value.trim());
+		if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) return undefined;
+		if (stripHash) url.hash = "";
+		return url.href;
+	} catch {
+		return undefined;
+	}
+}
+
+function webLinkToken(value: string, ariaLabel: string): TerminalInlineToken {
+	const href = safeWebHref(value);
+	return {
+		...token(value, href ? "blue" : "dim"),
+		...(href ? { href, ariaLabel } : {}),
+	};
 }
 
 function shellCommandValue(value: unknown): string | undefined {

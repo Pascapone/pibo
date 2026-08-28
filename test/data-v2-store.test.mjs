@@ -71,6 +71,22 @@ test("v2 schema migration is idempotent", () => {
 	db.close();
 });
 
+test("schema v6 migration installs the exact tool lifecycle index", () => {
+	const dir = tempDir("pibo-data-tool-lifecycle-index-");
+	const db = new DatabaseSync(join(dir, "pibo.sqlite"));
+	applyPiboDataSchema(db);
+	db.exec("DROP INDEX idx_event_log_session_tool_event_sequence_stream; PRAGMA user_version = 5");
+	applyPiboDataSchema(db);
+	const index = db.prepare(`
+		SELECT name, sql FROM sqlite_master
+		WHERE type = 'index' AND name = 'idx_event_log_session_tool_event_sequence_stream'
+	`).get();
+	assert.equal(index.name, "idx_event_log_session_tool_event_sequence_stream");
+	assert.match(index.sql, /session_id, tool_call_id, event_id, session_sequence ASC, stream_id ASC/);
+	assert.equal((db.prepare("PRAGMA user_version").get()).user_version, 6);
+	db.close();
+});
+
 test("fresh pibo chat schema omits retired room partition structures", () => {
 	const dir = tempDir("pibo-chat-app-context-schema-");
 	const db = new DatabaseSync(join(dir, "pibo.sqlite"));

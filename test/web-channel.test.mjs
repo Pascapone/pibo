@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { request as nodeHttpRequest } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -13,6 +13,7 @@ import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
 import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
+import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
 
 const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
 
@@ -117,6 +118,10 @@ function assertStructuredMissingRefDiagnostic(diagnostics, expected) {
 	assert.equal(diagnostic.severity, "error");
 	assert.equal(typeof diagnostic.message, "string");
 	assert.ok(diagnostic.message.includes(expected.registryRef));
+}
+
+function flattenTraceResponseNodes(nodes) {
+	return nodes.flatMap((node) => [node, ...flattenTraceResponseNodes(node.children ?? [])]);
 }
 
 async function startLandingChannel(apps, landingAppName) {
@@ -265,6 +270,9 @@ async function startWebHostChannel(options = {}) {
 		...(options.getSessionStatusSnapshot ? {
 			getSessionStatusSnapshot: options.getSessionStatusSnapshot,
 		} : {}),
+		...(options.getSessionForkCandidates ? {
+			getSessionForkCandidates: options.getSessionForkCandidates,
+		} : {}),
 		getGatewayActions() {
 			return [];
 		},
@@ -349,6 +357,7 @@ async function startWebHostChannel(options = {}) {
 		unregisteredSkills,
 		storageDir,
 		dataStorePath,
+		dataPayloadRootDir,
 		projectStorePath,
 		baseURL: `http://${address.host}:${address.port}`, 
 	};
@@ -603,6 +612,245 @@ test("chat web app downloads files relative to the selected session workspace", 
 		assert.match(response.headers.get("content-type") ?? "", /^text\/plain/);
 		assert.match(response.headers.get("content-disposition") ?? "", /report\.txt/);
 		assert.equal(await response.text(), "download body");
+	} finally {
+		rmSync(workspace, { recursive: true, force: true });
+		await channel.stop?.();
+	}
+});
+
+test("chat web app image paths stay authenticated, bounded, sniffed, and non-cacheable", async () => {
+	const { channel, baseURL } = await startWebHostChannel({ auth: createFakeAuthService() });
+	const workspace = mkdtempSync(join(tmpdir(), "pibo-chat-image-path-"));
+	const outsideDir = mkdtempSync(join(tmpdir(), "pibo-chat-image-outside-"));
+	const outsidePath = join(outsideDir, "private.png");
+	let uploadedPreviewPath;
+	const png = Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		Buffer.alloc(32, 3),
+	]);
+	writeFileSync(join(workspace, "preview.png"), png);
+	writeFileSync(join(workspace, "unsafe.svg"), "<svg xmlns='http://www.w3.org/2000/svg'><script/></svg>");
+	writeFileSync(join(workspace, "unsafe.html"), "<html><script/></html>");
+	writeFileSync(join(workspace, "oversized.png"), Buffer.alloc(10 * 1024 * 1024 + 1, 1));
+	writeFileSync(outsidePath, png);
+	symlinkSync(outsidePath, join(workspace, "escaped-link.png"));
+
+	try {
+		const roomResponse = await fetch(`${baseURL}/api/chat/rooms`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ name: "Image Path Room", workspace }),
+		});
+		const roomPayload = await roomResponse.json();
+		const sessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ roomId: roomPayload.room.id }),
+		});
+		const sessionPayload = await sessionResponse.json();
+		const previewUrl = `${baseURL}/api/chat/image-preview?path=preview.png&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`;
+		const uploadForm = new FormData();
+		uploadForm.append("files", new File([png], "private-preview.png", { type: "image/png" }));
+		const uploadResponse = await fetch(`${baseURL}/api/chat/upload`, {
+			method: "POST",
+			headers: { origin: baseURL, "x-test-user": "user-1" },
+			body: uploadForm,
+		});
+		assert.equal(uploadResponse.status, 201);
+		uploadedPreviewPath = (await uploadResponse.json()).files[0].path;
+
+		assert.equal((await fetch(previewUrl)).status, 401);
+		const response = await fetch(previewUrl, { headers: { "x-test-user": "user-1" } });
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("content-type"), "image/png");
+		assert.match(response.headers.get("content-disposition") ?? "", /^inline;/);
+		assert.equal(response.headers.get("cache-control"), "no-store");
+		assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+		assert.equal(response.headers.get("cross-origin-resource-policy"), "same-origin");
+		assert.deepEqual(Buffer.from(await response.arrayBuffer()), png);
+		const uploadedPreview = await fetch(`${baseURL}/api/chat/image-preview?path=${encodeURIComponent(uploadedPreviewPath)}&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(uploadedPreview.status, 200);
+		assert.deepEqual(Buffer.from(await uploadedPreview.arrayBuffer()), png);
+
+		for (const unsafePath of ["unsafe.svg", "unsafe.html"]) {
+			const unsafe = await fetch(`${baseURL}/api/chat/image-preview?path=${unsafePath}&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(unsafe.status, 415, unsafePath);
+		}
+		const oversized = await fetch(`${baseURL}/api/chat/image-preview?path=oversized.png&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(oversized.status, 413);
+		for (const forbiddenPath of [outsidePath, join("..", basename(outsideDir), "private.png"), "escaped-link.png"]) {
+			const forbidden = await fetch(`${baseURL}/api/chat/image-preview?path=${encodeURIComponent(forbiddenPath)}&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(forbidden.status, 403, forbiddenPath);
+		}
+	} finally {
+		rmSync(workspace, { recursive: true, force: true });
+		rmSync(outsideDir, { recursive: true, force: true });
+		if (uploadedPreviewPath) rmSync(uploadedPreviewPath, { force: true });
+		await channel.stop?.();
+	}
+});
+
+test("chat web app serves node-bound exact images concurrently and never falls back to changed path bytes", async () => {
+	const { channel, baseURL, emitOutput, dataStorePath, dataPayloadRootDir } = await startWebHostChannel({ auth: createFakeAuthService() });
+	const workspace = mkdtempSync(join(tmpdir(), "pibo-chat-exact-image-"));
+	const exactBytes = Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		Buffer.alloc(20 * 1024, 5),
+	]);
+	const newerPathBytes = Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		Buffer.alloc(64, 9),
+	]);
+	const imagePath = join(workspace, "mutable.png");
+	writeFileSync(imagePath, exactBytes);
+
+	try {
+		const roomResponse = await fetch(`${baseURL}/api/chat/rooms`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ name: "Exact Image Room", workspace }),
+		});
+		const roomPayload = await roomResponse.json();
+		const sessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ roomId: roomPayload.room.id }),
+		});
+		const sessionPayload = await sessionResponse.json();
+		const piboSessionId = sessionPayload.session.id;
+		emitOutput({
+			type: "tool_execution_finished",
+			piboSessionId,
+			eventId: "image-turn",
+			toolCallId: "image-call",
+			toolName: "view_image",
+			result: {
+				content: [{ type: "image", data: exactBytes.toString("base64"), mimeType: "image/png" }],
+				details: { path: imagePath },
+			},
+			isError: false,
+		});
+
+		const timelineResponse = await fetch(`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(timelineResponse.status, 200);
+		const timeline = await timelineResponse.json();
+		const imageNode = timeline.nodes.find((node) => node.toolCallId === "image-call");
+		assert.ok(imageNode?.payloadRefs?.output?.ref);
+		assert.equal(imageNode.payloadRefs.output.nodeId, "tool:image-call");
+		assert.equal(JSON.stringify(timeline).includes(exactBytes.toString("base64").slice(0, 80)), false);
+		const params = new URLSearchParams({
+			ref: imageNode.payloadRefs.output.ref,
+			nodeId: imageNode.payloadRefs.output.nodeId,
+			piboSessionId,
+			index: "0",
+		});
+		const exactUrl = `${baseURL}/api/chat/image-preview?${params}`;
+
+		assert.equal((await fetch(exactUrl)).status, 401);
+		const secondSessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ roomId: roomPayload.room.id }),
+		});
+		const secondSession = await secondSessionResponse.json();
+		const mismatchParams = new URLSearchParams(params);
+		mismatchParams.set("piboSessionId", secondSession.session.id);
+		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${mismatchParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
+		const nodeMismatchParams = new URLSearchParams(params);
+		nodeMismatchParams.set("nodeId", "tool:other-call");
+		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${nodeMismatchParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
+		const outOfBoundsParams = new URLSearchParams(params);
+		outOfBoundsParams.set("index", "20");
+		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${outOfBoundsParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
+		const mixedParams = new URLSearchParams(params);
+		mixedParams.set("path", imagePath);
+		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${mixedParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
+
+		const inlineBytesA = Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			Buffer.alloc(7 * 1024 - 8, 4),
+		]);
+		const inlineBytesB = Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			Buffer.alloc(7 * 1024 - 8, 5),
+		]);
+		for (const [toolCallId, bytes] of [["inline-image-a", inlineBytesA], ["inline-image-b", inlineBytesB], ["inline-image-c", inlineBytesA]]) {
+			emitOutput({
+				type: "tool_execution_finished",
+				piboSessionId,
+				eventId: `turn-${toolCallId}`,
+				toolCallId,
+				toolName: "view_image",
+				result: { content: [{ type: "image", data: bytes.toString("base64"), mimeType: "image/png" }] },
+				isError: false,
+			});
+		}
+		const inlineTimelineResponse = await fetch(`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(inlineTimelineResponse.status, 200);
+		const inlineTimeline = await inlineTimelineResponse.json();
+		const inlineA = inlineTimeline.nodes.find((node) => node.toolCallId === "inline-image-a");
+		const inlineB = inlineTimeline.nodes.find((node) => node.toolCallId === "inline-image-b");
+		const inlineC = inlineTimeline.nodes.find((node) => node.toolCallId === "inline-image-c");
+		assert.ok(inlineA?.payloadRefs?.output?.ref);
+		assert.ok(inlineB?.payloadRefs?.output?.ref);
+		assert.ok(inlineC?.payloadRefs?.output?.ref);
+		const parsedInlineA = JSON.parse(Buffer.from(inlineA.payloadRefs.output.ref.slice("trace_".length), "base64url").toString("utf8"));
+		const parsedInlineB = JSON.parse(Buffer.from(inlineB.payloadRefs.output.ref.slice("trace_".length), "base64url").toString("utf8"));
+		const parsedInlineC = JSON.parse(Buffer.from(inlineC.payloadRefs.output.ref.slice("trace_".length), "base64url").toString("utf8"));
+		assert.notEqual(parsedInlineA.id, parsedInlineB.id, "different bytes must retain different payload identities");
+		assert.equal(parsedInlineA.id, parsedInlineC.id, "equal bytes use the PayloadStore canonical identity");
+		const forgedEqualContentRef = `trace_${Buffer.from(JSON.stringify({ ...parsedInlineA, n: inlineB.nodeId }), "utf8").toString("base64url")}`;
+		const forgedEqualContentParams = new URLSearchParams({
+			ref: forgedEqualContentRef,
+			nodeId: inlineB.nodeId,
+			piboSessionId,
+			index: "0",
+		});
+		assert.equal(
+			(await fetch(`${baseURL}/api/chat/image-preview?${forgedEqualContentParams}`, { headers: { "x-test-user": "user-1" } })).status,
+			404,
+			"equal content from another node must not authorize a forged payload id",
+		);
+
+		writeFileSync(imagePath, newerPathBytes);
+		const concurrent = await Promise.all(Array.from({ length: 8 }, () => fetch(exactUrl, { headers: { "x-test-user": "user-1" } })));
+		for (const response of concurrent) {
+			assert.equal(response.status, 200);
+			assert.equal(response.headers.get("cache-control"), "private, max-age=31536000, immutable");
+			assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+			assert.deepEqual(Buffer.from(await response.arrayBuffer()), exactBytes);
+		}
+		const mutable = await fetch(`${baseURL}/api/chat/image-preview?path=${encodeURIComponent(imagePath)}&piboSessionId=${encodeURIComponent(piboSessionId)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.deepEqual(Buffer.from(await mutable.arrayBuffer()), newerPathBytes);
+
+		const database = new DatabaseSync(dataStorePath, { readOnly: true });
+		let storedPath;
+		try {
+			const row = database.prepare(`
+				SELECT p.storage_path
+				FROM event_log e JOIN payloads p ON p.id = e.payload_ref
+				WHERE e.session_id = ? AND json_extract(e.attributes_json, '$.toolCallId') = ?
+			`).get(piboSessionId, "image-call");
+			storedPath = row.storage_path;
+		} finally {
+			database.close();
+		}
+		rmSync(join(dataPayloadRootDir, storedPath), { force: true });
+		assert.equal((await fetch(exactUrl, { headers: { "x-test-user": "user-1" } })).status, 404);
 	} finally {
 		rmSync(workspace, { recursive: true, force: true });
 		await channel.stop?.();
@@ -956,6 +1204,302 @@ test("new Chat Web traces use Pibo product history without reading native runtim
 		assert.match(JSON.stringify(page.nodes), /product-owned prompt/);
 		assert.match(JSON.stringify(page.nodes), /product-owned answer/);
 		assert.ok(page.nodes.some((node) => node.source === "product-history") || page.nodes.some((node) => node.children?.some((child) => child.source === "product-history")));
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("origin branch trace routes reconcile native runtime turns to stable product identities", async (t) => {
+	let readHistoryCalls = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const history = await createBuiltInCodexHistory(t, {
+		piboSessionId: "ps_web_origin",
+		thread: {
+			id: "thread-X",
+			createdAt: Date.parse("2026-08-27T12:00:00.000Z") / 1_000,
+			updatedAt: Date.parse("2026-08-27T12:00:01.000Z") / 1_000,
+			status: { type: "idle" },
+			turns: [{
+				id: "runtime-X",
+				status: "completed",
+				startedAt: Date.parse("2026-08-27T12:00:00.000Z") / 1_000,
+				completedAt: Date.parse("2026-08-27T12:00:01.000Z") / 1_000,
+				items: [
+					{ id: "user-X", type: "userMessage", content: [{ type: "text", text: "branch prompt" }] },
+					{ id: "assistant-X", type: "agentMessage", text: "branch answer" },
+				],
+			}],
+		},
+	});
+	assert.equal((await history.read({ limit: 20 })).entries.length, 2);
+	const { channel, baseURL, sessions, emitOutput, dataStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		async emit(event) {
+			return {
+				type: "message_queued",
+				piboSessionId: event.piboSessionId,
+				eventId: "stable-Y",
+				queuedMessages: 1,
+				text: event.text,
+			};
+		},
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("codex-native", { adapterId: "codex-native", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async readSessionRuntimeHistory(_piboSessionId, input = {}) {
+			readHistoryCalls += 1;
+			return await history.read(input);
+		},
+	});
+
+	try {
+		const source = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "default",
+		});
+		const branch = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "branch",
+			profile: "codex-native",
+			originId: source.id,
+			runtimeBinding: {
+				runtimeInstanceId: "codex-native",
+				adapterId: "codex-native",
+				nativeSessionId: "thread-X",
+				state: "bound",
+				protocol: "codex-app-server",
+			},
+		});
+		const messageResponse = await fetch(`${baseURL}/api/chat/message`, {
+			method: "POST",
+			headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+			body: JSON.stringify({ piboSessionId: branch.id, text: "branch prompt", clientTxnId: "txn-origin-runtime-product-identity" }),
+		});
+		assert.equal(messageResponse.status, 200);
+		assert.equal((await messageResponse.json()).output.eventId, "stable-Y");
+		emitOutput({ type: "message_started", piboSessionId: branch.id, eventId: "stable-Y", text: "branch prompt", source: "user" });
+		emitOutput({ type: "assistant_message", piboSessionId: branch.id, eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "branch answer" });
+		emitOutput({ type: "message_finished", piboSessionId: branch.id, eventId: "stable-Y", source: "user" });
+		await new Promise((resolve) => setImmediate(resolve));
+		const db = new DatabaseSync(dataStorePath);
+		try {
+			assert.ok(db.prepare("UPDATE event_log SET created_at = ? WHERE session_id = ? AND event_id = ?")
+				.run("2026-08-27T12:00:00.000Z", branch.id, "stable-Y").changes >= 1);
+		} finally {
+			db.close();
+		}
+
+		const legacyResponse = await fetch(
+			`${baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(branch.id)}`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(legacyResponse.status, 200);
+		const legacy = await legacyResponse.json();
+		const legacyMessages = flattenTraceResponseNodes(legacy.nodes)
+			.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+		assert.deepEqual(legacyMessages.map((node) => node.id), [
+			"event:message_queued:stable-Y",
+			"event:assistant:stable-Y:assistant:0",
+		]);
+		assert.deepEqual(legacyMessages.map((node) => node.nativeTurnId), ["runtime-X", "runtime-X"]);
+		assert.ok(legacyMessages.every((node) => node.source === "transcript"));
+
+		const timelineResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(branch.id)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(timelineResponse.status, 200);
+		const timeline = await timelineResponse.json();
+		const timelineMessages = timeline.nodes
+			.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+		assert.deepEqual(timelineMessages.map((node) => node.nodeId), [
+			"event:message_queued:stable-Y",
+			"event:assistant:stable-Y:assistant:0",
+		]);
+		assert.deepEqual(timelineMessages.map((node) => node.nativeTurnId), ["runtime-X", "runtime-X"]);
+		assert.ok(timelineMessages.every((node) => node.source === "transcript"));
+		assert.ok(readHistoryCalls >= 1);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("public trace routes fail closed when persisted timing evidence exceeds the SQL bound", async (t) => {
+	const startedAt = "2026-08-27T14:00:00.000Z";
+	const assistantAt = new Date(Date.parse(startedAt) + 1_000).toISOString();
+	const capabilities = fakeRuntimeCapabilities();
+	const history = await createBuiltInCodexHistory(t, {
+		piboSessionId: "ps_web_overflow",
+		thread: {
+			id: "overflow-thread",
+			createdAt: Date.parse(startedAt) / 1_000,
+			updatedAt: Date.parse(assistantAt) / 1_000,
+			status: { type: "idle" },
+			turns: [{
+				id: "runtime-overflow",
+				status: "completed",
+				startedAt: Date.parse(startedAt) / 1_000,
+				completedAt: Date.parse(assistantAt) / 1_000,
+				items: [
+					{ id: "overflow-user", type: "userMessage", content: [{ type: "text", text: "overflow prompt" }] },
+					{ id: "overflow-assistant", type: "agentMessage", text: "overflow answer" },
+				],
+			}],
+		},
+	});
+	assert.equal((await history.read({ limit: 20 })).entries.length, 2);
+	let readHistoryCalls = 0;
+	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		async emit() { throw new Error("message input is not used"); },
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("codex-native", { adapterId: "codex-native", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async readSessionRuntimeHistory(_piboSessionId, input = {}) {
+			readHistoryCalls += 1;
+			return await history.read(input);
+		},
+	});
+	try {
+		const source = sessions.create({ channel: "pibo.chat-web", kind: "chat", profile: "default" });
+		const branch = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "branch",
+			profile: "codex-native",
+			originId: source.id,
+			runtimeBinding: { runtimeInstanceId: "codex-native", adapterId: "codex-native", nativeSessionId: "overflow-thread", state: "bound", protocol: "codex-app-server" },
+		});
+		for (let index = 0; index < 501; index += 1) {
+			emitOutput({
+				type: "message_started",
+				piboSessionId: branch.id,
+				eventId: index === 0 ? "stable-overflow" : "timing-overflow-noise",
+				text: index === 0 ? "overflow prompt" : `noise ${index}`,
+				source: "user",
+			});
+		}
+		await new Promise((resolve) => setImmediate(resolve));
+		for (const path of ["/api/chat/trace", "/api/chat/trace/timeline?limit=50"]) {
+			const separator = path.includes("?") ? "&" : "?";
+			const response = await fetch(`${baseURL}${path}${separator}piboSessionId=${encodeURIComponent(branch.id)}`, { headers: { "x-test-user": "user-1" } });
+			assert.equal(response.status, 200);
+			const payload = await response.json();
+			const projectedNodes = path.includes("timeline") ? payload.nodes : flattenTraceResponseNodes(payload.nodes);
+			const nativeMessages = projectedNodes
+				.filter((node) => node.nativeTurnId === "runtime-overflow" && (node.type === "user.message" || node.type === "assistant.message"));
+			assert.equal(nativeMessages.length, 2);
+			assert.ok(nativeMessages.every((node) => node.eventId === "runtime-overflow"));
+			assert.ok(nativeMessages.every((node) => node.eventId !== "stable-overflow"));
+		}
+		assert.ok(readHistoryCalls >= 2);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("origin branch older native-history pages reconcile repeated prompts by start time", async (t) => {
+	const oldStartedAt = "2026-08-27T12:00:00.000Z";
+	const newStartedAt = "2026-08-27T13:00:00.000Z";
+	const stableEventIds = ["stable-old", "stable-new"];
+	let emittedMessageCount = 0;
+	const capabilities = fakeRuntimeCapabilities();
+	const history = await createBuiltInCodexHistory(t, {
+		piboSessionId: "ps_web_repeated",
+		thread: {
+			id: "thread-repeated",
+			createdAt: Date.parse(oldStartedAt) / 1_000,
+			updatedAt: Date.parse(newStartedAt) / 1_000,
+			status: { type: "idle" },
+			turns: [
+				["old", oldStartedAt],
+				["new", newStartedAt],
+			].map(([suffix, startedAt]) => ({
+				id: `runtime-${suffix}`,
+				status: "completed",
+				startedAt: Date.parse(startedAt) / 1_000,
+				completedAt: Date.parse(startedAt) / 1_000,
+				items: [
+					{ id: `user-${suffix}`, type: "userMessage", content: [{ type: "text", text: "identical prompt" }] },
+					{ id: `assistant-${suffix}`, type: "agentMessage", text: `${suffix} answer` },
+				],
+			})),
+		},
+	});
+	const { channel, baseURL, sessions, emitOutput, dataStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		async emit(event) {
+			const eventId = stableEventIds[emittedMessageCount++];
+			assert.ok(eventId);
+			return { type: "message_queued", piboSessionId: event.piboSessionId, eventId, source: "user", text: event.text, queuedMessages: 1 };
+		},
+		capabilityCatalog: {
+			agentRuntimes: [fakeRuntimeInspection("codex-native", { adapterId: "codex-native", capabilities })],
+			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
+		},
+		async readSessionRuntimeHistory(_piboSessionId, input = {}) {
+			return await history.read({ ...input, limit: 2 });
+		},
+	});
+
+	try {
+		const source = sessions.create({ channel: "pibo.chat-web", kind: "chat", profile: "default" });
+		const branch = sessions.create({
+			channel: "pibo.chat-web",
+			kind: "branch",
+			profile: "codex-native",
+			originId: source.id,
+			runtimeBinding: {
+				runtimeInstanceId: "codex-native",
+				adapterId: "codex-native",
+				nativeSessionId: "thread-repeated",
+				state: "bound",
+				protocol: "codex-app-server",
+			},
+		});
+		for (const eventId of stableEventIds) {
+			const messageResponse = await fetch(`${baseURL}/api/chat/message`, {
+				method: "POST",
+				headers: { "x-test-user": "user-1", "content-type": "application/json", origin: baseURL },
+				body: JSON.stringify({ piboSessionId: branch.id, text: "identical prompt", clientTxnId: `txn-${eventId}` }),
+			});
+			assert.equal(messageResponse.status, 200);
+			assert.equal((await messageResponse.json()).output.eventId, eventId);
+			emitOutput({ type: "message_started", piboSessionId: branch.id, eventId, source: "user", text: "identical prompt" });
+		}
+		await new Promise((resolve) => setImmediate(resolve));
+		const db = new DatabaseSync(dataStorePath);
+		try {
+			assert.ok(db.prepare("UPDATE event_log SET created_at = ? WHERE session_id = ? AND event_id = ?")
+				.run(oldStartedAt, branch.id, "stable-old").changes >= 1);
+			assert.ok(db.prepare("UPDATE event_log SET created_at = ? WHERE session_id = ? AND event_id = ?")
+				.run(newStartedAt, branch.id, "stable-new").changes >= 1);
+		} finally {
+			db.close();
+		}
+
+		const tailResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(branch.id)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(tailResponse.status, 200);
+		const tail = await tailResponse.json();
+		assert.match(tail.cursor.before, /^runtime-history:/);
+
+		const olderResponse = await fetch(
+			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(branch.id)}&before=${encodeURIComponent(tail.cursor.before)}&limit=50`,
+			{ headers: { "x-test-user": "user-1" } },
+		);
+		assert.equal(olderResponse.status, 200);
+		const older = await olderResponse.json();
+		const messages = older.nodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
+		assert.deepEqual(messages.map((node) => ({ nodeId: node.nodeId, eventId: node.eventId, nativeTurnId: node.nativeTurnId })), [
+			{ nodeId: "event:message_queued:stable-old", eventId: "stable-old", nativeTurnId: "runtime-old" },
+			{ nodeId: "event:assistant:stable-old:assistant:0", eventId: "stable-old", nativeTurnId: "runtime-old" },
+		]);
+		assert.equal(older.cursor.hasOlder, false);
 	} finally {
 		await channel.stop?.();
 	}
@@ -1413,6 +1957,37 @@ test("chat web app creates app context sessions", async () => {
 		assert.equal(emitted.length, 1);
 		assert.equal(emitted[0].piboSessionId, payload.session.id);
 		assert.equal(emitted[0].text, "hello new session");
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app exposes read-only fork candidates for a selected session", async () => {
+	const requested = [];
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		getSessionForkCandidates: async (piboSessionId) => {
+			requested.push(piboSessionId);
+			return [{ entryId: "native-user-1", text: "Fork this prompt" }];
+		},
+	});
+
+	try {
+		const created = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
+			body: "{}",
+		});
+		assert.equal(created.status, 201);
+		const payload = await created.json();
+		const response = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(payload.session.id)}/fork-candidates`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(response.status, 200);
+		assert.deepEqual(await response.json(), {
+			messages: [{ entryId: "native-user-1", text: "Fork this prompt" }],
+		});
+		assert.deepEqual(requested, [payload.session.id]);
 	} finally {
 		await channel.stop?.();
 	}

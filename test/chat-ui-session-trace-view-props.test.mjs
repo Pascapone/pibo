@@ -15,7 +15,10 @@ async function runSessionTraceViewPropsScenario() {
 			resolveSessionTraceModelBadge,
 			resolveSessionTraceTitle,
 			sessionCanSteer,
+			sessionSupportsFork,
 			sessionSupportsToolIntent,
+			traceUserMessageRevision,
+			withSessionForkCandidates,
 		} = await import("./src/apps/chat-ui/src/session-trace-view-props.ts");
 
 		function session(overrides) {
@@ -70,6 +73,16 @@ async function runSessionTraceViewPropsScenario() {
 			selectedPiboSessionId: "ps-missing",
 			traceTitle: "Trace title",
 		}), "Trace title");
+		assert.equal(resolveSessionTraceTitle({
+			sessionNodes: sessions,
+			selectedPiboSessionId: null,
+			fallback: "No session selected",
+		}), "No session selected");
+		assert.notEqual(resolveSessionTraceTitle({
+			sessionNodes: sessions,
+			selectedPiboSessionId: null,
+			fallback: "No session selected",
+		}), "Shared Chat");
 
 		assert.deepEqual(createSessionTraceViewLinks(sessions, null), {
 			sessionBreadcrumbs: [],
@@ -128,11 +141,26 @@ async function runSessionTraceViewPropsScenario() {
 			],
 			modelDefaults: { thinking: "off", fast: false },
 			agentCatalog: {
-				agentRuntimes: [{ id: "pi", adapterId: "pi", enabled: true, available: true, capabilities: { input: { steering: true }, tools: { intentTracing: { supported: true, configurable: true, enabledByDefault: false } } } }],
+				agentRuntimes: [{
+					id: "pi",
+					adapterId: "pi",
+					enabled: true,
+					available: true,
+					capabilities: {
+						input: { steering: true },
+						lifecycle: { fork: true },
+						tools: { intentTracing: { supported: true, configurable: true, enabledByDefault: false } },
+					},
+				}],
 			},
 			capabilities: { actions: [] },
 		};
 
+		assert.equal(sessionSupportsFork(bootstrap, "ps-child", "worker-profile"), true);
+		assert.equal(sessionSupportsFork({
+			...bootstrap,
+			agentCatalog: { agentRuntimes: [{ ...bootstrap.agentCatalog.agentRuntimes[0], capabilities: { lifecycle: { fork: false } } }] },
+		}, "ps-child", "worker-profile"), false);
 		assert.equal(sessionSupportsToolIntent(bootstrap, "ps-child", "worker-profile"), true);
 		assert.equal(sessionSupportsToolIntent({ ...bootstrap, customAgents: [{ ...bootstrap.customAgents[0], runtimeOptions: {} }] }, "ps-child", "worker-profile"), false);
 		assert.equal(sessionSupportsToolIntent({
@@ -206,6 +234,61 @@ async function runSessionTraceViewPropsScenario() {
 			currentTraceView: null,
 		}), undefined);
 
+		const productTrace = {
+			...traceView,
+			nodes: [
+				traceNode({ id: "user-1", type: "user.message", title: "User", output: "repeat" }),
+				traceNode({ id: "assistant-1", type: "assistant.message", title: "Assistant", output: "answer" }),
+				traceNode({ id: "user-2", type: "user.message", title: "User", output: "repeat" }),
+			],
+		};
+		assert.equal(traceUserMessageRevision(productTrace), "2:user-2");
+		const forkableTrace = withSessionForkCandidates(productTrace, [
+			{ entryId: "native-user-a", text: "repeat" },
+			{ entryId: "native-user-b", text: "repeat" },
+		]);
+		assert.equal(productTrace.nodes[0].entryId, undefined);
+		assert.equal(forkableTrace.nodes[0].entryId, "native-user-a");
+		assert.equal(forkableTrace.nodes[2].entryId, "native-user-b");
+		assert.equal(forkableTrace.nodes[1].entryId, undefined);
+		const partialTrace = {
+			...productTrace,
+			nodes: [
+				traceNode({ id: "user-unique", type: "user.message", title: "User", output: "unique" }),
+				traceNode({ id: "user-repeat-a", type: "user.message", title: "User", output: "repeat" }),
+				traceNode({ id: "user-repeat-b", type: "user.message", title: "User", output: "repeat" }),
+			],
+		};
+		const safelyMappedTrace = withSessionForkCandidates(partialTrace, [
+			{ entryId: "native-extra", text: "older native prompt" },
+			{ entryId: "native-unique", text: "unique" },
+			{ entryId: "native-repeat", text: "repeat" },
+			{ entryId: "native-newer-extra", text: "newer native prompt" },
+		]);
+		assert.equal(safelyMappedTrace.nodes[0].entryId, "native-unique");
+		assert.equal(safelyMappedTrace.nodes[1].entryId, undefined, "ambiguous duplicate text must fail closed");
+		assert.equal(safelyMappedTrace.nodes[2].entryId, undefined, "a mismatched candidate must never be assigned by position");
+
+		const staleAnchors = {
+			...productTrace,
+			nodes: [
+				traceNode({ id: "stale-user", type: "user.message", title: "User", output: "current prompt", entryId: "native-stale" }),
+				traceNode({ id: "current-user", type: "user.message", title: "User", output: "later prompt", entryId: "native-current" }),
+			],
+		};
+		const authoritativeAnchors = withSessionForkCandidates(staleAnchors, [
+			{ entryId: "native-replacement", text: "current prompt" },
+			{ entryId: "native-current", text: "later prompt" },
+			{ entryId: "", text: "blank ids are unusable" },
+			{ entryId: "native-current", text: "duplicate ids are unusable" },
+		]);
+		assert.equal(authoritativeAnchors.nodes[0].entryId, "native-replacement");
+		assert.equal(authoritativeAnchors.nodes[1].entryId, "native-current");
+		assert.equal(JSON.stringify(authoritativeAnchors).includes("native-stale"), false, "successful reads remove stale native anchors");
+		const noForkCandidates = withSessionForkCandidates(authoritativeAnchors, []);
+		assert.equal(noForkCandidates.nodes[0].entryId, undefined);
+		assert.equal(noForkCandidates.nodes[1].entryId, undefined, "an empty successful candidate set is authoritative");
+
 		const calls = [];
 		const props = createSessionTraceViewProps({
 			currentTraceView: traceView,
@@ -254,4 +337,6 @@ test("composer delivery choices use explicit steering eligibility instead of pre
 	assert.match(source, /const canSteer = sessionCanSteer\(/);
 	assert.match(source, /if \(canSteer\) \{/);
 	assert.doesNotMatch(source, /if \(selectedSessionStatus === "running"\)/);
+	assert.match(source, /forkCandidatesEnabled && forkCandidatesQuery\.data[\s\S]*withSessionForkCandidates\(currentTraceView, forkCandidatesQuery\.data\.messages\)[\s\S]*: currentTraceView/);
+	assert.doesNotMatch(source, /forkCandidatesQuery\.data\?\.messages \?\? \[\]/, "loading and failed reads must not masquerade as an authoritative empty result");
 });

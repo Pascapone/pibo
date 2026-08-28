@@ -9,6 +9,7 @@ import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatTimelineQueryService } from "../dist/apps/chat/data/timeline-query-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
+import { qualifiedHistoryToolNodeId } from "../dist/shared/trace-tool-identity.js";
 
 function tempStore(prefix) {
 	const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -61,11 +62,240 @@ test("timeline query retains full-history steering message identity metadata", (
 		assert.deepEqual(timeline.listMessageTurnTimings(piboSession.id), [{
 			eventId: "steer-1",
 			userText: "Adjust course",
-			startedAt: undefined,
+			startedAt: "2026-05-09T00:00:02.000Z",
+			activeEventId: "turn-1",
 			completedAt: undefined,
 			durationMs: undefined,
 			userMessageType: "message_steered",
 		}]);
+	} finally {
+		store.close();
+	}
+});
+
+test("timeline query preserves deferred payload identity on its exact tool node", () => {
+	const store = tempStore("pibo-chat-v2-deferred-image-");
+	try {
+		const timeline = new ChatTimelineQueryService(store);
+		const providerToolCallId = `history:${encodeURIComponent(JSON.stringify(["legitimate", "provider-id"]))}`;
+		const qualifiedNodeId = qualifiedHistoryToolNodeId(providerToolCallId, "turn-deferred", 0);
+		const payload = store.payloads.writePayload({
+			value: { content: [{ type: "image", data: "a".repeat(20_000), mimeType: "image/png" }] },
+			contentType: "application/json",
+			retentionClass: "trace_event",
+		});
+		store.eventLog.appendEvent({
+			sessionId: "ps_deferred",
+			sessionSequence: 1,
+			roomId: "room_deferred",
+			topic: "pibo.output",
+			type: "tool_execution_started",
+			source: "actor",
+			eventId: "turn-deferred",
+			toolCallId: providerToolCallId,
+			retentionClass: "trace_event",
+			previewText: "read",
+			attributes: { toolCallId: providerToolCallId, toolName: "read" },
+		});
+		store.eventLog.appendEvent({
+			sessionId: "ps_deferred",
+			sessionSequence: 2,
+			roomId: "room_deferred",
+			topic: "pibo.output",
+			type: "tool_execution_finished",
+			source: "actor",
+			eventId: "turn-deferred",
+			toolCallId: providerToolCallId,
+			retentionClass: "trace_event",
+			payloadRef: payload.id,
+			previewText: "read",
+			attributes: { toolCallId: providerToolCallId, toolName: "read", isError: false },
+		});
+
+		const event = timeline.listTraceEvents({ piboSessionId: "ps_deferred", includeLive: true })
+			.find((candidate) => candidate.type === "tool_execution_finished");
+		assert.ok(event);
+		assert.equal(event.payload.type, "tool_execution_finished");
+		assert.equal(event.storedPayloadRef.nodeId, `tool:${providerToolCallId}`);
+		assert.equal(event.storedPayloadRef.payloadKind, "output");
+		assert.equal(event.storedPayloadRef.byteLength, payload.byteSize);
+		assert.equal(event.storedPayloadRef.hash, payload.sha256);
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred",
+			payloadId: payload.id,
+			nodeId: `tool:${providerToolCallId}`,
+			payloadKind: "output",
+		}), true);
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred",
+			payloadId: payload.id,
+			nodeId: qualifiedNodeId,
+			payloadKind: "output",
+		}), true);
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred",
+			payloadId: payload.id,
+			nodeId: qualifiedHistoryToolNodeId(providerToolCallId, "attacker-controlled-identity", 0),
+			payloadKind: "output",
+		}), false);
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred",
+			payloadId: payload.id,
+			nodeId: qualifiedHistoryToolNodeId(providerToolCallId, "turn-deferred", 1),
+			payloadKind: "output",
+		}), false);
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred",
+			payloadId: payload.id,
+			nodeId: "tool:another-call",
+			payloadKind: "output",
+		}), false);
+	} finally {
+		store.close();
+	}
+});
+
+test("deferred payload authorization fails closed when its SQL evidence exceeds the bound", () => {
+	const store = tempStore("pibo-chat-v2-deferred-bound-");
+	try {
+		const timeline = new ChatTimelineQueryService(store);
+		const payload = store.payloads.writePayload({ value: { content: "bounded" }, contentType: "application/json", retentionClass: "trace_event" });
+		for (let index = 0; index < 501; index += 1) {
+			store.eventLog.appendEvent({
+				sessionId: "ps_deferred_bound",
+				sessionSequence: index + 1,
+				roomId: "room_deferred_bound",
+				topic: "pibo.output",
+				type: "tool_execution_updated",
+				source: "actor",
+				eventId: "turn-deferred-bound",
+				toolCallId: "bounded-tool",
+				retentionClass: "trace_event",
+				...(index === 0 ? { payloadRef: payload.id } : {}),
+				attributes: { toolCallId: "bounded-tool", toolName: "read" },
+			});
+		}
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred_bound",
+			payloadId: payload.id,
+			nodeId: "tool:bounded-tool",
+			payloadKind: "output",
+		}), false);
+	} finally {
+		store.close();
+	}
+});
+
+test("deferred payload authorization validates the complete exact lifecycle before granting", () => {
+	const store = tempStore("pibo-chat-v2-deferred-overlap-");
+	try {
+		const timeline = new ChatTimelineQueryService(store);
+		const payload = store.payloads.writePayload({ value: { content: "secret" }, contentType: "application/json", retentionClass: "trace_event" });
+		for (const [sequence, type, payloadRef] of [
+			[1, "tool_execution_started"],
+			[2, "tool_execution_updated", payload.id],
+			[3, "tool_execution_started"],
+		]) {
+			store.eventLog.appendEvent({
+				sessionId: "ps_deferred_overlap", sessionSequence: sequence, roomId: "room_deferred_overlap",
+				topic: "pibo.output", type, source: "actor", eventId: "turn-deferred-overlap",
+				toolCallId: "overlap-tool", retentionClass: "trace_event", ...(payloadRef ? { payloadRef } : {}),
+				attributes: { toolCallId: "overlap-tool", toolName: "read" },
+			});
+		}
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred_overlap", payloadId: payload.id,
+			nodeId: qualifiedHistoryToolNodeId("overlap-tool", "turn-deferred-overlap", 0), payloadKind: "output",
+		}), false);
+	} finally {
+		store.close();
+	}
+});
+
+test("ordinary tool identity requires exactly one unambiguous invocation", () => {
+	const store = tempStore("pibo-chat-v2-deferred-ordinary-");
+	try {
+		const timeline = new ChatTimelineQueryService(store);
+		const first = store.payloads.writePayload({ value: { content: "first" }, contentType: "application/json", retentionClass: "trace_event" });
+		const second = store.payloads.writePayload({ value: { content: "second" }, contentType: "application/json", retentionClass: "trace_event" });
+		for (const [offset, eventId, payloadId] of [[0, "event-a", first.id], [2, "event-b", second.id]]) {
+			for (const [delta, type] of [[1, "tool_execution_started"], [2, "tool_execution_finished"]]) {
+				store.eventLog.appendEvent({
+					sessionId: "ps_deferred_ordinary", sessionSequence: offset + delta, roomId: "room_deferred_ordinary",
+					topic: "pibo.output", type, source: "actor", eventId, toolCallId: "same-tool",
+					retentionClass: "trace_event", ...(type === "tool_execution_finished" ? { payloadRef: payloadId } : {}),
+					attributes: { toolCallId: "same-tool", toolName: "read" },
+				});
+			}
+		}
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred_ordinary", payloadId: first.id, nodeId: "tool:same-tool", payloadKind: "output",
+		}), false);
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred_ordinary", payloadId: first.id,
+			nodeId: qualifiedHistoryToolNodeId("same-tool", "event-a", 0), payloadKind: "output",
+		}), true);
+		assert.equal(timeline.isPayloadAttachedToTraceNode({
+			piboSessionId: "ps_deferred_ordinary", payloadId: second.id,
+			nodeId: qualifiedHistoryToolNodeId("same-tool", "event-b", 0), payloadKind: "output",
+		}), true);
+	} finally {
+		store.close();
+	}
+});
+
+test("deferred payload SQL seeks the exact session, tool, and event index", (t) => {
+	const store = tempStore("pibo-chat-v2-deferred-plan-");
+	try {
+		const details = store.db.prepare(`
+			EXPLAIN QUERY PLAN
+			SELECT type, event_id, payload_ref, attributes_json
+			FROM event_log
+			WHERE session_id = ?
+				AND tool_call_id = ?
+				AND type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished')
+				AND event_id = ?
+			ORDER BY session_sequence ASC, stream_id ASC
+			LIMIT ?
+		`).all("ps_plan", "tool-plan", "event-plan", 501).map((row) => String(row.detail));
+		t.diagnostic(details.join(" | "));
+		assert.ok(details.some((detail) =>
+			detail.includes("idx_event_log_session_tool_event_sequence_stream")
+			&& /session_id=\?.*tool_call_id=\?.*event_id=\?/i.test(detail)));
+	} finally {
+		store.close();
+	}
+});
+
+test("message timing query accepts the shared cap and disables reconciliation at cap plus one", () => {
+	const store = tempStore("pibo-chat-v2-timing-cap-");
+	try {
+		const timeline = new ChatTimelineQueryService(store);
+		for (const [sessionId, count] of [["ps_timing_cap", 500], ["ps_timing_overflow", 501]]) {
+			for (let index = 0; index < count; index += 1) {
+				store.eventLog.appendEvent({
+					sessionId,
+					sessionSequence: index + 1,
+					roomId: "room_timing_cap",
+					topic: "pibo.output",
+					type: "message_queued",
+					source: "user",
+					eventId: `turn-${index}`,
+					retentionClass: "trace_event",
+					previewText: `prompt ${index}`,
+					attributes: {
+						type: "message_queued",
+						piboSessionId: sessionId,
+						eventId: `turn-${index}`,
+						text: `prompt ${index}`,
+						source: "user",
+						queuedMessages: 1,
+					},
+				});
+			}
+		}
+		assert.equal(timeline.listMessageTurnTimings("ps_timing_cap").length, 500);
+		assert.deepEqual(timeline.listMessageTurnTimings("ps_timing_overflow"), []);
 	} finally {
 		store.close();
 	}
@@ -90,6 +320,10 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 	assert.ok(
 		eventLogIndexes.some((row) => row.name === "idx_event_log_unread_session_stream" && row.partial === 1),
 		"event_log has a partial unread-message index",
+	);
+	assert.ok(
+		eventLogIndexes.some((row) => row.name === "idx_event_log_session_tool_event_sequence_stream" && row.partial === 1),
+		"event_log has a partial exact tool-lifecycle index",
 	);
 	assert.deepEqual(
 		sessions.upsertSessionsIfChanged([piboSession]),

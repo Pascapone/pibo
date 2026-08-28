@@ -487,6 +487,30 @@ export class PiboRunRegistry {
 		return notification;
 	}
 
+	releaseNotification(
+		controllerPiboSessionId: string,
+		notification: PiboRunNotification,
+	): PiboRunSnapshot[] {
+		const released: PiboRunSnapshot[] = [];
+		const items = [
+			...notification.completed,
+			...notification.failed,
+			...notification.timedOut,
+			...notification.cancelled,
+			...notification.running,
+		];
+		for (const item of items) {
+			const record = this.runs.get(item.runId);
+			if (!record || record.controllerPiboSessionId !== controllerPiboSessionId) continue;
+			if (record.status !== item.status || record.notifiedStatus !== item.status) continue;
+			record.notifiedStatus = undefined;
+			record.updatedAt = now();
+			this.options.store?.updateRun(record.runId, record);
+			released.push(snapshot(record));
+		}
+		return released;
+	}
+
 	hasPendingNotification(
 		controllerPiboSessionId: string,
 		options: { includeAlreadyNotified?: boolean } = {},

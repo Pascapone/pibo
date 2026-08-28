@@ -1,7 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { buildTraceView, type PiboTraceNode, type PiboSessionTraceView } from "../apps/chat/trace.js";
-import type { AgentRuntimeHistoryEntry, AgentRuntimeHistoryInspection } from "../agent-runtime/history.js";
+import type {
+	AgentRuntimeHistoryEntry,
+	AgentRuntimeHistoryInspection,
+	AgentRuntimeHistoryReconciliationProof,
+} from "../agent-runtime/history.js";
 import type { PiboJsonObject } from "../core/events.js";
 import { storedPiboEventFromV2Row, type EventLogRow } from "../apps/chat/data/chat-data-mappers.js";
 import { PayloadStore } from "../data/payload-store.js";
@@ -133,10 +137,14 @@ export async function inspectDebugTrace(
 		const productHistory = readProductHistoryEntries(chatDb, payloadStore, piboSessionId);
 		let nativeHistoryEntries: readonly AgentRuntimeHistoryEntry[] = [];
 		let nativeHistoryInspection: AgentRuntimeHistoryInspection | undefined;
+		let nativeHistoryReconciliationProof: AgentRuntimeHistoryReconciliationProof | undefined;
 		if (options.nativeHistory || (events.length === 0 && productHistory.length === 0)) {
 			const native = await readDebugNativeHistory(binding, session.workspace ?? process.cwd(), adapterIssues);
 			nativeHistoryEntries = native?.entries ?? [];
 			nativeHistoryInspection = native?.inspection;
+			nativeHistoryReconciliationProof = native
+				? native.reconciliationProof ?? { complete: false, entries: native.entries }
+				: undefined;
 		}
 		const historyEntries = nativeHistoryEntries.length ? nativeHistoryEntries : productHistory;
 		const historySource: DebugTraceResult["historySource"] = nativeHistoryEntries.length
@@ -149,6 +157,7 @@ export async function inspectDebugTrace(
 			events,
 			historyEntries,
 			historyInspection: nativeHistoryInspection,
+			historyReconciliationProof: nativeHistoryEntries.length ? nativeHistoryReconciliationProof : undefined,
 			status: sessionStatus.status,
 		});
 		const rows = flattenTraceNodes(view.nodes);

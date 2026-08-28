@@ -22,7 +22,8 @@ async function runSessionViewToggleAccessibilityScenario() {
 		function render(overrides = {}) {
 			return renderToStaticMarkup(React.createElement(SessionTraceHeader, {
 				title: "Session",
-				roomLabel: "Room",
+				contextKind: "project",
+				contextLabel: "Pibo Core",
 				headerPiboSessionId: "ps-test",
 				piboSessionId: null,
 				webAnnotationsDisabled: true,
@@ -60,6 +61,9 @@ async function runSessionViewToggleAccessibilityScenario() {
 		}
 
 		const normal = render();
+		assert.match(normal, /data-pibo-context-kind="project"/);
+		assert.match(normal, />Project</);
+		assert.match(normal, />Pibo Core</);
 		assert.match(normal, /role="group" aria-label="Session views"/);
 		assert.match(normal, /aria-label="Tool display mode"/);
 		assert.match(normal, /<option value="intent" disabled="">Tools: Intent/);

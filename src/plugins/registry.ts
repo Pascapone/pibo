@@ -18,6 +18,16 @@ import type {
 	PiboTranscriptionRequest,
 	PiboTranscriptionResult,
 } from "../transcription/types.js";
+import {
+	PiboSpeechError,
+	type PiboSpeechProvider,
+	type PiboSpeechProviderInfo,
+	type PiboSpeechProviderSession,
+	type PiboSpeechRequest,
+	type PiboSpeechSessionStartOptions,
+	type PiboSpeechSessionStartRequest,
+	type PiboSpeechSessionStartResult,
+} from "../speech/types.js";
 import type {
 	PiboGatewayAction,
 	PiboGatewayActionInfo,
@@ -51,7 +61,105 @@ import type {
 
 export type PiboPluginRegistryOptions = {
 	plugins?: readonly PiboPlugin[];
+	maxActiveSpeechSessions?: number;
+	speechSessionIdleTimeoutMs?: number;
+	speechSessionStartTimeoutMs?: number;
 };
+
+const MAX_ACTIVE_SPEECH_SESSIONS = 8;
+const SPEECH_SESSION_IDLE_TIMEOUT_MS = 2 * 60 * 1_000;
+const SPEECH_SESSION_START_TIMEOUT_MS = 30_000;
+
+type Deferred = {
+	promise: Promise<void>;
+	resolve(): void;
+};
+
+type OwnedSpeechProviderSession = {
+	session: PiboSpeechProviderSession;
+	stop(): Promise<void>;
+};
+
+type PendingSpeechStart = {
+	controller: AbortController;
+	timeout: ReturnType<typeof setTimeout>;
+	settled: Deferred;
+	release(): void;
+};
+
+type ActiveSpeechSession = {
+	provider: PiboSpeechProvider;
+	owned: OwnedSpeechProviderSession;
+	timer: ReturnType<typeof setTimeout>;
+	unlinkAbort(): void;
+};
+
+function deferred(): Deferred {
+	let resolve!: () => void;
+	const promise = new Promise<void>((resolvePromise) => {
+		resolve = resolvePromise;
+	});
+	return { promise, resolve };
+}
+
+function ownSpeechProviderSession(session: PiboSpeechProviderSession): OwnedSpeechProviderSession {
+	let stopPromise: Promise<void> | undefined;
+	return {
+		session,
+		stop() {
+			stopPromise ??= Promise.resolve().then(() => session.stop());
+			return stopPromise;
+		},
+	};
+}
+
+function speechAbortError(signal: AbortSignal): PiboSpeechError {
+	if (signal.reason instanceof PiboSpeechError) return signal.reason;
+	const message = signal.reason instanceof Error && signal.reason.message
+		? signal.reason.message
+		: "Speech session startup was aborted.";
+	return new PiboSpeechError(message, "aborted", { cause: signal.reason });
+}
+
+async function waitForSpeechProviderStart(
+	start: Promise<PiboSpeechProviderSession>,
+	signal: AbortSignal,
+): Promise<PiboSpeechProviderSession> {
+	if (signal.aborted) throw speechAbortError(signal);
+	let onAbort: (() => void) | undefined;
+	try {
+		return await Promise.race([
+			start,
+			new Promise<never>((_resolve, reject) => {
+				onAbort = () => reject(speechAbortError(signal));
+				signal.addEventListener("abort", onAbort, { once: true });
+			}),
+		]);
+	} finally {
+		if (onAbort) signal.removeEventListener("abort", onAbort);
+	}
+}
+
+function positiveTimeout(value: number | undefined, fallback: number, name: string): number {
+	const selected = value ?? fallback;
+	if (!Number.isSafeInteger(selected) || selected <= 0) throw new Error(`${name} must be a positive safe integer`);
+	return selected;
+}
+
+async function waitBounded(promise: Promise<unknown>, timeoutMs: number): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		await Promise.race([
+			promise,
+			new Promise<void>((resolve) => {
+				timer = setTimeout(resolve, timeoutMs);
+				timer.unref?.();
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
 
 type WebAppRoute = {
 	label: "mountPath" | "apiPrefix";
@@ -89,6 +197,9 @@ function toolIsPortable(tool: ToolProfile): boolean {
 }
 
 export class PiboPluginRegistry {
+	private readonly maxActiveSpeechSessions: number;
+	private readonly speechSessionIdleTimeoutMs: number;
+	private readonly speechSessionStartTimeoutMs: number;
 	private readonly agentRuntimes = new AgentRuntimeAdapterRegistry();
 	private readonly tools = new Map<string, ToolProfile>();
 	private readonly subagents = new Map<string, SubagentProfile>();
@@ -101,6 +212,11 @@ export class PiboPluginRegistry {
 	private readonly channels = new Map<string, PiboChannel>();
 	private authService?: PiboAuthService;
 	private readonly transcriptionProviders = new Map<string, PiboTranscriptionProvider>();
+	private readonly speechProviders = new Map<string, PiboSpeechProvider>();
+	private readonly pendingSpeechStarts = new Map<string, PendingSpeechStart>();
+	private readonly speechSessions = new Map<string, ActiveSpeechSession>();
+	private speechProvidersDisposed = false;
+	private speechDisposePromise?: Promise<void>;
 	private readonly webApps = new Map<string, PiboWebApp>();
 	private readonly capabilityPackages = new Map<string, PiboCapabilityPackageInfo>();
 	private readonly eventListeners = new Set<PiboPluginEventListener>();
@@ -110,8 +226,14 @@ export class PiboPluginRegistry {
 	private readonly pluginNames = new Map<string, string>();
 	private readonly eventErrors: string[] = [];
 
+	constructor(options: PiboPluginRegistryOptions = {}) {
+		this.maxActiveSpeechSessions = positiveTimeout(options.maxActiveSpeechSessions, MAX_ACTIVE_SPEECH_SESSIONS, "maxActiveSpeechSessions");
+		this.speechSessionIdleTimeoutMs = positiveTimeout(options.speechSessionIdleTimeoutMs, SPEECH_SESSION_IDLE_TIMEOUT_MS, "speechSessionIdleTimeoutMs");
+		this.speechSessionStartTimeoutMs = positiveTimeout(options.speechSessionStartTimeoutMs, SPEECH_SESSION_START_TIMEOUT_MS, "speechSessionStartTimeoutMs");
+	}
+
 	static create(options: PiboPluginRegistryOptions = {}): PiboPluginRegistry {
-		const registry = new PiboPluginRegistry();
+		const registry = new PiboPluginRegistry(options);
 		for (const plugin of options.plugins ?? []) {
 			registry.registerPlugin(plugin);
 		}
@@ -287,6 +409,174 @@ export class PiboPluginRegistry {
 	async transcribe(providerId: string, input: PiboTranscriptionRequest): Promise<PiboTranscriptionResult> {
 		const provider = this.getRequired(this.transcriptionProviders, providerId, "transcription provider");
 		return { providerId, ...await provider.transcribe(input) };
+	}
+
+	registerSpeechProvider(provider: PiboSpeechProvider): void {
+		this.addUnique(this.speechProviders, provider.id, provider, "speech provider");
+	}
+
+	getSpeechProviderIds(): string[] {
+		return [...this.speechProviders.keys()];
+	}
+
+	async getSpeechProviderInfos(): Promise<PiboSpeechProviderInfo[]> {
+		return await Promise.all([...this.speechProviders.values()].map(async (provider) => ({
+			id: provider.id,
+			name: provider.name,
+			description: provider.description,
+			configured: provider.isConfigured ? await Promise.resolve(provider.isConfigured()).catch(() => false) : true,
+			pluginId: provider.pluginId,
+			pluginName: provider.pluginId ? this.pluginNames.get(provider.pluginId) : undefined,
+		})));
+	}
+
+	async startSpeechSession(
+		providerId: string,
+		input: PiboSpeechSessionStartRequest,
+		options: PiboSpeechSessionStartOptions = {},
+	): Promise<PiboSpeechSessionStartResult> {
+		const provider = this.getRequired(this.speechProviders, providerId, "speech provider");
+		if (this.speechProvidersDisposed) throw new PiboSpeechError("Speech providers are shutting down.", "aborted");
+		if (this.speechSessions.size + this.pendingSpeechStarts.size >= this.maxActiveSpeechSessions) {
+			throw new PiboSpeechError("Too many speech sessions are active. Try again shortly.", "capacity_exceeded");
+		}
+
+		const reservationId = randomUUID();
+		const controller = new AbortController();
+		const settled = deferred();
+		const abortFromCaller = () => controller.abort(options.signal?.reason);
+		if (options.signal?.aborted) abortFromCaller();
+		else options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+		const timeout = setTimeout(() => {
+			controller.abort(new PiboSpeechError("Speech session startup timed out.", "provider_error"));
+		}, this.speechSessionStartTimeoutMs);
+		timeout.unref?.();
+		let owned: OwnedSpeechProviderSession | undefined;
+		let published = false;
+		let releaseInFinally = true;
+		let reservationReleased = false;
+		const releaseReservation = () => {
+			if (reservationReleased) return;
+			reservationReleased = true;
+			clearTimeout(timeout);
+			this.pendingSpeechStarts.delete(reservationId);
+			settled.resolve();
+			if (!published) options.signal?.removeEventListener("abort", abortFromCaller);
+		};
+		this.pendingSpeechStarts.set(reservationId, { controller, timeout, settled, release: releaseReservation });
+		let providerSettled = false;
+		let providerResult: PiboSpeechProviderSession | undefined;
+		const providerStart = Promise.resolve()
+			.then(() => provider.startSession(input, { signal: controller.signal }))
+			.then(
+				(session) => {
+					providerSettled = true;
+					providerResult = session;
+					return session;
+				},
+				(error) => {
+					providerSettled = true;
+					throw error;
+				},
+			);
+		try {
+			if (controller.signal.aborted) throw speechAbortError(controller.signal);
+			owned = ownSpeechProviderSession(await waitForSpeechProviderStart(providerStart, controller.signal));
+			if (controller.signal.aborted || this.speechProvidersDisposed) {
+				await owned.stop().catch(() => {});
+				throw speechAbortError(controller.signal);
+			}
+			const { sessionId, answerSdp } = owned.session;
+			if (this.speechSessions.has(sessionId)) {
+				await owned.stop().catch(() => {});
+				throw new PiboSpeechError("Speech provider returned a duplicate session.", "provider_error");
+			}
+			const unlinkAbort = () => options.signal?.removeEventListener("abort", abortFromCaller);
+			const entry = {
+				provider,
+				owned,
+				timer: setTimeout(() => {
+					void this.closeSpeechSession(sessionId, entry).catch(() => {});
+				}, this.speechSessionIdleTimeoutMs),
+				unlinkAbort,
+			};
+			entry.timer.unref?.();
+			this.speechSessions.set(sessionId, entry);
+			published = true;
+			controller.signal.addEventListener("abort", () => {
+				void this.closeSpeechSession(sessionId, entry).catch(() => {});
+			}, { once: true });
+			if (controller.signal.aborted) {
+				await this.closeSpeechSession(sessionId, entry).catch(() => {});
+				throw speechAbortError(controller.signal);
+			}
+			return { providerId, sessionId, answerSdp };
+		} catch (error) {
+			if (controller.signal.aborted && !owned && providerResult) {
+				await ownSpeechProviderSession(providerResult).stop().catch(() => {});
+			} else if (controller.signal.aborted && !providerSettled) {
+				releaseInFinally = false;
+				options.signal?.removeEventListener("abort", abortFromCaller);
+				void providerStart
+					.then(async (lateSession) => await ownSpeechProviderSession(lateSession).stop())
+					.catch(() => {})
+					.finally(releaseReservation);
+			}
+			if (controller.signal.aborted) throw speechAbortError(controller.signal);
+			throw error;
+		} finally {
+			if (releaseInFinally) releaseReservation();
+		}
+	}
+
+	async speakSpeechSession(sessionId: string, input: PiboSpeechRequest): Promise<void> {
+		const entry = this.speechSessions.get(sessionId);
+		if (!entry) throw new PiboSpeechError("Speech session was not found.", "session_not_found");
+		let speechError: unknown;
+		try {
+			await entry.owned.session.speak(input);
+		} catch (error) {
+			speechError = error;
+		} finally {
+			try {
+				await this.closeSpeechSession(sessionId, entry);
+			} catch (error) {
+				if (speechError === undefined) speechError = error;
+			}
+		}
+		if (speechError !== undefined) throw speechError;
+	}
+
+	async stopSpeechSession(sessionId: string): Promise<void> {
+		const entry = this.speechSessions.get(sessionId);
+		if (!entry) return;
+		await this.closeSpeechSession(sessionId, entry);
+	}
+
+	async disposeSpeechProviders(): Promise<void> {
+		this.speechDisposePromise ??= (async () => {
+			this.speechProvidersDisposed = true;
+			const shutdownError = new PiboSpeechError("Speech providers are shutting down.", "aborted");
+			const pending = [...this.pendingSpeechStarts.values()];
+			for (const reservation of pending) reservation.controller.abort(shutdownError);
+			const cleanup = Promise.allSettled([
+				...([...this.speechSessions.entries()].map(
+					async ([sessionId, entry]) => await this.closeSpeechSession(sessionId, entry),
+				)),
+				...pending.map((reservation) => reservation.settled.promise),
+				...([...this.speechProviders.values()].map(async (provider) => await provider.dispose?.())),
+			]);
+			await waitBounded(cleanup, this.speechSessionStartTimeoutMs);
+			for (const reservation of this.pendingSpeechStarts.values()) reservation.release();
+		})();
+		await this.speechDisposePromise;
+	}
+
+	private closeSpeechSession(sessionId: string, entry: ActiveSpeechSession): Promise<void> {
+		clearTimeout(entry.timer);
+		entry.unlinkAbort();
+		if (this.speechSessions.get(sessionId) === entry) this.speechSessions.delete(sessionId);
+		return entry.owned.stop();
 	}
 
 	registerWebApp(app: PiboWebApp): void {
@@ -549,6 +839,10 @@ export class PiboPluginRegistry {
 			...provider,
 			pluginId: provider.pluginId ?? pluginId,
 		});
+		const withPluginSpeechProviderContext = (provider: PiboSpeechProvider): PiboSpeechProvider => ({
+			...provider,
+			pluginId: provider.pluginId ?? pluginId,
+		});
 		return {
 			registerAgentRuntimeDriver: (driver) => this.registerAgentRuntimeDriver(driver),
 			registerAgentRuntimeInstance: (instance) => this.registerAgentRuntimeInstance(instance),
@@ -566,6 +860,7 @@ export class PiboPluginRegistry {
 			registerChannel: (channel) => this.registerChannel(channel),
 			registerAuthService: (service) => this.registerAuthService(service),
 			registerTranscriptionProvider: (provider) => this.registerTranscriptionProvider(withPluginTranscriptionProviderContext(provider)),
+			registerSpeechProvider: (provider) => this.registerSpeechProvider(withPluginSpeechProviderContext(provider)),
 			registerWebApp: (app) => this.registerWebApp(app),
 			registerCapabilityPackage: (pkg) => this.registerCapabilityPackage(withPluginPackageContext(pkg)),
 			registerLoopStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),

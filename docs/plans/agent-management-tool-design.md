@@ -1,7 +1,8 @@
 # Agent Management Tool and CLI Design
 
-**Status:** Accepted for implementation  
-**Date:** 2026-08-23  
+**Status:** Accepted; updated for yielded-only dispatch
+**Date:** 2026-08-23
+**Updated:** 2026-08-25
 **Capability spec:** [Agent Delegation and Management](../specs/capabilities/subagent-delegation.md)
 
 ## Design Decisions
@@ -63,9 +64,9 @@ Input:
 - `message`: required string.
 - `threadKey`: optional stable continuation key, schema limit 256 characters and router limit 512 UTF-8 bytes.
 
-Foreground execution waits for the child reply. Output text includes name, `agentId`, resolved thread, and reply. Structured details retain the complete child reply event and routed event ID.
+`pibo_agents_send_message` is yielded-only and is never exposed as a direct foreground tool. The run wrapper returns a run ID immediately, while its background execution waits for the child reply without an implicit lifetime deadline. The terminal result includes name, `agentId`, resolved thread, complete reply, child reply event, and routed event ID.
 
-Asynchronous execution is intentionally delegated to existing run control:
+Dispatch uses existing run control:
 
 ```json
 {
@@ -79,7 +80,7 @@ Asynchronous execution is intentionally delegated to existing run control:
 }
 ```
 
-The caller uses `pibo_run_wait` or `pibo_run_read`; no separate agent wait protocol is introduced.
+The caller uses `pibo_run_status`, bounded `pibo_run_wait`, or `pibo_run_read`; no separate agent wait protocol is introduced. `pibo_run_wait` defaults to 30 seconds and is capped at 300 seconds per call. An expired wait, normal parent-turn completion, or stale telemetry leaves the delegated request running. Legacy `SubagentProfile.timeoutMs` values do not create a request or run deadline.
 
 ### `pibo_agents_list_agents`
 
@@ -126,11 +127,15 @@ Input:
   "afterSequence": 120,
   "order": "asc",
   "limit": 50,
+  "includeTools": true,
+  "toolDetail": "summary",
   "includeDetails": false
 }
 ```
 
 Array fields use OR semantics internally. Different fields combine with AND semantics. Exact values are not treated as prefixes or regular expressions. `textContains` is the only substring filter and is case-insensitive.
+
+With no `eventTypes` or `kinds`, the default view returns the newest 20 completed `assistant_message` observations. Tools are hidden. `includeTools: true` adds `tool_call` and `tool_execution_finished`; `toolDetail: "summary"` keeps their text compact, while `toolDetail: "full"` returns bounded raw tool text. Callers may request `limit: 50` or another value up to 200. The default view hides streaming `assistant_delta` and `tool_execution_updated` events plus duplicate `tool_execution_started` progress records. Explicit `eventTypes` or `kinds` filters retain access to those records for compatibility and diagnostics.
 
 Normalized observation:
 
@@ -151,7 +156,7 @@ Normalized observation:
 }
 ```
 
-`includeDetails: true` adds the normalized source event under `details`. Default output omits it. Normalized text is bounded to 4 KiB and details to 32 KiB per observation. The journal is router-global, monotonic, and bounded to the newest 5,000 delegated-child observations.
+`includeDetails: true` adds the normalized source event under `details`. Default output omits it. Full normalized text is bounded to 4 KiB, compact tool summaries to 768 bytes, and details to 32 KiB per observation. The model-facing result uses concise entries rather than a formatted copy of the full structured response. The journal is router-global, monotonic, and bounded to the newest 5,000 delegated-child observations.
 
 `afterSequence` is exclusive. Cursor pages always select the oldest unseen matching records first. `order: desc` reverses only that selected page, so `nextAfterSequence` never skips unseen records. The result sets `truncated` when another matching page exists or when the caller's cursor predates retained history. On retention loss, the next cursor advances through the known eviction boundary even if no retained record matches.
 
@@ -165,6 +170,8 @@ Kinds map as follows:
 | `session_error` | `error` | system |
 | `execution_result`, `compaction_*` | `lifecycle` | system |
 | everything else | `event` | omitted |
+
+The live journal still normalizes raw progress. `pibo_agents_observe` removes `assistant_delta`, `tool_execution_started`, and `tool_execution_updated` only from its default view; explicit event or kind filters can retrieve them.
 
 ### `pibo_agents_kill`
 

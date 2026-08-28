@@ -34,6 +34,10 @@ export type AgentRuntimeHistoryMessageEntry = {
 	source: AgentRuntimeHistorySource;
 	createdAt: string;
 	sequence?: number;
+	/** Adapter-stable position in the native history, independent of page slicing. */
+	historyPosition?: string;
+	/** Adapter-owned provenance binding this entry to one reconciliation scope. */
+	historyScopeId?: string;
 	turnId?: string;
 	nativeTurnId?: string;
 	nativeEntryId?: string;
@@ -56,6 +60,10 @@ export type AgentRuntimeHistorySessionInfoEntry = {
 	source: AgentRuntimeHistorySource;
 	createdAt: string;
 	sequence?: number;
+	/** Adapter-stable position in the native history, independent of page slicing. */
+	historyPosition?: string;
+	/** Adapter-owned provenance binding this entry to one reconciliation scope. */
+	historyScopeId?: string;
 	nativeEntryId?: string;
 	name: string;
 	metadata?: PiboJsonObject;
@@ -64,6 +72,84 @@ export type AgentRuntimeHistorySessionInfoEntry = {
 export type AgentRuntimeHistoryEntry =
 	| AgentRuntimeHistoryMessageEntry
 	| AgentRuntimeHistorySessionInfoEntry;
+
+/**
+ * Bounded evidence used to prove product timing ownership for a history page.
+ * A complete proof contains every native entry in the adapter's current
+ * reconciliation scope. Incomplete proofs deliberately disable product-ID
+ * reconciliation; callers must never infer completeness from page shape.
+ */
+export type AgentRuntimeHistoryReconciliationProof = {
+	complete: boolean;
+	/** Adapter-owned scope shared by every entry in a production proof/page. */
+	scopeId?: string;
+	/** Independently bound summary of the complete adapter scope. */
+	fullScope?: AgentRuntimeHistoryReconciliationScope;
+	entries: readonly AgentRuntimeHistoryEntry[];
+};
+
+export type AgentRuntimeHistoryReconciliationScope = {
+	entryCount: number;
+	digest: string;
+};
+
+/**
+ * Build a structural complete-history claim for compatibility callers.
+ *
+ * This function does not grant reconciliation authority. Only an exact built-in
+ * adapter can bind a returned claim to its provider-local runtime registry.
+ */
+export function createCompleteHistoryReconciliationProof(
+	entries: readonly AgentRuntimeHistoryEntry[],
+	scopeId?: string,
+): AgentRuntimeHistoryReconciliationProof {
+	const proofEntries = Object.freeze([...entries]);
+	return {
+		complete: true,
+		...(scopeId ? { scopeId } : {}),
+		fullScope: {
+			entryCount: proofEntries.length,
+			digest: historyReconciliationDigest(proofEntries),
+		},
+		entries: proofEntries,
+	};
+}
+
+export function historyReconciliationDigest(entries: readonly AgentRuntimeHistoryEntry[]): string {
+	const mask = 0xffff_ffff_ffff_ffffn;
+	const prime = 0x100000001b3n;
+	const hashes = [
+		0xcbf29ce484222325n,
+		0x84222325cbf29ce4n,
+		0x9e3779b97f4a7c15n,
+		0x517cc1b727220a95n,
+	];
+	for (const entry of entries) {
+		const signature = `${historyReconciliationEntrySignature(entry)}\n`;
+		for (let index = 0; index < signature.length; index += 1) {
+			const codeUnit = BigInt(signature.charCodeAt(index));
+			for (let hashIndex = 0; hashIndex < hashes.length; hashIndex += 1) {
+				hashes[hashIndex] = ((hashes[hashIndex]! ^ codeUnit) * prime) & mask;
+			}
+		}
+	}
+	return hashes.map((hash) => hash.toString(16).padStart(16, "0")).join("");
+}
+
+export function historyReconciliationEntrySignature(entry: AgentRuntimeHistoryEntry): string {
+	const { sequence: _pageLocalSequence, ...proofContent } = entry;
+	return stableHistoryJson(proofContent);
+}
+
+function stableHistoryJson(value: unknown): string {
+	if (value === null || typeof value !== "object") return JSON.stringify(value);
+	if (Array.isArray(value)) return `[${value.map(stableHistoryJson).join(",")}]`;
+	return `{${Object.entries(value as Record<string, unknown>)
+		.filter(([, child]) => child !== undefined)
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, child]) => `${JSON.stringify(key)}:${stableHistoryJson(child)}`)
+		.join(",")}}`;
+}
 
 export type AgentRuntimeHistoryInspection = {
 	runtimeInstanceId: string;
@@ -86,6 +172,7 @@ export type AgentRuntimeHistoryPage = {
 	adapterId: string;
 	source: "native";
 	entries: readonly AgentRuntimeHistoryEntry[];
+	reconciliationProof?: AgentRuntimeHistoryReconciliationProof;
 	orderOffset?: number;
 	nextCursor?: string;
 	hasMore: boolean;

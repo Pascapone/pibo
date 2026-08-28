@@ -23,7 +23,8 @@ export type SessionTraceHeaderExtraViewTab = {
 
 export function SessionTraceHeader({
   title,
-  roomLabel,
+  contextKind,
+  contextLabel,
   headerPiboSessionId,
   piboSessionId,
   piboRoomId,
@@ -54,7 +55,8 @@ export function SessionTraceHeader({
   onError,
 }: {
   title: string | null | undefined;
-  roomLabel: string;
+  contextKind: "room" | "project";
+  contextLabel: string;
   headerPiboSessionId: string;
   piboSessionId: string | null;
   piboRoomId?: string;
@@ -91,6 +93,7 @@ export function SessionTraceHeader({
   const headerPiboSessionCopied =
     copiedHeaderPiboSessionId === headerPiboSessionId;
   const selectedViewId = activeViewId ?? sessionViewId;
+  const contextKindLabel = contextKind === "project" ? "Project" : "Room";
   const allowedSessionViewIdSet = useMemo(
     () => (allowedSessionViewIds ? new Set(allowedSessionViewIds) : null),
     [allowedSessionViewIds],
@@ -117,10 +120,19 @@ export function SessionTraceHeader({
 
   return (
     <div className="h-14 px-4 bg-[#151f24] border-b border-slate-800 flex items-center justify-between max-[980px]:h-auto max-[980px]:flex-wrap max-[980px]:py-2 max-[980px]:gap-2">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <h1 className="text-base font-semibold truncate">{title}</h1>
         <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-slate-500">
-          <span className="truncate">{roomLabel}</span>
+          <span
+            data-pibo-debug="session-context"
+            data-pibo-context-kind={contextKind}
+            title={`${contextKindLabel}: ${contextLabel}`}
+            aria-label={`${contextKindLabel}: ${contextLabel}`}
+            className="inline-flex min-w-0 max-w-full items-center gap-1.5"
+          >
+            <span className="shrink-0 uppercase tracking-wide text-[#11a4d4]">{contextKindLabel}</span>
+            <span className="truncate text-slate-400">{contextLabel}</span>
+          </span>
           {headerPiboSessionId ? (
             <>
               <span className="text-slate-600">·</span>
@@ -149,7 +161,7 @@ export function SessionTraceHeader({
           ) : null}
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2 max-[980px]:w-full max-[980px]:flex-wrap max-[980px]:gap-1">
         <WebAnnotationsEntryPoints
           piboSessionId={piboSessionId}
           piboRoomId={piboRoomId}

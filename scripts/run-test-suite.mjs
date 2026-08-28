@@ -49,6 +49,7 @@ const childEnv = {
 	...process.env,
 	NODE_ENV: "test",
 	TZ: process.env.TZ ?? "UTC",
+	PIBO_YIELDED_RUN_ISOLATION: "off",
 	HOME: isolatedHome,
 	USERPROFILE: isolatedHome,
 	PIBO_HOME: isolatedPiboHome,
@@ -61,6 +62,8 @@ const childEnv = {
 delete childEnv.MCP_CONFIG_PATH;
 delete childEnv.NODE_TEST_CONTEXT;
 delete childEnv.NODE_TEST_WORKER_ID;
+delete childEnv.PIBO_COMPUTE_WORKER;
+delete childEnv.PIBO_COMPUTE_WORKER_ROLE;
 
 const platformArgs = process.platform === "win32" ? ["--test-concurrency=4"] : [];
 const child = spawn(process.execPath, ["--test", ...platformArgs, ...(args.length > 0 ? args : defaultTestFiles())], {

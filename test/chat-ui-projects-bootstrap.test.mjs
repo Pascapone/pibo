@@ -18,12 +18,15 @@ async function runProjectsBootstrapScenario() {
 			updatedAt: "now",
 		};
 
-		async function withPayload(payload, fn) {
+		async function withPayload(payload, fn, onRequest) {
 			const previousFetch = globalThis.fetch;
-			globalThis.fetch = async () => new Response(JSON.stringify(payload), {
-				status: 200,
-				headers: { "content-type": "application/json" },
-			});
+			globalThis.fetch = async (input, init) => {
+				onRequest?.(input, init);
+				return new Response(JSON.stringify(payload), {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				});
+			};
 			try {
 				return await fn();
 			} finally {
@@ -52,6 +55,15 @@ async function runProjectsBootstrapScenario() {
 			assert.deepEqual(bootstrap.sessions, []);
 			assert.deepEqual(bootstrap.capabilities.actions, []);
 		});
+
+		const controller = new AbortController();
+		let requestSignal;
+		await withPayload({ sharedDefaultProject: project }, async () => {
+			await getProjectsBootstrap({}, { signal: controller.signal });
+		}, (_input, init) => {
+			requestSignal = init?.signal;
+		});
+		assert.equal(requestSignal, controller.signal);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }

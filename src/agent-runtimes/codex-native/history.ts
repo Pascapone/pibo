@@ -6,6 +6,7 @@ import type {
 	AgentRuntimeHistoryMessageEntry,
 	AgentRuntimeHistoryPage,
 } from "../../agent-runtime/history.js";
+import { historyReconciliationDigest } from "../../agent-runtime/history.js";
 import type { RuntimeSessionBinding } from "../../agent-runtime/types.js";
 import type {
 	CodexAppServerThread,
@@ -14,6 +15,7 @@ import type {
 } from "./protocol-types.js";
 import { redactCodexNativeSensitiveText } from "./redaction.js";
 import { CODEX_NATIVE_ADAPTER_ID } from "./thread.js";
+import { TRACE_RECONCILIATION_ENTRY_CAP } from "../../shared/trace-limits.js";
 
 const CODEX_HISTORY_CURSOR_PREFIX = "codex-history:";
 const DEFAULT_HISTORY_LIMIT = 100;
@@ -85,6 +87,8 @@ function itemEntry(
 	turn: CodexAppServerTurn,
 	item: CodexAppServerThreadItem,
 	sequence: number,
+	historyPosition: string,
+	historyScopeId: string,
 ): AgentRuntimeHistoryMessageEntry | undefined {
 	const createdAt = isoFromSeconds(turn.startedAt ?? turn.completedAt, thread.updatedAt);
 	const base = {
@@ -93,6 +97,8 @@ function itemEntry(
 		source: "native" as const,
 		createdAt,
 		sequence,
+		historyPosition,
+		historyScopeId,
 		turnId: turn.id,
 		nativeTurnId: turn.id,
 		nativeEntryId: item.id,
@@ -177,7 +183,10 @@ function itemEntry(
 	return undefined;
 }
 
-export function codexThreadHistoryEntries(thread: CodexAppServerThread): AgentRuntimeHistoryEntry[] {
+export function codexThreadHistoryEntries(
+	thread: CodexAppServerThread,
+	historyScopeId = `codex:${thread.id}`,
+): AgentRuntimeHistoryEntry[] {
 	const entries: AgentRuntimeHistoryEntry[] = [];
 	let sequence = 0;
 	if (thread.name) {
@@ -187,13 +196,22 @@ export function codexThreadHistoryEntries(thread: CodexAppServerThread): AgentRu
 			source: "native",
 			createdAt: isoFromSeconds(thread.createdAt, thread.createdAt),
 			sequence: sequence++,
+			historyPosition: `codex:${thread.id}:session-info`,
+			historyScopeId,
 			nativeEntryId: thread.id,
 			name: redactCodexNativeSensitiveText(thread.name),
 		});
 	}
-	for (const turn of thread.turns) {
-		for (const item of turn.items) {
-			const entry = itemEntry(thread, turn, item, sequence);
+	for (const [turnIndex, turn] of thread.turns.entries()) {
+		for (const [itemIndex, item] of turn.items.entries()) {
+			const entry = itemEntry(
+				thread,
+				turn,
+				item,
+				sequence,
+				`codex:${thread.id}:turn:${turnIndex}:item:${itemIndex}:${item.type}`,
+				historyScopeId,
+			);
 			if (!entry) continue;
 			entries.push(entry);
 			sequence += 1;
@@ -204,7 +222,9 @@ export function codexThreadHistoryEntries(thread: CodexAppServerThread): AgentRu
 				type: "message",
 				source: "native",
 				createdAt: isoFromSeconds(turn.completedAt ?? turn.startedAt, thread.updatedAt),
-				sequence: sequence++,
+				sequence,
+				historyPosition: `codex:${thread.id}:turn:${turnIndex}:error`,
+				historyScopeId,
 				turnId: turn.id,
 				nativeTurnId: turn.id,
 				nativeEntryId: `${turn.id}:error`,
@@ -213,6 +233,7 @@ export function codexThreadHistoryEntries(thread: CodexAppServerThread): AgentRu
 				status: "error",
 				error: "Codex turn failed.",
 			});
+			sequence += 1;
 		}
 	}
 	return entries;
@@ -290,7 +311,8 @@ export function pageCodexThreadHistory(input: {
 	beforeTimestamp?: string;
 	limit?: number;
 }): AgentRuntimeHistoryPage {
-	const allEntries = codexThreadHistoryEntries(input.thread);
+	const historyScopeId = `codex:${input.runtimeInstanceId}:${input.thread.id}`;
+	const allEntries = codexThreadHistoryEntries(input.thread, historyScopeId);
 	const beforeTimestampMs = input.beforeTimestamp === undefined ? undefined : Date.parse(input.beforeTimestamp);
 	if (beforeTimestampMs !== undefined && Number.isNaN(beforeTimestampMs)) {
 		throw new Error("Codex native history beforeTimestamp is invalid.");
@@ -304,11 +326,20 @@ export function pageCodexThreadHistory(input: {
 	const start = Math.max(0, end - limit);
 	const entries = filtered.slice(start, end);
 	const hasMore = start > 0;
+	const proofComplete = allEntries.length <= TRACE_RECONCILIATION_ENTRY_CAP;
 	return {
 		runtimeInstanceId: input.runtimeInstanceId,
 		adapterId: CODEX_NATIVE_ADAPTER_ID,
 		source: "native",
 		entries,
+		reconciliationProof: proofComplete
+			? {
+				complete: true,
+				scopeId: historyScopeId,
+				fullScope: { entryCount: allEntries.length, digest: historyReconciliationDigest(allEntries) },
+				entries: allEntries,
+			}
+			: { complete: false, scopeId: historyScopeId, entries },
 		orderOffset: start,
 		...(hasMore ? { nextCursor: encodeCursor({ v: 1, threadId: input.thread.id, beforeIndex: start }) } : {}),
 		hasMore,

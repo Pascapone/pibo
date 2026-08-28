@@ -274,6 +274,7 @@ test("context build exposes one shared agent surface and the available name-desc
 		subagentProfileResolver: () => targetProfile,
 	});
 	const runStartDefinition = findNode(snapshot.nodes, (node) => node.id === "tools/pibo_run_start/definition");
+	const observeDefinition = findNode(snapshot.nodes, (node) => node.id === "tools/pibo_agents_observe/definition");
 	const delegatedContext = findNode(snapshot.nodes, (node) => node.path === "pibo://runtime/delegated-agents.md");
 	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
 	const toolIds = [];
@@ -286,10 +287,18 @@ test("context build exposes one shared agent surface and the available name-desc
 	collect(snapshot.nodes);
 
 	assert.ok(runStartDefinition.schemaJson.inputSchema.properties.toolName.enum.includes("pibo_agents_send_message"));
+	assert.equal(observeDefinition.schemaJson.inputSchema.properties.order.default, "desc");
+	assert.equal(observeDefinition.schemaJson.inputSchema.properties.limit.default, 20);
+	assert.equal(observeDefinition.schemaJson.inputSchema.properties.includeTools.default, false);
+	assert.equal(observeDefinition.schemaJson.inputSchema.properties.toolDetail.default, "summary");
+	assert.match(observeDefinition.schemaJson.inputSchema.properties.eventTypes.items.description, /Explicit filters can retrieve progress events/);
 	assert.match(delegatedContext.hydratedText, /`explorer`.*Inspect the repository and report findings\./s);
 	assert.match(delegatedContext.hydratedText, /`worker`.*Implement focused changes and verify them\./s);
 	assert.match(delegatedContext.hydratedText, /pibo_run_wait/);
 	assert.match(delegatedContext.hydratedText, /pibo_agents_observe/);
+	assert.match(delegatedContext.hydratedText, /newest 20 completed assistant messages/);
+	assert.match(delegatedContext.hydratedText, /includeTools: true/);
+	assert.match(delegatedContext.hydratedText, /afterSequence/);
 	assert.equal(toolIds.filter((id) => id.startsWith("tools/pibo_agents_")).length, 3);
 	assert.equal(toolIds.includes("tools/pibo_agents_send_message"), false);
 	assert.equal(toolIds.some((id) => id.includes("pibo_subagent_")), false);

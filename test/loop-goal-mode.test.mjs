@@ -175,6 +175,83 @@ test("Goal accounting sums and persists uncached usage reported after update_goa
 	}
 });
 
+test("Goal active time freezes while asynchronous after-run policy evaluation is pending", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-active-time-finalizing-"));
+	const store = new PiboLoopStore({ path: ":memory:" });
+	const listeners = new Set();
+	const sessions = new Map();
+	let enterAfterRun;
+	let releaseAfterRun;
+	const afterRunEntered = new Promise((resolve) => { enterAfterRun = resolve; });
+	const afterRunGate = new Promise((resolve) => { releaseAfterRun = resolve; });
+	const delayedAfterRun = {
+		type: "test.delayed-after-run",
+		name: "Delayed after-run test condition",
+		phases: ["after-run"],
+		async evaluate() {
+			enterAfterRun();
+			await afterRunGate;
+			return { action: "stop-after-run", reason: "test-complete" };
+		},
+	};
+	const context = {
+		async emit(event) {
+			if (event.type === "message") {
+				await new Promise((resolve) => setTimeout(resolve, 25));
+				queueMicrotask(() => {
+					for (const listener of listeners) {
+						listener({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: "run complete" });
+						listener({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
+					}
+				});
+			}
+			return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} };
+		},
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		createSession(input) { const session = createPiboSession({ ...input, id: "ps_active_time_finalizing" }); sessions.set(session.id, session); return session; },
+		getSession(id) { return sessions.get(id); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+		getWebApps() { return []; },
+		getLoopStopConditionDefinitions() { return [...createBuiltInLoopStopConditions(), delayedAfterRun]; },
+	};
+	const service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), intervalMs: 60_000, runTimeoutMs: 5_000 });
+	try {
+		service.start();
+		const job = store.createJob({
+			mode: "goal",
+			target: { kind: "default-chat" },
+			profile: "base",
+			prompt: "Exercise delayed finalization.",
+			stopPolicy: { mode: "any", conditions: [{ id: "delayed", type: delayedAfterRun.type }] },
+		});
+		assert.ok(await service.startJob(job.id));
+		await afterRunEntered;
+
+		const pending = store.getJob(job.id);
+		assert.equal(pending?.state.activeTimeSeconds, 1);
+		assert.equal(pending?.state.activeTimeRunningAt, null);
+		assert.equal(typeof pending?.state.runningAt, "string");
+		assert.equal(pending?.state.completedIterations, 0);
+		await new Promise((resolve) => setTimeout(resolve, 1_100));
+		const stillPending = store.getJob(job.id);
+		assert.equal(stillPending?.state.activeTimeSeconds, pending?.state.activeTimeSeconds);
+		assert.equal(stillPending?.state.activeTimeRunningAt, null);
+		assert.equal(stillPending?.state.runningAt, pending?.state.runningAt);
+
+		releaseAfterRun();
+		await waitFor(() => store.getJob(job.id)?.state.completedIterations === 1);
+		const completed = store.getJob(job.id);
+		assert.equal(completed?.state.activeTimeSeconds, pending?.state.activeTimeSeconds);
+		assert.equal(completed?.state.activeTimeRunningAt, null);
+		assert.equal(completed?.state.runningAt, undefined);
+	} finally {
+		releaseAfterRun();
+		service.stop();
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("Goal records a final turn that exceeds remaining soft budget", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pibo-loop-budget-overshoot-"));
 	const store = new PiboLoopStore({ path: ":memory:" });
