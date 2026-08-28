@@ -5,6 +5,7 @@ import { storedPiboEventFromV2Row } from "../dist/apps/chat/data/chat-data-mappe
 import { createTraceViewVersion } from "../dist/apps/chat/trace.js";
 import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
 import { flattenTraceNodes } from "../dist/shared/trace-engine.js";
+import { checkTraceView } from "../dist/debug/trace.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
 import { pageCodexThreadHistory } from "../dist/agent-runtimes/codex-native/history.js";
 import { historyReconciliationDigest } from "../dist/agent-runtime/history.js";
@@ -1838,6 +1839,105 @@ test("event-log projection nests turn, reasoning, and assistant content with fin
 	assert.equal(turn.children[1].id, "event:assistant:turn-projection:assistant:0");
 	assert.equal(turn.children[1].status, "done");
 	assert.equal(turn.children[1].output, "hello");
+});
+
+test("service turns retain a prompt-free parent for event-only output", () => {
+	const internalPrompt = "Continue the private Goal Loop instructions";
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		events: [
+			outputEvent(1, {
+				type: "message_started",
+				piboSessionId: "ps_root",
+				eventId: "loop_msg_service",
+				source: "service",
+				text: internalPrompt,
+			}),
+			outputEvent(2, {
+				type: "tool_call",
+				piboSessionId: "ps_root",
+				eventId: "loop_msg_service",
+				toolCallId: "tool-service",
+				toolName: "bash",
+				args: { command: "pwd" },
+				argsComplete: true,
+			}),
+			outputEvent(3, {
+				type: "thinking_finished",
+				piboSessionId: "ps_root",
+				eventId: "loop_msg_service",
+				thinkingIndex: 0,
+				text: "reasoned",
+			}),
+			outputEvent(4, {
+				type: "assistant_message",
+				piboSessionId: "ps_root",
+				eventId: "loop_msg_service",
+				assistantIndex: 0,
+				text: "done",
+			}),
+			outputEvent(5, {
+				type: "message_finished",
+				piboSessionId: "ps_root",
+				eventId: "loop_msg_service",
+				source: "service",
+			}),
+		],
+	});
+
+	assert.deepEqual(view.nodes.map((node) => node.type), ["agent.turn"]);
+	assert.equal(view.nodes[0].id, "event:message:loop_msg_service");
+	assert.deepEqual(view.nodes[0].children.map((node) => node.type), ["tool.call", "model.reasoning", "assistant.message"]);
+	assert.equal(JSON.stringify(view).includes(internalPrompt), false);
+	assert.equal(checkTraceView(view).issues.some((issue) => issue.code === "missing_parent"), false);
+});
+
+test("transcript-backed service turns suppress the internal prompt and use event grouping", () => {
+	const internalPrompt = "Continue the private Goal Loop instructions";
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps_root", piSessionId: "pi_root", title: "Root" },
+		transcriptEntries: [
+			{
+				id: "entry-service-user",
+				type: "message",
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: internalPrompt }] },
+			},
+			{
+				id: "entry-service-assistant",
+				type: "message",
+				timestamp: "2026-01-01T00:00:03.000Z",
+				message: { role: "assistant", status: "completed", content: [{ type: "text", text: "done" }] },
+			},
+		],
+		events: [
+			outputEvent(1, {
+				type: "message_started",
+				piboSessionId: "ps_root",
+				eventId: "loop_msg_transcript",
+				source: "service",
+				text: internalPrompt,
+			}),
+			outputEvent(2, {
+				type: "assistant_message",
+				piboSessionId: "ps_root",
+				eventId: "loop_msg_transcript",
+				assistantIndex: 0,
+				text: "done",
+			}),
+			outputEvent(3, {
+				type: "message_finished",
+				piboSessionId: "ps_root",
+				eventId: "loop_msg_transcript",
+				source: "service",
+			}),
+		],
+	});
+
+	assert.deepEqual(view.nodes.map((node) => node.type), ["agent.turn"]);
+	assert.deepEqual(view.nodes[0].children.map((node) => node.type), ["assistant.message"]);
+	assert.equal(JSON.stringify(view).includes(internalPrompt), false);
+	assert.equal(checkTraceView(view).issues.some((issue) => issue.code === "missing_parent"), false);
 });
 
 test("event-log projection merges tool lifecycle updates and compaction lifecycle", () => {

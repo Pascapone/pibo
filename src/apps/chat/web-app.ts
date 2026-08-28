@@ -369,7 +369,7 @@ type ChatPersistenceMetrics = {
 type ChatSessionQuery = {
 	upsertSession(session: PiboSession, status?: ChatWebSessionIndexItem["status"]): void;
 	upsertSessionsIfChanged(sessions: PiboSession[]): ChatWebSessionBootstrapIndexResult;
-	recordEvent(event: PiboOutputEvent, session?: PiboSession, streamId?: number): ChatWebStoredPiboEvent | undefined;
+	recordEvent(event: PiboOutputEvent, session?: PiboSession, streamId?: number, createdAt?: string): ChatWebStoredPiboEvent | undefined;
 	listSessions(): ChatWebSessionIndexItem[];
 	getSession(piboSessionId: string): ChatWebSessionIndexItem | undefined;
 	hasSessionActivity(piboSessionId: string): boolean;
@@ -1015,8 +1015,8 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 			const result = state.outputCompactor.compact(event);
 			for (const liveEvent of result.liveEvents) {
 				if (isPersistableOutputEvent(liveEvent)) continue;
-				state.sessionQuery.recordEvent(liveEvent, session);
 				const transient = recordTransientReplayEvent(state, { roomId: room?.id, piboSessionId: liveEvent.piboSessionId, eventType: liveEvent.type, payload: liveEvent });
+				state.sessionQuery.recordEvent(liveEvent, session, undefined, new Date(transient.createdAtMs).toISOString());
 				if (isLiveOnlyOutputEvent(liveEvent) && !hasLiveObserver(state, liveEvent.piboSessionId)) continue;
 				for (const listener of state.liveListeners) {
 					listener(transient);
@@ -1058,7 +1058,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 				if (persistableEvent.type === "assistant_message" || persistableEvent.type === "message_finished" || persistableEvent.type === "session_error") {
 					markActiveSessionRead(state, persistableEvent.piboSessionId, stored.streamId);
 				}
-				state.sessionQuery.recordEvent(persistableEvent, session, stored.streamId);
+				state.sessionQuery.recordEvent(persistableEvent, session, stored.streamId, stored.createdAt);
 				state.reliabilityStore.append({
 					topic: "pibo.output",
 					key: persistableEvent.piboSessionId,
