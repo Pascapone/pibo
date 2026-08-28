@@ -384,11 +384,11 @@ function toolDefinitionSchema(definition: ToolDefinition | undefined, toolInfo: 
 }
 
 function generatedOriginForTool(name: string, profile: InitialSessionContext): string | undefined {
-	if (name === "runtime") return "Generated Pibo runtime tool selected by the profile.";
-	if (name.startsWith("pibo_agents_")) return "Generated shared agent-management tool from the profile's delegated-agent list.";
-	if (name.startsWith("pibo_run_")) return "Generated run-control tool from the pibo-run-control capability package.";
-	if (PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number])) return "Generated goal-control tool from the pibo-goal-control capability package.";
-	if (name === "apply_patch" || name === "view_image") return "Generated Codex-compatible tool from the codex-compat package.";
+	if (name === "runtime") return "pibo-runtime";
+	if (name.startsWith("pibo_agents_")) return "pibo-subagents";
+	if (name.startsWith("pibo_run_")) return "pibo-run-control";
+	if (PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number])) return "pibo-goal-control";
+	if (name === "apply_patch" || name === "view_image") return "codex-compat";
 	if (profile.builtinToolNames.includes(name) || (DEFAULT_BUILTIN_TOOL_NAMES as readonly string[]).includes(name)) return undefined;
 	return undefined;
 }
@@ -665,17 +665,6 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					},
 				});
 			}
-			if (generatedOrigin) {
-				children.push({
-					id: `tools/${name}/generated-origin`,
-					kind: "metadata",
-					title: "Generated Origin",
-					source: "generated",
-					state: "active",
-					badges: ["GENERATED", "PIBO"],
-					hydratedText: generatedOrigin,
-				});
-			}
 			if (providerTool?.providerTool.kind === "web_search") {
 				children.push({
 					id: `tools/${name}/provider-payload`,
@@ -731,6 +720,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 					hasDefinition: Boolean(definition || info),
 					description: definition?.description ?? info?.description ?? providerTool?.description,
 					...(toolSource === "pibo" || toolSource === "generated" ? { owner: "pibo", deliveryMode: "direct" } : {}),
+					...(generatedOrigin ? { inspectorOrigin: { label: generatedOrigin, modelVisible: false } } : {}),
 				},
 				children,
 			};
