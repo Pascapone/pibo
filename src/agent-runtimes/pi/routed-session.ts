@@ -823,6 +823,9 @@ export class RoutedSession {
 	private nextAssistantIndex = 0;
 	private activeThinkingIndex?: number;
 	private nextThinkingIndex = 0;
+	private nextUsageIndex = 0;
+	private activeCompactionIndex?: number;
+	private nextCompactionIndex = 0;
 	private sessionIdentityOperationInFlight = false;
 	private pendingAssistantError?: Extract<PiboOutputEvent, { type: "session_error" }>;
 	private pendingAssistantErrorRetryable = false;
@@ -1234,26 +1237,32 @@ export class RoutedSession {
 		const candidate = event as { type?: unknown; reason?: unknown; result?: unknown; aborted?: unknown; errorMessage?: unknown };
 		const eventId = this.activeMessage?.id ?? this.activeExecutionEvent?.id;
 		if (candidate.type === "compaction_start") {
+			const compactionIndex = this.activeCompactionIndex ?? this.nextCompactionIndex;
+			if (this.activeCompactionIndex === undefined) this.nextCompactionIndex += 1;
+			this.activeCompactionIndex = compactionIndex;
 			this.emit(this.withActiveMessage({
 				type: "compaction_start",
 				piboSessionId: this.piboSessionId,
 				eventId,
+				compactionIndex,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
 			}));
 		}
 		if (candidate.type === "compaction_end") {
+			const compactionIndex = this.activeCompactionIndex ?? this.nextCompactionIndex;
+			if (this.activeCompactionIndex === undefined) this.nextCompactionIndex += 1;
+			this.activeCompactionIndex = undefined;
 			if (candidate.result && candidate.aborted !== true) {
-				// Reset assistant message indices so the next assistant response starts
-				// fresh after compaction, matching the reduced agent context.
+				// End any open output block, but keep durable part indices monotonic for
+				// the lifetime of the routed event across context-guard continuation.
 				this.activeAssistantIndex = undefined;
-				this.nextAssistantIndex = 0;
 				this.activeThinkingIndex = undefined;
-				this.nextThinkingIndex = 0;
 			}
 			this.emit(this.withActiveMessage({
 				type: "compaction_end",
 				piboSessionId: this.piboSessionId,
 				eventId,
+				compactionIndex,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
 				result: candidate.result,
 				aborted: candidate.aborted === true,
@@ -1779,6 +1788,9 @@ export class RoutedSession {
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
+			this.nextUsageIndex = 0;
+			this.activeCompactionIndex = undefined;
+			this.nextCompactionIndex = 0;
 			this.emit({
 				type: "message_started",
 				piboSessionId: this.piboSessionId,
@@ -1834,6 +1846,9 @@ export class RoutedSession {
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
+			this.nextUsageIndex = 0;
+			this.activeCompactionIndex = undefined;
+			this.nextCompactionIndex = 0;
 			this.providerWebSearchLifecycle.clear();
 			if (this.inFlightMessage === inFlight) this.inFlightMessage = undefined;
 			inFlight.resolveSettled();
@@ -2089,8 +2104,13 @@ export class RoutedSession {
 			return output;
 		}
 
+		if (event.type === "assistant_usage") {
+			const usageIndex = this.nextUsageIndex;
+			this.nextUsageIndex += 1;
+			return { ...event, ...correlation, usageIndex };
+		}
+
 		if (
-			event.type === "assistant_usage" ||
 			event.type === "compaction_start" ||
 			event.type === "compaction_end" ||
 			event.type === "tool_call" ||

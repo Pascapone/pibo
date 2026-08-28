@@ -10,6 +10,7 @@ import {
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
+import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 
@@ -1374,7 +1375,7 @@ test("routed session patches agent.continue to trigger preemptive compaction", a
 	await routed.dispose();
 });
 
-test("routed session emits compaction events and resets indices", async () => {
+test("routed session keeps output identities monotonic across compaction", async () => {
 	const events = [];
 	let listener;
 	const agent = { continue: () => Promise.resolve() };
@@ -1416,13 +1417,20 @@ test("routed session emits compaction events and resets indices", async () => {
 	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
-	// Simulate indices being incremented
-	routed.activeAssistantIndex = 2;
-	routed.nextAssistantIndex = 3;
-	routed.activeThinkingIndex = 1;
-	routed.nextThinkingIndex = 2;
+	routed.activeMessage = { type: "message", piboSessionId: "route:test", id: "event-1", text: "hello", source: "user" };
+	listener({ type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } });
+	listener({ type: "message_update", assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: "initial reasoning" } });
+	listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 1, delta: "before compaction" } });
+	listener({
+		type: "message_end",
+		message: {
+			role: "assistant",
+			content: [{ type: "text", text: "before compaction" }],
+			usage: { input: 10, output: 4, totalTokens: 14 },
+		},
+	});
 
-	// Emit compaction_end with successful result
+	listener({ type: "compaction_start", reason: "threshold" });
 	listener({
 		type: "compaction_end",
 		reason: "threshold",
@@ -1430,25 +1438,60 @@ test("routed session emits compaction events and resets indices", async () => {
 		aborted: false,
 	});
 
-	const compactionEnd = events.find((e) => e.type === "compaction_end");
-	assert.ok(compactionEnd, "compaction_end event should be emitted");
-	assert.equal(compactionEnd.aborted, false);
-	assert.equal(compactionEnd.reason, "threshold");
+	const compactionEvents = events.filter((event) => event.type === "compaction_start" || event.type === "compaction_end");
+	assert.deepEqual(compactionEvents.map((event) => event.compactionIndex), [0, 0]);
+	assert.equal(compactionEvents[1].eventId, "event-1");
+	assert.equal(routed.activeAssistantIndex, undefined, "successful compaction should close the active assistant block");
+	assert.equal(routed.nextAssistantIndex, 1, "successful compaction must preserve the next assistant index");
+	assert.equal(routed.activeThinkingIndex, undefined, "successful compaction should close the active thinking block");
+	assert.equal(routed.nextThinkingIndex, 1, "successful compaction must preserve the next thinking index");
 
-	// Indices should be reset
-	assert.equal(routed.activeAssistantIndex, undefined, "activeAssistantIndex should be reset");
-	assert.equal(routed.nextAssistantIndex, 0, "nextAssistantIndex should be reset to 0");
-	assert.equal(routed.activeThinkingIndex, undefined, "activeThinkingIndex should be reset");
-	assert.equal(routed.nextThinkingIndex, 0, "nextThinkingIndex should be reset to 0");
-
-	// Aborted compaction should NOT reset indices
-	routed.activeAssistantIndex = 5;
+	listener({ type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } });
+	listener({ type: "message_update", assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: "continued reasoning" } });
+	listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 1, delta: "final" } });
 	listener({
-		type: "compaction_end",
-		reason: "manual",
-		aborted: true,
+		type: "message_end",
+		message: {
+			role: "assistant",
+			content: [{ type: "text", text: "final" }],
+			usage: { input: 10, output: 4, totalTokens: 14 },
+		},
 	});
-	assert.equal(routed.activeAssistantIndex, 5, "indices should NOT be reset on aborted compaction");
+	assert.deepEqual(events.filter((event) => event.type === "thinking_finished").map((event) => event.thinkingIndex), [0, 1]);
+	assert.deepEqual(events.filter((event) => event.type === "assistant_message").map((event) => event.assistantIndex), [0, 1]);
+	assert.deepEqual(events.filter((event) => event.type === "assistant_usage").map((event) => event.usageIndex), [0, 1]);
+
+	const trace = buildTraceViewFromEvents({
+		session: { id: "route:test", piSessionId: "pi:test", title: "Compaction continuation" },
+		transcriptEntries: [
+			{ id: "user-entry", type: "message", timestamp: "2026-08-28T00:00:00.000Z", message: { role: "user", content: [{ type: "text", text: "hello" }] } },
+			{ id: "assistant-entry", type: "message", timestamp: "2026-08-28T00:00:09.000Z", message: { role: "assistant", status: "completed", content: [{ type: "text", text: "final" }] } },
+		],
+		events: events.map((payload, index) => ({
+			id: `stored-${index + 1}`,
+			piboSessionId: "route:test",
+			eventSequence: index + 1,
+			type: payload.type,
+			createdAt: `2026-08-28T00:00:${String(index + 1).padStart(2, "0")}.000Z`,
+			payload,
+		})),
+	});
+	const traceNodes = [...trace.nodes];
+	for (let index = 0; index < traceNodes.length; index += 1) traceNodes.push(...traceNodes[index].children);
+	const assistantOutputs = traceNodes.filter((node) => node.type === "assistant.message").map((node) => node.output);
+	assert.deepEqual(assistantOutputs, ["before compaction", "final"]);
+
+	listener({ type: "compaction_start", reason: "threshold" });
+	listener({ type: "compaction_end", reason: "threshold", result: { summary: "again" }, aborted: false });
+	assert.deepEqual(
+		events.filter((event) => event.type === "compaction_start" || event.type === "compaction_end").map((event) => event.compactionIndex),
+		[0, 0, 1, 1],
+	);
+
+	routed.activeAssistantIndex = 5;
+	listener({ type: "compaction_start", reason: "manual" });
+	listener({ type: "compaction_end", reason: "manual", aborted: true });
+	assert.equal(routed.activeAssistantIndex, 5, "aborted compaction should not close the active assistant block");
 
 	await routed.dispose();
 });

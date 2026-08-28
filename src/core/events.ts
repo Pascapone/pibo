@@ -340,6 +340,7 @@ export type PiboAssistantUsageEvent = {
 	type: "assistant_usage";
 	piboSessionId: string;
 	eventId?: string;
+	usageIndex?: number;
 	inputTokens?: number;
 	outputTokens?: number;
 	cacheReadTokens?: number;
@@ -441,6 +442,7 @@ export type PiboCompactionStartEvent = {
 	type: "compaction_start";
 	piboSessionId: string;
 	eventId?: string;
+	compactionIndex?: number;
 	reason: string;
 	provenance?: PiboMessageProvenance;
 };
@@ -449,6 +451,7 @@ export type PiboCompactionEndEvent = {
 	type: "compaction_end";
 	piboSessionId: string;
 	eventId?: string;
+	compactionIndex?: number;
 	reason: string;
 	result?: unknown;
 	aborted: boolean;
