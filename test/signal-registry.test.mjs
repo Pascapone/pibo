@@ -90,6 +90,42 @@ test("a new successful turn clears presentation error status without deleting er
 	assert.equal(registry.snapshotStatuses().sessions.root.status, "idle");
 });
 
+test("a stale session error cannot terminalize a newly accepted turn", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "message_accepted", piboSessionId: "root", eventId: "new-user-turn", source: "user" });
+	registry.project({
+		type: "pibo_output",
+		event: {
+			type: "session_error",
+			piboSessionId: "root",
+			eventId: "old-loop-continuation",
+			error: "Loop continuation is no longer authorized (paused)",
+		},
+	});
+
+	let snapshot = registry.snapshotTree("root");
+	assert.equal(snapshot.nodes["turn:root:new-user-turn"].status, "starting");
+	assert.equal(snapshot.sessions.root.localStatus, "running");
+	assert.equal(snapshot.sessions.root.latestTurn.eventId, "new-user-turn");
+	assert.equal(snapshot.sessions.root.latestTurn.state, "running");
+	assert.deepEqual(snapshot.sessions.root.errors, [{ message: "Loop continuation is no longer authorized (paused)", source: "pi" }]);
+
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "root", eventId: "new-user-turn", source: "user", text: "continue" } });
+	snapshot = registry.snapshotTree("root");
+	assert.equal(snapshot.nodes["turn:root:new-user-turn"].status, "running");
+	assert.equal(snapshot.nodes["message:root:new-user-turn"].status, "done");
+	assert.equal(snapshot.sessions.root.latestTurn.eventId, "new-user-turn");
+	assert.equal(snapshot.sessions.root.latestTurn.state, "running");
+
+	registry.project({ type: "pibo_output", event: { type: "session_error", piboSessionId: "root", eventId: "new-user-turn", error: "Current turn failed" } });
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "root", eventId: "new-user-turn", source: "user", text: "late duplicate" } });
+	snapshot = registry.snapshotTree("root");
+	assert.equal(snapshot.nodes["turn:root:new-user-turn"].status, "error", "a matching error terminalizes its turn and a duplicate start does not revive it");
+	assert.equal(snapshot.nodes["message:root:new-user-turn"].status, "error", "a matching error terminalizes its message");
+	assert.equal(snapshot.sessions.root.latestTurn.state, "failed");
+});
+
 test("child session creation is published on the parent signal root", () => {
 	const registry = createPiboSignalRegistry();
 	registry.project({ type: "session_created", session: session("root") });
