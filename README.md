@@ -24,6 +24,19 @@ pibo --help
 
 The current package declares Node.js 24+. Some Linux distributions still ship Node 22 through `apt`, so install a recent Node release first when needed. A user-local Node/npm setup through `nvm`, `fnm`, or a user-writable npm prefix works well.
 
+Package installation has no host-level side effects. For a self-hosted server, choose a supported setup profile after installing the CLI:
+
+```bash
+# Recommended complete workstation
+pibo setup plan --profile batteries-included --domain pibo.example.com
+sudo pibo setup install --profile batteries-included --domain pibo.example.com --apply --yes
+
+# Minimal gateway and Chat Web only
+pibo setup plan --profile vanilla --domain pibo.example.com
+```
+
+See [Installation profiles](./docs/project/installation-profiles.md) for components, resource and security costs, staging, upgrades, and rollback.
+
 For a user-local global npm prefix:
 
 ```bash
@@ -67,17 +80,18 @@ A fresh server install usually needs only three decisions:
 2. Install Node.js 24+ for that user or system-wide.
 3. Install Pibo through npm.
 
-Use the setup planner to keep the first run simple:
+Use an installation profile for the normal first run. Batteries Included is recommended; Vanilla is the minimal controlled base:
 
 ```bash
 pibo setup doctor --domain pibo.example.com --expected-ip <server-ip>
-pibo setup user-host --domain pibo.example.com --print-files
-pibo setup user-host --domain pibo.example.com --write-to /tmp/pibo-setup
+pibo setup plan --profile batteries-included --domain pibo.example.com
+pibo setup install --profile batteries-included --domain pibo.example.com --write-to /tmp/pibo-setup
+sudo pibo setup install --profile batteries-included --domain pibo.example.com --apply --yes
 ```
 
-This is the normal user path: one gateway, one `PIBO_HOME`, no required Docker, no dev gateway, and no GitHub App setup. After reviewing staged files, use `--apply --yes` to write the generated systemd/Caddy files.
+The package install remains side-effect free. The explicit setup command records ownership, checks pinned downloads, configures the selected components, and exposes status, upgrade, and uninstall plans. See [Installation profiles](./docs/project/installation-profiles.md).
 
-Developer hosts are opt-in and add production/dev separation plus Docker compute workers:
+Core developers can still use the topology-specific developer-host planner to add production/dev separation plus Docker compute workers:
 
 ```bash
 pibo setup developer-host \
@@ -159,7 +173,7 @@ pibo mcp          # discover and call configured MCP servers
 pibo tools        # install and inspect curated external CLI tools
 pibo pi-packages  # register Pi Coding Agent packages
 pibo debug        # inspect local Pibo data stores
-pibo setup        # plan user-host installs and developer-host upgrades
+pibo setup        # plan and manage supported host installation profiles
 pibo profile      # inspect runtime profiles
 pibo tui          # start the direct Pi TUI
 pibo tui:routed   # start the routed Pibo TUI
