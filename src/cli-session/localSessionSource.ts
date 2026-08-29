@@ -15,14 +15,15 @@ import type {
   PiboOutputEvent,
   PiboSessionStatus,
 } from "../core/events.js";
-import { OutputRenderSequencer, outputRenderHighWaterStore } from "../core/output-render-sequence.js";
+import { OutputRenderSequencer, outputRenderHighWaterStore, validRenderSequence } from "../core/output-render-sequence.js";
+import { OutputPersistenceRetryQueue } from "../core/output-persistence-retry.js";
 import { getDefaultPiboWorkspace } from "../core/workspace.js";
 import { buildTraceView } from "../apps/chat/trace.js";
 import {
   storedPiboEventFromV2Row,
   type EventLogRow,
 } from "../apps/chat/data/chat-data-mappers.js";
-import { ChatDataIngestService } from "../data/ingest-service.js";
+import { ChatDataIngestService, outputPersistenceDeliveryKey } from "../data/ingest-service.js";
 import { OutputCompactor } from "../apps/chat/output-compactor.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { ChatHistoryQueryService } from "../apps/chat/data/history-query-service.js";
@@ -94,6 +95,7 @@ export class LocalCliSessionSource implements CliSessionSource {
   private readonly now: () => string;
   private readonly outputRenderSequencer: OutputRenderSequencer;
   private readonly outputCompactor = new OutputCompactor();
+  private readonly outputPersistenceRetries = new OutputPersistenceRetryQueue();
   private readonly statusMessage?: string;
   private readonly dataStore?: PiboDataStore;
   private readonly ownsDataStore: boolean;
@@ -509,6 +511,8 @@ export class LocalCliSessionSource implements CliSessionSource {
     }
     try {
       this.closed = true;
+      await this.outputPersistenceRetries.drain();
+      this.outputPersistenceRetries.dispose();
       for (const handle of [...this.openHandles]) handle.close();
       this.listeners.clear();
       this.outputRenderSequencer.disposeAll();
@@ -736,20 +740,30 @@ export class LocalCliSessionSource implements CliSessionSource {
     if (!session) return;
     const positionedEvent = this.outputRenderSequencer.position(event);
     const compacted = this.outputCompactor.prepare(positionedEvent);
-    let persisted = true;
-    for (const persistedEvent of compacted.persistedEvents) {
-      if (!this.ingestOutputEvent(session, persistedEvent)) {
-        persisted = false;
-        break;
-      }
+    if (compacted.persistedEvents.length === 0) {
+      compacted.ack();
+    } else {
+      const key = JSON.stringify(compacted.persistedEvents.map(outputPersistenceDeliveryKey));
+      this.outputPersistenceRetries.enqueue({
+        key,
+        run: () => {
+          for (const persistedEvent of compacted.persistedEvents) {
+            if (!this.ingestOutputEvent(session, persistedEvent)) {
+              throw new Error(`Failed to persist ${outputPersistenceDeliveryKey(persistedEvent)}`);
+            }
+          }
+        },
+        onSuccess: () => compacted.ack(),
+        onDeadLetter: () => compacted.rollback(),
+      });
     }
-    if (persisted) compacted.ack();
-    else compacted.rollback();
     for (const liveEvent of compacted.liveEvents) this.recordOutputEvent(liveEvent);
   }
 
   private recordOutputEvent(event: PiboOutputEvent): void {
-    const positionedEvent = this.outputRenderSequencer.position(event);
+    const positionedEvent = validRenderSequence(event.renderSequence)
+      ? event
+      : this.outputRenderSequencer.position(event);
     const sessionId = positionedEvent.piboSessionId;
     const session = this.resolveSession(sessionId);
     const current = this.traceViews.get(sessionId) ?? emptyTraceView(session);
@@ -880,7 +894,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       });
       return true;
     } catch {
-      // Persistence is best-effort; live local rendering still proceeds through in-memory trace updates.
+      // The caller retains the prepared compaction and retries this exact event identity.
       return false;
     }
   }

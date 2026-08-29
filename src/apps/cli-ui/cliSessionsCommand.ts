@@ -59,6 +59,18 @@ export function createDefaultLocalCliSessionSource(): LocalCliSessionSource {
 
 function createDebugMockedLocalCliSessionSource(options: { assistantReply: string }): LocalCliSessionSource {
 	const context = createLocalCliSessionSourceContext();
+	if (process.env.PIBO_DEBUG_PTY_STREAM_REVIEW === "1") {
+		const appendEvent = context.dataStore.eventLog.appendEvent.bind(context.dataStore.eventLog);
+		let failFirstAssistantFinal = true;
+		context.dataStore.eventLog.appendEvent = (input) => {
+			if (failFirstAssistantFinal && input.type === "assistant_message") {
+				failFirstAssistantFinal = false;
+				process.stderr.write("[debug-pty] injected once-only assistant persistence failure; automatic retry scheduled\n");
+				throw new Error("Injected once-only PTY persistence failure");
+			}
+			return appendEvent(input);
+		};
+	}
 	const debugRooms = debugRoomSummariesFromEnv();
 	const router = new DebugMockCliSessionRouter(options.assistantReply);
 	return createLocalCliSessionSourceFromContext({
@@ -116,7 +128,6 @@ function createLocalCliSessionSourceFromContext(input: { dataStore: PiboDataStor
 class DebugMockCliSessionRouter implements LocalCliSessionRouter {
 	private readonly listeners = new Set<PiboEventListener>();
 	private readonly statuses = new Map<string, PiboSessionStatus>();
-	private messageAttempts = 0;
 
 	constructor(private readonly assistantReply: string) {}
 
@@ -132,23 +143,11 @@ class DebugMockCliSessionRouter implements LocalCliSessionRouter {
 			return result;
 		}
 		const eventId = event.id ?? randomUUID();
-		this.messageAttempts += 1;
 		this.statuses.set(event.piboSessionId, this.status(event.piboSessionId, { processing: true, queuedMessages: 1 }));
 		this.publish({ type: "message_queued", piboSessionId: event.piboSessionId, eventId, queuedMessages: 1, text: event.text, source: event.source });
 		this.statuses.set(event.piboSessionId, this.status(event.piboSessionId, { processing: true, queuedMessages: 0 }));
 		this.publish({ type: "message_started", piboSessionId: event.piboSessionId, eventId, text: event.text, source: event.source });
 		if (process.env.PIBO_DEBUG_PTY_STREAM_REVIEW === "1") {
-			if (this.messageAttempts === 1) {
-				const failed: PiboOutputEvent = {
-					type: "session_error",
-					piboSessionId: event.piboSessionId,
-					eventId,
-					error: "Injected retryable PTY failure",
-				};
-				this.statuses.set(event.piboSessionId, this.status(event.piboSessionId, { processing: false, queuedMessages: 0 }));
-				this.publish(failed);
-				return failed;
-			}
 			const tool = { piboSessionId: event.piboSessionId, eventId, toolCallId: "pty-reused", toolName: "read" };
 			this.publish({ type: "thinking_started", piboSessionId: event.piboSessionId, eventId, thinkingIndex: 0 });
 			this.publish({ type: "thinking_delta", piboSessionId: event.piboSessionId, eventId, thinkingIndex: 0, text: "PTY retained thought" });

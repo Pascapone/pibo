@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 6;
+export const PIBO_DATA_SCHEMA_VERSION = 7;
 
 export function applyPiboDataSchema(db: DatabaseSync): void {
 	const previousVersion = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
@@ -46,6 +46,23 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
+			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS session_output_render_high_water (
+			pibo_session_id TEXT PRIMARY KEY,
+			high_water INTEGER NOT NULL CHECK(high_water >= 0),
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS session_tool_invocation_counters (
+			pibo_session_id TEXT NOT NULL,
+			event_id TEXT NOT NULL,
+			tool_call_id TEXT NOT NULL,
+			next_ordinal INTEGER NOT NULL CHECK(next_ordinal >= 0),
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (pibo_session_id, event_id, tool_call_id),
 			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
 
@@ -539,6 +556,53 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			WHERE existing.pibo_session_id = sessions.id
 		);
 	`);
+	db.exec(`
+		INSERT INTO session_output_render_high_water (pibo_session_id, high_water, updated_at)
+		SELECT
+			id,
+			CAST(json_extract(metadata_json, '$.outputRenderSequenceHighWater') AS INTEGER),
+			updated_at
+		FROM sessions
+		WHERE json_type(metadata_json, '$.outputRenderSequenceHighWater') IN ('integer', 'real')
+			AND CAST(json_extract(metadata_json, '$.outputRenderSequenceHighWater') AS INTEGER) >= 0
+		ON CONFLICT(pibo_session_id) DO UPDATE SET
+			high_water = MAX(session_output_render_high_water.high_water, excluded.high_water),
+			updated_at = CASE
+				WHEN excluded.high_water > session_output_render_high_water.high_water THEN excluded.updated_at
+				ELSE session_output_render_high_water.updated_at
+			END;
+	`);
+	if (previousVersion < 7) {
+		db.exec(`
+			DROP TABLE IF EXISTS temp.pibo_v7_sequence_repair_sessions;
+			CREATE TEMP TABLE pibo_v7_sequence_repair_sessions (
+				session_id TEXT PRIMARY KEY
+			);
+			INSERT INTO pibo_v7_sequence_repair_sessions (session_id)
+			SELECT DISTINCT session_id
+			FROM event_log
+			WHERE session_id IS NOT NULL AND session_sequence IS NULL;
+
+			UPDATE event_log
+			SET session_sequence = -stream_id
+			WHERE session_id IN (SELECT session_id FROM pibo_v7_sequence_repair_sessions);
+
+			WITH ranked AS (
+				SELECT
+					stream_id,
+					ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY stream_id ASC) AS repaired_sequence
+				FROM event_log
+				WHERE session_id IN (SELECT session_id FROM pibo_v7_sequence_repair_sessions)
+			)
+			UPDATE event_log
+			SET session_sequence = (
+				SELECT repaired_sequence FROM ranked WHERE ranked.stream_id = event_log.stream_id
+			)
+			WHERE stream_id IN (SELECT stream_id FROM ranked);
+
+			DROP TABLE pibo_v7_sequence_repair_sessions;
+		`);
+	}
 	if (previousVersion < PIBO_DATA_SCHEMA_VERSION && hadSessionsBeforeMigration) {
 		const rows = db.prepare("SELECT pibo_session_id, metadata_json FROM session_runtime_bindings").all() as Array<{
 			pibo_session_id: string;

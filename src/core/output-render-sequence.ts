@@ -8,6 +8,8 @@ const MAX_RECENT_TOOL_INVOCATIONS_PER_SESSION = 1_024;
 export type OutputRenderHighWaterStore = {
 	claimOutputRenderSequence(piboSessionId: string, minimum: number): number;
 	observeOutputRenderSequence(piboSessionId: string, sequence: number): void;
+	claimOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string): number;
+	observeOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string, ordinal: number): void;
 };
 
 export function outputRenderHighWaterStore(value: unknown): OutputRenderHighWaterStore | undefined {
@@ -23,10 +25,14 @@ type ToolInvocationState = {
 	ordinal: number;
 	seen: Set<PiboOutputEvent["type"]>;
 	closed: boolean;
+	persistedIdentity: boolean;
 };
 
 type SessionSequenceState = {
 	positions: Map<string, number>;
+	segmentEventIds: Map<string, string | undefined>;
+	activeSegments: Set<string>;
+	completedSegments: Set<string>;
 	activeEventId?: string;
 	toolInvocations: Map<string, ToolInvocationState[]>;
 	lastSequence: number;
@@ -67,7 +73,7 @@ export class OutputRenderSequencer {
 		const renderSequence = existing ?? this.nextSequence(event.piboSessionId, state);
 		state.lastSequence = Math.max(state.lastSequence, renderSequence);
 		if (supplied !== undefined) this.highWaterStore?.observeOutputRenderSequence(event.piboSessionId, supplied);
-		if (key) setBounded(state.positions, key, renderSequence, MAX_RECENT_SEGMENTS_PER_SESSION);
+		if (key && !state.positions.has(key)) state.positions.set(key, renderSequence);
 		const positioned = eventWithToolIdentity.renderSequence === renderSequence
 			? eventWithToolIdentity
 			: { ...eventWithToolIdentity, renderSequence } as TEvent;
@@ -75,6 +81,9 @@ export class OutputRenderSequencer {
 			const eventId = "eventId" in event ? event.eventId : undefined;
 			if (eventId && state.activeEventId === eventId) state.activeEventId = undefined;
 		}
+		const segmentEventId = "eventId" in positioned && positioned.eventId ? positioned.eventId : state.activeEventId;
+		this.updateSegmentLifecycle(state, positioned, key, segmentEventId);
+		this.trimSessions();
 		return positioned;
 	}
 
@@ -88,17 +97,20 @@ export class OutputRenderSequencer {
 
 	debugState(): {
 		sessionCount: number;
+		completedSessionCount: number;
 		sessions: string[];
 		positionCount: number;
 		toolInvocationCount: number;
 	} {
 		let positionCount = 0;
 		let toolInvocationCount = 0;
+		let completedSessionCount = 0;
 		for (const state of this.sessions.values()) {
 			positionCount += state.positions.size;
 			for (const invocations of state.toolInvocations.values()) toolInvocationCount += invocations.length;
+			if (sessionCanBeEvicted(state)) completedSessionCount += 1;
 		}
-		return { sessionCount: this.sessions.size, sessions: [...this.sessions.keys()], positionCount, toolInvocationCount };
+		return { sessionCount: this.sessions.size, completedSessionCount, sessions: [...this.sessions.keys()], positionCount, toolInvocationCount };
 	}
 
 	private sessionState(piboSessionId: string): SessionSequenceState {
@@ -110,15 +122,13 @@ export class OutputRenderSequencer {
 		}
 		const state: SessionSequenceState = {
 			positions: new Map(),
+			segmentEventIds: new Map(),
+			activeSegments: new Set(),
+			completedSegments: new Set(),
 			toolInvocations: new Map(),
 			lastSequence: 0,
 		};
 		this.sessions.set(piboSessionId, state);
-		while (this.sessions.size > MAX_TRACKED_SESSIONS) {
-			const oldest = this.sessions.keys().next().value as string | undefined;
-			if (oldest === undefined) break;
-			this.sessions.delete(oldest);
-		}
 		return state;
 	}
 
@@ -129,23 +139,25 @@ export class OutputRenderSequencer {
 		let invocations = state.toolInvocations.get(counterKey);
 		if (!invocations) {
 			invocations = [];
-			setBounded(state.toolInvocations, counterKey, invocations, MAX_RECENT_TOOL_INVOCATIONS_PER_SESSION);
+			state.toolInvocations.set(counterKey, invocations);
 		}
 		let invocation: ToolInvocationState | undefined;
 		if (validToolInvocationOrdinal(event.toolInvocationOrdinal)) {
+			if (eventId) this.highWaterStore?.observeOutputToolInvocationOrdinal?.(event.piboSessionId, eventId, event.toolCallId, event.toolInvocationOrdinal);
 			invocation = invocations.find((candidate) => candidate.ordinal === event.toolInvocationOrdinal);
 			if (!invocation) {
-				invocation = { ordinal: event.toolInvocationOrdinal, seen: new Set(), closed: false };
+				invocation = { ordinal: event.toolInvocationOrdinal, seen: new Set(), closed: false, persistedIdentity: true };
 				invocations.push(invocation);
 			}
+			invocation.persistedIdentity = true;
 		} else {
 			const latest = invocations.at(-1);
 			if (!latest) {
-				invocation = createInvocation(invocations);
-			} else if (event.type === "tool_call" && latest.seen.has("tool_call")) {
-				invocation = createInvocation(invocations);
+				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId);
+			} else if (event.type === "tool_call" && (latest.seen.has("tool_call") || (latest.closed && latest.persistedIdentity))) {
+				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId);
 			} else if (event.type === "tool_execution_started" && latest.closed && latest.seen.has("tool_execution_started")) {
-				invocation = createInvocation(invocations);
+				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId);
 			} else {
 				invocation = latest;
 			}
@@ -163,16 +175,78 @@ export class OutputRenderSequencer {
 		let total = 0;
 		for (const invocations of state.toolInvocations.values()) total += invocations.length;
 		while (total > MAX_RECENT_TOOL_INVOCATIONS_PER_SESSION) {
-			const oldestKey = state.toolInvocations.keys().next().value as string | undefined;
-			if (oldestKey === undefined) break;
-			const oldest = state.toolInvocations.get(oldestKey);
-			if (!oldest?.length) {
-				state.toolInvocations.delete(oldestKey);
-				continue;
+			let removed = false;
+			for (const [key, invocations] of state.toolInvocations) {
+				const closedIndex = invocations.findIndex((invocation) => invocation.closed);
+				if (closedIndex === -1) continue;
+				invocations.splice(closedIndex, 1);
+				total -= 1;
+				if (!invocations.length) state.toolInvocations.delete(key);
+				removed = true;
+				break;
 			}
-			oldest.shift();
-			total -= 1;
-			if (!oldest.length) state.toolInvocations.delete(oldestKey);
+			if (!removed) break;
+		}
+	}
+
+	private createToolInvocation(
+		invocations: ToolInvocationState[],
+		piboSessionId: string,
+		eventId: string | undefined,
+		toolCallId: string,
+	): ToolInvocationState {
+		const localNext = invocations.reduce((maximum, invocation) => Math.max(maximum, invocation.ordinal), -1) + 1;
+		const ordinal = eventId
+			? this.highWaterStore?.claimOutputToolInvocationOrdinal?.(piboSessionId, eventId, toolCallId) ?? localNext
+			: localNext;
+		return createInvocation(invocations, ordinal);
+	}
+
+	private updateSegmentLifecycle(
+		state: SessionSequenceState,
+		event: PiboOutputEvent,
+		key: string | undefined,
+		segmentEventId: string | undefined,
+	): void {
+		if (key && !state.segmentEventIds.has(key)) {
+			state.segmentEventIds.set(key, segmentEventId);
+		}
+		if (event.type === "message_finished" || event.type === "session_error") {
+			const boundaryEventId = event.eventId;
+			for (const segmentKey of state.positions.keys()) {
+				if (event.type === "session_error" && !boundaryEventId) this.completeSegment(state, segmentKey);
+				else if (boundaryEventId && state.segmentEventIds.get(segmentKey) === boundaryEventId) this.completeSegment(state, segmentKey);
+			}
+			return;
+		}
+		if (!key) return;
+		if (segmentCompletesWith(event)) this.completeSegment(state, key);
+		else if (segmentRemainsActive(event)) {
+			state.completedSegments.delete(key);
+			state.activeSegments.add(key);
+		}
+	}
+
+	private completeSegment(state: SessionSequenceState, key: string): void {
+		state.activeSegments.delete(key);
+		state.completedSegments.delete(key);
+		state.completedSegments.add(key);
+		while (state.completedSegments.size > MAX_RECENT_SEGMENTS_PER_SESSION) {
+			const oldest = state.completedSegments.values().next().value as string | undefined;
+			if (oldest === undefined) break;
+			state.completedSegments.delete(oldest);
+			if (!state.activeSegments.has(oldest)) {
+				state.positions.delete(oldest);
+				state.segmentEventIds.delete(oldest);
+			}
+		}
+	}
+
+	private trimSessions(): void {
+		let removable = [...this.sessions.entries()].filter(([, state]) => sessionCanBeEvicted(state));
+		while (removable.length > MAX_TRACKED_SESSIONS) {
+			const [sessionId] = removable.shift()!;
+			this.sessions.delete(sessionId);
 		}
 	}
 
@@ -189,21 +263,34 @@ export class OutputRenderSequencer {
 	}
 }
 
-function createInvocation(invocations: ToolInvocationState[]): ToolInvocationState {
-	const ordinal = (invocations.reduce((maximum, invocation) => Math.max(maximum, invocation.ordinal), -1)) + 1;
-	const invocation = { ordinal, seen: new Set<PiboOutputEvent["type"]>(), closed: false };
+function createInvocation(invocations: ToolInvocationState[], ordinal: number): ToolInvocationState {
+	const invocation = { ordinal, seen: new Set<PiboOutputEvent["type"]>(), closed: false, persistedIdentity: false };
 	invocations.push(invocation);
 	return invocation;
 }
 
-function setBounded<TKey, TValue>(map: Map<TKey, TValue>, key: TKey, value: TValue, maximum: number): void {
-	map.delete(key);
-	map.set(key, value);
-	while (map.size > maximum) {
-		const oldest = map.keys().next().value as TKey | undefined;
-		if (oldest === undefined) break;
-		map.delete(oldest);
-	}
+function segmentRemainsActive(event: PiboOutputEvent): boolean {
+	return event.type === "message_started"
+		|| event.type === "assistant_delta"
+		|| event.type === "thinking_started"
+		|| event.type === "thinking_delta"
+		|| event.type === "tool_call"
+		|| event.type === "tool_execution_started"
+		|| event.type === "tool_execution_updated";
+}
+
+function segmentCompletesWith(event: PiboOutputEvent): boolean {
+	return event.type === "assistant_message"
+		|| event.type === "thinking_finished"
+		|| event.type === "tool_execution_finished"
+		|| event.type === "execution_result"
+		|| event.type === "compaction_end"
+		|| event.type === "approval_resolved"
+		|| event.type === "user_input_resolved";
+}
+
+function sessionCanBeEvicted(state: SessionSequenceState): boolean {
+	return state.activeEventId === undefined && state.activeSegments.size === 0;
 }
 
 export function validToolInvocationOrdinal(value: unknown): value is number {

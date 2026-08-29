@@ -176,15 +176,21 @@ export class PiboDataSessionStore implements PiboSessionStore {
 
 	claimOutputRenderSequence(piboSessionId: string, minimum: number): number {
 		return this.dataStore.transaction(() => {
-			const row = this.db.prepare("SELECT metadata_json FROM sessions WHERE id = ? AND deleted_at IS NULL").get(piboSessionId) as { metadata_json: string } | undefined;
-			if (!row) return minimum;
-			const metadata = parseJsonObject(row.metadata_json);
-			const metadataHighWater = outputRenderSequenceHighWater(metadata);
-			const durableHighWater = metadataHighWater > 0 ? 0 : this.durableOutputRenderSequenceHighWater(piboSessionId);
-			const current = Math.max(metadataHighWater, durableHighWater);
+			const session = this.db.prepare("SELECT 1 AS present FROM sessions WHERE id = ? AND deleted_at IS NULL").get(piboSessionId) as { present: number } | undefined;
+			if (!session) return minimum;
+			const row = this.db.prepare("SELECT high_water FROM session_output_render_high_water WHERE pibo_session_id = ?").get(piboSessionId) as { high_water: number } | undefined;
+			const current = Math.max(row?.high_water ?? 0, this.durableOutputRenderSequenceHighWater(piboSessionId));
 			const next = Math.max(minimum, current + 1);
-			this.db.prepare("UPDATE sessions SET metadata_json = ? WHERE id = ? AND deleted_at IS NULL")
-				.run(JSON.stringify({ ...metadata, outputRenderSequenceHighWater: next }), piboSessionId);
+			this.db.prepare(`
+				INSERT INTO session_output_render_high_water (pibo_session_id, high_water, updated_at)
+				VALUES (?, ?, ?)
+				ON CONFLICT(pibo_session_id) DO UPDATE SET
+					high_water = MAX(session_output_render_high_water.high_water, excluded.high_water),
+					updated_at = CASE
+						WHEN excluded.high_water > session_output_render_high_water.high_water THEN excluded.updated_at
+						ELSE session_output_render_high_water.updated_at
+					END
+			`).run(piboSessionId, next, new Date().toISOString());
 			return next;
 		});
 	}
@@ -204,12 +210,55 @@ export class PiboDataSessionStore implements PiboSessionStore {
 
 	observeOutputRenderSequence(piboSessionId: string, sequence: number): void {
 		this.dataStore.transaction(() => {
-			const row = this.db.prepare("SELECT metadata_json FROM sessions WHERE id = ? AND deleted_at IS NULL").get(piboSessionId) as { metadata_json: string } | undefined;
-			if (!row) return;
-			const metadata = parseJsonObject(row.metadata_json);
-			if (sequence <= outputRenderSequenceHighWater(metadata)) return;
-			this.db.prepare("UPDATE sessions SET metadata_json = ? WHERE id = ? AND deleted_at IS NULL")
-				.run(JSON.stringify({ ...metadata, outputRenderSequenceHighWater: sequence }), piboSessionId);
+			this.db.prepare(`
+				INSERT INTO session_output_render_high_water (pibo_session_id, high_water, updated_at)
+				SELECT id, ?, ? FROM sessions WHERE id = ? AND deleted_at IS NULL
+				ON CONFLICT(pibo_session_id) DO UPDATE SET
+					high_water = MAX(session_output_render_high_water.high_water, excluded.high_water),
+					updated_at = CASE
+						WHEN excluded.high_water > session_output_render_high_water.high_water THEN excluded.updated_at
+						ELSE session_output_render_high_water.updated_at
+					END
+			`).run(sequence, new Date().toISOString(), piboSessionId);
+		});
+	}
+
+	claimOutputToolInvocationOrdinal(piboSessionId: string, eventId: string, toolCallId: string): number {
+		return this.dataStore.transaction(() => {
+			const durable = this.db.prepare(`
+				SELECT MAX(COALESCE(CAST(json_extract(attributes_json, '$.toolInvocationOrdinal') AS INTEGER), 0)) AS maximum
+				FROM event_log
+				WHERE session_id = ? AND event_id = ? AND tool_call_id = ?
+			`).get(piboSessionId, eventId, toolCallId) as { maximum: number | null };
+			const minimumNextOrdinal = typeof durable.maximum === "number" && Number.isSafeInteger(durable.maximum)
+				? durable.maximum + 1
+				: 0;
+			const row = this.db.prepare(`
+				INSERT INTO session_tool_invocation_counters (
+					pibo_session_id, event_id, tool_call_id, next_ordinal, updated_at
+				) VALUES (?, ?, ?, ? + 1, ?)
+				ON CONFLICT(pibo_session_id, event_id, tool_call_id) DO UPDATE SET
+					next_ordinal = MAX(session_tool_invocation_counters.next_ordinal, ? ) + 1,
+					updated_at = excluded.updated_at
+				RETURNING next_ordinal - 1 AS ordinal
+			`).get(piboSessionId, eventId, toolCallId, minimumNextOrdinal, new Date().toISOString(), minimumNextOrdinal) as { ordinal: number };
+			return row.ordinal;
+		});
+	}
+
+	observeOutputToolInvocationOrdinal(piboSessionId: string, eventId: string, toolCallId: string, ordinal: number): void {
+		this.dataStore.transaction(() => {
+			this.db.prepare(`
+				INSERT INTO session_tool_invocation_counters (
+					pibo_session_id, event_id, tool_call_id, next_ordinal, updated_at
+				) VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT(pibo_session_id, event_id, tool_call_id) DO UPDATE SET
+					next_ordinal = MAX(session_tool_invocation_counters.next_ordinal, excluded.next_ordinal),
+					updated_at = CASE
+						WHEN excluded.next_ordinal > session_tool_invocation_counters.next_ordinal THEN excluded.updated_at
+						ELSE session_tool_invocation_counters.updated_at
+					END
+			`).run(piboSessionId, eventId, toolCallId, ordinal + 1, new Date().toISOString());
 		});
 	}
 
@@ -594,11 +643,6 @@ function parseJsonObject(json: string | null | undefined): PiboJsonObject {
 	} catch {
 		return {};
 	}
-}
-
-function outputRenderSequenceHighWater(metadata: PiboJsonObject): number {
-	const value = metadata.outputRenderSequenceHighWater;
-	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 function rootSessionId(session: PiboSession): string {

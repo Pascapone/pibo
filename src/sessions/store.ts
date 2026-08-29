@@ -81,6 +81,8 @@ export type PiboSessionStore = {
 	close?(): void;
 	claimOutputRenderSequence?(piboSessionId: string, minimum: number): number;
 	observeOutputRenderSequence?(piboSessionId: string, sequence: number): void;
+	claimOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string): number;
+	observeOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string, ordinal: number): void;
 };
 
 export function createPiboSessionId(): string {
@@ -134,6 +136,8 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 	private readonly byId = new Map<string, PiboSession>();
 	private readonly byPiSessionId = new Map<string, PiboSession>();
 	private readonly byNativeSession = new Map<string, PiboSession>();
+	private readonly outputRenderHighWater = new Map<string, number>();
+	private readonly outputToolInvocationNextOrdinal = new Map<string, number>();
 
 	get(id: string): PiboSession | undefined {
 		return this.byId.get(id);
@@ -195,17 +199,32 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 	claimOutputRenderSequence(piboSessionId: string, minimum: number): number {
 		const session = this.byId.get(piboSessionId);
 		if (!session) return minimum;
-		const current = outputRenderSequenceHighWater(session.metadata);
+		const current = Math.max(
+			this.outputRenderHighWater.get(piboSessionId) ?? 0,
+			outputRenderSequenceHighWater(session.metadata),
+		);
 		const next = Math.max(minimum, current + 1);
-		session.metadata = { ...(session.metadata ?? {}), outputRenderSequenceHighWater: next };
+		this.outputRenderHighWater.set(piboSessionId, next);
 		return next;
 	}
 
 	observeOutputRenderSequence(piboSessionId: string, sequence: number): void {
 		const session = this.byId.get(piboSessionId);
 		if (!session) return;
-		const current = outputRenderSequenceHighWater(session.metadata);
-		if (sequence > current) session.metadata = { ...(session.metadata ?? {}), outputRenderSequenceHighWater: sequence };
+		const current = Math.max(this.outputRenderHighWater.get(piboSessionId) ?? 0, outputRenderSequenceHighWater(session.metadata));
+		if (sequence > current) this.outputRenderHighWater.set(piboSessionId, sequence);
+	}
+
+	claimOutputToolInvocationOrdinal(piboSessionId: string, eventId: string, toolCallId: string): number {
+		const key = outputToolInvocationCounterKey(piboSessionId, eventId, toolCallId);
+		const ordinal = this.outputToolInvocationNextOrdinal.get(key) ?? 0;
+		this.outputToolInvocationNextOrdinal.set(key, ordinal + 1);
+		return ordinal;
+	}
+
+	observeOutputToolInvocationOrdinal(piboSessionId: string, eventId: string, toolCallId: string, ordinal: number): void {
+		const key = outputToolInvocationCounterKey(piboSessionId, eventId, toolCallId);
+		this.outputToolInvocationNextOrdinal.set(key, Math.max(this.outputToolInvocationNextOrdinal.get(key) ?? 0, ordinal + 1));
 	}
 
 	getRuntimeBinding(id: string): RuntimeSessionBinding | undefined {
@@ -241,6 +260,11 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		if (existing.piSessionId) this.byPiSessionId.delete(existing.piSessionId);
 		const nativeKey = runtimeBindingNativeKey(existing.runtimeBinding);
 		if (nativeKey) this.byNativeSession.delete(nativeKey);
+		this.outputRenderHighWater.delete(id);
+		const counterPrefix = `${JSON.stringify([id]).slice(0, -1)},`;
+		for (const key of this.outputToolInvocationNextOrdinal.keys()) {
+			if (key.startsWith(counterPrefix)) this.outputToolInvocationNextOrdinal.delete(key);
+		}
 		return true;
 	}
 
@@ -283,6 +307,10 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 function outputRenderSequenceHighWater(metadata: PiboJsonObject | undefined): number {
 	const value = metadata?.outputRenderSequenceHighWater;
 	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function outputToolInvocationCounterKey(piboSessionId: string, eventId: string, toolCallId: string): string {
+	return JSON.stringify([piboSessionId, eventId, toolCallId]);
 }
 
 export function matchesFindInput(session: PiboSession, input: FindPiboSessionsInput): boolean {

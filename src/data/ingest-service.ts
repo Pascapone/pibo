@@ -351,10 +351,15 @@ function compactObject(value: Record<string, unknown>): PiboJsonObject {
 	return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as PiboJsonObject;
 }
 
-function outputIdempotencyKey(event: PiboOutputEvent): string | undefined {
+export function outputIdempotencyKey(event: PiboOutputEvent): string | undefined {
 	const base = eventIdForOutputEvent(event) ?? ("toolCallId" in event ? event.toolCallId : undefined);
 	if (!base) return undefined;
 	return `pibo.output:${event.piboSessionId}:${event.type}:${base}:${outputPartKey(event)}`;
+}
+
+export function outputPersistenceDeliveryKey(event: PiboOutputEvent): string {
+	return outputIdempotencyKey(event)
+		?? `pibo.output:${event.piboSessionId}:${event.type}:render:${event.renderSequence ?? "unpositioned"}`;
 }
 
 function outputPartKey(event: PiboOutputEvent): string {

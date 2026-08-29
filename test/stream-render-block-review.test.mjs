@@ -167,7 +167,7 @@ test("tool invocation state machine is permutation-safe and accepts persisted la
 	}
 });
 
-test("sequencer and compactor retain bounded state with explicit disposal and recent late recovery", () => {
+test("sequencer and compactor retain active state, bound completed state, and support explicit disposal and late recovery", () => {
 	const sequencer = new OutputRenderSequencer(() => 3_000);
 	const compactor = new OutputCompactor();
 	for (let index = 0; index < 1_100; index += 1) {
@@ -175,8 +175,9 @@ test("sequencer and compactor retain bounded state with explicit disposal and re
 		sequencer.position({ type: "assistant_delta", piboSessionId: sessionId, eventId: `turn-${index}`, assistantIndex: 0, text: "x" });
 		compactor.prepare({ type: "assistant_delta", piboSessionId: sessionId, eventId: `turn-${index}`, assistantIndex: 0, text: "x" }).ack();
 	}
-	assert.ok(sequencer.debugState().sessionCount <= 1_024, JSON.stringify(sequencer.debugState()));
-	assert.ok(compactor.debugState().sessionCount <= 1_024, JSON.stringify(compactor.debugState()));
+	assert.ok(sequencer.debugState().sessionCount >= 1_100, JSON.stringify(sequencer.debugState()));
+	assert.ok(compactor.debugState().sessionCount >= 1_100, JSON.stringify(compactor.debugState()));
+	assert.equal(compactor.debugState().assistantBufferCount, 1_100);
 	const oneSession = new OutputRenderSequencer(() => 4_000);
 	for (let index = 0; index < 1_100; index += 1) {
 		oneSession.position({ type: "execution_result", piboSessionId: "ps-many-turns", eventId: `turn-${index}`, action: `action-${index}`, result: {} });
@@ -204,6 +205,15 @@ test("compactor prepare/ack retains a complete final across a failed write and r
 	assert.equal(retried.liveEvents[0].text, "complete answer");
 	retried.ack();
 	assert.equal(compactor.debugState().assistantBufferCount, 0);
+});
+
+test("delayed thinking-start acknowledgement cannot overwrite a newer delta buffer", () => {
+	const compactor = new OutputCompactor();
+	const started = compactor.prepare({ type: "thinking_started", piboSessionId: "ps-thinking-retry", eventId: "turn", thinkingIndex: 0 });
+	compactor.prepare({ type: "thinking_delta", piboSessionId: "ps-thinking-retry", eventId: "turn", thinkingIndex: 0, text: "kept reasoning" }).ack();
+	started.ack();
+	const finished = compactor.prepare({ type: "thinking_finished", piboSessionId: "ps-thinking-retry", eventId: "turn", thinkingIndex: 0, text: "" });
+	assert.equal(finished.persistedEvents[0].text, "kept reasoning");
 });
 
 test("raw page merge uses durable event or stream sequence before render sequence", () => {

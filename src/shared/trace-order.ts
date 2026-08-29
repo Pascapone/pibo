@@ -23,6 +23,7 @@ export type TraceOrderKey = {
 	eventSequence?: number;
 	streamId?: number;
 	streamFrameIndex?: number;
+	chronologyMs?: number;
 	phaseRank: number;
 };
 
@@ -53,6 +54,7 @@ export function historyTraceOrder(
 	contentPartIndex: number,
 	type: TraceNodeKind,
 	source: Extract<TraceSource, "transcript" | "product-history">,
+	createdAt?: string,
 ): TraceOrderKey {
 	return {
 		sourceRank: TRACE_SOURCE_RANK[source],
@@ -60,6 +62,7 @@ export function historyTraceOrder(
 		transcriptIndex: historyIndex,
 		eventSequence: source === "product-history" ? historyIndex : undefined,
 		contentPartIndex,
+		chronologyMs: parseChronologyMs(createdAt),
 		phaseRank: TRACE_PHASE_RANK[type],
 	};
 }
@@ -124,6 +127,7 @@ export function compareTraceOrder(left?: TraceOrderKey, right?: TraceOrderKey): 
 	const leftPosition = canonicalTracePosition(left);
 	const rightPosition = canonicalTracePosition(right);
 	return (
+		compareOptionalChronology(left.chronologyMs, right.chronologyMs) ||
 		leftPosition - rightPosition ||
 		left.phaseRank - right.phaseRank ||
 		(left.contentPartIndex ?? 0) - (right.contentPartIndex ?? 0) ||
@@ -137,11 +141,24 @@ export function compareTraceOrder(left?: TraceOrderKey, right?: TraceOrderKey): 
 	);
 }
 
+function parseChronologyMs(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const parsed = Date.parse(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function compareOptionalChronology(left: number | undefined, right: number | undefined): number {
+	if (left === right) return 0;
+	if (left === undefined) return 1;
+	if (right === undefined) return -1;
+	return left - right;
+}
+
 /**
- * renderSequence is the cross-authority position contract. Persisted legacy
- * nodes use their durable event sequence in the same monotone per-session
- * number space; the sequencer initializes above both durable maxima. The
- * comparator never selects a field based on the other operand, keeping the
+ * chronologyMs is the common cross-source domain; renderSequence supplies its
+ * immutable first-visible time for modern stream segments. This canonical
+ * position is the deterministic tie-break domain for equal/missing chronology.
+ * The comparator never selects a field based on the other operand, keeping the
  * relation total and transitive.
  */
 function canonicalTracePosition(order: TraceOrderKey): number {

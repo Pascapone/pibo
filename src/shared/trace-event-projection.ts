@@ -279,7 +279,8 @@ function assistantMessageNodeFromEvent(
 ): PiboTraceNode {
 	const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
 	const assistantId = assistantEventNodeId(event);
-	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:${event.type}:${cryptoSafeId(event)}`;
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event);
+	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:${event.type}:${fallbackIdentity}`;
 	return {
 		id,
 		piboSessionId,
@@ -293,8 +294,8 @@ function assistantMessageNodeFromEvent(
 		summary: event.text,
 		output: event.text,
 		source: "event-log",
-		stableKey: assistantId ? `assistant:${assistantId}` : eventStableKey(event),
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
+		stableKey: assistantId ? `assistant:${assistantId}` : eventStableKey(event, fallbackIdentity),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 		children: [],
 	};
 }
@@ -559,7 +560,8 @@ function traceNodeFromEvent(
 	traceSource?: ChatWebStoredEvent["traceSource"],
 ): PiboTraceNode | undefined {
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
-	const id = `event:${event.type}:${eventId ?? cryptoSafeId(event)}`;
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event);
+	const id = `event:${event.type}:${eventId ?? fallbackIdentity}`;
 	const turnParentId = eventId ? messageTurnNodeId(eventId) : undefined;
 	const base = {
 		id,
@@ -567,8 +569,8 @@ function traceNodeFromEvent(
 		eventId,
 		startedAt: createdAt,
 		source: "event-log" as const,
-		stableKey: eventStableKey(event),
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
+		stableKey: eventStableKey(event, fallbackIdentity),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 		children: [] as PiboTraceNode[],
 	};
 
@@ -584,7 +586,7 @@ function traceNodeFromEvent(
 					startedAt: createdAt,
 					source: "event-log",
 					stableKey: eventId ? `run-notification:${eventId}` : id,
-					orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
+					orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 					notification,
 				});
 			}
@@ -778,7 +780,8 @@ function mergeAssistantDeltaEvent(
 	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const assistantId = assistantEventNodeId(event);
-	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:assistant_delta:${cryptoSafeId(event)}`;
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event);
+	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:assistant_delta:${fallbackIdentity}`;
 	const existing = byId.get(id);
 	if (existing) {
 		const text = `${typeof existing.output === "string" ? existing.output : ""}${event.text}`;
@@ -801,7 +804,7 @@ function mergeAssistantDeltaEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey: assistantId ? `assistant:${assistantId}` : id,
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 		children: [],
 	};
 	nodes.push(node);
@@ -840,7 +843,8 @@ function mergeThinkingDeltaEvent(
 	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const thinkingId = thinkingEventNodeId(event);
-	const id = thinkingId ? thinkingNodeId(thinkingId) : `event:thinking_delta:${cryptoSafeId(event)}`;
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event);
+	const id = thinkingId ? thinkingNodeId(thinkingId) : `event:thinking_delta:${fallbackIdentity}`;
 	const stableKey = thinkingId ? `reasoning:${thinkingId}` : id;
 	const existing = byId.get(id) ?? [...byId.values()].find(
 		(candidate) => candidate.type === "model.reasoning" && candidate.stableKey === stableKey,
@@ -866,7 +870,7 @@ function mergeThinkingDeltaEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey,
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 		children: [],
 	};
 	nodes.push(node);
@@ -1110,11 +1114,25 @@ function eventTraceNodeOrder(
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
 	renderSequence?: number,
+	createdAt?: string,
 ): TraceOrderKey {
 	const order = traceSource === "live"
 		? liveTraceOrder(streamId, streamFrameIndex, eventNodeKind(type))
 		: eventTraceOrder(eventSequence ?? streamId, eventNodeKind(type));
-	return renderSequence === undefined ? order : { ...order, renderSequence };
+	// Modern render sequences encode the first-visible millisecond plus a local
+	// slot. Deriving chronology from that immutable segment position keeps a
+	// live node in the same place when its persisted final receives a later
+	// database created_at timestamp.
+	const renderChronologyMs = renderSequence !== undefined && renderSequence >= 946_684_800_000_000
+		? Math.floor(renderSequence / 1_000)
+		: undefined;
+	const chronologyMs = renderChronologyMs
+		?? (createdAt && Number.isFinite(Date.parse(createdAt)) ? Date.parse(createdAt) : undefined);
+	return {
+		...order,
+		...(renderSequence === undefined ? {} : { renderSequence }),
+		...(chronologyMs === undefined ? {} : { chronologyMs }),
+	};
 }
 
 function eventNodeKind(type: PiboOutputEvent["type"]): PiboTraceNode["type"] {
@@ -1150,7 +1168,7 @@ function eventNodeKind(type: PiboOutputEvent["type"]): PiboTraceNode["type"] {
 	}
 }
 
-function eventStableKey(event: PiboOutputEvent): string {
+function eventStableKey(event: PiboOutputEvent, fallbackIdentity?: string): string {
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
 	if (
 		event.type === "tool_call" ||
@@ -1175,7 +1193,7 @@ function eventStableKey(event: PiboOutputEvent): string {
 		const assistantId = assistantEventNodeId(event);
 		if (assistantId) return `assistant:${assistantId}`;
 	}
-	return `event:${event.type}:${eventId ?? cryptoSafeId(event)}`;
+	return `event:${event.type}:${eventId ?? fallbackIdentity ?? cryptoSafeId(event)}`;
 }
 
 export function messageTurnNodeId(eventId: string): string {
@@ -1320,5 +1338,12 @@ function nonEmptyString(value: unknown): string | undefined {
 }
 
 function cryptoSafeId(value: unknown): string {
-	return deterministicDigest(value);
+	if (!value || typeof value !== "object") return deterministicDigest(value);
+	const cached = deterministicIdentityCache.get(value);
+	if (cached) return cached;
+	const digest = deterministicDigest(value);
+	deterministicIdentityCache.set(value, digest);
+	return digest;
 }
+
+const deterministicIdentityCache = new WeakMap<object, string>();

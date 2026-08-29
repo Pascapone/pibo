@@ -335,6 +335,39 @@ test("local CLI retries a failed compacted final without losing or duplicating b
 	dataStore.close();
 });
 
+test("local CLI positions out-of-order tool lifecycle once across live rendering and reload", async () => {
+	const dataStore = new PiboDataStore(":memory:");
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	const listeners = new Set();
+	const router = {
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		async emit() { throw new Error("not used"); },
+	};
+	const source = new LocalCliSessionSource({ dataStore, sessionStore, router, now: () => fixedNow });
+	const created = await source.createSession({ title: "Out of order tool", profile: "base" });
+	const opened = await source.openSession(created.id);
+	let latestTrace = opened.traceView;
+	opened.subscribe((update) => { if (update.type === "trace") latestTrace = update.traceView; });
+	const base = { piboSessionId: created.id, eventId: "turn-tool-order", toolCallId: "same-tool", toolName: "read" };
+	const emit = (event) => { for (const listener of listeners) listener({ ...base, ...event }); };
+	emit({ type: "tool_execution_finished", result: "tool result", isError: false });
+	emit({ type: "tool_execution_updated", args: { path: "README.md" }, partialResult: "partial" });
+	emit({ type: "tool_execution_started", args: { path: "README.md" } });
+	emit({ type: "tool_call", args: { path: "README.md" }, argsComplete: true });
+	emit({ type: "tool_execution_finished", result: "tool result", isError: false });
+	assert.equal(buildCompactTerminalRows(latestTrace, { showThinking: true }).filter((row) => row.kind === "tool.call").length, 1);
+	assert.deepEqual(new Set(dataStore.eventLog.listEvents({ sessionId: created.id }).filter((event) => event.toolCallId === "same-tool").map((event) => event.attributes.toolInvocationOrdinal)), new Set([0]));
+
+	opened.close();
+	await source.close();
+	const reloadedSource = new LocalCliSessionSource({ dataStore, sessionStore, now: () => fixedNow });
+	const reloaded = await reloadedSource.openSession(created.id);
+	assert.equal(buildCompactTerminalRows(reloaded.traceView, { showThinking: true }).filter((row) => row.kind === "tool.call").length, 1);
+	reloaded.close();
+	await reloadedSource.close();
+	dataStore.close();
+});
+
 test("local CLI session source routes slash actions and opens clone results without partition parameters", async () => {
 	const store = new InMemoryPiboSessionStore();
 	const emitted = [];

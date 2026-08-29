@@ -6,6 +6,9 @@ import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
+import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { PiboReliabilityStore } from "../dist/reliability/store.js";
+import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
@@ -190,11 +193,13 @@ async function startWebHostChannel(options = {}) {
 	const dataStorePath = join(storageDir, "pibo-chat-v2.sqlite");
 	const dataPayloadRootDir = join(storageDir, "payloads");
 	const projectStorePath = join(storageDir, "projects.sqlite");
+	const reliabilityStorePath = join(storageDir, "pibo-events.sqlite");
 	const webApps = [createChatWebApp({
 		agentStorePath,
 		dataStorePath,
 		dataPayloadRootDir,
 		projectStorePath,
+		reliabilityStorePath,
 		...options.chat,
 	})];
 	const channel = createWebHostChannel({ port: 0, announce: false, ...options.web });
@@ -358,6 +363,7 @@ async function startWebHostChannel(options = {}) {
 		storageDir,
 		dataStorePath,
 		dataPayloadRootDir,
+		reliabilityStorePath,
 		projectStorePath,
 		baseURL: `http://${address.host}:${address.port}`, 
 	};
@@ -746,7 +752,7 @@ test("chat web app serves node-bound exact images concurrently and never falls b
 		const timeline = await timelineResponse.json();
 		const imageNode = timeline.nodes.find((node) => node.toolCallId === "image-call");
 		assert.ok(imageNode?.payloadRefs?.output?.ref);
-		assert.equal(imageNode.payloadRefs.output.nodeId, "tool:image-call");
+		assert.equal(imageNode.payloadRefs.output.nodeId, qualifiedToolNodeId("image-call", "image-turn", 0));
 		assert.equal(JSON.stringify(timeline).includes(exactBytes.toString("base64").slice(0, 80)), false);
 		const params = new URLSearchParams({
 			ref: imageNode.payloadRefs.output.ref,
@@ -767,7 +773,7 @@ test("chat web app serves node-bound exact images concurrently and never falls b
 		mismatchParams.set("piboSessionId", secondSession.session.id);
 		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${mismatchParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
 		const nodeMismatchParams = new URLSearchParams(params);
-		nodeMismatchParams.set("nodeId", "tool:other-call");
+		nodeMismatchParams.set("nodeId", qualifiedToolNodeId("other-call", "image-turn", 0));
 		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${nodeMismatchParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
 		const outOfBoundsParams = new URLSearchParams(params);
 		outOfBoundsParams.set("index", "20");
@@ -955,6 +961,104 @@ test("chat web trace includes live compactor snapshots without raw events", asyn
 		const refreshedTrace = await refreshed.json();
 		assert.equal(findAssistantOutput(refreshedTrace.nodes), "Hello world again");
 	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web automatically retries a once-only final persistence failure without producer replay", async () => {
+	const originalIngest = ChatDataIngestService.prototype.ingestOutputEvent;
+	let injected = false;
+	ChatDataIngestService.prototype.ingestOutputEvent = function(input) {
+		if (!injected && input.event.type === "assistant_message") {
+			injected = true;
+			throw new Error("injected once-only web final failure");
+		}
+		return originalIngest.call(this, input);
+	};
+	const { channel, baseURL, emitOutput, dataStorePath, reliabilityStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const { session } = await sessionResponse.json();
+		emitOutput({ type: "assistant_delta", piboSessionId: session.id, eventId: "web-auto-retry", assistantIndex: 0, text: "persist once" });
+		emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-auto-retry", assistantIndex: 0, text: "" });
+
+		let rows = [];
+		const deadline = Date.now() + 2_000;
+		while (Date.now() < deadline) {
+			const database = new DatabaseSync(dataStorePath, { readOnly: true });
+			try {
+				rows = database.prepare("SELECT * FROM event_log WHERE session_id = ? AND type = 'assistant_message'").all(session.id);
+			} finally {
+				database.close();
+			}
+			if (rows.length === 1) break;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		assert.equal(injected, true);
+		assert.equal(rows.length, 1);
+		assert.equal(rows[0].preview_text, "persist once");
+
+		const reliability = new DatabaseSync(reliabilityStorePath, { readOnly: true });
+		try {
+			const deliveries = reliability.prepare("SELECT event_id, idempotency_key FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ?").all(session.id);
+			assert.equal(deliveries.length, 1);
+			assert.equal(deliveries[0].event_id, deliveries[0].idempotency_key);
+		} finally {
+			reliability.close();
+		}
+	} finally {
+		ChatDataIngestService.prototype.ingestOutputEvent = originalIngest;
+		await channel.stop?.();
+	}
+});
+
+test("chat web retry deduplicates the V2 write when reliability append fails once", async () => {
+	const originalAppendOnce = PiboReliabilityStore.prototype.appendOnce;
+	let injected = false;
+	PiboReliabilityStore.prototype.appendOnce = function(input) {
+		if (!injected && input.topic === "pibo.output") {
+			injected = true;
+			throw new Error("injected once-only reliability append failure");
+		}
+		return originalAppendOnce.call(this, input);
+	};
+	const { channel, baseURL, emitOutput, dataStorePath, reliabilityStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		const { session } = await sessionResponse.json();
+		emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-reliability-retry", assistantIndex: 0, text: "one durable answer" });
+		const deadline = Date.now() + 2_000;
+		let reliabilityCount = 0;
+		while (Date.now() < deadline) {
+			const reliability = new DatabaseSync(reliabilityStorePath, { readOnly: true });
+			try {
+				reliabilityCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ?").get(session.id).count);
+			} finally {
+				reliability.close();
+			}
+			if (reliabilityCount === 1) break;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		const database = new DatabaseSync(dataStorePath, { readOnly: true });
+		try {
+			const v2Count = Number(database.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'assistant_message'").get(session.id).count);
+			assert.equal(v2Count, 1);
+		} finally {
+			database.close();
+		}
+		assert.equal(injected, true);
+		assert.equal(reliabilityCount, 1);
+	} finally {
+		PiboReliabilityStore.prototype.appendOnce = originalAppendOnce;
 		await channel.stop?.();
 	}
 });

@@ -102,7 +102,8 @@ export class ChatTimelineQueryService {
 		}>;
 		if (rows.length > TRACE_RECONCILIATION_ENTRY_CAP) return false;
 		if (nodeIdentity.qualifier) {
-			return rows.some((row) => {
+			let hasPersistedOrdinal = false;
+			const explicitlyAttached = rows.some((row) => {
 				let attributes: Record<string, unknown>;
 				try {
 					const parsed = JSON.parse(row.attributes_json) as unknown;
@@ -112,12 +113,22 @@ export class ChatTimelineQueryService {
 					return false;
 				}
 				const ordinal = attributes.toolInvocationOrdinal;
+				if (Number.isSafeInteger(ordinal)) hasPersistedOrdinal = true;
 				return Number.isSafeInteger(ordinal)
 					&& Number(ordinal) === nodeIdentity.qualifier!.invocationOrdinal
 					&& row.event_id === nodeIdentity.qualifier!.eventId
 					&& row.type !== "tool_execution_started"
 					&& payloadMatchesEventRow(this.store, payload.sha256, input.payloadId, row);
 			});
+			if (explicitlyAttached || hasPersistedOrdinal) return explicitlyAttached;
+			// Pre-ordinal stores can only represent one invocation in an exact
+			// event/tool scope. Preserve that legacy ordinal-zero attachment while
+			// failing closed for every qualified ordinal that requires newer data.
+			return nodeIdentity.qualifier.invocationOrdinal === 0 && rows.some((row) =>
+				row.event_id === nodeIdentity.qualifier!.eventId
+				&& row.type !== "tool_execution_started"
+				&& payloadMatchesEventRow(this.store, payload.sha256, input.payloadId, row),
+			);
 		}
 		const lifecycles = new Map<string | null, {
 			nextOrdinal: number;

@@ -151,15 +151,18 @@ function compareTraceRawEvents(
 	left: PiboSessionTraceView["rawEvents"][number],
 	right: PiboSessionTraceView["rawEvents"][number],
 ): number {
-	const leftDurableSequence = left.eventSequence ?? left.streamId;
-	const rightDurableSequence = right.eventSequence ?? right.streamId;
-	const leftHasDurableSequence = leftDurableSequence !== undefined;
-	const rightHasDurableSequence = rightDurableSequence !== undefined;
-	if (leftHasDurableSequence !== rightHasDurableSequence) return leftHasDurableSequence ? -1 : 1;
-	return compareOptionalNumber(leftDurableSequence, rightDurableSequence)
-		|| compareOptionalNumber(left.streamFrameIndex, right.streamFrameIndex)
-		|| (!leftHasDurableSequence ? compareOptionalNumber(left.renderSequence, right.renderSequence) : 0)
+	const leftSequenceDomain = left.eventSequence === undefined ? 0 : 1;
+	const rightSequenceDomain = right.eventSequence === undefined ? 0 : 1;
+	return leftSequenceDomain - rightSequenceDomain
+		|| (left.eventSequence !== undefined && right.eventSequence !== undefined
+			? left.eventSequence - right.eventSequence
+			: 0)
 		|| compareOptionalString(validTimestamp(left.createdAt), validTimestamp(right.createdAt))
+		|| compareOptionalNumber(left.streamId, right.streamId)
+		|| compareOptionalNumber(left.streamFrameIndex, right.streamFrameIndex)
+		|| (left.eventSequence === undefined && right.eventSequence === undefined
+			? compareOptionalNumber(left.renderSequence, right.renderSequence)
+			: 0)
 		|| left.id.localeCompare(right.id)
 		|| left.type.localeCompare(right.type);
 }
