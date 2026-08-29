@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
+import { OutputRenderSequencer } from "../../core/output-render-sequence.js";
 import {
 	PI_AGENT_RUNTIME_CAPABILITIES,
 	PI_PROTOCOL_VERSION,
@@ -439,6 +440,7 @@ type ChatWebAppState = {
 	traceTimelinePageCache: Map<string, TraceTimelinePage>;
 	bootstrapCatalogCache?: { expiresAt: number; value: Promise<ChatBootstrapCatalog> };
 	outputCompactor: OutputCompactor;
+	outputRenderSequencer: OutputRenderSequencer;
 	subscribedContext?: PiboWebAppContext;
 	unsubscribe?: () => void;
 	liveListeners: Set<(event: ChatLiveEvent) => void>;
@@ -1072,7 +1074,6 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 		} catch (error) {
 			recordPersistenceError(state.persistenceMetrics, error);
 			console.error("[chat-web] failed to index router event", error);
-			throw error;
 		}
 	});
 }
@@ -4260,15 +4261,16 @@ function startChatStreamingFixture(input: {
 	const reasoningScheduleMs = reasoningDeltas.map((_, index) => Math.max(10, Math.round(((index + 1) * cadenceMs) / 2)));
 	const eventId = `streaming-fixture-${randomUUID()}`;
 	const emit = (event: PiboOutputEvent) => {
-		if (traceSnapshots && (event.type === "assistant_delta" || event.type === "assistant_message" || event.type === "message_finished")) {
-			input.state.outputCompactor.compact(event);
+		const positionedEvent = input.state.outputRenderSequencer.position(event);
+		if (traceSnapshots && (positionedEvent.type === "assistant_delta" || positionedEvent.type === "assistant_message" || positionedEvent.type === "message_finished")) {
+			input.state.outputCompactor.compact(positionedEvent);
 		}
-		if (suppressLiveDeltas && event.type === "assistant_delta") return;
+		if (suppressLiveDeltas && positionedEvent.type === "assistant_delta") return;
 		const liveEvent = recordTransientReplayEvent(input.state, {
 			roomId: room.id,
 			piboSessionId: selectedSession.id,
-			eventType: event.type,
-			payload: event,
+			eventType: positionedEvent.type,
+			payload: positionedEvent,
 		});
 		for (const listener of input.state.liveListeners) listener(liveEvent);
 	};
@@ -4478,6 +4480,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		traceCache: new Map(),
 		traceTimelinePageCache: new Map(),
 		outputCompactor: new OutputCompactor(),
+		outputRenderSequencer: new OutputRenderSequencer(),
 		liveListeners: new Set(),
 		transientReplaySequence: 0,
 		transientReplayBuffer: [],

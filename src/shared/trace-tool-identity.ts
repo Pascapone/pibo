@@ -1,6 +1,7 @@
 import { TRACE_RECONCILIATION_ENTRY_CAP } from "./trace-limits.js";
 
-const QUALIFIED_TOOL_PREFIX = "history-tool:";
+const QUALIFIED_TOOL_PREFIX = "tool-invocation:";
+const LEGACY_QUALIFIED_TOOL_PREFIX = "history-tool:";
 const TOOL_PREFIX = "tool:";
 const TOOL_INVOCATION_TAG = "event-tool";
 
@@ -12,7 +13,7 @@ export type TraceToolNodeIdentity = {
 	};
 };
 
-export function qualifiedHistoryToolNodeId(
+export function qualifiedToolNodeId(
 	toolCallId: string,
 	eventId: string,
 	invocationOrdinal: number,
@@ -21,14 +22,20 @@ export function qualifiedHistoryToolNodeId(
 	return `${QUALIFIED_TOOL_PREFIX}${encodeURIComponent(JSON.stringify([toolCallId, projectionIdentity]))}`;
 }
 
+/** @deprecated Use qualifiedToolNodeId for every projection source. */
+export const qualifiedHistoryToolNodeId = qualifiedToolNodeId;
+
 export function parseTraceToolNodeIdentity(nodeId: string): TraceToolNodeIdentity | undefined {
 	if (nodeId.startsWith(TOOL_PREFIX)) {
 		const toolCallId = nodeId.slice(TOOL_PREFIX.length);
 		return toolCallId ? { toolCallId } : undefined;
 	}
-	if (!nodeId.startsWith(QUALIFIED_TOOL_PREFIX)) return undefined;
+	const qualifiedPrefix = nodeId.startsWith(QUALIFIED_TOOL_PREFIX)
+		? QUALIFIED_TOOL_PREFIX
+		: nodeId.startsWith(LEGACY_QUALIFIED_TOOL_PREFIX) ? LEGACY_QUALIFIED_TOOL_PREFIX : undefined;
+	if (!qualifiedPrefix) return undefined;
 	try {
-		const decoded = JSON.parse(decodeURIComponent(nodeId.slice(QUALIFIED_TOOL_PREFIX.length))) as unknown;
+		const decoded = JSON.parse(decodeURIComponent(nodeId.slice(qualifiedPrefix.length))) as unknown;
 		if (
 			!Array.isArray(decoded)
 			|| decoded.length !== 2
@@ -51,11 +58,14 @@ export function parseTraceToolNodeIdentity(nodeId: string): TraceToolNodeIdentit
 			toolCallId: decoded[0],
 			qualifier: { eventId: qualifier[1], invocationOrdinal: Number(qualifier[2]) },
 		};
-		return qualifiedHistoryToolNodeId(
+		const canonicalId = qualifiedToolNodeId(
 			identity.toolCallId,
 			identity.qualifier.eventId,
 			identity.qualifier.invocationOrdinal,
-		) === nodeId ? identity : undefined;
+		);
+		return canonicalId === nodeId || canonicalId.replace(QUALIFIED_TOOL_PREFIX, LEGACY_QUALIFIED_TOOL_PREFIX) === nodeId
+			? identity
+			: undefined;
 	} catch {
 		return undefined;
 	}

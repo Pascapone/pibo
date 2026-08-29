@@ -15,6 +15,7 @@ import type {
   PiboOutputEvent,
   PiboSessionStatus,
 } from "../core/events.js";
+import { OutputRenderSequencer } from "../core/output-render-sequence.js";
 import { getDefaultPiboWorkspace } from "../core/workspace.js";
 import { buildTraceView } from "../apps/chat/trace.js";
 import {
@@ -22,6 +23,7 @@ import {
   type EventLogRow,
 } from "../apps/chat/data/chat-data-mappers.js";
 import { ChatDataIngestService } from "../data/ingest-service.js";
+import { OutputCompactor } from "../apps/chat/output-compactor.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { ChatHistoryQueryService } from "../apps/chat/data/history-query-service.js";
 import type { StoredPiboEventLogRow } from "../data/event-log.js";
@@ -32,11 +34,8 @@ import {
   normalizeCommandResultDescriptor,
   type SlashCommandDescriptor,
 } from "../session-ui/index.js";
-import type {
-  PiboSessionTraceView,
-  PiboTraceNode,
-  PiboTraceNodeStatus,
-} from "../shared/trace-types.js";
+import type { PiboSessionTraceView } from "../shared/trace-types.js";
+import { patchTraceViewWithEvent } from "../shared/trace-engine.js";
 import {
   CliSourceError,
   type CliAgentSummary,
@@ -93,6 +92,8 @@ export class LocalCliSessionSource implements CliSessionSource {
   private readonly ownsRouter: boolean;
   private readonly unsubscribeRouter?: () => void;
   private readonly now: () => string;
+  private readonly outputRenderSequencer: OutputRenderSequencer;
+  private readonly outputCompactor = new OutputCompactor();
   private readonly statusMessage?: string;
   private readonly dataStore?: PiboDataStore;
   private readonly ownsDataStore: boolean;
@@ -123,6 +124,10 @@ export class LocalCliSessionSource implements CliSessionSource {
       this.handleRouterEvent(event),
     );
     this.now = options.now ?? (() => new Date().toISOString());
+    this.outputRenderSequencer = new OutputRenderSequencer(() => {
+      const timestamp = Date.parse(this.now());
+      return Number.isFinite(timestamp) ? timestamp : Date.now();
+    });
     this.statusMessage = options.statusMessage;
     this.dataStore = options.dataStore;
     this.ownsDataStore = options.ownsDataStore === true;
@@ -275,6 +280,14 @@ export class LocalCliSessionSource implements CliSessionSource {
     const session = this.resolveSession(sessionId);
     const eventId = randomUUID();
     this.ingestUserMessage(session, eventId, trimmed);
+    this.recordOutputEvent({
+      type: "message_queued",
+      piboSessionId: sessionId,
+      eventId,
+      text: trimmed,
+      source: "ui",
+      queuedMessages: 0,
+    });
     if (this.router) {
       try {
         await this.router.emit({
@@ -294,7 +307,6 @@ export class LocalCliSessionSource implements CliSessionSource {
       }
       return;
     }
-    this.recordLocalUserMessage(sessionId, eventId, trimmed, "done");
     this.updateSessionStatus(sessionId, "idle");
   }
 
@@ -717,139 +729,45 @@ export class LocalCliSessionSource implements CliSessionSource {
     if (this.closed) return;
     const session = this.sessionStore.get(event.piboSessionId);
     if (!session) return;
-    this.ingestOutputEvent(session, event);
-    this.recordOutputEvent(event);
+    const positionedEvent = this.outputRenderSequencer.position(event);
+    const compacted = this.outputCompactor.compact(positionedEvent);
+    for (const persistedEvent of compacted.persistedEvents) {
+      this.ingestOutputEvent(session, persistedEvent);
+      if (persistedEvent.type !== positionedEvent.type) this.recordOutputEvent(persistedEvent);
+    }
+    for (const liveEvent of compacted.liveEvents) this.recordOutputEvent(liveEvent);
   }
 
   private recordOutputEvent(event: PiboOutputEvent): void {
-    const sessionId = event.piboSessionId;
-    const eventId = "eventId" in event ? event.eventId : undefined;
-    if (event.type === "message_queued" || event.type === "message_started") {
-      this.recordLocalUserMessage(
-        sessionId,
-        eventId ?? randomUUID(),
-        event.text,
-        event.type === "message_started" ? "running" : "done",
-      );
-      this.updateSessionStatus(sessionId, "running");
-      return;
-    }
-    if (event.type === "message_finished") {
-      this.updateSessionStatus(sessionId, "idle");
-      return;
-    }
-    if (event.type === "assistant_delta") {
-      this.upsertTraceNode(
-        sessionId,
-        {
-          id: traceNodeId(
-            "assistant",
-            eventId,
-            event.assistantIndex ?? event.contentIndex,
-          ),
-          piboSessionId: sessionId,
-          type: "assistant.message",
-          title: "Agent Message",
-          status: "running",
-          startedAt: this.now(),
-          output: event.text,
-          children: [],
-        },
-        { appendOutput: true, rawEvent: event },
-      );
-      return;
-    }
-    if (event.type === "assistant_message") {
-      this.upsertTraceNode(
-        sessionId,
-        {
-          id: traceNodeId(
-            "assistant",
-            eventId,
-            event.assistantIndex ?? event.contentIndex,
-          ),
-          piboSessionId: sessionId,
-          type: "assistant.message",
-          title: "Agent Message",
-          status: "done",
-          startedAt: this.now(),
-          completedAt: this.now(),
-          output: event.text,
-          children: [],
-        },
-        { rawEvent: event },
-      );
-      return;
-    }
-    if (
-      event.type === "tool_call" ||
-      event.type === "tool_execution_started" ||
-      event.type === "tool_execution_updated" ||
-      event.type === "tool_execution_finished"
-    ) {
-      const finished = event.type === "tool_execution_finished";
-      this.upsertTraceNode(
-        sessionId,
-        {
-          id: traceNodeId("tool", event.toolCallId),
-          piboSessionId: sessionId,
-          eventId,
-          toolCallId: event.toolCallId,
-          type: finished ? "tool.result" : "tool.call",
-          title: event.toolName,
-          status: finished ? (event.isError ? "error" : "done") : "running",
-          startedAt: this.now(),
-          completedAt: finished ? this.now() : undefined,
-          input: "args" in event ? event.args : undefined,
-          output: finished
-            ? event.result
-            : "partialResult" in event
-              ? event.partialResult
-              : undefined,
-          children: [],
-        },
-        { rawEvent: event },
-      );
-      return;
-    }
-    if (event.type === "session_error") {
-      this.recordLocalError(sessionId, eventId ?? randomUUID(), event.error);
-      return;
-    }
-    this.appendRawEvent(sessionId, event);
-  }
-
-  private recordLocalUserMessage(
-    sessionId: string,
-    eventId: string,
-    text: string,
-    status: PiboTraceNodeStatus,
-  ): void {
-    this.upsertTraceNode(
-      sessionId,
-      {
-        id: traceNodeId("user", eventId),
-        piboSessionId: sessionId,
-        eventId,
-        type: "user.message",
-        title: "User Message",
-        status,
-        startedAt: this.now(),
-        completedAt: status === "done" ? this.now() : undefined,
-        output: text,
-        children: [],
-      },
-      {
-        rawEvent: {
-          type: "message_queued",
-          piboSessionId: sessionId,
-          eventId,
-          queuedMessages: 0,
-          text,
-          source: "ui",
-        },
-      },
+    const positionedEvent = this.outputRenderSequencer.position(event);
+    const sessionId = positionedEvent.piboSessionId;
+    const session = this.resolveSession(sessionId);
+    const current = this.traceViews.get(sessionId) ?? emptyTraceView(session);
+    const status = positionedEvent.type === "session_error"
+      ? "error"
+      : positionedEvent.type === "message_finished"
+        ? "idle"
+        : "running";
+    const next = patchTraceViewWithEvent(
+      current,
+      storedEvent(positionedEvent, this.now(), current.rawEvents.length + 1),
+      status === "idle" ? "idle" : status,
     );
+    next.eventCount = next.rawEvents.length;
+    next.version = `local-${next.rawEvents.length}-${session.updatedAt}`;
+    this.traceViews.set(sessionId, next);
+    this.emit(sessionId, {
+      type: "trace",
+      session: sessionToSummary(session, this.ensureDefaultRoom().id),
+      traceView: next,
+    });
+    if (positionedEvent.type === "message_queued" || positionedEvent.type === "message_started") {
+      this.updateSessionStatus(sessionId, "running");
+    } else if (positionedEvent.type === "message_finished") {
+      this.updateSessionStatus(sessionId, "idle");
+    } else if (positionedEvent.type === "session_error") {
+      this.updateSessionStatus(sessionId, "error");
+    }
   }
 
   private recordLocalError(
@@ -857,94 +775,11 @@ export class LocalCliSessionSource implements CliSessionSource {
     eventId: string,
     error: unknown,
   ): void {
-    this.upsertTraceNode(
-      sessionId,
-      {
-        id: traceNodeId("error", eventId),
-        piboSessionId: sessionId,
-        eventId,
-        type: "error",
-        title: "CLI source error",
-        status: "error",
-        startedAt: this.now(),
-        completedAt: this.now(),
-        error: error instanceof Error ? error.message : String(error),
-        children: [],
-      },
-      {
-        rawEvent: {
-          type: "session_error",
-          piboSessionId: sessionId,
-          eventId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      },
-    );
-    this.updateSessionStatus(sessionId, "error");
-  }
-
-  private upsertTraceNode(
-    sessionId: string,
-    node: PiboTraceNode,
-    options: { appendOutput?: boolean; rawEvent?: PiboOutputEvent } = {},
-  ): void {
-    const session = this.resolveSession(sessionId);
-    const traceView = cloneJson(
-      this.traceViews.get(sessionId) ?? emptyTraceView(session),
-    );
-    const index = traceView.nodes.findIndex(
-      (candidate) => candidate.id === node.id,
-    );
-    if (index >= 0) {
-      const previous = traceView.nodes[index]!;
-      const output =
-        options.appendOutput &&
-        typeof previous.output === "string" &&
-        typeof node.output === "string"
-          ? previous.output + node.output
-          : node.output;
-      traceView.nodes[index] = {
-        ...previous,
-        ...node,
-        output,
-        children: node.children ?? previous.children,
-      };
-    } else {
-      traceView.nodes.push(node);
-    }
-    if (options.rawEvent)
-      traceView.rawEvents.push(
-        storedEvent(
-          options.rawEvent,
-          this.now(),
-          traceView.rawEvents.length + 1,
-        ),
-      );
-    traceView.eventCount = traceView.rawEvents.length;
-    traceView.version = `local-${traceView.rawEvents.length}-${session.updatedAt}`;
-    this.traceViews.set(sessionId, traceView);
-    this.emit(sessionId, {
-      type: "trace",
-      session: sessionToSummary(session, this.ensureDefaultRoom().id),
-      traceView: cloneJson(traceView),
-    });
-  }
-
-  private appendRawEvent(sessionId: string, event: PiboOutputEvent): void {
-    const session = this.resolveSession(sessionId);
-    const traceView = cloneJson(
-      this.traceViews.get(sessionId) ?? emptyTraceView(session),
-    );
-    traceView.rawEvents.push(
-      storedEvent(event, this.now(), traceView.rawEvents.length + 1),
-    );
-    traceView.eventCount = traceView.rawEvents.length;
-    traceView.version = `local-${traceView.rawEvents.length}-${session.updatedAt}`;
-    this.traceViews.set(sessionId, traceView);
-    this.emit(sessionId, {
-      type: "trace",
-      session: sessionToSummary(session, this.ensureDefaultRoom().id),
-      traceView: cloneJson(traceView),
+    this.recordOutputEvent({
+      type: "session_error",
+      piboSessionId: sessionId,
+      eventId,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 
@@ -1309,21 +1144,12 @@ function storedEvent(
     id: eventId ?? `${event.piboSessionId}-${event.type}-${eventSequence}`,
     piboSessionId: event.piboSessionId,
     eventSequence,
+    renderSequence: event.renderSequence,
     eventId,
     type: event.type,
     createdAt,
     payload: cloneJson(event),
   };
-}
-
-function traceNodeId(
-  kind: string,
-  eventId: string | undefined,
-  index?: number,
-): string {
-  return ["local", kind, eventId ?? "event", index]
-    .filter((part) => part !== undefined)
-    .join(":");
 }
 
 function toCliSourceError(

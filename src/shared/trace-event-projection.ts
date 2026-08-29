@@ -9,6 +9,7 @@ import {
 	type TraceChildSession,
 } from "./trace-subagent-links.js";
 import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
+import { qualifiedToolNodeId } from "./trace-tool-identity.js";
 
 export type PersistedHistoryMode = "none" | "product" | "native";
 
@@ -32,6 +33,7 @@ export function applySingleEventToNodes(
 	const payload = storedEvent.payload as PiboOutputEvent;
 	const confirmedUserMessage = historyCoverage.mode !== "none" ? confirmedUserMessageEchoNode(nodes, storedEvent) : undefined;
 	if (confirmedUserMessage) {
+		applyRenderSequence(confirmedUserMessage, storedEvent, payload);
 		if (payload.type === "message_steered" && payload.activeEventId) {
 			confirmedUserMessage.parentId = messageTurnNodeId(payload.activeEventId);
 		}
@@ -43,9 +45,11 @@ export function applySingleEventToNodes(
 		historyCoversEvent(payload, historyCoverage) &&
 		!shouldKeepTranscriptEchoEvent(payload, openTranscriptEventIds)
 	) {
+		applyRenderSequenceToHistoryNode(byId, storedEvent, payload);
 		return;
 	}
 	if (isNativeHistoryToolEchoEvent(payload, historyCoverage, sessionStatus)) {
+		applyRenderSequenceToHistoryNode(byId, storedEvent, payload);
 		return;
 	}
 	if (payload.type === "assistant_delta") {
@@ -159,11 +163,7 @@ export function applySingleEventToNodes(
 		}
 	}
 	if (node.toolCallId) {
-		const existing = [...byId.values()].find(
-			(candidate) =>
-				candidate.toolCallId === node.toolCallId &&
-				(candidate.type === "tool.call" || candidate.type === "agent.delegation"),
-		);
+		const existing = byId.get(node.id) ?? findUniqueLegacyToolTarget(byId, node, payload);
 		if (existing) {
 			if (isRunStartToolNode(existing) && node.type === "agent.delegation") {
 				attachAsyncAgentRunNode(existing, piboSessionId, storedEvent.createdAt, node);
@@ -195,6 +195,49 @@ export function applySingleEventToNodes(
 	attachAsyncAgentRunNode(node, piboSessionId, storedEvent.createdAt);
 	nodes.push(node);
 	for (const indexed of flattenTraceNodes([node])) byId.set(indexed.id, indexed);
+}
+
+function findUniqueLegacyToolTarget(
+	byId: ReadonlyMap<string, PiboTraceNode>,
+	update: PiboTraceNode,
+	event: PiboOutputEvent,
+): PiboTraceNode | undefined {
+	if ("eventId" in event && event.eventId) return undefined;
+	const candidates = [...byId.values()].filter((candidate) =>
+		candidate.toolCallId === update.toolCallId
+		&& (candidate.type === "tool.call" || candidate.type === "tool.result" || candidate.type === "agent.delegation")
+	);
+	return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+function applyRenderSequenceToHistoryNode(
+	byId: ReadonlyMap<string, PiboTraceNode>,
+	storedEvent: ChatWebStoredEvent,
+	event: PiboOutputEvent,
+): void {
+	const stableKey = eventStableKey(event);
+	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
+	const target = [...byId.values()].find((node) =>
+		node.stableKey === stableKey
+		|| (
+			"toolCallId" in event
+			&& typeof event.toolCallId === "string"
+			&& node.toolCallId === event.toolCallId
+			&& (!eventId || !node.eventId || node.eventId === eventId)
+		)
+	);
+	if (target) applyRenderSequence(target, storedEvent, event);
+}
+
+function applyRenderSequence(
+	node: PiboTraceNode,
+	storedEvent: ChatWebStoredEvent,
+	event: PiboOutputEvent,
+): void {
+	const renderSequence = storedEvent.renderSequence ?? event.renderSequence;
+	if (renderSequence === undefined) return;
+	const orderKey = node.orderKey ?? eventTraceOrder(storedEvent.eventSequence, eventNodeKind(event.type));
+	node.orderKey = { ...orderKey, renderSequence };
 }
 
 function applyStoredPayloadRef(
@@ -237,7 +280,7 @@ function assistantMessageNodeFromEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey: assistantId ? `assistant:${assistantId}` : eventStableKey(event),
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
 		children: [],
 	};
 }
@@ -511,7 +554,7 @@ function traceNodeFromEvent(
 		startedAt: createdAt,
 		source: "event-log" as const,
 		stableKey: eventStableKey(event),
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
 		children: [] as PiboTraceNode[],
 	};
 
@@ -527,7 +570,7 @@ function traceNodeFromEvent(
 					startedAt: createdAt,
 					source: "event-log",
 					stableKey: eventId ? `run-notification:${eventId}` : id,
-					orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+					orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
 					notification,
 				});
 			}
@@ -588,17 +631,19 @@ function traceNodeFromEvent(
 		case "tool_execution_started":
 		case "tool_execution_updated":
 		case "tool_execution_finished": {
+			const toolNodeId = toolInvocationNodeId(event);
 			const subagentTool = isSubagentToolName(event.toolName);
 			const linkedPiboSessionId =
-				linkedChildByToolCallId.get(event.toolCallId) ??
+				linkedChildByToolCallId.get(toolNodeId) ??
 				(subagentTool
 					? findLikelyTraceChildSession(piboSessionId, event.toolName, event, childByParent)
 					: undefined);
 			return {
 				...base,
-				id: `tool:${event.toolCallId}`,
+				id: toolNodeId,
 				parentId: turnParentId,
 				toolCallId: event.toolCallId,
+				toolInvocationOrdinal: event.toolInvocationOrdinal ?? 0,
 				intent: event.intent,
 				type: subagentTool ? "agent.delegation" : "tool.call",
 				title: event.toolName,
@@ -624,26 +669,28 @@ function traceNodeFromEvent(
 						? stringifyPreview(event.result)
 						: undefined,
 				linkedPiboSessionId,
-				stableKey: `tool:${event.toolCallId}`,
+				stableKey: toolNodeId,
 				children: [],
 			};
 		}
 		case "subagent_session": {
 			const childPiboSessionId = nonEmptyString(event.childPiboSessionId);
 			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
+			const toolNodeId = event.toolCallId ? toolInvocationNodeId(event) : undefined;
 			return {
 				...base,
-				id: event.toolCallId ? `tool:${event.toolCallId}` : `event:subagent_session:${eventInstanceKey}`,
+				id: toolNodeId ?? `event:subagent_session:${eventInstanceKey}`,
 				eventId,
 				toolCallId: event.toolCallId,
+				toolInvocationOrdinal: event.toolInvocationOrdinal,
 				type: "agent.delegation",
 				title: event.toolName,
 				status: sessionStatus === "running" ? "running" : "done",
 				summary: event.subagentName,
 				input: { subagentName: event.subagentName, threadKey: event.threadKey },
 				linkedPiboSessionId: childPiboSessionId,
-				stableKey: event.toolCallId
-					? `tool:${event.toolCallId}`
+				stableKey: toolNodeId
+					? toolNodeId
 					: childPiboSessionId ? `subagent:${childPiboSessionId}` : `subagent:event:${eventInstanceKey}`,
 				children: [],
 			};
@@ -740,7 +787,7 @@ function mergeAssistantDeltaEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey: assistantId ? `assistant:${assistantId}` : id,
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
 		children: [],
 	};
 	nodes.push(node);
@@ -805,7 +852,7 @@ function mergeThinkingDeltaEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey,
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence),
 		children: [],
 	};
 	nodes.push(node);
@@ -1048,11 +1095,12 @@ function eventTraceNodeOrder(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	renderSequence?: number,
 ): TraceOrderKey {
-	if (traceSource === "live") {
-		return liveTraceOrder(streamId, streamFrameIndex, eventNodeKind(type));
-	}
-	return eventTraceOrder(eventSequence, eventNodeKind(type));
+	const order = traceSource === "live"
+		? liveTraceOrder(streamId, streamFrameIndex, eventNodeKind(type))
+		: eventTraceOrder(eventSequence, eventNodeKind(type));
+	return renderSequence === undefined ? order : { ...order, renderSequence };
 }
 
 function eventNodeKind(type: PiboOutputEvent["type"]): PiboTraceNode["type"] {
@@ -1096,9 +1144,9 @@ function eventStableKey(event: PiboOutputEvent): string {
 		event.type === "tool_execution_updated" ||
 		event.type === "tool_execution_finished"
 	) {
-		return `tool:${event.toolCallId}`;
+		return toolInvocationNodeId(event);
 	}
-	if (event.type === "subagent_session" && event.toolCallId) return `tool:${event.toolCallId}`;
+	if (event.type === "subagent_session" && event.toolCallId) return toolInvocationNodeId(event);
 	if (eventId && (event.type === "message_started" || event.type === "message_finished"))
 		return `turn:${eventId}`;
 	if (
@@ -1244,13 +1292,21 @@ function traceEventInstanceKey(eventSequence: number | undefined, streamId: numb
 	return cryptoSafeId(event);
 }
 
+function toolInvocationNodeId(event: Extract<PiboOutputEvent, {
+	type: "tool_call" | "tool_execution_started" | "tool_execution_updated" | "tool_execution_finished" | "subagent_session";
+}>): string {
+	const eventId = event.eventId
+		?? (event.renderSequence !== undefined ? `render:${event.renderSequence}` : "unscoped");
+	return qualifiedToolNodeId(event.toolCallId ?? "unlinked", eventId, event.toolInvocationOrdinal ?? 0);
+}
+
 function nonEmptyString(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	return value.trim() || undefined;
 }
 
 function cryptoSafeId(value: unknown): string {
-	return base64UrlEncode(new TextEncoder().encode(JSON.stringify(value))).slice(0, 48);
+	return base64UrlEncode(new TextEncoder().encode(JSON.stringify(value)));
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {

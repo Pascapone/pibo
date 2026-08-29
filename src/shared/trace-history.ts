@@ -16,7 +16,7 @@ import { isSubagentToolName } from "./trace-subagent-links.js";
 import { assistantMessageNodeId, messageTurnNodeId, thinkingNodeId, type TraceMessageTurnTiming } from "./trace-event-projection.js";
 import type { PiboTraceNode, PiboTraceNodeStatus, PiboTraceSource, PiboWebSessionStatus } from "./trace-types.js";
 import { TRACE_RECONCILIATION_ENTRY_CAP, TRACE_RECONCILIATION_TIMING_CAP } from "./trace-limits.js";
-import { qualifiedHistoryToolNodeId } from "./trace-tool-identity.js";
+import { qualifiedToolNodeId } from "./trace-tool-identity.js";
 
 type IndexedHistoryMessageEntry = {
 	entry: AgentRuntimeHistoryMessageEntry;
@@ -1002,6 +1002,7 @@ function createToolCallNode(
 		eventId,
 		parentId: historyTurnParentId(entry, eventId),
 		toolCallId: part.toolCallId,
+		toolInvocationOrdinal,
 		type: isSubagentToolName(part.toolName) ? "agent.delegation" : "tool.call",
 		title: part.toolName,
 		status: "done",
@@ -1080,6 +1081,7 @@ function createMissingToolResultNode(
 		eventId,
 		parentId: historyTurnParentId(entry, eventId),
 		toolCallId,
+		toolInvocationOrdinal,
 		type: "tool.result",
 		title: entry.toolName ?? "Tool Result",
 		status: "done",
@@ -1149,6 +1151,7 @@ function canonicalProductTurnId(
 	timing: TraceMessageTurnTiming | undefined,
 	fallbackEventId?: string,
 ): string | undefined {
+	if (entry.source === "product" && entry.turnId) return entry.turnId;
 	return fallbackEventId ?? timing?.eventId ?? entry.turnId;
 }
 
@@ -1172,8 +1175,7 @@ function historyToolNodeId(
 	toolInvocationOrdinal: number,
 	qualifyProjectionIdentity: boolean,
 ): string {
-	if (entry.source !== "native" || !qualifyProjectionIdentity) return `tool:${toolCallId}`;
-	return qualifiedHistoryToolNodeId(
+	return qualifiedToolNodeId(
 		toolCallId,
 		eventId ?? `native-history-tool:${entry.historyPosition ?? entry.id}`,
 		toolInvocationOrdinal,

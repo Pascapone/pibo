@@ -28,5 +28,5 @@ export function thinkingOutputKey(
 export function toolOutputKey(
 	event: Extract<PiboOutputEvent, { type: "tool_call" | "tool_execution_started" | "tool_execution_updated" | "tool_execution_finished" }>,
 ): string {
-	return [event.piboSessionId, event.eventId ?? "", event.toolCallId].join(":");
+	return [event.piboSessionId, event.eventId ?? "", event.toolCallId, event.toolInvocationOrdinal ?? 0].join(":");
 }

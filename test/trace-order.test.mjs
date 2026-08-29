@@ -54,3 +54,13 @@ test("missing trace order falls back after ordered nodes so callers can use stab
 
   assert.deepEqual(ordered, ["with-order", "without-a", "without-b"]);
 });
+
+test("immutable render positions outrank changing trace sources", () => {
+  const ordered = sortLabels([
+    { id: "history-late", order: { ...transcriptTraceOrder(0, 0, "model.reasoning"), renderSequence: 2 } },
+    { id: "live-first", order: { ...liveTraceOrder(undefined, undefined, "assistant.message"), renderSequence: 1 } },
+    { id: "event-last", order: { ...eventTraceOrder(1, "tool.call"), renderSequence: 3 } },
+  ]);
+
+  assert.deepEqual(ordered, ["live-first", "history-late", "event-last"]);
+});

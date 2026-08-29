@@ -27,6 +27,7 @@ import type {
 	PiboSessionOperationResult,
 	PiboSessionStatus,
 } from "./events.js";
+import { OutputRenderSequencer } from "./output-render-sequence.js";
 import {
 	normalizePiboAgentSessionName,
 	type PiboAgentObservation,
@@ -542,6 +543,7 @@ export class PiboSessionRouter {
 	private readonly sessions = new Map<string, RoutedSession>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
 	private readonly listeners = new Set<PiboEventListener>();
+	private readonly outputRenderSequencer = new OutputRenderSequencer();
 	private readonly runRegistry: PiboRunRegistry;
 	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
@@ -2729,18 +2731,23 @@ export class PiboSessionRouter {
 	}
 
 	private readonly emitOutput = (event: PiboOutputEvent): void => {
-		const session = this.sessionStore.get(event.piboSessionId);
-		this.recordAgentObservation(event, session);
-		this.telemetryRecorder?.recordOutput(event, { session, status: this.sessions.get(event.piboSessionId)?.getStatus() });
-		this.signalRegistry.project({ type: "pibo_output", event, session });
-		this.pluginRegistry.notifyEvent(event);
+		const positionedEvent = this.outputRenderSequencer.position(event);
+		const session = this.sessionStore.get(positionedEvent.piboSessionId);
+		this.recordAgentObservation(positionedEvent, session);
+		this.telemetryRecorder?.recordOutput(positionedEvent, { session, status: this.sessions.get(positionedEvent.piboSessionId)?.getStatus() });
+		this.signalRegistry.project({ type: "pibo_output", event: positionedEvent, session });
+		this.pluginRegistry.notifyEvent(positionedEvent);
 		for (const listener of this.listeners) {
-			listener(event);
+			try {
+				listener(positionedEvent);
+			} catch (error) {
+				console.error("[pibo] output listener failed", error);
+			}
 		}
 
-		this.handleRunReminderOutput(event);
-		if (event.type === "message_finished" && event.source !== "service") {
-			this.scheduleRunReminder(event.piboSessionId, true);
+		this.handleRunReminderOutput(positionedEvent);
+		if (positionedEvent.type === "message_finished" && positionedEvent.source !== "service") {
+			this.scheduleRunReminder(positionedEvent.piboSessionId, true);
 		}
 	};
 

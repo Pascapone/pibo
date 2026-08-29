@@ -1672,7 +1672,7 @@ test("pibo debug trace prints rebuilt Chat Web trace nodes", async () => {
 	try {
 		const trace = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--running-only"], { cwd });
 		assert.match(trace.stdout, /status\ttype\ttitle\tid\trunId\tlinkedPiboSessionId/);
-		assert.match(trace.stdout, /running\ttool.call\t\s+bash\ttool:tool_1/);
+		assert.match(trace.stdout, /running\ttool.call\t\s+bash\ttool-invocation:/);
 		assert.match(trace.stdout, /nodes: 2/);
 
 		const json = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--json"], { cwd });

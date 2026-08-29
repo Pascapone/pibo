@@ -20,6 +20,10 @@ function areTraceNodesSorted(nodes: readonly PiboTraceNode[]): boolean {
 }
 
 export function compareTraceNodes(left: PiboTraceNode, right: PiboTraceNode): number {
+	if (left.orderKey?.renderSequence !== undefined && right.orderKey?.renderSequence !== undefined) {
+		const byRenderSequence = left.orderKey.renderSequence - right.orderKey.renderSequence;
+		if (byRenderSequence !== 0) return byRenderSequence;
+	}
 	if (left.orderKey && right.orderKey && left.orderKey.sourceRank === right.orderKey.sourceRank) {
 		const bySameSourceOrder = compareTraceOrder(left.orderKey, right.orderKey);
 		if (bySameSourceOrder !== 0) return bySameSourceOrder;

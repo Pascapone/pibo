@@ -17,6 +17,7 @@ export type TraceNodeKind =
 export type TraceOrderKey = {
 	sourceRank: number;
 	turnSeq: number;
+	renderSequence?: number;
 	transcriptIndex?: number;
 	contentPartIndex?: number;
 	eventSequence?: number;
@@ -119,6 +120,10 @@ export function compareTraceOrder(left?: TraceOrderKey, right?: TraceOrderKey): 
 	if (!left && !right) return 0;
 	if (!left) return 1;
 	if (!right) return -1;
+	if (left.renderSequence !== undefined && right.renderSequence !== undefined) {
+		const byRenderSequence = left.renderSequence - right.renderSequence;
+		if (byRenderSequence !== 0) return byRenderSequence;
+	}
 	return (
 		left.sourceRank - right.sourceRank ||
 		left.turnSeq - right.turnSeq ||

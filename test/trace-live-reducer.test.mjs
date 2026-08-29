@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { applyTraceLiveEvents } from "../dist/shared/trace-live-reducer.js";
 import { buildTraceViewFromEvents, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
+import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 
 function apply(streamEvents) {
 	let seq = 1;
@@ -92,6 +93,35 @@ test("live and persisted events keep relative timestamp order across trace refre
 	assert.deepEqual(refreshedView.nodes.map((node) => node.id), liveView.nodes.map((node) => node.id));
 });
 
+test("same-timestamp transient text tool and reasoning segments retain assigned render positions", () => {
+	let sequence = 1;
+	const events = applyTraceLiveEvents({
+		currentEvents: [],
+		streamEvents: [
+			{ type: "RAW_EVENT", createdAt: "2026-08-29T10:00:00.000Z", event: { type: "assistant_delta", piboSessionId: "ps-live", eventId: "turn-ordered", assistantIndex: 0, text: "before", renderSequence: 1 } },
+			{ type: "RAW_EVENT", createdAt: "2026-08-29T10:00:00.000Z", event: { type: "tool_execution_started", piboSessionId: "ps-live", eventId: "turn-ordered", toolCallId: "tool-1", toolName: "read", args: {}, renderSequence: 2 } },
+			{ type: "RAW_EVENT", createdAt: "2026-08-29T10:00:00.000Z", event: { type: "thinking_delta", piboSessionId: "ps-live", eventId: "turn-ordered", thinkingIndex: 1, text: "after", renderSequence: 3 } },
+		],
+		piboSessionId: "ps-live",
+		nextSequence: () => sequence++,
+		now: () => "2026-08-29T10:00:00.000Z",
+	});
+	const view = buildTraceViewFromEvents({
+		session: { id: "ps-live", piSessionId: "pi-live" },
+		events,
+		status: "running",
+		includeRawEvents: true,
+	});
+	const children = view.nodes.find((node) => node.id === "turn:turn-ordered")?.children ?? view.nodes;
+
+	assert.deepEqual(children.filter((node) => ["assistant.message", "tool.call", "model.reasoning"].includes(node.type)).map((node) => node.type), [
+		"assistant.message",
+		"tool.call",
+		"model.reasoning",
+	]);
+	assert.deepEqual(events.map((event) => event.renderSequence), [1, 2, 3]);
+});
+
 test("late replay keeps the server event timestamp and stable terminal order", () => {
 	let sequence = 1;
 	const originalCreatedAt = "2026-08-10T18:16:01.000Z";
@@ -140,7 +170,7 @@ test("late replay keeps the server event timestamp and stable terminal order", (
 	const liveTrace = patchTraceViewWithEvents(baseTrace, overlayEvents, "idle");
 
 	assert.deepEqual(liveTrace.nodes.map((node) => node.id), [
-		"tool:late-replayed-tool",
+		qualifiedToolNodeId("late-replayed-tool", "turn-replayed", 0),
 		"entry:final:response",
 	]);
 });
