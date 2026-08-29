@@ -133,7 +133,7 @@ function mergeTraceRawEvents(
 	refreshedEvents: PiboSessionTraceView["rawEvents"],
 	replaceCoveredTail: boolean,
 ): PiboSessionTraceView["rawEvents"] {
-	if (!refreshedEvents.length) return currentEvents;
+	if (!refreshedEvents.length) return [...currentEvents].sort(compareTraceRawEvents);
 	const firstRefreshedSequence = replaceCoveredTail ? refreshedEvents.reduce<number | undefined>((first, event) => {
 		if (event.eventSequence === undefined) return first;
 		return first === undefined ? event.eventSequence : Math.min(first, event.eventSequence);
@@ -151,10 +151,14 @@ function compareTraceRawEvents(
 	left: PiboSessionTraceView["rawEvents"][number],
 	right: PiboSessionTraceView["rawEvents"][number],
 ): number {
-	return compareOptionalNumber(left.renderSequence, right.renderSequence)
-		|| compareOptionalNumber(left.eventSequence, right.eventSequence)
-		|| compareOptionalNumber(left.streamId, right.streamId)
+	const leftDurableSequence = left.eventSequence ?? left.streamId;
+	const rightDurableSequence = right.eventSequence ?? right.streamId;
+	const leftHasDurableSequence = leftDurableSequence !== undefined;
+	const rightHasDurableSequence = rightDurableSequence !== undefined;
+	if (leftHasDurableSequence !== rightHasDurableSequence) return leftHasDurableSequence ? -1 : 1;
+	return compareOptionalNumber(leftDurableSequence, rightDurableSequence)
 		|| compareOptionalNumber(left.streamFrameIndex, right.streamFrameIndex)
+		|| (!leftHasDurableSequence ? compareOptionalNumber(left.renderSequence, right.renderSequence) : 0)
 		|| compareOptionalString(validTimestamp(left.createdAt), validTimestamp(right.createdAt))
 		|| left.id.localeCompare(right.id)
 		|| left.type.localeCompare(right.type);

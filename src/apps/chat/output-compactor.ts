@@ -1,10 +1,18 @@
 import type { PiboOutputEvent } from "../../core/events.js";
 import { assistantOutputKey, isLiveOnlyOutputEvent, thinkingOutputKey, toolOutputKey } from "./output-event-policy.js";
 
+const MAX_TRACKED_COMPACTOR_SESSIONS = 1_024;
+const MAX_BUFFER_ENTRIES_PER_KIND = 4_096;
+
 export type OutputCompactorResult = {
 	liveEvents: PiboOutputEvent[];
 	persistedEvents: PiboOutputEvent[];
 	snapshots: PiboOutputEvent[];
+};
+
+export type PreparedOutputCompaction = OutputCompactorResult & {
+	ack(): void;
+	rollback(): void;
 };
 
 type AssistantBuffer = {
@@ -21,62 +29,86 @@ export class OutputCompactor {
 	private readonly assistantBuffers = new Map<string, AssistantBuffer>();
 	private readonly thinkingBuffers = new Map<string, ThinkingBuffer>();
 	private readonly toolSnapshots = new Map<string, Extract<PiboOutputEvent, { type: "tool_execution_updated" }>>();
+	private readonly sessionRecency = new Map<string, true>();
 
 	compact(event: PiboOutputEvent): OutputCompactorResult {
+		const prepared = this.prepare(event);
+		prepared.ack();
+		return prepared;
+	}
+
+	prepare(event: PiboOutputEvent): PreparedOutputCompaction {
 		const persistedEvents: PiboOutputEvent[] = [];
 		const snapshots: PiboOutputEvent[] = [];
+		let liveEvents: PiboOutputEvent[] = [event];
+		const mutations: Array<() => void> = [];
 
 		switch (event.type) {
 			case "assistant_delta": {
 				const key = assistantOutputKey(event);
 				const previous = this.assistantBuffers.get(key);
-				const text = `${previous?.text ?? ""}${event.text}`;
-				this.assistantBuffers.set(key, { event, text });
-				snapshots.push({ ...event, text });
+				const next = { event, text: `${previous?.text ?? ""}${event.text}` };
+				mutations.push(() => setBounded(this.assistantBuffers, key, next));
+				snapshots.push({ ...event, text: next.text });
 				break;
 			}
 			case "assistant_message": {
 				const key = assistantOutputKey(event);
 				const buffered = this.assistantBuffers.get(key);
-				this.assistantBuffers.delete(key);
-				persistedEvents.push({ ...event, text: event.text || buffered?.text || "" });
+				const canonical = { ...event, text: event.text || buffered?.text || "" };
+				mutations.push(() => {
+					if (this.assistantBuffers.get(key) === buffered) this.assistantBuffers.delete(key);
+				});
+				persistedEvents.push(canonical);
+				liveEvents = [canonical];
 				break;
 			}
 			case "thinking_started": {
 				const key = thinkingOutputKey(event);
-				this.thinkingBuffers.set(key, { base: event, text: "" });
+				const next = { base: event, text: "" };
+				mutations.push(() => setBounded(this.thinkingBuffers, key, next));
 				persistedEvents.push(event);
 				break;
 			}
 			case "thinking_delta": {
 				const key = thinkingOutputKey(event);
 				const previous = this.thinkingBuffers.get(key);
-				const text = `${previous?.text ?? ""}${event.text}`;
-				this.thinkingBuffers.set(key, { base: previous?.base ?? event, text });
-				snapshots.push({ ...event, text });
+				const next = { base: previous?.base ?? event, text: `${previous?.text ?? ""}${event.text}` };
+				mutations.push(() => setBounded(this.thinkingBuffers, key, next));
+				snapshots.push({ ...event, text: next.text });
 				break;
 			}
 			case "thinking_finished": {
 				const key = thinkingOutputKey(event);
 				const buffered = this.thinkingBuffers.get(key);
-				this.thinkingBuffers.delete(key);
-				persistedEvents.push({ ...event, text: event.text || buffered?.text || "" });
+				const canonical = { ...event, text: event.text || buffered?.text || "" };
+				mutations.push(() => {
+					if (this.thinkingBuffers.get(key) === buffered) this.thinkingBuffers.delete(key);
+				});
+				persistedEvents.push(canonical);
+				liveEvents = [canonical];
 				break;
 			}
 			case "tool_execution_updated": {
-				this.toolSnapshots.set(toolOutputKey(event), event);
+				const key = toolOutputKey(event);
+				mutations.push(() => setBounded(this.toolSnapshots, key, event));
 				snapshots.push(event);
 				break;
 			}
 			case "tool_execution_finished": {
-				this.toolSnapshots.delete(toolOutputKey(event));
+				const key = toolOutputKey(event);
+				const previous = this.toolSnapshots.get(key);
+				mutations.push(() => {
+					if (this.toolSnapshots.get(key) === previous) this.toolSnapshots.delete(key);
+				});
 				persistedEvents.push(event);
 				break;
 			}
 			case "message_finished":
 			case "session_error": {
-				persistedEvents.push(...this.flushForBoundary(event));
-				persistedEvents.push(event);
+				const flushed = this.prepareBoundaryFlush(event, mutations);
+				persistedEvents.push(...flushed, event);
+				liveEvents = [...flushed, event];
 				break;
 			}
 			default:
@@ -84,7 +116,21 @@ export class OutputCompactor {
 				break;
 		}
 
-		return { liveEvents: [event], persistedEvents, snapshots };
+		let settled = false;
+		return {
+			liveEvents,
+			persistedEvents,
+			snapshots,
+			ack: () => {
+				if (settled) return;
+				settled = true;
+				for (const mutate of mutations) mutate();
+				this.touchSession(event.piboSessionId);
+			},
+			rollback: () => {
+				settled = true;
+			},
+		};
 	}
 
 	snapshotsForSession(piboSessionId: string): PiboOutputEvent[] {
@@ -103,11 +149,52 @@ export class OutputCompactor {
 		return snapshots;
 	}
 
-	private flushForBoundary(event: Extract<PiboOutputEvent, { type: "message_finished" | "session_error" }>): PiboOutputEvent[] {
+	disposeSession(piboSessionId: string): void {
+		for (const [key, buffer] of this.assistantBuffers) {
+			if (buffer.event.piboSessionId === piboSessionId) this.assistantBuffers.delete(key);
+		}
+		for (const [key, buffer] of this.thinkingBuffers) {
+			if (buffer.base.piboSessionId === piboSessionId) this.thinkingBuffers.delete(key);
+		}
+		for (const [key, event] of this.toolSnapshots) {
+			if (event.piboSessionId === piboSessionId) this.toolSnapshots.delete(key);
+		}
+		this.sessionRecency.delete(piboSessionId);
+	}
+
+	disposeAll(): void {
+		this.assistantBuffers.clear();
+		this.thinkingBuffers.clear();
+		this.toolSnapshots.clear();
+		this.sessionRecency.clear();
+	}
+
+	debugState(): {
+		sessionCount: number;
+		sessions: string[];
+		assistantBufferCount: number;
+		thinkingBufferCount: number;
+		toolSnapshotCount: number;
+	} {
+		return {
+			sessionCount: this.sessionRecency.size,
+			sessions: [...this.sessionRecency.keys()],
+			assistantBufferCount: this.assistantBuffers.size,
+			thinkingBufferCount: this.thinkingBuffers.size,
+			toolSnapshotCount: this.toolSnapshots.size,
+		};
+	}
+
+	private prepareBoundaryFlush(
+		event: Extract<PiboOutputEvent, { type: "message_finished" | "session_error" }>,
+		mutations: Array<() => void>,
+	): PiboOutputEvent[] {
 		const flushed: PiboOutputEvent[] = [];
-		for (const [key, buffer] of Array.from(this.assistantBuffers.entries())) {
+		for (const [key, buffer] of this.assistantBuffers) {
 			if (!matchesBoundary(buffer.event, event)) continue;
-			this.assistantBuffers.delete(key);
+			mutations.push(() => {
+				if (this.assistantBuffers.get(key) === buffer) this.assistantBuffers.delete(key);
+			});
 			flushed.push({
 				type: "assistant_message",
 				piboSessionId: buffer.event.piboSessionId,
@@ -118,9 +205,11 @@ export class OutputCompactor {
 				text: buffer.text,
 			});
 		}
-		for (const [key, buffer] of Array.from(this.thinkingBuffers.entries())) {
+		for (const [key, buffer] of this.thinkingBuffers) {
 			if (!matchesBoundary(buffer.base, event)) continue;
-			this.thinkingBuffers.delete(key);
+			mutations.push(() => {
+				if (this.thinkingBuffers.get(key) === buffer) this.thinkingBuffers.delete(key);
+			});
 			flushed.push({
 				type: "thinking_finished",
 				piboSessionId: buffer.base.piboSessionId,
@@ -132,6 +221,26 @@ export class OutputCompactor {
 			});
 		}
 		return flushed;
+	}
+
+	private touchSession(piboSessionId: string): void {
+		this.sessionRecency.delete(piboSessionId);
+		this.sessionRecency.set(piboSessionId, true);
+		while (this.sessionRecency.size > MAX_TRACKED_COMPACTOR_SESSIONS) {
+			const oldest = this.sessionRecency.keys().next().value as string | undefined;
+			if (oldest === undefined) break;
+			this.disposeSession(oldest);
+		}
+	}
+}
+
+function setBounded<TKey, TValue>(map: Map<TKey, TValue>, key: TKey, value: TValue): void {
+	map.delete(key);
+	map.set(key, value);
+	while (map.size > MAX_BUFFER_ENTRIES_PER_KIND) {
+		const oldest = map.keys().next().value as TKey | undefined;
+		if (oldest === undefined) break;
+		map.delete(oldest);
 	}
 }
 

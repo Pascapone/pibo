@@ -13,14 +13,14 @@ function sortLabels(entries) {
     .map((entry) => entry.id);
 }
 
-test("trace source rank keeps transcript before event log before live nodes", () => {
+test("canonical monotone position precedes source rank", () => {
   const ordered = sortLabels([
     { id: "live", order: liveTraceOrder(0, 0, "assistant.message") },
     { id: "event", order: eventTraceOrder(0, "assistant.message") },
     { id: "transcript", order: transcriptTraceOrder(10, 0, "assistant.message") },
   ]);
 
-  assert.deepEqual(ordered, ["transcript", "event", "live"]);
+	assert.deepEqual(ordered, ["event", "live", "transcript"]);
 });
 
 test("trace phase rank orders nodes within the same transcript turn", () => {
@@ -55,12 +55,21 @@ test("missing trace order falls back after ordered nodes so callers can use stab
   assert.deepEqual(ordered, ["with-order", "without-a", "without-b"]);
 });
 
-test("immutable render positions outrank changing trace sources", () => {
-  const ordered = sortLabels([
-    { id: "history-late", order: { ...transcriptTraceOrder(0, 0, "model.reasoning"), renderSequence: 2 } },
-    { id: "live-first", order: { ...liveTraceOrder(undefined, undefined, "assistant.message"), renderSequence: 1 } },
-    { id: "event-last", order: { ...eventTraceOrder(1, "tool.call"), renderSequence: 3 } },
-  ]);
+test("render sequence is the common cross-authority position contract", () => {
+	const ordered = sortLabels([
+		{ id: "history-late", order: { ...transcriptTraceOrder(0, 0, "model.reasoning"), renderSequence: 2 } },
+		{ id: "live-first", order: { ...liveTraceOrder(undefined, undefined, "assistant.message"), renderSequence: 1 } },
+		{ id: "event-last", order: { ...eventTraceOrder(1, "tool.call"), renderSequence: 3 } },
+	]);
 
-  assert.deepEqual(ordered, ["live-first", "history-late", "event-last"]);
+	assert.deepEqual(ordered, ["live-first", "history-late", "event-last"]);
+});
+
+test("durable event sequence outranks render sequence for mixed legacy and new history", () => {
+	const ordered = sortLabels([
+		{ id: "newer", order: { ...eventTraceOrder(2, "assistant.message"), renderSequence: 1 } },
+		{ id: "older", order: eventTraceOrder(1, "assistant.message") },
+	]);
+
+	assert.deepEqual(ordered, ["older", "newer"]);
 });

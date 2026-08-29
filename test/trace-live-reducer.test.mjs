@@ -45,15 +45,15 @@ test("live reducer still dedupes replayed stream frames", () => {
 	assert.equal(events[0].payload.text, " streaming");
 });
 
-test("live and persisted events keep relative timestamp order across trace refresh", () => {
+test("live and persisted events keep relative render order across trace refresh", () => {
 	let sequence = 120;
 	const liveEvents = applyTraceLiveEvents({
 		currentEvents: [],
 		streamEvents: [
-			{ type: "RAW_EVENT", streamId: 500, streamFrameIndex: 0, createdAt: "2026-08-14T15:38:00.000Z", event: { type: "assistant_message", piboSessionId: "ps-live", eventId: "prelude-1", assistantIndex: 0, text: "prelude 1" } },
-			{ type: "RAW_EVENT", streamId: 501, streamFrameIndex: 0, createdAt: "2026-08-14T15:38:01.000Z", event: { type: "assistant_message", piboSessionId: "ps-live", eventId: "prelude-2", assistantIndex: 0, text: "prelude 2" } },
-			{ type: "RAW_EVENT", streamId: 502, streamFrameIndex: 0, createdAt: "2026-08-14T15:38:07.565Z", event: { type: "execution_result", piboSessionId: "ps-live", eventId: "status-late", action: "status", result: { processing: true } } },
-			{ type: "RAW_EVENT", streamId: 503, streamFrameIndex: 0, createdAt: "2026-08-14T15:38:08.000Z", event: { type: "assistant_delta", piboSessionId: "ps-live", eventId: "active-turn", assistantIndex: 0, text: "active" } },
+			{ type: "RAW_EVENT", streamId: 500, streamFrameIndex: 0, createdAt: "2026-08-14T15:38:00.000Z", event: { type: "assistant_message", piboSessionId: "ps-live", eventId: "prelude-1", assistantIndex: 0, text: "prelude 1", renderSequence: 120 } },
+			{ type: "RAW_EVENT", streamId: 501, streamFrameIndex: 0, createdAt: "2026-08-14T15:38:01.000Z", event: { type: "assistant_message", piboSessionId: "ps-live", eventId: "prelude-2", assistantIndex: 0, text: "prelude 2", renderSequence: 121 } },
+			{ type: "RAW_EVENT", streamId: 502, streamFrameIndex: 0, createdAt: "2026-08-14T15:38:07.565Z", event: { type: "execution_result", piboSessionId: "ps-live", eventId: "status-late", action: "status", result: { processing: true }, renderSequence: 122 } },
+			{ type: "RAW_EVENT", streamId: 503, streamFrameIndex: 0, createdAt: "2026-08-14T15:38:08.000Z", event: { type: "assistant_delta", piboSessionId: "ps-live", eventId: "active-turn", assistantIndex: 0, text: "active", renderSequence: 123 } },
 		],
 		piboSessionId: "ps-live",
 		nextSequence: () => sequence++,
@@ -79,8 +79,9 @@ test("live and persisted events keep relative timestamp order across trace refre
 		eventSequence: 6,
 		type: "execution_result",
 		eventId: "status-late",
+		renderSequence: 122,
 		createdAt: "2026-08-14T15:38:07.565Z",
-		payload: { type: "execution_result", piboSessionId: "ps-live", eventId: "status-late", action: "status", result: { processing: true } },
+		payload: { type: "execution_result", piboSessionId: "ps-live", eventId: "status-late", action: "status", result: { processing: true }, renderSequence: 122 },
 	};
 	const refreshedBase = buildTraceViewFromEvents({
 		session: { id: "ps-live", piSessionId: "pi-live" },

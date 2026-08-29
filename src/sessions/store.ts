@@ -79,6 +79,8 @@ export type PiboSessionStore = {
 		options?: RuntimeSessionBindingUpdateOptions,
 	): RuntimeSessionBinding | undefined;
 	close?(): void;
+	claimOutputRenderSequence?(piboSessionId: string, minimum: number): number;
+	observeOutputRenderSequence?(piboSessionId: string, sequence: number): void;
 };
 
 export function createPiboSessionId(): string {
@@ -190,6 +192,22 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		return updated;
 	}
 
+	claimOutputRenderSequence(piboSessionId: string, minimum: number): number {
+		const session = this.byId.get(piboSessionId);
+		if (!session) return minimum;
+		const current = outputRenderSequenceHighWater(session.metadata);
+		const next = Math.max(minimum, current + 1);
+		session.metadata = { ...(session.metadata ?? {}), outputRenderSequenceHighWater: next };
+		return next;
+	}
+
+	observeOutputRenderSequence(piboSessionId: string, sequence: number): void {
+		const session = this.byId.get(piboSessionId);
+		if (!session) return;
+		const current = outputRenderSequenceHighWater(session.metadata);
+		if (sequence > current) session.metadata = { ...(session.metadata ?? {}), outputRenderSequenceHighWater: sequence };
+	}
+
 	getRuntimeBinding(id: string): RuntimeSessionBinding | undefined {
 		const session = this.byId.get(id);
 		if (!session) return undefined;
@@ -260,6 +278,11 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 	private sort(sessions: PiboSession[]): PiboSession[] {
 		return sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 	}
+}
+
+function outputRenderSequenceHighWater(metadata: PiboJsonObject | undefined): number {
+	const value = metadata?.outputRenderSequenceHighWater;
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 export function matchesFindInput(session: PiboSession, input: FindPiboSessionsInput): boolean {

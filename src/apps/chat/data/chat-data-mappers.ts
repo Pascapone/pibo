@@ -6,6 +6,7 @@ import type { ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "../types/r
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import type { PayloadStore } from "../../../data/payload-store.js";
 import { tracePayloadRefForStoredPayload } from "../trace-v2.js";
+import { qualifiedToolNodeId } from "../../../shared/trace-tool-identity.js";
 
 type PiboPayloadReader = Pick<PayloadStore, "getPayload" | "readPayloadBytesBounded" | "readPayloadJsonBounded">;
 const MAX_TRACE_EVENT_HYDRATION_BYTES = 1024 * 1024;
@@ -108,8 +109,17 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 	}
 	if (row.type === "message_queued") return { ...base, type: "message_queued", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", queuedMessages: numberAttribute(attributes, "queuedMessages") ?? 1 } as PiboOutputEvent;
 	if (row.type === "message_steered") return { ...base, type: "message_steered", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", activeEventId: stringAttribute(attributes, "activeEventId") } as PiboOutputEvent;
-	if (row.type === "message_started") return { ...base, type: "message_started", text: row.preview_text ?? "" };
-	if (row.type === "message_finished") return { ...base, type: "message_finished" };
+	if (row.type === "message_started") return compactObject({
+		...base,
+		type: "message_started",
+		text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "",
+		source: stringAttribute(attributes, "source"),
+	}) as PiboOutputEvent;
+	if (row.type === "message_finished") return compactObject({
+		...base,
+		type: "message_finished",
+		source: stringAttribute(attributes, "source"),
+	}) as PiboOutputEvent;
 	if (row.type === "assistant_usage") {
 		return compactObject({
 			...base,
@@ -173,8 +183,12 @@ function tracePayloadIdentityForEvent(
 ): { nodeId: string; payloadKind: "input" | "output" } | undefined {
 	const toolCallId = stringAttribute(attributes, "toolCallId");
 	if (!toolCallId) return undefined;
-	if (row.type === "tool_call" || row.type === "tool_execution_started") return { nodeId: `tool:${toolCallId}`, payloadKind: "input" };
-	if (row.type === "tool_execution_updated" || row.type === "tool_execution_finished") return { nodeId: `tool:${toolCallId}`, payloadKind: "output" };
+	const eventId = stringAttribute(attributes, "semanticEventId") ?? row.event_id;
+	if (!eventId) return undefined;
+	const ordinal = numberAttribute(attributes, "toolInvocationOrdinal") ?? 0;
+	const nodeId = qualifiedToolNodeId(toolCallId, eventId, ordinal);
+	if (row.type === "tool_call" || row.type === "tool_execution_started") return { nodeId, payloadKind: "input" };
+	if (row.type === "tool_execution_updated" || row.type === "tool_execution_finished") return { nodeId, payloadKind: "output" };
 	return undefined;
 }
 

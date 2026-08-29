@@ -204,6 +204,7 @@ import {
 	normalizeStreamingFixtureProfile,
 	normalizeStreamingFixtureSuppressLiveDeltas,
 	normalizeStreamingFixtureTraceSnapshots,
+	normalizeStreamingFixtureToolInterleaving,
 	resolveCreateSessionProfile,
 	type ChatAgentBody,
 	type ChatAgentFolderBody,
@@ -1010,11 +1011,13 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 	state.subscribedContext = context;
 	state.unsubscribe = context.channelContext.subscribe((event) => {
 		const startedAt = performance.now();
+		let prepared: ReturnType<OutputCompactor["prepare"]> | undefined;
 		try {
 			state.activeTraceSessions.add(event.piboSessionId);
 			const session = context.channelContext.getSession(event.piboSessionId);
 			const room = session ? ensureSessionRoom(state, context, session) : undefined;
-			const result = state.outputCompactor.compact(event);
+			const result = state.outputCompactor.prepare(event);
+			prepared = result;
 			for (const liveEvent of result.liveEvents) {
 				if (isPersistableOutputEvent(liveEvent)) continue;
 				const transient = recordTransientReplayEvent(state, { roomId: room?.id, piboSessionId: liveEvent.piboSessionId, eventType: liveEvent.type, payload: liveEvent });
@@ -1024,6 +1027,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 					listener(transient);
 				}
 			}
+			let persistenceSucceeded = true;
 			for (const persistableEvent of result.persistedEvents) {
 				if (!isPersistableOutputEvent(persistableEvent)) continue;
 				let stored = state.eventCommands.appendOutputEvent(persistableEvent, {
@@ -1056,7 +1060,10 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 						console.warn("[chat-web] failed to write output event into V2", error);
 					}
 				}
-				if (!stored) continue;
+				if (!stored) {
+					persistenceSucceeded = false;
+					break;
+				}
 				if (persistableEvent.type === "assistant_message" || persistableEvent.type === "message_finished" || persistableEvent.type === "session_error") {
 					markActiveSessionRead(state, persistableEvent.piboSessionId, stored.streamId);
 				}
@@ -1070,8 +1077,11 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 				});
 				for (const listener of state.liveListeners) listener(stored);
 			}
+			if (persistenceSucceeded) result.ack();
+			else result.rollback();
 			recordPersistenceDuration(state.persistenceMetrics, performance.now() - startedAt);
 		} catch (error) {
+			prepared?.rollback();
 			recordPersistenceError(state.persistenceMetrics, error);
 			console.error("[chat-web] failed to index router event", error);
 		}
@@ -3137,6 +3147,7 @@ async function deleteSessionsForAgentProfile(
 	for (const id of orderedIds) await deleteSession(id);
 	state.sessionQuery.deleteSessions(orderedIds);
 	state.eventCommands.deleteSessions(orderedIds);
+	for (const id of orderedIds) disposeSessionStreamState(state, id);
 	return orderedIds;
 }
 
@@ -3167,6 +3178,7 @@ async function deleteSessionSubtree(
 	for (const id of orderedIds) await deleteSession(id);
 	state.sessionQuery.deleteSessions(orderedIds);
 	state.eventCommands.deleteSessions(orderedIds);
+	for (const id of orderedIds) disposeSessionStreamState(state, id);
 	return orderedIds;
 }
 
@@ -3211,10 +3223,17 @@ async function deleteRoomTree(
 	for (const id of orderedSessionIds) await deleteSession(id);
 	state.sessionQuery.deleteSessions(orderedSessionIds);
 	state.eventCommands.deleteSessions(orderedSessionIds);
+	for (const id of orderedSessionIds) disposeSessionStreamState(state, id);
 	state.eventCommands.deleteRooms(roomIds);
 	const orderedRoomIds = [...roomIds].reverse();
 	state.roomService.deleteRooms(orderedRoomIds);
 	return { deletedRoomIds: orderedRoomIds, deletedSessionIds: orderedSessionIds };
+}
+
+function disposeSessionStreamState(state: ChatWebAppState, piboSessionId: string): void {
+	state.outputCompactor.disposeSession(piboSessionId);
+	state.outputRenderSequencer.disposeSession(piboSessionId);
+	state.activeTraceSessions.delete(piboSessionId);
 }
 
 function sessionDepth(session: PiboSession | undefined, sessionsById: ReadonlyMap<string, PiboSession>): number {
@@ -4256,6 +4275,7 @@ function startChatStreamingFixture(input: {
 	const deltas = normalizeStreamingFixtureDeltas(input.body.deltas, mix);
 	const traceSnapshots = normalizeStreamingFixtureTraceSnapshots(input.body.traceSnapshots);
 	const suppressLiveDeltas = normalizeStreamingFixtureSuppressLiveDeltas(input.body.suppressLiveDeltas);
+	const toolInterleaving = normalizeStreamingFixtureToolInterleaving(input.body.toolInterleaving);
 	const scheduleMs = buildStreamingFixtureSchedule(deltas.length, cadenceMs, profile);
 	const reasoningDeltas = mix === "reasoning-text" ? [" think", " plan", " check", " answer"] : [];
 	const reasoningScheduleMs = reasoningDeltas.map((_, index) => Math.max(10, Math.round(((index + 1) * cadenceMs) / 2)));
@@ -4297,6 +4317,17 @@ function startChatStreamingFixture(input: {
 	}
 
 	emit({ type: "message_started", piboSessionId: selectedSession.id, eventId, text: "Streaming benchmark fixture", source: "service" });
+	const toolBase = {
+		piboSessionId: selectedSession.id,
+		eventId,
+		toolCallId: "streaming-fixture-reused-tool",
+		toolName: "read",
+	};
+	if (toolInterleaving) {
+		emit({ ...toolBase, type: "tool_call", args: { path: "README.md" }, argsComplete: true });
+		emitAt(Math.max(10, Math.round(cadenceMs / 3)), { ...toolBase, type: "tool_execution_started", args: { path: "README.md" } });
+		emitAt(Math.max(20, Math.round(cadenceMs * 1.5)), { ...toolBase, type: "tool_execution_updated", args: { path: "README.md" }, partialResult: "Streaming fixture tool update" });
+	}
 	if (reasoningDeltas.length) {
 		emit({ type: "thinking_started", piboSessionId: selectedSession.id, eventId, thinkingIndex: 0 });
 		reasoningDeltas.forEach((delta, index) => {
@@ -4310,6 +4341,9 @@ function startChatStreamingFixture(input: {
 	const finalText = deltas.join("");
 	const finalReasoning = reasoningDeltas.join("");
 	const finishDelayMs = Math.max(scheduleMs[scheduleMs.length - 1] ?? 0, reasoningScheduleMs[reasoningScheduleMs.length - 1] ?? 0) + cadenceMs;
+	if (toolInterleaving) {
+		emitAt(Math.max(30, finishDelayMs - Math.max(10, Math.round(cadenceMs / 2))), { ...toolBase, type: "tool_execution_finished", result: "Streaming fixture tool result", isError: false });
+	}
 	emitAt(finishDelayMs, { type: "assistant_message", piboSessionId: selectedSession.id, eventId, assistantIndex: 0, text: finalText });
 	emitAt(finishDelayMs, { type: "message_finished", piboSessionId: selectedSession.id, eventId, source: "service" });
 
@@ -4325,6 +4359,7 @@ function startChatStreamingFixture(input: {
 			preludeMessages,
 			traceSnapshots,
 			suppressLiveDeltas,
+			toolInterleaving,
 			scheduleMs,
 			reasoningScheduleMs,
 			reasoningDeltaCount: reasoningDeltas.length,
@@ -4527,6 +4562,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			state.reliabilityStore.close();
 			state.cronStore.close();
 			state.loopStore.close();
+			state.outputCompactor.disposeAll();
+			state.outputRenderSequencer.disposeAll();
 			state.dataStore.close();
 		},
 		async handleRequest(request, context) {

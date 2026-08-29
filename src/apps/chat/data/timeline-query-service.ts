@@ -101,6 +101,24 @@ export class ChatTimelineQueryService {
 			attributes_json: string;
 		}>;
 		if (rows.length > TRACE_RECONCILIATION_ENTRY_CAP) return false;
+		if (nodeIdentity.qualifier) {
+			return rows.some((row) => {
+				let attributes: Record<string, unknown>;
+				try {
+					const parsed = JSON.parse(row.attributes_json) as unknown;
+					if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+					attributes = parsed as Record<string, unknown>;
+				} catch {
+					return false;
+				}
+				const ordinal = attributes.toolInvocationOrdinal;
+				return Number.isSafeInteger(ordinal)
+					&& Number(ordinal) === nodeIdentity.qualifier!.invocationOrdinal
+					&& row.event_id === nodeIdentity.qualifier!.eventId
+					&& row.type !== "tool_execution_started"
+					&& payloadMatchesEventRow(this.store, payload.sha256, input.payloadId, row);
+			});
+		}
 		const lifecycles = new Map<string | null, {
 			nextOrdinal: number;
 			active?: { eventId: string | null; invocationOrdinal: number; payloadMatches: boolean };

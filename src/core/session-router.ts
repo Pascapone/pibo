@@ -27,7 +27,7 @@ import type {
 	PiboSessionOperationResult,
 	PiboSessionStatus,
 } from "./events.js";
-import { OutputRenderSequencer } from "./output-render-sequence.js";
+import { OutputRenderSequencer, outputRenderHighWaterStore } from "./output-render-sequence.js";
 import {
 	normalizePiboAgentSessionName,
 	type PiboAgentObservation,
@@ -543,7 +543,7 @@ export class PiboSessionRouter {
 	private readonly sessions = new Map<string, RoutedSession>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
 	private readonly listeners = new Set<PiboEventListener>();
-	private readonly outputRenderSequencer = new OutputRenderSequencer();
+	private readonly outputRenderSequencer: OutputRenderSequencer;
 	private readonly runRegistry: PiboRunRegistry;
 	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
@@ -589,6 +589,9 @@ export class PiboSessionRouter {
 		// Preserve that composition contract during the adapter migration without branching on adapter ids.
 		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
+		this.outputRenderSequencer = new OutputRenderSequencer({
+			highWaterStore: outputRenderHighWaterStore(this.sessionStore),
+		});
 		this.telemetryStore = options.telemetryStore ?? telemetryStoreFromSessionStore(this.sessionStore);
 		this.telemetryWriter = this.telemetryStore ? new AsyncTelemetryWriter(this.telemetryStore) : undefined;
 		this.telemetryRecorder = this.telemetryStore
@@ -893,6 +896,7 @@ export class PiboSessionRouter {
 			for (const id of ids) {
 				if (this.disposingSessions.get(id) === operation) this.disposingSessions.delete(id);
 				this.quiescingSessions.delete(id);
+				this.outputRenderSequencer.disposeSession(id);
 				this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason });
 			}
 			await this.telemetryWriter?.flush();
@@ -1367,6 +1371,7 @@ export class PiboSessionRouter {
 			this.runtimeResourceSessions.clear();
 			this.activeSubagentRequests.clear();
 			this.subagentRequestIdsByEvent.clear();
+			this.outputRenderSequencer.disposeAll();
 			this.agentObservations.length = 0;
 			this.agentObservationEvictedThroughByParent.clear();
 			await this.telemetryWriter?.dispose();

@@ -160,11 +160,11 @@ test("mergeRefreshedTracePage replaces stale tail nodes without dropping loaded 
 
 	const merged = mergeRefreshedTracePage(current, refreshed);
 	assert.deepEqual(merged.nodes.map((entry) => entry.id), [
+		"entry:legacy-run-notification",
+		"older-transcript",
 		"older-event",
 		"older-run-notification",
 		"older-yielded-run",
-		"entry:legacy-run-notification",
-		"older-transcript",
 		"shared",
 		"new-tail",
 	]);

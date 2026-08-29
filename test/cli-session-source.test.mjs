@@ -248,6 +248,93 @@ test("local CLI compacts assistant and thinking deltas before persistence and re
 	dataStore.close();
 });
 
+test("local CLI projects canonical assistant and thinking finals when provider finals are empty", async () => {
+	const dataStore = new PiboDataStore(":memory:");
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	const listeners = new Set();
+	const router = {
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		async emit() { throw new Error("not used"); },
+	};
+	const source = new LocalCliSessionSource({ dataStore, sessionStore, router, now: () => fixedNow });
+	const created = await source.createSession({ title: "Canonical empty finals", profile: "base" });
+	const opened = await source.openSession(created.id);
+	let latestTrace = opened.traceView;
+	opened.subscribe((update) => {
+		if (update.type === "trace") latestTrace = update.traceView;
+	});
+	const emit = (event) => {
+		for (const listener of listeners) listener({ piboSessionId: created.id, eventId: "turn-empty-finals", ...event });
+	};
+	emit({ type: "message_started", text: "stream", source: "user" });
+	emit({ type: "thinking_started", thinkingIndex: 0 });
+	emit({ type: "thinking_delta", thinkingIndex: 0, text: "kept thought" });
+	emit({ type: "thinking_finished", thinkingIndex: 0, text: "" });
+	emit({ type: "assistant_delta", assistantIndex: 0, text: "kept answer" });
+	emit({ type: "assistant_message", assistantIndex: 0, text: "" });
+	emit({ type: "message_finished", source: "user" });
+
+	const liveRows = buildCompactTerminalRows(latestTrace, { showThinking: true });
+	assert.equal(liveRows.find((row) => row.kind === "message.assistant")?.output, "kept answer");
+	assert.equal(liveRows.find((row) => row.kind === "reasoning")?.markdown, "kept thought");
+	opened.close();
+	await source.close();
+
+	const reloadedSource = new LocalCliSessionSource({ dataStore, sessionStore, now: () => fixedNow });
+	const reloaded = await reloadedSource.openSession(created.id);
+	const reloadedRows = buildCompactTerminalRows(reloaded.traceView, { showThinking: true });
+	assert.equal(reloadedRows.find((row) => row.kind === "message.assistant")?.output, "kept answer");
+	assert.equal(reloadedRows.find((row) => row.kind === "reasoning")?.markdown, "kept thought");
+	reloaded.close();
+	await reloadedSource.close();
+	dataStore.close();
+});
+
+test("local CLI retries a failed compacted final without losing or duplicating buffered text", async () => {
+	const dataStore = new PiboDataStore(":memory:");
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	const originalAppend = dataStore.eventLog.appendEvent.bind(dataStore.eventLog);
+	let failFirstFinal = true;
+	dataStore.eventLog.appendEvent = (input) => {
+		if (failFirstFinal && input.type === "assistant_message") {
+			failFirstFinal = false;
+			throw new Error("injected first-write failure");
+		}
+		return originalAppend(input);
+	};
+	const listeners = new Set();
+	const router = {
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		async emit() { throw new Error("not used"); },
+	};
+	const source = new LocalCliSessionSource({ dataStore, sessionStore, router, now: () => fixedNow });
+	const created = await source.createSession({ title: "Retry compacted final", profile: "base" });
+	const opened = await source.openSession(created.id);
+	let latestTrace = opened.traceView;
+	opened.subscribe((update) => {
+		if (update.type === "trace") latestTrace = update.traceView;
+	});
+	const emit = (event) => {
+		for (const listener of listeners) listener({ piboSessionId: created.id, eventId: "turn-retry", ...event });
+	};
+	emit({ type: "assistant_delta", assistantIndex: 0, text: "retry-safe answer" });
+	emit({ type: "assistant_message", assistantIndex: 0, text: "" });
+	assert.equal(dataStore.eventLog.listEvents({ sessionId: created.id }).filter((event) => event.type === "assistant_message").length, 0);
+	emit({ type: "assistant_message", assistantIndex: 0, text: "" });
+	const persisted = dataStore.eventLog.listEvents({ sessionId: created.id }).filter((event) => event.type === "assistant_message");
+	assert.equal(persisted.length, 1);
+	assert.equal(buildCompactTerminalRows(latestTrace, { showThinking: true }).find((row) => row.kind === "message.assistant")?.output, "retry-safe answer");
+
+	opened.close();
+	await source.close();
+	const reloadedSource = new LocalCliSessionSource({ dataStore, sessionStore, now: () => fixedNow });
+	const reloaded = await reloadedSource.openSession(created.id);
+	assert.equal(buildCompactTerminalRows(reloaded.traceView, { showThinking: true }).find((row) => row.kind === "message.assistant")?.output, "retry-safe answer");
+	reloaded.close();
+	await reloadedSource.close();
+	dataStore.close();
+});
+
 test("local CLI session source routes slash actions and opens clone results without partition parameters", async () => {
 	const store = new InMemoryPiboSessionStore();
 	const emitted = [];

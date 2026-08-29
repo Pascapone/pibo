@@ -58,6 +58,7 @@ export function historyTraceOrder(
 		sourceRank: TRACE_SOURCE_RANK[source],
 		turnSeq: historyIndex,
 		transcriptIndex: historyIndex,
+		eventSequence: source === "product-history" ? historyIndex : undefined,
 		contentPartIndex,
 		phaseRank: TRACE_PHASE_RANK[type],
 	};
@@ -120,18 +121,33 @@ export function compareTraceOrder(left?: TraceOrderKey, right?: TraceOrderKey): 
 	if (!left && !right) return 0;
 	if (!left) return 1;
 	if (!right) return -1;
-	if (left.renderSequence !== undefined && right.renderSequence !== undefined) {
-		const byRenderSequence = left.renderSequence - right.renderSequence;
-		if (byRenderSequence !== 0) return byRenderSequence;
-	}
+	const leftPosition = canonicalTracePosition(left);
+	const rightPosition = canonicalTracePosition(right);
 	return (
+		leftPosition - rightPosition ||
+		left.phaseRank - right.phaseRank ||
+		(left.contentPartIndex ?? 0) - (right.contentPartIndex ?? 0) ||
 		left.sourceRank - right.sourceRank ||
-		left.turnSeq - right.turnSeq ||
 		(left.transcriptIndex ?? Number.MAX_SAFE_INTEGER) - (right.transcriptIndex ?? Number.MAX_SAFE_INTEGER) ||
 		(left.eventSequence ?? Number.MAX_SAFE_INTEGER) - (right.eventSequence ?? Number.MAX_SAFE_INTEGER) ||
+		(left.renderSequence ?? Number.MAX_SAFE_INTEGER) - (right.renderSequence ?? Number.MAX_SAFE_INTEGER) ||
 		(left.streamId ?? Number.MAX_SAFE_INTEGER) - (right.streamId ?? Number.MAX_SAFE_INTEGER) ||
 		(left.streamFrameIndex ?? Number.MAX_SAFE_INTEGER) - (right.streamFrameIndex ?? Number.MAX_SAFE_INTEGER) ||
-		(left.contentPartIndex ?? 0) - (right.contentPartIndex ?? 0) ||
-		left.phaseRank - right.phaseRank
+		left.turnSeq - right.turnSeq
 	);
+}
+
+/**
+ * renderSequence is the cross-authority position contract. Persisted legacy
+ * nodes use their durable event sequence in the same monotone per-session
+ * number space; the sequencer initializes above both durable maxima. The
+ * comparator never selects a field based on the other operand, keeping the
+ * relation total and transitive.
+ */
+function canonicalTracePosition(order: TraceOrderKey): number {
+	return order.renderSequence
+		?? order.eventSequence
+		?? order.transcriptIndex
+		?? order.streamId
+		?? order.turnSeq;
 }

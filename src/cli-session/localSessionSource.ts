@@ -15,7 +15,7 @@ import type {
   PiboOutputEvent,
   PiboSessionStatus,
 } from "../core/events.js";
-import { OutputRenderSequencer } from "../core/output-render-sequence.js";
+import { OutputRenderSequencer, outputRenderHighWaterStore } from "../core/output-render-sequence.js";
 import { getDefaultPiboWorkspace } from "../core/workspace.js";
 import { buildTraceView } from "../apps/chat/trace.js";
 import {
@@ -124,9 +124,12 @@ export class LocalCliSessionSource implements CliSessionSource {
       this.handleRouterEvent(event),
     );
     this.now = options.now ?? (() => new Date().toISOString());
-    this.outputRenderSequencer = new OutputRenderSequencer(() => {
-      const timestamp = Date.parse(this.now());
-      return Number.isFinite(timestamp) ? timestamp : Date.now();
+    this.outputRenderSequencer = new OutputRenderSequencer({
+      now: () => {
+        const timestamp = Date.parse(this.now());
+        return Number.isFinite(timestamp) ? timestamp : Date.now();
+      },
+      highWaterStore: outputRenderHighWaterStore(this.sessionStore),
     });
     this.statusMessage = options.statusMessage;
     this.dataStore = options.dataStore;
@@ -508,6 +511,8 @@ export class LocalCliSessionSource implements CliSessionSource {
       this.closed = true;
       for (const handle of [...this.openHandles]) handle.close();
       this.listeners.clear();
+      this.outputRenderSequencer.disposeAll();
+      this.outputCompactor.disposeAll();
       this.unsubscribeRouter?.();
       if (this.ownsSessionStore) this.sessionStore.close?.();
       if (this.ownsDataStore) this.dataStore?.close();
@@ -730,11 +735,16 @@ export class LocalCliSessionSource implements CliSessionSource {
     const session = this.sessionStore.get(event.piboSessionId);
     if (!session) return;
     const positionedEvent = this.outputRenderSequencer.position(event);
-    const compacted = this.outputCompactor.compact(positionedEvent);
+    const compacted = this.outputCompactor.prepare(positionedEvent);
+    let persisted = true;
     for (const persistedEvent of compacted.persistedEvents) {
-      this.ingestOutputEvent(session, persistedEvent);
-      if (persistedEvent.type !== positionedEvent.type) this.recordOutputEvent(persistedEvent);
+      if (!this.ingestOutputEvent(session, persistedEvent)) {
+        persisted = false;
+        break;
+      }
     }
+    if (persisted) compacted.ack();
+    else compacted.rollback();
     for (const liveEvent of compacted.liveEvents) this.recordOutputEvent(liveEvent);
   }
 
@@ -858,8 +868,8 @@ export class LocalCliSessionSource implements CliSessionSource {
   private ingestOutputEvent(
     session: PiboSession,
     event: PiboOutputEvent,
-  ): void {
-    if (!this.ingestService) return;
+  ): boolean {
+    if (!this.ingestService) return true;
     try {
       this.ingestService.ingestOutputEvent({
         session,
@@ -868,8 +878,10 @@ export class LocalCliSessionSource implements CliSessionSource {
         event,
         createdAt: this.now(),
       });
+      return true;
     } catch {
       // Persistence is best-effort; live local rendering still proceeds through in-memory trace updates.
+      return false;
     }
   }
 

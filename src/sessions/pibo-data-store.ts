@@ -174,6 +174,45 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		return this.get(id);
 	}
 
+	claimOutputRenderSequence(piboSessionId: string, minimum: number): number {
+		return this.dataStore.transaction(() => {
+			const row = this.db.prepare("SELECT metadata_json FROM sessions WHERE id = ? AND deleted_at IS NULL").get(piboSessionId) as { metadata_json: string } | undefined;
+			if (!row) return minimum;
+			const metadata = parseJsonObject(row.metadata_json);
+			const metadataHighWater = outputRenderSequenceHighWater(metadata);
+			const durableHighWater = metadataHighWater > 0 ? 0 : this.durableOutputRenderSequenceHighWater(piboSessionId);
+			const current = Math.max(metadataHighWater, durableHighWater);
+			const next = Math.max(minimum, current + 1);
+			this.db.prepare("UPDATE sessions SET metadata_json = ? WHERE id = ? AND deleted_at IS NULL")
+				.run(JSON.stringify({ ...metadata, outputRenderSequenceHighWater: next }), piboSessionId);
+			return next;
+		});
+	}
+
+	private durableOutputRenderSequenceHighWater(piboSessionId: string): number {
+		const row = this.db.prepare(`
+			SELECT MAX(MAX(
+				COALESCE(CAST(json_extract(attributes_json, '$.renderSequence') AS INTEGER), 0),
+				COALESCE(session_sequence, 0)
+			)) AS high_water
+			FROM event_log
+			WHERE session_id = ?
+		`).get(piboSessionId) as { high_water: number | null } | undefined;
+		const value = row?.high_water;
+		return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+	}
+
+	observeOutputRenderSequence(piboSessionId: string, sequence: number): void {
+		this.dataStore.transaction(() => {
+			const row = this.db.prepare("SELECT metadata_json FROM sessions WHERE id = ? AND deleted_at IS NULL").get(piboSessionId) as { metadata_json: string } | undefined;
+			if (!row) return;
+			const metadata = parseJsonObject(row.metadata_json);
+			if (sequence <= outputRenderSequenceHighWater(metadata)) return;
+			this.db.prepare("UPDATE sessions SET metadata_json = ? WHERE id = ? AND deleted_at IS NULL")
+				.run(JSON.stringify({ ...metadata, outputRenderSequenceHighWater: sequence }), piboSessionId);
+		});
+	}
+
 	delete(id: string): boolean {
 		const result = this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
 		return Number(result.changes ?? 0) > 0;
@@ -555,6 +594,11 @@ function parseJsonObject(json: string | null | undefined): PiboJsonObject {
 	} catch {
 		return {};
 	}
+}
+
+function outputRenderSequenceHighWater(metadata: PiboJsonObject): number {
+	const value = metadata.outputRenderSequenceHighWater;
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 function rootSessionId(session: PiboSession): string {

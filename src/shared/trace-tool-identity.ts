@@ -1,5 +1,3 @@
-import { TRACE_RECONCILIATION_ENTRY_CAP } from "./trace-limits.js";
-
 const QUALIFIED_TOOL_PREFIX = "tool-invocation:";
 const LEGACY_QUALIFIED_TOOL_PREFIX = "history-tool:";
 const TOOL_PREFIX = "tool:";
@@ -52,7 +50,6 @@ export function parseTraceToolNodeIdentity(nodeId: string): TraceToolNodeIdentit
 			|| qualifier[1].length === 0
 			|| !Number.isSafeInteger(qualifier[2])
 			|| Number(qualifier[2]) < 0
-			|| Number(qualifier[2]) >= TRACE_RECONCILIATION_ENTRY_CAP
 		) return undefined;
 		const identity = {
 			toolCallId: decoded[0],

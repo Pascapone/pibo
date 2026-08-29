@@ -10,6 +10,7 @@ import {
 } from "./trace-subagent-links.js";
 import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
 import { qualifiedToolNodeId } from "./trace-tool-identity.js";
+import { deterministicDigest } from "./deterministic-digest.js";
 
 export type PersistedHistoryMode = "none" | "product" | "native";
 
@@ -31,6 +32,14 @@ export function applySingleEventToNodes(
 	sessionStatus: PiboWebSessionStatus,
 ): void {
 	const payload = storedEvent.payload as PiboOutputEvent;
+	if (payload.type === "message_started" && payload.source === "user" && payload.eventId) {
+		const persistedUser = flattenTraceNodes([...nodes]).find((node) =>
+			node.type === "user.message"
+			&& isPersistedHistorySource(node.source)
+			&& node.eventId === payload.eventId
+		);
+		if (persistedUser) applyRenderSequence(persistedUser, storedEvent, payload);
+	}
 	const confirmedUserMessage = historyCoverage.mode !== "none" ? confirmedUserMessageEchoNode(nodes, storedEvent) : undefined;
 	if (confirmedUserMessage) {
 		applyRenderSequence(confirmedUserMessage, storedEvent, payload);
@@ -235,9 +244,14 @@ function applyRenderSequence(
 	event: PiboOutputEvent,
 ): void {
 	const renderSequence = storedEvent.renderSequence ?? event.renderSequence;
-	if (renderSequence === undefined) return;
-	const orderKey = node.orderKey ?? eventTraceOrder(storedEvent.eventSequence, eventNodeKind(event.type));
-	node.orderKey = { ...orderKey, renderSequence };
+	const eventSequence = storedEvent.eventSequence ?? storedEvent.streamId;
+	if (renderSequence === undefined && eventSequence === undefined) return;
+	const orderKey = node.orderKey ?? eventTraceOrder(eventSequence, eventNodeKind(event.type));
+	node.orderKey = {
+		...orderKey,
+		...(eventSequence === undefined ? {} : { turnSeq: eventSequence, eventSequence }),
+		...(renderSequence === undefined ? {} : { renderSequence }),
+	};
 }
 
 function applyStoredPayloadRef(
@@ -1099,7 +1113,7 @@ function eventTraceNodeOrder(
 ): TraceOrderKey {
 	const order = traceSource === "live"
 		? liveTraceOrder(streamId, streamFrameIndex, eventNodeKind(type))
-		: eventTraceOrder(eventSequence, eventNodeKind(type));
+		: eventTraceOrder(eventSequence ?? streamId, eventNodeKind(type));
 	return renderSequence === undefined ? order : { ...order, renderSequence };
 }
 
@@ -1306,23 +1320,5 @@ function nonEmptyString(value: unknown): string | undefined {
 }
 
 function cryptoSafeId(value: unknown): string {
-	return base64UrlEncode(new TextEncoder().encode(JSON.stringify(value)));
-}
-
-function base64UrlEncode(bytes: Uint8Array): string {
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-	let output = "";
-	let index = 0;
-	for (; index + 2 < bytes.length; index += 3) {
-		const value = (bytes[index] << 16) | (bytes[index + 1] << 8) | bytes[index + 2];
-		output += alphabet[(value >> 18) & 63] + alphabet[(value >> 12) & 63] + alphabet[(value >> 6) & 63] + alphabet[value & 63];
-	}
-	if (index < bytes.length) {
-		const first = bytes[index];
-		const second = index + 1 < bytes.length ? bytes[index + 1] : 0;
-		const value = (first << 16) | (second << 8);
-		output += alphabet[(value >> 18) & 63] + alphabet[(value >> 12) & 63];
-		if (index + 1 < bytes.length) output += alphabet[(value >> 6) & 63];
-	}
-	return output;
+	return deterministicDigest(value);
 }
