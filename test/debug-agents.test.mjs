@@ -50,6 +50,30 @@ function createFixture() {
 		event: { type: "tool_call", piboSessionId: worker.id, eventId: "event_worker", toolCallId: "tool_worker", toolName: "bash", args: { command: "npm test" }, argsComplete: true },
 	});
 	ingest.ingestOutputEvent({
+		session: worker,
+		roomId: "room_test",
+		createdAt: "2026-08-23T12:01:01.000Z",
+		event: { type: "tool_execution_started", piboSessionId: worker.id, eventId: "event_worker", toolCallId: "tool_worker", toolName: "bash", args: { command: "npm test" } },
+	});
+	ingest.ingestOutputEvent({
+		session: worker,
+		roomId: "room_test",
+		createdAt: "2026-08-23T12:01:02.000Z",
+		event: { type: "tool_execution_updated", piboSessionId: worker.id, eventId: "event_worker", toolCallId: "tool_worker", toolName: "bash", partialResult: { delta: "tests running" } },
+	});
+	ingest.ingestOutputEvent({
+		session: worker,
+		roomId: "room_test",
+		createdAt: "2026-08-23T12:01:03.000Z",
+		event: { type: "tool_execution_finished", piboSessionId: worker.id, eventId: "event_worker", toolCallId: "tool_worker", toolName: "bash", result: { status: "completed", command: "npm test", output: "x".repeat(5_000) }, isError: false },
+	});
+	ingest.ingestOutputEvent({
+		session: explorer,
+		roomId: "room_test",
+		createdAt: "2026-08-23T12:01:30.000Z",
+		event: { type: "assistant_message", piboSessionId: explorer.id, eventId: "event_explorer_second", text: "Confirmed the shared query boundary" },
+	});
+	ingest.ingestOutputEvent({
 		session: explorer,
 		roomId: "room_test",
 		createdAt: "2026-08-23T12:02:00.000Z",
@@ -71,6 +95,39 @@ test("debug delegated-agent inspection lists owned children and applies exact ob
 			["ps_worker", "worker", "killed"],
 		]);
 		assert.deepEqual(inspectDebugAgentList("ps_parent", fixture.store, { status: "killed" }).map((agent) => agent.agentId), ["ps_worker"]);
+
+		const defaults = inspectDebugAgentObservations("ps_parent", fixture.store);
+		assert.deepEqual(defaults.observations.map((observation) => observation.eventType), ["assistant_message", "assistant_message"]);
+		assert.deepEqual(defaults.observations.map((observation) => observation.text), [
+			"Confirmed the shared query boundary",
+			"Found the routing boundary",
+		]);
+		assert.deepEqual(defaults.filters.eventTypes, ["assistant_message"]);
+		assert.equal(defaults.filters.order, "desc");
+		assert.equal(defaults.filters.limit, 20);
+		assert.equal(defaults.filters.includeTools, false);
+		assert.equal(defaults.filters.toolDetail, "summary");
+
+		const withTools = inspectDebugAgentObservations("ps_parent", fixture.store, { includeTools: true, order: "asc", limit: 50 });
+		assert.deepEqual(withTools.observations.map((observation) => observation.eventType), [
+			"assistant_message",
+			"tool_call",
+			"tool_execution_finished",
+			"assistant_message",
+		]);
+		const summarizedTool = withTools.observations.find((observation) => observation.eventType === "tool_execution_finished");
+		assert.match(summarizedTool.text, /"outputBytes":5000/);
+		assert.equal(Buffer.byteLength(summarizedTool.text, "utf8") <= 768, true);
+		assert.deepEqual(
+			inspectDebugAgentObservations("ps_parent", fixture.store, { toolCallIds: ["tool_worker"], order: "asc" })
+				.observations.map((observation) => observation.eventType),
+			["tool_call", "tool_execution_finished"],
+		);
+		assert.deepEqual(
+			inspectDebugAgentObservations("ps_parent", fixture.store, { kinds: ["tool"], roles: ["tool"], order: "asc", limit: 50 })
+				.observations.map((observation) => observation.eventType),
+			["tool_call", "tool_execution_started", "tool_execution_updated", "tool_execution_finished"],
+		);
 
 		const result = inspectDebugAgentObservations("ps_parent", fixture.store, {
 			agentIds: ["ps_worker"],
@@ -120,19 +177,50 @@ test("debug delegated-agent inspection lists owned children and applies exact ob
 	}
 });
 
-test("debug delegated-agent CLI exposes command-level discovery and rejects ignored options", async () => {
+test("debug delegated-agent CLI exposes and executes the shared observation filters", async () => {
+	const fixture = createFixture();
 	const output = [];
 	const originalLog = console.log;
+	const originalPiboHome = process.env.PIBO_HOME;
 	console.log = (...args) => output.push(args.join(" "));
+	process.env.PIBO_HOME = fixture.root;
 	try {
 		await runDebugAgentsCli(["ps_parent", "observe", "--help"]);
+		const help = output.join("\n");
+		assert.match(help, /Default: the newest 20 completed assistant messages/);
+		assert.match(help, /pages always consume the oldest unseen rows/);
+		assert.match(help, /--tool-call-id/);
+		assert.match(help, /--include-tools/);
+		assert.match(help, /--tool-detail summary\|full/);
+		assert.match(help, /--role role/);
+
+		output.length = 0;
+		await runDebugAgentsCli([
+			"ps_parent",
+			"observe",
+			"--tool-call-id",
+			"tool_worker",
+			"--role",
+			"tool",
+			"--tool-detail",
+			"full",
+			"--order",
+			"asc",
+			"--json",
+		]);
+		const result = JSON.parse(output.join("\n"));
+		assert.deepEqual(result.observations.map((observation) => observation.eventType), ["tool_call", "tool_execution_finished"]);
+		assert.equal(result.filters.includeTools, true);
+		assert.equal(result.filters.toolDetail, "full");
+		await assert.rejects(
+			runDebugAgentsCli(["ps_parent", "list", "--limit", "1"]),
+			/Unsupported option for pibo debug agents list/,
+		);
 	} finally {
 		console.log = originalLog;
+		if (originalPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = originalPiboHome;
+		fixture.dataStore.close();
+		rmSync(fixture.root, { recursive: true, force: true });
 	}
-	assert.match(output.join("\n"), /pages always consume the oldest unseen rows/);
-	assert.match(output.join("\n"), /--agent-id/);
-	await assert.rejects(
-		runDebugAgentsCli(["ps_parent", "list", "--limit", "1"]),
-		/Unsupported option for pibo debug agents list/,
-	);
 });
