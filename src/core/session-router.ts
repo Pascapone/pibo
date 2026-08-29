@@ -2723,6 +2723,10 @@ export class PiboSessionRouter {
 			const delivery = this.runReminderDeliveries.get(eventId);
 			if (!delivery) return;
 			this.runReminderDeliveries.delete(eventId);
+			if (event.errorDetails?.code === "loop_continuation_invalidated") {
+				this.suppressRunReminderDelivery(delivery);
+				return;
+			}
 			if (
 				!isRunReminderContextPressureError(event)
 				|| this.closing
@@ -2734,12 +2738,7 @@ export class PiboSessionRouter {
 			}
 
 			if (this.hasRunReminderRecovery(delivery)) {
-				const released = this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
-				for (const run of released) this.runRegistry.suppressNotification(delivery.piboSessionId, run.runId);
-				this.clearRunReminderRecovery(delivery);
-				this.deferredRunReminders.delete(delivery.piboSessionId);
-				this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
-				this.scheduleRunReminder(delivery.piboSessionId, false, delivery.generation);
+				this.suppressRunReminderDelivery(delivery);
 				return;
 			}
 
@@ -2760,6 +2759,15 @@ export class PiboSessionRouter {
 		if (this.closing || this.quiescingSessions.has(event.piboSessionId)) return;
 		if (generation !== this.runReminderGeneration(event.piboSessionId)) return;
 		this.scheduleRunReminder(event.piboSessionId, true, generation);
+	}
+
+	private suppressRunReminderDelivery(delivery: RunReminderDelivery): void {
+		const released = this.runRegistry.releaseNotification(delivery.piboSessionId, delivery.notification);
+		for (const run of released) this.runRegistry.suppressNotification(delivery.piboSessionId, run.runId);
+		this.clearRunReminderRecovery(delivery);
+		this.deferredRunReminders.delete(delivery.piboSessionId);
+		this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
+		this.scheduleRunReminder(delivery.piboSessionId, false, delivery.generation);
 	}
 
 	private hasRunReminderRecovery(delivery: RunReminderDelivery): boolean {
