@@ -16,7 +16,11 @@ import type {
   PiboSessionStatus,
 } from "../core/events.js";
 import { OutputRenderSequencer, outputRenderHighWaterStore, validRenderSequence } from "../core/output-render-sequence.js";
-import { OutputPersistenceRetryQueue } from "../core/output-persistence-retry.js";
+import {
+  OutputPersistenceRetryQueue,
+  type OutputPersistenceRetryContext,
+  type OutputPersistenceRetryJob,
+} from "../core/output-persistence-retry.js";
 import { getDefaultPiboWorkspace } from "../core/workspace.js";
 import { buildTraceView } from "../apps/chat/trace.js";
 import {
@@ -29,6 +33,10 @@ import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { ChatHistoryQueryService } from "../apps/chat/data/history-query-service.js";
 import type { StoredPiboEventLogRow } from "../data/event-log.js";
 import type { PiboDataStore } from "../data/pibo-store.js";
+import {
+  createDefaultPiboReliabilityStore,
+  type PiboReliabilityStore,
+} from "../reliability/store.js";
 import {
   buildSlashCommandCatalog,
   normalizeCommandErrorDescriptor,
@@ -78,7 +86,18 @@ export type LocalCliSessionSourceOptions = {
   statusMessage?: string;
   dataStore?: PiboDataStore;
   ownsDataStore?: boolean;
+  reliabilityStore?: PiboReliabilityStore;
+  ownsReliabilityStore?: boolean;
   agentSummaries?: readonly CliAgentSummary[];
+};
+
+type CliOutputPersistenceState = {
+  version: 1;
+  piboSessionId: string;
+  deliveries: Array<{
+    event: PiboOutputEvent;
+    persisted?: boolean;
+  }>;
 };
 
 export const CLI_LOCAL_RECOVERY_SOURCE_ID = "local:root";
@@ -95,10 +114,12 @@ export class LocalCliSessionSource implements CliSessionSource {
   private readonly now: () => string;
   private readonly outputRenderSequencer: OutputRenderSequencer;
   private readonly outputCompactor = new OutputCompactor();
-  private readonly outputPersistenceRetries = new OutputPersistenceRetryQueue();
+  private readonly outputPersistenceRetries: OutputPersistenceRetryQueue;
   private readonly statusMessage?: string;
   private readonly dataStore?: PiboDataStore;
   private readonly ownsDataStore: boolean;
+  private readonly reliabilityStore?: PiboReliabilityStore;
+  private readonly ownsReliabilityStore: boolean;
   private readonly ingestService?: ChatDataIngestService;
   private readonly roomService?: ChatRoomService;
   private readonly agentSummaries?: readonly CliAgentSummary[];
@@ -122,9 +143,6 @@ export class LocalCliSessionSource implements CliSessionSource {
       options.pluginRegistry ?? createDefaultPiboUserProfileRegistry();
     this.router = options.router;
     this.ownsRouter = options.ownsRouter ?? false;
-    this.unsubscribeRouter = this.router?.subscribe((event) =>
-      this.handleRouterEvent(event),
-    );
     this.now = options.now ?? (() => new Date().toISOString());
     this.outputRenderSequencer = new OutputRenderSequencer({
       now: () => {
@@ -136,6 +154,14 @@ export class LocalCliSessionSource implements CliSessionSource {
     this.statusMessage = options.statusMessage;
     this.dataStore = options.dataStore;
     this.ownsDataStore = options.ownsDataStore === true;
+    this.reliabilityStore = options.reliabilityStore
+      ?? (this.ownsDataStore ? createDefaultPiboReliabilityStore() : undefined);
+    this.ownsReliabilityStore = options.ownsReliabilityStore
+      ?? (this.ownsDataStore && options.reliabilityStore === undefined);
+    this.outputPersistenceRetries = new OutputPersistenceRetryQueue({
+      durableStore: this.reliabilityStore,
+      queueName: "output-persistence-cli",
+    });
     this.ingestService = options.dataStore
       ? new ChatDataIngestService(options.dataStore)
       : undefined;
@@ -145,6 +171,14 @@ export class LocalCliSessionSource implements CliSessionSource {
     this.agentSummaries = options.agentSummaries
       ? [...options.agentSummaries]
       : undefined;
+    this.outputPersistenceRetries.recover((job) => {
+      const persistenceState = parseCliOutputPersistenceState(job.payload);
+      if (!persistenceState) throw new Error(`Invalid durable CLI output persistence job ${job.key}`);
+      return this.createOutputPersistenceJob(persistenceState);
+    });
+    this.unsubscribeRouter = this.router?.subscribe((event) =>
+      this.handleRouterEvent(event),
+    );
   }
 
   async listRooms(): Promise<readonly CliRoomSummary[]> {
@@ -520,6 +554,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       this.unsubscribeRouter?.();
       if (this.ownsSessionStore) this.sessionStore.close?.();
       if (this.ownsDataStore) this.dataStore?.close();
+      if (this.ownsReliabilityStore) this.reliabilityStore?.close();
     } finally {
       this.closing = false;
     }
@@ -743,21 +778,50 @@ export class LocalCliSessionSource implements CliSessionSource {
     if (compacted.persistedEvents.length === 0) {
       compacted.ack();
     } else {
-      const key = JSON.stringify(compacted.persistedEvents.map(outputPersistenceDeliveryKey));
-      this.outputPersistenceRetries.enqueue({
-        key,
-        run: () => {
-          for (const persistedEvent of compacted.persistedEvents) {
-            if (!this.ingestOutputEvent(session, persistedEvent)) {
-              throw new Error(`Failed to persist ${outputPersistenceDeliveryKey(persistedEvent)}`);
-            }
-          }
-        },
-        onSuccess: () => compacted.ack(),
-        onDeadLetter: () => compacted.rollback(),
-      });
+      const persistenceState: CliOutputPersistenceState = {
+        version: 1,
+        piboSessionId: session.id,
+        deliveries: compacted.persistedEvents.map((persistedEvent) => ({ event: persistedEvent })),
+      };
+      this.outputPersistenceRetries.enqueue(this.createOutputPersistenceJob(
+        persistenceState,
+        () => compacted.ack(),
+        () => compacted.rollback(),
+      ));
     }
     for (const liveEvent of compacted.liveEvents) this.recordOutputEvent(liveEvent);
+  }
+
+  private createOutputPersistenceJob(
+    persistenceState: CliOutputPersistenceState,
+    onSuccess?: () => void,
+    onDeadLetter?: () => void,
+  ): OutputPersistenceRetryJob {
+    const firstEvent = persistenceState.deliveries[0]?.event;
+    return {
+      key: JSON.stringify(persistenceState.deliveries.map((delivery) => outputPersistenceDeliveryKey(delivery.event))),
+      piboSessionId: persistenceState.piboSessionId,
+      eventId: firstEvent ? outputPersistenceDeliveryKey(firstEvent) : undefined,
+      payload: persistenceState as unknown as PiboJsonValue,
+      run: (retryContext) => this.deliverOutputPersistenceState(retryContext),
+      onSuccess,
+      onDeadLetter,
+    };
+  }
+
+  private deliverOutputPersistenceState(retryContext: OutputPersistenceRetryContext): void {
+    const persistenceState = parseCliOutputPersistenceState(retryContext.payload);
+    if (!persistenceState) throw new Error("Invalid durable CLI output persistence state");
+    const session = this.sessionStore.get(persistenceState.piboSessionId);
+    if (!session) throw new Error(`No session available for ${persistenceState.piboSessionId}`);
+    for (const delivery of persistenceState.deliveries) {
+      if (delivery.persisted) continue;
+      if (!this.ingestOutputEvent(session, delivery.event)) {
+        throw new Error(`Failed to persist ${outputPersistenceDeliveryKey(delivery.event)}`);
+      }
+      delivery.persisted = true;
+      retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+    }
   }
 
   private recordOutputEvent(event: PiboOutputEvent): void {
@@ -992,6 +1056,25 @@ export function createLocalCliSessionSource(
   options: LocalCliSessionSourceOptions = {},
 ): LocalCliSessionSource {
   return new LocalCliSessionSource(options);
+}
+
+function parseCliOutputPersistenceState(value: PiboJsonValue): CliOutputPersistenceState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.version !== 1 || typeof candidate.piboSessionId !== "string" || !Array.isArray(candidate.deliveries)) return undefined;
+  const deliveries: CliOutputPersistenceState["deliveries"] = [];
+  for (const rawDelivery of candidate.deliveries) {
+    if (!rawDelivery || typeof rawDelivery !== "object" || Array.isArray(rawDelivery)) return undefined;
+    const delivery = rawDelivery as Record<string, unknown>;
+    const event = delivery.event;
+    if (!event || typeof event !== "object" || Array.isArray(event) || typeof (event as { type?: unknown }).type !== "string") return undefined;
+    deliveries.push({
+      event: event as PiboOutputEvent,
+      ...(delivery.persisted === true ? { persisted: true } : {}),
+    });
+  }
+  if (!deliveries.length) return undefined;
+  return { version: 1, piboSessionId: candidate.piboSessionId, deliveries };
 }
 
 export function redactCliSecretText(text: string): string {

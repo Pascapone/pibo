@@ -10,7 +10,6 @@ import {
 } from "./trace-subagent-links.js";
 import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
 import { qualifiedToolNodeId } from "./trace-tool-identity.js";
-import { deterministicDigest } from "./deterministic-digest.js";
 
 export type PersistedHistoryMode = "none" | "product" | "native";
 
@@ -72,6 +71,7 @@ export function applySingleEventToNodes(
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
 			storedEvent.traceSource,
+			storedEvent.id,
 		);
 		return;
 	}
@@ -86,6 +86,7 @@ export function applySingleEventToNodes(
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
 			storedEvent.traceSource,
+			storedEvent.id,
 		);
 		return;
 	}
@@ -98,6 +99,7 @@ export function applySingleEventToNodes(
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
 			storedEvent.traceSource,
+			storedEvent.id,
 		);
 		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
@@ -119,6 +121,7 @@ export function applySingleEventToNodes(
 		storedEvent.streamId,
 		storedEvent.streamFrameIndex,
 		storedEvent.traceSource,
+		storedEvent.id,
 	);
 	if (!node) return;
 	applyStoredPayloadRef(node, payload, storedEvent.storedPayloadRef);
@@ -224,7 +227,7 @@ function applyRenderSequenceToHistoryNode(
 	storedEvent: ChatWebStoredEvent,
 	event: PiboOutputEvent,
 ): void {
-	const stableKey = eventStableKey(event);
+	const stableKey = eventStableKey(event, traceEventInstanceKey(storedEvent.eventSequence, storedEvent.streamId, event, storedEvent.id));
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
 	const target = [...byId.values()].find((node) =>
 		node.stableKey === stableKey
@@ -276,10 +279,11 @@ function assistantMessageNodeFromEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	storedInstanceId?: string,
 ): PiboTraceNode {
 	const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
 	const assistantId = assistantEventNodeId(event);
-	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event);
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
 	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:${event.type}:${fallbackIdentity}`;
 	return {
 		id,
@@ -417,8 +421,9 @@ export function reconcileTranscriptUserMessages(
 		if ((event.type !== "message_queued" && event.type !== "message_steered") || event.source !== "user") continue;
 		const payloadEventId = typeof event.eventId === "string" ? event.eventId : undefined;
 		const eventId = payloadEventId ?? storedEvent.eventId;
-		const canonicalId = `event:${event.type}:${payloadEventId ?? cryptoSafeId(event)}`;
-		const stableKey = eventStableKey(event);
+		const fallbackIdentity = storedEvent.id ? `instance:${storedEvent.id}` : liveProjectionIdentity(event);
+		const canonicalId = `event:${event.type}:${payloadEventId ?? fallbackIdentity}`;
+		const stableKey = eventStableKey(event, fallbackIdentity);
 		const text = typeof event.text === "string" ? event.text : undefined;
 		const identityMatchIndex = transcriptUsers.findIndex((node) =>
 			transcriptUserMessageMatchesIdentity(node, canonicalId, stableKey, eventId),
@@ -449,8 +454,9 @@ function confirmedUserMessageEchoNode(nodes: readonly PiboTraceNode[], event: Ch
 	if ((payload.type !== "message_queued" && payload.type !== "message_steered") || payload.source !== "user") return undefined;
 	const payloadEventId = typeof payload.eventId === "string" ? payload.eventId : undefined;
 	const eventId = payloadEventId ?? event.eventId;
-	const canonicalId = `event:${payload.type}:${payloadEventId ?? cryptoSafeId(payload)}`;
-	const stableKey = eventStableKey(payload);
+	const fallbackIdentity = event.id ? `instance:${event.id}` : liveProjectionIdentity(payload);
+	const canonicalId = `event:${payload.type}:${payloadEventId ?? fallbackIdentity}`;
+	const stableKey = eventStableKey(payload, fallbackIdentity);
 	const text = typeof payload.text === "string" ? payload.text : undefined;
 	const transcriptUsers = flattenTraceNodes([...nodes]).filter(
 		(node) => node.type === "user.message" && isPersistedHistorySource(node.source),
@@ -558,9 +564,10 @@ function traceNodeFromEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	storedInstanceId?: string,
 ): PiboTraceNode | undefined {
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
-	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event);
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
 	const id = `event:${event.type}:${eventId ?? fallbackIdentity}`;
 	const turnParentId = eventId ? messageTurnNodeId(eventId) : undefined;
 	const base = {
@@ -691,7 +698,7 @@ function traceNodeFromEvent(
 		}
 		case "subagent_session": {
 			const childPiboSessionId = nonEmptyString(event.childPiboSessionId);
-			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
 			const toolNodeId = event.toolCallId ? toolInvocationNodeId(event) : undefined;
 			return {
 				...base,
@@ -722,7 +729,7 @@ function traceNodeFromEvent(
 				output: event.result,
 			};
 		case "compaction_start": {
-			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
 			return {
 				...base,
 				id: `event:compaction:${eventInstanceKey}`,
@@ -735,7 +742,7 @@ function traceNodeFromEvent(
 			};
 		}
 		case "compaction_end": {
-			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
 			return {
 				...base,
 				id: `event:compaction:end:${eventInstanceKey}`,
@@ -776,11 +783,12 @@ function mergeAssistantDeltaEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	storedInstanceId?: string,
 ): void {
 	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const assistantId = assistantEventNodeId(event);
-	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event);
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
 	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:assistant_delta:${fallbackIdentity}`;
 	const existing = byId.get(id);
 	if (existing) {
@@ -839,11 +847,12 @@ function mergeThinkingDeltaEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	storedInstanceId?: string,
 ): void {
 	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const thinkingId = thinkingEventNodeId(event);
-	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event);
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
 	const id = thinkingId ? thinkingNodeId(thinkingId) : `event:thinking_delta:${fallbackIdentity}`;
 	const stableKey = thinkingId ? `reasoning:${thinkingId}` : id;
 	const existing = byId.get(id) ?? [...byId.values()].find(
@@ -1193,7 +1202,7 @@ function eventStableKey(event: PiboOutputEvent, fallbackIdentity?: string): stri
 		const assistantId = assistantEventNodeId(event);
 		if (assistantId) return `assistant:${assistantId}`;
 	}
-	return `event:${event.type}:${eventId ?? fallbackIdentity ?? cryptoSafeId(event)}`;
+	return `event:${event.type}:${eventId ?? fallbackIdentity ?? liveProjectionIdentity(event)}`;
 }
 
 export function messageTurnNodeId(eventId: string): string {
@@ -1318,10 +1327,16 @@ function parseTimestamp(value: string | undefined): number | undefined {
 	return Number.isFinite(timestamp) ? timestamp : undefined;
 }
 
-function traceEventInstanceKey(eventSequence: number | undefined, streamId: number | undefined, event: PiboOutputEvent): string {
+function traceEventInstanceKey(
+	eventSequence: number | undefined,
+	streamId: number | undefined,
+	event: PiboOutputEvent,
+	storedInstanceId?: string,
+): string {
 	if (eventSequence !== undefined) return `sequence:${eventSequence}`;
 	if (streamId !== undefined) return `stream:${streamId}`;
-	return cryptoSafeId(event);
+	if (storedInstanceId) return `instance:${storedInstanceId}`;
+	return liveProjectionIdentity(event);
 }
 
 function toolInvocationNodeId(event: Extract<PiboOutputEvent, {
@@ -1337,13 +1352,13 @@ function nonEmptyString(value: unknown): string | undefined {
 	return value.trim() || undefined;
 }
 
-function cryptoSafeId(value: unknown): string {
-	if (!value || typeof value !== "object") return deterministicDigest(value);
-	const cached = deterministicIdentityCache.get(value);
-	if (cached) return cached;
-	const digest = deterministicDigest(value);
-	deterministicIdentityCache.set(value, digest);
-	return digest;
+function liveProjectionIdentity(value: object): string {
+	const existing = liveProjectionIdentityCache.get(value);
+	if (existing) return existing;
+	const identity = `live:${++liveProjectionIdentitySequence}`;
+	liveProjectionIdentityCache.set(value, identity);
+	return identity;
 }
 
-const deterministicIdentityCache = new WeakMap<object, string>();
+const liveProjectionIdentityCache = new WeakMap<object, string>();
+let liveProjectionIdentitySequence = 0;

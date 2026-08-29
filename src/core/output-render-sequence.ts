@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { PiboOutputEvent } from "./events.js";
 
 const RENDER_SEQUENCE_SLOTS_PER_MILLISECOND = 1_000;
@@ -10,6 +11,16 @@ export type OutputRenderHighWaterStore = {
 	observeOutputRenderSequence(piboSessionId: string, sequence: number): void;
 	claimOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string): number;
 	observeOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string, ordinal: number): void;
+	claimOrAttachOutputToolInvocation?(input: OutputToolInvocationTransition): number;
+	observeOutputToolInvocation?(input: OutputToolInvocationTransition & { ordinal: number }): void;
+};
+
+export type OutputToolInvocationTransition = {
+	piboSessionId: string;
+	eventId: string;
+	toolCallId: string;
+	eventType: Extract<PiboOutputEvent, { toolCallId?: string }>["type"];
+	callFingerprint?: string;
 };
 
 export function outputRenderHighWaterStore(value: unknown): OutputRenderHighWaterStore | undefined {
@@ -79,7 +90,9 @@ export class OutputRenderSequencer {
 			: { ...eventWithToolIdentity, renderSequence } as TEvent;
 		if (event.type === "message_finished" || event.type === "session_error") {
 			const eventId = "eventId" in event ? event.eventId : undefined;
-			if (eventId && state.activeEventId === eventId) state.activeEventId = undefined;
+			if ((eventId && state.activeEventId === eventId) || (event.type === "session_error" && !eventId)) {
+				state.activeEventId = undefined;
+			}
 		}
 		const segmentEventId = "eventId" in positioned && positioned.eventId ? positioned.eventId : state.activeEventId;
 		this.updateSegmentLifecycle(state, positioned, key, segmentEventId);
@@ -142,8 +155,16 @@ export class OutputRenderSequencer {
 			state.toolInvocations.set(counterKey, invocations);
 		}
 		let invocation: ToolInvocationState | undefined;
+		const transition = eventId ? {
+			piboSessionId: event.piboSessionId,
+			eventId,
+			toolCallId: event.toolCallId,
+			eventType: event.type,
+			...(event.type === "tool_call" ? { callFingerprint: toolCallFingerprint(event) } : {}),
+		} : undefined;
 		if (validToolInvocationOrdinal(event.toolInvocationOrdinal)) {
 			if (eventId) this.highWaterStore?.observeOutputToolInvocationOrdinal?.(event.piboSessionId, eventId, event.toolCallId, event.toolInvocationOrdinal);
+			if (transition) this.highWaterStore?.observeOutputToolInvocation?.({ ...transition, ordinal: event.toolInvocationOrdinal });
 			invocation = invocations.find((candidate) => candidate.ordinal === event.toolInvocationOrdinal);
 			if (!invocation) {
 				invocation = { ordinal: event.toolInvocationOrdinal, seen: new Set(), closed: false, persistedIdentity: true };
@@ -153,13 +174,14 @@ export class OutputRenderSequencer {
 		} else {
 			const latest = invocations.at(-1);
 			if (!latest) {
-				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId);
+				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId, transition);
 			} else if (event.type === "tool_call" && (latest.seen.has("tool_call") || (latest.closed && latest.persistedIdentity))) {
-				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId);
+				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId, transition);
 			} else if (event.type === "tool_execution_started" && latest.closed && latest.seen.has("tool_execution_started")) {
-				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId);
+				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId, transition);
 			} else {
 				invocation = latest;
+				if (transition) this.highWaterStore?.observeOutputToolInvocation?.({ ...transition, ordinal: latest.ordinal });
 			}
 		}
 		invocation.seen.add(event.type);
@@ -194,10 +216,13 @@ export class OutputRenderSequencer {
 		piboSessionId: string,
 		eventId: string | undefined,
 		toolCallId: string,
+		transition: OutputToolInvocationTransition | undefined,
 	): ToolInvocationState {
 		const localNext = invocations.reduce((maximum, invocation) => Math.max(maximum, invocation.ordinal), -1) + 1;
-		const ordinal = eventId
-			? this.highWaterStore?.claimOutputToolInvocationOrdinal?.(piboSessionId, eventId, toolCallId) ?? localNext
+		const ordinal = transition
+			? this.highWaterStore?.claimOrAttachOutputToolInvocation?.(transition)
+				?? this.highWaterStore?.claimOutputToolInvocationOrdinal?.(piboSessionId, eventId!, toolCallId)
+				?? localNext
 			: localNext;
 		return createInvocation(invocations, ordinal);
 	}
@@ -309,6 +334,12 @@ function isToolIdentityEvent(event: PiboOutputEvent): event is Extract<PiboOutpu
 
 function toolInvocationCounterKey(eventId: string | undefined, toolCallId: string): string {
 	return JSON.stringify([eventId ?? "unscoped", toolCallId]);
+}
+
+function toolCallFingerprint(event: Extract<PiboOutputEvent, { type: "tool_call" }>): string {
+	return createHash("sha256")
+		.update(JSON.stringify([event.toolName, event.argsComplete, event.args]))
+		.digest("hex");
 }
 
 export function validRenderSequence(value: unknown): value is number {

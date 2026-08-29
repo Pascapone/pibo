@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
+import type { OutputToolInvocationTransition } from "../core/output-render-sequence.js";
 import { ChatDataIngestService } from "../data/ingest-service.js";
 import { PiboDataStore } from "../data/pibo-store.js";
 import type { StoredTelemetryTurn, TelemetryInterruptedTurnOutcome } from "../data/telemetry.js";
@@ -260,6 +261,87 @@ export class PiboDataSessionStore implements PiboSessionStore {
 					END
 			`).run(piboSessionId, eventId, toolCallId, ordinal + 1, new Date().toISOString());
 		});
+	}
+
+	claimOrAttachOutputToolInvocation(input: OutputToolInvocationTransition): number {
+		return this.dataStore.transaction(() => {
+			const rows = this.db.prepare(`
+				SELECT invocation_ordinal, call_fingerprint, status, seen_call
+				FROM session_tool_invocations
+				WHERE pibo_session_id = ? AND event_id = ? AND tool_call_id = ?
+				ORDER BY invocation_ordinal DESC
+			`).all(input.piboSessionId, input.eventId, input.toolCallId) as Array<{
+				invocation_ordinal: number;
+				call_fingerprint: string | null;
+				status: "open" | "closed";
+				seen_call: number;
+			}>;
+			const latestOpen = rows.find((row) => row.status === "open");
+			let ordinal: number;
+			if (
+				input.eventType === "tool_call"
+				&& latestOpen
+				&& (latestOpen.seen_call === 0 || latestOpen.call_fingerprint === input.callFingerprint)
+			) {
+				ordinal = latestOpen.invocation_ordinal;
+			} else if (input.eventType !== "tool_call" && latestOpen) {
+				ordinal = latestOpen.invocation_ordinal;
+			} else if (input.eventType !== "tool_call" && rows[0]) {
+				// A lifecycle replay after completion belongs to the last proven
+				// invocation. Only a new tool_call may cross a closed boundary.
+				ordinal = rows[0].invocation_ordinal;
+			} else {
+				ordinal = this.claimOutputToolInvocationOrdinal(input.piboSessionId, input.eventId, input.toolCallId);
+			}
+			this.persistToolInvocationTransition(input, ordinal);
+			return ordinal;
+		});
+	}
+
+	observeOutputToolInvocation(input: OutputToolInvocationTransition & { ordinal: number }): void {
+		this.dataStore.transaction(() => {
+			this.observeOutputToolInvocationOrdinal(input.piboSessionId, input.eventId, input.toolCallId, input.ordinal);
+			this.persistToolInvocationTransition(input, input.ordinal);
+		});
+	}
+
+	private persistToolInvocationTransition(input: OutputToolInvocationTransition, ordinal: number): void {
+		const timestamp = new Date().toISOString();
+		const seenCall = input.eventType === "tool_call" ? 1 : 0;
+		const seenStarted = input.eventType === "tool_execution_started" ? 1 : 0;
+		const seenUpdated = input.eventType === "tool_execution_updated" ? 1 : 0;
+		const seenFinished = input.eventType === "tool_execution_finished" ? 1 : 0;
+		this.db.prepare(`
+			INSERT INTO session_tool_invocations (
+				pibo_session_id, event_id, tool_call_id, invocation_ordinal,
+				call_fingerprint, status, seen_call, seen_started, seen_updated, seen_finished,
+				created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(pibo_session_id, event_id, tool_call_id, invocation_ordinal) DO UPDATE SET
+				call_fingerprint = COALESCE(session_tool_invocations.call_fingerprint, excluded.call_fingerprint),
+				status = CASE
+					WHEN session_tool_invocations.status = 'closed' OR excluded.status = 'closed' THEN 'closed'
+					ELSE 'open'
+				END,
+				seen_call = MAX(session_tool_invocations.seen_call, excluded.seen_call),
+				seen_started = MAX(session_tool_invocations.seen_started, excluded.seen_started),
+				seen_updated = MAX(session_tool_invocations.seen_updated, excluded.seen_updated),
+				seen_finished = MAX(session_tool_invocations.seen_finished, excluded.seen_finished),
+				updated_at = excluded.updated_at
+		`).run(
+			input.piboSessionId,
+			input.eventId,
+			input.toolCallId,
+			ordinal,
+			input.callFingerprint ?? null,
+			seenFinished ? "closed" : "open",
+			seenCall,
+			seenStarted,
+			seenUpdated,
+			seenFinished,
+			timestamp,
+			timestamp,
+		);
 	}
 
 	delete(id: string): boolean {

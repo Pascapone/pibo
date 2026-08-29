@@ -623,6 +623,47 @@ export class PiboReliabilityStore {
 		return row ? jobFromRow(row) : undefined;
 	}
 
+	claimRecoverableJob(jobId: string, workerId: string, visibilityTimeoutMs = 30000, forcePending = false): StoredPiboJob | undefined {
+		const timestamp = now();
+		const claimExpiresAt = new Date(Date.now() + visibilityTimeoutMs).toISOString();
+		const row = this.db.prepare(`
+			UPDATE pibo_jobs
+			SET state = 'running',
+				worker_id = ?,
+				claim_expires_at = ?,
+				attempts = attempts + 1,
+				updated_at = ?
+			WHERE job_id = ?
+				AND (
+					(state = 'pending' AND (? = 1 OR run_at <= ?))
+					OR (state = 'running' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?)
+				)
+				AND (expires_at IS NULL OR expires_at > ?)
+			RETURNING *
+		`).get(workerId, claimExpiresAt, timestamp, jobId, forcePending ? 1 : 0, timestamp, timestamp, timestamp) as PiboJobRow | undefined;
+		return row ? jobFromRow(row) : undefined;
+	}
+
+	updateJobPayload(jobId: string, workerId: string, payload: PiboJsonValue): boolean {
+		const result = this.db.prepare(`
+			UPDATE pibo_jobs
+			SET payload_json = ?, updated_at = ?
+			WHERE job_id = ? AND state = 'running' AND worker_id = ?
+		`).run(json(payload), now(), jobId, workerId);
+		return Number(result.changes ?? 0) > 0;
+	}
+
+	releaseJob(jobId: string, workerId: string, delayMs = 0): boolean {
+		const timestamp = now();
+		const runAt = new Date(Date.parse(timestamp) + Math.max(0, delayMs)).toISOString();
+		const result = this.db.prepare(`
+			UPDATE pibo_jobs
+			SET state = 'pending', worker_id = NULL, claim_expires_at = NULL, run_at = ?, updated_at = ?
+			WHERE job_id = ? AND state = 'running' AND worker_id = ?
+		`).run(runAt, timestamp, jobId, workerId);
+		return Number(result.changes ?? 0) > 0;
+	}
+
 	ack(jobId: string, workerId: string): boolean {
 		const timestamp = now();
 		const result = this.db

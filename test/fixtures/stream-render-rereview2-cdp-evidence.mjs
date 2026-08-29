@@ -58,6 +58,10 @@ await Promise.all([
 	send("Performance.enable"),
 	send("Log.enable"),
 ]);
+await Promise.all([send("Runtime.discardConsoleEntries"), send("Log.clear")]);
+await new Promise((resolve) => setTimeout(resolve, 100));
+consoleEntries.length = 0;
+const evidenceStartedAt = await evaluate("performance.now()");
 
 for (let attempt = 0; attempt < 50; attempt += 1) {
 	if (await evaluate("document.querySelector('[data-pibo-debug=chat-shell]')?.getAttribute('data-pibo-state')") === "ready") break;
@@ -98,8 +102,24 @@ const pagination = await evaluate(`(async () => {
 	const body = await tail.json();
 	const serialized = JSON.stringify(body);
 	const tools = [];
-	const visit = (nodes) => { for (const node of nodes ?? []) { if (node.toolCallId === 'browser-reused-tool') tools.push({ id: node.id, eventId: node.eventId, ordinal: node.toolInvocationOrdinal, payloadRefs: node.payloadRefs }); visit(node.children); } };
+	const retryNodes = [];
+	const visit = (nodes) => { for (const node of nodes ?? []) {
+		if (node.toolCallId?.startsWith('browser-')) tools.push({ id: node.id ?? node.nodeId, eventId: node.eventId, toolCallId: node.toolCallId, ordinal: node.toolInvocationOrdinal, payloadRefs: node.payloadRefs });
+		if (node.eventId === 'browser-reliability-retry') retryNodes.push({ id: node.id ?? node.nodeId, stableKey: node.stableKey, output: node.output });
+		visit(node.children);
+	} };
 	visit(body.nodes);
+	const checkImage = async (toolCallId) => {
+		const tool = tools.find((candidate) => candidate.toolCallId === toolCallId && candidate.payloadRefs?.output?.ref);
+		if (!tool) return { toolCallId, status: 0, error: 'missing tool payload ref' };
+		const nodeId = tool.payloadRefs.output.nodeId ?? tool.id;
+		const params = new URLSearchParams({ ref: tool.payloadRefs.output.ref, piboSessionId: 'ps_stream_render_rereview2_browser', nodeId, index: '0' });
+		const response = await fetch('/api/chat/image-preview?' + params);
+		return { toolCallId, nodeId: tool.id, status: response.status, contentType: response.headers.get('content-type') };
+	};
+	const rawResponse = await fetch('/api/chat/trace/raw-events?piboSessionId=ps_stream_render_rereview2_browser&limit=200');
+	const rawBody = await rawResponse.json();
+	const retryRawEvents = (rawBody.events ?? []).filter((event) => event.eventId === 'browser-reliability-retry' || event.payload?.eventId === 'browser-reliability-retry');
 	return {
 		pages,
 		uniquePageNodeIds: [...new Set(pages.flatMap((page) => page.nodeIds))],
@@ -107,12 +127,20 @@ const pagination = await evaluate(`(async () => {
 		responseBytes: new TextEncoder().encode(serialized).byteLength,
 		containsLargeInlinePayload: serialized.includes('A'.repeat(4096)),
 		tools,
+		restartTool: tools.filter((tool) => tool.toolCallId === 'browser-restart-tool'),
+		retryNodes,
+		retryRawEventCount: retryRawEvents.length,
+		legacyImageAuthorization: {
+			valid: await checkImage('browser-legacy-valid-image'),
+			ambiguous: await checkImage('browser-legacy-ambiguous-image'),
+		},
 	};
 })()`);
 
 const performanceMetrics = await send("Performance.getMetrics");
+const browserVersion = await send("Browser.getVersion");
 const resourceTiming = await evaluate(`performance.getEntriesByType('resource')
-	.filter((entry) => entry.name.includes('/api/chat/trace'))
+	.filter((entry) => entry.startTime >= ${JSON.stringify(evidenceStartedAt)} && entry.name.includes('/api/chat/trace'))
 	.map((entry) => ({ name: entry.name, duration: entry.duration, transferSize: entry.transferSize, encodedBodySize: entry.encodedBodySize }))`);
 const screenshot = await send("Page.captureScreenshot", { format: "png", fromSurface: true });
 fs.writeFileSync(path.join(artifactDir, "03-cdp-terminal.png"), Buffer.from(screenshot.data, "base64"));
@@ -133,6 +161,7 @@ const evidence = {
 	pagination,
 	resourceTiming,
 	performanceMetrics: performanceMetrics.metrics,
+	browserVersion,
 	network: compactNetwork,
 	console: consoleEntries,
 };

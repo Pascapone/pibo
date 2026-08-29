@@ -121,54 +121,15 @@ export class ChatTimelineQueryService {
 					&& payloadMatchesEventRow(this.store, payload.sha256, input.payloadId, row);
 			});
 			if (explicitlyAttached || hasPersistedOrdinal) return explicitlyAttached;
-			// Pre-ordinal stores can only represent one invocation in an exact
-			// event/tool scope. Preserve that legacy ordinal-zero attachment while
-			// failing closed for every qualified ordinal that requires newer data.
-			return nodeIdentity.qualifier.invocationOrdinal === 0 && rows.some((row) =>
-				row.event_id === nodeIdentity.qualifier!.eventId
-				&& row.type !== "tool_execution_started"
-				&& payloadMatchesEventRow(this.store, payload.sha256, input.payloadId, row),
-			);
+			if (nodeIdentity.qualifier.invocationOrdinal !== 0) return false;
+			const inferred = inferLegacyToolInvocations(this.store, rows, payload.sha256, input.payloadId);
+			return !inferred.ambiguous
+				&& inferred.invocations.length === 1
+				&& inferred.invocations[0]!.eventId === nodeIdentity.qualifier.eventId
+				&& inferred.invocations[0]!.payloadMatches;
 		}
-		const lifecycles = new Map<string | null, {
-			nextOrdinal: number;
-			active?: { eventId: string | null; invocationOrdinal: number; payloadMatches: boolean };
-		}>();
-		const invocations: Array<{ eventId: string | null; invocationOrdinal: number; payloadMatches: boolean }> = [];
-		for (const row of rows) {
-			const lifecycle = lifecycles.get(row.event_id) ?? { nextOrdinal: 0 };
-			lifecycles.set(row.event_id, lifecycle);
-			if (row.type === "tool_execution_started") {
-				if (lifecycle.active) return false;
-				lifecycle.active = {
-					eventId: row.event_id,
-					invocationOrdinal: lifecycle.nextOrdinal,
-					payloadMatches: false,
-				};
-				lifecycle.nextOrdinal += 1;
-				invocations.push(lifecycle.active);
-			} else if (!lifecycle.active) {
-				lifecycle.active = {
-					eventId: row.event_id,
-					invocationOrdinal: lifecycle.nextOrdinal,
-					payloadMatches: false,
-				};
-				lifecycle.nextOrdinal += 1;
-				invocations.push(lifecycle.active);
-			}
-			if (
-				row.type !== "tool_execution_started"
-				&& payloadMatchesEventRow(this.store, payload.sha256, input.payloadId, row)
-			) lifecycle.active.payloadMatches = true;
-			if (row.type === "tool_execution_finished") lifecycle.active = undefined;
-		}
-		if (!nodeIdentity.qualifier) {
-			return invocations.length === 1 && invocations[0]!.payloadMatches;
-		}
-		const exact = invocations.filter((invocation) =>
-			invocation.eventId === nodeIdentity.qualifier!.eventId
-			&& invocation.invocationOrdinal === nodeIdentity.qualifier!.invocationOrdinal);
-		return exact.length === 1 && exact[0]!.payloadMatches;
+		const inferred = inferLegacyToolInvocations(this.store, rows, payload.sha256, input.payloadId);
+		return !inferred.ambiguous && inferred.invocations.length === 1 && inferred.invocations[0]!.payloadMatches;
 	}
 
 	countEventsByType(input: { piboSessionId?: string; eventTypes?: string[] } = {}): Array<{ eventType: string; count: number }> {
@@ -223,4 +184,46 @@ function payloadMatchesEventRow(
 	const inlineSha256 = createHash("sha256").update(bytes).digest("hex");
 	if (payloadSha256 !== inlineSha256) return false;
 	return store.payloads.findBySha256(inlineSha256)?.id === payloadId;
+}
+
+type LegacyToolLifecycleRow = {
+	type: string;
+	event_id: string | null;
+	payload_ref: string | null;
+	attributes_json: string;
+};
+
+function inferLegacyToolInvocations(
+	store: PiboDataStore,
+	rows: readonly LegacyToolLifecycleRow[],
+	payloadSha256: string,
+	payloadId: string,
+): {
+	ambiguous: boolean;
+	invocations: Array<{ eventId: string | null; payloadMatches: boolean }>;
+} {
+	const activeByEvent = new Map<string | null, { eventId: string | null; payloadMatches: boolean }>();
+	const invocations: Array<{ eventId: string | null; payloadMatches: boolean }> = [];
+	let ambiguous = false;
+	for (const row of rows) {
+		let active = activeByEvent.get(row.event_id);
+		if (row.type === "tool_execution_started") {
+			if (active) {
+				ambiguous = true;
+				continue;
+			}
+			active = { eventId: row.event_id, payloadMatches: false };
+			activeByEvent.set(row.event_id, active);
+			invocations.push(active);
+		} else if (!active) {
+			active = { eventId: row.event_id, payloadMatches: false };
+			activeByEvent.set(row.event_id, active);
+			invocations.push(active);
+		}
+		if (row.type !== "tool_execution_started" && payloadMatchesEventRow(store, payloadSha256, payloadId, row)) {
+			active.payloadMatches = true;
+		}
+		if (row.type === "tool_execution_finished") activeByEvent.delete(row.event_id);
+	}
+	return { ambiguous, invocations };
 }

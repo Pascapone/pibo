@@ -6,6 +6,8 @@ import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
+import { ChatReadStateService } from "../dist/apps/chat/data/read-state-service.js";
+import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
@@ -183,7 +185,7 @@ function createLandingApps() {
 async function startWebHostChannel(options = {}) {
 	const emitted = [];
 	const listeners = new Set();
-	const sessions = new InMemoryPiboSessionStore();
+	const sessions = options.sessions ?? new InMemoryPiboSessionStore();
 	const registeredSkills = [];
 	const unregisteredSkills = [];
 	const registeredUserSkillCatalog = new Map();
@@ -1020,13 +1022,25 @@ test("chat web automatically retries a once-only final persistence failure witho
 
 test("chat web retry deduplicates the V2 write when reliability append fails once", async () => {
 	const originalAppendOnce = PiboReliabilityStore.prototype.appendOnce;
+	const originalRecordEvent = ChatSessionQueryService.prototype.recordEvent;
+	const originalMarkSessionRead = ChatReadStateService.prototype.markSessionRead;
 	let injected = false;
+	let recordEventCount = 0;
+	let markReadCount = 0;
 	PiboReliabilityStore.prototype.appendOnce = function(input) {
 		if (!injected && input.topic === "pibo.output") {
 			injected = true;
 			throw new Error("injected once-only reliability append failure");
 		}
 		return originalAppendOnce.call(this, input);
+	};
+	ChatSessionQueryService.prototype.recordEvent = function(event, ...rest) {
+		if (event.eventId === "web-reliability-retry") recordEventCount += 1;
+		return originalRecordEvent.call(this, event, ...rest);
+	};
+	ChatReadStateService.prototype.markSessionRead = function(piboSessionId, streamId) {
+		markReadCount += 1;
+		return originalMarkSessionRead.call(this, piboSessionId, streamId);
 	};
 	const { channel, baseURL, emitOutput, dataStorePath, reliabilityStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
@@ -1035,6 +1049,14 @@ test("chat web retry deduplicates the V2 write when reliability append fails onc
 	try {
 		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
 		const { session } = await sessionResponse.json();
+		const controller = new AbortController();
+		const eventsResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(session.id)}&mode=live&since=0`,
+			{ headers: { "x-test-user": "user-1" }, signal: controller.signal },
+		);
+		assert.equal(eventsResponse.status, 200);
+		const reader = eventsResponse.body.getReader();
+		await reader.read();
 		emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-reliability-retry", assistantIndex: 0, text: "one durable answer" });
 		const deadline = Date.now() + 2_000;
 		let reliabilityCount = 0;
@@ -1057,9 +1079,89 @@ test("chat web retry deduplicates the V2 write when reliability append fails onc
 		}
 		assert.equal(injected, true);
 		assert.equal(reliabilityCount, 1);
+		const liveFrame = await readSseTextUntil(reader, (text) => text.includes("web-reliability-retry"));
+		assert.equal(liveFrame.matched, true, liveFrame.text);
+		assert.equal(recordEventCount, 1);
+		assert.equal(markReadCount, 1);
+		emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-reliability-retry", assistantIndex: 0, text: "one durable answer" });
+		await new Promise((resolve) => setTimeout(resolve, 75));
+		assert.equal(recordEventCount, 1, "producer replay must not redeliver read-model side effects");
+		assert.equal(markReadCount, 1, "producer replay must not remark the session read");
+		controller.abort();
 	} finally {
 		PiboReliabilityStore.prototype.appendOnce = originalAppendOnce;
+		ChatSessionQueryService.prototype.recordEvent = originalRecordEvent;
+		ChatReadStateService.prototype.markSessionRead = originalMarkSessionRead;
 		await channel.stop?.();
+	}
+});
+
+test("chat web resumes a pending phased delivery after app restart", async () => {
+	const originalAppendOnce = PiboReliabilityStore.prototype.appendOnce;
+	let blockReliability = true;
+	PiboReliabilityStore.prototype.appendOnce = function(input) {
+		if (blockReliability && input.topic === "pibo.output") throw new Error("hold reliability until restart");
+		return originalAppendOnce.call(this, input);
+	};
+	let first;
+	let second;
+	try {
+		first = await startWebHostChannel({ auth: createFakeAuthService() });
+		const sessionResponse = await fetch(`${first.baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		const { session } = await sessionResponse.json();
+		const sharedSessions = first.sessions;
+		const sharedPaths = {
+			dataStorePath: first.dataStorePath,
+			dataPayloadRootDir: first.dataPayloadRootDir,
+			reliabilityStorePath: first.reliabilityStorePath,
+			projectStorePath: first.projectStorePath,
+		};
+		first.emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-restart-pending", assistantIndex: 0, text: "survives process restart" });
+		const beforeRestart = new DatabaseSync(first.reliabilityStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(beforeRestart.prepare("SELECT COUNT(*) AS count FROM pibo_jobs WHERE queue = 'output-persistence'").get().count), 1);
+		} finally {
+			beforeRestart.close();
+		}
+		await first.channel.stop?.();
+		first = undefined;
+		blockReliability = false;
+
+		second = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			sessions: sharedSessions,
+			chat: sharedPaths,
+		});
+		const recoveryTrigger = await fetch(`${second.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(recoveryTrigger.status, 200);
+		const deadline = Date.now() + 2_000;
+		let pendingCount = 1;
+		let reliabilityCount = 0;
+		while (Date.now() < deadline) {
+			const reliability = new DatabaseSync(sharedPaths.reliabilityStorePath, { readOnly: true });
+			try {
+				pendingCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_jobs WHERE queue = 'output-persistence'").get().count);
+				reliabilityCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ?").get(session.id).count);
+			} finally {
+				reliability.close();
+			}
+			if (pendingCount === 0 && reliabilityCount === 1) break;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		assert.equal(pendingCount, 0);
+		assert.equal(reliabilityCount, 1);
+		const data = new DatabaseSync(sharedPaths.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'assistant_message'").get(session.id).count), 1);
+		} finally {
+			data.close();
+		}
+		await second.channel.stop?.();
+		second = undefined;
+	} finally {
+		PiboReliabilityStore.prototype.appendOnce = originalAppendOnce;
+		await first?.channel.stop?.();
+		await second?.channel.stop?.();
 	}
 });
 

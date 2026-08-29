@@ -3,7 +3,11 @@ import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
 import { OutputRenderSequencer } from "../../core/output-render-sequence.js";
-import { OutputPersistenceRetryQueue } from "../../core/output-persistence-retry.js";
+import {
+	OutputPersistenceRetryQueue,
+	type OutputPersistenceRetryContext,
+	type OutputPersistenceRetryJob,
+} from "../../core/output-persistence-retry.js";
 import {
 	PI_AGENT_RUNTIME_CAPABILITIES,
 	PI_PROTOCOL_VERSION,
@@ -466,6 +470,27 @@ type ChatWebAppState = {
 	workflowPromptAssetStore: ChatWorkflowPromptAssetStore;
 	telemetryRetentionMaintenance: TelemetryRetentionMaintenanceState;
 	integrations: ChatWebIntegrations;
+};
+
+type WebOutputPersistenceDelivery = {
+	event: PiboOutputEvent;
+	v2?: {
+		streamId: number;
+		createdAt: string;
+		eventId: string;
+		duplicate?: boolean;
+	};
+	reliabilityPayload?: PiboJsonValue;
+	reliabilityDelivered?: boolean;
+	sideEffectsDelivered?: boolean;
+};
+
+type WebOutputPersistenceState = {
+	version: 1;
+	piboSessionId: string;
+	roomId?: string;
+	actorId?: string;
+	deliveries: WebOutputPersistenceDelivery[];
 };
 
 type ChatGatewayResourceMetrics = {
@@ -1033,70 +1058,23 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 			if (persistableEvents.length === 0) {
 				result.ack();
 			} else {
-				let completed: Array<{ event: PiboOutputEvent; stored: StoredChatEvent; duplicate: boolean }> = [];
-				state.outputPersistenceRetries.enqueue({
-					key: JSON.stringify(persistableEvents.map(outputPersistenceDeliveryKey)),
-					run: () => {
-						const nextCompleted: Array<{ event: PiboOutputEvent; stored: StoredChatEvent; duplicate: boolean }> = [];
-						for (const persistableEvent of persistableEvents) {
-							let stored = state.eventCommands.appendOutputEvent(persistableEvent, { roomId: room?.id, actorId: session?.id });
-							let duplicate = false;
-							if (!stored && session) {
-								const createdAt = new Date().toISOString();
-								const ingested = state.ingestService.ingestOutputEvent({
-									session,
-									roomId: room?.id,
-									actorId: session.id,
-									event: persistableEvent,
-									createdAt,
-								});
-								duplicate = ingested.duplicate;
-								stored = {
-									streamId: ingested.streamId,
-									roomId: room?.id,
-									piboSessionId: persistableEvent.piboSessionId,
-									eventId: "eventId" in persistableEvent && typeof persistableEvent.eventId === "string" ? persistableEvent.eventId : outputPersistenceDeliveryKey(persistableEvent),
-									eventType: persistableEvent.type,
-									actorType: "assistant",
-									actorId: session.id,
-									createdAt,
-									retentionClass: reliabilityRetentionClassForOutputEvent(persistableEvent) as StoredChatEvent["retentionClass"],
-									payload: persistableEvent as unknown as PiboJsonValue,
-								};
-							}
-							if (!stored) throw new Error(`No session available for ${outputPersistenceDeliveryKey(persistableEvent)}`);
-							const deliveryKey = outputPersistenceDeliveryKey(persistableEvent);
-							state.reliabilityStore.appendOnce({
-								topic: "pibo.output",
-								key: persistableEvent.piboSessionId,
-								eventId: deliveryKey,
-								idempotencyKey: deliveryKey,
-								retentionClass: reliabilityRetentionClassForOutputEvent(persistableEvent),
-								payload: boundedReliabilityOutputPayload(state, persistableEvent),
-							});
-							nextCompleted.push({ event: persistableEvent, stored, duplicate });
-						}
-						completed = nextCompleted;
-					},
-					onSuccess: () => {
-						result.ack();
-						for (const item of completed) {
-							if (item.duplicate) continue;
-							if (item.event.type === "assistant_message" || item.event.type === "message_finished" || item.event.type === "session_error") {
-								markActiveSessionRead(state, item.event.piboSessionId, item.stored.streamId);
-							}
-							state.sessionQuery.recordEvent(item.event, session, item.stored.streamId, item.stored.createdAt);
-							for (const listener of state.liveListeners) {
-								try { listener(item.stored); } catch (error) { console.error("[chat-web] live listener failed", error); }
-							}
-						}
-					},
+				const persistenceState: WebOutputPersistenceState = {
+					version: 1,
+					piboSessionId: event.piboSessionId,
+					roomId: room?.id,
+					actorId: session?.id,
+					deliveries: persistableEvents.map((persistableEvent) => ({ event: persistableEvent })),
+				};
+				state.outputPersistenceRetries.enqueue(createWebOutputPersistenceJob({
+					state,
+					context,
+					persistenceState,
+					onSuccess: result.ack,
 					onDeadLetter: (error) => {
 						result.rollback();
 						recordPersistenceError(state.persistenceMetrics, error);
-						console.error("[chat-web] output persistence moved to dead letter", error);
 					},
-				});
+				}));
 			}
 			recordPersistenceDuration(state.persistenceMetrics, performance.now() - startedAt);
 		} catch (error) {
@@ -1105,6 +1083,152 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 			console.error("[chat-web] failed to index router event", error);
 		}
 	});
+	state.outputPersistenceRetries.recover((job) => {
+		const persistenceState = parseWebOutputPersistenceState(job.payload);
+		if (!persistenceState) throw new Error(`Invalid durable output persistence job ${job.key}`);
+		return createWebOutputPersistenceJob({ state, context, persistenceState });
+	});
+}
+
+function createWebOutputPersistenceJob(input: {
+	state: ChatWebAppState;
+	context: PiboWebAppContext;
+	persistenceState: WebOutputPersistenceState;
+	onSuccess?: () => void;
+	onDeadLetter?: (error: unknown) => void;
+}): OutputPersistenceRetryJob {
+	const firstEvent = input.persistenceState.deliveries[0]?.event;
+	return {
+		key: JSON.stringify(input.persistenceState.deliveries.map((delivery) => outputPersistenceDeliveryKey(delivery.event))),
+		piboSessionId: input.persistenceState.piboSessionId,
+		eventId: firstEvent ? outputPersistenceDeliveryKey(firstEvent) : undefined,
+		payload: input.persistenceState as unknown as PiboJsonValue,
+		run: (retryContext) => deliverWebOutputPersistenceState(input.state, input.context, retryContext),
+		onSuccess: input.onSuccess,
+		onDeadLetter: input.onDeadLetter,
+	};
+}
+
+function deliverWebOutputPersistenceState(
+	state: ChatWebAppState,
+	context: PiboWebAppContext,
+	retryContext: OutputPersistenceRetryContext,
+): void {
+	const persistenceState = parseWebOutputPersistenceState(retryContext.payload);
+	if (!persistenceState) throw new Error("Invalid durable web output persistence state");
+	const session = context.channelContext.getSession(persistenceState.piboSessionId);
+	if (!session) throw new Error(`No session available for ${persistenceState.piboSessionId}`);
+
+	for (const delivery of persistenceState.deliveries) {
+		if (!delivery.v2) {
+			const createdAt = new Date().toISOString();
+			const ingested = state.ingestService.ingestOutputEvent({
+				session,
+				roomId: persistenceState.roomId,
+				actorId: persistenceState.actorId ?? session.id,
+				event: delivery.event,
+				createdAt,
+			});
+			delivery.v2 = {
+				streamId: ingested.streamId,
+				createdAt,
+				eventId: eventIdentityForDelivery(delivery.event),
+				duplicate: ingested.duplicate,
+			};
+			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+		}
+
+		if (!delivery.reliabilityDelivered) {
+			if (delivery.reliabilityPayload === undefined) {
+				delivery.reliabilityPayload = boundedReliabilityOutputPayload(state, delivery.event);
+				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+			}
+			const deliveryKey = outputPersistenceDeliveryKey(delivery.event);
+			state.reliabilityStore.appendOnce({
+				topic: "pibo.output",
+				key: delivery.event.piboSessionId,
+				eventId: deliveryKey,
+				idempotencyKey: deliveryKey,
+				retentionClass: reliabilityRetentionClassForOutputEvent(delivery.event),
+				payload: delivery.reliabilityPayload,
+			});
+			delivery.reliabilityDelivered = true;
+			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+		}
+
+		if (!delivery.sideEffectsDelivered && delivery.v2.duplicate === true) {
+			delivery.sideEffectsDelivered = true;
+			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+		} else if (!delivery.sideEffectsDelivered) {
+			const stored = storedChatEventForDelivery(persistenceState, delivery);
+			if (delivery.event.type === "assistant_message" || delivery.event.type === "message_finished" || delivery.event.type === "session_error") {
+				markActiveSessionRead(state, delivery.event.piboSessionId, stored.streamId);
+			}
+			state.sessionQuery.recordEvent(delivery.event, session, stored.streamId, stored.createdAt);
+			for (const listener of state.liveListeners) {
+				try {
+					listener(stored);
+				} catch (error) {
+					console.error("[chat-web] live listener failed", error);
+				}
+			}
+			delivery.sideEffectsDelivered = true;
+			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+		}
+	}
+}
+
+function storedChatEventForDelivery(
+	persistenceState: WebOutputPersistenceState,
+	delivery: WebOutputPersistenceDelivery,
+): StoredChatEvent {
+	if (!delivery.v2) throw new Error(`Missing V2 phase for ${outputPersistenceDeliveryKey(delivery.event)}`);
+	return {
+		streamId: delivery.v2.streamId,
+		...(persistenceState.roomId ? { roomId: persistenceState.roomId } : {}),
+		piboSessionId: persistenceState.piboSessionId,
+		eventId: delivery.v2.eventId,
+		eventType: delivery.event.type,
+		actorType: "assistant",
+		...(persistenceState.actorId ? { actorId: persistenceState.actorId } : {}),
+		createdAt: delivery.v2.createdAt,
+		retentionClass: reliabilityRetentionClassForOutputEvent(delivery.event) as StoredChatEvent["retentionClass"],
+		payload: delivery.event as unknown as PiboJsonValue,
+	};
+}
+
+function eventIdentityForDelivery(event: PiboOutputEvent): string {
+	return "eventId" in event && typeof event.eventId === "string"
+		? event.eventId
+		: outputPersistenceDeliveryKey(event);
+}
+
+function parseWebOutputPersistenceState(value: PiboJsonValue): WebOutputPersistenceState | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const candidate = value as Record<string, unknown>;
+	if (candidate.version !== 1 || typeof candidate.piboSessionId !== "string" || !Array.isArray(candidate.deliveries)) return undefined;
+	const deliveries: WebOutputPersistenceDelivery[] = [];
+	for (const rawDelivery of candidate.deliveries) {
+		if (!rawDelivery || typeof rawDelivery !== "object" || Array.isArray(rawDelivery)) return undefined;
+		const delivery = rawDelivery as Record<string, unknown>;
+		if (!isPiboOutputEvent(delivery.event)) return undefined;
+		const v2 = delivery.v2;
+		if (v2 !== undefined && (
+			!v2 || typeof v2 !== "object" || Array.isArray(v2)
+			|| !Number.isSafeInteger((v2 as Record<string, unknown>).streamId)
+			|| typeof (v2 as Record<string, unknown>).createdAt !== "string"
+			|| typeof (v2 as Record<string, unknown>).eventId !== "string"
+		)) return undefined;
+		deliveries.push(rawDelivery as WebOutputPersistenceDelivery);
+	}
+	if (!deliveries.length) return undefined;
+	return {
+		version: 1,
+		piboSessionId: candidate.piboSessionId,
+		...(typeof candidate.roomId === "string" ? { roomId: candidate.roomId } : {}),
+		...(typeof candidate.actorId === "string" ? { actorId: candidate.actorId } : {}),
+		deliveries,
+	};
 }
 
 function reliabilityRetentionClassForOutputEvent(event: PiboOutputEvent): string {
@@ -4515,6 +4639,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 	ensurePrivateChatUploadDirectory();
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
+	const reliabilityStore = createReliabilityStore(options.reliabilityStorePath);
 	const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 	eventLoopDelay.enable();
 	const state: ChatWebAppState = {
@@ -4526,7 +4651,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		roomService: new ChatRoomService(dataStore),
 		projectService: new ChatProjectService(options.projectStorePath),
 		agentStore: createAgentStore(options.agentStorePath),
-		reliabilityStore: createReliabilityStore(options.reliabilityStorePath),
+		reliabilityStore,
 		cronStore: createDefaultPiboCronStore({ path: options.cronStorePath }),
 		loopStore: createDefaultPiboLoopStore({ path: options.ralphStorePath }),
 		dataStore,
@@ -4534,7 +4659,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		traceCache: new Map(),
 		traceTimelinePageCache: new Map(),
 		outputCompactor: new OutputCompactor(),
-		outputPersistenceRetries: new OutputPersistenceRetryQueue(),
+		outputPersistenceRetries: new OutputPersistenceRetryQueue({ durableStore: reliabilityStore }),
 		outputRenderSequencer: new OutputRenderSequencer(),
 		liveListeners: new Set(),
 		transientReplaySequence: 0,

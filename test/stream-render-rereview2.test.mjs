@@ -295,12 +295,10 @@ test("two routers reserve distinct durable tool invocations and restart continue
 	}
 });
 
-test("anonymous 1 MiB event projection remains below the long-task budget", () => {
+test("truly anonymous 1 MiB live event projection remains below the long-task budget", () => {
 	const payload = {
-		id: "stored-large-event",
+		id: "live-instance:large-event:1",
 		piboSessionId: "ps-large-projection",
-		eventSequence: 1,
-		streamId: 1,
 		type: "execution_result",
 		createdAt: fixedNow,
 		payload: { type: "execution_result", piboSessionId: "ps-large-projection", action: "inspect", result: { padding: "x".repeat(1024 * 1024) } },
