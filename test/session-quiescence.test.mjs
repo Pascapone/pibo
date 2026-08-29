@@ -396,6 +396,7 @@ test("invalidated loop run reminders are suppressed while later origin groups co
 		assert.doesNotMatch(session.enqueued[1].text, new RegExp(invalidated.runId));
 		assert.equal(router.runRegistry.status("ps_quiescence", invalidated.runId).consumed, false);
 
+		router.runRegistry.ack("ps_quiescence", next.runId);
 		router.emitOutput({
 			type: "message_finished",
 			piboSessionId: "ps_quiescence",
