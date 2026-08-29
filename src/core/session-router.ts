@@ -10,6 +10,7 @@ import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import type { PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./runtime.js";
 import {
+	RUN_REMINDER_MAX_DURATION_MS,
 	RuntimeRoutedSession as RoutedSession,
 	type PiboMessagePreflight,
 } from "../agent-runtime/routed-session.js";
@@ -314,8 +315,11 @@ function formatRunReminderMessage(notification: PiboRunNotification): string {
 				toolName: run.toolName,
 				summary: run.summary,
 			})),
-			instruction:
+			instruction: [
+				`This autonomous run-reminder turn stops after ${RUN_REMINDER_MAX_DURATION_MS / 60_000} minutes of wall-clock time.`,
+				"Handle the listed runs promptly, then finish the turn. Do not start new subagents, yielded runs, or other long-running work from this reminder; leave larger follow-up work for a separate user-initiated or Goal continuation turn.",
 				"Use pibo_run_read for completed, failed, or timed_out runs. Use pibo_run_wait, pibo_run_status, pibo_run_cancel, or pibo_run_ack for runs you still need to manage.",
+			].join(" "),
 		}),
 		"</pibo_run_notification>",
 	].join("\n");
