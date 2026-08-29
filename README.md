@@ -10,7 +10,7 @@ Pibo is Linux-first. The supported hosts are:
 
 - **Linux** (any modern distribution) — primary target
 - **macOS** — supported, same code path as Linux
-- **Windows via WSL2** — fully supported; see [docs/guides/pibo-on-windows-via-wsl.md](./docs/guides/pibo-on-windows-via-wsl.md)
+- **Windows via WSL2** — fully supported; see [docs/project/guides/pibo-on-windows-via-wsl.md](./docs/project/guides/pibo-on-windows-via-wsl.md)
 - **Native Windows** — not supported; `pibo setup doctor` and `pibo setup user-host` will print a clear error pointing to the WSL guide
 
 ## Install
@@ -107,7 +107,7 @@ pibo setup developer-host \
   --write-to /tmp/pibo-setup
 ```
 
-See `docs/ops/install-user-host.md`, `docs/ops/install-developer-host.md`, and `docs/ops/upgrade-user-to-developer-host.md`. Developer-host services are source-pinned so production and dev do not fight over one global `pibo` symlink. Docker and swap are developer-host prerequisites only; verify them with `pibo setup doctor --require-docker --min-swap-gb 8`.
+See `docs/project/operations/install-user-host.md`, `docs/project/operations/install-developer-host.md`, and `docs/project/operations/upgrade-user-to-developer-host.md`. Developer-host services are source-pinned so production and dev do not fight over one global `pibo` symlink. Docker and swap are developer-host prerequisites only; verify them with `pibo setup doctor --require-docker --min-swap-gb 8`.
 
 If the agent should be able to perform server administration, give that Linux user the required sudo or Docker permissions explicitly. Pibo does not need a special onboarding user to work correctly; normal Unix ownership is enough.
 

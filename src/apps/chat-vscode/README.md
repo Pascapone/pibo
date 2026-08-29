@@ -4,7 +4,7 @@ The Pibo VS Code extension is a thin client for the [Pibo](https://github.com/Pa
 
 ## Windows users: use WSL2
 
-The Pibo CLI is Linux-first and does not run natively on Windows. Install `pibo` and the VSCode server binary inside a WSL2 distribution, then connect VSCode to that distribution through the **WSL** extension. See [docs/guides/pibo-on-windows-via-wsl.md](../../../../docs/guides/pibo-on-windows-via-wsl.md) for the full walkthrough. In short:
+The Pibo CLI is Linux-first and does not run natively on Windows. Install `pibo` and the VSCode server binary inside a WSL2 distribution, then connect VSCode to that distribution through the **WSL** extension. See [the WSL guide](../../../docs/project/guides/pibo-on-windows-via-wsl.md) for the full walkthrough. In short:
 
 ```powershell
 wsl --install                  # PowerShell as Admin, one-time
@@ -135,7 +135,7 @@ node scripts/release.mjs --version 1.3.0 --publish-npm    # also publish to npm
 node scripts/release.mjs --version 1.3.0 --create-release # also create a GitHub Release with the VSIX attached
 ```
 
-The script bumps the version in **both** `package.json` (root) and `src/apps/chat-vscode/package.json` (extension) so the two stay in sync. The produced VSIX is the artifact to upload to the VS Code Marketplace. See `docs/ops/vscode-extension-release.md` for the full release runbook.
+The script bumps the version in **both** `package.json` (root) and `src/apps/chat-vscode/package.json` (extension) so the two stay in sync. The produced VSIX is the artifact to upload to the VS Code Marketplace. See `docs/project/operations/vscode-extension-release.md` for the full release runbook.
 
 ## Validation
 
