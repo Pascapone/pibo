@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const cliPath = new URL('../dist/bin/pibo.js', import.meta.url).pathname;
 
 import {
 	COMPUTE_RESOURCE_POLICY_ENV,
@@ -13,6 +17,7 @@ import {
 	resolveComputeResourcePolicy,
 } from '../dist/compute/resource-policy.js';
 import {
+	COMPUTE_PUBLISH_HOST,
 	LABEL_CLEANUP_STATE,
 	LABEL_DIRTY_REASON,
 	LABEL_IDLE_SECONDS,
@@ -134,6 +139,11 @@ test('one-time worker docker run args include resource policy and inspectable la
 	assert.ok(args.includes('max-file=4'));
 	assert.equal(valueAfter(args, '-e'), 'PIBO_COMPUTE_WORKER=1');
 	assert.equal(args.at(-1), 'gateway:web');
+	assert.deepEqual(args.filter((value, index) => args[index - 1] === '-p'), [
+		`${COMPUTE_PUBLISH_HOST}::4789`,
+		`${COMPUTE_PUBLISH_HOST}::56663`,
+		`${COMPUTE_PUBLISH_HOST}::4788`,
+	]);
 
 	const runLabels = labels(args);
 	assert.ok(runLabels.includes('pibo.compute.role=worker'));
@@ -345,6 +355,65 @@ test('compute reap apply removes only selected containers and never deletes work
 	assert.match(applied, /Worktrees are preserved/);
 });
 
+test('compute reap rejects invalid max ages before Docker planning and preserves valid age semantics', async () => {
+	const cwd = await mkdtemp(join(tmpdir(), 'pibo-compute-reap-age-'));
+	try {
+		const binDir = join(cwd, 'bin');
+		const dockerLog = join(cwd, 'docker.log');
+		await mkdir(binDir, { recursive: true });
+		await writeFile(join(binDir, 'docker'), '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$PIBO_TEST_DOCKER_LOG"\n');
+		await chmod(join(binDir, 'docker'), 0o755);
+		const env = {
+			...process.env,
+			PATH: `${binDir}:${process.env.PATH ?? ''}`,
+			PIBO_HOME: join(cwd, 'pibo-home'),
+			PIBO_TEST_DOCKER_LOG: dockerLog,
+		};
+		const computeArgs = ['compute', 'reap', '--dry-run', '--json'];
+
+		for (const value of ['-1', 'Infinity', 'not-a-number']) {
+			await assert.rejects(
+				execFileAsync(process.execPath, [cliPath, ...computeArgs, `--max-age-minutes=${value}`], { cwd, env }),
+				/Value must be a non-negative number/,
+			);
+		}
+		await assert.rejects(readFile(dockerLog, 'utf8'), /ENOENT/);
+
+		for (const [value, expected] of [['0', 0], ['12.5', 12.5], [undefined, 60]]) {
+			const args = value === undefined ? computeArgs : [...computeArgs, `--max-age-minutes=${value}`];
+			const result = JSON.parse((await execFileAsync(process.execPath, [cliPath, ...args], { cwd, env })).stdout);
+			assert.equal(result.dryRun, true);
+			assert.equal(result.applied, false);
+			assert.deepEqual(result.removed, []);
+			assert.equal(result.plan.options.maxAgeMinutes, expected);
+		}
+		const dockerCalls = (await readFile(dockerLog, 'utf8')).trim().split('\n');
+		assert.equal(dockerCalls.length, 6);
+		assert.ok(dockerCalls.every((call) => call.startsWith('ps ')));
+
+		await rm(dockerLog);
+		for (const value of ['-1', 'Infinity', 'not-a-number']) {
+			await assert.rejects(
+				execFileAsync(process.execPath, [
+					cliPath,
+					'resources',
+					'reap',
+					'--dry-run',
+					`--max-age-minutes=${value}`,
+					'--browser-pool-root',
+					join(cwd, 'browser-pool'),
+					'--browser-use-home',
+					join(cwd, 'browser-home'),
+				], { cwd, env }),
+				/Value must be a non-negative number/,
+			);
+		}
+		await assert.rejects(readFile(dockerLog, 'utf8'), /ENOENT/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test('docker disk diagnostics parse system df JSON rows and render safe cleanup suggestions', () => {
 	const rows = parseDockerSystemDfLines([
 		JSON.stringify({ Type: 'Images', TotalCount: '2', Active: '1', Size: '1.5GB', Reclaimable: '500MB (33%)' }),
@@ -411,7 +480,7 @@ test('limited worker smoke script skips clearly when Docker is unavailable or ap
 	assert.match(stdout, /Next: npm run --silent dev -- compute spawn/);
 });
 
-test('dev worker docker run args include resource policy labels worktree metadata and bounded logs', () => {
+test('dev worker docker run args expose the built worktree CLI with resource and metadata bounds', () => {
 	const args = buildDevWorkerDockerRunArgs({
 		id: 'pibo-dev-policy',
 		worktreePath: '/repo/.worktrees/policy',
@@ -441,11 +510,17 @@ test('dev worker docker run args include resource policy labels worktree metadat
 	assert.ok(args.includes('--init'));
 	assert.ok(args.includes('max-size=12m'));
 	assert.ok(args.includes('max-file=4'));
-	assert.ok(args.includes('127.0.0.1:4870:4789'));
+	assert.deepEqual(args.filter((value, index) => args[index - 1] === '-p'), [
+		`${COMPUTE_PUBLISH_HOST}:4870:4789`,
+		`${COMPUTE_PUBLISH_HOST}:4871:56663`,
+		`${COMPUTE_PUBLISH_HOST}:4872:4788`,
+		`${COMPUTE_PUBLISH_HOST}:4873:4790`,
+		`${COMPUTE_PUBLISH_HOST}:4874:4791`,
+	]);
 	assert.ok(args.includes('/repo/.worktrees/policy:/workspace'));
 	assert.ok(args.includes('/repo/node_modules:/workspace/node_modules'));
 	assert.equal(args.at(-2), '-c');
-	assert.equal(args.at(-1), 'tail -f /dev/null');
+	assert.equal(args.at(-1), 'ln -sf /workspace/dist/bin/pibo.js /usr/local/bin/pibo && exec tail -f /dev/null');
 
 	const runLabels = labels(args);
 	assert.ok(runLabels.includes('pibo.compute.role=dev'));

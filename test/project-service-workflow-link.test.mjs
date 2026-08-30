@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -25,6 +25,7 @@ test("project service uses app-global storage and lists projects", () => {
 		const created = service.createProject({
 			name: "Feature Project",
 			projectFolder: join(tempRoot, "feature"),
+			createFolder: true,
 		});
 		assert.equal(retiredPartitionField in created, false);
 		assert.equal(existsSync(created.projectFolder), true);
@@ -37,13 +38,31 @@ test("project service uses app-global storage and lists projects", () => {
 		});
 		assert.equal(retiredPartitionField in second, false);
 
+		const missingFolder = join(tempRoot, "missing");
+		assert.throws(() => service.createProject({
+			name: "Missing Folder",
+			projectFolder: missingFolder,
+			createFolder: false,
+		}), /Project folder cannot be created or used/);
+		assert.equal(existsSync(missingFolder), false);
+		assert.equal(service.listProjects().some((project) => project.name === "Missing Folder"), false);
+
+		const existingFolder = join(tempRoot, "existing");
+		mkdirSync(existingFolder);
+		const existing = service.createProject({
+			name: "Existing Folder Project",
+			projectFolder: existingFolder,
+			createFolder: false,
+		});
+		assert.equal(existing.projectFolder, existingFolder);
+
 		assert.throws(() => service.createProject({ name: "Missing Folder", projectFolder: "" }), /Project folder is required/);
 		const filePath = join(tempRoot, "not-a-directory");
 		writeFileSync(filePath, "not a directory");
 		assert.throws(() => service.createProject({ name: "File Folder", projectFolder: filePath }), /Project folder cannot be created or used/);
 
 		const projects = service.listProjects();
-		assert.deepEqual(projects.map((project) => project.name).sort(), ["Feature Project", "Second Project"]);
+		assert.deepEqual(projects.map((project) => project.name).sort(), ["Existing Folder Project", "Feature Project", "Second Project"]);
 		assert.equal(retiredPartitionField in service.requireProject(second.id), false);
 		const renamedSecond = service.updateProject(second.id, { name: "Second Project Renamed" });
 		assert.equal(renamedSecond?.name, "Second Project Renamed");

@@ -268,7 +268,7 @@ export async function installCliTool(entry: CliToolEntry, runSetup: boolean): Pr
   if ((entry.name === 'browser-use' || entry.name === 'agent-browser') && process.platform === 'linux' && !hasDesktopDisplay(detectDesktopEnv())) {
     printLinuxVirtualDisplayHint('  ');
   }
-  console.log(`  env: pibo tools env ${entry.name}`);
+  console.log(status.installed ? `  env: pibo tools env ${entry.name}` : `  install: pibo tools install ${entry.name}`);
 }
 
 export async function removeCliTool(entry: CliToolEntry): Promise<void> {

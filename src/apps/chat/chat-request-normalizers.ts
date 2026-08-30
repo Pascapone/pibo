@@ -172,6 +172,7 @@ export type ChatStreamingFixtureBody = {
 	preludeOnly?: unknown;
 	traceSnapshots?: unknown;
 	suppressLiveDeltas?: unknown;
+	toolInterleaving?: unknown;
 };
 
 export type ChatStreamingFixtureProfile = "steady" | "jitter" | "burst" | "batch";
@@ -664,6 +665,12 @@ export function normalizeStreamingFixtureTraceSnapshots(value: unknown): boolean
 	if (value === undefined) return false;
 	if (typeof value === "boolean") return value;
 	throw new PiboWebHttpError("traceSnapshots must be a boolean", 400);
+}
+
+export function normalizeStreamingFixtureToolInterleaving(value: unknown): boolean {
+	if (value === undefined) return false;
+	if (typeof value === "boolean") return value;
+	throw new PiboWebHttpError("toolInterleaving must be a boolean", 400);
 }
 
 export function normalizeStreamingFixtureSuppressLiveDeltas(value: unknown): boolean {
