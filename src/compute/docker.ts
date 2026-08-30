@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	COMPUTE_RESOURCE_POLICY_LABELS,
 	buildComputeResourcePolicyLabels,
@@ -14,6 +16,8 @@ import {
 const execFileAsync = promisify(execFile);
 
 export const IMAGE_NAME = "pibo:latest";
+export const COMPUTE_IMAGE_ENV = "PIBO_COMPUTE_IMAGE";
+export const PACKAGED_COMPUTE_DOCKERFILE = "compute-image/Dockerfile";
 export const LABEL_ROLE = "pibo.compute.role";
 export const LABEL_CREATED_AT = "pibo.compute.createdAt";
 export const LABEL_HOLDER = "pibo.compute.holder";
@@ -38,9 +42,44 @@ export interface SpawnedWorker {
 	connect: string;
 }
 
-export async function dockerBuild(workspaceDir: string): Promise<void> {
-	const { stderr } = await execFileAsync("docker", ["build", "-t", IMAGE_NAME, "."], {
-		cwd: workspaceDir,
+export interface ComputeImageBuildConfig {
+	imageName: string;
+	buildContext: string;
+	dockerfile?: string;
+	source: "workspace" | "package";
+}
+
+export function resolveComputeImageBuildConfig(
+	workspaceDir: string,
+	options: {
+		packageRoot?: string;
+		env?: NodeJS.ProcessEnv;
+		fileExists?: (candidate: string) => boolean;
+	} = {},
+): ComputeImageBuildConfig {
+	const packageRoot = options.packageRoot ?? fileURLToPath(new URL("../../", import.meta.url));
+	const env = options.env ?? process.env;
+	const fileExists = options.fileExists ?? existsSync;
+	const imageName = env[COMPUTE_IMAGE_ENV]?.trim() || IMAGE_NAME;
+
+	if (fileExists(path.join(workspaceDir, "Dockerfile"))) {
+		return { imageName, buildContext: workspaceDir, source: "workspace" };
+	}
+
+	const dockerfile = path.join(packageRoot, PACKAGED_COMPUTE_DOCKERFILE);
+	if (!fileExists(dockerfile)) {
+		throw new Error(`No compute Dockerfile found in workspace ${workspaceDir} or installed package ${dockerfile}`);
+	}
+	return { imageName, buildContext: packageRoot, dockerfile, source: "package" };
+}
+
+export function buildDockerBuildArgs(config: ComputeImageBuildConfig): string[] {
+	return ["build", "-t", config.imageName, ...(config.dockerfile ? ["-f", config.dockerfile] : []), "."];
+}
+
+export async function dockerBuild(config: ComputeImageBuildConfig): Promise<void> {
+	const { stderr } = await execFileAsync("docker", buildDockerBuildArgs(config), {
+		cwd: config.buildContext,
 		maxBuffer: 50 * 1024 * 1024,
 	});
 	if (stderr) console.error(stderr);
@@ -256,6 +295,7 @@ export async function createWorktree(repoDir: string, name: string): Promise<str
 
 export interface BuildDevWorkerDockerRunArgsOptions {
 	id: string;
+	imageName?: string;
 	worktreePath: string;
 	worktreeName: string;
 	block: number;
@@ -324,7 +364,7 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 		...buildComputeResourcePolicyLabels(policy).flatMap((label) => ["--label", label]),
 		"--entrypoint",
 		"/bin/sh",
-		IMAGE_NAME,
+		options.imageName ?? IMAGE_NAME,
 		"-c",
 		"tail -f /dev/null",
 	];
@@ -333,6 +373,7 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 export async function spawnDevWorker(options: {
 	repoDir: string;
 	worktreeName: string;
+	imageName?: string;
 	holder?: string;
 	ttlSeconds?: number;
 	idleSeconds?: number;
@@ -365,6 +406,7 @@ export async function spawnDevWorker(options: {
 
 	const args = buildDevWorkerDockerRunArgs({
 		id,
+		imageName: options.imageName,
 		worktreePath,
 		worktreeName: options.worktreeName,
 		block,
@@ -388,7 +430,7 @@ export async function spawnDevWorker(options: {
 
 	return {
 		id,
-		image: IMAGE_NAME,
+		image: options.imageName ?? IMAGE_NAME,
 		gatewayHost: host,
 		gatewayPort,
 		cdpPort,
@@ -403,6 +445,7 @@ export async function spawnDevWorker(options: {
 export interface BuildWorkerDockerRunArgsOptions {
 	id: string;
 	createdAt: string;
+	imageName?: string;
 	holder?: string;
 	worktreePath?: string;
 	ttlSeconds?: number;
@@ -445,13 +488,14 @@ export function buildWorkerDockerRunArgs(options: BuildWorkerDockerRunArgsOption
 			ralphRunId: options.ralphRunId,
 		}).flatMap((label) => ["--label", label]),
 		...buildComputeResourcePolicyLabels(policy).flatMap((label) => ["--label", label]),
-		IMAGE_NAME,
+		options.imageName ?? IMAGE_NAME,
 		"gateway:web",
 	];
 }
 
 export async function spawnWorker(options: {
 	workspaceDir: string;
+	imageName?: string;
 	name?: string;
 	holder?: string;
 	ttlSeconds?: number;
@@ -465,6 +509,7 @@ export async function spawnWorker(options: {
 	const args = buildWorkerDockerRunArgs({
 		id,
 		createdAt,
+		imageName: options.imageName,
 		holder: options.holder,
 		worktreePath: options.workspaceDir,
 		ttlSeconds: options.ttlSeconds,
@@ -489,7 +534,7 @@ export async function spawnWorker(options: {
 
 	return {
 		id,
-		image: IMAGE_NAME,
+		image: options.imageName ?? IMAGE_NAME,
 		gatewayHost: host,
 		gatewayPort,
 		cdpPort,
