@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
 	Background,
 	BaseEdge,
@@ -58,6 +58,7 @@ import {
 	type WorkflowGraphFlowNode,
 } from "./workflow-graph-model";
 import { createHumanActionChoice } from "./workflow-inspector-forms";
+import { isWorkflowContextMenuInvocation, workflowContextMenuKeyAction } from "./workflow-context-menu-keyboard";
 import {
 	addWorkflowGraphAdapterNode,
 	addWorkflowGraphAgentNode,
@@ -108,6 +109,7 @@ type WorkflowRunVisualState = {
 type WorkflowGraphContextMenuEvent = {
 	clientX: number;
 	clientY: number;
+	target?: EventTarget | null;
 	preventDefault: () => void;
 	stopPropagation: () => void;
 };
@@ -153,6 +155,8 @@ export function WorkflowGraphCanvas({
 	const [manualTriggerDialog, setManualTriggerDialog] = useState<ManualTriggerDialogState | undefined>();
 	const [runVisualState, setRunVisualState] = useState<WorkflowRunVisualState>(() => ({ runningNodeIds: new Set(), recentNodeIds: new Set(), recentEdgeIds: new Set() }));
 	const graphCanvasRef = useRef<HTMLDivElement | null>(null);
+	const contextMenuRef = useRef<HTMLDivElement | null>(null);
+	const contextMenuInvokerRef = useRef<HTMLElement | null>(null);
 	const runVisualTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
 	useEffect(() => {
@@ -349,11 +353,27 @@ export function WorkflowGraphCanvas({
 		publishStatus(`Edge route updated for ${edgeId}; it will be preserved on save or graph edits.`);
 	}, [nodes, publishStatus, readOnly, syncDraftLayout]);
 
+	const contextMenuItems = useCallback(() => Array.from(contextMenuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not([disabled])") ?? []), []);
+
+	const closeContextMenu = useCallback((restoreFocus = false) => {
+		const invoker = contextMenuInvokerRef.current;
+		setContextMenu(undefined);
+		if (restoreFocus) requestAnimationFrame(() => invoker?.focus());
+	}, []);
+
+	useLayoutEffect(() => {
+		if (!contextMenu) return;
+		contextMenuItems()[0]?.focus();
+	}, [contextMenu, contextMenuItems]);
+
 	useEffect(() => {
 		if (!contextMenu) return undefined;
-		const close = () => setContextMenu(undefined);
+		const close = () => closeContextMenu();
 		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") close();
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			event.stopPropagation();
+			closeContextMenu(true);
 		};
 		document.addEventListener("click", close);
 		document.addEventListener("contextmenu", close);
@@ -363,20 +383,65 @@ export function WorkflowGraphCanvas({
 			document.removeEventListener("contextmenu", close);
 			document.removeEventListener("keydown", handleKeyDown);
 		};
-	}, [contextMenu]);
+	}, [closeContextMenu, contextMenu]);
 
-	const openContextMenu = useCallback((event: WorkflowGraphContextMenuEvent, target: WorkflowGraphContextMenuState["target"]) => {
-		event.preventDefault();
-		event.stopPropagation();
+	const openContextMenuAt = useCallback((clientX: number, clientY: number, target: WorkflowGraphContextMenuState["target"], invoker: HTMLElement | null) => {
 		const rect = graphCanvasRef.current?.getBoundingClientRect();
-		const rawX = rect ? event.clientX - rect.left : event.clientX;
-		const rawY = rect ? event.clientY - rect.top : event.clientY;
+		const rawX = rect ? clientX - rect.left : clientX;
+		const rawY = rect ? clientY - rect.top : clientY;
+		contextMenuInvokerRef.current = invoker;
 		setContextMenu({
 			x: Math.max(8, Math.min(rawX, (rect?.width ?? rawX) - 236)),
 			y: Math.max(8, Math.min(rawY, (rect?.height ?? rawY) - 260)),
 			target,
 		});
 	}, []);
+
+	const openContextMenu = useCallback((event: WorkflowGraphContextMenuEvent, target: WorkflowGraphContextMenuState["target"]) => {
+		event.preventDefault();
+		event.stopPropagation();
+		const eventElement = event.target instanceof Element ? event.target : null;
+		const invoker = target.type === "pane"
+			? graphCanvasRef.current
+			: eventElement?.closest<HTMLElement>(target.type === "node" ? ".react-flow__node[data-id]" : ".react-flow__edge[data-id]") ?? null;
+		openContextMenuAt(event.clientX, event.clientY, target, invoker);
+	}, [openContextMenuAt]);
+
+	const handleContextMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+		const items = contextMenuItems();
+		const currentIndex = Math.max(0, items.indexOf(document.activeElement as HTMLButtonElement));
+		const action = workflowContextMenuKeyAction(event.key, currentIndex, items.length);
+		if (!action) return;
+		event.preventDefault();
+		event.stopPropagation();
+		event.nativeEvent.stopImmediatePropagation();
+		if (action.type === "dismiss") closeContextMenu(true);
+		else items[action.index]?.focus();
+	};
+
+	const handleGraphContextMenuKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+		if (!isWorkflowContextMenuInvocation(event.key, event.shiftKey)) return;
+		const eventElement = event.target instanceof Element ? event.target : null;
+		const graphElement = eventElement?.closest<HTMLElement>(".react-flow__node[data-id], .react-flow__edge[data-id]");
+		let target: WorkflowGraphContextMenuState["target"] | undefined;
+		if (graphElement?.classList.contains("react-flow__node")) {
+			const id = graphElement.dataset.id;
+			if (id) target = { type: "node", id };
+		} else if (graphElement?.classList.contains("react-flow__edge")) {
+			const id = graphElement.dataset.id;
+			if (id) target = { type: "edge", id };
+		} else if (event.target === event.currentTarget) {
+			target = { type: "pane" };
+		}
+		if (!target) return;
+		event.preventDefault();
+		event.stopPropagation();
+		event.nativeEvent.stopImmediatePropagation();
+		if (target.type !== "pane") setSelectedElement(target);
+		const invoker = graphElement ?? graphCanvasRef.current;
+		const rect = invoker?.getBoundingClientRect();
+		openContextMenuAt(rect?.left ?? 0, rect?.bottom ?? 0, target, invoker ?? null);
+	}, [openContextMenuAt]);
 
 	const handleEdgeContextMenu = useCallback((edgeId: string, event: WorkflowGraphContextMenuEvent) => {
 		setSelectedElement({ type: "edge", id: edgeId });
@@ -671,7 +736,7 @@ export function WorkflowGraphCanvas({
 				className={`${fullHeight ? "min-h-0 flex-1" : ""} grid min-w-0 gap-3 text-xs`}
 				style={{ gridTemplateColumns: `minmax(0, 1fr) ${inspectorWidth}px` }}
 			>
-				<div ref={graphCanvasRef} className={`${fullHeight ? "h-full min-h-[360px]" : "h-[420px]"} relative min-w-0 overflow-hidden rounded-sm border border-slate-800 bg-[#0c171c]`} aria-label="Workflow graph canvas">
+				<div ref={graphCanvasRef} className={`${fullHeight ? "h-full min-h-[360px]" : "h-[420px]"} relative min-w-0 overflow-hidden rounded-sm border border-slate-800 bg-[#0c171c]`} aria-label="Workflow graph canvas" role="group" tabIndex={0} onKeyDownCapture={handleGraphContextMenuKeyDown}>
 					<ReactFlow<WorkflowGraphFlowNode, WorkflowGraphFlowEdge>
 						nodes={renderedNodes}
 						edges={renderedEdges}
@@ -726,10 +791,12 @@ export function WorkflowGraphCanvas({
 					) : null}
 					{contextMenu ? (
 						<div
+							ref={contextMenuRef}
 							className="absolute z-50 w-56 overflow-hidden rounded-sm border border-slate-700 bg-[#1a262b] py-1 text-xs shadow-xl shadow-black/40"
 							style={{ left: contextMenu.x, top: contextMenu.y }}
 							role="menu"
 							aria-label="Workflow graph context menu"
+							onKeyDown={handleContextMenuKeyDown}
 							onClick={(event) => event.stopPropagation()}
 							onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
 						>
@@ -942,6 +1009,7 @@ function WorkflowGraphContextMenuItem({ icon, label, onSelect, disabled = false,
 		<button
 			type="button"
 			role="menuitem"
+			tabIndex={-1}
 			onClick={onSelect}
 			disabled={disabled}
 			className={`flex w-full items-center gap-2 px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${destructive ? "text-red-300 hover:bg-red-500/10 hover:text-red-100" : "text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4]"}`}
