@@ -179,6 +179,9 @@ try {
 		await sleep(500);
 		await waitFor(`document.querySelector('[data-testid="virtuoso-scroller"]') !== null`, 20_000, "Terminal after small-wheel reload");
 		await returnToLatest();
+		await waitForStableViewport();
+		await sleep(500);
+		await waitForStableViewport();
 		const before = await measure();
 		assert(before.hasOlder === "true", "small-wheel fixture has no older history");
 		await startFrameRecorder();
@@ -248,6 +251,9 @@ try {
 		await sleep(500);
 		await waitFor(`document.querySelector('[data-testid="virtuoso-scroller"]') !== null`, 20_000, "Terminal after scrollbar reload");
 		await returnToLatest();
+		await waitForStableViewport();
+		await sleep(500);
+		await waitForStableViewport();
 		const before = await measure();
 		assert(before.hasOlder === "true", "scrollbar fixture has no older history");
 		const geometry = await scrollerGeometry();
@@ -260,6 +266,7 @@ try {
 		const startY = trackBottom - thumbHeight / 2;
 		const endY = geometry.top - 200;
 		await mouse("mouseMoved", x, startY, "none");
+		await sleep(150);
 		await mouse("mousePressed", x, startY, "left");
 		const held = [];
 		for (let step = 1; step <= 24; step += 1) {
@@ -306,6 +313,7 @@ try {
 		const upperY = trackTop + trackHeight * 0.45;
 		const lowerY = upperY + trackHeight * 0.2;
 		await mouse("mouseMoved", x, startY, "none");
+		await sleep(150);
 		await mouse("mousePressed", x, startY, "left");
 		for (let step = 1; step <= 10; step += 1) {
 			await mouse("mouseMoved", x, startY + ((upperY - startY) * step / 10), "left");
@@ -411,6 +419,7 @@ try {
 	await captureScreenshot("failure").catch(() => undefined);
 	throw error;
 } finally {
+	await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 0, y: 0, button: "left", buttons: 0, clickCount: 1 }).catch(() => undefined);
 	report.completedAt = new Date().toISOString();
 	await writeFile(resolve(artifactDir, "metrics.json"), `${JSON.stringify(report, null, 2)}\n`);
 	client.close();
