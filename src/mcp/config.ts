@@ -687,7 +687,7 @@ export async function loadConfigUnresolved(
     for (const [serverName, serverConfig] of Object.entries(
       config.mcpServers,
     )) {
-      if (!(serverName in merged.mcpServers)) {
+      if (!Object.hasOwn(merged.mcpServers, serverName)) {
         merged.mcpServers[serverName] = serverConfig;
       }
     }
@@ -711,8 +711,9 @@ export async function resolveMcpServerConfigSource(
   for (const configPath of getConfigSearchPaths(explicitPath)) {
     if (!existsSync(configPath)) continue;
     const config = await readRawConfig(configPath);
-    const server = config.mcpServers[serverName];
-    if (server) return { path: configPath, config, server };
+    if (Object.hasOwn(config.mcpServers, serverName)) {
+      return { path: configPath, config, server: config.mcpServers[serverName] };
+    }
   }
 
   throw new Error(
@@ -767,12 +768,11 @@ export function getServerConfig(
   config: McpServersConfig,
   serverName: string,
 ): ServerConfig {
-  const server = config.mcpServers[serverName];
-  if (!server) {
+  if (!Object.hasOwn(config.mcpServers, serverName)) {
     const available = Object.keys(config.mcpServers);
     throw new Error(formatCliError(serverNotFoundError(serverName, available)));
   }
-  return server;
+  return config.mcpServers[serverName];
 }
 
 /**

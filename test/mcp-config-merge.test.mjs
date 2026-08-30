@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import test from "node:test";
 
-const { getConfigSearchPaths, loadConfig, resolveMcpServerConfigSource } = await import("../dist/mcp/config.js");
+const { getConfigSearchPaths, getServerConfig, loadConfig, resolveMcpServerConfigSource } = await import("../dist/mcp/config.js");
 
 test("MCP config source resolution follows merged precedence", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-source-"));
@@ -114,6 +114,50 @@ test("MCP config loading merges local and global files with specific entries win
 		assert.deepEqual(config.mcpServers.unity, { command: "uvx", args: ["mcp-unity"] });
 		assert.deepEqual(config.mcpServers.shared, { command: "node", args: ["local-shared.js"] });
 		assert.deepEqual(config.mcpServers.deep, { url: "https://example.com/mcp" });
+	} finally {
+		process.chdir(previousCwd);
+		if (previousHome === undefined) delete process.env.HOME;
+		else process.env.HOME = previousHome;
+		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+		else process.env.USERPROFILE = previousUserProfile;
+		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousConfigPath;
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("MCP config treats prototype-shaped names as own server definitions", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-prototype-names-"));
+	const project = join(root, "project");
+	const home = join(root, "home");
+	await mkdir(project, { recursive: true });
+	await mkdir(home, { recursive: true });
+	const projectPath = join(project, "mcp_servers.json");
+	await writeFile(projectPath, JSON.stringify({
+		mcpServers: {
+			toString: { command: "node", args: ["to-string.js"] },
+			constructor: { command: "node", args: ["constructor.js"] },
+		},
+	}));
+
+	const previousCwd = process.cwd();
+	const previousHome = process.env.HOME;
+	const previousUserProfile = process.env.USERPROFILE;
+	const previousConfigPath = process.env.MCP_CONFIG_PATH;
+	try {
+		process.chdir(project);
+		process.env.HOME = home;
+		process.env.USERPROFILE = home;
+		delete process.env.MCP_CONFIG_PATH;
+
+		const config = await loadConfig();
+		assert.deepEqual(Object.keys(config.mcpServers).sort(), ["constructor", "toString"]);
+		assert.deepEqual(getServerConfig(config, "toString"), { command: "node", args: ["to-string.js"] });
+		assert.deepEqual(getServerConfig(config, "constructor"), { command: "node", args: ["constructor.js"] });
+		assert.equal((await resolveMcpServerConfigSource("toString")).path, projectPath);
+		assert.equal((await resolveMcpServerConfigSource("constructor")).path, projectPath);
+		assert.throws(() => getServerConfig({ mcpServers: {} }, "toString"), /SERVER_NOT_FOUND/);
+		await assert.rejects(resolveMcpServerConfigSource("valueOf"), /SERVER_NOT_FOUND/);
 	} finally {
 		process.chdir(previousCwd);
 		if (previousHome === undefined) delete process.env.HOME;

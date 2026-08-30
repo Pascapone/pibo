@@ -16,6 +16,7 @@ import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { configCommand } from "../dist/mcp/config-command.js";
 import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
 import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
@@ -8689,6 +8690,96 @@ test("chat web app updates MCP descriptions in their merged config source", asyn
 		else process.env.HOME = previousHome;
 		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
 		else process.env.USERPROFILE = previousUserProfile;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("chat agent API updates release MCP config removal guards and persist across restart", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-web-mcp-remove-"));
+	const agentStorePath = join(root, "chat-agents.sqlite");
+	const configPath = join(root, "mcp_servers.json");
+	writeFileSync(configPath, JSON.stringify({
+		mcpServers: { selected: { command: "node", args: ["selected.js"] } },
+	}));
+	const previousPiboHome = process.env.PIBO_HOME;
+	const previousConfigPath = process.env.MCP_CONFIG_PATH;
+	process.env.PIBO_HOME = root;
+	process.env.MCP_CONFIG_PATH = configPath;
+	let firstChannel;
+	let restartedChannel;
+	try {
+		const first = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			chat: { agentStorePath },
+		});
+		firstChannel = first.channel;
+		const headers = {
+			"content-type": "application/json",
+			origin: first.baseURL,
+			"x-test-user": "user-1",
+		};
+		const created = await fetch(`${first.baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ displayName: "api-selected", mcpServers: ["selected"] }),
+		});
+		assert.equal(created.status, 201);
+		const agent = (await created.json()).agent;
+
+		await assert.rejects(
+			configCommand({ action: "remove", name: "selected", configPath }),
+			/MCP_SERVER_IN_USE[\s\S]*api-selected/,
+		);
+		const updated = await fetch(`${first.baseURL}/api/chat/agents/${encodeURIComponent(agent.id)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ mcpServers: [] }),
+		});
+		assert.equal(updated.status, 200);
+		assert.deepEqual((await updated.json()).agent.mcpServers, []);
+		await configCommand({ action: "remove", name: "selected", configPath });
+
+		await first.channel.stop?.();
+		firstChannel = undefined;
+		const restarted = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			chat: { agentStorePath },
+		});
+		restartedChannel = restarted.channel;
+		const listed = await fetch(`${restarted.baseURL}/api/chat/agents?includeArchived=true`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(listed.status, 200);
+		assert.deepEqual((await listed.json()).agents.find((item) => item.id === agent.id).mcpServers, []);
+
+		await configCommand({
+			action: "add",
+			name: "selected",
+			serverJson: JSON.stringify({ command: "node", args: ["restored.js"] }),
+			configPath,
+		});
+		const restoredSelection = await fetch(`${restarted.baseURL}/api/chat/agents/${encodeURIComponent(agent.id)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: restarted.baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ mcpServers: ["selected"] }),
+		});
+		assert.equal(restoredSelection.status, 200);
+		await assert.rejects(
+			configCommand({ action: "remove", name: "selected", configPath }),
+			/MCP_SERVER_IN_USE[\s\S]*api-selected/,
+		);
+		assert.ok(JSON.parse(readFileSync(configPath, "utf8")).mcpServers.selected);
+	} finally {
+		await firstChannel?.stop?.();
+		await restartedChannel?.stop?.();
+		if (previousPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = previousPiboHome;
+		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousConfigPath;
 		rmSync(root, { recursive: true, force: true });
 	}
 });
