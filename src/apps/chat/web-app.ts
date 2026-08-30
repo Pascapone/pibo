@@ -5399,22 +5399,42 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const rootPiboSessionId = url.searchParams.get("rootPiboSessionId") ?? url.searchParams.get("piboSessionId");
 				if (!rootPiboSessionId) throw new PiboWebHttpError("rootPiboSessionId is required", 400);
 				requireSharedSession(context, rootPiboSessionId);
-				if (!context.channelContext.snapshotSignalTree || !context.channelContext.subscribeSignalTree) {
+				const includeStatuses = parseBooleanSearchParam(url, "includeStatuses");
+				if (
+					!context.channelContext.snapshotSignalTree
+					|| !context.channelContext.subscribeSignalTree
+					|| (includeStatuses && (!context.channelContext.snapshotSignalStatuses || !context.channelContext.subscribeSignalStatuses))
+				) {
 					throw new PiboWebHttpError("Signal registry is not available", 503);
 				}
-				let unsubscribe: (() => void) | undefined;
+				let unsubscribeTree: (() => void) | undefined;
+				let unsubscribeStatuses: (() => void) | undefined;
 				let heartbeat: ReturnType<typeof setInterval> | undefined;
+				let closed = false;
 				const stream = new ReadableStream<Uint8Array>({
 					start: (controller) => {
 						writeJsonSse(controller, "signal_snapshot", context.channelContext.snapshotSignalTree!(rootPiboSessionId));
-						unsubscribe = context.channelContext.subscribeSignalTree!(rootPiboSessionId, (patch) => {
-							writeJsonSse(controller, "signal_patch", patch, String(patch.toVersion));
+						unsubscribeTree = context.channelContext.subscribeSignalTree!(rootPiboSessionId, (patch) => {
+							if (!closed) writeJsonSse(controller, "signal_patch", patch, String(patch.toVersion));
 						});
-						heartbeat = setInterval(() => writeSseComment(controller, "heartbeat"), 25_000);
+						if (includeStatuses) {
+							writeJsonSse(controller, "signal_status_snapshot", context.channelContext.snapshotSignalStatuses!());
+							unsubscribeStatuses = context.channelContext.subscribeSignalStatuses!((patch) => {
+								if (closed) return;
+								const statusPatch = compactSignalStatusPatch(patch);
+								writeJsonSse(controller, "signal_status_patch", statusPatch, `${patch.rootPiboSessionId}:${patch.toVersion}`);
+							});
+						}
+						heartbeat = setInterval(() => {
+							if (!closed) writeSseComment(controller, "heartbeat");
+						}, 25_000);
 					},
 					cancel: () => {
-						unsubscribe?.();
-						unsubscribe = undefined;
+						closed = true;
+						unsubscribeTree?.();
+						unsubscribeTree = undefined;
+						unsubscribeStatuses?.();
+						unsubscribeStatuses = undefined;
 						if (heartbeat) clearInterval(heartbeat);
 						heartbeat = undefined;
 					},

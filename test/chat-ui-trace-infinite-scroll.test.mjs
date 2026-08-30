@@ -34,13 +34,16 @@ test("trace views preload older pages near the top without a manual trace-histor
 		assert.match(source, /scrollbarDragActiveRef\.current = active/);
 		assert.match(source, /scrollbarDragDeferredLoadRef\.current = true/);
 		assert.match(source, /onScrollbarDragChange: handleScrollbarDragChange/);
+		assert.match(source, /olderTraceRequestPendingRef\.current = true/);
+		assert.match(source, /prepareOlderTracePrependRef\.current\(\)/);
+		assert.match(source, /Promise\.resolve\(request\)\.then/);
+		assert.match(source, /isPrepending: isFetchingOlderTracePage/);
+		assert.match(source, /const loadOlderAtTop = useCallback[\s\S]*?if \(!olderTraceIntentRef\.current && !scrollbarDragActiveRef\.current\) return;/, "the exact edge consumes one explicit older-history intent or defers an active scrollbar drag");
+		assert.doesNotMatch(source, /OLDER_TRACE_INTENT_SETTLE_MS|olderTraceLoadTimerRef/, "wheel, keyboard, and touch prefetches are not delayed behind a settle timer");
 		if (sourcePath.includes("CompactTerminalSessionView")) {
-			assert.match(source, /olderTraceRequestPendingRef\.current = true/);
-			assert.match(source, /OLDER_TRACE_INTENT_SETTLE_MS = 700/);
-			assert.match(source, /loadOlderTracePage\(true\)/, "near-top prefetch still settles active scroll intent");
-			assert.match(source, /loadOlderTracePage\(false\)/, "the exact history edge loads immediately from the hook callback");
-			assert.match(source, /const loadOlderAtTop = useCallback[\s\S]*?if \(!olderTraceIntentRef\.current && !scrollbarDragActiveRef\.current\) return;/, "the exact edge consumes one explicit older-history intent or defers an active scrollbar drag");
-			assert.match(source, /clearTimeout\(olderTraceLoadTimerRef\.current\)/, "reaching the edge cancels a pending settle timer");
+			assert.match(source, /window\.addEventListener\("beforeunload", persistBeforePageExit\)/);
+			assert.match(source, /window\.addEventListener\("pagehide", persistBeforePageExit\)/);
+			assert.match(source, /document\.addEventListener\("visibilitychange", persistWhenHidden\)/);
 			assert.doesNotMatch(source, /range\.startIndex <= 0\) loadOlderAtTop/);
 			assert.doesNotMatch(source, /atTopStateChange=/);
 			assert.doesNotMatch(source, /startReached=/);
@@ -49,12 +52,19 @@ test("trace views preload older pages near the top without a manual trace-histor
 			assert.match(source, /if \(!stickyView\.isAtTop && !stickyView\.isScrolledToTop\(\)\) return/);
 			assert.match(source, /range\.startIndex <= 0\) loadOlderAtTop/);
 			assert.match(source, /startReached=\{loadOlderAtTop\}/);
+			assert.doesNotMatch(source, /if \(stickyView\.isAtTop \|\| stickyView\.isScrolledToTop\(\)\) loadOlderAtTop/);
 		}
 		assert.match(source, /firstItemIndex=\{stickyView\.firstItemIndex\}/);
 		assert.match(source, /itemsRendered=\{stickyView\.itemsRendered\}/);
+		assert.match(source, /data-row-id=\{row\.id\}/, "each virtualized row exposes its stable conceptual anchor to DOM restoration");
 		assert.match(source, /rangeChanged=\{\(range\) => handleVisibleRangeChanged\(stickyView\.normalizeRange\(range\)\)\}/);
 		assert.doesNotMatch(source, /Load older trace history/);
 	}
+});
+
+test("trace history pages use a latency-efficient bounded event count", async () => {
+	const source = await readFile("src/apps/chat-ui/src/cache.ts", "utf8");
+	assert.match(source, /DEFAULT_TRACE_EVENTS_PAGE_SIZE = 100/);
 });
 
 test("trace v2 adapter maps cursor.before into the older-page sequence", async () => {

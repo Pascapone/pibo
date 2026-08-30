@@ -222,6 +222,27 @@ test("chat global signal SSE sends all-session snapshot then cross-root patches"
 	}
 });
 
+test("chat selected signal SSE multiplexes tree and global status updates", async () => {
+	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
+	try {
+		const root = createSession(sessions, "ps_signal_combined");
+		const other = createSession(sessions, "ps_signal_combined_other");
+		for (const session of [root, other]) signals.project({ type: "session_created", session });
+		const response = await fetch(`${baseURL}/api/chat/signals/events?rootPiboSessionId=${root.id}&includeStatuses=true`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(response.status, 200);
+		setTimeout(() => signals.project({ type: "message_accepted", piboSessionId: root.id, eventId: "combined-active", source: "user" }), 10);
+		const events = await readSseEvents(response, 4);
+		assert.equal(events[0].event, "signal_snapshot");
+		assert.equal(events[1].event, "signal_status_snapshot");
+		assert.ok(events[0].data.sessions[root.id]);
+		assert.ok(events[1].data.sessions[other.id], "the multiplexed status snapshot remains app-global");
+		assert.deepEqual(new Set(events.slice(2).map((event) => event.event)), new Set(["signal_patch", "signal_status_patch"]));
+		assert.equal(events.find((event) => event.event === "signal_status_patch").data.rootPiboSessionId, root.id);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat signal SSE publishes child session creation on the parent root", async () => {
 	const { channel, baseURL, sessions, signals } = await startSignalWebHost();
 	try {

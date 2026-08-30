@@ -34,6 +34,7 @@ for (const duplicate of targets.filter((item) => item.type === "page" && item.id
 await client.send("Page.enable");
 await client.send("Runtime.enable");
 await client.send("Network.enable");
+await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
 
 const report = { startedAt: new Date().toISOString(), cdpUrl, target: { id: target.id, url: target.url }, tolerance, historyPages, scenarios: {}, passed: false };
 const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
@@ -59,6 +60,8 @@ try {
 		await sleep(3_000);
 		const recording = await stopFrameRecorder();
 		const frames = recording.frames.filter((frame) => frame.t >= 200);
+		assert(frames.length >= 20, `sticky frame recorder captured only ${frames.length} samples`);
+		assert(frames.every((frame) => Number.isFinite(frame.bottomGap)), "sticky frame recorder emitted a non-finite bottom gap");
 		const maxBottomGap = Math.max(0, ...frames.map((frame) => frame.bottomGap));
 		assert(maxBottomGap <= Math.max(2, tolerance), `sticky frame bottom gap ${maxBottomGap}px`);
 		return { frameCount: frames.length, maxBottomGap, frames };
@@ -95,28 +98,60 @@ try {
 		return { rowId: row.id, before, after, offsetDeltaPx: after.top - before.top };
 	});
 
-	await scenario("wheel-edge-stops-after-one-prepend", async () => {
+	await scenario("tool-display-modes-retain-reading-anchor", async () => {
+		await detachWithPageUp();
+		await waitForStableViewport();
+		const results = [];
+		for (const mode of ["slim", "intent", "hide", "default"]) {
+			const available = await evaluate(`Boolean([...document.querySelectorAll('select[aria-label="Tool display mode"] option')].find((option)=>option.value===${JSON.stringify(mode)}&&!option.disabled))`);
+			if (!available) {
+				results.push({ mode, skipped: true });
+				continue;
+			}
+			const before = await measure();
+			await evaluate(`(() => {const select=document.querySelector('select[aria-label="Tool display mode"]');select.value=${JSON.stringify(mode)};select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+			await sleep(700);
+			const after = await measure();
+			const sharedAnchor = [...before.visible].sort((left, right) => Math.abs(left.top) - Math.abs(right.top)).find((row) => after.visible.some((candidate) => candidate.id === row.id));
+			const afterAnchor = sharedAnchor ? after.visible.find((row) => row.id === sharedAnchor.id) : after.firstVisible;
+			const beforeOffset = sharedAnchor?.top ?? before.firstVisible?.top;
+			const offsetDeltaPx = afterAnchor && beforeOffset !== undefined ? afterAnchor.top - beforeOffset : undefined;
+			assert(offsetDeltaPx !== undefined && Math.abs(offsetDeltaPx) <= tolerance, `${mode} tool mode anchor drift ${offsetDeltaPx}px`);
+			assert(after.stickyButton, `${mode} tool mode reattached the detached viewer`);
+			results.push({ mode, before, after, sharedAnchorId: sharedAnchor?.id, offsetDeltaPx });
+		}
+		return { results };
+	});
+
+	await scenario("continuous-wheel-history-and-settle", async () => {
 		await returnToLatest();
+		const before = await measure();
 		await startFrameRecorder();
 		const geometry = await scrollerGeometry();
-		for (let index = 0; index < 60; index += 1) {
-			await client.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(geometry.left + geometry.width / 2), y: Math.round(geometry.top + geometry.height / 2), deltaX: 0, deltaY: -450 });
-			await sleep(60);
-			if ((await measure()).scrollTop <= 0) break;
+		const inputCursors = new Set([before.cursor]);
+		let inputCount = 0;
+		for (let index = 0; index < 240; index += 1) {
+			inputCount += 1;
+			await client.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(geometry.left + geometry.width / 2), y: Math.round(geometry.top + geometry.height / 2), deltaX: 0, deltaY: -650 });
+			await sleep(45);
+			if (inputCount % 5 !== 0) continue;
+			inputCursors.add((await measure()).cursor);
+			if (inputCount >= 60 && inputCursors.size >= 4) break;
 		}
 		const atInputEnd = await measure();
 		await markFrameRecorder("input-end");
-		if (atInputEnd.hasOlder === "true") await waitFor(cursorChangedExpression(atInputEnd.cursor), 15_000, "wheel-edge history page");
 		await sleep(1_500);
+		const after = await measure();
 		const recording = await stopFrameRecorder();
 		const frames = recording.frames.filter((frame) => frame.t >= recording.marks["input-end"]);
 		const cursors = [...new Set(frames.map((frame) => frame.cursor).filter(Boolean))];
-		assert(cursors.length <= 2, `wheel edge loaded ${cursors.length - 1} pages after input stopped`);
+		if (before.hasOlder === "true") assert(after.cursor !== before.cursor, "continuous wheel input did not load older history");
+		assert(cursors.length <= 2, `wheel history loaded ${cursors.length - 1} pages after input stopped`);
 		const anchorOffsets = frames.flatMap((frame) => frame.rows.find((row) => row.id === atInputEnd.firstVisible?.id)?.top ?? []);
-		assert(anchorOffsets.length > 0, `wheel-edge anchor ${atInputEnd.firstVisible?.id} disappeared`);
+		assert(anchorOffsets.length > 0, `post-wheel anchor ${atInputEnd.firstVisible?.id} disappeared`);
 		const anchorRangePx = Math.max(...anchorOffsets) - Math.min(...anchorOffsets);
-		assert(anchorRangePx <= Math.max(2, tolerance), `wheel-edge anchor range ${anchorRangePx}px`);
-		return { atInputEnd, cursors, anchorRangePx, frameCount: frames.length, frames };
+		assert(anchorRangePx <= Math.max(2, tolerance), `post-wheel anchor range ${anchorRangePx}px`);
+		return { before, atInputEnd, after, inputCount, inputCursors: [...inputCursors], cursors, anchorRangePx, frameCount: frames.length, frames };
 	});
 
 	await scenario("slow-and-rapid-history-prepends", async () => {
@@ -146,24 +181,82 @@ try {
 		const before = await measure();
 		assert(before.hasOlder === "true", "scrollbar fixture has no older history");
 		const geometry = await scrollerGeometry();
-		await mouse("mouseMoved", geometry.right - 2, geometry.bottom - 12, "none");
-		await mouse("mousePressed", geometry.right - 2, geometry.bottom - 12, "left");
+		const scrollbarWidth = Math.max(12, geometry.scrollbarWidth);
+		const trackTop = geometry.top + scrollbarWidth;
+		const trackBottom = geometry.bottom - scrollbarWidth;
+		const trackHeight = trackBottom - trackTop;
+		const thumbHeight = Math.max(18, trackHeight * geometry.clientHeight / geometry.scrollHeight);
+		const x = geometry.right - scrollbarWidth / 2;
+		const startY = trackBottom - thumbHeight / 2;
+		const endY = geometry.top - 200;
+		await mouse("mouseMoved", x, startY, "none");
+		await mouse("mousePressed", x, startY, "left");
 		const held = [];
-		for (let step = 1; step <= 12; step += 1) {
-			await mouse("mouseMoved", geometry.right - 2, geometry.bottom - 12 - ((geometry.height - 24) * step / 12), "left");
+		for (let step = 1; step <= 24; step += 1) {
+			await mouse("mouseMoved", x, startY + ((endY - startY) * step / 24), "left");
 			await sleep(35);
 			held.push(await measure());
 		}
-		await evaluate(`document.querySelector('[data-testid="virtuoso-scroller"]').scrollTop=0`);
 		await sleep(900);
 		const atEdgeHeld = await measure();
+		const absoluteReversals = held.slice(1).flatMap((item, index) => item.scrollTop > held[index].scrollTop + 2
+			? [{ index: index + 1, deltaPx: item.scrollTop - held[index].scrollTop }]
+			: []);
+		const normalizedReversals = held.slice(1).flatMap((item, index) => {
+			const previous = held[index].scrollTop / Math.max(1, held[index].scrollHeight - held[index].clientHeight);
+			const current = item.scrollTop / Math.max(1, item.scrollHeight - item.clientHeight);
+			return current > previous + 0.002 ? [{ index: index + 1, delta: current - previous }] : [];
+		});
+		await mouse("mouseReleased", x, endY, "left");
 		assert(held.every((item) => item.cursor === before.cursor) && atEdgeHeld.cursor === before.cursor, "history prepended while the native scrollbar was held");
-		const reversals = held.slice(1).filter((item, index) => item.scrollTop > held[index].scrollTop + 2).length;
-		assert(reversals === 0, `scrollbar drag reversed ${reversals} times`);
-		await mouse("mouseReleased", geometry.right - 2, geometry.top + 12, "left");
+		assert(absoluteReversals.length === 0, `scrollbar thumb reversed ${absoluteReversals.length} times in absolute position`);
+		assert(normalizedReversals.length === 0, `scrollbar thumb reversed ${normalizedReversals.length} times in normalized position`);
+		await sleep(25);
+		const afterEdge = await measure();
+		assert(afterEdge.scrollTop <= tolerance, `scrollbar top-edge release stopped at ${afterEdge.scrollTop}px`);
 		await waitFor(cursorChangedExpression(before.cursor), 15_000, "deferred history load after scrollbar release");
 		await sleep(500);
-		return { before, held, atEdgeHeld, afterRelease: await measure(), reversals };
+		const afterRelease = await measure();
+		const retained = await rowMetric(afterEdge.firstVisible?.id);
+		assert(retained, `scrollbar edge anchor ${afterEdge.firstVisible?.id} disappeared`);
+		assert(Math.abs(retained.top - afterEdge.firstVisible.top) <= tolerance, `scrollbar edge anchor drift ${retained.top - afterEdge.firstVisible.top}px`);
+		return { before, held, atEdgeHeld, afterEdge, afterRelease, retained, absoluteReversals, normalizedReversals };
+	});
+
+	await scenario("scrollbar-thumb-intentional-reversal", async () => {
+		await returnToLatest();
+		const geometry = await scrollerGeometry();
+		const scrollbarWidth = Math.max(12, geometry.scrollbarWidth);
+		const trackTop = geometry.top + scrollbarWidth;
+		const trackBottom = geometry.bottom - scrollbarWidth;
+		const trackHeight = trackBottom - trackTop;
+		const thumbHeight = Math.max(18, trackHeight * geometry.clientHeight / geometry.scrollHeight);
+		const x = geometry.right - scrollbarWidth / 2;
+		const startY = trackBottom - thumbHeight / 2;
+		const upperY = trackTop + trackHeight * 0.45;
+		const lowerY = upperY + trackHeight * 0.2;
+		await mouse("mouseMoved", x, startY, "none");
+		await mouse("mousePressed", x, startY, "left");
+		for (let step = 1; step <= 10; step += 1) {
+			await mouse("mouseMoved", x, startY + ((upperY - startY) * step / 10), "left");
+			await sleep(35);
+		}
+		await sleep(150);
+		const beforeReverse = await measure();
+		const reverseSamples = [];
+		for (let step = 1; step <= 8; step += 1) {
+			await mouse("mouseMoved", x, upperY + ((lowerY - upperY) * step / 8), "left");
+			await sleep(35);
+			reverseSamples.push(await measure());
+		}
+		const reversePeak = Math.max(...reverseSamples.map((sample) => sample.scrollTop));
+		const reverseThreshold = Math.max(100, (beforeReverse.scrollHeight - beforeReverse.clientHeight) * 0.03);
+		assert(reversePeak >= beforeReverse.scrollTop + reverseThreshold, `intentional scrollbar reversal advanced only ${reversePeak - beforeReverse.scrollTop}px`);
+		await mouse("mouseReleased", x, lowerY, "left");
+		await sleep(250);
+		const afterRelease = await measure();
+		assert(afterRelease.stickyButton, "intentional scrollbar reversal reattached to latest");
+		return { beforeReverse, reverseSamples, reversePeak, reverseThreshold, afterRelease };
 	});
 
 	await scenario("middle-click-descendant-detaches-and-loads-history", async () => {
@@ -183,6 +276,29 @@ try {
 		return { before, after };
 	});
 
+	await scenario("touch-detach-streaming", async () => {
+		await returnToLatest();
+		const geometry = await scrollerGeometry();
+		const x = Math.round(geometry.left + geometry.width / 2);
+		const startY = Math.round(geometry.top + geometry.height * 0.35);
+		await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: startY, radiusX: 4, radiusY: 4, force: 1, id: 1 }] });
+		for (let step = 1; step <= 12; step += 1) {
+			const y = Math.round(startY + geometry.height * 0.5 * step / 12);
+			await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 }] });
+			await sleep(25);
+		}
+		await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+		await waitFor(`Boolean(document.querySelector('button[aria-label="Scroll to latest"]'))`, 5_000, "touch detach");
+		await waitForStableViewport();
+		const before = await measure();
+		await postStreamingFixture(40, 20, { traceSnapshots: false });
+		await sleep(2_200);
+		const after = await measure();
+		assertAnchor(before, after, tolerance);
+		assert(after.stickyButton, "touch reader reattached during streaming");
+		return { before, after, offsetDeltaPx: anchorOffsetDelta(before, after) };
+	});
+
 	await scenario("transient-replay-reconnect", async () => {
 		await detachWithPageUp();
 		const before = await measure();
@@ -193,6 +309,7 @@ try {
 		await client.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 		await sleep(2_800);
 		const after = await measure();
+		await writeFile(resolve(artifactDir, "transient-replay-reconnect-debug.json"), JSON.stringify({ before, after }, null, 2));
 		assertAnchor(before, after, tolerance);
 		return { before, after, offsetDeltaPx: anchorOffsetDelta(before, after) };
 	});
@@ -200,15 +317,19 @@ try {
 	await scenario("long-session-reload", async () => {
 		await detachWithPageUp();
 		const before = await measure();
-		assert(before.firstVisible?.id, "reload fixture has no visible conceptual row");
+		const readingAnchor = preferredVisibleRow(before.visible);
+		assert(readingAnchor?.id, "reload fixture has no visible conceptual row");
 		await sleep(250);
 		const stored = await evaluate(`sessionStorage.getItem('pibo.chat.terminalReadingPosition.' + ${JSON.stringify(before.sessionId)})`);
-		assert(stored && JSON.parse(stored).rowId === before.firstVisible.id, "reading anchor was not persisted before reload");
+		const storedPosition = stored ? JSON.parse(stored) : undefined;
+		assert(storedPosition?.rowId === readingAnchor.id, "reading anchor was not persisted before reload");
+		assert(Math.abs(storedPosition.offsetPx - readingAnchor.top) <= tolerance, `stored reading anchor drift ${storedPosition.offsetPx - readingAnchor.top}px before reload`);
 		await client.send("Page.reload", { ignoreCache: true });
 		await waitFor(`document.querySelector('[data-testid="virtuoso-scroller"]') !== null`, 20_000, "Terminal after reload");
-		await waitFor(rowVisibleExpression(before.firstVisible.id), 30_000, "restored conceptual row");
+		await waitFor(rowVisibleExpression(readingAnchor.id), 30_000, "restored conceptual row");
 		await sleep(800);
 		const after = await measure();
+		await writeFile(resolve(artifactDir, "long-session-reload-debug.json"), JSON.stringify({ before, readingAnchor, storedPosition, after }, null, 2));
 		assertAnchor(before, after, tolerance);
 		assert(after.stickyButton, "reload restoration unexpectedly returned to latest");
 		return { before, after, offsetDeltaPx: anchorOffsetDelta(before, after) };
@@ -259,7 +380,7 @@ async function measure() {
 		const visible=[...document.querySelectorAll('[data-pibo-terminal-row="true"]')]
 			.map((row)=>{const rect=row.getBoundingClientRect();return{id:row.getAttribute('data-row-id'),kind:row.getAttribute('data-row-kind'),top:rect.top-viewport.top,bottom:rect.bottom-viewport.top};})
 			.filter((row)=>row.bottom>0&&row.top<viewport.height).sort((a,b)=>a.top-b.top);
-		return {sessionId:root.getAttribute('data-pibo-session-id'),cursor:root.getAttribute('data-pibo-trace-next-before'),hasOlder:root.getAttribute('data-pibo-trace-has-older'),scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,clientHeight:scroller.clientHeight,bottomGap:scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight,firstVisible:visible[0]??null,stickyButton:Boolean(document.querySelector('button[aria-label="Scroll to latest"]')),renderedRows:document.querySelectorAll('[data-pibo-terminal-row="true"]').length};
+		return {sessionId:root.getAttribute('data-pibo-session-id'),cursor:root.getAttribute('data-pibo-trace-next-before'),hasOlder:root.getAttribute('data-pibo-trace-has-older'),scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,clientHeight:scroller.clientHeight,bottomGap:scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight,firstVisible:visible[0]??null,visible,stickyButton:Boolean(document.querySelector('button[aria-label="Scroll to latest"]')),renderedRows:document.querySelectorAll('[data-pibo-terminal-row="true"]').length,mode:document.querySelector('select[aria-label="Tool display mode"]')?.value};
 	})()`);
 }
 
@@ -268,8 +389,8 @@ async function startFrameRecorder() {
 		const scroller=document.querySelector('[data-testid="virtuoso-scroller"]');
 		const root=document.querySelector('[data-pibo-component="CompactTerminalSessionView"]');
 		if(!scroller||!root)return false;
-		const started=performance.now(),frames=[],marks={};let stopped=false,lastSignature='';
-		const capture=(reason)=>{if(stopped)return;const viewport=scroller.getBoundingClientRect();const rows=[...document.querySelectorAll('[data-pibo-terminal-row="true"][data-row-id]')].map((row)=>{const rect=row.getBoundingClientRect();return{id:row.getAttribute('data-row-id'),top:Math.round((rect.top-viewport.top)*10)/10,bottom:Math.round((rect.bottom-viewport.top)*10)/10};}).filter((row)=>row.bottom>-200&&row.top<scroller.clientHeight+200).sort((a,b)=>a.top-b.top);const frame={t:Math.round((performance.now()-started)*10)/10,reason,scrollTop:Math.round(scroller.scrollTop*10)/10,scrollHeight:Math.round(scroller.scrollHeight*10)/10,bottomGap:Math.round((scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight)*10)/10,cursor:root.getAttribute('data-pibo-trace-next-before'),firstVisible:rows.find((row)=>row.bottom>0)??null,rows};const signature=JSON.stringify([frame.scrollTop,frame.scrollHeight,frame.bottomGap,frame.cursor,frame.firstVisible?.id,rows.map((row)=>[row.id,row.top])]);if(signature!==lastSignature||reason==='mark'||reason==='stop'){lastSignature=signature;if(frames.length<1000)frames.push(frame);}};
+		const started=performance.now(),frames=[],marks={};let stopped=false,lastSignature='',lastRafSample=-Infinity;
+		const capture=(reason)=>{if(stopped)return;const now=performance.now();if(reason==='raf'&&now-lastRafSample<50)return;if(reason==='raf')lastRafSample=now;const viewport=scroller.getBoundingClientRect();const rows=[...document.querySelectorAll('[data-pibo-terminal-row="true"][data-row-id]')].map((row)=>{const rect=row.getBoundingClientRect();return{id:row.getAttribute('data-row-id'),top:Math.round((rect.top-viewport.top)*10)/10,bottom:Math.round((rect.bottom-viewport.top)*10)/10};}).filter((row)=>row.bottom>-200&&row.top<scroller.clientHeight+200).sort((a,b)=>a.top-b.top);const frame={t:Math.round((now-started)*10)/10,reason,scrollTop:Math.round(scroller.scrollTop*10)/10,scrollHeight:Math.round(scroller.scrollHeight*10)/10,bottomGap:Math.round((scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight)*10)/10,cursor:root.getAttribute('data-pibo-trace-next-before'),firstVisible:rows.find((row)=>row.bottom>0)??null,rows};const signature=JSON.stringify([frame.scrollTop,frame.scrollHeight,frame.bottomGap,frame.cursor,frame.firstVisible?.id,rows.map((row)=>[row.id,row.top])]);if(reason==='raf'||signature!==lastSignature||reason==='mark'||reason==='stop'){lastSignature=signature;if(frames.length<1000)frames.push(frame);}};
 		const observer=new MutationObserver(()=>capture('mutation'));observer.observe(scroller,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['style','data-row-id']});
 		const raf=()=>{capture('raf');if(!stopped)requestAnimationFrame(raf);};requestAnimationFrame(raf);capture('start');
 		window.__piboTerminalFrameRecorder={mark(name){marks[name]=Math.round((performance.now()-started)*10)/10;capture('mark');return marks[name];},stop(){capture('stop');stopped=true;observer.disconnect();return{frames,marks};}};return true;
@@ -290,7 +411,7 @@ async function rowMetric(rowId) {
 }
 
 async function scrollerGeometry() {
-	return evaluate(`(() => { const rect=document.querySelector('[data-testid="virtuoso-scroller"]').getBoundingClientRect(); return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,width:rect.width,height:rect.height}; })()`);
+	return evaluate(`(() => { const scroller=document.querySelector('[data-testid="virtuoso-scroller"]'); const rect=scroller.getBoundingClientRect(); return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,width:rect.width,height:rect.height,scrollbarWidth:scroller.offsetWidth-scroller.clientWidth,clientHeight:scroller.clientHeight,scrollHeight:scroller.scrollHeight}; })()`);
 }
 
 async function terminalRowPoint() {
@@ -366,14 +487,28 @@ function rowVisibleExpression(rowId) {
 }
 
 function assertAnchor(before, after, pixelTolerance) {
-	assert(before?.firstVisible?.id && after?.firstVisible?.id, "missing visible anchor");
-	assert(before.firstVisible.id === after.firstVisible.id, `anchor changed from ${before.firstVisible.id} to ${after.firstVisible.id}`);
-	const delta = anchorOffsetDelta(before, after);
-	assert(Math.abs(delta) <= pixelTolerance, `anchor offset drift ${delta}px exceeds ${pixelTolerance}px`);
+	const anchor = preferredSharedVisibleRow(before?.visible ?? [], after?.visible ?? []);
+	assert(anchor, "missing shared visible anchor");
+	const delta = anchor.after.top - anchor.before.top;
+	assert(Math.abs(delta) <= pixelTolerance, `anchor ${anchor.before.id} offset drift ${delta}px exceeds ${pixelTolerance}px`);
+}
+
+function preferredVisibleRow(rows) {
+	return [...(rows ?? [])].sort((left, right) => Math.abs(left.top) - Math.abs(right.top))[0];
+}
+
+function preferredSharedVisibleRow(beforeRows, afterRows) {
+	const afterById = new Map(afterRows.map((row) => [row.id, row]));
+	for (const before of [...beforeRows].sort((left, right) => Math.abs(left.top) - Math.abs(right.top))) {
+		const after = afterById.get(before.id);
+		if (after) return { before, after };
+	}
+	return undefined;
 }
 
 function anchorOffsetDelta(before, after) {
-	return after.firstVisible.top - before.firstVisible.top;
+	const anchor = preferredSharedVisibleRow(before?.visible ?? [], after?.visible ?? []);
+	return anchor ? anchor.after.top - anchor.before.top : Number.NaN;
 }
 
 function assert(condition, message) {

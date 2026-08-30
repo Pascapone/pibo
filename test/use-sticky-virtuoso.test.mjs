@@ -26,7 +26,7 @@ test("useStickyVirtuoso treats scroll position changes as directional only durin
 
 test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", () => {
 	assert.match(source, /firstItemIndexRef\.current -= prependedCount/);
-	assert.match(source, /captureDomVisibleAnchors\(scroller, committedItemKeysRef\.current\)/);
+	assert.match(source, /captureDomVisibleAnchors\(scroller, itemKeys\)/);
 	assert.match(source, /stickyAnchorLocation\(\{/);
 	assert.match(source, /virtuosoRef\.current\?\.scrollToIndex\(location\)/);
 	assert.match(source, /else restoreVisibleAnchor\(\);/);
@@ -44,6 +44,15 @@ test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", ()
 	assert.match(source, /restoreVisibleAnchor\(true\)/);
 	assert.match(source, /!restoredInDom && !virtuosoPrependPendingRef\.current/);
 	assert.match(source, /pointerScrollModeRef\.current !== undefined/);
+	assert.match(source, /USER_ANCHOR_FINAL_CAPTURE_MS/);
+	assert.match(source, /userAnchorFinalCaptureTimerRef\.current = window\.setTimeout/);
+	assert.match(source, /restoredAnchorLockRef\.current = \{ \.\.\.anchor, dataIndex: index \}/, "reload restoration keeps the explicit conceptual row through late layout measurement");
+	assert.match(source, /const anchors = restoredAnchorIndex >= 0/, "late mutations continue restoring the explicit reload anchor");
+	assert.doesNotMatch(source, /restoredAnchorIndex < 0\) restoredAnchorLockRef\.current = undefined/, "transient replay gaps must not discard the explicit reload anchor");
+	assert.match(source, /markUserScrollIntent = useCallback[\s\S]*clearAnchorLocks\(\)/, "the first new user input releases restored and content anchor locks");
+	assert.match(source, /contentAnchorLockRef\.current = \{[\s\S]*anchors: visibleAnchorsRef\.current/, "the first frame in a content burst retains every visible fallback anchor");
+	assert.match(source, /contentAnchorLock\?\.anchors \?\? pendingAnchors/, "replay reconciliation restores against the pre-burst anchor set");
+	assert.match(source, /scheduleContentAnchorSettle\(\)/, "the pre-burst anchor set is released only after content and layout settle");
 	assert.doesNotMatch(source, /firstItemIndexRef\.current \+ index/);
 	assert.match(source, /firstItemIndex,/);
 	assert.match(source, /itemsRendered,/);
@@ -59,9 +68,16 @@ test("useStickyVirtuoso uses one bottom target without a competing last-index sc
 test("useStickyVirtuoso tracks descendant middle autoscroll and deferrable scrollbar drags", () => {
 	assert.match(source, /if \(input\.button === 1\) return "middle"|stickyPointerScrollMode/);
 	assert.match(source, /targetIsScroller: event\.target === target/);
+	assert.match(source, /pointerScrollModeRef\.current = mode;\n\t\t\tbottomReattachArmedRef\.current = false;\n\t\t\tclearScheduledScroll\(\);\n\t\t\tsetSticky\(false\);\n\t\t\tcaptureVisibleAnchors\(\);/, "pointer scrolling detaches before the native thumb or autoscroll can move");
 	assert.match(source, /window\.addEventListener\("pointerup", finishScrollbarDrag/);
 	assert.match(source, /onScrollbarDragChange\?\.\(true\)/);
 	assert.match(source, /onScrollbarDragChange\?\.\(false\)/);
+	assert.match(source, /isAtBottom\(scroller, 1\) && userScrollDirectionRef\.current !== "away"\) setSticky\(true\)/, "a no-op scrollbar click at the bottom reattaches on release");
+	assert.match(source, /const edge = event\.type === "pointerup" \? scrollbarReleaseEdge\(event, target\) : undefined/, "pointer cancellation releases the drag without forcing a viewport edge");
+	assert.match(source, /if \(edge === "top"\) setScrollTop\(target, 0\)/, "releasing a virtualized thumb at the top clamps to the requested edge");
+	assert.match(source, /pointerReleaseFrameRef\.current = requestAnimationFrame/, "the edge clamp settles before deferred history loading resumes");
+	assert.match(source, /window\.addEventListener\("pointermove", trackScrollbarPointer/, "thumb direction is observed independently from virtualized scroll corrections");
+	assert.match(source, /resolveScrollbarDragMovement\(\{[\s\S]*scrollbarOppositeScrollCountRef\.current/, "one-off virtualizer measurement corrections cannot reverse content against the held thumb");
 	assert.match(source, /onUserScrollIntent\?\.\(undefined, scrollPositionDirection\)/);
 	assert.match(source, /MIDDLE_AUTOSCROLL_INACTIVITY_MS/);
 });
