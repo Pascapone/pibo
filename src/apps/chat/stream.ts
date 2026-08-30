@@ -11,7 +11,7 @@ export type ChatStreamReplayStatus = {
 	maxEvents: number;
 };
 
-export type ChatStreamEvent = { piboSessionId?: string; createdAt?: string } & (
+export type ChatStreamEvent = { piboSessionId?: string; createdAt?: string; renderSequence?: number; toolInvocationOrdinal?: number } & (
 	| { type: "ready"; piboSessionId: string; liveReplay?: ChatStreamReplayStatus }
 	| { type: "RUN_STARTED"; runId: string; input?: { text?: string; source?: string } }
 	| { type: "RUN_FINISHED"; runId: string }
@@ -106,7 +106,7 @@ export function chatStreamFramesFromOutputEvent(
 			}
 			break;
 		case "tool_call":
-			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, event.intent, eventId);
+			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, event.intent, eventId, event.toolInvocationOrdinal);
 			frames.push({
 				type: "TOOL_CALL_ARGS",
 				toolCallId: event.toolCallId,
@@ -119,7 +119,7 @@ export function chatStreamFramesFromOutputEvent(
 			});
 			break;
 		case "tool_execution_started": {
-			const started = ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, event.intent, eventId);
+			const started = ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, event.intent, eventId, event.toolInvocationOrdinal);
 			if (!started && event.intent) {
 				frames.push({
 					type: "TOOL_CALL_START",
@@ -133,7 +133,7 @@ export function chatStreamFramesFromOutputEvent(
 			break;
 		}
 		case "tool_execution_updated":
-			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, event.intent, eventId);
+			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, event.args, event.intent, eventId, event.toolInvocationOrdinal);
 			frames.push({
 				type: "TOOL_CALL_ARGS",
 				toolCallId: event.toolCallId,
@@ -147,7 +147,7 @@ export function chatStreamFramesFromOutputEvent(
 			});
 			break;
 		case "tool_execution_finished":
-			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, undefined, event.intent, eventId);
+			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, undefined, event.intent, eventId, event.toolInvocationOrdinal);
 			frames.push({ type: "TOOL_CALL_RESULT", toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError, ...(event.intent ? { intent: event.intent } : {}), runId: eventId });
 			break;
 		case "subagent_session":
@@ -183,6 +183,12 @@ export function chatStreamFramesFromOutputEvent(
 	}
 
 	if (options.includeRawEvent ?? true) frames.push({ type: "RAW_EVENT", event });
+	if (event.renderSequence !== undefined) {
+		for (const frame of frames) frame.renderSequence = event.renderSequence;
+	}
+	if (event.toolInvocationOrdinal !== undefined) {
+		for (const frame of frames) frame.toolInvocationOrdinal = event.toolInvocationOrdinal;
+	}
 	return frames;
 }
 
@@ -222,9 +228,11 @@ function ensureToolCallStarted(
 	args: unknown,
 	intent?: string,
 	runId?: string,
+	toolInvocationOrdinal?: number,
 ): boolean {
-	if (state.toolCallIds.has(toolCallId)) return false;
-	state.toolCallIds.add(toolCallId);
+	const invocationKey = JSON.stringify([runId ?? "", toolCallId, toolInvocationOrdinal ?? 0]);
+	if (state.toolCallIds.has(invocationKey)) return false;
+	state.toolCallIds.add(invocationKey);
 	frames.push({ type: "TOOL_CALL_START", toolCallId, toolName, args, ...(intent ? { intent } : {}), runId });
 	return true;
 }

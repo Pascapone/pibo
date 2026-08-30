@@ -296,7 +296,7 @@ export class PiboRalphStore {
 	}
 	private reserveJob(id: string, now = new Date()): { job: PiboRalphJob; run: PiboRalphRun } | undefined {
 		const timestamp = nowIso(now); this.db.exec('BEGIN IMMEDIATE');
-		try { const job = this.getJob(id); if (!job || !job.enabled || job.state.runningAt) { this.db.exec('COMMIT'); return undefined; } const run = this.createRunLocked(job, timestamp); const state = { ...job.state, runningAt: timestamp, lastRunAt: timestamp, lastRunId: run.id }; this.updateJobStateLocked(job.id, state, timestamp); this.db.exec('COMMIT'); return { job: { ...job, state, updatedAt: timestamp }, run }; } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+		try { const job = this.getJob(id); if (!job || !job.enabled || job.state.runningAt) { this.db.exec('COMMIT'); return undefined; } if (job.maxIterations !== undefined && (job.state.completedIterations ?? 0) >= job.maxIterations) { this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = 0, updated_at = ? WHERE id = ?').run(timestamp, job.id); this.db.exec('COMMIT'); return undefined; } const run = this.createRunLocked(job, timestamp); const state = { ...job.state, runningAt: timestamp, lastRunAt: timestamp, lastRunId: run.id }; this.updateJobStateLocked(job.id, state, timestamp); this.db.exec('COMMIT'); return { job: { ...job, state, updatedAt: timestamp }, run }; } catch (error) { this.db.exec('ROLLBACK'); throw error; }
 	}
 	private applySchema(): void {
 		this.createFreshSchema();
