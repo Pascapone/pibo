@@ -636,9 +636,14 @@ export class PiboSessionRouter {
 			if (session) this.signalRegistry.project({ type: "session_created", session });
 			this.signalRegistry.project({ type: "pibo_output", event: recovery.event });
 		}
+		const recoveredRunReminderControllers = new Set<string>();
 		for (const run of this.runRegistry.listAll({ includeConsumed: true, includeDetached: true })) {
 			this.signalRegistry.project({ type: "run_changed", run, reason: "recovered" });
+			if (options.recoverInterruptedRuntimeState && isTerminalRunStatus(run.status) && this.sessionStore.get(run.controllerPiboSessionId)) {
+				recoveredRunReminderControllers.add(run.controllerPiboSessionId);
+			}
 		}
+		for (const piboSessionId of recoveredRunReminderControllers) this.scheduleRunReminder(piboSessionId, false);
 	}
 
 	subscribe(listener: PiboEventListener): () => void {
