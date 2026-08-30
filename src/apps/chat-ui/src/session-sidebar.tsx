@@ -626,18 +626,21 @@ function RoomNode({
 					>
 						<input
 							value={draftName}
+							aria-label={`Room name for ${room.name}`}
 							onChange={(event) => setDraftName(event.target.value)}
 							className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4]"
 							autoFocus
 						/>
 						<input
 							value={draftTopic}
+							aria-label={`Room topic for ${room.name}`}
 							onChange={(event) => setDraftTopic(event.target.value)}
 							placeholder="Topic"
 							className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-xs outline-none focus:border-[#11a4d4]"
 						/>
 						<input
 							value={draftWorkspace}
+							aria-label={`Room workspace for ${room.name}`}
 							onChange={(event) => setDraftWorkspace(event.target.value)}
 							placeholder="Workspace (/absolute/path)"
 							className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-xs font-mono outline-none focus:border-[#11a4d4]"
