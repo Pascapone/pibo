@@ -230,6 +230,7 @@ test("durable output retry resumes after restart and exhausted work stays observ
 		assert.equal(dead.length, 1);
 		assert.equal(dead[0].attempts, dead[0].maxAttempts);
 		assert.deepEqual(dead[0].payload, {
+			version: 1,
 			key: "delivery:dead",
 			piboSessionId: "ps-retry-dead",
 			eventId: "turn-retry-dead",

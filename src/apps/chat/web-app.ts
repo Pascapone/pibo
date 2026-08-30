@@ -473,6 +473,7 @@ type ChatWebAppState = {
 };
 
 type WebOutputPersistenceDelivery = {
+	deliveryId: string;
 	event: PiboOutputEvent;
 	v2?: {
 		streamId: number;
@@ -1063,7 +1064,10 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 					piboSessionId: event.piboSessionId,
 					roomId: room?.id,
 					actorId: session?.id,
-					deliveries: persistableEvents.map((persistableEvent) => ({ event: persistableEvent })),
+					deliveries: persistableEvents.map((persistableEvent) => ({
+						deliveryId: outputPersistenceDeliveryKey(persistableEvent),
+						event: persistableEvent,
+					})),
 				};
 				state.outputPersistenceRetries.enqueue(createWebOutputPersistenceJob({
 					state,
@@ -1129,9 +1133,13 @@ function deliverWebOutputPersistenceState(
 				event: delivery.event,
 				createdAt,
 			});
+			const storedEvent = state.dataStore.eventLog.findByIdempotencyKey(delivery.deliveryId);
+			if (!storedEvent || storedEvent.streamId !== ingested.streamId) {
+				throw new Error(`Missing V2 event ${ingested.streamId} for ${delivery.deliveryId}`);
+			}
 			delivery.v2 = {
 				streamId: ingested.streamId,
-				createdAt,
+				createdAt: storedEvent.createdAt,
 				eventId: eventIdentityForDelivery(delivery.event),
 				duplicate: ingested.duplicate,
 			};
@@ -1143,7 +1151,7 @@ function deliverWebOutputPersistenceState(
 				delivery.reliabilityPayload = boundedReliabilityOutputPayload(state, delivery.event);
 				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
 			}
-			const deliveryKey = outputPersistenceDeliveryKey(delivery.event);
+			const deliveryKey = delivery.deliveryId;
 			state.reliabilityStore.appendOnce({
 				topic: "pibo.output",
 				key: delivery.event.piboSessionId,
@@ -1156,7 +1164,7 @@ function deliverWebOutputPersistenceState(
 			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
 		}
 
-		if (!delivery.sideEffectsDelivered && delivery.v2.duplicate === true) {
+		if (!delivery.sideEffectsDelivered && state.reliabilityStore.hasDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1")) {
 			delivery.sideEffectsDelivered = true;
 			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
 		} else if (!delivery.sideEffectsDelivered) {
@@ -1172,6 +1180,10 @@ function deliverWebOutputPersistenceState(
 					console.error("[chat-web] live listener failed", error);
 				}
 			}
+			// This receipt is deliberately recorded after projection and live sends.
+			// A crash before it replays the same deliveryId/streamId at least once;
+			// recording before sends would trade duplicates for silent loss.
+			state.reliabilityStore.recordDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1");
 			delivery.sideEffectsDelivered = true;
 			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
 		}
@@ -1212,6 +1224,8 @@ function parseWebOutputPersistenceState(value: PiboJsonValue): WebOutputPersiste
 		if (!rawDelivery || typeof rawDelivery !== "object" || Array.isArray(rawDelivery)) return undefined;
 		const delivery = rawDelivery as Record<string, unknown>;
 		if (!isPiboOutputEvent(delivery.event)) return undefined;
+		const deliveryId = outputPersistenceDeliveryKey(delivery.event);
+		if (delivery.deliveryId !== undefined && delivery.deliveryId !== deliveryId) return undefined;
 		const v2 = delivery.v2;
 		if (v2 !== undefined && (
 			!v2 || typeof v2 !== "object" || Array.isArray(v2)
@@ -1219,7 +1233,7 @@ function parseWebOutputPersistenceState(value: PiboJsonValue): WebOutputPersiste
 			|| typeof (v2 as Record<string, unknown>).createdAt !== "string"
 			|| typeof (v2 as Record<string, unknown>).eventId !== "string"
 		)) return undefined;
-		deliveries.push(rawDelivery as WebOutputPersistenceDelivery);
+		deliveries.push({ ...(rawDelivery as Omit<WebOutputPersistenceDelivery, "deliveryId">), deliveryId });
 	}
 	if (!deliveries.length) return undefined;
 	return {

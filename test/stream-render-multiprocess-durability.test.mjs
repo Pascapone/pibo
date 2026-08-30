@@ -39,6 +39,15 @@ function runWorker(databasePath, workerId, mode, delayMs, leaseMs = 60) {
 	});
 }
 
+async function waitFor(predicate, timeoutMs = 1_000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await new Promise((resolve) => setTimeout(resolve, 5));
+	}
+	throw new Error("condition was not met before timeout");
+}
+
 test("two processes renew slow claims and stale claim generations cannot destructively ack", async () => {
 	const { directory, databasePath } = temporaryDatabase("pibo-output-multiprocess-");
 	try {
@@ -67,8 +76,16 @@ test("two processes renew slow claims and stale claim generations cannot destruc
 			maxAttempts: 5,
 		});
 		store.close();
-		const stalePromise = runWorker(databasePath, "worker-stale", "stale", 180, 50);
-		await new Promise((resolve) => setTimeout(resolve, 80));
+		const stalePromise = runWorker(databasePath, "worker-stale", "stale", 3_000, 100);
+		await waitFor(() => {
+			const database = new DatabaseSync(databasePath, { readOnly: true });
+			try {
+				const row = database.prepare("SELECT worker_id, claim_expires_at FROM pibo_jobs WHERE job_id = ?").get("job_multiprocess");
+				return row?.worker_id === "worker-stale" && Date.parse(row.claim_expires_at) <= Date.now();
+			} finally {
+				database.close();
+			}
+		}, 2_000);
 		const takeover = await runWorker(databasePath, "worker-takeover", "heartbeat", 0, 50);
 		const stale = await stalePromise;
 		assert.equal(takeover[0].claimed, true);
@@ -82,6 +99,45 @@ test("two processes renew slow claims and stale claim generations cannot destruc
 		} finally {
 			database.close();
 		}
+	} finally {
+		rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("stale claim generations and expired leases cannot mutate durable jobs", async () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-output-fenced-mutators-");
+	try {
+		const store = new PiboReliabilityStore(databasePath);
+		store.enqueue({
+			jobId: "job_fenced_mutators",
+			queue: "output-persistence-test",
+			payload: envelope("fenced-mutators"),
+			maxAttempts: 5,
+		});
+		const stale = store.claimRecoverableJob("job_fenced_mutators", "worker-stale", 20);
+		assert.ok(stale);
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		const current = store.claimRecoverableJob("job_fenced_mutators", "worker-current", 1_000);
+		assert.ok(current);
+		assert.ok(current.claimToken > stale.claimToken);
+
+		assert.equal(store.updateJobPayload(current.jobId, stale.workerId, envelope("stale-update"), stale.claimToken), false);
+		assert.equal(store.heartbeat(current.jobId, stale.workerId, 1_000, stale.claimToken), false);
+		assert.equal(store.retry(current.jobId, stale.workerId, { delayMs: 0, claimToken: stale.claimToken }), false);
+		assert.equal(store.fail(current.jobId, stale.workerId, "stale fail", stale.claimToken), false);
+		assert.equal(store.ack(current.jobId, stale.workerId, stale.claimToken), false);
+		assert.equal(store.releaseJob(current.jobId, stale.workerId, 0, stale.claimToken), false);
+
+		store.db.prepare("UPDATE pibo_jobs SET claim_expires_at = ? WHERE job_id = ?")
+			.run(new Date(Date.now() - 1_000).toISOString(), current.jobId);
+		assert.equal(store.updateJobPayload(current.jobId, current.workerId, envelope("expired-update"), current.claimToken), false);
+		assert.equal(store.heartbeat(current.jobId, current.workerId, 1_000, current.claimToken), false);
+		assert.equal(store.retry(current.jobId, current.workerId, { delayMs: 0, claimToken: current.claimToken }), false);
+		assert.equal(store.fail(current.jobId, current.workerId, "expired fail", current.claimToken), false);
+		assert.equal(store.ack(current.jobId, current.workerId, current.claimToken), false);
+		assert.equal(store.releaseJob(current.jobId, current.workerId, 0, current.claimToken), false);
+		assert.equal(store.listJobs({ queue: "output-persistence-test" })[0].state, "running");
+		store.close();
 	} finally {
 		rmSync(directory, { recursive: true, force: true });
 	}
@@ -169,8 +225,8 @@ test("unknown and malformed durable payloads quarantine while later jobs continu
 			INSERT INTO pibo_jobs (job_id, queue, state, payload_json, run_at, priority, worker_id, claim_expires_at, attempts, max_attempts, idempotency_key, created_at, updated_at, expires_at, last_error)
 			VALUES (?, 'output-persistence-test', 'pending', ?, ?, 0, NULL, NULL, 0, 3, ?, ?, ?, NULL, NULL)
 		`);
-		insert.run("job_unknown", JSON.stringify({ version: 999, key: "unknown", state: { secret: "unknown-secret" } }), timestamp, "unknown", timestamp, timestamp);
-		insert.run("job_malformed", "{\"secret\":\"malformed-secret\"", timestamp, "malformed", timestamp, timestamp);
+		insert.run("job_unknown", JSON.stringify({ version: 999, key: "unknown", state: { secret: "unknown-secret" } }), timestamp, "unknown-secret-idempotency", timestamp, timestamp);
+		insert.run("job_malformed", "{\"secret\":\"malformed-secret\"", timestamp, "malformed-secret-idempotency", timestamp, timestamp);
 		store.enqueue({ queue: "output-persistence-test", payload: envelope("good"), idempotencyKey: "good", maxAttempts: 3 });
 		let goodRuns = 0;
 		const queue = new OutputPersistenceRetryQueue({ durableStore: store, queueName: "output-persistence-test", baseDelayMs: 1, maxDelayMs: 1 });
@@ -209,3 +265,91 @@ test("clean shutdown aborts work, cancels heartbeat, and releases the fenced cla
 		rmSync(directory, { recursive: true, force: true });
 	}
 });
+
+for (const crashAt of ["after-outbox-append", "after-outbox-checkpoint", "after-send", "after-receipt"]) {
+	test(`outbox delivery reopens idempotently after crash injection ${crashAt}`, async () => {
+		const { directory, databasePath } = temporaryDatabase(`pibo-output-crash-${crashAt}-`);
+		const sinkPath = join(directory, "observable.sqlite");
+		const deliveryId = `delivery:${crashAt}`;
+		let store;
+		let queue;
+		let crashed = false;
+		const project = async (context, injectCrash) => {
+			const state = context.payload;
+			if (state.phase === "pending") {
+				store.appendOnce({
+					topic: "output-projection-outbox",
+					eventId: deliveryId,
+					idempotencyKey: deliveryId,
+					payload: { deliveryId },
+				});
+				if (injectCrash && crashAt === "after-outbox-append" && !crashed) {
+					crashed = true;
+					throw new Error(`crash:${crashAt}`);
+				}
+				context.updatePayload({ ...state, phase: "outbox" });
+				if (injectCrash && crashAt === "after-outbox-checkpoint" && !crashed) {
+					crashed = true;
+					throw new Error(`crash:${crashAt}`);
+				}
+			}
+			if (!store.hasDeliveryReceipt(deliveryId, "observable-test-v1")) {
+				const sink = new DatabaseSync(sinkPath);
+				try {
+					sink.exec("CREATE TABLE IF NOT EXISTS effects (delivery_id TEXT PRIMARY KEY, sends INTEGER NOT NULL)");
+					sink.prepare("INSERT INTO effects (delivery_id, sends) VALUES (?, 1) ON CONFLICT(delivery_id) DO UPDATE SET sends = effects.sends").run(deliveryId);
+				} finally {
+					sink.close();
+				}
+				if (injectCrash && crashAt === "after-send" && !crashed) {
+					crashed = true;
+					throw new Error(`crash:${crashAt}`);
+				}
+				store.recordDeliveryReceipt(deliveryId, "observable-test-v1");
+				if (injectCrash && crashAt === "after-receipt" && !crashed) {
+					crashed = true;
+					throw new Error(`crash:${crashAt}`);
+				}
+			}
+			context.updatePayload({ deliveryId, phase: "delivered" });
+		};
+		try {
+			store = new PiboReliabilityStore(databasePath);
+			queue = new OutputPersistenceRetryQueue({
+				durableStore: store,
+				queueName: "output-projection-crash-test",
+				baseDelayMs: 60_000,
+				maxDelayMs: 60_000,
+				maxAttempts: 5,
+			});
+			queue.enqueue({
+				key: deliveryId,
+				payload: { deliveryId, phase: "pending" },
+				run: (context) => project(context, true),
+			});
+			await waitFor(() => store.listJobs({ queue: "output-projection-crash-test" })[0]?.lastError === `crash:${crashAt}`);
+			queue.dispose();
+			store.close();
+
+			store = new PiboReliabilityStore(databasePath);
+			queue = new OutputPersistenceRetryQueue({ durableStore: store, queueName: "output-projection-crash-test", baseDelayMs: 1, maxDelayMs: 1 });
+			queue.recover((job) => ({ ...job, run: (context) => project(context, false) }));
+			await queue.drain();
+			assert.equal(store.listJobs({ queue: "output-projection-crash-test" }).length, 0);
+			assert.equal(store.list({ topic: "output-projection-outbox" }).length, 1);
+			assert.equal(store.hasDeliveryReceipt(deliveryId, "observable-test-v1"), true);
+			const sink = new DatabaseSync(sinkPath, { readOnly: true });
+			try {
+				const effect = sink.prepare("SELECT delivery_id, sends FROM effects").get();
+				assert.equal(effect.delivery_id, deliveryId);
+				assert.equal(effect.sends, 1);
+			} finally {
+				sink.close();
+			}
+		} finally {
+			queue?.dispose();
+			try { store?.close(); } catch {}
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+}
