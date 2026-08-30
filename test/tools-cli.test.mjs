@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -33,6 +33,26 @@ async function waitForProcess(pid, alive) {
 		await new Promise((resolveWait) => setTimeout(resolveWait, 50));
 	}
 	assert.equal(processIsAlive(pid), alive);
+}
+
+async function waitForOutput(child, output, pattern, timeoutMs = 5000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (output().includes(pattern)) return;
+		if (child.exitCode !== null || child.signalCode !== null) break;
+		await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+	}
+	assert.match(output(), pattern);
+}
+
+async function waitForChildExit(child, timeoutMs = 5000) {
+	if (child.exitCode !== null || child.signalCode !== null) {
+		return { code: child.exitCode, signal: child.signalCode };
+	}
+	return await Promise.race([
+		new Promise((resolveExit) => child.once("exit", (code, signal) => resolveExit({ code, signal }))),
+		new Promise((_, reject) => setTimeout(() => reject(new Error(`Timed out waiting for child ${child.pid} to exit`)), timeoutMs)),
+	]);
 }
 
 function spawnBrowserLikeProcess(commandName, userDataDir) {
@@ -821,6 +841,182 @@ test("pibo tools browser-use manages isolated authenticated leases", posixWrappe
 		], { cwd, env });
 		assert.match(released.stdout, /Released pibo-chat-slot-001/);
 		await assert.rejects(readFile(join(slotDir, "Cookies"), "utf8"), /ENOENT/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools browser-use lease warm-up interruption leaves registry management usable", posixWrapperTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-interrupt-"));
+	let acquireProcess;
+	let warmupPid;
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const browserUseHome = join(env.PIBO_HOME, "tools", "browser-use", "home");
+		const wrapperPath = join(browserUseHome, "bin", "browser-use");
+		const warmupPidPath = join(cwd, "warmup.pid");
+		const lockPath = join(browserUseHome, "auth-pool", ".leases.lock");
+		await mkdir(dirname(wrapperPath), { recursive: true });
+		await writeFile(wrapperPath, "#!/bin/sh\nprintf '%s\\n' \"$$\" > \"$PIBO_BROWSER_USE_TEST_PID\"\nprintf '%s\\n' 'http://127.0.0.1:9222'\n");
+		await chmod(wrapperPath, 0o755);
+
+		const normal = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--holder",
+			"normal-control",
+			"--max-slots",
+			"1",
+			"--json",
+		], { cwd, env: { ...env, PIBO_BROWSER_USE_TEST_PID: warmupPidPath } });
+		assert.equal(JSON.parse(normal.stdout).id, "pibo-chat-slot-001");
+		assert.equal(existsSync(lockPath), false);
+		await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "release", "pibo-chat-slot-001"], { cwd, env });
+		await rm(warmupPidPath, { force: true });
+
+		await writeFile(wrapperPath, "#!/bin/sh\nprintf '%s\\n' \"$$\" > \"$PIBO_BROWSER_USE_TEST_PID\"\ntrap 'exit 0' TERM INT HUP\nsleep 30\n");
+		await chmod(wrapperPath, 0o755);
+		let stdout = "";
+		let stderr = "";
+		acquireProcess = spawn(process.execPath, [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--holder",
+			"interrupted",
+			"--max-slots",
+			"1",
+			"--json",
+		], {
+			cwd,
+			env: { ...env, PIBO_BROWSER_USE_TEST_PID: warmupPidPath },
+			detached: true,
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		acquireProcess.stdout.on("data", (chunk) => { stdout += chunk; });
+		acquireProcess.stderr.on("data", (chunk) => { stderr += chunk; });
+		await waitForOutput(acquireProcess, () => stdout, '"browserUseHome"');
+		warmupPid = Number.parseInt(await waitForFile(warmupPidPath), 10);
+		assert.equal(processIsAlive(warmupPid), true);
+		process.kill(-acquireProcess.pid, "SIGINT");
+		const interrupted = await waitForChildExit(acquireProcess);
+		assert.notEqual(interrupted.code, 0);
+		assert.equal(stderr, "");
+		await waitForProcess(warmupPid, false);
+		assert.equal(existsSync(lockPath), false);
+
+		const listedActive = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		const activeLeases = JSON.parse(listedActive.stdout);
+		assert.equal(activeLeases.length, 1);
+		assert.equal(activeLeases[0].status, "active");
+		assert.equal(activeLeases[0].processAlive, false);
+		await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "release", "pibo-chat-slot-001"], { cwd, env });
+		const listedReleased = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		assert.equal(JSON.parse(listedReleased.stdout)[0].status, "released");
+
+		await writeFile(wrapperPath, "#!/bin/sh\nprintf '%s\\n' 'http://127.0.0.1:9222'\n");
+		await chmod(wrapperPath, 0o755);
+		const reacquired = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--holder",
+			"after-interrupt",
+			"--max-slots",
+			"1",
+			"--json",
+		], { cwd, env });
+		assert.equal(JSON.parse(reacquired.stdout).id, "pibo-chat-slot-001");
+		await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "release", "pibo-chat-slot-001"], { cwd, env });
+	} finally {
+		if (acquireProcess?.pid && processIsAlive(acquireProcess.pid)) process.kill(-acquireProcess.pid, "SIGKILL");
+		terminatePid(warmupPid);
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools browser-use safely recovers stale legacy locks and preserves live owner locks", posixWrapperTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-lock-recovery-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const browserUseHome = join(env.PIBO_HOME, "tools", "browser-use", "home");
+		const lockPath = join(browserUseHome, "auth-pool", ".leases.lock");
+		const ownerPath = join(lockPath, "owner.json");
+		await mkdir(lockPath, { recursive: true });
+		const old = new Date(Date.now() - 11 * 60_000);
+		await utimes(lockPath, old, old);
+		const recovered = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		assert.deepEqual(JSON.parse(recovered.stdout), []);
+		assert.equal(existsSync(lockPath), false);
+
+		await mkdir(lockPath, { recursive: true });
+		await writeFile(ownerPath, `${JSON.stringify({
+			pid: 999_999_999,
+			token: "00000000-0000-4000-8000-000000000620",
+			acquiredAt: Date.now(),
+			...(process.platform === "linux" ? { processStartId: "999999999:1" } : {}),
+		})}\n`, "utf8");
+		const recoveredDeadOwner = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		assert.deepEqual(JSON.parse(recoveredDeadOwner.stdout), []);
+		assert.equal(existsSync(lockPath), false);
+
+		await mkdir(lockPath, { recursive: true });
+		await writeFile(ownerPath, `${JSON.stringify({
+			pid: process.pid,
+			token: "00000000-0000-4000-8000-000000000621",
+			acquiredAt: Date.now(),
+		})}\n`, "utf8");
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env }),
+			/Timed out waiting for browser-use lease registry lock/,
+		);
+		assert.equal(existsSync(lockPath), true);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools browser-use serializes concurrent lease acquisition", posixWrapperTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-concurrent-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const wrapperPath = join(env.PIBO_HOME, "tools", "browser-use", "home", "bin", "browser-use");
+		await mkdir(dirname(wrapperPath), { recursive: true });
+		await writeFile(wrapperPath, "#!/bin/sh\nprintf '%s\\n' 'http://127.0.0.1:9222'\n");
+		await chmod(wrapperPath, 0o755);
+		const acquire = (holder) => execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--holder",
+			holder,
+			"--max-slots",
+			"1",
+			"--json",
+		], { cwd, env });
+		const results = await Promise.allSettled([acquire("concurrent-a"), acquire("concurrent-b")]);
+		assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+		assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+		assert.match(results.find((result) => result.status === "rejected").reason.stderr, /BROWSER_USE_AUTH_POOL_EXHAUSTED/);
+		const listed = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		assert.equal(JSON.parse(listed.stdout).length, 1);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
