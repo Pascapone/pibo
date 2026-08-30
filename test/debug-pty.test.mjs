@@ -229,6 +229,49 @@ test("built-in mocked CLI session scenario follows the room and session picker f
 	}
 });
 
+test("picker text is cleared before room and session navigation reaches the transcript", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const binDir = join(dir, "bin");
+		const artifactDir = join(dir, "artifacts");
+		const scenarioPath = join(dir, "scenario.json");
+		await mkdir(binDir, { recursive: true });
+		const piboWrapper = join(binDir, "pibo");
+		await writeFile(piboWrapper, `#!/bin/sh\nexec "${process.execPath}" "${cliPath}" "$@"\n`);
+		await chmod(piboWrapper, 0o755);
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "picker-input-navigation-safety",
+			command: ["pibo", "tui:sessions", "--demo"],
+			timeoutMs: 20_000,
+			idleTimeoutMs: 5_000,
+			steps: [
+				{ waitFor: "select room" },
+				{ typeText: "PICKER_DRAFT_SHOULD_CLEAR" },
+				{ press: "Enter" },
+				{ waitFor: "select session" },
+				{ press: "Enter" },
+				{ waitFor: "Opened session" },
+				{ press: "Enter" },
+				{ sleepMs: 500 },
+				{ press: "CtrlC" },
+			],
+			expect: ["select room", "select session", "Opened session"],
+			reject: ["Message sent"],
+		}, null, 2));
+		const result = await execFileAsync("node", [cliPath, "debug", "pty", "scenario", "--artifact", "--artifact-dir", artifactDir, scenarioPath], {
+			env: { PATH: `${binDir}:${process.env.PATH ?? ""}` },
+		});
+		assert.match(result.stdout, /PTY passed: picker-input-navigation-safety/);
+		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+		const transcript = clean.slice(clean.indexOf("Opened session"));
+		assert.doesNotMatch(transcript, /PICKER_DRAFT_SHOULD_CLEAR/);
+		assert.doesNotMatch(transcript, /Message sent/);
+		assert.match(transcript, /Details/);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug pty real-provider mode requires explicit safety opt-in", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {

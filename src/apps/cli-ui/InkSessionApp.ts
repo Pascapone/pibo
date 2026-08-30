@@ -331,6 +331,7 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 				return;
 			}
 			if (stateRef.current.picker) {
+				setState((current) => reduceInkSessionInputState(current, { type: "enter" }));
 				void selectPickerItem();
 				return;
 			}
@@ -439,7 +440,7 @@ export function reduceInkSessionInputState(state: InkSessionAppState, action: In
 	if (action.type === "escape") {
 		if (state.slashSuggestions) return { ...state, slashSuggestions: undefined, overlayStack: popInkSessionOverlay(state.overlayStack), message: "Closed slash suggestions." };
 		if (state.picker?.parent) {
-			return withPickerOverlay({ ...state, picker: state.picker.parent, mode: pickerMode(state.picker.parent), message: "Back." }, state.picker.parent);
+			return withPickerOverlay({ ...state, input: "", picker: state.picker.parent, mode: pickerMode(state.picker.parent), message: "Back." }, state.picker.parent);
 		}
 		return { ...state, input: "", mode: "transcript", picker: undefined, overlayStack: popInkSessionOverlay(state.overlayStack), message: "Canceled." };
 	}
