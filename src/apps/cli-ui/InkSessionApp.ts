@@ -231,8 +231,11 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 					return;
 				}
 				if (picker.action === "select-room") {
-					const status = await source.getStatus({ sessionId: stateRef.current.session?.id });
-					setState((current) => ({ ...current, status, activeRoom: room, mode: "transcript", picker: undefined, overlayStack: undefined, message: `Selected room ${room.title}.`, error: undefined }));
+					const currentSession = stateRef.current.session;
+					const preserveSession = currentSession?.roomId === room.id;
+					const status = await source.getStatus({ sessionId: preserveSession ? currentSession.id : undefined });
+					if (!preserveSession) closeOpenSession();
+					setState((current) => selectInkSessionRoom(current, room, status));
 					return;
 				}
 				await openSessionPickerForRoom(room, picker);
@@ -267,7 +270,7 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 		} catch (error) {
 			setState((current) => ({ ...current, mode: "transcript", picker: undefined, error: formatCliSessionError(error), message: undefined }));
 		}
-	}, [openSession, openSessionPickerForRoom, source]);
+	}, [closeOpenSession, openSession, openSessionPickerForRoom, source]);
 
 	useEffect(() => {
 		closedRef.current = false;
@@ -473,6 +476,21 @@ export function normalizeInkRowSelection(state: InkSessionAppState): InkSessionA
 		? state.selectedRowId
 		: expandableIds[expandableIds.length - 1];
 	return { ...state, selectedRowId, expandedRowIds };
+}
+
+export function selectInkSessionRoom(state: InkSessionAppState, room: CliRoomSummary, status: CliRuntimeStatus): InkSessionAppState {
+	const preserveSession = state.session?.roomId === room.id;
+	return {
+		...state,
+		status,
+		activeRoom: room,
+		...(preserveSession ? {} : { session: undefined, rows: [], selectedRowId: undefined, expandedRowIds: [] }),
+		mode: "transcript",
+		picker: undefined,
+		overlayStack: undefined,
+		message: `Selected room ${room.title}.`,
+		error: undefined,
+	};
 }
 
 function selectExpandableRow(state: InkSessionAppState, direction: -1 | 1): InkSessionAppState {
