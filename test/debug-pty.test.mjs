@@ -75,6 +75,48 @@ test("pibo debug pty run captures host PTY output and artifacts", { skip: !(awai
 		assert.equal(metadata.backend, "host");
 		assert.equal(metadata.ok, true);
 		assert.equal(metadata.exitCode, 0);
+		assert.equal(metadata.signal, null);
+		assert.equal(metadata.stopReason, "completed");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug pty failed run preserves the nonzero child exit code in artifacts", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const artifactDir = join(dir, "artifacts");
+		await assert.rejects(
+			execFileAsync("node", [
+				cliPath,
+				"debug",
+				"pty",
+				"run",
+				"--artifact",
+				"--artifact-dir",
+				artifactDir,
+				"--expect",
+				"exit-seven-marker",
+				"--",
+				"node",
+				"-e",
+				"console.log('exit-seven-marker'); process.exit(7)",
+			]),
+			(error) => {
+				assert.match(error.stderr, /PTY command exited with status 7/);
+				assert.match(error.stderr, /PTY artifacts:/);
+				return true;
+			},
+		);
+		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+		assert.match(clean, /exit-seven-marker/);
+		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+		assert.equal(metadata.backend, "host");
+		assert.equal(metadata.ok, false);
+		assert.equal(metadata.exitCode, 7);
+		assert.equal(metadata.signal, null);
+		assert.equal(metadata.stopReason, "exit_code:7");
+		assert.equal(metadata.error, "PTY command exited with status 7");
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
