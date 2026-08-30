@@ -341,8 +341,18 @@ test("custom agent store migrates duplicate profile names before enforcing globa
 	assert.equal(agents.length, 2);
 	assert.equal(agents.find((agent) => agent.id === "agent_new").profileName, "helper");
 	assert.match(agents.find((agent) => agent.id === "agent_old").profileName, /^helper-legacy-[a-f0-9]{8}$/);
+	assert.ok(agents.every((agent) => agent.profileAliases.length === 0));
 	assert.ok(agents.every((agent) => !(retiredPartitionField in agent)));
 	store.close();
+
+	const reopened = new CustomAgentStore(path);
+	assert.deepEqual(
+		reopened.list({ includeArchived: true })
+			.map(({ id, profileName, profileAliases }) => ({ id, profileName, profileAliases }))
+			.sort((left, right) => left.id.localeCompare(right.id)),
+		agents.map(({ id, profileName, profileAliases }) => ({ id, profileName, profileAliases })),
+	);
+	reopened.close();
 
 	const migratedDb = new DatabaseSync(path);
 	assert.equal(tableColumns(migratedDb, "chat_agents").has(retiredStorageColumn), false);

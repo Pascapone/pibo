@@ -595,6 +595,15 @@ export class CustomAgentStore {
 				.prepare("UPDATE chat_agents SET profile_name = ?, display_name = ? WHERE id = ?")
 				.run(nextName, nextName, row.id);
 		}
+		this.db.prepare(`
+			DELETE FROM chat_agent_profile_aliases
+			WHERE EXISTS (
+				SELECT 1
+				FROM chat_agents
+				WHERE chat_agents.profile_name = chat_agent_profile_aliases.old_profile_name
+					AND chat_agents.id != chat_agent_profile_aliases.agent_id
+			)
+		`).run();
 	}
 
 	private migrateAgentFolderColumn(): void {
