@@ -6,5 +6,5 @@ export type PiboLoopChannelOptions = Omit<PiboLoopServiceOptions, 'context' | 's
 let currentLoopService: PiboLoopService | undefined;
 export function getPiboLoopService(): PiboLoopService | undefined { return currentLoopService; }
 export function createPiboLoopChannel(options: PiboLoopChannelOptions = {}): PiboChannel {
-	return { name: 'pibo.loop', kind: 'custom', description: 'Runs continuous Loop Pibo agent jobs.', auth: { mode: 'trusted-local' }, start(context) { if (currentLoopService) return; currentLoopService = new PiboLoopService({ ...options, context, store: createDefaultPiboLoopStore({ path: options.loopStorePath }) }); currentLoopService.start(); }, stop() { currentLoopService?.stop(); currentLoopService = undefined; } };
+	return { name: 'pibo.loop', kind: 'custom', description: 'Runs continuous Loop Pibo agent jobs.', auth: { mode: 'trusted-local' }, start(context) { if (currentLoopService) return; currentLoopService = new PiboLoopService({ ...options, context, store: createDefaultPiboLoopStore({ path: options.loopStorePath }) }); currentLoopService.start(); }, async stop() { const service = currentLoopService; if (!service) return; await service.stop(); if (currentLoopService === service) currentLoopService = undefined; } };
 }
