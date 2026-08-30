@@ -411,7 +411,7 @@ test('limited worker smoke script skips clearly when Docker is unavailable or ap
 	assert.match(stdout, /Next: npm run --silent dev -- compute spawn/);
 });
 
-test('dev worker docker run args include resource policy labels worktree metadata and bounded logs', () => {
+test('dev worker docker run args expose the built worktree CLI with resource and metadata bounds', () => {
 	const args = buildDevWorkerDockerRunArgs({
 		id: 'pibo-dev-policy',
 		worktreePath: '/repo/.worktrees/policy',
@@ -445,7 +445,7 @@ test('dev worker docker run args include resource policy labels worktree metadat
 	assert.ok(args.includes('/repo/.worktrees/policy:/workspace'));
 	assert.ok(args.includes('/repo/node_modules:/workspace/node_modules'));
 	assert.equal(args.at(-2), '-c');
-	assert.equal(args.at(-1), 'tail -f /dev/null');
+	assert.equal(args.at(-1), 'ln -sf /workspace/dist/bin/pibo.js /usr/local/bin/pibo && exec tail -f /dev/null');
 
 	const runLabels = labels(args);
 	assert.ok(runLabels.includes('pibo.compute.role=dev'));
