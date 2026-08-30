@@ -493,6 +493,82 @@ test("runtime rebind persists a retry-safe handoff and imports it before opening
 	await router.disposeAll();
 });
 
+test("cross-runtime rebind clears source model selection across restart while same-runtime rebind preserves it", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-rebind-model-selection-"));
+	const databasePath = join(root, "pibo.sqlite");
+	let dataStore = new PiboDataStore(databasePath, { payloadRootDir: join(root, "payloads") });
+	let sessionStore = new PiboDataSessionStore(dataStore);
+	let router;
+	t.after(async () => {
+		await router?.disposeAll();
+		sessionStore.close();
+		dataStore.close();
+		await rm(root, { recursive: true, force: true });
+	});
+	const sourceModel = { provider: "source-provider", id: "source-primary" };
+	const sourceFallback = { provider: "source-provider", id: "source-fallback" };
+	const crossRuntime = sessionStore.create({
+		...sessionRecord("ps_cross_runtime_model_selection"),
+		id: "ps_cross_runtime_model_selection",
+		activeModel: sourceModel,
+		metadata: {
+			...sessionRecord().metadata,
+			initialModelFallbacks: [sourceFallback],
+		},
+	});
+	const sameRuntime = sessionStore.create({
+		...sessionRecord("ps_same_runtime_model_selection_control"),
+		id: "ps_same_runtime_model_selection_control",
+		activeModel: sourceModel,
+		runtimeBinding: {
+			...sessionRecord("ps_same_runtime_model_selection_control").runtimeBinding,
+			nativeSessionId: "source-native-control",
+		},
+		metadata: {
+			...sessionRecord().metadata,
+			initialModelFallbacks: [sourceFallback],
+		},
+	});
+	const { registry } = buildRegistry();
+	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+
+	await router.rebindSessionRuntime(crossRuntime.id, {
+		runtimeInstanceId: "target-runtime",
+		startFresh: true,
+		expectedRevision: crossRuntime.runtimeBinding.revision,
+	});
+	await router.rebindSessionRuntime(sameRuntime.id, {
+		runtimeInstanceId: "source-runtime",
+		startFresh: true,
+		expectedRevision: sameRuntime.runtimeBinding.revision,
+	});
+	assert.equal(sessionStore.get(crossRuntime.id).activeModel, undefined, "the source active model must be cleared with the runtime namespace");
+	assert.deepEqual(sessionStore.get(crossRuntime.id).metadata.initialModelFallbacks, [], "source fallbacks must be cleared with the runtime namespace");
+	assert.deepEqual(sessionStore.get(sameRuntime.id).activeModel, sourceModel, "same-runtime startFresh keeps the explicit model");
+	assert.deepEqual(sessionStore.get(sameRuntime.id).metadata.initialModelFallbacks, [sourceFallback], "same-runtime startFresh keeps fallbacks");
+
+	await router.getSessionStatusSnapshot(crossRuntime.id);
+	await router.getSessionStatusSnapshot(sameRuntime.id);
+
+	assert.equal(sessionStore.get(crossRuntime.id).activeModel, undefined, "the source model must not enter the target namespace");
+	assert.deepEqual(sessionStore.get(crossRuntime.id).metadata.initialModelFallbacks, [], "source fallbacks must stay cleared after target startup");
+	assert.deepEqual(sessionStore.get(sameRuntime.id).activeModel, sourceModel, "same-runtime startFresh keeps the explicit model");
+	assert.deepEqual(sessionStore.get(sameRuntime.id).metadata.initialModelFallbacks, [sourceFallback], "same-runtime startFresh keeps fallbacks");
+
+	await router.disposeAll();
+	router = undefined;
+	sessionStore.close();
+	dataStore.close();
+	dataStore = new PiboDataStore(databasePath, { payloadRootDir: join(root, "payloads") });
+	sessionStore = new PiboDataSessionStore(dataStore);
+	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+
+	const reopenedCrossRuntime = await router.getOrCreateSession(crossRuntime.id);
+	const reopenedSameRuntime = await router.getOrCreateSession(sameRuntime.id);
+	assert.deepEqual(reopenedCrossRuntime.modelFallbacks, [], "the target runtime must not recover source fallback identities after restart");
+	assert.deepEqual(reopenedSameRuntime.modelFallbacks, [sourceFallback], "same-runtime restart keeps the frozen fallback order");
+});
+
 test("runtime rebind quiesces the source before taking its portable-history checkpoint", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-rebind-quiescence-"));
 	const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
