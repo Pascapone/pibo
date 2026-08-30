@@ -90,6 +90,26 @@ export type InkSessionAppProps = {
 	onExit?: () => void;
 };
 
+export type InkPickerActivationGuard = {
+	inFlight: boolean;
+	lastPicker?: InkSessionPickerState;
+};
+
+export async function runInkPickerActivation<T>(
+	guard: InkPickerActivationGuard,
+	picker: InkSessionPickerState,
+	activate: () => Promise<T>,
+): Promise<T | undefined> {
+	if (guard.inFlight || guard.lastPicker === picker) return undefined;
+	guard.inFlight = true;
+	guard.lastPicker = picker;
+	try {
+		return await activate();
+	} finally {
+		guard.inFlight = false;
+	}
+}
+
 const INITIAL_STATE: InkSessionAppState = {
 	loading: true,
 	rows: [],
@@ -104,6 +124,7 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 	const unsubscribeRef = useRef<(() => void) | undefined>(undefined);
 	const closedRef = useRef(false);
 	const stateRef = useRef(state);
+	const pickerActivationRef = useRef<InkPickerActivationGuard>({ inFlight: false });
 
 	useEffect(() => {
 		stateRef.current = state;
@@ -215,7 +236,7 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 		}));
 	}, [source]);
 
-	const selectPickerItem = useCallback(async () => {
+	const activatePickerItem = useCallback(async () => {
 		const picker = stateRef.current.picker;
 		const item = picker?.items[picker.selectedIndex];
 		if (!picker || !item) {
@@ -268,6 +289,12 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 			setState((current) => ({ ...current, mode: "transcript", picker: undefined, error: formatCliSessionError(error), message: undefined }));
 		}
 	}, [openSession, openSessionPickerForRoom, source]);
+
+	const selectPickerItem = useCallback(async () => {
+		const picker = stateRef.current.picker;
+		if (!picker) return;
+		await runInkPickerActivation(pickerActivationRef.current, picker, activatePickerItem);
+	}, [activatePickerItem]);
 
 	useEffect(() => {
 		closedRef.current = false;

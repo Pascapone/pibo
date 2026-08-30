@@ -25,6 +25,7 @@ import {
 	pushInkSessionOverlay,
 	reduceInkSessionInputState,
 	normalizeInkRowSelection,
+	runInkPickerActivation,
 	runCliSessionsUi,
 	terminalLineLimitFromColumns,
 } from "../dist/apps/cli-ui/index.js";
@@ -272,6 +273,53 @@ test("Ink session input reducer captures text, enter, navigation, escape, and sl
 	const closed = reduceInkSessionInputState(filtered, { type: "escape" });
 	assert.equal(closed.input, "/th");
 	assert.equal(closed.slashSuggestions, undefined);
+});
+
+test("Ink picker activation guard ignores repeated ownership and allows later or retried pickers", async () => {
+	const guard = { inFlight: false };
+	const firstPicker = { kind: "session", title: "First", items: [], selectedIndex: 0, emptyMessage: "None" };
+	const laterPicker = { ...firstPicker, title: "Later" };
+	const failedPicker = { ...firstPicker, title: "Failed" };
+	const retryPicker = { ...firstPicker, title: "Retry" };
+	const activations = [];
+	let finishFirst;
+	const first = runInkPickerActivation(guard, firstPicker, async () => {
+		activations.push("first");
+		return await new Promise((resolve) => { finishFirst = resolve; });
+	});
+
+	assert.equal(guard.inFlight, true);
+	assert.equal(await runInkPickerActivation(guard, firstPicker, async () => {
+		activations.push("overlap");
+		return "overlap";
+	}), undefined);
+	assert.deepEqual(activations, ["first"]);
+
+	finishFirst("created");
+	assert.equal(await first, "created");
+	assert.equal(guard.inFlight, false);
+	assert.equal(await runInkPickerActivation(guard, firstPicker, async () => {
+		activations.push("stale repeat");
+		return "stale repeat";
+	}), undefined);
+	assert.equal(await runInkPickerActivation(guard, laterPicker, async () => {
+		activations.push("later");
+		return "created later";
+	}), "created later");
+
+	await assert.rejects(
+		runInkPickerActivation(guard, failedPicker, async () => {
+			activations.push("failure");
+			throw new Error("creation failed");
+		}),
+		/creation failed/,
+	);
+	assert.equal(guard.inFlight, false);
+	assert.equal(await runInkPickerActivation(guard, retryPicker, async () => {
+		activations.push("retry");
+		return "retried";
+	}), "retried");
+	assert.deepEqual(activations, ["first", "later", "failure", "retry"]);
 });
 
 test("Ink session input reducer selects expandable rows and toggles inline details without breaking input or pickers", () => {
