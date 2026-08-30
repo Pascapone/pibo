@@ -8496,6 +8496,109 @@ test("chat web app exposes and updates MCP server descriptions", async () => {
 	}
 });
 
+test("chat web app updates MCP descriptions in their merged config source", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-web-mcp-source-"));
+	const project = join(root, "project");
+	const home = join(root, "home");
+	mkdirSync(project, { recursive: true });
+	mkdirSync(home, { recursive: true });
+	const projectPath = join(project, "mcp_servers.json");
+	const homePath = join(home, "mcp_servers.json");
+	writeFileSync(projectPath, `${JSON.stringify({
+		mcpServers: {
+			local: { command: "node", args: ["local.js"] },
+			shared: { command: "node", args: ["project-shared.js"] },
+		},
+	}, null, 2)}\n`);
+	writeFileSync(homePath, `${JSON.stringify({
+		mcpServers: {
+			inherited: { command: "node", args: ["home.js"], env: { FIXTURE: "preserved" } },
+			shared: { command: "node", args: ["home-shared.js"] },
+		},
+	}, null, 2)}\n`);
+	const previousConfigPath = process.env.MCP_CONFIG_PATH;
+	const previousHome = process.env.HOME;
+	const previousUserProfile = process.env.USERPROFILE;
+	process.env.MCP_CONFIG_PATH = projectPath;
+	process.env.HOME = home;
+	process.env.USERPROFILE = home;
+	let first;
+	let restarted;
+
+	try {
+		first = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+		});
+		const headers = { "content-type": "application/json", origin: first.baseURL, "x-test-user": "user-1" };
+		const catalog = await fetch(`${first.baseURL}/api/chat/agent-catalog`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(catalog.status, 200);
+		assert.deepEqual((await catalog.json()).catalog.mcpServers.map((server) => server.name), ["local", "shared", "inherited"]);
+
+		for (const [name, description] of [["inherited", "Home description."], ["shared", "Project description."], ["local", "Local description."]]) {
+			const response = await fetch(`${first.baseURL}/api/chat/mcp-servers/${name}/description`, {
+				method: "PATCH",
+				headers,
+				body: JSON.stringify({ description }),
+			});
+			assert.equal(response.status, 200, await response.text());
+		}
+		await first.channel.stop?.();
+		first = undefined;
+
+		restarted = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+		});
+		const restartedCatalog = await fetch(`${restarted.baseURL}/api/chat/agent-catalog`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(restartedCatalog.status, 200);
+		const descriptions = new Map((await restartedCatalog.json()).catalog.mcpServers.map((server) => [server.name, server.description]));
+		assert.equal(descriptions.get("inherited"), "Home description.");
+		assert.equal(descriptions.get("shared"), "Project description.");
+
+		const projectConfig = JSON.parse(readFileSync(projectPath, "utf-8"));
+		const homeConfig = JSON.parse(readFileSync(homePath, "utf-8"));
+		assert.equal(projectConfig.mcpServers.shared.pibo.description, "Project description.");
+		assert.equal(homeConfig.mcpServers.shared.pibo, undefined);
+		assert.deepEqual(homeConfig.mcpServers.inherited, {
+			command: "node",
+			args: ["home.js"],
+			env: { FIXTURE: "preserved" },
+			pibo: { description: "Home description.", descriptionSource: "user" },
+		});
+
+		chmodSync(homePath, 0o444);
+		const readOnly = await fetch(`${restarted.baseURL}/api/chat/mcp-servers/inherited/description`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: restarted.baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ description: "Must remain unchanged." }),
+		});
+		assert.notEqual(readOnly.status, 200);
+		assert.equal(JSON.parse(readFileSync(homePath, "utf-8")).mcpServers.inherited.pibo.description, "Home description.");
+		chmodSync(homePath, 0o644);
+
+		rmSync(homePath);
+		const missing = await fetch(`${restarted.baseURL}/api/chat/mcp-servers/inherited/description`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: restarted.baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ description: "Must not move." }),
+		});
+		assert.notEqual(missing.status, 200);
+		assert.equal(JSON.parse(readFileSync(projectPath, "utf-8")).mcpServers.inherited, undefined);
+		assert.equal(statSync(projectPath).isFile(), true);
+	} finally {
+		await first?.channel.stop?.();
+		await restarted?.channel.stop?.();
+		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousConfigPath;
+		if (previousHome === undefined) delete process.env.HOME;
+		else process.env.HOME = previousHome;
+		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+		else process.env.USERPROFILE = previousUserProfile;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("chat web app archives and permanently deletes custom agents with their sessions", async () => {
 	const deletionOrder = [];
 	const { channel, baseURL, sessions } = await startWebHostChannel({
