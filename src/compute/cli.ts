@@ -483,6 +483,7 @@ Worktrees are preserved; container cleanup never deletes Git worktrees.
 `,
 		)
 		.action(async (options: { maxAgeMinutes: number; includeDev?: boolean; stopped?: boolean; dirty?: boolean; dryRun?: boolean; apply?: boolean; json?: boolean }) => {
+			if (options.apply && options.dryRun) throw new Error("Use either --apply or --dry-run, not both");
 			const plan = await planReapWorkers({
 				includeDev: options.includeDev === true,
 				includeStopped: options.stopped !== false,
