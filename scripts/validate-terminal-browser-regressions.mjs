@@ -34,6 +34,7 @@ for (const duplicate of targets.filter((item) => item.type === "page" && item.id
 await client.send("Page.enable");
 await client.send("Runtime.enable");
 await client.send("Network.enable");
+await client.send("Emulation.setDeviceMetricsOverride", { width: 1_431, height: 908, deviceScaleFactor: 1, mobile: false, screenWidth: 1_431, screenHeight: 908 });
 await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
 
 const report = { startedAt: new Date().toISOString(), cdpUrl, target: { id: target.id, url: target.url }, tolerance, historyPages, scenarios: {}, passed: false };
@@ -99,7 +100,18 @@ try {
 	});
 
 	await scenario("tool-display-modes-retain-reading-anchor", async () => {
+		await evaluate(`(() => {const select=document.querySelector('select[aria-label="Tool display mode"]');select.value='default';select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+		await sleep(800);
+		await waitForStableViewport();
 		await detachWithPageUp();
+		for (let attempt = 0; attempt < 12; attempt += 1) {
+			const current = await measure();
+			if (current.bottomGap >= current.clientHeight * 10 || current.scrollTop <= current.clientHeight) break;
+			await key("PageUp", "PageUp", 33);
+			await sleep(100);
+		}
+		await waitForStableViewport();
+		await sleep(800);
 		await waitForStableViewport();
 		const results = [];
 		for (const mode of ["slim", "intent", "hide", "default"]) {
@@ -124,6 +136,9 @@ try {
 	});
 
 	await scenario("continuous-wheel-history-and-settle", async () => {
+		await client.send("Page.reload", { ignoreCache: true });
+		await sleep(500);
+		await waitFor(`document.querySelector('[data-testid="virtuoso-scroller"]') !== null`, 20_000, "Terminal after wheel reload");
 		await returnToLatest();
 		const before = await measure();
 		await startFrameRecorder();
@@ -140,18 +155,70 @@ try {
 		}
 		const atInputEnd = await measure();
 		await markFrameRecorder("input-end");
-		await sleep(1_500);
+		await sleep(300);
+		const atSettleStart = await measure();
+		await markFrameRecorder("settle-start");
+		await sleep(1_200);
 		const after = await measure();
 		const recording = await stopFrameRecorder();
 		const frames = recording.frames.filter((frame) => frame.t >= recording.marks["input-end"]);
+		const settledFrames = recording.frames.filter((frame) => frame.t >= recording.marks["settle-start"] && frame.reason !== "mutation");
 		const cursors = [...new Set(frames.map((frame) => frame.cursor).filter(Boolean))];
 		if (before.hasOlder === "true") assert(after.cursor !== before.cursor, "continuous wheel input did not load older history");
 		assert(cursors.length <= 2, `wheel history loaded ${cursors.length - 1} pages after input stopped`);
-		const anchorOffsets = frames.flatMap((frame) => frame.rows.find((row) => row.id === atInputEnd.firstVisible?.id)?.top ?? []);
-		assert(anchorOffsets.length > 0, `post-wheel anchor ${atInputEnd.firstVisible?.id} disappeared`);
+		const anchor = [...atSettleStart.visible].sort((left, right) => Math.abs(left.top) - Math.abs(right.top)).find((row) => settledFrames.some((frame) => frame.rows.some((candidate) => candidate.id === row.id)));
+		const anchorOffsets = anchor ? settledFrames.flatMap((frame) => frame.rows.find((row) => row.id === anchor.id)?.top ?? []) : [];
+		assert(anchorOffsets.length > 0, `post-wheel anchor ${anchor?.id ?? atSettleStart.firstVisible?.id} disappeared`);
 		const anchorRangePx = Math.max(...anchorOffsets) - Math.min(...anchorOffsets);
 		assert(anchorRangePx <= Math.max(2, tolerance), `post-wheel anchor range ${anchorRangePx}px`);
-		return { before, atInputEnd, after, inputCount, inputCursors: [...inputCursors], cursors, anchorRangePx, frameCount: frames.length, frames };
+		return { before, atInputEnd, atSettleStart, after, inputCount, inputCursors: [...inputCursors], cursors, anchorId: anchor?.id, anchorRangePx, frameCount: frames.length, frames };
+	});
+
+	await scenario("continuous-small-wheel-frame-stability", async () => {
+		await client.send("Page.reload", { ignoreCache: true });
+		await sleep(500);
+		await waitFor(`document.querySelector('[data-testid="virtuoso-scroller"]') !== null`, 20_000, "Terminal after small-wheel reload");
+		await returnToLatest();
+		const before = await measure();
+		assert(before.hasOlder === "true", "small-wheel fixture has no older history");
+		await startFrameRecorder();
+		const geometry = await scrollerGeometry();
+		const inputCursors = new Set([before.cursor]);
+		let inputCount = 0;
+		for (let index = 0; index < 220; index += 1) {
+			inputCount += 1;
+			await client.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(geometry.left + geometry.width / 2), y: Math.round(geometry.top + geometry.height / 2), deltaX: 0, deltaY: -32 });
+			await sleep(28);
+			if (inputCount % 5 !== 0) continue;
+			inputCursors.add((await measure()).cursor);
+			if (inputCount >= 80 && inputCursors.size >= 3) break;
+		}
+		await markFrameRecorder("input-end");
+		await sleep(2_500);
+		const recording = await stopFrameRecorder();
+		const inputEnd = recording.marks["input-end"];
+		const paintedFrames = recording.frames.filter((frame) => frame.reason !== "mutation");
+		const jumps = [];
+		let missingSharedFrames = 0;
+		for (let index = 1; index < paintedFrames.length; index += 1) {
+			const previous = paintedFrames[index - 1];
+			const current = paintedFrames[index];
+			const shared = preferredSharedVisibleRow(previous.rows, current.rows);
+			if (!shared) {
+				missingSharedFrames += 1;
+				continue;
+			}
+			const visualDelta = shared.after.top - shared.before.top;
+			if (Math.abs(visualDelta) > 80 || (current.t >= inputEnd && Math.abs(visualDelta) > Math.max(4, tolerance))) {
+				jumps.push({ index, t: current.t, afterInput: current.t >= inputEnd, visualDelta, scrollDelta: current.scrollTop - previous.scrollTop, heightDelta: current.scrollHeight - previous.scrollHeight, rowId: shared.before.id });
+			}
+		}
+		assert(inputCursors.size >= 3, `small-wheel input loaded only ${inputCursors.size - 1} history pages`);
+		assert(missingSharedFrames === 0, `small-wheel traversal lost every shared conceptual row in ${missingSharedFrames} adjacent frames`);
+		assert(jumps.length === 0, `small-wheel traversal produced ${jumps.length} visual jumps; maximum ${Math.max(0, ...jumps.map((jump) => Math.abs(jump.visualDelta)))}px`);
+		const maxRenderedRows = Math.max(0, ...recording.frames.map((frame) => frame.rows.length));
+		assert(maxRenderedRows <= 60, `small-wheel traversal rendered ${maxRenderedRows} rows`);
+		return { before, inputCount, inputCursors: [...inputCursors], frameCount: recording.frames.length, paintedFrameCount: paintedFrames.length, missingSharedFrames, jumps, maxRenderedRows, frames: recording.frames };
 	});
 
 	await scenario("slow-and-rapid-history-prepends", async () => {
@@ -177,6 +244,9 @@ try {
 	});
 
 	await scenario("scrollbar-thumb-drag-defers-history-prepend", async () => {
+		await client.send("Page.reload", { ignoreCache: true });
+		await sleep(500);
+		await waitFor(`document.querySelector('[data-testid="virtuoso-scroller"]') !== null`, 20_000, "Terminal after scrollbar reload");
 		await returnToLatest();
 		const before = await measure();
 		assert(before.hasOlder === "true", "scrollbar fixture has no older history");
@@ -389,8 +459,8 @@ async function startFrameRecorder() {
 		const scroller=document.querySelector('[data-testid="virtuoso-scroller"]');
 		const root=document.querySelector('[data-pibo-component="CompactTerminalSessionView"]');
 		if(!scroller||!root)return false;
-		const started=performance.now(),frames=[],marks={};let stopped=false,lastSignature='',lastRafSample=-Infinity;
-		const capture=(reason)=>{if(stopped)return;const now=performance.now();if(reason==='raf'&&now-lastRafSample<50)return;if(reason==='raf')lastRafSample=now;const viewport=scroller.getBoundingClientRect();const rows=[...document.querySelectorAll('[data-pibo-terminal-row="true"][data-row-id]')].map((row)=>{const rect=row.getBoundingClientRect();return{id:row.getAttribute('data-row-id'),top:Math.round((rect.top-viewport.top)*10)/10,bottom:Math.round((rect.bottom-viewport.top)*10)/10};}).filter((row)=>row.bottom>-200&&row.top<scroller.clientHeight+200).sort((a,b)=>a.top-b.top);const frame={t:Math.round((now-started)*10)/10,reason,scrollTop:Math.round(scroller.scrollTop*10)/10,scrollHeight:Math.round(scroller.scrollHeight*10)/10,bottomGap:Math.round((scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight)*10)/10,cursor:root.getAttribute('data-pibo-trace-next-before'),firstVisible:rows.find((row)=>row.bottom>0)??null,rows};const signature=JSON.stringify([frame.scrollTop,frame.scrollHeight,frame.bottomGap,frame.cursor,frame.firstVisible?.id,rows.map((row)=>[row.id,row.top])]);if(reason==='raf'||signature!==lastSignature||reason==='mark'||reason==='stop'){lastSignature=signature;if(frames.length<1000)frames.push(frame);}};
+		const started=performance.now(),frames=[],marks={};let stopped=false,lastSignature='';
+		const capture=(reason)=>{if(stopped)return;const now=performance.now();const viewport=scroller.getBoundingClientRect();const rows=[...document.querySelectorAll('[data-pibo-terminal-row="true"][data-row-id]')].map((row)=>{const rect=row.getBoundingClientRect();return{id:row.getAttribute('data-row-id'),top:Math.round((rect.top-viewport.top)*10)/10,bottom:Math.round((rect.bottom-viewport.top)*10)/10};}).filter((row)=>row.bottom>-200&&row.top<scroller.clientHeight+200).sort((a,b)=>a.top-b.top);const frame={t:Math.round((now-started)*10)/10,reason,scrollTop:Math.round(scroller.scrollTop*10)/10,scrollHeight:Math.round(scroller.scrollHeight*10)/10,bottomGap:Math.round((scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight)*10)/10,cursor:root.getAttribute('data-pibo-trace-next-before'),firstVisible:rows.find((row)=>row.bottom>0)??null,rows};const signature=JSON.stringify([frame.scrollTop,frame.scrollHeight,frame.bottomGap,frame.cursor,frame.firstVisible?.id,rows.map((row)=>[row.id,row.top])]);if(reason==='raf'||signature!==lastSignature||reason==='mark'||reason==='stop'){lastSignature=signature;if(frames.length<5000)frames.push(frame);}};
 		const observer=new MutationObserver(()=>capture('mutation'));observer.observe(scroller,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['style','data-row-id']});
 		const raf=()=>{capture('raf');if(!stopped)requestAnimationFrame(raf);};requestAnimationFrame(raf);capture('start');
 		window.__piboTerminalFrameRecorder={mark(name){marks[name]=Math.round((performance.now()-started)*10)/10;capture('mark');return marks[name];},stop(){capture('stop');stopped=true;observer.disconnect();return{frames,marks};}};return true;
@@ -429,10 +499,11 @@ async function key(keyValue, code, keyCode) {
 }
 
 async function returnToLatest() {
-	await evaluate(`document.querySelector('button[aria-label="Scroll to latest"]')?.click()`);
-	await key("End", "End", 35);
-	await sleep(500);
+	const hadButton = await evaluate(`Boolean(document.querySelector('button[aria-label="Scroll to latest"]'))`);
+	if (hadButton) await evaluate(`document.querySelector('button[aria-label="Scroll to latest"]')?.click()`);
+	else await key("End", "End", 35);
 	await waitFor(`(() => {const s=document.querySelector('[data-testid="virtuoso-scroller"]');return s && s.scrollHeight-s.scrollTop-s.clientHeight<=${tolerance} && !document.querySelector('button[aria-label="Scroll to latest"]');})()`, 8_000, "latest content");
+	await sleep(350);
 }
 
 async function detachWithPageUp() {
