@@ -187,6 +187,124 @@ test("custom agent store archives and deletes agents", () => {
 	store.close();
 });
 
+test("custom agent store rejects deletion while surviving agents target the profile or an alias", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	const target = store.create({ displayName: "original-target" });
+	const renamedTarget = store.update(target.id, { displayName: "current-target" });
+	const first = store.create({
+		displayName: "first-dependent",
+		subagents: [
+			{ name: "helper", targetProfile: renamedTarget.profileName },
+			{ name: "legacy-helper", targetProfile: "original-target" },
+		],
+	});
+	const second = store.create({
+		displayName: "second-dependent",
+		subagents: [{ name: "id-helper", targetProfile: target.id }],
+	});
+	store.setArchived(second.id, true);
+
+	assert.deepEqual(
+		store.listReferencingAgents(target.id).map((agent) => agent.profileName),
+		["first-dependent", "second-dependent"],
+	);
+	assert.throws(
+		() => store.delete(target.id),
+		/Custom agent "current-target" is targeted by custom agents: first-dependent, second-dependent/,
+	);
+	assert.equal(store.get(target.id).profileName, "current-target");
+	assert.deepEqual(store.get(target.id).profileAliases, ["original-target"]);
+
+	store.update(first.id, { subagents: [] });
+	assert.deepEqual(store.listReferencingAgents(target.id).map((agent) => agent.profileName), ["second-dependent"]);
+	store.update(second.id, {
+		subagents: [{ name: "prefixed-id-helper", targetProfile: `custom-agent:${target.id}` }],
+	});
+	assert.deepEqual(store.listReferencingAgents(target.id).map((agent) => agent.profileName), ["second-dependent"]);
+	store.update(second.id, { subagents: [] });
+	assert.deepEqual(store.listReferencingAgents(target.id), []);
+	assert.equal(store.delete(target.id), true);
+	store.close();
+
+	const reopened = new CustomAgentStore(path);
+	assert.equal(reopened.get(target.id), undefined);
+	assert.deepEqual(reopened.get(first.id).subagents, []);
+	assert.deepEqual(reopened.get(second.id).subagents, []);
+	reopened.close();
+});
+
+test("custom agent reference checks handle self, chains, unreferenced agents, and missing targets", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	const leaf = store.create({ displayName: "chain-leaf" });
+	const middle = store.create({
+		displayName: "chain-middle",
+		subagents: [{ name: "leaf", targetProfile: leaf.profileName }],
+	});
+	const root = store.create({
+		displayName: "chain-root",
+		subagents: [{ name: "middle", targetProfile: middle.profileName }],
+	});
+	const selfTarget = store.create({
+		displayName: "self-target",
+		subagents: [{ name: "self", targetProfile: "self-target" }],
+	});
+	const unrelated = store.create({ displayName: "unrelated-agent" });
+
+	assert.deepEqual(store.listReferencingAgents(leaf.id).map((agent) => agent.profileName), ["chain-middle"]);
+	assert.deepEqual(store.listReferencingAgents(middle.id).map((agent) => agent.profileName), ["chain-root"]);
+	assert.deepEqual(store.listReferencingAgents(selfTarget.id), []);
+	assert.equal(store.delete(selfTarget.id), true);
+	assert.equal(store.delete(unrelated.id), true);
+	assert.throws(() => store.delete(leaf.id), /chain-middle/);
+	assert.throws(() => store.delete(middle.id), /chain-root/);
+
+	store.update(root.id, { subagents: [] });
+	assert.equal(store.delete(middle.id), true);
+	assert.equal(store.delete(leaf.id), true);
+	assert.equal(store.delete("agent_already_missing"), false);
+	store.close();
+
+	const db = new DatabaseSync(path);
+	db.prepare("UPDATE chat_agents SET subagents_json = ? WHERE id = ?").run(
+		JSON.stringify([{ name: "missing", targetProfile: "already-missing-target" }]),
+		root.id,
+	);
+	db.close();
+
+	const reopened = new CustomAgentStore(path);
+	assert.deepEqual(reopened.get(root.id).subagents, [{ name: "missing", targetProfile: "already-missing-target" }]);
+	assert.equal(reopened.delete("agent_already_missing"), false);
+	assert.deepEqual(reopened.update(root.id, { subagents: [] }).subagents, []);
+	reopened.close();
+});
+
+test("custom agent deletion rolls back alias removal when deleting the agent fails", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
+	const store = new CustomAgentStore(path);
+	const target = store.create({ displayName: "rollback-original" });
+	store.update(target.id, { displayName: "rollback-current" });
+
+	const db = new DatabaseSync(path);
+	db.exec(`
+		CREATE TRIGGER reject_agent_delete
+		BEFORE DELETE ON chat_agents
+		WHEN OLD.id = '${target.id}'
+		BEGIN
+			SELECT RAISE(ABORT, 'synthetic delete failure');
+		END;
+	`);
+	assert.throws(() => store.delete(target.id), /synthetic delete failure/);
+	assert.equal(store.get(target.id).profileName, "rollback-current");
+	assert.deepEqual(store.get(target.id).profileAliases, ["rollback-original"]);
+
+	db.exec("DROP TRIGGER reject_agent_delete");
+	db.close();
+	assert.equal(store.delete(target.id), true);
+	store.close();
+});
+
 test("custom agent store organizes agents in durable renamable folders", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-folders-")), "agents.sqlite");
 	const store = new CustomAgentStore(path);
@@ -341,8 +459,18 @@ test("custom agent store migrates duplicate profile names before enforcing globa
 	assert.equal(agents.length, 2);
 	assert.equal(agents.find((agent) => agent.id === "agent_new").profileName, "helper");
 	assert.match(agents.find((agent) => agent.id === "agent_old").profileName, /^helper-legacy-[a-f0-9]{8}$/);
+	assert.ok(agents.every((agent) => agent.profileAliases.length === 0));
 	assert.ok(agents.every((agent) => !(retiredPartitionField in agent)));
 	store.close();
+
+	const reopened = new CustomAgentStore(path);
+	assert.deepEqual(
+		reopened.list({ includeArchived: true })
+			.map(({ id, profileName, profileAliases }) => ({ id, profileName, profileAliases }))
+			.sort((left, right) => left.id.localeCompare(right.id)),
+		agents.map(({ id, profileName, profileAliases }) => ({ id, profileName, profileAliases })),
+	);
+	reopened.close();
 
 	const migratedDb = new DatabaseSync(path);
 	assert.equal(tableColumns(migratedDb, "chat_agents").has(retiredStorageColumn), false);

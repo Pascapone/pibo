@@ -1,9 +1,47 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 6;
+export const PIBO_DATA_SCHEMA_VERSION = 7;
 
-export function applyPiboDataSchema(db: DatabaseSync): void {
-	const previousVersion = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
+export function assertSupportedPiboDataSchemaVersion(db: DatabaseSync): number {
+	const version = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
+	if (version > PIBO_DATA_SCHEMA_VERSION) {
+		throw new Error(`Pibo database schema version ${version} is newer than supported version ${PIBO_DATA_SCHEMA_VERSION}`);
+	}
+	return version;
+}
+
+export const PIBO_DATA_SCHEMA_MIGRATION_STEPS = [
+	"schema",
+	"runtime-bindings",
+	"render-high-water",
+	"sequence-repair-selection",
+	"sequence-repair-temporary",
+	"sequence-repair-backfill",
+	"sequence-repair-cleanup",
+	"runtime-binding-metadata",
+	"user-version",
+] as const;
+
+export type PiboDataSchemaMigrationStep = typeof PIBO_DATA_SCHEMA_MIGRATION_STEPS[number];
+
+export type PiboDataSchemaMigrationHooks = {
+	afterStep?(step: PiboDataSchemaMigrationStep): void;
+};
+
+export function applyPiboDataSchema(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks = {}): void {
+	const previousVersion = assertSupportedPiboDataSchemaVersion(db);
+	const ownsTransaction = !db.isTransaction;
+	if (ownsTransaction) db.exec("BEGIN IMMEDIATE");
+	try {
+		applyPiboDataSchemaInTransaction(db, hooks, previousVersion);
+		if (ownsTransaction) db.exec("COMMIT");
+	} catch (error) {
+		if (ownsTransaction && db.isTransaction) db.exec("ROLLBACK");
+		throw error;
+	}
+}
+
+function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks, previousVersion: number): void {
 	const existingSessionCount = db.prepare("SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'sessions'").get() as { count: number };
 	const hadSessionsBeforeMigration = existingSessionCount.count > 0
 		&& Number((db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number }).count) > 0;
@@ -48,6 +86,42 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			updated_at TEXT NOT NULL,
 			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
+
+		CREATE TABLE IF NOT EXISTS session_output_render_high_water (
+			pibo_session_id TEXT PRIMARY KEY,
+			high_water INTEGER NOT NULL CHECK(high_water >= 0),
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS session_tool_invocation_counters (
+			pibo_session_id TEXT NOT NULL,
+			event_id TEXT NOT NULL,
+			tool_call_id TEXT NOT NULL,
+			next_ordinal INTEGER NOT NULL CHECK(next_ordinal >= 0),
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (pibo_session_id, event_id, tool_call_id),
+			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS session_tool_invocations (
+			pibo_session_id TEXT NOT NULL,
+			event_id TEXT NOT NULL,
+			tool_call_id TEXT NOT NULL,
+			invocation_ordinal INTEGER NOT NULL CHECK(invocation_ordinal >= 0),
+			call_fingerprint TEXT,
+			status TEXT NOT NULL CHECK(status IN ('open', 'closed')),
+			seen_call INTEGER NOT NULL DEFAULT 0 CHECK(seen_call IN (0, 1)),
+			seen_started INTEGER NOT NULL DEFAULT 0 CHECK(seen_started IN (0, 1)),
+			seen_updated INTEGER NOT NULL DEFAULT 0 CHECK(seen_updated IN (0, 1)),
+			seen_finished INTEGER NOT NULL DEFAULT 0 CHECK(seen_finished IN (0, 1)),
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (pibo_session_id, event_id, tool_call_id, invocation_ordinal),
+			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+		CREATE INDEX IF NOT EXISTS idx_session_tool_invocations_open
+			ON session_tool_invocations(pibo_session_id, event_id, tool_call_id, status, invocation_ordinal DESC);
 
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_session_runtime_bindings_native
 			ON session_runtime_bindings(runtime_adapter_id, native_session_id)
@@ -519,6 +593,7 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_retention_updated
 			ON telemetry_tool_calls(retention_class, updated_at);
 	`);
+	hooks.afterStep?.("schema");
 	db.exec(`
 		INSERT OR IGNORE INTO session_runtime_bindings (
 			pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
@@ -539,6 +614,61 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			WHERE existing.pibo_session_id = sessions.id
 		);
 	`);
+	hooks.afterStep?.("runtime-bindings");
+	db.exec(`
+		INSERT INTO session_output_render_high_water (pibo_session_id, high_water, updated_at)
+		SELECT
+			id,
+			CAST(json_extract(metadata_json, '$.outputRenderSequenceHighWater') AS INTEGER),
+			updated_at
+		FROM sessions
+		WHERE json_type(metadata_json, '$.outputRenderSequenceHighWater') IN ('integer', 'real')
+			AND CAST(json_extract(metadata_json, '$.outputRenderSequenceHighWater') AS INTEGER) >= 0
+		ON CONFLICT(pibo_session_id) DO UPDATE SET
+			high_water = MAX(session_output_render_high_water.high_water, excluded.high_water),
+			updated_at = CASE
+				WHEN excluded.high_water > session_output_render_high_water.high_water THEN excluded.updated_at
+				ELSE session_output_render_high_water.updated_at
+			END;
+	`);
+	hooks.afterStep?.("render-high-water");
+	// Always inspect for interrupted pre-atomic v7 repairs. A previous process
+	// may have written negative temporary values before setting user_version.
+	db.exec(`
+		DROP TABLE IF EXISTS temp.pibo_v7_sequence_repair_sessions;
+		CREATE TEMP TABLE pibo_v7_sequence_repair_sessions (
+			session_id TEXT PRIMARY KEY
+		);
+		INSERT INTO pibo_v7_sequence_repair_sessions (session_id)
+		SELECT DISTINCT session_id
+		FROM event_log
+		WHERE session_id IS NOT NULL
+			AND (session_sequence IS NULL OR session_sequence <= 0);
+	`);
+	hooks.afterStep?.("sequence-repair-selection");
+	db.exec(`
+		UPDATE event_log
+		SET session_sequence = -stream_id
+		WHERE session_id IN (SELECT session_id FROM pibo_v7_sequence_repair_sessions);
+	`);
+	hooks.afterStep?.("sequence-repair-temporary");
+	db.exec(`
+		WITH ranked AS (
+			SELECT
+				stream_id,
+				ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY stream_id ASC) AS repaired_sequence
+			FROM event_log
+			WHERE session_id IN (SELECT session_id FROM pibo_v7_sequence_repair_sessions)
+		)
+		UPDATE event_log
+		SET session_sequence = (
+			SELECT repaired_sequence FROM ranked WHERE ranked.stream_id = event_log.stream_id
+		)
+		WHERE stream_id IN (SELECT stream_id FROM ranked);
+	`);
+	hooks.afterStep?.("sequence-repair-backfill");
+	db.exec("DROP TABLE pibo_v7_sequence_repair_sessions");
+	hooks.afterStep?.("sequence-repair-cleanup");
 	if (previousVersion < PIBO_DATA_SCHEMA_VERSION && hadSessionsBeforeMigration) {
 		const rows = db.prepare("SELECT pibo_session_id, metadata_json FROM session_runtime_bindings").all() as Array<{
 			pibo_session_id: string;
@@ -561,5 +691,7 @@ export function applyPiboDataSchema(db: DatabaseSync): void {
 			}), row.pibo_session_id);
 		}
 	}
+	hooks.afterStep?.("runtime-binding-metadata");
 	db.exec(`PRAGMA user_version = ${PIBO_DATA_SCHEMA_VERSION}`);
+	hooks.afterStep?.("user-version");
 }

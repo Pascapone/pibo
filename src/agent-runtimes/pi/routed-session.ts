@@ -1333,9 +1333,15 @@ export class RoutedSession {
 			return this.enqueueCompactAction(event);
 		}
 
-		const changesSessionIdentity = event.action === "session.fork" || event.action === "session.clone";
-		if (changesSessionIdentity) {
-			this.assertSessionIdentityOperationIdle(event.action === "session.fork" ? "fork" : "clone");
+		const sessionIdentityOperation = event.action === "session.fork"
+			? "fork"
+			: event.action === "session.clone"
+				? "clone"
+				: event.action === "session.switch"
+					? "switch"
+					: undefined;
+		if (sessionIdentityOperation) {
+			this.assertSessionIdentityOperationIdle(sessionIdentityOperation);
 			this.sessionIdentityOperationInFlight = true;
 		}
 		try {
@@ -1351,7 +1357,7 @@ export class RoutedSession {
 			this.emit(output);
 			return output;
 		} finally {
-			if (changesSessionIdentity) this.sessionIdentityOperationInFlight = false;
+			if (sessionIdentityOperation) this.sessionIdentityOperationInFlight = false;
 		}
 	}
 

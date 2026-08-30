@@ -425,6 +425,7 @@ export async function runGatewayCli(argv = process.argv): Promise<void> {
 	const hasForceFlag = args.includes("--force");
 
 	if (subcommand === "web" || subcommand === "dev") {
+		if (args.slice(2).some((arg) => arg === "--help" || arg === "-h")) { printGatewayHelp(); return; }
 		const handled = await runManagedGatewayCommand(subcommand, args[2], args.slice(3), argv);
 		if (!handled) { console.error(`Unknown gateway ${subcommand} subcommand: ${args[2] ?? ""}`); printGatewayHelp(); process.exitCode = 1; }
 		return;

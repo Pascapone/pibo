@@ -21,7 +21,7 @@
 //   import { createRelease } from "./scripts/create-github-release.mjs";
 //   await createRelease({ owner, repo, tag, assetPath, fetchImpl });
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -35,7 +35,37 @@ const USER_AGENT = "pibo-create-github-release";
 const DEFAULT_OWNER = "Pascapone";
 const DEFAULT_REPO = "pibo";
 const DEFAULT_TARGET = "main";
-const ASSET_MAX_BYTES = 64 * 1024 * 1024;
+export const ASSET_MAX_BYTES = 64 * 1024 * 1024;
+
+export function preflightReleaseAsset(assetPath, assetName = basename(assetPath)) {
+	let stats;
+	try {
+		stats = statSync(assetPath);
+	} catch (error) {
+		throw new Error(`Asset ${assetPath} cannot be read: ${error.code ?? error.message}`);
+	}
+	if (!stats.isFile()) {
+		throw new Error(`Asset ${assetPath} is not a regular file`);
+	}
+	if (stats.size > ASSET_MAX_BYTES) {
+		throw new Error(
+			`Asset ${assetPath} is ${stats.size} bytes, exceeding limit of ${ASSET_MAX_BYTES} bytes`,
+		);
+	}
+
+	let bytes;
+	try {
+		bytes = readFileSync(assetPath);
+	} catch (error) {
+		throw new Error(`Asset ${assetPath} cannot be read: ${error.code ?? error.message}`);
+	}
+	if (bytes.byteLength > ASSET_MAX_BYTES) {
+		throw new Error(
+			`Asset ${assetPath} is ${bytes.byteLength} bytes, exceeding limit of ${ASSET_MAX_BYTES} bytes`,
+		);
+	}
+	return { name: assetName, bytes, size: bytes.byteLength };
+}
 
 function parseArgs(argv) {
 	const parsed = {
@@ -165,6 +195,9 @@ export async function createRelease(options) {
 	if (!options.appId || !options.appKeyPath) {
 		throw new Error("createRelease: appId and appKeyPath are required");
 	}
+	const preparedAsset = options.assetPath
+		? preflightReleaseAsset(options.assetPath, options.assetName)
+		: undefined;
 	const fetchImpl = options.fetchImpl ?? fetch;
 	const privateKeyPem = readFileSync(options.appKeyPath, "utf8");
 	const { token: accessToken } = await getInstallationAccessToken(
@@ -218,16 +251,9 @@ export async function createRelease(options) {
 	);
 
 	let uploadedAsset;
-	if (options.assetPath) {
-		const assetName = options.assetName ?? basename(options.assetPath);
-		const bytes = readFileSync(options.assetPath);
-		if (bytes.byteLength > ASSET_MAX_BYTES) {
-			throw new Error(
-				`Asset ${options.assetPath} is ${bytes.byteLength} bytes, exceeding limit of ${ASSET_MAX_BYTES} bytes`,
-			);
-		}
+	if (preparedAsset) {
 		const uploadUrl =
-			`${release.upload_url.split("{")[0]}?name=${encodeURIComponent(assetName)}`;
+			`${release.upload_url.split("{")[0]}?name=${encodeURIComponent(preparedAsset.name)}`;
 		const response = await fetchImpl(uploadUrl, {
 			method: "POST",
 			headers: {
@@ -236,9 +262,9 @@ export async function createRelease(options) {
 				"Content-Type": "application/octet-stream",
 				"X-GitHub-Api-Version": "2022-11-28",
 				"User-Agent": USER_AGENT,
-				"Content-Length": String(bytes.byteLength),
+				"Content-Length": String(preparedAsset.size),
 			},
-			body: bytes,
+			body: preparedAsset.bytes,
 		});
 		if (!response.ok) {
 			const text = await response.text();
