@@ -278,6 +278,7 @@ export function SessionTraceHeader({
           onClick={onToggleRawEvents}
           title={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
           ariaLabel="Raw Events"
+          ariaControls="raw-events-inspector"
           active={showRawEvents}
         >
           <Bug size={14} />
@@ -312,12 +313,14 @@ export function SessionTraceHeader({
 function HeaderIconButton({
   title,
   ariaLabel,
+  ariaControls,
   active,
   onClick,
   children,
 }: {
   title: string;
   ariaLabel: string;
+  ariaControls?: string;
   active: boolean;
   onClick: () => void;
   children: ReactNode;
@@ -328,6 +331,7 @@ function HeaderIconButton({
       onClick={onClick}
       title={title}
       aria-label={ariaLabel}
+      aria-controls={ariaControls}
       aria-pressed={active}
       className={`h-8 w-8 inline-flex items-center justify-center border rounded-sm transition-colors ${
         active
