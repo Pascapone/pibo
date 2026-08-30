@@ -2815,7 +2815,10 @@ export class PiboSessionRouter {
 	}
 
 	private projectKnownSessionSignals(): void {
-		for (const session of this.sessionStore.list?.() ?? []) {
+		const sessions = this.sessionStore.list?.() ?? [];
+		const depthBySessionId = new Map(sessions.map((session) => [session.id, this.getSubagentDepth(session.id)]));
+		sessions.sort((left, right) => (depthBySessionId.get(left.id) ?? 0) - (depthBySessionId.get(right.id) ?? 0));
+		for (const session of sessions) {
 			this.signalRegistry.project({ type: "session_created", session });
 		}
 	}
