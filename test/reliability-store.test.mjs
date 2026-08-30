@@ -132,6 +132,61 @@ test("job claims are exclusive, retry backs off, and exhausted retry moves to DL
 	}
 });
 
+test("direct, recoverable, and batch claims dead-letter jobs before exceeding maxAttempts", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const recoverable = store.enqueue({ queue: "recoverable", payload: { value: 1 }, maxAttempts: 2 });
+		assert.equal(store.claimJob(recoverable.jobId, "worker-1", 1000)?.attempts, 1);
+		store.db.prepare("UPDATE pibo_jobs SET claim_expires_at = ? WHERE job_id = ?")
+			.run("2000-01-01T00:00:00.000Z", recoverable.jobId);
+		assert.equal(store.claimRecoverableJob(recoverable.jobId, "worker-2", 1000)?.attempts, 2);
+		store.db.prepare("UPDATE pibo_jobs SET claim_expires_at = ? WHERE job_id = ?")
+			.run("2000-01-01T00:00:00.000Z", recoverable.jobId);
+		assert.equal(store.claimRecoverableJob(recoverable.jobId, "worker-3", 1000), undefined);
+		assert.equal(store.hasLiveJob(recoverable.jobId), false);
+		assert.deepEqual(store.listDead({ queue: "recoverable" }).map((job) => ({
+			attempts: job.attempts,
+			maxAttempts: job.maxAttempts,
+			deadReason: job.deadReason,
+			lastError: job.lastError,
+		})), [{
+			attempts: 2,
+			maxAttempts: 2,
+			deadReason: "max_attempts",
+			lastError: "Job exhausted retry attempts.",
+		}]);
+
+		const batch = store.enqueue({ queue: "batch", payload: { value: 2 }, maxAttempts: 1 });
+		assert.equal(store.claimBatch("batch-worker-1", 1, { queue: "batch", visibilityTimeoutMs: 1000 })[0]?.attempts, 1);
+		store.db.prepare("UPDATE pibo_jobs SET claim_expires_at = ? WHERE job_id = ?")
+			.run("2000-01-01T00:00:00.000Z", batch.jobId);
+		assert.deepEqual(store.claimBatch("batch-worker-2", 1, { queue: "batch" }), []);
+		assert.equal(store.hasRecoverableJobs("batch", true), false);
+		assert.equal(store.listDead({ queue: "batch" })[0]?.deadReason, "max_attempts");
+
+		const pending = store.enqueue({ queue: "direct", payload: { value: 3 }, maxAttempts: 1 });
+		store.db.prepare("UPDATE pibo_jobs SET attempts = max_attempts WHERE job_id = ?").run(pending.jobId);
+		assert.equal(store.claimJob(pending.jobId, "direct-worker"), undefined);
+		assert.equal(store.listDead({ queue: "direct" })[0]?.deadReason, "max_attempts");
+	} finally {
+		store.close();
+	}
+});
+
+test("releasing the final permitted claim moves the job to the DLQ", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const job = store.enqueue({ queue: "release", payload: { value: 1 }, maxAttempts: 1 });
+		const claimed = store.claimJob(job.jobId, "worker", 1000);
+		assert.ok(claimed);
+		assert.equal(store.releaseJob(job.jobId, "worker", 0, claimed.claimToken), true);
+		assert.equal(store.hasLiveJob(job.jobId), false);
+		assert.equal(store.listDead({ queue: "release" })[0]?.deadReason, "max_attempts");
+	} finally {
+		store.close();
+	}
+});
+
 test("recoverInterruptedRuns reconciles an unexpired claim owned by a previous runtime", () => {
 	const store = new PiboReliabilityStore(":memory:");
 	try {
@@ -246,10 +301,42 @@ test("recoverInterruptedRuns queues retryable expired runs and makes their jobs 
 	}
 });
 
+test("recoverInterruptedRuns dead-letters a retryable run whose persisted job exhausted maxAttempts", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const run = store.createRun({
+			controllerPiboSessionId: "ps_parent",
+			toolName: "retryable_tool",
+			completionPolicy: "tracked",
+			retryable: true,
+			maxAttempts: 2,
+			workerId: "run-registry:previous-runtime",
+		});
+		store.db.prepare("UPDATE pibo_jobs SET attempts = max_attempts, claim_expires_at = ? WHERE job_id = ?")
+			.run("2000-01-01T00:00:00.000Z", run.jobId);
+
+		const recovered = store.recoverInterruptedRuns("run-registry:new-runtime");
+
+		assert.equal(recovered.length, 1);
+		assert.equal(recovered[0].status, "failed");
+		assert.equal(recovered[0].error, "Job exhausted retry attempts.");
+		assert.ok(recovered[0].completedAt);
+		assert.deepEqual(store.listJobs({ queue: "runs" }), []);
+		const dead = store.listDead({ queue: "runs" });
+		assert.equal(dead.length, 1);
+		assert.equal(dead[0].jobId, run.jobId);
+		assert.equal(dead[0].attempts, 2);
+		assert.equal(dead[0].maxAttempts, 2);
+		assert.equal(dead[0].deadReason, "max_attempts");
+	} finally {
+		store.close();
+	}
+});
+
 test("expired claim cannot ack and DLQ replay creates a new live job", () => {
 	const store = new PiboReliabilityStore(":memory:");
 	try {
-		const job = store.enqueue({ queue: "runs", payload: { runId: "run_1" } });
+		const job = store.enqueue({ queue: "runs", payload: { runId: "run_1" }, maxAttempts: 2 });
 		store.claimBatch("worker-a", 1, { visibilityTimeoutMs: 1 });
 
 		return new Promise((resolve) => {
