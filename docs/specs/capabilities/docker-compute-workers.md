@@ -73,12 +73,13 @@ The compute system MUST rebuild `pibo:latest` only when the selected command's r
 
 #### Current
 
-One-time `spawn` checks `imageExists()` and `shouldRebuild()` using a source hash stored at `~/.pibo/compute-image-hash`. Dev `spawn` checks `shouldRebuildDeps()` using package and Dockerfile hashes stored at `~/.pibo/compute-dep-hash`. `rebuild` always builds and saves both hashes.
+One-time `spawn` checks `imageExists()` and `shouldRebuild()` using an effective Docker build-context hash stored at `~/.pibo/compute-image-hash`. Dev `spawn` checks `shouldRebuildDeps()` using package and Dockerfile hashes stored at `~/.pibo/compute-dep-hash`. `rebuild` always builds and saves both hashes.
 
 #### Acceptance
 
 - Missing image `pibo:latest` triggers a build before spawn.
-- One-time spawn rebuilds when TypeScript/TSX source, package files, or Dockerfile hashes differ from the saved source hash.
+- One-time spawn rebuilds when any file, path, symlink target, or permission in the effective Docker build context differs from the saved source hash.
+- One-time spawn follows `Dockerfile.dockerignore` when present and otherwise `.dockerignore`; changes to either ignore file or `Dockerfile` always invalidate the source hash.
 - Dev spawn rebuilds when `package.json`, `package-lock.json`, or `Dockerfile` hashes differ from the saved dependency hash.
 - `pibo compute rebuild` forces a Docker build and refreshes both hash files.
 - Hash files are stored under `~/.pibo/` and their parent directory is created when needed.
@@ -377,7 +378,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 |---|---|---|---|
 | CLI discovery | `pibo compute --help` lists `spawn`, `dev`, `rebuild`, `list`, `release`, and `reap`; output points to `pibo compute spawn --help` and `pibo compute dev --help`; `pibo compute dev --help` points only to `pibo compute dev spawn --help`. | REQ-001 | `test/compute-cli.test.mjs` |
 | CLI validation without Docker | `pibo compute dev spawn` without `--worktree` fails through Commander before Docker or Git commands run; unknown compute subcommands fail with help/error output. | REQ-001, REQ-004 | `test/compute-cli.test.mjs` |
-| Hash predicates | Dependency hash changes for `package.json`, `package-lock.json`, or `Dockerfile`; source hash includes TypeScript/TSX and package/Dockerfile inputs while skipping generated or local-state directories. | REQ-002 | unit test with temporary workspace |
+| Hash predicates | Dependency hash changes for `package.json`, `package-lock.json`, or `Dockerfile`; source hash includes the effective Docker build context while skipping `.dockerignore` exclusions. | REQ-002 | unit test with temporary workspace |
 | Docker command construction | Mock `docker` and `git` commands to verify one-time worker labels, dynamic exposed ports, dev worker labels, deterministic port mapping, optional controller labels, and node_modules mount behavior. | REQ-003, REQ-004 | command-stub unit test |
 | Cleanup selection | `listWorkers()` includes worker and dev roles by default; `reapWorkers()` removes only role `worker` by default and includes old dev workers only with `includeDev: true`; release never removes worktree directories. | REQ-007 | command-stub unit test |
 
