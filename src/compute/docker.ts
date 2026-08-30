@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
-import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, readlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import dockerIgnoreModule, { type Ignore as DockerIgnore } from "@balena/dockerignore";
 import {
 	COMPUTE_RESOURCE_POLICY_LABELS,
 	buildComputeResourcePolicyLabels,
@@ -12,6 +13,7 @@ import {
 } from "./resource-policy.js";
 
 const execFileAsync = promisify(execFile);
+const createDockerIgnore = dockerIgnoreModule as unknown as (options?: { ignorecase?: boolean }) => DockerIgnore;
 
 export const IMAGE_NAME = "pibo:latest";
 export const LABEL_ROLE = "pibo.compute.role";
@@ -71,44 +73,74 @@ export async function getDependencyHash(workspaceDir: string): Promise<string> {
 
 export async function getSourceHash(workspaceDir: string): Promise<string> {
 	const hash = createHash("sha256");
-	const files: string[] = [];
 
-	async function walk(dir: string) {
-		const entries = await readdir(dir, { withFileTypes: true });
-		for (const entry of entries) {
-			const fullPath = path.join(dir, entry.name);
-			if (entry.isDirectory()) {
-				if (
-					entry.name === "node_modules" ||
-					entry.name === ".git" ||
-					entry.name === "dist" ||
-					entry.name === ".pibo" ||
-					entry.name === "plans" ||
-					entry.name === "Reports"
-				) {
-					continue;
-				}
-				await walk(fullPath);
-			} else if (entry.isFile()) {
-				if (
-					entry.name.endsWith(".ts") ||
-					entry.name.endsWith(".tsx") ||
-					entry.name === "package.json" ||
-					entry.name === "package-lock.json" ||
-					entry.name === "Dockerfile"
-				) {
-					files.push(fullPath);
-				}
-			}
+	async function readOptionalFile(filePath: string): Promise<string | undefined> {
+		try {
+			return await readFile(filePath, "utf8");
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+			throw error;
 		}
 	}
 
-	await walk(workspaceDir);
-	files.sort();
+	const dockerfileIgnore = await readOptionalFile(path.join(workspaceDir, "Dockerfile.dockerignore"));
+	const rootIgnore = await readOptionalFile(path.join(workspaceDir, ".dockerignore"));
+	const activeIgnore = dockerfileIgnore ?? rootIgnore ?? "";
+	const contextIgnore = createDockerIgnore({ ignorecase: false }).add(
+		activeIgnore
+			.split(/\r?\n/u)
+			.filter((line) => line.trim() !== ".")
+			.join("\n"),
+	);
+	const hasNegatedPattern = activeIgnore.split(/\r?\n/u).some((line) => /^\/*!/u.test(line.trim()));
+	const contextEntries: Array<{ relativePath: string; type: "directory" | "file" | "symlink" | "other" }> = [];
 
-	for (const file of files) {
-		const content = await readFile(file);
-		hash.update(content);
+	function isIgnored(relativePath: string, directory: boolean): boolean {
+		if (relativePath === "Dockerfile" || relativePath === ".dockerignore" || relativePath === "Dockerfile.dockerignore") {
+			return false;
+		}
+		return contextIgnore.ignores(directory ? `${relativePath}/` : relativePath);
+	}
+
+	async function walk(dir: string, relativeDir = ""): Promise<boolean> {
+		let containsIncludedEntry = false;
+		const entries = await readdir(dir, { withFileTypes: true });
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry.name);
+			const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) {
+				const ignored = isIgnored(relativePath, true);
+				if (ignored && !hasNegatedPattern) continue;
+				const containsIncludedChild = await walk(fullPath, relativePath);
+				if (!ignored || containsIncludedChild) {
+					contextEntries.push({ relativePath, type: "directory" });
+					containsIncludedEntry = true;
+				}
+			} else if (!isIgnored(relativePath, false)) {
+				contextEntries.push({ relativePath, type: entry.isFile() ? "file" : entry.isSymbolicLink() ? "symlink" : "other" });
+				containsIncludedEntry = true;
+			}
+		}
+		return containsIncludedEntry;
+	}
+
+	await walk(workspaceDir);
+	contextEntries.sort((a, b) => (a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0));
+
+	function update(value: string | Buffer): void {
+		const bytes = typeof value === "string" ? Buffer.from(value) : value;
+		hash.update(`${bytes.length}:`);
+		hash.update(bytes);
+	}
+
+	for (const entry of contextEntries) {
+		const fullPath = path.join(workspaceDir, entry.relativePath);
+		const stat = await lstat(fullPath);
+		update(entry.type);
+		update(entry.relativePath);
+		update(String(stat.mode & 0o777));
+		if (entry.type === "file") update(await readFile(fullPath));
+		else if (entry.type === "symlink") update(await readlink(fullPath));
 	}
 
 	return hash.digest("hex");
