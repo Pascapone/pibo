@@ -41,3 +41,13 @@
 - [x] Re-run full typecheck/build, the relevant 37-test suite, controller-focused behavior test, and `git diff --check`.
 - [x] Repeat headful 1440×900 Preview, 1920×1080 workflow-version, and 390×844 Mobile validation plus stable CDP monitoring.
 - [x] Update final validation artifacts and report, then prepare the focused commit for fast-forward into the target worktree.
+
+## Release-gate corrections
+
+- [x] Replace both incompatible React Test Renderer `act` lookups with the verified controller-compatible `react-dom/test-utils.act` implementation.
+- [x] Add deterministic Preview-loss behavior coverage and automatically restore the Desktop shell from Preview fullscreen.
+- [x] Render workflow-version deep links through the existing viewer on Mobile while retaining the ordinary workflow/draft fallback.
+- [x] Add focused Desktop/Mobile workflow route-render coverage.
+- [x] Run typecheck, build, Chat UI build, the complete relevant suite, and both exact tests sequentially with direct exit statuses.
+- [x] Validate Desktop Preview loss/exit and the Mobile workflow-version deep link in a headful browser.
+- [x] Update the validation evidence and prepare the release-gate batch for commit and fast-forward into `sidebar-browser-tabs`.

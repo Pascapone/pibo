@@ -9,6 +9,9 @@
 - Worker worktree: `/root/code/pibo/.worktrees/sidebar-browser-tabs-review-worker`
 - Final-hardening worker: `pibo-dev-sidebar-browser-tabs-final-hardening-worker`
 - Final-hardening worker worktree: `/root/code/pibo/.worktrees/sidebar-browser-tabs-final-hardening-worker`
+- Release-gate base commit: `c0fb8567c232c5549b2ee94762310f40ab206632`
+- Release-gate worker: `pibo-dev-sidebar-browser-tabs-release-gate-worker`
+- Release-gate worker worktree: `/root/code/pibo/.worktrees/sidebar-browser-tabs-release-gate-worker`
 - Worker gateway: local auth on container ports `4788`/`4789`, exposed only through the worker
 - The correction commit is fast-forwarded into the target worktree after all gates pass. No host gateway, deployment, push, or pull request is involved.
 
@@ -26,9 +29,15 @@
 
 ## Final independent review hardening
 
-1. `chat-ui-desktop-tabs-behavior.test.mjs` now follows the repository-portable React Test Renderer pattern: default import plus callable `act`/`create` destructuring. Its lifecycle, resource, focus, containment, and annotation assertions remain intact.
+1. Both React behavior files use `react-dom/test-utils.act`, which is callable on the controller's React 19.2.8 / React Test Renderer 19.2.5 installation. `create` remains the callable default React Test Renderer export. Assertions were retained and expanded.
 2. Desktop Preview fullscreen is a dedicated shell state. It expands the active Preview tab to the viewport, renders Preview controls, keeps Terminal fullscreen false, and retains the exact hosted iframe across enter and exit. The normal toolbar still omits or disables fullscreen according to the existing selected/online Preview semantics.
 3. Workflow-version navigation now serializes `/workflows/view/$workflowId/$workflowVersion`, stores both fields in the route tab, and renders `WorkflowVersionViewer` through the Desktop host. Route, model, persistence, history, reload, and render tests cover the full parameter round-trip.
+
+## Release-gate corrections
+
+1. `test/chat-ui-desktop-tabs-behavior.test.mjs` and `test/chat-ui-session-live-preview.test.mjs` no longer read `act` from React Test Renderer or React. Each exact file passes independently on the controller and in Docker.
+2. Preview-fullscreen recovery runs at both the Preview panel and the `SessionTracePane` host boundary. If remove, query refresh, or authority loss replaces the panel with an empty state, the host exits Preview fullscreen and restores Desktop chrome and tabs. A selected Preview still retains the same iframe through ordinary updates and fullscreen transitions.
+3. Desktop and Mobile share the workflow route-selection renderer. Mobile version routes render `WorkflowVersionViewer`; ordinary workflow and draft routes still receive the unchanged `MinimalWorkflowsArea` fallback.
 
 ## Automated gates in the worker
 
@@ -64,9 +73,15 @@ node --test \
   test/chat-ui-projects-bootstrap.test.mjs
 ```
 
-Result: 37 tests passed, 0 failed. The new React behavior suite verifies Preview iframe identity, inactive resource unmount, post-Delete DOM focus, fullscreen keep-alive hiding, catalog containment, and hosted Annotations close. Controller/model tests verify URL/reload policy, autosave success/failure ordering, close-neighbor selection, reorder, persistence, route reconciliation, duplicate recovery, and workflow-version rendering.
+Result: 38 tests passed, 0 failed, process exit 0. The React behavior suite verifies Preview iframe identity, inactive resource unmount, post-Delete DOM focus, fullscreen keep-alive hiding and loss recovery, catalog containment, and hosted Annotations close. Controller/model tests verify URL/reload policy, autosave success/failure ordering, close-neighbor selection, reorder, persistence, route reconciliation, duplicate recovery, and Desktop/Mobile workflow-version rendering.
 
-The expanded relevant suite covers 22 files, including the new workflow-version render test and the strengthened Preview fullscreen behavior flow.
+The expanded relevant suite covers 22 files. The prior release-gate review correctly found 35 passes and 2 harness failures at `c0fb8567`; the result above is a fresh direct worker invocation on this correction batch, not redirected shell output.
+
+The exact focused files also ran independently:
+
+- Controller `node --test test/chat-ui-desktop-tabs-behavior.test.mjs`: 1 passed, 0 failed, exit 0.
+- Controller `node --test test/chat-ui-session-live-preview.test.mjs`: 5 passed, 0 failed, exit 0.
+- Docker versions of the same separate commands: 1/1 and 5/5 passed, each exit 0.
 
 `git diff --check` also passed.
 
@@ -119,6 +134,12 @@ The final 12-second monitor on the headful exact candidate recorded 10 requests,
 - **1920×1080 workflow deep link:** `/apps/chat/workflows/view/simple-chat/1.0.0` rendered the real built-in Simple Chat version viewer beside the fixed Sessions/Terminal workspace. Opening Settings then Browser Back restored the exact URL, active `Workflow · simple-chat` tab, and viewer. Reload preserved all three again.
 - **390×844 Mobile:** the selected Session reached `No visible trace rows yet.` before capture. The route shell and mobile menu/composer were present; Desktop shell and workspace tablist were absent.
 
+## Release-gate headful evidence
+
+- **1440×900 Desktop Preview loss:** a real worker Preview registration was selected before entering Preview fullscreen. Removing that registration through the worker CLI let the live five-second query refresh produce the real empty authority state. The app then reported `previewFullscreen=false` and `terminalFullscreen=false`; left Sessions, center terminal, and right tabs returned at 300/620/520 px. The active Preview tab showed the normal empty state and no exit control remained.
+- **390×844 Mobile workflow version:** `/apps/chat/workflows/view/simple-chat/1.0.0` reached the visible `Selected workflow` ready state. The page contained `data-pibo-debug="mobile-workflow-version-viewer"`, the Mobile route shell, `simple-chat`, and `1.0.0`; no Desktop shell or ARIA workspace tablist existed.
+- A five-second CDP monitor on the final Mobile candidate recorded 1 request, 0 Project requests, 0 EventSource requests, 0 aborts, 0 pre-existing failures or warnings, and 0 console/HTTP/runtime errors.
+
 ## Artifacts
 
 - `docs/reports/artifacts/sidebar-browser-tabs/desktop-1440-projects.png`
@@ -142,7 +163,13 @@ The final 12-second monitor on the headful exact candidate recorded 10 requests,
 - `docs/reports/artifacts/sidebar-browser-tabs/audit-1920-workflow-version-final.json`
 - `docs/reports/artifacts/sidebar-browser-tabs/audit-390-session-final.json`
 - `docs/reports/artifacts/sidebar-browser-tabs/cdp-console-network-final.json`
+- `docs/reports/artifacts/sidebar-browser-tabs/desktop-1440-preview-before-loss-release-gate.png`
+- `docs/reports/artifacts/sidebar-browser-tabs/desktop-1440-preview-loss-exit-release-gate.png`
+- `docs/reports/artifacts/sidebar-browser-tabs/audit-1440-preview-loss-exit-release-gate.json`
+- `docs/reports/artifacts/sidebar-browser-tabs/mobile-390-workflow-version-release-gate.png`
+- `docs/reports/artifacts/sidebar-browser-tabs/audit-390-workflow-version-release-gate.json`
+- `docs/reports/artifacts/sidebar-browser-tabs/cdp-console-network-release-gate.json`
 
 ## Remaining integration risk
 
-The isolated worker still has no VS Code Web service. A real HTTPS/wildcard-host Preview authentication exchange was not available; the worker's real registration exposed the control, while the iframe document was deterministic only after the local HTTP response override described above. Production Preview cookie/proxy integration remains an integration risk, but the fullscreen host, selected document, shell ownership, and iframe lifecycle are covered behaviorally and headfully. No implementation blocker remains.
+The isolated worker still has no VS Code Web service. A real HTTPS/wildcard-host Preview authentication exchange was not available. The release-gate loss scenario used a real worker registration and authority refresh, but production iframe cookie/proxy authentication remains an integration risk. Fullscreen shell ownership, loss recovery, and iframe lifecycle are covered behaviorally and headfully. No implementation blocker remains.

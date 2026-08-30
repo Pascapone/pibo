@@ -94,9 +94,10 @@ test("Preview fullscreen restores focus after Escape, click, and session replace
 	const script = `
 		import assert from "node:assert/strict";
 		import React from "react";
+		import { act } from "react-dom/test-utils";
 		import TestRenderer from "react-test-renderer";
 		import { PreviewFullscreenTopBar } from "./src/apps/chat-ui/src/session-live-preview.tsx";
-		const { act, create } = TestRenderer;
+		const { create } = TestRenderer;
 		globalThis.React = React;
 		globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 		class MockElement {
@@ -164,6 +165,58 @@ test("Preview fullscreen restores focus after Escape, click, and session replace
 		await scenario("escape");
 		await scenario("click");
 		await scenario("session-replacement");
+	`;
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+});
+
+test("Preview fullscreen exits when the selected Preview disappears", async () => {
+	const script = `
+		import assert from "node:assert/strict";
+		import React, { useState } from "react";
+		import { act } from "react-dom/test-utils";
+		import TestRenderer from "react-test-renderer";
+		import { SessionLivePreviewPanel } from "./src/apps/chat-ui/src/session-live-preview.tsx";
+		const { create } = TestRenderer;
+		globalThis.React = React;
+		globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+		globalThis.HTMLElement = class HTMLElement {};
+		globalThis.document = { activeElement: null, querySelector() { return null; } };
+		globalThis.window = {
+			location: { origin: "https://chat.example.test" }, open() {},
+			addEventListener() {}, removeEventListener() {}, setTimeout,
+		};
+		const preview = {
+			id: "pv-loss", piboSessionId: "ps_loss", label: "Loss Preview", managed: false,
+			createdAt: "2026-08-30T00:00:00.000Z", expiresAt: "2026-08-31T00:00:00.000Z",
+			state: "active", health: "online", publicUrl: "https://pv-loss.preview.test/", openUrl: "/api/previews/pv-loss/open",
+		};
+		let removePreview;
+		let exits = 0;
+		function Harness() {
+			const [fullscreen, setFullscreen] = useState(true);
+			const [selectedPreview, setSelectedPreview] = useState(preview);
+			removePreview = () => setSelectedPreview(undefined);
+			return React.createElement("div", null,
+				fullscreen ? null : React.createElement("button", { "aria-label": "Desktop shell controls" }, "Tabs"),
+				React.createElement(SessionLivePreviewPanel, {
+					previews: selectedPreview ? [selectedPreview] : [], selectedPreview,
+					loading: false, reloadKey: 0, fullscreen,
+					onSelect() {}, onReload() {}, onRefresh() {}, onStart() {}, onStop() {}, onRemove() {},
+					onExitFullscreen() { exits += 1; setFullscreen(false); },
+				}),
+			);
+		}
+		let renderer;
+		await act(async () => { renderer = create(React.createElement(Harness)); });
+		const iframe = renderer.root.findByType("iframe");
+		assert.equal(renderer.root.findByProps({ "data-pibo-debug": "session-live-preview" }).props["data-pibo-preview-fullscreen"], "true");
+		await act(async () => { renderer.update(React.createElement(Harness)); });
+		assert.equal(renderer.root.findByType("iframe"), iframe, "ordinary updates keep the selected Preview iframe");
+		await act(async () => removePreview());
+		assert.equal(exits, 1);
+		assert.equal(renderer.root.findAllByType("iframe").length, 0);
+		assert.equal(renderer.root.findAllByProps({ "aria-label": "Desktop shell controls" }).length, 1);
+		assert.match(renderer.toJSON().children.at(-1).children.join(""), /No active live preview/);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 });

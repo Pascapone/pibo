@@ -1,6 +1,6 @@
 ---
 title: Desktop Browser Tabs for Pibo Chat
-version: 1.2
+version: 1.3
 date_created: 2026-08-30
 last_updated: 2026-08-30
 owner: Pibo
@@ -34,11 +34,11 @@ The desktop shell has three stable regions: the Rooms/Pibo Sessions navigation o
 - **REQ-006**: Singleton targets shall focus and update their existing tab. Resource targets may coexist when their stable resource identities differ.
 - **REQ-007**: Open tabs, order, active tab, sidebar width, and collapsed state shall persist in versioned local storage.
 - **REQ-008**: Existing deep links, reload, and browser Back/Forward shall open or focus the matching right route tab on Desktop.
-- **REQ-009**: Mobile shall retain the existing route-based shell, area menus, drawers, and content ownership.
+- **REQ-009**: Mobile shall retain the existing route-based shell, area menus, drawers, and content ownership. A workflow-version deep link is rendered by the existing `WorkflowVersionViewer`; ordinary workflow and draft routes continue to render `MinimalWorkflowsArea`.
 - **REQ-010**: Switching tabs shall preserve the mounted Preview iframe and VS Code frame. Other inactive route and session-tool contents, including Agent Designer after its guarded save, shall unmount or pause their queries, timers, bootstrap requests, and live streams.
 - **REQ-011**: Opening or activating a session-tool tab shall navigate to the current Sessions URL. Closing a route tab onto a session-tool neighbor shall do the same, so reload cannot recreate the closed route tab.
 - **REQ-012**: Leaving or closing Agent Designer shall await its registered autosave before changing tab state. A failed save shall keep the tab open and expose an error.
-- **REQ-013**: Terminal fullscreen shall visually replace the three-pane shell while preserving required hidden keep-alive content. Desktop Preview fullscreen shall instead expand the selected Preview tab and its existing iframe to the viewport without entering Terminal fullscreen or replacing the iframe.
+- **REQ-013**: Terminal fullscreen shall visually replace the three-pane shell while preserving required hidden keep-alive content. Desktop Preview fullscreen shall instead expand the selected Preview tab and its existing iframe to the viewport without entering Terminal fullscreen or replacing the iframe. If the selected Preview disappears, the app shall leave Preview fullscreen automatically and restore the Desktop shell controls.
 - **REQ-014**: Storage recovery shall deduplicate repeated tab IDs and logical target identities before rendering.
 - **REQ-015**: Workflow-version routes shall retain `viewWorkflowId` and `viewWorkflowVersion` through tab activation, history, persistence, and reload, and shall render the exact version viewer rather than the Workflows landing surface.
 - **A11Y-001**: Tabs shall use `tablist`, `tab`, and `tabpanel` semantics with visible focus and accessible close labels.
@@ -93,11 +93,13 @@ History policy:
 - **AC-012**: Given Terminal fullscreen, then the left navigation and right tabs are visually and accessibly hidden while the terminal occupies the workspace.
 - **AC-013**: Given an online selected Preview, when Preview fullscreen opens and closes, then the selected Preview document fills the viewport, Terminal fullscreen remains false, and the iframe DOM instance remains identical before, during, and after the transition.
 - **AC-014**: Given `/apps/chat/workflows/view/<id>/<version>`, when Desktop loads, switches away and back, or reloads, then the URL, active tab identity, and rendered version viewer retain both route parameters.
+- **AC-015**: Given Desktop Preview fullscreen, when the selected Preview is removed or lost through refreshed query data, then Preview fullscreen exits and the Desktop chrome and tab controls return without a reload.
+- **AC-016**: Given `/apps/chat/workflows/view/<id>/<version>` at 390×844, when Mobile loads or reloads, then the existing version viewer renders both parameters and no Desktop shell or ARIA workspace tablist appears.
 
 ## 6. Test automation strategy
 
 - Pure model/controller tests cover deduplication, close-neighbor selection, URL policy, guarded Agent transitions, bounds, persistence recovery, and route reconciliation.
-- React behavior tests cover Preview iframe identity across tab switches and Preview fullscreen, inactive resource unmounting, post-close DOM focus, catalog containment, and annotation close. Route/model/render tests cover workflow-version path serialization, tab history/persistence, and exact viewer output. Source-contract checks remain only for static wiring that cannot regress independently of those behavior tests.
+- React behavior tests use the controller-compatible `react-dom/test-utils.act` implementation and cover Preview iframe identity across tab switches and Preview fullscreen, automatic fullscreen exit after Preview loss, restored shell controls, inactive resource unmounting, post-close DOM focus, catalog containment, and annotation close. Route/model/render tests cover workflow-version path serialization, tab history/persistence, and exact Desktop/Mobile viewer output. Source-contract checks remain only for static wiring that cannot regress independently of those behavior tests.
 - existing Chat Web route, storage, mobile navigation, sidebar, Preview, Raw Events, and fullscreen tests remain in the gate.
 - headful Browser Use validates 1440×900, 1920×1080, and 390×844. CDP records console and failed-network evidence.
 
@@ -117,6 +119,7 @@ The selected Pibo Session is the operator’s continuous work context. Product a
 - Duplicate stored IDs or target identities retain the first valid tab and alias the stored active identity to that retained tab.
 - Closing the last tab leaves the catalog-ready empty sidebar and the Sessions route.
 - A missing selected Pibo Session shows the existing empty states in session tool tabs.
+- A missing selected Preview exits Preview fullscreen before the empty state can leave the shell without controls.
 - VS Code stays discoverable in the catalog when the gateway does not configure it and renders the existing configuration empty state.
 - Width restoration clamps to current safe limits.
 

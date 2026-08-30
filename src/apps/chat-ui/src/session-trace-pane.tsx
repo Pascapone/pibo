@@ -95,6 +95,18 @@ import type { DesktopSessionTool } from "./desktop-tabs-model";
 
 const livePreviewQueryKey = (piboSessionId: string) => ["chat", "session-live-previews", piboSessionId] as const;
 
+export function useHostedPreviewFullscreenRecovery(
+  fullscreen: boolean,
+  previewAvailable: boolean,
+  onExitFullscreen?: () => void,
+): void {
+  const onExitFullscreenRef = useRef(onExitFullscreen);
+  onExitFullscreenRef.current = onExitFullscreen;
+  useEffect(() => {
+    if (fullscreen && !previewAvailable) onExitFullscreenRef.current?.();
+  }, [fullscreen, previewAvailable]);
+}
+
 export function SessionTracePane({
   bootstrap,
   selectedPiboSessionId,
@@ -301,6 +313,11 @@ export function SessionTracePane({
   });
   const livePreviews = livePreviewAuthority.kind === "ready" ? livePreviewAuthority.previews : [];
   const selectedLivePreviewRecord = selectAuthoritativeLivePreview(livePreviewAuthority, selectedLivePreview);
+  useHostedPreviewFullscreenRecovery(
+    desktopPreviewFullscreen,
+    livePreviewAuthority.kind === "ready" && Boolean(selectedLivePreviewRecord),
+    onExitDesktopPreviewFullscreen,
+  );
   const livePreviewSelected = Boolean(selectedBackendPiboSessionId && livePreviewViewSessionId === selectedBackendPiboSessionId);
   const livePreviewReloadKey = livePreviewReload?.piboSessionId === selectedBackendPiboSessionId ? livePreviewReload.value : 0;
 

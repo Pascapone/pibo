@@ -55,6 +55,11 @@ export function SessionLivePreviewPanel({
 	onExitFullscreen?: () => void;
 }) {
 	const [copied, setCopied] = useState(false);
+	const onExitFullscreenRef = useRef(onExitFullscreen);
+	onExitFullscreenRef.current = onExitFullscreen;
+	useEffect(() => {
+		if (fullscreen && !selectedPreview) onExitFullscreenRef.current?.();
+	}, [fullscreen, selectedPreview]);
 	if (loading) return <PreviewMessage label="Loading live previews…" />;
 	if (error) return <PreviewMessage label={error} tone="error" />;
 	if (!selectedPreview) return <PreviewMessage label="No active live preview is attached to this Pibo Session." />;

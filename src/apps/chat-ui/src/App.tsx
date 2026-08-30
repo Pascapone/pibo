@@ -128,7 +128,7 @@ import { SettingsView } from "./settings/SettingsView";
 import type { SettingsPanel } from "./settings/types";
 import { ProjectsArea } from "./projects/ProjectsArea";
 import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
-import { DesktopWorkflowVersionPanel, desktopWorkflowVersionSelection } from "./desktop-workflow-version-panel";
+import { RoutedWorkflowsPanel } from "./desktop-workflow-version-panel";
 import { VscodeArea } from "./VscodeArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
@@ -1749,10 +1749,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 			);
 		}
 		if (panelRoute.area === "workflows") {
-			const versionSelection = desktopWorkflowVersionSelection(panelRoute);
-			return versionSelection
-				? <DesktopWorkflowVersionPanel {...versionSelection} />
-				: <MinimalWorkflowsArea draftId={panelRoute.draftId} onNavigateDraft={(draftId) => { if (active) navigateToRoute({ area: "workflows", draftId }); }} />;
+			return (
+				<RoutedWorkflowsPanel
+					route={panelRoute}
+					surface="desktop"
+					fallback={<MinimalWorkflowsArea draftId={panelRoute.draftId} onNavigateDraft={(draftId) => { if (active) navigateToRoute({ area: "workflows", draftId }); }} />}
+				/>
+			);
 		}
 		if (panelRoute.area === "projects") {
 			return (
@@ -2009,9 +2012,15 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onCloseMobileSidebar={closeMobileSidebar}
 					/>
 				) : area === "workflows" ? (
-					<MinimalWorkflowsArea
-						draftId={routeWorkflowDraftId}
-						onNavigateDraft={(nextDraftId) => navigateToRoute({ area: "workflows", draftId: nextDraftId })}
+					<RoutedWorkflowsPanel
+						route={route.area === "workflows" ? route : { area: "workflows", draftId: routeWorkflowDraftId }}
+						surface="mobile"
+						fallback={(
+							<MinimalWorkflowsArea
+								draftId={routeWorkflowDraftId}
+								onNavigateDraft={(nextDraftId) => navigateToRoute({ area: "workflows", draftId: nextDraftId })}
+							/>
+						)}
 					/>
 				) : area === "projects" ? (
 					<ProjectsArea

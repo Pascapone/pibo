@@ -59,6 +59,8 @@ if (command === "viewport") {
 				url: location.href,
 				viewport: { width: innerWidth, height: innerHeight },
 				area: document.querySelector('[data-pibo-debug="chat-app"]')?.getAttribute('data-pibo-area'),
+				previewFullscreen: document.querySelector('[data-pibo-debug="chat-app"]')?.getAttribute('data-pibo-preview-fullscreen'),
+				terminalFullscreen: document.querySelector('[data-pibo-debug="chat-app"]')?.getAttribute('data-pibo-terminal-fullscreen'),
 				desktopSidebar: rect('[data-pibo-debug="desktop-session-sidebar"]'),
 				desktopCenter: rect('[data-pibo-debug="desktop-session-center"]'),
 				desktopTabs: rect('[data-pibo-debug="desktop-tab-sidebar"]'),
