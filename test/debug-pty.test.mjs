@@ -422,6 +422,124 @@ test("built-in mocked CLI session scenario follows the room and session picker f
 	}
 });
 
+test("Ink session picker treats keyboard-repeat Enter as one persistent activation", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	const homeDir = join(dir, "home");
+	const artifactDir = join(dir, "artifacts");
+	const scenarioPath = join(dir, "scenario.json");
+	try {
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "ink-new-session-key-repeat",
+			command: [process.execPath, cliPath, "tui:sessions"],
+			rows: 36,
+			cols: 120,
+			timeoutMs: 30_000,
+			idleTimeoutMs: 10_000,
+			inputDelayMs: 1,
+			env: {
+				PIBO_HOME: homeDir,
+				PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED: "1",
+				PIBO_DEBUG_PTY_CLI_SESSIONS_ROOMS: "room_alpha|Alpha Room;room_beta|Beta Room",
+			},
+			steps: [
+				{ waitFor: "select room", timeoutMs: 10_000 },
+				{ press: "Down" },
+				{ sleepMs: 100 },
+				{ press: "Down" },
+				{ waitFor: "❯ Beta Room", timeoutMs: 10_000 },
+				{ press: "Enter" },
+				{ waitFor: "select session — Beta Room", timeoutMs: 10_000 },
+				{ press: "Enter" },
+				{ sleepMs: 30 },
+				{ press: "Enter" },
+				{ waitFor: "session New CLI session", timeoutMs: 10_000 },
+				{ sleepMs: 100 },
+				{ typeText: "/model" },
+				{ waitFor: "› /model", timeoutMs: 10_000 },
+				{ press: "Enter" },
+				{ waitFor: "select model provider", timeoutMs: 10_000 },
+				{ press: "CtrlC" },
+			],
+			expect: ["Beta Room", "session New CLI session", "select model provider"],
+			reject: ["UnhandledPromiseRejection", "source_closed"],
+		}, null, 2));
+
+		const result = await execFileAsync("node", [cliPath, "debug", "pty", "scenario", "--artifact", "--artifact-dir", artifactDir, scenarioPath]);
+		assert.match(result.stdout, /PTY passed: ink-new-session-key-repeat/);
+		const store = new PiboDataStore(join(homeDir, "pibo.sqlite"), { payloadRootDir: join(homeDir, "payloads") });
+		try {
+			const sessions = store.db.prepare("SELECT id, room_id, created_at FROM sessions ORDER BY created_at").all();
+			const navigation = store.db.prepare("SELECT room_id, session_id FROM session_navigation ORDER BY updated_at").all();
+			assert.equal(sessions.length, 1);
+			assert.equal(sessions[0].room_id, "room_beta");
+			assert.equal(navigation.length, 1);
+			assert.equal(navigation[0].room_id, "room_beta");
+			assert.equal(navigation[0].session_id, sessions[0].id);
+		} finally {
+			store.close();
+		}
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("Ink session picker allows a later intentional session creation", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	const homeDir = join(dir, "home");
+	const artifactDir = join(dir, "artifacts");
+	const scenarioPath = join(dir, "scenario.json");
+	try {
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "ink-new-session-sequential",
+			command: [process.execPath, cliPath, "tui:sessions"],
+			rows: 32,
+			cols: 110,
+			timeoutMs: 30_000,
+			idleTimeoutMs: 10_000,
+			inputDelayMs: 1,
+			env: {
+				PIBO_HOME: homeDir,
+				PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED: "1",
+			},
+			steps: [
+				{ waitFor: "select room", timeoutMs: 10_000 },
+				{ press: "Enter" },
+				{ waitFor: "+ New session", timeoutMs: 10_000 },
+				{ press: "Enter" },
+				{ waitFor: "session New CLI session", timeoutMs: 10_000 },
+				{ sleepMs: 100 },
+				{ typeText: "/session" },
+				{ waitFor: "› /session", timeoutMs: 10_000 },
+				{ press: "Enter" },
+				{ waitFor: "select room — sessions", timeoutMs: 10_000 },
+				{ press: "Enter" },
+				{ waitFor: "Select a session with arrow keys, or create a new one.", timeoutMs: 10_000 },
+				{ press: "Down" },
+				{ sleepMs: 150 },
+				{ press: "Enter" },
+				{ sleepMs: 500 },
+				{ press: "CtrlC" },
+			],
+			expect: ["session New CLI session", "Select a session with arrow keys, or create a new one."],
+			reject: ["UnhandledPromiseRejection", "source_closed"],
+		}, null, 2));
+
+		const result = await execFileAsync("node", [cliPath, "debug", "pty", "scenario", "--artifact", "--artifact-dir", artifactDir, scenarioPath]);
+		assert.match(result.stdout, /PTY passed: ink-new-session-sequential/);
+		const store = new PiboDataStore(join(homeDir, "pibo.sqlite"), { payloadRootDir: join(homeDir, "payloads") });
+		try {
+			const sessions = store.db.prepare("SELECT room_id, created_at FROM sessions ORDER BY created_at").all();
+			assert.equal(sessions.length, 2);
+			assert.equal(new Set(sessions.map((session) => session.room_id)).size, 1);
+			assert.ok(Date.parse(sessions[1].created_at) > Date.parse(sessions[0].created_at));
+		} finally {
+			store.close();
+		}
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("picker text is cleared before room and session navigation reaches the transcript", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {
