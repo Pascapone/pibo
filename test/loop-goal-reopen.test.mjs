@@ -43,7 +43,8 @@ async function createHarness(options = {}) {
 		getWebApps() { return []; },
 	};
 	const service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), intervalMs: 60_000 });
-	return { store, service, messages, async close() { service.stop(); await rm(dir, { recursive: true, force: true }); } };
+	service.start();
+	return { store, service, messages, async close() { await service.stop(); await rm(dir, { recursive: true, force: true }); } };
 }
 
 async function waitFor(predicate, label, timeoutMs = 2_000) {

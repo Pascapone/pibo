@@ -12,6 +12,13 @@ import type { PiboGoalStatus, PiboLoopFactReader, PiboLoopFailure, PiboLoopJob, 
 
 export type PiboLoopStoreOptions = { path?: string };
 
+export class PiboLoopActiveRunModeChangeError extends Error {
+	constructor() {
+		super('Loop mode cannot be changed while a Loop run is active');
+		this.name = 'PiboLoopActiveRunModeChangeError';
+	}
+}
+
 type LoopJobRow = { id: string; loop_mode: string; name: string; description: string | null; enabled: number; target_json: string; profile: string; prompt: string; max_iterations: number | null; token_budget: number | null; token_reserve: number | null; runtime_options_json: string | null; stop_policy_json: string | null; resource_json?: string | null; state_json: string; created_at: string; updated_at: string };
 type LoopRunRow = { id: string; job_id: string; pibo_session_id: string | null; status: PiboLoopRunStatus; reason: string | null; error: string | null; error_details_json?: string | null; message_event_id?: string | null; message_state?: PiboLoopRunMessageState | null; accounting_json?: string | null; resource_json?: string | null; started_at: string | null; completed_at: string | null; created_at: string; updated_at: string };
 type LoopRunFactRow = { id: string; job_id: string; run_id: string | null; pibo_session_id: string | null; type: string; source: PiboLoopRunFact['source']; payload_json: string; created_at: string };
@@ -423,38 +430,49 @@ export class PiboLoopStore {
 		return (this.db.prepare(`SELECT * FROM pibo_ralph_jobs ${where} ORDER BY updated_at DESC, id ASC`).all(...values) as LoopJobRow[]).map(jobFromRow);
 	}
 	updateJob(id: string, patch: PiboLoopJobPatchInput, now = new Date()): PiboLoopJob | undefined {
-		const existing = this.getJob(id); if (!existing) return undefined;
-		const runtimeOptions = normalizeRuntimeOptions({
-			modelOverride: hasOwn(patch, 'modelOverride') ? patch.modelOverride : existing.modelOverride,
-			thinkingLevel: hasOwn(patch, 'thinkingLevel') ? patch.thinkingLevel : existing.thinkingLevel,
-			fastMode: hasOwn(patch, 'fastMode') ? patch.fastMode : existing.fastMode,
-		});
-		const stopPolicy = hasOwn(patch, 'stopPolicy') ? normalizeLoopStopPolicy(patch.stopPolicy ?? undefined) : existing.stopPolicy;
-		const target = patch.target ? normalizeLoopTarget(patch.target) : existing.target;
-		const mode = patch.mode !== undefined ? normalizeLoopMode(patch.mode) : existing.mode;
-		const enabled = patch.enabled ?? existing.enabled;
-		let state: PiboLoopJobState = mode === existing.mode
-			? { ...existing.state }
-			: { completedIterations: existing.state.completedIterations ?? 0, ...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokenAccounting: newGoalTokenAccounting(), tokensUsed: 0, activeTimeSeconds: 0, ...(enabled ? { goalStartedAt: nowIso(now) } : {}) } : {}) };
-		if (mode === 'goal' && patch.enabled !== undefined) {
-			const currentGoalStatus = goalStatus({ mode, enabled: existing.enabled, state: existing.state }) ?? 'paused';
-			if (patch.enabled) {
-				if (isTerminalGoalStatus(currentGoalStatus)) throw new Error('Terminal Goals cannot be restarted; use the confirmed Goal reopen operation');
-				state.goalStatus = 'active';
-				state.goalStartedAt ??= nowIso(now);
-				delete state.goalEndedAt;
-				state.stopRequestedAt = undefined;
-				state.cancelRequestedAt = undefined;
-				state.lastFailure = undefined;
-				state.nextAttemptAt = undefined;
-				state.retryBackoffMs = undefined;
-				state.consecutiveErrors = 0;
-			} else {
-				state.goalStatus = currentGoalStatus === 'active' ? 'paused' : currentGoalStatus;
+		this.db.exec('BEGIN IMMEDIATE');
+		try {
+			const existing = this.getJob(id);
+			if (!existing) { this.db.exec('COMMIT'); return undefined; }
+			const runtimeOptions = normalizeRuntimeOptions({
+				modelOverride: hasOwn(patch, 'modelOverride') ? patch.modelOverride : existing.modelOverride,
+				thinkingLevel: hasOwn(patch, 'thinkingLevel') ? patch.thinkingLevel : existing.thinkingLevel,
+				fastMode: hasOwn(patch, 'fastMode') ? patch.fastMode : existing.fastMode,
+			});
+			const stopPolicy = hasOwn(patch, 'stopPolicy') ? normalizeLoopStopPolicy(patch.stopPolicy ?? undefined) : existing.stopPolicy;
+			const target = patch.target ? normalizeLoopTarget(patch.target) : existing.target;
+			const mode = patch.mode !== undefined ? normalizeLoopMode(patch.mode) : existing.mode;
+			if (mode !== existing.mode && this.db.prepare("SELECT 1 FROM pibo_ralph_runs WHERE job_id = ? AND status = 'running' LIMIT 1").get(id)) throw new PiboLoopActiveRunModeChangeError();
+			const enabled = patch.enabled ?? existing.enabled;
+			let state: PiboLoopJobState = mode === existing.mode
+				? { ...existing.state }
+				: { completedIterations: existing.state.completedIterations ?? 0, ...(mode === 'goal' ? { goalStatus: enabled ? 'active' : 'paused', tokenAccounting: newGoalTokenAccounting(), tokensUsed: 0, activeTimeSeconds: 0, ...(enabled ? { goalStartedAt: nowIso(now) } : {}) } : {}) };
+			if (mode === 'goal' && patch.enabled !== undefined) {
+				const currentGoalStatus = goalStatus({ mode, enabled: existing.enabled, state: existing.state }) ?? 'paused';
+				if (patch.enabled) {
+					if (isTerminalGoalStatus(currentGoalStatus)) throw new Error('Terminal Goals cannot be restarted; use the confirmed Goal reopen operation');
+					state.goalStatus = 'active';
+					state.goalStartedAt ??= nowIso(now);
+					delete state.goalEndedAt;
+					state.stopRequestedAt = undefined;
+					state.cancelRequestedAt = undefined;
+					state.lastFailure = undefined;
+					state.nextAttemptAt = undefined;
+					state.retryBackoffMs = undefined;
+					state.consecutiveErrors = 0;
+				} else {
+					state.goalStatus = currentGoalStatus === 'active' ? 'paused' : currentGoalStatus;
+				}
 			}
+			const next: PiboLoopJob = { ...existing, mode, state, name: patch.name !== undefined ? patch.name.trim() : existing.name, description: patch.description !== undefined ? patch.description?.trim() || undefined : existing.description, enabled, target, profile: patch.profile ?? existing.profile, prompt: patch.prompt ?? existing.prompt, maxIterations: hasOwn(patch, 'maxIterations') ? normalizeMaxIterations(patch.maxIterations ?? undefined) : existing.maxIterations, tokenBudget: mode === 'ralph' ? undefined : hasOwn(patch, 'tokenBudget') ? normalizeTokenBudget(patch.tokenBudget ?? undefined) : existing.tokenBudget, tokenReserve: mode === 'ralph' || (hasOwn(patch, 'tokenBudget') && patch.tokenBudget === null && !hasOwn(patch, 'tokenReserve')) ? undefined : hasOwn(patch, 'tokenReserve') ? normalizeTokenReserve(patch.tokenReserve ?? undefined) : existing.tokenReserve, stopPolicy, modelOverride: runtimeOptions.modelOverride, thinkingLevel: runtimeOptions.thinkingLevel, fastMode: runtimeOptions.fastMode, updatedAt: nowIso(now) };
+			validateJobInput(next);
+			this.writeJob(next);
+			this.db.exec('COMMIT');
+			return this.getJob(id);
+		} catch (error) {
+			this.db.exec('ROLLBACK');
+			throw error;
 		}
-		const next: PiboLoopJob = { ...existing, mode, state, name: patch.name !== undefined ? patch.name.trim() : existing.name, description: patch.description !== undefined ? patch.description?.trim() || undefined : existing.description, enabled, target, profile: patch.profile ?? existing.profile, prompt: patch.prompt ?? existing.prompt, maxIterations: hasOwn(patch, 'maxIterations') ? normalizeMaxIterations(patch.maxIterations ?? undefined) : existing.maxIterations, tokenBudget: mode === 'ralph' ? undefined : hasOwn(patch, 'tokenBudget') ? normalizeTokenBudget(patch.tokenBudget ?? undefined) : existing.tokenBudget, tokenReserve: mode === 'ralph' || (hasOwn(patch, 'tokenBudget') && patch.tokenBudget === null && !hasOwn(patch, 'tokenReserve')) ? undefined : hasOwn(patch, 'tokenReserve') ? normalizeTokenReserve(patch.tokenReserve ?? undefined) : existing.tokenReserve, stopPolicy, modelOverride: runtimeOptions.modelOverride, thinkingLevel: runtimeOptions.thinkingLevel, fastMode: runtimeOptions.fastMode, updatedAt: nowIso(now) };
-		validateJobInput(next); this.writeJob(next); return this.getJob(id);
 	}
 	updateJobResources(id: string, resources: PiboLoopResourceMetadata | null | undefined, now = new Date()): PiboLoopJob | undefined {
 		const existing = this.getJob(id); if (!existing) return undefined;
@@ -512,6 +530,7 @@ export class PiboLoopStore {
 		return Number(result.changes ?? 0) > 0 ? this.getRunByMessageEventId(eventId) : undefined;
 	}
 	reserveRun(id: string, now = new Date()): { job: PiboLoopJob; run: PiboLoopRun } | undefined { this.updateJob(id, { enabled: true }, now); return this.reserveJob(id, now); }
+	reserveAdmittedRun(id: string, now = new Date()): { job: PiboLoopJob; run: PiboLoopRun } | undefined { return this.reserveJob(id, now, true); }
 	reserveDueRuns(limit: number, now = new Date()): Array<{ job: PiboLoopJob; run: PiboLoopRun }> {
 		const rows = this.db.prepare('SELECT * FROM pibo_ralph_jobs WHERE enabled = 1 ORDER BY updated_at ASC').all() as LoopJobRow[];
 		const result: Array<{ job: PiboLoopJob; run: PiboLoopRun }> = [];
@@ -540,39 +559,42 @@ export class PiboLoopStore {
 		this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = ?, state_json = ?, updated_at = ? WHERE id = ?').run(input.disable ? 0 : job.enabled ? 1 : 0, JSON.stringify(state), timestamp, job.id);
 	}
 	completeRun(input: { jobId: string; runId: string; status: PiboLoopRunStatus; piboSessionId?: string; error?: string; errorDetails?: PiboSessionErrorDetails; failure?: PiboLoopFailure; goalStatus?: Extract<PiboGoalStatus, 'active' | 'blocked'>; reason?: string; stopAfterRun?: boolean; stopEvaluation?: PiboLoopStopEvaluationSummary; conditionStates?: Record<string, PiboJsonObject> }, now = new Date()): void {
-		const timestamp = nowIso(now); const job = this.getJob(input.jobId); if (!job) return;
-		const completedIterations = (job.state.completedIterations ?? 0) + 1;
-		const reachedMaxIterations = job.maxIterations !== undefined && completedIterations >= job.maxIterations;
-		const currentGoalStatus = goalStatus(job);
-		const nextGoalStatus = job.mode === 'goal'
-			? isTerminalGoalStatus(currentGoalStatus) || currentGoalStatus === 'paused'
-				? currentGoalStatus
-				: input.goalStatus ?? currentGoalStatus
-			: undefined;
-		const terminalGoalStatus = job.mode === 'goal' && isTerminalGoalStatus(nextGoalStatus);
-		const shouldDisable = terminalGoalStatus || reachedMaxIterations || input.stopAfterRun === true || input.stopEvaluation?.finalAction === 'stop-after-run' || input.stopEvaluation?.finalAction === 'cancel-current-run';
-		const state: PiboLoopJobState = {
-			...job.state,
-			...(job.mode === 'goal' ? { activeTimeRunningAt: null } : {}),
-			runningAt: undefined,
-			completedIterations,
-			lastRunAt: timestamp,
-			lastRunId: input.runId,
-			lastStatus: input.status === 'error' ? 'error' : input.status === 'cancelled' ? 'cancelled' : 'ok',
-			lastError: input.error,
-			lastFailure: input.status === 'error' ? input.failure : undefined,
-			nextAttemptAt: input.status === 'error' ? input.failure?.nextAttemptAt : undefined,
-			retryBackoffMs: input.status === 'error' ? input.failure?.retryBackoffMs : undefined,
-			lastPiboSessionId: input.piboSessionId ?? job.state.lastPiboSessionId,
-			consecutiveErrors: input.status === 'error' ? (job.state.consecutiveErrors ?? 0) + 1 : 0,
-			conditionStates: input.conditionStates ?? job.state.conditionStates,
-			lastStopEvaluation: input.stopEvaluation ?? job.state.lastStopEvaluation,
-			...(nextGoalStatus ? { goalStatus: nextGoalStatus } : {}),
-			...(terminalGoalStatus ? { goalEndedAt: job.state.goalEndedAt ?? timestamp } : {}),
-		};
+		const timestamp = nowIso(now);
 		this.db.exec('BEGIN IMMEDIATE');
 		try {
-			this.db.prepare("UPDATE pibo_ralph_runs SET status = ?, pibo_session_id = COALESCE(?, pibo_session_id), reason = ?, error = ?, error_details_json = ?, message_state = CASE WHEN message_state = 'invalidated' THEN message_state ELSE 'finished' END, completed_at = ?, updated_at = ? WHERE id = ?").run(input.status, input.piboSessionId ?? null, input.reason ?? input.stopEvaluation?.reason ?? null, input.error ?? null, sessionErrorDetailsJson(input.errorDetails), timestamp, timestamp, input.runId);
+			const result = this.db.prepare("UPDATE pibo_ralph_runs SET status = ?, pibo_session_id = COALESCE(?, pibo_session_id), reason = ?, error = ?, error_details_json = ?, message_state = CASE WHEN message_state = 'invalidated' THEN message_state ELSE 'finished' END, completed_at = ?, updated_at = ? WHERE id = ? AND job_id = ? AND status = 'running'").run(input.status, input.piboSessionId ?? null, input.reason ?? input.stopEvaluation?.reason ?? null, input.error ?? null, sessionErrorDetailsJson(input.errorDetails), timestamp, timestamp, input.runId, input.jobId);
+			if (Number(result.changes ?? 0) === 0) { this.db.exec('COMMIT'); return; }
+			const job = this.getJob(input.jobId);
+			if (!job || !job.state.runningAt || job.state.lastRunId !== input.runId) { this.db.exec('COMMIT'); return; }
+			const completedIterations = (job.state.completedIterations ?? 0) + 1;
+			const reachedMaxIterations = job.maxIterations !== undefined && completedIterations >= job.maxIterations;
+			const currentGoalStatus = goalStatus(job);
+			const nextGoalStatus = job.mode === 'goal'
+				? isTerminalGoalStatus(currentGoalStatus) || currentGoalStatus === 'paused'
+					? currentGoalStatus
+					: input.goalStatus ?? currentGoalStatus
+				: undefined;
+			const terminalGoalStatus = job.mode === 'goal' && isTerminalGoalStatus(nextGoalStatus);
+			const shouldDisable = terminalGoalStatus || reachedMaxIterations || input.stopAfterRun === true || input.stopEvaluation?.finalAction === 'stop-after-run' || input.stopEvaluation?.finalAction === 'cancel-current-run';
+			const state: PiboLoopJobState = {
+				...job.state,
+				...(job.mode === 'goal' ? { activeTimeRunningAt: null } : {}),
+				runningAt: undefined,
+				completedIterations,
+				lastRunAt: timestamp,
+				lastRunId: input.runId,
+				lastStatus: input.status === 'error' ? 'error' : input.status === 'cancelled' ? 'cancelled' : 'ok',
+				lastError: input.error,
+				lastFailure: input.status === 'error' ? input.failure : undefined,
+				nextAttemptAt: input.status === 'error' ? input.failure?.nextAttemptAt : undefined,
+				retryBackoffMs: input.status === 'error' ? input.failure?.retryBackoffMs : undefined,
+				lastPiboSessionId: input.piboSessionId ?? job.state.lastPiboSessionId,
+				consecutiveErrors: input.status === 'error' ? (job.state.consecutiveErrors ?? 0) + 1 : 0,
+				conditionStates: input.conditionStates ?? job.state.conditionStates,
+				lastStopEvaluation: input.stopEvaluation ?? job.state.lastStopEvaluation,
+				...(nextGoalStatus ? { goalStatus: nextGoalStatus } : {}),
+				...(terminalGoalStatus ? { goalEndedAt: job.state.goalEndedAt ?? timestamp } : {}),
+			};
 			this.db.prepare('UPDATE pibo_ralph_jobs SET enabled = ?, state_json = ?, updated_at = ? WHERE id = ?').run(shouldDisable ? 0 : job.enabled ? 1 : 0, JSON.stringify(state), timestamp, job.id);
 			this.db.exec('COMMIT');
 		} catch (error) {
@@ -611,11 +633,11 @@ export class PiboLoopStore {
 		this.updateRunResources({ jobId: job.id, runId, resources: nextResources });
 		this.updateJobResources(job.id, nextResources);
 	}
-	private reserveJob(id: string, now = new Date()): { job: PiboLoopJob; run: PiboLoopRun } | undefined {
+	private reserveJob(id: string, now = new Date(), requireAdmission = false): { job: PiboLoopJob; run: PiboLoopRun } | undefined {
 		const timestamp = nowIso(now); this.db.exec('BEGIN IMMEDIATE');
 		try {
 			const job = this.getJob(id);
-			if (!job || !job.enabled || job.state.runningAt) { this.db.exec('COMMIT'); return undefined; }
+			if (!job || !job.enabled || job.state.runningAt || (requireAdmission && job.state.cancelRequestedAt !== undefined)) { this.db.exec('COMMIT'); return undefined; }
 			if (job.state.nextAttemptAt && job.state.nextAttemptAt > timestamp) { this.db.exec('COMMIT'); return undefined; }
 			if (job.mode === 'goal' && job.tokenBudget !== undefined) {
 				const remaining = Math.max(0, job.tokenBudget - (job.state.tokensUsed ?? 0));

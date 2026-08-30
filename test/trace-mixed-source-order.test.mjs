@@ -208,6 +208,6 @@ test("late mixed-source updates preserve the relative order of already confirmed
 	const afterExistingOnly = stableKeys(patched).filter((key) => before.includes(key));
 	assert.deepEqual(afterExistingOnly, before);
 	assert.deepEqual(checkTraceView(patched), { status: "ok", issues: [] });
-	assert.equal(flattenTraceNodes(patched.nodes).find((node) => node.stableKey === "tool:tool-10")?.status, "done");
+	assert.equal(flattenTraceNodes(patched.nodes).find((node) => node.toolCallId === "tool-10" && node.eventId === "turn-10")?.status, "done");
 	assert.equal(flattenTraceNodes(patched.nodes).find((node) => node.type === "execution.compaction")?.status, "done");
 });

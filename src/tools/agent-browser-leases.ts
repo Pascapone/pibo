@@ -109,6 +109,28 @@ function isExpired(lease: AgentBrowserLease, now = new Date()): boolean {
   return new Date(lease.expiresAt).getTime() <= now.getTime();
 }
 
+function leaseTimestamp(lease: AgentBrowserLease): number {
+  const updatedAt = Date.parse(lease.updatedAt);
+  if (Number.isFinite(updatedAt)) return updatedAt;
+  const createdAt = Date.parse(lease.createdAt);
+  return Number.isFinite(createdAt) ? createdAt : 0;
+}
+
+function deduplicateLeaseIdentities(registry: LeaseRegistry): void {
+  const leasesById = new Map<string, AgentBrowserLease>();
+  for (const lease of registry.leases) {
+    const existing = leasesById.get(lease.id);
+    if (!existing) {
+      leasesById.set(lease.id, lease);
+      continue;
+    }
+    const preferLease = lease.status === 'active' && existing.status !== 'active'
+      || lease.status === existing.status && leaseTimestamp(lease) > leaseTimestamp(existing);
+    if (preferLease) leasesById.set(lease.id, lease);
+  }
+  registry.leases = [...leasesById.values()];
+}
+
 function copyFilter(source: string): boolean {
   const base = source.split(/[\\/]/).pop() || '';
   return ![
@@ -160,6 +182,7 @@ export async function acquireAgentBrowserLease(status: CliToolStatus, options: A
 
   const result = await withRegistryLock(status, async () => {
     const registry = readRegistry(status);
+    deduplicateLeaseIdentities(registry);
     const now = new Date();
     for (const lease of registry.leases) {
       if (lease.status === 'active' && isExpired(lease, now)) {
@@ -180,33 +203,42 @@ export async function acquireAgentBrowserLease(status: CliToolStatus, options: A
       );
     }
 
-    const used = new Set(active.map((lease) => lease.slot));
-    let slotNumber = 1;
-    while (used.has(`slot-${String(slotNumber).padStart(3, '0')}`)) slotNumber += 1;
-    const slot = `slot-${String(slotNumber).padStart(3, '0')}`;
-    const sessionName = `pibo-auth-${app}-${slot}`;
-    const profileDir = leaseProfileDir(status, app, slot);
-    const lease: AgentBrowserLease = {
-      id: `${app}-${slot}`,
-      app,
-      holder,
-      slot,
-      sessionName,
-      profileDir,
-      status: 'active',
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
-    };
+    let lease = registry.leases.find((item) => item.app === app && item.status === 'released');
+    if (lease) {
+      lease.holder = holder;
+      lease.status = 'active';
+      lease.updatedAt = nowIso();
+      lease.expiresAt = new Date(now.getTime() + ttlMs).toISOString();
+    } else {
+      const used = new Set(active.map((item) => item.slot));
+      let slotNumber = 1;
+      while (used.has(`slot-${String(slotNumber).padStart(3, '0')}`)) slotNumber += 1;
+      const slot = `slot-${String(slotNumber).padStart(3, '0')}`;
+      const sessionName = `pibo-auth-${app}-${slot}`;
+      const profileDir = leaseProfileDir(status, app, slot);
+      const createdAt = nowIso();
+      lease = {
+        id: `${app}-${slot}`,
+        app,
+        holder,
+        slot,
+        sessionName,
+        profileDir,
+        status: 'active',
+        createdAt,
+        updatedAt: createdAt,
+        expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+      };
+      registry.leases.push(lease);
+    }
 
-    await rm(profileDir, { recursive: true, force: true });
+    await rm(lease.profileDir, { recursive: true, force: true });
     const sourceTemplate = templateDir(status, app);
     if (existsSync(sourceTemplate)) {
-      await cp(sourceTemplate, profileDir, { recursive: true, force: true, filter: copyFilter });
+      await cp(sourceTemplate, lease.profileDir, { recursive: true, force: true, filter: copyFilter });
     } else {
-      await mkdir(profileDir, { recursive: true });
+      await mkdir(lease.profileDir, { recursive: true });
     }
-    registry.leases.push(lease);
     await writeRegistry(status, registry);
     return lease;
   });
@@ -238,6 +270,7 @@ export async function listAgentBrowserLeases(status: CliToolStatus, json = false
 export async function releaseAgentBrowserLease(status: CliToolStatus, id: string, options: AgentBrowserLeaseReleaseOptions): Promise<void> {
   await withRegistryLock(status, async () => {
     const registry = readRegistry(status);
+    deduplicateLeaseIdentities(registry);
     const lease = registry.leases.find((item) => item.id === id);
     if (!lease) throw new Error(`Agent Browser lease not found: ${id}`);
     lease.status = 'released';
@@ -252,6 +285,7 @@ export async function reapStaleAgentBrowserLeases(status: CliToolStatus, json = 
   let released = 0;
   await withRegistryLock(status, async () => {
     const registry = readRegistry(status);
+    deduplicateLeaseIdentities(registry);
     const now = new Date();
     for (const lease of registry.leases) {
       if (lease.status === 'active' && isExpired(lease, now)) {
