@@ -4866,7 +4866,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatProjectPatchBody>(request);
 				try {
-					requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					const existingProject = requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					if (existingProject.metadata.default === true) throw new PiboWebHttpError("Project Manager cannot be changed", 400);
 					const project = state.projectService.updateProject(projectResource.projectId, {
 						...(body.name !== undefined ? { name: normalizeRoomName(body.name) } : {}),
 						...(body.description !== undefined ? { description: normalizeProjectDescription(body.description) ?? null } : {}),
@@ -4885,7 +4886,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatProjectDeleteBody>(request);
 				try {
-					requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					const project = requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					if (project.metadata.default === true) throw new PiboWebHttpError("Project Manager cannot be deleted", 400);
 					return responseJson(state.projectService.deleteProject(projectResource.projectId, {
 						confirmName: normalizeRoomDeleteConfirmation(body.confirmName),
 						deleteFiles: body.deleteFiles === true,

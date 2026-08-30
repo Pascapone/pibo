@@ -2128,6 +2128,100 @@ test("chat web app keeps the default room locked", async () => {
 	}
 });
 
+test("chat web app keeps Project Manager locked without replacing its canonical session", async () => {
+	const { channel, baseURL, sessions, storageDir, projectStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const headers = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+
+	try {
+		const firstBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(firstBootstrapResponse.status, 200);
+		const firstBootstrap = await firstBootstrapResponse.json();
+		const defaultProject = firstBootstrap.sharedDefaultProject;
+		const canonicalSessionId = firstBootstrap.selectedPiboSessionId;
+
+		const archiveResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(defaultProject.id)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ archived: true }),
+		});
+		const archivePayload = await archiveResponse.json();
+		const deleteResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(defaultProject.id)}`, {
+			method: "DELETE",
+			headers,
+			body: JSON.stringify({ confirmName: defaultProject.name, deleteFiles: false }),
+		});
+		const deletePayload = await deleteResponse.json();
+
+		const reloadedBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(reloadedBootstrapResponse.status, 200);
+		const reloadedBootstrap = await reloadedBootstrapResponse.json();
+
+		const ordinaryFolder = join(storageDir, "ordinary-project");
+		mkdirSync(ordinaryFolder, { recursive: true });
+		const createResponse = await fetch(`${baseURL}/api/chat/projects`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ name: "Ordinary Project", projectFolder: ordinaryFolder, createFolder: false }),
+		});
+		assert.equal(createResponse.status, 201);
+		const ordinaryProject = (await createResponse.json()).project;
+		const createSessionResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(ordinaryProject.id)}/sessions`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(createSessionResponse.status, 201);
+		const ordinarySession = (await createSessionResponse.json()).session;
+		const ordinaryArchiveResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(ordinaryProject.id)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ archived: true }),
+		});
+		assert.equal(ordinaryArchiveResponse.status, 200);
+		const ordinaryDeleteResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(ordinaryProject.id)}`, {
+			method: "DELETE",
+			headers,
+			body: JSON.stringify({ confirmName: ordinaryProject.name, deleteFiles: false }),
+		});
+		assert.equal(ordinaryDeleteResponse.status, 200);
+
+		assert.equal(archiveResponse.status, 400);
+		assert.deepEqual(archivePayload, { error: "Project Manager cannot be changed" });
+		assert.equal(deleteResponse.status, 400);
+		assert.deepEqual(deletePayload, { error: "Project Manager cannot be deleted" });
+		assert.equal(reloadedBootstrap.sharedDefaultProject.id, defaultProject.id);
+		assert.equal(reloadedBootstrap.selectedPiboSessionId, canonicalSessionId);
+		assert.deepEqual(reloadedBootstrap.projectSessions.map((session) => session.piboSessionId), [canonicalSessionId]);
+		assert.deepEqual(
+			sessions.list().filter((session) => session.metadata?.projectId === defaultProject.id).map((session) => session.id),
+			[canonicalSessionId],
+		);
+		assert.equal(sessions.get(ordinarySession.id)?.id, ordinarySession.id);
+
+		const projectDb = new DatabaseSync(projectStorePath, { readOnly: true });
+		try {
+			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM projects WHERE id = ?").get(defaultProject.id).count, 1);
+			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM project_sessions WHERE project_id = ? AND pibo_session_id = ?").get(defaultProject.id, canonicalSessionId).count, 1);
+			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM projects WHERE id = ?").get(ordinaryProject.id).count, 0);
+			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM project_sessions WHERE pibo_session_id = ?").get(ordinarySession.id).count, 0);
+		} finally {
+			projectDb.close();
+		}
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat web app archives and deletes rooms with contained session subtrees", async () => {
 	const { channel, baseURL, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
