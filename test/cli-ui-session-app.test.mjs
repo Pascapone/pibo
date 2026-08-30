@@ -261,6 +261,10 @@ test("Ink session input reducer captures text, enter, navigation, escape, and sl
 	assert.equal(escaped.mode, "transcript");
 	assert.equal(escaped.picker, undefined);
 	assert.equal(escaped.message, "Canceled.");
+	const parentPicker = { kind: "room", title: "Rooms", items: [{ id: "room", label: "Room" }], selectedIndex: 0, emptyMessage: "None" };
+	const backed = reduceInkSessionInputState({ ...typed, picker: { ...typed.picker, parent: parentPicker } }, { type: "escape" });
+	assert.equal(backed.input, "");
+	assert.equal(backed.picker, parentPicker);
 
 	const slashBase = { loading: false, rows: [], input: "", mode: "transcript" };
 	const slash = reduceInkSessionInputState(slashBase, { type: "text", value: "/" });
