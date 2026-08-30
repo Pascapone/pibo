@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,6 +13,7 @@ import { createPiboXvfbServiceUnit, PIBO_XVFB_SERVICE_PATH, PIBO_XVFB_SERVICE_NA
 const execFileAsync = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
 const posixWrapperTest = process.platform === "win32" ? { skip: "requires POSIX browser wrapper semantics" } : {};
+const linuxTest = process.platform === "linux" ? {} : { skip: "requires Linux uv provisioning behavior" };
 
 function shellQuote(value) {
 	return `'${value.replaceAll("'", "'\\''")}'`;
@@ -260,6 +261,50 @@ test("pibo tools install supports a no-setup dry target", async () => {
 			assert.match(result.stdout, /Xvfb :0 -screen 0 1920x1080x24 -ac -nolisten tcp/);
 		}
 		assert.match(result.stdout, /env: pibo tools env browser-use/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools doctor reports missing uv without provisioning it", linuxTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-doctor-missing-uv-"));
+	try {
+		const home = join(cwd, "home");
+		const piboHome = join(cwd, "pibo-home");
+		const fakeBin = join(cwd, "bin");
+		const curlSentinel = join(cwd, "curl-was-called");
+		const forceRoot = join(cwd, "force-root.cjs");
+		await mkdir(home, { recursive: true });
+		await mkdir(fakeBin, { recursive: true });
+		await writeFile(forceRoot, "process.getuid = () => 0;\n");
+
+		const fakeUv = join(fakeBin, "uv");
+		await writeFile(fakeUv, "#!/bin/sh\nexit 127\n");
+		await chmod(fakeUv, 0o755);
+
+		const fakeCurl = join(fakeBin, "curl");
+		await writeFile(
+			fakeCurl,
+			"#!/bin/sh\n: > \"$PIBO_TEST_CURL_SENTINEL\"\nprintf '%s\\n' 'mkdir -p \"$HOME/.local/bin\"' ': > \"$HOME/.profile\"'\n",
+		);
+		await chmod(fakeCurl, 0o755);
+
+		const result = await execFileAsync(process.execPath, [cliPath, "tools", "doctor", "browser-use"], {
+			cwd,
+			env: {
+				...process.env,
+				HOME: home,
+				PIBO_HOME: piboHome,
+				PIBO_TEST_CURL_SENTINEL: curlSentinel,
+				PATH: `${fakeBin}:/bin:/usr/bin`,
+				NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require=${forceRoot}`.trim(),
+			},
+		});
+
+		assert.match(result.stdout, /uv: missing/);
+		assert.match(result.stdout, /Install uv first:/);
+		assert.equal(existsSync(curlSentinel), false, "doctor must not invoke curl to provision uv");
+		assert.deepEqual(await readdir(home), [], "doctor must not create files outside PIBO_HOME");
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
