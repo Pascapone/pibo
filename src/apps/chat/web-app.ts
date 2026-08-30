@@ -103,7 +103,7 @@ import { ScopedUserSkillManager } from "../../user-skills/manager.js";
 import { ChatDataIngestService } from "../../data/ingest-service.js";
 import { ChatEventCommandService } from "./data/event-command-service.js";
 import { ChatReadStateService } from "./data/read-state-service.js";
-import { ChatRoomService } from "./data/room-service.js";
+import { ChatRoomService, PiboRoomHierarchyCycleError } from "./data/room-service.js";
 import { ChatSessionQueryService } from "./data/session-query-service.js";
 import { ChatTimelineQueryService } from "./data/timeline-query-service.js";
 import { ChatHistoryQueryService, type ChatProductHistoryCoverage } from "./data/history-query-service.js";
@@ -5805,7 +5805,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const body = await readJsonBody<ChatRoomPatchBody>(request);
 				const update = createRoomUpdate(existingRoom, body);
 				if (update.parentRoomId) requireRoom(state, update.parentRoomId, webSession, "admin");
-				const room = state.roomService.updateRoom(roomResource.roomId, update);
+				let room: PiboRoom | undefined;
+				try {
+					room = state.roomService.updateRoom(roomResource.roomId, update);
+				} catch (error) {
+					if (error instanceof PiboRoomHierarchyCycleError) {
+						throw new PiboWebHttpError(error.message, 400);
+					}
+					throw error;
+				}
 				if (!room) throw new PiboWebHttpError("Room not found", 404);
 				return responseJson({ room });
 			}
