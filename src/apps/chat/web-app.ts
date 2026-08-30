@@ -77,6 +77,7 @@ import {
 import { isChatWebSessionArchived } from "./session-metadata.js";
 import { withWorkflowSessionKind } from "../../sessions/workflow-session-kind.js";
 import {
+	CustomAgentTargetReferenceError,
 	CustomAgentStore,
 	createDefaultCustomAgentStore,
 	previewCustomAgentCreate,
@@ -3108,6 +3109,21 @@ function normalizeAgentDeleteConfirmation(value: unknown): string {
 	return value.trim();
 }
 
+function requireCustomAgentNotTargeted(
+	state: ChatWebAppState,
+	agent: CustomAgentDefinition,
+	options: { activeOnly?: boolean } = {},
+): void {
+	const dependents = state.agentStore.listReferencingAgents(agent.id)
+		.filter((dependent) => !options.activeOnly || !dependent.archivedAt);
+	if (dependents.length === 0) return;
+	const error = new CustomAgentTargetReferenceError(agent.profileName, dependents.map((dependent) => dependent.profileName));
+	const message = options.activeOnly
+		? error.message.replace("targeted by custom agents", "targeted by active custom agents")
+		: error.message;
+	throw new PiboWebHttpError(message, 409);
+}
+
 async function deleteSessionsForAgentProfile(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
@@ -5645,6 +5661,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (customAgentUpdateAffectsRuntime(update)) {
 					await requireValidCustomAgentRuntime(previewCustomAgentUpdate(existing, update), context);
 				}
+				if (archived === true && !existing.archivedAt) {
+					requireCustomAgentNotTargeted(state, existing, { activeOnly: true });
+				}
 				const updated = Object.keys(update).length ? state.agentStore.update(patchAgentId, update) : existing;
 				const afterUpdate = requireSharedAgent(updated);
 				const agent = archived === undefined ? afterUpdate : state.agentStore.setArchived(patchAgentId, archived);
@@ -5669,8 +5688,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (confirmName !== agent.profileName) {
 					throw new PiboWebHttpError(`Type "${agent.profileName}" to permanently delete this agent and its sessions.`, 400);
 				}
+				requireCustomAgentNotTargeted(state, agent);
 				const deletedSessionIds = await deleteSessionsForAgentProfile(state, context, webSession, [agent.profileName, ...agent.profileAliases]);
-				state.agentStore.delete(agent.id);
+				try {
+					state.agentStore.delete(agent.id);
+				} catch (error) {
+					if (error instanceof CustomAgentTargetReferenceError) throw new PiboWebHttpError(error.message, 409);
+					throw error;
+				}
 				context.channelContext.removeProfile?.(agent.profileName);
 				invalidateBootstrapCatalogCache(state);
 				return responseJson({ deletedAgentId: agent.id, deletedSessionIds });

@@ -63,6 +63,19 @@ export type CustomAgentDefinition = {
 	archivedAt?: string;
 };
 
+export class CustomAgentTargetReferenceError extends Error {
+	readonly targetProfileName: string;
+	readonly dependentProfileNames: string[];
+
+	constructor(targetProfileName: string, dependentProfileNames: readonly string[]) {
+		const sortedNames = [...dependentProfileNames].sort((left, right) => left.localeCompare(right));
+		super(`Custom agent "${targetProfileName}" is targeted by custom agents: ${sortedNames.join(", ")}`);
+		this.name = "CustomAgentTargetReferenceError";
+		this.targetProfileName = targetProfileName;
+		this.dependentProfileNames = sortedNames;
+	}
+}
+
 const CUSTOM_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 export type CreateCustomAgentInput = {
@@ -447,10 +460,41 @@ export class CustomAgentStore {
 		return this.get(id);
 	}
 
+	listReferencingAgents(id: string): CustomAgentDefinition[] {
+		this.migrateLegacyProfileNames();
+		const target = this.get(id);
+		if (!target) return [];
+		const targetNames = new Set([
+			target.profileName,
+			target.id,
+			`custom-agent:${target.id}`,
+			...target.profileAliases,
+		]);
+		return this.list({ includeArchived: true })
+			.filter((agent) => agent.id !== id && agent.subagents.some((subagent) => targetNames.has(subagent.targetProfile)))
+			.sort((left, right) => left.profileName.localeCompare(right.profileName));
+	}
+
 	delete(id: string): boolean {
-		this.db.prepare("DELETE FROM chat_agent_profile_aliases WHERE agent_id = ?").run(id);
-		const result = this.db.prepare("DELETE FROM chat_agents WHERE id = ?").run(id);
-		return Number(result.changes ?? 0) > 0;
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const target = this.get(id);
+			if (!target) {
+				this.db.exec("COMMIT");
+				return false;
+			}
+			const dependents = this.listReferencingAgents(id);
+			if (dependents.length > 0) {
+				throw new CustomAgentTargetReferenceError(target.profileName, dependents.map((agent) => agent.profileName));
+			}
+			this.db.prepare("DELETE FROM chat_agent_profile_aliases WHERE agent_id = ?").run(id);
+			const result = this.db.prepare("DELETE FROM chat_agents WHERE id = ?").run(id);
+			this.db.exec("COMMIT");
+			return Number(result.changes ?? 0) > 0;
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
 	}
 
 	close(): void {
