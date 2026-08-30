@@ -2,6 +2,111 @@ import type { DatabaseSync } from "node:sqlite";
 
 export const PIBO_DATA_SCHEMA_VERSION = 7;
 
+const retiredScopeColumn = ["owner", "scope"].join("_");
+
+type RetiredScopeTable = {
+	name: "sessions" | "rooms" | "session_navigation";
+	columns: string[];
+	definition: string;
+};
+
+const retiredScopeTables: RetiredScopeTable[] = [
+	{
+		name: "sessions",
+		columns: [
+			"id", "pi_session_id", "room_id", "root_session_id", "parent_id", "origin_id",
+			"channel", "kind", "profile", "active_model_json", "workspace", "title",
+			"first_message_preview", "status", "archived_at", "deleted_at", "metadata_json",
+			"created_at", "updated_at", "last_activity_at",
+		],
+		definition: `
+			id TEXT PRIMARY KEY,
+			pi_session_id TEXT UNIQUE,
+			room_id TEXT,
+			root_session_id TEXT,
+			parent_id TEXT,
+			origin_id TEXT,
+			channel TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			profile TEXT NOT NULL,
+			active_model_json TEXT,
+			workspace TEXT,
+			title TEXT NOT NULL DEFAULT 'Untitled Session',
+			first_message_preview TEXT,
+			status TEXT NOT NULL DEFAULT 'idle',
+			archived_at TEXT,
+			deleted_at TEXT,
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			last_activity_at TEXT NOT NULL
+		`,
+	},
+	{
+		name: "rooms",
+		columns: [
+			"id", "name", "topic", "type", "parent_room_id", "workspace", "archived_at",
+			"retention_policy_id", "metadata_json", "created_at", "updated_at",
+		],
+		definition: `
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			topic TEXT,
+			type TEXT NOT NULL,
+			parent_room_id TEXT,
+			workspace TEXT,
+			archived_at TEXT,
+			retention_policy_id TEXT,
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		`,
+	},
+	{
+		name: "session_navigation",
+		columns: [
+			"room_id", "session_id", "root_session_id", "parent_id", "origin_id", "title",
+			"profile", "status", "archived_at", "last_activity_at", "last_message_preview",
+			"child_count", "sort_key", "updated_at",
+		],
+		definition: `
+			room_id TEXT,
+			session_id TEXT PRIMARY KEY,
+			root_session_id TEXT,
+			parent_id TEXT,
+			origin_id TEXT,
+			title TEXT NOT NULL,
+			profile TEXT NOT NULL,
+			status TEXT NOT NULL,
+			archived_at TEXT,
+			last_activity_at TEXT NOT NULL,
+			last_message_preview TEXT,
+			child_count INTEGER NOT NULL DEFAULT 0,
+			sort_key TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		`,
+	},
+];
+
+function retiredScopeTablesToRebuild(db: DatabaseSync): RetiredScopeTable[] {
+	return retiredScopeTables.filter((table) => (
+		(db.prepare(`SELECT 1 FROM pragma_table_info('${table.name}') WHERE name = ?`).get(retiredScopeColumn)) !== undefined
+	));
+}
+
+function rebuildRetiredScopeTables(db: DatabaseSync, tablesToRebuild: RetiredScopeTable[]): void {
+	for (const table of tablesToRebuild) {
+		const replacement = `__pibo_schema_v7_${table.name}`;
+		const columnList = table.columns.join(", ");
+		db.exec(`
+			CREATE TABLE ${replacement} (${table.definition});
+			INSERT INTO ${replacement} (${columnList}) SELECT ${columnList} FROM ${table.name};
+			DROP TABLE ${table.name};
+			ALTER TABLE ${replacement} RENAME TO ${table.name};
+		`);
+	}
+}
+
 export function assertSupportedPiboDataSchemaVersion(db: DatabaseSync): number {
 	const version = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
 	if (version > PIBO_DATA_SCHEMA_VERSION) {
@@ -30,21 +135,38 @@ export type PiboDataSchemaMigrationHooks = {
 
 export function applyPiboDataSchema(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks = {}): void {
 	const previousVersion = assertSupportedPiboDataSchemaVersion(db);
+	const tablesToRebuild = retiredScopeTablesToRebuild(db);
 	const ownsTransaction = !db.isTransaction;
-	if (ownsTransaction) db.exec("BEGIN IMMEDIATE");
+	if (!ownsTransaction && tablesToRebuild.length > 0) {
+		throw new Error("Pibo data schema migration requires an independent transaction");
+	}
+	const foreignKeysEnabled = ownsTransaction
+		&& tablesToRebuild.length > 0
+		&& Number((db.prepare("PRAGMA foreign_keys").get() as { foreign_keys?: number }).foreign_keys ?? 0) === 1;
+	if (foreignKeysEnabled) db.exec("PRAGMA foreign_keys = OFF");
 	try {
-		applyPiboDataSchemaInTransaction(db, hooks, previousVersion);
+		if (ownsTransaction) db.exec("BEGIN IMMEDIATE");
+		applyPiboDataSchemaInTransaction(db, hooks, previousVersion, tablesToRebuild);
+		if (tablesToRebuild.length > 0) {
+			const violations = db.prepare("PRAGMA foreign_key_check").all();
+			if (violations.length > 0) {
+				throw new Error(`Pibo data schema migration would retain ${violations.length} foreign-key violation(s)`);
+			}
+		}
 		if (ownsTransaction) db.exec("COMMIT");
 	} catch (error) {
 		if (ownsTransaction && db.isTransaction) db.exec("ROLLBACK");
 		throw error;
+	} finally {
+		if (foreignKeysEnabled) db.exec("PRAGMA foreign_keys = ON");
 	}
 }
 
-function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks, previousVersion: number): void {
+function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks, previousVersion: number, tablesToRebuild: RetiredScopeTable[]): void {
 	const existingSessionCount = db.prepare("SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'sessions'").get() as { count: number };
 	const hadSessionsBeforeMigration = existingSessionCount.count > 0
 		&& Number((db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number }).count) > 0;
+	rebuildRetiredScopeTables(db, tablesToRebuild);
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
