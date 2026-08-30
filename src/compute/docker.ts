@@ -16,6 +16,7 @@ const execFileAsync = promisify(execFile);
 const createDockerIgnore = dockerIgnoreModule as unknown as (options?: { ignorecase?: boolean }) => DockerIgnore;
 
 export const IMAGE_NAME = "pibo:latest";
+export const COMPUTE_PUBLISH_HOST = "127.0.0.1";
 export const LABEL_ROLE = "pibo.compute.role";
 export const LABEL_CREATED_AT = "pibo.compute.createdAt";
 export const LABEL_HOLDER = "pibo.compute.holder";
@@ -320,15 +321,15 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 		"-e",
 		"PIBO_COMPUTE_WORKER_ROLE=dev",
 		"-p",
-		`127.0.0.1:${options.gatewayPort}:4789`,
+		`${COMPUTE_PUBLISH_HOST}:${options.gatewayPort}:4789`,
 		"-p",
-		`127.0.0.1:${options.cdpPort}:56663`,
+		`${COMPUTE_PUBLISH_HOST}:${options.cdpPort}:56663`,
 		"-p",
-		`127.0.0.1:${options.webPort}:4788`,
+		`${COMPUTE_PUBLISH_HOST}:${options.webPort}:4788`,
 		"-p",
-		`127.0.0.1:${options.webUIPortChat}:4790`,
+		`${COMPUTE_PUBLISH_HOST}:${options.webUIPortChat}:4790`,
 		"-p",
-		`127.0.0.1:${options.webUIPortContext}:4791`,
+		`${COMPUTE_PUBLISH_HOST}:${options.webUIPortContext}:4791`,
 		"-v",
 		`${options.worktreePath}:/workspace`,
 		...(options.hostNodeModules ? ["-v", `${options.hostNodeModules}:/workspace/node_modules`] : []),
@@ -416,12 +417,10 @@ export async function spawnDevWorker(options: {
 
 	await execFileAsync("docker", args, { cwd: options.repoDir });
 
-	const host = await detectHost();
-
 	return {
 		id,
 		image: IMAGE_NAME,
-		gatewayHost: host,
+		gatewayHost: COMPUTE_PUBLISH_HOST,
 		gatewayPort,
 		cdpPort,
 		webPort,
@@ -458,11 +457,11 @@ export function buildWorkerDockerRunArgs(options: BuildWorkerDockerRunArgsOption
 		"-e",
 		"PIBO_COMPUTE_WORKER_ROLE=worker",
 		"-p",
-		"127.0.0.1::4789",
+		`${COMPUTE_PUBLISH_HOST}::4789`,
 		"-p",
-		"127.0.0.1::56663",
+		`${COMPUTE_PUBLISH_HOST}::56663`,
 		"-p",
-		"127.0.0.1::4788",
+		`${COMPUTE_PUBLISH_HOST}::4788`,
 		...buildComputeWorkerMetadataLabels({
 			role: "worker",
 			createdAt: options.createdAt,
@@ -516,13 +515,10 @@ export async function spawnWorker(options: {
 	const cdpPort = parseHostPort(port56663);
 	const webPort = parseHostPort(port4788);
 
-	// Detect host IP
-	const host = await detectHost();
-
 	return {
 		id,
 		image: IMAGE_NAME,
-		gatewayHost: host,
+		gatewayHost: COMPUTE_PUBLISH_HOST,
 		gatewayPort,
 		cdpPort,
 		webPort,
@@ -542,18 +538,6 @@ function parseHostPort(dockerPortOutput: string): number {
 		}
 	}
 	return 0;
-}
-
-async function detectHost(): Promise<string> {
-	try {
-		const { stdout } = await execFileAsync("hostname", ["-I"]);
-		const ips = stdout.trim().split(/\s+/);
-		const nonLocal = ips.find((ip) => !ip.startsWith("127."));
-		if (nonLocal) return nonLocal;
-		return ips[0] || "127.0.0.1";
-	} catch {
-		return "127.0.0.1";
-	}
 }
 
 export interface ComputeWorkerCleanupEligibility {
