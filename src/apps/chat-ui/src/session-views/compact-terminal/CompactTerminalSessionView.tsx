@@ -25,6 +25,7 @@ import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDurati
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
 const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 4_800;
+const COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX = 800;
 const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
@@ -141,14 +142,17 @@ export function CompactTerminalSessionView({
 		if (isOlderTraceScrollIntent(event, direction)) olderTraceIntentRef.current = true;
 	}, []);
 	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
-		if (!rangePrefetchReadyRef.current) return;
+		if (!rangePrefetchReadyRef.current || toolDisplayMode !== "default") return;
 		if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderNearTop();
-	}, [loadOlderNearTop]);
+	}, [loadOlderNearTop, toolDisplayMode]);
 	const persistVisibleAnchor = useCallback((anchor: { key: string; offset: number } | undefined) => {
 		if (!piboSessionId) return;
 		writeTerminalReadingPosition(piboSessionId, anchor ? { rowId: anchor.key, offsetPx: anchor.offset } : undefined);
 	}, [piboSessionId]);
 
+	const olderTracePrefetchTopThreshold = toolDisplayMode === "default"
+		? OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX
+		: COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX;
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
 		itemKeys: rowKeys,
@@ -156,7 +160,7 @@ export function CompactTerminalSessionView({
 		resetKey: traceView?.piboSessionId,
 		contentKey: renderedContentKey,
 		atBottomThreshold: SHOW_LATEST_THRESHOLD_PX,
-		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
+		nearTopThreshold: olderTracePrefetchTopThreshold,
 		onAtTop: loadOlderAtTop,
 		onNearTop: loadOlderNearTop,
 		onUserScrollIntent: markOlderTraceIntent,

@@ -28,7 +28,14 @@ test("trace views preload older pages near the top without a manual trace-histor
 		const source = await readFile(sourcePath, "utf8");
 		assert.match(source, new RegExp(`OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = ${topThreshold}`));
 		assert.match(source, new RegExp(`OLDER_TRACE_PREFETCH_ROW_THRESHOLD = ${rowThreshold}`));
-		assert.match(source, /nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX/);
+		if (sourcePath.includes("CompactTerminalSessionView")) {
+			assert.match(source, /COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX = 800/);
+			assert.match(source, /toolDisplayMode === "default"\s*\? OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX\s*:\s*COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX/);
+			assert.match(source, /nearTopThreshold: olderTracePrefetchTopThreshold/);
+			assert.match(source, /if \(!rangePrefetchReadyRef\.current \|\| toolDisplayMode !== "default"\) return;/);
+		} else {
+			assert.match(source, /nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX/);
+		}
 		assert.match(source, /onAtTop: loadOlderAtTop/);
 		assert.match(source, /onNearTop: loadOlderNearTop/);
 		assert.match(source, /scrollbarDragActiveRef\.current = active/);
