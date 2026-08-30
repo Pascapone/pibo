@@ -17,6 +17,7 @@ import {
 	type WorkflowProfilePickerResponse,
 	type WorkflowVersionPickerResponse,
 } from "../api-workflows";
+import { DialogShell } from "../components/DialogShell";
 import {
 	readWorkflowEdgeDefinitions,
 	readWorkflowNodeDefinitions,
@@ -780,31 +781,32 @@ function WorkflowEdgeAdapterDialog({ draft, edgeId, edge, edgePortDetails, isSav
 	};
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="workflow-edge-adapter-dialog-title">
-			<div className="max-h-[88vh] w-full max-w-3xl overflow-auto rounded-sm border border-slate-700 bg-[#101d22] p-4 shadow-2xl shadow-black/40">
-				<div className="flex flex-wrap items-start justify-between gap-3">
-					<div>
-						<div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#11a4d4]"><Link2 size={13} />Compatible edge adapter dialog</div>
-						<h4 id="workflow-edge-adapter-dialog-title" className="mt-1 text-sm font-bold text-slate-100">Choose a registered adapter for {edgeId}</h4>
-						<p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
-							The dialog shows the source output and target input schemas from the Pibo Workflow IR. Use a registered adapter as an explicit edge adapter, or insert a visible adapter node between the endpoints.
-						</p>
-					</div>
-					<button type="button" className="rounded-sm border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-[#11a4d4]/60 hover:text-slate-100" onClick={onClose}>Close</button>
-				</div>
+		<DialogShell
+			title={`Choose a registered adapter for ${edgeId}`}
+			description="The dialog shows the source output and target input schemas from the Pibo Workflow IR."
+			onClose={onClose}
+			closeLabel="Close compatible edge adapter dialog"
+			closeDisabled={isSaving}
+			maxWidthClassName="max-w-3xl"
+		>
+			<div className="grid gap-4 p-4">
+				<div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#11a4d4]"><Link2 size={13} />Compatible edge adapter dialog</div>
+				<p className="max-w-2xl text-xs leading-5 text-slate-500">
+					Use a registered adapter as an explicit edge adapter, or insert a visible adapter node between the endpoints.
+				</p>
 
-				<div className="mt-4 grid gap-3">
+				<div className="grid gap-3">
 					<HandlerSchemaPreview label={`From schema${edgePortDetails.sourceNodeId ? ` (${edgePortDetails.sourceNodeId})` : ""}`} schema={edgePortDetails.sourcePort ?? null} />
 					<HandlerSchemaPreview label={`To schema${edgePortDetails.targetNodeId ? ` (${edgePortDetails.targetNodeId})` : ""}`} schema={edgePortDetails.targetPort ?? null} />
 				</div>
 
-				<div className={`mt-3 rounded-sm border p-3 text-xs leading-5 ${edgePortDetails.directlyCompatible ? "border-emerald-900/60 bg-emerald-950/20 text-emerald-200" : "border-amber-700/70 bg-amber-950/30 text-amber-100"}`}>
+				<div className={`rounded-sm border p-3 text-xs leading-5 ${edgePortDetails.directlyCompatible ? "border-emerald-900/60 bg-emerald-950/20 text-emerald-200" : "border-amber-700/70 bg-amber-950/30 text-amber-100"}`}>
 					{edgePortDetails.directlyCompatible
 						? "These ports are directly compatible. An adapter is optional and remains explicit if selected."
 						: "These ports are not directly compatible. Select a registered adapter instead of hidden LLM coercion or inline transformation code."}
 				</div>
 
-				<div className="mt-4 grid gap-3 text-xs">
+				<div className="grid gap-3 text-xs">
 					<label className="grid gap-1 font-semibold text-slate-300">
 						<span>Compatible registered adapter</span>
 						<select
@@ -843,7 +845,7 @@ function WorkflowEdgeAdapterDialog({ draft, edgeId, edge, edgePortDetails, isSav
 					</div>
 				</div>
 			</div>
-		</div>
+		</DialogShell>
 	);
 }
 

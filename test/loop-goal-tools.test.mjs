@@ -100,7 +100,7 @@ test("native goal tools create, inspect, complete, and replace a session goal", 
 		const completed = details(await tools.update_goal.execute("call_complete", { status: "complete" }));
 		assert.equal(completed.goal.status, "complete");
 		assert.equal(store.getJob(job.id).enabled, false);
-		assert.throws(() => store.updateJob(job.id, { enabled: true }), /Completed goals cannot be restarted/);
+		assert.throws(() => store.updateJob(job.id, { enabled: true }), /Terminal Goals cannot be restarted/);
 
 		const replacement = details(await tools.create_goal.execute("call_replace", { objective: "Follow-up objective" }));
 		assert.notEqual(replacement.goal.goalId, job.id);
@@ -163,7 +163,7 @@ test("token budgets are limited to Goal mode", () => {
 test("goal token accounting marks the goal budget limited", () => {
 	const store = new PiboLoopStore({ path: ":memory:" });
 	try {
-		const job = store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "bounded objective", tokenBudget: 100 });
+		const job = store.createJob({ mode: "goal", enabled: true, target: { kind: "default-chat" }, profile: "base", prompt: "bounded objective", tokenBudget: 100, initialPiboSessionId: "ps_budget" });
 		store.recordGoalProgress(job.id, { tokens: 40, activeTimeSeconds: 2 });
 		assert.equal(store.getJob(job.id).state.goalStatus, "active");
 		store.recordGoalProgress(job.id, { tokens: 70, activeTimeSeconds: 3 });
@@ -172,10 +172,14 @@ test("goal token accounting marks the goal budget limited", () => {
 		assert.equal(limited.state.tokensUsed, 110);
 		assert.equal(limited.state.activeTimeSeconds, 5);
 		assert.equal(limited.enabled, false);
-		assert.throws(() => store.updateJob(job.id, { enabled: true }), /Increase or clear the token budget/);
-		const resumed = store.updateJob(job.id, { tokenBudget: 200, enabled: true });
+		assert.throws(() => store.updateJob(job.id, { enabled: true }), /Terminal Goals cannot be restarted/);
+		const adjusted = store.updateJob(job.id, { tokenBudget: 200 });
+		assert.equal(adjusted.state.goalStatus, "budget_limited");
+		assert.equal(adjusted.enabled, false);
+		const resumed = store.reopenGoal(job.id, { actorId: "operator:test" });
 		assert.equal(resumed.state.goalStatus, "active");
 		assert.equal(resumed.enabled, true);
+		assert.equal(store.listRunFacts({ jobId: job.id, type: "pibo.loop.goal-reopened" })[0].payload.previousStatus, "budget_limited");
 	} finally {
 		store.close();
 	}

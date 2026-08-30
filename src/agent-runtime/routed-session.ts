@@ -51,7 +51,7 @@ const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
 const RUN_REMINDER_MAX_TOOL_EXECUTIONS = 64;
 const RUN_REMINDER_MAX_PROVIDER_ROUNDS = 64;
 const RUN_REMINDER_MAX_ACTIVE_TOKENS = 2_000_000;
-const RUN_REMINDER_MAX_DURATION_MS = 15 * 60 * 1000;
+export const RUN_REMINDER_MAX_DURATION_MS = 15 * 60 * 1000;
 const RUN_REMINDER_MAX_REPEATED_TOOL_CALLS = 12;
 
 type RunReminderTurnGuard = {
@@ -322,14 +322,20 @@ export class RuntimeRoutedSession {
 	async executeAction(event: PiboExecutionEvent): Promise<PiboOutputEvent> {
 		this.assertActive();
 		if (event.action === "compact") return this.enqueueCompactAction(event);
-		const changesSessionIdentity = event.action === "session.fork" || event.action === "session.clone";
-		if (changesSessionIdentity) {
-			this.assertSessionIdentityOperationIdle(event.action === "session.fork" ? "fork" : "clone");
+		const sessionIdentityOperation = event.action === "session.fork"
+			? "fork"
+			: event.action === "session.clone"
+				? "clone"
+				: event.action === "session.switch"
+					? "switch"
+					: undefined;
+		if (sessionIdentityOperation) {
+			this.assertSessionIdentityOperationIdle(sessionIdentityOperation);
 			this.sessionIdentityOperationInFlight = true;
 			this.notifyState();
 		}
 		try {
-			if (changesSessionIdentity) await this.options.onBeforeSessionIdentityOperation?.(event);
+			if (sessionIdentityOperation) await this.options.onBeforeSessionIdentityOperation?.(event);
 			const result = await this.runAction(event);
 			if (isSessionOperationResult(result)) await this.options.onSessionOperation?.(result, event);
 			const output: PiboOutputEvent = {
@@ -342,7 +348,7 @@ export class RuntimeRoutedSession {
 			this.emit(output);
 			return output;
 		} finally {
-			if (changesSessionIdentity) {
+			if (sessionIdentityOperation) {
 				this.sessionIdentityOperationInFlight = false;
 				this.notifyState();
 				this.startDrain();
