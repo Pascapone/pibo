@@ -50,7 +50,11 @@ test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", ()
 	assert.match(source, /const anchors = restoredAnchorIndex >= 0/, "late mutations continue restoring the explicit reload anchor");
 	assert.doesNotMatch(source, /restoredAnchorIndex < 0\) restoredAnchorLockRef\.current = undefined/, "transient replay gaps must not discard the explicit reload anchor");
 	assert.match(source, /markUserScrollIntent = useCallback[\s\S]*clearAnchorLocks\(\)/, "the first new user input releases restored and content anchor locks");
-	assert.match(source, /if \(userScrollIntentRef\.current\) \{\n\t\t\tuserAnchorRestoreDeferredRef\.current = true;\n\t\t\treturn;/, "active wheel and touch gestures own the viewport instead of competing with anchor restoration");
+	assert.match(source, /touchScrollIntentRef\.current = event\?\.type === "touchmove";/, "touch gesture ownership is tracked separately from wheel and keyboard intent");
+	assert.match(source, /wheelScrollIntentRef\.current = event\?\.type === "wheel";/, "wheel gestures retain synchronous layout stabilization");
+	assert.match(source, /offset: anchor\.offset - event\.deltaY/, "wheel anchors project the requested visual movement before dynamic rows resize");
+	assert.match(source, /userAnchorCaptureArmedRef\.current && !wheelScrollIntentRef\.current/, "projected wheel anchors may correct layout in the same frame");
+	assert.match(source, /if \(userScrollIntentRef\.current && touchScrollIntentRef\.current\) \{\n\t\t\tuserAnchorRestoreDeferredRef\.current = true;\n\t\t\treturn;/, "active touch gestures own the viewport without suppressing wheel anchor stabilization");
 	assert.match(source, /if \(userScrollIntentRef\.current\) scheduleUserScrollIntentRelease\(\);/, "scroll events keep gesture ownership armed through touch momentum and wheel settling");
 	assert.match(source, /if \(!userAnchorRestoreDeferredRef\.current\) return;[\s\S]*captureVisibleAnchors\(\);/, "settled gestures adopt their final conceptual row instead of replaying a stale anchor");
 	assert.match(source, /if \(anchorFrameRef\.current !== undefined\) cancelAnimationFrame\(anchorFrameRef\.current\);\n\t\tanchorFrameRef\.current = undefined;/, "new input cancels already scheduled anchor corrections");

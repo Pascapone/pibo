@@ -86,6 +86,8 @@ export function useStickyVirtuoso({
 	const nearTopFrameRef = useRef<number | undefined>(undefined);
 	const userScrollIntentRef = useRef(false);
 	const userScrollDirectionRef = useRef<StickyScrollIntentDirection | undefined>(undefined);
+	const touchScrollIntentRef = useRef(false);
+	const wheelScrollIntentRef = useRef(false);
 	const userAnchorRestoreDeferredRef = useRef(false);
 	const userAnchorCaptureArmedRef = useRef(false);
 	const bottomReattachArmedRef = useRef(false);
@@ -163,6 +165,8 @@ export function useStickyVirtuoso({
 		stickyRef.current = next;
 		if (next) {
 			clearAnchorLocks();
+			touchScrollIntentRef.current = false;
+			wheelScrollIntentRef.current = false;
 			userAnchorRestoreDeferredRef.current = false;
 			if (!wasSticky && notifyAnchorChange) onVisibleAnchorChange?.(undefined);
 			bottomReattachArmedRef.current = false;
@@ -221,11 +225,25 @@ export function useStickyVirtuoso({
 		renderedItemsRef.current = items;
 	}, []);
 
+	const projectVisibleAnchorsForWheel = useCallback((event?: Event) => {
+		if (!(event instanceof WheelEvent) || stickyRef.current || event.deltaY === 0 || visibleAnchorsRef.current.length === 0) return;
+		visibleAnchorsRef.current = visibleAnchorsRef.current.map((anchor) => ({
+			...anchor,
+			offset: anchor.offset - event.deltaY,
+		}));
+		if (isPrependingRef.current || pendingAnchorsRef.current !== undefined) {
+			pendingAnchorsRef.current = visibleAnchorsRef.current;
+			pendingAnchorItemKeysRef.current = visibleAnchorItemKeysRef.current;
+		}
+	}, []);
+
 	const scheduleUserScrollIntentRelease = useCallback(() => {
 		if (userScrollIntentTimerRef.current !== undefined) window.clearTimeout(userScrollIntentTimerRef.current);
 		userScrollIntentTimerRef.current = window.setTimeout(() => {
 			userScrollIntentRef.current = false;
 			userScrollDirectionRef.current = undefined;
+			touchScrollIntentRef.current = false;
+			wheelScrollIntentRef.current = false;
 			userScrollIntentTimerRef.current = undefined;
 			if (!userAnchorRestoreDeferredRef.current) return;
 			userAnchorRestoreDeferredRef.current = false;
@@ -241,11 +259,11 @@ export function useStickyVirtuoso({
 
 	const restoreVisibleAnchor = useCallback((allowDuringPrepend = false) => {
 		if (stickyRef.current || pointerScrollModeRef.current !== undefined) return;
-		if (userScrollIntentRef.current) {
+		if (userScrollIntentRef.current && touchScrollIntentRef.current) {
 			userAnchorRestoreDeferredRef.current = true;
 			return;
 		}
-		if (userAnchorCaptureArmedRef.current || (virtuosoPrependPendingRef.current && !allowDuringPrepend)) return;
+		if ((userAnchorCaptureArmedRef.current && !wheelScrollIntentRef.current) || (virtuosoPrependPendingRef.current && !allowDuringPrepend)) return;
 		const itemKeys = committedItemKeysRef.current;
 		const restoredAnchor = restoredAnchorLockRef.current;
 		const restoredAnchorIndex = restoredAnchor ? itemKeys.indexOf(restoredAnchor.key) : -1;
@@ -261,11 +279,11 @@ export function useStickyVirtuoso({
 		if (!location) return;
 		const restore = () => {
 			if (stickyRef.current || pointerScrollModeRef.current !== undefined) return false;
-			if (userScrollIntentRef.current) {
+			if (userScrollIntentRef.current && touchScrollIntentRef.current) {
 				userAnchorRestoreDeferredRef.current = true;
 				return false;
 			}
-			if (userAnchorCaptureArmedRef.current) return false;
+			if (userAnchorCaptureArmedRef.current && !wheelScrollIntentRef.current) return false;
 			const restoredInDom = Boolean(scroller && restoreDomVisibleAnchor(scroller, location, anchors, itemKeys));
 			if (!restoredInDom && !virtuosoPrependPendingRef.current) virtuosoRef.current?.scrollToIndex(location);
 			return restoredInDom;
@@ -443,6 +461,8 @@ export function useStickyVirtuoso({
 	const markUserScrollIntent = useCallback((event?: Event, directionOverride?: StickyScrollIntentDirection) => {
 		clearAnchorLocks();
 		userScrollIntentRef.current = true;
+		touchScrollIntentRef.current = event?.type === "touchmove";
+		wheelScrollIntentRef.current = event?.type === "wheel";
 		const direction = directionOverride ?? stickyScrollIntentDirection(scrollIntentInput(event));
 		onUserScrollIntent?.(event, direction);
 		userScrollDirectionRef.current = direction;
@@ -460,13 +480,14 @@ export function useStickyVirtuoso({
 			setSticky(false);
 			captureVisibleAnchors();
 		}
+		projectVisibleAnchorsForWheel(event);
 		if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
 		anchorFrameRef.current = undefined;
 		const scrollTop = scroller ? getScrollTop(scroller) : undefined;
 		if (scrollTop !== undefined && updateAtTopFromScrollTop(scrollTop)) requestAtTop();
 		else if (isNearTopHistoryIntent(event) && scrollTop !== undefined && scrollTop <= nearTopThreshold) requestNearTop();
 		scheduleUserScrollIntentRelease();
-	}, [atBottomThreshold, captureVisibleAnchors, clearAnchorLocks, clearScheduledScroll, nearTopThreshold, onUserScrollIntent, requestAtTop, requestNearTop, scheduleUserScrollIntentRelease, scroller, setSticky, updateAtTopFromScrollTop]);
+	}, [atBottomThreshold, captureVisibleAnchors, clearAnchorLocks, clearScheduledScroll, nearTopThreshold, onUserScrollIntent, projectVisibleAnchorsForWheel, requestAtTop, requestNearTop, scheduleUserScrollIntentRelease, scroller, setSticky, updateAtTopFromScrollTop]);
 
 	const clearPointerScrollMode = useCallback((expectedMode?: StickyPointerScrollMode) => {
 		const currentMode = pointerScrollModeRef.current;
@@ -710,6 +731,8 @@ export function useStickyVirtuoso({
 		if (userAnchorFinalCaptureTimerRef.current !== undefined) window.clearTimeout(userAnchorFinalCaptureTimerRef.current);
 		userAnchorCaptureTimerRef.current = undefined;
 		userAnchorFinalCaptureTimerRef.current = undefined;
+		touchScrollIntentRef.current = false;
+		wheelScrollIntentRef.current = false;
 		userAnchorRestoreDeferredRef.current = false;
 		userAnchorCaptureArmedRef.current = false;
 		visibleAnchorsRef.current = [];
