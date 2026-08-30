@@ -14,7 +14,12 @@
     "docs/ops/**",
     "README.md",
     "src/mcp/LICENSE.mcp-cli",
-    "npm-shrinkwrap.json"
+    "npm-shrinkwrap.json",
+    "compute-image/Dockerfile",
+    "compute-image/Dockerfile.dockerignore",
+    "scripts/docker-entrypoint.sh",
+    "scripts/prepare-browser-use-wrapper.sh",
+    "scripts/prepare-agent-browser-wrapper.sh"
   ],
   "bin": {
     "pibo": "dist/bin/pibo.js",

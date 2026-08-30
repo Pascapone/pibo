@@ -1,8 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, readlink, rename, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import dockerIgnoreModule, { type Ignore as DockerIgnore } from "@balena/dockerignore";
 import { piboHomePath } from "../core/pibo-home.js";
 import {
@@ -17,6 +20,8 @@ const execFileAsync = promisify(execFile);
 const createDockerIgnore = dockerIgnoreModule as unknown as (options?: { ignorecase?: boolean }) => DockerIgnore;
 
 export const IMAGE_NAME = "pibo:latest";
+export const COMPUTE_IMAGE_ENV = "PIBO_COMPUTE_IMAGE";
+export const PACKAGED_COMPUTE_DOCKERFILE = "compute-image/Dockerfile";
 export const COMPUTE_PUBLISH_HOST = "127.0.0.1";
 export const LABEL_ROLE = "pibo.compute.role";
 export const LABEL_CREATED_AT = "pibo.compute.createdAt";
@@ -42,9 +47,84 @@ export interface SpawnedWorker {
 	connect: string;
 }
 
-export async function dockerBuild(workspaceDir: string): Promise<void> {
-	const { stderr } = await execFileAsync("docker", ["build", "-t", IMAGE_NAME, "."], {
-		cwd: workspaceDir,
+export interface ComputeImageBuildConfig {
+	imageName: string;
+	buildContext: string;
+	dockerfile?: string;
+	source: "workspace" | "package";
+}
+
+export function resolveComputeImageBuildConfig(
+	workspaceDir: string,
+	options: {
+		packageRoot?: string;
+		env?: NodeJS.ProcessEnv;
+		fileExists?: (candidate: string) => boolean;
+		readTextFile?: (candidate: string) => string;
+	} = {},
+): ComputeImageBuildConfig {
+	const packageRoot = options.packageRoot ?? fileURLToPath(new URL("../../", import.meta.url));
+	const env = options.env ?? process.env;
+	const fileExists = options.fileExists ?? existsSync;
+	const readTextFile = options.readTextFile ?? ((candidate: string) => readFileSync(candidate, "utf8"));
+	const imageName = env[COMPUTE_IMAGE_ENV]?.trim() || IMAGE_NAME;
+	const workspaceDockerfile = path.join(workspaceDir, "Dockerfile");
+	const workspacePackageJson = path.join(workspaceDir, "package.json");
+	if (fileExists(workspaceDockerfile) && fileExists(workspacePackageJson)) {
+		try {
+			const manifest = JSON.parse(readTextFile(workspacePackageJson)) as { name?: unknown };
+			if (manifest.name === "@pasko70/pibo") {
+				return { imageName, buildContext: workspaceDir, source: "workspace" };
+			}
+		} catch {
+			// An unrelated or malformed caller package is not a Pibo source checkout.
+		}
+	}
+
+	const dockerfile = path.join(packageRoot, PACKAGED_COMPUTE_DOCKERFILE);
+	if (!fileExists(dockerfile)) {
+		throw new Error(`No compute Dockerfile found in workspace ${workspaceDir} or installed package ${dockerfile}`);
+	}
+	return { imageName, buildContext: packageRoot, dockerfile, source: "package" };
+}
+
+export function buildDockerBuildArgs(config: ComputeImageBuildConfig): string[] {
+	return ["build", "-t", config.imageName, ...(config.dockerfile ? ["-f", config.dockerfile] : []), "."];
+}
+
+export async function dockerBuild(config: ComputeImageBuildConfig): Promise<void> {
+	if (config.source === "workspace") {
+		await runDockerBuild(config);
+		return;
+	}
+	if (!config.dockerfile) throw new Error("Packaged compute image build requires a Dockerfile");
+
+	const stagedContext = await mkdtemp(path.join(tmpdir(), "pibo-compute-image-"));
+	try {
+		const { stdout } = await execFileAsync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", stagedContext], {
+			cwd: config.buildContext,
+			maxBuffer: 16 * 1024 * 1024,
+		});
+		const report = JSON.parse(stdout) as Array<{ filename?: unknown }>;
+		const filename = report[0]?.filename;
+		if (typeof filename !== "string" || !filename.endsWith(".tgz")) {
+			throw new Error("npm pack did not return a packaged Pibo archive");
+		}
+		await rename(path.join(stagedContext, filename), path.join(stagedContext, "pibo-package.tgz"));
+		await copyFile(config.dockerfile, path.join(stagedContext, "Dockerfile"));
+		await runDockerBuild({
+			imageName: config.imageName,
+			buildContext: stagedContext,
+			source: "workspace",
+		});
+	} finally {
+		await rm(stagedContext, { recursive: true, force: true });
+	}
+}
+
+async function runDockerBuild(config: ComputeImageBuildConfig): Promise<void> {
+	const { stderr } = await execFileAsync("docker", buildDockerBuildArgs(config), {
+		cwd: config.buildContext,
 		maxBuffer: 50 * 1024 * 1024,
 	});
 	if (stderr) console.error(stderr);
@@ -73,7 +153,7 @@ export async function getDependencyHash(workspaceDir: string): Promise<string> {
 	return hash.digest("hex");
 }
 
-export async function getSourceHash(workspaceDir: string): Promise<string> {
+export async function getSourceHash(workspaceDir: string, dockerfile = path.join(workspaceDir, "Dockerfile")): Promise<string> {
 	const hash = createHash("sha256");
 
 	async function readOptionalFile(filePath: string): Promise<string | undefined> {
@@ -85,9 +165,15 @@ export async function getSourceHash(workspaceDir: string): Promise<string> {
 		}
 	}
 
-	const dockerfileIgnore = await readOptionalFile(path.join(workspaceDir, "Dockerfile.dockerignore"));
+	const dockerfileIgnorePath = `${dockerfile}.dockerignore`;
+	const dockerfileIgnore = await readOptionalFile(dockerfileIgnorePath);
 	const rootIgnore = await readOptionalFile(path.join(workspaceDir, ".dockerignore"));
 	const activeIgnore = dockerfileIgnore ?? rootIgnore ?? "";
+	const requiredContextPaths = new Set([
+		path.relative(workspaceDir, dockerfile).split(path.sep).join("/"),
+		path.relative(workspaceDir, dockerfileIgnorePath).split(path.sep).join("/"),
+		".dockerignore",
+	]);
 	const contextIgnore = createDockerIgnore({ ignorecase: false }).add(
 		activeIgnore
 			.split(/\r?\n/u)
@@ -98,9 +184,7 @@ export async function getSourceHash(workspaceDir: string): Promise<string> {
 	const contextEntries: Array<{ relativePath: string; type: "directory" | "file" | "symlink" | "other" }> = [];
 
 	function isIgnored(relativePath: string, directory: boolean): boolean {
-		if (relativePath === "Dockerfile" || relativePath === ".dockerignore" || relativePath === "Dockerfile.dockerignore") {
-			return false;
-		}
+		if (requiredContextPaths.has(relativePath)) return false;
 		return contextIgnore.ignores(directory ? `${relativePath}/` : relativePath);
 	}
 
@@ -148,8 +232,8 @@ export async function getSourceHash(workspaceDir: string): Promise<string> {
 	return hash.digest("hex");
 }
 
-export async function shouldRebuild(workspaceDir: string, hashFile: string): Promise<boolean> {
-	const currentHash = await getSourceHash(workspaceDir);
+export async function shouldRebuild(workspaceDir: string, hashFile: string, dockerfile?: string): Promise<boolean> {
+	const currentHash = await getSourceHash(workspaceDir, dockerfile);
 	try {
 		const savedHash = await readFile(hashFile, "utf-8");
 		return savedHash.trim() !== currentHash;
@@ -168,8 +252,8 @@ export async function shouldRebuildDeps(workspaceDir: string, hashFile: string):
 	}
 }
 
-export async function saveHash(workspaceDir: string, hashFile: string): Promise<void> {
-	const hash = await getSourceHash(workspaceDir);
+export async function saveHash(workspaceDir: string, hashFile: string, dockerfile?: string): Promise<void> {
+	const hash = await getSourceHash(workspaceDir, dockerfile);
 	await mkdir(path.dirname(hashFile), { recursive: true });
 	await writeFile(hashFile, hash, "utf-8");
 }
@@ -426,6 +510,7 @@ export async function createWorktree(repoDir: string, name: string): Promise<str
 
 export interface BuildDevWorkerDockerRunArgsOptions {
 	id: string;
+	imageName?: string;
 	worktreePath: string;
 	worktreeName: string;
 	block: number;
@@ -494,7 +579,7 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 		...buildComputeResourcePolicyLabels(policy).flatMap((label) => ["--label", label]),
 		"--entrypoint",
 		"/bin/sh",
-		IMAGE_NAME,
+		options.imageName ?? IMAGE_NAME,
 		"-c",
 		"ln -sf /workspace/dist/bin/pibo.js /usr/local/bin/pibo && exec tail -f /dev/null",
 	];
@@ -503,6 +588,7 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 export async function spawnDevWorker(options: {
 	repoDir: string;
 	worktreeName: string;
+	imageName?: string;
 	holder?: string;
 	ttlSeconds?: number;
 	idleSeconds?: number;
@@ -535,6 +621,7 @@ export async function spawnDevWorker(options: {
 		const webUIPortContext = base + 4;
 		const args = buildDevWorkerDockerRunArgs({
 			id,
+			imageName: options.imageName,
 			worktreePath,
 			worktreeName: options.worktreeName,
 			block,
@@ -558,7 +645,7 @@ export async function spawnDevWorker(options: {
 
 	return {
 		id,
-		image: IMAGE_NAME,
+		image: options.imageName ?? IMAGE_NAME,
 		gatewayHost: COMPUTE_PUBLISH_HOST,
 		...ports,
 		connect: `docker exec -it ${id} bash`,
@@ -569,6 +656,7 @@ export async function spawnDevWorker(options: {
 export interface BuildWorkerDockerRunArgsOptions {
 	id: string;
 	createdAt: string;
+	imageName?: string;
 	holder?: string;
 	worktreePath?: string;
 	ttlSeconds?: number;
@@ -611,13 +699,14 @@ export function buildWorkerDockerRunArgs(options: BuildWorkerDockerRunArgsOption
 			ralphRunId: options.ralphRunId,
 		}).flatMap((label) => ["--label", label]),
 		...buildComputeResourcePolicyLabels(policy).flatMap((label) => ["--label", label]),
-		IMAGE_NAME,
+		options.imageName ?? IMAGE_NAME,
 		"gateway:web",
 	];
 }
 
 export async function spawnWorker(options: {
 	workspaceDir: string;
+	imageName?: string;
 	name?: string;
 	holder?: string;
 	ttlSeconds?: number;
@@ -631,6 +720,7 @@ export async function spawnWorker(options: {
 	const args = buildWorkerDockerRunArgs({
 		id,
 		createdAt,
+		imageName: options.imageName,
 		holder: options.holder,
 		worktreePath: options.workspaceDir,
 		ttlSeconds: options.ttlSeconds,
@@ -652,7 +742,7 @@ export async function spawnWorker(options: {
 
 	return {
 		id,
-		image: IMAGE_NAME,
+		image: options.imageName ?? IMAGE_NAME,
 		gatewayHost: COMPUTE_PUBLISH_HOST,
 		gatewayPort,
 		cdpPort,

@@ -1,10 +1,10 @@
 import { Command, InvalidArgumentError } from "commander";
 import {
-	IMAGE_NAME,
 	imageExists,
 	shouldRebuild,
 	shouldRebuildDeps,
 	dockerBuild,
+	resolveComputeImageBuildConfig,
 	saveHash,
 	saveDepHash,
 	spawnWorker,
@@ -27,6 +27,10 @@ import os from "node:os";
 const WORKSPACE_DIR = process.env.PIBO_COMPUTE_WORKSPACE || process.cwd();
 const HASH_FILE = path.join(os.homedir(), ".pibo", "compute-image-hash");
 const DEP_HASH_FILE = path.join(os.homedir(), ".pibo", "compute-dep-hash");
+
+function computeImageBuildConfig() {
+	return resolveComputeImageBuildConfig(WORKSPACE_DIR);
+}
 
 function printJson(value: unknown): void {
 	console.log(JSON.stringify(value, null, 2));
@@ -262,21 +266,27 @@ Creates a worker container and starts the gateway. Prints JSON with the containe
 
 Use this for quick isolated checks. For code changes, prefer:
   $ pibo compute dev spawn --worktree my-fix
+
+Environment:
+  PIBO_COMPUTE_IMAGE       Override the Docker image name.
+  PIBO_COMPUTE_WORKSPACE   Use an explicit workspace or source checkout.
 `,
 		)
 		.action(async (options: { name?: string; holder?: string; ttlSeconds?: string; idleSeconds?: string; ralphJobId?: string; ralphRunId?: string }) => {
 			await mkdir(path.dirname(HASH_FILE), { recursive: true });
+			const image = computeImageBuildConfig();
 
-			const needsBuild = !(await imageExists(IMAGE_NAME)) || (await shouldRebuild(WORKSPACE_DIR, HASH_FILE));
+			const needsBuild = !(await imageExists(image.imageName)) || (await shouldRebuild(image.buildContext, HASH_FILE, image.dockerfile));
 			if (needsBuild) {
-				console.error(`Building ${IMAGE_NAME} from ${WORKSPACE_DIR}...`);
-				await dockerBuild(WORKSPACE_DIR);
-				await saveHash(WORKSPACE_DIR, HASH_FILE);
+				console.error(`Building ${image.imageName} from ${image.buildContext}...`);
+				await dockerBuild(image);
+				await saveHash(image.buildContext, HASH_FILE, image.dockerfile);
 				console.error("Build complete.");
 			}
 
 			const worker = await spawnWorker({
 				workspaceDir: WORKSPACE_DIR,
+				imageName: image.imageName,
 				name: options.name,
 				holder: options.holder,
 				ttlSeconds: parsePositiveIntegerOption(options.ttlSeconds),
@@ -323,13 +333,14 @@ Example:
 		)
 		.action(async (options: { worktree: string; repo: string; holder?: string; ttlSeconds?: string; idleSeconds?: string; ralphJobId?: string; ralphRunId?: string }) => {
 			await mkdir(path.dirname(DEP_HASH_FILE), { recursive: true });
+			const image = resolveComputeImageBuildConfig(options.repo, { packageRoot: options.repo });
 
 			console.error("[pibo compute] Checking Docker image status...");
-			const needsBuild = !(await imageExists(IMAGE_NAME)) || (await shouldRebuildDeps(options.repo, DEP_HASH_FILE));
+			const needsBuild = !(await imageExists(image.imageName)) || (await shouldRebuildDeps(options.repo, DEP_HASH_FILE));
 			if (needsBuild) {
 				console.error(`[pibo compute] Dependencies changed (package.json, package-lock.json, or Dockerfile).`);
-				console.error(`[pibo compute] Rebuilding Docker image ${IMAGE_NAME} — this takes 1-2 minutes...`);
-				await dockerBuild(options.repo);
+				console.error(`[pibo compute] Rebuilding Docker image ${image.imageName} — this takes 1-2 minutes...`);
+				await dockerBuild(image);
 				await saveDepHash(options.repo, DEP_HASH_FILE);
 				console.error("[pibo compute] Docker image build complete.");
 			} else {
@@ -340,6 +351,7 @@ Example:
 			const worker = await spawnDevWorker({
 				repoDir: options.repo,
 				worktreeName: options.worktree,
+				imageName: image.imageName,
 				holder: options.holder,
 				ttlSeconds: parsePositiveIntegerOption(options.ttlSeconds),
 				idleSeconds: parsePositiveIntegerOption(options.idleSeconds),
@@ -364,10 +376,11 @@ Rebuilds from the current workspace and refreshes compute image hashes.
 `,
 		)
 		.action(async () => {
-			console.error(`Rebuilding ${IMAGE_NAME} from ${WORKSPACE_DIR}...`);
-			await dockerBuild(WORKSPACE_DIR);
-			await saveHash(WORKSPACE_DIR, HASH_FILE);
-			await saveDepHash(WORKSPACE_DIR, DEP_HASH_FILE);
+			const image = computeImageBuildConfig();
+			console.error(`Rebuilding ${image.imageName} from ${image.buildContext}...`);
+			await dockerBuild(image);
+			await saveHash(image.buildContext, HASH_FILE, image.dockerfile);
+			await saveDepHash(image.buildContext, DEP_HASH_FILE);
 			console.error("Build complete.");
 		});
 

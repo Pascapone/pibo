@@ -27,6 +27,16 @@ test("npm package excludes generated VSIX artifacts while keeping runtime assets
 		assert.equal(files.some((path) => path.startsWith("dist/apps/vscode-artifacts/")), false);
 		assert.equal(files.includes("dist/bin/pibo.js"), true);
 		assert.equal(files.some((path) => path.startsWith("dist/apps/chat-ui/")), true);
+		assert.equal(files.includes(".dockerignore"), false, "packaged image context must retain built dist files");
+		for (const path of [
+			"compute-image/Dockerfile",
+			"compute-image/Dockerfile.dockerignore",
+			"scripts/docker-entrypoint.sh",
+			"scripts/prepare-agent-browser-wrapper.sh",
+			"scripts/prepare-browser-use-wrapper.sh",
+		]) {
+			assert.equal(files.includes(path), true, `npm package must include ${path}`);
+		}
 		assert.equal(existsSync(markerPath), true, "npm pack must not remove release artifacts from the workspace");
 	} finally {
 		await unlink(markerPath).catch(() => undefined);
