@@ -399,6 +399,7 @@ function ProjectRow({
           <input
             ref={inputRef}
             value={draftName}
+            aria-label={`Project name for ${project.name}`}
             disabled={mutationsDisabled}
             onChange={(event) => setDraftName(event.target.value)}
             onKeyDown={(event) => {

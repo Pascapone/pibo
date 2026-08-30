@@ -325,6 +325,7 @@ function compactTraceNode(node: PiboTraceNode, payloadStore: PayloadStore, piboS
 		payloadRefs: Object.keys(payloadRefs).length ? payloadRefs : undefined,
 		linkedPiboSessionId: node.linkedPiboSessionId,
 		toolCallId: node.toolCallId,
+		toolInvocationOrdinal: node.toolInvocationOrdinal,
 		runId: node.runId,
 		intent: node.intent,
 		eventId: node.eventId,

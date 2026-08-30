@@ -508,6 +508,8 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 	const assertions: AssertionResult[] = [];
 	let iterations = 0;
 	let stopReason = "completed";
+	let exitCode: number | null = null;
+	let signal: NodeJS.Signals | null = null;
 	try {
 		validateProviderSafety(scenario, options);
 		runner = await startRunner(scenario);
@@ -539,7 +541,11 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 				break;
 			}
 		}
+		const stoppedByPattern = stopReason.startsWith("stop_pattern:");
+		if (stoppedByPattern) await runner.terminate(stopReason);
 		const exit = await waitForExitOrIdle(runner, Math.max(1, scenario.timeoutMs - (Date.now() - started)), scenario.idleTimeoutMs, refreshOutputTimestamp);
+		exitCode = exit.exitCode;
+		signal = exit.signal;
 		if (exit.idleTimedOut) {
 			stopReason = "idle_timeout";
 			throw new Error(`PTY command produced no output for ${scenario.idleTimeoutMs}ms`);
@@ -550,17 +556,17 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 		}
 		const clean = cleanTerminalText(runner.getRawOutput());
 		assertPatterns(clean, scenario.expect, scenario.reject, assertions);
-		if (exit.exitCode !== 0) {
+		if (exit.exitCode !== 0 && !stoppedByPattern) {
 			stopReason = `exit_code:${exit.exitCode ?? "signal"}`;
 			throw new Error(`PTY command exited with status ${exit.exitCode ?? exit.signal ?? "unknown"}`);
 		}
-		const result = buildResult(scenario, runner, true, assertions, iterations, started, startedAt, stopReason, exit.exitCode, exit.signal);
+		const result = buildResult(scenario, runner, true, assertions, iterations, started, startedAt, stopReason, exitCode, signal);
 		if (scenario.writeArtifactsOnSuccess) result.artifactDir = await writeArtifacts(scenario, result);
 		return result;
 	} catch (error) {
 		if (stopReason === "completed") stopReason = runner ? "error" : "preflight_error";
 		if (runner) await runner.terminate(stopReason);
-		const result = buildResult(scenario, runner, false, assertions, iterations, started, startedAt, stopReason, null, null);
+		const result = buildResult(scenario, runner, false, assertions, iterations, started, startedAt, stopReason, exitCode, signal);
 		result.artifactDir = await writeArtifacts(scenario, result, error instanceof Error ? error.message : String(error));
 		const message = `${error instanceof Error ? error.message : String(error)}\nPTY artifacts: ${result.artifactDir}`;
 		throw new Error(message);
@@ -700,12 +706,9 @@ function wrapChild(child: ChildProcessWithoutNullStreams, backend: PtyBackend, p
 			events.push({ t: Date.now(), source: "system", kind: "terminate", detail: reason });
 			if (exitState) return;
 			child.kill("SIGTERM");
-			await Promise.race([
-				exitPromise,
-				delay(1_000).then(() => {
-					if (!exitState) child.kill("SIGKILL");
-				}),
-			]);
+			if (await waitForChildExit(exitPromise, 1_000)) return;
+			child.kill("SIGKILL");
+			await waitForChildExit(exitPromise, 1_000);
 		},
 		async waitForExit(timeoutMs: number) {
 			if (exitState) return { ...exitState, timedOut: false };
@@ -1000,6 +1003,20 @@ function safeName(name: string): string {
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForChildExit(exitPromise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+	let timeout: NodeJS.Timeout | undefined;
+	try {
+		return await Promise.race([
+			exitPromise.then(() => true),
+			new Promise<boolean>((resolve) => {
+				timeout = setTimeout(() => resolve(false), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timeout) clearTimeout(timeout);
+	}
 }
 
 export const __debugPtyForTests = {

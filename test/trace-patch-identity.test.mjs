@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { patchTraceViewWithEvent } from "../dist/shared/trace-engine.js";
+import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 
 const now = "2026-05-07T12:00:00.000Z";
 
@@ -68,7 +69,7 @@ test("reasoning delta only replaces the reasoning node and preserves unrelated n
 
 test("tool update only replaces the matching tool node and preserves siblings", () => {
   const assistant = node({ id: "event:assistant:turn-1", type: "assistant.message", title: "Agent Message", output: "answer" });
-  const tool = node({ id: "tool:call-1", type: "tool.call", title: "bash", toolCallId: "call-1", status: "running", input: { command: "echo hi" } });
+  const tool = node({ id: qualifiedToolNodeId("call-1", "turn-1", 0), eventId: "turn-1", toolInvocationOrdinal: 0, type: "tool.call", title: "bash", toolCallId: "call-1", status: "running", input: { command: "echo hi" } });
   const otherTool = node({ id: "tool:call-2", type: "tool.call", title: "read", toolCallId: "call-2", status: "done" });
   const base = view([assistant, tool, otherTool]);
 
@@ -91,7 +92,7 @@ test("tool update only replaces the matching tool node and preserves siblings", 
 });
 
 test("tool intent updates replace the matching node even when no other field changes", () => {
-  const tool = node({ id: "tool:call-1", type: "tool.call", title: "read", toolCallId: "call-1", status: "running", input: { path: "README.md" } });
+  const tool = node({ id: qualifiedToolNodeId("call-1", "turn-1", 0), eventId: "turn-1", toolInvocationOrdinal: 0, type: "tool.call", title: "read", toolCallId: "call-1", status: "running", input: { path: "README.md" } });
   const otherTool = node({ id: "tool:call-2", type: "tool.call", title: "bash", toolCallId: "call-2", status: "running" });
   const base = view([tool, otherTool]);
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,6 +27,38 @@ function run(home, args) {
 		env: { ...process.env, PIBO_HOME: home, NODE_ENV: "test" },
 	});
 }
+
+test("preview base URL config rejects values that Preview commands cannot consume", async (t) => {
+	const home = mkdtempSync(join(tmpdir(), "pibo-preview-config-cli-"));
+	t.after(() => rmSync(home, { recursive: true, force: true }));
+	const validBaseURL = "https://preview.example.test:8443";
+	await run(home, ["config", "set", "preview.baseURL", validBaseURL]);
+
+	for (const invalidBaseURL of [
+		"https://preview.example.test/path",
+		"https://preview.example.test?mode=test",
+		"https://preview.example.test#fragment",
+		"https://user@preview.example.test",
+	]) {
+		await assert.rejects(
+			run(home, ["config", "set", "preview.baseURL", invalidBaseURL]),
+			/preview\.baseURL must contain only scheme, hostname, and optional port/,
+		);
+		assert.equal((await run(home, ["config", "get", "preview.baseURL"])).stdout.trim(), validBaseURL);
+	}
+
+	assert.equal(JSON.parse((await run(home, ["config", "show"])).stdout).preview.baseURL, validBaseURL);
+	assert.match((await run(home, ["preview", "list"])).stdout, /No previews\./);
+	assert.deepEqual(JSON.parse((await run(home, ["preview", "list", "--json"])).stdout), []);
+	assert.equal(JSON.parse(readFileSync(join(home, "config.json"), "utf8")).preview.baseURL, validBaseURL);
+
+	writeFileSync(join(home, "config.json"), `${JSON.stringify({ preview: { baseURL: "https://preview.example.test/path" } }, null, 2)}\n`);
+	await assert.rejects(run(home, ["preview", "list"]), /preview\.baseURL must contain only scheme, hostname, and optional port/);
+
+	await run(home, ["config", "del", "preview.baseURL"]);
+	await assert.rejects(run(home, ["config", "get", "preview.baseURL"]));
+	await assert.rejects(run(home, ["preview", "list", "--json"]), /preview\.baseURL is required/);
+});
 
 test("preview CLI discovers and manages a session-linked exposure", async (t) => {
 	const home = mkdtempSync(join(tmpdir(), "pibo-preview-cli-"));

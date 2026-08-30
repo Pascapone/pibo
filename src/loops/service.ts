@@ -79,6 +79,11 @@ export class PiboLoopService {
 	private readonly random: () => number;
 	private timer: NodeJS.Timeout | undefined;
 	private activeRuns = 0;
+	private activeRunWork = new Set<Promise<void>>();
+	private pendingRunStarts = 0;
+	private schedulerWork: Promise<void> | undefined;
+	private shutdownPromise: Promise<void> | undefined;
+	private ownedWorkWaiters = new Set<() => void>();
 	private stopped = true;
 	private cancelledRuns = new Set<string>();
 	private browserLeaseHeartbeatTimers = new Map<string, NodeJS.Timeout>();
@@ -99,9 +104,45 @@ export class PiboLoopService {
 		this.random = options.random ?? Math.random;
 	}
 	start(): void { if (!this.stopped) return; this.stopped = false; this.store.recoverInterruptedRuns(); this.repairGoalSessionMetadata(); this.unsubscribeProductEvents = this.options.context.subscribeProductEvents?.((event) => this.handleProductEvent(event)); this.unsubscribeOutputEvents = this.options.context.subscribe((event) => this.handleOutputEvent(event)); this.arm(250); }
-	stop(): void { this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = undefined; for (const timer of this.browserLeaseHeartbeatTimers.values()) clearInterval(timer); this.browserLeaseHeartbeatTimers.clear(); this.unsubscribeProductEvents?.(); this.unsubscribeProductEvents = undefined; this.unsubscribeOutputEvents?.(); this.unsubscribeOutputEvents = undefined; this.dataStore.close(); this.store.close(); }
+	stop(): Promise<void> {
+		if (this.shutdownPromise) return this.shutdownPromise;
+		this.stopped = true;
+		if (this.timer) clearTimeout(this.timer);
+		this.timer = undefined;
+		for (const timer of this.browserLeaseHeartbeatTimers.values()) clearInterval(timer);
+		this.browserLeaseHeartbeatTimers.clear();
+		const closeStores = () => {
+			this.unsubscribeProductEvents?.();
+			this.unsubscribeProductEvents = undefined;
+			this.unsubscribeOutputEvents?.();
+			this.unsubscribeOutputEvents = undefined;
+			this.dataStore.close();
+			this.store.close();
+		};
+		if (!this.hasOwnedWork()) {
+			closeStores();
+			this.shutdownPromise = Promise.resolve();
+			return this.shutdownPromise;
+		}
+		this.shutdownPromise = this.drainOwnedWork().then(closeStores);
+		return this.shutdownPromise;
+	}
 	status(): PiboLoopStatus { return { enabled: !this.stopped, ...this.store.status() }; }
-	async startJob(id: string): Promise<PiboLoopRun | undefined> { const job = this.store.updateJob(id, { enabled: true }); if (!job) return undefined; const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (!reserved) return undefined; void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon()); return reserved.run; }
+	async startJob(id: string): Promise<PiboLoopRun | undefined> {
+		if (this.stopped) return undefined;
+		this.pendingRunStarts += 1;
+		try {
+			const job = this.store.updateJob(id, { enabled: true });
+			if (!job) return undefined;
+			const reserved = await this.reserveAfterBeforeRunEvaluation(job);
+			if (!reserved) return undefined;
+			this.launchReservedRun(reserved.job, reserved.run);
+			return reserved.run;
+		} finally {
+			this.pendingRunStarts -= 1;
+			this.notifyOwnedWorkChange();
+		}
+	}
 	stopJob(id: string): PiboLoopJob | undefined { const job = this.store.requestStop(id); this.armSoon(); return job; }
 	removeJob(id: string): boolean {
 		const job = this.store.getJob(id);
@@ -204,9 +245,20 @@ export class PiboLoopService {
 		const { loopJobId: _loopJobId, loopRunId: _loopRunId, ...metadata } = session.metadata ?? {};
 		this.options.context.updateSession(piboSessionId, { metadata });
 	}
-	private arm(delayMs?: number): void { if (this.stopped) return; if (this.timer) clearTimeout(this.timer); this.timer = setTimeout(() => void this.tick(), delayMs ?? this.intervalMs); }
+	private arm(delayMs?: number): void {
+		if (this.stopped) return;
+		if (this.timer) clearTimeout(this.timer);
+		this.timer = setTimeout(() => {
+			const work = this.tick();
+			this.schedulerWork = work;
+			void work.then(
+				() => this.finishSchedulerWork(work),
+				(error) => { console.error('[loop] scheduler work failed', error); this.finishSchedulerWork(work); },
+			);
+		}, delayMs ?? this.intervalMs);
+	}
 	private armSoon(): void { this.arm(250); }
-	private async tick(): Promise<void> { if (this.stopped) return; try { await this.abortCancelRequestedJobs(); const capacity = this.maxConcurrentRuns - this.activeRuns; if (capacity > 0) { const jobs = this.store.listJobs({ includeDisabled: false }).filter((job) => !job.state.runningAt).slice(0, capacity); for (const job of jobs) { const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (reserved) void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon()); } } } catch (error) { console.error('[loop] scheduler tick failed', error); } finally { this.arm(); } }
+	private async tick(): Promise<void> { if (this.stopped) return; try { await this.abortCancelRequestedJobs(); const capacity = this.maxConcurrentRuns - this.activeRuns; if (capacity > 0) { const jobs = this.store.listJobs({ includeDisabled: false }).filter((job) => !job.state.runningAt).slice(0, capacity); for (const job of jobs) { const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (reserved) this.launchReservedRun(reserved.job, reserved.run); } } } catch (error) { console.error('[loop] scheduler tick failed', error); } finally { this.arm(); } }
 	private async reserveAfterBeforeRunEvaluation(job: PiboLoopJob): Promise<{ job: PiboLoopJob; run: PiboLoopRun } | undefined> {
 		const fresh = this.store.getJob(job.id) ?? job;
 		const now = this.now();
@@ -215,9 +267,35 @@ export class PiboLoopService {
 		if (evaluation.finalAction !== 'continue') { this.store.applyStopEvaluation({ jobId: fresh.id, evaluation, conditionStates, disable: true }); return undefined; }
 		this.store.applyStopEvaluation({ jobId: fresh.id, evaluation, conditionStates, disable: false });
 		if (fresh.mode === 'goal' && !await this.renewGoalBrowserLeases(fresh)) return undefined;
+		if (this.stopped) return undefined;
 		const reserved = this.store.reserveRun(fresh.id, now);
 		if (reserved) this.startGoalBrowserLeaseHeartbeat(reserved.job, reserved.run);
 		return reserved;
+	}
+	private launchReservedRun(job: PiboLoopJob, run: PiboLoopRun): void {
+		const work = this.executeReserved(job, run);
+		this.activeRunWork.add(work);
+		void work.then(
+			() => this.finishActiveRunWork(work),
+			(error) => { console.error(`[loop] active run ${run.id} finalization failed`, error); this.finishActiveRunWork(work); },
+		);
+	}
+	private finishActiveRunWork(work: Promise<void>): void {
+		this.activeRunWork.delete(work);
+		this.armSoon();
+		this.notifyOwnedWorkChange();
+	}
+	private finishSchedulerWork(work: Promise<void>): void {
+		if (this.schedulerWork === work) this.schedulerWork = undefined;
+		this.notifyOwnedWorkChange();
+	}
+	private hasOwnedWork(): boolean { return this.pendingRunStarts > 0 || this.schedulerWork !== undefined || this.activeRunWork.size > 0; }
+	private async drainOwnedWork(): Promise<void> {
+		while (this.hasOwnedWork()) await new Promise<void>((resolve) => this.ownedWorkWaiters.add(resolve));
+	}
+	private notifyOwnedWorkChange(): void {
+		for (const resolve of this.ownedWorkWaiters) resolve();
+		this.ownedWorkWaiters.clear();
 	}
 	private startGoalBrowserLeaseHeartbeat(job: PiboLoopJob, run: PiboLoopRun): void {
 		if (job.mode !== 'goal' || (job.resources?.browserLeaseIds?.length ?? 0) === 0) return;
