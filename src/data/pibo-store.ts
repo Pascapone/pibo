@@ -8,7 +8,7 @@ import { MessageStore } from "./message-store.js";
 import { NavigationStore } from "./navigation-store.js";
 import { ObservationStore } from "./observation-store.js";
 import { PayloadStore } from "./payload-store.js";
-import { applyPiboDataSchema } from "./schema.js";
+import { applyPiboDataSchema, assertSupportedPiboDataSchemaVersion } from "./schema.js";
 import { TelemetryStore } from "./telemetry.js";
 import { SessionStore } from "./session-store.js";
 
@@ -32,6 +32,12 @@ export class PiboDataStore {
 		const insidePiboHome = ensurePrivatePiboHomeForPath(this.path);
 		if (this.path !== ":memory:") mkdirSync(dirname(this.path), { recursive: true });
 		this.db = new DatabaseSync(this.path);
+		try {
+			assertSupportedPiboDataSchemaVersion(this.db);
+		} catch (error) {
+			this.db.close();
+			throw error;
+		}
 		if (insidePiboHome) protectPrivateFileSync(this.path);
 		this.db.exec("PRAGMA busy_timeout = 5000");
 		this.db.exec("PRAGMA foreign_keys = ON");

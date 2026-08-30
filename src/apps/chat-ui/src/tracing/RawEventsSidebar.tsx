@@ -26,7 +26,11 @@ export function RawEventsSidebar({
 	if (!visible) return null;
 
 	return (
-		<aside className="min-h-0 overflow-auto bg-[#0e1116] border-l border-slate-800 max-[980px]:hidden">
+		<aside
+			id="raw-events-inspector"
+			aria-label="Raw Events"
+			className="min-h-0 overflow-auto overscroll-contain bg-[#0e1116] border-l border-slate-800 max-[980px]:fixed max-[980px]:right-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[320px] max-[980px]:max-w-[80vw] max-[980px]:shadow-2xl"
+		>
 			<div className="h-11 px-3 border-b border-slate-800 flex items-center text-xs font-bold uppercase tracking-wider">Raw Events</div>
 			<div className="p-3 flex flex-col gap-2">
 				{traceView && rawEvents.length >= eventLimit ? (

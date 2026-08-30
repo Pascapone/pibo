@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -683,6 +683,137 @@ test("context files revision migration preserves current content and old-writer 
 	} finally {
 		await channel.stop?.();
 		await dispose();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("context files migration retries managed file restoration before recording schema completion", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-context-files-migration-retry-"));
+	const metadataPath = join(dir, "context-files.sqlite");
+	const blockedParent = join(dir, "blocked-parent");
+	const managedFilePath = join(blockedParent, "managed.md");
+	const expectedContent = "# Preserved retry content\n\n- deterministic migration fixture\n";
+	writeFileSync(blockedParent, "parent collision", "utf8");
+
+	const database = new DatabaseSync(metadataPath);
+	database.exec(`
+		CREATE TABLE context_files (
+			key TEXT PRIMARY KEY,
+			label TEXT NOT NULL,
+			managed_path TEXT NOT NULL,
+			scope TEXT NOT NULL,
+			source_type TEXT NOT NULL,
+			agent_profile_name TEXT,
+			active_revision_id TEXT,
+			source_ref TEXT,
+			source_hash TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		CREATE TABLE context_file_revisions (
+			id TEXT PRIMARY KEY,
+			context_file_key TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			content_hash TEXT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			actor_id TEXT,
+			based_on_revision_id TEXT,
+			source_hash_at_creation TEXT,
+			note TEXT
+		);
+	`);
+	database.prepare(`
+		INSERT INTO context_files (
+			key, label, managed_path, scope, source_type, agent_profile_name,
+			active_revision_id, source_ref, source_hash, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`).run(
+		"ctx:retry",
+		"Retry",
+		managedFilePath,
+		"global",
+		"managed",
+		null,
+		"rev_retry",
+		null,
+		null,
+		"2026-08-30T02:00:00.000Z",
+		"2026-08-30T02:00:01.000Z",
+	);
+	database.prepare(`
+		INSERT INTO context_file_revisions (
+			id, context_file_key, kind, content_hash, content, created_at,
+			actor_id, based_on_revision_id, source_hash_at_creation, note
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`).run(
+		"rev_retry",
+		"ctx:retry",
+		"working",
+		"sha256:retry",
+		expectedContent,
+		"2026-08-30T02:00:01.000Z",
+		"synthetic-user",
+		null,
+		null,
+		"Synthetic automatic revision",
+	);
+	database.close();
+
+	const openStore = () => spawnSync(process.execPath, [
+		"--input-type=module",
+		"-e",
+		`import { ContextFileMetadataStore } from "./dist/plugins/context-files-store.js";
+		 const store = new ContextFileMetadataStore(process.argv[1]);
+		 store.getFile("ctx:retry");
+		 store.close();`,
+		metadataPath,
+	], { cwd: process.cwd(), encoding: "utf8" });
+
+	try {
+		const failed = openStore();
+		assert.equal(failed.status, 1);
+		assert.match(failed.stderr, /EEXIST.*blocked-parent/);
+		assert.equal(existsSync(managedFilePath), false);
+
+		const afterFailure = new DatabaseSync(metadataPath, { readOnly: true });
+		try {
+			const tables = afterFailure.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name);
+			assert.equal(tables.includes("context_file_store_meta"), false);
+			assert.equal(afterFailure.prepare("PRAGMA table_info(context_files)").all().some((column) => column.name === "working_content"), false);
+			assert.equal(afterFailure.prepare("SELECT active_revision_id FROM context_files WHERE key = ?").get("ctx:retry").active_revision_id, "rev_retry");
+		} finally {
+			afterFailure.close();
+		}
+
+		rmSync(blockedParent);
+		mkdirSync(blockedParent, { recursive: true });
+		const retried = openStore();
+		assert.equal(retried.status, 0, retried.stderr);
+		assert.equal(readFileSync(managedFilePath, "utf8"), expectedContent);
+
+		const afterRetry = new DatabaseSync(metadataPath, { readOnly: true });
+		let migratedAt;
+		try {
+			assert.equal(afterRetry.prepare("SELECT value FROM context_file_store_meta WHERE key = 'schema-version'").get().value, "2");
+			migratedAt = afterRetry.prepare("SELECT value FROM context_file_store_meta WHERE key = 'manual-revisions-v2'").get().value;
+			const row = afterRetry.prepare("SELECT active_revision_id, working_content FROM context_files WHERE key = ?").get("ctx:retry");
+			assert.equal(row.active_revision_id, null);
+			assert.equal(row.working_content, expectedContent);
+		} finally {
+			afterRetry.close();
+		}
+
+		const completed = openStore();
+		assert.equal(completed.status, 0, completed.stderr);
+		const afterCompletedOpen = new DatabaseSync(metadataPath, { readOnly: true });
+		try {
+			assert.equal(afterCompletedOpen.prepare("SELECT value FROM context_file_store_meta WHERE key = 'manual-revisions-v2'").get().value, migratedAt);
+			assert.equal(readFileSync(managedFilePath, "utf8"), expectedContent);
+		} finally {
+			afterCompletedOpen.close();
+		}
+	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
