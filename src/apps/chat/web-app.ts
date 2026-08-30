@@ -3133,6 +3133,7 @@ async function deleteSessionsForAgentProfile(
 	const orderedIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
+	state.projectService.deleteProjectSessions(orderedIds);
 	for (const id of orderedIds) await deleteSession(id);
 	state.sessionQuery.deleteSessions(orderedIds);
 	state.eventCommands.deleteSessions(orderedIds);
@@ -3163,6 +3164,7 @@ async function deleteSessionSubtree(
 	const orderedIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
+	state.projectService.deleteProjectSessions(orderedIds);
 	for (const id of orderedIds) await deleteSession(id);
 	state.sessionQuery.deleteSessions(orderedIds);
 	state.eventCommands.deleteSessions(orderedIds);
@@ -3207,6 +3209,7 @@ async function deleteRoomTree(
 	const orderedSessionIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
+	state.projectService.deleteProjectSessions(orderedSessionIds);
 	for (const id of orderedSessionIds) await deleteSession(id);
 	state.sessionQuery.deleteSessions(orderedSessionIds);
 	state.eventCommands.deleteSessions(orderedSessionIds);

@@ -9,6 +9,7 @@ import { createChatWebApp } from "../dist/apps/chat/web-app.js";
 import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
+import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
@@ -180,12 +181,13 @@ function createLandingApps() {
 async function startWebHostChannel(options = {}) {
 	const emitted = [];
 	const listeners = new Set();
-	const sessions = new InMemoryPiboSessionStore();
+	const storageDir = options.storageDir ?? mkdtempSync(join(tmpdir(), "pibo-web-channel-"));
+	const sessionStorePath = join(storageDir, "pibo.sqlite");
+	const sessions = options.persistSessions ? new PiboDataSessionStore(sessionStorePath) : new InMemoryPiboSessionStore();
 	const registeredSkills = [];
 	const unregisteredSkills = [];
 	const registeredUserSkillCatalog = new Map();
 	let profiles = [...(options.profiles ?? [])];
-	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-channel-"));
 	const agentStorePath = join(storageDir, "agents.sqlite");
 	const dataStorePath = join(storageDir, "pibo-chat-v2.sqlite");
 	const dataPayloadRootDir = join(storageDir, "payloads");
@@ -356,6 +358,8 @@ async function startWebHostChannel(options = {}) {
 		registeredSkills,
 		unregisteredSkills,
 		storageDir,
+		agentStorePath,
+		sessionStorePath,
 		dataStorePath,
 		dataPayloadRootDir,
 		projectStorePath,
@@ -7878,6 +7882,170 @@ test("chat web app archives and permanently deletes custom agents with their ses
 		assert.equal(sessions.get(childSession.id), undefined);
 	} finally {
 		await channel.stop?.();
+	}
+});
+
+test("chat web app removes Project Session links when deleting agents or ordinary sessions and stays consistent after restart", async () => {
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-project-session-lifecycle-"));
+	let runtime = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: ["default"] }],
+		storageDir,
+		persistSessions: true,
+	});
+	const request = async (path, options = {}) => {
+		const response = await fetch(`${runtime.baseURL}${path}`, {
+			method: options.method,
+			headers: {
+				"x-test-user": "user-1",
+				...(options.body ? { "content-type": "application/json", origin: runtime.baseURL } : {}),
+			},
+			...(options.body ? { body: JSON.stringify(options.body) } : {}),
+		});
+		const payload = await response.json();
+		assert.ok(response.ok, `${options.method ?? "GET"} ${path}: ${response.status} ${JSON.stringify(payload)}`);
+		return payload;
+	};
+	const createProject = async (name) => (await request("/api/chat/projects", {
+		method: "POST",
+		body: { name, projectFolder: join(storageDir, name.toLowerCase().replaceAll(" ", "-")), createFolder: true },
+	})).project;
+	const createProjectSession = async (projectId, profile) => (await request(`/api/chat/projects/${projectId}/sessions`, {
+		method: "POST",
+		body: { profile },
+	})).session;
+	try {
+		const agent = (await request("/api/chat/agents", { method: "POST", body: { displayName: "linked-agent" } })).agent;
+		const firstProject = await createProject("First Lifecycle Project");
+		const secondProject = await createProject("Second Lifecycle Project");
+		const ordinaryProject = await createProject("Ordinary Lifecycle Project");
+		const firstControl = await createProjectSession(firstProject.id, "base");
+		const firstLinked = await createProjectSession(firstProject.id, agent.profileName);
+		const secondLinked = await createProjectSession(secondProject.id, agent.profileName);
+		const unlinked = (await request("/api/chat/sessions", { method: "POST", body: { profile: agent.profileName } })).session;
+		const ordinary = await createProjectSession(ordinaryProject.id, "base");
+
+		await request(`/api/chat/sessions/${ordinary.id}`, { method: "PATCH", body: { archived: true } });
+		const ordinaryDeleted = await request(`/api/chat/sessions/${ordinary.id}`, {
+			method: "DELETE",
+			body: { confirmText: "Delete this session" },
+		});
+		assert.deepEqual(ordinaryDeleted.deletedSessionIds, [ordinary.id]);
+
+		const projectsFixture = new DatabaseSync(runtime.projectStorePath);
+		projectsFixture.prepare("DELETE FROM project_sessions WHERE pibo_session_id = ?").run(secondLinked.id);
+		projectsFixture.close();
+
+		await request(`/api/chat/agents/${agent.id}`, { method: "PATCH", body: { archived: true } });
+		const deleted = await request(`/api/chat/agents/${agent.id}`, {
+			method: "DELETE",
+			body: { confirmName: agent.profileName },
+		});
+		assert.deepEqual(new Set(deleted.deletedSessionIds), new Set([firstLinked.id, secondLinked.id, unlinked.id]));
+
+		const unlinkedAgent = (await request("/api/chat/agents", { method: "POST", body: { displayName: "unlinked-agent" } })).agent;
+		await request(`/api/chat/agents/${unlinkedAgent.id}`, { method: "PATCH", body: { archived: true } });
+		const unlinkedDeleted = await request(`/api/chat/agents/${unlinkedAgent.id}`, {
+			method: "DELETE",
+			body: { confirmName: unlinkedAgent.profileName },
+		});
+		assert.deepEqual(unlinkedDeleted.deletedSessionIds, []);
+
+		const projectsDb = new DatabaseSync(runtime.projectStorePath, { readOnly: true });
+		assert.deepEqual(
+			projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ? ORDER BY created_at").all(firstProject.id)
+				.map((row) => row.pibo_session_id),
+			[firstControl.id],
+		);
+		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(firstProject.id).current_main_session_id, firstControl.id);
+		assert.deepEqual(projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ?").all(secondProject.id), []);
+		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(secondProject.id).current_main_session_id, null);
+		assert.deepEqual(projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ?").all(ordinaryProject.id), []);
+		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(ordinaryProject.id).current_main_session_id, null);
+		projectsDb.close();
+
+		const sessionsDb = new DatabaseSync(runtime.sessionStorePath, { readOnly: true });
+		assert.deepEqual(sessionsDb.prepare("SELECT id FROM sessions WHERE id IN (?, ?, ?, ?)").all(firstLinked.id, secondLinked.id, unlinked.id, ordinary.id), []);
+		sessionsDb.close();
+		const agentsDb = new DatabaseSync(runtime.agentStorePath, { readOnly: true });
+		assert.deepEqual(agentsDb.prepare("SELECT id FROM chat_agents WHERE id IN (?, ?)").all(agent.id, unlinkedAgent.id), []);
+		agentsDb.close();
+
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		runtime = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			profiles: [{ name: "base", aliases: ["default"] }],
+			storageDir,
+			persistSessions: true,
+		});
+		const firstBootstrap = await request(`/api/chat/projects/bootstrap?projectId=${encodeURIComponent(firstProject.id)}`);
+		assert.equal(firstBootstrap.project.currentMainSessionId, firstControl.id);
+		assert.deepEqual(firstBootstrap.projectSessions.map((session) => session.piboSessionId), [firstControl.id]);
+		assert.equal(firstBootstrap.selectedPiboSessionId, firstControl.id);
+		const secondBootstrap = await request(`/api/chat/projects/bootstrap?projectId=${encodeURIComponent(secondProject.id)}`);
+		assert.equal(secondBootstrap.project.currentMainSessionId, undefined);
+		assert.deepEqual(secondBootstrap.projectSessions, []);
+		assert.equal(secondBootstrap.selectedPiboSessionId, undefined);
+	} finally {
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		rmSync(storageDir, { recursive: true, force: true });
+	}
+});
+
+test("chat web app leaves agent, canonical session, and Project link intact when Project cleanup fails", async () => {
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-project-session-rollback-"));
+	const runtime = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: ["default"] }],
+		storageDir,
+		persistSessions: true,
+	});
+	const mutation = (path, method, body) => fetch(`${runtime.baseURL}${path}`, {
+		method,
+		headers: { "x-test-user": "user-1", "content-type": "application/json", origin: runtime.baseURL },
+		body: JSON.stringify(body),
+	});
+	try {
+		const agent = (await (await mutation("/api/chat/agents", "POST", { displayName: "rollback-agent" })).json()).agent;
+		const project = (await (await mutation("/api/chat/projects", "POST", {
+			name: "Rollback Lifecycle Project",
+			projectFolder: join(storageDir, "rollback-project"),
+			createFolder: true,
+		})).json()).project;
+		const session = (await (await mutation(`/api/chat/projects/${project.id}/sessions`, "POST", { profile: agent.profileName })).json()).session;
+		await mutation(`/api/chat/agents/${agent.id}`, "PATCH", { archived: true });
+
+		const fixture = new DatabaseSync(runtime.projectStorePath);
+		fixture.exec(`CREATE TRIGGER fail_project_session_delete
+			BEFORE DELETE ON project_sessions
+			BEGIN
+				SELECT RAISE(ABORT, 'synthetic project cleanup failure');
+			END;`);
+		fixture.close();
+		const rejected = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
+		assert.equal(rejected.status, 500);
+
+		const projectsDb = new DatabaseSync(runtime.projectStorePath);
+		assert.equal(projectsDb.prepare("SELECT count(*) AS count FROM project_sessions WHERE pibo_session_id = ?").get(session.id).count, 1);
+		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(project.id).current_main_session_id, session.id);
+		projectsDb.exec("DROP TRIGGER fail_project_session_delete");
+		projectsDb.close();
+		const sessionsDb = new DatabaseSync(runtime.sessionStorePath, { readOnly: true });
+		assert.equal(sessionsDb.prepare("SELECT count(*) AS count FROM sessions WHERE id = ?").get(session.id).count, 1);
+		sessionsDb.close();
+		const agentsDb = new DatabaseSync(runtime.agentStorePath, { readOnly: true });
+		assert.equal(agentsDb.prepare("SELECT count(*) AS count FROM chat_agents WHERE id = ?").get(agent.id).count, 1);
+		agentsDb.close();
+
+		const retried = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
+		assert.equal(retried.status, 200);
+		assert.deepEqual((await retried.json()).deletedSessionIds, [session.id]);
+	} finally {
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		rmSync(storageDir, { recursive: true, force: true });
 	}
 });
 
