@@ -1,12 +1,12 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { stat, writeFile } from 'node:fs/promises';
 import {
   type McpDescriptionSource,
   type McpServerMetadata,
   type McpServersConfig,
   type ServerConfig,
-  ensureConfigExists,
   isHttpServer,
   loadConfigUnresolved,
+  resolveMcpServerConfigSource,
 } from './config.js';
 import { ErrorCode, formatCliError } from './errors.js';
 
@@ -61,16 +61,25 @@ export async function setMcpServerDescription(
   configPath?: string,
 ): Promise<PiboMcpServerInfo> {
   const description = normalizeMcpServerDescription(descriptionInput);
-  const path = await ensureConfigExists(configPath);
-  const config = await readMcpConfig(path);
-  const server = config.mcpServers[serverName];
-  if (!server) {
+  const { path, config, server } = await resolveMcpServerConfigSource(
+    serverName,
+    configPath,
+  );
+  if (server.pibo?.descriptionSource === 'registry') {
     throw new Error(
       formatCliError({
         code: ErrorCode.CLIENT_ERROR,
-        type: 'SERVER_NOT_FOUND',
-        message: `Server "${serverName}" not found in config`,
-        details: `Available servers: ${Object.keys(config.mcpServers).join(', ') || '(none)'}`,
+        type: 'MCP_DESCRIPTION_READ_ONLY',
+        message: `Server "${serverName}" description is read-only`,
+      }),
+    );
+  }
+  if (process.platform !== 'win32' && ((await stat(path)).mode & 0o222) === 0) {
+    throw new Error(
+      formatCliError({
+        code: ErrorCode.CLIENT_ERROR,
+        type: 'MCP_CONFIG_READ_ONLY',
+        message: `Server "${serverName}" config is read-only`,
       }),
     );
   }
@@ -129,28 +138,6 @@ export function getMcpAgentContextFileFromConfig(
       ...sections,
     ].join('\n').trimEnd(),
   };
-}
-
-async function readMcpConfig(path: string): Promise<McpServersConfig> {
-  const content = await readFile(path, 'utf-8');
-  const parsed = JSON.parse(content) as unknown;
-  if (
-    !parsed ||
-    typeof parsed !== 'object' ||
-    !('mcpServers' in parsed) ||
-    typeof (parsed as { mcpServers?: unknown }).mcpServers !== 'object' ||
-    (parsed as { mcpServers?: unknown }).mcpServers === null
-  ) {
-    throw new Error(
-      formatCliError({
-        code: ErrorCode.CLIENT_ERROR,
-        type: 'CONFIG_MISSING_FIELD',
-        message: 'Config file missing required "mcpServers" object',
-        details: `File: ${path}`,
-      }),
-    );
-  }
-  return parsed as McpServersConfig;
 }
 
 function mcpServerInfoFromConfig(name: string, server: ServerConfig): PiboMcpServerInfo {

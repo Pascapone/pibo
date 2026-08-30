@@ -63,6 +63,13 @@ export function selectedLiveStreamNeedsReconnect(input: {
 		|| (input.nowMs ?? Date.now()) - liveStream.lastActivityAt > LIVE_STREAM_STALE_MS;
 }
 
+export function pendingLiveEventsBelongToSelectedSession(
+	pendingPiboSessionId: string,
+	selectedPiboSessionId: string | null,
+): boolean {
+	return pendingPiboSessionId === selectedPiboSessionId;
+}
+
 export type UseSessionTraceLiveStreamInput = {
 	selectedPiboSessionId: string | null;
 	tracePageData?: PiboSessionTraceView | null;
@@ -90,6 +97,8 @@ export function useSessionTraceLiveStream({
 	onRuntimeRequestEvent,
 	onError,
 }: UseSessionTraceLiveStreamInput): void {
+	const selectedPiboSessionIdRef = useRef(selectedPiboSessionId);
+	selectedPiboSessionIdRef.current = selectedPiboSessionId;
 	const pendingStreamEventsBySession = useRef(new Map<string, ChatStreamEvent[]>());
 	const pendingStreamFrame = useRef<number | undefined>(undefined);
 	const pendingStreamTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -114,7 +123,10 @@ export function useSessionTraceLiveStream({
 	const flushPendingStreamEvents = useCallback((piboSessionId: string) => {
 		const pending = pendingStreamEventsBySession.current.get(piboSessionId);
 		if (!pending?.length) return;
+		pendingStreamEventsBySession.current.delete(piboSessionId);
+		if (!pendingLiveEventsBelongToSelectedSession(piboSessionId, selectedPiboSessionIdRef.current)) return;
 		setLiveTraceOverlay((current) => {
+			if (!pendingLiveEventsBelongToSelectedSession(piboSessionId, selectedPiboSessionIdRef.current)) return current;
 			const currentEvents = current?.piboSessionId === piboSessionId ? current.events : [];
 			const events = applyTraceLiveEvents({
 				currentEvents,
@@ -128,7 +140,6 @@ export function useSessionTraceLiveStream({
 				events,
 			};
 		});
-		pendingStreamEventsBySession.current.delete(piboSessionId);
 	}, []);
 
 	const schedulePendingStreamFlush = useCallback(() => {

@@ -25,6 +25,7 @@ import {
 	pushInkSessionOverlay,
 	reduceInkSessionInputState,
 	normalizeInkRowSelection,
+	selectInkSessionRoom,
 	runCliSessionsUi,
 	terminalLineLimitFromColumns,
 } from "../dist/apps/cli-ui/index.js";
@@ -261,6 +262,10 @@ test("Ink session input reducer captures text, enter, navigation, escape, and sl
 	assert.equal(escaped.mode, "transcript");
 	assert.equal(escaped.picker, undefined);
 	assert.equal(escaped.message, "Canceled.");
+	const parentPicker = { kind: "room", title: "Rooms", items: [{ id: "room", label: "Room" }], selectedIndex: 0, emptyMessage: "None" };
+	const backed = reduceInkSessionInputState({ ...typed, picker: { ...typed.picker, parent: parentPicker } }, { type: "escape" });
+	assert.equal(backed.input, "");
+	assert.equal(backed.picker, parentPicker);
 
 	const slashBase = { loading: false, rows: [], input: "", mode: "transcript" };
 	const slash = reduceInkSessionInputState(slashBase, { type: "text", value: "/" });
@@ -272,6 +277,36 @@ test("Ink session input reducer captures text, enter, navigation, escape, and sl
 	const closed = reduceInkSessionInputState(filtered, { type: "escape" });
 	assert.equal(closed.input, "/th");
 	assert.equal(closed.slashSuggestions, undefined);
+});
+
+test("Ink session input reducer edits at grapheme cursor boundaries", () => {
+	const base = { loading: false, rows: [], input: "helo", mode: "transcript" };
+	const left = reduceInkSessionInputState(base, { type: "left" });
+	assert.equal(left.inputCursor, 3);
+	const corrected = reduceInkSessionInputState(left, { type: "text", value: "l" });
+	assert.equal(corrected.input, "hello");
+	assert.equal(corrected.inputCursor, 4);
+
+	const home = reduceInkSessionInputState(corrected, { type: "home" });
+	assert.equal(home.inputCursor, 0);
+	const right = reduceInkSessionInputState(home, { type: "right" });
+	assert.equal(right.inputCursor, 1);
+	const end = reduceInkSessionInputState(right, { type: "end" });
+	assert.equal(end.inputCursor, corrected.input.length);
+
+	const emoji = { ...base, input: "A👩‍💻C" };
+	const beforeC = reduceInkSessionInputState(emoji, { type: "left" });
+	const beforeEmoji = reduceInkSessionInputState(beforeC, { type: "left" });
+	assert.equal(beforeC.inputCursor, "A👩‍💻".length);
+	assert.equal(beforeEmoji.inputCursor, "A".length);
+	const afterEmoji = reduceInkSessionInputState(beforeEmoji, { type: "right" });
+	assert.equal(afterEmoji.inputCursor, "A👩‍💻".length);
+	const emojiInsert = reduceInkSessionInputState(afterEmoji, { type: "text", value: "B" });
+	assert.equal(emojiInsert.input, "A👩‍💻BC");
+
+	const deleted = reduceInkSessionInputState(emojiInsert, { type: "backspace" });
+	assert.equal(deleted.input, "A👩‍💻C");
+	assert.equal(deleted.inputCursor, "A👩‍💻".length);
 });
 
 test("Ink session input reducer selects expandable rows and toggles inline details without breaking input or pickers", () => {
@@ -467,6 +502,47 @@ test("Slash /session and /room open room-first pickers", async () => {
 	assert.equal(harness.state.picker.kind, "room");
 	assert.match(harness.state.picker.title, /Select active room/);
 	assert.equal(harness.state.picker.items[harness.state.picker.selectedIndex].roomId, "room_project");
+});
+
+test("room selection changes room and session state as one ownership boundary", () => {
+	const sharedRoom = { id: "room_shared", title: "Shared Chat", isDefault: true };
+	const projectRoom = { id: "room_project", title: "Project Room" };
+	const sharedState = {
+		...baseState(),
+		activeRoom: sharedRoom,
+		session: { ...baseState().session, roomId: sharedRoom.id },
+		selectedRowId: "node-assistant",
+		expandedRowIds: ["node-assistant"],
+		mode: "picker",
+		picker: { kind: "room", action: "select-room", title: "Select active room", items: [], selectedIndex: 0, emptyMessage: "No rooms" },
+	};
+	const projectStatus = { ...sharedState.status, activeSessionId: undefined, activeRoomId: sharedRoom.id };
+
+	const switched = selectInkSessionRoom(sharedState, projectRoom, projectStatus);
+	assert.equal(switched.activeRoom.id, projectRoom.id);
+	assert.equal(switched.session, undefined);
+	assert.deepEqual(switched.rows, []);
+	assert.equal(switched.selectedRowId, undefined);
+	assert.deepEqual(switched.expandedRowIds, []);
+	assert.equal(switched.mode, "transcript");
+	assert.equal(switched.picker, undefined);
+	assert.match(switched.message, /Selected room Project Room/);
+
+	const sameRoom = selectInkSessionRoom(sharedState, sharedRoom, sharedState.status);
+	assert.equal(sameRoom.session.id, sharedState.session.id);
+	assert.equal(sameRoom.rows, sharedState.rows);
+	assert.equal(sameRoom.selectedRowId, "node-assistant");
+	assert.deepEqual(sameRoom.expandedRowIds, ["node-assistant"]);
+
+	const fresh = selectInkSessionRoom({ ...sharedState, session: undefined }, projectRoom, projectStatus);
+	assert.equal(fresh.session, undefined);
+	assert.deepEqual(fresh.rows, []);
+
+	const movedPicker = reduceInkSessionInputState(sharedState, { type: "down" });
+	const cancelled = reduceInkSessionInputState(movedPicker, { type: "escape" });
+	assert.equal(cancelled.activeRoom.id, sharedRoom.id);
+	assert.equal(cancelled.session.id, sharedState.session.id);
+	assert.equal(cancelled.rows, sharedState.rows);
 });
 
 test("Slash /repair-user-unknown runs source repair for the active room", async () => {
