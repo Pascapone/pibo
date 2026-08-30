@@ -4,12 +4,12 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 const execFileAsync = promisify(execFile);
+const reactDevelopmentEnv = { ...process.env, NODE_ENV: "development" };
 
 test("desktop tab React flows preserve Preview, pause inactive resources, and focus after close", async () => {
 	const script = `
 		import assert from "node:assert/strict";
-		import React, { useEffect, useState } from "react";
-		import { act } from "react-dom/test-utils";
+		import React, { act, useEffect, useState } from "react";
 		import TestRenderer from "react-test-renderer";
 		import { DesktopTabSidebar, desktopCatalogPointerIsOutside } from "./src/apps/chat-ui/src/desktop-tabs.tsx";
 		import { closeHostedWebAnnotations, useHostedPreviewFullscreenRecovery } from "./src/apps/chat-ui/src/session-trace-pane.tsx";
@@ -160,6 +160,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
 		cwd: process.cwd(),
+		env: reactDevelopmentEnv,
 		maxBuffer: 4 * 1024 * 1024,
 	});
 });

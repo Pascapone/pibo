@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 const execFileAsync = promisify(execFile);
+const reactDevelopmentEnv = { ...process.env, NODE_ENV: "development" };
 
 test("Preview authority rejects stale session data, errors, and configured emptiness", async () => {
 	const script = `
@@ -34,7 +35,7 @@ test("Preview authority rejects stale session data, errors, and configured empti
 		assert.equal(selectAuthoritativeLivePreview(ready, { piboSessionId: "ps_a", previewId: "pv-a" }).id, "pv-b");
 		assert.throws(() => requirePreviewActionAuthority("ps_b", previewA), /different Pibo Session/);
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd(), env: reactDevelopmentEnv });
 });
 
 test("live preview panel keeps the iframe isolated and exposes trusted lifecycle controls", async () => {
@@ -87,14 +88,13 @@ test("live preview panel keeps the iframe isolated and exposes trusted lifecycle
 		assert.match(topBar, /aria-label="Stop Preview server"/);
 		assert.match(topBar, /aria-label="Exit Preview fullscreen"/);
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd(), env: reactDevelopmentEnv });
 });
 
 test("Preview fullscreen restores focus after Escape, click, and session replacement", async () => {
 	const script = `
 		import assert from "node:assert/strict";
-		import React from "react";
-		import { act } from "react-dom/test-utils";
+		import React, { act } from "react";
 		import TestRenderer from "react-test-renderer";
 		import { PreviewFullscreenTopBar } from "./src/apps/chat-ui/src/session-live-preview.tsx";
 		const { create } = TestRenderer;
@@ -166,14 +166,13 @@ test("Preview fullscreen restores focus after Escape, click, and session replace
 		await scenario("click");
 		await scenario("session-replacement");
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd(), env: reactDevelopmentEnv });
 });
 
 test("Preview fullscreen exits when the selected Preview disappears", async () => {
 	const script = `
 		import assert from "node:assert/strict";
-		import React, { useState } from "react";
-		import { act } from "react-dom/test-utils";
+		import React, { act, useState } from "react";
 		import TestRenderer from "react-test-renderer";
 		import { SessionLivePreviewPanel } from "./src/apps/chat-ui/src/session-live-preview.tsx";
 		const { create } = TestRenderer;
@@ -218,7 +217,7 @@ test("Preview fullscreen exits when the selected Preview disappears", async () =
 		assert.equal(renderer.root.findAllByProps({ "aria-label": "Desktop shell controls" }).length, 1);
 		assert.match(renderer.toJSON().children.at(-1).children.join(""), /No active live preview/);
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd(), env: reactDevelopmentEnv });
 });
 
 test("Session and Project trace panes scope lifecycle state and fullscreen to the selected Pibo Session", () => {

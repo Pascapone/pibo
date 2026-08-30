@@ -29,13 +29,13 @@
 
 ## Final independent review hardening
 
-1. Both React behavior files use `react-dom/test-utils.act`, which is callable on the controller's React 19.2.8 / React Test Renderer 19.2.5 installation. `create` remains the callable default React Test Renderer export. Assertions were retained and expanded.
+1. Both React behavior files keep `create` from the callable default React Test Renderer export. Their spawned React child processes explicitly preserve the parent environment while overriding `NODE_ENV=development`, then use React's recommended `act` export from that development entry. Assertions were retained and expanded.
 2. Desktop Preview fullscreen is a dedicated shell state. It expands the active Preview tab to the viewport, renders Preview controls, keeps Terminal fullscreen false, and retains the exact hosted iframe across enter and exit. The normal toolbar still omits or disables fullscreen according to the existing selected/online Preview semantics.
 3. Workflow-version navigation now serializes `/workflows/view/$workflowId/$workflowVersion`, stores both fields in the route tab, and renders `WorkflowVersionViewer` through the Desktop host. Route, model, persistence, history, reload, and render tests cover the full parameter round-trip.
 
 ## Release-gate corrections
 
-1. `test/chat-ui-desktop-tabs-behavior.test.mjs` and `test/chat-ui-session-live-preview.test.mjs` no longer read `act` from React Test Renderer or React. Each exact file passes independently on the controller and in Docker.
+1. `test/chat-ui-desktop-tabs-behavior.test.mjs` and `test/chat-ui-session-live-preview.test.mjs` explicitly run every spawned child with `{ ...process.env, NODE_ENV: "development" }` and import `act` from React in the child behavior scripts. This avoids the controller's ambient production React entry, where `React.act` is absent, without changing assertions. Each exact file passes independently with a production parent environment on the controller and in Docker.
 2. Preview-fullscreen recovery runs at both the Preview panel and the `SessionTracePane` host boundary. If remove, query refresh, or authority loss replaces the panel with an empty state, the host exits Preview fullscreen and restores Desktop chrome and tabs. A selected Preview still retains the same iframe through ordinary updates and fullscreen transitions.
 3. Desktop and Mobile share the workflow route-selection renderer. Mobile version routes render `WorkflowVersionViewer`; ordinary workflow and draft routes still receive the unchanged `MinimalWorkflowsArea` fallback.
 
@@ -73,15 +73,15 @@ node --test \
   test/chat-ui-projects-bootstrap.test.mjs
 ```
 
-Result: 38 tests passed, 0 failed, process exit 0. The React behavior suite verifies Preview iframe identity, inactive resource unmount, post-Delete DOM focus, fullscreen keep-alive hiding and loss recovery, catalog containment, and hosted Annotations close. Controller/model tests verify URL/reload policy, autosave success/failure ordering, close-neighbor selection, reorder, persistence, route reconciliation, duplicate recovery, and Desktop/Mobile workflow-version rendering.
+Result: 38 tests passed, 0 failed, process exit 0 in Docker. The same 22-file command also passed on the controller with a production parent environment: 38 passed, 0 failed, exit 0. The React behavior suite verifies Preview iframe identity, inactive resource unmount, post-Delete DOM focus, fullscreen keep-alive hiding and loss recovery, catalog containment, and hosted Annotations close. Controller/model tests verify URL/reload policy, autosave success/failure ordering, close-neighbor selection, reorder, persistence, route reconciliation, duplicate recovery, and Desktop/Mobile workflow-version rendering.
 
 The expanded relevant suite covers 22 files. The prior release-gate review correctly found 35 passes and 2 harness failures at `c0fb8567`; the result above is a fresh direct worker invocation on this correction batch, not redirected shell output.
 
 The exact focused files also ran independently:
 
-- Controller `node --test test/chat-ui-desktop-tabs-behavior.test.mjs`: 1 passed, 0 failed, exit 0.
-- Controller `node --test test/chat-ui-session-live-preview.test.mjs`: 5 passed, 0 failed, exit 0.
-- Docker versions of the same separate commands: 1/1 and 5/5 passed, each exit 0.
+- Controller `NODE_ENV=production node --test test/chat-ui-desktop-tabs-behavior.test.mjs`: 1 passed, 0 failed, exit 0.
+- Controller `NODE_ENV=production node --test test/chat-ui-session-live-preview.test.mjs`: 5 passed, 0 failed, exit 0.
+- Docker versions of the same separate production-parent commands: 1/1 and 5/5 passed, each exit 0.
 
 `git diff --check` also passed.
 
