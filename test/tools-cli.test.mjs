@@ -318,6 +318,100 @@ test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers"
 	}
 });
 
+test("pibo tools agent-browser reuses lease identities and repairs legacy duplicates", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-agent-browser-lease-reuse-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const acquire = async (holder) => {
+			const result = await execFileAsync("node", [
+				cliPath,
+				"tools",
+				"agent-browser",
+				"lease",
+				"acquire",
+				"--app",
+				"pibo-chat",
+				"--holder",
+				holder,
+				"--ttl-ms",
+				"3600000",
+				"--max-slots",
+				"1",
+				"--json",
+			], { cwd, env });
+			return JSON.parse(result.stdout);
+		};
+		const release = (id) => execFileAsync("node", [
+			cliPath,
+			"tools",
+			"agent-browser",
+			"lease",
+			"release",
+			id,
+		], { cwd, env });
+		const list = async () => {
+			const result = await execFileAsync("node", [cliPath, "tools", "agent-browser", "lease", "list", "--json"], { cwd, env });
+			return JSON.parse(result.stdout);
+		};
+
+		const first = await acquire("first-holder");
+		await release(first.lease.id);
+		const second = await acquire("second-holder");
+		assert.equal(second.lease.id, first.lease.id);
+		assert.equal(second.lease.holder, "second-holder");
+		let registry = await list();
+		assert.equal(registry.leases.length, 1);
+		assert.equal(new Set(registry.leases.map((lease) => lease.id)).size, registry.leases.length);
+
+		await release(second.lease.id);
+		registry = await list();
+		assert.equal(registry.leases.filter((lease) => lease.status === "active").length, 0);
+
+		const third = await acquire("third-holder");
+		assert.equal(third.lease.id, first.lease.id);
+		const registryPath = join(third.env.AGENT_BROWSER_HOME, "pibo-agent-browser-leases.json");
+		registry = JSON.parse(await readFile(registryPath, "utf8"));
+		registry.leases[0].expiresAt = new Date(Date.now() - 60_000).toISOString();
+		await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+
+		const reaped = await execFileAsync("node", [cliPath, "tools", "agent-browser", "lease", "reap-stale", "--json"], { cwd, env });
+		assert.deepEqual(JSON.parse(reaped.stdout), { released: 1 });
+		registry = await list();
+		assert.equal(registry.leases.length, 1);
+		assert.equal(registry.leases[0].status, "released");
+
+		const fourth = await acquire("fourth-holder");
+		await release(fourth.lease.id);
+		const legacyReleased = {
+			...fourth.lease,
+			holder: "legacy-released",
+			status: "released",
+			updatedAt: "2026-01-01T00:00:00.000Z",
+		};
+		const legacyActive = {
+			...fourth.lease,
+			holder: "legacy-active",
+			status: "active",
+			updatedAt: "2026-01-02T00:00:00.000Z",
+			expiresAt: "2099-01-01T00:00:00.000Z",
+		};
+		await writeFile(registryPath, `${JSON.stringify({ version: 1, leases: [legacyReleased, legacyActive] }, null, 2)}\n`, "utf8");
+
+		await release(fourth.lease.id);
+		registry = await list();
+		assert.equal(registry.leases.length, 1);
+		assert.equal(registry.leases[0].status, "released");
+		assert.equal(registry.leases[0].holder, "legacy-active");
+		const afterLegacyRepair = await acquire("after-legacy-repair");
+		assert.equal(afterLegacyRepair.lease.id, first.lease.id);
+		registry = await list();
+		assert.equal(registry.leases.length, 1);
+		assert.equal(registry.leases[0].status, "active");
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo browser-use virtual display service unit uses a stable Linux xvfb setup", () => {
 	const unit = createPiboXvfbServiceUnit();
 	assert.match(unit, /\[Unit\]/);
