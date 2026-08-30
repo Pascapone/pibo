@@ -274,6 +274,36 @@ test("Ink session input reducer captures text, enter, navigation, escape, and sl
 	assert.equal(closed.slashSuggestions, undefined);
 });
 
+test("Ink session input reducer edits at grapheme cursor boundaries", () => {
+	const base = { loading: false, rows: [], input: "helo", mode: "transcript" };
+	const left = reduceInkSessionInputState(base, { type: "left" });
+	assert.equal(left.inputCursor, 3);
+	const corrected = reduceInkSessionInputState(left, { type: "text", value: "l" });
+	assert.equal(corrected.input, "hello");
+	assert.equal(corrected.inputCursor, 4);
+
+	const home = reduceInkSessionInputState(corrected, { type: "home" });
+	assert.equal(home.inputCursor, 0);
+	const right = reduceInkSessionInputState(home, { type: "right" });
+	assert.equal(right.inputCursor, 1);
+	const end = reduceInkSessionInputState(right, { type: "end" });
+	assert.equal(end.inputCursor, corrected.input.length);
+
+	const emoji = { ...base, input: "A👩‍💻C" };
+	const beforeC = reduceInkSessionInputState(emoji, { type: "left" });
+	const beforeEmoji = reduceInkSessionInputState(beforeC, { type: "left" });
+	assert.equal(beforeC.inputCursor, "A👩‍💻".length);
+	assert.equal(beforeEmoji.inputCursor, "A".length);
+	const afterEmoji = reduceInkSessionInputState(beforeEmoji, { type: "right" });
+	assert.equal(afterEmoji.inputCursor, "A👩‍💻".length);
+	const emojiInsert = reduceInkSessionInputState(afterEmoji, { type: "text", value: "B" });
+	assert.equal(emojiInsert.input, "A👩‍💻BC");
+
+	const deleted = reduceInkSessionInputState(emojiInsert, { type: "backspace" });
+	assert.equal(deleted.input, "A👩‍💻C");
+	assert.equal(deleted.inputCursor, "A👩‍💻".length);
+});
+
 test("Ink session input reducer selects expandable rows and toggles inline details without breaking input or pickers", () => {
 	const expandableRows = [
 		{ id: "plain", kind: "message.assistant", status: "done", lines: [{ prefix: "none", tokens: [{ text: "plain" }] }], sourceNodeIds: ["plain"] },
