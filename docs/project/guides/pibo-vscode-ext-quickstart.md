@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Pibo Quick Start — CLI + VS Code Extension"
+description: "Provides a German-language quick start for installing Pibo and using its VS Code extension."
+tags: ["cli", "installation", "quickstart", "vscode"]
+status: "draft"
+authority: "directive"
+generated:
+  by: "openai/codex"
+  at: "2026-08-30T15:47:50Z"
+sources:
+  - id: "foundation-relocation-source"
+    resource: "https://github.com/Pascapone/pibo/blob/2aef244301f5d181624662fdad53e18e83e80bd9/docs/guides/pibo-vscode-ext-quickstart.md"
+    title: "Original byte-preserved Pibo VS Code extension quick start"
+    commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+    path: "docs/guides/pibo-vscode-ext-quickstart.md"
+    sha256: "ff1b33edf70c89ce9b128382d05d5fa28735ede3fc3ba40429bece172fc2d716"
+    relation: "Byte-identical body lineage before Foundation relocation."
+---
 # Pibo Quick Start — CLI + VS Code Extension
 
 Diese Anleitung bringt dich in ungefähr 15 Minuten vom frischen Laptop zur

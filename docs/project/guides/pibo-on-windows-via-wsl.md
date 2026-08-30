@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Pibo on Windows via WSL"
+description: "Guides Windows users through installing Pibo and the VS Code extension inside WSL2."
+tags: ["installation", "windows", "wsl", "vscode"]
+status: "draft"
+authority: "directive"
+generated:
+  by: "openai/codex"
+  at: "2026-08-30T15:47:50Z"
+sources:
+  - id: "foundation-relocation-source"
+    resource: "https://github.com/Pascapone/pibo/blob/2aef244301f5d181624662fdad53e18e83e80bd9/docs/guides/pibo-on-windows-via-wsl.md"
+    title: "Original byte-preserved Pibo on Windows via WSL guide"
+    commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+    path: "docs/guides/pibo-on-windows-via-wsl.md"
+    sha256: "132f00469edcfa8915525bff4d0c9d82573ae53868a74db81d5224d354ce1d25"
+    relation: "Byte-identical body lineage before Foundation relocation."
+---
 # Pibo on Windows via WSL
 
 Pibo is a Linux-first tool. Native Windows is **not** supported, but Pibo runs unmodified inside **WSL2** because WSL2 is a real Linux kernel with full filesystem, symlink, and process semantics. This guide walks a Windows user from a fresh machine to a working `pibo` install, including the Pibo VSCode extension.

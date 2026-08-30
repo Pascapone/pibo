@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Upgrade a User Host to a Developer Host"
+description: "Guides operators through upgrading a Pibo user host to a developer host without replacing production state."
+tags: ["developer-host", "operations", "setup", "upgrade"]
+status: "draft"
+authority: "directive"
+generated:
+  by: "openai/codex"
+  at: "2026-08-30T15:47:50Z"
+sources:
+  - id: "foundation-relocation-source"
+    resource: "https://github.com/Pascapone/pibo/blob/2aef244301f5d181624662fdad53e18e83e80bd9/docs/ops/upgrade-user-to-developer-host.md"
+    title: "Original byte-preserved user-host upgrade guide"
+    commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+    path: "docs/ops/upgrade-user-to-developer-host.md"
+    sha256: "a48141d6456800b5e05472dfa7464d44a3b1605ad25a3209145a4d5bfcef22f8"
+    relation: "Byte-identical body lineage before Foundation relocation."
+---
 # Upgrade a User Host to a Developer Host
 
 A normal npm-installed Pibo host can be upgraded later. The upgrade must preserve the production gateway and add development infrastructure next to it.

@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Install Pibo as a Developer Host"
+description: "Guides operators through planning, installing, and validating a Pibo developer host."
+tags: ["developer-host", "installation", "operations", "setup"]
+status: "draft"
+authority: "directive"
+generated:
+  by: "openai/codex"
+  at: "2026-08-30T15:47:50Z"
+sources:
+  - id: "foundation-relocation-source"
+    resource: "https://github.com/Pascapone/pibo/blob/2aef244301f5d181624662fdad53e18e83e80bd9/docs/ops/install-developer-host.md"
+    title: "Original byte-preserved developer-host installation guide"
+    commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+    path: "docs/ops/install-developer-host.md"
+    sha256: "8e6ae80f901852ab0d38c0eb887d83f300107ecbebc2418da5e19ca9238e2e70"
+    relation: "Byte-identical body lineage before Foundation relocation."
+---
 # Install Pibo as a Developer Host
 
 Use this path when the host is used to develop Pibo itself.

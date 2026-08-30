@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Install Pibo as a User Host"
+description: "Guides operators through installing and configuring a Pibo user host."
+tags: ["installation", "operations", "setup", "user-host"]
+status: "draft"
+authority: "directive"
+generated:
+  by: "openai/codex"
+  at: "2026-08-30T15:47:50Z"
+sources:
+  - id: "foundation-relocation-source"
+    resource: "https://github.com/Pascapone/pibo/blob/2aef244301f5d181624662fdad53e18e83e80bd9/docs/ops/install-user-host.md"
+    title: "Original byte-preserved user-host installation guide"
+    commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+    path: "docs/ops/install-user-host.md"
+    sha256: "f3f6c51fe9f7b30fe8828cf844c82d8ef5ffebb715bab06d78348d5a9d547722"
+    relation: "Byte-identical body lineage before Foundation relocation."
+---
 # Install Pibo as a User Host
 
 Use this path when you want to run Pibo, not develop Pibo itself.

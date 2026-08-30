@@ -1,3 +1,22 @@
+---
+type: "Runbook"
+title: "Pibo VS Code Extension Release Runbook"
+description: "Describes the end-to-end release procedure for Pibo's VS Code extension and related package artifacts."
+tags: ["release", "runbook", "vscode", "vsix"]
+status: "deprecated"
+authority: "directive"
+generated:
+  by: "openai/codex"
+  at: "2026-08-30T15:47:50Z"
+sources:
+  - id: "foundation-relocation-source"
+    resource: "https://github.com/Pascapone/pibo/blob/2aef244301f5d181624662fdad53e18e83e80bd9/docs/ops/vscode-extension-release.md"
+    title: "Original byte-preserved Pibo VS Code extension release runbook"
+    commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+    path: "docs/ops/vscode-extension-release.md"
+    sha256: "4d7588693a51389ebc3ea53eb088272743e707e3d81a5f436ab58578769f56c2"
+    relation: "Byte-identical body lineage before Foundation relocation."
+---
 # Pibo VS Code Extension Release Runbook
 
 The Pibo VS Code extension is shipped as a `.vsix` artifact. This runbook describes the end-to-end release process and the split of responsibilities between the maintainer and the `pibo` release script.
