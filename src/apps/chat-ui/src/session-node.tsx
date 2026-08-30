@@ -130,6 +130,7 @@ export function SessionNode({
 						<input
 							ref={titleInputRef}
 							value={draftTitle}
+							aria-label={`Session title for ${safeTitle}`}
 							disabled={mutationsDisabled}
 							onChange={(event) => setDraftTitle(event.target.value)}
 							onKeyDown={(event) => {

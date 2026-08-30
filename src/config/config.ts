@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { ensurePrivatePiboHomeForPath, piboHomePath } from "../core/pibo-home.js";
 import { protectPrivateFileSync } from "../core/private-path.js";
+import { parsePreviewBaseURL } from "../previews/base-url.js";
 
 export const DEFAULT_PIBO_CONFIG_PATH = "config.json";
 
@@ -176,6 +177,7 @@ function parseConfigValue(definition: PiboConfigKeyDefinition, value: string): s
 	if (definition.key === "auth.secret" && value.length < 32) {
 		throw new Error("auth.secret must be at least 32 characters");
 	}
+	if (definition.key === "preview.baseURL") parsePreviewBaseURL(value);
 	if (definition.values && !definition.values.includes(value)) {
 		throw new Error(`${definition.key} must be one of: ${definition.values.join(", ")}`);
 	}

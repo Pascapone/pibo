@@ -45,6 +45,35 @@ test("project session deletion repairs current sessions across projects and is i
 	}
 });
 
+test("project session deletion coordinates Project cleanup with canonical deletion", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-project-session-delete-canonical-"));
+	const path = join(root, "web-projects.sqlite");
+	const service = new ChatProjectService(path);
+	try {
+		const project = createProject(service, root, "Canonical Project");
+		service.addProjectSession({ projectId: project.id, piboSessionId: "ps_keep" });
+		service.addProjectSession({ projectId: project.id, piboSessionId: "ps_delete" });
+
+		await assert.rejects(
+			service.deleteProjectSessionWithCanonicalDelete("ps_delete", async () => {
+				await new Promise((resolve) => setTimeout(resolve, 5));
+				throw new Error("synthetic canonical deletion failure");
+			}),
+			/synthetic canonical deletion failure/,
+		);
+		assert.deepEqual(service.listProjectSessions(project.id).map((session) => session.piboSessionId), ["ps_keep", "ps_delete"]);
+		assert.equal(service.requireProject(project.id).currentMainSessionId, "ps_delete");
+
+		const result = await service.deleteProjectSessionWithCanonicalDelete("ps_delete", async () => "deleted");
+		assert.equal(result, "deleted");
+		assert.deepEqual(service.listProjectSessions(project.id).map((session) => session.piboSessionId), ["ps_keep"]);
+		assert.equal(service.requireProject(project.id).currentMainSessionId, "ps_keep");
+	} finally {
+		service.close();
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("project session deletion rolls back links and current-session repair on failure", () => {
 	const root = mkdtempSync(join(tmpdir(), "pibo-project-session-delete-rollback-"));
 	const path = join(root, "web-projects.sqlite");

@@ -50,7 +50,9 @@ export async function infoCommand(options: InfoOptions): Promise<void> {
 
   const { server: serverName, tool: toolName } = parseTarget(options.target);
 
-  const serverConfig = config.mcpServers[serverName] as ServerConfig | undefined;
+  const serverConfig = Object.hasOwn(config.mcpServers, serverName)
+    ? config.mcpServers[serverName] as ServerConfig
+    : undefined;
   if (!serverConfig) {
     const available = Object.keys(config.mcpServers);
     const serverList = available.length > 0 ? available.join(', ') : '(none)';

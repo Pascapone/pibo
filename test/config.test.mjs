@@ -100,6 +100,23 @@ test("pibo config validates supported keys and auth secret length", () => {
 	assert.throws(() => setPiboConfigValue({}, "preview.autoStopMinutes", "1.5"), /integer between 1 and 1440/);
 });
 
+test("pibo config validates preview base URLs before replacing the configured value", () => {
+	const validBaseURL = "https://preview.example.test:8443";
+	const config = setPiboConfigValue({}, "preview.baseURL", validBaseURL);
+	for (const invalidBaseURL of [
+		"https://preview.example.test/path",
+		"https://preview.example.test?mode=test",
+		"https://preview.example.test#fragment",
+		"https://user@preview.example.test",
+	]) {
+		assert.throws(
+			() => setPiboConfigValue(config, "preview.baseURL", invalidBaseURL),
+			/preview\.baseURL must contain only scheme, hostname, and optional port/,
+		);
+		assert.equal(getPiboConfigValue(config, "preview.baseURL"), validBaseURL);
+	}
+});
+
 test("pibo config parses JSON string arrays and rejects invalid array values", () => {
 	let config = setPiboConfigValue({}, "auth.allowedEmails", '["you@example.com", " friend@example.com "]');
 	config = setPiboConfigValue(config, "auth.trustedOrigins", '["http://localhost:4788", ""]');
