@@ -103,16 +103,20 @@ function printShow(name: string): void {
     const wrapperPath = ensureBrowserUseWrapper(status);
     console.log(`  wrapper: ${wrapperPath ?? 'not generated'}`);
     console.log(`  executable: ${status.executablePath}`);
-    console.log('');
-    console.log('  IMPORTANT: Always use the wrapper path above, not the raw executable.');
-    console.log('  The wrapper manages persistent Chrome profiles and CDP automatically.');
+    if (wrapperPath) {
+      console.log('');
+      console.log('  IMPORTANT: Always use the wrapper path above, not the raw executable.');
+      console.log('  The wrapper manages persistent Chrome profiles and CDP automatically.');
+    }
   } else if (entry.name === 'agent-browser') {
     const wrapperPath = ensureAgentBrowserWrapper(status);
     console.log(`  wrapper: ${wrapperPath ?? 'not generated'}`);
     console.log(`  executable: ${status.executablePath}`);
-    console.log('');
-    console.log('  IMPORTANT: Always use the wrapper path above, not the raw executable.');
-    console.log('  The wrapper keeps Agent Browser state under the Pibo tool home.');
+    if (wrapperPath) {
+      console.log('');
+      console.log('  IMPORTANT: Always use the wrapper path above, not the raw executable.');
+      console.log('  The wrapper keeps Agent Browser state under the Pibo tool home.');
+    }
   } else {
     console.log(`  executable: ${status.executablePath}`);
   }
@@ -128,7 +132,9 @@ function printShow(name: string): void {
   }
   console.log('');
   console.log('Next:');
-  if (entry.kind !== 'internal') console.log(`  pibo tools env ${entry.name}`);
+  if (entry.kind !== 'internal') {
+    console.log(status.installed ? `  pibo tools env ${entry.name}` : `  pibo tools install ${entry.name}`);
+  }
   console.log(`  pibo tools guide ${entry.name} ${entry.guides[0]?.name ?? ''}`.trimEnd());
   if (entry.name === 'browser-use') {
     console.log('  pibo tools browser-use');
@@ -180,9 +186,24 @@ function printGuide(name: string, guideName?: string): void {
   console.log(guide.content);
 }
 
-function printPath(name: string): void {
+function requireInstalledTool(name: string) {
   const entry = requireEntry(name);
   const status = getCliToolStatus(entry);
+  if (!status.installed) {
+    throw new Error(
+      formatCliError({
+        code: ErrorCode.CLIENT_ERROR,
+        type: 'CLI_TOOL_NOT_INSTALLED',
+        message: `Tool "${name}" is not installed`,
+        suggestion: `Run pibo tools install ${name}.`,
+      }),
+    );
+  }
+  return { entry, status };
+}
+
+function printPath(name: string): void {
+  const { entry, status } = requireInstalledTool(name);
   if (entry.name === 'browser-use') {
     const wrapperPath = ensureBrowserUseWrapper(status);
     if (wrapperPath) {
@@ -201,8 +222,7 @@ function printPath(name: string): void {
 }
 
 function printEnv(name: string): void {
-  const entry = requireEntry(name);
-  const status = getCliToolStatus(entry);
+  const { entry, status } = requireInstalledTool(name);
   const desktop = detectDesktopEnv();
 
   if (entry.kind === 'internal') {

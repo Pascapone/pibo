@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Updated:** 2026-08-15
+**Updated:** 2026-08-30
 **Controller / Source:** Scheduled Pibo Source Specs Coverage
 **Related docs:** [Chat Web Rooms and Event Streams](./chat-web-rooms-and-event-streams.md), [Pibo Session Routing](./pibo-session-routing.md), [Debug CLI](./debug-cli.md)
 
@@ -18,7 +18,7 @@ Pibo SHALL maintain a SQLite-backed v2 data store that can serve as the default 
 
 ## Background / Current State
 
-The current implementation creates `.pibo/pibo.sqlite` through `PiboDataStore`, applies schema version 5, enables foreign keys, sets a busy timeout, and uses WAL for file-backed stores. The store owns sub-stores for payloads, event log rows, chat messages, observations, session navigation, sessions, runtime bindings, and runtime telemetry. Chat Web also creates workflow authoring/catalog tables in this same database; those tables are covered by workflow specs and local store stewardship docs rather than by the `src/data` sub-store contract.
+The current implementation creates `.pibo/pibo.sqlite` through `PiboDataStore`, applies schema version 7, enables foreign keys, sets a busy timeout, and uses WAL for file-backed stores. The store owns sub-stores for payloads, event log rows, chat messages, observations, session navigation, sessions, runtime bindings, and runtime telemetry. Chat Web also creates workflow authoring/catalog tables in this same database; those tables are covered by workflow specs and local store stewardship docs rather than by the `src/data` sub-store contract.
 
 `PiboDataSessionStore` implements the default gateway `PiboSessionStore` on the shared `sessions` and `session_runtime_bindings` tables. `ChatDataIngestService` writes accepted user messages and normalized `PiboOutputEvent` records. It records append-only event rows, creates message and observation projections, upserts session and navigation metadata, and externalizes large content into a compressed payload directory. Those durable messages plus terminal events are the product-history source for normal trace reconstruction. Trace V2 and Chat Web reliability guardrails use the payload store to keep large tool outputs and raw/debug payloads out of the default timeline while hydrating them when full history or debug content is requested.
 
@@ -60,6 +60,7 @@ Opening an existing or new v2 store yields the same table/index contract and set
 #### Acceptance
 
 - Applying the schema twice leaves one copy of each expected table and index.
+- Upgrading a schema-v1 or schema-v2 database transactionally rebuilds session, room, and navigation tables that retain retired required partition columns, preserving supported rows and foreign-key integrity even when an earlier open already stamped the database with a later version.
 - The database contains sessions, rooms, room members, payloads, event log, chat messages, observations, stats, navigation, indexer offsets, migration import map, and telemetry tables.
 - File-backed stores use the configured database path and payload root.
 
@@ -67,7 +68,15 @@ Opening an existing or new v2 store yields the same table/index contract and set
 
 - GIVEN no v2 database file exists
 - WHEN Pibo opens `PiboDataStore`
-- THEN the database is created with schema version 5 and all current tables are present
+- THEN the database is created with schema version 7 and all current tables are present
+
+#### Scenario: Legacy required partition columns
+
+- GIVEN a schema-v1 or schema-v2 database has existing room, session, and navigation rows with retired required partition columns
+- WHEN Pibo opens the database, including after an earlier open stamped it without repairing those physical tables
+- THEN the affected tables are rebuilt without the retired columns
+- AND supported rows and valid foreign-key references remain intact
+- AND current room, session, and navigation writes succeed after restart
 
 ### Requirement: Event log appends are ordered and idempotent
 

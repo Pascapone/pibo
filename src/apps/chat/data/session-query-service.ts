@@ -39,8 +39,29 @@ export class ChatSessionQueryService {
 		_streamId?: number,
 		createdAt = new Date().toISOString(),
 	): ChatWebStoredPiboEvent | undefined {
-		if (session) this.upsertSession(session, statusFromOutputEvent(event), createdAt);
+		if (session) {
+			const status = statusFromOutputEvent(event);
+			if (status) this.upsertSession(session, status, createdAt);
+			else this.touchSession(session, createdAt);
+		}
 		return undefined;
+	}
+
+	private touchSession(session: PiboSession, lastActivityAt: string): void {
+		const roomId = chatRoomIdFromMetadata(session.metadata) ?? "room_default";
+		this.store.sessions.upsertSession({ session, roomId, lastActivityAt });
+		this.store.navigation.upsertSession({
+			roomId,
+			sessionId: session.id,
+			rootSessionId: rootSessionId(session),
+			parentId: session.parentId,
+			originId: session.originId,
+			title: session.title || "Untitled Session",
+			profile: session.profile,
+			lastActivityAt,
+			sortKey: lastActivityAt,
+			updatedAt: lastActivityAt,
+		});
 	}
 
 	listSessions(): ChatWebSessionIndexItem[] {

@@ -53,7 +53,7 @@ export class SessionStore {
 			"workspace = excluded.workspace",
 			"title = excluded.title",
 			"first_message_preview = COALESCE(sessions.first_message_preview, excluded.first_message_preview)",
-			"status = excluded.status",
+			...(input.status === undefined ? [] : ["status = excluded.status"]),
 			"metadata_json = excluded.metadata_json",
 			"updated_at = MAX(sessions.updated_at, excluded.updated_at)",
 			"last_activity_at = MAX(sessions.last_activity_at, excluded.last_activity_at)",

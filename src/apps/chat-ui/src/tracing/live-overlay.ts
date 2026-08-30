@@ -1,4 +1,5 @@
 import { parseRunNotificationText } from "../../../../shared/trace-run-notifications.js";
+import { parseTraceToolNodeIdentity, qualifiedToolNodeId } from "../../../../shared/trace-tool-identity.js";
 import type { ChatWebStoredEvent } from "../../../../shared/trace-types.js";
 import type { PiboSessionTraceView, PiboTraceNode } from "../types";
 import { isUserMessageQueuedEvent } from "./optimistic-user-messages";
@@ -122,7 +123,10 @@ function collectConfirmedTraceNodeKeys(nodes: readonly PiboTraceNode[], keys: Se
 			}
 		}
 		if (node.toolCallId && (node.type === "tool.call" || node.type === "tool.result" || node.type === "agent.delegation")) {
-			const identity = `tool:${node.toolCallId}`;
+			const parsed = parseTraceToolNodeIdentity(node.id);
+			const identity = parsed?.qualifier
+				? qualifiedToolNodeId(parsed.toolCallId, parsed.qualifier.eventId, parsed.qualifier.invocationOrdinal)
+				: qualifiedToolNodeId(node.toolCallId, node.eventId ?? "unscoped", node.toolInvocationOrdinal ?? 0);
 			keys.add(`${node.piboSessionId}:tool_call:${identity}`);
 			const completed = node.completedAt !== undefined || node.type === "tool.result" || node.status === "error";
 			if (node.status === "running" || node.output !== undefined || completed) {
@@ -170,7 +174,11 @@ function traceEventConfirmationKey(event: ChatWebStoredEvent): string | undefine
 		event.type === "tool_execution_finished"
 	) {
 		const toolCallId = "toolCallId" in payload && typeof payload.toolCallId === "string" ? payload.toolCallId : undefined;
-		return toolCallId ? `${piboSessionId}:${event.type}:tool:${toolCallId}` : undefined;
+		if (!toolCallId) return undefined;
+		const ordinal = numericPayloadField(payload, "toolInvocationOrdinal") ?? 0;
+		const identityEventId = eventId
+			?? (event.renderSequence !== undefined ? `render:${event.renderSequence}` : "unscoped");
+		return `${piboSessionId}:${event.type}:${qualifiedToolNodeId(toolCallId, identityEventId, ordinal)}`;
 	}
 	if (!eventId) return undefined;
 	if (event.type === "assistant_delta" || event.type === "assistant_message") {

@@ -110,6 +110,29 @@ test('staggered and sequential compute dev spawns retain distinct allocation', a
 	assert.deepEqual([resultA.worker.gatewayPort, resultB.worker.gatewayPort, resultC.worker.gatewayPort].sort(), [4800, 4810, 4820]);
 });
 
+test('a stale lock with a reused live PID is reclaimed by process start identity', async (t) => {
+	if (process.platform !== 'linux') {
+		t.skip('Linux process start identity is required for this regression');
+		return;
+	}
+	const harness = await createHarness(t);
+	await harness.resetDockerState();
+	const repo = await harness.cloneRepo('pid-reuse');
+	const lockPath = join(harness.piboHome, 'compute', 'dev-port-allocation.lock');
+	await mkdir(join(harness.piboHome, 'compute'), { recursive: true });
+	await writeFile(lockPath, JSON.stringify({
+		pid: process.pid,
+		processStartId: `${process.pid}:1`,
+		token: 'abandoned-reused-pid',
+		createdAt: '2026-01-01T00:00:00.000Z',
+	}), 'utf8');
+
+	const result = await harness.spawnWorker(repo, 'after-pid-reuse');
+	assert.equal(result.ok, true);
+	assert.equal(result.worker.gatewayPort, 4800);
+	await assert.rejects(readFile(lockPath, 'utf8'), { code: 'ENOENT' });
+});
+
 test('existing containers remain allocated and a failed spawn releases the reservation', async (t) => {
 	const harness = await createHarness(t);
 	await harness.resetDockerState([0]);
