@@ -20,6 +20,7 @@ async function runSessionTraceViewPropsScenario() {
 			traceUserMessageRevision,
 			withSessionForkCandidates,
 		} = await import("./src/apps/chat-ui/src/session-trace-view-props.ts");
+		const { createPiboSignalRegistry } = await import("./src/signals/registry.ts");
 
 		function session(overrides) {
 			return {
@@ -181,6 +182,14 @@ async function runSessionTraceViewPropsScenario() {
 
 		const activeSignal = { latestTurn: { state: "running" } };
 		assert.equal(sessionCanSteer(bootstrap, "ps-child", "worker-profile", activeSignal), true, "an active local turn on a steering runtime can be steered");
+		const raceRegistry = createPiboSignalRegistry();
+		raceRegistry.project({ type: "session_created", session: { id: "ps-child", channel: "web", kind: "runtime", profile: "worker-profile" } });
+		raceRegistry.project({ type: "message_accepted", piboSessionId: "ps-child", eventId: "new-user-turn", source: "user" });
+		raceRegistry.project({ type: "pibo_output", event: { type: "session_error", piboSessionId: "ps-child", eventId: "old-loop-continuation", error: "Loop continuation is no longer authorized (paused)" } });
+		raceRegistry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "ps-child", eventId: "new-user-turn", source: "user", text: "continue" } });
+		const racedSignal = raceRegistry.snapshotTree("ps-child").sessions["ps-child"];
+		assert.equal(racedSignal.latestTurn?.state, "running");
+		assert.equal(sessionCanSteer(bootstrap, "ps-child", "worker-profile", racedSignal), true, "a stale error from another event does not suppress steering for the active turn");
 		assert.equal(sessionCanSteer(bootstrap, "ps-child", "worker-profile", { latestTurn: { state: "completed" }, isTreeActive: true }), false, "descendant-only activity cannot steer the selected session");
 		assert.equal(sessionCanSteer({
 			...bootstrap,

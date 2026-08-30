@@ -117,6 +117,7 @@ Input:
 ```json
 {
   "agentIds": ["ps_..."],
+  "toolCallIds": ["tool_...", "tool_..."],
   "names": ["worker"],
   "threadKeys": ["implementation"],
   "eventTypes": ["tool_call", "tool_execution_finished", "assistant_message"],
@@ -133,7 +134,7 @@ Input:
 }
 ```
 
-Array fields use OR semantics internally. Different fields combine with AND semantics. Exact values are not treated as prefixes or regular expressions. `textContains` is the only substring filter and is case-insensitive.
+Array fields use OR semantics internally. Different fields combine with AND semantics. Exact values are not treated as prefixes or regular expressions. `textContains` is the only substring filter and is case-insensitive. `toolCallIds` accepts at most 50 existing IDs, enables tool visibility, and returns only tool observations whose `toolCallId` exactly matches one of them; ownership, identity, cursor, event, detail, and other filters still apply.
 
 With no `eventTypes` or `kinds`, the default view returns the newest 20 completed `assistant_message` observations. Tools are hidden. `includeTools: true` adds `tool_call` and `tool_execution_finished`; `toolDetail: "summary"` keeps their text compact, while `toolDetail: "full"` returns bounded raw tool text. Callers may request `limit: 50` or another value up to 200. The default view hides streaming `assistant_delta` and `tool_execution_updated` events plus duplicate `tool_execution_started` progress records. Explicit `eventTypes` or `kinds` filters retain access to those records for compatibility and diagnostics.
 
@@ -156,7 +157,7 @@ Normalized observation:
 }
 ```
 
-`includeDetails: true` adds the normalized source event under `details`. Default output omits it. Full normalized text is bounded to 4 KiB, compact tool summaries to 768 bytes, and details to 32 KiB per observation. The model-facing result uses concise entries rather than a formatted copy of the full structured response. The journal is router-global, monotonic, and bounded to the newest 5,000 delegated-child observations.
+`includeDetails: true` adds the normalized source event under `details`. Default output omits it. Full normalized text is bounded to 4 KiB, compact tool summaries to 768 bytes, and details to 32 KiB per observation. The model-facing result uses concise entries rather than a formatted copy of the full structured response, and every compact tool entry exposes its existing `toolCallId` for exact follow-up queries. The journal is router-global, monotonic, and bounded to the newest 5,000 delegated-child observations.
 
 `afterSequence` is exclusive. Cursor pages always select the oldest unseen matching records first. `order: desc` reverses only that selected page, so `nextAfterSequence` never skips unseen records. The result sets `truncated` when another matching page exists or when the caller's cursor predates retained history. On retention loss, the next cursor advances through the known eviction boundary even if no retained record matches.
 

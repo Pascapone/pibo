@@ -1,6 +1,9 @@
-import { selectRequestedModelProfile, type PiboModelDefaults } from "./model-defaults.js";
+import { selectRequestedModelProfile, sanitizeModelProfile, type PiboModelDefaults } from "./model-defaults.js";
+import type { PiboJsonObject } from "./events.js";
 import { InitialSessionContext, type ModelProfile } from "./profiles.js";
 import type { PiboSession } from "../sessions/store.js";
+
+export const PIBO_INITIAL_MODEL_FALLBACKS_METADATA_KEY = "initialModelFallbacks";
 
 export function resolvePiboSessionActiveModel(input: {
 	profile: InitialSessionContext;
@@ -15,6 +18,31 @@ export function resolvePiboSessionActiveModel(input: {
 	return selectRequestedModelProfile(sessionProfile, input.modelDefaults ?? {});
 }
 
+export function resolvePiboSessionModelFallbacks(input: {
+	profile: InitialSessionContext;
+	piboSession: PiboSession;
+	parentPiSessionId?: string;
+	activeModel?: ModelProfile;
+}): ModelProfile[] {
+	const persisted = input.piboSession.metadata?.[PIBO_INITIAL_MODEL_FALLBACKS_METADATA_KEY];
+	const configured = persisted !== undefined
+		? sanitizeModelFallbacks(persisted)
+		: input.parentPiSessionId
+			? []
+			: sanitizeModelFallbacks(input.profile.mainModelFallbacks);
+	return configured.filter((model) => !sameModel(model, input.activeModel));
+}
+
+export function withPiboSessionModelFallbacksMetadata(
+	metadata: PiboJsonObject | undefined,
+	models: readonly ModelProfile[],
+): PiboJsonObject {
+	return {
+		...(metadata ?? {}),
+		[PIBO_INITIAL_MODEL_FALLBACKS_METADATA_KEY]: sanitizeModelFallbacks(models),
+	};
+}
+
 function profileWithSessionIds(
 	profile: InitialSessionContext,
 	piSessionId: string,
@@ -26,6 +54,7 @@ function profileWithSessionIds(
 		parentSessionId: parentPiSessionId,
 		model: profile.model,
 		mainModel: profile.mainModel,
+		mainModelFallbacks: profile.mainModelFallbacks,
 		subagentModel: profile.subagentModel,
 		thinkingLevel: profile.thinkingLevel,
 		mainThinkingLevel: profile.mainThinkingLevel,
@@ -38,6 +67,7 @@ function profileWithSessionIds(
 		subagents: profile.subagents,
 		mcpServers: profile.mcpServers,
 		contextFiles: profile.contextFiles,
+		diagnostics: profile.diagnostics,
 		piPackages: profile.piPackages,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
@@ -49,4 +79,21 @@ function profileWithSessionIds(
 
 function cloneModelProfile(model: ModelProfile): ModelProfile {
 	return { provider: model.provider, id: model.id };
+}
+
+function sanitizeModelFallbacks(value: unknown): ModelProfile[] {
+	if (!Array.isArray(value)) return [];
+	const seen = new Set<string>();
+	return value.flatMap((item) => {
+		const model = sanitizeModelProfile(item);
+		if (!model) return [];
+		const key = `${model.provider}\u0000${model.id}`;
+		if (seen.has(key)) return [];
+		seen.add(key);
+		return [model];
+	});
+}
+
+function sameModel(left: ModelProfile, right: ModelProfile | undefined): boolean {
+	return Boolean(right && left.provider === right.provider && left.id === right.id);
 }

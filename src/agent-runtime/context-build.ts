@@ -30,6 +30,7 @@ export function profileWithRuntimeInstance(profile: InitialSessionContext, runti
 		parentSessionId: profile.parentSessionId,
 		model: undefined,
 		mainModel: undefined,
+		mainModelFallbacks: [],
 		subagentModel: undefined,
 		thinkingLevel: profile.thinkingLevel,
 		mainThinkingLevel: profile.mainThinkingLevel,
@@ -43,6 +44,7 @@ export function profileWithRuntimeInstance(profile: InitialSessionContext, runti
 		mcpServers: profile.mcpServers,
 		piPackages: profile.piPackages,
 		contextFiles: profile.contextFiles,
+		diagnostics: profile.diagnostics,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,
@@ -254,6 +256,7 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		metadata: {
 			activeModel: runtimeManifest.effectiveModel,
 			mainModel: profile.mainModel,
+			mainModelFallbacks: profile.mainModelFallbacks,
 			subagentModel: profile.subagentModel,
 			mainThinkingLevel: profile.mainThinkingLevel ?? profile.thinkingLevel,
 			subagentThinkingLevel: profile.subagentThinkingLevel ?? profile.thinkingLevel,
@@ -265,6 +268,21 @@ export function buildPortableRuntimeContextSnapshot(input: {
 				?? input.runtime.capabilities.nativeSubagents.enabledByDefault,
 		},
 	});
+	for (const [index, diagnostic] of profile.diagnostics.entries()) {
+		addNode({
+			id: `profile-diagnostic-${index}`,
+			kind: "diagnostic",
+			title: diagnostic.code,
+			source: "profile",
+			state: diagnostic.severity === "error" ? "error" : "warning",
+			badges: [diagnostic.severity.toUpperCase(), "PROFILE"],
+			hydratedText: diagnostic.message,
+			metadata: diagnostic.resourceName ? {
+				resourceKind: diagnostic.resourceKind,
+				resourceName: diagnostic.resourceName,
+			} : undefined,
+		});
+	}
 	for (const [index, diagnostic] of input.runtime.diagnostics.entries()) {
 		addNode({
 			id: `runtime-diagnostic-${index}`,
@@ -290,9 +308,11 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		});
 	}
 	const resourceDiagnostics = input.resources?.diagnostics ?? [];
-	const warnings = input.runtime.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length
+	const warnings = profile.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length
+		+ input.runtime.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length
 		+ resourceDiagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
-	const errors = input.runtime.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length
+	const errors = profile.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length
+		+ input.runtime.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length
 		+ resourceDiagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
 	return {
 		version: 1,
@@ -312,6 +332,10 @@ export function buildPortableRuntimeContextSnapshot(input: {
 		},
 		nodes,
 		diagnostics: [
+			...profile.diagnostics.map((diagnostic) => ({
+				type: diagnostic.severity,
+				message: `[${diagnostic.code}] ${diagnostic.message}`,
+			})),
 			...input.runtime.diagnostics.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
 			...resourceDiagnostics.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
 		],

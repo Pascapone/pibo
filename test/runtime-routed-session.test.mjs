@@ -4,6 +4,7 @@ import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/cap
 import { RuntimeRoutedSession } from "../dist/agent-runtime/routed-session.js";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { PIBO_PROVIDER_RECOVERY_PROMPT } from "../dist/core/provider-recovery.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
@@ -129,6 +130,123 @@ test("generic routed orchestration queues and correlates a non-Pi fake adapter",
 		await fixture.router.disposeAll();
 	}
 	assert.throws(() => portableTools.createDefinitions(), /disposed/);
+});
+
+test("generic routed orchestration tries ordered provider fallbacks and restores the primary model", async () => {
+	const primary = { provider: "openai", id: "gpt-primary" };
+	const fallbackOne = { provider: "anthropic", id: "claude-fallback" };
+	const fallbackTwo = { provider: "moonshot", id: "kimi-fallback" };
+	const listeners = new Set();
+	const prompts = [];
+	const modelSwitches = [];
+	let activeModel = primary;
+	let turn = 0;
+	const runtimeSession = {
+		adapterId: "fallback-fake",
+		runtimeInstanceId: "fallback-fake",
+		cwd: process.cwd(),
+		capabilities: {
+			...createMinimalAgentRuntimeCapabilities(),
+			models: { catalog: true, switchInSession: true },
+		},
+		controls: {
+			async setModel(model) {
+				activeModel = { ...model };
+				modelSwitches.push({ ...model });
+				return { ...model };
+			},
+		},
+		getBinding: () => ({ piboSessionId: "ps_fallback", runtimeInstanceId: "fallback-fake", adapterId: "fallback-fake", state: "bound" }),
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		async prompt(input) {
+			prompts.push({ ...input, model: { ...activeModel } });
+			turn += 1;
+			for (const listener of listeners) listener({ type: "turn_started", turnId: `turn-${turn}` });
+			if (activeModel.provider !== "moonshot") {
+				const details = {
+					category: "provider_transport",
+					errorClass: "provider_transport",
+					code: "network_error",
+					origin: "provider",
+					retryable: true,
+					provider: activeModel.provider,
+					model: activeModel.id,
+				};
+				for (const listener of listeners) listener({ type: "turn_failed", turnId: `turn-${turn}`, message: "connection reset", details });
+				throw new Error("connection reset");
+			}
+			for (const listener of listeners) {
+				listener({ type: "assistant_message", text: "fallback succeeded" });
+				listener({ type: "turn_completed", turnId: `turn-${turn}`, status: "completed" });
+			}
+		},
+		async abort() {},
+		async dispose() {},
+		getStatus: () => ({ streaming: false, enabledTools: [], cwd: process.cwd(), activeModel: { ...activeModel } }),
+	};
+	const events = [];
+	const routed = new RuntimeRoutedSession(
+		"ps_fallback",
+		runtimeSession,
+		(event) => events.push(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		{ modelFallbacks: [fallbackOne, fallbackTwo] },
+	);
+	try {
+		routed.enqueueMessage({ type: "message", piboSessionId: "ps_fallback", id: "fallback-message", text: "do the work", source: "user" });
+		await waitFor(() => events.some((event) => event.type === "message_finished"));
+		assert.deepEqual(prompts.map((prompt) => [prompt.text, prompt.model]), [
+			["do the work", primary],
+			[PIBO_PROVIDER_RECOVERY_PROMPT, fallbackOne],
+			[PIBO_PROVIDER_RECOVERY_PROMPT, fallbackTwo],
+		]);
+		assert.deepEqual(modelSwitches, [fallbackOne, fallbackTwo, primary]);
+		assert.equal(events.some((event) => event.type === "session_error"), false);
+		assert.equal(events.find((event) => event.type === "assistant_message")?.text, "fallback succeeded");
+	} finally {
+		await routed.dispose();
+	}
+});
+
+test("provider fallback does not retry context or runtime failures", async () => {
+	const primary = { provider: "openai", id: "gpt-primary" };
+	const listeners = new Set();
+	const modelSwitches = [];
+	const runtimeSession = {
+		adapterId: "fallback-fake",
+		runtimeInstanceId: "fallback-fake",
+		cwd: process.cwd(),
+		capabilities: { ...createMinimalAgentRuntimeCapabilities(), models: { catalog: true, switchInSession: true } },
+		controls: { async setModel(model) { modelSwitches.push(model); return model; } },
+		getBinding: () => ({ piboSessionId: "ps_no_fallback", runtimeInstanceId: "fallback-fake", adapterId: "fallback-fake", state: "bound" }),
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		async prompt() {
+			const details = { category: "context_overflow", errorClass: "provider_context", code: "context_length_exceeded", origin: "provider", retryable: false };
+			for (const listener of listeners) listener({ type: "turn_failed", message: "context window exceeded", details });
+		},
+		async abort() {},
+		async dispose() {},
+		getStatus: () => ({ streaming: false, enabledTools: [], cwd: process.cwd(), activeModel: primary }),
+	};
+	const events = [];
+	const routed = new RuntimeRoutedSession(
+		"ps_no_fallback",
+		runtimeSession,
+		(event) => events.push(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		{ modelFallbacks: [{ provider: "anthropic", id: "claude-fallback" }] },
+	);
+	try {
+		routed.enqueueMessage({ type: "message", piboSessionId: "ps_no_fallback", id: "no-fallback-message", text: "too large", source: "user" });
+		await waitFor(() => events.some((event) => event.type === "session_error"));
+		assert.deepEqual(modelSwitches, []);
+		assert.equal(events.some((event) => event.type === "message_finished"), false);
+	} finally {
+		await routed.dispose();
+	}
 });
 
 test("generic routed requests remain cancellable during asynchronous message preflight", async () => {

@@ -94,6 +94,25 @@ test("mergeRefreshedTracePage preserves the loaded history window while refreshi
 	assert.equal(merged.eventLimit, 100);
 });
 
+test("mergeRefreshedTracePage keeps render positions stable across live to history source handoff", () => {
+	const current = traceView({
+		nodes: [
+			node("first", { source: "live", startedAt: undefined, orderKey: { ...liveOrder(90), renderSequence: 10 } }),
+			node("second", { source: "live", startedAt: undefined, orderKey: { ...liveOrder(80), renderSequence: 20 } }),
+		],
+	});
+	const refreshed = traceView({
+		nodes: [
+			node("first", { source: "transcript", startedAt: "2026-07-05T00:02:00.000Z", orderKey: { ...transcriptOrder(9), renderSequence: 10 } }),
+			node("second", { source: "event-log", startedAt: "2026-07-05T00:01:00.000Z", orderKey: { ...eventOrder(1), renderSequence: 20 } }),
+		],
+	});
+
+	const merged = mergeRefreshedTracePage(current, refreshed);
+	assert.deepEqual(merged.nodes.map((entry) => entry.id), ["first", "second"]);
+	assert.deepEqual(merged.nodes.map((entry) => entry.orderKey.renderSequence), [10, 20]);
+});
+
 test("mergeRefreshedTracePage retains a same-entry transcript part split from the refreshed tail", () => {
 	const startedAt = "2026-07-05T00:01:00.000Z";
 	const currentNodes = Array.from({ length: 51 }, (_, contentPartIndex) => node(`part-${contentPartIndex}`, {
@@ -141,11 +160,11 @@ test("mergeRefreshedTracePage replaces stale tail nodes without dropping loaded 
 
 	const merged = mergeRefreshedTracePage(current, refreshed);
 	assert.deepEqual(merged.nodes.map((entry) => entry.id), [
+		"entry:legacy-run-notification",
+		"older-transcript",
 		"older-event",
 		"older-run-notification",
 		"older-yielded-run",
-		"entry:legacy-run-notification",
-		"older-transcript",
 		"shared",
 		"new-tail",
 	]);

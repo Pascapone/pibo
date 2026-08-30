@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { RuntimeRoutedSession } from "../dist/agent-runtime/routed-session.js";
-import { OMP_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/omp/adapter.js";
+import { OMP_AGENT_RUNTIME_DRIVER, OMP_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/omp/adapter.js";
 import { OmpRpcClient } from "../dist/agent-runtimes/omp/client.js";
 import { OmpHostToolBridge } from "../dist/agent-runtimes/omp/host-tools.js";
 import { OmpRpcTurnController } from "../dist/agent-runtimes/omp/turn.js";
@@ -16,6 +16,7 @@ import { PiboLoopService } from "../dist/loops/service.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
 import { createBuiltInLoopStopConditions } from "../dist/loops/stopping.js";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { nextRuntimeSessionBinding } from "../dist/sessions/runtime-binding.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/omp-rpc-fake.mjs", import.meta.url));
@@ -47,6 +48,34 @@ function responseCommand(response) {
 function responseData(response) {
 	return response.data;
 }
+
+test("OMP binding resolution preserves a persisted native session after gateway restart", async () => {
+	const adapter = OMP_AGENT_RUNTIME_DRIVER.create({
+		instanceId: "omp-native",
+		displayName: "Oh My Pi",
+		enabled: true,
+		config: OMP_AGENT_RUNTIME_DRIVER.defaultConfig(),
+	});
+	const binding = {
+		piboSessionId: "ps_omp_restart",
+		runtimeInstanceId: "omp-native",
+		adapterId: "orp",
+		nativeSessionId: "omp-native-session",
+		state: "bound",
+		protocol: "omp-rpc",
+		protocolVersion: "2",
+		adapterVersion: "1",
+		locator: { kind: "adapter-resolved", value: "omp-native-session" },
+		metadata: { nativeSessionFile: "/tmp/omp-native-session.jsonl" },
+		revision: 2,
+		createdAt: "2026-08-22T17:30:00.000Z",
+		updatedAt: "2026-08-22T17:30:01.000Z",
+	};
+
+	const resolved = await adapter.resolveBinding({ binding, workspace: "/tmp" });
+	assert.deepEqual(resolved, binding);
+	assert.doesNotThrow(() => nextRuntimeSessionBinding(binding, resolved, { expectedRevision: 2 }));
+});
 
 test("OMP RPC client performs ready handshake then protocol negotiation", async (t) => {
 	const client = await startClient(t, "handshake");

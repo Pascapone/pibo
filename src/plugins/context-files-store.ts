@@ -37,6 +37,11 @@ export type StoredContextFileRevisionRecord = {
 	actorId?: string;
 };
 
+export type StoredContextFileCatalogRecord = Pick<
+	StoredContextFileRecord,
+	"key" | "label" | "managedPath" | "scope" | "agentProfileName"
+>;
+
 type LegacyManagedContextFile = {
 	key: string;
 	label: string;
@@ -218,6 +223,36 @@ function revisionRowToRecord(row: ContextFileRevisionRow): StoredContextFileRevi
 		createdAt: row.created_at,
 		...(row.actor_id ? { actorId: row.actor_id } : {}),
 	};
+}
+
+export function readContextFileCatalog(path: string): StoredContextFileCatalogRecord[] {
+	const resolvedPath = resolve(path);
+	if (!existsSync(resolvedPath)) return [];
+
+	const db = new DatabaseSync(resolvedPath, { readOnly: true });
+	try {
+		const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'context_files'").get();
+		if (!table) return [];
+		const columns = new Set(
+			(db.prepare("PRAGMA table_info(context_files)").all() as Array<{ name: string }>).map((column) => column.name),
+		);
+		const required = ["key", "label", "managed_path", "scope", "agent_profile_name"];
+		if (!required.every((column) => columns.has(column))) return [];
+		const rows = db.prepare(`
+			SELECT key, label, managed_path, scope, agent_profile_name
+			FROM context_files
+			ORDER BY updated_at DESC
+		`).all() as Array<Pick<ContextFileRow, "key" | "label" | "managed_path" | "scope" | "agent_profile_name">>;
+		return rows.map((row) => ({
+			key: row.key,
+			label: row.label,
+			managedPath: row.managed_path,
+			scope: row.scope,
+			...(row.agent_profile_name ? { agentProfileName: row.agent_profile_name } : {}),
+		}));
+	} finally {
+		db.close();
+	}
 }
 
 export class ContextFileMetadataStore {

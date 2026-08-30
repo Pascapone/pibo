@@ -11,6 +11,8 @@ test("Agent Designer edits description, model, thinking, and runtime overrides p
 	assert.doesNotMatch(source, /title="Subagent"\s+modelTitle="Subagent Model"/);
 	assert.match(source, /placeholder="Describe when the parent agent should delegate to this subagent\."/);
 	assert.match(source, /model=\{subagent\.model\}/);
+	assert.match(source, /modelFallbacks=\{subagent\.modelFallbacks \?\? \[\]\}/);
+	assert.match(source, /onModelFallbacksChange=\{\(modelFallbacks\) => updateSubagent\(index, \{ modelFallbacks \}\)\}/);
 	assert.match(source, /thinking=\{subagent\.thinkingLevel\}/);
 	assert.match(source, /value=\{subagent\.runtimeOptions \?\? \{\}\}/);
 	assert.match(source, /defaultLabel="Inherit target profile"/);
@@ -35,6 +37,10 @@ test("Agent Designer edits description, model, thinking, and runtime overrides p
 				description: " Research current sources. ",
 				targetProfile: " research-agent ",
 				model: { provider: " openai ", id: " gpt-5.6-mini " },
+				modelFallbacks: [
+					{ provider: " anthropic ", id: " claude-haiku-5 " },
+					{ provider: " moonshot ", id: " kimi-k2 " },
+				],
 				thinkingLevel: "high",
 				runtimeOptions: { permissionMode: "yolo" },
 				maxDepth: 2.4,
@@ -42,6 +48,7 @@ test("Agent Designer edits description, model, thinking, and runtime overrides p
 			mcpServers: [],
 			piPackages: [],
 			mainModel: undefined,
+			mainModelFallbacks: [],
 			thinkingLevel: undefined,
 			mainThinkingLevel: undefined,
 			fast: false,
@@ -58,6 +65,10 @@ test("Agent Designer edits description, model, thinking, and runtime overrides p
 			description: "Research current sources.",
 			targetProfile: "research-agent",
 			model: { provider: "openai", id: "gpt-5.6-mini" },
+			modelFallbacks: [
+				{ provider: "anthropic", id: "claude-haiku-5" },
+				{ provider: "moonshot", id: "kimi-k2" },
+			],
 			thinkingLevel: "high",
 			runtimeOptions: { permissionMode: "yolo" },
 			maxDepth: 2,

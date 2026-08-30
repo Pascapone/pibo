@@ -22,6 +22,7 @@ import type {
 	BuiltinToolsMode,
 	InitialSessionContext,
 	ModelProfile,
+	PiboProfileDiagnostic,
 	ProviderToolProfile,
 	SkillSourceKind,
 	SkillProfile,
@@ -77,11 +78,13 @@ export type PiboProfileInfo = {
 	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];
+	diagnostics: PiboProfileDiagnostic[];
 	subagents: SubagentProfile[];
 	mcpServers: string[];
 	piPackages: string[];
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
+	mainModelFallbacks: ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	mainThinkingLevel?: PiboThinkingLevel;

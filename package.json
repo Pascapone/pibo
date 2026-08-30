@@ -8,6 +8,7 @@
   "description": "Minimal TypeScript wrapper around Pi Coding Agent.",
   "files": [
     "dist",
+    "!dist/apps/vscode-artifacts/**",
     "context",
     "skills/builtin/**",
     "docs/ops/**",

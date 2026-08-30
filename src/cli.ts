@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import {
 	PIBO_CONFIG_KEYS,
@@ -12,16 +12,12 @@ import {
 } from "./config/config.js";
 import type { PiboRuntimeOptions } from "./core/runtime.js";
 import { parsePiboThinkingLevel } from "./core/thinking.js";
-import { ensurePrivatePiboHome, piboHomePath } from "./core/pibo-home.js";
+import { ensurePrivatePiboHome } from "./core/pibo-home.js";
 
 async function resolveCliProfile(profileName?: string) {
-	const { createDefaultPiboPluginRegistry, createGatewayProducerPiboProfile, createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
-	const registry = createDefaultPiboPluginRegistry();
-	const chatAgentStorePath = piboHomePath("chat-agents.sqlite");
-	if (existsSync(chatAgentStorePath)) {
-		const { createPiboChatCustomAgentProfilesPlugin } = await import("./plugins/chat-custom-agents.js");
-		registry.registerPlugin(createPiboChatCustomAgentProfilesPlugin({ agentStorePath: chatAgentStorePath }));
-	}
+	const { createGatewayProducerPiboProfile, createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
+	const { createDefaultPiboUserProfileRegistry } = await import("./plugins/user-profile-resources.js");
+	const registry = createDefaultPiboUserProfileRegistry();
 	const profile = profileName === "gateway-producer" || profileName === "pibo-gateway-producer"
 		? createGatewayProducerPiboProfile()
 		: createPiboProfileFromRegistryOrDefault(registry, profileName);
@@ -333,7 +329,7 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 
 	program
 		.command("setup")
-		.description("Plan user-host installs and developer-host upgrades")
+		.description("Plan and manage supported host installation profiles")
 		.helpOption(false)
 		.allowUnknownOption(true)
 		.allowExcessArguments(true)
@@ -599,7 +595,7 @@ Commands:
   compute      Manage Pibo Docker compute workers
   resources    Inspect and safely reap managed compute and browser resources
   preview      Expose session-linked live development previews
-  setup        Plan user-host installs and developer-host upgrades
+  setup        Plan and manage supported host installation profiles
   skills       Manage Pibo user skills
   cron         Manage scheduled Pibo jobs
   loop         Manage continuous agent loops (goal mode by default)

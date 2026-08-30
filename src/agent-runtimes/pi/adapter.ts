@@ -198,6 +198,7 @@ export type PiAgentRuntimeCompatibilityServices = {
 	modelDefaults?: PiboRuntimeOptions["modelDefaults"];
 	contextGuardTuiQueueOrdering?: boolean;
 	initialFastMode?: boolean;
+	providerFallbacksEnabled?: boolean;
 };
 
 type PendingPiPrompt = {
@@ -218,6 +219,7 @@ function cloneProfileForPiSession(input: OpenAgentRuntimeSessionInput): InitialS
 		parentSessionId: profile.parentSessionId,
 		model: profile.model,
 		mainModel: profile.mainModel,
+		mainModelFallbacks: profile.mainModelFallbacks,
 		subagentModel: profile.subagentModel,
 		thinkingLevel: profile.thinkingLevel,
 		mainThinkingLevel: profile.mainThinkingLevel,
@@ -231,6 +233,7 @@ function cloneProfileForPiSession(input: OpenAgentRuntimeSessionInput): InitialS
 		mcpServers: profile.mcpServers,
 		piPackages: profile.piPackages,
 		contextFiles: profile.contextFiles,
+		diagnostics: profile.diagnostics,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,
@@ -377,6 +380,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 		private readonly binding: RuntimeSessionBinding,
 		initialFastMode: boolean,
 		providerWebSearchEnabled: boolean,
+		providerFallbacksEnabled: boolean,
 	) {
 		this.cwd = runtime.cwd;
 		this.bindingNativeSessionId = runtime.session.sessionId;
@@ -392,6 +396,9 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 			undefined,
 			undefined,
 			(state) => this.handleEngineState(state),
+			undefined,
+			undefined,
+			providerFallbacksEnabled,
 		);
 		if (providerWebSearchEnabled) this.routed.enableProviderWebSearchObservation();
 		this.controls = this.createControls();
@@ -825,6 +832,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			binding,
 			compatibility?.initialFastMode ?? false,
 			profile.tools.some((tool) => tool.enabled !== false && isWebSearchProviderTool(tool)),
+			compatibility?.providerFallbacksEnabled ?? false,
 		);
 	}
 

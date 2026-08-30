@@ -741,13 +741,9 @@ class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		return emptyOmpHistoryPage(this.instanceId);
 	}
 
-	async resolveBinding(): Promise<RuntimeSessionBinding> {
-		return {
-			piboSessionId: "",
-			runtimeInstanceId: this.instanceId,
-			adapterId: OMP_ADAPTER_ID,
-			state: "unbound",
-		};
+	async resolveBinding(input: { binding: RuntimeSessionBinding; workspace: string }): Promise<RuntimeSessionBinding> {
+		// OMP can verify and resume the transcript only after startup via switch_session.
+		return structuredClone(input.binding);
 	}
 }
 

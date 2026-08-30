@@ -8,6 +8,7 @@ import { ChatReadStateService } from "../dist/apps/chat/data/read-state-service.
 import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatTimelineQueryService } from "../dist/apps/chat/data/timeline-query-service.js";
+import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { qualifiedHistoryToolNodeId } from "../dist/shared/trace-tool-identity.js";
 
@@ -29,6 +30,42 @@ function session(id, roomId = "room_1") {
 		updatedAt: "2026-05-09T00:00:01.000Z",
 	};
 }
+
+test("session and navigation activity remain monotonic after stale compatibility projection", () => {
+	const store = tempStore("pibo-chat-v2-monotonic-activity-");
+	try {
+		const rooms = new ChatRoomService(store);
+		const sessions = new ChatSessionQueryService(store);
+		const ingest = new ChatDataIngestService(store);
+		const room = rooms.ensureDefaultRoom();
+		const piboSession = session("ps_monotonic", room.id);
+		const event = {
+			type: "message_finished",
+			piboSessionId: piboSession.id,
+			eventId: "loop_msg_monotonic",
+			source: "service",
+		};
+		const eventTime = "2026-05-09T00:05:00.000Z";
+
+		sessions.upsertSession(piboSession);
+		const stored = ingest.ingestOutputEvent({
+			session: piboSession,
+			roomId: room.id,
+			event,
+			createdAt: eventTime,
+		});
+		sessions.recordEvent(event, piboSession, stored.streamId, eventTime);
+		sessions.upsertSession(piboSession);
+
+		assert.equal(sessions.getSession(piboSession.id)?.lastActivityAt, eventTime);
+		const navigation = store.navigation.getSession(piboSession.id);
+		assert.equal(navigation?.lastActivityAt, eventTime);
+		assert.equal(navigation?.sortKey, eventTime);
+		assert.deepEqual(sessions.upsertSessionsIfChanged([piboSession]), { checked: 1, written: 0, skipped: 1 });
+	} finally {
+		store.close();
+	}
+});
 
 test("timeline query retains full-history steering message identity metadata", () => {
 	const store = tempStore("pibo-chat-v2-steering-identity-");
@@ -116,7 +153,7 @@ test("timeline query preserves deferred payload identity on its exact tool node"
 			.find((candidate) => candidate.type === "tool_execution_finished");
 		assert.ok(event);
 		assert.equal(event.payload.type, "tool_execution_finished");
-		assert.equal(event.storedPayloadRef.nodeId, `tool:${providerToolCallId}`);
+		assert.equal(event.storedPayloadRef.nodeId, qualifiedNodeId);
 		assert.equal(event.storedPayloadRef.payloadKind, "output");
 		assert.equal(event.storedPayloadRef.byteLength, payload.byteSize);
 		assert.equal(event.storedPayloadRef.hash, payload.sha256);

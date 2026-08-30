@@ -64,6 +64,17 @@ test("Agent Designer persists runtime selection, validates JSON options, and sho
 	assert.match(agentsViewSource, /reasoningValuesForModel\(runtime\?\.capabilities\.reasoning\.values, targetModelCatalog, subagent\.model\)/);
 });
 
+test("Agent Designer exposes ordered drag-and-drop provider fallback lists", () => {
+	assert.match(agentsViewSource, /modelFallbacks=\{draft\.mainModelFallbacks\}/);
+	assert.match(agentsViewSource, /onModelFallbacksChange=\{\(mainModelFallbacks\)/);
+	assert.match(designerUiSource, /data-provider-fallback-list/);
+	assert.match(designerUiSource, /title="Add fallback provider"/);
+	assert.match(designerUiSource, /draggable=\{!readOnly && rows\.length > 1\}/);
+	assert.match(designerUiSource, /onDrop=\{\(event\) =>/);
+	assert.match(designerUiSource, /moveRow\(index, index - 1\)/);
+	assert.match(designerUiSource, /Provider requests follow this order from top to bottom\./);
+});
+
 test("Agent Designer exposes only truthful runtime-owned context and native-subagent controls", () => {
 	assert.match(agentsViewSource, /nativeSubagents\?\.configurable \? \(/);
 	assert.match(agentsViewSource, /title="Native Subagents"/);

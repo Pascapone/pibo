@@ -1,5 +1,6 @@
 import { compareTraceNodes } from "../shared/trace-nodes.js";
 import type { PiboSessionTraceView, PiboTraceNode, TracePayloadRef } from "../shared/trace-types.js";
+import { parseTraceToolNodeIdentity } from "../shared/trace-tool-identity.js";
 import { terminalTextValue } from "./terminalValue.js";
 
 export type CompactTerminalRowStatus = "running" | "done" | "error" | "neutral";
@@ -300,8 +301,11 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 
 export function compactTerminalRowIdentity(node: PiboTraceNode): string {
 	if (node.type === "tool.call" || node.type === "tool.result" || node.type === "agent.delegation") {
-		const toolCallId = node.toolCallId ?? stableKeySuffix(node.stableKey, "tool:");
-		if (toolCallId) return `terminal:tool:${toolCallId}`;
+		if (node.toolCallId) {
+			return parseTraceToolNodeIdentity(node.id)?.qualifier
+				? `terminal:${node.id}`
+				: `terminal:tool:${node.toolCallId}`;
+		}
 		if (node.type === "agent.delegation" && node.linkedPiboSessionId) {
 			return `terminal:delegation:${node.linkedPiboSessionId}`;
 		}

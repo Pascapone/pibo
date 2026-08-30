@@ -8,6 +8,7 @@ import {
 	ChevronsDown,
 	ChevronsUp,
 	Copy,
+	EyeOff,
 	FileText,
 	Loader2,
 	RefreshCw,
@@ -185,6 +186,7 @@ function ContextBuildNodeCard({
 	const hasChildren = Boolean(node.children?.length);
 	const hasContent = Boolean(node.hydratedText || node.schemaJson !== undefined || node.payloadJson !== undefined || node.notes?.length);
 	const canExpand = hasChildren || hasContent;
+	const inspectorOrigin = readInspectorOrigin(node.metadata);
 	return (
 		<section className={`${borderForNode(node)} bg-[#1a262b]`} style={{ marginLeft: depth ? Math.min(depth * 12, 72) : 0 }}>
 			<div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-800 bg-[#151f24] px-3 py-2">
@@ -212,6 +214,7 @@ function ContextBuildNodeCard({
 							{node.estimatedTokens !== undefined ? <span>~{formatTokens(node.estimatedTokens)}</span> : null}
 							{hasChildren && node.estimatedSubtreeTokens !== undefined ? <span>Σ ~{formatTokens(node.estimatedSubtreeTokens)}</span> : null}
 							{hasChildren ? <span>{node.children!.length} children</span> : null}
+							{inspectorOrigin ? <InspectorOrigin label={inspectorOrigin.label} /> : null}
 						</div>
 					</div>
 				</button>
@@ -265,10 +268,23 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
 	);
 }
 
+function InspectorOrigin({ label }: { label: string }) {
+	return (
+		<span className="inline-flex max-w-full items-start gap-1 border border-slate-700 bg-[#101d22] px-1.5 py-0.5 text-slate-400">
+			<EyeOff size={11} className="mt-0.5 shrink-0" aria-hidden="true" />
+			<span className="min-w-0 whitespace-normal break-words leading-4">
+				<span className="text-slate-300">Origin: {label}</span> · Inspector metadata · Not sent to model
+			</span>
+		</span>
+	);
+}
+
 function MetadataGrid({ metadata }: { metadata: Record<string, unknown> }) {
+	const entries = Object.entries(metadata).filter(([key]) => key !== "inspectorOrigin");
+	if (!entries.length) return null;
 	return (
 		<div className="grid gap-1 border border-slate-800 bg-[#151f24] p-2 sm:grid-cols-2 xl:grid-cols-3">
-			{Object.entries(metadata).map(([key, value]) => (
+			{entries.map(([key, value]) => (
 				<div key={key} className="min-w-0 font-mono text-[10px] text-slate-500">
 					<span className="text-slate-400">{key}</span>: <span className="break-all text-slate-300">{formatValue(value)}</span>
 				</div>
@@ -344,6 +360,13 @@ function formatBytes(bytes: number): string {
 
 function formatTokens(tokens: number): string {
 	return `${tokens.toLocaleString()} tokens`;
+}
+
+function readInspectorOrigin(metadata: Record<string, unknown> | undefined): { label: string } | undefined {
+	const value = metadata?.inspectorOrigin;
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const label = (value as { label?: unknown }).label;
+	return typeof label === "string" && label ? { label } : undefined;
 }
 
 function formatValue(value: unknown): string {
