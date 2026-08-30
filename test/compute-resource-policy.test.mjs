@@ -13,6 +13,7 @@ import {
 	resolveComputeResourcePolicy,
 } from '../dist/compute/resource-policy.js';
 import {
+	COMPUTE_PUBLISH_HOST,
 	LABEL_CLEANUP_STATE,
 	LABEL_DIRTY_REASON,
 	LABEL_IDLE_SECONDS,
@@ -134,6 +135,11 @@ test('one-time worker docker run args include resource policy and inspectable la
 	assert.ok(args.includes('max-file=4'));
 	assert.equal(valueAfter(args, '-e'), 'PIBO_COMPUTE_WORKER=1');
 	assert.equal(args.at(-1), 'gateway:web');
+	assert.deepEqual(args.filter((value, index) => args[index - 1] === '-p'), [
+		`${COMPUTE_PUBLISH_HOST}::4789`,
+		`${COMPUTE_PUBLISH_HOST}::56663`,
+		`${COMPUTE_PUBLISH_HOST}::4788`,
+	]);
 
 	const runLabels = labels(args);
 	assert.ok(runLabels.includes('pibo.compute.role=worker'));
@@ -441,7 +447,13 @@ test('dev worker docker run args include resource policy labels worktree metadat
 	assert.ok(args.includes('--init'));
 	assert.ok(args.includes('max-size=12m'));
 	assert.ok(args.includes('max-file=4'));
-	assert.ok(args.includes('127.0.0.1:4870:4789'));
+	assert.deepEqual(args.filter((value, index) => args[index - 1] === '-p'), [
+		`${COMPUTE_PUBLISH_HOST}:4870:4789`,
+		`${COMPUTE_PUBLISH_HOST}:4871:56663`,
+		`${COMPUTE_PUBLISH_HOST}:4872:4788`,
+		`${COMPUTE_PUBLISH_HOST}:4873:4790`,
+		`${COMPUTE_PUBLISH_HOST}:4874:4791`,
+	]);
 	assert.ok(args.includes('/repo/.worktrees/policy:/workspace'));
 	assert.ok(args.includes('/repo/node_modules:/workspace/node_modules'));
 	assert.equal(args.at(-2), '-c');

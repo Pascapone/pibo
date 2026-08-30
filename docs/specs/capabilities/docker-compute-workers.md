@@ -95,11 +95,12 @@ One-time `spawn` checks `imageExists()` and `shouldRebuild()` using a source has
 
 #### Current
 
-`spawnWorker()` runs `docker run -d`, labels the container with role `worker`, exposes container ports `4789`, `56663`, and `4788` on Docker-assigned host ports, starts the image command `gateway:web`, then reads the assigned ports with `docker port`.
+`spawnWorker()` runs `docker run -d`, labels the container with role `worker`, exposes container ports `4789`, `56663`, and `4788` on Docker-assigned host ports bound to `127.0.0.1`, starts the image command `gateway:web`, then reads the assigned ports with `docker port`.
 
 #### Acceptance
 
 - The returned JSON includes `id`, `image`, `gatewayHost`, `gatewayPort`, `cdpPort`, `webPort`, and `connect`.
+- `gatewayHost` matches the loopback host used for every published port.
 - Container names default to `pibo-worker-<random>` when no name is supplied.
 - Custom `--name` and `--controller` values are applied to the container name or labels.
 - `gatewayPort` maps container port `4789`.
@@ -119,13 +120,14 @@ One-time `spawn` checks `imageExists()` and `shouldRebuild()` using a source has
 
 #### Current
 
-`spawnDevWorker()` creates `.worktrees/<name>` with `git worktree add`, selects the first unused `pibo.compute.portBlock` among running dev containers, maps ports from base `4800 + block * 10`, mounts the worktree at `/workspace`, and keeps the container alive with `tail -f /dev/null`.
+`spawnDevWorker()` creates `.worktrees/<name>` with `git worktree add`, selects the first unused `pibo.compute.portBlock` among running dev containers, maps ports from base `4800 + block * 10` on `127.0.0.1`, mounts the worktree at `/workspace`, and keeps the container alive with `tail -f /dev/null`.
 
 #### Acceptance
 
 - Dev spawn creates or attaches the named Git worktree under `.worktrees/<name>`.
 - Dev worker ids use `pibo-dev-<worktree>`.
 - The returned JSON includes `worktree`, `gatewayPort`, `cdpPort`, `webPort`, `webUIPortChat`, `webUIPortContext`, and `connect`.
+- `gatewayHost` matches the loopback host used for every published port.
 - The container is labeled with role `dev`, created time, port block, worktree name, and optional controller.
 - Port blocks do not overlap with currently running dev containers that carry a port-block label.
 - Host `node_modules` is mounted into `/workspace/node_modules` when it exists.
