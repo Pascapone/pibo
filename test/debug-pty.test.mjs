@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PiboDataStore } from "../dist/data/pibo-store.js";
 
 const execFileAsyncRaw = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
@@ -104,6 +105,54 @@ test("pibo debug pty scenario types input through an interactive PTY", { skip: !
 		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
 		assert.match(clean, /ready/);
 		assert.match(clean, /got:abc/);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug pty preserves missing event diagnostics with non-zero inner exits", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const piboHome = join(dir, ".pibo");
+		const artifactDir = join(dir, "artifacts");
+		await mkdir(piboHome, { recursive: true });
+		const data = new PiboDataStore(join(piboHome, "pibo.sqlite"), { payloadRootDir: join(piboHome, "payloads") });
+		data.close();
+
+		const command = [
+			`node "$1" debug events ps_missing show evt_missing`,
+			"text_exit=$?",
+			`node "$1" debug events ps_missing show evt_missing --json`,
+			"json_exit=$?",
+			`printf 'TEXT_EXIT=%s JSON_EXIT=%s\\n' "$text_exit" "$json_exit"`,
+		].join("; ");
+		const result = await execFileAsync("node", [
+			cliPath,
+			"debug",
+			"pty",
+			"run",
+			"--artifact",
+			"--artifact-dir",
+			artifactDir,
+			"--expect",
+			"event: not found",
+			"--expect",
+			`"resultType": "debug.events.show"`,
+			"--expect",
+			"TEXT_EXIT=1 JSON_EXIT=1",
+			"--",
+			"bash",
+			"-lc",
+			command,
+			"issue-743",
+			cliPath,
+		], { env: { PIBO_HOME: piboHome } });
+		assert.match(result.stdout, /PTY passed: adhoc-run/);
+		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+		assert.match(clean, /TEXT_EXIT=1 JSON_EXIT=1/);
+		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+		assert.equal(metadata.ok, true);
+		assert.equal(metadata.exitCode, 0);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}

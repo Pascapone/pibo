@@ -1789,6 +1789,67 @@ test("pibo debug messages, final, and events show drill down without SQL", async
 	}
 });
 
+test("pibo debug events show fails explicit lookups when the event is absent", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const existing = await execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show", "evt_5"], { cwd });
+		assert.match(existing.stdout, /event_id: evt_5/);
+
+		const existingJson = await execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show", "evt_5", "--json"], { cwd });
+		assert.equal(JSON.parse(existingJson.stdout).event.event_id, "evt_5");
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show", "evt_missing"], { cwd }),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.equal(error.stderr, "");
+				assert.match(error.stdout, /event: not found/);
+				assert.match(error.stdout, /pibo debug events ps_parent list/);
+				return true;
+			},
+		);
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show", "evt_missing", "--json"], { cwd }),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.equal(error.stderr, "");
+				const parsed = JSON.parse(error.stdout);
+				assert.equal(parsed.resultType, "debug.events.show");
+				assert.equal(parsed.selector, "evt_missing");
+				assert.equal(parsed.event, undefined);
+				return true;
+			},
+		);
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "events", "ps_missing", "show", "evt_missing"], { cwd }),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.match(error.stdout, /event: not found/);
+				return true;
+			},
+		);
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show"], { cwd }),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.match(error.stderr, /show requires <stream-id-or-event-id>/);
+				return true;
+			},
+		);
+
+		const adjacent = await execFileAsync("node", [cliPath, "debug", "messages", "ps_parent", "show", "assistant:last"], { cwd });
+		assert.match(adjacent.stdout, /event_id: evt_5/);
+
+		const discovery = await execFileAsync("node", [cliPath, "debug", "events", "--help"], { cwd });
+		assert.match(discovery.stdout, /show <stream-id-or-event-id>/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug history surfaces hydrate externalized event payloads", async () => {
 	const cwd = await makeDebugFixture();
 	const assistantText = `externalized:${"z".repeat(20_000)}`;
