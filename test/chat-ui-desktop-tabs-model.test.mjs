@@ -56,6 +56,15 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 			const next = model.reconcileDesktopRoute(model.emptyDesktopTabState(), { area }, { id: area, now: 10 });
 			assert.equal(model.activeDesktopTab(next).target.route.area, area);
 		}
+		const workflowViewerRoute = { area: "workflows", viewWorkflowId: "wf/deep", viewWorkflowVersion: "v 7" };
+		let workflowHistory = model.reconcileDesktopRoute(model.emptyDesktopTabState(), workflowViewerRoute, { id: "workflow-viewer", now: 10 });
+		assert.deepEqual(model.activeDesktopTab(workflowHistory).target.route, workflowViewerRoute);
+		workflowHistory = model.openDesktopTab(workflowHistory, { kind: "route", route: { area: "settings" } }, { id: "workflow-settings", now: 11 });
+		workflowHistory = model.activateDesktopTab(workflowHistory, "workflow-viewer", 12);
+		assert.deepEqual(model.desktopRouteForState(workflowHistory, { area: "sessions" }), workflowViewerRoute);
+		const reloadedWorkflowHistory = model.parseDesktopTabState(model.serializeDesktopTabState(workflowHistory));
+		assert.deepEqual(model.activeDesktopTab(reloadedWorkflowHistory).target.route, workflowViewerRoute);
+		assert.equal(model.desktopTabTargetKey(model.activeDesktopTab(reloadedWorkflowHistory).target), "workflows:view:wf/deep:v 7");
 
 		let closeRouteToTool = model.emptyDesktopTabState();
 		closeRouteToTool = model.openDesktopTab(closeRouteToTool, { kind: "route", route: { area: "agents" } }, { id: "agent", now: 11 });

@@ -128,6 +128,7 @@ import { SettingsView } from "./settings/SettingsView";
 import type { SettingsPanel } from "./settings/types";
 import { ProjectsArea } from "./projects/ProjectsArea";
 import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
+import { DesktopWorkflowVersionPanel, desktopWorkflowVersionSelection } from "./desktop-workflow-version-panel";
 import { VscodeArea } from "./VscodeArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
@@ -319,6 +320,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [newSessionProfileRoomId, setNewSessionProfileRoomId] = useState<string | null>(null);
 	const [sessionViewId, setSessionViewId] = useState<ChatSessionViewId>(() => routeSessionViewId ?? readStoredSessionView());
 	const [terminalFullscreen, setTerminalFullscreen] = useState(false);
+	const [desktopPreviewFullscreen, setDesktopPreviewFullscreen] = useState(false);
 	const [composerText, setComposerText] = useState("");
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [creatingSession, setCreatingSession] = useState(false);
@@ -344,6 +346,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 			setDesktopToolHosts((current) => current[tool] === node ? current : { ...current, [tool]: node });
 		}])) as Record<DesktopSessionTool, (node: HTMLDivElement | null) => void>;
 	}, []);
+	useEffect(() => {
+		if (!desktopTabsEnabled || desktopActiveTool !== "preview") setDesktopPreviewFullscreen(false);
+	}, [desktopActiveTool, desktopTabsEnabled]);
 	const mobileSidebarTriggerRef = useRef<HTMLButtonElement>(null);
 	const hideMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
 	const closeMobileSidebar = useMobileSidebarModal({
@@ -1639,6 +1644,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const isTerminalFullscreen = terminalFullscreen
 		&& (area === "sessions" || area === "projects")
 		&& (area === "projects" || sessionViewId === "terminal");
+	const isDesktopPreviewFullscreen = desktopTabsEnabled
+		&& desktopPreviewFullscreen
+		&& desktopActiveTool === "preview";
+	const isAppFullscreen = isTerminalFullscreen || isDesktopPreviewFullscreen;
 	const routeShellClassName = isTerminalFullscreen
 		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
 		: (area === "vscode" || area === "workflows" || area === "cron" || area === "loops")
@@ -1713,7 +1722,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	};
 	const renderDesktopPanel = (tab: DesktopTab, active: boolean) => {
 		if (tab.target.kind === "session-tool") {
-			return <div ref={desktopToolHostCallbacks[tab.target.tool]} className="h-full min-h-0 overflow-hidden" data-pibo-debug={`desktop-session-tool-${tab.target.tool}`} />;
+			return <div ref={desktopToolHostCallbacks[tab.target.tool]} className={`h-full min-h-0 overflow-hidden ${tab.target.tool === "preview" ? "flex flex-col" : ""}`} data-pibo-debug={`desktop-session-tool-${tab.target.tool}`} />;
 		}
 		const panelRoute = tab.target.route;
 		if (panelRoute.area === "vscode") return <VscodeArea integration={bootstrap.integrations?.vscode} />;
@@ -1740,7 +1749,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 			);
 		}
 		if (panelRoute.area === "workflows") {
-			return <MinimalWorkflowsArea draftId={panelRoute.draftId} onNavigateDraft={(draftId) => { if (active) navigateToRoute({ area: "workflows", draftId }); }} />;
+			const versionSelection = desktopWorkflowVersionSelection(panelRoute);
+			return versionSelection
+				? <DesktopWorkflowVersionPanel {...versionSelection} />
+				: <MinimalWorkflowsArea draftId={panelRoute.draftId} onNavigateDraft={(draftId) => { if (active) navigateToRoute({ area: "workflows", draftId }); }} />;
 		}
 		if (panelRoute.area === "projects") {
 			return (
@@ -1791,16 +1803,17 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	return (
 		<>
-			{gatewayMode === "fallback" && !isTerminalFullscreen ? <FallbackGatewayBanner /> : null}
+			{gatewayMode === "fallback" && !isAppFullscreen ? <FallbackGatewayBanner /> : null}
 			<div
 				data-pibo-debug="chat-app"
 				data-pibo-area={area}
 				data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
 				data-pibo-selected-session-id={selectedPiboSessionId ?? bootstrap.selectedPiboSessionId ?? undefined}
 				data-pibo-terminal-fullscreen={isTerminalFullscreen ? "true" : "false"}
-				className={`h-dvh overflow-hidden bg-[#101d22] text-slate-200 grid ${isTerminalFullscreen ? "grid-rows-[1fr]" : "grid-rows-[auto_auto_1fr]"}`}
+				data-pibo-preview-fullscreen={isDesktopPreviewFullscreen ? "true" : "false"}
+				className={`h-dvh overflow-hidden bg-[#101d22] text-slate-200 grid ${isAppFullscreen ? "grid-rows-[1fr]" : "grid-rows-[auto_auto_1fr]"}`}
 			>
-				{isTerminalFullscreen ? null : (
+				{isAppFullscreen ? null : (
 					<AppHeader
 						area={area}
 						desktopTabMode={desktopTabsEnabled}
@@ -1817,7 +1830,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					/>
 				)}
 
-				{isTerminalFullscreen ? null : (
+				{isAppFullscreen ? null : (
 					<div>
 						{error ? <AppErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
 						{downloadStatus ? <DownloadStatusBanner status={downloadStatus} onDismiss={() => setDownloadStatus(null)} /> : null}
@@ -1830,7 +1843,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					data-pibo-area={desktopPanelRoute?.area ?? "sessions"}
 					className="min-h-0 flex overflow-hidden"
 				>
-					<aside data-pibo-debug="desktop-session-sidebar" tabIndex={-1} hidden={isTerminalFullscreen} aria-hidden={isTerminalFullscreen || undefined} className="min-h-0 w-[300px] shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]">
+					<aside data-pibo-debug="desktop-session-sidebar" tabIndex={-1} hidden={isAppFullscreen} aria-hidden={isAppFullscreen || undefined} className="min-h-0 w-[300px] shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]">
 						<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
 							<span>Sessions</span>
 							<button
@@ -1889,7 +1902,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
 						/>
 					</aside>
-					<main data-pibo-debug="desktop-session-center" className={`min-h-0 flex-1 overflow-hidden ${isTerminalFullscreen ? "min-w-0" : "min-w-[420px]"}`}>
+					<main data-pibo-debug="desktop-session-center" hidden={isDesktopPreviewFullscreen} aria-hidden={isDesktopPreviewFullscreen || undefined} className={`min-h-0 flex-1 overflow-hidden ${isTerminalFullscreen ? "min-w-0" : "min-w-[420px]"}`}>
 						<SessionTracePane
 							bootstrap={bootstrap}
 							selectedPiboSessionId={selectedPiboSessionId}
@@ -1935,6 +1948,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 							desktopToolHosts={desktopToolHosts}
 							onOpenDesktopTool={(tool) => void openDesktopTarget({ kind: "session-tool", tool })}
 							onCloseDesktopTool={closeDesktopSessionTool}
+							desktopPreviewFullscreen={isDesktopPreviewFullscreen}
+							onEnterDesktopPreviewFullscreen={() => setDesktopPreviewFullscreen(true)}
+							onExitDesktopPreviewFullscreen={() => setDesktopPreviewFullscreen(false)}
 							onSend={async (text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery) => {
 								if (isSessionComposerDisabled(selectedPiboSessionId, selectedRoomArchived) || !selectedPiboSessionId) return;
 								try {
@@ -1956,6 +1972,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onFocusSessions={focusDesktopSessions}
 						renderPanel={(tab, active) => renderDesktopPanel(tab, active)}
 						hidden={isTerminalFullscreen}
+						fullscreen={isDesktopPreviewFullscreen}
 					/>
 					{deleteRoomTarget ? <DeleteRoomModal room={deleteRoomTarget} confirmName={deleteRoomConfirmName} deleting={deletingRoom} onConfirmNameChange={setDeleteRoomConfirmName} onCancel={cancelRoomDelete} onDelete={() => void permanentlyDeleteRoom()} /> : null}
 					{deleteSessionTarget ? <DeleteSessionModal session={deleteSessionTarget} confirmText={deleteSessionConfirmText} deleting={deletingSession} onConfirmTextChange={setDeleteSessionConfirmText} onCancel={cancelSessionDelete} onDelete={() => void permanentlyDeleteSession()} /> : null}

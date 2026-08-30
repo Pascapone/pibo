@@ -1,0 +1,36 @@
+{
+  "url": "http://localhost:4788/apps/chat/workflows/view/simple-chat/1.0.0",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "area": "sessions",
+  "desktopSidebar": {
+    "x": 0,
+    "y": 56,
+    "width": 300,
+    "height": 1024
+  },
+  "desktopCenter": {
+    "x": 300,
+    "y": 56,
+    "width": 1100,
+    "height": 1024
+  },
+  "desktopTabs": {
+    "x": 1400,
+    "y": 56,
+    "width": 520,
+    "height": 1024
+  },
+  "mobileRouteShell": null,
+  "activeTab": "Workflow · simple-chat",
+  "tabOrder": [
+    "Workflow · simple-chat",
+    "Settings"
+  ],
+  "activePanelText": "Workflow version viewerSimple ChatThis separate viewer is the nested workflow navigation target. Parent graphs do not inline-expand nested workflow internals in V2.Back to WorkflowsSelected workflow: Simple Chatsimple-chat@1.0.0Baseline Project chat workflow that preserves the existing one-session chat behavior.code sourcepublishedprojectchatViewer mode shows registry metadata and navigation context only. To change a child workflow, open its own UI draft or duplicate/edit a published workflow fr",
+  "activeElement": "Workflow · simple-chat. Alt+Shift+Arrow reorders; Delete closes.",
+  "loadingProjects": false,
+  "failedResources": []
+}

@@ -120,6 +120,7 @@ export function DesktopTabSidebar({
 	onFocusSessions,
 	renderPanel,
 	hidden = false,
+	fullscreen = false,
 }: {
 	state: DesktopTabState;
 	vscodeEnabled: boolean;
@@ -130,6 +131,7 @@ export function DesktopTabSidebar({
 	onFocusSessions: () => void;
 	renderPanel: (tab: DesktopTab, active: boolean) => ReactNode;
 	hidden?: boolean;
+	fullscreen?: boolean;
 }) {
 	const [catalogOpen, setCatalogOpen] = useState(false);
 	const plusButtonRef = useRef<HTMLButtonElement>(null);
@@ -247,17 +249,18 @@ export function DesktopTabSidebar({
 
 	const shellStyle = {
 		"--pibo-desktop-tabs-width": `${state.width}px`,
-		width: state.collapsed ? "44px" : `min(${state.width}px, calc(100vw - 740px))`,
+		width: fullscreen ? "100%" : state.collapsed ? "44px" : `min(${state.width}px, calc(100vw - 740px))`,
 	} as CSSProperties;
 
 	return (
 		<aside
 			data-pibo-debug="desktop-tab-sidebar"
-			data-pibo-state={state.collapsed ? "collapsed" : "open"}
+			data-pibo-state={fullscreen ? "preview-fullscreen" : state.collapsed ? "collapsed" : "open"}
+			data-pibo-preview-fullscreen={fullscreen ? "true" : "false"}
 			aria-label="Open workspace tabs"
 			aria-hidden={hidden || undefined}
 			hidden={hidden}
-			className="relative min-h-0 shrink-0 border-l border-slate-700 bg-[#101d22]"
+			className={`relative min-h-0 shrink-0 bg-[#101d22] ${fullscreen ? "border-l-0" : "border-l border-slate-700"}`}
 			style={shellStyle}
 		>
 			<div
@@ -267,16 +270,16 @@ export function DesktopTabSidebar({
 				aria-valuemin={DESKTOP_TAB_MIN_WIDTH}
 				aria-valuemax={DESKTOP_TAB_MAX_WIDTH}
 				aria-valuenow={state.width}
-				tabIndex={state.collapsed ? -1 : 0}
+				tabIndex={state.collapsed || fullscreen ? -1 : 0}
 				onPointerDown={startResize}
 				onKeyDown={(event) => {
 					if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 					event.preventDefault();
 					onStateChange(resizeDesktopTabs(state, state.width + (event.key === "ArrowLeft" ? 24 : -24)));
 				}}
-				className={`absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize outline-none hover:bg-[#11a4d4]/35 focus-visible:bg-[#11a4d4]/60 ${state.collapsed ? "hidden" : ""}`}
+				className={`absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize outline-none hover:bg-[#11a4d4]/35 focus-visible:bg-[#11a4d4]/60 ${state.collapsed || fullscreen ? "hidden" : ""}`}
 			/>
-			{state.collapsed ? (
+			{state.collapsed && !fullscreen ? (
 				<div className="flex h-full flex-col items-center gap-2 border-l border-slate-800 bg-[#151f24] py-2">
 					<button
 						type="button"
@@ -290,8 +293,8 @@ export function DesktopTabSidebar({
 					<span className="mt-1 font-mono text-[10px] text-slate-500 [writing-mode:vertical-rl]">{state.tabs.length} tabs</span>
 				</div>
 			) : (
-				<div className="grid h-full min-h-0 grid-rows-[40px_minmax(0,1fr)]">
-					<div className="relative flex min-w-0 items-stretch border-b border-slate-800 bg-[#151f24]">
+				<div className={`grid h-full min-h-0 ${fullscreen ? "grid-rows-[0_minmax(0,1fr)]" : "grid-rows-[40px_minmax(0,1fr)]"}`}>
+					<div hidden={fullscreen} className="relative flex min-w-0 items-stretch border-b border-slate-800 bg-[#151f24]">
 						<button type="button" onClick={() => tabListRef.current?.scrollBy({ left: -220, behavior: "smooth" })} title="Scroll tabs left" aria-label="Scroll tabs left" className="w-7 shrink-0 border-r border-slate-800 text-slate-500 hover:text-[#11a4d4]"><ChevronLeft size={13} className="mx-auto" /></button>
 						<div ref={tabListRef} role="tablist" aria-label="Workspace tabs" className="flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 							{state.tabs.map((tab, index) => {
@@ -350,7 +353,7 @@ export function DesktopTabSidebar({
 							</div>
 						) : null}
 					</div>
-					<div className="relative min-h-0 overflow-hidden bg-[#101d22]">
+					<div className={`relative min-h-0 overflow-hidden bg-[#101d22] ${fullscreen ? "row-start-2" : ""}`}>
 						{state.tabs.length ? state.tabs.map((tab) => {
 							const selected = tab.id === state.activeTabId;
 							return (

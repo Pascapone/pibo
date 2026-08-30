@@ -9,14 +9,16 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 	const script = `
 		import assert from "node:assert/strict";
 		import React, { useEffect, useState } from "react";
-		import TestRenderer, { act } from "react-test-renderer";
+		import TestRenderer from "react-test-renderer";
 		import { DesktopTabSidebar, desktopCatalogPointerIsOutside } from "./src/apps/chat-ui/src/desktop-tabs.tsx";
 		import { closeHostedWebAnnotations } from "./src/apps/chat-ui/src/session-trace-pane.tsx";
 		import { SessionLivePreviewPanel } from "./src/apps/chat-ui/src/session-live-preview.tsx";
 		import * as model from "./src/apps/chat-ui/src/desktop-tabs-model.ts";
+		const { act, create } = TestRenderer;
 
 		globalThis.React = React;
 		globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+		globalThis.HTMLElement = class HTMLElement {};
 		globalThis.window = {
 			location: { origin: "http://pibo.test" },
 			setTimeout,
@@ -28,6 +30,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		globalThis.document = {
 			activeElement: null,
 			body: { style: { removeProperty() {} } },
+			querySelector() { return null; },
 		};
 
 		const lifecycle = [];
@@ -59,11 +62,13 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 
 		function Harness({ hidden = false }) {
 			const [state, setState] = useState(initial);
+			const [previewFullscreen, setPreviewFullscreen] = useState(false);
 			observedState = state;
 			return React.createElement(DesktopTabSidebar, {
 				state,
 				vscodeEnabled: false,
 				hidden,
+				fullscreen: previewFullscreen,
 				onStateChange: setState,
 				onActivate: (tab) => setState((current) => model.activateDesktopTab(current, tab.id)),
 				onClose: (tab) => { setState((current) => model.closeDesktopTab(current, tab.id)); return true; },
@@ -73,6 +78,9 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 					? React.createElement(SessionLivePreviewPanel, {
 						previews: [preview], selectedPreview: preview, loading: false, reloadKey: 0,
 						onSelect() {}, onReload() {}, onRefresh() {}, onStart() {}, onStop() {}, onRemove() {},
+						fullscreen: previewFullscreen,
+						onEnterFullscreen: () => setPreviewFullscreen(true),
+						onExitFullscreen: () => setPreviewFullscreen(false),
 					})
 					: React.createElement(ResourceProbe, { name: tab.title }),
 			});
@@ -90,7 +98,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		};
 		let mounted;
 		await act(async () => {
-			mounted = TestRenderer.create(React.createElement(Harness), { createNodeMock });
+			mounted = create(React.createElement(Harness), { createNodeMock });
 		});
 		const previewFrameBefore = mounted.root.findByType("iframe");
 		const projectTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Project ·"))[0];
@@ -109,6 +117,19 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		await act(async () => projectAgain.props.onKeyDown({ key: "Delete", preventDefault() {} }));
 		assert.equal(observedState.activeTabId, "settings");
 		assert.match(focusedTitle, /^Settings\./, "Delete moves DOM focus to the deterministic right neighbor");
+
+		const previewTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Preview."))[0];
+		await act(async () => previewTab.props.onClick());
+		const enterPreviewFullscreen = mounted.root.findByProps({ "aria-label": "Enter Preview fullscreen" });
+		await act(async () => enterPreviewFullscreen.props.onClick());
+		assert.equal(mounted.root.findByType("iframe"), previewFrameBefore, "Preview fullscreen reuses the mounted iframe");
+		assert.equal(mounted.root.findByProps({ "data-pibo-debug": "desktop-tab-sidebar" }).props["data-pibo-preview-fullscreen"], "true");
+		assert.equal(mounted.root.findByProps({ "data-pibo-debug": "session-live-preview" }).props["data-pibo-preview-fullscreen"], "true");
+		assert.equal(mounted.root.findAllByProps({ "data-pibo-debug": "preview-fullscreen-top-bar" }).length, 1);
+		const exitPreviewFullscreen = mounted.root.findByProps({ "aria-label": "Exit Preview fullscreen" });
+		await act(async () => exitPreviewFullscreen.props.onClick());
+		assert.equal(mounted.root.findByType("iframe"), previewFrameBefore, "exiting Preview fullscreen preserves iframe state");
+		assert.equal(mounted.root.findByProps({ "data-pibo-debug": "desktop-tab-sidebar" }).props["data-pibo-preview-fullscreen"], "false");
 
 		await act(async () => mounted.update(React.createElement(Harness, { hidden: true })));
 		assert.equal(mounted.root.findByType("aside").props.hidden, true);

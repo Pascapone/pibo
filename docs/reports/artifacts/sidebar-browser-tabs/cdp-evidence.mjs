@@ -4,7 +4,8 @@ import WebSocket from "ws";
 const [, , command, ...args] = process.argv;
 const browserHome = process.env.BROWSER_USE_HOME ?? "/root/.pibo/tools/browser-use/home";
 const browserSession = process.env.PIBO_BROWSER_SESSION ?? "sidebar-browser-tabs";
-const port = (await fs.readFile(`${browserHome}/pibo-cdp/${browserSession}.port`, "utf8")).trim();
+const port = process.env.PIBO_CDP_PORT
+	?? (await fs.readFile(`${browserHome}/pibo-cdp/${browserSession}.port`, "utf8")).trim();
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json());
 const target = targets.find((candidate) => candidate.type === "page" && candidate.url.includes("/apps/chat"));
 if (!target?.webSocketDebuggerUrl) throw new Error("Chat Web CDP target not found");
@@ -82,7 +83,9 @@ if (command === "viewport") {
 	const events = [];
 	const requests = [];
 	const preexistingFailures = [];
+	const preexistingLogEvents = [];
 	const requestUrls = new Map();
+	const monitorStartedAt = Date.now();
 	socket.on("message", (buffer) => {
 		const message = JSON.parse(buffer.toString());
 		if (message.method === "Network.requestWillBeSent") {
@@ -91,7 +94,11 @@ if (command === "viewport") {
 		}
 		if (message.method === "Runtime.exceptionThrown") events.push({ kind: "exception", detail: message.params.exceptionDetails });
 		if (message.method === "Runtime.consoleAPICalled" && ["error", "warning"].includes(message.params.type)) events.push({ kind: `console-${message.params.type}`, detail: message.params });
-		if (message.method === "Log.entryAdded" && ["error", "warning"].includes(message.params.entry.level)) events.push({ kind: `log-${message.params.entry.level}`, detail: message.params.entry });
+		if (message.method === "Log.entryAdded" && ["error", "warning"].includes(message.params.entry.level)) {
+			const event = { kind: `log-${message.params.entry.level}`, detail: message.params.entry };
+			if (message.params.entry.timestamp < monitorStartedAt) preexistingLogEvents.push(event);
+			else events.push(event);
+		}
 		if (message.method === "Network.responseReceived" && message.params.response.status >= 400) events.push({ kind: "http-error", detail: { url: message.params.response.url, status: message.params.response.status } });
 		if (message.method === "Network.loadingFailed") {
 			const detail = { ...message.params, url: requestUrls.get(message.params.requestId) };
@@ -110,9 +117,10 @@ if (command === "viewport") {
 		eventSourceRequestCount: eventSourceRequests.length,
 		abortedRequestCount: abortedRequests.length,
 		preexistingFailureCount: preexistingFailures.length,
+		preexistingLogEventCount: preexistingLogEvents.length,
 		errorCount: events.filter(({ kind }) => kind !== "network-failed").length,
 	};
-	await fs.writeFile(output, `${JSON.stringify({ target: target.url, durationMs, summary, requests, events, preexistingFailures }, null, 2)}\n`);
+	await fs.writeFile(output, `${JSON.stringify({ target: target.url, durationMs, summary, requests, events, preexistingFailures, preexistingLogEvents }, null, 2)}\n`);
 	console.log(JSON.stringify({ output, ...summary }));
 } else {
 	throw new Error(`Unknown command: ${command}`);

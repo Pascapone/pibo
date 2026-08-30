@@ -151,6 +151,9 @@ export function SessionTracePane({
   desktopToolHosts,
   onOpenDesktopTool,
   onCloseDesktopTool,
+  desktopPreviewFullscreen = false,
+  onEnterDesktopPreviewFullscreen,
+  onExitDesktopPreviewFullscreen,
 }: {
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
@@ -213,6 +216,9 @@ export function SessionTracePane({
   desktopToolHosts?: Partial<Record<DesktopSessionTool, Element | null>>;
   onOpenDesktopTool?: (tool: DesktopSessionTool) => void;
   onCloseDesktopTool?: (tool: DesktopSessionTool) => void;
+  desktopPreviewFullscreen?: boolean;
+  onEnterDesktopPreviewFullscreen?: () => void;
+  onExitDesktopPreviewFullscreen?: () => void;
 }) {
   const queryClient = useQueryClient();
   const liveEventSeqRef = useRef(0);
@@ -735,7 +741,9 @@ export function SessionTracePane({
             onStop={(previewId) => void runLivePreviewAction(previewId, "stop")}
             onRemove={(previewId) => void runLivePreviewAction(previewId, "remove")}
             actionPending={selectedLivePreviewActionPending}
-            onEnterFullscreen={onEnterTerminalFullscreen}
+            fullscreen={desktopPreviewFullscreen}
+            onEnterFullscreen={onEnterDesktopPreviewFullscreen ?? onEnterTerminalFullscreen}
+            onExitFullscreen={onExitDesktopPreviewFullscreen}
           />
         )
       : previewAuthorityMessage

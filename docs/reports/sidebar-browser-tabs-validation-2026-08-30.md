@@ -4,8 +4,11 @@
 
 - Target branch/worktree: `sidebar-browser-tabs` at `/root/code/pibo/.worktrees/sidebar-browser-tabs`
 - Reviewed base commit: `e8fbb185`
+- Final-hardening base commit: `e95529b144f3ec3442635784714f58444b294455`
 - Isolated correction worker: `pibo-dev-sidebar-browser-tabs-review-worker`
 - Worker worktree: `/root/code/pibo/.worktrees/sidebar-browser-tabs-review-worker`
+- Final-hardening worker: `pibo-dev-sidebar-browser-tabs-final-hardening-worker`
+- Final-hardening worker worktree: `/root/code/pibo/.worktrees/sidebar-browser-tabs-final-hardening-worker`
 - Worker gateway: local auth on container ports `4788`/`4789`, exposed only through the worker
 - The correction commit is fast-forwarded into the target worktree after all gates pass. No host gateway, deployment, push, or pull request is involved.
 
@@ -21,11 +24,17 @@
 8. Catalog outside-click handling uses `contains` for both the catalog and the complete plus-button subtree.
 9. Successful Delete/close focuses the deterministic right neighbor, then left neighbor, or catalog trigger when empty.
 
+## Final independent review hardening
+
+1. `chat-ui-desktop-tabs-behavior.test.mjs` now follows the repository-portable React Test Renderer pattern: default import plus callable `act`/`create` destructuring. Its lifecycle, resource, focus, containment, and annotation assertions remain intact.
+2. Desktop Preview fullscreen is a dedicated shell state. It expands the active Preview tab to the viewport, renders Preview controls, keeps Terminal fullscreen false, and retains the exact hosted iframe across enter and exit. The normal toolbar still omits or disables fullscreen according to the existing selected/online Preview semantics.
+3. Workflow-version navigation now serializes `/workflows/view/$workflowId/$workflowVersion`, stores both fields in the route tab, and renders `WorkflowVersionViewer` through the Desktop host. Route, model, persistence, history, reload, and render tests cover the full parameter round-trip.
+
 ## Automated gates in the worker
 
-`npm run chat-ui:typecheck` passed with the normal Node heap; no `NODE_OPTIONS` override was required.
+`npm run typecheck` passed with the repository-standard `--max-old-space-size=1200` TypeScript heap; no `NODE_OPTIONS` override was required.
 
-`npm run chat-ui:build` passed with 2,945 modules transformed. Vite emitted only its existing large-chunk advisory.
+`npm run build` passed with the repository-standard `--max-old-space-size=1200` TypeScript heap. The explicit final `npm run chat-ui:build` rerun transformed 2,946 modules and emitted only Vite's existing large-chunk advisory.
 
 The focused and relevant existing suite ran as one worker command:
 
@@ -34,6 +43,7 @@ node --test \
   test/chat-ui-desktop-tabs-model.test.mjs \
   test/chat-ui-desktop-tabs-behavior.test.mjs \
   test/chat-ui-desktop-tabs-accessibility.test.mjs \
+  test/chat-ui-desktop-workflow-viewer.test.mjs \
   test/chat-ui-app-routes.test.mjs \
   test/chat-ui-app-storage.test.mjs \
   test/chat-ui-main-navigation-current.test.mjs \
@@ -54,7 +64,9 @@ node --test \
   test/chat-ui-projects-bootstrap.test.mjs
 ```
 
-Result: 36 tests passed, 0 failed. The new React behavior suite verifies Preview iframe identity, inactive resource unmount, post-Delete DOM focus, fullscreen keep-alive hiding, catalog containment, and hosted Annotations close. Controller/model tests verify URL/reload policy, autosave success/failure ordering, close-neighbor selection, reorder, persistence, route reconciliation, and duplicate recovery.
+Result: 37 tests passed, 0 failed. The new React behavior suite verifies Preview iframe identity, inactive resource unmount, post-Delete DOM focus, fullscreen keep-alive hiding, catalog containment, and hosted Annotations close. Controller/model tests verify URL/reload policy, autosave success/failure ordering, close-neighbor selection, reorder, persistence, route reconciliation, duplicate recovery, and workflow-version rendering.
+
+The expanded relevant suite covers 22 files, including the new workflow-version render test and the strengthened Preview fullscreen behavior flow.
 
 `git diff --check` also passed.
 
@@ -99,6 +111,14 @@ With Project still open but inactive and Preview active, a fresh 12-second CDP m
 
 This replaces the reviewed run that showed repeated EventSource and Project-bootstrap cancellation churn.
 
+The final 12-second monitor on the headful exact candidate recorded 10 requests, 0 Project/bootstrap requests, 0 EventSource requests, 0 aborted requests, 0 HTTP/console/runtime errors, and 0 failures completed from before the monitor. The requests were bounded selected-session goal, Preview-authority, and gateway-health polls. CDP replayed one pre-monitor Chromium sandbox warning produced by the earlier local HTTP Preview authentication attempt; the artifact separates it as `preexistingLogEventCount: 1`, and no new warning occurred during the measured window.
+
+## Final headful regression evidence
+
+- **1440×900 Desktop Preview:** a real worker Preview registration made the Preview control available. Because Chromium's local HTTP subdomain exchange does not retain the production Preview cookie inside this test iframe, the document response was deterministically replaced in-browser after registration with the visible `PREVIEW FULLSCREEN READY` fixture. Browser Use then asserted the ready text before capture. Fullscreen measured `sameFrame=true`, `previewFullscreen=true`, `terminalFullscreen=false`, right width 1,440 px, and iframe height 868 px beneath the 32 px Preview bar. Exit restored the normal shell with the same iframe and visible Enter control.
+- **1920×1080 workflow deep link:** `/apps/chat/workflows/view/simple-chat/1.0.0` rendered the real built-in Simple Chat version viewer beside the fixed Sessions/Terminal workspace. Opening Settings then Browser Back restored the exact URL, active `Workflow · simple-chat` tab, and viewer. Reload preserved all three again.
+- **390×844 Mobile:** the selected Session reached `No visible trace rows yet.` before capture. The route shell and mobile menu/composer were present; Desktop shell and workspace tablist were absent.
+
 ## Artifacts
 
 - `docs/reports/artifacts/sidebar-browser-tabs/desktop-1440-projects.png`
@@ -115,7 +135,14 @@ This replaces the reviewed run that showed repeated EventSource and Project-boot
 - `docs/reports/artifacts/sidebar-browser-tabs/audit-390-session-headed.json`
 - `docs/reports/artifacts/sidebar-browser-tabs/cdp-console-network-stable.json`
 - `docs/reports/artifacts/sidebar-browser-tabs/cdp-evidence.mjs`
+- `docs/reports/artifacts/sidebar-browser-tabs/desktop-1440-preview-ready-final.png`
+- `docs/reports/artifacts/sidebar-browser-tabs/desktop-1440-preview-fullscreen-final.png`
+- `docs/reports/artifacts/sidebar-browser-tabs/desktop-1920-workflow-version-final.png`
+- `docs/reports/artifacts/sidebar-browser-tabs/mobile-390-session-final.png`
+- `docs/reports/artifacts/sidebar-browser-tabs/audit-1920-workflow-version-final.json`
+- `docs/reports/artifacts/sidebar-browser-tabs/audit-390-session-final.json`
+- `docs/reports/artifacts/sidebar-browser-tabs/cdp-console-network-final.json`
 
 ## Remaining integration risk
 
-The isolated worker has neither a configured live Preview target nor a VS Code Web service. A real remote Preview document and Monaco workbench could not be exercised end to end. Their hosting and lifecycle policies are covered by React iframe/component identity tests and their worker-side configured/unconfigured UI states. No implementation blocker remains.
+The isolated worker still has no VS Code Web service. A real HTTPS/wildcard-host Preview authentication exchange was not available; the worker's real registration exposed the control, while the iframe document was deterministic only after the local HTTP response override described above. Production Preview cookie/proxy integration remains an integration risk, but the fullscreen host, selected document, shell ownership, and iframe lifecycle are covered behaviorally and headfully. No implementation blocker remains.

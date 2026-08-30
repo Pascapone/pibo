@@ -1,6 +1,6 @@
 ---
 title: Desktop Browser Tabs for Pibo Chat
-version: 1.1
+version: 1.2
 date_created: 2026-08-30
 last_updated: 2026-08-30
 owner: Pibo
@@ -38,8 +38,9 @@ The desktop shell has three stable regions: the Rooms/Pibo Sessions navigation o
 - **REQ-010**: Switching tabs shall preserve the mounted Preview iframe and VS Code frame. Other inactive route and session-tool contents, including Agent Designer after its guarded save, shall unmount or pause their queries, timers, bootstrap requests, and live streams.
 - **REQ-011**: Opening or activating a session-tool tab shall navigate to the current Sessions URL. Closing a route tab onto a session-tool neighbor shall do the same, so reload cannot recreate the closed route tab.
 - **REQ-012**: Leaving or closing Agent Designer shall await its registered autosave before changing tab state. A failed save shall keep the tab open and expose an error.
-- **REQ-013**: Terminal fullscreen shall visually replace the three-pane shell while preserving required hidden keep-alive content.
+- **REQ-013**: Terminal fullscreen shall visually replace the three-pane shell while preserving required hidden keep-alive content. Desktop Preview fullscreen shall instead expand the selected Preview tab and its existing iframe to the viewport without entering Terminal fullscreen or replacing the iframe.
 - **REQ-014**: Storage recovery shall deduplicate repeated tab IDs and logical target identities before rendering.
+- **REQ-015**: Workflow-version routes shall retain `viewWorkflowId` and `viewWorkflowVersion` through tab activation, history, persistence, and reload, and shall render the exact version viewer rather than the Workflows landing surface.
 - **A11Y-001**: Tabs shall use `tablist`, `tab`, and `tabpanel` semantics with visible focus and accessible close labels.
 - **A11Y-002**: Arrow keys shall focus tabs; Enter/Space shall activate them; Delete shall close; Alt+Shift+ArrowLeft/ArrowRight shall reorder.
 - **A11Y-003**: Escape shall close the catalog and restore focus to its trigger.
@@ -90,11 +91,13 @@ History policy:
 - **AC-010**: Given inactive Project and ordinary Area tabs, when the workspace is idle, then those tabs do not retain Project bootstrap requests, Trace SSE streams, or periodic queries.
 - **AC-011**: Given Agent Designer has pending changes, when the user closes or leaves its tab, then save completes before the transition; a rejected save prevents the transition.
 - **AC-012**: Given Terminal fullscreen, then the left navigation and right tabs are visually and accessibly hidden while the terminal occupies the workspace.
+- **AC-013**: Given an online selected Preview, when Preview fullscreen opens and closes, then the selected Preview document fills the viewport, Terminal fullscreen remains false, and the iframe DOM instance remains identical before, during, and after the transition.
+- **AC-014**: Given `/apps/chat/workflows/view/<id>/<version>`, when Desktop loads, switches away and back, or reloads, then the URL, active tab identity, and rendered version viewer retain both route parameters.
 
 ## 6. Test automation strategy
 
 - Pure model/controller tests cover deduplication, close-neighbor selection, URL policy, guarded Agent transitions, bounds, persistence recovery, and route reconciliation.
-- React behavior tests cover Preview iframe identity, inactive resource unmounting, post-close DOM focus, catalog containment, annotation close, and fullscreen keep-alive hiding. Source-contract checks remain only for static wiring that cannot regress independently of those behavior tests.
+- React behavior tests cover Preview iframe identity across tab switches and Preview fullscreen, inactive resource unmounting, post-close DOM focus, catalog containment, and annotation close. Route/model/render tests cover workflow-version path serialization, tab history/persistence, and exact viewer output. Source-contract checks remain only for static wiring that cannot regress independently of those behavior tests.
 - existing Chat Web route, storage, mobile navigation, sidebar, Preview, Raw Events, and fullscreen tests remain in the gate.
 - headful Browser Use validates 1440×900, 1920×1080, and 390×844. CDP records console and failed-network evidence.
 

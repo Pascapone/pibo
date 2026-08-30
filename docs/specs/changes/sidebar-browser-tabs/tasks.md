@@ -31,3 +31,13 @@
 - [x] Repeat ready-gated headful Browser Use and stable-idle CDP validation.
 - [x] Update the validation report.
 - [x] Commit the focused review corrections and fast-forward the target worktree.
+
+## Final independent review hardening
+
+- [x] Make the desktop React behavior test portable across controller and worker React Test Renderer exports without weakening assertions.
+- [x] Give Desktop Preview its own fullscreen shell mode while preserving the hosted iframe instance and leaving Terminal fullscreen false.
+- [x] Preserve and render workflow-version route parameters through navigation, tab activation, history, persistence, and reload.
+- [x] Add route, model, render, and Preview fullscreen lifecycle regressions.
+- [x] Re-run full typecheck/build, the relevant 37-test suite, controller-focused behavior test, and `git diff --check`.
+- [x] Repeat headful 1440×900 Preview, 1920×1080 workflow-version, and 390×844 Mobile validation plus stable CDP monitoring.
+- [x] Update final validation artifacts and report, then prepare the focused commit for fast-forward into the target worktree.
