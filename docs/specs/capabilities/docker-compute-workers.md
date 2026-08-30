@@ -121,7 +121,7 @@ One-time `spawn` checks `imageExists()` and `shouldRebuild()` using an effective
 
 #### Current
 
-`spawnDevWorker()` creates `.worktrees/<name>` with `git worktree add`, selects the first unused `pibo.compute.portBlock` among running dev containers, maps ports from base `4800 + block * 10` on `127.0.0.1`, mounts the worktree at `/workspace`, and keeps the container alive with `tail -f /dev/null`.
+`spawnDevWorker()` creates `.worktrees/<name>` with `git worktree add`, selects the first unused `pibo.compute.portBlock` among running dev containers, maps ports from base `4800 + block * 10` on `127.0.0.1`, mounts the worktree at `/workspace`, and keeps the container alive with `tail -f /dev/null`. A cross-process lock serializes port selection through successful Docker startup and is released after failed starts. Stale-lock reclamation verifies both PID liveness and, on Linux, the process start identity so PID reuse cannot preserve an abandoned reservation.
 
 #### Acceptance
 
@@ -131,6 +131,7 @@ One-time `spawn` checks `imageExists()` and `shouldRebuild()` using an effective
 - `gatewayHost` matches the loopback host used for every published port.
 - The container is labeled with role `dev`, created time, port block, worktree name, and optional controller.
 - Port blocks do not overlap with currently running dev containers that carry a port-block label.
+- Concurrent dev spawns receive distinct port blocks, including when they start from separate Pibo processes.
 - Host `node_modules` is mounted into `/workspace/node_modules` when it exists.
 
 #### Scenario: Two dev workers do not collide
