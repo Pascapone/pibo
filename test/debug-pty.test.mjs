@@ -80,6 +80,49 @@ test("pibo debug pty run captures host PTY output and artifacts", { skip: !(awai
 	}
 });
 
+test("pibo debug pty reports invalid preview base URL config without replacing the prior value", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const home = join(dir, "home");
+		const artifactDir = join(dir, "artifacts");
+		const validBaseURL = "https://preview.example.test:8443";
+		await execFileAsync("node", [cliPath, "config", "set", "preview.baseURL", validBaseURL], {
+			env: { PIBO_HOME: home },
+		});
+
+		await assert.rejects(
+			execFileAsync("node", [
+				cliPath,
+				"debug",
+				"pty",
+				"run",
+				"--artifact",
+				"--artifact-dir",
+				artifactDir,
+				"--expect",
+				"must contain only scheme",
+				"--",
+				"env",
+				`PIBO_HOME=${home}`,
+				"node",
+				cliPath,
+				"config",
+				"set",
+				"preview.baseURL",
+				"https://preview.example.test/path",
+			]),
+			/PTY command exited with status 1/,
+		);
+
+		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+		assert.equal(metadata.stopReason, "exit_code:1");
+		assert.match(await readFile(join(artifactDir, "clean.txt"), "utf8"), /preview\.baseURL must contain only scheme/);
+		assert.equal(JSON.parse(await readFile(join(home, "config.json"), "utf8")).preview.baseURL, validBaseURL);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug pty scenario types input through an interactive PTY", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {
