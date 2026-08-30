@@ -2,6 +2,14 @@ import type { DatabaseSync } from "node:sqlite";
 
 export const PIBO_DATA_SCHEMA_VERSION = 7;
 
+export function assertSupportedPiboDataSchemaVersion(db: DatabaseSync): number {
+	const version = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
+	if (version > PIBO_DATA_SCHEMA_VERSION) {
+		throw new Error(`Pibo database schema version ${version} is newer than supported version ${PIBO_DATA_SCHEMA_VERSION}`);
+	}
+	return version;
+}
+
 export const PIBO_DATA_SCHEMA_MIGRATION_STEPS = [
 	"schema",
 	"runtime-bindings",
@@ -21,10 +29,11 @@ export type PiboDataSchemaMigrationHooks = {
 };
 
 export function applyPiboDataSchema(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks = {}): void {
+	const previousVersion = assertSupportedPiboDataSchemaVersion(db);
 	const ownsTransaction = !db.isTransaction;
 	if (ownsTransaction) db.exec("BEGIN IMMEDIATE");
 	try {
-		applyPiboDataSchemaInTransaction(db, hooks);
+		applyPiboDataSchemaInTransaction(db, hooks, previousVersion);
 		if (ownsTransaction) db.exec("COMMIT");
 	} catch (error) {
 		if (ownsTransaction && db.isTransaction) db.exec("ROLLBACK");
@@ -32,8 +41,7 @@ export function applyPiboDataSchema(db: DatabaseSync, hooks: PiboDataSchemaMigra
 	}
 }
 
-function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks): void {
-	const previousVersion = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
+function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks, previousVersion: number): void {
 	const existingSessionCount = db.prepare("SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'sessions'").get() as { count: number };
 	const hadSessionsBeforeMigration = existingSessionCount.count > 0
 		&& Number((db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number }).count) > 0;
