@@ -221,7 +221,7 @@ export async function applyGuardedDesktopTabTransition({
 
 export function reconcileDesktopRoute(state: DesktopTabState, route: ChatAppRoute, options: { id?: string; now?: number } = {}): DesktopTabState {
 	const target = routeDesktopTabTarget(route);
-	return target ? openDesktopTab(state, target, options) : state;
+	return target ? { ...openDesktopTab(state, target, options), collapsed: state.collapsed } : state;
 }
 
 export function serializeDesktopTabState(state: DesktopTabState): string {

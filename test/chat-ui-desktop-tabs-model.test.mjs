@@ -48,6 +48,27 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.equal(restored.width, model.DESKTOP_TAB_MAX_WIDTH);
 		assert.deepEqual(model.parseDesktopTabState("broken"), model.emptyDesktopTabState());
 
+		const persistedCollapsedRoute = {
+			...model.openDesktopTab(model.emptyDesktopTabState(), { kind: "route", route: { area: "agents" } }, { id: "agents-existing", now: 8 }),
+			width: 544,
+			collapsed: true,
+		};
+		const reconciledExistingRoute = model.reconcileDesktopRoute(persistedCollapsedRoute, { area: "agents" }, { now: 9 });
+		assert.equal(reconciledExistingRoute.activeTabId, "agents-existing");
+		assert.equal(reconciledExistingRoute.collapsed, true, "passive reconciliation of an existing route keeps the workspace collapsed");
+		const reloadedExistingRoute = model.parseDesktopTabState(model.serializeDesktopTabState(reconciledExistingRoute));
+		assert.equal(reloadedExistingRoute.collapsed, true);
+		assert.equal(reloadedExistingRoute.width, 544);
+		const deepLinkedRoute = { area: "workflows", viewWorkflowId: "wf/reload", viewWorkflowVersion: "v 2" };
+		const reconciledDeepLink = model.reconcileDesktopRoute(reloadedExistingRoute, deepLinkedRoute, { id: "workflow-deep-link", now: 10 });
+		assert.equal(reconciledDeepLink.collapsed, true, "passive reconciliation of a new deep link keeps the workspace collapsed");
+		const reloadedDeepLink = model.parseDesktopTabState(model.serializeDesktopTabState(reconciledDeepLink));
+		assert.equal(reloadedDeepLink.collapsed, true);
+		assert.equal(reloadedDeepLink.width, 544);
+		assert.deepEqual(model.activeDesktopTab(reloadedDeepLink).target.route, deepLinkedRoute);
+		assert.equal(model.openDesktopTab(reloadedDeepLink, { kind: "route", route: { area: "settings" } }, { id: "explicit-settings", now: 11 }).collapsed, false, "explicit open expands the workspace");
+		assert.equal(model.activateDesktopTab(reloadedDeepLink, "agents-existing", 12).collapsed, false, "explicit activation expands the workspace");
+
 		const beforeSessions = restored;
 		assert.equal(model.reconcileDesktopRoute(beforeSessions, { area: "sessions", piboSessionId: "ps_1" }), beforeSessions);
 		const routed = model.reconcileDesktopRoute(beforeSessions, { area: "agents" }, { id: "agents", now: 9 });

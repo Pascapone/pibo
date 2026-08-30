@@ -12,6 +12,9 @@
 - Release-gate base commit: `c0fb8567c232c5549b2ee94762310f40ab206632`
 - Release-gate worker: `pibo-dev-sidebar-browser-tabs-release-gate-worker`
 - Release-gate worker worktree: `/root/code/pibo/.worktrees/sidebar-browser-tabs-release-gate-worker`
+- Pibo2 acceptance base commit: `6bf93ae63c5d663bf5595dcfbdeafe0d90979e93`
+- Collapse-reload worker: `pibo-dev-sidebar-browser-tabs-collapse-reload-worker`
+- Collapse-reload worker worktree: `/root/code/pibo/.worktrees/sidebar-browser-tabs-collapse-reload-worker`
 - Worker gateway: local auth on container ports `4788`/`4789`, exposed only through the worker
 - The correction commit is fast-forwarded into the target worktree after all gates pass. No host gateway, deployment, push, or pull request is involved.
 
@@ -38,6 +41,10 @@
 1. `test/chat-ui-desktop-tabs-behavior.test.mjs` and `test/chat-ui-session-live-preview.test.mjs` explicitly run every spawned child with `{ ...process.env, NODE_ENV: "development" }` and import `act` from React in the child behavior scripts. This avoids the controller's ambient production React entry, where `React.act` is absent, without changing assertions. Each exact file passes independently with a production parent environment on the controller and in Docker.
 2. Preview-fullscreen recovery runs at both the Preview panel and the `SessionTracePane` host boundary. If remove, query refresh, or authority loss replaces the panel with an empty state, the host exits Preview fullscreen and restores Desktop chrome and tabs. A selected Preview still retains the same iframe through ordinary updates and fullscreen transitions.
 3. Desktop and Mobile share the workflow route-selection renderer. Mobile version routes render `WorkflowVersionViewer`; ordinary workflow and draft routes still receive the unchanged `MinimalWorkflowsArea` fallback.
+
+## Pibo2 acceptance correction
+
+Passive Desktop route reconciliation now updates or creates the matching route tab and makes it active without changing the current `collapsed` value. Explicit `openDesktopTab` and `activateDesktopTab` actions still expand the workspace. Regression coverage exercises an existing Agent Designer route, a newly reconciled workflow-version deep link, serialize/parse reload round-trips at 544 px, the React workspace hook, and the real storage writer. Both new assertions failed against `6bf93ae6` before the model correction.
 
 ## Automated gates in the worker
 
@@ -74,6 +81,8 @@ node --test \
 ```
 
 Result: 38 tests passed, 0 failed, process exit 0 in Docker. The same 22-file command also passed on the controller with a production parent environment: 38 passed, 0 failed, exit 0. The React behavior suite verifies Preview iframe identity, inactive resource unmount, post-Delete DOM focus, fullscreen keep-alive hiding and loss recovery, catalog containment, and hosted Annotations close. Controller/model tests verify URL/reload policy, autosave success/failure ordering, close-neighbor selection, reorder, persistence, route reconciliation, duplicate recovery, and Desktop/Mobile workflow-version rendering.
+
+For the Pibo2 collapse correction, the focused model, React behavior, and Desktop accessibility files passed independently with 1/1, 1/1, and 2/2 tests. The complete 22-file suite then passed again with 38/38 tests and direct process exit 0. `npm run typecheck` and `npm run build` passed in the isolated worker with the repository-standard 1200 MB TypeScript heap; Chat UI transformed 2,946 modules and emitted only the existing large-chunk advisory.
 
 The expanded relevant suite covers 22 files. The prior release-gate review correctly found 35 passes and 2 harness failures at `c0fb8567`; the result above is a fresh direct worker invocation on this correction batch, not redirected shell output.
 
@@ -140,6 +149,10 @@ The final 12-second monitor on the headful exact candidate recorded 10 requests,
 - **390×844 Mobile workflow version:** `/apps/chat/workflows/view/simple-chat/1.0.0` reached the visible `Selected workflow` ready state. The page contained `data-pibo-debug="mobile-workflow-version-viewer"`, the Mobile route shell, `simple-chat`, and `1.0.0`; no Desktop shell or ARIA workspace tablist existed.
 - A five-second CDP monitor on the final Mobile candidate recorded 1 request, 0 Project requests, 0 EventSource requests, 0 aborts, 0 pre-existing failures or warnings, and 0 console/HTTP/runtime errors.
 
+## Pibo2 collapse-reload headful evidence
+
+At a CDP-confirmed 1440×900 Desktop viewport, Browser Use opened `/apps/chat/agents` through the worker's local-auth gateway and collapsed the workspace. Before reload, the sidebar reported `data-pibo-state="collapsed"`, measured 44 px, and storage contained `collapsed:true`, `width:520`, and active route area `agents`. After a real `Ctrl+R`, the collapsed selector was the ready assertion. The same DOM state, 44 px geometry, stored values, active route area, and visible `Reopen workspace tabs` control remained. The headed Chromium process had no headless flag.
+
 ## Artifacts
 
 - `docs/reports/artifacts/sidebar-browser-tabs/desktop-1440-projects.png`
@@ -169,7 +182,8 @@ The final 12-second monitor on the headful exact candidate recorded 10 requests,
 - `docs/reports/artifacts/sidebar-browser-tabs/mobile-390-workflow-version-release-gate.png`
 - `docs/reports/artifacts/sidebar-browser-tabs/audit-390-workflow-version-release-gate.json`
 - `docs/reports/artifacts/sidebar-browser-tabs/cdp-console-network-release-gate.json`
+- `docs/reports/artifacts/sidebar-browser-tabs/desktop-1440-collapse-reload.png`
 
 ## Remaining integration risk
 
-The isolated worker still has no VS Code Web service. A real HTTPS/wildcard-host Preview authentication exchange was not available. The release-gate loss scenario used a real worker registration and authority refresh, but production iframe cookie/proxy authentication remains an integration risk. Fullscreen shell ownership, loss recovery, and iframe lifecycle are covered behaviorally and headfully. No implementation blocker remains.
+The isolated worker still has no VS Code Web service. A real HTTPS/wildcard-host Preview authentication exchange was not available. The release-gate loss scenario used a real worker registration and authority refresh, but production iframe cookie/proxy authentication remains an integration risk. Fullscreen shell ownership, loss recovery, and iframe lifecycle are covered behaviorally and headfully. The replacement commit has not been rerun on Pibo2 because this correction explicitly excludes Pibo2; local Docker evidence covers the confirmed blocker. No implementation blocker remains.

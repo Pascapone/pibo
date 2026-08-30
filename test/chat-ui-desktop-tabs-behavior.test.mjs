@@ -11,7 +11,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		import assert from "node:assert/strict";
 		import React, { act, useEffect, useState } from "react";
 		import TestRenderer from "react-test-renderer";
-		import { DesktopTabSidebar, desktopCatalogPointerIsOutside } from "./src/apps/chat-ui/src/desktop-tabs.tsx";
+		import { DesktopTabSidebar, desktopCatalogPointerIsOutside, useDesktopTabWorkspace } from "./src/apps/chat-ui/src/desktop-tabs.tsx";
 		import { closeHostedWebAnnotations, useHostedPreviewFullscreenRecovery } from "./src/apps/chat-ui/src/session-trace-pane.tsx";
 		import { SessionLivePreviewPanel } from "./src/apps/chat-ui/src/session-live-preview.tsx";
 		import * as model from "./src/apps/chat-ui/src/desktop-tabs-model.ts";
@@ -33,6 +33,40 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 			body: { style: { removeProperty() {} } },
 			querySelector() { return null; },
 		};
+
+		const storedWorkspace = {
+			...model.openDesktopTab(model.emptyDesktopTabState(), { kind: "route", route: { area: "agents" } }, { id: "stored-agents", now: 1 }),
+			width: 544,
+			collapsed: true,
+		};
+		const workspaceStorage = new Map([[model.DESKTOP_TABS_STORAGE_KEY, model.serializeDesktopTabState(storedWorkspace)]]);
+		globalThis.localStorage = {
+			getItem(key) { return workspaceStorage.get(key) ?? null; },
+			setItem(key, value) { workspaceStorage.set(key, value); },
+		};
+		let observedWorkspaceState;
+		function RouteReconcileHarness({ route }) {
+			const workspace = useDesktopTabWorkspace(route, true);
+			observedWorkspaceState = workspace.state;
+			return React.createElement("div", { "data-collapsed": String(workspace.state.collapsed) });
+		}
+		let routeRenderer;
+		await act(async () => {
+			routeRenderer = create(React.createElement(RouteReconcileHarness, { route: { area: "agents" } }));
+		});
+		assert.equal(observedWorkspaceState.collapsed, true, "initial route reconciliation keeps persisted collapse state");
+		assert.equal(observedWorkspaceState.width, 544);
+		assert.equal(model.parseDesktopTabState(workspaceStorage.get(model.DESKTOP_TABS_STORAGE_KEY)).collapsed, true, "initial reconciliation must not rewrite storage as expanded");
+		const deepLinkedRoute = { area: "workflows", viewWorkflowId: "wf/reload", viewWorkflowVersion: "v 2" };
+		await act(async () => {
+			routeRenderer.update(React.createElement(RouteReconcileHarness, { route: deepLinkedRoute }));
+		});
+		assert.equal(observedWorkspaceState.collapsed, true, "history/deep-link reconciliation keeps collapse state");
+		assert.deepEqual(model.activeDesktopTab(observedWorkspaceState).target.route, deepLinkedRoute);
+		const persistedAfterDeepLink = model.parseDesktopTabState(workspaceStorage.get(model.DESKTOP_TABS_STORAGE_KEY));
+		assert.equal(persistedAfterDeepLink.collapsed, true);
+		assert.equal(persistedAfterDeepLink.width, 544);
+		await act(async () => routeRenderer.unmount());
 
 		const lifecycle = [];
 		let focusedTitle = null;
