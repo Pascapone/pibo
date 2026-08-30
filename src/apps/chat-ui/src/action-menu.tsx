@@ -41,7 +41,18 @@ type ActionMenuItemProps = {
 	disabled?: boolean;
 };
 
-const ActionMenuCloseContext = createContext<(() => void) | null>(null);
+type ActionMenuContextValue = {
+	closeMenu: () => void;
+	restoreFocus: () => void;
+};
+
+const ActionMenuContext = createContext<ActionMenuContextValue | null>(null);
+
+export function completeActionMenuSelection(closeMenu: () => void, restoreFocus: () => void, onSelect: () => void): void {
+	closeMenu();
+	restoreFocus();
+	onSelect();
+}
 
 export function nextActionMenuItemIndex(key: string, currentIndex: number, itemCount: number): number | null {
 	if (itemCount <= 0) return null;
@@ -229,7 +240,7 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 				<MoreVertical size={12} className="max-[980px]:h-4 max-[980px]:w-4" />
 			</button>
 			{!disabled && open && position && typeof document !== "undefined" ? createPortal(
-				<ActionMenuCloseContext.Provider value={closeMenu}>
+				<ActionMenuContext.Provider value={{ closeMenu, restoreFocus: () => triggerRef.current?.focus() }}>
 					<div
 						ref={menuRef}
 						id={menuId}
@@ -241,7 +252,7 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 					>
 						{children}
 					</div>
-				</ActionMenuCloseContext.Provider>,
+				</ActionMenuContext.Provider>,
 				document.body,
 			) : null}
 		</div>
@@ -249,8 +260,8 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 }
 
 export function ActionMenuItem({ children, onSelect, className = "text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4]", disabled = false }: ActionMenuItemProps) {
-	const closeMenu = useContext(ActionMenuCloseContext);
-	if (!closeMenu) throw new Error("ActionMenuItem must be rendered inside ActionMenu");
+	const context = useContext(ActionMenuContext);
+	if (!context) throw new Error("ActionMenuItem must be rendered inside ActionMenu");
 	return (
 		<button
 			type="button"
@@ -258,8 +269,7 @@ export function ActionMenuItem({ children, onSelect, className = "text-slate-300
 			tabIndex={-1}
 			disabled={disabled}
 			onClick={() => {
-				closeMenu();
-				onSelect();
+				completeActionMenuSelection(context.closeMenu, context.restoreFocus, onSelect);
 			}}
 			className={`w-full text-left px-3 py-2.5 text-sm flex items-center gap-2 ${className}`}
 		>
