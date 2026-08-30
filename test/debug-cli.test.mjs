@@ -2602,6 +2602,7 @@ async function makeDebugFixture() {
 		jobId: "job_output_pending",
 		queue: "output-persistence",
 		payload: {
+			version: 1,
 			key: "delivery:pending-output",
 			piboSessionId: "ps_pending_output",
 			eventId: "turn_pending_output",

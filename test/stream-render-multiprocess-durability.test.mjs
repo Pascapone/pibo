@@ -216,7 +216,7 @@ test("capacity overflow survives reopen as a durable dead letter", async () => {
 	}
 });
 
-test("unknown and malformed durable payloads quarantine while later jobs continue", async () => {
+test("unknown, versionless, and malformed durable payloads quarantine while later jobs continue", async () => {
 	const { directory, databasePath } = temporaryDatabase("pibo-output-quarantine-");
 	try {
 		const store = new PiboReliabilityStore(databasePath);
@@ -226,6 +226,7 @@ test("unknown and malformed durable payloads quarantine while later jobs continu
 			VALUES (?, 'output-persistence-test', 'pending', ?, ?, 0, NULL, NULL, 0, 3, ?, ?, ?, NULL, NULL)
 		`);
 		insert.run("job_unknown", JSON.stringify({ version: 999, key: "unknown", state: { secret: "unknown-secret" } }), timestamp, "unknown-secret-idempotency", timestamp, timestamp);
+		insert.run("job_versionless", JSON.stringify({ key: "versionless", state: { secret: "versionless-secret" } }), timestamp, "versionless-secret-idempotency", timestamp, timestamp);
 		insert.run("job_malformed", "{\"secret\":\"malformed-secret\"", timestamp, "malformed-secret-idempotency", timestamp, timestamp);
 		store.enqueue({ queue: "output-persistence-test", payload: envelope("good"), idempotencyKey: "good", maxAttempts: 3 });
 		let goodRuns = 0;
@@ -234,13 +235,57 @@ test("unknown and malformed durable payloads quarantine while later jobs continu
 		await queue.drain();
 		assert.equal(goodRuns, 1);
 		const dead = store.listDead({ queue: "output-persistence-test", limit: 10 });
+		assert.equal(dead.length, 3);
 		assert.deepEqual(new Set(dead.map((job) => job.deadReason)), new Set(["payload_malformed", "payload_version_unsupported"]));
 		assert.equal(JSON.stringify(dead).includes("malformed-secret"), false);
 		assert.equal(JSON.stringify(dead).includes("unknown-secret"), false);
+		assert.equal(JSON.stringify(dead).includes("versionless-secret"), false);
 		assert.equal(store.listJobs({ queue: "output-persistence-test", limit: 10 }).length, 0);
 		queue.dispose();
 		store.close();
 	} finally {
+		rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("drain ignores a foreign heartbeat-renewed claim and leaves it owned by the foreign worker", async () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-output-foreign-drain-");
+	let heartbeat;
+	let queue;
+	let store;
+	try {
+		store = new PiboReliabilityStore(databasePath);
+		store.enqueue({ jobId: "job_foreign_drain", queue: "output-persistence-test", payload: envelope("foreign-drain"), maxAttempts: 3 });
+		const claimed = store.claimRecoverableJob("job_foreign_drain", "foreign-worker", 80);
+		assert.ok(claimed);
+		heartbeat = setInterval(() => {
+			store.heartbeat(claimed.jobId, claimed.workerId, 80, claimed.claimToken);
+		}, 20);
+		queue = new OutputPersistenceRetryQueue({
+			durableStore: store,
+			queueName: "output-persistence-test",
+			workerId: "draining-worker",
+			visibilityTimeoutMs: 80,
+			baseDelayMs: 5,
+			maxDelayMs: 5,
+		});
+		let runs = 0;
+		queue.recover((job) => ({ ...job, run() { runs += 1; } }));
+		await Promise.race([
+			queue.drain(),
+			new Promise((_, reject) => setTimeout(() => reject(new Error("drain waited for foreign live claim")), 250)),
+		]);
+		assert.equal(runs, 0);
+		assert.equal(queue.debugState().pending, 0);
+		const live = store.listJobs({ queue: "output-persistence-test" });
+		assert.equal(live.length, 1);
+		assert.equal(live[0].state, "running");
+		assert.equal(live[0].workerId, "foreign-worker");
+		assert.equal(live[0].claimToken, claimed.claimToken);
+	} finally {
+		if (heartbeat) clearInterval(heartbeat);
+		queue?.dispose();
+		store?.close();
 		rmSync(directory, { recursive: true, force: true });
 	}
 });

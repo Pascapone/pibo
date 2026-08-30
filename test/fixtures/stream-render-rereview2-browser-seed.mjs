@@ -157,6 +157,7 @@ reliability.enqueue({
 	queue: "output-persistence",
 	idempotencyKey: retryKey,
 	payload: {
+		version: 1,
 		key: retryKey,
 		piboSessionId: session.id,
 		eventId: outputPersistenceDeliveryKey(retryEvent),
@@ -168,6 +169,28 @@ reliability.enqueue({
 			deliveries: [{
 				event: retryEvent,
 				v2: { streamId: retryRow.streamId, createdAt: retryRow.createdAt, eventId: retryEvent.eventId },
+			}],
+		},
+	},
+	maxAttempts: 5,
+});
+const unknownSecret = "browser-unknown-secret-marker";
+reliability.enqueue({
+	queue: "output-persistence",
+	idempotencyKey: "browser-unknown-output",
+	payload: {
+		version: 1,
+		key: `browser-unknown-output-${unknownSecret}`,
+		state: {
+			version: 1,
+			piboSessionId: "ps_stream_render_unknown_quarantine",
+			deliveries: [{
+				event: {
+					type: "text_message",
+					piboSessionId: "ps_stream_render_unknown_quarantine",
+					text: "legacy browser output",
+					secret: unknownSecret,
+				},
 			}],
 		},
 	},

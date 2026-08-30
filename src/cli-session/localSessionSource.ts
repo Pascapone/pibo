@@ -27,8 +27,9 @@ import {
   storedPiboEventFromV2Row,
   type EventLogRow,
 } from "../apps/chat/data/chat-data-mappers.js";
-import { ChatDataIngestService, outputPersistenceDeliveryKey } from "../data/ingest-service.js";
+import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey } from "../data/ingest-service.js";
 import { OutputCompactor } from "../apps/chat/output-compactor.js";
+import { isPiboOutputEvent } from "../apps/chat/output-event-policy.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { ChatHistoryQueryService } from "../apps/chat/data/history-query-service.js";
 import type { StoredPiboEventLogRow } from "../data/event-log.js";
@@ -771,6 +772,10 @@ export class LocalCliSessionSource implements CliSessionSource {
 
   private handleRouterEvent(event: PiboOutputEvent): void {
     if (this.closed) return;
+    if (!isPiboOutputEvent(event)) {
+      this.outputPersistenceRetries.quarantine("runtime_output_event_invalid");
+      return;
+    }
     const session = this.sessionStore.get(event.piboSessionId);
     if (!session) return;
     const positionedEvent = this.outputRenderSequencer.position(event);
@@ -1067,7 +1072,7 @@ function parseCliOutputPersistenceState(value: PiboJsonValue): CliOutputPersiste
     if (!rawDelivery || typeof rawDelivery !== "object" || Array.isArray(rawDelivery)) return undefined;
     const delivery = rawDelivery as Record<string, unknown>;
     const event = delivery.event;
-    if (!event || typeof event !== "object" || Array.isArray(event) || typeof (event as { type?: unknown }).type !== "string") return undefined;
+    if (!isPiboOutputEvent(event) || !outputIdempotencyKey(event)) return undefined;
     deliveries.push({
       event: event as PiboOutputEvent,
       ...(delivery.persisted === true ? { persisted: true } : {}),

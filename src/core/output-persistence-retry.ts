@@ -168,6 +168,17 @@ export class OutputPersistenceRetryQueue {
 		this.startAttempt(pending, false);
 	}
 
+	quarantine(reasonCode: string): void {
+		if (this.disposed) return;
+		this.recordDeadLetter(
+			{ key: `quarantine:${randomUUID()}`, payload: null, run() {} },
+			new Error(reasonCode),
+			0,
+			reasonCode,
+			true,
+		);
+	}
+
 	recover(factory: (job: OutputPersistenceRecoveredJob) => OutputPersistenceRetryJob): void {
 		if (!this.durableStore) return;
 		this.recoveryFactory = factory;
@@ -197,7 +208,7 @@ export class OutputPersistenceRetryQueue {
 					await Promise.allSettled(executions);
 					continue;
 				}
-				const durableWorkRemains = !!this.recoveryFactory && !!this.durableStore?.hasJobs(this.queueName);
+				const durableWorkRemains = !!this.recoveryFactory && !!this.durableStore?.hasRecoverableJobs(this.queueName, true);
 				if (this.pending.size === 0 && !durableWorkRemains) return;
 				this.scheduleRecovery();
 				await this.waitForChange(observedVersion);
@@ -397,10 +408,11 @@ export class OutputPersistenceRetryQueue {
 				...this.blockedDurableJobs.keys(),
 				...[...this.pending.values()].flatMap((job) => job.durableJobId ? [job.durableJobId] : []),
 			];
-			const jobs = this.durableStore.listJobs({
+			const jobs = this.durableStore.listRecoverableJobs({
 				queue: this.queueName,
 				limit: Math.min(this.recoveryBatchSize, this.maxPending - this.pending.size),
 				excludeJobIds: excludedJobIds,
+				includeDeferredPending: this.draining,
 			});
 			if (jobs.length === 0) break;
 			let admitted = 0;
@@ -423,7 +435,7 @@ export class OutputPersistenceRetryQueue {
 						maxAttempts: durableJob.maxAttempts,
 					});
 				} catch {
-					this.durableStore.quarantineJob(durableJob.jobId, "payload_invalid", correlationFields(envelope));
+					this.durableStore.quarantineJob(durableJob.jobId, "payload_invalid");
 					continue;
 				}
 				const pending: PendingJob = {
@@ -513,7 +525,7 @@ function durableEnvelope(job: Pick<OutputPersistenceRetryJob, "key" | "piboSessi
 function parseDurableEnvelope(value: PiboJsonValue): { envelope?: DurableEnvelope; reason: string } {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return { reason: "payload_malformed" };
 	const candidate = value as Record<string, PiboJsonValue | undefined>;
-	if (candidate.version !== undefined && candidate.version !== 1) return { reason: "payload_version_unsupported" };
+	if (candidate.version !== 1) return { reason: "payload_version_unsupported" };
 	if (typeof candidate.key !== "string" || !("state" in candidate)) return { reason: "payload_malformed" };
 	return {
 		reason: "",

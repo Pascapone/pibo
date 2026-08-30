@@ -31,7 +31,7 @@ import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js"
 import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../../web/types.js";
 import type { PiboSession } from "../../sessions/store.js";
 import { OutputCompactor } from "./output-compactor.js";
-import { isLiveOnlyOutputEvent, isPersistableOutputEvent } from "./output-event-policy.js";
+import { isLiveOnlyOutputEvent, isPersistableOutputEvent, isPiboOutputEvent } from "./output-event-policy.js";
 import type { ChatEventAppendInput, ChatEventListInput, StoredChatEvent } from "./types/event-store.js";
 import type { ChatWebSessionBootstrapIndexResult, ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "./types/read-model.js";
 import {
@@ -106,7 +106,7 @@ import { listMcpServerInfos } from "../../mcp/agent-context.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
 import { findPiPackage, listPiPackages } from "../../pi-packages/store.js";
 import { ScopedUserSkillManager } from "../../user-skills/manager.js";
-import { ChatDataIngestService, outputPersistenceDeliveryKey } from "../../data/ingest-service.js";
+import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey } from "../../data/ingest-service.js";
 import { ChatEventCommandService } from "./data/event-command-service.js";
 import { ChatReadStateService } from "./data/read-state-service.js";
 import { ChatRoomService } from "./data/room-service.js";
@@ -1041,10 +1041,16 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 		const startedAt = performance.now();
 		let prepared: ReturnType<OutputCompactor["prepare"]> | undefined;
 		try {
-			state.activeTraceSessions.add(event.piboSessionId);
-			const session = context.channelContext.getSession(event.piboSessionId);
+			if (!isPiboOutputEvent(event)) {
+				state.outputPersistenceRetries.quarantine("runtime_output_event_invalid");
+				recordPersistenceError(state.persistenceMetrics, new Error("runtime_output_event_invalid"));
+				return;
+			}
+			const positionedEvent = state.outputRenderSequencer.position(event);
+			state.activeTraceSessions.add(positionedEvent.piboSessionId);
+			const session = context.channelContext.getSession(positionedEvent.piboSessionId);
 			const room = session ? ensureSessionRoom(state, context, session) : undefined;
-			const result = state.outputCompactor.prepare(event);
+			const result = state.outputCompactor.prepare(positionedEvent);
 			prepared = result;
 			for (const liveEvent of result.liveEvents) {
 				if (isPersistableOutputEvent(liveEvent)) continue;
@@ -1061,7 +1067,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 			} else {
 				const persistenceState: WebOutputPersistenceState = {
 					version: 1,
-					piboSessionId: event.piboSessionId,
+					piboSessionId: positionedEvent.piboSessionId,
 					roomId: room?.id,
 					actorId: session?.id,
 					deliveries: persistableEvents.map((persistableEvent) => ({
@@ -1223,7 +1229,7 @@ function parseWebOutputPersistenceState(value: PiboJsonValue): WebOutputPersiste
 	for (const rawDelivery of candidate.deliveries) {
 		if (!rawDelivery || typeof rawDelivery !== "object" || Array.isArray(rawDelivery)) return undefined;
 		const delivery = rawDelivery as Record<string, unknown>;
-		if (!isPiboOutputEvent(delivery.event)) return undefined;
+		if (!isPiboOutputEvent(delivery.event) || !outputIdempotencyKey(delivery.event)) return undefined;
 		const deliveryId = outputPersistenceDeliveryKey(delivery.event);
 		if (delivery.deliveryId !== undefined && delivery.deliveryId !== deliveryId) return undefined;
 		const v2 = delivery.v2;
@@ -3772,10 +3778,6 @@ function defaultEventStreamMode(input: { requestedRoomId?: string; requestedPibo
 function parseEventStreamMode(value: string | null, fallback: ChatEventStreamMode): ChatEventStreamMode {
 	if (value === "live" || value === "summary") return value;
 	return fallback;
-}
-
-function isPiboOutputEvent(value: unknown): value is PiboOutputEvent {
-	return !!value && typeof value === "object" && !Array.isArray(value) && typeof (value as { type?: unknown }).type === "string";
 }
 
 function liveEventMatches(event: ChatLiveEvent, input: { roomId?: string; piboSessionId?: string }): boolean {

@@ -265,6 +265,7 @@ test("local CLI resumes a pending durable final after process restart without pr
 			queue: "output-persistence-cli",
 			idempotencyKey: JSON.stringify([deliveryKey]),
 			payload: {
+				version: 1,
 				key: JSON.stringify([deliveryKey]),
 				piboSessionId,
 				eventId: deliveryKey,
@@ -280,6 +281,147 @@ test("local CLI resumes a pending durable final after process restart without pr
 		reliability.close();
 		dataStore.close();
 	} finally {
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("local CLI quarantines a versionless durable envelope without executing its state", async () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-cli-versionless-envelope-");
+	const reliabilityPath = path.join(directory, "reliability.sqlite");
+	const piboSessionId = "ps_cli_versionless_envelope";
+	const secret = "cli-versionless-secret-marker";
+	try {
+		const dataStore = new PiboDataStore(databasePath);
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		sessionStore.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+		const reliability = new PiboReliabilityStore(reliabilityPath);
+		reliability.enqueue({
+			queue: "output-persistence-cli",
+			idempotencyKey: "legacy-cli-versionless",
+			payload: {
+				key: "legacy-cli-versionless",
+				state: {
+					version: 1,
+					piboSessionId,
+					deliveries: [{ event: { type: "assistant_message", piboSessionId, eventId: "legacy-cli", text: secret, renderSequence: 1 } }],
+				},
+			},
+		});
+
+		const source = new LocalCliSessionSource({ dataStore, sessionStore, reliabilityStore: reliability });
+		await source.close();
+		assert.equal(Number(dataStore.db.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(piboSessionId).count), 0);
+		assert.equal(reliability.listJobs({ queue: "output-persistence-cli" }).length, 0);
+		const dead = reliability.listDead({ queue: "output-persistence-cli" });
+		assert.equal(dead.length, 1);
+		assert.equal(dead[0].deadReason, "payload_version_unsupported");
+		assert.equal(JSON.stringify(dead).includes(secret), false);
+		reliability.close();
+		dataStore.close();
+	} finally {
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("local CLI quarantines unknown runtime output before compaction, retry, or V2 write", async () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-cli-unknown-output-");
+	const reliabilityPath = path.join(directory, "reliability.sqlite");
+	const piboSessionId = "ps_cli_unknown_output";
+	const secret = "unknown-cli-secret-marker";
+	let listener;
+	const router = {
+		subscribe(next) { listener = next; return () => { listener = undefined; }; },
+	};
+	try {
+		const dataStore = new PiboDataStore(databasePath);
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		sessionStore.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+		const reliability = new PiboReliabilityStore(reliabilityPath);
+		const source = new LocalCliSessionSource({ dataStore, sessionStore, reliabilityStore: reliability, router });
+		listener({ type: "text_message", piboSessionId, text: "legacy cli output", secret });
+		await source.close();
+		assert.equal(Number(dataStore.db.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(piboSessionId).count), 0);
+		assert.equal(reliability.listJobs({ queue: "output-persistence-cli" }).length, 0);
+		const dead = reliability.listDead({ queue: "output-persistence-cli" });
+		assert.equal(dead.length, 1);
+		assert.equal(dead[0].deadReason, "runtime_output_event_invalid");
+		const serialized = JSON.stringify(dead);
+		assert.equal(serialized.includes(secret), false);
+		assert.equal(serialized.includes("legacy cli output"), false);
+		assert.equal(serialized.includes("text_message"), false);
+		reliability.close();
+		dataStore.close();
+	} finally {
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("local CLI recovery quarantines an unknown output variant with sanitized metadata", async () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-cli-unknown-recovery-");
+	const reliabilityPath = path.join(directory, "reliability.sqlite");
+	const piboSessionId = "ps_cli_unknown_recovery";
+	const secret = "unknown-cli-recovery-secret-marker";
+	try {
+		const dataStore = new PiboDataStore(databasePath);
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		sessionStore.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+		const reliability = new PiboReliabilityStore(reliabilityPath);
+		reliability.enqueue({
+			queue: "output-persistence-cli",
+			idempotencyKey: "unknown-cli-recovery",
+			payload: {
+				version: 1,
+				key: `unknown-cli-recovery-${secret}`,
+				state: { version: 1, piboSessionId, deliveries: [{ event: { type: "text_message", piboSessionId, text: secret } }] },
+			},
+		});
+		const source = new LocalCliSessionSource({ dataStore, sessionStore, reliabilityStore: reliability });
+		await source.close();
+		assert.equal(Number(dataStore.db.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(piboSessionId).count), 0);
+		const dead = reliability.listDead({ queue: "output-persistence-cli" });
+		assert.equal(dead.length, 1);
+		assert.equal(dead[0].deadReason, "payload_invalid");
+		assert.equal(JSON.stringify(dead).includes(secret), false);
+		reliability.close();
+		dataStore.close();
+	} finally {
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("local CLI close is bounded by local work while a foreign claim stays live", async () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-cli-foreign-close-");
+	const reliabilityPath = path.join(directory, "reliability.sqlite");
+	let heartbeat;
+	try {
+		const dataStore = new PiboDataStore(databasePath);
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		const piboSessionId = "ps_cli_foreign_close";
+		sessionStore.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+		const reliability = new PiboReliabilityStore(reliabilityPath);
+		reliability.enqueue({
+			jobId: "job_cli_foreign_close",
+			queue: "output-persistence-cli",
+			payload: { version: 1, key: "cli-foreign-close", state: { version: 1, piboSessionId, deliveries: [] } },
+		});
+		const claimed = reliability.claimRecoverableJob("job_cli_foreign_close", "foreign-cli-worker", 1_000);
+		assert.ok(claimed);
+		heartbeat = setInterval(() => reliability.heartbeat(claimed.jobId, claimed.workerId, 1_000, claimed.claimToken), 100);
+		const source = new LocalCliSessionSource({ dataStore, sessionStore, reliabilityStore: reliability });
+		await Promise.race([
+			source.close(),
+			new Promise((_, reject) => setTimeout(() => reject(new Error("CLI close waited for foreign live claim")), 250)),
+		]);
+		const live = reliability.listJobs({ queue: "output-persistence-cli" });
+		assert.equal(live.length, 1);
+		assert.equal(live[0].workerId, "foreign-cli-worker");
+		assert.equal(live[0].claimToken, claimed.claimToken);
+		clearInterval(heartbeat);
+		heartbeat = undefined;
+		reliability.close();
+		dataStore.close();
+	} finally {
+		if (heartbeat) clearInterval(heartbeat);
 		fs.rmSync(directory, { recursive: true, force: true });
 	}
 });

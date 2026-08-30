@@ -832,6 +832,38 @@ export class PiboReliabilityStore {
 		return jobs;
 	}
 
+	listRecoverableJobs(input: Omit<PiboJobListInput, "state"> & { includeDeferredPending?: boolean } = {}): StoredPiboJob[] {
+		const timestamp = now();
+		const clauses = [
+			"((state = 'pending' AND (? = 1 OR run_at <= ?)) OR (state = 'running' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?))",
+			"(expires_at IS NULL OR expires_at > ?)",
+		];
+		const values: Array<string | number> = [input.includeDeferredPending ? 1 : 0, timestamp, timestamp, timestamp];
+		if (input.queue) {
+			clauses.push("queue = ?");
+			values.push(input.queue);
+		}
+		if (input.excludeJobIds?.length) {
+			clauses.push(`job_id NOT IN (${input.excludeJobIds.map(() => "?").join(", ")})`);
+			values.push(...input.excludeJobIds);
+		}
+		const rows = this.db.prepare(`
+			SELECT * FROM pibo_jobs
+			WHERE ${clauses.join(" AND ")}
+			ORDER BY priority DESC, run_at ASC, created_at ASC
+			LIMIT ?
+		`).all(...values, clampLimit(input.limit, 100)) as PiboJobRow[];
+		const jobs: StoredPiboJob[] = [];
+		for (const row of rows) {
+			try {
+				jobs.push(jobFromRow(row));
+			} catch {
+				this.quarantineJobRow(row, "payload_malformed");
+			}
+		}
+		return jobs;
+	}
+
 	listDead(input: PiboDeadJobListInput = {}): StoredPiboDeadJob[] {
 		const clauses: string[] = [];
 		const values: string[] = [];
@@ -854,6 +886,20 @@ export class PiboReliabilityStore {
 		return queue
 			? this.db.prepare("SELECT 1 AS found FROM pibo_jobs WHERE queue = ? LIMIT 1").get(queue) !== undefined
 			: this.db.prepare("SELECT 1 AS found FROM pibo_jobs LIMIT 1").get() !== undefined;
+	}
+
+	hasRecoverableJobs(queue: string, includeDeferredPending = false): boolean {
+		const timestamp = now();
+		return this.db.prepare(`
+			SELECT 1 AS found FROM pibo_jobs
+			WHERE queue = ?
+				AND (
+					(state = 'pending' AND (? = 1 OR run_at <= ?))
+					OR (state = 'running' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?)
+				)
+				AND (expires_at IS NULL OR expires_at > ?)
+			LIMIT 1
+		`).get(queue, includeDeferredPending ? 1 : 0, timestamp, timestamp, timestamp) !== undefined;
 	}
 
 	quarantineJob(jobId: string, reason: string, correlation: { key?: string; piboSessionId?: string; eventId?: string } = {}): boolean {

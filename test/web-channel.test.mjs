@@ -1174,6 +1174,151 @@ test("chat web resumes a pending phased delivery after app restart", async () =>
 	}
 });
 
+test("chat web quarantines a versionless durable envelope without writing V2 state", async () => {
+	const sessions = new InMemoryPiboSessionStore();
+	const piboSessionId = "ps_web_versionless_envelope";
+	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+	const secret = "web-versionless-secret-marker";
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
+	try {
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			reliability.enqueue({
+				queue: "output-persistence",
+				idempotencyKey: "legacy-web-versionless",
+				payload: {
+					key: "legacy-web-versionless",
+					state: {
+						version: 1,
+						piboSessionId,
+						deliveries: [{ event: { type: "assistant_message", piboSessionId, eventId: "legacy-web", text: secret, renderSequence: 1 } }],
+					},
+				},
+			});
+		} finally {
+			reliability.close();
+		}
+		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(trigger.status, 200);
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count) === 1;
+			} finally {
+				db.close();
+			}
+		}, "versionless web envelope was not quarantined");
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(piboSessionId).count), 0);
+		} finally {
+			data.close();
+		}
+		const reopened = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			const dead = reopened.listDead({ queue: "output-persistence" });
+			assert.equal(dead.length, 1);
+			assert.equal(dead[0].deadReason, "payload_version_unsupported");
+			assert.equal(JSON.stringify(dead).includes(secret), false);
+		} finally {
+			reopened.close();
+		}
+	} finally {
+		await host.channel.stop?.();
+	}
+});
+
+test("chat web quarantines unknown runtime output before compaction, retry, or V2 write", async () => {
+	const secret = "unknown-web-secret-marker";
+	const host = await startWebHostChannel({ auth: createFakeAuthService() });
+	try {
+		const sessionResponse = await fetch(`${host.baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(sessionResponse.status, 200);
+		const { session } = await sessionResponse.json();
+		host.emitOutput({ type: "text_message", piboSessionId: session.id, text: "legacy output", secret });
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count) === 1;
+			} finally {
+				db.close();
+			}
+		}, "unknown web output was not quarantined");
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(session.id).count), 0);
+		} finally {
+			data.close();
+		}
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			assert.equal(reliability.listJobs({ queue: "output-persistence" }).length, 0);
+			const dead = reliability.listDead({ queue: "output-persistence" });
+			assert.equal(dead.length, 1);
+			assert.equal(dead[0].deadReason, "runtime_output_event_invalid");
+			const serialized = JSON.stringify(dead);
+			assert.equal(serialized.includes(secret), false);
+			assert.equal(serialized.includes("legacy output"), false);
+			assert.equal(serialized.includes("text_message"), false);
+		} finally {
+			reliability.close();
+		}
+	} finally {
+		await host.channel.stop?.();
+	}
+});
+
+test("chat web recovery quarantines an unknown output variant with sanitized metadata", async () => {
+	const sessions = new InMemoryPiboSessionStore();
+	const piboSessionId = "ps_web_unknown_recovery";
+	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+	const secret = "unknown-web-recovery-secret-marker";
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
+	try {
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			reliability.enqueue({
+				queue: "output-persistence",
+				idempotencyKey: "unknown-web-recovery",
+				payload: {
+					version: 1,
+					key: `unknown-web-recovery-${secret}`,
+					state: { version: 1, piboSessionId, deliveries: [{ event: { type: "text_message", piboSessionId, text: secret } }] },
+				},
+			});
+		} finally {
+			reliability.close();
+		}
+		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(trigger.status, 200);
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count) === 1;
+			} finally {
+				db.close();
+			}
+		}, "unknown recovered web output was not quarantined");
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(piboSessionId).count), 0);
+		} finally {
+			data.close();
+		}
+		const reopened = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			const dead = reopened.listDead({ queue: "output-persistence" });
+			assert.equal(dead.length, 1);
+			assert.equal(dead[0].deadReason, "payload_invalid");
+			assert.equal(JSON.stringify(dead).includes(secret), false);
+		} finally {
+			reopened.close();
+		}
+	} finally {
+		await host.channel.stop?.();
+	}
+});
+
 for (const crashBoundary of [
 	"before-v2-write",
 	"after-v2-write",
@@ -1182,7 +1327,7 @@ for (const crashBoundary of [
 	"after-live-send-before-receipt",
 	"after-receipt-before-checkpoint",
 ]) {
-	test(`chat web outbox recovers ${crashBoundary} with one visible render identity`, async () => {
+	test(`chat web outbox retries an in-process fault at ${crashBoundary} with one visible render identity`, async () => {
 		const originalIngest = ChatDataIngestService.prototype.ingestOutputEvent;
 		const originalAppendOnce = PiboReliabilityStore.prototype.appendOnce;
 		const originalRecordEvent = ChatSessionQueryService.prototype.recordEvent;

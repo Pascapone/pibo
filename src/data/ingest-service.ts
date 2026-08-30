@@ -353,8 +353,11 @@ function compactObject(value: Record<string, unknown>): PiboJsonObject {
 
 export function outputIdempotencyKey(event: PiboOutputEvent): string | undefined {
 	const base = eventIdForOutputEvent(event) ?? ("toolCallId" in event ? event.toolCallId : undefined);
-	if (!base) return undefined;
-	return `pibo.output:${event.piboSessionId}:${event.type}:${base}:${outputPartKey(event)}`;
+	if (base) return `pibo.output:${event.piboSessionId}:${event.type}:${base}:${outputPartKey(event)}`;
+	if (Number.isSafeInteger(event.renderSequence) && (event.renderSequence ?? 0) > 0) {
+		return `pibo.output:${event.piboSessionId}:${event.type}:render:${event.renderSequence}`;
+	}
+	return undefined;
 }
 
 export function outputPersistenceDeliveryKey(event: PiboOutputEvent): string {
