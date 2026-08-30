@@ -109,6 +109,50 @@ test("pibo debug pty scenario types input through an interactive PTY", { skip: !
 	}
 });
 
+test("pibo debug pty stop patterns terminate a running process group", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	const pidPath = join(dir, "pids.json");
+	let pids = [];
+	try {
+		const scenarioPath = join(dir, "scenario.json");
+		const artifactDir = join(dir, "artifacts");
+		const fixture = [
+			"const { spawn } = require('node:child_process');",
+			"const { writeFileSync } = require('node:fs');",
+			"const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+			"writeFileSync(process.argv[1], JSON.stringify([process.pid, descendant.pid]));",
+			"console.log('STOP_REACHED_PROCESS_GROUP');",
+			"setInterval(() => {}, 1000);",
+		].join(" ");
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "stop-pattern-process-group",
+			command: ["node", "-e", fixture, pidPath],
+			timeoutMs: 5000,
+			idleTimeoutMs: 700,
+			steps: [{ waitFor: "STOP_REACHED_PROCESS_GROUP", timeoutMs: 1000 }],
+			stopPatterns: ["STOP_REACHED_PROCESS_GROUP"],
+			expect: ["STOP_REACHED_PROCESS_GROUP"],
+		}, null, 2));
+
+		const started = Date.now();
+		const result = await execFileAsync("node", [cliPath, "debug", "pty", "scenario", "--artifact", "--artifact-dir", artifactDir, scenarioPath]);
+		const durationMs = Date.now() - started;
+		pids = JSON.parse(await readFile(pidPath, "utf8"));
+
+		assert.match(result.stdout, /PTY passed: stop-pattern-process-group/);
+		assert.match(result.stdout, /stopReason\tstop_pattern:STOP_REACHED_PROCESS_GROUP/);
+		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+		assert.ok(durationMs < 1000, `stop-pattern termination took ${durationMs}ms (scenario ${metadata.durationMs}ms)`);
+		assert.equal(metadata.ok, true);
+		assert.equal(metadata.stopReason, "stop_pattern:STOP_REACHED_PROCESS_GROUP");
+		await waitForProcessesToExit(pids, 1000);
+		assert.deepEqual(pids.filter(isProcessRunning), []);
+	} finally {
+		for (const pid of pids.filter(isProcessRunning)) process.kill(pid, "SIGKILL");
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("built-in mocked CLI session scenario follows the room and session picker flow", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {
@@ -176,4 +220,21 @@ async function makeTempDir() {
 	const dir = join(tmpdir(), `pibo-debug-pty-test-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 	await mkdir(dir, { recursive: true });
 	return dir;
+}
+
+function isProcessRunning(pid) {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		if (error?.code === "ESRCH") return false;
+		throw error;
+	}
+}
+
+async function waitForProcessesToExit(pids, timeoutMs) {
+	const deadline = Date.now() + timeoutMs;
+	while (pids.some(isProcessRunning) && Date.now() < deadline) {
+		await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+	}
 }
