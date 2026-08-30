@@ -22,9 +22,11 @@ export function isPiboOutputEvent(value: unknown): value is PiboOutputEvent {
 
 	switch (value.type) {
 		case "message_queued":
-		case "message_steered":
 			return typeof value.text === "string"
 				&& isNonNegativeSafeInteger(value.queuedMessages)
+				&& isOptionalEventSource(value.source);
+		case "message_steered":
+			return typeof value.text === "string"
 				&& isOptionalEventSource(value.source)
 				&& isOptionalString(value.activeEventId);
 		case "message_started":

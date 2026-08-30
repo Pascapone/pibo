@@ -5,7 +5,7 @@ import { isPiboOutputEvent } from "../dist/apps/chat/output-event-policy.js";
 const base = { piboSessionId: "ps_validator", eventId: "event-validator", renderSequence: 1 };
 const variants = [
 	[{ ...base, type: "message_queued", queuedMessages: 1, text: "queued" }, "text"],
-	[{ ...base, type: "message_steered", queuedMessages: 0, text: "steered" }, "queuedMessages"],
+	[{ ...base, type: "message_steered", activeEventId: "active-turn", text: "steered", source: "user" }, "text"],
 	[{ ...base, type: "message_started", text: "started" }, "text"],
 	[{ ...base, type: "message_finished" }, "piboSessionId"],
 	[{ ...base, type: "assistant_delta", text: "delta" }, "text"],

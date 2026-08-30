@@ -1228,6 +1228,119 @@ test("chat web quarantines a versionless durable envelope without writing V2 sta
 	}
 });
 
+test("chat web persists and live-projects the declared message_steered runtime payload", async () => {
+	const host = await startWebHostChannel({ auth: createFakeAuthService() });
+	const controller = new AbortController();
+	try {
+		const sessionResponse = await fetch(`${host.baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(sessionResponse.status, 200);
+		const { session } = await sessionResponse.json();
+		const eventsResponse = await fetch(
+			`${host.baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(session.id)}&mode=live&since=0`,
+			{ headers: { "x-test-user": "user-1" }, signal: controller.signal },
+		);
+		assert.equal(eventsResponse.status, 200);
+		const reader = eventsResponse.body.getReader();
+		await reader.read();
+		host.emitOutput({
+			type: "message_steered",
+			piboSessionId: session.id,
+			eventId: "steer-real-contract",
+			activeEventId: "active-turn",
+			text: "valid steer",
+			source: "user",
+		});
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.dataStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'message_steered'").get(session.id).count) === 1;
+			} finally {
+				db.close();
+			}
+		}, "valid steering output was not persisted");
+		const liveFrame = await readSseTextUntil(reader, (text) => text.includes("steer-real-contract"));
+		assert.equal(liveFrame.matched, true, liveFrame.text);
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			const row = data.prepare("SELECT event_id, idempotency_key, preview_text, attributes_json FROM event_log WHERE session_id = ? AND type = 'message_steered'").get(session.id);
+			assert.equal(row.event_id, "steer-real-contract");
+			assert.equal(row.idempotency_key, `pibo.output:${session.id}:message_steered:steer-real-contract:main`);
+			assert.equal(row.preview_text, "valid steer");
+			assert.equal(JSON.parse(row.attributes_json).activeEventId, "active-turn");
+		} finally {
+			data.close();
+		}
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			assert.equal(reliability.listJobs({ queue: "output-persistence" }).length, 0);
+			assert.equal(reliability.listDead({ queue: "output-persistence" }).length, 0);
+			assert.equal(reliability.list({ topic: "pibo.output" }).length, 1);
+		} finally {
+			reliability.close();
+		}
+	} finally {
+		controller.abort();
+		await host.channel.stop?.();
+	}
+});
+
+test("chat web recovers a valid V1 message_steered envelope without quarantine", async () => {
+	const sessions = new InMemoryPiboSessionStore();
+	const piboSessionId = "ps_web_steered_recovery";
+	const eventId = "steer-web-recovery";
+	const deliveryKey = `pibo.output:${piboSessionId}:message_steered:${eventId}:main`;
+	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
+	try {
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			reliability.enqueue({
+				queue: "output-persistence",
+				idempotencyKey: JSON.stringify([deliveryKey]),
+				payload: {
+					version: 1,
+					key: JSON.stringify([deliveryKey]),
+					piboSessionId,
+					eventId: deliveryKey,
+					state: {
+						version: 1,
+						piboSessionId,
+						deliveries: [{ event: { type: "message_steered", piboSessionId, eventId, activeEventId: "active-web-turn", text: "recover valid steer", source: "user", renderSequence: 1 } }],
+					},
+				},
+			});
+		} finally {
+			reliability.close();
+		}
+		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(trigger.status, 200);
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM pibo_jobs WHERE queue = 'output-persistence'").get().count) === 0;
+			} finally {
+				db.close();
+			}
+		}, "valid steering recovery did not drain");
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			const row = data.prepare("SELECT event_id, idempotency_key, preview_text FROM event_log WHERE session_id = ? AND type = 'message_steered'").get(piboSessionId);
+			assert.deepEqual({ ...row }, { event_id: eventId, idempotency_key: deliveryKey, preview_text: "recover valid steer" });
+		} finally {
+			data.close();
+		}
+		const reopened = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			assert.equal(reopened.listDead({ queue: "output-persistence" }).length, 0);
+			assert.equal(reopened.list({ topic: "pibo.output" }).length, 1);
+		} finally {
+			reopened.close();
+		}
+	} finally {
+		await host.channel.stop?.();
+	}
+});
+
 test("chat web quarantines unknown runtime output before compaction, retry, or V2 write", async () => {
 	const secret = "unknown-web-secret-marker";
 	const host = await startWebHostChannel({ auth: createFakeAuthService() });

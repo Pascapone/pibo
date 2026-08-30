@@ -323,6 +323,75 @@ test("local CLI quarantines a versionless durable envelope without executing its
 	}
 });
 
+test("local CLI persists the declared message_steered runtime payload", async () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-cli-steered-runtime-");
+	const reliabilityPath = path.join(directory, "reliability.sqlite");
+	const piboSessionId = "ps_cli_steered_runtime";
+	let listener;
+	const router = {
+		subscribe(next) { listener = next; return () => { listener = undefined; }; },
+	};
+	try {
+		const dataStore = new PiboDataStore(databasePath);
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		sessionStore.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+		const reliability = new PiboReliabilityStore(reliabilityPath);
+		const source = new LocalCliSessionSource({ dataStore, sessionStore, reliabilityStore: reliability, router });
+		listener({ type: "message_steered", piboSessionId, eventId: "steer-cli-runtime", activeEventId: "active-cli-turn", text: "valid CLI steer", source: "user" });
+		await source.close();
+		const row = dataStore.db.prepare("SELECT event_id, idempotency_key, preview_text, attributes_json FROM event_log WHERE session_id = ? AND type = 'message_steered'").get(piboSessionId);
+		assert.equal(row.event_id, "steer-cli-runtime");
+		assert.equal(row.idempotency_key, `pibo.output:${piboSessionId}:message_steered:steer-cli-runtime:main`);
+		assert.equal(row.preview_text, "valid CLI steer");
+		assert.equal(JSON.parse(row.attributes_json).activeEventId, "active-cli-turn");
+		assert.equal(reliability.listJobs({ queue: "output-persistence-cli" }).length, 0);
+		assert.equal(reliability.listDead({ queue: "output-persistence-cli" }).length, 0);
+		reliability.close();
+		dataStore.close();
+	} finally {
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("local CLI recovers a valid V1 message_steered envelope without quarantine", async () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-cli-steered-recovery-");
+	const reliabilityPath = path.join(directory, "reliability.sqlite");
+	const piboSessionId = "ps_cli_steered_recovery";
+	const eventId = "steer-cli-recovery";
+	const deliveryKey = `pibo.output:${piboSessionId}:message_steered:${eventId}:main`;
+	try {
+		const dataStore = new PiboDataStore(databasePath);
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		sessionStore.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+		const reliability = new PiboReliabilityStore(reliabilityPath);
+		reliability.enqueue({
+			queue: "output-persistence-cli",
+			idempotencyKey: JSON.stringify([deliveryKey]),
+			payload: {
+				version: 1,
+				key: JSON.stringify([deliveryKey]),
+				piboSessionId,
+				eventId: deliveryKey,
+				state: {
+					version: 1,
+					piboSessionId,
+					deliveries: [{ event: { type: "message_steered", piboSessionId, eventId, activeEventId: "active-cli-turn", text: "recover CLI steer", source: "user", renderSequence: 1 } }],
+				},
+			},
+		});
+		const source = new LocalCliSessionSource({ dataStore, sessionStore, reliabilityStore: reliability });
+		await source.close();
+		const row = dataStore.db.prepare("SELECT event_id, idempotency_key, preview_text FROM event_log WHERE session_id = ? AND type = 'message_steered'").get(piboSessionId);
+		assert.deepEqual({ ...row }, { event_id: eventId, idempotency_key: deliveryKey, preview_text: "recover CLI steer" });
+		assert.equal(reliability.listJobs({ queue: "output-persistence-cli" }).length, 0);
+		assert.equal(reliability.listDead({ queue: "output-persistence-cli" }).length, 0);
+		reliability.close();
+		dataStore.close();
+	} finally {
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
+});
+
 test("local CLI quarantines unknown runtime output before compaction, retry, or V2 write", async () => {
 	const { directory, databasePath } = temporaryDatabase("pibo-cli-unknown-output-");
 	const reliabilityPath = path.join(directory, "reliability.sqlite");
