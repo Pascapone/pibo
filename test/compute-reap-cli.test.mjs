@@ -38,7 +38,11 @@ case "\${1:-}" in
     fi
     ;;
   inspect)
-    exit 1
+    if [ "\${2:-}" = "pibo-worker-cli-fixture" ] && [ -f "$PIBO_FAKE_DOCKER_STATE/worker.active" ]; then
+      printf '[{"Id":"fixture-id","Config":{"Labels":{"pibo.compute.role":"worker"}}}]\n'
+    else
+      exit 1
+    fi
     ;;
   stop)
     : > "$PIBO_FAKE_DOCKER_STATE/worker.stopped"
@@ -130,8 +134,8 @@ test("compute reap preserves dry-run defaults, apply, no-candidate, JSON, and te
 				assert.equal(await exists(join(fixture.state, "worker.active")), !scenario.removed);
 				assert.equal(await exists(join(fixture.state, "lease.active")), !scenario.removed);
 				const log = await readFile(fixture.log, "utf8");
-				assert.equal(log.includes("stop -t 10 pibo-worker-cli-fixture"), scenario.removed);
-				assert.equal(log.includes("rm pibo-worker-cli-fixture"), scenario.removed);
+				assert.equal(log.includes("stop -t 10 fixture-id"), scenario.removed);
+				assert.equal(log.includes("rm fixture-id"), scenario.removed);
 			} finally {
 				await rm(fixture.root, { recursive: true, force: true });
 			}

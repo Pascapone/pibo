@@ -12,6 +12,7 @@ import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
@@ -841,6 +842,87 @@ test("message acceptance starts a signal turn before cold runtime creation resol
 	} finally {
 		await router.disposeAll();
 	}
+});
+
+test("restart signal reconstruction roots nested sessions independently of store order", async (t) => {
+	const createTopology = async (store, prefix, pauseMs = 0) => {
+		const root = store.create({ id: `${prefix}_root`, channel: "pibo.test", kind: "chat", profile: "base" });
+		if (pauseMs) await delay(pauseMs);
+		const child = store.create({ id: `${prefix}_child`, channel: "pibo.subagents", kind: "subagent", profile: "base", parentId: root.id });
+		if (pauseMs) await delay(pauseMs);
+		const grandchild = store.create({ id: `${prefix}_grandchild`, channel: "pibo.subagents", kind: "subagent", profile: "base", parentId: child.id });
+		return { root, child, grandchild };
+	};
+	const captureStatusActivity = async (router, topology) => {
+		const statuses = router.snapshotSignalStatuses();
+		const patchRoots = [];
+		const unsubscribe = router.subscribeSignalStatuses((patch) => patchRoots.push(patch.rootPiboSessionId));
+		try {
+			router.getSignalRegistry().project({
+				type: "session_processing_changed",
+				piboSessionId: topology.grandchild.id,
+				processing: true,
+				queuedMessages: 0,
+			});
+			await Promise.resolve();
+			await Promise.resolve();
+		} finally {
+			unsubscribe();
+		}
+		return {
+			statusGrandchildRoot: statuses.sessions[topology.grandchild.id].rootPiboSessionId,
+			rootVersionIds: Object.keys(statuses.rootVersions).sort(),
+			patchRoots,
+		};
+	};
+
+	const controlStore = new InMemoryPiboSessionStore();
+	const controlTopology = await createTopology(controlStore, "ps_signal_control");
+	const controlRouter = new PiboSessionRouter({ persistSession: false, sessionStore: controlStore });
+	const controlTree = controlRouter.snapshotSignalTree(controlTopology.root.id);
+	const control = await captureStatusActivity(controlRouter, controlTopology);
+	await controlRouter.disposeAll();
+
+	const root = await mkdtemp(join(tmpdir(), "pibo-signal-restart-reconstruction-"));
+	const databasePath = join(root, "sessions.sqlite");
+	let restartStore = new SqlitePiboSessionStore(databasePath);
+	let restartRouter;
+	t.after(async () => {
+		await restartRouter?.disposeAll();
+		restartStore.close();
+		await rm(root, { recursive: true, force: true });
+	});
+	const restartTopology = await createTopology(restartStore, "ps_signal_restart", 10);
+	restartStore.close();
+	restartStore = new SqlitePiboSessionStore(databasePath);
+	const storeOrder = restartStore.list().map((session) => session.id);
+	restartRouter = new PiboSessionRouter({ persistSession: false, sessionStore: restartStore });
+	const restartTree = restartRouter.snapshotSignalTree(restartTopology.root.id);
+	await restartRouter.disposeAll();
+	restartRouter = new PiboSessionRouter({ persistSession: false, sessionStore: restartStore });
+	const restart = await captureStatusActivity(restartRouter, restartTopology);
+
+	assert.deepEqual({
+		storeOrder,
+		controlTreeGrandchildRoot: controlTree.sessions[controlTopology.grandchild.id].rootPiboSessionId,
+		control,
+		restartTreeGrandchildRoot: restartTree.sessions[restartTopology.grandchild.id].rootPiboSessionId,
+		restart,
+	}, {
+		storeOrder: [restartTopology.grandchild.id, restartTopology.child.id, restartTopology.root.id],
+		controlTreeGrandchildRoot: controlTopology.root.id,
+		control: {
+			statusGrandchildRoot: controlTopology.root.id,
+			rootVersionIds: [controlTopology.root.id],
+			patchRoots: [controlTopology.root.id],
+		},
+		restartTreeGrandchildRoot: restartTopology.root.id,
+		restart: {
+			statusGrandchildRoot: restartTopology.root.id,
+			rootVersionIds: [restartTopology.root.id],
+			patchRoots: [restartTopology.root.id],
+		},
+	});
 });
 
 test("cached identity reservations reject queued messages before signal acceptance", async () => {

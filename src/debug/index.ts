@@ -619,13 +619,13 @@ async function runDebugJobs(args: string[]): Promise<void> {
 	try {
 		if (command === "list") {
 			const jobs = reliability.listJobs({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
-			if (options.json) console.log(formatJson({ jobs }));
+			if (options.json) console.log(formatJson({ jobs: jobs.map(observableJobRow) }));
 			else console.log(formatRows(jobs.map(compactJobRow)));
 			return;
 		}
 		if (command === "dead") {
 			const jobs = reliability.listDead({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
-			if (options.json) console.log(formatJson({ jobs }));
+			if (options.json) console.log(formatJson({ jobs: jobs.map(observableDeadJobRow) }));
 			else console.log(formatRows(jobs.map(compactDeadJobRow)));
 			return;
 		}
@@ -925,26 +925,66 @@ function compactEventRow(event: { streamId: number; topic: string; key?: string;
 	};
 }
 
-function compactJobRow(job: { jobId: string; queue: string; state: string; runAt: string; attempts: number; maxAttempts: number; workerId?: string; lastError?: string }): Record<string, unknown> {
+function compactJobRow(job: { jobId: string; queue: string; state: string; payload: unknown; runAt: string; attempts: number; maxAttempts: number; workerId?: string; lastError?: string }): Record<string, unknown> {
+	const correlation = outputPersistenceJobCorrelation(job.payload);
 	return {
 		jobId: job.jobId,
 		queue: job.queue,
 		state: job.state,
 		runAt: job.runAt,
 		attempts: `${job.attempts}/${job.maxAttempts}`,
+		piboSessionId: correlation.piboSessionId,
+		eventId: correlation.eventId,
+		phase: correlation.phase,
 		workerId: job.workerId,
 		lastError: job.lastError,
 	};
 }
 
-function compactDeadJobRow(job: { jobId: string; queue: string; attempts: number; maxAttempts: number; deadAt: string; deadReason: string; lastError?: string }): Record<string, unknown> {
+function compactDeadJobRow(job: { jobId: string; queue: string; payload: unknown; attempts: number; maxAttempts: number; deadAt: string; deadReason: string; lastError?: string }): Record<string, unknown> {
+	const correlation = outputPersistenceJobCorrelation(job.payload);
 	return {
 		jobId: job.jobId,
 		queue: job.queue,
 		attempts: `${job.attempts}/${job.maxAttempts}`,
+		piboSessionId: correlation.piboSessionId,
+		eventId: correlation.eventId,
+		phase: correlation.phase,
 		deadAt: job.deadAt,
 		deadReason: job.deadReason,
 		lastError: job.lastError,
+	};
+}
+
+function observableJobRow(job: Parameters<typeof compactJobRow>[0]): Record<string, unknown> {
+	return { ...compactJobRow(job), attempts: job.attempts, maxAttempts: job.maxAttempts };
+}
+
+function observableDeadJobRow(job: Parameters<typeof compactDeadJobRow>[0]): Record<string, unknown> {
+	return { ...compactDeadJobRow(job), attempts: job.attempts, maxAttempts: job.maxAttempts };
+}
+
+function outputPersistenceJobCorrelation(payload: unknown): { piboSessionId?: string; eventId?: string; phase?: string } {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+	const envelope = payload as Record<string, unknown>;
+	const state = envelope.state;
+	let phase: string | undefined;
+	if (state && typeof state === "object" && !Array.isArray(state)) {
+		const deliveries = (state as Record<string, unknown>).deliveries;
+		if (Array.isArray(deliveries) && deliveries.length) {
+			const rows = deliveries.filter((delivery): delivery is Record<string, unknown> => !!delivery && typeof delivery === "object" && !Array.isArray(delivery));
+			if (rows.length === deliveries.length) {
+				if (rows.every((delivery) => delivery.sideEffectsDelivered === true || delivery.persisted === true)) phase = "delivered";
+				else if (rows.every((delivery) => delivery.reliabilityDelivered === true)) phase = "side-effects";
+				else if (rows.every((delivery) => delivery.v2 !== undefined)) phase = "reliability";
+				else phase = "v2";
+			}
+		}
+	}
+	return {
+		...(typeof envelope.piboSessionId === "string" ? { piboSessionId: envelope.piboSessionId } : {}),
+		...(typeof envelope.eventId === "string" ? { eventId: envelope.eventId } : {}),
+		...(phase ? { phase } : {}),
 	};
 }
 

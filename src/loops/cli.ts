@@ -29,7 +29,7 @@ Commands:
   runs      List Loop runs
 
 Next: ${commandName} add --help`); }
-function targetFromOptions(options: { room?: string; defaultChat?: boolean }): PiboLoopTarget { if (options.room) return { kind: 'room', roomId: options.room }; if (options.defaultChat) return { kind: 'default-chat' }; throw new Error('Choose a target: --room <room-id> or --default-chat'); }
+function targetFromOptions(options: { room?: string; defaultChat?: boolean }): PiboLoopTarget { if (options.room && options.defaultChat) throw new Error('Choose either --room <room-id> or --default-chat, not both'); if (options.room) return { kind: 'room', roomId: options.room }; if (options.defaultChat) return { kind: 'default-chat' }; throw new Error('Choose a target: --room <room-id> or --default-chat'); }
 function maybeTargetFromOptions(options: { room?: string; defaultChat?: boolean }): PiboLoopTarget | undefined { if (options.room || options.defaultChat) return targetFromOptions(options); return undefined; }
 function printJson(value: unknown): void { console.log(JSON.stringify(value, null, 2)); }
 function maxIterations(value: string | undefined): number | undefined { if (value === undefined) return undefined; const parsed = Number(value); if (!Number.isInteger(parsed) || parsed < 1) throw new Error('--max-iterations must be a positive integer'); return parsed; }

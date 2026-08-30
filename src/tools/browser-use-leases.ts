@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { ErrorCode, formatCliError } from '../cli-errors.js';
 import { BROWSER_USE_DEFAULT_PROFILE } from './browser-use-wrapper.js';
@@ -20,6 +21,8 @@ const DEFAULT_APP = 'pibo-chat';
 const DEFAULT_TTL_MINUTES = 8 * 60;
 const DEFAULT_TEMPLATE_PROFILE = 'pibo-auth-template';
 const AUTH_POOL_DIR = 'auth-pool';
+const REGISTRY_LOCK_OWNER_FILE = 'owner.json';
+const LEGACY_REGISTRY_LOCK_STALE_MS = 10 * 60_000;
 
 type LeaseStatus = 'active' | 'released';
 
@@ -44,6 +47,15 @@ type LeaseRegistry = {
   version: number;
   leases: BrowserUseLease[];
 };
+
+type RegistryLockOwner = {
+  pid: number;
+  token: string;
+  acquiredAt: number;
+  processStartId?: string;
+};
+
+type ProcessLiveness = 'active' | 'dead' | 'ambiguous';
 
 export type BrowserUseLeaseAcquireOptions = {
   app?: string;
@@ -90,6 +102,10 @@ function registryPath(status: CliToolStatus): string {
 
 function lockDir(status: CliToolStatus): string {
   return join(status.homeDir, AUTH_POOL_DIR, '.leases.lock');
+}
+
+function lockOwnerPath(lock: string): string {
+  return join(lock, REGISTRY_LOCK_OWNER_FILE);
 }
 
 function appPoolDir(status: CliToolStatus, app: string): string {
@@ -189,26 +205,127 @@ async function writeRegistry(status: CliToolStatus, registry: LeaseRegistry): Pr
 async function withRegistryLock<T>(status: CliToolStatus, action: () => Promise<T>): Promise<T> {
   const lock = lockDir(status);
   await mkdir(join(status.homeDir, AUTH_POOL_DIR), { recursive: true });
-  let acquired = false;
+  const token = randomUUID();
   for (let attempt = 0; attempt < 50; attempt += 1) {
     try {
       await mkdir(lock);
-      acquired = true;
+      const processStartId = currentProcessStartId();
+      try {
+        await writeFile(lockOwnerPath(lock), `${JSON.stringify({
+          pid: process.pid,
+          token,
+          acquiredAt: Date.now(),
+          ...(processStartId ? { processStartId } : {}),
+        })}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      } catch (error) {
+        await rm(lock, { recursive: true, force: true });
+        throw error;
+      }
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      await recoverStaleRegistryLock(lock);
+      if (!existsSync(lock)) continue;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
 
-  if (!acquired) {
+  if (!await registryLockOwnedBy(lock, token)) {
     throw new Error('Timed out waiting for browser-use lease registry lock');
   }
 
   try {
     return await action();
   } finally {
+    await releaseRegistryLock(lock, token);
+  }
+}
+
+function currentProcessStartId(): string | undefined {
+  if (process.platform !== 'linux') return undefined;
+  const identity = linuxProcessIdentity(process.pid);
+  return identity.liveness === 'active' ? identity.startId : undefined;
+}
+
+function linuxProcessIdentity(pid: number): { liveness: ProcessLiveness; startId?: string } {
+  let raw: string;
+  try {
+    raw = readFileSync(`/proc/${pid}/stat`, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'ENOENT' || code === 'ESRCH' ? { liveness: 'dead' } : { liveness: 'ambiguous' };
+  }
+  const commandEnd = raw.lastIndexOf(')');
+  if (commandEnd < 2 || commandEnd + 2 >= raw.length) return { liveness: 'ambiguous' };
+  const fields = raw.slice(commandEnd + 2).trim().split(/\s+/);
+  if (fields[0] === 'Z') return { liveness: 'dead' };
+  const startTicks = fields[19];
+  if (!startTicks || !/^[1-9][0-9]*$/.test(startTicks)) return { liveness: 'ambiguous' };
+  return { liveness: 'active', startId: `${pid}:${startTicks}` };
+}
+
+function validRegistryLockOwner(value: unknown): RegistryLockOwner | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const owner = value as Partial<RegistryLockOwner>;
+  if (
+    !Number.isSafeInteger(owner.pid)
+    || (owner.pid ?? 0) <= 0
+    || typeof owner.token !== 'string'
+    || owner.token.length === 0
+    || !Number.isFinite(owner.acquiredAt)
+    || (owner.processStartId !== undefined && typeof owner.processStartId !== 'string')
+  ) return undefined;
+  return owner as RegistryLockOwner;
+}
+
+function readRegistryLockOwner(lock: string): RegistryLockOwner | undefined {
+  try {
+    return validRegistryLockOwner(JSON.parse(readFileSync(lockOwnerPath(lock), 'utf8')));
+  } catch {
+    return undefined;
+  }
+}
+
+function registryLockOwnerLiveness(owner: RegistryLockOwner): ProcessLiveness {
+  if (process.platform === 'linux') {
+    const identity = linuxProcessIdentity(owner.pid);
+    if (identity.liveness !== 'active') return identity.liveness;
+    if (!owner.processStartId || !identity.startId) return 'ambiguous';
+    return owner.processStartId === identity.startId ? 'active' : 'dead';
+  }
+  try {
+    process.kill(owner.pid, 0);
+    return 'active';
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH' ? 'dead' : 'ambiguous';
+  }
+}
+
+async function registryLockOwnedBy(lock: string, token: string): Promise<boolean> {
+  return readRegistryLockOwner(lock)?.token === token;
+}
+
+async function releaseRegistryLock(lock: string, token: string): Promise<void> {
+  if (await registryLockOwnedBy(lock, token)) {
     await rm(lock, { recursive: true, force: true });
+  }
+}
+
+async function recoverStaleRegistryLock(lock: string): Promise<void> {
+  const owner = readRegistryLockOwner(lock);
+  if (owner) {
+    if (registryLockOwnerLiveness(owner) === 'dead' && readRegistryLockOwner(lock)?.token === owner.token) {
+      await rm(lock, { recursive: true, force: true });
+    }
+    return;
+  }
+  try {
+    const lockStat = await stat(lock);
+    if (Date.now() - lockStat.mtimeMs > LEGACY_REGISTRY_LOCK_STALE_MS) {
+      await rm(lock, { recursive: true, force: true });
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
 }
 
@@ -452,7 +569,7 @@ export async function acquireBrowserUseLease(
   const profileName = options.profileName?.trim() || BROWSER_USE_DEFAULT_PROFILE;
   const templateDir = options.templateDir?.trim() || defaultTemplateDir(context.status);
 
-  await withRegistryLock(context.status, async () => {
+  const { lease, reapedCount } = await withRegistryLock(context.status, async () => {
     const registry = readRegistry(context.status);
     const reapedCount = await reapStaleLeasesInRegistry(context.status, registry);
     let lease = selectReusableLease(context.status, registry.leases, app);
@@ -489,17 +606,18 @@ export async function acquireBrowserUseLease(
       registry.leases.push(lease);
     }
     await writeRegistry(context.status, registry);
-    if (reapedCount > 0 && !options.json) {
-      console.error(`Reaped ${reapedCount} stale lease${reapedCount === 1 ? '' : 's'}`);
-    }
-    if (options.json) printLeaseJson(context.status, lease);
-    else printLeaseEnv(context.status, lease);
-
-    const warmup = await warmupBrowserUseLease(context, lease, 15000, options.headed);
-    if (!warmup.success && !options.json) {
-      console.error(`Warning: Browser warm-up failed: ${warmup.error?.trim() || 'unknown error'}`);
-    }
+    return { lease, reapedCount };
   });
+  if (reapedCount > 0 && !options.json) {
+    console.error(`Reaped ${reapedCount} stale lease${reapedCount === 1 ? '' : 's'}`);
+  }
+  if (options.json) printLeaseJson(context.status, lease);
+  else printLeaseEnv(context.status, lease);
+
+  const warmup = await warmupBrowserUseLease(context, lease, 15000, options.headed);
+  if (!warmup.success && !options.json) {
+    console.error(`Warning: Browser warm-up failed: ${warmup.error?.trim() || 'unknown error'}`);
+  }
 }
 
 async function warmupBrowserUseLease(

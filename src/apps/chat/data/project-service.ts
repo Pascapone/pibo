@@ -305,7 +305,7 @@ export class ChatProjectService {
 		const projectFolder = resolve(normalizeProjectFolder(input.projectFolder));
 		this.assertNameAvailable(name);
 		this.assertFolderAvailable(projectFolder);
-		this.ensureProjectFolderUsable(projectFolder);
+		this.ensureProjectFolderUsable(projectFolder, input.createFolder === true);
 		const now = new Date().toISOString();
 		const id = `prj_${randomUUID()}`;
 		this.db.prepare(`INSERT INTO projects (id, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
@@ -930,9 +930,9 @@ export class ChatProjectService {
 		if (existing) throw new Error("Project folder already exists");
 	}
 
-	private ensureProjectFolderUsable(folder: string): void {
+	private ensureProjectFolderUsable(folder: string, createFolder: boolean): void {
 		try {
-			mkdirSync(folder, { recursive: true });
+			if (createFolder) mkdirSync(folder, { recursive: true });
 			if (!statSync(folder).isDirectory()) throw new Error("Project folder is not a directory");
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

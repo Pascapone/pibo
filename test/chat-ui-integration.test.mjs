@@ -4,6 +4,7 @@ import { traceProjectionStatus, withLiveSnapshots } from "../dist/apps/chat/chat
 import { normalizePiEvent } from "../dist/core/routed-session.js";
 import { messageTurnTimingsFromEvents } from "../dist/shared/trace-event-projection.js";
 import { patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
+import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 import { buildTraceViewFromEvents } from "./helpers/pi-history.mjs";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
 
@@ -299,7 +300,7 @@ test("event-log projection preserves repeated reasoning and tool phases chronolo
 	assert.ok(turn, "expected active turn");
 	assert.deepEqual(turn.children.map((node) => node.id), [
 		"event:thinking:turn-cycles:thinking:0",
-		"tool:tool-cycle",
+		qualifiedToolNodeId("tool-cycle", "turn-cycles", 0),
 		"event:thinking:turn-cycles:thinking:1",
 		"event:assistant:turn-cycles:assistant:0",
 	]);

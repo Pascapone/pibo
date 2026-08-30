@@ -71,6 +71,7 @@ export type InkSessionAppState = {
 	session?: CliSessionSummary;
 	rows: readonly CompactTerminalRow[];
 	input: string;
+	inputCursor?: number;
 	selectedRowId?: string;
 	expandedRowIds?: readonly string[];
 	mode: "transcript" | "session-picker" | "agent-picker" | "detail" | "picker";
@@ -94,6 +95,7 @@ const INITIAL_STATE: InkSessionAppState = {
 	loading: true,
 	rows: [],
 	input: "",
+	inputCursor: 0,
 	mode: "transcript",
 };
 
@@ -231,8 +233,11 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 					return;
 				}
 				if (picker.action === "select-room") {
-					const status = await source.getStatus({ sessionId: stateRef.current.session?.id });
-					setState((current) => ({ ...current, status, activeRoom: room, mode: "transcript", picker: undefined, overlayStack: undefined, message: `Selected room ${room.title}.`, error: undefined }));
+					const currentSession = stateRef.current.session;
+					const preserveSession = currentSession?.roomId === room.id;
+					const status = await source.getStatus({ sessionId: preserveSession ? currentSession.id : undefined });
+					if (!preserveSession) closeOpenSession();
+					setState((current) => selectInkSessionRoom(current, room, status));
 					return;
 				}
 				await openSessionPickerForRoom(room, picker);
@@ -267,7 +272,7 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 		} catch (error) {
 			setState((current) => ({ ...current, mode: "transcript", picker: undefined, error: formatCliSessionError(error), message: undefined }));
 		}
-	}, [openSession, openSessionPickerForRoom, source]);
+	}, [closeOpenSession, openSession, openSessionPickerForRoom, source]);
 
 	useEffect(() => {
 		closedRef.current = false;
@@ -309,6 +314,22 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 			setState((current) => reduceInkSessionInputState(current, { type: "down" }));
 			return;
 		}
+		if (key.leftArrow) {
+			setState((current) => reduceInkSessionInputState(current, { type: "left" }));
+			return;
+		}
+		if (key.rightArrow) {
+			setState((current) => reduceInkSessionInputState(current, { type: "right" }));
+			return;
+		}
+		if (key.home) {
+			setState((current) => reduceInkSessionInputState(current, { type: "home" }));
+			return;
+		}
+		if (key.end) {
+			setState((current) => reduceInkSessionInputState(current, { type: "end" }));
+			return;
+		}
 		if (key.return) {
 			const submitted = stateRef.current.input;
 			if (submitted.length === 0 && !stateRef.current.picker && !stateRef.current.slashSuggestions && canToggleSelectedRowDetails(stateRef.current)) {
@@ -318,10 +339,10 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 			if (stateRef.current.slashSuggestions && !stateRef.current.picker) {
 				const accepted = acceptSlashSuggestion(stateRef.current);
 				if (accepted.runInput) {
-					setState((current) => ({ ...current, input: "", slashSuggestions: undefined, message: undefined, error: undefined }));
+					setState((current) => ({ ...current, input: "", inputCursor: 0, slashSuggestions: undefined, message: undefined, error: undefined }));
 					void submitCommandOrMessage(accepted.runInput);
 				} else {
-					setState((current) => ({ ...current, input: accepted.input, slashSuggestions: undefined, message: `Accepted ${accepted.input.trim()}. Press Enter to run or add arguments.`, error: undefined }));
+					setState((current) => ({ ...current, input: accepted.input, inputCursor: accepted.input.length, slashSuggestions: undefined, message: `Accepted ${accepted.input.trim()}. Press Enter to run or add arguments.`, error: undefined }));
 				}
 				return;
 			}
@@ -331,6 +352,7 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 				return;
 			}
 			if (stateRef.current.picker) {
+				setState((current) => reduceInkSessionInputState(current, { type: "enter" }));
 				void selectPickerItem();
 				return;
 			}
@@ -426,6 +448,10 @@ export function InkSessionPickerView({ picker, maxLineChars }: { picker: InkSess
 export type InkSessionInputAction =
 	| { type: "text"; value: string }
 	| { type: "backspace" }
+	| { type: "left" }
+	| { type: "right" }
+	| { type: "home" }
+	| { type: "end" }
 	| { type: "enter" }
 	| { type: "escape" }
 	| { type: "up" }
@@ -433,15 +459,39 @@ export type InkSessionInputAction =
 	| { type: "toggle-details" };
 
 export function reduceInkSessionInputState(state: InkSessionAppState, action: InkSessionInputAction): InkSessionAppState {
-	if (action.type === "text") return withSlashSuggestions({ ...state, input: state.input + action.value, message: undefined, error: undefined });
-	if (action.type === "backspace") return withSlashSuggestions({ ...state, input: state.input.slice(0, -1) });
+	if (action.type === "text") {
+		const inputCursor = normalizeInputCursor(state.input, state.inputCursor);
+		return withSlashSuggestions({
+			...state,
+			input: state.input.slice(0, inputCursor) + action.value + state.input.slice(inputCursor),
+			inputCursor: inputCursor + action.value.length,
+			message: undefined,
+			error: undefined,
+		});
+	}
+	if (action.type === "backspace") {
+		const inputCursor = normalizeInputCursor(state.input, state.inputCursor);
+		const previousCursor = adjacentInputCursor(state.input, inputCursor, -1);
+		if (previousCursor === inputCursor) return state;
+		return withSlashSuggestions({
+			...state,
+			input: state.input.slice(0, previousCursor) + state.input.slice(inputCursor),
+			inputCursor: previousCursor,
+		});
+	}
+	if (action.type === "left" || action.type === "right") {
+		const inputCursor = normalizeInputCursor(state.input, state.inputCursor);
+		return { ...state, inputCursor: adjacentInputCursor(state.input, inputCursor, action.type === "left" ? -1 : 1) };
+	}
+	if (action.type === "home") return { ...state, inputCursor: 0 };
+	if (action.type === "end") return { ...state, inputCursor: state.input.length };
 	if (action.type === "toggle-details") return toggleSelectedRowDetails(state);
 	if (action.type === "escape") {
 		if (state.slashSuggestions) return { ...state, slashSuggestions: undefined, overlayStack: popInkSessionOverlay(state.overlayStack), message: "Closed slash suggestions." };
 		if (state.picker?.parent) {
-			return withPickerOverlay({ ...state, picker: state.picker.parent, mode: pickerMode(state.picker.parent), message: "Back." }, state.picker.parent);
+			return withPickerOverlay({ ...state, input: "", picker: state.picker.parent, mode: pickerMode(state.picker.parent), message: "Back." }, state.picker.parent);
 		}
-		return { ...state, input: "", mode: "transcript", picker: undefined, overlayStack: popInkSessionOverlay(state.overlayStack), message: "Canceled." };
+		return { ...state, input: "", inputCursor: 0, mode: "transcript", picker: undefined, overlayStack: popInkSessionOverlay(state.overlayStack), message: "Canceled." };
 	}
 	if (action.type === "up" || action.type === "down") {
 		if (state.slashSuggestions && !state.picker && state.slashSuggestions.items.length > 0) {
@@ -458,10 +508,31 @@ export function reduceInkSessionInputState(state: InkSessionAppState, action: In
 	return {
 		...state,
 		input: "",
+		inputCursor: 0,
 		slashSuggestions: undefined,
 		message: undefined,
 		error: undefined,
 	};
+}
+
+const INPUT_GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+function normalizeInputCursor(input: string, inputCursor: number | undefined): number {
+	if (inputCursor === undefined) return input.length;
+	const clamped = Math.max(0, Math.min(input.length, inputCursor));
+	return inputGraphemeBoundaries(input).findLast((boundary) => boundary <= clamped) ?? 0;
+}
+
+function adjacentInputCursor(input: string, inputCursor: number, direction: -1 | 1): number {
+	const boundaries = inputGraphemeBoundaries(input);
+	const index = boundaries.indexOf(inputCursor);
+	return boundaries[Math.max(0, Math.min(boundaries.length - 1, index + direction))] ?? inputCursor;
+}
+
+function inputGraphemeBoundaries(input: string): number[] {
+	const boundaries = [0];
+	for (const segment of INPUT_GRAPHEME_SEGMENTER.segment(input)) boundaries.push(segment.index + segment.segment.length);
+	return boundaries;
 }
 
 export function normalizeInkRowSelection(state: InkSessionAppState): InkSessionAppState {
@@ -472,6 +543,21 @@ export function normalizeInkRowSelection(state: InkSessionAppState): InkSessionA
 		? state.selectedRowId
 		: expandableIds[expandableIds.length - 1];
 	return { ...state, selectedRowId, expandedRowIds };
+}
+
+export function selectInkSessionRoom(state: InkSessionAppState, room: CliRoomSummary, status: CliRuntimeStatus): InkSessionAppState {
+	const preserveSession = state.session?.roomId === room.id;
+	return {
+		...state,
+		status,
+		activeRoom: room,
+		...(preserveSession ? {} : { session: undefined, rows: [], selectedRowId: undefined, expandedRowIds: [] }),
+		mode: "transcript",
+		picker: undefined,
+		overlayStack: undefined,
+		message: `Selected room ${room.title}.`,
+		error: undefined,
+	};
 }
 
 function selectExpandableRow(state: InkSessionAppState, direction: -1 | 1): InkSessionAppState {

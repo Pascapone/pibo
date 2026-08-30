@@ -277,6 +277,191 @@ test("portable history is bounded, checkpointed, role-aware, and secret-redacted
 	assert.equal(orphan?.toolCallId, undefined);
 });
 
+test("portable history scopes provider-local tool ids by turn across SQLite restart", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-portable-history-reused-tool-id-"));
+	const databasePath = join(root, "pibo.sqlite");
+	const payloadRootDir = join(root, "payloads");
+	let store = new PiboDataStore(databasePath, { payloadRootDir });
+	t.after(async () => {
+		store.close();
+		await rm(root, { recursive: true, force: true });
+	});
+
+	const repeatedSession = sessionRecord("ps_portable_repeated_tool_id");
+	const uniqueSession = sessionRecord("ps_portable_unique_tool_id");
+	uniqueSession.runtimeBinding.nativeSessionId = "source-native-unique-tool-id";
+	const ingestTurns = (session, toolCallIds) => {
+		const ingest = new ChatDataIngestService(store);
+		for (const [index, value] of ["alpha", "beta"].entries()) {
+			const turnId = `portable-turn-${index + 1}`;
+			const toolCallId = toolCallIds[index];
+			ingest.ingestOutputEvent({
+				session,
+				roomId: session.metadata.chatRoomId,
+				actorId: "agent:test",
+				createdAt: `2026-08-20T00:00:0${index * 2 + 1}.000Z`,
+				event: {
+					type: "tool_call",
+					piboSessionId: session.id,
+					eventId: turnId,
+					toolCallId,
+					toolName: "lookup",
+					args: { value },
+					argsComplete: true,
+				},
+			});
+			ingest.ingestOutputEvent({
+				session,
+				roomId: session.metadata.chatRoomId,
+				actorId: "agent:test",
+				createdAt: `2026-08-20T00:00:0${index * 2 + 2}.000Z`,
+				event: {
+					type: "tool_execution_finished",
+					piboSessionId: session.id,
+					eventId: turnId,
+					toolCallId,
+					toolName: "lookup",
+					result: { value: `${value}-result` },
+					isError: false,
+				},
+			});
+		}
+	};
+	const capture = (session) => {
+		const sourceRows = store.db.prepare(`
+			SELECT session_sequence, type, turn_id, tool_call_id
+			FROM event_log
+			WHERE session_id = ? AND type IN ('tool_call', 'tool_execution_finished')
+			ORDER BY session_sequence ASC
+		`).all(session.id).map((row) => ({ ...row }));
+		const provider = new PiboDataPortableHistoryProvider(store);
+		const checkpoint = provider.createCheckpoint(session.id);
+		const history = provider.read({ piboSession: session, sourceBinding: session.runtimeBinding, checkpoint });
+		const portableEntries = history.entries.flatMap((entry) => {
+			if (entry.type !== "message") return [];
+			if (entry.role === "assistant" && Array.isArray(entry.content)) {
+				const call = entry.content.find((part) => part.type === "tool_call");
+				return call ? [{ sequence: entry.sequence, kind: "call", turnId: entry.turnId, toolCallId: call.toolCallId, value: call.input?.value }] : [];
+			}
+			return entry.role === "tool"
+				? [{ sequence: entry.sequence, kind: "result", turnId: entry.turnId, toolCallId: entry.toolCallId, value: entry.result?.value }]
+				: [];
+		});
+		return { sourceRows, truncated: history.truncated, omittedEntries: history.omittedEntries, portableEntries };
+	};
+
+	ingestTurns(repeatedSession, ["provider-call-0", "provider-call-0"]);
+	ingestTurns(uniqueSession, ["provider-call-1", "provider-call-2"]);
+	const beforeRestart = { repeated: capture(repeatedSession), unique: capture(uniqueSession) };
+	store.close();
+	store = new PiboDataStore(databasePath, { payloadRootDir });
+	const afterRestart = { repeated: capture(repeatedSession), unique: capture(uniqueSession) };
+
+	const expectedEntries = (toolCallIds) => [
+		{ sequence: 1, kind: "call", turnId: "portable-turn-1", toolCallId: toolCallIds[0], value: "alpha" },
+		{ sequence: 2, kind: "result", turnId: "portable-turn-1", toolCallId: toolCallIds[0], value: "alpha-result" },
+		{ sequence: 3, kind: "call", turnId: "portable-turn-2", toolCallId: toolCallIds[1], value: "beta" },
+		{ sequence: 4, kind: "result", turnId: "portable-turn-2", toolCallId: toolCallIds[1], value: "beta-result" },
+	];
+	const expected = {
+		repeated: {
+			sourceRows: expectedEntries(["provider-call-0", "provider-call-0"]).map((entry) => ({
+				session_sequence: entry.sequence,
+				type: entry.kind === "call" ? "tool_call" : "tool_execution_finished",
+				turn_id: entry.turnId,
+				tool_call_id: entry.toolCallId,
+			})),
+			truncated: false,
+			omittedEntries: 0,
+			portableEntries: expectedEntries(["provider-call-0", "provider-call-0"]),
+		},
+		unique: {
+			sourceRows: expectedEntries(["provider-call-1", "provider-call-2"]).map((entry) => ({
+				session_sequence: entry.sequence,
+				type: entry.kind === "call" ? "tool_call" : "tool_execution_finished",
+				turn_id: entry.turnId,
+				tool_call_id: entry.toolCallId,
+			})),
+			truncated: false,
+			omittedEntries: 0,
+			portableEntries: expectedEntries(["provider-call-1", "provider-call-2"]),
+		},
+	};
+	assert.deepEqual(beforeRestart, expected);
+	assert.deepEqual(afterRestart, expected);
+});
+
+test("portable history truncation pairs reused tool ids within their turns", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-portable-history-reused-tool-bound-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const store = new PiboDataStore(":memory:", { payloadRootDir: join(root, "payloads") });
+	t.after(() => store.close());
+	const session = sessionRecord("ps_portable_reused_tool_bound");
+	const ingest = new ChatDataIngestService(store);
+	for (let index = 0; index < 499; index += 1) {
+		const turnId = `portable-reused-bound-${index + 1}`;
+		ingest.ingestOutputEvent({
+			session,
+			roomId: session.metadata.chatRoomId,
+			actorId: "agent:test",
+			createdAt: "2026-08-20T00:00:01.000Z",
+			event: {
+				type: "tool_call",
+				piboSessionId: session.id,
+				eventId: turnId,
+				toolCallId: "provider-call-0",
+				toolName: "lookup",
+				args: { index },
+				argsComplete: true,
+			},
+		});
+		ingest.ingestOutputEvent({
+			session,
+			roomId: session.metadata.chatRoomId,
+			actorId: "agent:test",
+			createdAt: "2026-08-20T00:00:01.500Z",
+			event: {
+				type: "tool_execution_finished",
+				piboSessionId: session.id,
+				eventId: turnId,
+				toolCallId: "provider-call-0",
+				toolName: "lookup",
+				result: { index },
+				isError: false,
+			},
+		});
+	}
+	ingest.ingestOutputEvent({
+		session,
+		roomId: session.metadata.chatRoomId,
+		actorId: "agent:test",
+		createdAt: "2026-08-20T00:00:02.000Z",
+		event: {
+			type: "assistant_message",
+			piboSessionId: session.id,
+			eventId: "portable-reused-bound-final",
+			assistantIndex: 0,
+			text: "Bounded history complete.",
+		},
+	});
+
+	const provider = new PiboDataPortableHistoryProvider(store);
+	const checkpoint = provider.createCheckpoint(session.id);
+	const history = provider.read({ piboSession: session, sourceBinding: session.runtimeBinding, checkpoint });
+	const orphanResult = history.entries.find((entry) => entry.id === "portable:tool-result:2");
+	assert.equal(history.truncated, true);
+	assert.equal(history.omittedEntries, 1);
+	assert.equal(orphanResult?.type, "message");
+	assert.equal(orphanResult?.role, "user");
+	assert.equal(orphanResult?.toolCallId, undefined);
+	assert.match(orphanResult?.content ?? "", /had no retained matching call/);
+	const nextPair = history.entries.filter((entry) => entry.turnId === "portable-reused-bound-2");
+	assert.deepEqual(nextPair.map((entry) => [entry.role, entry.toolCallId]), [
+		["assistant", "provider-call-0"],
+		["tool", "provider-call-0"],
+	]);
+});
+
 test("portable history enforces its aggregate serialized handoff bound", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-portable-history-bound-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
@@ -491,6 +676,82 @@ test("runtime rebind persists a retry-safe handoff and imports it before opening
 	assert.equal(freshCompleted.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].status, "completed");
 	assert.equal(freshCompleted.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].mode, "fresh");
 	await router.disposeAll();
+});
+
+test("cross-runtime rebind clears source model selection across restart while same-runtime rebind preserves it", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-rebind-model-selection-"));
+	const databasePath = join(root, "pibo.sqlite");
+	let dataStore = new PiboDataStore(databasePath, { payloadRootDir: join(root, "payloads") });
+	let sessionStore = new PiboDataSessionStore(dataStore);
+	let router;
+	t.after(async () => {
+		await router?.disposeAll();
+		sessionStore.close();
+		dataStore.close();
+		await rm(root, { recursive: true, force: true });
+	});
+	const sourceModel = { provider: "source-provider", id: "source-primary" };
+	const sourceFallback = { provider: "source-provider", id: "source-fallback" };
+	const crossRuntime = sessionStore.create({
+		...sessionRecord("ps_cross_runtime_model_selection"),
+		id: "ps_cross_runtime_model_selection",
+		activeModel: sourceModel,
+		metadata: {
+			...sessionRecord().metadata,
+			initialModelFallbacks: [sourceFallback],
+		},
+	});
+	const sameRuntime = sessionStore.create({
+		...sessionRecord("ps_same_runtime_model_selection_control"),
+		id: "ps_same_runtime_model_selection_control",
+		activeModel: sourceModel,
+		runtimeBinding: {
+			...sessionRecord("ps_same_runtime_model_selection_control").runtimeBinding,
+			nativeSessionId: "source-native-control",
+		},
+		metadata: {
+			...sessionRecord().metadata,
+			initialModelFallbacks: [sourceFallback],
+		},
+	});
+	const { registry } = buildRegistry();
+	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+
+	await router.rebindSessionRuntime(crossRuntime.id, {
+		runtimeInstanceId: "target-runtime",
+		startFresh: true,
+		expectedRevision: crossRuntime.runtimeBinding.revision,
+	});
+	await router.rebindSessionRuntime(sameRuntime.id, {
+		runtimeInstanceId: "source-runtime",
+		startFresh: true,
+		expectedRevision: sameRuntime.runtimeBinding.revision,
+	});
+	assert.equal(sessionStore.get(crossRuntime.id).activeModel, undefined, "the source active model must be cleared with the runtime namespace");
+	assert.deepEqual(sessionStore.get(crossRuntime.id).metadata.initialModelFallbacks, [], "source fallbacks must be cleared with the runtime namespace");
+	assert.deepEqual(sessionStore.get(sameRuntime.id).activeModel, sourceModel, "same-runtime startFresh keeps the explicit model");
+	assert.deepEqual(sessionStore.get(sameRuntime.id).metadata.initialModelFallbacks, [sourceFallback], "same-runtime startFresh keeps fallbacks");
+
+	await router.getSessionStatusSnapshot(crossRuntime.id);
+	await router.getSessionStatusSnapshot(sameRuntime.id);
+
+	assert.equal(sessionStore.get(crossRuntime.id).activeModel, undefined, "the source model must not enter the target namespace");
+	assert.deepEqual(sessionStore.get(crossRuntime.id).metadata.initialModelFallbacks, [], "source fallbacks must stay cleared after target startup");
+	assert.deepEqual(sessionStore.get(sameRuntime.id).activeModel, sourceModel, "same-runtime startFresh keeps the explicit model");
+	assert.deepEqual(sessionStore.get(sameRuntime.id).metadata.initialModelFallbacks, [sourceFallback], "same-runtime startFresh keeps fallbacks");
+
+	await router.disposeAll();
+	router = undefined;
+	sessionStore.close();
+	dataStore.close();
+	dataStore = new PiboDataStore(databasePath, { payloadRootDir: join(root, "payloads") });
+	sessionStore = new PiboDataSessionStore(dataStore);
+	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+
+	const reopenedCrossRuntime = await router.getOrCreateSession(crossRuntime.id);
+	const reopenedSameRuntime = await router.getOrCreateSession(sameRuntime.id);
+	assert.deepEqual(reopenedCrossRuntime.modelFallbacks, [], "the target runtime must not recover source fallback identities after restart");
+	assert.deepEqual(reopenedSameRuntime.modelFallbacks, [sourceFallback], "same-runtime restart keeps the frozen fallback order");
 });
 
 test("runtime rebind quiesces the source before taking its portable-history checkpoint", async (t) => {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,7 +9,124 @@ import {
 	ENABLED_MCP_SERVERS_CONTEXT_PATH,
 	getMcpAgentContextFile,
 	listMcpServerInfos,
+	setMcpServerDescription,
 } from "../dist/mcp/agent-context.js";
+
+test("MCP descriptions update the winning config source", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-description-source-"));
+	const project = join(root, "project");
+	const home = join(root, "home");
+	const projectConfigPath = join(project, "mcp_servers.json");
+	const homeConfigPath = join(home, "mcp_servers.json");
+	await mkdir(project, { recursive: true });
+	await mkdir(home, { recursive: true });
+	await writeFile(projectConfigPath, `${JSON.stringify({
+		mcpServers: {
+			local: { command: "node", args: ["local.js"] },
+			shared: { command: "node", args: ["project-shared.js"] },
+		},
+	}, null, 2)}\n`);
+	await writeFile(homeConfigPath, `${JSON.stringify({
+		mcpServers: {
+			inherited: { command: "node", args: ["home.js"], env: { FIXTURE: "preserved" } },
+			shared: { command: "node", args: ["home-shared.js"] },
+			explicit: { command: "node", args: ["explicit.js"] },
+		},
+	}, null, 2)}\n`);
+
+	const previousCwd = process.cwd();
+	const previousHome = process.env.HOME;
+	const previousUserProfile = process.env.USERPROFILE;
+	const previousConfigPath = process.env.MCP_CONFIG_PATH;
+	try {
+		process.chdir(project);
+		process.env.HOME = home;
+		process.env.USERPROFILE = home;
+		delete process.env.MCP_CONFIG_PATH;
+
+		await setMcpServerDescription("inherited", "Home server description.");
+		await setMcpServerDescription("shared", "Winning project description.");
+		await setMcpServerDescription("explicit", "Explicit home description.", homeConfigPath);
+
+		const projectConfig = JSON.parse(await readFile(projectConfigPath, "utf-8"));
+		const homeConfig = JSON.parse(await readFile(homeConfigPath, "utf-8"));
+		assert.deepEqual(projectConfig.mcpServers.local, { command: "node", args: ["local.js"] });
+		assert.equal(projectConfig.mcpServers.shared.pibo.description, "Winning project description.");
+		assert.equal(homeConfig.mcpServers.shared.pibo, undefined);
+		assert.deepEqual(homeConfig.mcpServers.inherited, {
+			command: "node",
+			args: ["home.js"],
+			env: { FIXTURE: "preserved" },
+			pibo: { description: "Home server description.", descriptionSource: "user" },
+		});
+		assert.equal(homeConfig.mcpServers.explicit.pibo.description, "Explicit home description.");
+	} finally {
+		process.chdir(previousCwd);
+		if (previousHome === undefined) delete process.env.HOME;
+		else process.env.HOME = previousHome;
+		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+		else process.env.USERPROFILE = previousUserProfile;
+		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousConfigPath;
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("MCP description updates do not create a config for an unknown server", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-description-missing-"));
+	const previousCwd = process.cwd();
+	const previousHome = process.env.HOME;
+	const previousUserProfile = process.env.USERPROFILE;
+	const previousConfigPath = process.env.MCP_CONFIG_PATH;
+	try {
+		process.chdir(root);
+		process.env.HOME = root;
+		process.env.USERPROFILE = root;
+		delete process.env.MCP_CONFIG_PATH;
+
+		await assert.rejects(setMcpServerDescription("missing", "Must not create config."), /CONFIG_NOT_FOUND/);
+		await assert.rejects(readFile(join(root, "mcp_servers.json"), "utf-8"), { code: "ENOENT" });
+		const explicitPath = join(root, "missing", "mcp_servers.json");
+		await assert.rejects(
+			setMcpServerDescription("missing", "Must not create explicit config.", explicitPath),
+			/CONFIG_NOT_FOUND/,
+		);
+		await assert.rejects(readFile(explicitPath, "utf-8"), { code: "ENOENT" });
+	} finally {
+		process.chdir(previousCwd);
+		if (previousHome === undefined) delete process.env.HOME;
+		else process.env.HOME = previousHome;
+		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+		else process.env.USERPROFILE = previousUserProfile;
+		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousConfigPath;
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("MCP description updates preserve registry-owned read-only metadata", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-description-readonly-"));
+	const configPath = join(root, "mcp_servers.json");
+	const config = {
+		mcpServers: {
+			registry: {
+				command: "node",
+				args: ["registry.js"],
+				pibo: { description: "Registry description.", descriptionSource: "registry" },
+			},
+		},
+	};
+	await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+	try {
+		await assert.rejects(
+			setMcpServerDescription("registry", "User replacement.", configPath),
+			/MCP_DESCRIPTION_READ_ONLY/,
+		);
+		assert.deepEqual(JSON.parse(await readFile(configPath, "utf-8")), config);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
 
 test("MCP server catalog reads local config metadata without connecting to servers", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-mcp-context-"));
