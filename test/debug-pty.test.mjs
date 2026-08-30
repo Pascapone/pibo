@@ -76,6 +76,91 @@ test("pibo debug pty run captures host PTY output and artifacts", { skip: !(awai
 		assert.equal(metadata.backend, "host");
 		assert.equal(metadata.ok, true);
 		assert.equal(metadata.exitCode, 0);
+		assert.equal(metadata.signal, null);
+		assert.equal(metadata.stopReason, "completed");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug pty failed run preserves the nonzero child exit code in artifacts", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const artifactDir = join(dir, "artifacts");
+		await assert.rejects(
+			execFileAsync("node", [
+				cliPath,
+				"debug",
+				"pty",
+				"run",
+				"--artifact",
+				"--artifact-dir",
+				artifactDir,
+				"--expect",
+				"exit-seven-marker",
+				"--",
+				"node",
+				"-e",
+				"console.log('exit-seven-marker'); process.exit(7)",
+			]),
+			(error) => {
+				assert.match(error.stderr, /PTY command exited with status 7/);
+				assert.match(error.stderr, /PTY artifacts:/);
+				return true;
+			},
+		);
+		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+		assert.match(clean, /exit-seven-marker/);
+		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+		assert.equal(metadata.backend, "host");
+		assert.equal(metadata.ok, false);
+		assert.equal(metadata.exitCode, 7);
+		assert.equal(metadata.signal, null);
+		assert.equal(metadata.stopReason, "exit_code:7");
+		assert.equal(metadata.error, "PTY command exited with status 7");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug pty reports invalid preview base URL config without replacing the prior value", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const home = join(dir, "home");
+		const artifactDir = join(dir, "artifacts");
+		const validBaseURL = "https://preview.example.test:8443";
+		await execFileAsync("node", [cliPath, "config", "set", "preview.baseURL", validBaseURL], {
+			env: { PIBO_HOME: home },
+		});
+
+		await assert.rejects(
+			execFileAsync("node", [
+				cliPath,
+				"debug",
+				"pty",
+				"run",
+				"--artifact",
+				"--artifact-dir",
+				artifactDir,
+				"--expect",
+				"must contain only scheme",
+				"--",
+				"env",
+				`PIBO_HOME=${home}`,
+				"node",
+				cliPath,
+				"config",
+				"set",
+				"preview.baseURL",
+				"https://preview.example.test/path",
+			]),
+			/PTY command exited with status 1/,
+		);
+
+		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+		assert.equal(metadata.stopReason, "exit_code:1");
+		assert.match(await readFile(join(artifactDir, "clean.txt"), "utf8"), /preview\.baseURL must contain only scheme/);
+		assert.equal(JSON.parse(await readFile(join(home, "config.json"), "utf8")).preview.baseURL, validBaseURL);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
@@ -164,7 +249,7 @@ test("pibo debug pty enforces one wall-clock deadline across wait, text, and del
 				const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
 				const pid = Number(/READY PID=(\d+)/.exec(clean)?.[1]);
 				assert.ok(Number.isInteger(pid), `expected fixture PID in PTY output, got ${JSON.stringify(clean)}`);
-				assert.equal(processExists(pid), false, `PTY fixture process ${pid} leaked after timeout`);
+				assert.equal(isProcessRunning(pid), false, `PTY fixture process ${pid} leaked after timeout`);
 				const events = (await readFile(join(artifactDir, "events.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
 				assert.ok(events.some((event) => event.kind === "terminate" && event.detail === "wall_clock_timeout"));
 			} finally {
@@ -210,6 +295,50 @@ test("pibo debug pty preserves zero-timeout validation and the default timeout",
 	}
 });
 
+test("pibo debug pty stop patterns terminate a running process group", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	const pidPath = join(dir, "pids.json");
+	let pids = [];
+	try {
+		const scenarioPath = join(dir, "scenario.json");
+		const artifactDir = join(dir, "artifacts");
+		const fixture = [
+			"const { spawn } = require('node:child_process');",
+			"const { writeFileSync } = require('node:fs');",
+			"const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+			"writeFileSync(process.argv[1], JSON.stringify([process.pid, descendant.pid]));",
+			"console.log('STOP_REACHED_PROCESS_GROUP');",
+			"setInterval(() => {}, 1000);",
+		].join(" ");
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "stop-pattern-process-group",
+			command: ["node", "-e", fixture, pidPath],
+			timeoutMs: 5000,
+			idleTimeoutMs: 700,
+			steps: [{ waitFor: "STOP_REACHED_PROCESS_GROUP", timeoutMs: 1000 }],
+			stopPatterns: ["STOP_REACHED_PROCESS_GROUP"],
+			expect: ["STOP_REACHED_PROCESS_GROUP"],
+		}, null, 2));
+
+		const started = Date.now();
+		const result = await execFileAsync("node", [cliPath, "debug", "pty", "scenario", "--artifact", "--artifact-dir", artifactDir, scenarioPath]);
+		const durationMs = Date.now() - started;
+		pids = JSON.parse(await readFile(pidPath, "utf8"));
+
+		assert.match(result.stdout, /PTY passed: stop-pattern-process-group/);
+		assert.match(result.stdout, /stopReason\tstop_pattern:STOP_REACHED_PROCESS_GROUP/);
+		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+		assert.ok(durationMs < 1000, `stop-pattern termination took ${durationMs}ms (scenario ${metadata.durationMs}ms)`);
+		assert.equal(metadata.ok, true);
+		assert.equal(metadata.stopReason, "stop_pattern:STOP_REACHED_PROCESS_GROUP");
+		await waitForProcessesToExit(pids, 1000);
+		assert.deepEqual(pids.filter(isProcessRunning), []);
+	} finally {
+		for (const pid of pids.filter(isProcessRunning)) process.kill(pid, "SIGKILL");
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("built-in mocked CLI session scenario follows the room and session picker flow", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {
@@ -239,6 +368,49 @@ test("built-in mocked CLI session scenario follows the room and session picker f
 		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
 		assert.equal(metadata.ok, true);
 		assert.equal(metadata.exitCode, 0);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("picker text is cleared before room and session navigation reaches the transcript", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const binDir = join(dir, "bin");
+		const artifactDir = join(dir, "artifacts");
+		const scenarioPath = join(dir, "scenario.json");
+		await mkdir(binDir, { recursive: true });
+		const piboWrapper = join(binDir, "pibo");
+		await writeFile(piboWrapper, `#!/bin/sh\nexec "${process.execPath}" "${cliPath}" "$@"\n`);
+		await chmod(piboWrapper, 0o755);
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "picker-input-navigation-safety",
+			command: ["pibo", "tui:sessions", "--demo"],
+			timeoutMs: 20_000,
+			idleTimeoutMs: 5_000,
+			steps: [
+				{ waitFor: "select room" },
+				{ typeText: "PICKER_DRAFT_SHOULD_CLEAR" },
+				{ press: "Enter" },
+				{ waitFor: "select session" },
+				{ press: "Enter" },
+				{ waitFor: "Opened session" },
+				{ press: "Enter" },
+				{ sleepMs: 500 },
+				{ press: "CtrlC" },
+			],
+			expect: ["select room", "select session", "Opened session"],
+			reject: ["Message sent"],
+		}, null, 2));
+		const result = await execFileAsync("node", [cliPath, "debug", "pty", "scenario", "--artifact", "--artifact-dir", artifactDir, scenarioPath], {
+			env: { PATH: `${binDir}:${process.env.PATH ?? ""}` },
+		});
+		assert.match(result.stdout, /PTY passed: picker-input-navigation-safety/);
+		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+		const transcript = clean.slice(clean.indexOf("Opened session"));
+		assert.doesNotMatch(transcript, /PICKER_DRAFT_SHOULD_CLEAR/);
+		assert.doesNotMatch(transcript, /Message sent/);
+		assert.match(transcript, /Details/);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
@@ -279,12 +451,19 @@ async function makeTempDir() {
 	return dir;
 }
 
-function processExists(pid) {
+function isProcessRunning(pid) {
 	try {
 		process.kill(pid, 0);
 		return true;
 	} catch (error) {
 		if (error?.code === "ESRCH") return false;
 		throw error;
+	}
+}
+
+async function waitForProcessesToExit(pids, timeoutMs) {
+	const deadline = Date.now() + timeoutMs;
+	while (pids.some(isProcessRunning) && Date.now() < deadline) {
+		await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
 	}
 }

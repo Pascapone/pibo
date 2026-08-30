@@ -61,8 +61,10 @@ test("create and update skill metadata can read frontmatter from markdown input"
 		cwd,
 	);
 
+	assert.equal(updated.path, created.path);
 	assert.equal(updated.description, "Updated helper.");
 	assert.equal(findUserSkill(created.id, cwd)?.description, "Updated helper.");
+	assert.equal(parseSkillMd(readFileSync(updated.path, "utf-8")).body, "Check spacing.");
 	assert.doesNotMatch(readFileSync(updated.path, "utf-8"), /---[\s\S]*---[\s\S]*---[\s\S]*---/);
 });
 
@@ -71,8 +73,8 @@ test("user skills can be renamed, toggled, sorted, and deleted", () => {
 	const zeta = createUserSkill(
 		{
 			name: "zeta-helper",
-			description: "Zeta helper.",
-			markdown: "Zeta body.",
+			description: "Zeta helper with durable metadata.",
+			markdown: "# Zeta instructions\n\n- Keep the checklist.\n- Preserve `mode: strict`.\n\n```json\n{\"verify\": true}\n```",
 		},
 		cwd,
 	);
@@ -90,12 +92,20 @@ test("user skills can be renamed, toggled, sorted, and deleted", () => {
 		["alpha-helper", "zeta-helper"],
 	);
 
+	const beforeRenameMarkdown = readFileSync(zeta.path, "utf-8");
 	const renamed = updateUserSkill(zeta.id, { name: "beta-helper" }, cwd);
 	assert.equal(renamed.name, "beta-helper");
+	assert.equal(renamed.id, zeta.id);
+	assert.equal(renamed.createdAt, zeta.createdAt);
 	assert.equal(findUserSkill("zeta-helper", cwd), undefined);
-	assert.equal(findUserSkill("beta-helper", cwd)?.description, "Zeta helper.");
+	assert.equal(findUserSkill("beta-helper", cwd)?.description, "Zeta helper with durable metadata.");
 	assert.equal(existsSync(zeta.path), false);
 	assert.equal(existsSync(renamed.path), true);
+	assert.equal(loadUserSkillStore(cwd).skills.find((skill) => skill.id === zeta.id)?.path, renamed.path);
+	assert.equal(
+		parseSkillMd(readFileSync(renamed.path, "utf-8")).body,
+		parseSkillMd(beforeRenameMarkdown).body,
+	);
 
 	const disabled = setUserSkillEnabled(alpha.id, false, cwd);
 	assert.equal(disabled.enabled, false);
@@ -113,7 +123,7 @@ test("user skills can be renamed, toggled, sorted, and deleted", () => {
 
 test("user skill names reject duplicates and invalid values", () => {
 	const cwd = tempWorkspace();
-	createUserSkill(
+	const valid = createUserSkill(
 		{
 			name: "valid-helper",
 			description: "Valid helper.",
@@ -150,6 +160,8 @@ test("user skill names reject duplicates and invalid values", () => {
 		() => updateUserSkill(findUserSkill("valid-helper", cwd).id, { name: "UpperCase" }, cwd),
 		/lowercase kebab-case/,
 	);
+	assert.equal(findUserSkill(valid.id, cwd)?.name, "valid-helper");
+	assert.equal(readFileSync(valid.path, "utf-8"), "---\nname: valid-helper\ndescription: Valid helper.\n---\n\nValid body.");
 });
 
 test("missing user skill markdown falls back to an empty description and can be recreated", () => {
