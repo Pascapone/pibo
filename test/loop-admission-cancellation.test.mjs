@@ -12,6 +12,7 @@ for (const mode of ["goal", "ralph"]) {
 		const harness = await createHarness(mode);
 		let serviceStopped = false;
 		try {
+			harness.service.start();
 			const pendingStart = harness.service.startJob(harness.job.id);
 			await harness.waitForEvaluations(1);
 
@@ -30,7 +31,7 @@ for (const mode of ["goal", "ralph"]) {
 
 			const beforeRestart = harness.store.getJob(harness.job.id);
 			const runCount = harness.store.listRuns({ jobId: harness.job.id }).length;
-			harness.service.stop();
+			await harness.service.stop();
 			serviceStopped = true;
 
 			const reopened = new PiboLoopStore({ path: harness.storePath });
@@ -49,7 +50,7 @@ for (const mode of ["goal", "ralph"]) {
 			}
 		} finally {
 			harness.releaseEvaluation();
-			if (!serviceStopped) harness.service.stop();
+			if (!serviceStopped) await harness.service.stop();
 			await harness.cleanup();
 		}
 	});
@@ -70,7 +71,7 @@ test("cancellation before scheduler evaluation suppresses evaluation and provide
 		assert.equal(Boolean(saved.state.cancelRequestedAt), true);
 	} finally {
 		harness.releaseEvaluation();
-		harness.service.stop();
+		await harness.service.stop();
 		await harness.cleanup();
 	}
 });
@@ -78,6 +79,7 @@ test("cancellation before scheduler evaluation suppresses evaluation and provide
 test("allowed before-run evaluation reserves one queued provider turn", async () => {
 	const harness = await createHarness("goal");
 	try {
+		harness.service.start();
 		const pendingStart = harness.service.startJob(harness.job.id);
 		await harness.waitForEvaluations(1);
 		harness.releaseEvaluation();
@@ -91,7 +93,7 @@ test("allowed before-run evaluation reserves one queued provider turn", async ()
 		assert.equal(harness.executions.filter((event) => event.action === "abort").length, 0);
 	} finally {
 		harness.releaseEvaluation();
-		harness.service.stop();
+		await harness.service.stop();
 		await harness.cleanup();
 	}
 });
@@ -99,6 +101,7 @@ test("allowed before-run evaluation reserves one queued provider turn", async ()
 test("cancellation after admission aborts the queued provider turn", async () => {
 	const harness = await createHarness("goal");
 	try {
+		harness.service.start();
 		const pendingStart = harness.service.startJob(harness.job.id);
 		await harness.waitForEvaluations(1);
 		harness.releaseEvaluation();
@@ -118,7 +121,7 @@ test("cancellation after admission aborts the queued provider turn", async () =>
 		assert.equal(Boolean(harness.store.getJob(harness.job.id).state.cancelRequestedAt), true);
 	} finally {
 		harness.releaseEvaluation();
-		harness.service.stop();
+		await harness.service.stop();
 		await harness.cleanup();
 	}
 });
@@ -126,6 +129,7 @@ test("cancellation after admission aborts the queued provider turn", async () =>
 test("concurrent manual triggers reserve and emit only one turn", async () => {
 	const harness = await createHarness("goal");
 	try {
+		harness.service.start();
 		const starts = [harness.service.startJob(harness.job.id), harness.service.startJob(harness.job.id)];
 		await harness.waitForEvaluations(2);
 		harness.releaseEvaluation();
@@ -139,7 +143,7 @@ test("concurrent manual triggers reserve and emit only one turn", async () => {
 		await waitFor(() => harness.store.getRun(admitted[0].id)?.status === "ok");
 	} finally {
 		harness.releaseEvaluation();
-		harness.service.stop();
+		await harness.service.stop();
 		await harness.cleanup();
 	}
 });
