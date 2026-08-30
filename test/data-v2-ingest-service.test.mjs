@@ -187,6 +187,57 @@ test("chat data ingest shadows assistant messages and observations idempotently"
 	}
 });
 
+test("chat data ingest round-trips immutable render sequence metadata", () => {
+	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-render-sequence-")) });
+	try {
+		const ingest = new ChatDataIngestService(store);
+		const session = makeSession({ id: "ps_render_sequence", piSessionId: "pi_render_sequence" });
+		const input = {
+			session,
+			roomId: "room_render_sequence",
+			actorId: "agent:test",
+			event: {
+				type: "assistant_message",
+				piboSessionId: session.id,
+				eventId: "turn-render-sequence",
+				assistantIndex: 0,
+				text: "stable",
+				renderSequence: 1_234_567,
+			},
+		};
+		const first = ingest.ingestOutputEvent(input);
+		const replay = ingest.ingestOutputEvent({
+			...input,
+			event: { ...input.event, renderSequence: 9_999_999 },
+		});
+		const row = store.eventLog.listEvents({ sessionId: session.id })[0];
+		const mapped = storedPiboEventFromV2Row({
+			stream_id: row.streamId,
+			session_id: row.sessionId,
+			session_sequence: row.sessionSequence,
+			room_id: row.roomId ?? null,
+			type: row.type,
+			actor_type: row.actorType ?? null,
+			actor_id: row.actorId ?? null,
+			event_id: row.eventId ?? null,
+			idempotency_key: row.idempotencyKey ?? null,
+			retention_class: row.retentionClass,
+			payload_ref: row.payloadRef ?? null,
+			preview_text: row.previewText ?? null,
+			attributes_json: JSON.stringify(row.attributes ?? {}),
+			created_at: row.createdAt,
+		}, store.payloads);
+
+		assert.equal(row.attributes.renderSequence, 1_234_567);
+		assert.equal(first.duplicate, false);
+		assert.equal(replay.duplicate, true);
+		assert.equal(mapped.renderSequence, 1_234_567);
+		assert.equal(mapped.payload.renderSequence, 1_234_567);
+	} finally {
+		store.close();
+	}
+});
+
 test("chat data ingest preserves post-compaction output and repeated lifecycle events", () => {
 	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-ingest-payloads-")) });
 	try {
@@ -271,6 +322,23 @@ test("chat data ingest records output identity collisions instead of silently dr
 		assert.equal(rows[1].topic, "pibo.diagnostic");
 		assert.equal(rows[1].attributes.outputIdempotencyKey, rows[0].idempotencyKey);
 		assert.notEqual(rows[1].attributes.existingFingerprint, rows[1].attributes.incomingFingerprint);
+	} finally {
+		store.close();
+	}
+});
+
+test("non-lifecycle output after message_finished does not reopen the persisted session", () => {
+	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-ingest-payloads-")) });
+	try {
+		const ingest = new ChatDataIngestService(store);
+		const session = makeSession({ id: "ps_lifecycle_status", piSessionId: "pi_lifecycle_status" });
+		const input = { session, roomId: "room_lifecycle_status", actorId: "agent:test" };
+		ingest.ingestOutputEvent({ ...input, event: { type: "message_started", piboSessionId: session.id, eventId: "turn-status", text: "run", source: "user" } });
+		ingest.ingestOutputEvent({ ...input, event: { type: "message_finished", piboSessionId: session.id, eventId: "turn-status", source: "user" } });
+		ingest.ingestOutputEvent({ ...input, event: { type: "execution_result", piboSessionId: session.id, eventId: "status-result", action: "status", result: { ok: true } } });
+		const row = store.db.prepare("SELECT status FROM sessions WHERE id = ?").get(session.id);
+		assert.equal(row.status, "idle");
+		assert.equal(store.navigation.getSession(session.id)?.status, "idle");
 	} finally {
 		store.close();
 	}

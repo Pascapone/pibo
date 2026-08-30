@@ -1,5 +1,6 @@
 import type { PiboOutputEvent } from "../core/events.js";
 import type { ChatWebStoredEvent } from "./trace-types.js";
+import { qualifiedToolNodeId } from "./trace-tool-identity.js";
 
 export type TraceChildSession = {
 	id: string;
@@ -32,7 +33,12 @@ export function mapTraceSubagentSessionLinks(events: readonly ChatWebStoredEvent
 	for (const storedEvent of events) {
 		const event = storedEvent.payload as PiboOutputEvent;
 		if (event.type !== "subagent_session" || !event.toolCallId) continue;
-		result.set(event.toolCallId, event.childPiboSessionId);
+		const eventId = event.eventId
+			?? (event.renderSequence !== undefined ? `render:${event.renderSequence}` : "unscoped");
+		result.set(
+			qualifiedToolNodeId(event.toolCallId, eventId, event.toolInvocationOrdinal ?? 0),
+			event.childPiboSessionId,
+		);
 	}
 	return result;
 }

@@ -68,6 +68,21 @@ function backgroundOutputCode(runtime, markerPath) {
 	return `import subprocess\nsubprocess.Popen(["/bin/sh", "-c", ${JSON.stringify(command)}], start_new_session=True)`;
 }
 
+function overlappingBackgroundOutputCode(runtime, markerPath) {
+	const command = `sleep 0.08; printf 'late-from-first\\n'; printf 'late-error-from-first\\n' >&2; printf done > ${JSON.stringify(markerPath)}`;
+	if (runtime === "node") {
+		return `const child = require("node:child_process").spawn("/bin/sh", ["-c", ${JSON.stringify(command)}], { detached: true, stdio: "inherit" }); child.unref();`;
+	}
+	return `import subprocess\nsubprocess.Popen(["/bin/sh", "-c", ${JSON.stringify(command)}], start_new_session=True)`;
+}
+
+function overlappingSecondCode(runtime) {
+	if (runtime === "node") {
+		return `(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); console.log("second-only"); console.error("second-error-only"); })()`;
+	}
+	return `import time\ntime.sleep(0.2)\nprint("second-only")\nprint("second-error-only", file=__import__("sys").stderr)`;
+}
+
 function errorCode(runtime) {
 	return runtime === "node" ? "throw new Error('expected user error')" : "raise RuntimeError('expected user error')";
 }
@@ -139,6 +154,32 @@ for (const runtime of ["node", "python"]) {
 			const implicit = await registry.exec(controller, { runtime, code: assignCode(runtime, "implicitReuse", 1) });
 			assert.equal(implicit.status, "ok");
 			assert.equal(implicit.sessionId, sessionId);
+		});
+	});
+
+	runtimeTest(runtime, "does not attribute late inherited output to an overlapping later exec", async () => {
+		await withRegistry(async (registry, cwd) => {
+			const controller = `${runtime}-overlap`;
+			const setup = await registry.exec(controller, { runtime, code: assignCode(runtime, "savedValue", 42) });
+			assert.equal(setup.status, "ok");
+			const sessionId = setup.sessionId;
+			const markerPath = join(cwd, `${runtime}-overlap-done`);
+
+			const launched = await registry.exec(controller, { sessionId, code: overlappingBackgroundOutputCode(runtime, markerPath) });
+			assert.equal(launched.status, "ok");
+			const second = await registry.exec(controller, { sessionId, code: overlappingSecondCode(runtime) });
+			assert.equal(second.status, "ok", JSON.stringify(second));
+			assert.match(second.stdout, /second-only/);
+			assert.match(second.stderr, /second-error-only/);
+			assert.doesNotMatch(second.stdout, /late-from-first/);
+			assert.doesNotMatch(second.stderr, /late-error-from-first/);
+			await waitFor(() => existsSync(markerPath), `${runtime} overlapping background child output`);
+
+			const third = await registry.exec(controller, { sessionId, code: directOutputExpression(runtime), mode: "eval" });
+			assert.equal(third.status, "ok");
+			assert.equal(third.result.repr, "42");
+			assert.doesNotMatch(third.stdout, /late-from-first/);
+			assert.doesNotMatch(third.stderr, /late-error-from-first/);
 		});
 	});
 }

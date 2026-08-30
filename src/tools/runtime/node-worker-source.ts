@@ -2,6 +2,10 @@ export const NODE_RUNTIME_WORKER_SOURCE = String.raw`
 const vm = require("node:vm");
 const util = require("node:util");
 const fs = require("node:fs");
+const childProcess = require("node:child_process");
+const { AsyncLocalStorage } = require("node:async_hooks");
+
+const outputStorage = new AsyncLocalStorage();
 
 function bounded(value, maxBytes = 8192) {
 	const text = String(value);
@@ -47,13 +51,90 @@ function errorSummary(error) {
 	return out;
 }
 
+function appendOutput(output, stream, chunk) {
+	if (output) output[stream] += String(chunk);
+	else if (stream === "stdout") process.stdout.write(String(chunk));
+	else process.stderr.write(String(chunk));
+}
+
 function appendStdout(chunk) {
-	process.stdout.write(String(chunk));
+	appendOutput(outputStorage.getStore(), "stdout", chunk);
 }
 
 function appendStderr(chunk) {
-	process.stderr.write(String(chunk));
+	appendOutput(outputStorage.getStore(), "stderr", chunk);
 }
+
+function routedStdio(stdio) {
+	if (stdio === "inherit") {
+		return { stdio: ["inherit", "pipe", "pipe"], stdout: true, stderr: true };
+	}
+	if (!Array.isArray(stdio)) return undefined;
+	const next = [...stdio];
+	const stdout = next[1] === "inherit" || next[1] === 1;
+	const stderr = next[2] === "inherit" || next[2] === 2;
+	if (!stdout && !stderr) return undefined;
+	if (stdout) next[1] = "pipe";
+	if (stderr) next[2] = "pipe";
+	return { stdio: next, stdout, stderr };
+}
+
+function captureSpawnedOutput(child, output, route) {
+	if (route.stdout && child.stdout) child.stdout.on("data", (chunk) => appendOutput(output, "stdout", chunk));
+	if (route.stderr && child.stderr) child.stderr.on("data", (chunk) => appendOutput(output, "stderr", chunk));
+	if (child.spawnargs && child.spawnargs.length > 0 && child.stdout && typeof child.stdout.unref === "function") child.stdout.unref();
+	if (child.spawnargs && child.spawnargs.length > 0 && child.stderr && typeof child.stderr.unref === "function") child.stderr.unref();
+}
+
+function routedSpawn(command, args, options) {
+	const hasArgs = Array.isArray(args);
+	const actualArgs = hasArgs ? args : [];
+	const actualOptions = (hasArgs ? options : args) || {};
+	const output = outputStorage.getStore();
+	const route = output ? routedStdio(actualOptions.stdio) : undefined;
+	if (!route) return hasArgs ? childProcess.spawn(command, actualArgs, actualOptions) : childProcess.spawn(command, actualOptions);
+	const child = childProcess.spawn(command, actualArgs, { ...actualOptions, stdio: route.stdio });
+	captureSpawnedOutput(child, output, route);
+	return child;
+}
+
+function routedSpawnSync(command, args, options) {
+	const hasArgs = Array.isArray(args);
+	const actualArgs = hasArgs ? args : [];
+	const actualOptions = (hasArgs ? options : args) || {};
+	const output = outputStorage.getStore();
+	const route = output ? routedStdio(actualOptions.stdio) : undefined;
+	if (!route) return hasArgs ? childProcess.spawnSync(command, actualArgs, actualOptions) : childProcess.spawnSync(command, actualOptions);
+	const result = childProcess.spawnSync(command, actualArgs, { ...actualOptions, stdio: route.stdio });
+	if (route.stdout && result.stdout != null) appendOutput(output, "stdout", result.stdout);
+	if (route.stderr && result.stderr != null) appendOutput(output, "stderr", result.stderr);
+	if (route.stdout) {
+		result.stdout = null;
+		if (result.output) result.output[1] = null;
+	}
+	if (route.stderr) {
+		result.stderr = null;
+		if (result.output) result.output[2] = null;
+	}
+	return result;
+}
+
+const childProcessProxy = new Proxy(childProcess, {
+	get(target, prop, receiver) {
+		if (prop === "spawn") return routedSpawn;
+		if (prop === "spawnSync") return routedSpawnSync;
+		return Reflect.get(target, prop, receiver);
+	},
+});
+
+function runtimeRequire(specifier) {
+	if (specifier === "child_process" || specifier === "node:child_process") return childProcessProxy;
+	return require(specifier);
+}
+runtimeRequire.resolve = require.resolve;
+runtimeRequire.cache = require.cache;
+runtimeRequire.extensions = require.extensions;
+runtimeRequire.main = require.main;
 
 const processProxy = new Proxy(process, {
 	get(target, prop, receiver) {
@@ -74,7 +155,7 @@ const consoleProxy = {
 
 const context = vm.createContext({
 	console: consoleProxy,
-	require,
+	require: runtimeRequire,
 	process: processProxy,
 	Buffer,
 	URL,
@@ -95,31 +176,34 @@ context.globalThis = context;
 async function execute(req) {
 	const mode = req.mode || "exec";
 	const code = req.code || "";
-	try {
-		const value = await (async () => {
-			if (mode === "eval") {
-				return await vm.runInContext(code, context, { filename: "<pibo-runtime>", timeout: Number(req.timeoutMs || 30000) });
-			}
-			const result = vm.runInContext(code, context, { filename: "<pibo-runtime>", timeout: Number(req.timeoutMs || 30000) });
-			if (result && typeof result.then === "function") await result;
-			return undefined;
-		})();
-		return {
-			id: req.id,
-			status: "ok",
-			stdout: "",
-			stderr: "",
-			result: value === undefined ? null : summarize(value),
-		};
-	} catch (error) {
-		return {
-			id: req.id,
-			status: "error",
-			stdout: "",
-			stderr: "",
-			error: errorSummary(error),
-		};
-	}
+	const output = { stdout: "", stderr: "" };
+	return await outputStorage.run(output, async () => {
+		try {
+			const value = await (async () => {
+				if (mode === "eval") {
+					return await vm.runInContext(code, context, { filename: "<pibo-runtime>", timeout: Number(req.timeoutMs || 30000) });
+				}
+				const result = vm.runInContext(code, context, { filename: "<pibo-runtime>", timeout: Number(req.timeoutMs || 30000) });
+				if (result && typeof result.then === "function") await result;
+				return undefined;
+			})();
+			return {
+				id: req.id,
+				status: "ok",
+				stdout: output.stdout,
+				stderr: output.stderr,
+				result: value === undefined ? null : summarize(value),
+			};
+		} catch (error) {
+			return {
+				id: req.id,
+				status: "error",
+				stdout: output.stdout,
+				stderr: output.stderr,
+				error: errorSummary(error),
+			};
+		}
+	});
 }
 
 async function inspectValue(req) {
