@@ -10,13 +10,13 @@ import {
 } from "../agent-runtime/history.js";
 import { historyTraceOrder } from "./trace-order.js";
 import { attachAsyncAgentRunNode, reconcileAsyncAgentRunStatuses } from "./trace-async-agent-runs.js";
-import { sortTraceNodes } from "./trace-nodes.js";
+import { flattenTraceNodes, sortTraceNodes } from "./trace-nodes.js";
 import { createRunNotificationNode, parseRunNotificationText } from "./trace-run-notifications.js";
 import { isSubagentToolName } from "./trace-subagent-links.js";
 import { assistantMessageNodeId, messageTurnNodeId, thinkingNodeId, type TraceMessageTurnTiming } from "./trace-event-projection.js";
 import type { PiboTraceNode, PiboTraceNodeStatus, PiboTraceSource, PiboWebSessionStatus } from "./trace-types.js";
 import { TRACE_RECONCILIATION_ENTRY_CAP, TRACE_RECONCILIATION_TIMING_CAP } from "./trace-limits.js";
-import { qualifiedHistoryToolNodeId } from "./trace-tool-identity.js";
+import { qualifiedToolNodeId } from "./trace-tool-identity.js";
 
 type IndexedHistoryMessageEntry = {
 	entry: AgentRuntimeHistoryMessageEntry;
@@ -168,14 +168,41 @@ export function traceNodesFromHistoryEntries(
 				output: { name: entry.name },
 				source,
 				stableKey: historyEntryStableKey(entry),
-				orderKey: historyTraceOrder(entryIndex, 0, "execution.command", source),
+				orderKey: historyTraceOrder(entryIndex, 0, "execution.command", source, entry.createdAt),
 				children: [],
 			});
 		}
 	}
+	applyMonotoneHistoryChronology(nodes, entries);
 	reconcileAsyncAgentRunStatuses(nodes);
 	sortTraceNodes(nodes);
 	return nodes;
+}
+
+function applyMonotoneHistoryChronology(nodes: PiboTraceNode[], entries: readonly AgentRuntimeHistoryEntry[]): void {
+	const nextValid: Array<number | undefined> = new Array(entries.length);
+	let next: number | undefined;
+	for (let index = entries.length - 1; index >= 0; index -= 1) {
+		const parsed = parsedTimestamp(entries[index]?.createdAt);
+		if (parsed !== undefined) next = parsed;
+		nextValid[index] = next;
+	}
+	const chronologyByIndex = new Map<number, number>();
+	let previous: number | undefined;
+	for (let index = 0; index < entries.length; index += 1) {
+		const entry = entries[index]!;
+		const parsed = parsedTimestamp(entry.createdAt);
+		const candidate = parsed ?? nextValid[index] ?? previous;
+		if (candidate === undefined) continue;
+		const monotone = previous === undefined ? candidate : Math.max(previous, candidate);
+		chronologyByIndex.set(historyIndex(entry, index), monotone);
+		previous = monotone;
+	}
+	for (const node of flattenTraceNodes(nodes)) {
+		if (!node.orderKey) continue;
+		const chronologyMs = chronologyByIndex.get(node.orderKey.transcriptIndex ?? node.orderKey.turnSeq);
+		node.orderKey = { ...node.orderKey, chronologyMs };
+	}
 }
 
 function collectHistoryTurnTimingTargets(entries: readonly AgentRuntimeHistoryEntry[]): TranscriptTurnTimingTarget[] {
@@ -781,11 +808,14 @@ function collectAssistantTurn(
 	startIndex: number,
 ): { entries: IndexedHistoryMessageEntry[]; nextIndex: number } {
 	const turnEntries: IndexedHistoryMessageEntry[] = [];
+	const first = entries[startIndex];
+	const explicitTurnId = first?.type === "message" ? first.turnId : undefined;
 	let index = startIndex;
 	while (index < entries.length) {
 		const entry = entries[index]!;
 		if (entry.type !== "message") break;
 		if (entry.role !== "assistant" && entry.role !== "tool") break;
+		if (index !== startIndex && explicitTurnId && entry.turnId && entry.turnId !== explicitTurnId) break;
 		turnEntries.push({ entry, index });
 		index += 1;
 	}
@@ -809,7 +839,7 @@ function createUserMessageNode(
 			entryId: entry.nativeEntryId,
 			piboSessionId,
 			startedAt: entry.createdAt,
-			orderKey: historyTraceOrder(orderIndex, 0, "yielded.run", source),
+			orderKey: historyTraceOrder(orderIndex, 0, "yielded.run", source, entry.createdAt),
 			source,
 			stableKey: historyEntryStableKey(entry),
 			notification,
@@ -836,7 +866,7 @@ function createUserMessageNode(
 		error: entry.error,
 		source,
 		stableKey: eventIdentity ?? historyEntryStableKey(entry),
-		orderKey: historyTraceOrder(orderIndex, 0, "user.message", source),
+		orderKey: historyTraceOrder(orderIndex, 0, "user.message", source, entry.createdAt),
 		children: [],
 	};
 }
@@ -971,7 +1001,7 @@ function createReasoningNode(input: {
 		output: input.thinking,
 		source,
 		stableKey: eventIdentity ? `reasoning:${eventIdentity}` : `${historyEntryStableKey(input.entry)}:thinking:${input.contentPartIndex}`,
-		orderKey: historyTraceOrder(historyIndex(input.entry, input.entryIndex), input.contentPartIndex, "model.reasoning", source),
+		orderKey: historyTraceOrder(historyIndex(input.entry, input.entryIndex), input.contentPartIndex, "model.reasoning", source, input.entry.createdAt),
 		children: [],
 	};
 }
@@ -1002,6 +1032,7 @@ function createToolCallNode(
 		eventId,
 		parentId: historyTurnParentId(entry, eventId),
 		toolCallId: part.toolCallId,
+		toolInvocationOrdinal,
 		type: isSubagentToolName(part.toolName) ? "agent.delegation" : "tool.call",
 		title: part.toolName,
 		status: "done",
@@ -1014,6 +1045,7 @@ function createToolCallNode(
 			contentPartIndex,
 			isSubagentToolName(part.toolName) ? "agent.delegation" : "tool.call",
 			source,
+			entry.createdAt,
 		),
 		children: [],
 	};
@@ -1080,13 +1112,14 @@ function createMissingToolResultNode(
 		eventId,
 		parentId: historyTurnParentId(entry, eventId),
 		toolCallId,
+		toolInvocationOrdinal,
 		type: "tool.result",
 		title: entry.toolName ?? "Tool Result",
 		status: "done",
 		startedAt: entry.createdAt,
 		source,
 		stableKey: toolNodeId,
-		orderKey: historyTraceOrder(historyIndex(entry, entryIndex), 0, "tool.result", source),
+		orderKey: historyTraceOrder(historyIndex(entry, entryIndex), 0, "tool.result", source, entry.createdAt),
 		children: [],
 	};
 }
@@ -1124,7 +1157,7 @@ function createAssistantMessageNode(input: {
 		error: input.error,
 		source,
 		stableKey: eventIdentity ? `assistant:${eventIdentity}` : `${historyEntryStableKey(input.entry)}:response:${input.contentPartIndex}`,
-		orderKey: historyTraceOrder(historyIndex(input.entry, input.entryIndex), input.contentPartIndex, "assistant.message", source),
+		orderKey: historyTraceOrder(historyIndex(input.entry, input.entryIndex), input.contentPartIndex, "assistant.message", source, input.startedAt ?? input.entry.createdAt),
 		children: input.children ?? [],
 	};
 }
@@ -1149,6 +1182,7 @@ function canonicalProductTurnId(
 	timing: TraceMessageTurnTiming | undefined,
 	fallbackEventId?: string,
 ): string | undefined {
+	if (entry.source === "product" && entry.turnId) return entry.turnId;
 	return fallbackEventId ?? timing?.eventId ?? entry.turnId;
 }
 
@@ -1172,8 +1206,7 @@ function historyToolNodeId(
 	toolInvocationOrdinal: number,
 	qualifyProjectionIdentity: boolean,
 ): string {
-	if (entry.source !== "native" || !qualifyProjectionIdentity) return `tool:${toolCallId}`;
-	return qualifiedHistoryToolNodeId(
+	return qualifiedToolNodeId(
 		toolCallId,
 		eventId ?? `native-history-tool:${entry.historyPosition ?? entry.id}`,
 		toolInvocationOrdinal,

@@ -6,6 +6,11 @@ import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
+import { ChatReadStateService } from "../dist/apps/chat/data/read-state-service.js";
+import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
+import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { PiboReliabilityStore } from "../dist/reliability/store.js";
+import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
@@ -180,7 +185,7 @@ function createLandingApps() {
 async function startWebHostChannel(options = {}) {
 	const emitted = [];
 	const listeners = new Set();
-	const sessions = new InMemoryPiboSessionStore();
+	const sessions = options.sessions ?? new InMemoryPiboSessionStore();
 	const registeredSkills = [];
 	const unregisteredSkills = [];
 	const registeredUserSkillCatalog = new Map();
@@ -190,11 +195,13 @@ async function startWebHostChannel(options = {}) {
 	const dataStorePath = join(storageDir, "pibo-chat-v2.sqlite");
 	const dataPayloadRootDir = join(storageDir, "payloads");
 	const projectStorePath = join(storageDir, "projects.sqlite");
+	const reliabilityStorePath = join(storageDir, "pibo-events.sqlite");
 	const webApps = [createChatWebApp({
 		agentStorePath,
 		dataStorePath,
 		dataPayloadRootDir,
 		projectStorePath,
+		reliabilityStorePath,
 		...options.chat,
 	})];
 	const channel = createWebHostChannel({ port: 0, announce: false, ...options.web });
@@ -358,6 +365,7 @@ async function startWebHostChannel(options = {}) {
 		storageDir,
 		dataStorePath,
 		dataPayloadRootDir,
+		reliabilityStorePath,
 		projectStorePath,
 		baseURL: `http://${address.host}:${address.port}`, 
 	};
@@ -379,6 +387,15 @@ async function readSseTextUntil(reader, match, options = {}) {
 		if (match(text)) return { matched: true, text };
 	}
 	return { matched: false, text };
+}
+
+async function waitForCondition(predicate, message, timeoutMs = 2_000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await new Promise((resolve) => setTimeout(resolve, 5));
+	}
+	throw new Error(message);
 }
 
 test("chat web app requires auth for localhost requests", async () => {
@@ -746,7 +763,7 @@ test("chat web app serves node-bound exact images concurrently and never falls b
 		const timeline = await timelineResponse.json();
 		const imageNode = timeline.nodes.find((node) => node.toolCallId === "image-call");
 		assert.ok(imageNode?.payloadRefs?.output?.ref);
-		assert.equal(imageNode.payloadRefs.output.nodeId, "tool:image-call");
+		assert.equal(imageNode.payloadRefs.output.nodeId, qualifiedToolNodeId("image-call", "image-turn", 0));
 		assert.equal(JSON.stringify(timeline).includes(exactBytes.toString("base64").slice(0, 80)), false);
 		const params = new URLSearchParams({
 			ref: imageNode.payloadRefs.output.ref,
@@ -767,7 +784,7 @@ test("chat web app serves node-bound exact images concurrently and never falls b
 		mismatchParams.set("piboSessionId", secondSession.session.id);
 		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${mismatchParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
 		const nodeMismatchParams = new URLSearchParams(params);
-		nodeMismatchParams.set("nodeId", "tool:other-call");
+		nodeMismatchParams.set("nodeId", qualifiedToolNodeId("other-call", "image-turn", 0));
 		assert.equal((await fetch(`${baseURL}/api/chat/image-preview?${nodeMismatchParams}`, { headers: { "x-test-user": "user-1" } })).status, 400);
 		const outOfBoundsParams = new URLSearchParams(params);
 		outOfBoundsParams.set("index", "20");
@@ -958,6 +975,654 @@ test("chat web trace includes live compactor snapshots without raw events", asyn
 		await channel.stop?.();
 	}
 });
+
+test("chat web automatically retries a once-only final persistence failure without producer replay", async () => {
+	const originalIngest = ChatDataIngestService.prototype.ingestOutputEvent;
+	let injected = false;
+	ChatDataIngestService.prototype.ingestOutputEvent = function(input) {
+		if (!injected && input.event.type === "assistant_message") {
+			injected = true;
+			throw new Error("injected once-only web final failure");
+		}
+		return originalIngest.call(this, input);
+	};
+	const { channel, baseURL, emitOutput, dataStorePath, reliabilityStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const { session } = await sessionResponse.json();
+		emitOutput({ type: "assistant_delta", piboSessionId: session.id, eventId: "web-auto-retry", assistantIndex: 0, text: "persist once" });
+		emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-auto-retry", assistantIndex: 0, text: "" });
+
+		let rows = [];
+		const deadline = Date.now() + 2_000;
+		while (Date.now() < deadline) {
+			const database = new DatabaseSync(dataStorePath, { readOnly: true });
+			try {
+				rows = database.prepare("SELECT * FROM event_log WHERE session_id = ? AND type = 'assistant_message'").all(session.id);
+			} finally {
+				database.close();
+			}
+			if (rows.length === 1) break;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		assert.equal(injected, true);
+		assert.equal(rows.length, 1);
+		assert.equal(rows[0].preview_text, "persist once");
+
+		const reliability = new DatabaseSync(reliabilityStorePath, { readOnly: true });
+		try {
+			const deliveries = reliability.prepare("SELECT event_id, idempotency_key FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ?").all(session.id);
+			assert.equal(deliveries.length, 1);
+			assert.equal(deliveries[0].event_id, deliveries[0].idempotency_key);
+		} finally {
+			reliability.close();
+		}
+	} finally {
+		ChatDataIngestService.prototype.ingestOutputEvent = originalIngest;
+		await channel.stop?.();
+	}
+});
+
+test("chat web retry deduplicates the V2 write when reliability append fails once", async () => {
+	const originalAppendOnce = PiboReliabilityStore.prototype.appendOnce;
+	const originalRecordEvent = ChatSessionQueryService.prototype.recordEvent;
+	const originalMarkSessionRead = ChatReadStateService.prototype.markSessionRead;
+	let injected = false;
+	let recordEventCount = 0;
+	let markReadCount = 0;
+	PiboReliabilityStore.prototype.appendOnce = function(input) {
+		if (!injected && input.topic === "pibo.output") {
+			injected = true;
+			throw new Error("injected once-only reliability append failure");
+		}
+		return originalAppendOnce.call(this, input);
+	};
+	ChatSessionQueryService.prototype.recordEvent = function(event, ...rest) {
+		if (event.eventId === "web-reliability-retry") recordEventCount += 1;
+		return originalRecordEvent.call(this, event, ...rest);
+	};
+	ChatReadStateService.prototype.markSessionRead = function(piboSessionId, streamId) {
+		markReadCount += 1;
+		return originalMarkSessionRead.call(this, piboSessionId, streamId);
+	};
+	const { channel, baseURL, emitOutput, dataStorePath, reliabilityStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+
+	try {
+		const sessionResponse = await fetch(`${baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		const { session } = await sessionResponse.json();
+		const controller = new AbortController();
+		const eventsResponse = await fetch(
+			`${baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(session.id)}&mode=live&since=0`,
+			{ headers: { "x-test-user": "user-1" }, signal: controller.signal },
+		);
+		assert.equal(eventsResponse.status, 200);
+		const reader = eventsResponse.body.getReader();
+		await reader.read();
+		emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-reliability-retry", assistantIndex: 0, text: "one durable answer" });
+		const deadline = Date.now() + 2_000;
+		let reliabilityCount = 0;
+		while (Date.now() < deadline) {
+			const reliability = new DatabaseSync(reliabilityStorePath, { readOnly: true });
+			try {
+				reliabilityCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ?").get(session.id).count);
+			} finally {
+				reliability.close();
+			}
+			if (reliabilityCount === 1) break;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		const database = new DatabaseSync(dataStorePath, { readOnly: true });
+		try {
+			const v2Count = Number(database.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'assistant_message'").get(session.id).count);
+			assert.equal(v2Count, 1);
+		} finally {
+			database.close();
+		}
+		assert.equal(injected, true);
+		assert.equal(reliabilityCount, 1);
+		const liveFrame = await readSseTextUntil(reader, (text) => text.includes("web-reliability-retry"));
+		assert.equal(liveFrame.matched, true, liveFrame.text);
+		assert.equal(recordEventCount, 1);
+		assert.equal(markReadCount, 1);
+		emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-reliability-retry", assistantIndex: 0, text: "one durable answer" });
+		await new Promise((resolve) => setTimeout(resolve, 75));
+		assert.equal(recordEventCount, 1, "producer replay must not redeliver read-model side effects");
+		assert.equal(markReadCount, 1, "producer replay must not remark the session read");
+		controller.abort();
+	} finally {
+		PiboReliabilityStore.prototype.appendOnce = originalAppendOnce;
+		ChatSessionQueryService.prototype.recordEvent = originalRecordEvent;
+		ChatReadStateService.prototype.markSessionRead = originalMarkSessionRead;
+		await channel.stop?.();
+	}
+});
+
+test("chat web resumes a pending phased delivery after app restart", async () => {
+	const originalAppendOnce = PiboReliabilityStore.prototype.appendOnce;
+	let blockReliability = true;
+	PiboReliabilityStore.prototype.appendOnce = function(input) {
+		if (blockReliability && input.topic === "pibo.output") throw new Error("hold reliability until restart");
+		return originalAppendOnce.call(this, input);
+	};
+	let first;
+	let second;
+	try {
+		first = await startWebHostChannel({ auth: createFakeAuthService() });
+		const sessionResponse = await fetch(`${first.baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		const { session } = await sessionResponse.json();
+		const sharedSessions = first.sessions;
+		const sharedPaths = {
+			dataStorePath: first.dataStorePath,
+			dataPayloadRootDir: first.dataPayloadRootDir,
+			reliabilityStorePath: first.reliabilityStorePath,
+			projectStorePath: first.projectStorePath,
+		};
+		first.emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-restart-pending", assistantIndex: 0, text: "survives process restart" });
+		const beforeRestart = new DatabaseSync(first.reliabilityStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(beforeRestart.prepare("SELECT COUNT(*) AS count FROM pibo_jobs WHERE queue = 'output-persistence'").get().count), 1);
+		} finally {
+			beforeRestart.close();
+		}
+		await first.channel.stop?.();
+		first = undefined;
+		blockReliability = false;
+
+		second = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			sessions: sharedSessions,
+			chat: sharedPaths,
+		});
+		const recoveryTrigger = await fetch(`${second.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(recoveryTrigger.status, 200);
+		const deadline = Date.now() + 2_000;
+		let pendingCount = 1;
+		let reliabilityCount = 0;
+		while (Date.now() < deadline) {
+			const reliability = new DatabaseSync(sharedPaths.reliabilityStorePath, { readOnly: true });
+			try {
+				pendingCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_jobs WHERE queue = 'output-persistence'").get().count);
+				reliabilityCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ?").get(session.id).count);
+			} finally {
+				reliability.close();
+			}
+			if (pendingCount === 0 && reliabilityCount === 1) break;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		assert.equal(pendingCount, 0);
+		assert.equal(reliabilityCount, 1);
+		const data = new DatabaseSync(sharedPaths.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'assistant_message'").get(session.id).count), 1);
+		} finally {
+			data.close();
+		}
+		await second.channel.stop?.();
+		second = undefined;
+	} finally {
+		PiboReliabilityStore.prototype.appendOnce = originalAppendOnce;
+		await first?.channel.stop?.();
+		await second?.channel.stop?.();
+	}
+});
+
+test("chat web quarantines a versionless durable envelope without writing V2 state", async () => {
+	const sessions = new InMemoryPiboSessionStore();
+	const piboSessionId = "ps_web_versionless_envelope";
+	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+	const secret = "web-versionless-secret-marker";
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
+	try {
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			reliability.enqueue({
+				queue: "output-persistence",
+				idempotencyKey: "legacy-web-versionless",
+				payload: {
+					key: "legacy-web-versionless",
+					state: {
+						version: 1,
+						piboSessionId,
+						deliveries: [{ event: { type: "assistant_message", piboSessionId, eventId: "legacy-web", text: secret, renderSequence: 1 } }],
+					},
+				},
+			});
+		} finally {
+			reliability.close();
+		}
+		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(trigger.status, 200);
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count) === 1;
+			} finally {
+				db.close();
+			}
+		}, "versionless web envelope was not quarantined");
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(piboSessionId).count), 0);
+		} finally {
+			data.close();
+		}
+		const reopened = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			const dead = reopened.listDead({ queue: "output-persistence" });
+			assert.equal(dead.length, 1);
+			assert.equal(dead[0].deadReason, "payload_version_unsupported");
+			assert.equal(JSON.stringify(dead).includes(secret), false);
+		} finally {
+			reopened.close();
+		}
+	} finally {
+		await host.channel.stop?.();
+	}
+});
+
+test("chat web persists and live-projects the declared message_steered runtime payload", async () => {
+	const host = await startWebHostChannel({ auth: createFakeAuthService() });
+	const controller = new AbortController();
+	try {
+		const sessionResponse = await fetch(`${host.baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(sessionResponse.status, 200);
+		const { session } = await sessionResponse.json();
+		const eventsResponse = await fetch(
+			`${host.baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(session.id)}&mode=live&since=0`,
+			{ headers: { "x-test-user": "user-1" }, signal: controller.signal },
+		);
+		assert.equal(eventsResponse.status, 200);
+		const reader = eventsResponse.body.getReader();
+		await reader.read();
+		host.emitOutput({
+			type: "message_steered",
+			piboSessionId: session.id,
+			eventId: "steer-real-contract",
+			activeEventId: "active-turn",
+			text: "valid steer",
+			source: "user",
+		});
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.dataStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'message_steered'").get(session.id).count) === 1;
+			} finally {
+				db.close();
+			}
+		}, "valid steering output was not persisted");
+		const liveFrame = await readSseTextUntil(reader, (text) => text.includes("steer-real-contract"));
+		assert.equal(liveFrame.matched, true, liveFrame.text);
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			const row = data.prepare("SELECT event_id, idempotency_key, preview_text, attributes_json FROM event_log WHERE session_id = ? AND type = 'message_steered'").get(session.id);
+			assert.equal(row.event_id, "steer-real-contract");
+			assert.equal(row.idempotency_key, `pibo.output:${session.id}:message_steered:steer-real-contract:main`);
+			assert.equal(row.preview_text, "valid steer");
+			assert.equal(JSON.parse(row.attributes_json).activeEventId, "active-turn");
+		} finally {
+			data.close();
+		}
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			assert.equal(reliability.listJobs({ queue: "output-persistence" }).length, 0);
+			assert.equal(reliability.listDead({ queue: "output-persistence" }).length, 0);
+			assert.equal(reliability.list({ topic: "pibo.output" }).length, 1);
+		} finally {
+			reliability.close();
+		}
+	} finally {
+		controller.abort();
+		await host.channel.stop?.();
+	}
+});
+
+test("chat web recovers a valid V1 message_steered envelope without quarantine", async () => {
+	const sessions = new InMemoryPiboSessionStore();
+	const piboSessionId = "ps_web_steered_recovery";
+	const eventId = "steer-web-recovery";
+	const deliveryKey = `pibo.output:${piboSessionId}:message_steered:${eventId}:main`;
+	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
+	try {
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			reliability.enqueue({
+				queue: "output-persistence",
+				idempotencyKey: JSON.stringify([deliveryKey]),
+				payload: {
+					version: 1,
+					key: JSON.stringify([deliveryKey]),
+					piboSessionId,
+					eventId: deliveryKey,
+					state: {
+						version: 1,
+						piboSessionId,
+						deliveries: [{ event: { type: "message_steered", piboSessionId, eventId, activeEventId: "active-web-turn", text: "recover valid steer", source: "user", renderSequence: 1 } }],
+					},
+				},
+			});
+		} finally {
+			reliability.close();
+		}
+		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(trigger.status, 200);
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM pibo_jobs WHERE queue = 'output-persistence'").get().count) === 0;
+			} finally {
+				db.close();
+			}
+		}, "valid steering recovery did not drain");
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			const row = data.prepare("SELECT event_id, idempotency_key, preview_text FROM event_log WHERE session_id = ? AND type = 'message_steered'").get(piboSessionId);
+			assert.deepEqual({ ...row }, { event_id: eventId, idempotency_key: deliveryKey, preview_text: "recover valid steer" });
+		} finally {
+			data.close();
+		}
+		const reopened = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			assert.equal(reopened.listDead({ queue: "output-persistence" }).length, 0);
+			assert.equal(reopened.list({ topic: "pibo.output" }).length, 1);
+		} finally {
+			reopened.close();
+		}
+	} finally {
+		await host.channel.stop?.();
+	}
+});
+
+test("chat web quarantines unknown runtime output before compaction, retry, or V2 write", async () => {
+	const secret = "unknown-web-secret-marker";
+	const host = await startWebHostChannel({ auth: createFakeAuthService() });
+	try {
+		const sessionResponse = await fetch(`${host.baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(sessionResponse.status, 200);
+		const { session } = await sessionResponse.json();
+		host.emitOutput({ type: "text_message", piboSessionId: session.id, text: "legacy output", secret });
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count) === 1;
+			} finally {
+				db.close();
+			}
+		}, "unknown web output was not quarantined");
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(session.id).count), 0);
+		} finally {
+			data.close();
+		}
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			assert.equal(reliability.listJobs({ queue: "output-persistence" }).length, 0);
+			const dead = reliability.listDead({ queue: "output-persistence" });
+			assert.equal(dead.length, 1);
+			assert.equal(dead[0].deadReason, "runtime_output_event_invalid");
+			const serialized = JSON.stringify(dead);
+			assert.equal(serialized.includes(secret), false);
+			assert.equal(serialized.includes("legacy output"), false);
+			assert.equal(serialized.includes("text_message"), false);
+		} finally {
+			reliability.close();
+		}
+	} finally {
+		await host.channel.stop?.();
+	}
+});
+
+test("chat web recovery quarantines an unknown output variant with sanitized metadata", async () => {
+	const sessions = new InMemoryPiboSessionStore();
+	const piboSessionId = "ps_web_unknown_recovery";
+	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
+	const secret = "unknown-web-recovery-secret-marker";
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
+	try {
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			reliability.enqueue({
+				queue: "output-persistence",
+				idempotencyKey: "unknown-web-recovery",
+				payload: {
+					version: 1,
+					key: `unknown-web-recovery-${secret}`,
+					state: { version: 1, piboSessionId, deliveries: [{ event: { type: "text_message", piboSessionId, text: secret } }] },
+				},
+			});
+		} finally {
+			reliability.close();
+		}
+		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(trigger.status, 200);
+		await waitForCondition(() => {
+			const db = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				return Number(db.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count) === 1;
+			} finally {
+				db.close();
+			}
+		}, "unknown recovered web output was not quarantined");
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ?").get(piboSessionId).count), 0);
+		} finally {
+			data.close();
+		}
+		const reopened = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			const dead = reopened.listDead({ queue: "output-persistence" });
+			assert.equal(dead.length, 1);
+			assert.equal(dead[0].deadReason, "payload_invalid");
+			assert.equal(JSON.stringify(dead).includes(secret), false);
+		} finally {
+			reopened.close();
+		}
+	} finally {
+		await host.channel.stop?.();
+	}
+});
+
+for (const crashBoundary of [
+	"before-v2-write",
+	"after-v2-write",
+	"after-reliability-append",
+	"during-projection",
+	"after-live-send-before-receipt",
+	"after-receipt-before-checkpoint",
+]) {
+	test(`chat web outbox retries an in-process fault at ${crashBoundary} with one visible render identity`, async () => {
+		const originalIngest = ChatDataIngestService.prototype.ingestOutputEvent;
+		const originalAppendOnce = PiboReliabilityStore.prototype.appendOnce;
+		const originalRecordEvent = ChatSessionQueryService.prototype.recordEvent;
+		const originalMarkSessionRead = ChatReadStateService.prototype.markSessionRead;
+		const originalRecordReceipt = PiboReliabilityStore.prototype.recordDeliveryReceipt;
+		const targetEventId = `web-outbox-${crashBoundary}`;
+		const crashMessage = `crash:web-outbox:${crashBoundary}`;
+		let crashEnabled = true;
+		let crashObserved = false;
+		let recordEventCount = 0;
+		let markReadCount = 0;
+		const projectedStreamIds = [];
+		const projectedCreatedAts = [];
+		let first;
+		let second;
+		let firstStreamController;
+
+		const crash = () => {
+			crashObserved = true;
+			throw new Error(crashMessage);
+		};
+		ChatDataIngestService.prototype.ingestOutputEvent = function(input) {
+			if (crashEnabled && input.event.eventId === targetEventId && crashBoundary === "before-v2-write") crash();
+			const result = originalIngest.call(this, input);
+			if (crashEnabled && input.event.eventId === targetEventId && crashBoundary === "after-v2-write") crash();
+			return result;
+		};
+		PiboReliabilityStore.prototype.appendOnce = function(input) {
+			const result = originalAppendOnce.call(this, input);
+			if (crashEnabled && input.topic === "pibo.output" && input.payload?.eventId === targetEventId && crashBoundary === "after-reliability-append") crash();
+			return result;
+		};
+		ChatReadStateService.prototype.markSessionRead = function(piboSessionId, streamId) {
+			markReadCount += 1;
+			return originalMarkSessionRead.call(this, piboSessionId, streamId);
+		};
+		ChatSessionQueryService.prototype.recordEvent = function(event, session, streamId, createdAt) {
+			const result = originalRecordEvent.call(this, event, session, streamId, createdAt);
+			if (event.eventId === targetEventId) {
+				recordEventCount += 1;
+				projectedStreamIds.push(streamId);
+				projectedCreatedAts.push(createdAt);
+				if (crashEnabled && crashBoundary === "during-projection") crash();
+			}
+			return result;
+		};
+		PiboReliabilityStore.prototype.recordDeliveryReceipt = function(deliveryId, projection, deliveredAt) {
+			if (crashEnabled && deliveryId.includes(targetEventId) && crashBoundary === "after-live-send-before-receipt") crash();
+			const result = originalRecordReceipt.call(this, deliveryId, projection, deliveredAt);
+			if (crashEnabled && deliveryId.includes(targetEventId) && crashBoundary === "after-receipt-before-checkpoint") crash();
+			return result;
+		};
+
+		try {
+			first = await startWebHostChannel({ auth: createFakeAuthService() });
+			const sessionResponse = await fetch(`${first.baseURL}/api/chat/session`, { headers: { "x-test-user": "user-1" } });
+			assert.equal(sessionResponse.status, 200);
+			const { session } = await sessionResponse.json();
+			firstStreamController = new AbortController();
+			const eventsResponse = await fetch(
+				`${first.baseURL}/api/chat/events?piboSessionId=${encodeURIComponent(session.id)}&mode=live&since=0`,
+				{ headers: { "x-test-user": "user-1" }, signal: firstStreamController.signal },
+			);
+			assert.equal(eventsResponse.status, 200);
+			const reader = eventsResponse.body.getReader();
+			await reader.read();
+			let firstLiveFrame;
+			if (crashBoundary === "after-live-send-before-receipt" || crashBoundary === "after-receipt-before-checkpoint") {
+				firstLiveFrame = readSseTextUntil(reader, (text) => text.includes(targetEventId));
+			}
+
+			first.emitOutput({
+				type: "assistant_message",
+				piboSessionId: session.id,
+				eventId: targetEventId,
+				assistantIndex: 0,
+				text: `durable ${crashBoundary}`,
+			});
+			await waitForCondition(() => crashObserved, `did not reach ${crashBoundary}`);
+			await waitForCondition(() => {
+				const reliability = new DatabaseSync(first.reliabilityStorePath, { readOnly: true });
+				try {
+					return reliability.prepare("SELECT last_error FROM pibo_jobs WHERE queue = 'output-persistence'").get()?.last_error === crashMessage;
+				} finally {
+					reliability.close();
+				}
+			}, `durable job did not checkpoint ${crashBoundary}`);
+			if (firstLiveFrame) {
+				const observed = await firstLiveFrame;
+				assert.equal(observed.matched, true, observed.text);
+			}
+
+			const sharedSessions = first.sessions;
+			const sharedPaths = {
+				dataStorePath: first.dataStorePath,
+				dataPayloadRootDir: first.dataPayloadRootDir,
+				reliabilityStorePath: first.reliabilityStorePath,
+				projectStorePath: first.projectStorePath,
+			};
+			const firstData = new DatabaseSync(sharedPaths.dataStorePath, { readOnly: true });
+			let durableBeforeRestart;
+			try {
+				durableBeforeRestart = firstData.prepare("SELECT stream_id, created_at, idempotency_key FROM event_log WHERE session_id = ? AND type = 'assistant_message'").get(session.id);
+			} finally {
+				firstData.close();
+			}
+			const firstReliability = new DatabaseSync(sharedPaths.reliabilityStorePath, { readOnly: true });
+			let receiptBeforeRestart;
+			try {
+				receiptBeforeRestart = Number(firstReliability.prepare("SELECT COUNT(*) AS count FROM pibo_delivery_receipts").get().count);
+			} finally {
+				firstReliability.close();
+			}
+			assert.equal(receiptBeforeRestart, crashBoundary === "after-receipt-before-checkpoint" ? 1 : 0);
+			firstStreamController?.abort();
+			await first.channel.stop?.();
+			first = undefined;
+			crashEnabled = false;
+
+			second = await startWebHostChannel({ auth: createFakeAuthService(), sessions: sharedSessions, chat: sharedPaths });
+			const recoveryTrigger = await fetch(`${second.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
+			assert.equal(recoveryTrigger.status, 200);
+			await waitForCondition(() => {
+				const reliability = new DatabaseSync(sharedPaths.reliabilityStorePath, { readOnly: true });
+				try {
+					return Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_jobs WHERE queue = 'output-persistence'").get().count) === 0;
+				} finally {
+					reliability.close();
+				}
+			}, `durable job did not recover ${crashBoundary}`);
+
+			const data = new DatabaseSync(sharedPaths.dataStorePath, { readOnly: true });
+			let durable;
+			let readState;
+			try {
+				const rows = data.prepare("SELECT stream_id, created_at, idempotency_key FROM event_log WHERE session_id = ? AND type = 'assistant_message'").all(session.id);
+				assert.equal(rows.length, 1);
+				durable = rows[0];
+				readState = data.prepare("SELECT last_read_stream_id FROM app_session_read_state WHERE session_id = ?").get(session.id);
+			} finally {
+				data.close();
+			}
+			if (durableBeforeRestart) assert.equal(durable.stream_id, durableBeforeRestart.stream_id);
+			const projectedBeforeCrash = new Set(["during-projection", "after-live-send-before-receipt", "after-receipt-before-checkpoint"]).has(crashBoundary);
+			assert.equal(readState?.last_read_stream_id, projectedBeforeCrash ? durable.stream_id : undefined);
+			assert.ok(projectedStreamIds.every((streamId) => streamId === durable.stream_id));
+			assert.ok(projectedCreatedAts.every((createdAt) => createdAt === durable.created_at));
+
+			const reliability = new DatabaseSync(sharedPaths.reliabilityStorePath, { readOnly: true });
+			try {
+				const events = reliability.prepare("SELECT event_id, idempotency_key FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ?").all(session.id);
+				assert.equal(events.length, 1);
+				assert.equal(events[0].event_id, durable.idempotency_key);
+				assert.equal(events[0].idempotency_key, durable.idempotency_key);
+				const receipt = reliability.prepare("SELECT delivery_id, projection FROM pibo_delivery_receipts").get();
+				assert.deepEqual({ ...receipt }, { delivery_id: durable.idempotency_key, projection: "chat-web-observable-v1" });
+			} finally {
+				reliability.close();
+			}
+
+			const traceResponse = await fetch(`${second.baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(session.id)}`, { headers: { "x-test-user": "user-1" } });
+			assert.equal(traceResponse.status, 200);
+			const trace = await traceResponse.json();
+			const rendered = flattenTraceResponseNodes(trace.nodes).filter((node) => node.type === "assistant.message" && node.eventId === targetEventId);
+			assert.equal(rendered.length, 1);
+			assert.equal(rendered[0].output, `durable ${crashBoundary}`);
+			const expectedProjectionAttempts = new Set(["during-projection", "after-live-send-before-receipt"]).has(crashBoundary) ? 2 : 1;
+			assert.equal(recordEventCount, expectedProjectionAttempts);
+			assert.equal(markReadCount, projectedBeforeCrash ? 1 : 0);
+		} finally {
+			crashEnabled = false;
+			firstStreamController?.abort();
+			ChatDataIngestService.prototype.ingestOutputEvent = originalIngest;
+			PiboReliabilityStore.prototype.appendOnce = originalAppendOnce;
+			ChatSessionQueryService.prototype.recordEvent = originalRecordEvent;
+			ChatReadStateService.prototype.markSessionRead = originalMarkSessionRead;
+			PiboReliabilityStore.prototype.recordDeliveryReceipt = originalRecordReceipt;
+			await first?.channel.stop?.();
+			await second?.channel.stop?.();
+		}
+	});
+}
 
 function findAssistantOutput(nodes) {
 	for (const node of nodes) {

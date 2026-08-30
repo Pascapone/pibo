@@ -9,6 +9,7 @@ import { checkTraceView } from "../dist/debug/trace.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
 import { pageCodexThreadHistory } from "../dist/agent-runtimes/codex-native/history.js";
 import { historyReconciliationDigest } from "../dist/agent-runtime/history.js";
+import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 import {
 	createBuiltInCodexHistory,
 	createBuiltInPiHistory,
@@ -276,9 +277,9 @@ test("matched native runtime turns use stable product identity across legacy, V2
 	const events = [
 		outputEvent(1, { type: "message_queued", piboSessionId: "ps_root", eventId: "stable-Y", source: "user", text: "stable prompt" }),
 		outputEvent(2, { type: "message_started", piboSessionId: "ps_root", eventId: "stable-Y", source: "user", text: "stable prompt" }),
-		outputEvent(3, { type: "tool_call", piboSessionId: "ps_root", eventId: "stable-Y", toolCallId: "tool-X", toolName: "read", args: { path: "stable.txt" } }),
-		outputEvent(4, { type: "thinking_finished", piboSessionId: "ps_root", eventId: "stable-Y", thinkingIndex: 0, text: "stable reasoning" }),
-		outputEvent(5, { type: "assistant_message", piboSessionId: "ps_root", eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "stable answer" }),
+		outputEvent(3, { type: "tool_call", piboSessionId: "ps_root", eventId: "stable-Y", toolCallId: "tool-X", toolName: "read", args: { path: "stable.txt" }, renderSequence: 30 }),
+		outputEvent(4, { type: "thinking_finished", piboSessionId: "ps_root", eventId: "stable-Y", thinkingIndex: 0, text: "stable reasoning", renderSequence: 40 }),
+		outputEvent(5, { type: "assistant_message", piboSessionId: "ps_root", eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "stable answer", renderSequence: 50 }),
 		outputEvent(6, { type: "message_finished", piboSessionId: "ps_root", eventId: "stable-Y", source: "user" }),
 	];
 	const view = buildTraceViewFromEvents({
@@ -301,6 +302,12 @@ test("matched native runtime turns use stable product identity across legacy, V2
 	assert.ok(legacyNodes
 		.filter((node) => node.type === "model.reasoning" || node.toolCallId === "tool-X")
 		.every((node) => node.eventId === "stable-Y" && node.nativeTurnId === "runtime-X"));
+	assert.deepEqual(
+		legacyNodes
+			.filter((node) => node.toolCallId === "tool-X" || node.type === "model.reasoning" || node.type === "assistant.message")
+			.map((node) => node.orderKey?.renderSequence),
+		[30, 40, 50],
+	);
 
 	const timeline = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 });
 	const timelineMessages = timeline.nodes.filter((node) => node.type === "user.message" || node.type === "assistant.message");
@@ -458,7 +465,7 @@ test("steering keeps split native outputs on the base product turn with monotoni
 	]);
 	assert.deepEqual(
 		{ id: tool?.id, eventId: tool?.eventId, parentId: tool?.parentId, nativeTurnId: tool?.nativeTurnId, status: tool?.status },
-		{ id: "tool:tool-steered", eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X", status: "done" },
+		{ id: qualifiedToolNodeId("tool-steered", "stable-base", 0), eventId: "stable-base", parentId: undefined, nativeTurnId: "runtime-X", status: "done" },
 	);
 
 	const timeline = traceTimelinePageFromView({ trace: view, payloadStore: {}, limit: 50 });
@@ -1116,8 +1123,8 @@ test("duplicate Codex tool item IDs in distinct oversized groups retain two scop
 	assert.equal(page.reconciliationProof.complete, false);
 	assert.equal(tools.length, 2);
 	assert.equal(new Set(tools.map((node) => node.id)).size, 2);
-	assert.ok(tools.every((node) => node.id.startsWith("history-tool:")));
-	const qualifiedIdentities = tools.map((node) => JSON.parse(decodeURIComponent(node.id.slice("history-tool:".length))));
+	assert.ok(tools.every((node) => node.id.startsWith("tool-invocation:")));
+	const qualifiedIdentities = tools.map((node) => JSON.parse(decodeURIComponent(node.id.slice("tool-invocation:".length))));
 	assert.ok(qualifiedIdentities.every((identity) => identity[0] === duplicateToolCallId));
 	assert.equal(new Set(qualifiedIdentities.map((identity) => identity[1])).size, 2);
 	assert.ok(tools.every((node) => node.toolCallId === duplicateToolCallId));
@@ -1250,7 +1257,7 @@ test("qualified duplicate tool identity pairs calls and results across page edge
 	assert.equal(callA.id, resultA.id);
 	assert.equal(callB.id, resultB.id);
 	assert.notEqual(callA.id, callB.id);
-	assert.ok([callA, resultA, callB, resultB].every((node) => node.id.startsWith("history-tool:") && node.toolCallId === toolCallId));
+	assert.ok([callA, resultA, callB, resultB].every((node) => node.id.startsWith("tool-invocation:") && node.toolCallId === toolCallId));
 });
 
 test("missing or duplicate proof positions fail closed with distinct group-local identities", () => {
@@ -2004,7 +2011,7 @@ test("event-log projection merges tool lifecycle updates and compaction lifecycl
 	assert.deepEqual(view.nodes.map((node) => node.type), ["agent.turn", "execution.compaction"]);
 	const tool = view.nodes[0].children[0];
 	assert.equal(tool.type, "tool.call");
-	assert.equal(tool.id, "tool:tool-1");
+	assert.equal(tool.id, qualifiedToolNodeId("tool-1", "turn-tools", 0));
 	assert.equal(tool.status, "error");
 	assert.deepEqual(tool.input, { command: "pwd" });
 	assert.deepEqual(tool.output, { stderr: "boom" });
