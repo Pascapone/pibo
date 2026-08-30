@@ -15,6 +15,7 @@ async function runHelperAssertions() {
 			mobileSidebarA11yProps,
 			mobileSidebarFocusTarget,
 			mobileSidebarInitialFocusTarget,
+			mobileSidebarOwnsKeyboardEvent,
 		} from "./src/apps/chat-ui/src/mobile-sidebar-accessibility.ts";
 
 		assert.deepEqual(mobileSidebarA11yProps(true, false, "Chat sidebar"), { "aria-hidden": true, inert: true });
@@ -41,6 +42,26 @@ async function runHelperAssertions() {
 		assert.equal(mobileSidebarFocusTarget(focusable, outside, true), last);
 		assert.equal(mobileSidebarFocusTarget(focusable, middle, false), null);
 		assert.equal(mobileSidebarFocusTarget(focusable, middle, true), null);
+
+		class FakeElement {
+			constructor(closestModal = null) {
+				this.closestModal = closestModal;
+			}
+			closest(selector) {
+				assert.equal(selector, '[role="dialog"][aria-modal="true"]');
+				return this.closestModal;
+			}
+		}
+		globalThis.Element = FakeElement;
+		const sidebarModal = new FakeElement();
+		sidebarModal.closestModal = sidebarModal;
+		const childModal = new FakeElement();
+		childModal.closestModal = childModal;
+		assert.equal(mobileSidebarOwnsKeyboardEvent(sidebarModal, sidebarModal), true);
+		assert.equal(mobileSidebarOwnsKeyboardEvent(sidebarModal, new FakeElement(sidebarModal)), true);
+		assert.equal(mobileSidebarOwnsKeyboardEvent(sidebarModal, new FakeElement(childModal)), false);
+		assert.equal(mobileSidebarOwnsKeyboardEvent(sidebarModal, new FakeElement()), true);
+		assert.equal(mobileSidebarOwnsKeyboardEvent(sidebarModal, null), true);
 
 		function element(name) {
 			const attributes = new Map();
@@ -90,7 +111,7 @@ async function runHelperAssertions() {
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
-test("mobile sidebar helpers cover closed, modal, focus wrap, and background isolation states", async () => {
+test("mobile sidebar helpers cover modal state, nested keyboard ownership, focus wrap, and background isolation", async () => {
 	await runHelperAssertions();
 });
 
@@ -132,6 +153,7 @@ test("App owns initial focus, bidirectional containment, Escape close, and delay
 	assert.match(appSource, /const closeMobileSidebar = useMobileSidebarModal/);
 	assert.match(helperSource, /mobileSidebarInitialFocusTarget/);
 	assert.match(helperSource, /mobileSidebarFocusTarget/);
+	assert.match(helperSource, /if \(!mobileSidebarOwnsKeyboardEvent\(sidebar, event\.target\)\) return;/);
 	assert.match(helperSource, /event\.key === "Escape"/);
 	assert.match(helperSource, /event\.key !== "Tab"/);
 	assert.match(helperSource, /applyMobileSidebarBackgroundIsolation/);

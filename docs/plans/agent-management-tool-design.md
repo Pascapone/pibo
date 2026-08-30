@@ -196,6 +196,20 @@ parentId = caller Pibo Session ID
 
 `agentIds` are validated against that set before filtering. Nested child sessions are terminated with their direct parent, but they are not independently manageable by the grandparent's shared tools.
 
+## Observation Query Core
+
+Live observation and persisted debugging use different sources but one query implementation. Each source adapts its records to the normalized observation shape and supplies them in the scan order selected by the shared query plan.
+
+The shared query core owns:
+
+- option validation and normalized defaults;
+- compact default event selection;
+- identity, event, kind, role, time, text, and tool-call filtering;
+- tool visibility and summary/full projection;
+- page limits, presentation order, cursor advancement, and truncation.
+
+The source adapters retain only source-specific responsibilities. The router checks live ownership, supplies router-lifetime `sequence` values, and reports FIFO eviction. The debug adapter checks persisted ownership, streams rows from SQLite, hydrates payloads, and maps durable `event_log.stream_id` values to the public `streamId` field. Persisted debugging does not expose `requestIds` until request provenance is stored in the event log.
+
 ## Live Observation Storage
 
 The router records normalized observations before notifying external listeners. Only output events whose session is a direct or nested delegated child are journaled under their direct managing parent. A fixed-size FIFO bound prevents unbounded memory growth.
@@ -225,20 +239,26 @@ List options:
 Observe options are repeatable where plural:
 
 ```text
+--tool-call-id <tool_...>
 --agent-id <ps_...>
 --name <name>
 --thread-key <key>
 --event-type <type>
 --kind <message|thinking|tool|error|lifecycle|event>
+--role <role>
 --since <ISO timestamp>
 --until <ISO timestamp>
 --contains <text>
 --after-sequence <n>
 --order <asc|desc>
 --limit <1..200>
+--include-tools
+--tool-detail <summary|full>
 --details
 --json
 ```
+
+The CLI uses the same compact default as the live tool: newest 20 completed assistant messages, tools hidden, and summary tool detail prepared for explicit tool inclusion. Exact event or kind filters retain access to persisted streaming and progress records. `--tool-call-id` implies tool visibility unless the caller explicitly disables it through an API-level input.
 
 CLI observation sequence uses persisted `event_log.stream_id`, explicitly labeled `streamId` in JSON. Persisted rows are streamed rather than loaded as one unbounded array, and normal text/details use the same bounds as the live tool. Cursor pagination follows the same oldest-unseen rule. The model tool's live `sequence` is not claimed to survive a router restart.
 

@@ -38,6 +38,24 @@ test("session reply waiter resolves only after message_finished with the final a
 	});
 });
 
+test("router isolates output listener failures and still notifies later listeners", async () => {
+	await withRouter(async (router) => {
+		const observed = [];
+		const originalError = console.error;
+		const errors = [];
+		console.error = (...args) => errors.push(args);
+		try {
+			router.subscribe(() => { throw new Error("indexer failed"); });
+			router.subscribe((event) => observed.push(event.type));
+			assert.doesNotThrow(() => router.emitOutput({ type: "message_finished", piboSessionId: "ps_listener", eventId: "turn-listener" }));
+			assert.deepEqual(observed, ["message_finished"]);
+			assert.equal(errors.some((args) => args.some((value) => String(value).includes("indexer failed"))), true);
+		} finally {
+			console.error = originalError;
+		}
+	});
+});
+
 test("session reply waiter rejects terminal session errors", async () => {
 	await withRouter(async (router) => {
 		router.emit = async (event) => {

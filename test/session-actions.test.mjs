@@ -1212,6 +1212,35 @@ test("non-compact actions still execute immediately while a message is active", 
 	await routed.dispose();
 });
 
+test("Pi session switching rejects active routed work", async () => {
+	const firstPrompt = deferred();
+	const runtime = createQueuedCompactRuntime([], [firstPrompt], deferred());
+	let switchCalls = 0;
+	runtime.switchSession = async () => {
+		switchCalls += 1;
+		return { cancelled: false };
+	};
+	const routed = new RoutedSession("route:test", runtime, () => {}, PiboPluginRegistry.create({ plugins: [piboCorePlugin] }), false);
+
+	try {
+		routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-active", text: "active", source: "user" });
+		await waitFor(() => routed.getStatus().processing);
+		await assert.rejects(
+			() => routed.executeAction({
+				type: "execution",
+				piboSessionId: "route:test",
+				action: "session.switch",
+				params: { sessionFile: "/fixture/native-B.jsonl" },
+			}),
+			/Pibo session must be idle to switch/,
+		);
+		assert.equal(switchCalls, 0);
+	} finally {
+		firstPrompt.resolve();
+		await routed.dispose();
+	}
+});
+
 test("clear_queue leaves the active long-running message alone and reports only discarded messages", async () => {
 	const events = [];
 	const interruptions = [];

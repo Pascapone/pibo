@@ -10,6 +10,9 @@ async function runLiveOverlayScenario() {
 		import assert from "node:assert/strict";
 		const { trimLiveOverlayForBaseTrace } = await import("./src/apps/chat-ui/src/tracing/live-overlay.ts");
 		const { computeCurrentTraceView } = await import("./src/apps/chat-ui/src/tracing/current-trace-view.ts");
+		const { pendingLiveEventsBelongToSelectedSession } = await import("./src/apps/chat-ui/src/tracing/use-session-trace-live-stream.ts");
+		assert.equal(pendingLiveEventsBelongToSelectedSession("ps-old", "ps-new"), false);
+		assert.equal(pendingLiveEventsBelongToSelectedSession("ps-new", "ps-new"), true);
 
 		const traceNode = (id, type, extra = {}) => ({
 			id,
@@ -331,6 +334,7 @@ async function runPersistedContentIdentityScenario() {
 	const script = `
 		import assert from "node:assert/strict";
 		const { patchTraceViewWithEvents, traceNodesFromHistoryEntries } = await import("./src/shared/trace-engine.ts");
+		const { qualifiedToolNodeId } = await import("./src/shared/trace-tool-identity.ts");
 		const { piSessionEntriesToAgentRuntimeHistoryEntries } = await import("./src/agent-runtimes/pi/history.ts");
 		const traceNodesFromEntries = (sessionId, entries, timings) => traceNodesFromHistoryEntries(sessionId, piSessionEntriesToAgentRuntimeHistoryEntries(entries), timings);
 
@@ -358,9 +362,9 @@ async function runPersistedContentIdentityScenario() {
 		}]);
 		assert.deepEqual(nodes.filter((node) => node.type !== "user.message").map((node) => node.id), [
 			"event:thinking:turn-content-identity:thinking:0",
-			"tool:tool-1",
+			qualifiedToolNodeId("tool-1", eventId, 0),
 			"event:thinking:turn-content-identity:thinking:1",
-			"tool:tool-2",
+			qualifiedToolNodeId("tool-2", eventId, 0),
 			"event:assistant:turn-content-identity:assistant:0",
 		]);
 		assert.deepEqual(nodes.filter((node) => node.type === "model.reasoning").map((node) => node.stableKey), [
@@ -397,9 +401,9 @@ async function runPersistedContentIdentityScenario() {
 		], "running");
 		assert.deepEqual(patched.nodes.filter((node) => node.type !== "user.message").map((node) => node.id), [
 			"event:thinking:turn-content-identity:thinking:0",
-			"tool:tool-1",
+			qualifiedToolNodeId("tool-1", eventId, 0),
 			"event:thinking:turn-content-identity:thinking:1",
-			"tool:tool-2",
+			qualifiedToolNodeId("tool-2", eventId, 0),
 			"event:assistant:turn-content-identity:assistant:0",
 		]);
 	`;

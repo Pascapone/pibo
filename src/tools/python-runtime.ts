@@ -99,7 +99,7 @@ function isRootUser(): boolean {
   return typeof process.getuid === 'function' && process.getuid() === 0;
 }
 
-async function resolveUvCommand(): Promise<string | undefined> {
+async function findUvCommand(): Promise<string | undefined> {
   const uv = await runBuffered('uv', ['--version']);
   if (uv.ok) return 'uv';
 
@@ -109,7 +109,15 @@ async function resolveUvCommand(): Promise<string | undefined> {
     if (local.ok) return localUv;
   }
 
+  return undefined;
+}
+
+async function ensureUvCommand(): Promise<string | undefined> {
+  const uvCommand = await findUvCommand();
+  if (uvCommand) return uvCommand;
+
   if (process.platform === 'linux' && isRootUser()) {
+    const localUv = join(homedir(), '.local', 'bin', 'uv');
     console.log('uv was not found on PATH. Installing uv automatically.');
     await runInheritedCommand('sh', ['-c', 'curl -LsSf https://astral.sh/uv/install.sh | sh']);
     const installed = await runBuffered(localUv, ['--version'], {
@@ -174,7 +182,7 @@ export async function printToolPythonRuntimeDoctor(
   spec: ToolPythonRuntimeSpec,
 ): Promise<void> {
   const paths = getToolPythonRuntimePaths(name, spec);
-  const uvCommand = await resolveUvCommand();
+  const uvCommand = await findUvCommand();
   const uv = uvCommand ? await runBuffered(uvCommand, ['--version']) : { ok: false, output: 'missing' };
   const python = uv.ok
     ? await runBuffered(uvCommand!, ['python', 'find', spec.pythonVersion])
@@ -225,7 +233,7 @@ export async function installToolPythonRuntime(
   name: string,
   spec: ToolPythonRuntimeSpec,
 ): Promise<ToolPythonRuntimePaths> {
-  const uvCommand = await resolveUvCommand();
+  const uvCommand = await ensureUvCommand();
   if (!uvCommand) {
     throw new Error(
       formatCliError({

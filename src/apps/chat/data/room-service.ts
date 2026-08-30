@@ -3,6 +3,13 @@ import { roomWorkspaceFromMetadata, type CreatePiboRoomInput, type PiboRoom, typ
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import { roomFromRow, type RoomRow } from "./chat-data-mappers.js";
 
+export class PiboRoomHierarchyCycleError extends Error {
+	constructor() {
+		super("Room parent assignment would create a cycle.");
+		this.name = "PiboRoomHierarchyCycleError";
+	}
+}
+
 export class ChatRoomService {
 	constructor(private readonly store: PiboDataStore) {}
 
@@ -16,6 +23,9 @@ export class ChatRoomService {
 
 	updateRoom(id: string, input: UpdatePiboRoomInput): PiboRoom | undefined {
 		const existing = this.getRoom(id); if (!existing) return undefined;
+		if (input.parentRoomId && this.parentAssignmentCreatesCycle(id, input.parentRoomId)) {
+			throw new PiboRoomHierarchyCycleError();
+		}
 		const metadata = input.metadata ?? existing.metadata;
 		const updated = { ...existing, name: input.name ?? existing.name, topic: input.topic === null ? undefined : input.topic ?? existing.topic, parentRoomId: input.parentRoomId === null ? undefined : input.parentRoomId ?? existing.parentRoomId, retentionPolicyId: input.retentionPolicyId === null ? undefined : input.retentionPolicyId ?? existing.retentionPolicyId, metadata, workspace: roomWorkspaceFromMetadata(metadata), updatedAt: new Date().toISOString() };
 		this.store.db.prepare("UPDATE rooms SET name = ?, topic = ?, parent_room_id = ?, workspace = ?, retention_policy_id = ?, metadata_json = ?, updated_at = ? WHERE id = ?").run(updated.name, updated.topic ?? null, updated.parentRoomId ?? null, updated.workspace ?? null, updated.retentionPolicyId ?? null, JSON.stringify(updated.metadata), updated.updatedAt, id);
@@ -37,4 +47,16 @@ export class ChatRoomService {
 	updateReadCursor(roomId: string, lastReadStreamId: number): void { const now = new Date().toISOString(); this.store.db.prepare("INSERT INTO app_room_read_state (room_id, last_read_stream_id, last_read_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET last_read_stream_id = MAX(app_room_read_state.last_read_stream_id, excluded.last_read_stream_id), last_read_at = excluded.last_read_at, updated_at = excluded.updated_at").run(roomId, lastReadStreamId, now, now); }
 	requireRoom(roomId: string): PiboRoom { const room = this.getRoom(roomId); if (!room) throw new Error("Room not found"); return room; }
 	close(): void {}
+
+	private parentAssignmentCreatesCycle(roomId: string, parentRoomId: string): boolean {
+		const roomsById = new Map(this.listRooms().map((room) => [room.id, room]));
+		const visited = new Set<string>();
+		let currentId: string | undefined = parentRoomId;
+		while (currentId && !visited.has(currentId)) {
+			if (currentId === roomId) return true;
+			visited.add(currentId);
+			currentId = roomsById.get(currentId)?.parentRoomId;
+		}
+		return false;
+	}
 }

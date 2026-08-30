@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { PiboSessionTraceView, PiboWebSessionStatus } from "../types";
 import { collectTraceState, isTraceSnapshotCollectionEnabled } from "./snapshotCollector";
-import { computeCurrentTraceView } from "./current-trace-view";
+import { computeCurrentTraceView, type CurrentTraceProjectionCache } from "./current-trace-view";
 import type { LiveTraceOverlay } from "./live-overlay";
 import {
 	collectPersistedUserMessageIndex,
@@ -34,15 +34,21 @@ export function useCurrentSessionTrace({
 		() => reconciledBaseTraceView ? collectPersistedUserMessageIndex(reconciledBaseTraceView.nodes) : new Map<string, string[]>(),
 		[reconciledBaseTraceView],
 	);
+	const liveProjectionCacheRef = useRef<CurrentTraceProjectionCache | undefined>(undefined);
 
-	const currentTraceComputation = useMemo(() => computeCurrentTraceView({
-		selectedPiboSessionId,
-		reconciledBaseTraceView,
-		liveTraceOverlay,
-		selectedSessionStatus,
-		persistedUserMessageIndexForBaseTrace,
-		now: isStreamingDebugEnabled() ? () => performance.now() : undefined,
-	}), [liveTraceOverlay, selectedPiboSessionId, selectedSessionStatus, reconciledBaseTraceView, persistedUserMessageIndexForBaseTrace]);
+	const currentTraceComputation = useMemo(() => {
+		const computation = computeCurrentTraceView({
+			selectedPiboSessionId,
+			reconciledBaseTraceView,
+			liveTraceOverlay,
+			selectedSessionStatus,
+			persistedUserMessageIndexForBaseTrace,
+			previousProjection: liveProjectionCacheRef.current,
+			now: isStreamingDebugEnabled() ? () => performance.now() : undefined,
+		});
+		liveProjectionCacheRef.current = computation.projectionCache;
+		return computation;
+	}, [liveTraceOverlay, selectedPiboSessionId, selectedSessionStatus, reconciledBaseTraceView, persistedUserMessageIndexForBaseTrace]);
 	const currentTraceView = currentTraceComputation.traceView;
 
 	useEffect(() => {

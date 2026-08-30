@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
@@ -123,6 +124,59 @@ test("pibo profile resolves active saved Chat custom agents", async () => {
 		const help = await execFileAsync("node", [cliPath, "profile", "--help"], { cwd, env });
 		assert.match(help.stdout, /active saved Chat custom agents/);
 		assert.match(help.stdout, /\$PIBO_HOME\/chat-agents\.sqlite/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo profile resolves persisted subagent targets and recovers after a missing target is updated away", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-profile-subagent-target-"));
+	const piboHome = join(cwd, "pibo-home");
+	await mkdir(piboHome, { recursive: true });
+	const storePath = join(piboHome, "chat-agents.sqlite");
+	let target;
+	let parent;
+	{
+		const store = new CustomAgentStore(storePath);
+		try {
+			target = store.create({ displayName: "cli-target" });
+			parent = store.create({
+				displayName: "cli-parent",
+				subagents: [{ name: "helper", targetProfile: target.profileName }],
+			});
+		} finally {
+			store.close();
+		}
+	}
+
+	try {
+		const env = { ...process.env, PIBO_HOME: piboHome, HOME: cwd };
+		const resolved = await execFileAsync("node", [cliPath, "profile", parent.profileName], { cwd, env });
+		assert.deepEqual(JSON.parse(resolved.stdout).subagents, [{
+			name: "helper",
+			targetProfile: target.profileName,
+			active: true,
+		}]);
+
+		const db = new DatabaseSync(storePath);
+		db.prepare("DELETE FROM chat_agents WHERE id = ?").run(target.id);
+		db.close();
+		await assert.rejects(
+			() => execFileAsync("node", [cliPath, "profile", parent.profileName], { cwd, env }),
+			(error) => {
+				assert.match(error.stderr, /Unknown profile "cli-target"/);
+				return true;
+			},
+		);
+
+		const repaired = new CustomAgentStore(storePath);
+		try {
+			assert.deepEqual(repaired.update(parent.id, { subagents: [] }).subagents, []);
+		} finally {
+			repaired.close();
+		}
+		const updated = await execFileAsync("node", [cliPath, "profile", parent.profileName], { cwd, env });
+		assert.deepEqual(JSON.parse(updated.stdout).subagents, []);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

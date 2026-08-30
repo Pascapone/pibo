@@ -327,6 +327,48 @@ test("pibo mcp config can create, add, show, and remove servers", async () => {
 	}
 });
 
+test("pibo mcp config describe persists to a lower-priority source across processes", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-describe-source-"));
+	const project = join(root, "project");
+	const home = join(root, "home");
+	await mkdir(project, { recursive: true });
+	await mkdir(home, { recursive: true });
+	const projectPath = join(project, "mcp_servers.json");
+	const homePath = join(home, "mcp_servers.json");
+	await writeFile(projectPath, `${JSON.stringify({
+		mcpServers: {
+			local: { command: "node", args: ["local.js"] },
+			shared: { command: "node", args: ["project.js"] },
+		},
+	}, null, 2)}\n`);
+	await writeFile(homePath, `${JSON.stringify({
+		mcpServers: {
+			inherited: { command: "node", args: ["home.js"] },
+			shared: { command: "node", args: ["home.js"] },
+		},
+	}, null, 2)}\n`);
+	const env = { ...process.env, HOME: home, USERPROFILE: home };
+	delete env.MCP_CONFIG_PATH;
+
+	try {
+		await execFileAsync("node", [cliPath, "mcp", "config", "describe", "inherited", "First process description."], { cwd: project, env });
+		await execFileAsync("node", [cliPath, "mcp", "config", "describe", "inherited", "Restarted process description."], { cwd: project, env });
+		await execFileAsync("node", [cliPath, "mcp", "config", "describe", "shared", "Project wins."], { cwd: project, env });
+
+		const projectConfig = JSON.parse(await readFile(projectPath, "utf-8"));
+		const homeConfig = JSON.parse(await readFile(homePath, "utf-8"));
+		assert.equal(projectConfig.mcpServers.shared.pibo.description, "Project wins.");
+		assert.equal(homeConfig.mcpServers.shared.pibo, undefined);
+		assert.deepEqual(homeConfig.mcpServers.inherited, {
+			command: "node",
+			args: ["home.js"],
+			pibo: { description: "Restarted process description.", descriptionSource: "user" },
+		});
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("pibo mcp registry lists bundled presets", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-mcp-registry-"));
 	try {

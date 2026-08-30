@@ -181,7 +181,8 @@ test("Session and Project trace panes scope lifecycle state and fullscreen to th
 	assert.match(pane, /<PreviewFullscreenTopBar/);
 	assert.match(layout, /fullscreenTopBar/);
 	assert.match(layout, /fullscreenContent/);
-	assert.match(layout, /hideComposer \? null : <Composer/);
+	assert.match(pane, /hideComposer=\{livePreviewSelected\}/);
+	assert.match(layout, /shouldRenderSessionComposer\(\{ hideComposer, projectModulePanel \}\)/);
 	assert.match(preview, /window\.addEventListener\("keydown", handleKeyDown, true\)/);
 	assert.match(preview, /\[aria-label="Enter Preview fullscreen"\]/);
 	assert.match(preview, /window\.setTimeout\(restoreFocus, 0\)/);
