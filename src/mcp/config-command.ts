@@ -1,10 +1,14 @@
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { CustomAgentStore } from '../apps/chat/agent-store.js';
+import { piboHomePath } from '../core/pibo-home.js';
 import {
   type McpServersConfig,
   type ServerConfig,
   ensureConfigExists,
   findConfigPath,
+  getConfigSearchPaths,
   getPreferredConfigPath,
 } from './config.js';
 import { ErrorCode, formatCliError } from './errors.js';
@@ -127,6 +131,38 @@ async function writeRawConfig(
   config: McpServersConfig,
 ): Promise<void> {
   await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+async function mergedConfigRetainsServer(
+  name: string,
+  updatedPath: string,
+  updatedConfig: McpServersConfig,
+  explicitPath?: string,
+): Promise<boolean> {
+  const resolvedUpdatedPath = resolve(updatedPath);
+  for (const sourcePath of getConfigSearchPaths(explicitPath)) {
+    if (!existsSync(sourcePath)) continue;
+    const sourceConfig = resolve(sourcePath) === resolvedUpdatedPath
+      ? updatedConfig
+      : await readRawConfig(sourcePath);
+    if (name in sourceConfig.mcpServers) return true;
+  }
+  return false;
+}
+
+function customAgentsSelectingMcpServer(name: string): string[] {
+  const storePath = piboHomePath('chat-agents.sqlite');
+  if (!existsSync(storePath)) return [];
+  const store = new CustomAgentStore(storePath);
+  try {
+    return store
+      .list({ includeArchived: true })
+      .filter((agent) => agent.mcpServers.includes(name))
+      .map((agent) => agent.profileName)
+      .sort((left, right) => left.localeCompare(right));
+  } finally {
+    store.close();
+  }
 }
 
 function parseServerConfig(input: string): ServerConfig {
@@ -285,6 +321,20 @@ export async function configCommand(
     }
 
     delete config.mcpServers[options.name];
+    if (!(await mergedConfigRetainsServer(options.name, path, config, options.configPath))) {
+      const affectedAgents = customAgentsSelectingMcpServer(options.name);
+      if (affectedAgents.length > 0) {
+        throw new Error(
+          formatCliError({
+            code: ErrorCode.CLIENT_ERROR,
+            type: 'MCP_SERVER_IN_USE',
+            message: `MCP server "${options.name}" is selected by custom agents`,
+            details: `Custom agents: ${affectedAgents.join(', ')}`,
+            suggestion: 'Update those agents to stop selecting this MCP server, then retry the removal.',
+          }),
+        );
+      }
+    }
     await writeRawConfig(path, config);
     console.log(`Removed MCP server "${options.name}" from ${path}`);
   }

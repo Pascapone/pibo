@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
+import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 
 const execFileAsync = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
@@ -324,6 +325,92 @@ test("pibo mcp config can create, add, show, and remove servers", async () => {
 		assert.deepEqual(finalConfig, { mcpServers: {} });
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo mcp config refuses to remove servers selected by custom agents", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-selected-remove-"));
+	const cwd = join(root, "project");
+	const home = join(root, "home");
+	const piboHome = join(root, "pibo-home");
+	await mkdir(cwd, { recursive: true });
+	await mkdir(home, { recursive: true });
+	const configPath = join(cwd, "mcp_servers.json");
+	await writeFile(configPath, JSON.stringify({
+		mcpServers: {
+			selected: { command: "node", args: ["selected.js"] },
+			unselected: { command: "node", args: ["unselected.js"] },
+		},
+	}));
+	const store = new CustomAgentStore(join(piboHome, "chat-agents.sqlite"));
+	try {
+		const first = store.create({ displayName: "selected-alpha", mcpServers: ["selected"] });
+		const second = store.create({ displayName: "selected-beta", mcpServers: ["selected"] });
+		store.setArchived(second.id, true);
+		store.create({ displayName: "unrelated", mcpServers: [] });
+		const env = {
+			...process.env,
+			HOME: home,
+			USERPROFILE: home,
+			PIBO_HOME: piboHome,
+		};
+		delete env.MCP_CONFIG_PATH;
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "mcp", "config", "remove", "selected"], { cwd, env }),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.match(error.stderr, /MCP_SERVER_IN_USE/);
+				assert.match(error.stderr, /selected-alpha, selected-beta/);
+				return true;
+			},
+		);
+		assert.ok(JSON.parse(await readFile(configPath, "utf8")).mcpServers.selected);
+
+		await execFileAsync("node", [cliPath, "mcp", "config", "remove", "unselected"], { cwd, env });
+		assert.equal("unselected" in JSON.parse(await readFile(configPath, "utf8")).mcpServers, false);
+
+		store.update(first.id, { mcpServers: [] });
+		store.update(second.id, { mcpServers: [] });
+		await execFileAsync("node", [cliPath, "mcp", "config", "remove", "selected"], { cwd, env });
+		assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), { mcpServers: {} });
+	} finally {
+		store.close();
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("pibo mcp config allows removing an override when a lower-priority source retains the selected server", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-selected-fallback-"));
+	const cwd = join(root, "project");
+	const home = join(root, "home");
+	const piboHome = join(root, "pibo-home");
+	await mkdir(cwd, { recursive: true });
+	await mkdir(home, { recursive: true });
+	const explicitPath = join(root, "explicit.json");
+	const environmentPath = join(root, "environment.json");
+	await writeFile(explicitPath, JSON.stringify({ mcpServers: { shared: { command: "node", args: ["explicit.js"] } } }));
+	await writeFile(environmentPath, JSON.stringify({ mcpServers: { shared: { command: "node", args: ["environment.js"] } } }));
+	const store = new CustomAgentStore(join(piboHome, "chat-agents.sqlite"));
+	try {
+		store.create({ displayName: "fallback-agent", mcpServers: ["shared"] });
+		const env = {
+			...process.env,
+			HOME: home,
+			USERPROFILE: home,
+			PIBO_HOME: piboHome,
+			MCP_CONFIG_PATH: environmentPath,
+		};
+		await execFileAsync(
+			"node",
+			[cliPath, "mcp", "--config", explicitPath, "config", "remove", "shared"],
+			{ cwd, env },
+		);
+		assert.deepEqual(JSON.parse(await readFile(explicitPath, "utf8")), { mcpServers: {} });
+		assert.ok(JSON.parse(await readFile(environmentPath, "utf8")).mcpServers.shared);
+	} finally {
+		store.close();
+		await rm(root, { recursive: true, force: true });
 	}
 });
 

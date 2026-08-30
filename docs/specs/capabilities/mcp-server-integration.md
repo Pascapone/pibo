@@ -356,7 +356,7 @@ The runtime MUST inject an MCP context file only when the active profile selects
 - A config file may contain secret placeholders; Chat Web MUST expose only metadata, not raw server config.
 - MCP server descriptions may come from registry presets; users cannot edit those descriptions through the current UI.
 - The registry can be empty; commands must still be useful for discovery.
-- A selected MCP server can be removed from config after a custom agent is saved; runtime context generation omits it until the selection is repaired or the server is re-added.
+- Config and registry removal MUST reject removing the last effective definition of an MCP server selected by any active or archived custom agent and identify every dependent profile. Removing one source definition remains valid when the merged config retains the server from another source. Direct file edits can still create stale selections; Context Build and message preparation report the normal missing-server diagnostic until the agent selection is repaired or the server is restored.
 - Daemon cancellation or process cleanup may fail; the next connection attempt must still validate the process, IPC endpoint, and config hash before reuse.
 
 ## Constraints
