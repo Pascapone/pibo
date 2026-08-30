@@ -2,8 +2,16 @@ import type { DatabaseSync } from "node:sqlite";
 
 export const PIBO_DATA_SCHEMA_VERSION = 6;
 
+export function assertSupportedPiboDataSchemaVersion(db: DatabaseSync): number {
+	const version = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
+	if (version > PIBO_DATA_SCHEMA_VERSION) {
+		throw new Error(`Pibo database schema version ${version} is newer than supported version ${PIBO_DATA_SCHEMA_VERSION}`);
+	}
+	return version;
+}
+
 export function applyPiboDataSchema(db: DatabaseSync): void {
-	const previousVersion = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
+	const previousVersion = assertSupportedPiboDataSchemaVersion(db);
 	const existingSessionCount = db.prepare("SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'sessions'").get() as { count: number };
 	const hadSessionsBeforeMigration = existingSessionCount.count > 0
 		&& Number((db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number }).count) > 0;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -69,6 +69,62 @@ test("v2 schema migration is idempotent", () => {
 		1,
 	);
 	db.close();
+});
+
+test("pibo data store rejects future schemas without mutating them", (t) => {
+	const dir = tempDir("pibo-data-future-schema-");
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const dbPath = join(dir, "pibo.sqlite");
+	const futureVersion = PIBO_DATA_SCHEMA_VERSION + 1;
+	const future = new DatabaseSync(dbPath);
+	future.exec(`
+		CREATE TABLE future_only_state (
+			id TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			future_metadata TEXT NOT NULL
+		);
+		INSERT INTO future_only_state VALUES ('synthetic', 'preserve me', '{"future":true}');
+		PRAGMA user_version = ${futureVersion};
+	`);
+	future.close();
+	const originalBytes = readFileSync(dbPath);
+
+	const open = () => new PiboDataStore(dbPath, { payloadRootDir: join(dir, "payloads") });
+	assert.throws(open, new RegExp(`Pibo database schema version ${futureVersion} is newer than supported version ${PIBO_DATA_SCHEMA_VERSION}`));
+	assert.deepEqual(readFileSync(dbPath), originalBytes);
+	assert.equal(existsSync(`${dbPath}-wal`), false);
+	assert.equal(existsSync(`${dbPath}-shm`), false);
+
+	const inspect = () => {
+		const database = new DatabaseSync(dbPath, { readOnly: true });
+		try {
+			return {
+				userVersion: database.prepare("PRAGMA user_version").get().user_version,
+				tables: database.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name").all().map((row) => row.name),
+				row: { ...database.prepare("SELECT * FROM future_only_state WHERE id = 'synthetic'").get() },
+			};
+		} finally {
+			database.close();
+		}
+	};
+	assert.deepEqual(inspect(), {
+		userVersion: futureVersion,
+		tables: ["future_only_state"],
+		row: { id: "synthetic", value: "preserve me", future_metadata: '{"future":true}' },
+	});
+
+	assert.throws(open, /newer than supported/);
+	assert.deepEqual(readFileSync(dbPath), originalBytes);
+	assert.deepEqual(inspect(), {
+		userVersion: futureVersion,
+		tables: ["future_only_state"],
+		row: { id: "synthetic", value: "preserve me", future_metadata: '{"future":true}' },
+	});
+
+	const direct = new DatabaseSync(dbPath);
+	assert.throws(() => applyPiboDataSchema(direct), /newer than supported/);
+	direct.close();
+	assert.deepEqual(readFileSync(dbPath), originalBytes);
 });
 
 test("schema v6 migration installs the exact tool lifecycle index", () => {
