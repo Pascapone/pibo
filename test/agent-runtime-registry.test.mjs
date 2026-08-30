@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AgentRuntimeContractError } from "../dist/agent-runtime/errors.js";
 import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
 import { exerciseAgentRuntimeAdapterContract } from "../dist/agent-runtime/testing/contract.js";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
@@ -438,6 +439,110 @@ test("runtime registry validates descriptor and live-session capability claims",
 		() => registry.openSession("invalid-session", openInput(profile)),
 		/maintenance\.compaction requires controls\.compact/,
 	);
+});
+
+test("runtime registry rejects partial sessions without masking contract errors during cleanup", async () => {
+	const runtimeId = "session-boundary";
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(createFakeAgentRuntimeDriver({ adapterId: runtimeId }));
+	const adapter = registry.registerInstance({ id: runtimeId, adapterId: runtimeId });
+	const profile = new InitialSessionContextBuilder("session-boundary-profile")
+		.withAgentRuntime(runtimeId)
+		.createSession();
+	const input = openInput(profile, { piboSessionId: "ps_session_boundary" });
+
+	function sessionFixture({ omit = [], invalidCapability = false, disposeError } = {}) {
+		const metrics = { disposeCalls: 0 };
+		const capabilities = structuredClone(adapter.descriptor.capabilities);
+		if (invalidCapability) capabilities.maintenance.compaction = true;
+		const session = {
+			adapterId: runtimeId,
+			runtimeInstanceId: runtimeId,
+			cwd: input.workspace,
+			capabilities,
+			getBinding() {
+				return {
+					piboSessionId: input.piboSession.id,
+					runtimeInstanceId: runtimeId,
+					adapterId: runtimeId,
+					state: "unbound",
+				};
+			},
+			subscribe() { return () => {}; },
+			async prompt() {},
+			async abort() {},
+			async dispose() {
+				metrics.disposeCalls += 1;
+				if (disposeError) throw disposeError;
+			},
+			getStatus() {
+				return { streaming: false, enabledTools: [], cwd: input.workspace };
+			},
+		};
+		for (const field of omit) delete session[field];
+		return { session, metrics };
+	}
+
+	const valid = sessionFixture();
+	adapter.openSession = async () => valid.session;
+	assert.equal(await registry.openSession(runtimeId, input), valid.session);
+	assert.equal(valid.metrics.disposeCalls, 0);
+	await valid.session.dispose();
+	assert.equal(valid.metrics.disposeCalls, 1);
+
+	const invalidCapability = sessionFixture({ invalidCapability: true });
+	adapter.openSession = async () => invalidCapability.session;
+	await assert.rejects(
+		() => registry.openSession(runtimeId, input),
+		(error) => {
+			assert.ok(error instanceof AgentRuntimeContractError);
+			assert.match(error.message, /maintenance\.compaction requires controls\.compact/);
+			return true;
+		},
+	);
+	assert.equal(invalidCapability.metrics.disposeCalls, 1);
+
+	async function captureOpen(session) {
+		adapter.openSession = async () => session;
+		try {
+			await registry.openSession(runtimeId, input);
+			return { errorName: "accepted", message: "" };
+		} catch (error) {
+			return {
+				errorName: error?.constructor?.name ?? typeof error,
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	}
+
+	const partialOutcomes = [];
+	for (const field of ["cwd", "getBinding", "subscribe", "prompt", "abort", "dispose", "getStatus"]) {
+		const partial = sessionFixture({ omit: [field] });
+		partialOutcomes.push({ field, ...await captureOpen(partial.session), disposeCalls: partial.metrics.disposeCalls });
+	}
+	const missingDisposeWithCapabilityFailure = sessionFixture({ omit: ["dispose"], invalidCapability: true });
+	const missingDisposeOutcome = await captureOpen(missingDisposeWithCapabilityFailure.session);
+	assert.equal(missingDisposeOutcome.errorName, "AgentRuntimeContractError");
+	assert.match(missingDisposeOutcome.message, /session\.dispose/);
+	assert.match(missingDisposeOutcome.message, /maintenance\.compaction requires controls\.compact/);
+	assert.equal(missingDisposeWithCapabilityFailure.metrics.disposeCalls, 0);
+
+	const rejectingCleanup = sessionFixture({ omit: ["prompt"], disposeError: new Error("cleanup failed") });
+	const rejectingCleanupOutcome = await captureOpen(rejectingCleanup.session);
+	assert.equal(rejectingCleanupOutcome.errorName, "AgentRuntimeContractError");
+	assert.match(rejectingCleanupOutcome.message, /session\.prompt/);
+	assert.doesNotMatch(rejectingCleanupOutcome.message, /cleanup failed/);
+	assert.equal(rejectingCleanup.metrics.disposeCalls, 1);
+
+	assert.deepEqual(
+		partialOutcomes.map(({ field, errorName, disposeCalls }) => ({ field, errorName, disposeCalls })),
+		["cwd", "getBinding", "subscribe", "prompt", "abort", "dispose", "getStatus"].map((field) => ({
+			field,
+			errorName: "AgentRuntimeContractError",
+			disposeCalls: field === "dispose" ? 0 : 1,
+		})),
+	);
+	for (const outcome of partialOutcomes) assert.match(outcome.message, new RegExp(`session\\.${outcome.field}`));
 });
 
 test("runtime registry requires declared native history providers to implement inspection and reads", () => {
