@@ -515,6 +515,7 @@ export class PiboLoopStore {
 		return Number(result.changes ?? 0) > 0 ? this.getRunByMessageEventId(eventId) : undefined;
 	}
 	reserveRun(id: string, now = new Date()): { job: PiboLoopJob; run: PiboLoopRun } | undefined { this.updateJob(id, { enabled: true }, now); return this.reserveJob(id, now); }
+	reserveAdmittedRun(id: string, now = new Date()): { job: PiboLoopJob; run: PiboLoopRun } | undefined { return this.reserveJob(id, now, true); }
 	reserveDueRuns(limit: number, now = new Date()): Array<{ job: PiboLoopJob; run: PiboLoopRun }> {
 		const rows = this.db.prepare('SELECT * FROM pibo_ralph_jobs WHERE enabled = 1 ORDER BY updated_at ASC').all() as LoopJobRow[];
 		const result: Array<{ job: PiboLoopJob; run: PiboLoopRun }> = [];
@@ -614,11 +615,11 @@ export class PiboLoopStore {
 		this.updateRunResources({ jobId: job.id, runId, resources: nextResources });
 		this.updateJobResources(job.id, nextResources);
 	}
-	private reserveJob(id: string, now = new Date()): { job: PiboLoopJob; run: PiboLoopRun } | undefined {
+	private reserveJob(id: string, now = new Date(), requireAdmission = false): { job: PiboLoopJob; run: PiboLoopRun } | undefined {
 		const timestamp = nowIso(now); this.db.exec('BEGIN IMMEDIATE');
 		try {
 			const job = this.getJob(id);
-			if (!job || !job.enabled || job.state.runningAt) { this.db.exec('COMMIT'); return undefined; }
+			if (!job || !job.enabled || job.state.runningAt || (requireAdmission && job.state.cancelRequestedAt !== undefined)) { this.db.exec('COMMIT'); return undefined; }
 			if (job.state.nextAttemptAt && job.state.nextAttemptAt > timestamp) { this.db.exec('COMMIT'); return undefined; }
 			if (job.mode === 'goal' && job.tokenBudget !== undefined) {
 				const remaining = Math.max(0, job.tokenBudget - (job.state.tokensUsed ?? 0));
