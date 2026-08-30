@@ -8722,6 +8722,104 @@ test("chat web app archives and permanently deletes custom agents with their ses
 	}
 });
 
+test("chat web app preserves subagent targets until all dependents update away", async () => {
+	const deletedSessionIds = [];
+	const { channel, baseURL, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+		async deleteSession(id, store) {
+			deletedSessionIds.push(id);
+			return store.delete(id);
+		},
+	});
+	const headers = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+	const createAgent = async (body) => {
+		const response = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(body),
+		});
+		assert.equal(response.status, 201);
+		return (await response.json()).agent;
+	};
+	const patchAgent = (id, body) => fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(id)}`, {
+		method: "PATCH",
+		headers,
+		body: JSON.stringify(body),
+	});
+	const deleteAgent = (id, confirmName) => fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(id)}`, {
+		method: "DELETE",
+		headers,
+		body: JSON.stringify({ confirmName }),
+	});
+
+	try {
+		const target = await createAgent({ displayName: "shared-target" });
+		const first = await createAgent({
+			displayName: "first-parent",
+			subagents: [{ name: "helper", targetProfile: target.profileName }],
+		});
+		const second = await createAgent({
+			displayName: "second-parent",
+			subagents: [{ name: "reviewer", targetProfile: target.id }],
+		});
+		const sessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ profile: target.profileName }),
+		});
+		assert.equal(sessionResponse.status, 201);
+		const targetSession = (await sessionResponse.json()).session;
+
+		const archiveWithTwoDependents = await patchAgent(target.id, { archived: true });
+		assert.equal(archiveWithTwoDependents.status, 409);
+		assert.deepEqual(await archiveWithTwoDependents.json(), {
+			error: 'Custom agent "shared-target" is targeted by active custom agents: first-parent, second-parent',
+		});
+
+		assert.equal((await patchAgent(second.id, { archived: true })).status, 200);
+		const archiveWithOneDependent = await patchAgent(target.id, { archived: true });
+		assert.equal(archiveWithOneDependent.status, 409);
+		assert.deepEqual(await archiveWithOneDependent.json(), {
+			error: 'Custom agent "shared-target" is targeted by active custom agents: first-parent',
+		});
+
+		assert.equal((await patchAgent(first.id, { archived: true })).status, 200);
+		assert.equal((await patchAgent(target.id, { archived: true })).status, 200);
+		const blockedDelete = await deleteAgent(target.id, target.profileName);
+		assert.equal(blockedDelete.status, 409);
+		assert.deepEqual(await blockedDelete.json(), {
+			error: 'Custom agent "shared-target" is targeted by custom agents: first-parent, second-parent',
+		});
+		assert.deepEqual(deletedSessionIds, []);
+		assert.ok(sessions.get(targetSession.id));
+
+		assert.equal((await patchAgent(first.id, { subagents: [] })).status, 200);
+		assert.equal((await patchAgent(second.id, { subagents: [] })).status, 200);
+		const deleted = await deleteAgent(target.id, target.profileName);
+		assert.equal(deleted.status, 200);
+		assert.deepEqual(await deleted.json(), {
+			deletedAgentId: target.id,
+			deletedSessionIds: [targetSession.id],
+		});
+		assert.deepEqual(deletedSessionIds, [targetSession.id]);
+		assert.equal(sessions.get(targetSession.id), undefined);
+
+		const selfTarget = await createAgent({
+			displayName: "self-target",
+			subagents: [{ name: "self", targetProfile: "self-target" }],
+		});
+		assert.equal((await patchAgent(selfTarget.id, { archived: true })).status, 200);
+		assert.equal((await deleteAgent(selfTarget.id, selfTarget.profileName)).status, 200);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat web app validates custom agent profile names", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
