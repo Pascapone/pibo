@@ -8,6 +8,8 @@ type ChatStreamEvent = {
 	streamFrameIndex?: number;
 	liveReplayId?: number;
 	createdAt?: string;
+	renderSequence?: number;
+	toolInvocationOrdinal?: number;
 	[key: string]: unknown;
 };
 
@@ -106,6 +108,7 @@ function storedEventFromStreamEvent(
 			eventId: typeof event.runId === "string" ? event.runId : undefined,
 			toolCallId: event.toolCallId,
 			toolName: event.toolName,
+			toolInvocationOrdinal: validOrdinal(event.toolInvocationOrdinal) ? event.toolInvocationOrdinal : undefined,
 			args: event.args,
 			...(event.intent ? { intent: event.intent } : {}),
 		};
@@ -121,6 +124,7 @@ function storedEventFromStreamEvent(
 					eventId,
 					toolCallId: event.toolCallId,
 					toolName: event.toolName,
+					toolInvocationOrdinal: validOrdinal(event.toolInvocationOrdinal) ? event.toolInvocationOrdinal : undefined,
 					args: event.args,
 					partialResult: event.partialResult,
 					...(event.intent ? { intent: event.intent } : {}),
@@ -131,6 +135,7 @@ function storedEventFromStreamEvent(
 					eventId,
 					toolCallId: event.toolCallId,
 					toolName: event.toolName,
+					toolInvocationOrdinal: validOrdinal(event.toolInvocationOrdinal) ? event.toolInvocationOrdinal : undefined,
 					args: event.args,
 					argsComplete: Boolean(event.argsComplete),
 					...(event.intent ? { intent: event.intent } : {}),
@@ -144,6 +149,7 @@ function storedEventFromStreamEvent(
 			eventId: typeof event.runId === "string" ? event.runId : undefined,
 			toolCallId: event.toolCallId,
 			toolName: event.toolName,
+			toolInvocationOrdinal: validOrdinal(event.toolInvocationOrdinal) ? event.toolInvocationOrdinal : undefined,
 			result: event.result,
 			isError: Boolean(event.isError),
 			...(event.intent ? { intent: event.intent } : {}),
@@ -175,6 +181,12 @@ function makeStored(
 	const streamFrameIndex = typeof streamEvent.streamFrameIndex === "number" ? streamEvent.streamFrameIndex : undefined;
 	const liveReplayId = typeof streamEvent.liveReplayId === "number" && Number.isFinite(streamEvent.liveReplayId) ? streamEvent.liveReplayId : undefined;
 	const sequence = nextSequence();
+	const renderSequence = validSequence(streamEvent.renderSequence)
+		? streamEvent.renderSequence
+		: validSequence(payload.renderSequence) ? payload.renderSequence : undefined;
+	const positionedPayload = renderSequence !== undefined && payload.renderSequence === undefined
+		? { ...payload, renderSequence }
+		: payload;
 	return {
 		id: typeof streamEvent.streamId === "number"
 			? `stream:${streamEvent.streamId}:${streamFrameIndex ?? "raw"}:${type}`
@@ -185,14 +197,23 @@ function makeStored(
 					: `live:${sequence}:${type}`,
 		piboSessionId,
 		eventSequence: sequence,
+		renderSequence,
 		streamId: typeof streamEvent.streamId === "number" ? streamEvent.streamId : undefined,
 		streamFrameIndex,
 		traceSource: "live",
-		eventId: typeof payload.eventId === "string" ? payload.eventId : undefined,
+		eventId: typeof positionedPayload.eventId === "string" ? positionedPayload.eventId : undefined,
 		type,
 		createdAt: streamEventCreatedAt(streamEvent) ?? now(),
-		payload,
+		payload: positionedPayload,
 	};
+}
+
+function validSequence(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function validOrdinal(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function streamEventCreatedAt(event: ChatStreamEvent): string | undefined {
@@ -218,7 +239,10 @@ function eventGroupKey(event: ChatWebStoredEvent): string {
 	const payload = isRecord(event.payload) ? event.payload : {};
 	const piboSessionId = typeof payload.piboSessionId === "string" ? payload.piboSessionId : event.piboSessionId ?? "";
 	const eventId = typeof payload.eventId === "string" ? payload.eventId : event.eventId ?? "";
-	if (typeof payload.toolCallId === "string") return `${piboSessionId}:${eventId}:tool:${payload.toolCallId}`;
+	if (typeof payload.toolCallId === "string") {
+		const ordinal = typeof payload.toolInvocationOrdinal === "number" ? payload.toolInvocationOrdinal : 0;
+		return `${piboSessionId}:${eventId}:tool:${payload.toolCallId}:${ordinal}`;
+	}
 	const assistantIndex = typeof payload.assistantIndex === "number" ? payload.assistantIndex : undefined;
 	const thinkingIndex = typeof payload.thinkingIndex === "number" ? payload.thinkingIndex : undefined;
 	const contentIndex = typeof payload.contentIndex === "number" ? payload.contentIndex : 0;

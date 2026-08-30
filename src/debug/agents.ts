@@ -1,16 +1,19 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
-	normalizePiboAgentObservationCursor,
 	normalizePiboAgentObservationLimit,
-	normalizePiboAgentObservationOrder,
-	parsePiboAgentObservationTimestamp,
 	piboAgentObservationDetails,
 	piboAgentObservationKind,
 	piboAgentObservationRole,
 	piboAgentObservationText,
 	type PiboAgentObservationKind,
 	type PiboAgentObservationSource,
+	type PiboAgentObservationToolDetail,
 } from "../subagents/observations.js";
+import {
+	preparePiboAgentObservationQuery,
+	selectPiboAgentObservationPage,
+} from "../subagents/observation-query.js";
+import type { PiboAgentObservation, PiboAgentObserveInput } from "../subagents/tool.js";
 import { createDebugPayloadStore, hydrateDebugEventRow } from "./persisted-payloads.js";
 import { eventAttributes, eventPayload, type DebugEventRow } from "./payloads.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
@@ -29,36 +32,11 @@ export type DebugAgentRow = {
 	activeModel?: unknown;
 };
 
-export type DebugAgentObservation = {
+export type DebugAgentObservation = Omit<PiboAgentObservation, "sequence"> & {
 	streamId: number;
-	createdAt: string;
-	agentId: string;
-	name: string;
-	threadKey?: string;
-	eventType: string;
-	kind: PiboAgentObservationKind;
-	role?: string;
-	text?: string;
-	toolName?: string;
-	toolCallId?: string;
-	isError?: boolean;
-	details?: unknown;
 };
 
-export type DebugAgentObserveOptions = {
-	agentIds?: string[];
-	names?: string[];
-	threadKeys?: string[];
-	eventTypes?: string[];
-	kinds?: PiboAgentObservationKind[];
-	since?: string;
-	until?: string;
-	textContains?: string;
-	afterSequence?: number;
-	order?: "asc" | "desc";
-	limit?: number;
-	includeDetails?: boolean;
-};
+export type DebugAgentObserveOptions = Omit<PiboAgentObserveInput, "requestIds">;
 
 export type DebugAgentObserveResult = {
 	parentPiboSessionId: string;
@@ -114,17 +92,21 @@ export async function runDebugAgentsCli(args: string[]): Promise<void> {
 		return;
 	}
 	const result = inspectDebugAgentObservations(parentPiboSessionId, store, {
+		toolCallIds: parsed.toolCallIds.length ? parsed.toolCallIds : undefined,
 		agentIds: parsed.agentIds.length ? parsed.agentIds : undefined,
 		names: parsed.names.length ? parsed.names : undefined,
 		threadKeys: parsed.threadKeys.length ? parsed.threadKeys : undefined,
 		eventTypes: parsed.eventTypes.length ? parsed.eventTypes : undefined,
 		kinds: parsed.kinds.length ? parsed.kinds : undefined,
+		roles: parsed.roles.length ? parsed.roles : undefined,
 		since: parsed.since,
 		until: parsed.until,
 		textContains: parsed.textContains,
 		afterSequence: parsed.afterSequence,
 		order: parsed.order,
 		limit: parsed.limit,
+		includeTools: parsed.includeTools || undefined,
+		toolDetail: parsed.toolDetail,
 		includeDetails: parsed.details,
 	});
 	if (parsed.json) console.log(JSON.stringify(result, null, 2));
@@ -157,91 +139,68 @@ export function inspectDebugAgentObservations(
 	if (!store.exists) throw new Error(`Debug store "pibo-data" not found at ${store.path}`);
 	const db = openReadOnlyDebugDatabase(store);
 	try {
-		const order = normalizePiboAgentObservationOrder(input.order);
-		const limit = normalizePiboAgentObservationLimit(input.limit);
-		const afterSequence = normalizePiboAgentObservationCursor(input.afterSequence);
-		const since = parsePiboAgentObservationTimestamp(input.since, "since");
-		const until = parsePiboAgentObservationTimestamp(input.until, "until");
-		if (since !== undefined && until !== undefined && since > until) throw new Error("Agent observation since must not be after until.");
+		const query = preparePiboAgentObservationQuery(input);
 		const owned = readOwnedAgents(db, parentPiboSessionId);
 		const ownedById = new Map(owned.map((agent) => [agent.agentId, agent]));
 		for (const agentId of input.agentIds ?? []) {
 			if (!ownedById.has(agentId)) throw new Error(`Agent "${agentId}" is not owned by Pibo session "${parentPiboSessionId}".`);
 		}
-		const agentIds = input.agentIds ? new Set(input.agentIds) : undefined;
-		const names = input.names ? new Set(input.names) : undefined;
-		const threadKeys = input.threadKeys ? new Set(input.threadKeys) : undefined;
-		const eventTypes = input.eventTypes ? new Set(input.eventTypes) : undefined;
-		const kinds = input.kinds ? new Set(input.kinds) : undefined;
 		const payloadStore = createDebugPayloadStore(db, store);
 		const clauses = ["s.parent_id = ?", "s.channel = 'pibo.subagents'", "s.kind = 'subagent'", "s.deleted_at IS NULL"];
 		const values: Array<string | number> = [parentPiboSessionId];
-		if (afterSequence !== undefined) {
+		if (query.afterSequence !== undefined) {
 			clauses.push("e.stream_id > ?");
-			values.push(afterSequence);
+			values.push(query.afterSequence);
 		}
-		const scanOrder = afterSequence !== undefined ? "ASC" : order.toUpperCase();
+		if (query.scanEventTypes && query.scanEventTypes.length > 0) {
+			clauses.push(`e.type IN (${query.scanEventTypes.map(() => "?").join(", ")})`);
+			values.push(...query.scanEventTypes);
+		}
 		const statement = db.prepare(`
 			SELECT e.stream_id, e.session_id, e.session_sequence, e.event_id, e.type, e.created_at,
 				e.payload_ref, e.preview_text, e.attributes_json, s.profile, s.metadata_json
 			FROM event_log e
 			JOIN sessions s ON s.id = e.session_id
 			WHERE ${clauses.join(" AND ")}
-			ORDER BY e.stream_id ${scanOrder}
+			ORDER BY e.stream_id ${query.scanOrder.toUpperCase()}
 		`);
-		const textContains = input.textContains?.toLowerCase();
-		const matches: DebugAgentObservation[] = [];
-		for (const rawRow of statement.iterate(...values) as IterableIterator<AgentEventRow>) {
-			const agent = ownedById.get(rawRow.session_id ?? "");
-			if (!agent) continue;
-			if (agentIds && !agentIds.has(agent.agentId)) continue;
-			if (names && !names.has(agent.name)) continue;
-			if (threadKeys && (!agent.threadKey || !threadKeys.has(agent.threadKey))) continue;
-			if (eventTypes && !eventTypes.has(rawRow.type)) continue;
-			const kind = piboAgentObservationKind(rawRow.type);
-			if (kinds && !kinds.has(kind)) continue;
-			const createdAt = Date.parse(rawRow.created_at);
-			if (since !== undefined && createdAt < since) continue;
-			if (until !== undefined && createdAt > until) continue;
-			const row = hydrateDebugEventRow(rawRow, payloadStore) as AgentEventRow;
-			const attributes = eventAttributes(row);
-			const payload = { ...attributes, ...eventPayload(row) };
-			const source = debugAgentObservationSource(row, attributes);
-			const text = piboAgentObservationText(source);
-			if (textContains && !(text ?? "").toLowerCase().includes(textContains)) continue;
-			const role = piboAgentObservationRole(source);
-			matches.push({
-				streamId: row.stream_id,
-				createdAt: row.created_at,
-				agentId: agent.agentId,
-				name: agent.name,
-				...(agent.threadKey ? { threadKey: agent.threadKey } : {}),
-				eventType: row.type,
-				kind,
-				...(role ? { role } : {}),
-				...(text ? { text } : {}),
-				...(typeof payload.toolName === "string" ? { toolName: payload.toolName } : {}),
-				...(typeof payload.toolCallId === "string" ? { toolCallId: payload.toolCallId } : {}),
-				...(row.type === "tool_execution_finished" ? { isError: payload.isError === true } : row.type === "session_error" ? { isError: true } : {}),
-				...(input.includeDetails === true ? { details: piboAgentObservationDetails(debugAgentObservationDetails(row, payload)) } : {}),
-			});
-			if (matches.length > limit) break;
+		function* normalizedObservations(): IterableIterator<PiboAgentObservation> {
+			for (const rawRow of statement.iterate(...values) as IterableIterator<AgentEventRow>) {
+				const agent = ownedById.get(rawRow.session_id ?? "");
+				if (!agent) continue;
+				const row = hydrateDebugEventRow(rawRow, payloadStore) as AgentEventRow;
+				const attributes = eventAttributes(row);
+				const payload = { ...attributes, ...eventPayload(row) };
+				const source = debugAgentObservationSource(row, attributes);
+				const text = piboAgentObservationText(source);
+				const role = piboAgentObservationRole(source);
+				yield {
+					sequence: row.stream_id,
+					createdAt: row.created_at,
+					agentId: agent.agentId,
+					name: agent.name,
+					...(agent.threadKey ? { threadKey: agent.threadKey } : {}),
+					eventType: row.type,
+					kind: piboAgentObservationKind(row.type),
+					...(role ? { role } : {}),
+					...(text ? { text } : {}),
+					...(typeof payload.toolName === "string" ? { toolName: payload.toolName } : {}),
+					...(typeof payload.toolCallId === "string" ? { toolCallId: payload.toolCallId } : {}),
+					...(row.type === "tool_execution_finished" ? { isError: payload.isError === true } : row.type === "session_error" ? { isError: true } : {}),
+					details: piboAgentObservationDetails(debugAgentObservationDetails(row, payload, source)),
+				};
+			}
 		}
-		const truncated = matches.length > limit;
-		const observations = matches.slice(0, limit);
-		if (afterSequence !== undefined && order === "desc") observations.reverse();
+		const page = selectPiboAgentObservationPage(normalizedObservations(), query);
 		return {
 			parentPiboSessionId,
-			filters: {
-				...input,
-				...(afterSequence !== undefined ? { afterSequence } : {}),
-				order,
-				limit,
-				includeDetails: input.includeDetails === true,
-			},
-			observations,
-			nextAfterSequence: observations.reduce((maximum, observation) => Math.max(maximum, observation.streamId), afterSequence ?? 0),
-			truncated,
+			filters: page.filters,
+			observations: page.observations.map(({ sequence, ...observation }) => ({
+				streamId: sequence,
+				...observation,
+			})),
+			nextAfterSequence: page.nextAfterSequence,
+			truncated: page.truncated,
 		};
 	} catch (error) {
 		throw withStorePath(error, store);
@@ -299,12 +258,19 @@ function debugAgentObservationSource(row: DebugEventRow, attributes: Record<stri
 	return source;
 }
 
-function debugAgentObservationDetails(row: DebugEventRow, payload: Record<string, unknown>): Record<string, unknown> {
+function debugAgentObservationDetails(
+	row: DebugEventRow,
+	payload: Record<string, unknown>,
+	source: PiboAgentObservationSource,
+): Record<string, unknown> {
 	return {
 		type: row.type,
 		...(row.session_id ? { piboSessionId: row.session_id } : {}),
 		...(row.event_id ? { eventId: row.event_id } : {}),
 		...payload,
+		...(source.args !== undefined ? { args: source.args } : {}),
+		...(source.partialResult !== undefined ? { partialResult: source.partialResult } : {}),
+		...(source.result !== undefined ? { result: source.result } : {}),
 	};
 }
 
@@ -371,12 +337,15 @@ Filters use exact values. The command inspects only direct pibo.subagents childr
 	console.log(`pibo debug agents ${parentPiboSessionId} observe
 
 Usage:
-  pibo debug agents ${parentPiboSessionId} observe [--agent-id ps_...] [--name name] [--thread-key key]
-    [--event-type type] [--kind message|thinking|tool|error|lifecycle|event]
-    [--since iso] [--until iso] [--contains text] [--after-sequence n]
-    [--order asc|desc] [--limit 1..200] [--details] [--json]
+  pibo debug agents ${parentPiboSessionId} observe [--tool-call-id id] [--agent-id ps_...] [--name name]
+    [--thread-key key] [--event-type type] [--kind message|thinking|tool|error|lifecycle|event]
+    [--role role] [--since iso] [--until iso] [--contains text] [--after-sequence n]
+    [--order asc|desc] [--limit 1..200] [--include-tools]
+    [--tool-detail summary|full] [--details] [--json]
 
-Repeat --agent-id, --name, --thread-key, --event-type, or --kind for OR within that field.
+Default: the newest 20 completed assistant messages, with streaming deltas and tools hidden.
+Use --include-tools for compact tool calls and terminal results. Explicit --event-type or --kind
+filters retain access to progress events. Repeat plural filters for OR within that field.
 Different fields combine with AND. With --after-sequence, pages always consume the oldest unseen rows;
 --order desc reverses only the returned page, so nextAfterSequence remains safe for polling.`);
 }
@@ -384,11 +353,14 @@ Different fields combine with AND. With --after-sequence, pages always consume t
 type ParsedAgentDebugOptions = {
 	json: boolean;
 	details: boolean;
+	includeTools: boolean;
+	toolCallIds: string[];
 	agentIds: string[];
 	names: string[];
 	threadKeys: string[];
 	eventTypes: string[];
 	kinds: PiboAgentObservationKind[];
+	roles: string[];
 	status?: DebugAgentStatus;
 	since?: string;
 	until?: string;
@@ -396,24 +368,39 @@ type ParsedAgentDebugOptions = {
 	afterSequence?: number;
 	order?: "asc" | "desc";
 	limit?: number;
+	toolDetail?: PiboAgentObservationToolDetail;
 };
 
 function parseAgentDebugOptions(args: string[]): ParsedAgentDebugOptions {
-	const parsed: ParsedAgentDebugOptions = { json: false, details: false, agentIds: [], names: [], threadKeys: [], eventTypes: [], kinds: [] };
+	const parsed: ParsedAgentDebugOptions = {
+		json: false,
+		details: false,
+		includeTools: false,
+		toolCallIds: [],
+		agentIds: [],
+		names: [],
+		threadKeys: [],
+		eventTypes: [],
+		kinds: [],
+		roles: [],
+	};
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index]!;
 		if (arg === "--json") { parsed.json = true; continue; }
 		if (arg === "--details") { parsed.details = true; continue; }
+		if (arg === "--include-tools") { parsed.includeTools = true; continue; }
 		const value = args[index + 1];
 		if (!value) throw new Error(`${arg} requires a value`);
-		if (arg === "--agent-id") parsed.agentIds.push(value);
+		if (arg === "--tool-call-id") parsed.toolCallIds.push(value);
+		else if (arg === "--agent-id") parsed.agentIds.push(value);
 		else if (arg === "--name") parsed.names.push(value);
 		else if (arg === "--thread-key") parsed.threadKeys.push(value);
 		else if (arg === "--event-type") parsed.eventTypes.push(value);
 		else if (arg === "--kind") {
 			if (!["message", "thinking", "tool", "error", "lifecycle", "event"].includes(value)) throw new Error(`Invalid --kind "${value}"`);
 			parsed.kinds.push(value as PiboAgentObservationKind);
-		} else if (arg === "--status") {
+		} else if (arg === "--role") parsed.roles.push(value);
+		else if (arg === "--status") {
 			if (!["running", "idle", "killed"].includes(value)) throw new Error(`Invalid --status "${value}"`);
 			parsed.status = value as DebugAgentStatus;
 		} else if (arg === "--since") parsed.since = value;
@@ -424,7 +411,10 @@ function parseAgentDebugOptions(args: string[]): ParsedAgentDebugOptions {
 			if (value !== "asc" && value !== "desc") throw new Error(`Invalid --order "${value}"`);
 			parsed.order = value;
 		} else if (arg === "--limit") parsed.limit = normalizePiboAgentObservationLimit(parseNonNegativeInteger(value, arg));
-		else throw new Error(`Unknown pibo debug agents option "${arg}"`);
+		else if (arg === "--tool-detail") {
+			if (value !== "summary" && value !== "full") throw new Error(`Invalid --tool-detail "${value}"`);
+			parsed.toolDetail = value;
+		} else throw new Error(`Unknown pibo debug agents option "${arg}"`);
 		index += 1;
 	}
 	return parsed;
@@ -434,10 +424,11 @@ function validateAgentDebugOptions(command: "list" | "observe", parsed: ParsedAg
 	if (command === "list") {
 		if (parsed.names.length > 1) throw new Error("pibo debug agents list accepts at most one --name value");
 		if (
-			parsed.details || parsed.agentIds.length > 0 || parsed.threadKeys.length > 0 || parsed.eventTypes.length > 0
-			|| parsed.kinds.length > 0 || parsed.since !== undefined || parsed.until !== undefined
+			parsed.details || parsed.includeTools || parsed.toolCallIds.length > 0 || parsed.agentIds.length > 0
+			|| parsed.threadKeys.length > 0 || parsed.eventTypes.length > 0 || parsed.kinds.length > 0
+			|| parsed.roles.length > 0 || parsed.since !== undefined || parsed.until !== undefined
 			|| parsed.textContains !== undefined || parsed.afterSequence !== undefined || parsed.order !== undefined
-			|| parsed.limit !== undefined
+			|| parsed.limit !== undefined || parsed.toolDetail !== undefined
 		) throw new Error("Unsupported option for pibo debug agents list. Run the list command with --help.");
 		return;
 	}

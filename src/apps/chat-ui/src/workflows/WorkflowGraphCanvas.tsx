@@ -82,10 +82,12 @@ export type WorkflowGraphStatusTone = "status" | "error";
 
 type WorkflowGraphStatusSink = (message: string, tone?: WorkflowGraphStatusTone) => void;
 
+type WorkflowGraphContextMenuTarget = NonNullable<SelectedGraphElement> | { type: "pane" };
+
 type WorkflowGraphContextMenuState = {
 	x: number;
 	y: number;
-	target: SelectedGraphElement | { type: "pane" };
+	target: WorkflowGraphContextMenuTarget;
 };
 
 type ManualTriggerDialogState = {
@@ -385,7 +387,7 @@ export function WorkflowGraphCanvas({
 		};
 	}, [closeContextMenu, contextMenu]);
 
-	const openContextMenuAt = useCallback((clientX: number, clientY: number, target: WorkflowGraphContextMenuState["target"], invoker: HTMLElement | null) => {
+	const openContextMenuAt = useCallback((clientX: number, clientY: number, target: WorkflowGraphContextMenuTarget, invoker: HTMLElement | null) => {
 		const rect = graphCanvasRef.current?.getBoundingClientRect();
 		const rawX = rect ? clientX - rect.left : clientX;
 		const rawY = rect ? clientY - rect.top : clientY;
@@ -397,7 +399,7 @@ export function WorkflowGraphCanvas({
 		});
 	}, []);
 
-	const openContextMenu = useCallback((event: WorkflowGraphContextMenuEvent, target: WorkflowGraphContextMenuState["target"]) => {
+	const openContextMenu = useCallback((event: WorkflowGraphContextMenuEvent, target: WorkflowGraphContextMenuTarget) => {
 		event.preventDefault();
 		event.stopPropagation();
 		const eventElement = event.target instanceof Element ? event.target : null;
@@ -423,7 +425,7 @@ export function WorkflowGraphCanvas({
 		if (!isWorkflowContextMenuInvocation(event.key, event.shiftKey)) return;
 		const eventElement = event.target instanceof Element ? event.target : null;
 		const graphElement = eventElement?.closest<HTMLElement>(".react-flow__node[data-id], .react-flow__edge[data-id]");
-		let target: WorkflowGraphContextMenuState["target"] | undefined;
+		let target: WorkflowGraphContextMenuTarget | undefined;
 		if (graphElement?.classList.contains("react-flow__node")) {
 			const id = graphElement.dataset.id;
 			if (id) target = { type: "node", id };

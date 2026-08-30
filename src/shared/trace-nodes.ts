@@ -20,33 +20,28 @@ function areTraceNodesSorted(nodes: readonly PiboTraceNode[]): boolean {
 }
 
 export function compareTraceNodes(left: PiboTraceNode, right: PiboTraceNode): number {
-	if (left.orderKey && right.orderKey && left.orderKey.sourceRank === right.orderKey.sourceRank) {
-		const bySameSourceOrder = compareTraceOrder(left.orderKey, right.orderKey);
-		if (bySameSourceOrder !== 0) return bySameSourceOrder;
-	} else {
-		const bySameTurnPhase = compareSameTurnPhase(left, right);
-		if (bySameTurnPhase !== 0) return bySameTurnPhase;
+	if (!left.orderKey && !right.orderKey) {
+		return compareLegacyNodeFallback(left, right);
 	}
-	const byStartTime = compareOptionalIsoTime(left.startedAt, right.startedAt);
-	if (byStartTime !== 0) return byStartTime;
 	const byOrder = compareTraceOrder(left.orderKey, right.orderKey);
 	if (byOrder !== 0) return byOrder;
 	return left.id.localeCompare(right.id);
 }
 
-function compareSameTurnPhase(left: PiboTraceNode, right: PiboTraceNode): number {
-	if (!left.eventId || left.eventId !== right.eventId) return 0;
-	const leftPhase = left.orderKey?.phaseRank;
-	const rightPhase = right.orderKey?.phaseRank;
-	if (leftPhase === undefined || rightPhase === undefined) return 0;
-	return leftPhase - rightPhase;
+function compareLegacyNodeFallback(left: PiboTraceNode, right: PiboTraceNode): number {
+	const leftTime = validIsoTime(left.startedAt);
+	const rightTime = validIsoTime(right.startedAt);
+	if (leftTime !== rightTime) {
+		if (leftTime === undefined) return 1;
+		if (rightTime === undefined) return -1;
+		const byTime = leftTime.localeCompare(rightTime);
+		if (byTime !== 0) return byTime;
+	}
+	return left.id.localeCompare(right.id);
 }
 
-function compareOptionalIsoTime(left?: string, right?: string): number {
-	if (!left && !right) return 0;
-	if (!left) return 1;
-	if (!right) return -1;
-	return left.localeCompare(right);
+function validIsoTime(value: string | undefined): string | undefined {
+	return value !== undefined && Number.isFinite(Date.parse(value)) ? value : undefined;
 }
 
 export function flattenTraceNodes(nodes: PiboTraceNode[]): PiboTraceNode[] {

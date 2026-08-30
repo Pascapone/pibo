@@ -7,7 +7,12 @@ import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
+import { PiboRunRegistry } from "../dist/runs/registry.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
+
+async function settleMicrotasks() {
+	for (let index = 0; index < 4; index += 1) await new Promise((resolve) => setImmediate(resolve));
+}
 
 async function createFixture(name) {
 	const root = await mkdtemp(join(tmpdir(), `${name}-`));
@@ -260,5 +265,102 @@ test("startup recovery aborts non-expired retryable work without changing alread
 		}
 	} finally {
 		await fixture.close();
+	}
+});
+
+test("startup schedules persisted terminal run notifications once across router restarts", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-recovered-run-notifications-"));
+	const dataPath = join(root, "pibo.sqlite");
+	const reliabilityPath = join(root, "pibo-events.sqlite");
+	const piboSessionId = "ps_recovered_run_notifications";
+	let dataStore;
+	let reliabilityStore;
+	let current;
+	try {
+		dataStore = new PiboDataStore(dataPath, { payloadRootDir: join(root, "payloads") });
+		new PiboDataSessionStore(dataStore).create({
+			id: piboSessionId,
+			piSessionId: "22222222-3333-4444-8555-666666666666",
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+		});
+		dataStore.close();
+
+		reliabilityStore = new PiboReliabilityStore(reliabilityPath);
+		const oldRegistry = new PiboRunRegistry({ store: reliabilityStore, workerId: "run-registry:before-notification-restart" });
+		const completed = oldRegistry.startToolRun({ controllerPiboSessionId: piboSessionId, toolName: "completed-check", completionPolicy: "tracked" });
+		oldRegistry.complete(completed.runId, { text: "durable completed result" });
+		const interrupted = oldRegistry.startToolRun({ controllerPiboSessionId: piboSessionId, toolName: "interrupted-check", completionPolicy: "tracked" });
+		reliabilityStore.close();
+
+		async function startRouter() {
+			dataStore = new PiboDataStore(dataPath, { payloadRootDir: join(root, "payloads") });
+			const sessionStore = new PiboDataSessionStore(dataStore);
+			reliabilityStore = new PiboReliabilityStore(reliabilityPath);
+			const messages = [];
+			const router = new PiboSessionRouter({
+				sessionStore,
+				reliabilityStore,
+				recoverInterruptedRuntimeState: true,
+				persistSession: true,
+			});
+			const scheduledAtConstruction = router.scheduledRunReminders.size;
+			router.getOrCreateSession = async () => ({
+				enqueueMessage(event) {
+					messages.push(event);
+					return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, queuedMessages: messages.length };
+				},
+			});
+			await settleMicrotasks();
+			return { router, messages, scheduledAtConstruction };
+		}
+
+		current = await startRouter();
+		assert.equal(current.scheduledAtConstruction, 1, "startup must coalesce both terminal rows into one scheduled controller reminder");
+		assert.equal(current.messages.length, 1);
+		assert.match(current.messages[0].text, new RegExp(completed.runId));
+		assert.match(current.messages[0].text, new RegExp(interrupted.runId));
+		assert.equal(reliabilityStore.getRun(completed.runId).status, "completed");
+		assert.equal(reliabilityStore.getRun(interrupted.runId).status, "failed");
+		assert.equal(reliabilityStore.getRun(completed.runId).notifiedStatus, "completed");
+		assert.equal(reliabilityStore.getRun(interrupted.runId).notifiedStatus, "failed");
+		assert.equal(reliabilityStore.getRun(completed.runId).consumed, false);
+		assert.equal(reliabilityStore.getRun(interrupted.runId).consumed, false);
+		assert.equal(current.router.runRegistry.hasPendingNotification(piboSessionId), false);
+
+		current.router.emitOutput({ type: "message_finished", piboSessionId, eventId: current.messages[0].id, source: "service" });
+		await settleMicrotasks();
+		assert.equal(current.messages.length, 1, "finishing the startup reminder must not duplicate its current notified state");
+		assert.equal(current.router.runReminderDeliveries.size, 0);
+
+		current.router.emitOutput({ type: "message_finished", piboSessionId, eventId: "ordinary-turn-control", source: "user" });
+		await settleMicrotasks();
+		assert.equal(current.messages.length, 2, "ordinary turn-end must preserve the established unconsumed-run reminder behavior");
+		assert.match(current.messages[1].text, new RegExp(completed.runId));
+		assert.match(current.messages[1].text, new RegExp(interrupted.runId));
+
+		current.router.runRegistry.read(piboSessionId, completed.runId);
+		current.router.runRegistry.read(piboSessionId, interrupted.runId);
+		current.router.emitOutput({ type: "message_finished", piboSessionId, eventId: current.messages[1].id, source: "service" });
+		await settleMicrotasks();
+		assert.equal(reliabilityStore.getRun(completed.runId).consumed, true);
+		assert.equal(reliabilityStore.getRun(interrupted.runId).consumed, true);
+		assert.equal(current.router.runReminderDeliveries.size, 0);
+
+		await current.router.disposeAll();
+		reliabilityStore.close();
+		dataStore.close();
+		current = await startRouter();
+		assert.equal(current.scheduledAtConstruction, 0);
+		assert.equal(current.messages.length, 0, "consumed notifications must not return on a later restart");
+		current.router.emitOutput({ type: "message_finished", piboSessionId, eventId: "later-ordinary-turn-control", source: "user" });
+		await settleMicrotasks();
+		assert.equal(current.messages.length, 0);
+	} finally {
+		if (current) await current.router.disposeAll().catch(() => {});
+		try { reliabilityStore?.close(); } catch {}
+		try { dataStore?.close(); } catch {}
+		await rm(root, { recursive: true, force: true });
 	}
 });
