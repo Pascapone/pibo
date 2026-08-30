@@ -1153,7 +1153,12 @@ export class PiboSessionRouter {
 			expectedRevision: input.expectedRevision,
 			mode,
 		});
-		if (switchingRuntime) this.sessionStore.update(piboSessionId, { activeModel: null });
+		if (switchingRuntime) {
+			this.sessionStore.update(piboSessionId, {
+				activeModel: null,
+				metadata: withPiboSessionModelFallbacksMetadata(session.metadata, []),
+			});
+		}
 		return structuredClone(persisted);
 	}
 
