@@ -541,6 +541,8 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 				break;
 			}
 		}
+		const stoppedByPattern = stopReason.startsWith("stop_pattern:");
+		if (stoppedByPattern) await runner.terminate(stopReason);
 		const exit = await waitForExitOrIdle(runner, Math.max(1, scenario.timeoutMs - (Date.now() - started)), scenario.idleTimeoutMs, refreshOutputTimestamp);
 		exitCode = exit.exitCode;
 		signal = exit.signal;
@@ -554,7 +556,7 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 		}
 		const clean = cleanTerminalText(runner.getRawOutput());
 		assertPatterns(clean, scenario.expect, scenario.reject, assertions);
-		if (exit.exitCode !== 0) {
+		if (exit.exitCode !== 0 && !stoppedByPattern) {
 			stopReason = `exit_code:${exit.exitCode ?? "signal"}`;
 			throw new Error(`PTY command exited with status ${exit.exitCode ?? exit.signal ?? "unknown"}`);
 		}
@@ -704,12 +706,9 @@ function wrapChild(child: ChildProcessWithoutNullStreams, backend: PtyBackend, p
 			events.push({ t: Date.now(), source: "system", kind: "terminate", detail: reason });
 			if (exitState) return;
 			child.kill("SIGTERM");
-			await Promise.race([
-				exitPromise,
-				delay(1_000).then(() => {
-					if (!exitState) child.kill("SIGKILL");
-				}),
-			]);
+			if (await waitForChildExit(exitPromise, 1_000)) return;
+			child.kill("SIGKILL");
+			await waitForChildExit(exitPromise, 1_000);
 		},
 		async waitForExit(timeoutMs: number) {
 			if (exitState) return { ...exitState, timedOut: false };
@@ -1004,6 +1003,20 @@ function safeName(name: string): string {
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForChildExit(exitPromise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+	let timeout: NodeJS.Timeout | undefined;
+	try {
+		return await Promise.race([
+			exitPromise.then(() => true),
+			new Promise<boolean>((resolve) => {
+				timeout = setTimeout(() => resolve(false), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timeout) clearTimeout(timeout);
+	}
 }
 
 export const __debugPtyForTests = {
