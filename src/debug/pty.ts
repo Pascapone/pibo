@@ -508,6 +508,8 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 	const assertions: AssertionResult[] = [];
 	let iterations = 0;
 	let stopReason = "completed";
+	let exitCode: number | null = null;
+	let signal: NodeJS.Signals | null = null;
 	try {
 		validateProviderSafety(scenario, options);
 		runner = await startRunner(scenario);
@@ -540,6 +542,8 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 			}
 		}
 		const exit = await waitForExitOrIdle(runner, Math.max(1, scenario.timeoutMs - (Date.now() - started)), scenario.idleTimeoutMs, refreshOutputTimestamp);
+		exitCode = exit.exitCode;
+		signal = exit.signal;
 		if (exit.idleTimedOut) {
 			stopReason = "idle_timeout";
 			throw new Error(`PTY command produced no output for ${scenario.idleTimeoutMs}ms`);
@@ -554,13 +558,13 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 			stopReason = `exit_code:${exit.exitCode ?? "signal"}`;
 			throw new Error(`PTY command exited with status ${exit.exitCode ?? exit.signal ?? "unknown"}`);
 		}
-		const result = buildResult(scenario, runner, true, assertions, iterations, started, startedAt, stopReason, exit.exitCode, exit.signal);
+		const result = buildResult(scenario, runner, true, assertions, iterations, started, startedAt, stopReason, exitCode, signal);
 		if (scenario.writeArtifactsOnSuccess) result.artifactDir = await writeArtifacts(scenario, result);
 		return result;
 	} catch (error) {
 		if (stopReason === "completed") stopReason = runner ? "error" : "preflight_error";
 		if (runner) await runner.terminate(stopReason);
-		const result = buildResult(scenario, runner, false, assertions, iterations, started, startedAt, stopReason, null, null);
+		const result = buildResult(scenario, runner, false, assertions, iterations, started, startedAt, stopReason, exitCode, signal);
 		result.artifactDir = await writeArtifacts(scenario, result, error instanceof Error ? error.message : String(error));
 		const message = `${error instanceof Error ? error.message : String(error)}\nPTY artifacts: ${result.artifactDir}`;
 		throw new Error(message);
