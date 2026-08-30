@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, statSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../../../core/pibo-home.js";
 import type { PiboJsonObject, PiboJsonValue } from "../../../core/events.js";
@@ -326,13 +326,21 @@ export class ChatProjectService {
 	}
 
 	deleteProject(id: string, options: { confirmName: string; deleteFiles?: boolean }): { deletedProjectId: string } {
-		const project = this.requireProject(id, { includeArchived: true });
-		if (!project.archivedAt) throw new Error("Archive the project before permanently deleting it.");
-		if (options.confirmName !== project.name) throw new Error(`Type \"${project.name}\" to permanently delete this project.`);
-		this.db.prepare("DELETE FROM project_sessions WHERE project_id = ?").run(id);
-		this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
-		if (options.deleteFiles) rmSync(project.projectFolder, { recursive: true, force: true });
-		return { deletedProjectId: id };
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const project = this.requireProject(id, { includeArchived: true });
+			if (!project.archivedAt) throw new Error("Archive the project before permanently deleting it.");
+			if (options.confirmName !== project.name) throw new Error(`Type \"${project.name}\" to permanently delete this project.`);
+			if (options.deleteFiles) this.assertFolderDoesNotOverlapAnotherProject(project);
+			this.db.prepare("DELETE FROM project_sessions WHERE project_id = ?").run(id);
+			this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+			if (options.deleteFiles) rmSync(project.projectFolder, { recursive: true, force: true });
+			this.db.exec("COMMIT");
+			return { deletedProjectId: id };
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
 	}
 
 	listProjectSessions(projectId: string, options: { includeArchived?: boolean } = {}): PiboProjectSession[] {
@@ -930,6 +938,14 @@ export class ChatProjectService {
 		if (existing) throw new Error("Project folder already exists");
 	}
 
+	private assertFolderDoesNotOverlapAnotherProject(project: PiboProject): void {
+		const projects = this.db.prepare("SELECT name, project_folder FROM projects WHERE id != ? ORDER BY lower(name), created_at").all(project.id) as Array<Pick<ProjectRow, "name" | "project_folder">>;
+		const overlapping = projects.find((other) => pathsOverlap(project.projectFolder, other.project_folder));
+		if (overlapping) {
+			throw new Error(`Cannot delete project files because its folder overlaps Project \"${overlapping.name}\". Delete without deleting files or choose a non-overlapping folder.`);
+		}
+	}
+
 	private ensureProjectFolderUsable(folder: string): void {
 		try {
 			mkdirSync(folder, { recursive: true });
@@ -1193,6 +1209,15 @@ function normalizeProjectFolder(value: unknown): string {
 	else if (folder.startsWith("~/")) folder = `${process.env.HOME ?? ""}${folder.slice(1)}`;
 	if (!isAbsolute(folder)) throw new Error("Project folder must be an absolute path, e.g. ~/code/my-project or /home/me/code/my-project");
 	return folder;
+}
+
+function pathsOverlap(left: string, right: string): boolean {
+	return pathContains(left, right) || pathContains(right, left);
+}
+
+function pathContains(parent: string, candidate: string): boolean {
+	const pathFromParent = relative(resolve(parent), resolve(candidate));
+	return pathFromParent === "" || (pathFromParent !== ".." && !pathFromParent.startsWith(`..${sep}`) && !isAbsolute(pathFromParent));
 }
 
 const PROJECT_SESSION_STATES = new Set<PiboProjectSessionState>([
