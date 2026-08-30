@@ -5,7 +5,7 @@ import { listLoopJobTemplates } from '../../loops/templates.js';
 import type { ModelProfile } from '../../core/profiles.js';
 import { isPiboThinkingLevel, type PiboThinkingLevel } from '../../core/thinking.js';
 import type { PiboLoopJob, PiboLoopJobPatchInput, PiboLoopMode, PiboLoopRun, PiboLoopStopPolicy, PiboLoopTarget } from '../../loops/types.js';
-import { normalizeLoopStopPolicy, type PiboLoopStore } from '../../loops/store.js';
+import { normalizeLoopStopPolicy, PiboLoopActiveRunModeChangeError, type PiboLoopStore } from '../../loops/store.js';
 import { isPiboRoomArchived, type PiboRoom, type PiboRoomNode } from './types/rooms.js';
 const CHAT_WEB_API_PREFIX = '/api/chat';
 type ChatRoomActions = { getRoom(id: string): PiboRoom | undefined; listRoomTree(): PiboRoomNode[]; requireRoom(roomId: string): PiboRoom; ensureDefaultRoom(input?: { name?: string }): PiboRoom };
@@ -71,7 +71,12 @@ export async function handleChatLoopApiRequest(options: ChatLoopApiOptions): Pro
 		const existing = loopStore.getJob(resource.id);
 		if (!existing) throw new PiboWebHttpError('Loop job not found', 404);
 		if ((patch.mode ?? existing.mode) === 'ralph' && ((patch.tokenBudget !== undefined && patch.tokenBudget !== null) || (patch.tokenReserve !== undefined && patch.tokenReserve !== null))) throw new PiboWebHttpError('tokenBudget and tokenReserve are only available for goal mode', 400);
-		const job = loopStore.updateJob(resource.id, patch);
+		let job: PiboLoopJob | undefined;
+		try { job = loopStore.updateJob(resource.id, patch); }
+		catch (error) {
+			if (error instanceof PiboLoopActiveRunModeChangeError) throw new PiboWebHttpError(error.message, 409);
+			throw error;
+		}
 		if (!job) throw new PiboWebHttpError('Loop job not found', 404);
 		return responseJson({ job: serializeJob(job) });
 	}
