@@ -50,6 +50,10 @@ test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", ()
 	assert.match(source, /const anchors = restoredAnchorIndex >= 0/, "late mutations continue restoring the explicit reload anchor");
 	assert.doesNotMatch(source, /restoredAnchorIndex < 0\) restoredAnchorLockRef\.current = undefined/, "transient replay gaps must not discard the explicit reload anchor");
 	assert.match(source, /markUserScrollIntent = useCallback[\s\S]*clearAnchorLocks\(\)/, "the first new user input releases restored and content anchor locks");
+	assert.match(source, /if \(userScrollIntentRef\.current\) \{\n\t\t\tuserAnchorRestoreDeferredRef\.current = true;\n\t\t\treturn;/, "active wheel and touch gestures own the viewport instead of competing with anchor restoration");
+	assert.match(source, /if \(userScrollIntentRef\.current\) scheduleUserScrollIntentRelease\(\);/, "scroll events keep gesture ownership armed through touch momentum and wheel settling");
+	assert.match(source, /if \(!userAnchorRestoreDeferredRef\.current\) return;[\s\S]*captureVisibleAnchors\(\);/, "settled gestures adopt their final conceptual row instead of replaying a stale anchor");
+	assert.match(source, /if \(anchorFrameRef\.current !== undefined\) cancelAnimationFrame\(anchorFrameRef\.current\);\n\t\tanchorFrameRef\.current = undefined;/, "new input cancels already scheduled anchor corrections");
 	assert.match(source, /contentAnchorLockRef\.current = \{[\s\S]*anchors: visibleAnchorsRef\.current/, "the first frame in a content burst retains every visible fallback anchor");
 	assert.match(source, /contentAnchorLock\?\.anchors \?\? pendingAnchors/, "replay reconciliation restores against the pre-burst anchor set");
 	assert.match(source, /scheduleContentAnchorSettle\(\)/, "the pre-burst anchor set is released only after content and layout settle");

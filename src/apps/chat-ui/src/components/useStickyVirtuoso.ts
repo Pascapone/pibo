@@ -86,6 +86,7 @@ export function useStickyVirtuoso({
 	const nearTopFrameRef = useRef<number | undefined>(undefined);
 	const userScrollIntentRef = useRef(false);
 	const userScrollDirectionRef = useRef<StickyScrollIntentDirection | undefined>(undefined);
+	const userAnchorRestoreDeferredRef = useRef(false);
 	const userAnchorCaptureArmedRef = useRef(false);
 	const bottomReattachArmedRef = useRef(false);
 	const userScrollIntentTimerRef = useRef<number | undefined>(undefined);
@@ -162,6 +163,7 @@ export function useStickyVirtuoso({
 		stickyRef.current = next;
 		if (next) {
 			clearAnchorLocks();
+			userAnchorRestoreDeferredRef.current = false;
 			if (!wasSticky && notifyAnchorChange) onVisibleAnchorChange?.(undefined);
 			bottomReattachArmedRef.current = false;
 			if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
@@ -219,8 +221,31 @@ export function useStickyVirtuoso({
 		renderedItemsRef.current = items;
 	}, []);
 
+	const scheduleUserScrollIntentRelease = useCallback(() => {
+		if (userScrollIntentTimerRef.current !== undefined) window.clearTimeout(userScrollIntentTimerRef.current);
+		userScrollIntentTimerRef.current = window.setTimeout(() => {
+			userScrollIntentRef.current = false;
+			userScrollDirectionRef.current = undefined;
+			userScrollIntentTimerRef.current = undefined;
+			if (!userAnchorRestoreDeferredRef.current) return;
+			userAnchorRestoreDeferredRef.current = false;
+			if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
+			anchorFrameRef.current = undefined;
+			clearAnchorLocks();
+			pendingAnchorsRef.current = undefined;
+			pendingAnchorItemKeysRef.current = undefined;
+			userAnchorCaptureArmedRef.current = false;
+			captureVisibleAnchors();
+		}, USER_SCROLL_INTENT_MS);
+	}, [captureVisibleAnchors, clearAnchorLocks]);
+
 	const restoreVisibleAnchor = useCallback((allowDuringPrepend = false) => {
-		if (stickyRef.current || userAnchorCaptureArmedRef.current || pointerScrollModeRef.current !== undefined || (virtuosoPrependPendingRef.current && !allowDuringPrepend)) return;
+		if (stickyRef.current || pointerScrollModeRef.current !== undefined) return;
+		if (userScrollIntentRef.current) {
+			userAnchorRestoreDeferredRef.current = true;
+			return;
+		}
+		if (userAnchorCaptureArmedRef.current || (virtuosoPrependPendingRef.current && !allowDuringPrepend)) return;
 		const itemKeys = committedItemKeysRef.current;
 		const restoredAnchor = restoredAnchorLockRef.current;
 		const restoredAnchorIndex = restoredAnchor ? itemKeys.indexOf(restoredAnchor.key) : -1;
@@ -235,7 +260,12 @@ export function useStickyVirtuoso({
 		const location = stickyAnchorLocation({ anchors, previousKeys, nextKeys: itemKeys });
 		if (!location) return;
 		const restore = () => {
-			if (stickyRef.current || userAnchorCaptureArmedRef.current || pointerScrollModeRef.current !== undefined) return false;
+			if (stickyRef.current || pointerScrollModeRef.current !== undefined) return false;
+			if (userScrollIntentRef.current) {
+				userAnchorRestoreDeferredRef.current = true;
+				return false;
+			}
+			if (userAnchorCaptureArmedRef.current) return false;
 			const restoredInDom = Boolean(scroller && restoreDomVisibleAnchor(scroller, location, anchors, itemKeys));
 			if (!restoredInDom && !virtuosoPrependPendingRef.current) virtuosoRef.current?.scrollToIndex(location);
 			return restoredInDom;
@@ -430,16 +460,13 @@ export function useStickyVirtuoso({
 			setSticky(false);
 			captureVisibleAnchors();
 		}
+		if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
+		anchorFrameRef.current = undefined;
 		const scrollTop = scroller ? getScrollTop(scroller) : undefined;
 		if (scrollTop !== undefined && updateAtTopFromScrollTop(scrollTop)) requestAtTop();
 		else if (isNearTopHistoryIntent(event) && scrollTop !== undefined && scrollTop <= nearTopThreshold) requestNearTop();
-		if (userScrollIntentTimerRef.current !== undefined) window.clearTimeout(userScrollIntentTimerRef.current);
-		userScrollIntentTimerRef.current = window.setTimeout(() => {
-			userScrollIntentRef.current = false;
-			userScrollDirectionRef.current = undefined;
-			userScrollIntentTimerRef.current = undefined;
-		}, USER_SCROLL_INTENT_MS);
-	}, [atBottomThreshold, captureVisibleAnchors, clearAnchorLocks, clearScheduledScroll, nearTopThreshold, onUserScrollIntent, requestAtTop, requestNearTop, scroller, setSticky, updateAtTopFromScrollTop]);
+		scheduleUserScrollIntentRelease();
+	}, [atBottomThreshold, captureVisibleAnchors, clearAnchorLocks, clearScheduledScroll, nearTopThreshold, onUserScrollIntent, requestAtTop, requestNearTop, scheduleUserScrollIntentRelease, scroller, setSticky, updateAtTopFromScrollTop]);
 
 	const clearPointerScrollMode = useCallback((expectedMode?: StickyPointerScrollMode) => {
 		const currentMode = pointerScrollModeRef.current;
@@ -481,6 +508,7 @@ export function useStickyVirtuoso({
 			scrollbarMonotonicScrollTopRef.current = scrollTop;
 		}
 		lastScrollTopRef.current = scrollTop;
+		if (userScrollIntentRef.current) scheduleUserScrollIntentRelease();
 		const hasUserScrollIntent = userScrollIntentRef.current || pointerScrollMode !== undefined;
 		const scrollPositionDirection = stickyScrollPositionDirection({
 			hasUserScrollIntent,
@@ -528,7 +556,7 @@ export function useStickyVirtuoso({
 			return;
 		}
 		if (hasUserScrollIntent) setSticky(false);
-	}, [atBottomThreshold, captureVisibleAnchors, clearPointerScrollMode, nearTopThreshold, onUserScrollIntent, requestAtTop, requestNearTop, scroller, setSticky, stageVisibleAnchors, updateAtTopFromScrollTop]);
+	}, [atBottomThreshold, captureVisibleAnchors, clearPointerScrollMode, nearTopThreshold, onUserScrollIntent, requestAtTop, requestNearTop, scheduleUserScrollIntentRelease, scroller, setSticky, stageVisibleAnchors, updateAtTopFromScrollTop]);
 
 	useLayoutEffect(() => {
 		if (!scroller || typeof MutationObserver === "undefined") return undefined;
@@ -682,6 +710,7 @@ export function useStickyVirtuoso({
 		if (userAnchorFinalCaptureTimerRef.current !== undefined) window.clearTimeout(userAnchorFinalCaptureTimerRef.current);
 		userAnchorCaptureTimerRef.current = undefined;
 		userAnchorFinalCaptureTimerRef.current = undefined;
+		userAnchorRestoreDeferredRef.current = false;
 		userAnchorCaptureArmedRef.current = false;
 		visibleAnchorsRef.current = [];
 		visibleAnchorItemKeysRef.current = [];
