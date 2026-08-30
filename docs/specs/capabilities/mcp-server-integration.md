@@ -74,7 +74,7 @@ The CLI MUST use a defined config lookup order, MUST merge existing MCP server c
 
 #### Current
 
-`findConfigPath`, `getPreferredConfigPath`, `ensureConfigExists`, and `printConfigPaths` implement lookup order: explicit `--config`, `MCP_CONFIG_PATH`, `./mcp_servers.json`, `~/mcp_servers.json`, `~/.mcp_servers.json`, and `~/.config/mcp/mcp_servers.json`. `loadConfig` reads all existing files in that order and additively merges `mcpServers`; when the same server name appears more than once, the more specific earlier path wins. Config mutation commands still edit exactly one file selected by `findConfigPath`/`ensureConfigExists`.
+`findConfigPath`, `getPreferredConfigPath`, `ensureConfigExists`, and `printConfigPaths` implement lookup order: explicit `--config`, `MCP_CONFIG_PATH`, `./mcp_servers.json`, `~/mcp_servers.json`, `~/.mcp_servers.json`, and `~/.config/mcp/mcp_servers.json`. `loadConfig` reads all existing files in that order and additively merges `mcpServers`; when the same server name appears more than once, the more specific earlier path wins. Config mutations edit one source file. Description edits resolve the highest-priority file that contributes the named server; initialization, add, remove, show, and path operations use the file selected by `findConfigPath`/`ensureConfigExists`.
 
 #### Acceptance
 
@@ -89,7 +89,8 @@ The CLI MUST use a defined config lookup order, MUST merge existing MCP server c
 - `pibo mcp info <unknown-server>` reports merged available servers and per-path discovered server names.
 - `pibo mcp config paths` shows the lookup order.
 - `pibo mcp config init` creates `{ "mcpServers": {} }` at the preferred path when no config exists.
-- Config add, remove, describe, show, and path operations continue to use one selected config file rather than rewriting the merged view.
+- Config add, remove, show, and path operations use one selected config file rather than rewriting the merged view.
+- Config description edits update the highest-priority source that contributes the named server and do not create a config or shadow entry when that source is missing or read-only.
 - Loading a missing explicit config fails instead of silently falling back.
 
 #### Scenario: Local config does not hide global servers
@@ -304,7 +305,7 @@ Chat Web MUST show configured MCP servers in the Agent Designer catalog and MUST
 
 - GIVEN a configured user-editable MCP server has no description
 - WHEN an authenticated user saves a non-empty MCP Tool Context description
-- THEN the server metadata is updated in `mcp_servers.json` under `pibo.description` with `descriptionSource: "user"`.
+- THEN the server metadata is updated in its highest-priority contributing config file under `pibo.description` with `descriptionSource: "user"`.
 
 ### Requirement: Custom agents select MCP servers by configured name
 
@@ -356,7 +357,7 @@ The runtime MUST inject an MCP context file only when the active profile selects
 - A config file may contain secret placeholders; Chat Web MUST expose only metadata, not raw server config.
 - MCP server descriptions may come from registry presets; users cannot edit those descriptions through the current UI.
 - The registry can be empty; commands must still be useful for discovery.
-- A selected MCP server can be removed from config after a custom agent is saved; runtime context generation omits it until the selection is repaired or the server is re-added.
+- Config and registry removal MUST reject removing the last effective definition of an MCP server selected by any active or archived custom agent and identify every dependent profile. Removing one source definition remains valid when the merged config retains the server from another source. Direct file edits can still create stale selections; Context Build and message preparation report the normal missing-server diagnostic until the agent selection is repaired or the server is restored.
 - Daemon cancellation or process cleanup may fail; the next connection attempt must still validate the process, IPC endpoint, and config hash before reuse.
 
 ## Constraints

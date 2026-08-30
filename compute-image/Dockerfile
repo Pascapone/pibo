@@ -15,17 +15,14 @@ ENV PATH="/root/.local/bin:${PATH}"
 ENV DISPLAY=:99
 ENV PIBO_BROWSER_USE_CHROME=/usr/bin/chromium
 
-# Repack the installed package without lifecycle scripts, then install that exact
-# artifact so its published shrinkwrap controls the production dependency tree.
-WORKDIR /opt/pibo-package
-COPY . .
-RUN mkdir -p /tmp/pibo-package && \
-    npm pack --ignore-scripts --pack-destination /tmp/pibo-package >/dev/null
+# The host stages only the published package archive and this Dockerfile, so an
+# installed package's production node_modules never enters the build context.
+COPY pibo-package.tgz /tmp/pibo-package.tgz
 
 WORKDIR /app
 RUN npm init -y >/dev/null && \
-    npm install --omit=dev --no-audit --no-fund /tmp/pibo-package/*.tgz && \
-    rm -rf /opt/pibo-package /tmp/pibo-package
+    npm install --omit=dev --no-audit --no-fund /tmp/pibo-package.tgz && \
+    rm -f /tmp/pibo-package.tgz
 
 RUN mkdir -p /root/.pibo/tools/browser-use/home/bin && \
     uv venv /root/.pibo/tools/browser-use/.venv --python 3.12 && \

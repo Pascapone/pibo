@@ -63,6 +63,7 @@ function traceNodeShallowEqual(left: PiboTraceNode, right: PiboTraceNode): boole
 		left.piboSessionId === right.piboSessionId &&
 		left.eventId === right.eventId &&
 		left.toolCallId === right.toolCallId &&
+		left.toolInvocationOrdinal === right.toolInvocationOrdinal &&
 		left.runId === right.runId &&
 		left.intent === right.intent &&
 		left.type === right.type &&
@@ -88,6 +89,7 @@ function traceOrderKeyEqual(left: PiboTraceNode["orderKey"], right: PiboTraceNod
 	return (
 		left.sourceRank === right.sourceRank &&
 		left.turnSeq === right.turnSeq &&
+		left.renderSequence === right.renderSequence &&
 		left.transcriptIndex === right.transcriptIndex &&
 		left.contentPartIndex === right.contentPartIndex &&
 		left.eventSequence === right.eventSequence &&

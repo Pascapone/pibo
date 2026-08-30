@@ -1,10 +1,13 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, readlink, rename, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import dockerIgnoreModule, { type Ignore as DockerIgnore } from "@balena/dockerignore";
+import { piboHomePath } from "../core/pibo-home.js";
 import {
 	COMPUTE_RESOURCE_POLICY_LABELS,
 	buildComputeResourcePolicyLabels,
@@ -14,10 +17,12 @@ import {
 } from "./resource-policy.js";
 
 const execFileAsync = promisify(execFile);
+const createDockerIgnore = dockerIgnoreModule as unknown as (options?: { ignorecase?: boolean }) => DockerIgnore;
 
 export const IMAGE_NAME = "pibo:latest";
 export const COMPUTE_IMAGE_ENV = "PIBO_COMPUTE_IMAGE";
 export const PACKAGED_COMPUTE_DOCKERFILE = "compute-image/Dockerfile";
+export const COMPUTE_PUBLISH_HOST = "127.0.0.1";
 export const LABEL_ROLE = "pibo.compute.role";
 export const LABEL_CREATED_AT = "pibo.compute.createdAt";
 export const LABEL_HOLDER = "pibo.compute.holder";
@@ -55,15 +60,25 @@ export function resolveComputeImageBuildConfig(
 		packageRoot?: string;
 		env?: NodeJS.ProcessEnv;
 		fileExists?: (candidate: string) => boolean;
+		readTextFile?: (candidate: string) => string;
 	} = {},
 ): ComputeImageBuildConfig {
 	const packageRoot = options.packageRoot ?? fileURLToPath(new URL("../../", import.meta.url));
 	const env = options.env ?? process.env;
 	const fileExists = options.fileExists ?? existsSync;
+	const readTextFile = options.readTextFile ?? ((candidate: string) => readFileSync(candidate, "utf8"));
 	const imageName = env[COMPUTE_IMAGE_ENV]?.trim() || IMAGE_NAME;
-
-	if (fileExists(path.join(workspaceDir, "Dockerfile"))) {
-		return { imageName, buildContext: workspaceDir, source: "workspace" };
+	const workspaceDockerfile = path.join(workspaceDir, "Dockerfile");
+	const workspacePackageJson = path.join(workspaceDir, "package.json");
+	if (fileExists(workspaceDockerfile) && fileExists(workspacePackageJson)) {
+		try {
+			const manifest = JSON.parse(readTextFile(workspacePackageJson)) as { name?: unknown };
+			if (manifest.name === "@pasko70/pibo") {
+				return { imageName, buildContext: workspaceDir, source: "workspace" };
+			}
+		} catch {
+			// An unrelated or malformed caller package is not a Pibo source checkout.
+		}
 	}
 
 	const dockerfile = path.join(packageRoot, PACKAGED_COMPUTE_DOCKERFILE);
@@ -78,6 +93,36 @@ export function buildDockerBuildArgs(config: ComputeImageBuildConfig): string[] 
 }
 
 export async function dockerBuild(config: ComputeImageBuildConfig): Promise<void> {
+	if (config.source === "workspace") {
+		await runDockerBuild(config);
+		return;
+	}
+	if (!config.dockerfile) throw new Error("Packaged compute image build requires a Dockerfile");
+
+	const stagedContext = await mkdtemp(path.join(tmpdir(), "pibo-compute-image-"));
+	try {
+		const { stdout } = await execFileAsync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", stagedContext], {
+			cwd: config.buildContext,
+			maxBuffer: 16 * 1024 * 1024,
+		});
+		const report = JSON.parse(stdout) as Array<{ filename?: unknown }>;
+		const filename = report[0]?.filename;
+		if (typeof filename !== "string" || !filename.endsWith(".tgz")) {
+			throw new Error("npm pack did not return a packaged Pibo archive");
+		}
+		await rename(path.join(stagedContext, filename), path.join(stagedContext, "pibo-package.tgz"));
+		await copyFile(config.dockerfile, path.join(stagedContext, "Dockerfile"));
+		await runDockerBuild({
+			imageName: config.imageName,
+			buildContext: stagedContext,
+			source: "workspace",
+		});
+	} finally {
+		await rm(stagedContext, { recursive: true, force: true });
+	}
+}
+
+async function runDockerBuild(config: ComputeImageBuildConfig): Promise<void> {
 	const { stderr } = await execFileAsync("docker", buildDockerBuildArgs(config), {
 		cwd: config.buildContext,
 		maxBuffer: 50 * 1024 * 1024,
@@ -108,53 +153,87 @@ export async function getDependencyHash(workspaceDir: string): Promise<string> {
 	return hash.digest("hex");
 }
 
-export async function getSourceHash(workspaceDir: string): Promise<string> {
+export async function getSourceHash(workspaceDir: string, dockerfile = path.join(workspaceDir, "Dockerfile")): Promise<string> {
 	const hash = createHash("sha256");
-	const files: string[] = [];
 
-	async function walk(dir: string) {
-		const entries = await readdir(dir, { withFileTypes: true });
-		for (const entry of entries) {
-			const fullPath = path.join(dir, entry.name);
-			if (entry.isDirectory()) {
-				if (
-					entry.name === "node_modules" ||
-					entry.name === ".git" ||
-					entry.name === "dist" ||
-					entry.name === ".pibo" ||
-					entry.name === "plans" ||
-					entry.name === "Reports"
-				) {
-					continue;
-				}
-				await walk(fullPath);
-			} else if (entry.isFile()) {
-				if (
-					entry.name.endsWith(".ts") ||
-					entry.name.endsWith(".tsx") ||
-					entry.name === "package.json" ||
-					entry.name === "package-lock.json" ||
-					entry.name === "Dockerfile"
-				) {
-					files.push(fullPath);
-				}
-			}
+	async function readOptionalFile(filePath: string): Promise<string | undefined> {
+		try {
+			return await readFile(filePath, "utf8");
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+			throw error;
 		}
 	}
 
-	await walk(workspaceDir);
-	files.sort();
+	const dockerfileIgnorePath = `${dockerfile}.dockerignore`;
+	const dockerfileIgnore = await readOptionalFile(dockerfileIgnorePath);
+	const rootIgnore = await readOptionalFile(path.join(workspaceDir, ".dockerignore"));
+	const activeIgnore = dockerfileIgnore ?? rootIgnore ?? "";
+	const requiredContextPaths = new Set([
+		path.relative(workspaceDir, dockerfile).split(path.sep).join("/"),
+		path.relative(workspaceDir, dockerfileIgnorePath).split(path.sep).join("/"),
+		".dockerignore",
+	]);
+	const contextIgnore = createDockerIgnore({ ignorecase: false }).add(
+		activeIgnore
+			.split(/\r?\n/u)
+			.filter((line) => line.trim() !== ".")
+			.join("\n"),
+	);
+	const hasNegatedPattern = activeIgnore.split(/\r?\n/u).some((line) => /^\/*!/u.test(line.trim()));
+	const contextEntries: Array<{ relativePath: string; type: "directory" | "file" | "symlink" | "other" }> = [];
 
-	for (const file of files) {
-		const content = await readFile(file);
-		hash.update(content);
+	function isIgnored(relativePath: string, directory: boolean): boolean {
+		if (requiredContextPaths.has(relativePath)) return false;
+		return contextIgnore.ignores(directory ? `${relativePath}/` : relativePath);
+	}
+
+	async function walk(dir: string, relativeDir = ""): Promise<boolean> {
+		let containsIncludedEntry = false;
+		const entries = await readdir(dir, { withFileTypes: true });
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry.name);
+			const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) {
+				const ignored = isIgnored(relativePath, true);
+				if (ignored && !hasNegatedPattern) continue;
+				const containsIncludedChild = await walk(fullPath, relativePath);
+				if (!ignored || containsIncludedChild) {
+					contextEntries.push({ relativePath, type: "directory" });
+					containsIncludedEntry = true;
+				}
+			} else if (!isIgnored(relativePath, false)) {
+				contextEntries.push({ relativePath, type: entry.isFile() ? "file" : entry.isSymbolicLink() ? "symlink" : "other" });
+				containsIncludedEntry = true;
+			}
+		}
+		return containsIncludedEntry;
+	}
+
+	await walk(workspaceDir);
+	contextEntries.sort((a, b) => (a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0));
+
+	function update(value: string | Buffer): void {
+		const bytes = typeof value === "string" ? Buffer.from(value) : value;
+		hash.update(`${bytes.length}:`);
+		hash.update(bytes);
+	}
+
+	for (const entry of contextEntries) {
+		const fullPath = path.join(workspaceDir, entry.relativePath);
+		const stat = await lstat(fullPath);
+		update(entry.type);
+		update(entry.relativePath);
+		update(String(stat.mode & 0o777));
+		if (entry.type === "file") update(await readFile(fullPath));
+		else if (entry.type === "symlink") update(await readlink(fullPath));
 	}
 
 	return hash.digest("hex");
 }
 
-export async function shouldRebuild(workspaceDir: string, hashFile: string): Promise<boolean> {
-	const currentHash = await getSourceHash(workspaceDir);
+export async function shouldRebuild(workspaceDir: string, hashFile: string, dockerfile?: string): Promise<boolean> {
+	const currentHash = await getSourceHash(workspaceDir, dockerfile);
 	try {
 		const savedHash = await readFile(hashFile, "utf-8");
 		return savedHash.trim() !== currentHash;
@@ -173,8 +252,8 @@ export async function shouldRebuildDeps(workspaceDir: string, hashFile: string):
 	}
 }
 
-export async function saveHash(workspaceDir: string, hashFile: string): Promise<void> {
-	const hash = await getSourceHash(workspaceDir);
+export async function saveHash(workspaceDir: string, hashFile: string, dockerfile?: string): Promise<void> {
+	const hash = await getSourceHash(workspaceDir, dockerfile);
 	await mkdir(path.dirname(hashFile), { recursive: true });
 	await writeFile(hashFile, hash, "utf-8");
 }
@@ -200,6 +279,142 @@ export interface SpawnedDevWorker {
 
 const DEV_PORT_BASE = 4800;
 const DEV_PORT_BLOCK_SIZE = 10;
+const DEV_PORT_ALLOCATION_LOCK_TIMEOUT_MS = 30_000;
+const DEV_PORT_ALLOCATION_LOCK_POLL_MS = 25;
+const DEV_PORT_ALLOCATION_MALFORMED_STALE_MS = 5_000;
+
+type ProcessLiveness = "active" | "dead" | "ambiguous";
+
+interface DevPortAllocationLockOwner {
+	pid: number;
+	processStartId?: string;
+	token: string;
+	createdAt: string;
+}
+
+function devPortAllocationLockPath(): string {
+	return piboHomePath("compute", "dev-port-allocation.lock");
+}
+
+function isErrnoException(error: unknown, code: string): boolean {
+	return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === code;
+}
+
+function processIsAlive(pid: number): ProcessLiveness {
+	try {
+		process.kill(pid, 0);
+		return "active";
+	} catch (error) {
+		if (isErrnoException(error, "ESRCH")) return "dead";
+		return "ambiguous";
+	}
+}
+
+async function processIdentity(pid: number): Promise<{ liveness: ProcessLiveness; startId?: string }> {
+	if (process.platform !== "linux") return { liveness: processIsAlive(pid) };
+	let raw: string;
+	try {
+		raw = await readFile(`/proc/${pid}/stat`, "utf8");
+	} catch (error) {
+		if (isErrnoException(error, "ENOENT") || isErrnoException(error, "ESRCH")) return { liveness: "dead" };
+		return { liveness: "ambiguous" };
+	}
+	const commandEnd = raw.lastIndexOf(")");
+	if (commandEnd < 2 || commandEnd + 2 >= raw.length) return { liveness: "ambiguous" };
+	const fields = raw.slice(commandEnd + 2).trim().split(/\s+/);
+	if (fields[0] === "Z") return { liveness: "dead" };
+	const startTicks = fields[19];
+	if (!startTicks || !/^[1-9][0-9]*$/.test(startTicks)) return { liveness: "ambiguous" };
+	return { liveness: "active", startId: `${pid}:${startTicks}` };
+}
+
+async function devPortAllocationLockOwnerLiveness(owner: DevPortAllocationLockOwner): Promise<ProcessLiveness> {
+	const identity = await processIdentity(owner.pid);
+	if (identity.liveness !== "active") return identity.liveness;
+	if (process.platform !== "linux") return "active";
+	if (!owner.processStartId || !identity.startId) return "ambiguous";
+	return owner.processStartId === identity.startId ? "active" : "dead";
+}
+
+async function removeAbandonedDevPortAllocationLock(lockPath: string): Promise<void> {
+	const raw = await readFile(lockPath, "utf8").catch(() => undefined);
+	if (raw === undefined) return;
+
+	let owner: Partial<DevPortAllocationLockOwner> = {};
+	try {
+		owner = JSON.parse(raw) as Partial<DevPortAllocationLockOwner>;
+	} catch {
+		// A partially written lock can be reclaimed after a short grace period.
+	}
+	const validOwner = typeof owner.pid === "number"
+		&& Number.isSafeInteger(owner.pid)
+		&& owner.pid > 0
+		&& typeof owner.token === "string"
+		&& owner.token.length > 0
+		&& typeof owner.createdAt === "string"
+		&& (owner.processStartId === undefined || typeof owner.processStartId === "string");
+	if (!validOwner) {
+		const lockStat = await stat(lockPath).catch(() => undefined);
+		if (!lockStat || Date.now() - lockStat.mtimeMs <= DEV_PORT_ALLOCATION_MALFORMED_STALE_MS) return;
+	} else if (await devPortAllocationLockOwnerLiveness(owner as DevPortAllocationLockOwner) !== "dead") {
+		return;
+	}
+
+	if ((await readFile(lockPath, "utf8").catch(() => undefined)) === raw) {
+		await rm(lockPath, { force: true });
+	}
+}
+
+async function releaseDevPortAllocationLock(lockPath: string, token: string): Promise<void> {
+	try {
+		const owner = JSON.parse(await readFile(lockPath, "utf8")) as Partial<DevPortAllocationLockOwner>;
+		if (owner.token === token) await rm(lockPath, { force: true });
+	} catch {
+		// The lock was already removed or replaced.
+	}
+}
+
+async function withDevPortAllocationLock<T>(run: () => Promise<T>): Promise<T> {
+	const lockPath = devPortAllocationLockPath();
+	const token = randomUUID();
+	const startedAt = Date.now();
+	const identity = await processIdentity(process.pid);
+	if (identity.liveness !== "active") throw new Error("Cannot establish compute dev port allocation lock owner identity");
+
+	while (true) {
+		try {
+			await mkdir(path.dirname(lockPath), { recursive: true, mode: 0o700 });
+			const handle = await open(lockPath, "wx", 0o600);
+			try {
+				await handle.writeFile(JSON.stringify({
+					pid: process.pid,
+					...(identity.startId ? { processStartId: identity.startId } : {}),
+					token,
+					createdAt: new Date().toISOString(),
+				} satisfies DevPortAllocationLockOwner), "utf8");
+			} catch (error) {
+				await handle.close();
+				await rm(lockPath, { force: true });
+				throw error;
+			}
+			await handle.close();
+			break;
+		} catch (error) {
+			if (!isErrnoException(error, "EEXIST")) throw error;
+			await removeAbandonedDevPortAllocationLock(lockPath);
+			if (Date.now() - startedAt >= DEV_PORT_ALLOCATION_LOCK_TIMEOUT_MS) {
+				throw new Error(`Timed out waiting for compute dev port allocation lock ${lockPath}`);
+			}
+			await new Promise<void>((resolve) => setTimeout(resolve, DEV_PORT_ALLOCATION_LOCK_POLL_MS));
+		}
+	}
+
+	try {
+		return await run();
+	} finally {
+		await releaseDevPortAllocationLock(lockPath, token);
+	}
+}
 
 async function findNextPortBlock(): Promise<number> {
 	const { stdout } = await execFileAsync("docker", [
@@ -328,15 +543,15 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 		"-e",
 		"PIBO_COMPUTE_WORKER_ROLE=dev",
 		"-p",
-		`127.0.0.1:${options.gatewayPort}:4789`,
+		`${COMPUTE_PUBLISH_HOST}:${options.gatewayPort}:4789`,
 		"-p",
-		`127.0.0.1:${options.cdpPort}:56663`,
+		`${COMPUTE_PUBLISH_HOST}:${options.cdpPort}:56663`,
 		"-p",
-		`127.0.0.1:${options.webPort}:4788`,
+		`${COMPUTE_PUBLISH_HOST}:${options.webPort}:4788`,
 		"-p",
-		`127.0.0.1:${options.webUIPortChat}:4790`,
+		`${COMPUTE_PUBLISH_HOST}:${options.webUIPortChat}:4790`,
 		"-p",
-		`127.0.0.1:${options.webUIPortContext}:4791`,
+		`${COMPUTE_PUBLISH_HOST}:${options.webUIPortContext}:4791`,
 		"-v",
 		`${options.worktreePath}:/workspace`,
 		...(options.hostNodeModules ? ["-v", `${options.hostNodeModules}:/workspace/node_modules`] : []),
@@ -366,7 +581,7 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 		"/bin/sh",
 		options.imageName ?? IMAGE_NAME,
 		"-c",
-		"tail -f /dev/null",
+		"ln -sf /workspace/dist/bin/pibo.js /usr/local/bin/pibo && exec tail -f /dev/null",
 	];
 }
 
@@ -383,14 +598,6 @@ export async function spawnDevWorker(options: {
 	const worktreePath = path.join(options.repoDir, ".worktrees", options.worktreeName);
 	await createWorktree(options.repoDir, options.worktreeName);
 
-	const block = await findNextPortBlock();
-	const base = DEV_PORT_BASE + block * DEV_PORT_BLOCK_SIZE;
-	const gatewayPort = base;
-	const cdpPort = base + 1;
-	const webPort = base + 2;
-	const webUIPortChat = base + 3;
-	const webUIPortContext = base + 4;
-
 	const id = `pibo-dev-${options.worktreeName}`;
 	const createdAt = new Date().toISOString();
 
@@ -404,39 +611,43 @@ export async function spawnDevWorker(options: {
 		// host node_modules does not exist; skip mount
 	}
 
-	const args = buildDevWorkerDockerRunArgs({
-		id,
-		imageName: options.imageName,
-		worktreePath,
-		worktreeName: options.worktreeName,
-		block,
-		gatewayPort,
-		cdpPort,
-		webPort,
-		webUIPortChat,
-		webUIPortContext,
-		createdAt,
-		holder: options.holder,
-		ttlSeconds: options.ttlSeconds,
-		idleSeconds: options.idleSeconds,
-		ralphJobId: options.ralphJobId,
-		ralphRunId: options.ralphRunId,
-		hostNodeModules: nodeModulesMount,
+	const ports = await withDevPortAllocationLock(async () => {
+		const block = await findNextPortBlock();
+		const base = DEV_PORT_BASE + block * DEV_PORT_BLOCK_SIZE;
+		const gatewayPort = base;
+		const cdpPort = base + 1;
+		const webPort = base + 2;
+		const webUIPortChat = base + 3;
+		const webUIPortContext = base + 4;
+		const args = buildDevWorkerDockerRunArgs({
+			id,
+			imageName: options.imageName,
+			worktreePath,
+			worktreeName: options.worktreeName,
+			block,
+			gatewayPort,
+			cdpPort,
+			webPort,
+			webUIPortChat,
+			webUIPortContext,
+			createdAt,
+			holder: options.holder,
+			ttlSeconds: options.ttlSeconds,
+			idleSeconds: options.idleSeconds,
+			ralphJobId: options.ralphJobId,
+			ralphRunId: options.ralphRunId,
+			hostNodeModules: nodeModulesMount,
+		});
+
+		await execFileAsync("docker", args, { cwd: options.repoDir });
+		return { gatewayPort, cdpPort, webPort, webUIPortChat, webUIPortContext };
 	});
-
-	await execFileAsync("docker", args, { cwd: options.repoDir });
-
-	const host = await detectHost();
 
 	return {
 		id,
 		image: options.imageName ?? IMAGE_NAME,
-		gatewayHost: host,
-		gatewayPort,
-		cdpPort,
-		webPort,
-		webUIPortChat,
-		webUIPortContext,
+		gatewayHost: COMPUTE_PUBLISH_HOST,
+		...ports,
 		connect: `docker exec -it ${id} bash`,
 		worktree: worktreePath,
 	};
@@ -469,11 +680,11 @@ export function buildWorkerDockerRunArgs(options: BuildWorkerDockerRunArgsOption
 		"-e",
 		"PIBO_COMPUTE_WORKER_ROLE=worker",
 		"-p",
-		"127.0.0.1::4789",
+		`${COMPUTE_PUBLISH_HOST}::4789`,
 		"-p",
-		"127.0.0.1::56663",
+		`${COMPUTE_PUBLISH_HOST}::56663`,
 		"-p",
-		"127.0.0.1::4788",
+		`${COMPUTE_PUBLISH_HOST}::4788`,
 		...buildComputeWorkerMetadataLabels({
 			role: "worker",
 			createdAt: options.createdAt,
@@ -529,13 +740,10 @@ export async function spawnWorker(options: {
 	const cdpPort = parseHostPort(port56663);
 	const webPort = parseHostPort(port4788);
 
-	// Detect host IP
-	const host = await detectHost();
-
 	return {
 		id,
 		image: options.imageName ?? IMAGE_NAME,
-		gatewayHost: host,
+		gatewayHost: COMPUTE_PUBLISH_HOST,
 		gatewayPort,
 		cdpPort,
 		webPort,
@@ -555,18 +763,6 @@ function parseHostPort(dockerPortOutput: string): number {
 		}
 	}
 	return 0;
-}
-
-async function detectHost(): Promise<string> {
-	try {
-		const { stdout } = await execFileAsync("hostname", ["-I"]);
-		const ips = stdout.trim().split(/\s+/);
-		const nonLocal = ips.find((ip) => !ip.startsWith("127."));
-		if (nonLocal) return nonLocal;
-		return ips[0] || "127.0.0.1";
-	} catch {
-		return "127.0.0.1";
-	}
 }
 
 export interface ComputeWorkerCleanupEligibility {
@@ -932,12 +1128,35 @@ export function buildComputeWorkerReapPlan(workers: WorkerInfo[], options: Compu
 }
 
 export async function releaseWorker(id: string): Promise<void> {
+	let inspected: DockerInspectContainer[];
 	try {
-		await execFileAsync("docker", ["stop", "-t", "10", id]);
+		const { stdout } = await execFileAsync("docker", ["inspect", id]);
+		inspected = JSON.parse(stdout) as DockerInspectContainer[];
+	} catch {
+		throw new Error(
+			`Unable to inspect Docker container "${id}" before release. No container was changed. ` +
+			`Run "pibo compute list --all" to find Pibo compute workers and verify Docker is available.`,
+		);
+	}
+	const container = inspected[0];
+	const resolvedId = container?.Id?.trim();
+	if (!container || inspected.length !== 1 || !resolvedId) {
+		throw new Error(`Unable to resolve Docker container "${id}" before release. No container was changed.`);
+	}
+	const role = container.Config?.Labels?.[LABEL_ROLE];
+	if (role !== "worker" && role !== "dev") {
+		const identity = role === undefined ? `${LABEL_ROLE} is missing` : `${LABEL_ROLE}=${JSON.stringify(role)}`;
+		throw new Error(
+			`Refusing to release Docker container "${id}": ${identity}; expected "worker" or "dev". ` +
+			`No container was changed. Run "pibo compute list --all" to find releasable workers.`,
+		);
+	}
+	try {
+		await execFileAsync("docker", ["stop", "-t", "10", resolvedId]);
 	} catch {
 		// might already be stopped
 	}
-	await execFileAsync("docker", ["rm", id]);
+	await execFileAsync("docker", ["rm", resolvedId]);
 }
 
 export async function applyComputeWorkerReapPlan(plan: ComputeWorkerReapPlan, options: { release?: (id: string) => Promise<void> } = {}): Promise<string[]> {

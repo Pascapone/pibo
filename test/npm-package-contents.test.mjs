@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
@@ -29,6 +30,7 @@ test("npm package excludes generated VSIX artifacts while keeping runtime assets
 		assert.equal(files.includes(".dockerignore"), false, "packaged image context must retain built dist files");
 		for (const path of [
 			"compute-image/Dockerfile",
+			"compute-image/Dockerfile.dockerignore",
 			"scripts/docker-entrypoint.sh",
 			"scripts/prepare-agent-browser-wrapper.sh",
 			"scripts/prepare-browser-use-wrapper.sh",
@@ -41,5 +43,22 @@ test("npm package excludes generated VSIX artifacts while keeping runtime assets
 		if (!artifactsDirExisted && (await readdir(artifactsDir).catch(() => [])).length === 0) {
 			await rm(artifactsDir, { recursive: true, force: true });
 		}
+	}
+});
+
+test("npm package ships the unavailable-tool path contract", async () => {
+	const packageDir = await mkdtemp(join(tmpdir(), "pibo-package-tools-contract-"));
+	try {
+		const { stdout } = await execFileAsync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packageDir], {
+			cwd: process.cwd(),
+			maxBuffer: 16 * 1024 * 1024,
+		});
+		const [report] = JSON.parse(stdout);
+		const archivePath = join(packageDir, report.filename);
+		const { stdout: packagedToolsCli } = await execFileAsync("tar", ["-xOf", archivePath, "package/dist/tools/index.js"]);
+		assert.match(packagedToolsCli, /CLI_TOOL_NOT_INSTALLED/);
+		assert.match(packagedToolsCli, /Run pibo tools install/);
+	} finally {
+		await rm(packageDir, { recursive: true, force: true });
 	}
 });

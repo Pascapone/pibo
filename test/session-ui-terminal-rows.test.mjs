@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { buildCompactTerminalRows, renderableTerminalValue, terminalTextValue } from "../dist/session-ui/index.js";
+import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 
 const sessionId = "pibo:test-session";
 
@@ -579,6 +580,34 @@ test("tool display modes include shell tools rendered as command rows", () => {
 	const intentRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "intent" });
 	assert.equal(intentRows.length, 1);
 	assert.equal(rowText(intentRows[0]), "Wait briefly to validate live intent projection");
+});
+
+test("tool display modes recognize qualified streaming tool rows", () => {
+	const toolCallId = "streaming-shell-call";
+	const nodeId = qualifiedToolNodeId(toolCallId, "turn-streaming", 0);
+	const view = traceView([
+		traceNode("tool.call", nodeId, {
+			toolCallId,
+			title: "bash",
+			intent: "Checking streaming output",
+			input: { command: "printf streaming" },
+			output: "streaming output",
+		}),
+	]);
+
+	const defaultRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "default" });
+	assert.equal(defaultRows[0]?.kind, "execution.command");
+	assert.equal(defaultRows[0]?.id, `terminal:${nodeId}`);
+	assert.deepEqual(buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "hide" }), []);
+
+	const slimRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "slim" });
+	assert.equal(slimRows.length, 1);
+	assert.equal(slimRows[0].singleLine, true);
+	assert.equal(slimRows[0].output, undefined);
+
+	const intentRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "intent" });
+	assert.equal(intentRows.length, 1);
+	assert.equal(rowText(intentRows[0]), "Checking streaming output");
 });
 
 test("intent mode preserves intent when a later conceptual tool row omits it", () => {

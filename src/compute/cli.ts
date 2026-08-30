@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 import {
 	imageExists,
 	shouldRebuild,
@@ -40,6 +40,12 @@ function parsePositiveIntegerOption(value: string | undefined): number | undefin
 	if (value === undefined || value.trim() === "") return undefined;
 	const parsed = Number(value);
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseNonNegativeNumber(value: string): number {
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed) || parsed < 0) throw new InvalidArgumentError("Value must be a non-negative number");
+	return parsed;
 }
 
 function hostPort(value: string | undefined): string | undefined {
@@ -270,11 +276,11 @@ Environment:
 			await mkdir(path.dirname(HASH_FILE), { recursive: true });
 			const image = computeImageBuildConfig();
 
-			const needsBuild = !(await imageExists(image.imageName)) || (await shouldRebuild(image.buildContext, HASH_FILE));
+			const needsBuild = !(await imageExists(image.imageName)) || (await shouldRebuild(image.buildContext, HASH_FILE, image.dockerfile));
 			if (needsBuild) {
 				console.error(`Building ${image.imageName} from ${image.buildContext}...`);
 				await dockerBuild(image);
-				await saveHash(image.buildContext, HASH_FILE);
+				await saveHash(image.buildContext, HASH_FILE, image.dockerfile);
 				console.error("Build complete.");
 			}
 
@@ -373,7 +379,7 @@ Rebuilds from the current workspace and refreshes compute image hashes.
 			const image = computeImageBuildConfig();
 			console.error(`Rebuilding ${image.imageName} from ${image.buildContext}...`);
 			await dockerBuild(image);
-			await saveHash(image.buildContext, HASH_FILE);
+			await saveHash(image.buildContext, HASH_FILE, image.dockerfile);
 			await saveDepHash(image.buildContext, DEP_HASH_FILE);
 			console.error("Build complete.");
 		});
@@ -474,7 +480,7 @@ Use the name or id shown by:
 	program
 		.command("reap")
 		.description("Preview or apply compute worker container cleanup")
-		.option("--max-age-minutes <n>", "Select workers older than this many minutes", "60")
+		.option("--max-age-minutes <n>", "Select workers older than this many minutes", parseNonNegativeNumber, 60)
 		.option("--include-dev", "Also select dev-worker containers; dev workers are skipped by default")
 		.option("--no-stopped", "Do not select stopped, dead, created, or restarting containers")
 		.option("--no-dirty", "Do not select dirty or OOM-killed containers")
@@ -489,13 +495,13 @@ Stopped, dirty/OOM, and old workers are selected unless disabled by selector fla
 Worktrees are preserved; container cleanup never deletes Git worktrees.
 `,
 		)
-		.action(async (options: { maxAgeMinutes: string; includeDev?: boolean; stopped?: boolean; dirty?: boolean; dryRun?: boolean; apply?: boolean; json?: boolean }) => {
-			const maxAge = Number(options.maxAgeMinutes);
+		.action(async (options: { maxAgeMinutes: number; includeDev?: boolean; stopped?: boolean; dirty?: boolean; dryRun?: boolean; apply?: boolean; json?: boolean }) => {
+			if (options.apply && options.dryRun) throw new Error("Use either --apply or --dry-run, not both");
 			const plan = await planReapWorkers({
 				includeDev: options.includeDev === true,
 				includeStopped: options.stopped !== false,
 				includeDirty: options.dirty !== false,
-				maxAgeMinutes: Number.isFinite(maxAge) ? maxAge : 60,
+				maxAgeMinutes: options.maxAgeMinutes,
 			});
 			const shouldApply = options.apply === true;
 			const removed = shouldApply ? await applyComputeWorkerReapPlan(plan) : [];

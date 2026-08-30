@@ -154,7 +154,6 @@ export function updateUserSkill(id: string, input: UpdateUserSkillInput, cwd = p
 		const markdown = buildSkillMd(name, effectiveDescription, body);
 		writeFileSync(skillPath, markdown, "utf-8");
 	} else if (name !== existing.name || description !== parsed.description) {
-		const currentMarkdown = existsSync(existing.path) ? readFileSync(existing.path, "utf-8") : "";
 		const { body } = parseSkillMd(currentMarkdown);
 		writeFileSync(skillPath, buildSkillMd(name, description, body), "utf-8");
 	}

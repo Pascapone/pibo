@@ -776,7 +776,7 @@ exec "$real_browser_use" "$@"
 }
 
 export function ensureBrowserUseWrapper(status: CliToolStatus): string | undefined {
-  if (status.entry.name !== 'browser-use') return undefined;
+  if (!status.installed || status.entry.name !== 'browser-use') return undefined;
   const wrapperPath = join(status.homeDir, 'bin', 'browser-use');
   mkdirSync(dirname(wrapperPath), { recursive: true });
   writeFileSync(wrapperPath, createBrowserUseWrapper(status.executablePath));
