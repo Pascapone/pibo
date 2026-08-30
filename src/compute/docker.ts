@@ -326,7 +326,7 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 		"/bin/sh",
 		IMAGE_NAME,
 		"-c",
-		"tail -f /dev/null",
+		"ln -sf /workspace/dist/bin/pibo.js /usr/local/bin/pibo && exec tail -f /dev/null",
 	];
 }
 
