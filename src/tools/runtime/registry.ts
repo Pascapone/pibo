@@ -139,11 +139,7 @@ export class RuntimeSessionRegistry {
 		result.executionCount = session.executionCount;
 		session.lastExecAt = startedAt;
 		session.updatedAt = nowIso();
-		if (result.status === "failed" && !session.backend.isAlive()) {
-			session.status = "failed";
-		} else {
-			session.status = "idle";
-		}
+		session.status = session.backend.isAlive() ? "idle" : "failed";
 		this.appendHistory(session, {
 			id: randomUUID(),
 			startedAt,
@@ -163,6 +159,7 @@ export class RuntimeSessionRegistry {
 		const session = input.sessionId ? this.getSessionForController(controllerPiboSessionId, input.sessionId) : this.getDefault(controllerPiboSessionId, input.runtime ?? "python");
 		if (!session) return notFoundInspect(input.sessionId);
 		const result = await session.backend.inspect(input);
+		this.reconcileSession(session);
 		return { ...result, sessionId: session.sessionId };
 	}
 
@@ -170,6 +167,7 @@ export class RuntimeSessionRegistry {
 		const session = input.sessionId ? this.getSessionForController(controllerPiboSessionId, input.sessionId) : this.getDefault(controllerPiboSessionId, input.runtime ?? "python");
 		if (!session) return notFoundVars(input.sessionId);
 		const result = await session.backend.vars(input);
+		this.reconcileSession(session);
 		return { ...result, sessionId: session.sessionId };
 	}
 
@@ -177,7 +175,10 @@ export class RuntimeSessionRegistry {
 		const session = input.sessionId ? this.getSessionForController(controllerPiboSessionId, input.sessionId) : this.getDefault(controllerPiboSessionId, input.runtime ?? "python");
 		const sessionId = input.sessionId ?? session?.sessionId ?? "auto";
 		if (!session) return { status: "not_found", sessionId, message: `Runtime session "${sessionId}" was not found.` };
+		if (session.status === "closed" || session.status === "failed") return { status: "failed", sessionId, message: "Runtime worker is not alive" };
+		if (session.status !== "busy") return { status: "ok", sessionId, message: "Runtime session is idle; no active execution to interrupt" };
 		const result = await session.backend.interrupt();
+		this.reconcileSession(session);
 		return { ...result, sessionId: session.sessionId };
 	}
 
@@ -208,6 +209,7 @@ export class RuntimeSessionRegistry {
 			status: "ok",
 			sessions: [...this.sessions.values()]
 				.filter((session) => session.controllerPiboSessionId === controllerPiboSessionId)
+				.map((session) => this.reconcileSession(session))
 				.map(toRecord),
 		};
 	}
@@ -224,6 +226,7 @@ export class RuntimeSessionRegistry {
 
 	pruneIdle(now = Date.now(), idleTimeoutMs = 30 * 60 * 1000): void {
 		for (const session of this.sessions.values()) {
+			this.reconcileSession(session);
 			if (session.status !== "idle") continue;
 			if (now - Date.parse(session.updatedAt) > idleTimeoutMs) {
 				void this.close(session.controllerPiboSessionId, { sessionId: session.sessionId, force: true });
@@ -244,12 +247,11 @@ export class RuntimeSessionRegistry {
 	}
 
 	private getDefault(controllerPiboSessionId: string, runtime: RuntimeStartInput["runtime"]): RuntimeSession | undefined {
-		return [...this.sessions.values()].find((session) =>
-			session.controllerPiboSessionId === controllerPiboSessionId &&
-			session.runtime === runtime &&
-			session.status !== "closed" &&
-			session.status !== "failed"
-		);
+		return [...this.sessions.values()].find((session) => {
+			if (session.controllerPiboSessionId !== controllerPiboSessionId || session.runtime !== runtime) return false;
+			const status = this.reconcileSession(session).status;
+			return status !== "closed" && status !== "failed";
+		});
 	}
 
 	private async getOrStartDefault(controllerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeSession | undefined> {
@@ -268,6 +270,14 @@ export class RuntimeSessionRegistry {
 	private getSessionForController(controllerPiboSessionId: string, sessionId: string): RuntimeSession | undefined {
 		const session = this.sessions.get(sessionId);
 		if (!session || session.controllerPiboSessionId !== controllerPiboSessionId) return undefined;
+		return this.reconcileSession(session);
+	}
+
+	private reconcileSession(session: RuntimeSession): RuntimeSession {
+		if (session.status !== "closed" && session.status !== "failed" && !session.backend.isAlive()) {
+			session.status = "failed";
+			session.updatedAt = nowIso();
+		}
 		return session;
 	}
 

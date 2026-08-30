@@ -328,6 +328,48 @@ test("pibo mcp config can create, add, show, and remove servers", async () => {
 	}
 });
 
+test("pibo mcp config describe persists to a lower-priority source across processes", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-describe-source-"));
+	const project = join(root, "project");
+	const home = join(root, "home");
+	await mkdir(project, { recursive: true });
+	await mkdir(home, { recursive: true });
+	const projectPath = join(project, "mcp_servers.json");
+	const homePath = join(home, "mcp_servers.json");
+	await writeFile(projectPath, `${JSON.stringify({
+		mcpServers: {
+			local: { command: "node", args: ["local.js"] },
+			shared: { command: "node", args: ["project.js"] },
+		},
+	}, null, 2)}\n`);
+	await writeFile(homePath, `${JSON.stringify({
+		mcpServers: {
+			inherited: { command: "node", args: ["home.js"] },
+			shared: { command: "node", args: ["home.js"] },
+		},
+	}, null, 2)}\n`);
+	const env = { ...process.env, HOME: home, USERPROFILE: home };
+	delete env.MCP_CONFIG_PATH;
+
+	try {
+		await execFileAsync("node", [cliPath, "mcp", "config", "describe", "inherited", "First process description."], { cwd: project, env });
+		await execFileAsync("node", [cliPath, "mcp", "config", "describe", "inherited", "Restarted process description."], { cwd: project, env });
+		await execFileAsync("node", [cliPath, "mcp", "config", "describe", "shared", "Project wins."], { cwd: project, env });
+
+		const projectConfig = JSON.parse(await readFile(projectPath, "utf-8"));
+		const homeConfig = JSON.parse(await readFile(homePath, "utf-8"));
+		assert.equal(projectConfig.mcpServers.shared.pibo.description, "Project wins.");
+		assert.equal(homeConfig.mcpServers.shared.pibo, undefined);
+		assert.deepEqual(homeConfig.mcpServers.inherited, {
+			command: "node",
+			args: ["home.js"],
+			pibo: { description: "Restarted process description.", descriptionSource: "user" },
+		});
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("pibo mcp config refuses to remove servers selected by custom agents", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-selected-remove-"));
 	const cwd = join(root, "project");
@@ -340,12 +382,15 @@ test("pibo mcp config refuses to remove servers selected by custom agents", asyn
 		mcpServers: {
 			selected: { command: "node", args: ["selected.js"] },
 			unselected: { command: "node", args: ["unselected.js"] },
+			toString: { command: "node", args: ["to-string.js"] },
+			constructor: { command: "node", args: ["constructor.js"] },
 		},
 	}));
 	const store = new CustomAgentStore(join(piboHome, "chat-agents.sqlite"));
 	try {
 		const first = store.create({ displayName: "selected-alpha", mcpServers: ["selected"] });
 		const second = store.create({ displayName: "selected-beta", mcpServers: ["selected"] });
+		const prototypeAgent = store.create({ displayName: "selected-prototype", mcpServers: ["toString", "constructor"] });
 		store.setArchived(second.id, true);
 		store.create({ displayName: "unrelated", mcpServers: [] });
 		const env = {
@@ -368,12 +413,35 @@ test("pibo mcp config refuses to remove servers selected by custom agents", asyn
 		assert.ok(JSON.parse(await readFile(configPath, "utf8")).mcpServers.selected);
 
 		await execFileAsync("node", [cliPath, "mcp", "config", "remove", "unselected"], { cwd, env });
-		assert.equal("unselected" in JSON.parse(await readFile(configPath, "utf8")).mcpServers, false);
+		assert.equal(Object.hasOwn(JSON.parse(await readFile(configPath, "utf8")).mcpServers, "unselected"), false);
+
+		for (const name of ["toString", "constructor"]) {
+			await assert.rejects(
+				execFileAsync("node", [cliPath, "mcp", "config", "remove", name], { cwd, env }),
+				(error) => {
+					assert.equal(error.code, 1);
+					assert.match(error.stderr, /MCP_SERVER_IN_USE/);
+					assert.match(error.stderr, /selected-prototype/);
+					return true;
+				},
+			);
+			assert.equal(Object.hasOwn(JSON.parse(await readFile(configPath, "utf8")).mcpServers, name), true);
+		}
 
 		store.update(first.id, { mcpServers: [] });
 		store.update(second.id, { mcpServers: [] });
-		await execFileAsync("node", [cliPath, "mcp", "config", "remove", "selected"], { cwd, env });
+		store.update(prototypeAgent.id, { mcpServers: [] });
+		for (const name of ["selected", "toString", "constructor"]) {
+			await execFileAsync("node", [cliPath, "mcp", "config", "remove", name], { cwd, env });
+		}
 		assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), { mcpServers: {} });
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "mcp", "config", "remove", "toString"], { cwd, env }),
+			(error) => {
+				assert.match(error.stderr, /SERVER_NOT_FOUND/);
+				return true;
+			},
+		);
 	} finally {
 		store.close();
 		await rm(root, { recursive: true, force: true });

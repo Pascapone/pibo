@@ -18,6 +18,17 @@ type ComposerCommand = {
 	description: string;
 };
 
+const COMMAND_SUGGESTIONS_ID = "composer-command-suggestions";
+const SKILL_SUGGESTIONS_ID = "composer-skill-suggestions";
+
+function commandSuggestionId(index: number): string {
+	return `composer-command-suggestion-${index}`;
+}
+
+function skillSuggestionId(index: number): string {
+	return `composer-skill-suggestion-${index}`;
+}
+
 export type ComposerProps = {
 	sessionId: string | null;
 	disabled?: boolean;
@@ -175,6 +186,24 @@ export function Composer({
 
 	const filteredSkills = skillSuggestionKey && dismissedSuggestionKeys.includes(skillSuggestionKey) ? [] : rawFilteredSkills;
 	const filtered = commandSuggestionKey && dismissedSuggestionKeys.includes(commandSuggestionKey) ? [] : rawFiltered;
+	const boundedActiveSkillIndex = Math.min(activeSkillIndex, Math.max(0, filteredSkills.length - 1));
+	const boundedActiveIndex = Math.min(activeIndex, Math.max(0, filtered.length - 1));
+	const suggestionControls = [
+		filteredSkills.length ? SKILL_SUGGESTIONS_ID : null,
+		filtered.length ? COMMAND_SUGGESTIONS_ID : null,
+	].filter((id): id is string => Boolean(id)).join(" ") || undefined;
+	const activeSuggestionId = filteredSkills.length
+		? skillSuggestionId(boundedActiveSkillIndex)
+		: filtered.length
+			? commandSuggestionId(boundedActiveIndex)
+			: undefined;
+	const suggestionStatus = filteredSkills.length
+		? `${filteredSkills.length} skill suggestion${filteredSkills.length === 1 ? "" : "s"} available. $${filteredSkills[boundedActiveSkillIndex].name} selected, ${boundedActiveSkillIndex + 1} of ${filteredSkills.length}.`
+		: filtered.length
+			? `${filtered.length} command suggestion${filtered.length === 1 ? "" : "s"} available. ${filtered[boundedActiveIndex].slash} selected, ${boundedActiveIndex + 1} of ${filtered.length}.`
+			: rawFilteredSkills.length || rawFiltered.length
+				? "Suggestions closed."
+				: "";
 
 	const dismissSuggestionKey = useCallback((key: string | null) => {
 		if (!key) return;
@@ -591,14 +620,17 @@ export function Composer({
 				</div>
 			) : null}
 			{filteredSkills.length ? (
-				<div className="absolute left-3 bottom-full mb-2 w-[min(520px,calc(100%-24px))] max-h-72 overflow-auto bg-[#0e1116] border border-emerald-500 rounded-sm shadow-xl">
+				<div id={SKILL_SUGGESTIONS_ID} role="listbox" aria-label="Skill suggestions" className="absolute left-3 bottom-full mb-2 w-[min(520px,calc(100%-24px))] max-h-72 overflow-auto bg-[#0e1116] border border-emerald-500 rounded-sm shadow-xl">
 					{filteredSkills.map((skill, index) => (
 						<button
 							key={skill.name}
-							ref={index === activeSkillIndex ? activeSkillRef : null}
+							id={skillSuggestionId(index)}
+							ref={index === boundedActiveSkillIndex ? activeSkillRef : null}
 							type="button"
+							role="option"
+							aria-selected={index === boundedActiveSkillIndex}
 							onClick={() => insertSkill(skill.name)}
-							className={`w-full grid grid-cols-[120px_1fr] gap-2 px-3 py-2 text-left border-b border-slate-800 ${index === activeSkillIndex ? "bg-emerald-500/15" : ""}`}
+							className={`w-full grid grid-cols-[120px_1fr] gap-2 px-3 py-2 text-left border-b border-slate-800 ${index === boundedActiveSkillIndex ? "bg-emerald-500/15" : ""}`}
 						>
 							<span className="font-mono text-emerald-400">${skill.name}</span>
 							<span className="text-xs text-slate-400">{skill.description ?? skill.path ?? ""}</span>
@@ -644,18 +676,21 @@ export function Composer({
 				</div>
 			) : null}
 			{filtered.length ? (
-				<div className="absolute left-3 bottom-full mb-2 w-[min(520px,calc(100%-24px))] max-h-72 overflow-auto bg-[#0e1116] border border-[#11a4d4] rounded-sm shadow-xl">
+				<div id={COMMAND_SUGGESTIONS_ID} role="listbox" aria-label="Command suggestions" className="absolute left-3 bottom-full mb-2 w-[min(520px,calc(100%-24px))] max-h-72 overflow-auto bg-[#0e1116] border border-[#11a4d4] rounded-sm shadow-xl">
 					{filtered.map((command, index) => (
 						<button
 							key={command.slash}
-							ref={index === activeIndex ? activeCommandRef : null}
+							id={commandSuggestionId(index)}
+							ref={index === boundedActiveIndex ? activeCommandRef : null}
 							type="button"
+							role="option"
+							aria-selected={index === boundedActiveIndex}
 							onClick={() => {
 								onValueChange(command.slash);
 								dismissSuggestionKey(composerCommandSuggestionKey(command.slash));
 								setActiveIndex(index);
 							}}
-							className={`w-full grid grid-cols-[120px_1fr] gap-2 px-3 py-2 text-left border-b border-slate-800 ${index === activeIndex ? "bg-[#11a4d4]/15" : ""}`}
+							className={`w-full grid grid-cols-[120px_1fr] gap-2 px-3 py-2 text-left border-b border-slate-800 ${index === boundedActiveIndex ? "bg-[#11a4d4]/15" : ""}`}
 						>
 							<span className="font-mono text-[#11a4d4]">{command.slash}</span>
 							<span className="text-xs text-slate-400">{command.description}</span>
@@ -663,6 +698,7 @@ export function Composer({
 					))}
 				</div>
 			) : null}
+			<div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{suggestionStatus}</div>
 			{recording ? <RecordingWaveform samples={waveformSamples} elapsedMs={recordingElapsedMs} /> : null}
 			<div className="grid grid-cols-[1fr_auto_auto] items-end gap-2">
 				<textarea
@@ -674,6 +710,10 @@ export function Composer({
 					rows={1}
 					value={value}
 					disabled={disabled}
+					aria-autocomplete="list"
+					aria-haspopup="listbox"
+					aria-controls={suggestionControls}
+					aria-activedescendant={activeSuggestionId}
 					onChange={(event) => {
 						historyNavRef.current = null;
 						latestValueRef.current = event.target.value;
@@ -708,6 +748,7 @@ export function Composer({
 							}
 						}
 						if (event.key === "Enter" && !event.shiftKey) {
+							if (event.nativeEvent?.isComposing || event.nativeEvent?.keyCode === 229) return;
 							event.preventDefault();
 							void submit();
 						}

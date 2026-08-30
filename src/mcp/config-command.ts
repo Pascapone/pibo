@@ -145,7 +145,7 @@ async function mergedConfigRetainsServer(
     const sourceConfig = resolve(sourcePath) === resolvedUpdatedPath
       ? updatedConfig
       : await readRawConfig(sourcePath);
-    if (name in sourceConfig.mcpServers) return true;
+    if (Object.hasOwn(sourceConfig.mcpServers, name)) return true;
   }
   return false;
 }
@@ -309,7 +309,7 @@ export async function configCommand(
       );
     }
 
-    if (!(options.name in config.mcpServers)) {
+    if (!Object.hasOwn(config.mcpServers, options.name)) {
       throw new Error(
         formatCliError({
           code: ErrorCode.CLIENT_ERROR,

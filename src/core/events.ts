@@ -354,6 +354,7 @@ export type PiboAssistantUsageEvent = {
 export type PiboSubagentSessionEvent = {
 	type: "subagent_session";
 	piboSessionId: string;
+	eventId?: string;
 	requestId?: string;
 	toolCallId?: string;
 	toolName: string;
@@ -524,7 +525,7 @@ export type PiboSessionErrorDetails = {
 	contextTokens?: number;
 };
 
-export type PiboOutputEvent =
+type PiboOutputEventPayload =
 	| PiboMessageQueuedEvent
 	| PiboMessageSteeredEvent
 	| PiboMessageStartedEvent
@@ -549,5 +550,16 @@ export type PiboOutputEvent =
 	| { type: "execution_result"; piboSessionId: string; eventId?: string; action: PiboExecutionAction; result: unknown; provenance?: PiboMessageProvenance }
 	| { type: "session_error"; piboSessionId: string; eventId?: string; error: string; errorDetails?: PiboSessionErrorDetails; provenance?: PiboMessageProvenance }
 	| { type: "pi_event"; piboSessionId: string; event: unknown };
+
+export type PiboOutputEvent = PiboOutputEventPayload extends infer TEvent
+	? TEvent extends object
+		? TEvent & {
+			/** Immutable first-observed position of the rendered conceptual segment. */
+			renderSequence?: number;
+			/** Zero-based invocation within one turn for a reused toolCallId. */
+			toolInvocationOrdinal?: number;
+		}
+		: never
+	: never;
 
 export type PiboEventListener = (event: PiboOutputEvent) => void;

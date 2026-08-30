@@ -556,9 +556,13 @@ export class AgentRuntimeAdapterRegistry {
 		const adapter = this.requireInstance(instanceId);
 		const session = await adapter.openSession(input);
 		try {
-			assertAgentRuntimeSessionContract(session);
+			assertAgentRuntimeSessionContract(session, instanceId);
 		} catch (error) {
-			await session.dispose().catch(() => {});
+			try {
+				if (typeof session?.dispose === "function") await session.dispose();
+			} catch {
+				// Preserve the admission error when best-effort cleanup also fails.
+			}
 			throw error;
 		}
 		return session;

@@ -2,7 +2,7 @@
 
 **Status:** Done
 **Created:** 2026-05-10
-**Revised:** 2026-08-25
+**Revised:** 2026-08-29
 **Related docs:** [Pibo Session Routing](./pibo-session-routing.md), [Custom Agents and Agent Designer](./custom-agents.md), [Yielded Run Control](./yielded-run-control.md), [Agent Management Tool Design](../../plans/agent-management-tool-design.md)
 
 ## Why
@@ -202,7 +202,17 @@ pibo debug agents <parent-session-id> list --help
 pibo debug agents <parent-session-id> observe --help
 ```
 
-The observe command MUST use the same ownership and filter vocabulary where persisted data permits it, and JSON output MUST be stable for automation.
+The observe command MUST use the same shared query policy as `pibo_agents_observe` for defaults, filtering, tool visibility and summaries, ordering, limits, and cursor-safe page selection. It MUST retain the persisted `event_log` as its source and expose its durable cursor as `streamId`; the live tool retains its router-lifetime `sequence` cursor.
+
+Where persisted data permits it, the CLI MUST expose the same filters. This includes exact tool-call IDs, roles, compact tool inclusion, and summary/full tool detail. Yielded request IDs remain live-only until request provenance is persisted. Explicit event or kind filters MUST retain access to streaming and progress records. JSON output MUST remain stable for automation.
+
+#### Acceptance
+
+- Default CLI observation returns only the newest 20 completed assistant messages.
+- `--include-tools` adds compact `tool_call` and terminal `tool_execution_finished` records without adding duplicate start or streaming update records.
+- `--tool-call-id`, `--role`, and `--tool-detail` use the same intersection and tool-visibility rules as the live tool.
+- Explicit `--event-type assistant_delta` or broad `--kind` filters can retrieve persisted progress records.
+- Live and persisted observation paths call one shared query implementation rather than maintaining separate default, filter, projection, and pagination logic.
 
 ## Edge Cases
 
@@ -243,7 +253,7 @@ The observe command MUST use the same ownership and filter vocabulary where pers
 | Catalog in context | generated delegated-agent runtime context | tool/context and resource-delivery tests |
 | Send and identity | session router agent controller and yielded run ID | router/tool tests, Pibo2 real run |
 | List and kill | session router ownership/status methods | router/tool tests |
-| Observe filters | normalized observation journal and debug query | filter unit tests, debug CLI tests |
+| Observe filters | `src/subagents/observation-query.ts`, live journal adapter, persisted debug adapter | live controller tests, debug CLI tests |
 | Existing delegation | router/session metadata and trace projections | trace/UI tests |
 | Legacy migration | deprecated exports and controller-option guards | compatibility unit tests |
 | Run compatibility | yielded tool assembly | run-control integration test, portable MCP test, Pibo2 real run |
