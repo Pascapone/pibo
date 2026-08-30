@@ -1,11 +1,29 @@
 import { execFileSync } from "node:child_process";
 import { resolve4 } from "node:dns/promises";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import { getPiboConfigValue, loadPiboConfig } from "../config/config.js";
 import { getPiboHome } from "../core/pibo-home.js";
 import { getWslInfo, isWsl, type WslInfo } from "../core/wsl.js";
+import {
+	createInstallationPlan,
+	inspectInstallation,
+	installationManifestPath,
+	materializeInstallationPlan,
+	parseInstallationComponent,
+	parseInstallationProfile,
+	readInstallationManifest,
+	runPendingInstallationActions,
+	uninstallInstallation,
+	validateInstallationPlanTargets,
+	type InstallationAction,
+	type InstallationComponentName,
+	type InstallationManifest,
+	type InstallationPlan,
+	type InstallationProfileName,
+} from "./installation-profiles.js";
 
 type SetupMode = "user-host" | "developer-host";
 
@@ -36,6 +54,14 @@ function parsePort(value: string): number {
 	const port = Number(value);
 	if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Port must be an integer between 1 and 65535");
 	return port;
+}
+
+function parseInstallationDomain(value: string): string {
+	const domain = value.trim().toLowerCase();
+	if (domain.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(domain)) {
+		throw new Error("Domain must be a DNS hostname such as pibo.example.com");
+	}
+	return domain;
 }
 
 function parseNonNegativeNumber(value: string): number {
@@ -434,7 +460,7 @@ function commandExists(command: string): boolean {
 
 function commandOutput(command: string, args: string[]): string | undefined {
 	try {
-		return execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+		return execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5_000 }).trim();
 	} catch {
 		return undefined;
 	}
@@ -573,11 +599,91 @@ async function createDoctorStatus(options: { piboHome?: string; domain?: string;
 	}
 	checks.push(...swapCheck(options.minSwapGb));
 	checks.push(...authConfigChecks(piboHome));
+	const installation = inspectInstallation({ piboHome });
+	if (installation.installed) {
+		const installationManifest = readInstallationManifest(installation.manifestPath);
+		if (installationManifest?.domain && existsSync(join(piboHome, "config.json"))) {
+			const config = loadPiboConfig(join(piboHome, "config.json"));
+			if (getPiboConfigValue(config, "auth.mode") === "local") checks.push({ name: "setup.auth-boundary", status: "fail", detail: "A public installation domain cannot use local auth; configure Better Auth and rerun setup upgrade" });
+		}
+		for (const check of installation.checks) checks.push({ ...check, name: `setup.${check.name}` });
+		const componentNames = new Set(installation.components.map((component) => component.name));
+		for (const service of componentNames.has("vscode-web") ? ["pibo-web", "pibo-code-server", "caddy"] : ["pibo-web", "caddy"]) {
+			const active = commandOutput("systemctl", ["is-active", service]) === "active";
+			checks.push({ name: `service:${service}`, status: active ? "ok" : "fail", detail: active ? `${service} is active` : `${service} is not active; repair with ${installation.repairCommand}` });
+		}
+		if (componentNames.has("browser-tools")) {
+			for (const name of ["browser-use", "agent-browser"]) {
+				const executable = name === "browser-use" ? join(piboHome, "tools", name, ".venv", "bin", name) : join(piboHome, "tools", name, "node", "node_modules", ".bin", name);
+				const installed = existsSync(executable);
+				checks.push({ name: `tool:${name}`, status: installed ? "ok" : "fail", detail: installed ? `${name} is installed through the curated tool registry` : `${name} is missing; repair with \`pibo setup component add browser-tools --apply --yes\`` });
+				const profileRoots = name === "browser-use"
+					? [join(piboHome, "tools", name, "home", "chrome-profiles"), join(piboHome, "tools", name, "home", "auth-pool"), join(piboHome, "tools", name, "home", "pibo-browser-pool")]
+					: [join(piboHome, "tools", name, "home", "profiles"), join(piboHome, "tools", name, "home", "profiles", "auth-template"), join(piboHome, "tools", name, "home", "profiles", "leases")];
+				for (const profileRoot of profileRoots) {
+					const privateDirectory = existsSync(profileRoot) && (statSync(profileRoot).mode & 0o077) === 0;
+					checks.push({ name: `browser-profiles:${name}:${profileRoot.split("/").at(-1)}`, status: privateDirectory ? "ok" : "fail", detail: privateDirectory ? `${profileRoot} is present with private permissions` : `${profileRoot} is missing or accessible to group/other users` });
+				}
+			}
+		}
+		if (componentNames.has("mcp-defaults")) {
+			const binDir = join(piboHome, "setup", "mcp-runtime", "node_modules", ".bin");
+			for (const binary of ["chrome-devtools-mcp", "mcp-server-filesystem"]) {
+				const path = join(binDir, binary);
+				checks.push({ name: `mcp:${binary}`, status: existsSync(path) ? "ok" : "fail", detail: existsSync(path) ? `${path} is installed from the pinned setup manifest` : `${path} is missing; repair with ${installation.repairCommand}` });
+			}
+			const chromeDevtoolsPath = join(binDir, "chrome-devtools-mcp");
+			if (existsSync(chromeDevtoolsPath)) {
+				const starts = commandOutput(chromeDevtoolsPath, ["--help"]) !== undefined;
+				checks.push({ name: "mcp:chrome-devtools-startup", status: starts ? "ok" : "fail", detail: starts ? "Chrome DevTools MCP starts and parses its command line" : `Chrome DevTools MCP failed its startup probe; repair with ${installation.repairCommand}` });
+			}
+		}
+		if (componentNames.has("web-annotations")) {
+			try {
+				const response = await fetch("http://127.0.0.1:4788/apps/web-annotations/overlay.js?pibo-setup-doctor=1", { redirect: "manual", signal: AbortSignal.timeout(3_000) });
+				const available = [200, 204, 302, 303, 307, 308, 401, 403].includes(response.status);
+				checks.push({ name: "http:web-annotations", status: available ? "ok" : "fail", detail: available ? `Web Annotations route is available (HTTP ${response.status})` : `Web Annotations route returned unexpected HTTP ${response.status}` });
+			} catch (error) {
+				checks.push({ name: "http:web-annotations", status: "fail", detail: `Web Annotations route probe failed: ${error instanceof Error ? error.message : String(error)}` });
+			}
+		}
+		if (componentNames.has("vscode-web")) {
+			const listeners = commandOutput("ss", ["-ltnH"]);
+			if (!listeners) checks.push({ name: "listener:vscode-web", status: "warn", detail: "Could not inspect TCP listeners with ss" });
+			else {
+				const lines = listeners.split("\n").filter((line) => /:4790\b/.test(line));
+				const unsafe = lines.some((line) => /(?:0\.0\.0\.0|\[::\]|\*):4790\b/.test(line));
+				const loopback = lines.some((line) => /127\.0\.0\.1:4790\b/.test(line));
+				checks.push({ name: "listener:vscode-web", status: unsafe || !loopback ? "fail" : "ok", detail: unsafe ? "VS Code Web is exposed beyond loopback" : loopback ? "VS Code Web listens only on 127.0.0.1:4790" : "VS Code Web is not listening on 127.0.0.1:4790" });
+			}
+			try {
+				const response = await fetch("http://127.0.0.1:4790/healthz", { signal: AbortSignal.timeout(3_000) });
+				checks.push({ name: "http:vscode-web-internal", status: response.ok ? "ok" : "fail", detail: response.ok ? "VS Code Web internal health endpoint is reachable" : `VS Code Web internal health returned HTTP ${response.status}` });
+			} catch (error) {
+				checks.push({ name: "http:vscode-web-internal", status: "fail", detail: `VS Code Web internal health failed: ${error instanceof Error ? error.message : String(error)}` });
+			}
+			const publicDomain = options.domain ?? installationManifest?.domain;
+			if (publicDomain) {
+				try {
+					const response = await fetch(`https://${publicDomain}/apps/vscode/`, { redirect: "manual", signal: AbortSignal.timeout(5_000) });
+					const protectedStatus = [302, 303, 307, 308, 401, 403].includes(response.status);
+					checks.push({ name: "proxy:vscode-auth", status: protectedStatus ? "ok" : "fail", detail: protectedStatus ? `Unauthenticated VS Code Web request was blocked with HTTP ${response.status}` : response.status === 200 ? "VS Code Web returned HTTP 200 without authentication" : `VS Code Web proxy returned unexpected HTTP ${response.status}` });
+				} catch (error) {
+					checks.push({ name: "proxy:vscode-auth", status: "fail", detail: `VS Code Web public auth-gate probe failed: ${error instanceof Error ? error.message : String(error)}` });
+				}
+				const websocketStatus = commandOutput("curl", ["-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", "--http1.1", "-H", "Connection: Upgrade", "-H", "Upgrade: websocket", "-H", "Sec-WebSocket-Version: 13", "-H", "Sec-WebSocket-Key: cGliby1zZXR1cC1wcm9iZQ==", `https://${publicDomain}/apps/vscode/ws?pibo-setup-doctor=1`]);
+				const websocketProtected = websocketStatus !== undefined && [302, 303, 307, 308, 401, 403].includes(Number(websocketStatus));
+				checks.push({ name: "proxy:vscode-websocket-auth", status: websocketProtected ? "ok" : "fail", detail: websocketProtected ? `Unauthenticated VS Code WebSocket upgrade was blocked with HTTP ${websocketStatus}` : `VS Code WebSocket auth-gate probe failed${websocketStatus ? ` with HTTP ${websocketStatus}` : ""}` });
+			} else checks.push({ name: "proxy:vscode-auth", status: "warn", detail: "No installation domain is recorded; pass --domain to verify the public auth gate" });
+		}
+	} else {
+		checks.push({ name: "setup.manifest", status: "warn", detail: "No setup-managed installation profile is recorded. Inspect one with `pibo setup plan --profile batteries-included`." });
+	}
 	checks.push(...await dnsChecks(options.domain, options.expectedIp, "production"));
 	checks.push(...await dnsChecks(options.devDomain, options.expectedIp, "development"));
 	const recommendations: string[] = [
-		"Use user-host setup for normal npm installs.",
-		"Use developer-host setup only when you need prod/dev gateways, Docker compute workers, GitHub App PR flow, and branch worktrees.",
+		"Use the Batteries Included profile for the recommended complete self-hosted workstation, or Vanilla for a minimal controlled base.",
+		"Use developer-host topology only when you need prod/dev gateways, Docker compute workers, GitHub App PR flow, and branch worktrees.",
 		"Configure auth before starting pibo-web; Better Auth requires baseURL, secret, Google OAuth values, and allowed emails.",
 		"Docker is only required for developer-host compute workers; user-host installs can ignore Docker warnings.",
 		"Swap is not created automatically; for developer hosts, provision swap at the OS level and verify it with `--min-swap-gb`.",
@@ -615,9 +721,289 @@ function printDoctorStatus(status: DoctorStatus): void {
 	for (const item of status.recommendations) console.log(`- ${item}`);
 }
 
+function printInstallationPlan(plan: InstallationPlan): void {
+	console.log(`${plan.profile} (profile version ${plan.profileVersion}): ${plan.summary}`);
+	console.log("\nComponents:");
+	for (const component of plan.components) console.log(`- ${component.name}: ${component.version} — ${component.description}`);
+	console.log("\nHost packages:");
+	for (const packageName of plan.hostPackages) console.log(`- ${packageName}`);
+	console.log("\nDownloads:");
+	if (plan.downloads.length === 0) console.log("- none");
+	for (const download of plan.downloads) console.log(`- ${download.name} ${download.version}: ${Object.keys(download.urls).join(", ")} (SHA-256 pinned)`);
+	console.log("\nServices and listeners:");
+	for (const service of plan.services) console.log(`- ${service.name}: ${service.bind}, user=${service.user}, public=${service.public ? "yes" : "no"}`);
+	console.log("\nOwned files:");
+	for (const file of plan.files) console.log(`- ${file.path}: ${file.purpose}`);
+	console.log("\nApply actions:");
+	for (const action of plan.actions) console.log(`- ${action.id}: ${action.description}${action.restartEffect ? ` (${action.restartEffect})` : ""}`);
+	console.log("\nSecurity boundaries:");
+	for (const item of plan.securityBoundaries) console.log(`- ${item}`);
+	if (plan.warnings.length > 0) {
+		console.log("\nWarnings:");
+		for (const warning of plan.warnings) console.log(`- ${warning}`);
+	}
+	console.log(`\nRepair: ${plan.repairCommand}`);
+}
+
+function runInstallationAction(action: InstallationAction): void {
+	console.log(`[pibo setup] ${action.id}: ${action.description}`);
+	execFileSync("sh", ["-lc", action.command], { stdio: "inherit" });
+}
+
+function installationActionIsComplete(action: InstallationAction): boolean {
+	if (!action.checkCommand) return true;
+	try {
+		execFileSync("sh", ["-lc", action.checkCommand], { stdio: "ignore" });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function removeComponentsNoLongerPlanned(manifest: InstallationManifest, plan: InstallationPlan): void {
+	const installed = new Set(manifest.components.map((component) => component.name));
+	const planned = new Set(plan.components.map((component) => component.name));
+	if (installed.has("vscode-web") && !planned.has("vscode-web")) execFileSync("systemctl", ["disable", "--now", "pibo-code-server"], { stdio: "inherit" });
+	if (installed.has("browser-tools") && !planned.has("browser-tools")) {
+		for (const path of [join(manifest.piboHome, "tools/browser-use/.venv"), join(manifest.piboHome, "tools/agent-browser/node")]) rmSync(path, { recursive: true, force: true });
+	}
+}
+
+function stopInstalledServices(manifest: InstallationManifest): void {
+	const componentNames = new Set(manifest.components.map((component) => component.name));
+	if (componentNames.has("vscode-web")) execFileSync("systemctl", ["disable", "--now", "pibo-code-server"], { stdio: "inherit" });
+	execFileSync("systemctl", ["disable", "--now", "pibo-web"], { stdio: "inherit" });
+	if (componentNames.has("browser-tools")) {
+		for (const path of [join(manifest.piboHome, "tools/browser-use/.venv"), join(manifest.piboHome, "tools/agent-browser/node")]) rmSync(path, { recursive: true, force: true });
+	}
+}
+
+function requireConfirmedApply(options: { apply?: boolean; yes?: boolean }): void {
+	if (!options.apply) return;
+	if (options.yes !== true) throw new Error("Refusing to modify the host without --yes");
+	if (typeof process.getuid === "function" && process.getuid() !== 0) throw new Error("Host installation requires root; rerun with sudo");
+	if (process.platform !== "linux") throw new Error("Host installation apply mode currently supports Linux only");
+}
+
+function validatePublicAuthBoundary(plan: InstallationPlan): void {
+	if (!plan.domain) return;
+	const configPath = join(plan.piboHome, "config.json");
+	if (!existsSync(configPath)) throw new Error(`Public setup requires Better Auth configuration at ${configPath}; run pibo config set before --apply`);
+	const config = loadPiboConfig(configPath);
+	if (getPiboConfigValue(config, "auth.mode") === "local") throw new Error("Refusing to expose a local-auth gateway through a public installation domain; configure Better Auth first");
+	const failures = authConfigChecks(plan.piboHome).filter((check) => check.status === "fail");
+	if (failures.length > 0) throw new Error(`Public setup requires complete Better Auth configuration: ${failures.map((check) => check.name).join(", ")}`);
+	const baseUrlValue = getPiboConfigValue(config, "auth.baseURL");
+	let baseUrl: URL;
+	try {
+		baseUrl = new URL(String(baseUrlValue));
+	} catch {
+		throw new Error("Public setup requires auth.baseURL to be a valid HTTPS URL");
+	}
+	if (baseUrl.protocol !== "https:" || baseUrl.hostname !== plan.domain) throw new Error(`Public setup domain ${plan.domain} must match the HTTPS auth.baseURL hostname`);
+}
+
+function emitInstallationPlan(plan: InstallationPlan, options: { json?: boolean }): void {
+	if (options.json) printJson(plan);
+	else printInstallationPlan(plan);
+}
+
+function applyOrStageInstallation(plan: InstallationPlan, options: { apply?: boolean; yes?: boolean; writeTo?: string; json?: boolean }): void {
+	if (options.apply && options.writeTo) throw new Error("Use either --apply or --write-to, not both");
+	if (!options.apply && !options.writeTo) {
+		emitInstallationPlan(plan, options);
+		return;
+	}
+	if (options.json) throw new Error("--json cannot be combined with --apply or --write-to");
+	requireConfirmedApply(options);
+	if (options.apply) validatePublicAuthBoundary(plan);
+	validateInstallationPlanTargets(plan, { root: options.writeTo });
+	const previousManifest = options.apply ? readInstallationManifest(installationManifestPath(plan.piboHome)) : undefined;
+	if (previousManifest) removeComponentsNoLongerPlanned(previousManifest, plan);
+	const bootstrapActions = plan.actions.filter((action) => action.id === "host-packages");
+	const bootstrapCompleted: string[] = [];
+	if (options.apply && !existsSync(installationManifestPath(plan.piboHome))) {
+		for (const action of bootstrapActions) {
+			runInstallationAction(action);
+			bootstrapCompleted.push(action.id);
+		}
+	}
+	const result = materializeInstallationPlan(plan, { root: options.writeTo });
+	if (options.apply && bootstrapCompleted.length > 0) {
+		runPendingInstallationActions({ ...plan, actions: bootstrapActions }, result.manifestPath, () => undefined);
+	}
+	const actions = options.apply ? runPendingInstallationActions(plan, result.manifestPath, runInstallationAction, { isComplete: installationActionIsComplete }) : undefined;
+	console.log(`${options.apply ? "Installed" : "Staged"} ${plan.profile} profile.`);
+	console.log(`Manifest: ${result.manifestPath}`);
+	console.log(`Written: ${result.written.length}; unchanged: ${result.unchanged.length}; removed obsolete: ${result.removed.length}; preserved modified: ${result.preserved.length}`);
+	if (actions) console.log(`Actions completed: ${bootstrapCompleted.length + actions.completed.length}; skipped: ${actions.skipped.filter((id) => !bootstrapCompleted.includes(id)).length}`);
+}
+
+function currentPiboVersion(): string {
+	const packageJson = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version?: unknown };
+	if (typeof packageJson.version !== "string" || packageJson.version.length === 0) throw new Error("Unable to read Pibo package version");
+	return packageJson.version;
+}
+
+function installationPlanOptions(options: { profile: InstallationProfileName; piboHome: string; workspaceRoot: string; piboCommand?: string; domain?: string; additionalComponents?: InstallationComponentName[] }): InstallationPlan {
+	return createInstallationPlan({ ...options, piboVersion: currentPiboVersion() });
+}
+
+function currentPiboCommand(): string {
+	const entrypoint = process.argv[1] ? resolve(process.argv[1]) : "/usr/bin/pibo";
+	return entrypoint === "/usr/bin/pibo" ? entrypoint : `${process.execPath} ${entrypoint}`;
+}
+
+async function chooseInteractiveInstallationProfile(profile?: InstallationProfileName): Promise<InstallationProfileName> {
+	if (profile) return profile;
+	if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("Non-interactive setup requires an explicit --profile batteries-included or --profile vanilla");
+	console.log("Batteries Included is recommended. It adds a loopback-only IDE, managed browser tooling, and curated MCP defaults behind Pibo authentication.");
+	console.log("Vanilla installs only the gateway and Chat Web host requirements.");
+	const prompt = createInterface({ input: process.stdin, output: process.stdout });
+	try {
+		const answer = (await prompt.question("Profile [batteries-included]: ")).trim();
+		return answer === "" ? "batteries-included" : parseInstallationProfile(answer);
+	} finally {
+		prompt.close();
+	}
+}
+
 export async function runSetupCli(argv = process.argv): Promise<void> {
 	const program = new Command();
-	program.name("pibo setup").description("Plan Pibo host installation and developer upgrades").helpOption("-h, --help", "Display help for command").showHelpAfterError();
+	program.name("pibo setup").description("Plan, install, inspect, upgrade, and remove supported Pibo host profiles").helpOption("-h, --help", "Display help for command").showHelpAfterError();
+
+	program
+		.command("plan")
+		.description("Inspect an installation profile without changing the host")
+		.option("--profile <profile>", "batteries-included (recommended) or vanilla", parseInstallationProfile, "batteries-included")
+		.option("--pibo-home <path>", "PIBO_HOME", "/root/.pibo")
+		.option("--workspace-root <path>", "Workspace directory exposed to VS Code Web", "/srv/pibo-workspaces")
+		.option("--pibo-command <command>", "Pibo command used by generated services and lifecycle actions", currentPiboCommand())
+		.option("--domain <domain>", "Public HTTPS domain", parseInstallationDomain)
+		.option("--json", "Print machine-readable JSON")
+		.action((options: { profile: InstallationProfileName; piboHome: string; workspaceRoot: string; piboCommand: string; domain?: string; json?: boolean }) => {
+			emitInstallationPlan(installationPlanOptions(options), options);
+		});
+
+	program
+		.command("install")
+		.description("Install a supported profile; Batteries Included is the recommended default")
+		.option("--profile <profile>", "batteries-included (recommended) or vanilla; required outside an interactive terminal", parseInstallationProfile)
+		.option("--pibo-home <path>", "PIBO_HOME", "/root/.pibo")
+		.option("--workspace-root <path>", "Workspace directory exposed to VS Code Web", "/srv/pibo-workspaces")
+		.option("--pibo-command <command>", "Pibo command used by generated services and lifecycle actions", currentPiboCommand())
+		.option("--domain <domain>", "Public HTTPS domain", parseInstallationDomain)
+		.option("--json", "Print machine-readable plan JSON without applying")
+		.option("--write-to <dir>", "Stage the complete owned filesystem tree under a review directory")
+		.option("--apply", "Apply generated files, packages, services, and safe restarts to this Linux host")
+		.option("--yes", "Confirm privileged host changes")
+		.action(async (options: { profile?: InstallationProfileName; piboHome: string; workspaceRoot: string; piboCommand: string; domain?: string; json?: boolean; writeTo?: string; apply?: boolean; yes?: boolean }) => {
+			const profile = await chooseInteractiveInstallationProfile(options.profile);
+			applyOrStageInstallation(installationPlanOptions({ ...options, profile }), options);
+		});
+
+	program
+		.command("status")
+		.description("Inspect the installed profile, components, versions, and owned-file drift")
+		.option("--pibo-home <path>", "PIBO_HOME", getPiboHome())
+		.option("--root <dir>", "Inspect a staged filesystem root")
+		.option("--json", "Print machine-readable JSON")
+		.action((options: { piboHome: string; root?: string; json?: boolean }) => {
+			const status = inspectInstallation(options);
+			if (options.json) printJson(status);
+			else {
+				console.log(status.installed ? `${status.profile} profile version ${status.profileVersion}` : "No setup-managed profile installed");
+				for (const component of status.components) console.log(`- ${component.name}: ${component.version}`);
+				console.log("Checks:");
+				for (const check of status.checks) console.log(`- ${check.status.toUpperCase()} ${check.name}: ${check.detail}`);
+				console.log(`Repair: ${status.repairCommand}`);
+			}
+		});
+
+	program
+		.command("upgrade")
+		.description("Reconcile the installed profile with the current pinned component catalog")
+		.option("--pibo-home <path>", "PIBO_HOME", getPiboHome())
+		.option("--root <dir>", "Reconcile a staged filesystem root")
+		.option("--apply", "Apply the upgrade to this Linux host")
+		.option("--yes", "Confirm privileged host changes")
+		.option("--json", "Print the upgrade plan as JSON without applying")
+		.action((options: { piboHome: string; root?: string; apply?: boolean; yes?: boolean; json?: boolean }) => {
+			if (options.root && options.apply) throw new Error("Use either --root for staging or --apply for the host, not both");
+			const manifestPath = options.root ? join(options.root, installationManifestPath(options.piboHome).replace(/^\/+/, "")) : installationManifestPath(options.piboHome);
+			const manifest = readInstallationManifest(manifestPath);
+			if (!manifest) throw new Error(`No installation manifest found at ${manifestPath}`);
+			const plan = createInstallationPlan({ profile: manifest.profile, piboHome: manifest.piboHome, workspaceRoot: manifest.workspaceRoot, piboCommand: manifest.piboCommand, piboVersion: currentPiboVersion(), domain: manifest.domain, additionalComponents: manifest.components.map((component) => component.name) });
+			if (options.json) emitInstallationPlan(plan, { json: true });
+			else applyOrStageInstallation(plan, { apply: options.apply, yes: options.yes, writeTo: options.root });
+		});
+
+	const component = program.command("component").description("Manage optional setup components");
+	component
+		.command("add <name>")
+		.description("Add one component to an installed profile")
+		.option("--pibo-home <path>", "PIBO_HOME", getPiboHome())
+		.option("--root <dir>", "Update a staged filesystem root")
+		.option("--apply", "Apply component installation to this Linux host")
+		.option("--yes", "Confirm privileged host changes")
+		.option("--json", "Print the component-add plan as JSON without applying")
+		.action((name: string, options: { piboHome: string; root?: string; apply?: boolean; yes?: boolean; json?: boolean }) => {
+			if (options.root && options.apply) throw new Error("Use either --root for staging or --apply for the host, not both");
+			const manifestPath = options.root ? join(options.root, installationManifestPath(options.piboHome).replace(/^\/+/, "")) : installationManifestPath(options.piboHome);
+			const manifest = readInstallationManifest(manifestPath);
+			if (!manifest) throw new Error(`No installation manifest found at ${manifestPath}`);
+			const additionalComponents = [...manifest.components.map((entry) => entry.name), parseInstallationComponent(name)];
+			const plan = createInstallationPlan({ profile: manifest.profile, piboHome: manifest.piboHome, workspaceRoot: manifest.workspaceRoot, piboCommand: manifest.piboCommand, piboVersion: currentPiboVersion(), domain: manifest.domain, additionalComponents });
+			if (options.json) emitInstallationPlan(plan, { json: true });
+			else applyOrStageInstallation(plan, { apply: options.apply, yes: options.yes, writeTo: options.root });
+		});
+
+	program
+		.command("uninstall")
+		.description("Remove unchanged setup-owned files while preserving Pibo data and workspaces")
+		.option("--pibo-home <path>", "PIBO_HOME", getPiboHome())
+		.option("--root <dir>", "Remove a staged installation")
+		.option("--apply", "Remove setup-owned host files")
+		.option("--yes", "Confirm removal")
+		.option("--json", "Print machine-readable JSON")
+		.action((options: { piboHome: string; root?: string; apply?: boolean; yes?: boolean; json?: boolean }) => {
+			if (options.root && options.apply) throw new Error("Use either --root for staging or --apply for the host, not both");
+			const manifestPath = options.root ? join(options.root, installationManifestPath(options.piboHome).replace(/^\/+/, "")) : installationManifestPath(options.piboHome);
+			const manifest = readInstallationManifest(manifestPath);
+			if (!manifest) throw new Error(`No installation manifest found at ${manifestPath}`);
+			const uninstallPlan = {
+				profile: manifest.profile,
+				components: manifest.components,
+				services: ["pibo-web", ...(manifest.components.some((component) => component.name === "vscode-web") ? ["pibo-code-server"] : []), "caddy"],
+				ownedFiles: manifest.ownedFiles.map((file) => file.path),
+				preserves: [manifest.piboHome, manifest.workspaceRoot, "VS Code settings", "authenticated browser profiles", "sessions and product data"],
+			};
+			const execute = options.apply === true || (options.root !== undefined && options.yes === true);
+			if (!execute) {
+				if (options.json) printJson(uninstallPlan);
+				else {
+					console.log(`Uninstall plan for ${manifest.profile}:`);
+					for (const path of uninstallPlan.ownedFiles) console.log(`- remove owned file: ${path}`);
+					for (const path of uninstallPlan.preserves) console.log(`- preserve: ${path}`);
+					console.log("Apply with --apply --yes.");
+				}
+				return;
+			}
+			requireConfirmedApply({ apply: options.apply, yes: options.yes });
+			if (options.apply) stopInstalledServices(manifest);
+			const result = uninstallInstallation(options);
+			if (options.apply) {
+				execFileSync("systemctl", ["daemon-reload"], { stdio: "inherit" });
+				if (result.removed.includes("/etc/caddy/Caddyfile")) execFileSync("systemctl", ["stop", "caddy"], { stdio: "inherit" });
+				else execFileSync("systemctl", ["reload", "caddy"], { stdio: "inherit" });
+			}
+			if (options.json) printJson(result);
+			else {
+				console.log(`Removed ${result.removed.length} setup-owned files.`);
+				for (const path of result.preserved) console.log(`Preserved modified file: ${path}`);
+				console.log("Pibo Home data and workspaces were preserved.");
+			}
+		});
 
 	program
 		.command("user-host")

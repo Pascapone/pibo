@@ -92,6 +92,9 @@ function readPendingAgentDraft(): PendingAgentDraft | null {
 			nativeSubagents: typeof parsed.draft.nativeSubagents === "boolean"
 				? parsed.draft.nativeSubagents
 				: undefined,
+			mainModelFallbacks: Array.isArray(parsed.draft.mainModelFallbacks)
+				? parsed.draft.mainModelFallbacks
+				: [],
 			autoContextFiles: typeof parsed.draft.autoContextFiles === "boolean"
 				? parsed.draft.autoContextFiles
 				: true,
@@ -135,7 +138,6 @@ export function AgentsView({
 	initialAgentFolders,
 	initialCatalog,
 	modelCatalog,
-	onSelect,
 	onCreateSession,
 	onEditContextFile,
 	onEditMcpServer,
@@ -151,7 +153,6 @@ export function AgentsView({
 	initialAgentFolders: CustomAgentFolder[];
 	initialCatalog?: AgentCatalog;
 	modelCatalog?: ModelCatalog;
-	onSelect: (profile: string) => void;
 	onCreateSession: (profile: string) => void;
 	onEditContextFile: (key: string) => void;
 	onEditMcpServer: (name: string) => void;
@@ -195,16 +196,14 @@ export function AgentsView({
 	const autosaveTimerRef = useRef<number | null>(null);
 	const mountedRef = useRef(true);
 	const catalogRef = useRef<AgentCatalog | null>(catalog);
-	const onSelectRef = useRef(onSelect);
 	const onAgentsChangedRef = useRef(onAgentsChanged);
 	const designerAvailable = Boolean(catalog);
 
 	useEffect(() => {
 		catalogRef.current = catalog;
 		customAgentsRef.current = customAgents;
-		onSelectRef.current = onSelect;
 		onAgentsChangedRef.current = onAgentsChanged;
-	}, [catalog, customAgents, onAgentsChanged, onSelect]);
+	}, [catalog, customAgents, onAgentsChanged]);
 
 	const clearAutosaveTimer = useCallback(() => {
 		if (autosaveTimerRef.current !== null) {
@@ -309,7 +308,6 @@ export function AgentsView({
 				setCustomAgents(nextAgents);
 				setLocalError(null);
 			}
-			onSelectRef.current(savedAgent.profileName);
 			onAgentsChangedRef.current();
 		};
 		const savePromise = (async () => {
@@ -532,7 +530,6 @@ export function AgentsView({
 
 		const nextDraft = selectExistingAgentDraft(agents, customAgents, catalog ?? undefined);
 		activateDraft(nextDraft, agentDraftSignature(nextDraft), false);
-		if (nextDraft.profileName) onSelect(nextDraft.profileName);
 	};
 
 	const setDraftArchived = async (archived: boolean) => {
@@ -650,7 +647,6 @@ export function AgentsView({
 			setCustomAgents(remainingAgents);
 			const nextDraft = selectExistingAgentDraft(agents.filter((agent) => agent.name !== draft.profileName), remainingAgents, catalog ?? undefined);
 			activateDraft(nextDraft, agentDraftSignature(nextDraft), false);
-			if (nextDraft.profileName) onSelectRef.current(nextDraft.profileName);
 			setDeleteConfirmName("");
 			onAgentsChangedRef.current();
 			setLocalError(null);
@@ -697,7 +693,6 @@ export function AgentsView({
 						const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
 						const nextDraft = agentToDraft(latestAgent);
 						activateDraft(nextDraft, agentDraftSignature(nextDraft));
-						if (!latestAgent.archivedAt) onSelect(latestAgent.profileName);
 						onCloseMobileSidebar();
 					});
 				}}
@@ -708,14 +703,12 @@ export function AgentsView({
 				})}
 				onMoveAgent={moveAgent}
 				onCreateAgentSession={(agent) => void runAfterAutosave(() => {
-					onSelect(agent.profileName);
 					onCreateSession(agent.profileName);
 					onCloseMobileSidebar();
 				})}
 				onSelectProfile={(profile) => void runAfterAutosave(() => {
 					const nextDraft = profileToDraft(profile, catalog ?? undefined);
 					activateDraft(nextDraft, agentDraftSignature(nextDraft));
-					onSelect(profile.name);
 					onCloseMobileSidebar();
 				})}
 				onCopyProfile={(profile) => void runAfterAutosave(() => {
@@ -723,7 +716,6 @@ export function AgentsView({
 					onCloseMobileSidebar();
 				})}
 				onCreateProfileSession={(profile) => void runAfterAutosave(() => {
-					onSelect(profile.name);
 					onCreateSession(profile.name);
 					onCloseMobileSidebar();
 				})}
@@ -747,7 +739,7 @@ export function AgentsView({
 								Retry
 							</button>
 						) : null}
-						<button type="button" onClick={() => void runAfterAutosave(() => { if (draft.profileName) { onSelect(draft.profileName); onCreateSession(draft.profileName); } })} disabled={!draft.profileName || creatingSession || archivedDraft} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
+						<button type="button" onClick={() => void runAfterAutosave(() => { if (draft.profileName) onCreateSession(draft.profileName); })} disabled={!draft.profileName || creatingSession || archivedDraft} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
 							<MessageSquarePlus size={14} />
 						</button>
 						{draft.source === "custom" && draft.id ? (
@@ -837,6 +829,7 @@ export function AgentsView({
 							title="Model & Reasoning"
 							modelTitle="Main Agent Model"
 							model={draft.mainModel}
+							modelFallbacks={draft.mainModelFallbacks}
 							thinking={draft.mainThinkingLevel}
 							fast={draft.mainFast ?? false}
 							modelCatalog={runtimeModelCatalog}
@@ -846,6 +839,7 @@ export function AgentsView({
 							thinkingUnavailableReason={mainReasoningUnavailableReason}
 							thinkingValues={mainReasoningValues}
 							onModelChange={(mainModel) => setDraft((current) => ({ ...current, mainModel }))}
+							onModelFallbacksChange={(mainModelFallbacks) => setDraft((current) => ({ ...current, mainModelFallbacks }))}
 							onThinkingChange={(mainThinkingLevel) => setDraft((current) => ({ ...current, mainThinkingLevel }))}
 							onFastChange={(mainFast) => setDraft((current) => ({ ...current, mainFast }))}
 						/>
@@ -874,6 +868,41 @@ export function AgentsView({
 					</DesignerPanel>
 					<DesignerPanel title="Tools">
 						{piboToolsUnavailableReason ? <RuntimeCapabilityNotice reason={piboToolsUnavailableReason} /> : null}
+						{draft.brokenNativeTools?.length ? (
+							<div className="border border-red-500/60 bg-red-500/10 rounded-sm p-3 space-y-2">
+								<div className="flex items-start gap-2 text-red-100">
+									<AlertTriangle size={14} className="mt-0.5 shrink-0" />
+									<div>
+										<div className="text-sm font-medium">This agent references tools that are no longer registered.</div>
+										<div className="text-xs text-red-200/90">The agent remains available, but these tools will not be loaded.</div>
+									</div>
+								</div>
+								<div className="grid gap-2">
+									{draft.brokenNativeTools.map((toolName) => (
+										<div key={toolName} className="flex items-center gap-2 border border-red-500/40 bg-[#2a1417] rounded-sm px-3 py-2">
+											<div className="min-w-0 flex-1">
+												<div className="truncate text-sm text-red-100">{toolName}</div>
+												<div className="text-[11px] uppercase tracking-wider text-red-300/80">Missing tool</div>
+											</div>
+											<button
+												type="button"
+												disabled={readOnly}
+												onClick={() => setDraft((current) => ({
+													...current,
+													nativeTools: current.nativeTools.filter((item) => item !== toolName),
+													brokenNativeTools: (current.brokenNativeTools ?? []).filter((item) => item !== toolName),
+												}))}
+												className="h-8 w-8 inline-flex items-center justify-center border border-red-500/60 rounded-sm text-red-200 hover:border-red-400 hover:text-red-100 disabled:opacity-50"
+												title="Remove Missing Tool"
+												aria-label="Remove Missing Tool"
+											>
+												<X size={14} />
+											</button>
+										</div>
+									))}
+								</div>
+							</div>
+						) : null}
 						<CatalogGroupGrid
 							groups={nativeToolGroups}
 							empty={catalog ? <EmptyCatalog message="No native tools registered" /> : <EmptyCatalog />}
@@ -1251,7 +1280,7 @@ function SubagentDesigner({
 								</label>
 								<label className="grid gap-1">
 									<span className="text-[10px] uppercase tracking-wider text-slate-500">Target profile</span>
-									<select name={`subagents.${index}.targetProfile`} aria-label={`Subagent ${index + 1} target profile`} value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value, model: undefined, thinkingLevel: undefined, runtimeOptions: undefined })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
+									<select name={`subagents.${index}.targetProfile`} aria-label={`Subagent ${index + 1} target profile`} value={subagent.targetProfile} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { targetProfile: event.target.value, model: undefined, modelFallbacks: undefined, thinkingLevel: undefined, runtimeOptions: undefined })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60">
 										{profileOptions.map((profile) => <option key={profile.value} value={profile.value}>{profile.label}</option>)}
 									</select>
 								</label>
@@ -1281,6 +1310,7 @@ function SubagentDesigner({
 								title={`Execution / ${runtime?.displayName ?? runtimeInstanceId}`}
 								modelTitle="Subagent Model"
 								model={subagent.model}
+								modelFallbacks={subagent.modelFallbacks ?? []}
 								thinking={subagent.thinkingLevel}
 								modelCatalog={targetModelCatalog}
 								readOnly={configurationReadOnly}
@@ -1290,6 +1320,7 @@ function SubagentDesigner({
 								thinkingValues={reasoningValues}
 								showFast={false}
 								onModelChange={(model) => updateSubagent(index, { model })}
+								onModelFallbacksChange={(modelFallbacks) => updateSubagent(index, { modelFallbacks })}
 								onThinkingChange={(thinkingLevel) => updateSubagent(index, { thinkingLevel })}
 							/>
 							{runtime?.capabilities.models.optionsSchema ? (

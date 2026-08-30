@@ -27,6 +27,7 @@ import type {
 	PiboSessionOperationResult,
 	PiboSessionStatus,
 } from "./events.js";
+import { OutputRenderSequencer, outputRenderHighWaterStore } from "./output-render-sequence.js";
 import {
 	normalizePiboAgentSessionName,
 	type PiboAgentObservation,
@@ -87,7 +88,12 @@ import { getDefaultPiboWorkspace } from "./workspace.js";
 import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
 import { loadPiboGatewaySettings } from "./gateway-settings.js";
 import { loadPiboUserSettings } from "./user-settings.js";
-import { resolvePiboSessionActiveModel } from "./session-model.js";
+import {
+	PIBO_INITIAL_MODEL_FALLBACKS_METADATA_KEY,
+	resolvePiboSessionActiveModel,
+	resolvePiboSessionModelFallbacks,
+	withPiboSessionModelFallbacksMetadata,
+} from "./session-model.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "./thinking.js";
 import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 import { GatewayWorkAdmissionController } from "./gateway-resource-guard.js";
@@ -242,6 +248,7 @@ function profileForSession(
 		parentSessionId: parentNativeSessionId,
 		model: usesProfileRuntime ? baseProfile.model : undefined,
 		mainModel: usesProfileRuntime ? baseProfile.mainModel : undefined,
+		mainModelFallbacks: usesProfileRuntime ? baseProfile.mainModelFallbacks : undefined,
 		subagentModel: usesProfileRuntime ? baseProfile.subagentModel : undefined,
 		thinkingLevel: baseProfile.thinkingLevel,
 		mainThinkingLevel: baseProfile.mainThinkingLevel,
@@ -536,6 +543,7 @@ export class PiboSessionRouter {
 	private readonly sessions = new Map<string, RoutedSession>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
 	private readonly listeners = new Set<PiboEventListener>();
+	private readonly outputRenderSequencer: OutputRenderSequencer;
 	private readonly runRegistry: PiboRunRegistry;
 	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
@@ -581,6 +589,9 @@ export class PiboSessionRouter {
 		// Preserve that composition contract during the adapter migration without branching on adapter ids.
 		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
+		this.outputRenderSequencer = new OutputRenderSequencer({
+			highWaterStore: outputRenderHighWaterStore(this.sessionStore),
+		});
 		this.telemetryStore = options.telemetryStore ?? telemetryStoreFromSessionStore(this.sessionStore);
 		this.telemetryWriter = this.telemetryStore ? new AsyncTelemetryWriter(this.telemetryStore) : undefined;
 		this.telemetryRecorder = this.telemetryStore
@@ -885,6 +896,7 @@ export class PiboSessionRouter {
 			for (const id of ids) {
 				if (this.disposingSessions.get(id) === operation) this.disposingSessions.delete(id);
 				this.quiescingSessions.delete(id);
+				this.outputRenderSequencer.disposeSession(id);
 				this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason });
 			}
 			await this.telemetryWriter?.flush();
@@ -1359,6 +1371,7 @@ export class PiboSessionRouter {
 			this.runtimeResourceSessions.clear();
 			this.activeSubagentRequests.clear();
 			this.subagentRequestIdsByEvent.clear();
+			this.outputRenderSequencer.disposeAll();
 			this.agentObservations.length = 0;
 			this.agentObservationEvictedThroughByParent.clear();
 			await this.telemetryWriter?.dispose();
@@ -1464,6 +1477,9 @@ export class PiboSessionRouter {
 		const activeModel = changesRuntimeModelNamespace
 			? undefined
 			: this.ensureSessionActiveModel(piboSession, sessionProfile, parentModelScopeId, modelDefaults);
+		const modelFallbacks = changesRuntimeModelNamespace
+			? []
+			: this.ensureSessionModelFallbacks(piboSession, sessionProfile, parentModelScopeId, activeModel);
 		const userSettings = loadPiboUserSettings();
 		const telemetryExtension = this.telemetryStore
 			? createPiboProviderTelemetryExtension({ store: this.telemetryStore, writer: this.telemetryWriter, session: piboSession, model: activeModel })
@@ -1606,6 +1622,7 @@ export class PiboSessionRouter {
 						],
 						modelDefaults,
 						initialFastMode,
+						providerFallbacksEnabled: modelFallbacks.length > 0,
 					},
 				},
 			});
@@ -1705,6 +1722,7 @@ export class PiboSessionRouter {
 					this.handleInterruptedRunReminders(messages);
 				},
 				messagePreflight: this.options.messagePreflight,
+				modelFallbacks,
 				getRuntimeAuthStatus: () => runtimeRegistry.getAgentRuntimeAuthStatus(binding.runtimeInstanceId),
 				startRuntimeAuth: async (input) => {
 					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.startAgentRuntimeAuth(binding.runtimeInstanceId, input);
@@ -1869,6 +1887,26 @@ export class PiboSessionRouter {
 			this.sessionStore.update(piboSession.id, { activeModel });
 		}
 		return activeModel;
+	}
+
+	private ensureSessionModelFallbacks(
+		piboSession: PiboSession,
+		profile: InitialSessionContext,
+		parentPiSessionId: string | undefined,
+		activeModel: ModelProfile | undefined,
+	): ModelProfile[] {
+		const modelFallbacks = resolvePiboSessionModelFallbacks({
+			profile,
+			piboSession,
+			parentPiSessionId,
+			activeModel,
+		});
+		if (piboSession.metadata?.[PIBO_INITIAL_MODEL_FALLBACKS_METADATA_KEY] === undefined) {
+			this.sessionStore.update(piboSession.id, {
+				metadata: withPiboSessionModelFallbacksMetadata(piboSession.metadata, modelFallbacks),
+			});
+		}
+		return modelFallbacks;
 	}
 
 	private resolveModelDefaults(): PiboModelDefaults {
@@ -2316,6 +2354,10 @@ export class PiboSessionRouter {
 			throw new Error("Agent observation since must not be after until.");
 		}
 		const requestIds = input.requestIds ? new Set(input.requestIds) : undefined;
+		if (input.toolCallIds && input.toolCallIds.length > 50) {
+			throw new Error("Agent observation toolCallIds must contain at most 50 entries.");
+		}
+		const toolCallIds = input.toolCallIds ? new Set(input.toolCallIds) : undefined;
 		const agentIds = input.agentIds ? new Set(input.agentIds) : undefined;
 		if (agentIds) {
 			for (const agentId of agentIds) this.requireManagedAgent(parentPiboSessionId, agentId);
@@ -2328,7 +2370,8 @@ export class PiboSessionRouter {
 		const textContains = input.textContains?.toLowerCase();
 		const defaultMessageView = eventTypes === undefined && kinds === undefined;
 		const explicitlySelectsTools = input.eventTypes?.some((eventType) => piboAgentObservationKind(eventType) === "tool") === true
-			|| input.kinds?.includes("tool") === true;
+			|| input.kinds?.includes("tool") === true
+			|| toolCallIds !== undefined;
 		const includeTools = input.includeTools === true || (input.includeTools === undefined && explicitlySelectsTools);
 		const defaultEventTypes = includeTools
 			? [...PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES, ...PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES]
@@ -2337,6 +2380,7 @@ export class PiboSessionRouter {
 		const matches = this.agentObservations.filter((observation) => {
 			if (observation.managingParentId !== parentPiboSessionId) return false;
 			if (requestIds && (!observation.requestId || !requestIds.has(observation.requestId))) return false;
+			if (toolCallIds && (!observation.toolCallId || !toolCallIds.has(observation.toolCallId))) return false;
 			if (agentIds && !agentIds.has(observation.agentId)) return false;
 			if (names && !names.has(observation.name)) return false;
 			if (threadKeys && (!observation.threadKey || !threadKeys.has(observation.threadKey))) return false;
@@ -2596,13 +2640,13 @@ export class PiboSessionRouter {
 		}, "subagent");
 		const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
 		if (parentChatRoomId) metadata.chatRoomId = parentChatRoomId;
-		const newSessionMetadata: PiboJsonObject = {
+		const newSessionMetadata: PiboJsonObject = withPiboSessionModelFallbacksMetadata({
 			...metadata,
 			...(subagent.thinkingLevel ? { initialThinkingLevel: subagent.thinkingLevel } : {}),
 			...(subagent.runtimeOptions && Object.keys(subagent.runtimeOptions).length > 0
 				? { initialRuntimeOptions: structuredClone(subagent.runtimeOptions) }
 				: {}),
-		};
+		}, subagent.modelFallbacks ?? []);
 		const existing = this.sessionStore.find({
 			channel: "pibo.subagents",
 			kind: "subagent",
@@ -2692,18 +2736,23 @@ export class PiboSessionRouter {
 	}
 
 	private readonly emitOutput = (event: PiboOutputEvent): void => {
-		const session = this.sessionStore.get(event.piboSessionId);
-		this.recordAgentObservation(event, session);
-		this.telemetryRecorder?.recordOutput(event, { session, status: this.sessions.get(event.piboSessionId)?.getStatus() });
-		this.signalRegistry.project({ type: "pibo_output", event, session });
-		this.pluginRegistry.notifyEvent(event);
+		const positionedEvent = this.outputRenderSequencer.position(event);
+		const session = this.sessionStore.get(positionedEvent.piboSessionId);
+		this.recordAgentObservation(positionedEvent, session);
+		this.telemetryRecorder?.recordOutput(positionedEvent, { session, status: this.sessions.get(positionedEvent.piboSessionId)?.getStatus() });
+		this.signalRegistry.project({ type: "pibo_output", event: positionedEvent, session });
+		this.pluginRegistry.notifyEvent(positionedEvent);
 		for (const listener of this.listeners) {
-			listener(event);
+			try {
+				listener(positionedEvent);
+			} catch (error) {
+				console.error("[pibo] output listener failed", error);
+			}
 		}
 
-		this.handleRunReminderOutput(event);
-		if (event.type === "message_finished" && event.source !== "service") {
-			this.scheduleRunReminder(event.piboSessionId, true);
+		this.handleRunReminderOutput(positionedEvent);
+		if (positionedEvent.type === "message_finished" && positionedEvent.source !== "service") {
+			this.scheduleRunReminder(positionedEvent.piboSessionId, true);
 		}
 	};
 

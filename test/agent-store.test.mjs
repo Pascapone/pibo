@@ -555,24 +555,42 @@ test("custom agent store persists selected registered Pi packages", async () => 
 	});
 });
 
-test("custom agent store persists main and legacy subagent model overrides", () => {
+test("custom agent store persists ordered main provider fallbacks and legacy subagent model overrides", () => {
 	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-")), "agents.sqlite");
-	const store = new CustomAgentStore(path);
+	let store = new CustomAgentStore(path);
 	const agent = store.create({
 		displayName: "model-agent",
 		mainModel: { provider: "openai", id: "gpt-5.4" },
+		mainModelFallbacks: [
+			{ provider: "anthropic", id: "claude-sonnet-5" },
+			{ provider: "openai", id: "gpt-5.4" },
+			{ provider: "moonshot", id: "kimi-k2" },
+			{ provider: "anthropic", id: "claude-sonnet-5" },
+		],
 		subagentModel: { provider: "kimi-coding", id: "kimi-for-coding" },
 	});
 
 	assert.deepEqual(agent.mainModel, { provider: "openai", id: "gpt-5.4" });
+	assert.deepEqual(agent.mainModelFallbacks, [
+		{ provider: "anthropic", id: "claude-sonnet-5" },
+		{ provider: "moonshot", id: "kimi-k2" },
+	]);
 	assert.deepEqual(agent.subagentModel, { provider: "kimi-coding", id: "kimi-for-coding" });
+	store.close();
 
-	const updated = store.update(agent.id, { subagentModel: { provider: "openai", id: "gpt-5.5" } });
+	store = new CustomAgentStore(path);
+	assert.deepEqual(store.get(agent.id).mainModelFallbacks, agent.mainModelFallbacks);
+	const updated = store.update(agent.id, {
+		mainModelFallbacks: [{ provider: "google", id: "gemini-3" }],
+		subagentModel: { provider: "openai", id: "gpt-5.5" },
+	});
 	assert.deepEqual(updated.mainModel, { provider: "openai", id: "gpt-5.4" });
+	assert.deepEqual(updated.mainModelFallbacks, [{ provider: "google", id: "gemini-3" }]);
 	assert.deepEqual(updated.subagentModel, { provider: "openai", id: "gpt-5.5" });
 
-	const cleared = store.update(agent.id, { mainModel: null, subagentModel: null });
+	const cleared = store.update(agent.id, { mainModel: null, mainModelFallbacks: [], subagentModel: null });
 	assert.equal(cleared.mainModel, undefined);
+	assert.deepEqual(cleared.mainModelFallbacks, []);
 	assert.equal(cleared.subagentModel, undefined);
 
 	store.close();
@@ -588,6 +606,10 @@ test("custom agent store persists per-subagent descriptions, models, thinking le
 			description: "Research current sources and report evidence.",
 			targetProfile: "research-profile",
 			model: { provider: "openai", id: "gpt-5.6-mini" },
+			modelFallbacks: [
+				{ provider: "anthropic", id: "claude-haiku-5" },
+				{ provider: "moonshot", id: "kimi-k2" },
+			],
 			thinkingLevel: "high",
 			runtimeOptions: { permissionMode: "yolo" },
 			maxDepth: 2,
@@ -599,6 +621,10 @@ test("custom agent store persists per-subagent descriptions, models, thinking le
 		description: "Research current sources and report evidence.",
 		targetProfile: "research-profile",
 		model: { provider: "openai", id: "gpt-5.6-mini" },
+		modelFallbacks: [
+			{ provider: "anthropic", id: "claude-haiku-5" },
+			{ provider: "moonshot", id: "kimi-k2" },
+		],
 		thinkingLevel: "high",
 		runtimeOptions: { permissionMode: "yolo" },
 		maxDepth: 2,

@@ -41,6 +41,50 @@ test("default base context build does not select Pibo native tooling context", a
 	assert.ok(goalSchema.schemaJson.inputSchema);
 });
 
+test("generated tool origins remain inspector-only parent metadata", async () => {
+	const profile = new InitialSessionContextBuilder("generated-tool-origin-test")
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ codexCompat: true, goalControl: true, runControl: true })
+		.addTool({ name: "runtime", builtInPiboTool: "runtime" })
+		.addSubagent({ name: "reviewer", description: "Review changes.", targetProfile: "reviewer-profile" })
+		.createSession();
+	const snapshot = await inspectPiboContextBuild({
+		profile,
+		persistSession: false,
+		subagentProfileResolver: () => new InitialSessionContext({ profileName: "reviewer-profile" }),
+	});
+	const expectedOrigins = new Map([
+		["runtime", "pibo-runtime"],
+		["pibo_agents_observe", "pibo-subagents"],
+		["pibo_run_read", "pibo-run-control"],
+		["get_goal", "pibo-goal-control"],
+		["apply_patch", "codex-compat"],
+	]);
+
+	for (const [toolName, label] of expectedOrigins) {
+		const tool = findNode(snapshot.nodes, (node) => node.id === `tools/${toolName}`);
+		assert.ok(tool, `expected generated tool ${toolName}`);
+		assert.deepEqual(tool.metadata.inspectorOrigin, { label, modelVisible: false });
+		assert.equal(tool.children.some((child) => child.id.endsWith("/generated-origin") || child.title === "Generated Origin"), false);
+		assert.equal(tool.estimatedTokens, undefined, "inspector metadata must not receive a direct token estimate");
+		const childTokens = tool.children.reduce((total, child) => total + (child.estimatedSubtreeTokens ?? child.estimatedTokens ?? 0), 0);
+		assert.equal(tool.estimatedSubtreeTokens ?? 0, childTokens, "tool totals must include only model-visible children");
+	}
+
+	const allNodes = [];
+	const collect = (nodes) => {
+		for (const node of nodes) {
+			allNodes.push(node);
+			collect(node.children ?? []);
+		}
+	};
+	collect(snapshot.nodes);
+	assert.equal(snapshot.summary.totalNodes, allNodes.length);
+	assert.equal(snapshot.summary.estimatedTokens, snapshot.nodes.reduce((total, node) => total + (node.estimatedSubtreeTokens ?? node.estimatedTokens ?? 0), 0));
+	assert.equal(allNodes.some((node) => node.title === "Generated Origin"), false);
+});
+
 test("portable runtime context build explains degraded native-tool inspection", () => {
 	const capabilities = createMinimalAgentRuntimeCapabilities("Unavailable by default.");
 	capabilities.tools.nativeToolInspection = {

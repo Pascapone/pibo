@@ -185,6 +185,8 @@ test("delegated agents expose four stable shared tools and reject duplicate exac
 	assert.equal(observe.inputSchema.properties.limit.default, 20);
 	assert.equal(observe.inputSchema.properties.includeTools.default, false);
 	assert.equal(observe.inputSchema.properties.toolDetail.default, "summary");
+	assert.equal(observe.inputSchema.properties.toolCallIds.maxItems, 50);
+	assert.match(observe.inputSchema.properties.toolCallIds.items.description, /Exact existing toolCallId/);
 	assert.match(observe.inputSchema.properties.eventTypes.items.description, /Explicit filters can retrieve progress events/);
 	assert.match(observe.inputSchema.properties.kinds.items.description, /including progress events/);
 	assert.throws(
@@ -939,6 +941,10 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 				name: "researcher",
 				targetProfile: "base",
 				model: { provider: "openai", id: "gpt-5.6-mini" },
+				modelFallbacks: [
+					{ provider: "anthropic", id: "claude-haiku-5" },
+					{ provider: "moonshot", id: "kimi-k2" },
+				],
 				thinkingLevel: "high",
 				runtimeOptions: { permissionMode: "yolo" },
 			},
@@ -950,6 +956,10 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 		const child = store.get(first.agentId);
 		assert.equal(child.title, "Research plan");
 		assert.deepEqual(child.activeModel, { provider: "openai", id: "gpt-5.6-mini" });
+		assert.deepEqual(child.metadata.initialModelFallbacks, [
+			{ provider: "anthropic", id: "claude-haiku-5" },
+			{ provider: "moonshot", id: "kimi-k2" },
+		]);
 		assert.equal(child.metadata.initialThinkingLevel, "high");
 		assert.deepEqual(child.metadata.initialRuntimeOptions, { permissionMode: "yolo" });
 		assert.deepEqual(router.getSessionRuntimeProfile(child.id).runtimeOptions, { permissionMode: "yolo" });
@@ -959,6 +969,7 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 				name: "researcher",
 				targetProfile: "base",
 				model: { provider: "other", id: "changed-model" },
+				modelFallbacks: [{ provider: "google", id: "changed-fallback" }],
 				thinkingLevel: "low",
 				runtimeOptions: { permissionMode: "approval" },
 			},
@@ -970,6 +981,10 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 		assert.equal(reused.agentId, first.agentId);
 		assert.equal(store.get(reused.agentId).title, "Refined research");
 		assert.deepEqual(store.get(reused.agentId).activeModel, { provider: "openai", id: "gpt-5.6-mini" });
+		assert.deepEqual(store.get(reused.agentId).metadata.initialModelFallbacks, [
+			{ provider: "anthropic", id: "claude-haiku-5" },
+			{ provider: "moonshot", id: "kimi-k2" },
+		]);
 		assert.equal(store.get(reused.agentId).metadata.initialThinkingLevel, "high");
 		assert.deepEqual(router.getSessionRuntimeProfile(reused.agentId).runtimeOptions, { permissionMode: "yolo" });
 
@@ -1278,6 +1293,26 @@ test("agents controller lists, filters observations, kills owned children, and d
 			provenance: { kind: "subagent-request", requestId: "run_worker", controllerPiboSessionId: "ps_parent" },
 		});
 		router.emitOutput({
+			type: "tool_call",
+			piboSessionId: explorer.agentId,
+			eventId: "event-explorer-tool",
+			toolCallId: "tool-explorer",
+			toolName: "read",
+			args: { path: "package.json" },
+			argsComplete: true,
+			provenance: { kind: "subagent-request", requestId: "run_explorer", controllerPiboSessionId: "ps_parent" },
+		});
+		router.emitOutput({
+			type: "tool_execution_finished",
+			piboSessionId: explorer.agentId,
+			eventId: "event-explorer-tool",
+			toolCallId: "tool-explorer",
+			toolName: "read",
+			result: { status: "completed", path: "package.json", output: "package contents" },
+			isError: false,
+			provenance: { kind: "subagent-request", requestId: "run_explorer", controllerPiboSessionId: "ps_parent" },
+		});
+		router.emitOutput({
 			type: "session_error",
 			piboSessionId: worker.agentId,
 			eventId: "event-worker-error",
@@ -1303,11 +1338,31 @@ test("agents controller lists, filters observations, kills owned children, and d
 			"assistant_message",
 			"tool_call",
 			"tool_execution_finished",
+			"tool_call",
+			"tool_execution_finished",
 		]);
 		const summarizedToolResult = withToolSummaries.observations.find((observation) => observation.eventType === "tool_execution_finished");
 		assert.match(summarizedToolResult.text, /"outputBytes":5000/);
 		assert.equal(Buffer.byteLength(summarizedToolResult.text, "utf8") <= 768, true);
-		const fullTools = controller.observe({ requestIds: ["run_worker"], includeTools: true, toolDetail: "full", order: "asc", limit: 50 });
+		const selectedTools = controller.observe({ toolCallIds: ["tool-worker", "tool-explorer"], order: "asc", limit: 50 });
+		assert.equal(selectedTools.filters.includeTools, true);
+		assert.deepEqual(selectedTools.observations.map((observation) => observation.toolCallId), [
+			"tool-worker",
+			"tool-worker",
+			"tool-explorer",
+			"tool-explorer",
+		]);
+		assert.equal(selectedTools.observations.every((observation) => observation.kind === "tool"), true);
+		assert.equal(controller.observe({ toolCallIds: ["tool-work"] }).observations.length, 0);
+		const fullTools = controller.observe({
+			requestIds: ["run_worker"],
+			toolCallIds: ["tool-worker"],
+			eventTypes: ["tool_execution_finished"],
+			toolDetail: "full",
+			order: "asc",
+			limit: 50,
+		});
+		assert.deepEqual(fullTools.observations.map((observation) => observation.eventType), ["tool_execution_finished"]);
 		const fullToolResult = fullTools.observations.find((observation) => observation.eventType === "tool_execution_finished");
 		assert.equal(Buffer.byteLength(fullToolResult.text, "utf8") <= 4 * 1024, true);
 		assert.ok(Buffer.byteLength(fullToolResult.text, "utf8") > Buffer.byteLength(summarizedToolResult.text, "utf8"));
@@ -1320,6 +1375,8 @@ test("agents controller lists, filters observations, kills owned children, and d
 			"tool_call",
 			"tool_execution_started",
 			"tool_execution_updated",
+			"tool_execution_finished",
+			"tool_call",
 			"tool_execution_finished",
 			"session_error",
 		]);
@@ -1342,6 +1399,12 @@ test("agents controller lists, filters observations, kills owned children, and d
 		const modelResult = await observeTool.execute("observe-default", {});
 		assert.match(modelResult.content[0].text, /Alpha complete/);
 		assert.doesNotMatch(modelResult.content[0].text, /assistant_delta|npm test|"observations"/);
+		const summarizedToolModelResult = await observeTool.execute("observe-tool-summary", {
+			toolCallIds: ["tool-worker"],
+			order: "asc",
+		});
+		assert.match(summarizedToolModelResult.content[0].text, /toolCallId=tool-worker/);
+		assert.doesNotMatch(summarizedToolModelResult.content[0].text, /toolCallId=tool-explorer/);
 		const detailedModelResult = await observeTool.execute("observe-details", {
 			eventTypes: ["tool_execution_finished"],
 			includeDetails: true,
@@ -1440,6 +1503,7 @@ test("agent observation polling is cursor-safe in descending order and reports r
 		assert.equal(large.observations[0].text.endsWith("…"), true);
 		assert.deepEqual(large.observations[0].details.truncated, true);
 		assert.throws(() => controller.observe({ limit: 0 }), /limit must be an integer from 1 to 200/);
+		assert.throws(() => controller.observe({ toolCallIds: Array.from({ length: 51 }, (_, index) => `tool-${index}`) }), /toolCallIds must contain at most 50 entries/);
 		assert.throws(() => controller.observe({ toolDetail: "verbose" }), /toolDetail must be "summary" or "full"/);
 		assert.throws(() => controller.observe({ since: "2026-08-23" }), /valid ISO-8601 timestamp/);
 	} finally {

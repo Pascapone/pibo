@@ -67,7 +67,7 @@ test("debug delegated-agent inspection lists owned children and applies exact ob
 	try {
 		const agents = inspectDebugAgentList("ps_parent", fixture.store);
 		assert.deepEqual(agents.map((agent) => [agent.agentId, agent.name, agent.status]).sort(), [
-			["ps_explorer", "explorer", "running"],
+			["ps_explorer", "explorer", "idle"],
 			["ps_worker", "worker", "killed"],
 		]);
 		assert.deepEqual(inspectDebugAgentList("ps_parent", fixture.store, { status: "killed" }).map((agent) => agent.agentId), ["ps_worker"]);

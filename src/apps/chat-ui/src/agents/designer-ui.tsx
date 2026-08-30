@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, ExternalLink, Power, PowerOff, Trash2 } from "lucide-react";
+import { useEffect, useState, type DragEvent, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, ExternalLink, GripVertical, Plus, Power, PowerOff, Trash2, X } from "lucide-react";
 import { THINKING_LEVELS, type AgentRuntimeCapabilityDelivery, type AgentRuntimeCatalogEntry, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
 import { CATALOG_GROUP_RENDER_LIMIT, piPackageMeta, type CatalogGroup, type PiPackageCatalogItem } from "./agent-designer-model";
 
@@ -606,6 +606,7 @@ export function AgentRuntimeOptions({
 	title,
 	modelTitle,
 	model,
+	modelFallbacks,
 	thinking,
 	fast,
 	modelCatalog,
@@ -617,12 +618,14 @@ export function AgentRuntimeOptions({
 	configuredProvidersOnly = false,
 	showFast = true,
 	onModelChange,
+	onModelFallbacksChange,
 	onThinkingChange,
 	onFastChange,
 }: {
 	title: string;
 	modelTitle: string;
 	model?: ModelProfile;
+	modelFallbacks?: ModelProfile[];
 	thinking?: ThinkingLevel;
 	fast?: boolean;
 	modelCatalog?: ModelCatalog;
@@ -634,49 +637,205 @@ export function AgentRuntimeOptions({
 	configuredProvidersOnly?: boolean;
 	showFast?: boolean;
 	onModelChange: (value: ModelProfile | undefined) => void;
+	onModelFallbacksChange?: (value: ModelProfile[]) => void;
 	onThinkingChange: (value: ThinkingLevel | undefined) => void;
 	onFastChange?: (value: boolean) => void;
 }) {
+	const reasoningControls = <>
+		<ThinkingLevelSelector
+			title="Thinking"
+			value={thinking}
+			readOnly={readOnly}
+			unavailableReason={thinkingUnavailableReason}
+			availableValues={thinkingValues}
+			reserveHintSpace
+			onChange={onThinkingChange}
+		/>
+		{showFast ? (
+			<div className="grid gap-2 pb-1">
+				<div className="text-[11px] uppercase tracking-wider text-slate-500">Fast</div>
+				<div className="h-4" aria-hidden="true" />
+				<button
+					type="button"
+					disabled={readOnly}
+					onClick={() => onFastChange?.(!fast)}
+					className="inline-flex h-9 w-fit items-center gap-2 text-left text-sm text-slate-300 hover:text-slate-100 disabled:opacity-60"
+				>
+					<SelectionCheckbox checked={fast === true} disabled={readOnly} />
+					<span>{fast ? "Fast on" : "Fast off"}</span>
+				</button>
+			</div>
+		) : null}
+	</>;
 	return (
-		<div className="grid gap-2 border border-slate-800 bg-[#101d22]/45 rounded-sm p-3">
+		<div className="grid gap-3 border border-slate-800 bg-[#101d22]/45 rounded-sm p-3">
 			<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{title}</div>
-			<div className={`grid gap-3 ${showFast ? "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)_auto]" : "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)]"} lg:items-start`}>
-				<ModelSelector
-					title={modelTitle}
-					catalog={modelCatalog}
-					value={model}
-					allowUnset
-					readOnly={readOnly}
-					hint={modelHint}
-					unavailableReason={modelUnavailableReason}
-					emptyProviderLabel="Default"
-					configuredProvidersOnly={configuredProvidersOnly}
-					onChange={onModelChange}
-				/>
-				<ThinkingLevelSelector
-					title="Thinking"
-					value={thinking}
-					readOnly={readOnly}
-					unavailableReason={thinkingUnavailableReason}
-					availableValues={thinkingValues}
-					reserveHintSpace
-					onChange={onThinkingChange}
-				/>
-				{showFast ? (
-					<div className="grid gap-2 pb-1">
-						<div className="text-[11px] uppercase tracking-wider text-slate-500">Fast</div>
-						<div className="h-4" aria-hidden="true" />
+			{onModelFallbacksChange ? (
+				<>
+					<ModelFallbackList
+						title={modelTitle}
+						catalog={modelCatalog}
+						model={model}
+						fallbacks={modelFallbacks ?? []}
+						readOnly={readOnly}
+						hint={modelHint}
+						unavailableReason={modelUnavailableReason}
+						configuredProvidersOnly={configuredProvidersOnly}
+						onModelChange={onModelChange}
+						onFallbacksChange={onModelFallbacksChange}
+					/>
+					<div className={`grid gap-3 ${showFast ? "lg:grid-cols-[minmax(150px,190px)_auto]" : "lg:grid-cols-[minmax(150px,190px)]"} lg:items-start`}>
+						{reasoningControls}
+					</div>
+				</>
+			) : (
+				<div className={`grid gap-3 ${showFast ? "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)_auto]" : "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)]"} lg:items-start`}>
+					<ModelSelector
+						title={modelTitle}
+						catalog={modelCatalog}
+						value={model}
+						allowUnset
+						readOnly={readOnly}
+						hint={modelHint}
+						unavailableReason={modelUnavailableReason}
+						emptyProviderLabel="Default"
+						configuredProvidersOnly={configuredProvidersOnly}
+						onChange={onModelChange}
+					/>
+					{reasoningControls}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function ModelFallbackList({
+	title,
+	catalog,
+	model,
+	fallbacks,
+	readOnly,
+	hint,
+	unavailableReason,
+	configuredProvidersOnly,
+	onModelChange,
+	onFallbacksChange,
+}: {
+	title: string;
+	catalog?: ModelCatalog;
+	model?: ModelProfile;
+	fallbacks: ModelProfile[];
+	readOnly: boolean;
+	hint?: string;
+	unavailableReason?: string | null;
+	configuredProvidersOnly: boolean;
+	onModelChange: (value: ModelProfile | undefined) => void;
+	onFallbacksChange: (value: ModelProfile[]) => void;
+}) {
+	const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+	const rows: Array<ModelProfile | undefined> = [model, ...fallbacks];
+	const commitRows = (nextRows: Array<ModelProfile | undefined>) => {
+		const normalize = (candidate: ModelProfile | undefined): ModelProfile | undefined => {
+			const provider = candidate?.provider.trim() ?? "";
+			const id = candidate?.id.trim() ?? "";
+			return provider && id ? { provider, id } : undefined;
+		};
+		const primary = normalize(nextRows[0]);
+		const seen = new Set(primary ? [`${primary.provider}\u0000${primary.id}`] : []);
+		const nextFallbacks = nextRows.slice(1).flatMap((candidate) => {
+			const fallback = normalize(candidate);
+			if (!fallback) return [];
+			const key = `${fallback.provider}\u0000${fallback.id}`;
+			if (seen.has(key)) return [];
+			seen.add(key);
+			return [fallback];
+		});
+		onModelChange(primary);
+		onFallbacksChange(nextFallbacks);
+	};
+	const moveRow = (from: number, to: number) => {
+		if (from === to || from < 0 || to < 0 || from >= rows.length || to >= rows.length) return;
+		const nextRows = [...rows];
+		const [moved] = nextRows.splice(from, 1);
+		nextRows.splice(to, 0, moved);
+		commitRows(nextRows);
+	};
+	const startDrag = (event: DragEvent<HTMLButtonElement>, index: number) => {
+		setDraggedIndex(index);
+		event.dataTransfer.effectAllowed = "move";
+		event.dataTransfer.setData("text/plain", String(index));
+	};
+	return (
+		<div className="grid gap-2" data-provider-fallback-list>
+			<div className="flex items-center justify-between gap-3">
+				<div>
+					<div className="text-[11px] uppercase tracking-wider text-slate-500">{title}</div>
+					<div className="text-xs text-slate-500">Provider requests follow this order from top to bottom.</div>
+				</div>
+				<button
+					type="button"
+					disabled={readOnly || Boolean(unavailableReason)}
+					onClick={() => onFallbacksChange([...fallbacks, { provider: "", id: "" }])}
+					className="h-7 w-7 shrink-0 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
+					title="Add fallback provider"
+					aria-label="Add fallback provider"
+				>
+					<Plus size={13} />
+				</button>
+			</div>
+			<div className="grid gap-2">
+				{rows.map((row, index) => (
+					<div
+						key={`${index}:${row?.provider ?? "default"}:${row?.id ?? ""}`}
+						data-provider-fallback-row={index}
+						onDragOver={(event) => {
+							if (readOnly || draggedIndex === null) return;
+							event.preventDefault();
+							event.dataTransfer.dropEffect = "move";
+						}}
+						onDrop={(event) => {
+							event.preventDefault();
+							const from = draggedIndex ?? Number(event.dataTransfer.getData("text/plain"));
+							setDraggedIndex(null);
+							moveRow(from, index);
+						}}
+						className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2 border rounded-sm p-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] ${draggedIndex === index ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#151f24]"}`}
+					>
 						<button
 							type="button"
-							disabled={readOnly}
-							onClick={() => onFastChange?.(!fast)}
-							className="inline-flex h-9 w-fit items-center gap-2 text-left text-sm text-slate-300 hover:text-slate-100 disabled:opacity-60"
+							draggable={!readOnly && rows.length > 1}
+							disabled={readOnly || rows.length <= 1}
+							onDragStart={(event) => startDrag(event, index)}
+							onDragEnd={() => setDraggedIndex(null)}
+							className="mt-7 h-8 w-8 inline-flex cursor-grab items-center justify-center border border-slate-700 rounded-sm text-slate-500 hover:border-[#11a4d4] hover:text-[#11a4d4] active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+							title={`Drag ${index === 0 ? "primary provider" : `fallback provider ${index}`} to reorder`}
+							aria-label={`Drag ${index === 0 ? "primary provider" : `fallback provider ${index}`} to reorder`}
 						>
-							<SelectionCheckbox checked={fast === true} disabled={readOnly} />
-							<span>{fast ? "Fast on" : "Fast off"}</span>
+							<GripVertical size={14} />
 						</button>
+						<ModelSelector
+							title={index === 0 ? "Primary provider" : `Fallback provider ${index}`}
+							catalog={catalog}
+							value={row}
+							allowUnset={index === 0}
+							readOnly={readOnly}
+							hint={index === 0 ? hint : undefined}
+							unavailableReason={unavailableReason}
+							emptyProviderLabel={index === 0 ? "Default" : "Select provider"}
+							configuredProvidersOnly={configuredProvidersOnly}
+							onChange={(value) => {
+								const nextRows = [...rows];
+								nextRows[index] = value;
+								commitRows(nextRows);
+							}}
+						/>
+						<div className="col-start-2 flex items-center justify-end gap-1 sm:col-start-auto sm:mt-7 sm:justify-start">
+							<button type="button" disabled={readOnly || index === 0} onClick={() => moveRow(index, index - 1)} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-500 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-35" title="Move provider up" aria-label={`Move provider ${index + 1} up`}><ArrowUp size={13} /></button>
+							<button type="button" disabled={readOnly || index === rows.length - 1} onClick={() => moveRow(index, index + 1)} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-500 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-35" title="Move provider down" aria-label={`Move provider ${index + 1} down`}><ArrowDown size={13} /></button>
+							<button type="button" disabled={readOnly || rows.length === 1} onClick={() => commitRows(rows.filter((_, rowIndex) => rowIndex !== index))} className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-500 hover:border-red-500 hover:text-red-300 disabled:opacity-35" title="Remove provider" aria-label={`Remove provider ${index + 1}`}><X size={13} /></button>
+						</div>
 					</div>
-				) : null}
+				))}
 			</div>
 		</div>
 	);

@@ -80,6 +80,7 @@ export type ChatAgentBody = {
 	mcpServers?: unknown;
 	piPackages?: unknown;
 	mainModel?: unknown;
+	mainModelFallbacks?: unknown;
 	subagentModel?: unknown;
 	thinkingLevel?: unknown;
 	mainThinkingLevel?: unknown;
@@ -171,6 +172,7 @@ export type ChatStreamingFixtureBody = {
 	preludeOnly?: unknown;
 	traceSnapshots?: unknown;
 	suppressLiveDeltas?: unknown;
+	toolInterleaving?: unknown;
 };
 
 export type ChatStreamingFixtureProfile = "steady" | "jitter" | "burst" | "batch";
@@ -436,6 +438,24 @@ export function normalizeModelProfile(value: unknown, fieldName: string): ModelP
 	return { provider, id };
 }
 
+export function normalizeModelFallbacks(
+	value: unknown,
+	fieldName: string,
+	primary?: ModelProfile,
+): ModelProfile[] {
+	if (value === undefined || value === null) return [];
+	if (!Array.isArray(value)) throw new PiboWebHttpError(`${fieldName} must be an array`, 400);
+	const seen = new Set(primary ? [`${primary.provider}\u0000${primary.id}`] : []);
+	return value.flatMap((item, index) => {
+		const model = normalizeModelProfile(item, `${fieldName}[${index}]`);
+		if (!model) throw new PiboWebHttpError(`${fieldName}[${index}] must define a provider and model`, 400);
+		const key = `${model.provider}\u0000${model.id}`;
+		if (seen.has(key)) return [];
+		seen.add(key);
+		return [model];
+	});
+}
+
 export function normalizeMcpServerDescriptionBody(value: unknown): string {
 	if (typeof value !== "string") throw new PiboWebHttpError("MCP server description must be a string", 400);
 	const description = value.replace(/\s+/g, " ").trim();
@@ -529,6 +549,8 @@ export function normalizeAgentSubagents(value: unknown): CustomAgentSubagent[] {
 		if (description) subagent.description = description;
 		const model = normalizeModelProfile(raw.model, "subagent model");
 		if (model) subagent.model = model;
+		const modelFallbacks = normalizeModelFallbacks(raw.modelFallbacks, "subagent modelFallbacks", model);
+		if (modelFallbacks.length > 0) subagent.modelFallbacks = modelFallbacks;
 		const thinkingLevel = normalizeThinkingLevel(raw.thinkingLevel, "subagent thinkingLevel");
 		if (thinkingLevel) subagent.thinkingLevel = thinkingLevel;
 		if (raw.runtimeOptions !== undefined) {
@@ -643,6 +665,12 @@ export function normalizeStreamingFixtureTraceSnapshots(value: unknown): boolean
 	if (value === undefined) return false;
 	if (typeof value === "boolean") return value;
 	throw new PiboWebHttpError("traceSnapshots must be a boolean", 400);
+}
+
+export function normalizeStreamingFixtureToolInterleaving(value: unknown): boolean {
+	if (value === undefined) return false;
+	if (typeof value === "boolean") return value;
+	throw new PiboWebHttpError("toolInterleaving must be a boolean", 400);
 }
 
 export function normalizeStreamingFixtureSuppressLiveDeltas(value: unknown): boolean {
@@ -820,6 +848,11 @@ export function createAgentInput(body: ChatAgentBody) {
 		mcpServers: normalizeNameArray(body.mcpServers, "mcpServers"),
 		piPackages: normalizeRegisteredPiPackages(body.piPackages),
 		mainModel: normalizeModelProfile(body.mainModel, "mainModel"),
+		mainModelFallbacks: normalizeModelFallbacks(
+			body.mainModelFallbacks,
+			"mainModelFallbacks",
+			normalizeModelProfile(body.mainModel, "mainModel"),
+		),
 		subagentModel: normalizeModelProfile(body.subagentModel, "subagentModel"),
 		thinkingLevel: normalizeThinkingLevel(body.thinkingLevel, "thinkingLevel"),
 		mainThinkingLevel: normalizeThinkingLevel(body.mainThinkingLevel, "mainThinkingLevel"),
@@ -855,6 +888,13 @@ export function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 	if (body.piPackages !== undefined) update.piPackages = normalizeRegisteredPiPackages(body.piPackages);
 	if (body.mainModel !== undefined) {
 		update.mainModel = body.mainModel === null ? null : normalizeModelProfile(body.mainModel, "mainModel");
+	}
+	if (body.mainModelFallbacks !== undefined) {
+		update.mainModelFallbacks = normalizeModelFallbacks(
+			body.mainModelFallbacks,
+			"mainModelFallbacks",
+			update.mainModel ?? undefined,
+		);
 	}
 	if (body.subagentModel !== undefined) {
 		update.subagentModel = body.subagentModel === null ? null : normalizeModelProfile(body.subagentModel, "subagentModel");

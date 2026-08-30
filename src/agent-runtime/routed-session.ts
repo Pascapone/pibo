@@ -18,7 +18,8 @@ import {
 	type PiboSessionTreeResult,
 	type PiboThinkingResult,
 } from "../core/events.js";
-import { runtimeSessionErrorDetails } from "../core/session-errors.js";
+import { PIBO_PROVIDER_RECOVERY_PROMPT, isPiboProviderFallbackError } from "../core/provider-recovery.js";
+import { normalizeSessionErrorDetails, runtimeSessionErrorDetails } from "../core/session-errors.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../core/thinking.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import type { PiboGatewayActionContext } from "../plugins/types.js";
@@ -110,6 +111,7 @@ export type RuntimeRoutedSessionOptions = {
 	onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean; sessionIdentityOperationInFlight: boolean }) => void;
 	onMessagesInterrupted?: PiboMessageInterruptionListener;
 	messagePreflight?: PiboMessagePreflight;
+	modelFallbacks?: readonly ModelProfile[];
 	getRuntimeAuthStatus?: () => Promise<readonly AgentRuntimeAuthStatus[]>;
 	startRuntimeAuth?: (input: StartAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
 	completeRuntimeAuth?: (input: CompleteAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
@@ -123,6 +125,23 @@ function errorMessage(error: unknown): string {
 
 function promptSource(source: PiboEventSource | undefined): "interactive" | "rpc" {
 	return source === "user" || source === "ui" ? "interactive" : "rpc";
+}
+
+function sameModel(left: ModelProfile | undefined, right: ModelProfile | undefined): boolean {
+	return Boolean(left && right && left.provider === right.provider && left.id === right.id);
+}
+
+function uniqueModels(models: readonly ModelProfile[]): ModelProfile[] {
+	const seen = new Set<string>();
+	return models.flatMap((model) => {
+		const provider = model.provider.trim();
+		const id = model.id.trim();
+		if (!provider || !id) return [];
+		const key = `${provider}\u0000${id}`;
+		if (seen.has(key)) return [];
+		seen.add(key);
+		return [{ provider, id }];
+	});
 }
 
 function runtimeCapabilityError(session: AgentRuntimeSession, capability: string): AgentRuntimeCapabilityUnavailableError {
@@ -227,6 +246,10 @@ export class RuntimeRoutedSession {
 	private nextThinkingIndex = 0;
 	private sessionIdentityOperationInFlight = false;
 	private forkCandidatesRequest?: Promise<PiboForkCandidate[]>;
+	private primaryModel?: ModelProfile;
+	private readonly modelFallbacks: readonly ModelProfile[];
+	private suppressProviderFailures = false;
+	private pendingProviderFailure?: { message: string; details: PiboSessionErrorDetails };
 	private unsubscribe?: () => void;
 
 	constructor(
@@ -237,6 +260,10 @@ export class RuntimeRoutedSession {
 		private readonly options: RuntimeRoutedSessionOptions = {},
 	) {
 		this.runtime = runtimeSession.getNativeCompatibilityHandle?.() ?? runtimeSession;
+		this.primaryModel = runtimeSession.getStatus().activeModel
+			? { ...runtimeSession.getStatus().activeModel! }
+			: undefined;
+		this.modelFallbacks = uniqueModels(options.modelFallbacks ?? []);
 		this.unsubscribe = runtimeSession.subscribe((event) => this.handleRuntimeEvent(event));
 	}
 
@@ -530,7 +557,9 @@ export class RuntimeRoutedSession {
 	async setModel(model: ModelProfile): Promise<ModelProfile> {
 		const setModel = this.runtimeSession.controls?.setModel;
 		if (!setModel) throw runtimeCapabilityError(this.runtimeSession, "in-session model switching");
-		return await setModel(model);
+		const selected = await setModel(model);
+		this.primaryModel = { ...selected };
+		return selected;
 	}
 
 	setThinkingLevel(level: PiboThinkingLevel): PiboThinkingResult {
@@ -765,10 +794,10 @@ export class RuntimeRoutedSession {
 				}));
 				return;
 			case "error":
-				this.emitRuntimeError(event.message, event.details);
+				this.handleRuntimeFailure(event.message, event.details);
 				return;
 			case "turn_failed":
-				this.emitRuntimeError(event.message, event.details);
+				this.handleRuntimeFailure(event.message, event.details);
 				return;
 			case "native_event":
 				this.options.onNativeEventTelemetry?.(this.piboSessionId, event.event, {
@@ -785,6 +814,15 @@ export class RuntimeRoutedSession {
 			default:
 				return;
 		}
+	}
+
+	private handleRuntimeFailure(message: string, details?: PiboSessionErrorDetails): void {
+		const normalized = normalizeSessionErrorDetails(message, details);
+		if (this.suppressProviderFailures && isPiboProviderFallbackError(message, normalized)) {
+			this.pendingProviderFailure = { message, details: normalized };
+			return;
+		}
+		this.emitRuntimeError(message, normalized);
 	}
 
 	private emitRuntimeError(message: string, details?: PiboSessionErrorDetails): void {
@@ -827,6 +865,71 @@ export class RuntimeRoutedSession {
 		}
 	}
 
+	private async promptWithModelFallbacks(
+		event: PiboMessageEvent,
+		inFlight: RuntimeInFlightMessage,
+	): Promise<void> {
+		const setModel = this.runtimeSession.controls?.setModel;
+		const fallbackModels = this.modelFallbacks.filter((model) => !sameModel(model, this.primaryModel));
+		if (!setModel || fallbackModels.length === 0) {
+			await this.runtimeSession.prompt({
+				text: event.text,
+				source: promptSource(event.source),
+				capabilityScope: event.capabilityScope,
+			});
+			return;
+		}
+
+		this.suppressProviderFailures = true;
+		let switchedModel = false;
+		let finalFailure: { message: string; details: PiboSessionErrorDetails } | undefined;
+		try {
+			for (let attempt = 0; attempt <= fallbackModels.length; attempt += 1) {
+				if (this.disposed || inFlight.cancelled) return;
+				if (attempt > 0) {
+					try {
+						await setModel(fallbackModels[attempt - 1]!);
+						switchedModel = true;
+					} catch {
+						continue;
+					}
+				}
+
+				this.pendingProviderFailure = undefined;
+				let promptError: unknown;
+				try {
+					await this.runtimeSession.prompt({
+						text: attempt === 0 ? event.text : PIBO_PROVIDER_RECOVERY_PROMPT,
+						source: attempt === 0 ? promptSource(event.source) : "rpc",
+						capabilityScope: event.capabilityScope,
+					});
+				} catch (error) {
+					promptError = error;
+				}
+				if (this.disposed || inFlight.cancelled) return;
+
+				const failure = this.pendingProviderFailure;
+				if (!failure) {
+					if (promptError) throw promptError;
+					return;
+				}
+				finalFailure = failure;
+			}
+
+			if (finalFailure) this.emitRuntimeError(finalFailure.message, finalFailure.details);
+		} finally {
+			this.suppressProviderFailures = false;
+			this.pendingProviderFailure = undefined;
+			if (switchedModel && this.primaryModel && !this.disposed) {
+				try {
+					await setModel(this.primaryModel);
+				} catch (error) {
+					console.warn(`Failed to restore primary model for Pibo session "${this.piboSessionId}": ${errorMessage(error)}`);
+				}
+			}
+		}
+	}
+
 	private async processQueuedMessage(event: PiboMessageEvent): Promise<void> {
 		const inFlight = this.beginInFlightMessage(event);
 		try {
@@ -862,11 +965,7 @@ export class RuntimeRoutedSession {
 				provenance: event.provenance,
 			});
 			if (inFlight.cancelled) return;
-			await this.runtimeSession.prompt({
-				text: event.text,
-				source: promptSource(event.source),
-				capabilityScope: event.capabilityScope,
-			});
+			await this.promptWithModelFallbacks(event, inFlight);
 			if (this.disposed || inFlight.cancelled) return;
 			if (!this.activeMessageFailed) {
 				this.emit({
@@ -891,6 +990,8 @@ export class RuntimeRoutedSession {
 				});
 			}
 		} finally {
+			this.suppressProviderFailures = false;
+			this.pendingProviderFailure = undefined;
 			this.activeMessage = undefined;
 			this.activeMessageFailed = false;
 			this.resetContentIndices();

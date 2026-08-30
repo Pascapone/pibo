@@ -20,6 +20,14 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 					builder.addSkill(context.getSkill(skillName));
 				} catch (error) {
 					if (!isUnknownSkillError(error, skillName)) throw error;
+					const message = `Unknown skill "${skillName}" referenced by custom agent "${agent.profileName}"`;
+					builder.addDiagnostic({
+						severity: "warning",
+						code: "custom_agent_unknown_skill",
+						message,
+						resourceKind: "skill",
+						resourceName: skillName,
+					});
 					if (shouldWarnMissingReferences) console.warn(`Skipping unknown skill "${skillName}" for custom agent "${agent.profileName}"`);
 				}
 			}
@@ -28,10 +36,25 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 					builder.addContextFile(context.getContextFile(contextFileKey));
 				} catch (error) {
 					if (!isUnknownContextFileError(error, contextFileKey)) throw error;
+					const message = `Unknown context file "${contextFileKey}" referenced by custom agent "${agent.profileName}"`;
+					builder.addDiagnostic({
+						severity: "warning",
+						code: "custom_agent_unknown_context_file",
+						message,
+						resourceKind: "context-file",
+						resourceName: contextFileKey,
+					});
 					if (shouldWarnMissingReferences) console.warn(`Skipping unknown context file "${contextFileKey}" for custom agent "${agent.profileName}"`);
 				}
 			}
-			for (const toolName of agent.nativeTools) builder.addTool(context.getTool(toolName));
+			for (const toolName of agent.nativeTools) {
+				try {
+					builder.addTool(context.getTool(toolName));
+				} catch (error) {
+					if (!isUnknownToolError(error, toolName)) throw error;
+					if (shouldWarnMissingReferences) console.warn(`Skipping unknown tool "${toolName}" for custom agent "${agent.profileName}"`);
+				}
+			}
 			for (const subagent of agent.subagents) builder.addSubagent(subagent);
 
 			return builder.createSession();
@@ -59,6 +82,7 @@ function createCustomAgentBuilder(agent: CustomAgentDefinition): InitialSessionC
 		.withPiPackages(agent.piPackages.map((id) => ({ id })))
 		.withToolPackages({ runControl: agent.runControl, goalControl: agent.goalControl ?? true });
 	if (agent.mainModel) builder.withMainModel(agent.mainModel);
+	builder.withMainModelFallbacks(agent.mainModelFallbacks ?? []);
 	if (agent.subagentModel) builder.withSubagentModel(agent.subagentModel);
 	if (agent.thinkingLevel) builder.withThinkingLevel(agent.thinkingLevel);
 	if (agent.mainThinkingLevel) builder.withMainThinkingLevel(agent.mainThinkingLevel);
@@ -71,6 +95,10 @@ function createCustomAgentBuilder(agent: CustomAgentDefinition): InitialSessionC
 
 function uniqueAliases(aliases: readonly string[], profileName: string): string[] {
 	return [...new Set(aliases.filter((alias) => alias && alias !== profileName))];
+}
+
+function isUnknownToolError(error: unknown, toolName: string): boolean {
+	return error instanceof Error && error.message === `Unknown tool "${toolName}"`;
 }
 
 function isUnknownContextFileError(error: unknown, contextFileKey: string): boolean {

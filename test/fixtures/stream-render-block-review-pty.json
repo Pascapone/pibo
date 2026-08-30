@@ -1,0 +1,46 @@
+{
+  "name": "stream-render-block-review",
+  "command": ["node", "dist/bin/pibo.js", "tui:sessions"],
+  "cwd": "/workspace",
+  "rows": 30,
+  "cols": 120,
+  "timeoutMs": 90000,
+  "idleTimeoutMs": 15000,
+  "inputDelayMs": 30,
+  "providerMode": "mocked",
+  "artifact": true,
+  "artifactDir": "/tmp/pibo-stream-render-rereview2/pty",
+  "env": {
+    "PIBO_DEBUG_PTY_SCENARIO": "cli-session-ui-mocked-e2e",
+    "PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED": "1",
+    "PIBO_DEBUG_PTY_STREAM_REVIEW": "1"
+  },
+  "steps": [
+    { "waitFor": "select room", "timeoutMs": 20000 },
+    { "press": "Enter" },
+    { "waitFor": "select session", "timeoutMs": 10000 },
+    { "press": "Enter" },
+    { "waitFor": "session New CLI session", "timeoutMs": 10000 },
+    { "typeText": "automatic retry", "iteration": true },
+    { "press": "Enter" },
+    { "waitFor": "automatic retry scheduled", "timeoutMs": 10000 },
+    { "waitFor": "PTY retained answer", "timeoutMs": 10000 },
+    { "press": "Up" },
+    { "typeText": "d" },
+    { "waitFor": "PTY tool result", "timeoutMs": 10000 },
+    { "sleepMs": 250 },
+    { "typeText": "/exit" },
+    { "press": "Enter" }
+  ],
+  "expect": [
+    "session New CLI session",
+    "automatic retry scheduled",
+    "PTY retained answer",
+    "PTY tool result"
+  ],
+  "reject": [
+    "PiboOutputIdentityCollisionError",
+    "UnhandledPromiseRejection",
+    "source_closed"
+  ]
+}

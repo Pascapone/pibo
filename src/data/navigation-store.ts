@@ -8,7 +8,7 @@ export type SessionNavigationUpsertInput = {
 	originId?: string;
 	title: string;
 	profile: string;
-	status: string;
+	status?: string;
 	archivedAt?: string;
 	lastActivityAt: string;
 	lastMessagePreview?: string;
@@ -17,7 +17,7 @@ export type SessionNavigationUpsertInput = {
 	updatedAt: string;
 };
 
-export type StoredSessionNavigation = SessionNavigationUpsertInput;
+export type StoredSessionNavigation = Omit<SessionNavigationUpsertInput, "status"> & { status: string };
 
 export type SessionNavigationListInput = {
 	roomId?: string;
@@ -60,13 +60,13 @@ export class NavigationStore {
 			"origin_id = excluded.origin_id",
 			"title = excluded.title",
 			"profile = excluded.profile",
-			"status = excluded.status",
+			...(input.status === undefined ? [] : ["status = excluded.status"]),
 			"archived_at = excluded.archived_at",
-			"last_activity_at = excluded.last_activity_at",
+			"last_activity_at = MAX(session_navigation.last_activity_at, excluded.last_activity_at)",
 			"last_message_preview = COALESCE(excluded.last_message_preview, session_navigation.last_message_preview)",
 			"child_count = excluded.child_count",
-			"sort_key = excluded.sort_key",
-			"updated_at = excluded.updated_at",
+			"sort_key = MAX(session_navigation.sort_key, excluded.sort_key)",
+			"updated_at = MAX(session_navigation.updated_at, excluded.updated_at)",
 		];
 		this.db.prepare(`
 			INSERT INTO session_navigation (${insertColumns.join(", ")})
@@ -80,7 +80,7 @@ export class NavigationStore {
 			input.originId ?? null,
 			input.title,
 			input.profile,
-			input.status,
+			input.status ?? "running",
 			input.archivedAt ?? null,
 			input.lastActivityAt,
 			input.lastMessagePreview ?? null,

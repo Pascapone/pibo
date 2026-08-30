@@ -159,6 +159,7 @@ export type PiboProfileInspection = {
 	runtimeOptions: PiboJsonObject;
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
+	mainModelFallbacks: ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	mainThinkingLevel?: PiboThinkingLevel;
@@ -516,6 +517,10 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 
 		const resourceLoader = services.resourceLoader;
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
+			...profile.diagnostics.map((diagnostic) => ({
+				type: diagnostic.severity,
+				message: `[${diagnostic.code}] ${diagnostic.message}`,
+			})),
 			...piPackageOptions.diagnostics,
 			...services.diagnostics,
 			...collectResourceDiagnostics(resourceLoader.getSkills().diagnostics),
@@ -627,6 +632,7 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 		mcpServers: profile.mcpServers,
 		piPackages: profile.piPackages,
 		contextFiles: profile.contextFiles,
+		diagnostics: profile.diagnostics,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,
@@ -671,6 +677,7 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 			runtimeOptions: structuredClone(profile.runtimeOptions),
 			...(profile.model ? { model: { ...profile.model } } : {}),
 			...(profile.mainModel ? { mainModel: { ...profile.mainModel } } : {}),
+			mainModelFallbacks: profile.mainModelFallbacks.map((model) => ({ ...model })),
 			...(profile.subagentModel ? { subagentModel: { ...profile.subagentModel } } : {}),
 			...(profile.thinkingLevel ? { thinkingLevel: profile.thinkingLevel } : {}),
 			...(profile.mainThinkingLevel ? { mainThinkingLevel: profile.mainThinkingLevel } : {}),

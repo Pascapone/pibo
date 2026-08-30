@@ -665,59 +665,120 @@ test("Codex native renews bounded tool credentials by rolling an idle App Server
 	portable.dispose();
 });
 
-test("Codex native rejects same-name native skill collisions instead of silently losing explicit Pibo priority", async (t) => {
+test("Codex native keeps same-name Pibo skills materialized and reports one actionable collision warning", async (t) => {
 	const root = await fixtureRoot(t);
 	const workspace = join(root, "workspace");
 	await mkdir(workspace, { recursive: true });
 	const skillsRoot = join(root, "materialized-skills");
 	const selectedSkillDir = join(skillsRoot, "collision-skill");
+	const unrelatedSkillDir = join(skillsRoot, "unrelated-skill");
 	const selectedSkillPath = join(selectedSkillDir, "SKILL.md");
+	const unrelatedSkillPath = join(unrelatedSkillDir, "SKILL.md");
 	await mkdir(selectedSkillDir, { recursive: true });
+	await mkdir(unrelatedSkillDir, { recursive: true });
 	await writeFile(selectedSkillPath, "---\nname: collision-skill\ndescription: selected collision fixture\n---\n\n# Selected collision skill\n");
+	await writeFile(unrelatedSkillPath, "---\nname: unrelated-skill\ndescription: unrelated fixture\n---\n\n# Unrelated skill\n");
+	const alpha = definePiboTool({
+		name: "alpha",
+		title: "Alpha",
+		description: "Unrelated portable tool",
+		inputSchema: Type.Object({ value: Type.String() }),
+		async execute(_toolCallId, input) {
+			return { content: [{ type: "text", text: `collision:${input.value}` }] };
+		},
+	});
 	const instanceId = "codex-native-skill-collision";
+	const piboSessionId = "ps_codex_skill_collision";
 	const profile = new InitialSessionContextBuilder("codex-native-skill-collision-profile")
 		.withAgentRuntime(instanceId)
 		.withBuiltinTools("disabled")
 		.withAutoContextFiles(false)
 		.withToolPackages({ goalControl: false })
 		.addSkill({ name: "collision-skill", path: selectedSkillPath })
+		.addSkill({ name: "unrelated-skill", path: unrelatedSkillPath })
+		.addTool({ name: "alpha", definition: alpha })
 		.createSession();
 	const registry = new AgentRuntimeAdapterRegistry();
 	registry.registerDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
 	registry.registerInstance({ id: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, config: runtimeConfig(root) });
+	const deliveryReports = [];
 	const resources = {
-		piboSessionId: "ps_codex_skill_collision",
+		piboSessionId,
 		runtimeInstanceId: instanceId,
 		adapterId: CODEX_NATIVE_ADAPTER_ID,
 		sessionGeneration: "generation-skill-collision",
 		getContextContributions: () => [],
-		getSkillPaths: () => [selectedSkillPath],
+		getSkillPaths: () => [selectedSkillPath, unrelatedSkillPath],
 		getMcpConfigPath: () => undefined,
 		getAdapterEnvironment: () => ({ PIBO_CODEX_FIXTURE_NATIVE_SKILL_NAME: "collision-skill" }),
 		getExternalMcpServerConfigs: () => ({}),
+		recordAdapterDelivery: (reports) => deliveryReports.push(...reports),
 		getInspection: () => ({
-			piboSessionId: "ps_codex_skill_collision",
+			piboSessionId,
 			runtimeInstanceId: instanceId,
 			adapterId: CODEX_NATIVE_ADAPTER_ID,
 			sessionGeneration: "generation-skill-collision",
 			paths: { root, home: root, skills: skillsRoot, context: root, config: root, protocol: root },
-			skills: [{ contributionId: "skill:collision-skill", name: "collision-skill", kind: "user", required: true, sourcePath: selectedSkillPath, materializedPath: selectedSkillPath }],
+			skills: [
+				{ contributionId: "skill:collision-skill", name: "collision-skill", kind: "user", required: true, sourcePath: selectedSkillPath, materializedPath: selectedSkillPath },
+				{ contributionId: "skill:unrelated-skill", name: "unrelated-skill", kind: "user", required: true, sourcePath: unrelatedSkillPath, materializedPath: unrelatedSkillPath },
+			],
 			context: [], mcpServers: [], delivery: [], diagnostics: [],
 		}),
 		dispose: async () => {},
 	};
-	await assert.rejects(
-		() => registry.openSession(instanceId, openInput({
-			instanceId,
-			piboSessionId: "ps_codex_skill_collision",
-			workspace,
-			profile,
-			runtimeBinding: binding(instanceId, "ps_codex_skill_collision"),
-			portableTools: undefined,
-			resources,
-		})),
-		/explicit Pibo-skill precedence cannot be guaranteed/,
-	);
+	const portableService = new PiboPortableToolService();
+	t.after(async () => portableService.dispose());
+	const accesses = [];
+	const portable = trackedPortableSession(portableService.createSession({
+		piboSessionId,
+		runtimeInstanceId: instanceId,
+		adapterId: CODEX_NATIVE_ADAPTER_ID,
+		sessionGeneration: "generation-skill-collision",
+		profile,
+		cwd: workspace,
+	}), accesses);
+	const session = await registry.openSession(instanceId, openInput({
+		instanceId,
+		piboSessionId,
+		workspace,
+		profile,
+		runtimeBinding: binding(instanceId, piboSessionId),
+		portableTools: portable,
+		resources,
+	}));
+	t.after(async () => session.dispose());
+	assert.equal(session.getStatus().warnings.length, 1);
+	assert.match(session.getStatus().warnings[0], /collision-skill/);
+	assert.match(session.getStatus().warnings[0], /Rename or disable one source/);
+	assert.deepEqual(deliveryReports, [
+		{
+			contributionId: "skill:collision-skill",
+			status: "degraded",
+			mode: "codex-extra-roots",
+			fidelity: "lossy",
+			target: selectedSkillPath,
+			diagnostic: session.getStatus().warnings[0],
+		},
+		{
+			contributionId: "skill:unrelated-skill",
+			status: "delivered",
+			mode: "codex-extra-roots",
+			fidelity: "exact",
+			target: unrelatedSkillPath,
+		},
+	]);
+	assert.ok(session.getStatus().enabledTools.some((name) => name.endsWith("/alpha")));
+	assert.equal(await callAlpha(accesses[0], "still-available"), "collision:still-available");
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "continue despite the skill collision", source: "rpc" });
+	await session.prompt({ text: "do not repeat the collision warning", source: "rpc" });
+	const warnings = events.filter((event) => event.type === "warning" && event.details?.code === "codex_native_skill_name_collision");
+	assert.equal(warnings.length, 1);
+	assert.equal(session.getStatus().warnings.length, 1);
+	const state = await getCodexNativeClient(session).request("test/getState", {});
+	assert.deepEqual(state.skillRequests.at(-1), { rootCount: 1, skillNames: ["collision-skill", "unrelated-skill"] });
 });
 
 test("Codex native rejects unverified MCP delivery, revokes the scoped credential, and cleans its process generation", async (t) => {

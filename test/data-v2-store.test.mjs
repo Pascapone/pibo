@@ -71,7 +71,7 @@ test("v2 schema migration is idempotent", () => {
 	db.close();
 });
 
-test("schema v6 migration installs the exact tool lifecycle index", () => {
+test("schema migration from v5 installs the exact tool lifecycle index", () => {
 	const dir = tempDir("pibo-data-tool-lifecycle-index-");
 	const db = new DatabaseSync(join(dir, "pibo.sqlite"));
 	applyPiboDataSchema(db);
@@ -83,7 +83,7 @@ test("schema v6 migration installs the exact tool lifecycle index", () => {
 	`).get();
 	assert.equal(index.name, "idx_event_log_session_tool_event_sequence_stream");
 	assert.match(index.sql, /session_id, tool_call_id, event_id, session_sequence ASC, stream_id ASC/);
-	assert.equal((db.prepare("PRAGMA user_version").get()).user_version, 6);
+	assert.equal((db.prepare("PRAGMA user_version").get()).user_version, PIBO_DATA_SCHEMA_VERSION);
 	db.close();
 });
 

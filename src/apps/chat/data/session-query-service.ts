@@ -9,10 +9,14 @@ import { rootSessionId } from "../../../data/session-store.js";
 export class ChatSessionQueryService {
 	constructor(private readonly store: PiboDataStore) {}
 
-	upsertSession(session: PiboSession, status: ChatWebSessionIndexItem["status"] = "idle"): void {
+	upsertSession(
+		session: PiboSession,
+		status: ChatWebSessionIndexItem["status"] = "idle",
+		lastActivityAt = session.updatedAt,
+	): void {
 		const roomId = chatRoomIdFromMetadata(session.metadata) ?? "room_default";
-		this.store.sessions.upsertSession({ session, roomId, status, lastActivityAt: session.updatedAt });
-		this.upsertNavigation(session, roomId, status, session.updatedAt);
+		this.store.sessions.upsertSession({ session, roomId, status, lastActivityAt });
+		this.upsertNavigation(session, roomId, status, lastActivityAt);
 	}
 
 	upsertSessionsIfChanged(sessions: PiboSession[]): ChatWebSessionBootstrapIndexResult {
@@ -29,9 +33,35 @@ export class ChatSessionQueryService {
 		return { checked: sessions.length, written, skipped };
 	}
 
-	recordEvent(event: PiboOutputEvent, session?: PiboSession): ChatWebStoredPiboEvent | undefined {
-		if (session) this.upsertSession(session, statusFromOutputEvent(event));
+	recordEvent(
+		event: PiboOutputEvent,
+		session?: PiboSession,
+		_streamId?: number,
+		createdAt = new Date().toISOString(),
+	): ChatWebStoredPiboEvent | undefined {
+		if (session) {
+			const status = statusFromOutputEvent(event);
+			if (status) this.upsertSession(session, status, createdAt);
+			else this.touchSession(session, createdAt);
+		}
 		return undefined;
+	}
+
+	private touchSession(session: PiboSession, lastActivityAt: string): void {
+		const roomId = chatRoomIdFromMetadata(session.metadata) ?? "room_default";
+		this.store.sessions.upsertSession({ session, roomId, lastActivityAt });
+		this.store.navigation.upsertSession({
+			roomId,
+			sessionId: session.id,
+			rootSessionId: rootSessionId(session),
+			parentId: session.parentId,
+			originId: session.originId,
+			title: session.title || "Untitled Session",
+			profile: session.profile,
+			lastActivityAt,
+			sortKey: lastActivityAt,
+			updatedAt: lastActivityAt,
+		});
 	}
 
 	listSessions(): ChatWebSessionIndexItem[] {
@@ -154,12 +184,14 @@ export class ChatSessionQueryService {
 			&& row.status === status
 			&& row.metadata_json === metadataJson
 			&& row.created_at === session.createdAt
-			&& row.updated_at === session.updatedAt
-			&& row.last_activity_at === session.updatedAt
+			&& row.updated_at >= session.updatedAt
+			&& row.last_activity_at >= session.updatedAt
 			&& row.navigation_status === status
 			&& row.navigation_title === title
-			&& row.navigation_sort_key === session.updatedAt
-			&& row.navigation_updated_at === session.updatedAt;
+			&& row.navigation_sort_key !== null
+			&& row.navigation_sort_key >= session.updatedAt
+			&& row.navigation_updated_at !== null
+			&& row.navigation_updated_at >= session.updatedAt;
 	}
 
 	private upsertNavigation(session: PiboSession, roomId: string, status: string, now: string): void {

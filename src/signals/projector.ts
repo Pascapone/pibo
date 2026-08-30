@@ -26,14 +26,28 @@ function runStatus(status: PiboRunStatus): PiboSignalStatus {
 	return status;
 }
 
+function nodeBelongsToTurn(node: PiboSignalNode, turnNodeId: string, context: PiboSignalProjectorContext): boolean {
+	let current: PiboSignalNode | undefined = node;
+	const visited = new Set<string>();
+	while (current && !visited.has(current.id)) {
+		if (current.id === turnNodeId || current.parentNodeId === turnNodeId) return true;
+		visited.add(current.id);
+		current = current.parentNodeId ? context.getNode(current.parentNodeId) : undefined;
+	}
+	return false;
+}
+
 function settleActiveSessionNodes(
 	piboSessionId: string,
 	context: PiboSignalProjectorContext,
 	status: "done" | "error" | "cancelled" | "interrupted",
 	terminalSource: "message_finished" | "session_error" | "session_interrupted" | "session_disposed" | "processing_stopped",
+	eventId?: string,
 ): PiboSignalMutation[] {
+	const turnNodeId = eventId ? `turn:${piboSessionId}:${eventId}` : undefined;
 	return context.getSessionNodes(piboSessionId)
 		.filter((node) => node.kind !== "session" && node.kind !== "yielded_run" && isActiveSignalStatus(node.status))
+		.filter((node) => !turnNodeId || nodeBelongsToTurn(node, turnNodeId, context))
 		.filter((node) => terminalSource !== "processing_stopped" || node.kind !== "turn" || node.metadata?.accepted !== true)
 		.map((node) => ({
 			type: "patch_node",
@@ -226,12 +240,20 @@ export const outputSignalProducer: PiboSignalProducer = {
 			mutations.push(...settleActiveSessionNodes(piboSessionId, context, "done", "message_finished"));
 		}
 		if (event.type === "session_error") {
-			mutations.push({ type: "set_session_queue", piboSessionId, queuedMessages: 0 });
-			mutations.push(...settleActiveSessionNodes(piboSessionId, context, "error", "session_error"));
-			mutations.push({ type: "patch_node", nodeId: `session:${piboSessionId}`, patch: { status: "error", completedAt: context.now(), error: { message: event.error, source: "pi" } } });
+			const turnNodeId = event.eventId ? `turn:${piboSessionId}:${event.eventId}` : undefined;
+			const hasUnrelatedActiveTurn = Boolean(turnNodeId && context.getSessionNodes(piboSessionId)
+				.some((candidate) => candidate.kind === "turn" && candidate.id !== turnNodeId && isActiveSignalStatus(candidate.status)));
+			const error = { message: event.error, source: "pi" as const };
+			if (!hasUnrelatedActiveTurn) mutations.push({ type: "set_session_queue", piboSessionId, queuedMessages: 0 });
+			mutations.push(...settleActiveSessionNodes(piboSessionId, context, "error", "session_error", hasUnrelatedActiveTurn ? event.eventId : undefined));
+			mutations.push({
+				type: "patch_node",
+				nodeId: `session:${piboSessionId}`,
+				patch: hasUnrelatedActiveTurn ? { error } : { status: "error", completedAt: context.now(), error },
+			});
 			if (event.eventId) {
-				mutations.push({ type: "patch_node", nodeId: `message:${piboSessionId}:${event.eventId}`, patch: { status: "error", completedAt: context.now(), error: { message: event.error, source: "pi" } } });
-				mutations.push({ type: "patch_node", nodeId: `turn:${piboSessionId}:${event.eventId}`, patch: { status: "error", completedAt: context.now(), error: { message: event.error, source: "pi" }, metadata: { ...eventTurn?.metadata, terminalSource: "session_error" } } });
+				mutations.push({ type: "patch_node", nodeId: `message:${piboSessionId}:${event.eventId}`, patch: { status: "error", completedAt: context.now(), error } });
+				mutations.push({ type: "patch_node", nodeId: `turn:${piboSessionId}:${event.eventId}`, patch: { status: "error", completedAt: context.now(), error, metadata: { ...eventTurn?.metadata, terminalSource: "session_error" } } });
 			}
 		}
 		return mutations;

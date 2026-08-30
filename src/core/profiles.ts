@@ -56,6 +56,7 @@ export type SubagentProfile = {
 	description?: string;
 	targetProfile: string;
 	model?: ModelProfile;
+	modelFallbacks?: ModelProfile[];
 	thinkingLevel?: PiboThinkingLevel;
 	runtimeOptions?: PiboJsonObject;
 	enabled?: boolean;
@@ -104,15 +105,28 @@ export type ToolPackageProfile = {
 	goalControl?: boolean;
 };
 
+export type PiboProfileDiagnostic = {
+	severity: "warning" | "error";
+	code: string;
+	message: string;
+	resourceKind?: "skill" | "context-file";
+	resourceName?: string;
+};
+
 export type ModelProfile = {
 	provider: string;
 	id: string;
 };
 
+function cloneModelProfiles(models: readonly ModelProfile[]): ModelProfile[] {
+	return models.map((model) => ({ ...model }));
+}
+
 function cloneSubagentProfile(subagent: SubagentProfile): SubagentProfile {
 	return {
 		...subagent,
 		...(subagent.model ? { model: { ...subagent.model } } : {}),
+		...(subagent.modelFallbacks ? { modelFallbacks: cloneModelProfiles(subagent.modelFallbacks) } : {}),
 		...(subagent.runtimeOptions ? { runtimeOptions: structuredClone(subagent.runtimeOptions) } : {}),
 	};
 }
@@ -141,6 +155,7 @@ export type InitialSessionContextOptions = {
 	parentSessionId?: string;
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
+	mainModelFallbacks?: readonly ModelProfile[];
 	subagentModel?: ModelProfile;
 	thinkingLevel?: PiboThinkingLevel;
 	mainThinkingLevel?: PiboThinkingLevel;
@@ -154,6 +169,7 @@ export type InitialSessionContextOptions = {
 	mcpServers?: readonly string[];
 	piPackages?: readonly PiPackageProfile[];
 	contextFiles?: readonly ContextFileProfile[];
+	diagnostics?: readonly PiboProfileDiagnostic[];
 	builtinTools?: BuiltinToolsMode;
 	builtinToolNames?: readonly string[];
 	autoContextFiles?: boolean;
@@ -169,6 +185,7 @@ export class InitialSessionContext {
 	readonly parentSessionId?: string;
 	readonly model?: ModelProfile;
 	readonly mainModel?: ModelProfile;
+	readonly mainModelFallbacks: readonly ModelProfile[];
 	readonly subagentModel?: ModelProfile;
 	readonly thinkingLevel?: PiboThinkingLevel;
 	readonly mainThinkingLevel?: PiboThinkingLevel;
@@ -182,6 +199,7 @@ export class InitialSessionContext {
 	readonly mcpServers: readonly string[];
 	readonly piPackages: readonly PiPackageProfile[];
 	readonly contextFiles: readonly ContextFileProfile[];
+	readonly diagnostics: readonly PiboProfileDiagnostic[];
 	readonly builtinTools: BuiltinToolsMode;
 	readonly builtinToolNames: readonly string[];
 	readonly autoContextFiles: boolean;
@@ -196,6 +214,7 @@ export class InitialSessionContext {
 		this.parentSessionId = options.parentSessionId;
 		this.model = options.model ? { ...options.model } : undefined;
 		this.mainModel = options.mainModel ? { ...options.mainModel } : undefined;
+		this.mainModelFallbacks = cloneModelProfiles(options.mainModelFallbacks ?? []);
 		this.subagentModel = options.subagentModel ? { ...options.subagentModel } : undefined;
 		this.thinkingLevel = options.thinkingLevel;
 		this.mainThinkingLevel = options.mainThinkingLevel;
@@ -209,6 +228,7 @@ export class InitialSessionContext {
 		this.mcpServers = [...(options.mcpServers ?? [])];
 		this.piPackages = [...(options.piPackages ?? [])];
 		this.contextFiles = [...(options.contextFiles ?? [])];
+		this.diagnostics = (options.diagnostics ?? []).map((diagnostic) => ({ ...diagnostic }));
 		this.builtinTools = options.builtinTools ?? "default";
 		this.builtinToolNames = [...(options.builtinToolNames ?? DEFAULT_BUILTIN_TOOL_NAMES)];
 		this.autoContextFiles = options.autoContextFiles ?? true;
@@ -225,6 +245,7 @@ export class InitialSessionContextBuilder {
 	private parentSessionId?: string;
 	private model?: ModelProfile;
 	private mainModel?: ModelProfile;
+	private mainModelFallbacks: ModelProfile[] = [];
 	private subagentModel?: ModelProfile;
 	private thinkingLevel?: PiboThinkingLevel;
 	private mainThinkingLevel?: PiboThinkingLevel;
@@ -238,6 +259,7 @@ export class InitialSessionContextBuilder {
 	private mcpServers: string[] = [];
 	private piPackages: PiPackageProfile[] = [];
 	private contextFiles: ContextFileProfile[] = [];
+	private diagnostics: PiboProfileDiagnostic[] = [];
 	private builtinTools: BuiltinToolsMode = "default";
 	private builtinToolNames: string[] = [...DEFAULT_BUILTIN_TOOL_NAMES];
 	private autoContextFiles = true;
@@ -271,6 +293,11 @@ export class InitialSessionContextBuilder {
 
 	withMainModel(model: ModelProfile): this {
 		this.mainModel = { ...model };
+		return this;
+	}
+
+	withMainModelFallbacks(models: readonly ModelProfile[]): this {
+		this.mainModelFallbacks = cloneModelProfiles(models);
 		return this;
 	}
 
@@ -394,6 +421,16 @@ export class InitialSessionContextBuilder {
 		return this;
 	}
 
+	addDiagnostic(diagnostic: PiboProfileDiagnostic): this {
+		this.diagnostics.push({ ...diagnostic });
+		return this;
+	}
+
+	addDiagnostics(diagnostics: readonly PiboProfileDiagnostic[]): this {
+		this.diagnostics.push(...diagnostics.map((diagnostic) => ({ ...diagnostic })));
+		return this;
+	}
+
 	createSession(): InitialSessionContext {
 		return new InitialSessionContext({
 			profileName: this.profileName,
@@ -403,6 +440,7 @@ export class InitialSessionContextBuilder {
 			parentSessionId: this.parentSessionId,
 			model: this.model,
 			mainModel: this.mainModel,
+			mainModelFallbacks: this.mainModelFallbacks,
 			subagentModel: this.subagentModel,
 			thinkingLevel: this.thinkingLevel,
 			mainThinkingLevel: this.mainThinkingLevel,
@@ -416,6 +454,7 @@ export class InitialSessionContextBuilder {
 			mcpServers: this.mcpServers,
 			piPackages: this.piPackages,
 			contextFiles: this.contextFiles,
+			diagnostics: this.diagnostics,
 			builtinTools: this.builtinTools,
 			builtinToolNames: this.builtinToolNames,
 			autoContextFiles: this.autoContextFiles,

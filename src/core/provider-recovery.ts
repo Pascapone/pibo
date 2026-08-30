@@ -1,5 +1,6 @@
 import { isRetryableAssistantError, type AssistantMessage } from "@earendil-works/pi-ai";
-import { classifySessionErrorMessage } from "./session-errors.js";
+import type { PiboSessionErrorDetails } from "./events.js";
+import { classifySessionErrorMessage, normalizeSessionErrorDetails } from "./session-errors.js";
 
 export const PIBO_PROVIDER_RECOVERY_MESSAGE_TYPE = "pibo-provider-recovery-resume";
 export const PIBO_PROVIDER_RECOVERY_PROMPT = "Continue the interrupted task autonomously from the existing session state. The previous provider request failed transiently. Do not wait for more user input, ask the user to repeat the request, or mention this recovery message unless the failure affects the result.";
@@ -64,6 +65,16 @@ export function isRetryablePiboAssistantError(message: unknown): boolean {
 export function isRetryablePiboProviderError(error: unknown): boolean {
 	const errorMessage = error instanceof Error ? error.message : String(error);
 	return isRetryablePiboAssistantError({ stopReason: "error", errorMessage } as AssistantMessage);
+}
+
+export function isPiboProviderFallbackError(
+	message: string,
+	details?: PiboSessionErrorDetails,
+): boolean {
+	const normalized = normalizeSessionErrorDetails(message, details);
+	return normalized.origin === "provider"
+		&& normalized.category !== "context_overflow"
+		&& normalized.category !== "runtime_abort";
 }
 
 export async function waitForPiboProviderRecovery(

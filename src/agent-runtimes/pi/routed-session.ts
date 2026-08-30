@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { SessionManager, type AgentSessionRuntime, shouldCompact } from "@earendil-works/pi-coding-agent";
 import type { PiboPluginRegistry } from "../../plugins/registry.js";
 import { PiboSteeringUnavailableError } from "../../core/events.js";
@@ -87,6 +89,21 @@ const RUN_REMINDER_CAPABILITY_TOOLS = new Set([
 	"pibo_run_cancel",
 	"pibo_run_ack",
 ]);
+
+function materializeForkedSession(sessionManager: SessionManager): void {
+	const sessionFile = sessionManager.getSessionFile();
+	const header = sessionManager.getHeader();
+	if (!sessionManager.isPersisted() || !sessionFile || !header || existsSync(sessionFile)) return;
+
+	mkdirSync(dirname(sessionFile), { recursive: true });
+	writeFileSync(
+		sessionFile,
+		`${[header, ...sessionManager.getEntries()].map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+		{ encoding: "utf8", flag: "wx" },
+	);
+	// Reload through the public API so Pi also records that the file is flushed.
+	sessionManager.setSessionFile(sessionFile);
+}
 
 function modelSupportsFastServiceTier(model: ProviderRequestModel | undefined): boolean {
 	if (!model) return false;
@@ -806,6 +823,9 @@ export class RoutedSession {
 	private nextAssistantIndex = 0;
 	private activeThinkingIndex?: number;
 	private nextThinkingIndex = 0;
+	private nextUsageIndex = 0;
+	private activeCompactionIndex?: number;
+	private nextCompactionIndex = 0;
 	private sessionIdentityOperationInFlight = false;
 	private pendingAssistantError?: Extract<PiboOutputEvent, { type: "session_error" }>;
 	private pendingAssistantErrorRetryable = false;
@@ -834,6 +854,7 @@ export class RoutedSession {
 		private readonly onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean }) => void,
 		private readonly onMessagesInterrupted?: PiboMessageInterruptionListener,
 		private readonly messagePreflight?: PiboMessagePreflight,
+		private readonly providerFallbacksEnabled = false,
 	) {
 		this.fastMode = initialFastMode && this.fastModeSupported();
 		this.bindRuntimeSession();
@@ -1216,26 +1237,32 @@ export class RoutedSession {
 		const candidate = event as { type?: unknown; reason?: unknown; result?: unknown; aborted?: unknown; errorMessage?: unknown };
 		const eventId = this.activeMessage?.id ?? this.activeExecutionEvent?.id;
 		if (candidate.type === "compaction_start") {
+			const compactionIndex = this.activeCompactionIndex ?? this.nextCompactionIndex;
+			if (this.activeCompactionIndex === undefined) this.nextCompactionIndex += 1;
+			this.activeCompactionIndex = compactionIndex;
 			this.emit(this.withActiveMessage({
 				type: "compaction_start",
 				piboSessionId: this.piboSessionId,
 				eventId,
+				compactionIndex,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
 			}));
 		}
 		if (candidate.type === "compaction_end") {
+			const compactionIndex = this.activeCompactionIndex ?? this.nextCompactionIndex;
+			if (this.activeCompactionIndex === undefined) this.nextCompactionIndex += 1;
+			this.activeCompactionIndex = undefined;
 			if (candidate.result && candidate.aborted !== true) {
-				// Reset assistant message indices so the next assistant response starts
-				// fresh after compaction, matching the reduced agent context.
+				// End any open output block, but keep durable part indices monotonic for
+				// the lifetime of the routed event across context-guard continuation.
 				this.activeAssistantIndex = undefined;
-				this.nextAssistantIndex = 0;
 				this.activeThinkingIndex = undefined;
-				this.nextThinkingIndex = 0;
 			}
 			this.emit(this.withActiveMessage({
 				type: "compaction_end",
 				piboSessionId: this.piboSessionId,
 				eventId,
+				compactionIndex,
 				reason: typeof candidate.reason === "string" ? candidate.reason : "unknown",
 				result: candidate.result,
 				aborted: candidate.aborted === true,
@@ -1443,6 +1470,11 @@ export class RoutedSession {
 		this.assertSessionWorkIdle("fork");
 		const previous = this.createSessionSnapshot();
 		const result = await this.runtime.fork(entryId);
+		if (!result.cancelled) {
+			// Pi defers persistence until an assistant message. Materialize an empty
+			// first-message branch so history readers can use its advertised path.
+			materializeForkedSession(this.runtime.session.sessionManager);
+		}
 		return {
 			piboSessionId: this.piboSessionId,
 			previous,
@@ -1756,6 +1788,9 @@ export class RoutedSession {
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
+			this.nextUsageIndex = 0;
+			this.activeCompactionIndex = undefined;
+			this.nextCompactionIndex = 0;
 			this.emit({
 				type: "message_started",
 				piboSessionId: this.piboSessionId,
@@ -1776,7 +1811,7 @@ export class RoutedSession {
 			if (this.disposed || inFlight.cancelled) return;
 			await this.resumeContextGuardRecovery(session);
 			if (this.disposed || inFlight.cancelled) return;
-			await this.recoverTransientProviderErrors(session);
+			if (!this.providerFallbacksEnabled) await this.recoverTransientProviderErrors(session);
 			if (this.disposed || inFlight.cancelled) return;
 			this.flushPendingAssistantError();
 			if (!this.activeMessageFailed) {
@@ -1811,6 +1846,9 @@ export class RoutedSession {
 			this.nextAssistantIndex = 0;
 			this.activeThinkingIndex = undefined;
 			this.nextThinkingIndex = 0;
+			this.nextUsageIndex = 0;
+			this.activeCompactionIndex = undefined;
+			this.nextCompactionIndex = 0;
 			this.providerWebSearchLifecycle.clear();
 			if (this.inFlightMessage === inFlight) this.inFlightMessage = undefined;
 			inFlight.resolveSettled();
@@ -2066,8 +2104,13 @@ export class RoutedSession {
 			return output;
 		}
 
+		if (event.type === "assistant_usage") {
+			const usageIndex = this.nextUsageIndex;
+			this.nextUsageIndex += 1;
+			return { ...event, ...correlation, usageIndex };
+		}
+
 		if (
-			event.type === "assistant_usage" ||
 			event.type === "compaction_start" ||
 			event.type === "compaction_end" ||
 			event.type === "tool_call" ||

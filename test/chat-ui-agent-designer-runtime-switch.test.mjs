@@ -41,18 +41,25 @@ test("Agent Designer drops only model selections unsupported by the selected run
 
 		assert.deepEqual(compatibleModelSelectionsForRuntime({
 			mainModel: { provider: "openai-codex", id: "gpt-5.6-sol" },
+			mainModelFallbacks: [
+				{ provider: "openai-codex", id: "gpt-5.4" },
+				{ provider: "qwen-token-plan", id: "deepseek-v4-flash-0731" },
+			],
 			subagentModel: { provider: "qwen-token-plan", id: "deepseek-v4-flash-0731" },
 		}, codexRuntime, legacyPiCatalog), {
 			mainModel: { provider: "openai-codex", id: "gpt-5.6-sol" },
+			mainModelFallbacks: [{ provider: "openai-codex", id: "gpt-5.4" }],
 			subagentModel: undefined,
 		});
 
 		const piRuntime = { id: "pi", adapterId: "pi", capabilities: ${JSON.stringify(runtimeCapabilities)} };
 		assert.deepEqual(compatibleModelSelectionsForRuntime({
 			mainModel: { provider: "qwen-token-plan", id: "deepseek-v4-flash-0731" },
+			mainModelFallbacks: [],
 			subagentModel: undefined,
 		}, piRuntime, legacyPiCatalog), {
 			mainModel: { provider: "qwen-token-plan", id: "deepseek-v4-flash-0731" },
+			mainModelFallbacks: [],
 			subagentModel: undefined,
 		});
 	`;
@@ -79,6 +86,7 @@ test("Agent Designer serializes cleared model selections so PATCH removes persis
 			mcpServers: [],
 			piPackages: [],
 			mainModel: { provider: "openai-codex", id: "gpt-5.6-sol" },
+			mainModelFallbacks: [],
 			subagentModel: undefined,
 			builtinTools: "default",
 			builtinToolNames: ["read", "bash", "edit", "write"],

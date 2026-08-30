@@ -58,6 +58,7 @@ export function SessionNode({
 	const hasChildren = node.children.length > 0;
 	const hasSelectedDescendant = selectedPiboSessionId !== null && node.piboSessionId !== selectedPiboSessionId && selectedSessionPathIds.has(node.piboSessionId);
 	const [expanded, setExpanded] = useState(hasSelectedDescendant);
+	const previousSelectedPiboSessionIdRef = useRef(selectedPiboSessionId);
 	const subsessionsRegionId = useId();
 
 	useEffect(() => {
@@ -81,9 +82,14 @@ export function SessionNode({
 		titleInputRef.current?.select();
 	}, [editing]);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
+		if (previousSelectedPiboSessionIdRef.current !== selectedPiboSessionId) {
+			previousSelectedPiboSessionIdRef.current = selectedPiboSessionId;
+			setExpanded(hasSelectedDescendant);
+			return;
+		}
 		if (hasSelectedDescendant) setExpanded(true);
-	}, [hasSelectedDescendant]);
+	}, [hasSelectedDescendant, selectedPiboSessionId]);
 
 	const submitRename = () => {
 		if (mutationsDisabled) return;

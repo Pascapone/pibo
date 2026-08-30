@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-05-10
-**Updated:** 2026-08-25
+**Updated:** 2026-08-27
 **Controller / Source:** Current Pibo codebase
 **Related docs:** `GLOSSARY.md`, `docs/specs/README.md`, `docs/specs/capabilities/context-files.md`, `docs/specs/capabilities/subagent-delegation.md`, `docs/specs/capabilities/yielded-run-control.md`
 
@@ -29,7 +29,7 @@ Custom agents are persisted in `chat-agents.sqlite`. Each active record is regis
 - App-context custom-agent listing, creation, update, archive, restore, and permanent deletion.
 - Dynamic profile registration for active custom agents.
 - Agent Designer catalog data for selectable capabilities.
-- Selections for runtime instances, native tools, skills, context files, Pibo subagents with per-entry descriptions and runtime settings, harness-native subagents, MCP servers, Pi packages, models, thinking levels, fast mode, built-in tools, automatic context files, and run control.
+- Selections for runtime instances, native tools, skills, context files, Pibo subagents with per-entry descriptions and runtime settings, harness-native subagents, MCP servers, Pi packages, ordered provider fallback chains, thinking levels, fast mode, built-in tools, automatic context files, and run control.
 - Read-only display and copy flow for plugin profiles.
 - App-wide organizational folders for custom agents, including folder creation, rename, assignment, and safe deletion.
 - Agent-scoped context-file creation from the Agent Designer.
@@ -145,17 +145,55 @@ A dynamic custom-agent profile MUST translate saved agent selections into `Initi
 - Selected built-in tool mode and built-in tool names control built-in Pi tool exposure.
 - Selected MCP server names and Pi package ids are attached to the runtime profile.
 - Run control is enabled only when the custom agent has `runControl: true`.
-- Main-agent model overrides are applied when present.
+- Main-agent model overrides and ordered fallback models are applied when present.
 - Legacy profile-level subagent model and thinking fields remain valid compatibility fallbacks for previously saved agents but are not the primary Agent Designer control.
 - Legacy per-subagent `timeoutMs` data is compatibility-only and does not create a runtime deadline.
 - Global and main thinking/fast options are applied when present.
-- Selected native tools and subagent definitions are added to the runtime profile, including each subagent's description, model, thinking level, and runtime-option overrides.
+- Selected native tools and subagent definitions are added to the runtime profile, including each subagent's description, primary model, ordered fallback models, thinking level, and runtime-option overrides.
 
 #### Scenario: Agent with run control and package selection
 
 - GIVEN a saved custom agent selects a Pi package and enables run control
 - WHEN a new Pibo Session uses that profile
 - THEN runtime creation receives the package selection and the run-control capability package.
+
+### Requirement: Model requests use ordered provider fallback chains
+
+The Agent Designer MUST let users define an ordered provider and model chain for the Main Agent and for each Pibo subagent. Runtime orchestration MUST try that chain from top to bottom when a provider request fails.
+
+#### Current
+
+The primary model remains the only row by default. A small add button creates fallback rows. Users can remove rows and reorder the full chain by drag and drop or accessible move controls. Custom-agent storage preserves the order. New parent and child Pibo Sessions freeze their configured fallback chain in session metadata.
+
+Generic runtime orchestration handles fallback selection. It continues the interrupted task in the same runtime session, selects each fallback model in order, and restores the primary model after the turn. Context-window failures, aborts, and runtime-origin failures do not trigger provider fallback. Pi's same-provider transient retry remains active only when no explicit fallback chain is configured.
+
+#### Acceptance
+
+- A new custom agent starts with one primary provider and model row and no fallback rows.
+- Users can add multiple fallback rows for the Main Agent and for each Pibo subagent.
+- Users can reorder the chain by drag and drop; keyboard-accessible move controls provide the same ordering operation.
+- Persistence preserves order and removes blank entries, duplicates, and entries that repeat the explicit primary model.
+- A provider-origin failure selects the next configured model and resumes the interrupted task in the same runtime session.
+- Runtime orchestration tries each configured fallback at most once and stops after the first successful continuation.
+- Runtime orchestration restores the primary model after success or exhaustion so the next user turn starts with the configured primary.
+- Context overflow, user cancellation, runtime abort, and runtime-origin failures do not advance the fallback chain.
+- New child sessions freeze the selected subagent chain; reused child sessions retain that frozen chain.
+- Profiles with no explicit fallback chain retain their existing provider-retry behavior.
+
+#### Scenario: Main provider fails
+
+- GIVEN a Main Agent uses provider A with ordered fallbacks B and C
+- WHEN provider A fails during a turn
+- THEN runtime orchestration selects B and asks it to continue the interrupted task
+- AND it selects C only if B also fails
+- AND it restores A after the turn completes or all fallbacks fail.
+
+#### Scenario: Reused subagent retains its chain
+
+- GIVEN a subagent child was created with primary provider A and fallback B
+- WHEN the parent definition later changes that subagent to fallback C
+- AND the parent reuses the existing child thread
+- THEN the child still uses its frozen A-to-B chain.
 
 ### Requirement: Agent Designer configures each Pibo subagent independently
 
