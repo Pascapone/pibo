@@ -2793,6 +2793,79 @@ test("chat web app keeps the default room locked", async () => {
 	}
 });
 
+test("chat web app rejects cyclic room parents and preserves valid room lifecycles", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const headers = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+
+	try {
+		const createRoom = async (name, parentRoomId) => {
+			const response = await fetch(`${baseURL}/api/chat/rooms`, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ name, ...(parentRoomId ? { parentRoomId } : {}) }),
+			});
+			assert.equal(response.status, 201);
+			return (await response.json()).room;
+		};
+		const patchParent = (roomId, parentRoomId) => fetch(`${baseURL}/api/chat/rooms/${encodeURIComponent(roomId)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ parentRoomId }),
+		});
+
+		const roomA = await createRoom("Hierarchy A");
+		const roomB = await createRoom("Hierarchy B", roomA.id);
+		const roomC = await createRoom("Hierarchy C", roomB.id);
+
+		const selfParentResponse = await patchParent(roomA.id, roomA.id);
+		assert.equal(selfParentResponse.status, 400);
+		assert.deepEqual(await selfParentResponse.json(), { error: "Room parent assignment would create a cycle." });
+
+		const validReparentResponse = await patchParent(roomC.id, roomA.id);
+		assert.equal(validReparentResponse.status, 200);
+		assert.equal((await validReparentResponse.json()).room.parentRoomId, roomA.id);
+		assert.equal((await patchParent(roomC.id, roomB.id)).status, 200);
+
+		const ancestorCycleResponse = await patchParent(roomA.id, roomC.id);
+		assert.equal(ancestorCycleResponse.status, 400);
+		assert.deepEqual(await ancestorCycleResponse.json(), { error: "Room parent assignment would create a cycle." });
+
+		const roomsResponse = await fetch(`${baseURL}/api/chat/rooms`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(roomsResponse.status, 200);
+		const roomTree = (await roomsResponse.json()).rooms;
+		const persistedA = roomTree.find((room) => room.id === roomA.id);
+		assert.ok(persistedA);
+		assert.equal(persistedA.parentRoomId, undefined);
+		assert.equal(persistedA.children[0]?.id, roomB.id);
+		assert.equal(persistedA.children[0]?.children[0]?.id, roomC.id);
+
+		const archiveResponse = await fetch(`${baseURL}/api/chat/rooms/${encodeURIComponent(roomA.id)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ archived: true }),
+		});
+		assert.equal(archiveResponse.status, 200);
+
+		const deleteResponse = await fetch(`${baseURL}/api/chat/rooms/${encodeURIComponent(roomA.id)}`, {
+			method: "DELETE",
+			headers,
+			body: JSON.stringify({ confirmName: roomA.name }),
+		});
+		assert.equal(deleteResponse.status, 200);
+		assert.deepEqual(new Set((await deleteResponse.json()).deletedRoomIds), new Set([roomA.id, roomB.id, roomC.id]));
+	} finally {
+		await channel.stop?.();
+	}
+});
+
 test("chat web app archives and deletes rooms with contained session subtrees", async () => {
 	const { channel, baseURL, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
