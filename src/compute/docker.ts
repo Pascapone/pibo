@@ -887,12 +887,35 @@ export function buildComputeWorkerReapPlan(workers: WorkerInfo[], options: Compu
 }
 
 export async function releaseWorker(id: string): Promise<void> {
+	let inspected: DockerInspectContainer[];
 	try {
-		await execFileAsync("docker", ["stop", "-t", "10", id]);
+		const { stdout } = await execFileAsync("docker", ["inspect", id]);
+		inspected = JSON.parse(stdout) as DockerInspectContainer[];
+	} catch {
+		throw new Error(
+			`Unable to inspect Docker container "${id}" before release. No container was changed. ` +
+			`Run "pibo compute list --all" to find Pibo compute workers and verify Docker is available.`,
+		);
+	}
+	const container = inspected[0];
+	const resolvedId = container?.Id?.trim();
+	if (!container || inspected.length !== 1 || !resolvedId) {
+		throw new Error(`Unable to resolve Docker container "${id}" before release. No container was changed.`);
+	}
+	const role = container.Config?.Labels?.[LABEL_ROLE];
+	if (role !== "worker" && role !== "dev") {
+		const identity = role === undefined ? `${LABEL_ROLE} is missing` : `${LABEL_ROLE}=${JSON.stringify(role)}`;
+		throw new Error(
+			`Refusing to release Docker container "${id}": ${identity}; expected "worker" or "dev". ` +
+			`No container was changed. Run "pibo compute list --all" to find releasable workers.`,
+		);
+	}
+	try {
+		await execFileAsync("docker", ["stop", "-t", "10", resolvedId]);
 	} catch {
 		// might already be stopped
 	}
-	await execFileAsync("docker", ["rm", id]);
+	await execFileAsync("docker", ["rm", resolvedId]);
 }
 
 export async function applyComputeWorkerReapPlan(plan: ComputeWorkerReapPlan, options: { release?: (id: string) => Promise<void> } = {}): Promise<string[]> {
