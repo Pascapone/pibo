@@ -748,6 +748,7 @@ export function Composer({
 							}
 						}
 						if (event.key === "Enter" && !event.shiftKey) {
+							if (event.nativeEvent?.isComposing || event.nativeEvent?.keyCode === 229) return;
 							event.preventDefault();
 							void submit();
 						}
