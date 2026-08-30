@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { isAbsolute, resolve } from "node:path";
+import type { Readable } from "node:stream";
 import { NODE_RUNTIME_WORKER_SOURCE } from "./node-worker-source.js";
 import type {
 	RuntimeBackend,
@@ -66,6 +67,7 @@ export class NodeRuntimeBackend implements RuntimeBackend {
 	private requestCounter = 0;
 	private alive = true;
 	private diagnostics = "";
+	private activeOutput?: { stdout: string; stderr: string };
 	private readyPromise: Promise<void>;
 	private readyResolve!: () => void;
 	private readyReject!: (error: Error) => void;
@@ -83,12 +85,15 @@ export class NodeRuntimeBackend implements RuntimeBackend {
 		this.child = spawn(executable, [...args, "-e", NODE_RUNTIME_WORKER_SOURCE], {
 			cwd,
 			env: { ...process.env, ...(env ?? {}) },
-			stdio: "pipe",
+			stdio: ["pipe", "pipe", "pipe", "pipe"],
 		});
-		const stdout = createInterface({ input: this.child.stdout });
-		stdout.on("line", (line) => this.handleLine(line));
+		const protocol = this.child.stdio[3];
+		if (!protocol) throw new Error("Node runtime protocol pipe was not created");
+		const responses = createInterface({ input: protocol as Readable });
+		responses.on("line", (line) => this.handleLine(line));
+		this.child.stdout.on("data", (chunk) => this.captureOutput("stdout", chunk));
 		this.child.stderr.on("data", (chunk) => {
-			this.diagnostics += String(chunk);
+			this.captureOutput("stderr", chunk);
 		});
 		this.child.once("error", (error) => {
 			this.alive = false;
@@ -130,17 +135,20 @@ export class NodeRuntimeBackend implements RuntimeBackend {
 
 	async exec(input: Omit<RuntimeExecInput, "sessionId" | "closeOnSuccess">): Promise<RuntimeExecResult> {
 		const started = Date.now();
+		const output = { stdout: "", stderr: "" };
+		this.activeOutput = output;
 		try {
 			const response = await this.request("exec", {
 				code: input.code,
 				mode: input.mode ?? "exec",
 				timeoutMs: input.timeoutMs ?? 30000,
 			}, input.timeoutMs ?? 30000);
+			await new Promise<void>((resolveOutput) => setImmediate(resolveOutput));
 			return {
 				status: normalizeExecStatus(response),
 				sessionId: "",
-				stdout: response.stdout ?? "",
-				stderr: response.stderr ?? "",
+				stdout: `${response.stdout ?? ""}${output.stdout}`,
+				stderr: `${response.stderr ?? ""}${output.stderr}`,
 				result: response.result as RuntimeExecResult["result"],
 				error: asErrorSummary(response.error),
 				durationMs: Date.now() - started,
@@ -149,9 +157,13 @@ export class NodeRuntimeBackend implements RuntimeBackend {
 			return {
 				status: error instanceof TimeoutError ? "timeout" : "failed",
 				sessionId: "",
+				stdout: output.stdout,
+				stderr: output.stderr,
 				durationMs: Date.now() - started,
 				error: errorSummary(error),
 			};
+		} finally {
+			if (this.activeOutput === output) this.activeOutput = undefined;
 		}
 	}
 
@@ -260,6 +272,11 @@ export class NodeRuntimeBackend implements RuntimeBackend {
 		this.pending.delete(id);
 		clearTimeout(pending.timer);
 		pending.resolve(response);
+	}
+
+	private captureOutput(stream: "stdout" | "stderr", chunk: unknown): void {
+		if (this.activeOutput) this.activeOutput[stream] += String(chunk);
+		else this.diagnostics += String(chunk);
 	}
 
 	private rejectAll(error: Error): void {

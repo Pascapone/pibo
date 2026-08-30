@@ -1,13 +1,13 @@
 export const PYTHON_RUNTIME_WORKER_SOURCE = String.raw`
-import contextlib
 import inspect
-import io
 import json
+import os
 import signal
 import sys
 import traceback
 
 user_globals = {"__name__": "__pibo_runtime__"}
+protocol_stream = os.fdopen(3, "w", encoding="utf-8", buffering=1, closefd=False)
 
 
 def bounded(value, max_bytes=8192):
@@ -75,26 +75,23 @@ def execute(req):
     code = req.get("code") or ""
     if mode == "auto":
         mode = "exec"
-    stdout = io.StringIO()
-    stderr = io.StringIO()
     try:
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            if mode == "eval":
-                value = eval(compile(code, "<pibo-runtime>", "eval"), user_globals, user_globals)
-            else:
-                exec(compile(code, "<pibo-runtime>", "exec"), user_globals, user_globals)
-                value = None
+        if mode == "eval":
+            value = eval(compile(code, "<pibo-runtime>", "eval"), user_globals, user_globals)
+        else:
+            exec(compile(code, "<pibo-runtime>", "exec"), user_globals, user_globals)
+            value = None
         return {
             "id": req.get("id"),
             "status": "ok",
-            "stdout": stdout.getvalue(),
-            "stderr": stderr.getvalue(),
+            "stdout": "",
+            "stderr": "",
             "result": summarize(value) if value is not None else None,
         }
     except KeyboardInterrupt as exc:
-        return {"id": req.get("id"), "status": "interrupted", "stdout": stdout.getvalue(), "stderr": stderr.getvalue(), "error": error_summary(exc)}
+        return {"id": req.get("id"), "status": "interrupted", "stdout": "", "stderr": "", "error": error_summary(exc)}
     except Exception as exc:
-        return {"id": req.get("id"), "status": "error", "stdout": stdout.getvalue(), "stderr": stderr.getvalue(), "error": error_summary(exc)}
+        return {"id": req.get("id"), "status": "error", "stdout": "", "stderr": "", "error": error_summary(exc)}
 
 
 def inspect_value(req):
@@ -147,8 +144,8 @@ def list_vars(req):
 
 
 def write_response(resp):
-    sys.stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    protocol_stream.write(json.dumps(resp, ensure_ascii=False) + "\n")
+    protocol_stream.flush()
 
 
 def main():

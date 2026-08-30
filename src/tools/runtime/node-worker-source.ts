@@ -1,8 +1,7 @@
 export const NODE_RUNTIME_WORKER_SOURCE = String.raw`
 const vm = require("node:vm");
 const util = require("node:util");
-
-let currentOutput = null;
+const fs = require("node:fs");
 
 function bounded(value, maxBytes = 8192) {
 	const text = String(value);
@@ -49,11 +48,11 @@ function errorSummary(error) {
 }
 
 function appendStdout(chunk) {
-	if (currentOutput) currentOutput.stdout += String(chunk);
+	process.stdout.write(String(chunk));
 }
 
 function appendStderr(chunk) {
-	if (currentOutput) currentOutput.stderr += String(chunk);
+	process.stderr.write(String(chunk));
 }
 
 const processProxy = new Proxy(process, {
@@ -96,8 +95,6 @@ context.globalThis = context;
 async function execute(req) {
 	const mode = req.mode || "exec";
 	const code = req.code || "";
-	const output = { stdout: "", stderr: "" };
-	currentOutput = output;
 	try {
 		const value = await (async () => {
 			if (mode === "eval") {
@@ -110,20 +107,18 @@ async function execute(req) {
 		return {
 			id: req.id,
 			status: "ok",
-			stdout: output.stdout,
-			stderr: output.stderr,
+			stdout: "",
+			stderr: "",
 			result: value === undefined ? null : summarize(value),
 		};
 	} catch (error) {
 		return {
 			id: req.id,
 			status: "error",
-			stdout: output.stdout,
-			stderr: output.stderr,
+			stdout: "",
+			stderr: "",
 			error: errorSummary(error),
 		};
-	} finally {
-		currentOutput = null;
 	}
 }
 
@@ -167,7 +162,7 @@ function listVars(req) {
 }
 
 function writeResponse(resp) {
-	process.stdout.write(JSON.stringify(resp) + "\n");
+	fs.writeSync(3, JSON.stringify(resp) + "\n");
 }
 
 async function handle(req) {
