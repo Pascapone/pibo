@@ -191,7 +191,8 @@ function applyToolDisplayMode(rows: CompactTerminalRow[], mode: ToolDisplayMode)
 }
 
 function isToolDisplayRow(row: CompactTerminalRow): boolean {
-	return row.id.startsWith("terminal:tool:")
+	return row.sourceNodeIds.some((nodeId) => parseTraceToolNodeIdentity(nodeId) !== undefined)
+		|| row.id.startsWith("terminal:tool:")
 		|| row.kind === "tool.call"
 		|| row.kind === "tool.image"
 		|| row.kind === "tool.group.exploring"
