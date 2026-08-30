@@ -268,7 +268,7 @@ export class PiboLoopService {
 		this.store.applyStopEvaluation({ jobId: fresh.id, evaluation, conditionStates, disable: false });
 		if (fresh.mode === 'goal' && !await this.renewGoalBrowserLeases(fresh)) return undefined;
 		if (this.stopped) return undefined;
-		const reserved = this.store.reserveRun(fresh.id, now);
+		const reserved = this.store.reserveAdmittedRun(fresh.id, now);
 		if (reserved) this.startGoalBrowserLeaseHeartbeat(reserved.job, reserved.run);
 		return reserved;
 	}
