@@ -83,7 +83,7 @@ async function runAutomaticStartup({ dir, storePath, jobId, cycle, context }) {
 		await new Promise((resolve) => setTimeout(resolve, 400));
 		return { job: store.getJob(jobId), runs: store.listRuns({ jobId }) };
 	} finally {
-		service.stop();
+		await service.stop();
 	}
 }
 
@@ -161,6 +161,7 @@ test("manual start cannot admit an already-reached custom-policy Ralph job", asy
 	const store = new PiboLoopStore({ path: join(dir, "loops.sqlite") });
 	const context = createRuntimeContext();
 	const service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), runTimeoutMs: 5_000 });
+	service.start();
 	try {
 		const job = createLoopJob(store, { enabled: true, maxIterations: 1, stopPolicy: customStopPolicy });
 		const first = store.reserveRun(job.id);
@@ -173,7 +174,7 @@ test("manual start cannot admit an already-reached custom-policy Ralph job", asy
 		assert.equal(store.getJob(job.id).enabled, false);
 		assert.equal(store.getJob(job.id).state.completedIterations, 1);
 	} finally {
-		service.stop();
+		await service.stop();
 		await rm(dir, { recursive: true, force: true });
 	}
 });
@@ -183,6 +184,7 @@ test("default max-iterations policy remains the before-run control", async () =>
 	const store = new PiboLoopStore({ path: join(dir, "loops.sqlite") });
 	const context = createRuntimeContext();
 	const service = new PiboLoopService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads") });
+	service.start();
 	try {
 		const job = createLoopJob(store, { enabled: true, maxIterations: 1 });
 		const first = store.reserveRun(job.id);
@@ -194,7 +196,7 @@ test("default max-iterations policy remains the before-run control", async () =>
 		assert.equal(store.getJob(job.id).enabled, false);
 		assert.equal(store.getJob(job.id).state.lastStopEvaluation.reason, "max-iterations");
 	} finally {
-		service.stop();
+		await service.stop();
 		await rm(dir, { recursive: true, force: true });
 	}
 });

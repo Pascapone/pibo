@@ -44,6 +44,13 @@ type SessionTraceLayoutProps = {
   composerProps: ComponentProps<typeof Composer>;
 };
 
+export function shouldRenderSessionComposer({
+  hideComposer = false,
+  projectModulePanel,
+}: Pick<SessionTraceLayoutProps, "hideComposer" | "projectModulePanel">): boolean {
+  return !hideComposer && !projectModulePanel;
+}
+
 export function SessionTraceLayout({
   selectedPiboSessionId,
   selectedRoomId,
@@ -143,7 +150,9 @@ export function SessionTraceLayout({
           <WebAnnotationsSessionPanel {...webAnnotationsPanelProps} />
         ) : null}
         {runtimeRequestPanel}
-        {hideComposer ? null : <Composer {...composerProps} />}
+        {shouldRenderSessionComposer({ hideComposer, projectModulePanel }) ? (
+          <Composer {...composerProps} />
+        ) : null}
       </TerminalFileDropTarget>
 
       <RawEventsSidebar

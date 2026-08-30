@@ -153,7 +153,7 @@ test("timeline query preserves deferred payload identity on its exact tool node"
 			.find((candidate) => candidate.type === "tool_execution_finished");
 		assert.ok(event);
 		assert.equal(event.payload.type, "tool_execution_finished");
-		assert.equal(event.storedPayloadRef.nodeId, `tool:${providerToolCallId}`);
+		assert.equal(event.storedPayloadRef.nodeId, qualifiedNodeId);
 		assert.equal(event.storedPayloadRef.payloadKind, "output");
 		assert.equal(event.storedPayloadRef.byteLength, payload.byteSize);
 		assert.equal(event.storedPayloadRef.hash, payload.sha256);

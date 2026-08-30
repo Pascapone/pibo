@@ -10,6 +10,7 @@ import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import type { PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./runtime.js";
 import {
+	RUN_REMINDER_MAX_DURATION_MS,
 	RuntimeRoutedSession as RoutedSession,
 	type PiboMessagePreflight,
 } from "../agent-runtime/routed-session.js";
@@ -27,6 +28,7 @@ import type {
 	PiboSessionOperationResult,
 	PiboSessionStatus,
 } from "./events.js";
+import { OutputRenderSequencer, outputRenderHighWaterStore } from "./output-render-sequence.js";
 import {
 	normalizePiboAgentSessionName,
 	type PiboAgentObservation,
@@ -35,20 +37,16 @@ import {
 	type PiboManagedAgent,
 } from "../subagents/tool.js";
 import {
-	PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES,
-	PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES,
-	normalizePiboAgentObservationCursor,
-	normalizePiboAgentObservationLimit,
-	normalizePiboAgentObservationOrder,
-	normalizePiboAgentObservationToolDetail,
-	parsePiboAgentObservationTimestamp,
 	piboAgentObservationDetails,
 	piboAgentObservationKind,
 	piboAgentObservationRole,
 	piboAgentObservationSourceFromEvent,
 	piboAgentObservationText,
-	piboAgentObservationToolSummary,
 } from "../subagents/observations.js";
+import {
+	preparePiboAgentObservationQuery,
+	selectPiboAgentObservationPage,
+} from "../subagents/observation-query.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
 import { PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, waitForRunCancellationSettlement } from "../runs/lifecycle.js";
 import { PiboRunResourceLimitError } from "../runs/resource-isolation.js";
@@ -314,8 +312,11 @@ function formatRunReminderMessage(notification: PiboRunNotification): string {
 				toolName: run.toolName,
 				summary: run.summary,
 			})),
-			instruction:
+			instruction: [
+				`This autonomous run-reminder turn stops after ${RUN_REMINDER_MAX_DURATION_MS / 60_000} minutes of wall-clock time.`,
+				"Handle the listed runs promptly, then finish the turn. Do not start new subagents, yielded runs, or other long-running work from this reminder; leave larger follow-up work for a separate user-initiated or Goal continuation turn.",
 				"Use pibo_run_read for completed, failed, or timed_out runs. Use pibo_run_wait, pibo_run_status, pibo_run_cancel, or pibo_run_ack for runs you still need to manage.",
+			].join(" "),
 		}),
 		"</pibo_run_notification>",
 	].join("\n");
@@ -542,6 +543,7 @@ export class PiboSessionRouter {
 	private readonly sessions = new Map<string, RoutedSession>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
 	private readonly listeners = new Set<PiboEventListener>();
+	private readonly outputRenderSequencer: OutputRenderSequencer;
 	private readonly runRegistry: PiboRunRegistry;
 	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
@@ -587,6 +589,9 @@ export class PiboSessionRouter {
 		// Preserve that composition contract during the adapter migration without branching on adapter ids.
 		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
+		this.outputRenderSequencer = new OutputRenderSequencer({
+			highWaterStore: outputRenderHighWaterStore(this.sessionStore),
+		});
 		this.telemetryStore = options.telemetryStore ?? telemetryStoreFromSessionStore(this.sessionStore);
 		this.telemetryWriter = this.telemetryStore ? new AsyncTelemetryWriter(this.telemetryStore) : undefined;
 		this.telemetryRecorder = this.telemetryStore
@@ -631,9 +636,14 @@ export class PiboSessionRouter {
 			if (session) this.signalRegistry.project({ type: "session_created", session });
 			this.signalRegistry.project({ type: "pibo_output", event: recovery.event });
 		}
+		const recoveredRunReminderControllers = new Set<string>();
 		for (const run of this.runRegistry.listAll({ includeConsumed: true, includeDetached: true })) {
 			this.signalRegistry.project({ type: "run_changed", run, reason: "recovered" });
+			if (options.recoverInterruptedRuntimeState && isTerminalRunStatus(run.status) && this.sessionStore.get(run.controllerPiboSessionId)) {
+				recoveredRunReminderControllers.add(run.controllerPiboSessionId);
+			}
 		}
+		for (const piboSessionId of recoveredRunReminderControllers) this.scheduleRunReminder(piboSessionId, false);
 	}
 
 	subscribe(listener: PiboEventListener): () => void {
@@ -891,6 +901,7 @@ export class PiboSessionRouter {
 			for (const id of ids) {
 				if (this.disposingSessions.get(id) === operation) this.disposingSessions.delete(id);
 				this.quiescingSessions.delete(id);
+				this.outputRenderSequencer.disposeSession(id);
 				this.signalRegistry.project({ type: "session_disposed", piboSessionId: id, reason });
 			}
 			await this.telemetryWriter?.flush();
@@ -1142,7 +1153,12 @@ export class PiboSessionRouter {
 			expectedRevision: input.expectedRevision,
 			mode,
 		});
-		if (switchingRuntime) this.sessionStore.update(piboSessionId, { activeModel: null });
+		if (switchingRuntime) {
+			this.sessionStore.update(piboSessionId, {
+				activeModel: null,
+				metadata: withPiboSessionModelFallbacksMetadata(session.metadata, []),
+			});
+		}
 		return structuredClone(persisted);
 	}
 
@@ -1365,6 +1381,7 @@ export class PiboSessionRouter {
 			this.runtimeResourceSessions.clear();
 			this.activeSubagentRequests.clear();
 			this.subagentRequestIdsByEvent.clear();
+			this.outputRenderSequencer.disposeAll();
 			this.agentObservations.length = 0;
 			this.agentObservationEvictedThroughByParent.clear();
 			await this.telemetryWriter?.dispose();
@@ -2337,91 +2354,18 @@ export class PiboSessionRouter {
 	}
 
 	private observeManagedAgents(parentPiboSessionId: string, input: PiboAgentObserveInput) {
-		const order = normalizePiboAgentObservationOrder(input.order);
-		const limit = normalizePiboAgentObservationLimit(input.limit);
-		const toolDetail = normalizePiboAgentObservationToolDetail(input.toolDetail);
-		const afterSequence = normalizePiboAgentObservationCursor(input.afterSequence);
-		const since = parsePiboAgentObservationTimestamp(input.since, "since");
-		const until = parsePiboAgentObservationTimestamp(input.until, "until");
-		if (since !== undefined && until !== undefined && since > until) {
-			throw new Error("Agent observation since must not be after until.");
-		}
-		const requestIds = input.requestIds ? new Set(input.requestIds) : undefined;
-		if (input.toolCallIds && input.toolCallIds.length > 50) {
-			throw new Error("Agent observation toolCallIds must contain at most 50 entries.");
-		}
-		const toolCallIds = input.toolCallIds ? new Set(input.toolCallIds) : undefined;
-		const agentIds = input.agentIds ? new Set(input.agentIds) : undefined;
-		if (agentIds) {
-			for (const agentId of agentIds) this.requireManagedAgent(parentPiboSessionId, agentId);
-		}
-		const names = input.names ? new Set(input.names) : undefined;
-		const threadKeys = input.threadKeys ? new Set(input.threadKeys) : undefined;
-		const eventTypes = input.eventTypes ? new Set(input.eventTypes) : undefined;
-		const kinds = input.kinds ? new Set(input.kinds) : undefined;
-		const roles = input.roles ? new Set(input.roles) : undefined;
-		const textContains = input.textContains?.toLowerCase();
-		const defaultMessageView = eventTypes === undefined && kinds === undefined;
-		const explicitlySelectsTools = input.eventTypes?.some((eventType) => piboAgentObservationKind(eventType) === "tool") === true
-			|| input.kinds?.includes("tool") === true
-			|| toolCallIds !== undefined;
-		const includeTools = input.includeTools === true || (input.includeTools === undefined && explicitlySelectsTools);
-		const defaultEventTypes = includeTools
-			? [...PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES, ...PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES]
-			: [...PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES];
-		const defaultEventTypeSet = new Set<string>(defaultEventTypes);
-		const matches = this.agentObservations.filter((observation) => {
-			if (observation.managingParentId !== parentPiboSessionId) return false;
-			if (requestIds && (!observation.requestId || !requestIds.has(observation.requestId))) return false;
-			if (toolCallIds && (!observation.toolCallId || !toolCallIds.has(observation.toolCallId))) return false;
-			if (agentIds && !agentIds.has(observation.agentId)) return false;
-			if (names && !names.has(observation.name)) return false;
-			if (threadKeys && (!observation.threadKey || !threadKeys.has(observation.threadKey))) return false;
-			if (observation.kind === "tool" && !includeTools) return false;
-			if (defaultMessageView && !defaultEventTypeSet.has(observation.eventType)) return false;
-			if (eventTypes && !eventTypes.has(observation.eventType)) return false;
-			if (kinds && !kinds.has(observation.kind)) return false;
-			if (roles && (!observation.role || !roles.has(observation.role))) return false;
-			if (afterSequence !== undefined && observation.sequence <= afterSequence) return false;
-			const createdAt = Date.parse(observation.createdAt);
-			if (since !== undefined && createdAt < since) return false;
-			if (until !== undefined && createdAt > until) return false;
-			if (textContains && !(observation.text ?? "").toLowerCase().includes(textContains)) return false;
-			return true;
-		});
-		const cursorPolling = afterSequence !== undefined;
-		const ordered = cursorPolling
-			? matches.slice(0, limit)
-			: [...matches].sort((left, right) => order === "asc" ? left.sequence - right.sequence : right.sequence - left.sequence).slice(0, limit);
-		if (cursorPolling && order === "desc") ordered.reverse();
-		const selected = ordered.map((observation) => {
-			const { managingParentId: _managingParentId, details, ...visible } = observation;
-			const compact = visible.kind === "tool" && toolDetail === "summary"
-				? { ...visible, text: piboAgentObservationToolSummary(visible.text, visible.isError, details) }
-				: visible;
-			return input.includeDetails === true && details !== undefined ? { ...compact, details } : compact;
-		});
-		const evictedThrough = this.agentObservationEvictedThroughByParent.get(parentPiboSessionId) ?? 0;
-		const retentionTruncated = afterSequence === undefined ? evictedThrough > 0 : afterSequence < evictedThrough;
-		const nextAfterSequence = selected.reduce(
-			(maximum, observation) => Math.max(maximum, observation.sequence),
-			afterSequence === undefined ? 0 : Math.max(afterSequence, evictedThrough),
+		for (const agentId of input.agentIds ?? []) this.requireManagedAgent(parentPiboSessionId, agentId);
+		const query = preparePiboAgentObservationQuery(input);
+		const ordered = query.scanOrder === "asc"
+			? this.agentObservations
+			: [...this.agentObservations].reverse();
+		return selectPiboAgentObservationPage(
+			ordered
+				.filter((observation) => observation.managingParentId === parentPiboSessionId)
+				.map(({ managingParentId: _managingParentId, ...observation }) => observation),
+			query,
+			{ evictedThrough: this.agentObservationEvictedThroughByParent.get(parentPiboSessionId) ?? 0 },
 		);
-		return {
-			filters: {
-				...input,
-				...(defaultMessageView ? { eventTypes: defaultEventTypes } : {}),
-				...(afterSequence !== undefined ? { afterSequence } : {}),
-				order,
-				limit,
-				includeTools,
-				toolDetail,
-				includeDetails: input.includeDetails === true,
-			},
-			observations: selected,
-			nextAfterSequence,
-			truncated: retentionTruncated || matches.length > selected.length,
-		};
 	}
 
 	private async killManagedAgent(parentPiboSessionId: string, agentId: string) {
@@ -2729,18 +2673,23 @@ export class PiboSessionRouter {
 	}
 
 	private readonly emitOutput = (event: PiboOutputEvent): void => {
-		const session = this.sessionStore.get(event.piboSessionId);
-		this.recordAgentObservation(event, session);
-		this.telemetryRecorder?.recordOutput(event, { session, status: this.sessions.get(event.piboSessionId)?.getStatus() });
-		this.signalRegistry.project({ type: "pibo_output", event, session });
-		this.pluginRegistry.notifyEvent(event);
+		const positionedEvent = this.outputRenderSequencer.position(event);
+		const session = this.sessionStore.get(positionedEvent.piboSessionId);
+		this.recordAgentObservation(positionedEvent, session);
+		this.telemetryRecorder?.recordOutput(positionedEvent, { session, status: this.sessions.get(positionedEvent.piboSessionId)?.getStatus() });
+		this.signalRegistry.project({ type: "pibo_output", event: positionedEvent, session });
+		this.pluginRegistry.notifyEvent(positionedEvent);
 		for (const listener of this.listeners) {
-			listener(event);
+			try {
+				listener(positionedEvent);
+			} catch (error) {
+				console.error("[pibo] output listener failed", error);
+			}
 		}
 
-		this.handleRunReminderOutput(event);
-		if (event.type === "message_finished" && event.source !== "service") {
-			this.scheduleRunReminder(event.piboSessionId, true);
+		this.handleRunReminderOutput(positionedEvent);
+		if (positionedEvent.type === "message_finished" && positionedEvent.source !== "service") {
+			this.scheduleRunReminder(positionedEvent.piboSessionId, true);
 		}
 	};
 
@@ -2866,7 +2815,10 @@ export class PiboSessionRouter {
 	}
 
 	private projectKnownSessionSignals(): void {
-		for (const session of this.sessionStore.list?.() ?? []) {
+		const sessions = this.sessionStore.list?.() ?? [];
+		const depthBySessionId = new Map(sessions.map((session) => [session.id, this.getSubagentDepth(session.id)]));
+		sessions.sort((left, right) => (depthBySessionId.get(left.id) ?? 0) - (depthBySessionId.get(right.id) ?? 0));
+		for (const session of sessions) {
 			this.signalRegistry.project({ type: "session_created", session });
 		}
 	}

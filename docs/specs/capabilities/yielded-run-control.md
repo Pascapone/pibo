@@ -145,7 +145,7 @@ Tracked runs MUST produce compact service reminders when their state needs agent
 
 #### Target
 
-The model sees enough information to decide whether to wait, read, cancel, acknowledge, or ignore for now without flooding context with full tool output.
+The model sees enough information to decide whether to wait, read, cancel, acknowledge, or ignore for now without flooding context with full tool output. The reminder also states that the autonomous turn has a 15-minute wall-clock limit and directs the model to defer new long-running work without narrowing its available toolset.
 
 #### Acceptance
 
@@ -155,6 +155,7 @@ The model sees enough information to decide whether to wait, read, cancel, ackno
 - `pibo_run_read` consumes terminal runs and suppresses future reminders.
 - `pibo_run_ack` suppresses reminders for the current state; if the run is terminal, it also marks the run consumed.
 - Reminder text contains compact metadata only; full results require `pibo_run_read`.
+- Reminder instructions state the 15-minute wall-clock limit and tell the agent to finish promptly without starting new subagents, yielded runs, or other long-running work.
 
 #### Scenario: Tracked run completes after initial notification
 

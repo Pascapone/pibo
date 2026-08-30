@@ -90,6 +90,10 @@ export class PythonRuntimeBackend implements RuntimeBackend {
 		this.child.stderr.on("data", (chunk) => {
 			this.diagnostics += String(chunk);
 		});
+		this.child.stdin.on("error", (error) => {
+			this.alive = false;
+			this.rejectAll(error);
+		});
 		this.child.once("error", (error) => {
 			this.alive = false;
 			this.readyReject(error);
@@ -121,7 +125,7 @@ export class PythonRuntimeBackend implements RuntimeBackend {
 	}
 
 	isAlive(): boolean {
-		return this.alive && !this.child.killed;
+		return this.alive;
 	}
 
 	getRecord() {
@@ -189,7 +193,7 @@ export class PythonRuntimeBackend implements RuntimeBackend {
 
 	async interrupt() {
 		if (!this.isAlive()) return { status: "failed" as const, sessionId: "", message: "Runtime worker is not alive" };
-		this.child.kill("SIGINT");
+		if (!this.child.kill("SIGINT")) return { status: "failed" as const, sessionId: "", message: "Runtime worker is not alive" };
 		return { status: "ok" as const, sessionId: "", message: "Sent SIGINT to runtime worker" };
 	}
 
