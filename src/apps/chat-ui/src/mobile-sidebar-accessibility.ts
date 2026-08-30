@@ -61,10 +61,10 @@ export function mobileSidebarFocusTarget<T>(
 	return null;
 }
 
-export function mobileSidebarShouldYieldKeyboardEvent(sidebar: HTMLElement, eventTarget: EventTarget | null): boolean {
-	if (!eventTarget || typeof (eventTarget as Element).closest !== "function") return false;
-	const owningModal = (eventTarget as Element).closest('[role="dialog"][aria-modal="true"]');
-	return owningModal !== null && owningModal !== sidebar;
+export function mobileSidebarOwnsKeyboardEvent(sidebar: HTMLElement, target: EventTarget | null): boolean {
+	if (!(target instanceof Element)) return true;
+	const modal = target.closest<HTMLElement>('[role="dialog"][aria-modal="true"]');
+	return !modal || modal === sidebar;
 }
 
 export function collectMobileSidebarBackgroundElements(sidebar: HTMLElement, root: HTMLElement): HTMLElement[] {
@@ -143,7 +143,7 @@ export function useMobileSidebarModal({
 			mobileSidebarInitialFocusTarget<FocusTarget>(focusable, sidebar).focus();
 		});
 		const handleKeyDown = (event: KeyboardEvent) => {
-			if (mobileSidebarShouldYieldKeyboardEvent(sidebar, event.target)) return;
+			if (!mobileSidebarOwnsKeyboardEvent(sidebar, event.target)) return;
 			if (event.key === "Escape") {
 				event.preventDefault();
 				event.stopPropagation();

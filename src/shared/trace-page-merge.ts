@@ -4,13 +4,7 @@ import type { PiboSessionTraceView } from "./trace-types.js";
 
 export function mergeOlderTracePage(current: PiboSessionTraceView, older: PiboSessionTraceView): PiboSessionTraceView {
 	if (current.piboSessionId !== older.piboSessionId) return current;
-	const seenRawEvents = new Set<string>();
-	const rawEvents = [...older.rawEvents, ...current.rawEvents].filter((event) => {
-		const key = event.id || `${event.eventSequence ?? ""}:${event.type}:${event.createdAt}`;
-		if (seenRawEvents.has(key)) return false;
-		seenRawEvents.add(key);
-		return true;
-	});
+	const rawEvents = mergeTraceRawEvents(older.rawEvents, current.rawEvents, false);
 	return {
 		...current,
 		version: current.version,
@@ -30,7 +24,7 @@ export function mergeRefreshedTracePage(current: PiboSessionTraceView, refreshed
 	return {
 		...refreshed,
 		nodes: mergeRefreshedTraceNodes(current.nodes, refreshed),
-		rawEvents: mergeTraceRawEvents(current.rawEvents, refreshed.rawEvents),
+		rawEvents: mergeTraceRawEvents(current.rawEvents, refreshed.rawEvents, true),
 		beforeCursor: current.beforeCursor,
 		firstEventSequence: current.firstEventSequence ?? refreshed.firstEventSequence,
 		nextBeforeSequence: current.nextBeforeSequence,
@@ -137,19 +131,58 @@ function parseTimestamp(value: string | undefined): number | undefined {
 function mergeTraceRawEvents(
 	currentEvents: PiboSessionTraceView["rawEvents"],
 	refreshedEvents: PiboSessionTraceView["rawEvents"],
+	replaceCoveredTail: boolean,
 ): PiboSessionTraceView["rawEvents"] {
-	if (!refreshedEvents.length) return currentEvents;
-	const firstRefreshedSequence = refreshedEvents.reduce<number | undefined>((first, event) => {
+	if (!refreshedEvents.length) return [...currentEvents].sort(compareTraceRawEvents);
+	const firstRefreshedSequence = replaceCoveredTail ? refreshedEvents.reduce<number | undefined>((first, event) => {
 		if (event.eventSequence === undefined) return first;
 		return first === undefined ? event.eventSequence : Math.min(first, event.eventSequence);
-	}, undefined);
+	}, undefined) : undefined;
 	const byKey = new Map<string, PiboSessionTraceView["rawEvents"][number]>();
 	for (const event of currentEvents) {
 		if (firstRefreshedSequence !== undefined && event.eventSequence !== undefined && event.eventSequence >= firstRefreshedSequence) continue;
 		byKey.set(traceRawEventKey(event), event);
 	}
 	for (const event of refreshedEvents) byKey.set(traceRawEventKey(event), event);
-	return [...byKey.values()];
+	return [...byKey.values()].sort(compareTraceRawEvents);
+}
+
+function compareTraceRawEvents(
+	left: PiboSessionTraceView["rawEvents"][number],
+	right: PiboSessionTraceView["rawEvents"][number],
+): number {
+	const leftSequenceDomain = left.eventSequence === undefined ? 0 : 1;
+	const rightSequenceDomain = right.eventSequence === undefined ? 0 : 1;
+	return leftSequenceDomain - rightSequenceDomain
+		|| (left.eventSequence !== undefined && right.eventSequence !== undefined
+			? left.eventSequence - right.eventSequence
+			: 0)
+		|| compareOptionalString(validTimestamp(left.createdAt), validTimestamp(right.createdAt))
+		|| compareOptionalNumber(left.streamId, right.streamId)
+		|| compareOptionalNumber(left.streamFrameIndex, right.streamFrameIndex)
+		|| (left.eventSequence === undefined && right.eventSequence === undefined
+			? compareOptionalNumber(left.renderSequence, right.renderSequence)
+			: 0)
+		|| left.id.localeCompare(right.id)
+		|| left.type.localeCompare(right.type);
+}
+
+function compareOptionalNumber(left: number | undefined, right: number | undefined): number {
+	if (left === right) return 0;
+	if (left === undefined) return 1;
+	if (right === undefined) return -1;
+	return left - right;
+}
+
+function compareOptionalString(left: string | undefined, right: string | undefined): number {
+	if (left === right) return 0;
+	if (left === undefined) return 1;
+	if (right === undefined) return -1;
+	return left.localeCompare(right);
+}
+
+function validTimestamp(value: string): string | undefined {
+	return Number.isFinite(Date.parse(value)) ? value : undefined;
 }
 
 function traceRawEventKey(event: PiboSessionTraceView["rawEvents"][number]): string {

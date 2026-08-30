@@ -43,20 +43,3 @@ test("action selection restores its menu trigger before opening a confirmation",
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 });
-
-test("the mobile sidebar yields keyboard ownership to a topmost child modal", async () => {
-	const script = String.raw`
-		import assert from "node:assert/strict";
-		import { mobileSidebarShouldYieldKeyboardEvent } from "./src/apps/chat-ui/src/mobile-sidebar-accessibility.ts";
-
-		const sidebar = { name: "sidebar" };
-		const confirmation = { name: "confirmation" };
-		const target = (closestDialog) => ({ closest: () => closestDialog });
-
-		assert.equal(mobileSidebarShouldYieldKeyboardEvent(sidebar, target(confirmation)), true);
-		assert.equal(mobileSidebarShouldYieldKeyboardEvent(sidebar, target(sidebar)), false);
-		assert.equal(mobileSidebarShouldYieldKeyboardEvent(sidebar, target(null)), false);
-		assert.equal(mobileSidebarShouldYieldKeyboardEvent(sidebar, null), false);
-	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
-});

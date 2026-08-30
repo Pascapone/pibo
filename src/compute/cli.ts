@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 import {
 	IMAGE_NAME,
 	imageExists,
@@ -36,6 +36,12 @@ function parsePositiveIntegerOption(value: string | undefined): number | undefin
 	if (value === undefined || value.trim() === "") return undefined;
 	const parsed = Number(value);
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseNonNegativeNumber(value: string): number {
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed) || parsed < 0) throw new InvalidArgumentError("Value must be a non-negative number");
+	return parsed;
 }
 
 function hostPort(value: string | undefined): string | undefined {
@@ -461,7 +467,7 @@ Use the name or id shown by:
 	program
 		.command("reap")
 		.description("Preview or apply compute worker container cleanup")
-		.option("--max-age-minutes <n>", "Select workers older than this many minutes", "60")
+		.option("--max-age-minutes <n>", "Select workers older than this many minutes", parseNonNegativeNumber, 60)
 		.option("--include-dev", "Also select dev-worker containers; dev workers are skipped by default")
 		.option("--no-stopped", "Do not select stopped, dead, created, or restarting containers")
 		.option("--no-dirty", "Do not select dirty or OOM-killed containers")
@@ -476,13 +482,12 @@ Stopped, dirty/OOM, and old workers are selected unless disabled by selector fla
 Worktrees are preserved; container cleanup never deletes Git worktrees.
 `,
 		)
-		.action(async (options: { maxAgeMinutes: string; includeDev?: boolean; stopped?: boolean; dirty?: boolean; dryRun?: boolean; apply?: boolean; json?: boolean }) => {
-			const maxAge = Number(options.maxAgeMinutes);
+		.action(async (options: { maxAgeMinutes: number; includeDev?: boolean; stopped?: boolean; dirty?: boolean; dryRun?: boolean; apply?: boolean; json?: boolean }) => {
 			const plan = await planReapWorkers({
 				includeDev: options.includeDev === true,
 				includeStopped: options.stopped !== false,
 				includeDirty: options.dirty !== false,
-				maxAgeMinutes: Number.isFinite(maxAge) ? maxAge : 60,
+				maxAgeMinutes: options.maxAgeMinutes,
 			});
 			const shouldApply = options.apply === true;
 			const removed = shouldApply ? await applyComputeWorkerReapPlan(plan) : [];

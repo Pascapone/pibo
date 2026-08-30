@@ -957,6 +957,8 @@ test("router coalesces generic run completion into a compact parent notification
 	assert.match(messages[0].text, /"completed"/);
 	assert.match(messages[0].text, /"toolName":"helper"/);
 	assert.match(messages[0].text, new RegExp(`"runId":"${run.runId}"`));
+	assert.match(messages[0].text, /stops after 15 minutes of wall-clock time/);
+	assert.match(messages[0].text, /Do not start new subagents, yielded runs, or other long-running work/);
 
 	assert.equal(controller.readRun(run.runId).consumed, true);
 	router.emitOutput({
