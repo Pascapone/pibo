@@ -94,7 +94,7 @@ exec "$real_agent_browser" "\${args[@]}"
 }
 
 export function ensureAgentBrowserWrapper(status: CliToolStatus): string | undefined {
-  if (!status.homeDir || !status.executablePath) return undefined;
+  if (!status.installed || !status.homeDir || !status.executablePath) return undefined;
   const wrapperPath = join(status.homeDir, 'bin', 'agent-browser');
   mkdirSync(dirname(wrapperPath), { recursive: true });
   writeFileSync(wrapperPath, createAgentBrowserWrapper(status.executablePath, status.homeDir));

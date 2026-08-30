@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 
 const DEFAULT_ROWS = 24;
 const DEFAULT_COLS = 100;
@@ -199,6 +200,18 @@ type AssertionResult = {
 	passed: boolean;
 	message?: string;
 };
+
+type MonotonicDeadline = {
+	expiresAt: number;
+	timeoutMs: number;
+};
+
+class WallClockTimeoutError extends Error {
+	constructor(timeoutMs: number) {
+		super(`PTY command timed out after ${timeoutMs}ms`);
+		this.name = "WallClockTimeoutError";
+	}
+}
 
 type RunningPty = {
 	backend: PtyBackend;
@@ -502,26 +515,31 @@ function parseSteps(value: unknown, source: string): PtyStep[] {
 
 async function executePtyScenario(input: PtyScenario, options: PtyOptions): Promise<PtyResult> {
 	const scenario = normalizeScenario(input, options);
-	const started = Date.now();
-	const startedAt = new Date(started).toISOString();
+	const startedAt = new Date().toISOString();
+	const started = performance.now();
+	const deadline = createDeadline(scenario.timeoutMs, started);
 	let runner: RunningPty | undefined;
 	const assertions: AssertionResult[] = [];
 	let iterations = 0;
 	let stopReason = "completed";
+	let exitCode: number | null = null;
+	let signal: NodeJS.Signals | null = null;
 	try {
 		validateProviderSafety(scenario, options);
 		runner = await startRunner(scenario);
-		let lastOutputAt = Date.now();
+		throwIfDeadlineExpired(deadline);
+		let lastOutputAt = performance.now();
 		let outputLength = 0;
 		const refreshOutputTimestamp = () => {
 			const raw = runner?.getRawOutput() ?? "";
 			if (raw.length !== outputLength) {
 				outputLength = raw.length;
-				lastOutputAt = Date.now();
+				lastOutputAt = performance.now();
 			}
 			return lastOutputAt;
 		};
 		for (const step of scenario.steps) {
+			throwIfDeadlineExpired(deadline);
 			if (step.iteration === true) {
 				iterations += 1;
 				if (scenario.providerMode === "real" && scenario.maxIterations !== undefined && iterations > scenario.maxIterations) {
@@ -530,7 +548,8 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 				}
 			}
 			await checkIdle(runner, refreshOutputTimestamp, scenario.idleTimeoutMs);
-			await runStep(runner, scenario, step, assertions, refreshOutputTimestamp);
+			await runStep(runner, scenario, step, assertions, refreshOutputTimestamp, deadline);
+			throwIfDeadlineExpired(deadline);
 			refreshOutputTimestamp();
 			const clean = cleanTerminalText(runner.getRawOutput());
 			const matchedStop = scenario.stopPatterns.find((pattern) => clean.includes(pattern));
@@ -539,28 +558,34 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 				break;
 			}
 		}
-		const exit = await waitForExitOrIdle(runner, Math.max(1, scenario.timeoutMs - (Date.now() - started)), scenario.idleTimeoutMs, refreshOutputTimestamp);
+		const stoppedByPattern = stopReason.startsWith("stop_pattern:");
+		if (stoppedByPattern) await runner.terminate(stopReason);
+		const exit = await waitForExitOrIdle(runner, deadline, scenario.idleTimeoutMs, refreshOutputTimestamp);
+		exitCode = exit.exitCode;
+		signal = exit.signal;
 		if (exit.idleTimedOut) {
 			stopReason = "idle_timeout";
 			throw new Error(`PTY command produced no output for ${scenario.idleTimeoutMs}ms`);
 		}
 		if (exit.timedOut) {
-			stopReason = stopReason === "completed" ? "wall_clock_timeout" : stopReason;
-			throw new Error(`PTY command timed out after ${scenario.timeoutMs}ms`);
+			throw new WallClockTimeoutError(scenario.timeoutMs);
 		}
+		throwIfDeadlineExpired(deadline);
 		const clean = cleanTerminalText(runner.getRawOutput());
 		assertPatterns(clean, scenario.expect, scenario.reject, assertions);
-		if (exit.exitCode !== 0) {
+		throwIfDeadlineExpired(deadline);
+		if (exit.exitCode !== 0 && !stoppedByPattern) {
 			stopReason = `exit_code:${exit.exitCode ?? "signal"}`;
 			throw new Error(`PTY command exited with status ${exit.exitCode ?? exit.signal ?? "unknown"}`);
 		}
-		const result = buildResult(scenario, runner, true, assertions, iterations, started, startedAt, stopReason, exit.exitCode, exit.signal);
+		const result = buildResult(scenario, runner, true, assertions, iterations, started, startedAt, stopReason, exitCode, signal);
 		if (scenario.writeArtifactsOnSuccess) result.artifactDir = await writeArtifacts(scenario, result);
 		return result;
 	} catch (error) {
-		if (stopReason === "completed") stopReason = runner ? "error" : "preflight_error";
+		if (error instanceof WallClockTimeoutError && stopReason === "completed") stopReason = "wall_clock_timeout";
+		else if (stopReason === "completed") stopReason = runner ? "error" : "preflight_error";
 		if (runner) await runner.terminate(stopReason);
-		const result = buildResult(scenario, runner, false, assertions, iterations, started, startedAt, stopReason, null, null);
+		const result = buildResult(scenario, runner, false, assertions, iterations, started, startedAt, stopReason, exitCode, signal);
 		result.artifactDir = await writeArtifacts(scenario, result, error instanceof Error ? error.message : String(error));
 		const message = `${error instanceof Error ? error.message : String(error)}\nPTY artifacts: ${result.artifactDir}`;
 		throw new Error(message);
@@ -687,6 +712,22 @@ function wrapChild(child: ChildProcessWithoutNullStreams, backend: PtyBackend, p
 		driverStderr += `${error.message}\n`;
 		events.push({ t: Date.now(), source: "system", kind: "error", detail: error.message });
 	});
+	const waitForExit = async (timeoutMs: number) => {
+		if (exitState) return { ...exitState, timedOut: false };
+		if (timeoutMs <= 0) return { exitCode: null, signal: null, timedOut: true };
+		return new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve) => {
+			let settled = false;
+			let timer: NodeJS.Timeout | undefined;
+			const finish = (value: { exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean }) => {
+				if (settled) return;
+				settled = true;
+				if (timer) clearTimeout(timer);
+				resolve(value);
+			};
+			exitPromise.then((value) => finish({ ...value, timedOut: false }));
+			timer = setTimeout(() => finish({ exitCode: null, signal: null, timedOut: true }), timeoutMs);
+		});
+	};
 	return {
 		backend,
 		ptyMethod,
@@ -700,48 +741,53 @@ function wrapChild(child: ChildProcessWithoutNullStreams, backend: PtyBackend, p
 			events.push({ t: Date.now(), source: "system", kind: "terminate", detail: reason });
 			if (exitState) return;
 			child.kill("SIGTERM");
-			await Promise.race([
-				exitPromise,
-				delay(1_000).then(() => {
-					if (!exitState) child.kill("SIGKILL");
-				}),
-			]);
+			if (await waitForChildExit(exitPromise, 1_000)) return;
+			child.kill("SIGKILL");
+			await waitForChildExit(exitPromise, 1_000);
 		},
-		async waitForExit(timeoutMs: number) {
-			if (exitState) return { ...exitState, timedOut: false };
-			const timeout = delay(timeoutMs).then(() => ({ exitCode: null, signal: null, timedOut: true }));
-			const exit = exitPromise.then((value) => ({ ...value, timedOut: false }));
-			return Promise.race([exit, timeout]);
-		},
+		waitForExit,
 		getRawOutput: () => rawOutput,
 		getDriverStderr: () => driverStderr,
 		getEvents: () => events,
 	};
 }
 
-async function runStep(runner: RunningPty, scenario: NormalizedScenario, step: PtyStep, assertions: AssertionResult[], markOutput: () => number): Promise<void> {
+async function runStep(
+	runner: RunningPty,
+	scenario: NormalizedScenario,
+	step: PtyStep,
+	assertions: AssertionResult[],
+	markOutput: () => number,
+	deadline: MonotonicDeadline,
+): Promise<void> {
 	if (step.waitFor !== undefined) {
-		await waitForText(runner, step.waitFor, step.timeoutMs ?? scenario.timeoutMs, scenario.idleTimeoutMs, markOutput);
+		await waitForText(runner, step.waitFor, step.timeoutMs ?? scenario.timeoutMs, scenario.idleTimeoutMs, markOutput, deadline);
 		return;
 	}
 	if (step.typeText !== undefined) {
 		for (const char of step.typeText) {
+			throwIfDeadlineExpired(deadline);
 			await runner.write(char);
-			if (scenario.inputDelayMs > 0) await delay(scenario.inputDelayMs);
+			throwIfDeadlineExpired(deadline);
+			await delayWithinDeadline(scenario.inputDelayMs, deadline);
 		}
 		return;
 	}
 	if (step.writeBytes !== undefined) {
+		throwIfDeadlineExpired(deadline);
 		await runner.write(step.writeBytes);
+		throwIfDeadlineExpired(deadline);
 		return;
 	}
 	if (step.press !== undefined) {
+		throwIfDeadlineExpired(deadline);
 		await runner.write(keySequence(step.press));
-		if (scenario.inputDelayMs > 0) await delay(scenario.inputDelayMs);
+		throwIfDeadlineExpired(deadline);
+		await delayWithinDeadline(scenario.inputDelayMs, deadline);
 		return;
 	}
 	if (step.sleepMs !== undefined) {
-		await delay(step.sleepMs);
+		await delayWithinDeadline(step.sleepMs, deadline);
 		return;
 	}
 	const clean = cleanTerminalText(runner.getRawOutput());
@@ -752,34 +798,46 @@ async function runStep(runner: RunningPty, scenario: NormalizedScenario, step: P
 	if (step.reject !== undefined) assertPatterns(clean, [], [step.reject], assertions);
 }
 
-async function waitForText(runner: RunningPty, pattern: string, timeoutMs: number, idleTimeoutMs: number, markOutput: () => number): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
+async function waitForText(
+	runner: RunningPty,
+	pattern: string,
+	timeoutMs: number,
+	idleTimeoutMs: number,
+	markOutput: () => number,
+	globalDeadline: MonotonicDeadline,
+): Promise<void> {
+	const stepDeadline = performance.now() + timeoutMs;
+	while (true) {
+		throwIfDeadlineExpired(globalDeadline);
 		const lastOutputAt = markOutput();
 		if (cleanTerminalText(runner.getRawOutput()).includes(pattern)) return;
-		if (Date.now() - lastOutputAt > idleTimeoutMs) {
+		const now = performance.now();
+		if (now - lastOutputAt > idleTimeoutMs) {
 			await runner.terminate("idle_timeout");
 			throw new Error(`PTY command produced no output for ${idleTimeoutMs}ms while waiting for ${JSON.stringify(pattern)}`);
 		}
-		await delay(50);
+		if (now >= stepDeadline) break;
+		await delay(Math.max(1, Math.min(50, stepDeadline - now, remainingMs(globalDeadline), idleTimeoutMs - (now - lastOutputAt))));
 	}
 	throw new Error(`Timed out waiting for PTY output ${JSON.stringify(pattern)} after ${timeoutMs}ms`);
 }
 
-async function waitForExitOrIdle(runner: RunningPty, timeoutMs: number, idleTimeoutMs: number, markOutput: () => number): Promise<{ exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean; idleTimedOut: boolean }> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
+async function waitForExitOrIdle(runner: RunningPty, deadline: MonotonicDeadline, idleTimeoutMs: number, markOutput: () => number): Promise<{ exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean; idleTimedOut: boolean }> {
+	while (remainingMs(deadline) > 0) {
 		const lastOutputAt = markOutput();
-		const remaining = Math.max(1, Math.min(100, deadline - Date.now()));
+		const remaining = Math.max(1, Math.min(100, remainingMs(deadline)));
 		const exit = await runner.waitForExit(remaining);
-		if (!exit.timedOut) return { ...exit, timedOut: false, idleTimedOut: false };
-		if (Date.now() - lastOutputAt > idleTimeoutMs) return { exitCode: null, signal: null, timedOut: false, idleTimedOut: true };
+		if (!exit.timedOut) {
+			if (remainingMs(deadline) <= 0) return { exitCode: null, signal: null, timedOut: true, idleTimedOut: false };
+			return { ...exit, timedOut: false, idleTimedOut: false };
+		}
+		if (performance.now() - lastOutputAt > idleTimeoutMs) return { exitCode: null, signal: null, timedOut: false, idleTimedOut: true };
 	}
 	return { exitCode: null, signal: null, timedOut: true, idleTimedOut: false };
 }
 
 async function checkIdle(runner: RunningPty, lastOutputAt: () => number, idleTimeoutMs: number): Promise<void> {
-	if (Date.now() - lastOutputAt() > idleTimeoutMs) {
+	if (performance.now() - lastOutputAt() > idleTimeoutMs) {
 		await runner.terminate("idle_timeout");
 		throw new Error(`PTY command produced no output for ${idleTimeoutMs}ms`);
 	}
@@ -830,7 +888,7 @@ function buildResult(
 	exitCode: number | null,
 	signal: NodeJS.Signals | null,
 ): PtyResult {
-	const ended = Date.now();
+	const endedAt = new Date().toISOString();
 	return {
 		ok,
 		name: scenario.name,
@@ -839,8 +897,8 @@ function buildResult(
 		signal,
 		stopReason,
 		startedAt,
-		endedAt: new Date(ended).toISOString(),
-		durationMs: ended - started,
+		endedAt,
+		durationMs: Math.round(performance.now() - started),
 		rawOutput: runner?.getRawOutput() ?? "",
 		driverStderr: runner?.getDriverStderr() ?? "",
 		events: runner?.getEvents() ?? [],
@@ -998,8 +1056,46 @@ function safeName(name: string): string {
 	return name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "pty-scenario";
 }
 
+function createDeadline(timeoutMs: number, started = performance.now()): MonotonicDeadline {
+	return { expiresAt: started + timeoutMs, timeoutMs };
+}
+
+function remainingMs(deadline: MonotonicDeadline): number {
+	return Math.max(0, deadline.expiresAt - performance.now());
+}
+
+function throwIfDeadlineExpired(deadline: MonotonicDeadline): void {
+	if (remainingMs(deadline) <= 0) throw new WallClockTimeoutError(deadline.timeoutMs);
+}
+
+async function delayWithinDeadline(ms: number, deadline: MonotonicDeadline): Promise<void> {
+	throwIfDeadlineExpired(deadline);
+	if (ms <= 0) return;
+	const remaining = remainingMs(deadline);
+	if (ms >= remaining) {
+		await delay(remaining);
+		throw new WallClockTimeoutError(deadline.timeoutMs);
+	}
+	await delay(ms);
+	throwIfDeadlineExpired(deadline);
+}
+
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForChildExit(exitPromise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+	let timeout: NodeJS.Timeout | undefined;
+	try {
+		return await Promise.race([
+			exitPromise.then(() => true),
+			new Promise<boolean>((resolve) => {
+				timeout = setTimeout(() => resolve(false), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timeout) clearTimeout(timeout);
+	}
 }
 
 export const __debugPtyForTests = {

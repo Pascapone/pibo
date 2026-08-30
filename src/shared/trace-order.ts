@@ -17,11 +17,13 @@ export type TraceNodeKind =
 export type TraceOrderKey = {
 	sourceRank: number;
 	turnSeq: number;
+	renderSequence?: number;
 	transcriptIndex?: number;
 	contentPartIndex?: number;
 	eventSequence?: number;
 	streamId?: number;
 	streamFrameIndex?: number;
+	chronologyMs?: number;
 	phaseRank: number;
 };
 
@@ -52,12 +54,15 @@ export function historyTraceOrder(
 	contentPartIndex: number,
 	type: TraceNodeKind,
 	source: Extract<TraceSource, "transcript" | "product-history">,
+	createdAt?: string,
 ): TraceOrderKey {
 	return {
 		sourceRank: TRACE_SOURCE_RANK[source],
 		turnSeq: historyIndex,
 		transcriptIndex: historyIndex,
+		eventSequence: source === "product-history" ? historyIndex : undefined,
 		contentPartIndex,
+		chronologyMs: parseChronologyMs(createdAt),
 		phaseRank: TRACE_PHASE_RANK[type],
 	};
 }
@@ -119,14 +124,47 @@ export function compareTraceOrder(left?: TraceOrderKey, right?: TraceOrderKey): 
 	if (!left && !right) return 0;
 	if (!left) return 1;
 	if (!right) return -1;
+	const leftPosition = canonicalTracePosition(left);
+	const rightPosition = canonicalTracePosition(right);
 	return (
+		compareOptionalChronology(left.chronologyMs, right.chronologyMs) ||
+		leftPosition - rightPosition ||
+		left.phaseRank - right.phaseRank ||
+		(left.contentPartIndex ?? 0) - (right.contentPartIndex ?? 0) ||
 		left.sourceRank - right.sourceRank ||
-		left.turnSeq - right.turnSeq ||
 		(left.transcriptIndex ?? Number.MAX_SAFE_INTEGER) - (right.transcriptIndex ?? Number.MAX_SAFE_INTEGER) ||
 		(left.eventSequence ?? Number.MAX_SAFE_INTEGER) - (right.eventSequence ?? Number.MAX_SAFE_INTEGER) ||
+		(left.renderSequence ?? Number.MAX_SAFE_INTEGER) - (right.renderSequence ?? Number.MAX_SAFE_INTEGER) ||
 		(left.streamId ?? Number.MAX_SAFE_INTEGER) - (right.streamId ?? Number.MAX_SAFE_INTEGER) ||
 		(left.streamFrameIndex ?? Number.MAX_SAFE_INTEGER) - (right.streamFrameIndex ?? Number.MAX_SAFE_INTEGER) ||
-		(left.contentPartIndex ?? 0) - (right.contentPartIndex ?? 0) ||
-		left.phaseRank - right.phaseRank
+		left.turnSeq - right.turnSeq
 	);
+}
+
+function parseChronologyMs(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const parsed = Date.parse(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function compareOptionalChronology(left: number | undefined, right: number | undefined): number {
+	if (left === right) return 0;
+	if (left === undefined) return 1;
+	if (right === undefined) return -1;
+	return left - right;
+}
+
+/**
+ * chronologyMs is the common cross-source domain; renderSequence supplies its
+ * immutable first-visible time for modern stream segments. This canonical
+ * position is the deterministic tie-break domain for equal/missing chronology.
+ * The comparator never selects a field based on the other operand, keeping the
+ * relation total and transitive.
+ */
+function canonicalTracePosition(order: TraceOrderKey): number {
+	return order.renderSequence
+		?? order.eventSequence
+		?? order.transcriptIndex
+		?? order.streamId
+		?? order.turnSeq;
 }

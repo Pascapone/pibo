@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,6 +13,7 @@ import { createPiboXvfbServiceUnit, PIBO_XVFB_SERVICE_PATH, PIBO_XVFB_SERVICE_NA
 const execFileAsync = promisify(execFile);
 const cliPath = resolve("dist/bin/pibo.js");
 const posixWrapperTest = process.platform === "win32" ? { skip: "requires POSIX browser wrapper semantics" } : {};
+const linuxTest = process.platform === "linux" ? {} : { skip: "requires Linux uv provisioning behavior" };
 
 function shellQuote(value) {
 	return `'${value.replaceAll("'", "'\\''")}'`;
@@ -33,6 +34,26 @@ async function waitForProcess(pid, alive) {
 		await new Promise((resolveWait) => setTimeout(resolveWait, 50));
 	}
 	assert.equal(processIsAlive(pid), alive);
+}
+
+async function waitForOutput(child, output, pattern, timeoutMs = 5000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (output().includes(pattern)) return;
+		if (child.exitCode !== null || child.signalCode !== null) break;
+		await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+	}
+	assert.match(output(), pattern);
+}
+
+async function waitForChildExit(child, timeoutMs = 5000) {
+	if (child.exitCode !== null || child.signalCode !== null) {
+		return { code: child.exitCode, signal: child.signalCode };
+	}
+	return await Promise.race([
+		new Promise((resolveExit) => child.once("exit", (code, signal) => resolveExit({ code, signal }))),
+		new Promise((_, reject) => setTimeout(() => reject(new Error(`Timed out waiting for child ${child.pid} to exit`)), timeoutMs)),
+	]);
 }
 
 function spawnBrowserLikeProcess(commandName, userDataDir) {
@@ -139,7 +160,7 @@ test("pibo tools exposes Graphify as a curated CLI tool", async () => {
 
 		const show = await execFileAsync("node", [cliPath, "tools", "show", "graphify"], { cwd, env });
 		assert.match(show.stdout, /package: graphifyy/);
-		assert.match(show.stdout, /pibo tools env graphify/);
+		assert.match(show.stdout, /pibo tools install graphify/);
 		assert.match(show.stdout, /pibo tools guide graphify graphify/);
 
 		const guide = await execFileAsync("node", [cliPath, "tools", "guide", "graphify", "graphify"], { cwd, env });
@@ -153,8 +174,12 @@ test("pibo tools exposes Graphify as a curated CLI tool", async () => {
 		const install = await execFileAsync("node", [cliPath, "tools", "install", "graphify", "--no-setup"], { cwd, env });
 		assert.match(install.stdout, /Install target graphify/);
 		assert.match(install.stdout, /pibo-home[\\/]tools[\\/]graphify/);
-		assert.match(install.stdout, /env: pibo tools env graphify/);
+		assert.match(install.stdout, /install: pibo tools install graphify/);
 
+		const graphifyBinDir = join(env.PIBO_HOME, "tools", "graphify", ".venv", process.platform === "win32" ? "Scripts" : "bin");
+		const graphifyExecutable = join(graphifyBinDir, process.platform === "win32" ? "graphify.exe" : "graphify");
+		await mkdir(graphifyBinDir, { recursive: true });
+		await writeFile(graphifyExecutable, "fixture");
 		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "graphify"], { cwd, env });
 		assert.match(envOutput.stdout, process.platform === "win32" ? /tools\\graphify\\.venv\\Scripts/ : /tools\/graphify\/.venv\/bin/);
 		assert.doesNotMatch(envOutput.stdout, /browser-use/);
@@ -259,7 +284,109 @@ test("pibo tools install supports a no-setup dry target", async () => {
 			assert.match(result.stdout, /Install a virtual X display if this host has no desktop session\./);
 			assert.match(result.stdout, /Xvfb :0 -screen 0 1920x1080x24 -ac -nolisten tcp/);
 		}
-		assert.match(result.stdout, /env: pibo tools env browser-use/);
+		assert.match(result.stdout, /install: pibo tools install browser-use/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools path and env expose only installed browser tool runtimes", posixWrapperTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-availability-"));
+	try {
+		const env = { ...process.env, HOME: join(cwd, "home"), PIBO_HOME: join(cwd, "home", ".pibo") };
+		const tools = [
+			{
+				name: "agent-browser",
+				realExecutable: join(env.PIBO_HOME, "tools", "agent-browser", "node", "node_modules", ".bin", "agent-browser"),
+				wrapper: join(env.PIBO_HOME, "tools", "agent-browser", "home", "bin", "agent-browser"),
+			},
+			{
+				name: "browser-use",
+				realExecutable: join(env.PIBO_HOME, "tools", "browser-use", ".venv", "bin", "browser-use"),
+				wrapper: join(env.PIBO_HOME, "tools", "browser-use", "home", "bin", "browser-use"),
+			},
+		];
+
+		const builtInPath = await execFileAsync("node", [cliPath, "tools", "path", "loop"], { cwd, env });
+		assert.equal(builtInPath.stdout.trim(), "pibo loop");
+
+		for (let transition = 0; transition < 2; transition += 1) {
+			for (const tool of tools) {
+				for (const command of ["path", "env"]) {
+					await assert.rejects(
+						execFileAsync("node", [cliPath, "tools", command, tool.name], { cwd, env }),
+						(error) => {
+							assert.equal(error.code, 1);
+							assert.equal(error.stdout, "");
+							assert.match(error.stderr, /Error \[CLI_TOOL_NOT_INSTALLED\]/);
+							assert.match(error.stderr, new RegExp(`pibo tools install ${tool.name}`));
+							return true;
+						},
+					);
+				}
+				assert.equal(existsSync(tool.wrapper), false);
+
+				await mkdir(dirname(tool.realExecutable), { recursive: true });
+				await writeFile(tool.realExecutable, `#!/bin/sh\nprintf 'fixture-${tool.name}\\n'\n`);
+				await chmod(tool.realExecutable, 0o755);
+
+				const installed = await execFileAsync("node", [cliPath, "tools", "installed"], { cwd, env });
+				assert.match(installed.stdout, new RegExp(`^${tool.name}\\tinstalled`, "m"));
+				const pathResult = await execFileAsync("node", [cliPath, "tools", "path", tool.name], { cwd, env });
+				assert.equal(pathResult.stdout.trim(), tool.wrapper);
+				const invocation = await execFileAsync(tool.wrapper, ["--help"], { cwd, env });
+				assert.match(invocation.stdout, new RegExp(`fixture-${tool.name}`));
+				const envResult = await execFileAsync("node", [cliPath, "tools", "env", tool.name], { cwd, env });
+				assert.match(envResult.stdout, new RegExp(tool.wrapper.replace(/\/[^/]+$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+				await execFileAsync("node", [cliPath, "tools", "remove", tool.name], { cwd, env });
+				assert.equal(existsSync(dirname(dirname(tool.wrapper))), false);
+			}
+		}
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools doctor reports missing uv without provisioning it", linuxTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-doctor-missing-uv-"));
+	try {
+		const home = join(cwd, "home");
+		const piboHome = join(cwd, "pibo-home");
+		const fakeBin = join(cwd, "bin");
+		const curlSentinel = join(cwd, "curl-was-called");
+		const forceRoot = join(cwd, "force-root.cjs");
+		await mkdir(home, { recursive: true });
+		await mkdir(fakeBin, { recursive: true });
+		await writeFile(forceRoot, "process.getuid = () => 0;\n");
+
+		const fakeUv = join(fakeBin, "uv");
+		await writeFile(fakeUv, "#!/bin/sh\nexit 127\n");
+		await chmod(fakeUv, 0o755);
+
+		const fakeCurl = join(fakeBin, "curl");
+		await writeFile(
+			fakeCurl,
+			"#!/bin/sh\n: > \"$PIBO_TEST_CURL_SENTINEL\"\nprintf '%s\\n' 'mkdir -p \"$HOME/.local/bin\"' ': > \"$HOME/.profile\"'\n",
+		);
+		await chmod(fakeCurl, 0o755);
+
+		const result = await execFileAsync(process.execPath, [cliPath, "tools", "doctor", "browser-use"], {
+			cwd,
+			env: {
+				...process.env,
+				HOME: home,
+				PIBO_HOME: piboHome,
+				PIBO_TEST_CURL_SENTINEL: curlSentinel,
+				PATH: `${fakeBin}:/bin:/usr/bin`,
+				NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require=${forceRoot}`.trim(),
+			},
+		});
+
+		assert.match(result.stdout, /uv: missing/);
+		assert.match(result.stdout, /Install uv first:/);
+		assert.equal(existsSync(curlSentinel), false, "doctor must not invoke curl to provision uv");
+		assert.deepEqual(await readdir(home), [], "doctor must not create files outside PIBO_HOME");
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -275,7 +402,8 @@ test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers"
 
 		const show = await execFileAsync("node", [cliPath, "tools", "show", "agent-browser"], { cwd, env });
 		assert.match(show.stdout, /package: agent-browser@0\.27\.0/);
-		assert.match(show.stdout, /wrapper: .*tools\/agent-browser\/home\/bin\/agent-browser/);
+		assert.match(show.stdout, /wrapper: not generated/);
+		assert.match(show.stdout, /pibo tools install agent-browser/);
 		assert.match(show.stdout, /pibo tools guide agent-browser agent-browser/);
 		assert.match(show.stdout, /pibo tools agent-browser/);
 
@@ -285,16 +413,15 @@ test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers"
 		assert.match(guide.stdout, /agent-browser click @e1/);
 		assert.match(guide.stdout, /agent-browser skills get core --full/);
 
-		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "agent-browser"], { cwd, env });
 		const wrapperPath = join(env.PIBO_HOME, "tools", "agent-browser", "home", "bin", "agent-browser");
 		const realBinDir = join(env.PIBO_HOME, "tools", "agent-browser", "node", "node_modules", ".bin");
-		assert.ok(envOutput.stdout.includes(`export PATH="${wrapperPath.replace(/\/agent-browser$/, "")}:${realBinDir}:$PATH"`));
-		assert.match(envOutput.stdout, /export AGENT_BROWSER_HOME=/);
-
 		await mkdir(realBinDir, { recursive: true });
 		const realExecutablePath = join(realBinDir, "agent-browser");
 		await writeFile(realExecutablePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
 		await chmod(realExecutablePath, 0o755);
+		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "agent-browser"], { cwd, env });
+		assert.ok(envOutput.stdout.includes(`export PATH="${wrapperPath.replace(/\/agent-browser$/, "")}:${realBinDir}:$PATH"`));
+		assert.match(envOutput.stdout, /export AGENT_BROWSER_HOME=/);
 
 		const defaultProfile = await execFileAsync(wrapperPath, ["open", "https://example.test"], { cwd, env });
 		assert.match(defaultProfile.stdout, /--profile\n.*tools\/agent-browser\/home\/profiles\/PIBo\nopen\nhttps:\/\/example\.test/);
@@ -318,6 +445,100 @@ test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers"
 	}
 });
 
+test("pibo tools agent-browser reuses lease identities and repairs legacy duplicates", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-agent-browser-lease-reuse-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const acquire = async (holder) => {
+			const result = await execFileAsync("node", [
+				cliPath,
+				"tools",
+				"agent-browser",
+				"lease",
+				"acquire",
+				"--app",
+				"pibo-chat",
+				"--holder",
+				holder,
+				"--ttl-ms",
+				"3600000",
+				"--max-slots",
+				"1",
+				"--json",
+			], { cwd, env });
+			return JSON.parse(result.stdout);
+		};
+		const release = (id) => execFileAsync("node", [
+			cliPath,
+			"tools",
+			"agent-browser",
+			"lease",
+			"release",
+			id,
+		], { cwd, env });
+		const list = async () => {
+			const result = await execFileAsync("node", [cliPath, "tools", "agent-browser", "lease", "list", "--json"], { cwd, env });
+			return JSON.parse(result.stdout);
+		};
+
+		const first = await acquire("first-holder");
+		await release(first.lease.id);
+		const second = await acquire("second-holder");
+		assert.equal(second.lease.id, first.lease.id);
+		assert.equal(second.lease.holder, "second-holder");
+		let registry = await list();
+		assert.equal(registry.leases.length, 1);
+		assert.equal(new Set(registry.leases.map((lease) => lease.id)).size, registry.leases.length);
+
+		await release(second.lease.id);
+		registry = await list();
+		assert.equal(registry.leases.filter((lease) => lease.status === "active").length, 0);
+
+		const third = await acquire("third-holder");
+		assert.equal(third.lease.id, first.lease.id);
+		const registryPath = join(third.env.AGENT_BROWSER_HOME, "pibo-agent-browser-leases.json");
+		registry = JSON.parse(await readFile(registryPath, "utf8"));
+		registry.leases[0].expiresAt = new Date(Date.now() - 60_000).toISOString();
+		await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+
+		const reaped = await execFileAsync("node", [cliPath, "tools", "agent-browser", "lease", "reap-stale", "--json"], { cwd, env });
+		assert.deepEqual(JSON.parse(reaped.stdout), { released: 1 });
+		registry = await list();
+		assert.equal(registry.leases.length, 1);
+		assert.equal(registry.leases[0].status, "released");
+
+		const fourth = await acquire("fourth-holder");
+		await release(fourth.lease.id);
+		const legacyReleased = {
+			...fourth.lease,
+			holder: "legacy-released",
+			status: "released",
+			updatedAt: "2026-01-01T00:00:00.000Z",
+		};
+		const legacyActive = {
+			...fourth.lease,
+			holder: "legacy-active",
+			status: "active",
+			updatedAt: "2026-01-02T00:00:00.000Z",
+			expiresAt: "2099-01-01T00:00:00.000Z",
+		};
+		await writeFile(registryPath, `${JSON.stringify({ version: 1, leases: [legacyReleased, legacyActive] }, null, 2)}\n`, "utf8");
+
+		await release(fourth.lease.id);
+		registry = await list();
+		assert.equal(registry.leases.length, 1);
+		assert.equal(registry.leases[0].status, "released");
+		assert.equal(registry.leases[0].holder, "legacy-active");
+		const afterLegacyRepair = await acquire("after-legacy-repair");
+		assert.equal(afterLegacyRepair.lease.id, first.lease.id);
+		registry = await list();
+		assert.equal(registry.leases.length, 1);
+		assert.equal(registry.leases[0].status, "active");
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo browser-use virtual display service unit uses a stable Linux xvfb setup", () => {
 	const unit = createPiboXvfbServiceUnit();
 	assert.match(unit, /\[Unit\]/);
@@ -332,9 +553,13 @@ test("pibo tools env wraps browser-use with the PIBo default profile", posixWrap
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-env-"));
 	try {
 		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
-		const result = await execFileAsync("node", [cliPath, "tools", "env", "browser-use"], { cwd, env });
 		const wrapperPath = join(env.PIBO_HOME, "tools", "browser-use", "home", "bin", "browser-use");
 		const realBinDir = join(env.PIBO_HOME, "tools", "browser-use", ".venv", "bin");
+		await mkdir(realBinDir, { recursive: true });
+		const realExecutablePath = join(realBinDir, "browser-use");
+		await writeFile(realExecutablePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
+		await chmod(realExecutablePath, 0o755);
+		const result = await execFileAsync("node", [cliPath, "tools", "env", "browser-use"], { cwd, env });
 
 		assert.ok(result.stdout.includes(`export PATH="${wrapperPath.replace(/\/browser-use$/, "")}:${realBinDir}:$PATH"`));
 		const wrapper = await readFile(wrapperPath, "utf8");
@@ -346,10 +571,6 @@ test("pibo tools env wraps browser-use with the PIBo default profile", posixWrap
 		assert.match(wrapper, /--cdp-url "\$cdp_url"/);
 		assert.equal(mode & 0o111, 0o111);
 
-		await mkdir(realBinDir, { recursive: true });
-		const realExecutablePath = join(realBinDir, "browser-use");
-		await writeFile(realExecutablePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
-		await chmod(realExecutablePath, 0o755);
 		const fakeChromePath = join(cwd, "google-chrome");
 		const fakeChromeArgsPath = join(cwd, "chrome-args.txt");
 		await writeFile(fakeChromePath, `#!/bin/sh\nprintf '%s\\n' "$@" > "${fakeChromeArgsPath}"\n`);
@@ -522,6 +743,10 @@ test("pibo browser-use wrapper terminates stale managed process trees and stale 
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-env-tree-cleanup-"));
 	try {
 		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const realBinDir = join(env.PIBO_HOME, "tools", "browser-use", ".venv", "bin");
+		await mkdir(realBinDir, { recursive: true });
+		await writeFile(join(realBinDir, "browser-use"), "#!/bin/sh\nexit 0\n");
+		await chmod(join(realBinDir, "browser-use"), 0o755);
 		await execFileAsync("node", [cliPath, "tools", "env", "browser-use"], { cwd, env });
 		const wrapperPath = join(env.PIBO_HOME, "tools", "browser-use", "home", "bin", "browser-use");
 		const browserUseHome = join(cwd, "browser-use-home");
@@ -826,6 +1051,182 @@ test("pibo tools browser-use manages isolated authenticated leases", posixWrappe
 	}
 });
 
+test("pibo tools browser-use lease warm-up interruption leaves registry management usable", posixWrapperTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-interrupt-"));
+	let acquireProcess;
+	let warmupPid;
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const browserUseHome = join(env.PIBO_HOME, "tools", "browser-use", "home");
+		const wrapperPath = join(browserUseHome, "bin", "browser-use");
+		const warmupPidPath = join(cwd, "warmup.pid");
+		const lockPath = join(browserUseHome, "auth-pool", ".leases.lock");
+		await mkdir(dirname(wrapperPath), { recursive: true });
+		await writeFile(wrapperPath, "#!/bin/sh\nprintf '%s\\n' \"$$\" > \"$PIBO_BROWSER_USE_TEST_PID\"\nprintf '%s\\n' 'http://127.0.0.1:9222'\n");
+		await chmod(wrapperPath, 0o755);
+
+		const normal = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--holder",
+			"normal-control",
+			"--max-slots",
+			"1",
+			"--json",
+		], { cwd, env: { ...env, PIBO_BROWSER_USE_TEST_PID: warmupPidPath } });
+		assert.equal(JSON.parse(normal.stdout).id, "pibo-chat-slot-001");
+		assert.equal(existsSync(lockPath), false);
+		await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "release", "pibo-chat-slot-001"], { cwd, env });
+		await rm(warmupPidPath, { force: true });
+
+		await writeFile(wrapperPath, "#!/bin/sh\nprintf '%s\\n' \"$$\" > \"$PIBO_BROWSER_USE_TEST_PID\"\ntrap 'exit 0' TERM INT HUP\nsleep 30\n");
+		await chmod(wrapperPath, 0o755);
+		let stdout = "";
+		let stderr = "";
+		acquireProcess = spawn(process.execPath, [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--holder",
+			"interrupted",
+			"--max-slots",
+			"1",
+			"--json",
+		], {
+			cwd,
+			env: { ...env, PIBO_BROWSER_USE_TEST_PID: warmupPidPath },
+			detached: true,
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		acquireProcess.stdout.on("data", (chunk) => { stdout += chunk; });
+		acquireProcess.stderr.on("data", (chunk) => { stderr += chunk; });
+		await waitForOutput(acquireProcess, () => stdout, '"browserUseHome"');
+		warmupPid = Number.parseInt(await waitForFile(warmupPidPath), 10);
+		assert.equal(processIsAlive(warmupPid), true);
+		process.kill(-acquireProcess.pid, "SIGINT");
+		const interrupted = await waitForChildExit(acquireProcess);
+		assert.notEqual(interrupted.code, 0);
+		assert.equal(stderr, "");
+		await waitForProcess(warmupPid, false);
+		assert.equal(existsSync(lockPath), false);
+
+		const listedActive = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		const activeLeases = JSON.parse(listedActive.stdout);
+		assert.equal(activeLeases.length, 1);
+		assert.equal(activeLeases[0].status, "active");
+		assert.equal(activeLeases[0].processAlive, false);
+		await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "release", "pibo-chat-slot-001"], { cwd, env });
+		const listedReleased = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		assert.equal(JSON.parse(listedReleased.stdout)[0].status, "released");
+
+		await writeFile(wrapperPath, "#!/bin/sh\nprintf '%s\\n' 'http://127.0.0.1:9222'\n");
+		await chmod(wrapperPath, 0o755);
+		const reacquired = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--holder",
+			"after-interrupt",
+			"--max-slots",
+			"1",
+			"--json",
+		], { cwd, env });
+		assert.equal(JSON.parse(reacquired.stdout).id, "pibo-chat-slot-001");
+		await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "release", "pibo-chat-slot-001"], { cwd, env });
+	} finally {
+		if (acquireProcess?.pid && processIsAlive(acquireProcess.pid)) process.kill(-acquireProcess.pid, "SIGKILL");
+		terminatePid(warmupPid);
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools browser-use safely recovers stale legacy locks and preserves live owner locks", posixWrapperTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-lock-recovery-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const browserUseHome = join(env.PIBO_HOME, "tools", "browser-use", "home");
+		const lockPath = join(browserUseHome, "auth-pool", ".leases.lock");
+		const ownerPath = join(lockPath, "owner.json");
+		await mkdir(lockPath, { recursive: true });
+		const old = new Date(Date.now() - 11 * 60_000);
+		await utimes(lockPath, old, old);
+		const recovered = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		assert.deepEqual(JSON.parse(recovered.stdout), []);
+		assert.equal(existsSync(lockPath), false);
+
+		await mkdir(lockPath, { recursive: true });
+		await writeFile(ownerPath, `${JSON.stringify({
+			pid: 999_999_999,
+			token: "00000000-0000-4000-8000-000000000620",
+			acquiredAt: Date.now(),
+			...(process.platform === "linux" ? { processStartId: "999999999:1" } : {}),
+		})}\n`, "utf8");
+		const recoveredDeadOwner = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		assert.deepEqual(JSON.parse(recoveredDeadOwner.stdout), []);
+		assert.equal(existsSync(lockPath), false);
+
+		await mkdir(lockPath, { recursive: true });
+		await writeFile(ownerPath, `${JSON.stringify({
+			pid: process.pid,
+			token: "00000000-0000-4000-8000-000000000621",
+			acquiredAt: Date.now(),
+		})}\n`, "utf8");
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env }),
+			/Timed out waiting for browser-use lease registry lock/,
+		);
+		assert.equal(existsSync(lockPath), true);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools browser-use serializes concurrent lease acquisition", posixWrapperTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-concurrent-"));
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const wrapperPath = join(env.PIBO_HOME, "tools", "browser-use", "home", "bin", "browser-use");
+		await mkdir(dirname(wrapperPath), { recursive: true });
+		await writeFile(wrapperPath, "#!/bin/sh\nprintf '%s\\n' 'http://127.0.0.1:9222'\n");
+		await chmod(wrapperPath, 0o755);
+		const acquire = (holder) => execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--holder",
+			holder,
+			"--max-slots",
+			"1",
+			"--json",
+		], { cwd, env });
+		const results = await Promise.allSettled([acquire("concurrent-a"), acquire("concurrent-b")]);
+		assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+		assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+		assert.match(results.find((result) => result.status === "rejected").reason.stderr, /BROWSER_USE_AUTH_POOL_EXHAUSTED/);
+		const listed = await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env });
+		assert.equal(JSON.parse(listed.stdout).length, 1);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo tools browser-use auth leases coordinate managed browser-pool leases", posixWrapperTest, async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-managed-leases-"));
 	const children = [];
@@ -1020,7 +1421,7 @@ test("pibo tools pins browser-use to the guide-compatible version", async () => 
 
 		assert.match(result.stdout, /browser-use 0\.12\.6/);
 		assert.match(result.stdout, /Next:/);
-		assert.match(result.stdout, /pibo tools env browser-use/);
+		assert.match(result.stdout, /pibo tools install browser-use/);
 		assert.match(result.stdout, /pibo tools guide browser-use browser-use/);
 		assert.match(result.stdout, /pibo tools browser-use/);
 	} finally {

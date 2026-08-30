@@ -536,6 +536,12 @@ export interface McpConfigSourceSummary {
   servers: string[];
 }
 
+export interface McpServerConfigSource {
+  path: string;
+  config: McpServersConfig;
+  server: ServerConfig;
+}
+
 export function getConfigSearchPaths(explicitPath?: string): string[] {
   const paths: string[] = [];
   if (explicitPath) {
@@ -692,6 +698,28 @@ export async function loadConfigUnresolved(
   }
 
   return merged;
+}
+
+/**
+ * Resolve the highest-priority config file that contributes a merged server.
+ */
+export async function resolveMcpServerConfigSource(
+  serverName: string,
+  explicitPath?: string,
+): Promise<McpServerConfigSource> {
+  const merged = await loadConfigUnresolved(explicitPath);
+  for (const configPath of getConfigSearchPaths(explicitPath)) {
+    if (!existsSync(configPath)) continue;
+    const config = await readRawConfig(configPath);
+    const server = config.mcpServers[serverName];
+    if (server) return { path: configPath, config, server };
+  }
+
+  throw new Error(
+    formatCliError(
+      serverNotFoundError(serverName, Object.keys(merged.mcpServers)),
+    ),
+  );
 }
 
 export async function loadConfig(

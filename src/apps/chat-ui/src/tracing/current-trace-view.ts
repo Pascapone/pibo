@@ -10,6 +10,15 @@ import {
 export type CurrentTraceViewComputation = {
 	traceView: PiboSessionTraceView | null;
 	liveTraceComputeDurationMs?: number;
+	appliedLiveEventCount?: number;
+	projectionCache?: CurrentTraceProjectionCache;
+};
+
+export type CurrentTraceProjectionCache = {
+	baseTraceView: PiboSessionTraceView;
+	overlayEvents: readonly import("../../../../shared/trace-types.js").ChatWebStoredEvent[];
+	sessionStatus: PiboWebSessionStatus;
+	traceView: PiboSessionTraceView;
 };
 
 export function computeCurrentTraceView({
@@ -19,6 +28,7 @@ export function computeCurrentTraceView({
 	selectedSessionStatus,
 	persistedUserMessageIndexForBaseTrace,
 	now,
+	previousProjection,
 }: {
 	selectedPiboSessionId: string | null;
 	reconciledBaseTraceView: PiboSessionTraceView | null;
@@ -26,6 +36,7 @@ export function computeCurrentTraceView({
 	selectedSessionStatus?: PiboWebSessionStatus;
 	persistedUserMessageIndexForBaseTrace: ReadonlyMap<string, readonly string[]>;
 	now?: () => number;
+	previousProjection?: CurrentTraceProjectionCache;
 }): CurrentTraceViewComputation {
 	if (!selectedPiboSessionId) return { traceView: null };
 	if (reconciledBaseTraceView?.piboSessionId !== selectedPiboSessionId) return { traceView: null };
@@ -35,12 +46,24 @@ export function computeCurrentTraceView({
 	const overlayEvents = reconciledOverlay?.events ?? [];
 	if (!overlayEvents.length) return { traceView: reconciledBaseTraceView };
 	const startedAt = now?.();
-	const liveTrace = patchTraceViewWithEvents(reconciledBaseTraceView, overlayEvents, selectedSessionStatus ?? "idle");
+	const sessionStatus = selectedSessionStatus ?? "idle";
+	const canAppendIncrementally = previousProjection?.baseTraceView === reconciledBaseTraceView
+		&& previousProjection.sessionStatus === sessionStatus
+		&& overlayEvents.length >= previousProjection.overlayEvents.length
+		&& previousProjection.overlayEvents.every((event, index) => overlayEvents[index] === event);
+	const appendedEvents = canAppendIncrementally
+		? overlayEvents.slice(previousProjection.overlayEvents.length)
+		: overlayEvents;
+	const liveTrace = canAppendIncrementally
+		? patchTraceViewWithEvents(previousProjection.traceView, appendedEvents, sessionStatus)
+		: patchTraceViewWithEvents(reconciledBaseTraceView, overlayEvents, sessionStatus);
 	const hasOptimisticUserMessage = overlayIncludesOptimisticUserMessage(overlayEvents);
 	if (hasOptimisticUserMessage) annotateLiveTraceForkEntryIds(liveTrace.nodes, persistedUserMessageIndexForBaseTrace);
 	const traceView = hasOptimisticUserMessage ? reconcileOptimisticUserMessages(liveTrace) : liveTrace;
 	return {
 		traceView,
+		appliedLiveEventCount: appendedEvents.length,
+		projectionCache: { baseTraceView: reconciledBaseTraceView, overlayEvents, sessionStatus, traceView },
 		liveTraceComputeDurationMs: startedAt !== undefined && now ? now() - startedAt : undefined,
 	};
 }

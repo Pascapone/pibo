@@ -201,6 +201,8 @@ export class ChatDataIngestService {
 				previewText: previewTextForOutputEvent(event),
 				attributes: compactObject({
 					identityFingerprint,
+					eventIdentityScoped: eventIdForOutputEvent(event) !== undefined,
+					semanticEventId: eventIdForOutputEvent(event),
 					legacyStreamId: input.legacyStreamId,
 					inlinePayload: payloadRef ? undefined : toPiboJsonValue(payload?.value),
 					...attributesForOutputEvent(event),
@@ -297,7 +299,7 @@ export class ChatDataIngestService {
 		return this.store.payloads.writePayload({ value, contentType, retentionClass, createdAt }).id;
 	}
 
-	private upsertNavigation(session: PiboSession, roomId: string, lastMessagePreview: string | undefined, now: string, status: string): void {
+	private upsertNavigation(session: PiboSession, roomId: string, lastMessagePreview: string | undefined, now: string, status?: string): void {
 		this.store.navigation.upsertSession({
 			roomId,
 			sessionId: session.id,
@@ -324,7 +326,9 @@ function hashJson(value: unknown): string {
 }
 
 function outputEventFingerprint(event: PiboOutputEvent): string {
-	return createHash("sha256").update(canonicalJson(event)).digest("hex");
+	const identity = { ...event };
+	delete identity.renderSequence;
+	return createHash("sha256").update(canonicalJson(identity)).digest("hex");
 }
 
 function canonicalJson(value: unknown): string {
@@ -347,15 +351,23 @@ function compactObject(value: Record<string, unknown>): PiboJsonObject {
 	return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as PiboJsonObject;
 }
 
-function outputIdempotencyKey(event: PiboOutputEvent): string | undefined {
+export function outputIdempotencyKey(event: PiboOutputEvent): string | undefined {
 	const base = eventIdForOutputEvent(event) ?? ("toolCallId" in event ? event.toolCallId : undefined);
-	if (!base) return undefined;
-	return `pibo.output:${event.piboSessionId}:${event.type}:${base}:${outputPartKey(event)}`;
+	if (base) return `pibo.output:${event.piboSessionId}:${event.type}:${base}:${outputPartKey(event)}`;
+	if (Number.isSafeInteger(event.renderSequence) && (event.renderSequence ?? 0) > 0) {
+		return `pibo.output:${event.piboSessionId}:${event.type}:render:${event.renderSequence}`;
+	}
+	return undefined;
+}
+
+export function outputPersistenceDeliveryKey(event: PiboOutputEvent): string {
+	return outputIdempotencyKey(event)
+		?? `pibo.output:${event.piboSessionId}:${event.type}:render:${event.renderSequence ?? "unpositioned"}`;
 }
 
 function outputPartKey(event: PiboOutputEvent): string {
-	if (event.type === "tool_call") return `${event.toolCallId}:${event.argsComplete ? "complete" : "partial"}:${hashJson(event.args)}`;
-	if ("toolCallId" in event) return event.toolCallId ?? "main";
+	if (event.type === "tool_call") return `${event.toolCallId}:${event.toolInvocationOrdinal ?? 0}:${event.argsComplete ? "complete" : "partial"}:${hashJson(event.args)}`;
+	if ("toolCallId" in event) return `${event.toolCallId ?? "main"}:${event.toolInvocationOrdinal ?? 0}`;
 	if (event.type === "assistant_message") return String(event.assistantIndex ?? event.contentIndex ?? 0);
 	if (event.type === "assistant_delta") return String(event.assistantIndex ?? event.contentIndex ?? 0);
 	if (event.type === "assistant_usage") return String(event.usageIndex ?? hashJson({ inputTokens: event.inputTokens, outputTokens: event.outputTokens, cacheReadTokens: event.cacheReadTokens, cacheWriteTokens: event.cacheWriteTokens, reasoningTokens: event.reasoningTokens, totalTokens: event.totalTokens, costUsd: event.costUsd }));
@@ -420,6 +432,10 @@ function previewTextForOutputEvent(event: PiboOutputEvent): string | undefined {
 }
 
 function attributesForOutputEvent(event: PiboOutputEvent): Record<string, unknown> {
+	return { renderSequence: event.renderSequence, toolInvocationOrdinal: event.toolInvocationOrdinal, ...specificAttributesForOutputEvent(event) };
+}
+
+function specificAttributesForOutputEvent(event: PiboOutputEvent): Record<string, unknown> {
 	if (event.type === "message_queued") return { inlineText: event.text, source: event.source, queuedMessages: event.queuedMessages };
 	if (event.type === "message_steered") return { inlineText: event.text, source: event.source, activeEventId: event.activeEventId };
 	if (event.type === "message_started") return { inlineText: event.text, source: event.source };
@@ -478,10 +494,11 @@ function isTerminalOutputEvent(event: PiboOutputEvent): boolean {
 	return !event.type.endsWith("_started") && event.type !== "tool_call" && event.type !== "assistant_delta" && event.type !== "thinking_delta" && event.type !== "tool_execution_updated";
 }
 
-function outputSessionStatus(event: PiboOutputEvent): string {
+function outputSessionStatus(event: PiboOutputEvent): string | undefined {
 	if (event.type === "session_error") return "error";
 	if (event.type === "message_finished") return "idle";
-	return "running";
+	if (event.type === "message_queued" || event.type === "message_steered" || event.type === "message_started") return "running";
+	return undefined;
 }
 
 function toPiboJsonValue(value: unknown): PiboJsonValue | undefined {

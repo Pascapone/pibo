@@ -59,6 +59,18 @@ export function createDefaultLocalCliSessionSource(): LocalCliSessionSource {
 
 function createDebugMockedLocalCliSessionSource(options: { assistantReply: string }): LocalCliSessionSource {
 	const context = createLocalCliSessionSourceContext();
+	if (process.env.PIBO_DEBUG_PTY_STREAM_REVIEW === "1") {
+		const appendEvent = context.dataStore.eventLog.appendEvent.bind(context.dataStore.eventLog);
+		let failFirstAssistantFinal = true;
+		context.dataStore.eventLog.appendEvent = (input) => {
+			if (failFirstAssistantFinal && input.type === "assistant_message") {
+				failFirstAssistantFinal = false;
+				process.stderr.write("[debug-pty] injected once-only assistant persistence failure; automatic retry scheduled\n");
+				throw new Error("Injected once-only PTY persistence failure");
+			}
+			return appendEvent(input);
+		};
+	}
 	const debugRooms = debugRoomSummariesFromEnv();
 	const router = new DebugMockCliSessionRouter(options.assistantReply);
 	return createLocalCliSessionSourceFromContext({
@@ -135,6 +147,25 @@ class DebugMockCliSessionRouter implements LocalCliSessionRouter {
 		this.publish({ type: "message_queued", piboSessionId: event.piboSessionId, eventId, queuedMessages: 1, text: event.text, source: event.source });
 		this.statuses.set(event.piboSessionId, this.status(event.piboSessionId, { processing: true, queuedMessages: 0 }));
 		this.publish({ type: "message_started", piboSessionId: event.piboSessionId, eventId, text: event.text, source: event.source });
+		if (process.env.PIBO_DEBUG_PTY_STREAM_REVIEW === "1") {
+			const tool = { piboSessionId: event.piboSessionId, eventId, toolCallId: "pty-reused", toolName: "read" };
+			this.publish({ type: "thinking_started", piboSessionId: event.piboSessionId, eventId, thinkingIndex: 0 });
+			this.publish({ type: "thinking_delta", piboSessionId: event.piboSessionId, eventId, thinkingIndex: 0, text: "PTY retained thought" });
+			this.publish({ ...tool, type: "tool_execution_finished", result: "PTY tool result", isError: false });
+			this.publish({ ...tool, type: "tool_execution_updated", args: { path: "README.md" }, partialResult: "PTY partial tool result" });
+			this.publish({ ...tool, type: "tool_execution_started", args: { path: "README.md" } });
+			this.publish({ ...tool, type: "tool_call", args: { path: "README.md" }, argsComplete: true });
+			this.publish({ ...tool, type: "tool_execution_finished", result: "PTY tool result", isError: false });
+			this.publish({ type: "assistant_delta", piboSessionId: event.piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "PTY retained " });
+			this.publish({ type: "assistant_delta", piboSessionId: event.piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "answer" });
+			this.publish({ type: "thinking_finished", piboSessionId: event.piboSessionId, eventId, thinkingIndex: 0, text: "" });
+			const assistant: PiboOutputEvent = { type: "assistant_message", piboSessionId: event.piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "" };
+			this.publish(assistant);
+			const finished: PiboOutputEvent = { type: "message_finished", piboSessionId: event.piboSessionId, eventId, source: event.source };
+			this.statuses.set(event.piboSessionId, this.status(event.piboSessionId, { processing: false, queuedMessages: 0 }));
+			this.publish(finished);
+			return assistant;
+		}
 		const assistant: PiboOutputEvent = { type: "assistant_message", piboSessionId: event.piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: this.assistantReply };
 		this.publish(assistant);
 		const finished: PiboOutputEvent = { type: "message_finished", piboSessionId: event.piboSessionId, eventId, source: event.source };
