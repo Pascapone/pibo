@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const cliPath = new URL('../dist/bin/pibo.js', import.meta.url).pathname;
 
 import {
 	COMPUTE_RESOURCE_POLICY_ENV,
@@ -343,6 +347,65 @@ test('compute reap apply removes only selected containers and never deletes work
 	const applied = renderComputeReapPlanText(plan, { applied: true, removed });
 	assert.match(applied, /Removed: pibo-worker-stopped/);
 	assert.match(applied, /Worktrees are preserved/);
+});
+
+test('compute reap rejects invalid max ages before Docker planning and preserves valid age semantics', async () => {
+	const cwd = await mkdtemp(join(tmpdir(), 'pibo-compute-reap-age-'));
+	try {
+		const binDir = join(cwd, 'bin');
+		const dockerLog = join(cwd, 'docker.log');
+		await mkdir(binDir, { recursive: true });
+		await writeFile(join(binDir, 'docker'), '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$PIBO_TEST_DOCKER_LOG"\n');
+		await chmod(join(binDir, 'docker'), 0o755);
+		const env = {
+			...process.env,
+			PATH: `${binDir}:${process.env.PATH ?? ''}`,
+			PIBO_HOME: join(cwd, 'pibo-home'),
+			PIBO_TEST_DOCKER_LOG: dockerLog,
+		};
+		const computeArgs = ['compute', 'reap', '--dry-run', '--json'];
+
+		for (const value of ['-1', 'Infinity', 'not-a-number']) {
+			await assert.rejects(
+				execFileAsync(process.execPath, [cliPath, ...computeArgs, `--max-age-minutes=${value}`], { cwd, env }),
+				/Value must be a non-negative number/,
+			);
+		}
+		await assert.rejects(readFile(dockerLog, 'utf8'), /ENOENT/);
+
+		for (const [value, expected] of [['0', 0], ['12.5', 12.5], [undefined, 60]]) {
+			const args = value === undefined ? computeArgs : [...computeArgs, `--max-age-minutes=${value}`];
+			const result = JSON.parse((await execFileAsync(process.execPath, [cliPath, ...args], { cwd, env })).stdout);
+			assert.equal(result.dryRun, true);
+			assert.equal(result.applied, false);
+			assert.deepEqual(result.removed, []);
+			assert.equal(result.plan.options.maxAgeMinutes, expected);
+		}
+		const dockerCalls = (await readFile(dockerLog, 'utf8')).trim().split('\n');
+		assert.equal(dockerCalls.length, 6);
+		assert.ok(dockerCalls.every((call) => call.startsWith('ps ')));
+
+		await rm(dockerLog);
+		for (const value of ['-1', 'Infinity', 'not-a-number']) {
+			await assert.rejects(
+				execFileAsync(process.execPath, [
+					cliPath,
+					'resources',
+					'reap',
+					'--dry-run',
+					`--max-age-minutes=${value}`,
+					'--browser-pool-root',
+					join(cwd, 'browser-pool'),
+					'--browser-use-home',
+					join(cwd, 'browser-home'),
+				], { cwd, env }),
+				/Value must be a non-negative number/,
+			);
+		}
+		await assert.rejects(readFile(dockerLog, 'utf8'), /ENOENT/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
 });
 
 test('docker disk diagnostics parse system df JSON rows and render safe cleanup suggestions', () => {
