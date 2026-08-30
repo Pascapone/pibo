@@ -3323,9 +3323,11 @@ async function deleteSessionsForAgentProfile(
 	const orderedIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
-	for (const id of orderedIds) await deleteSession(id);
-	state.sessionQuery.deleteSessions(orderedIds);
-	state.eventCommands.deleteSessions(orderedIds);
+	for (const id of orderedIds) {
+		await state.projectService.deleteProjectSessionWithCanonicalDelete(id, () => deleteSession(id));
+		state.sessionQuery.deleteSessions([id]);
+		state.eventCommands.deleteSessions([id]);
+	}
 	for (const id of orderedIds) disposeSessionStreamState(state, id);
 	return orderedIds;
 }
@@ -3354,9 +3356,11 @@ async function deleteSessionSubtree(
 	const orderedIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
-	for (const id of orderedIds) await deleteSession(id);
-	state.sessionQuery.deleteSessions(orderedIds);
-	state.eventCommands.deleteSessions(orderedIds);
+	for (const id of orderedIds) {
+		await state.projectService.deleteProjectSessionWithCanonicalDelete(id, () => deleteSession(id));
+		state.sessionQuery.deleteSessions([id]);
+		state.eventCommands.deleteSessions([id]);
+	}
 	for (const id of orderedIds) disposeSessionStreamState(state, id);
 	return orderedIds;
 }
@@ -3399,9 +3403,11 @@ async function deleteRoomTree(
 	const orderedSessionIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
-	for (const id of orderedSessionIds) await deleteSession(id);
-	state.sessionQuery.deleteSessions(orderedSessionIds);
-	state.eventCommands.deleteSessions(orderedSessionIds);
+	for (const id of orderedSessionIds) {
+		await state.projectService.deleteProjectSessionWithCanonicalDelete(id, () => deleteSession(id));
+		state.sessionQuery.deleteSessions([id]);
+		state.eventCommands.deleteSessions([id]);
+	}
 	for (const id of orderedSessionIds) disposeSessionStreamState(state, id);
 	state.eventCommands.deleteRooms(roomIds);
 	const orderedRoomIds = [...roomIds].reverse();
