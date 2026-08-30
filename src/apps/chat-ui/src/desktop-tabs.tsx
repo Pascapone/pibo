@@ -39,6 +39,7 @@ import {
 	closeDesktopTab,
 	DESKTOP_TAB_MAX_WIDTH,
 	DESKTOP_TAB_MIN_WIDTH,
+	desktopTabKeepsMounted,
 	emptyDesktopTabState,
 	moveDesktopTab,
 	openDesktopTab,
@@ -61,6 +62,14 @@ type CatalogEntry = {
 	target?: DesktopTabTarget;
 	sessionsAction?: true;
 };
+
+export function desktopCatalogPointerIsOutside(
+	catalog: Pick<Node, "contains"> | null,
+	plusButton: Pick<Node, "contains"> | null,
+	target: Node,
+): boolean {
+	return !catalog?.contains(target) && !plusButton?.contains(target);
+}
 
 const SESSION_TOOL_CATALOG: readonly CatalogEntry[] = [
 	{ id: "preview", label: "Preview", description: "Live session preview", icon: Sparkles, target: { kind: "session-tool", tool: "preview" } },
@@ -106,17 +115,21 @@ export function DesktopTabSidebar({
 	vscodeEnabled,
 	onStateChange,
 	onActivate,
+	onClose,
 	onOpenTarget,
 	onFocusSessions,
 	renderPanel,
+	hidden = false,
 }: {
 	state: DesktopTabState;
 	vscodeEnabled: boolean;
 	onStateChange: (state: DesktopTabState) => void;
 	onActivate: (tab: DesktopTab) => void;
+	onClose: (tab: DesktopTab) => boolean | Promise<boolean>;
 	onOpenTarget: (target: DesktopTabTarget) => void;
 	onFocusSessions: () => void;
 	renderPanel: (tab: DesktopTab, active: boolean) => ReactNode;
+	hidden?: boolean;
 }) {
 	const [catalogOpen, setCatalogOpen] = useState(false);
 	const plusButtonRef = useRef<HTMLButtonElement>(null);
@@ -124,6 +137,7 @@ export function DesktopTabSidebar({
 	const tabListRef = useRef<HTMLDivElement>(null);
 	const tabRefs = useRef(new Map<string, HTMLButtonElement>());
 	const dragTabIdRef = useRef<string | null>(null);
+	const focusAfterCloseRef = useRef(false);
 	const activeTab = activeDesktopTab(state);
 	const entries = useMemo(() => desktopTabCatalog(vscodeEnabled), [vscodeEnabled]);
 
@@ -134,7 +148,8 @@ export function DesktopTabSidebar({
 	useEffect(() => {
 		if (!catalogOpen) return;
 		const closeFromOutside = (event: PointerEvent) => {
-			if (!catalogRef.current?.contains(event.target as Node) && event.target !== plusButtonRef.current) setCatalogOpen(false);
+			const target = event.target as Node;
+			if (desktopCatalogPointerIsOutside(catalogRef.current, plusButtonRef.current, target)) setCatalogOpen(false);
 		};
 		window.addEventListener("pointerdown", closeFromOutside);
 		return () => window.removeEventListener("pointerdown", closeFromOutside);
@@ -144,6 +159,19 @@ export function DesktopTabSidebar({
 		if (state.collapsed || !activeTab) return;
 		tabRefs.current.get(activeTab.id)?.scrollIntoView({ block: "nearest", inline: "nearest" });
 	}, [activeTab?.id, state.collapsed]);
+
+	useLayoutEffect(() => {
+		if (!focusAfterCloseRef.current) return;
+		focusAfterCloseRef.current = false;
+		if (state.activeTabId) tabRefs.current.get(state.activeTabId)?.focus();
+		else plusButtonRef.current?.focus();
+	}, [state.activeTabId, state.tabs.length]);
+
+	const requestClose = useCallback(async (tab: DesktopTab) => {
+		focusAfterCloseRef.current = true;
+		const closed = await onClose(tab);
+		if (!closed) focusAfterCloseRef.current = false;
+	}, [onClose]);
 
 	const closeCatalog = useCallback((restoreFocus = true) => {
 		setCatalogOpen(false);
@@ -191,7 +219,7 @@ export function DesktopTabSidebar({
 		}
 		if (event.key === "Delete") {
 			event.preventDefault();
-			onStateChange(closeDesktopTab(state, tab.id));
+			void requestClose(tab);
 			return;
 		}
 		if (event.key === "Enter" || event.key === " ") {
@@ -227,6 +255,8 @@ export function DesktopTabSidebar({
 			data-pibo-debug="desktop-tab-sidebar"
 			data-pibo-state={state.collapsed ? "collapsed" : "open"}
 			aria-label="Open workspace tabs"
+			aria-hidden={hidden || undefined}
+			hidden={hidden}
 			className="relative min-h-0 shrink-0 border-l border-slate-700 bg-[#101d22]"
 			style={shellStyle}
 		>
@@ -290,7 +320,7 @@ export function DesktopTabSidebar({
 										>
 											{tab.title}
 										</button>
-										<button type="button" onClick={() => onStateChange(closeDesktopTab(state, tab.id))} title={`Close ${tab.title}`} aria-label={`Close ${tab.title}`} className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 opacity-70 hover:bg-slate-700 hover:text-slate-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><X size={12} /></button>
+										<button type="button" onClick={() => void requestClose(tab)} title={`Close ${tab.title}`} aria-label={`Close ${tab.title}`} className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 opacity-70 hover:bg-slate-700 hover:text-slate-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><X size={12} /></button>
 									</div>
 								);
 							})}
@@ -325,7 +355,7 @@ export function DesktopTabSidebar({
 							const selected = tab.id === state.activeTabId;
 							return (
 								<section key={tab.id} id={`desktop-tabpanel-${tab.id}`} role="tabpanel" aria-labelledby={`desktop-tab-${tab.id}`} hidden={!selected} className="h-full min-h-0 overflow-hidden">
-									{renderPanel(tab, selected)}
+									{selected || desktopTabKeepsMounted(tab) ? renderPanel(tab, selected) : null}
 								</section>
 							);
 						}) : (

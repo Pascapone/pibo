@@ -150,6 +150,7 @@ export function SessionTracePane({
   desktopActiveTool = null,
   desktopToolHosts,
   onOpenDesktopTool,
+  onCloseDesktopTool,
 }: {
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
@@ -211,6 +212,7 @@ export function SessionTracePane({
   desktopActiveTool?: DesktopSessionTool | null;
   desktopToolHosts?: Partial<Record<DesktopSessionTool, Element | null>>;
   onOpenDesktopTool?: (tool: DesktopSessionTool) => void;
+  onCloseDesktopTool?: (tool: DesktopSessionTool) => void;
 }) {
   const queryClient = useQueryClient();
   const liveEventSeqRef = useRef(0);
@@ -358,6 +360,13 @@ export function SessionTracePane({
     formatError: compactWebAnnotationError,
     forcePanelVisible: Boolean(desktopToolHosts?.["web-annotations"]),
   });
+  const closeWebAnnotationsPanel = useCallback(() => {
+    closeHostedWebAnnotations(
+      Boolean(desktopToolHosts?.["web-annotations"]),
+      onCloseDesktopTool,
+      setWebAnnotationsPanelVisible,
+    );
+  }, [desktopToolHosts, onCloseDesktopTool, setWebAnnotationsPanelVisible]);
   const createUploadAttachmentId = useCallback(
     () => `upload-${createClientTxnId()}`,
     [],
@@ -710,7 +719,7 @@ export function SessionTracePane({
       : livePreviewAuthority.kind === "unconfigured"
         ? <PreviewMessage label="Live previews are not configured on this Pibo instance." />
         : <PreviewMessage label="No active live preview is attached to this Pibo Session." />;
-  const previewPanelRequested = livePreviewSelected || desktopActiveTool === "preview";
+  const previewPanelRequested = livePreviewSelected || Boolean(desktopToolHosts?.preview);
   const previewPanelContent = previewPanelRequested
     ? livePreviewAuthority.kind === "ready" && selectedLivePreviewRecord
       ? (
@@ -776,7 +785,7 @@ export function SessionTracePane({
         onToggle={toggleWebAnnotationAttachment}
         onClear={() => void clearVisibleWebAnnotations()}
         onCollapse={toggleWebAnnotationsPanelCollapsed}
-        onClose={() => undefined}
+        onClose={closeWebAnnotationsPanel}
       />
     </div>
   );
@@ -990,4 +999,13 @@ export function SessionTracePane({
 
 function DesktopSessionToolEmpty({ label }: { label: string }) {
   return <div className="grid h-full place-items-center bg-[#0e1116] p-6 text-center text-sm text-slate-500">{label}</div>;
+}
+
+export function closeHostedWebAnnotations(
+  hosted: boolean,
+  onCloseDesktopTool: ((tool: DesktopSessionTool) => void) | undefined,
+  setPanelVisible: (visible: boolean) => void,
+): void {
+  if (hosted && onCloseDesktopTool) onCloseDesktopTool("web-annotations");
+  else setPanelVisible(false);
 }

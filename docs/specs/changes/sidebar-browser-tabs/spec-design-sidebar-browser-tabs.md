@@ -1,6 +1,6 @@
 ---
 title: Desktop Browser Tabs for Pibo Chat
-version: 1.0
+version: 1.1
 date_created: 2026-08-30
 last_updated: 2026-08-30
 owner: Pibo
@@ -35,11 +35,16 @@ The desktop shell has three stable regions: the Rooms/Pibo Sessions navigation o
 - **REQ-007**: Open tabs, order, active tab, sidebar width, and collapsed state shall persist in versioned local storage.
 - **REQ-008**: Existing deep links, reload, and browser Back/Forward shall open or focus the matching right route tab on Desktop.
 - **REQ-009**: Mobile shall retain the existing route-based shell, area menus, drawers, and content ownership.
-- **REQ-010**: Switching tabs shall keep mounted right-tab content alive, including Preview and VS Code frames.
+- **REQ-010**: Switching tabs shall preserve the mounted Preview iframe and VS Code frame. Other inactive route and session-tool contents, including Agent Designer after its guarded save, shall unmount or pause their queries, timers, bootstrap requests, and live streams.
+- **REQ-011**: Opening or activating a session-tool tab shall navigate to the current Sessions URL. Closing a route tab onto a session-tool neighbor shall do the same, so reload cannot recreate the closed route tab.
+- **REQ-012**: Leaving or closing Agent Designer shall await its registered autosave before changing tab state. A failed save shall keep the tab open and expose an error.
+- **REQ-013**: Terminal fullscreen shall visually replace the three-pane shell while preserving required hidden keep-alive content.
+- **REQ-014**: Storage recovery shall deduplicate repeated tab IDs and logical target identities before rendering.
 - **A11Y-001**: Tabs shall use `tablist`, `tab`, and `tabpanel` semantics with visible focus and accessible close labels.
 - **A11Y-002**: Arrow keys shall focus tabs; Enter/Space shall activate them; Delete shall close; Alt+Shift+ArrowLeft/ArrowRight shall reorder.
 - **A11Y-003**: Escape shall close the catalog and restore focus to its trigger.
 - **A11Y-004**: The resize divider shall expose a separator role, value attributes, and keyboard resizing.
+- **A11Y-005**: After Delete or close removes a tab, DOM focus shall move to the same deterministic neighbor selected by the tab model, or to the catalog trigger when no tabs remain.
 - **CON-001**: The Root checkout remains unchanged. Implementation and validation run only in the dedicated Docker compute worker.
 - **CON-002**: “Movable sidebar” means width resize while remaining docked right.
 - **CON-003**: No new broad UI framework or unrelated refactor is introduced.
@@ -67,7 +72,8 @@ History policy:
 | Open/focus a route tab | Push its existing route |
 | Internal navigation in active route tab | Preserve existing route behavior |
 | Browser Back/Forward | Reconcile URL into the matching tab |
-| Open/focus a session tool tab | Keep the current URL |
+| Open/focus a session tool tab | Push the current selected Sessions route |
+| Close a route tab onto a session tool | Push the current selected Sessions route before persistence/reload can reconcile the closed route |
 | Select a Room or Pibo Session | Push the existing Sessions route; retain the right tab |
 
 ## 5. Acceptance criteria
@@ -80,11 +86,15 @@ History policy:
 - **AC-006**: Given browser Back/Forward, when route history changes, then the matching route tab opens or receives focus.
 - **AC-007**: Given 390×844, when existing topbar navigation is used, then the prior route-owned mobile view and drawer behavior remain.
 - **AC-008**: Given keyboard-only input, when users navigate, reorder, close, resize, collapse, and use the catalog, then every operation completes with visible focus.
+- **AC-009**: Given an online Preview iframe, when another right tab activates and Preview is selected again, then the same iframe instance remains mounted and its document does not reload.
+- **AC-010**: Given inactive Project and ordinary Area tabs, when the workspace is idle, then those tabs do not retain Project bootstrap requests, Trace SSE streams, or periodic queries.
+- **AC-011**: Given Agent Designer has pending changes, when the user closes or leaves its tab, then save completes before the transition; a rejected save prevents the transition.
+- **AC-012**: Given Terminal fullscreen, then the left navigation and right tabs are visually and accessibly hidden while the terminal occupies the workspace.
 
 ## 6. Test automation strategy
 
-- Pure model tests cover deduplication, close-neighbor focus, reorder, bounds, persistence recovery, and route reconciliation.
-- component/source-contract tests cover ARIA, keyboard commands, catalog Escape, resize, and Desktop/Mobile gating.
+- Pure model/controller tests cover deduplication, close-neighbor selection, URL policy, guarded Agent transitions, bounds, persistence recovery, and route reconciliation.
+- React behavior tests cover Preview iframe identity, inactive resource unmounting, post-close DOM focus, catalog containment, annotation close, and fullscreen keep-alive hiding. Source-contract checks remain only for static wiring that cannot regress independently of those behavior tests.
 - existing Chat Web route, storage, mobile navigation, sidebar, Preview, Raw Events, and fullscreen tests remain in the gate.
 - headful Browser Use validates 1440×900, 1920×1080, and 390×844. CDP records console and failed-network evidence.
 
@@ -101,6 +111,7 @@ The selected Pibo Session is the operator’s continuous work context. Product a
 ## 9. Edge cases
 
 - Corrupt or unavailable local storage falls back to an empty, expanded sidebar with a bounded default width.
+- Duplicate stored IDs or target identities retain the first valid tab and alias the stored active identity to that retained tab.
 - Closing the last tab leaves the catalog-ready empty sidebar and the Sessions route.
 - A missing selected Pibo Session shows the existing empty states in session tool tabs.
 - VS Code stays discoverable in the catalog when the gateway does not configure it and renders the existing configuration empty state.

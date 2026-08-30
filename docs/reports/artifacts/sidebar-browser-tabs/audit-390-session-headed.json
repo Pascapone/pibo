@@ -1,5 +1,5 @@
 {
-  "url": "http://127.0.0.1:4788/apps/chat/rooms/room_6ea970ec-0739-4e50-81df-db788b58cb04/sessions/ps_d2b95611-8c44-41dd-9b68-08d959203a5e?view=terminal",
+  "url": "http://127.0.0.1:4788/apps/chat/rooms/room_e7b0ad23-05cb-47c0-a0b1-548776563c07/sessions/ps_7d7934ac-e0c3-4476-978a-2f3265938e97?view=terminal",
   "viewport": {
     "width": 390,
     "height": 844
@@ -15,5 +15,14 @@
     "height": 788
   },
   "tabOrder": [],
-  "failedResources": []
+  "activeElement": "Pibo Chatsessionsprojectsworkflowscronloopsagentscontextsettingsdev@pibo.localsessionsShared ChatShared ChatRoomsNo roomsSessionsbasecodex-nativeorpUntitled SessionUntitled SessionUntitled SessionRoomShared Chat·ps_7d7934ac-e0c3-4476-978a-2f3265938e97Tools: DefaultTools: HideTools: SlimTools: IntentTerminalWorkflowbasepi · boundbaseNo visible trace rows yet.basecodex-nativeorp",
+  "loadingProjects": false,
+  "failedResources": [
+    "http://127.0.0.1:4788/apps/chat/assets/index-CifmeYPr.js",
+    "http://127.0.0.1:4788/apps/chat/assets/dist-CqM4On9D.js",
+    "http://127.0.0.1:4788/apps/chat/assets/dist-DLJCGrGQ.js",
+    "http://127.0.0.1:4788/apps/chat/assets/dist-S3zJGntM.js",
+    "http://127.0.0.1:4788/apps/chat/assets/index-Bs-urGdW.css",
+    "http://127.0.0.1:4788/apps/chat/assets/pwa-images/android/launchericon-512x512.png"
+  ]
 }

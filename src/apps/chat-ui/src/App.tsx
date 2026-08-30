@@ -164,7 +164,14 @@ import {
 	openTargetInDesktopTabs,
 	useDesktopTabWorkspace,
 } from "./desktop-tabs";
-import { activeDesktopTab, closeDesktopTab, type DesktopSessionTool, type DesktopTab, type DesktopTabTarget } from "./desktop-tabs-model";
+import {
+	activeDesktopTab,
+	applyGuardedDesktopTabTransition,
+	closeDesktopTab,
+	type DesktopSessionTool,
+	type DesktopTab,
+	type DesktopTabTarget,
+} from "./desktop-tabs-model";
 
 export type { ChatAppRoute } from "./app-routes";
 
@@ -317,6 +324,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [creatingSession, setCreatingSession] = useState(false);
 	const creatingSessionRef = useRef(false);
 	const agentAutosaveHandlerRef = useRef<(() => Promise<void>) | null>(null);
+	const skipNextAgentNavigationGuardRef = useRef(false);
 	const [loadingActiveSessions, setLoadingActiveSessions] = useState(false);
 	const [loadingArchivedSessions, setLoadingArchivedSessions] = useState(false);
 	const [visibleActiveSessionCount, setVisibleActiveSessionCount] = useState(SESSION_PAGE_SIZE);
@@ -647,17 +655,24 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, []);
 	const flushAgentBeforeNavigation = useCallback(async ({ current, next }: { current: { pathname: string }; next: { pathname: string } }) => {
 		if (current.pathname === next.pathname) return false;
+		if (skipNextAgentNavigationGuardRef.current) {
+			skipNextAgentNavigationGuardRef.current = false;
+			return false;
+		}
 		const autosave = agentAutosaveHandlerRef.current;
 		if (!autosave) return false;
 		try {
 			await autosave();
 			return false;
-		} catch {
+		} catch (caught) {
+			setError(`Agent Designer changes were not saved: ${caught instanceof Error ? caught.message : String(caught)}`);
 			return true;
 		}
 	}, []);
 	useBlocker({
-		disabled: area !== "agents",
+		disabled: desktopTabsEnabled
+			? desktopActiveTab?.target.kind !== "route" || desktopActiveTab.target.route.area !== "agents"
+			: area !== "agents",
 		enableBeforeUnload: false,
 		shouldBlockFn: flushAgentBeforeNavigation,
 	});
@@ -1644,27 +1659,53 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 		navigateToRoute({ area: item });
 	};
-	const navigateForDesktopTab = (tab: DesktopTab | null) => {
-		if (tab?.target.kind === "route") navigateToRoute(tab.target.route);
+	const desktopSessionsRoute: Extract<ChatAppRoute, { area: "sessions" }> = {
+		area: "sessions",
+		...(selectedRoomId ?? bootstrap.selectedRoomId ? { roomId: selectedRoomId ?? bootstrap.selectedRoomId } : {}),
+		...(selectedPiboSessionId ?? bootstrap.selectedPiboSessionId ? { piboSessionId: selectedPiboSessionId ?? bootstrap.selectedPiboSessionId } : {}),
+	};
+	const applyDesktopWorkspaceTransition = async (
+		next: typeof desktopWorkspace.state,
+		options: { saveClosingTab?: DesktopTab } = {},
+	): Promise<boolean> => {
+		const currentActive = activeDesktopTab(desktopWorkspace.state);
+		const closingAgent = options.saveClosingTab?.target.kind === "route" && options.saveClosingTab.target.route.area === "agents";
+		const savesAgent = Boolean(closingAgent || (currentActive?.target.kind === "route" && currentActive.target.route.area === "agents" && currentActive.id !== next.activeTabId));
+		const result = await applyGuardedDesktopTabTransition({
+			current: desktopWorkspace.state,
+			next,
+			sessionsRoute: desktopSessionsRoute,
+			closingTab: options.saveClosingTab,
+			autosave: agentAutosaveHandlerRef.current,
+			onCommit: desktopWorkspace.setState,
+			onNavigate: (target) => {
+				if (savesAgent) skipNextAgentNavigationGuardRef.current = true;
+				navigateToRoute(target);
+				if (savesAgent) window.setTimeout(() => { skipNextAgentNavigationGuardRef.current = false; }, 0);
+			},
+		});
+		if (!result.allowed) {
+			setError(`Agent Designer changes were not saved: ${result.error instanceof Error ? result.error.message : String(result.error)}`);
+			return false;
+		}
+		return true;
 	};
 	const setDesktopWorkspaceState = (next: typeof desktopWorkspace.state) => {
-		const currentActiveId = desktopWorkspace.state.activeTabId;
-		desktopWorkspace.setState(next);
-		if (next.activeTabId !== currentActiveId) {
-			const nextActive = activeDesktopTab(next);
-			if (nextActive?.target.kind === "route") navigateForDesktopTab(nextActive);
-			else if (!nextActive) navigateToSelectedSession(selectedRoomId ?? bootstrap.selectedRoomId, selectedPiboSessionId ?? bootstrap.selectedPiboSessionId);
-		}
+		void applyDesktopWorkspaceTransition(next);
 	};
-	const openDesktopTarget = (target: DesktopTabTarget) => {
+	const openDesktopTarget = async (target: DesktopTabTarget) => {
 		const next = openTargetInDesktopTabs(desktopWorkspace.state, target);
-		desktopWorkspace.setState(next);
-		const nextActive = activeDesktopTab(next);
-		if (nextActive?.target.kind === "route") navigateForDesktopTab(nextActive);
+		await applyDesktopWorkspaceTransition(next);
 	};
-	const activateDesktopWorkspaceTab = (tab: DesktopTab) => {
-		desktopWorkspace.setState(activateTabInDesktopTabs(desktopWorkspace.state, tab.id));
-		navigateForDesktopTab(tab);
+	const activateDesktopWorkspaceTab = async (tab: DesktopTab) => {
+		await applyDesktopWorkspaceTransition(activateTabInDesktopTabs(desktopWorkspace.state, tab.id));
+	};
+	const closeDesktopWorkspaceTab = async (tab: DesktopTab): Promise<boolean> => {
+		return applyDesktopWorkspaceTransition(closeDesktopTab(desktopWorkspace.state, tab.id), { saveClosingTab: tab });
+	};
+	const closeDesktopSessionTool = (tool: DesktopSessionTool) => {
+		const tab = desktopWorkspace.state.tabs.find((candidate) => candidate.target.kind === "session-tool" && candidate.target.tool === tool);
+		if (tab) void closeDesktopWorkspaceTab(tab);
 	};
 	const focusDesktopSessions = () => {
 		navigateToSelectedSession(selectedRoomId ?? bootstrap.selectedRoomId, selectedPiboSessionId ?? bootstrap.selectedPiboSessionId);
@@ -1789,7 +1830,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					data-pibo-area={desktopPanelRoute?.area ?? "sessions"}
 					className="min-h-0 flex overflow-hidden"
 				>
-					<aside data-pibo-debug="desktop-session-sidebar" tabIndex={-1} className="min-h-0 w-[300px] shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]">
+					<aside data-pibo-debug="desktop-session-sidebar" tabIndex={-1} hidden={isTerminalFullscreen} aria-hidden={isTerminalFullscreen || undefined} className="min-h-0 w-[300px] shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]">
 						<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
 							<span>Sessions</span>
 							<button
@@ -1848,7 +1889,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
 						/>
 					</aside>
-					<main data-pibo-debug="desktop-session-center" className="min-h-0 min-w-[420px] flex-1 overflow-hidden">
+					<main data-pibo-debug="desktop-session-center" className={`min-h-0 flex-1 overflow-hidden ${isTerminalFullscreen ? "min-w-0" : "min-w-[420px]"}`}>
 						<SessionTracePane
 							bootstrap={bootstrap}
 							selectedPiboSessionId={selectedPiboSessionId}
@@ -1892,7 +1933,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 							onRefreshBootstrap={refreshSelectedBootstrap}
 							desktopActiveTool={desktopActiveTool}
 							desktopToolHosts={desktopToolHosts}
-							onOpenDesktopTool={(tool) => openDesktopTarget({ kind: "session-tool", tool })}
+							onOpenDesktopTool={(tool) => void openDesktopTarget({ kind: "session-tool", tool })}
+							onCloseDesktopTool={closeDesktopSessionTool}
 							onSend={async (text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery) => {
 								if (isSessionComposerDisabled(selectedPiboSessionId, selectedRoomArchived) || !selectedPiboSessionId) return;
 								try {
@@ -1908,10 +1950,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 						state={desktopWorkspace.state}
 						vscodeEnabled={Boolean(bootstrap.integrations?.vscode)}
 						onStateChange={setDesktopWorkspaceState}
-						onActivate={activateDesktopWorkspaceTab}
-						onOpenTarget={openDesktopTarget}
+						onActivate={(tab) => void activateDesktopWorkspaceTab(tab)}
+						onClose={closeDesktopWorkspaceTab}
+						onOpenTarget={(target) => void openDesktopTarget(target)}
 						onFocusSessions={focusDesktopSessions}
 						renderPanel={(tab, active) => renderDesktopPanel(tab, active)}
+						hidden={isTerminalFullscreen}
 					/>
 					{deleteRoomTarget ? <DeleteRoomModal room={deleteRoomTarget} confirmName={deleteRoomConfirmName} deleting={deletingRoom} onConfirmNameChange={setDeleteRoomConfirmName} onCancel={cancelRoomDelete} onDelete={() => void permanentlyDeleteRoom()} /> : null}
 					{deleteSessionTarget ? <DeleteSessionModal session={deleteSessionTarget} confirmText={deleteSessionConfirmText} deleting={deletingSession} onConfirmTextChange={setDeleteSessionConfirmText} onCancel={cancelSessionDelete} onDelete={() => void permanentlyDeleteSession()} /> : null}

@@ -156,6 +156,69 @@ export function activeDesktopTab(state: DesktopTabState): DesktopTab | null {
 	return state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
 }
 
+export function desktopTabKeepsMounted(tab: DesktopTab): boolean {
+	if (tab.target.kind === "session-tool") return tab.target.tool === "preview";
+	return tab.target.route.area === "vscode";
+}
+
+export function desktopRouteForState(
+	state: DesktopTabState,
+	sessionsRoute: Extract<ChatAppRoute, { area: "sessions" }>,
+): ChatAppRoute {
+	const active = activeDesktopTab(state);
+	return active?.target.kind === "route" ? active.target.route : sessionsRoute;
+}
+
+export function desktopTransitionNeedsAgentSave(current: DesktopTab | null, nextActiveTabId: string | null): boolean {
+	return current?.target.kind === "route"
+		&& current.target.route.area === "agents"
+		&& current.id !== nextActiveTabId;
+}
+
+export async function guardDesktopAgentTransition(
+	required: boolean,
+	autosave: (() => Promise<void>) | null,
+): Promise<{ allowed: true } | { allowed: false; error: unknown }> {
+	if (!required || !autosave) return { allowed: true };
+	try {
+		await autosave();
+		return { allowed: true };
+	} catch (error) {
+		return { allowed: false, error };
+	}
+}
+
+export async function applyGuardedDesktopTabTransition({
+	current,
+	next,
+	sessionsRoute,
+	closingTab,
+	autosave,
+	onCommit,
+	onNavigate,
+}: {
+	current: DesktopTabState;
+	next: DesktopTabState;
+	sessionsRoute: Extract<ChatAppRoute, { area: "sessions" }>;
+	closingTab?: DesktopTab;
+	autosave: (() => Promise<void>) | null;
+	onCommit: (state: DesktopTabState) => void;
+	onNavigate: (route: ChatAppRoute) => void;
+}): Promise<{ allowed: true } | { allowed: false; error: unknown }> {
+	const currentActive = activeDesktopTab(current);
+	const closingAgent = closingTab?.target.kind === "route" && closingTab.target.route.area === "agents";
+	const saveResult = await guardDesktopAgentTransition(
+		Boolean(closingAgent || desktopTransitionNeedsAgentSave(currentActive, next.activeTabId)),
+		autosave,
+	);
+	if (!saveResult.allowed) return saveResult;
+	const currentRoute = desktopRouteForState(current, sessionsRoute);
+	const nextRoute = desktopRouteForState(next, sessionsRoute);
+	onCommit(next);
+	if (JSON.stringify(currentRoute) !== JSON.stringify(nextRoute)) onNavigate(nextRoute);
+	return { allowed: true };
+}
+
 export function reconcileDesktopRoute(state: DesktopTabState, route: ChatAppRoute, options: { id?: string; now?: number } = {}): DesktopTabState {
 	const target = routeDesktopTabTarget(route);
 	return target ? openDesktopTab(state, target, options) : state;
@@ -175,12 +238,31 @@ export function parseDesktopTabState(value: string | null | undefined): DesktopT
 	try {
 		const candidate = JSON.parse(value) as unknown;
 		if (!isRecord(candidate) || candidate.version !== DESKTOP_TAB_STATE_VERSION || !Array.isArray(candidate.tabs)) return emptyDesktopTabState();
-		const tabs = candidate.tabs
+		const parsedTabs = candidate.tabs
 			.slice(0, DESKTOP_TAB_LIMIT)
 			.map(parseDesktopTab)
 			.filter((tab): tab is DesktopTab => tab !== null);
-		const activeTabId = typeof candidate.activeTabId === "string" && tabs.some((tab) => tab.id === candidate.activeTabId)
-			? candidate.activeTabId
+		const tabs: DesktopTab[] = [];
+		const retainedIds = new Set<string>();
+		const retainedTargets = new Map<string, string>();
+		const idAliases = new Map<string, string>();
+		for (const tab of parsedTabs) {
+			const targetKey = desktopTabTargetKey(tab.target);
+			const retainedTargetId = retainedTargets.get(targetKey);
+			if (retainedIds.has(tab.id) || retainedTargetId) {
+				idAliases.set(tab.id, retainedTargetId ?? tab.id);
+				continue;
+			}
+			tabs.push(tab);
+			retainedIds.add(tab.id);
+			retainedTargets.set(targetKey, tab.id);
+			idAliases.set(tab.id, tab.id);
+		}
+		const requestedActiveTabId = typeof candidate.activeTabId === "string"
+			? idAliases.get(candidate.activeTabId)
+			: undefined;
+		const activeTabId = requestedActiveTabId && tabs.some((tab) => tab.id === requestedActiveTabId)
+			? requestedActiveTabId
 			: tabs[0]?.id ?? null;
 		return {
 			version: DESKTOP_TAB_STATE_VERSION,

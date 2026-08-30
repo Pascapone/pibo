@@ -3,7 +3,8 @@ import WebSocket from "ws";
 
 const [, , command, ...args] = process.argv;
 const browserHome = process.env.BROWSER_USE_HOME ?? "/root/.pibo/tools/browser-use/home";
-const port = (await fs.readFile(`${browserHome}/pibo-cdp/sidebar-browser-tabs.port`, "utf8")).trim();
+const browserSession = process.env.PIBO_BROWSER_SESSION ?? "sidebar-browser-tabs";
+const port = (await fs.readFile(`${browserHome}/pibo-cdp/${browserSession}.port`, "utf8")).trim();
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json());
 const target = targets.find((candidate) => candidate.type === "page" && candidate.url.includes("/apps/chat"));
 if (!target?.webSocketDebuggerUrl) throw new Error("Chat Web CDP target not found");
@@ -63,6 +64,10 @@ if (command === "viewport") {
 				mobileRouteShell: rect('[data-pibo-debug="route-shell"]'),
 				activeTab: document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.trim(),
 				tabOrder: [...document.querySelectorAll('[role="tab"]')].map((node) => node.textContent?.trim()),
+				activePanelText: [...document.querySelectorAll('[role="tabpanel"]')]
+					.find((node) => !node.hidden)?.textContent?.trim().replace(/\\s+/g, ' ').slice(0, 500),
+				activeElement: document.activeElement?.getAttribute('title') ?? document.activeElement?.textContent?.trim(),
+				loadingProjects: document.body.textContent?.includes('Loading Projects…') ?? false,
 				failedResources: performance.getEntriesByType('resource').filter((entry) => entry.duration === 0 && entry.transferSize === 0).map((entry) => entry.name),
 			};
 		})()`,
@@ -75,23 +80,40 @@ if (command === "viewport") {
 	const output = args[1];
 	if (!output) throw new Error("monitor output path is required");
 	const events = [];
+	const requests = [];
+	const preexistingFailures = [];
 	const requestUrls = new Map();
 	socket.on("message", (buffer) => {
 		const message = JSON.parse(buffer.toString());
-		if (message.method === "Network.requestWillBeSent") requestUrls.set(message.params.requestId, message.params.request.url);
+		if (message.method === "Network.requestWillBeSent") {
+			requestUrls.set(message.params.requestId, message.params.request.url);
+			requests.push({ url: message.params.request.url, type: message.params.type });
+		}
 		if (message.method === "Runtime.exceptionThrown") events.push({ kind: "exception", detail: message.params.exceptionDetails });
 		if (message.method === "Runtime.consoleAPICalled" && ["error", "warning"].includes(message.params.type)) events.push({ kind: `console-${message.params.type}`, detail: message.params });
 		if (message.method === "Log.entryAdded" && ["error", "warning"].includes(message.params.entry.level)) events.push({ kind: `log-${message.params.entry.level}`, detail: message.params.entry });
 		if (message.method === "Network.responseReceived" && message.params.response.status >= 400) events.push({ kind: "http-error", detail: { url: message.params.response.url, status: message.params.response.status } });
-		if (message.method === "Network.loadingFailed") events.push({
-			kind: "network-failed",
-			detail: { ...message.params, url: requestUrls.get(message.params.requestId) },
-		});
+		if (message.method === "Network.loadingFailed") {
+			const detail = { ...message.params, url: requestUrls.get(message.params.requestId) };
+			if (requestUrls.has(message.params.requestId)) events.push({ kind: "network-failed", detail });
+			else preexistingFailures.push(detail);
+		}
 	});
 	await Promise.all([send("Runtime.enable"), send("Log.enable"), send("Network.enable")]);
 	await new Promise((resolve) => setTimeout(resolve, durationMs));
-	await fs.writeFile(output, `${JSON.stringify({ target: target.url, durationMs, events }, null, 2)}\n`);
-	console.log(JSON.stringify({ output, eventCount: events.length }));
+	const projectRequests = requests.filter(({ url }) => /\/api\/projects|project.*bootstrap/i.test(url));
+	const eventSourceRequests = requests.filter(({ type, url }) => type === "EventSource" || /\/events(?:\?|$)/.test(url));
+	const abortedRequests = events.filter(({ kind, detail }) => kind === "network-failed" && detail.canceled);
+	const summary = {
+		requestCount: requests.length,
+		projectRequestCount: projectRequests.length,
+		eventSourceRequestCount: eventSourceRequests.length,
+		abortedRequestCount: abortedRequests.length,
+		preexistingFailureCount: preexistingFailures.length,
+		errorCount: events.filter(({ kind }) => kind !== "network-failed").length,
+	};
+	await fs.writeFile(output, `${JSON.stringify({ target: target.url, durationMs, summary, requests, events, preexistingFailures }, null, 2)}\n`);
+	console.log(JSON.stringify({ output, ...summary }));
 } else {
 	throw new Error(`Unknown command: ${command}`);
 }

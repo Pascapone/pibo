@@ -57,6 +57,81 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 			assert.equal(model.activeDesktopTab(next).target.route.area, area);
 		}
 
+		let closeRouteToTool = model.emptyDesktopTabState();
+		closeRouteToTool = model.openDesktopTab(closeRouteToTool, { kind: "route", route: { area: "agents" } }, { id: "agent", now: 11 });
+		closeRouteToTool = model.openDesktopTab(closeRouteToTool, { kind: "session-tool", tool: "preview" }, { id: "preview-tool", now: 12 });
+		closeRouteToTool = model.activateDesktopTab(closeRouteToTool, "agent", 13);
+		const beforeRouteClose = closeRouteToTool;
+		closeRouteToTool = model.closeDesktopTab(closeRouteToTool, "agent");
+		const sessionsRoute = { area: "sessions", roomId: "room_1", piboSessionId: "ps_1" };
+		assert.deepEqual(model.desktopRouteForState(closeRouteToTool, sessionsRoute), sessionsRoute);
+		let committedRouteClose = null;
+		let navigatedAfterClose = null;
+		assert.deepEqual(await model.applyGuardedDesktopTabTransition({
+			current: beforeRouteClose,
+			next: closeRouteToTool,
+			sessionsRoute,
+			closingTab: beforeRouteClose.tabs.find((tab) => tab.id === "agent"),
+			autosave: async () => {},
+			onCommit: (next) => { committedRouteClose = next; },
+			onNavigate: (route) => { navigatedAfterClose = route; },
+		}), { allowed: true });
+		assert.equal(committedRouteClose.activeTabId, "preview-tool");
+		assert.deepEqual(navigatedAfterClose, sessionsRoute);
+		const reloadedTool = model.reconcileDesktopRoute(
+			model.parseDesktopTabState(model.serializeDesktopTabState(committedRouteClose)),
+			sessionsRoute,
+		);
+		assert.equal(model.activeDesktopTab(reloadedTool).target.tool, "preview");
+		assert.equal(reloadedTool.tabs.some((tab) => tab.target.kind === "route" && tab.target.route.area === "agents"), false);
+
+		const duplicateProject = {
+			id: "project-one",
+			target: { kind: "route", route: { area: "projects", projectId: "p-1" } },
+			title: "Project one",
+			createdAt: 1,
+			lastActivatedAt: 1,
+		};
+		const recovered = model.parseDesktopTabState(JSON.stringify({
+			version: 1,
+			tabs: [
+				duplicateProject,
+				{ ...duplicateProject, target: { kind: "route", route: { area: "settings" } } },
+				{ ...duplicateProject, id: "project-alias", lastActivatedAt: 2 },
+				{ ...duplicateProject, id: "vscode", target: { kind: "route", route: { area: "vscode" } } },
+			],
+			activeTabId: "project-alias",
+			width: 520,
+			collapsed: false,
+		}));
+		assert.deepEqual(recovered.tabs.map((tab) => tab.id), ["project-one", "vscode"]);
+		assert.equal(recovered.activeTabId, "project-one", "duplicate target active id aliases to the retained tab");
+
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateProject, id: "preview", target: { kind: "session-tool", tool: "preview" } }), true);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateProject, id: "raw", target: { kind: "session-tool", tool: "raw-events" } }), false);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateProject, id: "project" }), false);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateProject, id: "agent", target: { kind: "route", route: { area: "agents" } } }), false);
+
+		const saveOrder = [];
+		assert.deepEqual(await model.guardDesktopAgentTransition(true, async () => { saveOrder.push("saved"); }), { allowed: true });
+		assert.deepEqual(saveOrder, ["saved"]);
+		const saveFailure = new Error("save failed");
+		const denied = await model.guardDesktopAgentTransition(true, async () => { throw saveFailure; });
+		assert.equal(denied.allowed, false);
+		assert.equal(denied.error, saveFailure);
+		let committedAfterFailure = false;
+		const deniedClose = await model.applyGuardedDesktopTabTransition({
+			current: beforeRouteClose,
+			next: closeRouteToTool,
+			sessionsRoute,
+			closingTab: beforeRouteClose.tabs.find((tab) => tab.id === "agent"),
+			autosave: async () => { throw saveFailure; },
+			onCommit: () => { committedAfterFailure = true; },
+			onNavigate: () => { throw new Error("must not navigate after save failure"); },
+		});
+		assert.equal(deniedClose.allowed, false);
+		assert.equal(committedAfterFailure, false, "save failure keeps the Agent Designer tab open");
+
 		const storage = new Map();
 		model.writeDesktopTabState(routed, { setItem: (key, value) => storage.set(key, value) });
 		assert.equal(model.readDesktopTabState({ getItem: (key) => storage.get(key) ?? null }).activeTabId, routed.activeTabId);
