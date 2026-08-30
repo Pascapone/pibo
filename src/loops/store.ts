@@ -450,10 +450,7 @@ export class PiboLoopStore {
 			if (mode === 'goal' && patch.enabled !== undefined) {
 				const currentGoalStatus = goalStatus({ mode, enabled: existing.enabled, state: existing.state }) ?? 'paused';
 				if (patch.enabled) {
-					if (currentGoalStatus === 'complete') throw new Error('Completed goals cannot be restarted; create a new goal');
-					const nextBudget = hasOwn(patch, 'tokenBudget') ? normalizeTokenBudget(patch.tokenBudget ?? undefined) : existing.tokenBudget;
-					const nextReserve = hasOwn(patch, 'tokenReserve') ? normalizeTokenReserve(patch.tokenReserve ?? undefined) : existing.tokenReserve;
-					if (currentGoalStatus === 'budget_limited' && nextBudget !== undefined && (existing.state.tokensUsed ?? 0) + (nextReserve ?? 0) >= nextBudget) throw new Error('Increase or clear the token budget, or lower the token reserve, before resuming this goal');
+					if (isTerminalGoalStatus(currentGoalStatus)) throw new Error('Terminal Goals cannot be restarted; use the confirmed Goal reopen operation');
 					state.goalStatus = 'active';
 					state.goalStartedAt ??= nowIso(now);
 					delete state.goalEndedAt;
