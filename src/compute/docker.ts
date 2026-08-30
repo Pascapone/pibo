@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createHash } from "node:crypto";
-import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, readdir, writeFile, mkdir, open, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { piboHomePath } from "../core/pibo-home.js";
 import {
 	COMPUTE_RESOURCE_POLICY_LABELS,
 	buildComputeResourcePolicyLabels,
@@ -161,6 +162,98 @@ export interface SpawnedDevWorker {
 
 const DEV_PORT_BASE = 4800;
 const DEV_PORT_BLOCK_SIZE = 10;
+const DEV_PORT_ALLOCATION_LOCK_TIMEOUT_MS = 30_000;
+const DEV_PORT_ALLOCATION_LOCK_POLL_MS = 25;
+const DEV_PORT_ALLOCATION_MALFORMED_STALE_MS = 5_000;
+
+interface DevPortAllocationLockOwner {
+	pid: number;
+	token: string;
+	createdAt: string;
+}
+
+function devPortAllocationLockPath(): string {
+	return piboHomePath("compute", "dev-port-allocation.lock");
+}
+
+function isErrnoException(error: unknown, code: string): boolean {
+	return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === code;
+}
+
+function isPidAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return isErrnoException(error, "EPERM");
+	}
+}
+
+async function removeAbandonedDevPortAllocationLock(lockPath: string): Promise<void> {
+	const raw = await readFile(lockPath, "utf8").catch(() => undefined);
+	if (raw === undefined) return;
+
+	let owner: Partial<DevPortAllocationLockOwner> = {};
+	try {
+		owner = JSON.parse(raw) as Partial<DevPortAllocationLockOwner>;
+	} catch {
+		// A partially written lock can be reclaimed after a short grace period.
+	}
+	if (typeof owner.pid !== "number" || !Number.isInteger(owner.pid) || owner.pid <= 0) {
+		const lockStat = await stat(lockPath).catch(() => undefined);
+		if (!lockStat || Date.now() - lockStat.mtimeMs <= DEV_PORT_ALLOCATION_MALFORMED_STALE_MS) return;
+	} else if (isPidAlive(owner.pid)) {
+		return;
+	}
+
+	if ((await readFile(lockPath, "utf8").catch(() => undefined)) === raw) {
+		await rm(lockPath, { force: true });
+	}
+}
+
+async function releaseDevPortAllocationLock(lockPath: string, token: string): Promise<void> {
+	try {
+		const owner = JSON.parse(await readFile(lockPath, "utf8")) as Partial<DevPortAllocationLockOwner>;
+		if (owner.token === token) await rm(lockPath, { force: true });
+	} catch {
+		// The lock was already removed or replaced.
+	}
+}
+
+async function withDevPortAllocationLock<T>(run: () => Promise<T>): Promise<T> {
+	const lockPath = devPortAllocationLockPath();
+	const token = randomUUID();
+	const startedAt = Date.now();
+
+	while (true) {
+		try {
+			await mkdir(path.dirname(lockPath), { recursive: true, mode: 0o700 });
+			const handle = await open(lockPath, "wx", 0o600);
+			try {
+				await handle.writeFile(JSON.stringify({ pid: process.pid, token, createdAt: new Date().toISOString() } satisfies DevPortAllocationLockOwner), "utf8");
+			} catch (error) {
+				await handle.close();
+				await rm(lockPath, { force: true });
+				throw error;
+			}
+			await handle.close();
+			break;
+		} catch (error) {
+			if (!isErrnoException(error, "EEXIST")) throw error;
+			await removeAbandonedDevPortAllocationLock(lockPath);
+			if (Date.now() - startedAt >= DEV_PORT_ALLOCATION_LOCK_TIMEOUT_MS) {
+				throw new Error(`Timed out waiting for compute dev port allocation lock ${lockPath}`);
+			}
+			await new Promise<void>((resolve) => setTimeout(resolve, DEV_PORT_ALLOCATION_LOCK_POLL_MS));
+		}
+	}
+
+	try {
+		return await run();
+	} finally {
+		await releaseDevPortAllocationLock(lockPath, token);
+	}
+}
 
 async function findNextPortBlock(): Promise<number> {
 	const { stdout } = await execFileAsync("docker", [
@@ -342,14 +435,6 @@ export async function spawnDevWorker(options: {
 	const worktreePath = path.join(options.repoDir, ".worktrees", options.worktreeName);
 	await createWorktree(options.repoDir, options.worktreeName);
 
-	const block = await findNextPortBlock();
-	const base = DEV_PORT_BASE + block * DEV_PORT_BLOCK_SIZE;
-	const gatewayPort = base;
-	const cdpPort = base + 1;
-	const webPort = base + 2;
-	const webUIPortChat = base + 3;
-	const webUIPortContext = base + 4;
-
 	const id = `pibo-dev-${options.worktreeName}`;
 	const createdAt = new Date().toISOString();
 
@@ -363,26 +448,36 @@ export async function spawnDevWorker(options: {
 		// host node_modules does not exist; skip mount
 	}
 
-	const args = buildDevWorkerDockerRunArgs({
-		id,
-		worktreePath,
-		worktreeName: options.worktreeName,
-		block,
-		gatewayPort,
-		cdpPort,
-		webPort,
-		webUIPortChat,
-		webUIPortContext,
-		createdAt,
-		holder: options.holder,
-		ttlSeconds: options.ttlSeconds,
-		idleSeconds: options.idleSeconds,
-		ralphJobId: options.ralphJobId,
-		ralphRunId: options.ralphRunId,
-		hostNodeModules: nodeModulesMount,
-	});
+	const ports = await withDevPortAllocationLock(async () => {
+		const block = await findNextPortBlock();
+		const base = DEV_PORT_BASE + block * DEV_PORT_BLOCK_SIZE;
+		const gatewayPort = base;
+		const cdpPort = base + 1;
+		const webPort = base + 2;
+		const webUIPortChat = base + 3;
+		const webUIPortContext = base + 4;
+		const args = buildDevWorkerDockerRunArgs({
+			id,
+			worktreePath,
+			worktreeName: options.worktreeName,
+			block,
+			gatewayPort,
+			cdpPort,
+			webPort,
+			webUIPortChat,
+			webUIPortContext,
+			createdAt,
+			holder: options.holder,
+			ttlSeconds: options.ttlSeconds,
+			idleSeconds: options.idleSeconds,
+			ralphJobId: options.ralphJobId,
+			ralphRunId: options.ralphRunId,
+			hostNodeModules: nodeModulesMount,
+		});
 
-	await execFileAsync("docker", args, { cwd: options.repoDir });
+		await execFileAsync("docker", args, { cwd: options.repoDir });
+		return { gatewayPort, cdpPort, webPort, webUIPortChat, webUIPortContext };
+	});
 
 	const host = await detectHost();
 
@@ -390,11 +485,7 @@ export async function spawnDevWorker(options: {
 		id,
 		image: IMAGE_NAME,
 		gatewayHost: host,
-		gatewayPort,
-		cdpPort,
-		webPort,
-		webUIPortChat,
-		webUIPortContext,
+		...ports,
 		connect: `docker exec -it ${id} bash`,
 		worktree: worktreePath,
 	};
