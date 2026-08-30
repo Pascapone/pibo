@@ -139,7 +139,7 @@ test("pibo tools exposes Graphify as a curated CLI tool", async () => {
 
 		const show = await execFileAsync("node", [cliPath, "tools", "show", "graphify"], { cwd, env });
 		assert.match(show.stdout, /package: graphifyy/);
-		assert.match(show.stdout, /pibo tools env graphify/);
+		assert.match(show.stdout, /pibo tools install graphify/);
 		assert.match(show.stdout, /pibo tools guide graphify graphify/);
 
 		const guide = await execFileAsync("node", [cliPath, "tools", "guide", "graphify", "graphify"], { cwd, env });
@@ -153,8 +153,12 @@ test("pibo tools exposes Graphify as a curated CLI tool", async () => {
 		const install = await execFileAsync("node", [cliPath, "tools", "install", "graphify", "--no-setup"], { cwd, env });
 		assert.match(install.stdout, /Install target graphify/);
 		assert.match(install.stdout, /pibo-home[\\/]tools[\\/]graphify/);
-		assert.match(install.stdout, /env: pibo tools env graphify/);
+		assert.match(install.stdout, /install: pibo tools install graphify/);
 
+		const graphifyBinDir = join(env.PIBO_HOME, "tools", "graphify", ".venv", process.platform === "win32" ? "Scripts" : "bin");
+		const graphifyExecutable = join(graphifyBinDir, process.platform === "win32" ? "graphify.exe" : "graphify");
+		await mkdir(graphifyBinDir, { recursive: true });
+		await writeFile(graphifyExecutable, "fixture");
 		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "graphify"], { cwd, env });
 		assert.match(envOutput.stdout, process.platform === "win32" ? /tools\\graphify\\.venv\\Scripts/ : /tools\/graphify\/.venv\/bin/);
 		assert.doesNotMatch(envOutput.stdout, /browser-use/);
@@ -259,7 +263,65 @@ test("pibo tools install supports a no-setup dry target", async () => {
 			assert.match(result.stdout, /Install a virtual X display if this host has no desktop session\./);
 			assert.match(result.stdout, /Xvfb :0 -screen 0 1920x1080x24 -ac -nolisten tcp/);
 		}
-		assert.match(result.stdout, /env: pibo tools env browser-use/);
+		assert.match(result.stdout, /install: pibo tools install browser-use/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo tools path and env expose only installed browser tool runtimes", posixWrapperTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-availability-"));
+	try {
+		const env = { ...process.env, HOME: join(cwd, "home"), PIBO_HOME: join(cwd, "home", ".pibo") };
+		const tools = [
+			{
+				name: "agent-browser",
+				realExecutable: join(env.PIBO_HOME, "tools", "agent-browser", "node", "node_modules", ".bin", "agent-browser"),
+				wrapper: join(env.PIBO_HOME, "tools", "agent-browser", "home", "bin", "agent-browser"),
+			},
+			{
+				name: "browser-use",
+				realExecutable: join(env.PIBO_HOME, "tools", "browser-use", ".venv", "bin", "browser-use"),
+				wrapper: join(env.PIBO_HOME, "tools", "browser-use", "home", "bin", "browser-use"),
+			},
+		];
+
+		const builtInPath = await execFileAsync("node", [cliPath, "tools", "path", "loop"], { cwd, env });
+		assert.equal(builtInPath.stdout.trim(), "pibo loop");
+
+		for (let transition = 0; transition < 2; transition += 1) {
+			for (const tool of tools) {
+				for (const command of ["path", "env"]) {
+					await assert.rejects(
+						execFileAsync("node", [cliPath, "tools", command, tool.name], { cwd, env }),
+						(error) => {
+							assert.equal(error.code, 1);
+							assert.equal(error.stdout, "");
+							assert.match(error.stderr, /Error \[CLI_TOOL_NOT_INSTALLED\]/);
+							assert.match(error.stderr, new RegExp(`pibo tools install ${tool.name}`));
+							return true;
+						},
+					);
+				}
+				assert.equal(existsSync(tool.wrapper), false);
+
+				await mkdir(dirname(tool.realExecutable), { recursive: true });
+				await writeFile(tool.realExecutable, `#!/bin/sh\nprintf 'fixture-${tool.name}\\n'\n`);
+				await chmod(tool.realExecutable, 0o755);
+
+				const installed = await execFileAsync("node", [cliPath, "tools", "installed"], { cwd, env });
+				assert.match(installed.stdout, new RegExp(`^${tool.name}\\tinstalled`, "m"));
+				const pathResult = await execFileAsync("node", [cliPath, "tools", "path", tool.name], { cwd, env });
+				assert.equal(pathResult.stdout.trim(), tool.wrapper);
+				const invocation = await execFileAsync(tool.wrapper, ["--help"], { cwd, env });
+				assert.match(invocation.stdout, new RegExp(`fixture-${tool.name}`));
+				const envResult = await execFileAsync("node", [cliPath, "tools", "env", tool.name], { cwd, env });
+				assert.match(envResult.stdout, new RegExp(tool.wrapper.replace(/\/[^/]+$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+				await execFileAsync("node", [cliPath, "tools", "remove", tool.name], { cwd, env });
+				assert.equal(existsSync(dirname(dirname(tool.wrapper))), false);
+			}
+		}
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -275,7 +337,8 @@ test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers"
 
 		const show = await execFileAsync("node", [cliPath, "tools", "show", "agent-browser"], { cwd, env });
 		assert.match(show.stdout, /package: agent-browser@0\.27\.0/);
-		assert.match(show.stdout, /wrapper: .*tools\/agent-browser\/home\/bin\/agent-browser/);
+		assert.match(show.stdout, /wrapper: not generated/);
+		assert.match(show.stdout, /pibo tools install agent-browser/);
 		assert.match(show.stdout, /pibo tools guide agent-browser agent-browser/);
 		assert.match(show.stdout, /pibo tools agent-browser/);
 
@@ -285,16 +348,15 @@ test("pibo tools exposes agent-browser npm runtime, guide, wrapper, and helpers"
 		assert.match(guide.stdout, /agent-browser click @e1/);
 		assert.match(guide.stdout, /agent-browser skills get core --full/);
 
-		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "agent-browser"], { cwd, env });
 		const wrapperPath = join(env.PIBO_HOME, "tools", "agent-browser", "home", "bin", "agent-browser");
 		const realBinDir = join(env.PIBO_HOME, "tools", "agent-browser", "node", "node_modules", ".bin");
-		assert.ok(envOutput.stdout.includes(`export PATH="${wrapperPath.replace(/\/agent-browser$/, "")}:${realBinDir}:$PATH"`));
-		assert.match(envOutput.stdout, /export AGENT_BROWSER_HOME=/);
-
 		await mkdir(realBinDir, { recursive: true });
 		const realExecutablePath = join(realBinDir, "agent-browser");
 		await writeFile(realExecutablePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
 		await chmod(realExecutablePath, 0o755);
+		const envOutput = await execFileAsync("node", [cliPath, "tools", "env", "agent-browser"], { cwd, env });
+		assert.ok(envOutput.stdout.includes(`export PATH="${wrapperPath.replace(/\/agent-browser$/, "")}:${realBinDir}:$PATH"`));
+		assert.match(envOutput.stdout, /export AGENT_BROWSER_HOME=/);
 
 		const defaultProfile = await execFileAsync(wrapperPath, ["open", "https://example.test"], { cwd, env });
 		assert.match(defaultProfile.stdout, /--profile\n.*tools\/agent-browser\/home\/profiles\/PIBo\nopen\nhttps:\/\/example\.test/);
@@ -332,9 +394,13 @@ test("pibo tools env wraps browser-use with the PIBo default profile", posixWrap
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-env-"));
 	try {
 		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
-		const result = await execFileAsync("node", [cliPath, "tools", "env", "browser-use"], { cwd, env });
 		const wrapperPath = join(env.PIBO_HOME, "tools", "browser-use", "home", "bin", "browser-use");
 		const realBinDir = join(env.PIBO_HOME, "tools", "browser-use", ".venv", "bin");
+		await mkdir(realBinDir, { recursive: true });
+		const realExecutablePath = join(realBinDir, "browser-use");
+		await writeFile(realExecutablePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
+		await chmod(realExecutablePath, 0o755);
+		const result = await execFileAsync("node", [cliPath, "tools", "env", "browser-use"], { cwd, env });
 
 		assert.ok(result.stdout.includes(`export PATH="${wrapperPath.replace(/\/browser-use$/, "")}:${realBinDir}:$PATH"`));
 		const wrapper = await readFile(wrapperPath, "utf8");
@@ -346,10 +412,6 @@ test("pibo tools env wraps browser-use with the PIBo default profile", posixWrap
 		assert.match(wrapper, /--cdp-url "\$cdp_url"/);
 		assert.equal(mode & 0o111, 0o111);
 
-		await mkdir(realBinDir, { recursive: true });
-		const realExecutablePath = join(realBinDir, "browser-use");
-		await writeFile(realExecutablePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
-		await chmod(realExecutablePath, 0o755);
 		const fakeChromePath = join(cwd, "google-chrome");
 		const fakeChromeArgsPath = join(cwd, "chrome-args.txt");
 		await writeFile(fakeChromePath, `#!/bin/sh\nprintf '%s\\n' "$@" > "${fakeChromeArgsPath}"\n`);
@@ -522,6 +584,10 @@ test("pibo browser-use wrapper terminates stale managed process trees and stale 
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-env-tree-cleanup-"));
 	try {
 		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const realBinDir = join(env.PIBO_HOME, "tools", "browser-use", ".venv", "bin");
+		await mkdir(realBinDir, { recursive: true });
+		await writeFile(join(realBinDir, "browser-use"), "#!/bin/sh\nexit 0\n");
+		await chmod(join(realBinDir, "browser-use"), 0o755);
 		await execFileAsync("node", [cliPath, "tools", "env", "browser-use"], { cwd, env });
 		const wrapperPath = join(env.PIBO_HOME, "tools", "browser-use", "home", "bin", "browser-use");
 		const browserUseHome = join(cwd, "browser-use-home");
@@ -1020,7 +1086,7 @@ test("pibo tools pins browser-use to the guide-compatible version", async () => 
 
 		assert.match(result.stdout, /browser-use 0\.12\.6/);
 		assert.match(result.stdout, /Next:/);
-		assert.match(result.stdout, /pibo tools env browser-use/);
+		assert.match(result.stdout, /pibo tools install browser-use/);
 		assert.match(result.stdout, /pibo tools guide browser-use browser-use/);
 		assert.match(result.stdout, /pibo tools browser-use/);
 	} finally {
