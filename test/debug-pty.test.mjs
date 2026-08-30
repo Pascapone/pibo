@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -109,6 +110,106 @@ test("pibo debug pty scenario types input through an interactive PTY", { skip: !
 	}
 });
 
+test("pibo debug pty enforces one wall-clock deadline across wait, text, and delay steps", { skip: !(await hasPythonPtyDriver()) }, async (t) => {
+	const cases = [
+		{
+			name: "wait",
+			steps: [{ waitFor: "READY" }, { waitFor: "NEVER", timeoutMs: 1200 }],
+		},
+		{
+			name: "text",
+			inputDelayMs: 80,
+			steps: [{ waitFor: "READY" }, { typeText: "abcdefghijklmnopqrst" }],
+		},
+		{
+			name: "delay",
+			steps: [{ waitFor: "READY" }, { sleepMs: 1600 }],
+		},
+	];
+
+	for (const fixture of cases) {
+		await t.test(fixture.name, async () => {
+			const dir = await makeTempDir();
+			try {
+				const scenarioPath = join(dir, "scenario.json");
+				const artifactDir = join(dir, "artifacts");
+				await writeFile(scenarioPath, JSON.stringify({
+					name: `global-deadline-${fixture.name}`,
+					command: ["node", "-e", "console.log('READY PID='+process.pid);setInterval(()=>{},1000)"],
+					timeoutMs: 350,
+					idleTimeoutMs: 5000,
+					inputDelayMs: fixture.inputDelayMs ?? 0,
+					steps: fixture.steps,
+				}, null, 2));
+				const started = performance.now();
+				await assert.rejects(
+					execFileAsync("node", [cliPath, "debug", "pty", "scenario", "--artifact-dir", artifactDir, scenarioPath]),
+					(error) => {
+						assert.match(error.stderr, /PTY command timed out after 350ms/);
+						return true;
+					},
+				);
+				const elapsedMs = performance.now() - started;
+				assert.ok(elapsedMs >= 250, `expected the short deadline to run for at least 250ms, got ${elapsedMs}ms`);
+				assert.ok(elapsedMs < 1600, `expected deadline cleanup before 1600ms, got ${elapsedMs}ms`);
+
+				const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+				assert.equal(metadata.timeoutMs, 350);
+				assert.equal(metadata.ok, false);
+				assert.equal(metadata.stopReason, "wall_clock_timeout");
+				assert.equal(metadata.exitCode, null);
+				assert.equal(metadata.signal, null);
+				assert.ok(metadata.durationMs < 1500, `expected bounded metadata duration, got ${metadata.durationMs}ms`);
+
+				const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+				const pid = Number(/READY PID=(\d+)/.exec(clean)?.[1]);
+				assert.ok(Number.isInteger(pid), `expected fixture PID in PTY output, got ${JSON.stringify(clean)}`);
+				assert.equal(processExists(pid), false, `PTY fixture process ${pid} leaked after timeout`);
+				const events = (await readFile(join(artifactDir, "events.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+				assert.ok(events.some((event) => event.kind === "terminate" && event.detail === "wall_clock_timeout"));
+			} finally {
+				await rm(dir, { recursive: true, force: true });
+			}
+		});
+	}
+});
+
+test("pibo debug pty preserves zero-timeout validation and the default timeout", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const zeroPath = join(dir, "zero.json");
+		await writeFile(zeroPath, JSON.stringify({
+			name: "zero-timeout",
+			command: ["node", "-e", "console.log('must not run')"],
+			timeoutMs: 0,
+		}, null, 2));
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "pty", "scenario", zeroPath]),
+			(error) => {
+				assert.match(error.stderr, /timeoutMs must be a positive integer/);
+				return true;
+			},
+		);
+
+		const defaultPath = join(dir, "default.json");
+		const artifactDir = join(dir, "default-artifacts");
+		await writeFile(defaultPath, JSON.stringify({
+			name: "default-timeout-success",
+			command: ["node", "-e", "console.log('DEFAULT_OK')"],
+			expect: ["DEFAULT_OK"],
+		}, null, 2));
+		const result = await execFileAsync("node", [cliPath, "debug", "pty", "scenario", "--artifact", "--artifact-dir", artifactDir, defaultPath]);
+		assert.match(result.stdout, /PTY passed: default-timeout-success/);
+		const metadata = JSON.parse(await readFile(join(artifactDir, "metadata.json"), "utf8"));
+		assert.equal(metadata.timeoutMs, 60_000);
+		assert.equal(metadata.ok, true);
+		assert.equal(metadata.stopReason, "completed");
+		assert.equal(metadata.exitCode, 0);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("built-in mocked CLI session scenario follows the room and session picker flow", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {
@@ -176,4 +277,14 @@ async function makeTempDir() {
 	const dir = join(tmpdir(), `pibo-debug-pty-test-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 	await mkdir(dir, { recursive: true });
 	return dir;
+}
+
+function processExists(pid) {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		if (error?.code === "ESRCH") return false;
+		throw error;
+	}
 }
