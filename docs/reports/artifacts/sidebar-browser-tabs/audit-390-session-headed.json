@@ -1,0 +1,19 @@
+{
+  "url": "http://127.0.0.1:4788/apps/chat/rooms/room_6ea970ec-0739-4e50-81df-db788b58cb04/sessions/ps_d2b95611-8c44-41dd-9b68-08d959203a5e?view=terminal",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "area": "sessions",
+  "desktopSidebar": null,
+  "desktopCenter": null,
+  "desktopTabs": null,
+  "mobileRouteShell": {
+    "x": 0,
+    "y": 56,
+    "width": 390,
+    "height": 788
+  },
+  "tabOrder": [],
+  "failedResources": []
+}

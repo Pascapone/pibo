@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   BootstrapData,
@@ -40,7 +41,7 @@ import { useSessionTraceLiveStream } from "./tracing/use-session-trace-live-stre
 import type { RuntimeRequestStreamEvent } from "./tracing/chat-stream-events";
 import { useSessionUploadAttachments } from "./chat-upload-attachments";
 import { useSessionWebAnnotations } from "./use-session-web-annotations";
-import { compactWebAnnotationError } from "./web-annotations";
+import { compactWebAnnotationError, WebAnnotationsSessionPanel } from "./web-annotations";
 import {
   createSessionTraceViewLinks,
   createSessionTraceViewProps,
@@ -88,6 +89,9 @@ import {
   type SessionLivePreviewSelection,
 } from "./session-live-preview-authority";
 import { PreviewFullscreenTopBar, PreviewMessage, SessionLivePreviewPanel } from "./session-live-preview";
+import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
+import { JsonRenderer } from "./tracing/JsonRenderer";
+import type { DesktopSessionTool } from "./desktop-tabs-model";
 
 const livePreviewQueryKey = (piboSessionId: string) => ["chat", "session-live-previews", piboSessionId] as const;
 
@@ -143,6 +147,9 @@ export function SessionTracePane({
   onRefreshBootstrap,
   onSend,
   onError,
+  desktopActiveTool = null,
+  desktopToolHosts,
+  onOpenDesktopTool,
 }: {
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
@@ -201,6 +208,9 @@ export function SessionTracePane({
     delivery?: ChatMessageDelivery,
   ) => Promise<void>;
   onError: (message: string | null) => void;
+  desktopActiveTool?: DesktopSessionTool | null;
+  desktopToolHosts?: Partial<Record<DesktopSessionTool, Element | null>>;
+  onOpenDesktopTool?: (tool: DesktopSessionTool) => void;
 }) {
   const queryClient = useQueryClient();
   const liveEventSeqRef = useRef(0);
@@ -322,7 +332,7 @@ export function SessionTracePane({
     loadMoreRawEvents,
   } = useSessionTracePage({
     selectedPiboSessionId: selectedBackendPiboSessionId,
-    showRawEvents,
+    showRawEvents: showRawEvents || Boolean(desktopToolHosts?.["raw-events"]),
     liveTraceOverlay,
     liveTraceOverlayCacheRef,
     setLiveTraceOverlay,
@@ -346,6 +356,7 @@ export function SessionTracePane({
     selectedPiboSessionId: selectedBackendPiboSessionId,
     onError,
     formatError: compactWebAnnotationError,
+    forcePanelVisible: Boolean(desktopToolHosts?.["web-annotations"]),
   });
   const createUploadAttachmentId = useCallback(
     () => `upload-${createClientTxnId()}`,
@@ -686,7 +697,8 @@ export function SessionTracePane({
           description: "Open the live development preview attached to this Pibo Session.",
           active: livePreviewSelected,
           onSelect: () => {
-            if (selectedBackendPiboSessionId) setLivePreviewViewSessionId(selectedBackendPiboSessionId);
+            if (onOpenDesktopTool) onOpenDesktopTool("preview");
+            else if (selectedBackendPiboSessionId) setLivePreviewViewSessionId(selectedBackendPiboSessionId);
           },
         },
       ]
@@ -698,7 +710,8 @@ export function SessionTracePane({
       : livePreviewAuthority.kind === "unconfigured"
         ? <PreviewMessage label="Live previews are not configured on this Pibo instance." />
         : <PreviewMessage label="No active live preview is attached to this Pibo Session." />;
-  const livePreviewPanel = livePreviewSelected
+  const previewPanelRequested = livePreviewSelected || desktopActiveTool === "preview";
+  const previewPanelContent = previewPanelRequested
     ? livePreviewAuthority.kind === "ready" && selectedLivePreviewRecord
       ? (
           <SessionLivePreviewPanel
@@ -717,7 +730,8 @@ export function SessionTracePane({
           />
         )
       : previewAuthorityMessage
-    : projectModulePanel;
+    : undefined;
+  const livePreviewPanel = livePreviewSelected ? previewPanelContent : projectModulePanel;
   const previewFullscreenContent = livePreviewSelected
     ? livePreviewAuthority.kind === "ready" && selectedLivePreviewRecord
       ? (
@@ -748,6 +762,68 @@ export function SessionTracePane({
       onExit={onExitTerminalFullscreen ?? (() => undefined)}
     />
   ) : undefined;
+
+  const desktopAnnotationsPanel = (
+    <div className="h-full overflow-auto bg-[#101d22]">
+      <WebAnnotationsSessionPanel
+        piboSessionId={selectedPiboSessionId}
+        annotations={visibleWebAnnotations}
+        selectedIds={selectedWebAnnotationIds}
+        loading={webAnnotationsQuery.isLoading || webAnnotationsQuery.isFetching || clearingWebAnnotations}
+        error={webAnnotationsQuery.error ? errorMessage(webAnnotationsQuery.error) : null}
+        collapsed={webAnnotationsPanelCollapsed}
+        onRefresh={() => void webAnnotationsQuery.refetch()}
+        onToggle={toggleWebAnnotationAttachment}
+        onClear={() => void clearVisibleWebAnnotations()}
+        onCollapse={toggleWebAnnotationsPanelCollapsed}
+        onClose={() => undefined}
+      />
+    </div>
+  );
+  const desktopRuntimeRequestsPanel = selectedBackendPiboSessionId ? (
+    <div className="h-full overflow-auto bg-[#101d22]">
+      {runtimeApprovals.length || runtimeUserInputs.length ? (
+        <RuntimeRequestPanel
+          piboSessionId={selectedBackendPiboSessionId}
+          approvals={runtimeApprovals}
+          userInputs={runtimeUserInputs}
+          onResolved={removeRuntimeRequest}
+          onError={onError}
+        />
+      ) : (
+        <div className="grid h-full place-items-center p-6 text-center text-sm text-slate-500" data-pibo-debug="desktop-runtime-requests-empty">No pending runtime requests for this Pibo Session.</div>
+      )}
+    </div>
+  ) : <DesktopSessionToolEmpty label="Select a Pibo Session to inspect runtime requests." />;
+  const desktopInspectorPanel = selectedPiboSessionId ? (
+    <div className="h-full overflow-auto bg-[#0e1116] p-3" data-pibo-debug="desktop-session-inspector">
+      <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#11a4d4]">Selected Pibo Session</div>
+      <JsonRenderer value={{
+        piboSessionId: selectedPiboSessionId,
+        roomId: selectedRoomId ?? bootstrap.selectedRoomId,
+        profile: selectedSessionProfile,
+        activeModel: selectedSessionActiveModel,
+        status: selectedSessionStatus,
+        runtimeStatus: bootstrap.runtimeStatus?.piboSessionId === selectedBackendPiboSessionId ? bootstrap.runtimeStatus : undefined,
+        signal: selectedSessionSignal,
+      }} />
+    </div>
+  ) : <DesktopSessionToolEmpty label="Select a Pibo Session to inspect it." />;
+  const desktopToolPanels: Partial<Record<DesktopSessionTool, ReactNode>> = {
+    preview: previewPanelContent ?? <DesktopSessionToolEmpty label="Select a Pibo Session to view its Preview." />,
+    "raw-events": (
+      <RawEventsSidebar
+        traceView={currentTraceView}
+        eventLimit={rawEventLimit}
+        isFetching={rawEventsQuery.isFetching}
+        visible
+        onLoadOlder={loadMoreRawEvents}
+      />
+    ),
+    "web-annotations": desktopAnnotationsPanel,
+    "runtime-requests": desktopRuntimeRequestsPanel,
+    "session-inspector": desktopInspectorPanel,
+  };
 
   return (
     <>
@@ -793,7 +869,7 @@ export function SessionTracePane({
       roomNavigationPending={roomNavigationPending}
       sessionNavigationPending={sessionNavigationPending}
       traceError={traceError}
-      showRawEvents={showRawEvents && !livePreviewSelected}
+      showRawEvents={showRawEvents && !livePreviewSelected && desktopActiveTool !== "raw-events"}
       currentTraceView={currentTraceView}
       rawEventLimit={rawEventLimit}
       tracePageFetching={showRawEvents ? rawEventsQuery.isFetching : tracePageQuery.isFetching}
@@ -836,13 +912,13 @@ export function SessionTracePane({
         terminalFullscreenAvailable: !livePreviewSelected && currentSessionView.id === "terminal" && (activeViewId ?? sessionViewId) === "terminal",
         onEnterTerminalFullscreen,
         onOpenSessionWindow,
-        showRawEvents,
+        showRawEvents: showRawEvents || desktopActiveTool === "raw-events",
         showThinking,
         expandThinking,
         toolDisplayMode: effectiveToolDisplayMode,
         toolIntentSupported,
         onToolDisplayModeChange,
-        onShowWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(true),
+        onShowWebAnnotationsPanel: () => onOpenDesktopTool ? onOpenDesktopTool("web-annotations") : setWebAnnotationsPanelVisible(true),
         onHideWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(false),
         onSelectSessionView: (viewId) => {
           setLivePreviewViewSessionId(null);
@@ -858,7 +934,7 @@ export function SessionTracePane({
       projectModulePanel={livePreviewPanel}
       currentSessionView={currentSessionView}
       sessionViewProps={sessionViewProps}
-      webAnnotationsPanelRendered={webAnnotationsPanelRendered && !livePreviewSelected}
+      webAnnotationsPanelRendered={webAnnotationsPanelRendered && !livePreviewSelected && desktopActiveTool !== "web-annotations"}
       webAnnotationsPanelProps={{
         piboSessionId: selectedPiboSessionId,
         annotations: visibleWebAnnotations,
@@ -877,7 +953,7 @@ export function SessionTracePane({
         onCollapse: toggleWebAnnotationsPanelCollapsed,
         onClose: () => setWebAnnotationsPanelVisible(false),
       }}
-      runtimeRequestPanel={selectedBackendPiboSessionId && !livePreviewSelected ? (
+      runtimeRequestPanel={selectedBackendPiboSessionId && !livePreviewSelected && desktopActiveTool !== "runtime-requests" ? (
         <RuntimeRequestPanel
           piboSessionId={selectedBackendPiboSessionId}
           approvals={runtimeApprovals}
@@ -905,6 +981,13 @@ export function SessionTracePane({
         onSend: handleComposerSend,
       }}
       />
+      {desktopToolHosts ? (Object.entries(desktopToolHosts) as Array<[DesktopSessionTool, Element | null | undefined]>).map(([tool, host]) =>
+        host && desktopToolPanels[tool] ? createPortal(desktopToolPanels[tool], host, `desktop-session-tool-${tool}`) : null,
+      ) : null}
     </>
   );
+}
+
+function DesktopSessionToolEmpty({ label }: { label: string }) {
+  return <div className="grid h-full place-items-center bg-[#0e1116] p-6 text-center text-sm text-slate-500">{label}</div>;
 }

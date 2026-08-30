@@ -1,0 +1,37 @@
+{
+  "url": "http://127.0.0.1:4788/apps/chat/agents",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "area": "sessions",
+  "desktopSidebar": {
+    "x": 0,
+    "y": 56,
+    "width": 300,
+    "height": 1024
+  },
+  "desktopCenter": {
+    "x": 300,
+    "y": 56,
+    "width": 972,
+    "height": 1024
+  },
+  "desktopTabs": {
+    "x": 1272,
+    "y": 56,
+    "width": 648,
+    "height": 1024
+  },
+  "mobileRouteShell": null,
+  "activeTab": "Agent Designer",
+  "tabOrder": [
+    "Project · prj_default",
+    "Agent Designer",
+    "Preview",
+    "Projects",
+    "Settings",
+    "VS Code"
+  ],
+  "failedResources": []
+}

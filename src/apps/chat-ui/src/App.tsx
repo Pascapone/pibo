@@ -157,6 +157,14 @@ import {
 import { useAppDeleteActions } from "./app-delete-actions";
 import { roomSummaryStreamUrl } from "./room-summary-stream";
 import { selectedSessionBackendId } from "./selected-session-backend";
+import {
+	DesktopTabSidebar,
+	activateTabInDesktopTabs,
+	desktopTabTool,
+	openTargetInDesktopTabs,
+	useDesktopTabWorkspace,
+} from "./desktop-tabs";
+import { activeDesktopTab, closeDesktopTab, type DesktopSessionTool, type DesktopTab, type DesktopTabTarget } from "./desktop-tabs-model";
 
 export type { ChatAppRoute } from "./app-routes";
 
@@ -260,11 +268,17 @@ export function App({ route }: { route: ChatAppRoute }) {
 	countRender("App");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
-	const area = route.area;
+	const isMobileSidebarViewport = useMobileSidebarViewport();
+	const desktopTabsEnabled = !isMobileSidebarViewport;
+	const desktopWorkspace = useDesktopTabWorkspace(route, desktopTabsEnabled);
+	const desktopActiveTab = activeDesktopTab(desktopWorkspace.state);
+	const desktopActiveTool = desktopTabTool(desktopActiveTab);
+	const desktopPanelRoute = desktopActiveTab?.target.kind === "route" ? desktopActiveTab.target.route : undefined;
+	const area: Area = desktopTabsEnabled ? "sessions" : route.area;
 	const routeRoomId = route.area === "sessions" ? route.roomId : undefined;
 	const routeProjectId = route.area === "projects" ? route.projectId : undefined;
 	const routePiboSessionId = route.area === "sessions" || route.area === "projects" || route.area === "context" ? route.piboSessionId : undefined;
-	const routeSessionViewId = route.area === "sessions" || route.area === "projects" ? route.sessionViewId : undefined;
+	const routeSessionViewId = route.area === "sessions" || (!desktopTabsEnabled && route.area === "projects") ? route.sessionViewId : undefined;
 	const routeWorkflowDraftId = route.area === "workflows" ? route.draftId : undefined;
 	const settingsPanel: SettingsPanel = route.area === "settings" ? route.panel ?? "general" : "general";
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
@@ -315,7 +329,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [selectedMcpServerName, setSelectedMcpServerName] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-	const isMobileSidebarViewport = useMobileSidebarViewport();
+	const [desktopToolHosts, setDesktopToolHosts] = useState<Partial<Record<DesktopSessionTool, Element | null>>>({});
+	const desktopToolHostCallbacks = useMemo(() => {
+		const tools: DesktopSessionTool[] = ["preview", "raw-events", "web-annotations", "runtime-requests", "session-inspector"];
+		return Object.fromEntries(tools.map((tool) => [tool, (node: HTMLDivElement | null) => {
+			setDesktopToolHosts((current) => current[tool] === node ? current : { ...current, [tool]: node });
+		}])) as Record<DesktopSessionTool, (node: HTMLDivElement | null) => void>;
+	}, []);
 	const mobileSidebarTriggerRef = useRef<HTMLButtonElement>(null);
 	const hideMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
 	const closeMobileSidebar = useMobileSidebarModal({
@@ -1624,6 +1644,109 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 		navigateToRoute({ area: item });
 	};
+	const navigateForDesktopTab = (tab: DesktopTab | null) => {
+		if (tab?.target.kind === "route") navigateToRoute(tab.target.route);
+	};
+	const setDesktopWorkspaceState = (next: typeof desktopWorkspace.state) => {
+		const currentActiveId = desktopWorkspace.state.activeTabId;
+		desktopWorkspace.setState(next);
+		if (next.activeTabId !== currentActiveId) {
+			const nextActive = activeDesktopTab(next);
+			if (nextActive?.target.kind === "route") navigateForDesktopTab(nextActive);
+			else if (!nextActive) navigateToSelectedSession(selectedRoomId ?? bootstrap.selectedRoomId, selectedPiboSessionId ?? bootstrap.selectedPiboSessionId);
+		}
+	};
+	const openDesktopTarget = (target: DesktopTabTarget) => {
+		const next = openTargetInDesktopTabs(desktopWorkspace.state, target);
+		desktopWorkspace.setState(next);
+		const nextActive = activeDesktopTab(next);
+		if (nextActive?.target.kind === "route") navigateForDesktopTab(nextActive);
+	};
+	const activateDesktopWorkspaceTab = (tab: DesktopTab) => {
+		desktopWorkspace.setState(activateTabInDesktopTabs(desktopWorkspace.state, tab.id));
+		navigateForDesktopTab(tab);
+	};
+	const focusDesktopSessions = () => {
+		navigateToSelectedSession(selectedRoomId ?? bootstrap.selectedRoomId, selectedPiboSessionId ?? bootstrap.selectedPiboSessionId);
+		window.setTimeout(() => document.querySelector<HTMLElement>('[data-pibo-debug="desktop-session-sidebar"] button')?.focus(), 0);
+	};
+	const renderDesktopPanel = (tab: DesktopTab, active: boolean) => {
+		if (tab.target.kind === "session-tool") {
+			return <div ref={desktopToolHostCallbacks[tab.target.tool]} className="h-full min-h-0 overflow-hidden" data-pibo-debug={`desktop-session-tool-${tab.target.tool}`} />;
+		}
+		const panelRoute = tab.target.route;
+		if (panelRoute.area === "vscode") return <VscodeArea integration={bootstrap.integrations?.vscode} />;
+		if (panelRoute.area === "cron") return <CronArea bootstrap={bootstrap} mobileSidebarOpen={false} onCloseMobileSidebar={() => undefined} />;
+		if (panelRoute.area === "loops") return <LoopArea bootstrap={bootstrap} mobileSidebarOpen={false} onCloseMobileSidebar={() => undefined} />;
+		if (panelRoute.area === "agents") {
+			return (
+				<AgentsView
+					agents={bootstrap.agents}
+					initialCustomAgents={bootstrap.customAgents}
+					initialAgentFolders={bootstrap.agentFolders}
+					initialCatalog={bootstrap.agentCatalog}
+					modelCatalog={bootstrap.modelCatalog}
+					onCreateSession={(profile) => void createSession(profile)}
+					onEditContextFile={openContextFileEditor}
+					onEditMcpServer={openMcpToolsEditor}
+					onAgentsChanged={() => void loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { selectSession: false })}
+					onAutosaveHandlerChange={updateAgentAutosaveHandler}
+					creatingSession={creatingSession || selectedRoomArchived}
+					mobileSidebarOpen={false}
+					isMobileSidebarViewport={false}
+					onCloseMobileSidebar={() => undefined}
+				/>
+			);
+		}
+		if (panelRoute.area === "workflows") {
+			return <MinimalWorkflowsArea draftId={panelRoute.draftId} onNavigateDraft={(draftId) => { if (active) navigateToRoute({ area: "workflows", draftId }); }} />;
+		}
+		if (panelRoute.area === "projects") {
+			return (
+				<ProjectsArea
+					baseBootstrap={bootstrap}
+					routeProjectId={panelRoute.projectId}
+					routePiboSessionId={panelRoute.piboSessionId}
+					sessionViews={sessionViews}
+					showRawEvents={showRawEvents}
+					showThinking={showThinking}
+					expandThinking={expandThinking}
+					toolDisplayMode={toolDisplayMode}
+					commands={slashCommands}
+					skills={skills}
+					mobileSidebarOpen={false}
+					onCloseMobileSidebar={() => undefined}
+					terminalFullscreen={false}
+					onEnterTerminalFullscreen={() => undefined}
+					onExitTerminalFullscreen={() => undefined}
+					onNavigate={active ? navigateToSelectedProjectSession : () => undefined}
+					onViewContext={viewSessionContext}
+					onSelectSessionView={(nextViewId) => navigateToRoute({ ...panelRoute, sessionViewId: nextViewId }, false, nextViewId)}
+					onToggleRawEvents={() => { const next = !showRawEvents; setShowRawEvents(next); writeStoredShowRawEvents(next); }}
+					onToggleThinking={() => { const next = !showThinking; setShowThinking(next); writeStoredShowThinking(next); }}
+					onToggleExpandThinking={() => { const next = !expandThinking; setExpandThinking(next); writeStoredExpandThinking(next); }}
+					onToolDisplayModeChange={(mode) => { setToolDisplayMode(mode); writeStoredToolDisplayMode(mode); }}
+					onThinkingLevelChange={(level) => void postAction(panelRoute.piboSessionId ?? "", "thinking", { level })}
+					onError={setError}
+				/>
+			);
+		}
+		if (panelRoute.area === "context") {
+			return (
+				<div className="grid h-full min-h-0 grid-cols-[210px_minmax(0,1fr)] overflow-hidden">
+					<aside className="min-h-0 overflow-hidden border-r border-slate-800 bg-[#1a262b]"><ContextSidebar activePanel={contextPanel} onSelect={setContextPanel} toolCount={bootstrap.agentCatalog?.piboTools.length ?? 0} mcpServerCount={bootstrap.agentCatalog?.mcpServers.length ?? 0} /></aside>
+					<main className="min-h-0 overflow-auto">{contextPanel === "pibo-tools" ? <PiboToolsView tools={bootstrap.agentCatalog?.piboTools ?? []} /> : contextPanel === "mcp-tools" ? <McpToolsView servers={bootstrap.agentCatalog?.mcpServers ?? []} selectedServerName={selectedMcpServerName} onServerSaved={updateMcpServerInBootstrap} /> : contextPanel === "build-context" ? <ContextBuildView piboSessionId={panelRoute.piboSessionId ?? selectedPiboSessionId} /> : contextPanel === "base-prompt" ? <BasePromptView /> : contextPanel === "compaction-prompt" ? <CompactionPromptView /> : <ContextFilesView agentProfiles={contextAgentProfiles} selectedFileKey={selectedContextFileKey} />}</main>
+				</div>
+			);
+		}
+		const panel = panelRoute.panel ?? "general";
+		return (
+			<div className="grid h-full min-h-0 grid-cols-[210px_minmax(0,1fr)] overflow-hidden">
+				<aside className="min-h-0 overflow-hidden border-r border-slate-800 bg-[#1a262b]"><SettingsSidebar activePanel={panel} onSelect={(nextPanel) => navigateToRoute({ area: "settings", panel: nextPanel })} piPackageCount={bootstrap.agentCatalog?.piPackages.length ?? 0} userSkillCount={bootstrap.agentCatalog?.userSkills.length ?? 0} /></aside>
+				<main className="min-h-0 overflow-auto"><SettingsView activePanel={panel} showThinking={showThinking} setShowThinking={setShowThinking} expandThinking={expandThinking} setExpandThinking={setExpandThinking} modelDefaults={bootstrap.modelDefaults} modelCatalog={bootstrap.modelCatalog} onModelDefaultsChanged={(modelDefaults) => setBootstrap((current) => current ? { ...current, modelDefaults } : current)} piPackages={bootstrap.agentCatalog?.piPackages} onPiPackageChanged={upsertPiPackageInBootstrap} onPiPackageRemoved={removePiPackageFromBootstrap} userSkills={bootstrap.agentCatalog?.userSkills} onUserSkillChanged={upsertUserSkillInBootstrap} onUserSkillRemoved={removeUserSkillFromBootstrap} piboSessionId={selectedPiboSessionId} onProviderAuthChanged={refreshAfterProviderAuthChanged} /></main>
+			</div>
+		);
+	};
 
 	return (
 		<>
@@ -1639,6 +1762,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				{isTerminalFullscreen ? null : (
 					<AppHeader
 						area={area}
+						desktopTabMode={desktopTabsEnabled}
 						identity={identity}
 						mobileAreaMenuOpen={mobileAreaMenuOpen}
 						mobileSidebarTriggerRef={mobileSidebarTriggerRef}
@@ -1659,6 +1783,140 @@ export function App({ route }: { route: ChatAppRoute }) {
 					</div>
 				)}
 
+			{desktopTabsEnabled ? (
+				<div
+					data-pibo-debug="desktop-route-shell"
+					data-pibo-area={desktopPanelRoute?.area ?? "sessions"}
+					className="min-h-0 flex overflow-hidden"
+				>
+					<aside data-pibo-debug="desktop-session-sidebar" tabIndex={-1} className="min-h-0 w-[300px] shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]">
+						<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+							<span>Sessions</span>
+							<button
+								type="button"
+								onClick={() => void loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true }).then((data) => {
+									if (selectedPiboSessionId) void refreshTrace(selectedPiboSessionId);
+									navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
+								})}
+								title="Refresh Sessions"
+								aria-label="Refresh Sessions"
+								className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"
+							><RefreshCw size={13} /></button>
+						</div>
+						<SessionSidebar
+							bootstrap={bootstrap}
+							selectedRoomId={selectedRoomId}
+							selectedPiboSessionId={selectedPiboSessionId}
+							showArchivedRooms={showArchivedRooms}
+							onToggleArchivedRooms={toggleArchivedRooms}
+							creatingRoom={creatingRoom}
+							onCreateRoom={() => createRoom()}
+							onSelectRoom={selectRoom}
+							loadingRoomId={loadingRoomId}
+							roomSessionsLoading={loadingSelectedRoom}
+							onUpdateRoom={updateRoom}
+							onArchiveRoom={setRoomArchived}
+							onReadAllRoom={readAllRoom}
+							onDeleteRoom={requestRoomDelete}
+							newSessionProfile={newSessionProfile}
+							newSessionProfileReady={newSessionProfileRoomId === (selectedRoomId ?? bootstrap.selectedRoomId)}
+							onNewSessionProfileChange={setPreferredNewSessionProfile}
+							selectedRoomArchived={selectedRoomArchived}
+							creatingSession={creatingSession}
+							onCreateSession={() => createSession()}
+							showArchived={showArchived}
+							onToggleArchivedSessions={toggleArchivedSessions}
+							loadingArchivedSessions={loadingArchivedSessions}
+							visibleActiveSessions={visibleActiveSessions}
+							visibleArchivedSessions={visibleArchivedSessions}
+							totalActiveSessionCount={sessionGroups.active.length}
+							totalArchivedSessionCount={sessionGroups.archived.length}
+							hasMoreActiveSessions={hasMoreActiveSessions}
+							hasMoreArchivedSessions={hasMoreArchivedSessions}
+							loadingActiveSessions={loadingActiveSessions}
+							sessionListScrollRef={sessionListScrollRef}
+							onLoadMoreSessions={loadMoreSessionPage}
+							signalNow={signalNow}
+							selectedSessionPathIds={selectedSessionPathIds}
+							onSelectSession={selectSession}
+							onRenameSession={renameSession}
+							onArchiveSession={setSessionArchived}
+							onDeleteSession={requestSessionDelete}
+							onViewContext={viewSessionContext}
+							loadingPiboSessionId={loadingPiboSessionId}
+							autoRenameSessionId={autoRenameSessionId}
+							onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
+						/>
+					</aside>
+					<main data-pibo-debug="desktop-session-center" className="min-h-0 min-w-[420px] flex-1 overflow-hidden">
+						<SessionTracePane
+							bootstrap={bootstrap}
+							selectedPiboSessionId={selectedPiboSessionId}
+							selectedRoomId={selectedRoomId}
+							contextLabel={selectedRoomContextLabel}
+							selectedRoomArchived={selectedRoomArchived}
+							roomNavigationPending={loadingSelectedRoom}
+							sessionNavigationPending={Boolean(loadingPiboSessionId && loadingPiboSessionId === selectedPiboSessionId)}
+							selectedSessionProfile={selectedSessionNode?.profile ?? defaultProfileFromBootstrap(bootstrap)}
+							selectedSessionActiveModel={selectedSessionActiveModel}
+							selectedSessionStatus={signalLegacyStatus(selectedSessionSignal ?? selectedRootSignal) ?? selectedSessionNode?.status}
+							selectedSessionSignal={selectedSessionSignal}
+							signals={sessionSignals ?? undefined}
+							sessionViewId={sessionViewId}
+							sessionViews={sessionViews}
+							currentSessionView={currentSessionView}
+							creatingSession={creatingSession}
+							terminalFullscreen={isTerminalFullscreen}
+							onEnterTerminalFullscreen={enterTerminalFullscreen}
+							onExitTerminalFullscreen={() => setTerminalFullscreen(false)}
+							showRawEvents={showRawEvents}
+							showThinking={showThinking}
+							expandThinking={expandThinking}
+							toolDisplayMode={toolDisplayMode}
+							commands={slashCommands}
+							skills={skills}
+							composerText={composerText}
+							composerFocusSignal={composerFocusSignal}
+							onComposerTextChange={updateComposerText}
+							onToggleRawEvents={() => openDesktopTarget({ kind: "session-tool", tool: "raw-events" })}
+							onToggleThinking={() => { const next = !showThinking; setShowThinking(next); writeStoredShowThinking(next); }}
+							onToggleExpandThinking={() => { const next = !expandThinking; setExpandThinking(next); writeStoredExpandThinking(next); }}
+							onToolDisplayModeChange={(mode) => { setToolDisplayMode(mode); writeStoredToolDisplayMode(mode); }}
+							onSessionAgentProfileChange={(profile) => void updateSelectedSessionProfile(profile)}
+							onFork={forkFrom}
+							onOpenSession={openSession}
+							onSelectSessionView={selectSessionView}
+							onCommand={runCommand}
+							onThinkingLevelChange={(level) => void runCommand(`/thinking ${level}`)}
+							onRefreshTrace={refreshSelectedTrace}
+							onRefreshBootstrap={refreshSelectedBootstrap}
+							desktopActiveTool={desktopActiveTool}
+							desktopToolHosts={desktopToolHosts}
+							onOpenDesktopTool={(tool) => openDesktopTarget({ kind: "session-tool", tool })}
+							onSend={async (text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery) => {
+								if (isSessionComposerDisabled(selectedPiboSessionId, selectedRoomArchived) || !selectedPiboSessionId) return;
+								try {
+									await sendMessageMutation.mutateAsync({ piboSessionId: selectedPiboSessionId, text, clientTxnId: clientTxnId ?? createClientTxnId(), roomId: selectedRoomId ?? undefined, webAnnotationIds, fileAttachmentPaths, delivery });
+									await loadBootstrap(selectedPiboSessionId, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
+									setError(null);
+								} catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); throw caught; }
+							}}
+							onError={setError}
+						/>
+					</main>
+					<DesktopTabSidebar
+						state={desktopWorkspace.state}
+						vscodeEnabled={Boolean(bootstrap.integrations?.vscode)}
+						onStateChange={setDesktopWorkspaceState}
+						onActivate={activateDesktopWorkspaceTab}
+						onOpenTarget={openDesktopTarget}
+						onFocusSessions={focusDesktopSessions}
+						renderPanel={(tab, active) => renderDesktopPanel(tab, active)}
+					/>
+					{deleteRoomTarget ? <DeleteRoomModal room={deleteRoomTarget} confirmName={deleteRoomConfirmName} deleting={deletingRoom} onConfirmNameChange={setDeleteRoomConfirmName} onCancel={cancelRoomDelete} onDelete={() => void permanentlyDeleteRoom()} /> : null}
+					{deleteSessionTarget ? <DeleteSessionModal session={deleteSessionTarget} confirmText={deleteSessionConfirmText} deleting={deletingSession} onConfirmTextChange={setDeleteSessionConfirmText} onCancel={cancelSessionDelete} onDelete={() => void permanentlyDeleteSession()} /> : null}
+				</div>
+			) : (
 			<div
 				data-pibo-debug="route-shell"
 				data-pibo-area={area}
@@ -1996,6 +2254,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				</>
 				)}
 			</div>
+			)}
 
 		</div>
 	</>
