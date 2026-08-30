@@ -1,13 +1,119 @@
 export const PYTHON_RUNTIME_WORKER_SOURCE = String.raw`
-import contextlib
+import contextvars
 import inspect
-import io
 import json
+import os
 import signal
+import subprocess
 import sys
+import threading
 import traceback
 
 user_globals = {"__name__": "__pibo_runtime__"}
+protocol_stream = os.fdopen(3, "w", encoding="utf-8", buffering=1, closefd=False)
+output_context = contextvars.ContextVar("pibo_runtime_output", default=None)
+original_stdout = sys.stdout
+original_stderr = sys.stderr
+original_popen = subprocess.Popen
+
+
+def append_output(output, stream, value):
+    text = str(value)
+    if output is None:
+        target = original_stdout if stream == "stdout" else original_stderr
+        target.write(text)
+        target.flush()
+        return
+    with output["lock"]:
+        output[stream].append(text)
+
+
+class BinaryOutputProxy:
+    def __init__(self, stream, fallback):
+        self.stream = stream
+        self.fallback = fallback
+
+    def write(self, value):
+        data = bytes(value)
+        append_output(output_context.get(), self.stream, data.decode("utf-8", "replace"))
+        return len(data)
+
+    def flush(self):
+        self.fallback.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.fallback, name)
+
+
+class OutputProxy:
+    def __init__(self, stream, fallback):
+        self.stream = stream
+        self.fallback = fallback
+        self.encoding = getattr(fallback, "encoding", "utf-8")
+        self.errors = getattr(fallback, "errors", "replace")
+        self.buffer = BinaryOutputProxy(stream, fallback.buffer)
+
+    def write(self, value):
+        append_output(output_context.get(), self.stream, value)
+        return len(str(value))
+
+    def flush(self):
+        self.fallback.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.fallback, name)
+
+
+sys.stdout = OutputProxy("stdout", original_stdout)
+sys.stderr = OutputProxy("stderr", original_stderr)
+
+
+def drain_child_output(read_fd, output, stream):
+    try:
+        with os.fdopen(read_fd, "rb", closefd=True) as source:
+            while True:
+                chunk = source.read(65536)
+                if not chunk:
+                    return
+                append_output(output, stream, chunk.decode("utf-8", "replace"))
+    except Exception:
+        return
+
+
+def routed_popen(*args, **kwargs):
+    output = output_context.get()
+    if output is None:
+        return original_popen(*args, **kwargs)
+
+    options = dict(kwargs)
+    routes = []
+    if options.get("stdout") is None:
+        read_fd, write_fd = os.pipe()
+        options["stdout"] = write_fd
+        routes.append((read_fd, write_fd, "stdout"))
+    if options.get("stderr") is None:
+        read_fd, write_fd = os.pipe()
+        options["stderr"] = write_fd
+        routes.append((read_fd, write_fd, "stderr"))
+
+    try:
+        process = original_popen(*args, **options)
+    except Exception:
+        for read_fd, write_fd, _ in routes:
+            os.close(read_fd)
+            os.close(write_fd)
+        raise
+
+    for read_fd, write_fd, stream in routes:
+        os.close(write_fd)
+        thread = threading.Thread(target=drain_child_output, args=(read_fd, output, stream), daemon=True)
+        with output["lock"]:
+            output["threads"].append(thread)
+        thread.start()
+    return process
+
+
+subprocess.Popen = routed_popen
 
 
 def bounded(value, max_bytes=8192):
@@ -70,31 +176,44 @@ def error_summary(exc):
     return out
 
 
+def output_snapshot(output):
+    with output["lock"]:
+        threads = list(output["threads"])
+    for thread in threads:
+        thread.join(0.05)
+    with output["lock"]:
+        return "".join(output["stdout"]), "".join(output["stderr"])
+
+
 def execute(req):
     mode = req.get("mode") or "exec"
     code = req.get("code") or ""
     if mode == "auto":
         mode = "exec"
-    stdout = io.StringIO()
-    stderr = io.StringIO()
+    output = {"stdout": [], "stderr": [], "threads": [], "lock": threading.Lock()}
+    token = output_context.set(output)
     try:
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            if mode == "eval":
-                value = eval(compile(code, "<pibo-runtime>", "eval"), user_globals, user_globals)
-            else:
-                exec(compile(code, "<pibo-runtime>", "exec"), user_globals, user_globals)
-                value = None
+        if mode == "eval":
+            value = eval(compile(code, "<pibo-runtime>", "eval"), user_globals, user_globals)
+        else:
+            exec(compile(code, "<pibo-runtime>", "exec"), user_globals, user_globals)
+            value = None
+        stdout, stderr = output_snapshot(output)
         return {
             "id": req.get("id"),
             "status": "ok",
-            "stdout": stdout.getvalue(),
-            "stderr": stderr.getvalue(),
+            "stdout": stdout,
+            "stderr": stderr,
             "result": summarize(value) if value is not None else None,
         }
     except KeyboardInterrupt as exc:
-        return {"id": req.get("id"), "status": "interrupted", "stdout": stdout.getvalue(), "stderr": stderr.getvalue(), "error": error_summary(exc)}
+        stdout, stderr = output_snapshot(output)
+        return {"id": req.get("id"), "status": "interrupted", "stdout": stdout, "stderr": stderr, "error": error_summary(exc)}
     except Exception as exc:
-        return {"id": req.get("id"), "status": "error", "stdout": stdout.getvalue(), "stderr": stderr.getvalue(), "error": error_summary(exc)}
+        stdout, stderr = output_snapshot(output)
+        return {"id": req.get("id"), "status": "error", "stdout": stdout, "stderr": stderr, "error": error_summary(exc)}
+    finally:
+        output_context.reset(token)
 
 
 def inspect_value(req):
@@ -147,8 +266,8 @@ def list_vars(req):
 
 
 def write_response(resp):
-    sys.stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    protocol_stream.write(json.dumps(resp, ensure_ascii=False) + "\n")
+    protocol_stream.flush()
 
 
 def main():

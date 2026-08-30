@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { isAbsolute, resolve } from "node:path";
+import type { Readable } from "node:stream";
 import { NODE_RUNTIME_WORKER_SOURCE } from "./node-worker-source.js";
 import type {
 	RuntimeBackend,
@@ -83,10 +84,15 @@ export class NodeRuntimeBackend implements RuntimeBackend {
 		this.child = spawn(executable, [...args, "-e", NODE_RUNTIME_WORKER_SOURCE], {
 			cwd,
 			env: { ...process.env, ...(env ?? {}) },
-			stdio: "pipe",
+			stdio: ["pipe", "pipe", "pipe", "pipe"],
 		});
-		const stdout = createInterface({ input: this.child.stdout });
-		stdout.on("line", (line) => this.handleLine(line));
+		const protocol = this.child.stdio[3];
+		if (!protocol) throw new Error("Node runtime protocol pipe was not created");
+		const responses = createInterface({ input: protocol as Readable });
+		responses.on("line", (line) => this.handleLine(line));
+		this.child.stdout.on("data", (chunk) => {
+			this.diagnostics += String(chunk);
+		});
 		this.child.stderr.on("data", (chunk) => {
 			this.diagnostics += String(chunk);
 		});
