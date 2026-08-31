@@ -21,7 +21,7 @@ test("useStickyVirtuoso treats scroll position changes as directional only durin
 	assert.match(source, /if \(userScrollIntentRef\.current\) setSticky\(false\);/);
 	assert.doesNotMatch(source, /if \(userScrollIntentRef\.current \|\| scrollingAwayFromBottom\) setSticky\(false\);/);
 	assert.match(source, /stickyTouchScrollIntentDirection\(previousY, currentY\)/);
-	assert.match(source, /if \(hasUserScrollIntent && userScrollDirectionRef\.current === "away"\) requestAtTop\(\);/);
+	assert.match(source, /if \(hasUserScrollIntent && userScrollDirectionRef\.current === "away"\) \{[\s\S]*else requestAtTop\(\);/);
 });
 
 test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", () => {
@@ -51,12 +51,19 @@ test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", ()
 	assert.doesNotMatch(source, /restoredAnchorIndex < 0\) restoredAnchorLockRef\.current = undefined/, "transient replay gaps must not discard the explicit reload anchor");
 	assert.match(source, /markUserScrollIntent = useCallback[\s\S]*clearAnchorLocks\(\)/, "the first new user input releases restored and content anchor locks");
 	assert.match(source, /touchScrollIntentRef\.current = event\?\.type === "touchmove";/, "touch gesture ownership is tracked separately from wheel and keyboard intent");
-	assert.match(source, /wheelScrollIntentRef\.current = event\?\.type === "wheel";/, "wheel gestures retain synchronous layout stabilization");
-	assert.match(source, /offset: anchor\.offset - event\.deltaY/, "wheel anchors project the requested visual movement before dynamic rows resize");
-	assert.match(source, /userAnchorCaptureArmedRef\.current && !wheelScrollIntentRef\.current/, "projected wheel anchors may correct layout in the same frame");
-	assert.match(source, /if \(userScrollIntentRef\.current && touchScrollIntentRef\.current\) \{\n\t\t\tuserAnchorRestoreDeferredRef\.current = true;\n\t\t\treturn;/, "active touch gestures own the viewport without suppressing wheel anchor stabilization");
+	assert.match(source, /wheelScrollIntentRef\.current = event\?\.type === "wheel";/, "wheel gestures are tracked independently from touch gestures");
+	assert.match(source, /nativeWheelScrollIntentRef\.current = stickyWheelOwnsViewport\(scrollIntentInput\(event\)\)/, "coarse mouse-wheel notches are distinguished from fine touchpad deltas");
+	assert.match(source, /nativeWheelScrollIntentRef\.current \|\| stickyRef\.current/, "coarse mouse-wheel movement is never projected ahead of the native scroller");
+	assert.match(source, /offset: anchor\.offset - event\.deltaY/, "fine touchpad-style wheel deltas retain synchronous anchor stabilization");
+	assert.match(source, /event\.preventDefault\(\);[\s\S]*setScrollTop\(scroller, getScrollTop\(scroller\) \+ stickyWheelPixelDelta[\s\S]*captureVisibleAnchors\(\);/, "coarse mouse-wheel notches become synchronous managed scroll steps with an actual post-scroll anchor");
+	assert.match(source, /useLayoutEffect\(\(\) => \{\n\t\tif \(!scroller\) return undefined;\n\t\tconst target: HTMLElement \| Window = scroller;/, "input ownership is attached before a remounted virtualizer can paint");
+	assert.match(source, /addEventListener\("wheel", markIntentFromWheel, \{ passive: false \}\)/, "coarse mouse-wheel ownership can suppress the competing browser scroll");
+	assert.match(source, /if \(userScrollIntentRef\.current && touchScrollIntentRef\.current\) \{\n\t\t\tuserAnchorRestoreDeferredRef\.current = true;\n\t\t\treturn;/, "mobile touch keeps its existing viewport-ownership branch");
+	assert.match(source, /userAnchorCaptureArmedRef\.current && !wheelScrollIntentRef\.current/, "managed wheel anchors remain available for synchronous layout reconciliation");
 	assert.match(source, /if \(userScrollIntentRef\.current\) scheduleUserScrollIntentRelease\(\);/, "scroll events keep gesture ownership armed through touch momentum and wheel settling");
-	assert.match(source, /if \(!userAnchorRestoreDeferredRef\.current\) return;[\s\S]*captureVisibleAnchors\(\);/, "settled gestures adopt their final conceptual row instead of replaying a stale anchor");
+	assert.match(source, /if \(historyRequest\) \{[\s\S]*const finalAnchor = captureVisibleAnchors\(\);[\s\S]*if \(finalAnchor\) restoredAnchorLockRef\.current = finalAnchor;[\s\S]*flushNativeWheelHistoryRequestRef\.current\(historyRequest\);/, "settled gestures lock their final conceptual row before deferred history can prepend");
+	assert.match(source, /if \(nativeWheelScrollIntentRef\.current\) nativeWheelHistoryRequestRef\.current = "near-top";[\s\S]*else requestNearTop\(\);/, "coarse mouse-wheel history prepends wait until the notch sequence settles");
+	assert.match(source, /flushNativeWheelHistoryRequestRef\.current = \(request\) => \{[\s\S]*requestAtTop\(\);[\s\S]*requestNearTop\(\);/, "settled coarse-wheel history intent resumes the normal pagination path");
 	assert.match(source, /if \(anchorFrameRef\.current !== undefined\) cancelAnimationFrame\(anchorFrameRef\.current\);\n\t\tanchorFrameRef\.current = undefined;/, "new input cancels already scheduled anchor corrections");
 	assert.match(source, /contentAnchorLockRef\.current = \{[\s\S]*anchors: visibleAnchorsRef\.current/, "the first frame in a content burst retains every visible fallback anchor");
 	assert.match(source, /contentAnchorLock\?\.anchors \?\? pendingAnchors/, "replay reconciliation restores against the pre-burst anchor set");

@@ -224,6 +224,60 @@ try {
 		return { before, inputCount, inputCursors: [...inputCursors], frameCount: recording.frames.length, paintedFrameCount: paintedFrames.length, missingSharedFrames, jumps, maxRenderedRows, frames: recording.frames };
 	});
 
+	await scenario("mouse-wheel-notch-directional-stability", async () => {
+		await client.send("Page.reload", { ignoreCache: true });
+		await sleep(500);
+		await waitFor(`document.querySelector('[data-testid="virtuoso-scroller"]') !== null`, 20_000, "Terminal after mouse-wheel reload");
+		await returnToLatest();
+		await waitForStableViewport();
+		await sleep(500);
+		await waitForStableViewport();
+		const before = await measure();
+		assert(before.hasOlder === "true", "mouse-wheel fixture has no older history");
+		await startFrameRecorder();
+		const geometry = await scrollerGeometry();
+		const inputCursors = new Set([before.cursor]);
+		let inputCount = 0;
+		for (let index = 0; index < 60; index += 1) {
+			inputCount += 1;
+			await client.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(geometry.left + geometry.width / 2), y: Math.round(geometry.top + geometry.height / 2), deltaX: 0, deltaY: -120 });
+			await sleep(120);
+			if (inputCount % 3 !== 0) continue;
+			inputCursors.add((await measure()).cursor);
+			if (inputCount >= 24 && inputCursors.size >= 3) break;
+		}
+		await markFrameRecorder("input-end");
+		await sleep(1_500);
+		const recording = await stopFrameRecorder();
+		const inputEnd = recording.marks["input-end"];
+		const paintedFrames = recording.frames.filter((frame) => frame.reason !== "mutation");
+		const directionalReversals = [];
+		const postInputJumps = [];
+		let missingSharedFrames = 0;
+		for (let index = 1; index < paintedFrames.length; index += 1) {
+			const previous = paintedFrames[index - 1];
+			const current = paintedFrames[index];
+			const shared = preferredSharedVisibleRow(previous.rows, current.rows);
+			if (!shared) {
+				missingSharedFrames += 1;
+				continue;
+			}
+			const visualDelta = shared.after.top - shared.before.top;
+			const heightDelta = current.scrollHeight - previous.scrollHeight;
+			const sample = { index, t: current.t, visualDelta, scrollDelta: current.scrollTop - previous.scrollTop, heightDelta, rowId: shared.before.id };
+			const boundedMeasurementSettle = Math.abs(heightDelta) > 1 && Math.abs(visualDelta) <= 16;
+			if (current.t < inputEnd && visualDelta < -Math.max(1, tolerance) && !boundedMeasurementSettle) directionalReversals.push(sample);
+			if (current.t >= inputEnd && Math.abs(visualDelta) > Math.max(4, tolerance)) postInputJumps.push(sample);
+		}
+		assert(inputCursors.size >= 3, `mouse-wheel input loaded only ${inputCursors.size - 1} history pages`);
+		assert(missingSharedFrames === 0, `mouse-wheel traversal lost every shared conceptual row in ${missingSharedFrames} adjacent frames`);
+		assert(directionalReversals.length === 0, `mouse-wheel traversal kicked back ${directionalReversals.length} times; maximum ${Math.max(0, ...directionalReversals.map((jump) => Math.abs(jump.visualDelta)))}px`);
+		assert(postInputJumps.length === 0, `mouse-wheel traversal produced ${postInputJumps.length} post-input jumps; maximum ${Math.max(0, ...postInputJumps.map((jump) => Math.abs(jump.visualDelta)))}px`);
+		const maxRenderedRows = Math.max(0, ...recording.frames.map((frame) => frame.rows.length));
+		assert(maxRenderedRows <= 60, `mouse-wheel traversal rendered ${maxRenderedRows} rows`);
+		return { before, inputCount, inputCursors: [...inputCursors], frameCount: recording.frames.length, paintedFrameCount: paintedFrames.length, missingSharedFrames, directionalReversals, postInputJumps, maxRenderedRows, frames: recording.frames };
+	});
+
 	await scenario("slow-and-rapid-history-prepends", async () => {
 		const loads = [];
 		for (let index = 0; index < historyPages; index += 1) {
