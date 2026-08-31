@@ -97,6 +97,27 @@ test("same-turn reused toolCallId receives monotonic invocation ordinals", () =>
 	assert.notEqual(first.renderSequence, second.renderSequence);
 });
 
+test("streamed tool arguments retain one tool invocation identity", () => {
+	const sequencer = new OutputRenderSequencer(() => 2_500);
+	const base = { piboSessionId: "ps-streamed-tool", eventId: "turn-streamed-tool", toolCallId: "streamed", toolName: "bash" };
+	const payloads = [
+		sequencer.position({ ...base, type: "tool_call", args: { command: "echo" }, argsComplete: false }),
+		sequencer.position({ ...base, type: "tool_call", args: { command: "echo complete" }, argsComplete: true }),
+		sequencer.position({ ...base, type: "tool_execution_started", args: { command: "echo complete" } }),
+		sequencer.position({ ...base, type: "tool_execution_finished", result: "complete", isError: false }),
+	];
+	assert.deepEqual(payloads.map((event) => event.toolInvocationOrdinal), [0, 0, 0, 0]);
+	assert.equal(new Set(payloads.map((event) => event.renderSequence)).size, 1);
+	const view = buildTraceViewFromEvents({
+		session: { id: base.piboSessionId, piSessionId: "pi-streamed-tool" },
+		events: payloads.map((payload, index) => storedEvent(index + 1, payload)),
+	});
+	const tools = view.nodes.flatMap((node) => [node, ...node.children]).filter((node) => node.type === "tool.call");
+	assert.equal(tools.length, 1);
+	assert.deepEqual(tools[0].input, { command: "echo complete" });
+	assert.equal(tools[0].output, "complete");
+});
+
 test("fallback node identities do not collide after long shared prefixes", () => {
 	const common = "x".repeat(512);
 	const view = buildTraceViewFromEvents({

@@ -107,7 +107,7 @@ test("schema v7 resumes an interrupted legacy negative sequence repair", () => {
 	}
 });
 
-test("tool lifecycle attaches to the durable open invocation across reopen and routers", async () => {
+test("streamed tool call and lifecycle attach to the durable invocation across reopen and routers", async () => {
 	const { directory, databasePath } = temporaryDatabase("pibo-tool-open-restart-");
 	const base = { piboSessionId: "ps-tool-open-restart", eventId: "turn-open", toolCallId: "same-tool", toolName: "read" };
 	try {
@@ -117,7 +117,7 @@ test("tool lifecycle attaches to the durable open invocation across reopen and r
 		let firstRouter = new PiboSessionRouter({ sessionStore: firstSessions, persistSession: false, routedSessionIdleTimeoutMs: false });
 		const firstEvents = [];
 		firstRouter.subscribe((event) => firstEvents.push(event));
-		firstRouter.emitOutput({ ...base, type: "tool_call", args: { path: "README.md" }, argsComplete: true });
+		firstRouter.emitOutput({ ...base, type: "tool_call", args: { path: "READ" }, argsComplete: false });
 		assert.equal(firstEvents.at(-1).toolInvocationOrdinal, 0);
 		new ChatDataIngestService(firstData).ingestOutputEvent({ session: firstSessions.get(base.piboSessionId), event: firstEvents.at(-1) });
 		await firstRouter.disposeAll();
@@ -131,16 +131,19 @@ test("tool lifecycle attaches to the durable open invocation across reopen and r
 			const resumed = [];
 			secondRouter.subscribe((event) => resumed.push(event));
 			thirdRouter.subscribe((event) => resumed.push(event));
+			secondRouter.emitOutput({ ...base, type: "tool_call", args: { path: "README.md" }, argsComplete: true });
 			secondRouter.emitOutput({ ...base, type: "tool_execution_started", args: { path: "README.md" } });
 			thirdRouter.emitOutput({ ...base, type: "tool_execution_updated", args: { path: "README.md" }, partialResult: "chunk" });
 			secondRouter.emitOutput({ ...base, type: "tool_execution_finished", result: "done", isError: false });
-			assert.deepEqual(resumed.map((event) => event.toolInvocationOrdinal), [0, 0, 0]);
+			assert.deepEqual(resumed.map((event) => event.toolInvocationOrdinal), [0, 0, 0, 0]);
 			const row = secondData.db.prepare(`
-				SELECT invocation_ordinal, status, seen_call, seen_started, seen_updated, seen_finished
+				SELECT invocation_ordinal, call_fingerprint, status, seen_call, seen_started, seen_updated, seen_finished
 				FROM session_tool_invocations
 				WHERE pibo_session_id = ? AND event_id = ? AND tool_call_id = ?
 			`).get(base.piboSessionId, base.eventId, base.toolCallId);
-			assert.deepEqual({ ...row }, {
+			assert.equal(typeof row.call_fingerprint, "string");
+			const { call_fingerprint: _callFingerprint, ...lifecycle } = row;
+			assert.deepEqual({ ...lifecycle }, {
 				invocation_ordinal: 0,
 				status: "closed",
 				seen_call: 1,
