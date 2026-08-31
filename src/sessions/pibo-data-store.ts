@@ -343,7 +343,11 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			if (
 				input.eventType === "tool_call"
 				&& latestOpen
-				&& (latestOpen.seen_call === 0 || latestOpen.call_fingerprint === input.callFingerprint)
+				&& (
+					latestOpen.seen_call === 0
+					|| latestOpen.call_fingerprint === null
+					|| latestOpen.call_fingerprint === input.callFingerprint
+				)
 			) {
 				ordinal = latestOpen.invocation_ordinal;
 			} else if (input.eventType !== "tool_call" && latestOpen) {

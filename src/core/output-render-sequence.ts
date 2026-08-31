@@ -51,6 +51,7 @@ type ToolInvocationState = {
 	seen: Set<PiboOutputEvent["type"]>;
 	closed: boolean;
 	persistedIdentity: boolean;
+	callFingerprint?: string;
 };
 
 type OutputPartState = {
@@ -242,7 +243,7 @@ export class OutputRenderSequencer {
 			const latest = invocations.at(-1);
 			if (!latest) {
 				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId, transition);
-			} else if (event.type === "tool_call" && (latest.seen.has("tool_call") || (latest.closed && latest.persistedIdentity))) {
+			} else if (event.type === "tool_call" && toolCallStartsNewInvocation(latest, transition?.callFingerprint)) {
 				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId, transition);
 			} else if (event.type === "tool_execution_started" && latest.closed && latest.seen.has("tool_execution_started")) {
 				invocation = this.createToolInvocation(invocations, event.piboSessionId, eventId, event.toolCallId, transition);
@@ -252,6 +253,7 @@ export class OutputRenderSequencer {
 			}
 		}
 		invocation.seen.add(event.type);
+		if (event.type === "tool_call" && transition?.callFingerprint) invocation.callFingerprint = transition.callFingerprint;
 		if (event.type === "tool_execution_finished") invocation.closed = true;
 		this.trimToolInvocations(state);
 		const needsEventId = !event.eventId && eventId !== undefined;
@@ -359,6 +361,13 @@ function createInvocation(invocations: ToolInvocationState[], ordinal: number): 
 	const invocation = { ordinal, seen: new Set<PiboOutputEvent["type"]>(), closed: false, persistedIdentity: false };
 	invocations.push(invocation);
 	return invocation;
+}
+
+function toolCallStartsNewInvocation(invocation: ToolInvocationState, callFingerprint: string | undefined): boolean {
+	if (!invocation.seen.has("tool_call")) return invocation.closed && invocation.persistedIdentity;
+	if (invocation.closed) return true;
+	if (invocation.callFingerprint === undefined) return false;
+	return callFingerprint === undefined || invocation.callFingerprint !== callFingerprint;
 }
 
 function outputPartTransition(event: PiboOutputEvent, activeEventId: string | undefined): OutputPartTransition | undefined {
@@ -502,7 +511,8 @@ function toolInvocationCounterKey(eventId: string | undefined, toolCallId: strin
 	return JSON.stringify([eventId ?? "unscoped", toolCallId]);
 }
 
-function toolCallFingerprint(event: Extract<PiboOutputEvent, { type: "tool_call" }>): string {
+function toolCallFingerprint(event: Extract<PiboOutputEvent, { type: "tool_call" }>): string | undefined {
+	if (!event.argsComplete) return undefined;
 	return createHash("sha256")
 		.update(JSON.stringify([event.toolName, event.argsComplete, event.args]))
 		.digest("hex");
