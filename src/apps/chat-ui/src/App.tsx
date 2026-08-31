@@ -933,6 +933,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	const sessionViews = useMemo(() => listChatSessionViews(), []);
 	const currentSessionView = useMemo(() => getChatSessionView(sessionViewId), [sessionViewId]);
+	const terminalSessionView = useMemo(() => getChatSessionView("terminal"), []);
 
 	useEffect(() => {
 		if (!bootstrap?.agents.length) return;
@@ -1716,11 +1717,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const tab = desktopWorkspace.state.tabs.find((candidate) => candidate.target.kind === "session-tool" && candidate.target.tool === tool);
 		if (tab) void closeDesktopWorkspaceTab(tab);
 	};
-	const focusDesktopSessions = () => {
+	const focusDesktopSessions = async (newTab?: DesktopTab) => {
+		if (newTab && !await closeDesktopWorkspaceTab(newTab)) return;
 		navigateToSelectedSession(selectedRoomId ?? bootstrap.selectedRoomId, selectedPiboSessionId ?? bootstrap.selectedPiboSessionId);
 		window.setTimeout(() => document.querySelector<HTMLElement>('[data-pibo-debug="desktop-session-sidebar"] button')?.focus(), 0);
 	};
 	const renderDesktopPanel = (tab: DesktopTab, active: boolean) => {
+		if (tab.target.kind === "new-tab") return null;
 		if (tab.target.kind === "session-tool") {
 			return <div ref={desktopToolHostCallbacks[tab.target.tool]} className={`h-full min-h-0 overflow-hidden ${tab.target.tool === "preview" ? "flex flex-col" : ""}`} data-pibo-debug={`desktop-session-tool-${tab.target.tool}`} />;
 		}
@@ -1846,7 +1849,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					data-pibo-area={desktopPanelRoute?.area ?? "sessions"}
 					className="min-h-0 flex overflow-hidden"
 				>
-					<aside data-pibo-debug="desktop-session-sidebar" tabIndex={-1} hidden={isAppFullscreen} aria-hidden={isAppFullscreen || undefined} className="min-h-0 w-[300px] shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]">
+					<aside data-pibo-debug="desktop-session-sidebar" tabIndex={-1} hidden={isAppFullscreen} aria-hidden={isAppFullscreen || undefined} className="min-h-0 w-[300px] shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]">
 						<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
 							<span>Sessions</span>
 							<button
@@ -1919,9 +1922,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 							selectedSessionStatus={signalLegacyStatus(selectedSessionSignal ?? selectedRootSignal) ?? selectedSessionNode?.status}
 							selectedSessionSignal={selectedSessionSignal}
 							signals={sessionSignals ?? undefined}
-							sessionViewId={sessionViewId}
+							sessionViewId="terminal"
 							sessionViews={sessionViews}
-							currentSessionView={currentSessionView}
+							currentSessionView={terminalSessionView}
+							desktopTerminalOnly
 							creatingSession={creatingSession}
 							terminalFullscreen={isTerminalFullscreen}
 							onEnterTerminalFullscreen={enterTerminalFullscreen}
@@ -1971,8 +1975,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onStateChange={setDesktopWorkspaceState}
 						onActivate={(tab) => void activateDesktopWorkspaceTab(tab)}
 						onClose={closeDesktopWorkspaceTab}
-						onOpenTarget={(target) => void openDesktopTarget(target)}
-						onFocusSessions={focusDesktopSessions}
+						onFocusSessions={(newTab) => void focusDesktopSessions(newTab)}
 						renderPanel={(tab, active) => renderDesktopPanel(tab, active)}
 						hidden={isTerminalFullscreen}
 						fullscreen={isDesktopPreviewFullscreen}

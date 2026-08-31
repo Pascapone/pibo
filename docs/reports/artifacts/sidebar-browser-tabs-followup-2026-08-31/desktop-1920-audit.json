@@ -1,0 +1,49 @@
+{
+  "url": "http://127.0.0.1:4788/apps/chat/rooms/room_b5cf3680-db60-4efc-82fc-f426eb3be97e/sessions/ps_c443228a-1c6a-4ce5-9d67-6e970386258e?view=terminal",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "area": "sessions",
+  "previewFullscreen": "false",
+  "terminalFullscreen": "false",
+  "desktopSidebar": {
+    "x": 0,
+    "y": 56,
+    "width": 300,
+    "height": 1024
+  },
+  "desktopCenter": {
+    "x": 300,
+    "y": 56,
+    "width": 1052,
+    "height": 1024
+  },
+  "desktopTabs": {
+    "x": 1352,
+    "y": 56,
+    "width": 568,
+    "height": 1024
+  },
+  "mobileRouteShell": null,
+  "activeTab": "Preview",
+  "tabOrder": [
+    "Projects",
+    "Project · prj_default",
+    "Agent Designer",
+    "Workflow · simple-chat",
+    "VS Code",
+    "Preview"
+  ],
+  "activePanelText": "Live previews are not configured on this Pibo instance.",
+  "activeElement": "Pibo Chatdev@pibo.localSessionsShared ChatShared ChatRoomsRelease ValidationAI ResearchPibo CoreSessionsbasecodex-nativeorpPibo Core Session 3Pibo Core Session 2Pibo Core Session 1Pibo Core Session 3RoomPibo Core·ps_c443228a-1c6a-4ce5-9d67-6e970386258eTools: DefaultTools: HideTools: SlimTools: Intentbasepi · boundbaseNo visible trace rows yet.basecodex-nativeorpProjectsProject · prj_defaultAgent DesignerWorkflow · simple-chatVS CodePreview VS Code Web unavailableConfigure PIBO_VSCODE_WEB_URL on the gateway to enable the embedded IDE.Live previews are not configured on this Pibo instance.",
+  "loadingProjects": false,
+  "failedResources": [
+    "http://127.0.0.1:4788/apps/chat/assets/index-5yyQKNZS.js",
+    "http://127.0.0.1:4788/apps/chat/assets/dist-CqM4On9D.js",
+    "http://127.0.0.1:4788/apps/chat/assets/dist-DLJCGrGQ.js",
+    "http://127.0.0.1:4788/apps/chat/assets/dist-S3zJGntM.js",
+    "http://127.0.0.1:4788/apps/chat/assets/index-BTzIdlcK.css",
+    "http://127.0.0.1:4788/apps/chat/assets/pwa-images/android/launchericon-512x512.png"
+  ]
+}

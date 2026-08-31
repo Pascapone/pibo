@@ -11,7 +11,10 @@ export type DesktopSessionTool = "preview" | "raw-events" | "web-annotations" | 
 
 export type DesktopTabTarget =
 	| { kind: "route"; route: Exclude<ChatAppRoute, { area: "sessions" }> }
-	| { kind: "session-tool"; tool: DesktopSessionTool };
+	| { kind: "session-tool"; tool: DesktopSessionTool }
+	| { kind: "new-tab"; instanceId: string };
+
+export type DesktopModuleTabTarget = Exclude<DesktopTabTarget, { kind: "new-tab" }>;
 
 export type DesktopTab = {
 	id: string;
@@ -40,6 +43,7 @@ export function emptyDesktopTabState(): DesktopTabState {
 }
 
 export function desktopTabTargetKey(target: DesktopTabTarget): string {
+	if (target.kind === "new-tab") return `new-tab:${target.instanceId}`;
 	if (target.kind === "session-tool") return `tool:${target.tool}`;
 	const route = target.route;
 	if (route.area === "projects") return route.projectId ? `projects:${route.projectId}` : "projects";
@@ -52,6 +56,7 @@ export function desktopTabTargetKey(target: DesktopTabTarget): string {
 }
 
 export function desktopTabTitle(target: DesktopTabTarget): string {
+	if (target.kind === "new-tab") return "New Tab";
 	if (target.kind === "session-tool") {
 		if (target.tool === "preview") return "Preview";
 		if (target.tool === "raw-events") return "Raw Events";
@@ -107,6 +112,35 @@ export function openDesktopTab(
 	return { ...state, tabs: [...retained, tab], activeTabId: id, collapsed: false };
 }
 
+export function openDesktopNewTab(
+	state: DesktopTabState,
+	options: { id?: string; now?: number } = {},
+): DesktopTabState {
+	const id = options.id ?? createDesktopTabId();
+	return openDesktopTab(state, { kind: "new-tab", instanceId: id }, { ...options, id });
+}
+
+export function replaceDesktopNewTab(
+	state: DesktopTabState,
+	tabId: string,
+	target: DesktopModuleTabTarget,
+	now = Date.now(),
+): DesktopTabState {
+	const index = state.tabs.findIndex((tab) => tab.id === tabId && tab.target.kind === "new-tab");
+	if (index < 0) return openDesktopTab(state, target, { now });
+	const targetKey = desktopTabTargetKey(target);
+	const existing = state.tabs.find((tab) => tab.id !== tabId && desktopTabTargetKey(tab.target) === targetKey);
+	if (existing) return openDesktopTab(closeDesktopTab(state, tabId), target, { now });
+	const tabs = state.tabs.slice();
+	tabs[index] = {
+		...tabs[index]!,
+		target,
+		title: desktopTabTitle(target),
+		lastActivatedAt: now,
+	};
+	return { ...state, tabs, activeTabId: tabId, collapsed: false };
+}
+
 export function activateDesktopTab(state: DesktopTabState, tabId: string, now = Date.now()): DesktopTabState {
 	if (state.activeTabId === tabId && !state.collapsed) return state;
 	if (!state.tabs.some((tab) => tab.id === tabId)) return state;
@@ -157,6 +191,7 @@ export function activeDesktopTab(state: DesktopTabState): DesktopTab | null {
 }
 
 export function desktopTabKeepsMounted(tab: DesktopTab): boolean {
+	if (tab.target.kind === "new-tab") return false;
 	if (tab.target.kind === "session-tool") return tab.target.tool === "preview";
 	return tab.target.route.area === "vscode";
 }
@@ -306,6 +341,7 @@ function parseDesktopTab(value: unknown): DesktopTab | null {
 
 function isDesktopTabTarget(value: unknown): value is DesktopTabTarget {
 	if (!isRecord(value)) return false;
+	if (value.kind === "new-tab") return typeof value.instanceId === "string" && Boolean(value.instanceId);
 	if (value.kind === "session-tool") return isDesktopSessionTool(value.tool);
 	return value.kind === "route" && isRecord(value.route) && isDesktopRoute(value.route);
 }

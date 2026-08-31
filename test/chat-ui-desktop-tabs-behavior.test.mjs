@@ -11,7 +11,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		import assert from "node:assert/strict";
 		import React, { act, useEffect, useState } from "react";
 		import TestRenderer from "react-test-renderer";
-		import { DesktopTabSidebar, desktopCatalogPointerIsOutside, useDesktopTabWorkspace } from "./src/apps/chat-ui/src/desktop-tabs.tsx";
+		import { DesktopTabSidebar, desktopTabInsertionIndex, useDesktopTabWorkspace } from "./src/apps/chat-ui/src/desktop-tabs.tsx";
 		import { closeHostedWebAnnotations, useHostedPreviewFullscreenRecovery } from "./src/apps/chat-ui/src/session-trace-pane.tsx";
 		import { SessionLivePreviewPanel } from "./src/apps/chat-ui/src/session-live-preview.tsx";
 		import * as model from "./src/apps/chat-ui/src/desktop-tabs-model.ts";
@@ -111,8 +111,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 				onStateChange: setState,
 				onActivate: (tab) => setState((current) => model.activateDesktopTab(current, tab.id)),
 				onClose: (tab) => { setState((current) => model.closeDesktopTab(current, tab.id)); return true; },
-				onOpenTarget() {},
-				onFocusSessions() {},
+				onFocusSessions: (tab) => setState((current) => model.closeDesktopTab(current, tab.id)),
 				renderPanel: (tab) => tab.target.kind === "session-tool" && tab.target.tool === "preview"
 					? React.createElement(SessionLivePreviewPanel, {
 						previews: selectedPreview ? [selectedPreview] : [], selectedPreview, loading: false, reloadKey: 0,
@@ -151,6 +150,28 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		assert.ok(lifecycle.includes("unmount:Project · project-1"), "inactive Project content unmounts and stops its resources");
 		assert.equal(mounted.root.findByType("iframe"), previewFrameBefore);
 
+		assert.equal(desktopTabInsertionIndex(observedState.tabs, "preview", "settings", "after"), 2);
+		const previewDragTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Preview."))[0].parent;
+		const settingsDropTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Settings."))[0].parent;
+		const dataTransfer = { effectAllowed: "", dropEffect: "", setData() {} };
+		await act(async () => previewDragTab.props.onDragStart({ dataTransfer }));
+		await act(async () => settingsDropTab.props.onDragOver({
+			preventDefault() {}, dataTransfer, clientX: 90,
+			currentTarget: { getBoundingClientRect: () => ({ left: 0, width: 100 }) },
+		}));
+		const gap = mounted.root.findByProps({ "data-pibo-debug": "desktop-tab-drop-gap" });
+		assert.equal(gap.props["data-pibo-insertion-index"], 2, "pointer hover exposes the exact prospective insertion index");
+		const tabList = mounted.root.findByProps({ role: "tablist" });
+		await act(async () => tabList.props.onDragLeave({ currentTarget: { contains: () => false }, relatedTarget: null }));
+		assert.equal(mounted.root.findAllByProps({ "data-pibo-debug": "desktop-tab-drop-gap" }).length, 0, "drag leave clears the insertion gap");
+		await act(async () => settingsDropTab.props.onDragOver({
+			preventDefault() {}, dataTransfer, clientX: 90,
+			currentTarget: { getBoundingClientRect: () => ({ left: 0, width: 100 }) },
+		}));
+		await act(async () => settingsDropTab.props.onDrop({ preventDefault() {} }));
+		assert.deepEqual(observedState.tabs.map((tab) => tab.id), ["project", "settings", "preview"], "drop uses the visible insertion location");
+		assert.equal(mounted.root.findAllByProps({ "data-pibo-debug": "desktop-tab-drop-gap" }).length, 0, "drop clears the insertion gap");
+
 		const projectAgain = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Project ·"))[0];
 		await act(async () => projectAgain.props.onClick());
 		await act(async () => projectAgain.props.onKeyDown({ key: "Delete", preventDefault() {} }));
@@ -175,14 +196,27 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		assert.equal(mounted.root.findAllByProps({ role: "tablist" }).length, 1, "desktop shell tab controls return after Preview loss");
 		assert.equal(mounted.root.findAllByType("iframe").length, 0);
 
+		const newTabButton = mounted.root.findByProps({ "aria-label": "New Tab" });
+		await act(async () => newTabButton.props.onClick());
+		await act(async () => newTabButton.props.onClick());
+		assert.equal(observedState.tabs.filter((tab) => tab.target.kind === "new-tab").length, 2, "+ appends multiple real New Tabs");
+		assert.equal(mounted.root.findAllByProps({ "data-pibo-debug": "desktop-new-tab" }).length, 2, "each New Tab owns catalog content in its tabpanel");
+		const nodeText = (node) => node.children.map((child) => typeof child === "string" ? child : nodeText(child)).join("");
+		const catalogButton = (label) => mounted.root.findAll((node) => node.props["data-catalog-entry"] && nodeText(node).includes(label))[0];
+		await act(async () => catalogButton("Settings").props.onClick());
+		assert.equal(observedState.tabs.filter((tab) => tab.target.kind === "new-tab").length, 1, "existing singleton closes the active temporary New Tab");
+		assert.equal(model.activeDesktopTab(observedState).target.route.area, "settings");
+		const remainingNewTab = observedState.tabs.find((tab) => tab.target.kind === "new-tab");
+		const remainingNewTabButton = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("New Tab."))[0];
+		await act(async () => remainingNewTabButton.props.onClick());
+		await act(async () => catalogButton("VS Code").props.onClick());
+		assert.equal(observedState.activeTabId, remainingNewTab.id, "new module replaces the active New Tab in place");
+		assert.equal(model.activeDesktopTab(observedState).target.route.area, "vscode");
+		assert.equal(observedState.tabs.some((tab) => tab.target.kind === "new-tab"), false);
+
 		await act(async () => mounted.update(React.createElement(Harness, { hidden: true })));
 		assert.equal(mounted.root.findByType("aside").props.hidden, true);
 		assert.equal(mounted.root.findAllByType("iframe").length, 0, "removed Preview stays absent while the sidebar hides");
-
-		const plus = { contains: (target) => target === plus || target?.parent === plus };
-		const catalog = { contains: (target) => target === catalog };
-		assert.equal(desktopCatalogPointerIsOutside(catalog, plus, { parent: plus }), false);
-		assert.equal(desktopCatalogPointerIsOutside(catalog, plus, {}), true);
 
 		let closedTool = null;
 		let visible = true;

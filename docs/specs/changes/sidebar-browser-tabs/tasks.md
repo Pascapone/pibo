@@ -62,3 +62,14 @@
 - [x] Validate Desktop at 1440×900 and 1920×1080, Mobile at exactly 390×844, and detached terminal scrolling with deterministic worker fixtures.
 - [x] Capture current screenshots, geometry, storage, history, and idle CDP evidence in a new 2026-08-31 artifact directory.
 - [ ] Re-run exact Pibo2 acceptance on the rebased candidate before opening a PR; this local integration package does not claim that external gate.
+
+## Maintainer screenshot follow-up — 2026-08-31
+
+- [x] Diagnose and restore the existing Desktop SessionSidebar height/data contract without changing Mobile.
+- [x] Replace the `+` popover with persisted, multiple-instance New Tabs and in-panel catalog replacement.
+- [x] Add pointer before/after insertion state, animated gap, cancellation cleanup, and reduced-motion behavior.
+- [x] Make the fixed Desktop center Terminal-only and hide only its obsolete Workflow/Raw/Annotations controls.
+- [x] Add model, React, render, style, sidebar-wiring, and Desktop/Mobile toolbar regressions.
+- [x] Run full Chat UI/Terminal, typecheck, build, and diff gates in the isolated worker.
+- [x] Validate headed Desktop 1440×900/1920×1080 and Mobile 390×844 with ready-state/CDP evidence.
+- [x] Record current follow-up evidence and safely advance the authoritative local branch.

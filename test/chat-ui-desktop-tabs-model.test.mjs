@@ -16,6 +16,24 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.deepEqual(state.tabs.map((tab) => tab.id), ["projects", "vscode", "preview"]);
 		assert.equal(state.activeTabId, "preview");
 
+		let newTabs = model.openDesktopNewTab(model.emptyDesktopTabState(), { id: "new-one", now: 1 });
+		newTabs = model.openDesktopNewTab(newTabs, { id: "new-two", now: 2 });
+		assert.deepEqual(newTabs.tabs.map((tab) => [tab.id, tab.title, tab.target.kind]), [
+			["new-one", "New Tab", "new-tab"],
+			["new-two", "New Tab", "new-tab"],
+		], "each + action creates a distinct real tab");
+		const persistedNewTabs = model.parseDesktopTabState(model.serializeDesktopTabState(newTabs));
+		assert.deepEqual(persistedNewTabs.tabs.map((tab) => tab.id), ["new-one", "new-two"], "multiple New Tabs persist without logical dedupe");
+		newTabs = model.replaceDesktopNewTab(newTabs, "new-two", { kind: "route", route: { area: "settings" } }, 3);
+		assert.equal(newTabs.activeTabId, "new-two");
+		assert.equal(model.activeDesktopTab(newTabs).title, "Settings");
+		assert.equal(model.activeDesktopTab(newTabs).target.kind, "route");
+		newTabs = model.openDesktopNewTab(newTabs, { id: "new-three", now: 4 });
+		newTabs = model.replaceDesktopNewTab(newTabs, "new-three", { kind: "route", route: { area: "settings", panel: "providers" } }, 5);
+		assert.equal(newTabs.tabs.some((tab) => tab.id === "new-three"), false, "choosing an existing singleton closes the temporary New Tab");
+		assert.equal(newTabs.activeTabId, "new-two");
+		assert.equal(model.activeDesktopTab(newTabs).target.route.panel, "providers");
+
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "projects", projectId: "p-1" } }, { id: "project-1", now: 4 });
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "projects", projectId: "p-2" } }, { id: "project-2", now: 5 });
 		assert.equal(state.tabs.filter((tab) => tab.target.kind === "route" && tab.target.route.area === "projects").length, 3);

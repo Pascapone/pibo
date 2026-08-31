@@ -131,6 +131,7 @@ export function SessionTracePane({
   sessionViewId,
   sessionViews,
   currentSessionView,
+  desktopTerminalOnly = false,
   allowedSessionViewIds,
   creatingSession,
   terminalFullscreen = false,
@@ -190,6 +191,7 @@ export function SessionTracePane({
   sessionViewId: ChatSessionViewId;
   sessionViews: ReturnType<typeof listChatSessionViews>;
   currentSessionView: ReturnType<typeof getChatSessionView>;
+  desktopTerminalOnly?: boolean;
   allowedSessionViewIds?: readonly ChatSessionViewId[];
   creatingSession: boolean;
   terminalFullscreen?: boolean;
@@ -943,6 +945,7 @@ export function SessionTracePane({
         allowedSessionViewIds,
         extraViewTabs: combinedExtraViewTabs,
         activeViewId: livePreviewSelected ? "preview" : activeViewId,
+        desktopTerminalOnly,
         terminalFullscreenAvailable: !livePreviewSelected && currentSessionView.id === "terminal" && (activeViewId ?? sessionViewId) === "terminal",
         onEnterTerminalFullscreen,
         onOpenSessionWindow,

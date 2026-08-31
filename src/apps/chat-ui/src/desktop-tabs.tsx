@@ -42,11 +42,14 @@ import {
 	desktopTabKeepsMounted,
 	emptyDesktopTabState,
 	moveDesktopTab,
+	openDesktopNewTab,
 	openDesktopTab,
 	readDesktopTabState,
 	reconcileDesktopRoute,
+	replaceDesktopNewTab,
 	reorderDesktopTab,
 	resizeDesktopTabs,
+	type DesktopModuleTabTarget,
 	type DesktopSessionTool,
 	type DesktopTab,
 	type DesktopTabState,
@@ -59,16 +62,27 @@ type CatalogEntry = {
 	label: string;
 	description: string;
 	icon: LucideIcon;
-	target?: DesktopTabTarget;
+	target?: DesktopModuleTabTarget;
 	sessionsAction?: true;
 };
 
-export function desktopCatalogPointerIsOutside(
-	catalog: Pick<Node, "contains"> | null,
-	plusButton: Pick<Node, "contains"> | null,
-	target: Node,
-): boolean {
-	return !catalog?.contains(target) && !plusButton?.contains(target);
+type DesktopTabDragInsertion = {
+	draggedTabId: string;
+	overTabId: string;
+	position: "before" | "after";
+	toIndex: number;
+};
+
+export function desktopTabInsertionIndex(
+	tabs: readonly DesktopTab[],
+	draggedTabId: string,
+	overTabId: string,
+	position: "before" | "after",
+): number {
+	const remaining = tabs.filter((tab) => tab.id !== draggedTabId);
+	const overIndex = remaining.findIndex((tab) => tab.id === overTabId);
+	if (overIndex < 0) return Math.max(0, remaining.length);
+	return overIndex + (position === "after" ? 1 : 0);
 }
 
 const SESSION_TOOL_CATALOG: readonly CatalogEntry[] = [
@@ -116,7 +130,6 @@ export function DesktopTabSidebar({
 	onStateChange,
 	onActivate,
 	onClose,
-	onOpenTarget,
 	onFocusSessions,
 	renderPanel,
 	hidden = false,
@@ -127,35 +140,24 @@ export function DesktopTabSidebar({
 	onStateChange: (state: DesktopTabState) => void;
 	onActivate: (tab: DesktopTab) => void;
 	onClose: (tab: DesktopTab) => boolean | Promise<boolean>;
-	onOpenTarget: (target: DesktopTabTarget) => void;
-	onFocusSessions: () => void;
+	onFocusSessions: (newTab: DesktopTab) => void | Promise<void>;
 	renderPanel: (tab: DesktopTab, active: boolean) => ReactNode;
 	hidden?: boolean;
 	fullscreen?: boolean;
 }) {
-	const [catalogOpen, setCatalogOpen] = useState(false);
 	const plusButtonRef = useRef<HTMLButtonElement>(null);
 	const catalogRef = useRef<HTMLDivElement>(null);
 	const tabListRef = useRef<HTMLDivElement>(null);
 	const tabRefs = useRef(new Map<string, HTMLButtonElement>());
 	const dragTabIdRef = useRef<string | null>(null);
+	const [dragInsertion, setDragInsertion] = useState<DesktopTabDragInsertion | null>(null);
 	const focusAfterCloseRef = useRef(false);
 	const activeTab = activeDesktopTab(state);
 	const entries = useMemo(() => desktopTabCatalog(vscodeEnabled), [vscodeEnabled]);
 
 	useLayoutEffect(() => {
-		if (catalogOpen) catalogRef.current?.querySelector<HTMLButtonElement>("button[data-catalog-entry]")?.focus();
-	}, [catalogOpen]);
-
-	useEffect(() => {
-		if (!catalogOpen) return;
-		const closeFromOutside = (event: PointerEvent) => {
-			const target = event.target as Node;
-			if (desktopCatalogPointerIsOutside(catalogRef.current, plusButtonRef.current, target)) setCatalogOpen(false);
-		};
-		window.addEventListener("pointerdown", closeFromOutside);
-		return () => window.removeEventListener("pointerdown", closeFromOutside);
-	}, [catalogOpen]);
+		if (activeTab?.target.kind === "new-tab") catalogRef.current?.querySelector<HTMLButtonElement>("button[data-catalog-entry]")?.focus();
+	}, [activeTab?.id]);
 
 	useEffect(() => {
 		if (state.collapsed || !activeTab) return;
@@ -175,17 +177,7 @@ export function DesktopTabSidebar({
 		if (!closed) focusAfterCloseRef.current = false;
 	}, [onClose]);
 
-	const closeCatalog = useCallback((restoreFocus = true) => {
-		setCatalogOpen(false);
-		if (restoreFocus) window.setTimeout(() => plusButtonRef.current?.focus(), 0);
-	}, []);
-
 	const onCatalogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-		if (event.key === "Escape") {
-			event.preventDefault();
-			closeCatalog();
-			return;
-		}
 		const buttons = [...catalogRef.current?.querySelectorAll<HTMLButtonElement>("button[data-catalog-entry]") ?? []];
 		const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
 		let next = -1;
@@ -197,6 +189,15 @@ export function DesktopTabSidebar({
 			event.preventDefault();
 			buttons[next]?.focus();
 		}
+	};
+
+	const chooseCatalogEntry = (entry: CatalogEntry) => {
+		if (!activeTab || activeTab.target.kind !== "new-tab") return;
+		if (entry.sessionsAction) {
+			void onFocusSessions(activeTab);
+			return;
+		}
+		if (entry.target) onStateChange(replaceDesktopNewTab(state, activeTab.id, entry.target));
 	};
 
 	const focusTabAt = (index: number) => {
@@ -296,17 +297,50 @@ export function DesktopTabSidebar({
 				<div className={`grid h-full min-h-0 ${fullscreen ? "grid-rows-[0_minmax(0,1fr)]" : "grid-rows-[40px_minmax(0,1fr)]"}`}>
 					<div hidden={fullscreen} className="relative flex min-w-0 items-stretch border-b border-slate-800 bg-[#151f24]">
 						<button type="button" onClick={() => tabListRef.current?.scrollBy({ left: -220, behavior: "smooth" })} title="Scroll tabs left" aria-label="Scroll tabs left" className="w-7 shrink-0 border-r border-slate-800 text-slate-500 hover:text-[#11a4d4]"><ChevronLeft size={13} className="mx-auto" /></button>
-						<div ref={tabListRef} role="tablist" aria-label="Workspace tabs" className="flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+						<div
+							ref={tabListRef}
+							role="tablist"
+							aria-label="Workspace tabs"
+							onDragLeave={(event) => {
+								if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragInsertion(null);
+							}}
+							className="flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+						>
 							{state.tabs.map((tab, index) => {
 								const selected = tab.id === state.activeTabId;
+								const gapBefore = dragInsertion?.overTabId === tab.id && dragInsertion.position === "before";
+								const gapAfter = dragInsertion?.overTabId === tab.id && dragInsertion.position === "after";
 								return (
-									<div
-										key={tab.id}
+									<div key={tab.id} className="flex shrink-0 items-center">
+										{gapBefore ? <DesktopTabDropGap index={dragInsertion.toIndex} /> : null}
+										<div
 										draggable
-										onDragStart={(event) => { dragTabIdRef.current = tab.id; event.dataTransfer.effectAllowed = "move"; }}
-										onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
-										onDrop={(event) => { event.preventDefault(); if (dragTabIdRef.current) onStateChange(reorderDesktopTab(state, dragTabIdRef.current, index)); dragTabIdRef.current = null; }}
-										className={`group flex h-10 min-w-[9.5rem] max-w-[13rem] items-center border-r border-slate-800 ${selected ? "bg-[#101d22] text-[#7ddfff]" : "bg-[#151f24] text-slate-400 hover:bg-slate-800/60"}`}
+											onDragStart={(event) => {
+												dragTabIdRef.current = tab.id;
+												event.dataTransfer.effectAllowed = "move";
+												event.dataTransfer.setData("text/plain", tab.id);
+											}}
+											onDragOver={(event) => {
+												event.preventDefault();
+												event.dataTransfer.dropEffect = "move";
+												const draggedTabId = dragTabIdRef.current;
+												if (!draggedTabId || draggedTabId === tab.id) return;
+												const bounds = event.currentTarget.getBoundingClientRect();
+												const position = event.clientX >= bounds.left + bounds.width / 2 ? "after" : "before";
+												const toIndex = desktopTabInsertionIndex(state.tabs, draggedTabId, tab.id, position);
+												setDragInsertion((current) => current?.draggedTabId === draggedTabId && current.overTabId === tab.id && current.position === position
+													? current
+													: { draggedTabId, overTabId: tab.id, position, toIndex });
+											}}
+											onDrop={(event) => {
+												event.preventDefault();
+												const draggedTabId = dragTabIdRef.current;
+												if (draggedTabId && dragInsertion?.draggedTabId === draggedTabId) onStateChange(reorderDesktopTab(state, draggedTabId, dragInsertion.toIndex));
+												dragTabIdRef.current = null;
+												setDragInsertion(null);
+											}}
+											onDragEnd={() => { dragTabIdRef.current = null; setDragInsertion(null); }}
+											className={`group flex h-10 min-w-[9.5rem] max-w-[13rem] items-center border-r border-slate-800 ${dragTabIdRef.current === tab.id ? "opacity-60" : ""} ${selected ? "bg-[#101d22] text-[#7ddfff]" : "bg-[#151f24] text-slate-400 hover:bg-slate-800/60"}`}
 									>
 										<button
 											ref={(node) => { if (node) tabRefs.current.set(tab.id, node); else tabRefs.current.delete(tab.id); }}
@@ -324,41 +358,24 @@ export function DesktopTabSidebar({
 											{tab.title}
 										</button>
 										<button type="button" onClick={() => void requestClose(tab)} title={`Close ${tab.title}`} aria-label={`Close ${tab.title}`} className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 opacity-70 hover:bg-slate-700 hover:text-slate-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><X size={12} /></button>
+										</div>
+										{gapAfter ? <DesktopTabDropGap index={dragInsertion.toIndex} /> : null}
 									</div>
 								);
 							})}
 						</div>
 						<button type="button" onClick={() => tabListRef.current?.scrollBy({ left: 220, behavior: "smooth" })} title="Scroll tabs right" aria-label="Scroll tabs right" className="w-7 shrink-0 border-l border-slate-800 text-slate-500 hover:text-[#11a4d4]"><ChevronRight size={13} className="mx-auto" /></button>
-						<button ref={plusButtonRef} type="button" onClick={() => setCatalogOpen((open) => !open)} aria-haspopup="menu" aria-expanded={catalogOpen} title="Open workspace catalog" aria-label="Open workspace catalog" className="w-9 shrink-0 border-l border-slate-800 text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"><Plus size={15} className="mx-auto" /></button>
+						<button ref={plusButtonRef} type="button" onClick={() => onStateChange(openDesktopNewTab(state))} title="New Tab" aria-label="New Tab" className="w-9 shrink-0 border-l border-slate-800 text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"><Plus size={15} className="mx-auto" /></button>
 						<button type="button" onClick={() => onStateChange({ ...state, collapsed: true })} title="Collapse workspace tabs" aria-label="Collapse workspace tabs" className="w-9 shrink-0 border-l border-slate-800 text-slate-400 hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"><PanelRightClose size={15} className="mx-auto" /></button>
-						{catalogOpen ? (
-							<div ref={catalogRef} role="menu" aria-label="Workspace catalog" onKeyDown={onCatalogKeyDown} className="absolute right-1 top-[calc(100%+4px)] z-50 grid w-[min(31rem,calc(100vw-2rem))] grid-cols-2 gap-1 border border-slate-700 bg-[#1a262b] p-2 shadow-2xl">
-								<div className="col-span-2 px-2 pb-1 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Open a product area or session tool</div>
-								{entries.map((entry) => {
-									const Icon = entry.icon;
-									return (
-										<button
-											key={entry.id}
-											data-catalog-entry
-											type="button"
-											role="menuitem"
-											onClick={() => { closeCatalog(false); if (entry.sessionsAction) onFocusSessions(); else if (entry.target) onOpenTarget(entry.target); }}
-											className="flex min-w-0 items-start gap-2 rounded-sm border border-transparent px-2 py-2 text-left hover:border-slate-700 hover:bg-[#101d22] focus-visible:border-[#11a4d4] focus-visible:bg-[#101d22] focus-visible:outline-none"
-										>
-											<Icon size={15} className="mt-0.5 shrink-0 text-[#11a4d4]" />
-											<span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-200">{entry.label}</span><span className="block text-[10px] leading-4 text-slate-500">{entry.description}</span></span>
-										</button>
-									);
-								})}
-							</div>
-						) : null}
 					</div>
 					<div className={`relative min-h-0 overflow-hidden bg-[#101d22] ${fullscreen ? "row-start-2" : ""}`}>
 						{state.tabs.length ? state.tabs.map((tab) => {
 							const selected = tab.id === state.activeTabId;
 							return (
 								<section key={tab.id} id={`desktop-tabpanel-${tab.id}`} role="tabpanel" aria-labelledby={`desktop-tab-${tab.id}`} hidden={!selected} className="h-full min-h-0 overflow-hidden">
-									{selected || desktopTabKeepsMounted(tab) ? renderPanel(tab, selected) : null}
+									{tab.target.kind === "new-tab" ? (
+										<DesktopNewTabCatalog ref={selected ? catalogRef : undefined} entries={entries} onKeyDown={onCatalogKeyDown} onChoose={chooseCatalogEntry} />
+									) : selected || desktopTabKeepsMounted(tab) ? renderPanel(tab, selected) : null}
 								</section>
 							);
 						}) : (
@@ -370,6 +387,42 @@ export function DesktopTabSidebar({
 		</aside>
 	);
 }
+
+function DesktopTabDropGap({ index }: { index: number }) {
+	return <span aria-hidden="true" data-pibo-debug="desktop-tab-drop-gap" data-pibo-insertion-index={index} className="desktop-tab-drop-gap h-6 w-2 shrink-0 rounded-sm bg-[#11a4d4]/75 motion-reduce:animate-none" />;
+}
+
+const DesktopNewTabCatalog = function DesktopNewTabCatalog({
+	ref,
+	entries,
+	onKeyDown,
+	onChoose,
+}: {
+	ref?: React.Ref<HTMLDivElement>;
+	entries: readonly CatalogEntry[];
+	onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void;
+	onChoose: (entry: CatalogEntry) => void;
+}) {
+	return (
+		<div data-pibo-debug="desktop-new-tab" className="grid h-full min-h-0 place-items-center overflow-auto p-6">
+			<div ref={ref} role="navigation" aria-label="New Tab module catalog" onKeyDown={onKeyDown} className="grid w-full max-w-2xl grid-cols-2 gap-1 border border-slate-700 bg-[#1a262b] p-3 max-[1180px]:grid-cols-1">
+				<div className="col-span-full px-2 pb-2 pt-0.5">
+					<h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">New Tab</h2>
+					<p className="mt-1 text-[10px] text-slate-500">Open a product area or session tool</p>
+				</div>
+				{entries.map((entry) => {
+					const Icon = entry.icon;
+					return (
+						<button key={entry.id} data-catalog-entry type="button" onClick={() => onChoose(entry)} className="flex min-w-0 items-start gap-2 rounded-sm border border-transparent px-2 py-2 text-left hover:border-slate-700 hover:bg-[#101d22] focus-visible:border-[#11a4d4] focus-visible:bg-[#101d22] focus-visible:outline-none">
+							<Icon size={15} className="mt-0.5 shrink-0 text-[#11a4d4]" />
+							<span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-200">{entry.label}</span><span className="block text-[10px] leading-4 text-slate-500">{entry.description}</span></span>
+						</button>
+					);
+				})}
+			</div>
+		</div>
+	);
+};
 
 export function nextDesktopTabStateAfterClose(state: DesktopTabState, tabId: string): DesktopTabState {
 	return closeDesktopTab(state, tabId);

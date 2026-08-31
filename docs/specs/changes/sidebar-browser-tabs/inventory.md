@@ -18,7 +18,7 @@ This inventory records every existing top-level route and session-related side s
 | Web Annotations | Session header entry points and `WebAnnotationsSessionPanel` | Singleton session tool tab | Existing session panel/overlay path |
 | Runtime Requests | `RuntimeRequestPanel` | Singleton session tool tab | Existing inline session panel |
 | Session Inspector | Session metadata, signal snapshot, runtime status | Singleton session tool tab | Existing header/trace inspection remains |
-| Terminal / Workflow session views | `SessionTracePane` registry | Terminal remains fixed center; view controls remain session-owned | Existing route search and view toggle |
+| Terminal / Workflow session views | `SessionTracePane` registry | Terminal is fixed center; Workflow opens from the right-tab catalog and the Desktop center omits the view toggle | Existing route search and view toggle |
 | Terminal/Preview fullscreen | `TerminalFullscreenTopBar`, `PreviewFullscreenTopBar` | Fullscreen remains an explicit shell exception | Existing behavior |
 
 The `+` catalog includes all rows that represent destinations or tools. It excludes transient dialogs, delete confirmations, composer menus, upload drop targets, and fullscreen exit bars because they are actions or modal states rather than durable surfaces.

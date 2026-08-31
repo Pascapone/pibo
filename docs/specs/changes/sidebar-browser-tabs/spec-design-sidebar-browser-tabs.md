@@ -1,6 +1,6 @@
 ---
 title: Desktop Browser Tabs for Pibo Chat
-version: 1.4
+version: 1.5
 date_created: 2026-08-30
 last_updated: 2026-08-31
 owner: Pibo
@@ -26,10 +26,10 @@ The desktop shell has three stable regions: the Rooms/Pibo Sessions navigation o
 
 ## 3. Requirements, constraints, and guidelines
 
-- **REQ-001**: Desktop shall keep the Rooms/Pibo Sessions navigation mounted on the left for every route.
+- **REQ-001**: Desktop shall keep the existing Rooms/Pibo Sessions navigation mounted on the left for every route, with its real Shared Chat, Rooms controls/list, profile selector, Sessions list, live state, scrolling, and create/archive actions unchanged.
 - **REQ-002**: Desktop shall keep the selected Pibo Session terminal mounted in the center while right tabs change.
-- **REQ-003**: The right sidebar shall support open, focus, close, pointer reorder, keyboard reorder, overflow scrolling, tooltips, collapse, reopen, and width resize.
-- **REQ-004**: The catalog shall expose Sessions, Projects, VS Code, Workflows, Cron, Loops, Agents/Agent Designer, Context, Settings, Preview, Raw Events, Web Annotations, Runtime Requests, and Session Inspector. When VS Code is not configured, its existing actionable configuration state remains reachable instead of hiding the destination.
+- **REQ-003**: The right sidebar shall support open, focus, close, pointer reorder, keyboard reorder, overflow scrolling, tooltips, collapse, reopen, and width resize. Pointer reorder shall show an animated insertion gap at the prospective drop boundary and remove it on drop, cancel, or strip leave; reduced-motion preferences disable this animation.
+- **REQ-004**: `+` shall append and activate a distinct, closable, reorderable, persisted `New Tab`. Its tab panel shall center the catalog—never render it as a popover—and shall expose Sessions, Projects, VS Code, Workflows, Cron, Loops, Agents/Agent Designer, Context, Settings, Preview, Raw Events, Web Annotations, Runtime Requests, and Session Inspector. Selecting a new target replaces that New Tab in place; selecting an existing singleton closes the temporary tab and focuses the singleton. Repeated `+` actions may coexist. When VS Code is not configured, its existing actionable configuration state remains reachable instead of hiding the destination.
 - **REQ-005**: Sessions in the catalog shall focus and reveal the fixed left navigation. It shall not create a duplicate right surface.
 - **REQ-006**: Singleton targets shall focus and update their existing tab. Resource targets may coexist when their stable resource identities differ.
 - **REQ-007**: Open tabs, order, active tab, sidebar width, and collapsed state shall persist in versioned local storage.
@@ -41,9 +41,10 @@ The desktop shell has three stable regions: the Rooms/Pibo Sessions navigation o
 - **REQ-013**: Terminal fullscreen shall visually replace the three-pane shell while preserving required hidden keep-alive content. Desktop Preview fullscreen shall instead expand the selected Preview tab and its existing iframe to the viewport without entering Terminal fullscreen or replacing the iframe. If the selected Preview disappears, the app shall leave Preview fullscreen automatically and restore the Desktop shell controls.
 - **REQ-014**: Storage recovery shall deduplicate repeated tab IDs and logical target identities before rendering.
 - **REQ-015**: Workflow-version routes shall retain `viewWorkflowId` and `viewWorkflowVersion` through tab activation, history, persistence, and reload, and shall render the exact version viewer rather than the Workflows landing surface.
+- **REQ-016**: The fixed Desktop center shall always render the Terminal session view. Its header shall omit the Terminal/Workflow selector, Raw Events control, and Web Annotations control; Fullscreen, Show Thinking, Tool View Mode, and unrelated required controls remain. Mobile retains the existing selector and tool entry points.
 - **A11Y-001**: Tabs shall use `tablist`, `tab`, and `tabpanel` semantics with visible focus and accessible close labels.
 - **A11Y-002**: Arrow keys shall focus tabs; Enter/Space shall activate them; Delete shall close; Alt+Shift+ArrowLeft/ArrowRight shall reorder.
-- **A11Y-003**: Escape shall close the catalog and restore focus to its trigger.
+- **A11Y-003**: The New Tab catalog shall be a labelled navigation region; its module controls shall support normal Tab navigation plus Arrow Up/Down and Home/End movement. Creating a New Tab shall focus its first catalog action.
 - **A11Y-004**: The resize divider shall expose a separator role, value attributes, and keyboard resizing.
 - **A11Y-005**: After Delete or close removes a tab, DOM focus shall move to the same deterministic neighbor selected by the tab model, or to the catalog trigger when no tabs remain.
 - **CON-001**: The Root checkout remains unchanged. Implementation and validation run only in the dedicated Docker compute worker.
@@ -95,11 +96,15 @@ History policy:
 - **AC-014**: Given `/apps/chat/workflows/view/<id>/<version>`, when Desktop loads, switches away and back, or reloads, then the URL, active tab identity, and rendered version viewer retain both route parameters.
 - **AC-015**: Given Desktop Preview fullscreen, when the selected Preview is removed or lost through refreshed query data, then Preview fullscreen exits and the Desktop chrome and tab controls return without a reload.
 - **AC-016**: Given `/apps/chat/workflows/view/<id>/<version>` at 390×844, when Mobile loads or reloads, then the existing version viewer renders both parameters and no Desktop shell or ARIA workspace tablist appears.
+- **AC-017**: Given populated navigation data on Desktop, when the shell renders or a product tab activates, then Shared Chat, Rooms, profile selector, and Sessions remain visible and interactive in the fixed left pane.
+- **AC-018**: Given one or more open tabs, when `+` is used repeatedly, then each action appends an active `New Tab`; choosing a unique module replaces its active temporary tab, while choosing an existing singleton removes the temporary tab and focuses the singleton.
+- **AC-019**: Given pointer drag over either half of another tab, then a reduced-width cyan gap identifies the corresponding before/after insertion index, and drop applies that exact order.
+- **AC-020**: Given Desktop, then the center header has no session-view selector, Raw Events, or Web Annotations control and still offers Tool View Mode, Thinking, and Terminal Fullscreen; given Mobile, the existing controls remain.
 
 ## 6. Test automation strategy
 
 - Pure model/controller tests cover deduplication, close-neighbor selection, URL policy, guarded Agent transitions, bounds, persistence recovery, and route reconciliation.
-- React behavior tests spawn their child process with `NODE_ENV=development` and use React's development-entry `act` export. They cover Preview iframe identity across tab switches and Preview fullscreen, automatic fullscreen exit after Preview loss, restored shell controls, inactive resource unmounting, post-close DOM focus, catalog containment, and annotation close. Route/model/render tests cover workflow-version path serialization, tab history/persistence, and exact Desktop/Mobile viewer output. Source-contract checks remain only for static wiring that cannot regress independently of those behavior tests.
+- React behavior tests spawn their child process with `NODE_ENV=development` and use React's development-entry `act` export. They cover Preview iframe identity across tab switches and Preview fullscreen, automatic fullscreen exit after Preview loss, restored shell controls, inactive resource unmounting, post-close DOM focus, New Tab lifecycle/replacement, pointer insertion gaps, and annotation close. Route/model/render tests cover workflow-version path serialization, tab history/persistence, exact Desktop/Mobile viewer output, populated sidebar output, and Desktop/Mobile header controls. Source-contract checks remain only for static wiring that cannot regress independently of those behavior tests.
 - existing Chat Web route, storage, mobile navigation, sidebar, Preview, Raw Events, and fullscreen tests remain in the gate.
 - headful Browser Use validates 1440×900, 1920×1080, and 390×844. CDP records console and failed-network evidence.
 
@@ -120,6 +125,7 @@ The selected Pibo Session is the operator’s continuous work context. Product a
 - Closing the last tab leaves the catalog-ready empty sidebar and the Sessions route.
 - A missing selected Pibo Session shows the existing empty states in session tool tabs.
 - A missing selected Preview exits Preview fullscreen before the empty state can leave the shell without controls.
+- Multiple New Tabs remain distinct because their instance identity is part of the persisted logical target key.
 - VS Code stays discoverable in the catalog when the gateway does not configure it and renders the existing configuration empty state.
 - Width restoration clamps to current safe limits.
 
