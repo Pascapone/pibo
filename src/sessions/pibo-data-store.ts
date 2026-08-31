@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
-import type { OutputToolInvocationTransition } from "../core/output-render-sequence.js";
+import type { OutputPartTransition, OutputToolInvocationTransition } from "../core/output-render-sequence.js";
 import { ChatDataIngestService } from "../data/ingest-service.js";
 import { PiboDataStore } from "../data/pibo-store.js";
 import type { StoredTelemetryTurn, TelemetryInterruptedTurnOutcome } from "../data/telemetry.js";
@@ -222,6 +222,68 @@ export class PiboDataSessionStore implements PiboSessionStore {
 					END
 			`).run(sequence, new Date().toISOString(), piboSessionId);
 		});
+	}
+
+	claimOrAttachOutputPart(input: OutputPartTransition): number {
+		return this.dataStore.transaction(() => {
+			const indexAttribute = outputPartIndexAttribute(input.kind);
+			const eventTypes = outputPartEventTypes(input.kind);
+			const placeholders = eventTypes.map(() => "?").join(", ");
+			const rows = this.db.prepare(`
+				SELECT type, attributes_json
+				FROM event_log
+				WHERE session_id = ? AND event_id = ? AND type IN (${placeholders})
+				ORDER BY stream_id ASC
+			`).all(input.piboSessionId, input.eventId, ...eventTypes) as Array<{ type: string; attributes_json: string }>;
+			let maximum = -1;
+			const latestTypeByIndex = new Map<number, string>();
+			for (const row of rows) {
+				const attributes = parseJsonObject(row.attributes_json);
+				const index = attributes[indexAttribute];
+				if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0) continue;
+				maximum = Math.max(maximum, index);
+				if (
+					attributes.outputPartFingerprint === input.fingerprint
+					|| attributes.identityFingerprint === input.identityFingerprint
+				) {
+					this.observeOutputPartIndex(input, index);
+					return index;
+				}
+				latestTypeByIndex.set(index, row.type);
+			}
+			const latestOpen = [...latestTypeByIndex.entries()]
+				.filter(([, eventType]) => !outputPartEventIsTerminal(eventType))
+				.sort(([left], [right]) => right - left)[0]?.[0];
+			if (latestOpen !== undefined) {
+				this.observeOutputPartIndex(input, latestOpen);
+				return latestOpen;
+			}
+			const minimum = Math.max(input.proposedIndex, maximum + 1);
+			const row = this.db.prepare(`
+				INSERT INTO session_output_part_counters (
+					pibo_session_id, event_id, part_kind, next_index, updated_at
+				) VALUES (?, ?, ?, ? + 1, ?)
+				ON CONFLICT(pibo_session_id, event_id, part_kind) DO UPDATE SET
+					next_index = MAX(session_output_part_counters.next_index, ?) + 1,
+					updated_at = excluded.updated_at
+				RETURNING next_index - 1 AS part_index
+			`).get(input.piboSessionId, input.eventId, input.kind, minimum, new Date().toISOString(), minimum) as { part_index: number };
+			return row.part_index;
+		});
+	}
+
+	private observeOutputPartIndex(input: OutputPartTransition, index: number): void {
+		this.db.prepare(`
+			INSERT INTO session_output_part_counters (
+				pibo_session_id, event_id, part_kind, next_index, updated_at
+			) VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(pibo_session_id, event_id, part_kind) DO UPDATE SET
+				next_index = MAX(session_output_part_counters.next_index, excluded.next_index),
+				updated_at = CASE
+					WHEN excluded.next_index > session_output_part_counters.next_index THEN excluded.updated_at
+					ELSE session_output_part_counters.updated_at
+				END
+		`).run(input.piboSessionId, input.eventId, input.kind, index + 1, new Date().toISOString());
 	}
 
 	claimOutputToolInvocationOrdinal(piboSessionId: string, eventId: string, toolCallId: string): number {
@@ -715,6 +777,31 @@ function runtimeBindingFromRow(row: SessionRow): RuntimeSessionBinding {
 
 function isRuntimeBindingState(value: string): value is RuntimeSessionBinding["state"] {
 	return value === "unbound" || value === "bound" || value === "missing" || value === "error";
+}
+
+function outputPartIndexAttribute(kind: OutputPartTransition["kind"]): string {
+	switch (kind) {
+		case "assistant": return "assistantIndex";
+		case "thinking": return "thinkingIndex";
+		case "usage": return "usageIndex";
+		case "compaction": return "compactionIndex";
+	}
+}
+
+function outputPartEventTypes(kind: OutputPartTransition["kind"]): string[] {
+	switch (kind) {
+		case "assistant": return ["assistant_delta", "assistant_message"];
+		case "thinking": return ["thinking_started", "thinking_delta", "thinking_finished"];
+		case "usage": return ["assistant_usage"];
+		case "compaction": return ["compaction_start", "compaction_end"];
+	}
+}
+
+function outputPartEventIsTerminal(eventType: string): boolean {
+	return eventType === "assistant_message"
+		|| eventType === "thinking_finished"
+		|| eventType === "assistant_usage"
+		|| eventType === "compaction_end";
 }
 
 function parseJsonObject(json: string | null | undefined): PiboJsonObject {

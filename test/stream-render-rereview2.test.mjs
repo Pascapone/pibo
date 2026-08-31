@@ -42,6 +42,72 @@ function permutations(values) {
 	return values.flatMap((value, index) => permutations(values.filter((_, candidate) => candidate !== index)).map((rest) => [value, ...rest]));
 }
 
+test("durable output part indices survive context-guard sequencer restart", () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-context-guard-output-identity-");
+	let dataStore;
+	try {
+		dataStore = new PiboDataStore(databasePath);
+		let sessionStore = new PiboDataSessionStore(dataStore);
+		const session = sessionStore.create({ id: "ps-context-guard-output", channel: "test", kind: "chat", profile: "base" });
+		let ingest = new ChatDataIngestService(dataStore);
+		const firstSequencer = new OutputRenderSequencer({ now: () => 1, highWaterStore: sessionStore });
+		const firstFinal = firstSequencer.position({
+			type: "assistant_message",
+			piboSessionId: session.id,
+			eventId: "turn-context-guard",
+			assistantIndex: 0,
+			text: "Answer before compaction",
+		});
+		ingest.ingestOutputEvent({ session, event: firstFinal });
+		for (const event of [
+			{ type: "compaction_start", reason: "context_guard", compactionIndex: 0 },
+			{ type: "compaction_end", reason: "context_guard", compactionIndex: 0, aborted: false },
+		]) {
+			ingest.ingestOutputEvent({
+				session,
+				event: firstSequencer.position({ ...event, piboSessionId: session.id, eventId: "turn-context-guard" }),
+			});
+		}
+		dataStore.close();
+
+		dataStore = new PiboDataStore(databasePath);
+		sessionStore = new PiboDataSessionStore(dataStore);
+		ingest = new ChatDataIngestService(dataStore);
+		const reopenedSession = sessionStore.get(session.id);
+		assert.ok(reopenedSession);
+		const resumedSequencer = new OutputRenderSequencer({ now: () => 1, highWaterStore: sessionStore });
+		const resumedFinal = resumedSequencer.position({
+			type: "assistant_message",
+			piboSessionId: session.id,
+			eventId: "turn-context-guard",
+			assistantIndex: 0,
+			text: "Final answer after compaction",
+		});
+		assert.equal(resumedFinal.assistantIndex, 1);
+		assert.equal(ingest.ingestOutputEvent({ session: reopenedSession, event: resumedFinal }).duplicate, false);
+
+		const replay = resumedSequencer.position({
+			type: "assistant_message",
+			piboSessionId: session.id,
+			eventId: "turn-context-guard",
+			assistantIndex: 0,
+			text: "Final answer after compaction",
+		});
+		assert.equal(replay.assistantIndex, 1);
+		assert.equal(ingest.ingestOutputEvent({ session: reopenedSession, event: replay }).duplicate, true);
+		const events = dataStore.eventLog.listEvents({ sessionId: session.id });
+		assert.deepEqual(events.filter((event) => event.type === "assistant_message").map((event) => event.attributes.assistantIndex), [0, 1]);
+		assert.deepEqual(dataStore.messages.listMessages(session.id).map((message) => message.contentPreview), [
+			"Answer before compaction",
+			"Final answer after compaction",
+		]);
+		assert.equal(events.filter((event) => event.type === "pibo.output.identity_collision").length, 0);
+	} finally {
+		dataStore?.close();
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
+});
+
 test("durable render high-water survives stale metadata writes across SQLite connections", () => {
 	const { directory, databasePath } = temporaryDatabase("pibo-high-water-race-");
 	let firstDataStore;
