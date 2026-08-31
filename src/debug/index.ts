@@ -94,6 +94,10 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			await runDebugJobs(args.slice(1));
 			return;
 		}
+		if (args[0] === "integrity") {
+			await runDebugIntegrity(args.slice(1));
+			return;
+		}
 		if (args[0] === "runs") {
 			await runDebugRuns(args.slice(1));
 			return;
@@ -125,6 +129,35 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
 	}
+}
+
+async function runDebugIntegrity(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugIntegrityDiscovery();
+		return;
+	}
+	if (args[0] !== "output") {
+		throw new Error(`Unknown pibo debug integrity command "${args[0]}". Run pibo debug integrity --help.`);
+	}
+	if (args[1] === "--help" || args[1] === "-h") {
+		printDebugIntegrityDiscovery();
+		return;
+	}
+	const options = parseOptions(args.slice(1));
+	if (options.before && !Number.isFinite(Date.parse(options.before))) {
+		throw new Error("--before must be an ISO date");
+	}
+	const { formatJson } = await import("./sql.js");
+	const { formatOutputIntegrityAudit, inspectOutputIntegrity } = await import("./output-integrity.js");
+	const audit = inspectOutputIntegrity({
+		dataStore: resolveDebugStore("pibo-data"),
+		reliabilityStore: resolveDebugStore("reliability"),
+		piboSessionId: options.positionals[0],
+		before: options.before,
+		limit: options.limit,
+	});
+	if (options.json) console.log(formatJson(audit));
+	else console.log(formatOutputIntegrityAudit(audit));
 }
 
 async function runDebugResources(args: string[]): Promise<void> {
@@ -1054,6 +1087,7 @@ Commands:
   tool     Inspect one grouped tool call
   failures List failed tool calls and trace/session errors
   jobs     Inspect durable Pibo jobs and DLQ
+  integrity Audit output persistence across local stores
   runs     Inspect durable yielded runs
   resources Show gateway memory reserve, related child processes, and heavy daemons
   signals  Inspect live session signal snapshots through Chat Web APIs
@@ -1068,12 +1102,32 @@ Next:
   pibo debug messages <pibo-session-id> list
   pibo debug trace <pibo-session-id> --running-only
   pibo debug events stream --topic pibo.output
+  pibo debug integrity output
   pibo debug agents <parent-session-id> list
   pibo debug resources --json
   pibo debug signals tree ps_...
   pibo debug telemetry sessions --active
   pibo debug web targets
   pibo debug pty run -- pibo tui:sessions --demo
+`);
+}
+
+function printDebugIntegrityDiscovery(): void {
+	console.log(`pibo debug integrity - audit persisted output without changing it
+
+Usage:
+  pibo debug integrity output [<pibo-session-id>] [--before <iso-date>] [--limit n] [--json]
+
+Reports:
+  Turn, reasoning, and tool lifecycle mismatches; output identity collision diagnostics; and pending or dead output-persistence jobs.
+
+Scope:
+  Omit the session id to scan all sessions. Use --before to exclude active or recent turns.
+
+Next:
+  pibo debug integrity output --json
+  pibo debug integrity output ps_... --json
+  pibo debug jobs dead --queue output-persistence
 `);
 }
 
