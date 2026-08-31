@@ -1082,7 +1082,7 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 					persistenceState,
 					onSuccess: result.ack,
 					onDeadLetter: (error) => {
-						result.rollback();
+						result.discard();
 						recordPersistenceError(state.persistenceMetrics, error);
 					},
 				}));
@@ -1130,71 +1130,77 @@ function deliverWebOutputPersistenceState(
 	const session = context.channelContext.getSession(persistenceState.piboSessionId);
 	if (!session) throw new Error(`No session available for ${persistenceState.piboSessionId}`);
 
+	const errors: unknown[] = [];
 	for (const delivery of persistenceState.deliveries) {
-		if (!delivery.v2) {
-			const createdAt = new Date().toISOString();
-			const ingested = state.ingestService.ingestOutputEvent({
-				session,
-				roomId: persistenceState.roomId,
-				actorId: persistenceState.actorId ?? session.id,
-				event: delivery.event,
-				createdAt,
-			});
-			const storedEvent = state.dataStore.eventLog.findByIdempotencyKey(delivery.deliveryId);
-			if (!storedEvent || storedEvent.streamId !== ingested.streamId) {
-				throw new Error(`Missing V2 event ${ingested.streamId} for ${delivery.deliveryId}`);
-			}
-			delivery.v2 = {
-				streamId: ingested.streamId,
-				createdAt: storedEvent.createdAt,
-				eventId: eventIdentityForDelivery(delivery.event),
-				duplicate: ingested.duplicate,
-			};
-			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
-		}
-
-		if (!delivery.reliabilityDelivered) {
-			if (delivery.reliabilityPayload === undefined) {
-				delivery.reliabilityPayload = boundedReliabilityOutputPayload(state, delivery.event);
+		try {
+			if (!delivery.v2) {
+				const createdAt = new Date().toISOString();
+				const ingested = state.ingestService.ingestOutputEvent({
+					session,
+					roomId: persistenceState.roomId,
+					actorId: persistenceState.actorId ?? session.id,
+					event: delivery.event,
+					createdAt,
+				});
+				const storedEvent = state.dataStore.eventLog.findByIdempotencyKey(delivery.deliveryId);
+				if (!storedEvent || storedEvent.streamId !== ingested.streamId) {
+					throw new Error(`Missing V2 event ${ingested.streamId} for ${delivery.deliveryId}`);
+				}
+				delivery.v2 = {
+					streamId: ingested.streamId,
+					createdAt: storedEvent.createdAt,
+					eventId: eventIdentityForDelivery(delivery.event),
+					duplicate: ingested.duplicate,
+				};
 				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
 			}
-			const deliveryKey = delivery.deliveryId;
-			state.reliabilityStore.appendOnce({
-				topic: "pibo.output",
-				key: delivery.event.piboSessionId,
-				eventId: deliveryKey,
-				idempotencyKey: deliveryKey,
-				retentionClass: reliabilityRetentionClassForOutputEvent(delivery.event),
-				payload: delivery.reliabilityPayload,
-			});
-			delivery.reliabilityDelivered = true;
-			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
-		}
 
-		if (!delivery.sideEffectsDelivered && state.reliabilityStore.hasDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1")) {
-			delivery.sideEffectsDelivered = true;
-			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
-		} else if (!delivery.sideEffectsDelivered) {
-			const stored = storedChatEventForDelivery(persistenceState, delivery);
-			if (delivery.event.type === "assistant_message" || delivery.event.type === "message_finished" || delivery.event.type === "session_error") {
-				markActiveSessionRead(state, delivery.event.piboSessionId, stored.streamId);
-			}
-			state.sessionQuery.recordEvent(delivery.event, session, stored.streamId, stored.createdAt);
-			for (const listener of state.liveListeners) {
-				try {
-					listener(stored);
-				} catch (error) {
-					console.error("[chat-web] live listener failed", error);
+			if (!delivery.reliabilityDelivered) {
+				if (delivery.reliabilityPayload === undefined) {
+					delivery.reliabilityPayload = boundedReliabilityOutputPayload(state, delivery.event);
+					retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
 				}
+				const deliveryKey = delivery.deliveryId;
+				state.reliabilityStore.appendOnce({
+					topic: "pibo.output",
+					key: delivery.event.piboSessionId,
+					eventId: deliveryKey,
+					idempotencyKey: deliveryKey,
+					retentionClass: reliabilityRetentionClassForOutputEvent(delivery.event),
+					payload: delivery.reliabilityPayload,
+				});
+				delivery.reliabilityDelivered = true;
+				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
 			}
-			// This receipt is deliberately recorded after projection and live sends.
-			// A crash before it replays the same deliveryId/streamId at least once;
-			// recording before sends would trade duplicates for silent loss.
-			state.reliabilityStore.recordDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1");
-			delivery.sideEffectsDelivered = true;
-			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+
+			if (!delivery.sideEffectsDelivered && state.reliabilityStore.hasDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1")) {
+				delivery.sideEffectsDelivered = true;
+				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+			} else if (!delivery.sideEffectsDelivered) {
+				const stored = storedChatEventForDelivery(persistenceState, delivery);
+				if (delivery.event.type === "assistant_message" || delivery.event.type === "message_finished" || delivery.event.type === "session_error") {
+					markActiveSessionRead(state, delivery.event.piboSessionId, stored.streamId);
+				}
+				state.sessionQuery.recordEvent(delivery.event, session, stored.streamId, stored.createdAt);
+				for (const listener of state.liveListeners) {
+					try {
+						listener(stored);
+					} catch (error) {
+						console.error("[chat-web] live listener failed", error);
+					}
+				}
+				// This receipt is deliberately recorded after projection and live sends.
+				// A crash before it replays the same deliveryId/streamId at least once;
+				// recording before sends would trade duplicates for silent loss.
+				state.reliabilityStore.recordDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1");
+				delivery.sideEffectsDelivered = true;
+				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+			}
+		} catch (error) {
+			errors.push(error);
 		}
 	}
+	if (errors.length > 0) throw errors[0];
 }
 
 function storedChatEventForDelivery(

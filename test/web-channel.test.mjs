@@ -9,6 +9,7 @@ import { createChatWebApp } from "../dist/apps/chat/web-app.js";
 import { ChatReadStateService } from "../dist/apps/chat/data/read-state-service.js";
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 import { PiboAuthError } from "../dist/auth/types.js";
@@ -978,6 +979,87 @@ test("chat web trace includes live compactor snapshots without raw events", asyn
 		assert.equal(findAssistantOutput(refreshedTrace.nodes), "Hello world again");
 	} finally {
 		await channel.stop?.();
+	}
+});
+
+test("chat web persists terminal boundaries after a buffered output collision", async () => {
+	for (const boundaryType of ["message_finished", "session_error"]) {
+		const host = await startWebHostChannel({ auth: createFakeAuthService() });
+		try {
+			const sessionResponse = await fetch(`${host.baseURL}/api/chat/session`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(sessionResponse.status, 200);
+			const { session } = await sessionResponse.json();
+			const eventId = `web-boundary-collision-${boundaryType}`;
+
+			const seedStore = new PiboDataStore(host.dataStorePath);
+			try {
+				new ChatDataIngestService(seedStore).ingestOutputEvent({
+					session,
+					event: {
+						type: "assistant_message",
+						piboSessionId: session.id,
+						eventId,
+						assistantIndex: 0,
+						renderSequence: 1,
+						text: "stored answer",
+					},
+				});
+			} finally {
+				seedStore.close();
+			}
+
+			host.emitOutput({ type: "assistant_delta", piboSessionId: session.id, eventId, assistantIndex: 0, text: "conflicting boundary flush" });
+			host.emitOutput(boundaryType === "message_finished"
+				? { type: boundaryType, piboSessionId: session.id, eventId, source: "user" }
+				: { type: boundaryType, piboSessionId: session.id, eventId, error: "forced boundary error" });
+
+			await waitForCondition(() => {
+				const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+				const reliability = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+				try {
+					const terminalCount = Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = ?").get(session.id, boundaryType).count);
+					const collisionCount = Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'pibo.output.identity_collision'").get(session.id).count);
+					const terminalDeliveryCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ? AND event_id LIKE ?").get(session.id, `%:${boundaryType}:%`).count);
+					const deadCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count);
+					return terminalCount === 1 && terminalDeliveryCount === 1 && collisionCount === 1 && deadCount === 1;
+				} finally {
+					data.close();
+					reliability.close();
+				}
+			}, `${boundaryType} was suppressed by the buffered collision`);
+
+			const traceResponse = await fetch(`${host.baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(session.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(traceResponse.status, 200);
+			assert.doesNotMatch(JSON.stringify((await traceResponse.json()).nodes), /conflicting boundary flush/);
+
+			host.emitOutput(boundaryType === "message_finished"
+				? { type: boundaryType, piboSessionId: session.id, eventId, source: "user" }
+				: { type: boundaryType, piboSessionId: session.id, eventId, error: "forced boundary error" });
+			await waitForCondition(() => {
+				const reliability = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+				try {
+					return Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_jobs WHERE queue = 'output-persistence'").get().count) === 0;
+				} finally {
+					reliability.close();
+				}
+			}, `${boundaryType} replay did not settle`);
+			const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+			const reliability = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = ?").get(session.id, boundaryType).count), 1);
+				assert.equal(Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ? AND event_id LIKE ?").get(session.id, `%:${boundaryType}:%`).count), 1);
+				assert.equal(Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count), 1);
+			} finally {
+				data.close();
+				reliability.close();
+			}
+		} finally {
+			await host.channel.stop?.();
+		}
 	}
 });
 
