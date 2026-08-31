@@ -358,6 +358,7 @@ test("idle persisted turns without a terminal project an explicit incomplete err
 		],
 	});
 
+	assert.equal(view.integrityStatus, "incomplete");
 	const turn = view.nodes.find((node) => node.id === "event:message:turn-incomplete");
 	assert.ok(turn, "expected the incomplete product-history turn to remain represented");
 	assert.equal(turn.status, "error");
@@ -384,6 +385,7 @@ test("active persisted turns remain running without an incomplete marker", () =>
 
 	const turn = view.nodes.find((node) => node.id === "event:message:turn-active");
 	assert.equal(turn?.status, "running");
+	assert.equal(view.integrityStatus, undefined);
 	assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-active"), false);
 });
 
@@ -396,6 +398,7 @@ test("terminal persisted turns do not project an incomplete marker", () => {
 			createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-terminal", text: "Terminal", source: "user" } }),
 			createEvent({ seq: 2, type: terminal.type, payload: terminal }),
 		], "idle");
+		assert.equal(view.integrityStatus, undefined);
 		assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-terminal"), false);
 	}
 });
@@ -414,8 +417,37 @@ test("partial trace pages use full turn timing before marking a turn incomplete"
 		}],
 	});
 
+	assert.equal(view.integrityStatus, undefined);
 	assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-paged"), false);
 	assert.equal(view.nodes.find((node) => node.id === "event:message:turn-paged")?.status, "done");
+});
+
+test("incomplete turns preserve known terminal yielded runs and delegations", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		historyEntries: [{
+			id: "product-run-notification",
+			type: "message",
+			source: "product",
+			createdAt: "2026-04-29T08:00:05.000Z",
+			role: "user",
+			content: '<pibo_run_notification>{"completed":[{"runId":"run_done","kind":"tool","status":"completed","toolName":"bash","summary":"done"}]}</pibo_run_notification>',
+			status: "complete",
+		}],
+		events: [
+			createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-with-terminal-children", text: "delegate", source: "user" } }),
+			createEvent({ seq: 2, type: "tool_call", payload: { type: "tool_call", eventId: "turn-with-terminal-children", toolCallId: "delegate-1", toolInvocationOrdinal: 0, toolName: "pibo_subagent_reviewer", args: { task: "review" } } }),
+			createEvent({ seq: 3, type: "subagent_session", payload: { type: "subagent_session", eventId: "turn-with-terminal-children", toolCallId: "delegate-1", toolInvocationOrdinal: 0, toolName: "pibo_subagent_reviewer", subagentName: "reviewer", childPiboSessionId: "ps_child_done" } }),
+			createEvent({ seq: 4, type: "tool_execution_finished", payload: { type: "tool_execution_finished", eventId: "turn-with-terminal-children", toolCallId: "delegate-1", toolInvocationOrdinal: 0, toolName: "pibo_subagent_reviewer", result: { ok: true } } }),
+		],
+	});
+
+	assert.equal(view.integrityStatus, "incomplete");
+	const flat = flatNodes(view);
+	assert.equal(flat.find((node) => node.type === "agent.turn")?.status, "error");
+	assert.equal(flat.find((node) => node.type === "agent.delegation")?.status, "done");
+	assert.equal(flat.find((node) => node.type === "yielded.run")?.status, "done");
 });
 
 test("live repeated prompt does not confirm against settled canonical transcript text", () => {

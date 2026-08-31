@@ -278,7 +278,7 @@ export function createTraceViewVersion(input: {
 	})).sort((left, right) => left.id.localeCompare(right.id));
 	const eventTail = input.events.at(-1);
 	return createHash("sha1").update(JSON.stringify({
-		traceProjection: "runtime-history-v1",
+		traceProjection: "runtime-history-v2-incomplete-status",
 		session: {
 			id: input.session.id,
 			piSessionId: input.session.piSessionId,

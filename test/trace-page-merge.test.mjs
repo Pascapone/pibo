@@ -61,6 +61,41 @@ test("mergeOlderTracePage dedupes overlapping nested timeline nodes", () => {
 	assert.equal(merged.hasOlderEvents, true);
 });
 
+test("trace page merges preserve and clear incomplete integrity status from canonical nodes", () => {
+	const older = traceView({
+		integrityStatus: "incomplete",
+		nodes: [node("event:message:turn-incomplete", {
+			type: "agent.turn",
+			eventId: "turn-incomplete",
+			status: "error",
+			children: [node("event:incomplete-turn:turn-incomplete", {
+				parentId: "event:message:turn-incomplete",
+				type: "error",
+				eventId: "turn-incomplete",
+				status: "error",
+				stableKey: "incomplete-turn:turn-incomplete",
+			})],
+		})],
+	});
+	const mergedOlder = mergeOlderTracePage(traceView({ nodes: [node("new-tail")] }), older);
+	assert.equal(mergedOlder.integrityStatus, "incomplete");
+	assert.equal(flattenNodes(mergedOlder.nodes).some((entry) => entry.id === "event:incomplete-turn:turn-incomplete"), true);
+
+	const refreshed = traceView({
+		version: "terminal-version",
+		nodes: [node("event:message:turn-incomplete", {
+			type: "agent.turn",
+			eventId: "turn-incomplete",
+			status: "done",
+			completedAt: "2026-07-05T00:03:00.000Z",
+		})],
+	});
+	const mergedRefreshed = mergeRefreshedTracePage(mergedOlder, refreshed);
+	assert.equal(mergedRefreshed.integrityStatus, undefined);
+	assert.equal(flattenNodes(mergedRefreshed.nodes).some((entry) => entry.id === "event:incomplete-turn:turn-incomplete"), false);
+	assert.equal(flattenNodes(mergedRefreshed.nodes).find((entry) => entry.id === "event:message:turn-incomplete")?.status, "done");
+});
+
 test("mergeRefreshedTracePage preserves the loaded history window while refreshing the tail", () => {
 	const current = traceView({
 		version: "old-version",

@@ -125,7 +125,7 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 			sessionStatus,
 		);
 	}
-	markIncompletePersistedTurns(nodes, byId, input.session.id, events, turnTimings, sessionStatus);
+	const hasIncompleteTurns = markIncompletePersistedTurns(nodes, byId, input.session.id, events, turnTimings, sessionStatus);
 
 	const nestedNodes = nestTraceNodes(nodes);
 	reconcileAsyncAgentRunStatuses(nestedNodes);
@@ -133,6 +133,7 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	return {
 		piboSessionId: input.session.id,
 		piSessionId: input.session.piSessionId,
+		...(hasIncompleteTurns ? { integrityStatus: "incomplete" as const } : {}),
 		title: input.session.title ?? "Untitled Session",
 		version: "",
 		latestStreamId: latestTraceStreamId(events, input.latestStreamId),

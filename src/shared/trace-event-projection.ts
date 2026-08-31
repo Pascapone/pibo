@@ -349,8 +349,8 @@ export function markIncompletePersistedTurns(
 	events: readonly ChatWebStoredEvent[],
 	turnTimings: readonly TraceMessageTurnTiming[],
 	sessionStatus: PiboWebSessionStatus,
-): void {
-	if (sessionStatus === "running") return;
+): boolean {
+	if (sessionStatus === "running") return false;
 	const lifecycleByEventId = new Map<string, { started: boolean; completed: boolean }>();
 	for (const timing of turnTimings) {
 		const lifecycle = lifecycleByEventId.get(timing.eventId) ?? { started: false, completed: false };
@@ -361,7 +361,7 @@ export function markIncompletePersistedTurns(
 	const incompleteEventIds = new Set([...lifecycleByEventId].flatMap(([eventId, lifecycle]) =>
 		lifecycle.started && !lifecycle.completed ? [eventId] : [],
 	));
-	if (incompleteEventIds.size === 0) return;
+	if (incompleteEventIds.size === 0) return false;
 	const startByEventId = new Map<string, ChatWebStoredEvent>();
 	const lastByEventId = new Map<string, ChatWebStoredEvent>();
 	for (const storedEvent of events) {
@@ -431,6 +431,7 @@ export function markIncompletePersistedTurns(
 		nodes.push(marker);
 		byId.set(marker.id, marker);
 	}
+	return [...incompleteEventIds].some((eventId) => byId.has(`event:incomplete-turn:${eventId}`));
 }
 
 export function eventsCanAffectAsyncAgentRunStatus(events: readonly ChatWebStoredEvent[]): boolean {

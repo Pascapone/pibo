@@ -97,6 +97,7 @@ export type TraceTimelineNode = {
 export type TraceTimelinePage = {
 	piboSessionId: string;
 	piSessionId: string;
+	integrityStatus?: "incomplete";
 	runtimeBinding?: PiboTraceRuntimeBinding;
 	title: string;
 	version: string;
@@ -189,6 +190,7 @@ export type PiboSessionTraceSummary = {
 export type PiboSessionTraceView = {
 	piboSessionId: string;
 	piSessionId: string;
+	integrityStatus?: "incomplete";
 	runtimeBinding?: PiboTraceRuntimeBinding;
 	title: string;
 	version: string;

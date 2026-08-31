@@ -5,10 +5,12 @@ import type { PiboSessionTraceView } from "./trace-types.js";
 export function mergeOlderTracePage(current: PiboSessionTraceView, older: PiboSessionTraceView): PiboSessionTraceView {
 	if (current.piboSessionId !== older.piboSessionId) return current;
 	const rawEvents = mergeTraceRawEvents(older.rawEvents, current.rawEvents, false);
+	const nodes = mergeTraceNodes(older.nodes, current.nodes);
 	return {
 		...current,
 		version: current.version,
-		nodes: mergeTraceNodes(older.nodes, current.nodes),
+		integrityStatus: traceIntegrityStatus(nodes),
+		nodes,
 		rawEvents,
 		beforeCursor: older.beforeCursor ?? current.beforeCursor,
 		firstEventSequence: older.firstEventSequence ?? current.firstEventSequence,
@@ -21,9 +23,11 @@ export function mergeOlderTracePage(current: PiboSessionTraceView, older: PiboSe
 
 export function mergeRefreshedTracePage(current: PiboSessionTraceView, refreshed: PiboSessionTraceView): PiboSessionTraceView {
 	if (current.piboSessionId !== refreshed.piboSessionId) return refreshed;
+	const nodes = mergeRefreshedTraceNodes(current.nodes, refreshed);
 	return {
 		...refreshed,
-		nodes: mergeRefreshedTraceNodes(current.nodes, refreshed),
+		integrityStatus: traceIntegrityStatus(nodes),
+		nodes,
 		rawEvents: mergeTraceRawEvents(current.rawEvents, refreshed.rawEvents, true),
 		beforeCursor: current.beforeCursor,
 		firstEventSequence: current.firstEventSequence ?? refreshed.firstEventSequence,
@@ -41,10 +45,12 @@ function mergeRefreshedTraceNodes(
 	const flattenedCurrentNodes = flattenTraceNodes([...currentNodes]);
 	const refreshedNodes = flattenTraceNodes([...refreshed.nodes]);
 	const refreshedIds = new Set(refreshedNodes.map((node) => node.id));
+	const refreshedTerminalEventIds = terminalEventIds(refreshedNodes);
 	const canonicalTranscriptEventIds = transcriptEventIds([...flattenedCurrentNodes, ...refreshedNodes]);
 	const refreshedOrderBoundaries = earliestTraceNodeOrdersBySource(refreshedNodes);
 	const refreshedStartedAt = earliestTraceNodeTimestamp(refreshedNodes);
 	const retainedOlderNodes = flattenedCurrentNodes.filter((node) => {
+		if (isIncompleteTurnMarker(node) && node.eventId && refreshedTerminalEventIds.has(node.eventId)) return false;
 		if (refreshedIds.has(node.id)) return true;
 		if (
 			node.type === "agent.turn" &&
@@ -83,9 +89,28 @@ function clearRemovedParentIds(
 	nodes: PiboSessionTraceView["nodes"],
 	removedIds: ReadonlySet<string>,
 ): PiboSessionTraceView["nodes"] {
-	return nodes.map((node) => node.parentId && removedIds.has(node.parentId)
-		? { ...node, parentId: undefined }
-		: node);
+	return nodes.map((node) => ({
+		...node,
+		...(node.parentId && removedIds.has(node.parentId) ? { parentId: undefined } : {}),
+		children: [],
+	}));
+}
+
+function traceIntegrityStatus(nodes: PiboSessionTraceView["nodes"]): PiboSessionTraceView["integrityStatus"] {
+	return flattenTraceNodes([...nodes]).some(isIncompleteTurnMarker) ? "incomplete" : undefined;
+}
+
+function isIncompleteTurnMarker(node: PiboSessionTraceView["nodes"][number]): boolean {
+	return node.id.startsWith("event:incomplete-turn:") || node.stableKey?.startsWith("incomplete-turn:") === true;
+}
+
+function terminalEventIds(nodes: PiboSessionTraceView["nodes"]): Set<string> {
+	return new Set(nodes.flatMap((node) => {
+		if (!node.eventId) return [];
+		if (node.type === "agent.turn" && node.completedAt) return [node.eventId];
+		if (node.type === "error" && node.title === "Session Error") return [node.eventId];
+		return [];
+	}));
 }
 
 function transcriptEventIds(nodes: PiboSessionTraceView["nodes"]): Set<string> {
