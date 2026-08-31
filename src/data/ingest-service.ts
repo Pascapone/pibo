@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/events.js";
+import { outputIdentityFingerprint, outputPartFingerprint } from "../core/output-render-sequence.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { PiboDataStore } from "./pibo-store.js";
 import { rootSessionId } from "./session-store.js";
@@ -133,7 +134,8 @@ export class ChatDataIngestService {
 	ingestOutputEvent(input: OutputEventIngestInput): OutputEventIngestResult {
 		const event = input.event;
 		const idempotencyKey = outputIdempotencyKey(event);
-		const identityFingerprint = outputEventFingerprint(event);
+		const identityFingerprint = outputIdentityFingerprint(event);
+		const partFingerprint = isOutputPartEvent(event) ? outputPartFingerprint(event) : undefined;
 		if (idempotencyKey) {
 			const existing = this.store.eventLog.findByIdempotencyKey(idempotencyKey);
 			if (existing) {
@@ -201,6 +203,7 @@ export class ChatDataIngestService {
 				previewText: previewTextForOutputEvent(event),
 				attributes: compactObject({
 					identityFingerprint,
+					outputPartFingerprint: partFingerprint,
 					eventIdentityScoped: eventIdForOutputEvent(event) !== undefined,
 					semanticEventId: eventIdForOutputEvent(event),
 					legacyStreamId: input.legacyStreamId,
@@ -323,12 +326,6 @@ function deterministicId(prefix: string, value: string): string {
 
 function hashJson(value: unknown): string {
 	return createHash("sha256").update(canonicalJson(value)).digest("hex").slice(0, 16);
-}
-
-function outputEventFingerprint(event: PiboOutputEvent): string {
-	const identity = { ...event };
-	delete identity.renderSequence;
-	return createHash("sha256").update(canonicalJson(identity)).digest("hex");
 }
 
 function canonicalJson(value: unknown): string {
@@ -488,6 +485,17 @@ function observationStatusForOutputEvent(event: PiboOutputEvent): string {
 	if (event.type === "session_error") return "error";
 	if (event.type === "tool_execution_finished" && event.isError) return "error";
 	return "completed";
+}
+
+function isOutputPartEvent(event: PiboOutputEvent): boolean {
+	return event.type === "assistant_delta"
+		|| event.type === "assistant_message"
+		|| event.type === "thinking_started"
+		|| event.type === "thinking_delta"
+		|| event.type === "thinking_finished"
+		|| event.type === "assistant_usage"
+		|| event.type === "compaction_start"
+		|| event.type === "compaction_end";
 }
 
 function isTerminalOutputEvent(event: PiboOutputEvent): boolean {
