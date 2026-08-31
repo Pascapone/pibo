@@ -98,6 +98,10 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			await runDebugIntegrity(args.slice(1));
 			return;
 		}
+		if (args[0] === "persistence") {
+			await runDebugPersistence(args.slice(1));
+			return;
+		}
 		if (args[0] === "runs") {
 			await runDebugRuns(args.slice(1));
 			return;
@@ -143,19 +147,64 @@ async function runDebugIntegrity(args: string[]): Promise<void> {
 		printDebugIntegrityDiscovery();
 		return;
 	}
-	const options = parseOptions(args.slice(1));
-	if (options.before && !Number.isFinite(Date.parse(options.before))) {
-		throw new Error("--before must be an ISO date");
+	await runOutputPersistenceInspection(args.slice(1), { allowPositionalSession: true, deadLettersOnly: false });
+}
+
+async function runDebugPersistence(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugPersistenceDiscovery();
+		return;
+	}
+	const command = args[0];
+	if (command !== "audit" && command !== "dead-letters") {
+		throw new Error(`Unknown pibo debug persistence command "${command}". Run pibo debug persistence --help.`);
+	}
+	if (args[1] === "--help" || args[1] === "-h") {
+		if (command === "audit") printDebugPersistenceAuditHelp();
+		else printDebugPersistenceDeadLettersHelp();
+		return;
+	}
+	await runOutputPersistenceInspection(args.slice(1), {
+		allowPositionalSession: false,
+		deadLettersOnly: command === "dead-letters",
+	});
+}
+
+async function runOutputPersistenceInspection(
+	args: string[],
+	mode: { allowPositionalSession: boolean; deadLettersOnly: boolean },
+): Promise<void> {
+	const options = parseOptions(args);
+	if (!mode.allowPositionalSession && options.positionals.length) {
+		throw new Error("Use --session <pibo-session-id> to scope persistence inspection");
+	}
+	if (options.after && !Number.isFinite(Date.parse(options.after))) throw new Error("--since must be an ISO date");
+	if (options.before && !Number.isFinite(Date.parse(options.before))) throw new Error("--before must be an ISO date");
+	if (options.after && options.before && Date.parse(options.after) >= Date.parse(options.before)) {
+		throw new Error("--since must be earlier than --before");
 	}
 	const { formatJson } = await import("./sql.js");
-	const { formatOutputIntegrityAudit, inspectOutputIntegrity } = await import("./output-integrity.js");
+	const {
+		formatOutputIntegrityAudit,
+		formatOutputPersistenceDeadLetters,
+		inspectOutputIntegrity,
+		outputPersistenceDeadLettersFromAudit,
+	} = await import("./output-integrity.js");
 	const audit = inspectOutputIntegrity({
 		dataStore: resolveDebugStore("pibo-data"),
 		reliabilityStore: resolveDebugStore("reliability"),
-		piboSessionId: options.positionals[0],
+		piboSessionId: options.key ?? (mode.allowPositionalSession ? options.positionals[0] : undefined),
+		since: options.after,
 		before: options.before,
 		limit: options.limit,
+		findingMode: mode.deadLettersOnly ? "dead_letters" : "all",
 	});
+	if (mode.deadLettersOnly) {
+		const result = outputPersistenceDeadLettersFromAudit(audit);
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatOutputPersistenceDeadLetters(result));
+		return;
+	}
 	if (options.json) console.log(formatJson(audit));
 	else console.log(formatOutputIntegrityAudit(audit));
 }
@@ -842,9 +891,9 @@ function parseOptions(args: string[]): ParsedOptions {
 			index += 1;
 			continue;
 		}
-		if (arg === "--after") {
+		if (arg === "--after" || arg === "--since") {
 			const value = args[index + 1];
-			if (!value) throw new Error("--after requires a value");
+			if (!value) throw new Error(`${arg} requires a value`);
 			parsed.after = value;
 			index += 1;
 			continue;
@@ -1087,7 +1136,8 @@ Commands:
   tool     Inspect one grouped tool call
   failures List failed tool calls and trace/session errors
   jobs     Inspect durable Pibo jobs and DLQ
-  integrity Audit output persistence across local stores
+  persistence Audit output persistence and related dead letters
+  integrity Compatibility alias for output persistence audit
   runs     Inspect durable yielded runs
   resources Show gateway memory reserve, related child processes, and heavy daemons
   signals  Inspect live session signal snapshots through Chat Web APIs
@@ -1102,7 +1152,7 @@ Next:
   pibo debug messages <pibo-session-id> list
   pibo debug trace <pibo-session-id> --running-only
   pibo debug events stream --topic pibo.output
-  pibo debug integrity output
+  pibo debug persistence
   pibo debug agents <parent-session-id> list
   pibo debug resources --json
   pibo debug signals tree ps_...
@@ -1113,21 +1163,57 @@ Next:
 }
 
 function printDebugIntegrityDiscovery(): void {
-	console.log(`pibo debug integrity - audit persisted output without changing it
+	console.log(`pibo debug integrity - compatibility alias for output persistence audit
 
 Usage:
-  pibo debug integrity output [<pibo-session-id>] [--before <iso-date>] [--limit n] [--json]
-
-Reports:
-  Turn, reasoning, and tool lifecycle mismatches; output identity collision diagnostics; and pending or dead output-persistence jobs.
-
-Scope:
-  Omit the session id to scan all sessions. Use --before to exclude active or recent turns.
+  pibo debug integrity output [<pibo-session-id>] [--since <iso-date>] [--before <iso-date>] [--limit n] [--json]
 
 Next:
-  pibo debug integrity output --json
-  pibo debug integrity output ps_... --json
-  pibo debug jobs dead --queue output-persistence
+  pibo debug persistence audit --help
+`);
+}
+
+function printDebugPersistenceDiscovery(): void {
+	console.log(`pibo debug persistence - inspect persisted output without changing it
+
+Commands:
+  audit         Audit output lifecycle, identity, queue, and trace-status integrity
+  dead-letters  List output-persistence dead letters with collision relationships
+
+Next:
+  pibo debug persistence audit --help
+  pibo debug persistence dead-letters --help
+`);
+}
+
+function printDebugPersistenceAuditHelp(): void {
+	console.log(`pibo debug persistence audit - read-only output integrity audit
+
+Usage:
+  pibo debug persistence audit [--session <pibo-session-id>] [--since <iso-date>] [--before <iso-date>] [--limit n] [--json]
+
+Reports:
+  Incomplete or invalid turn, reasoning, and tool lifecycles; identity collisions; reused output keys; session/trace-status mismatches; and pending or dead output-persistence jobs.
+
+Next:
+  pibo debug persistence audit --json
+  pibo debug persistence audit --session ps_... --since 2026-08-01T00:00:00Z --json
+  pibo debug persistence dead-letters
+`);
+}
+
+function printDebugPersistenceDeadLettersHelp(): void {
+	console.log(`pibo debug persistence dead-letters - read-only output dead-letter inspection
+
+Usage:
+  pibo debug persistence dead-letters [--session <pibo-session-id>] [--since <iso-date>] [--before <iso-date>] [--limit n] [--json]
+
+Reports:
+  Output-persistence dead letters, permanent collision failures, and dead letters related to persisted collision diagnostics.
+
+Next:
+  pibo debug persistence dead-letters --json
+  pibo debug persistence audit --json
 `);
 }
 

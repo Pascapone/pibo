@@ -29,6 +29,15 @@ function appendOutput(data, input) {
 	});
 }
 
+function insertSession(data, id, status, createdAt) {
+	data.db.prepare(`
+		INSERT INTO sessions (
+			id, pi_session_id, channel, kind, profile, title, status,
+			created_at, updated_at, last_activity_at
+		) VALUES (?, ?, 'web', 'conversation', 'default', ?, ?, ?, ?, ?)
+	`).run(id, `pi_${id}`, id, status, createdAt, createdAt, createdAt);
+}
+
 function createFixture() {
 	const root = mkdtempSync(join(tmpdir(), "pibo-output-integrity-"));
 	const home = join(root, ".pibo");
@@ -37,6 +46,8 @@ function createFixture() {
 	const reliabilityPath = join(home, "pibo-events.sqlite");
 	const data = new PiboDataStore(dataPath);
 	try {
+		insertSession(data, "ps_healthy", "idle", "2026-08-29T10:00:00.000Z");
+		insertSession(data, "ps_incomplete", "idle", "2026-08-30T10:00:00.000Z");
 		appendOutput(data, { sessionId: "ps_healthy", sequence: 1, type: "message_started", eventId: "turn-healthy", createdAt: "2026-08-29T10:00:00.000Z" });
 		appendOutput(data, { sessionId: "ps_healthy", sequence: 2, type: "thinking_started", eventId: "turn-healthy", attributes: { thinkingIndex: 0 }, createdAt: "2026-08-29T10:00:01.000Z" });
 		appendOutput(data, { sessionId: "ps_healthy", sequence: 3, type: "thinking_finished", eventId: "turn-healthy", attributes: { thinkingIndex: 0 }, createdAt: "2026-08-29T10:00:02.000Z" });
@@ -53,6 +64,14 @@ function createFixture() {
 		appendOutput(data, {
 			sessionId: "ps_incomplete",
 			sequence: 5,
+			type: "assistant_message",
+			eventId: "turn-incomplete",
+			idempotencyKey: "pibo.output:ps_incomplete:assistant_message:turn-incomplete:0",
+			createdAt: "2026-08-30T10:00:03.500Z",
+		});
+		appendOutput(data, {
+			sessionId: "ps_incomplete",
+			sequence: 6,
 			type: "pibo.output.identity_collision",
 			eventId: "turn-incomplete",
 			idempotencyKey: "collision-diagnostic",
@@ -126,12 +145,14 @@ test("output integrity audit reports lifecycle, collision, and queue findings wi
 		const audit = inspect(fixture, { limit: 20 });
 		assert.equal(audit.readOnly, true);
 		assert.deepEqual(audit.summary, {
-			findingCount: 7,
-			returnedFindings: 7,
+			findingCount: 9,
+			returnedFindings: 9,
 			turnLifecycleIssues: 1,
 			thinkingLifecycleIssues: 1,
 			toolLifecycleIssues: 1,
 			identityCollisions: 1,
+			outputKeyReuses: 1,
+			sessionTraceStatusMismatches: 1,
 			pendingOutputJobs: 1,
 			deadOutputJobs: 2,
 			deadIdentityCollisions: 1,
@@ -141,11 +162,16 @@ test("output integrity audit reports lifecycle, collision, and queue findings wi
 			"thinking_lifecycle",
 			"tool_lifecycle",
 			"identity_collision",
+			"output_key_reuse",
+			"session_trace_status",
 			"pending_output_job",
 			"dead_output_job",
 		]));
 		assert.equal(audit.findings.filter((finding) => finding.piboSessionId).every((finding) => finding.piboSessionId === "ps_incomplete"), true);
 		assert.equal(audit.findings.some((finding) => finding.kind === "dead_output_job" && finding.identityCollision === true), true);
+		assert.equal(audit.findings.some((finding) => finding.kind === "dead_output_job" && finding.relatedIdentityCollision === true), true);
+		assert.equal(audit.findings.some((finding) => finding.kind === "output_key_reuse" && finding.uses === 2), true);
+		assert.equal(audit.findings.some((finding) => finding.kind === "session_trace_status" && finding.sessionStatus === "idle" && finding.projectedStatus === "running"), true);
 		assert.equal(audit.findings.some((finding) => finding.jobId === "job_malformed_output" && finding.payloadValid === false), true);
 		assert.equal(JSON.stringify(audit).includes('Pibo output identity collision for "fixture"'), false);
 		assert.equal(JSON.stringify(audit).includes("malformed-output-secret"), false);
@@ -170,41 +196,64 @@ test("output integrity audit supports session, cutoff, and bounded detail scopes
 		assert.deepEqual(healthy.findings, []);
 
 		const bounded = inspect(fixture, { piboSessionId: "ps_incomplete", limit: 2 });
-		assert.equal(bounded.summary.findingCount, 6);
+		assert.equal(bounded.summary.findingCount, 8);
 		assert.equal(bounded.summary.returnedFindings, 2);
 		assert.equal(bounded.findings.length, 2);
 
 		const beforeIncomplete = inspect(fixture, { before: "2026-08-30T00:00:00.000Z", limit: 20 });
-		assert.equal(beforeIncomplete.summary.findingCount, 0);
+		assert.equal(beforeIncomplete.summary.findingCount, 0, JSON.stringify(beforeIncomplete.summary));
+		const afterIncomplete = inspect(fixture, { since: "2026-09-01T00:00:00.000Z", limit: 20 });
+		assert.equal(afterIncomplete.summary.findingCount, 0);
 	} finally {
 		rmSync(fixture.root, { recursive: true, force: true });
 	}
 });
 
-test("pibo debug integrity stays progressive and returns the read-only JSON audit", async () => {
+test("pibo debug persistence stays progressive and returns read-only audit and dead-letter views", async () => {
 	const fixture = createFixture();
 	try {
 		const rootHelp = await execFileAsync("node", [cliPath, "debug", "--help"], { env: { ...process.env, PIBO_HOME: fixture.home } });
-		assert.match(rootHelp.stdout, /integrity Audit output persistence across local stores/);
+		assert.match(rootHelp.stdout, /persistence Audit output persistence and related dead letters/);
 		assert.doesNotMatch(rootHelp.stdout, /pibo_dead_jobs/);
 
-		const integrityHelp = await execFileAsync("node", [cliPath, "debug", "integrity", "--help"], { env: { ...process.env, PIBO_HOME: fixture.home } });
-		assert.match(integrityHelp.stdout, /audit persisted output without changing it/);
-		assert.match(integrityHelp.stdout, /pibo debug integrity output/);
-		assert.doesNotMatch(integrityHelp.stdout, /SELECT COUNT/);
-		const outputHelp = await execFileAsync("node", [cliPath, "debug", "integrity", "output", "--help"], { env: { ...process.env, PIBO_HOME: fixture.home } });
-		assert.equal(outputHelp.stdout, integrityHelp.stdout);
+		const persistenceHelp = await execFileAsync("node", [cliPath, "debug", "persistence", "--help"], { env: { ...process.env, PIBO_HOME: fixture.home } });
+		assert.match(persistenceHelp.stdout, /audit.*dead-letters/s);
+		assert.doesNotMatch(persistenceHelp.stdout, /SELECT COUNT/);
+		const auditHelp = await execFileAsync("node", [cliPath, "debug", "persistence", "audit", "--help"], { env: { ...process.env, PIBO_HOME: fixture.home } });
+		assert.match(auditHelp.stdout, /--session/);
+		assert.match(auditHelp.stdout, /--since/);
+		assert.match(auditHelp.stdout, /reused output keys/);
+		const deadHelp = await execFileAsync("node", [cliPath, "debug", "persistence", "dead-letters", "--help"], { env: { ...process.env, PIBO_HOME: fixture.home } });
+		assert.match(deadHelp.stdout, /related to persisted collision diagnostics/);
 
-		const result = await execFileAsync("node", [cliPath, "debug", "integrity", "output", "ps_incomplete", "--limit", "20", "--json"], {
+		const result = await execFileAsync("node", [cliPath, "debug", "persistence", "audit", "--session", "ps_incomplete", "--since", "2026-08-30T00:00:00.000Z", "--limit", "20", "--json"], {
 			env: { ...process.env, PIBO_HOME: fixture.home },
 		});
 		const parsed = JSON.parse(result.stdout);
 		assert.equal(parsed.resultType, "debug.integrity.output");
 		assert.equal(parsed.readOnly, true);
 		assert.equal(parsed.scope.piboSessionId, "ps_incomplete");
-		assert.equal(parsed.summary.findingCount, 6);
+		assert.equal(parsed.scope.since, "2026-08-30T00:00:00.000Z");
+		assert.equal(parsed.summary.findingCount, 8);
+		assert.equal(parsed.summary.outputKeyReuses, 1);
+		assert.equal(parsed.summary.sessionTraceStatusMismatches, 1);
 		assert.equal(parsed.summary.deadIdentityCollisions, 1);
 		assert.equal(JSON.stringify(parsed).includes("deliveries"), false);
+
+		const deadResult = await execFileAsync("node", [cliPath, "debug", "persistence", "dead-letters", "--session", "ps_incomplete", "--limit", "20", "--json"], {
+			env: { ...process.env, PIBO_HOME: fixture.home },
+		});
+		const dead = JSON.parse(deadResult.stdout);
+		assert.equal(dead.resultType, "debug.persistence.dead-letters");
+		assert.equal(dead.readOnly, true);
+		assert.equal(dead.summary.deadOutputJobs, 1);
+		assert.equal(dead.summary.relatedIdentityCollisions, 1);
+		assert.equal(dead.deadLetters.length, 1);
+
+		const compatibility = await execFileAsync("node", [cliPath, "debug", "integrity", "output", "ps_incomplete", "--limit", "20", "--json"], {
+			env: { ...process.env, PIBO_HOME: fixture.home },
+		});
+		assert.equal(JSON.parse(compatibility.stdout).summary.findingCount, 8);
 	} finally {
 		rmSync(fixture.root, { recursive: true, force: true });
 	}
