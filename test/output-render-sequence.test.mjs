@@ -21,6 +21,22 @@ test("output render sequencer reuses segment positions across interleaved lifecy
 	assert.ok(toolStarted.renderSequence < reasoning.renderSequence);
 });
 
+test("output render sequencer preserves supplied canonical output part indices", () => {
+	const sequencer = new OutputRenderSequencer(() => 1_500);
+	const base = { piboSessionId: "ps-supplied-parts", eventId: "turn-supplied-parts" };
+
+	assert.equal(sequencer.position({ ...base, type: "thinking_started", thinkingIndex: 7, contentIndex: 0 }).thinkingIndex, 7);
+	assert.equal(sequencer.position({ ...base, type: "thinking_started", thinkingIndex: 8, contentIndex: 0 }).thinkingIndex, 8);
+	assert.equal(sequencer.position({ ...base, type: "thinking_finished", thinkingIndex: 8, contentIndex: 0, text: "same" }).thinkingIndex, 8);
+	assert.equal(sequencer.position({ ...base, type: "assistant_message", assistantIndex: 9, contentIndex: 1, text: "same" }).assistantIndex, 9);
+	assert.equal(sequencer.position({ ...base, type: "assistant_message", assistantIndex: 10, contentIndex: 1, text: "same" }).assistantIndex, 10);
+	assert.equal(sequencer.position({ ...base, type: "assistant_usage", usageIndex: 11, totalTokens: 1 }).usageIndex, 11);
+	assert.equal(sequencer.position({ ...base, type: "assistant_usage", usageIndex: 12, totalTokens: 1 }).usageIndex, 12);
+	assert.equal(sequencer.position({ ...base, type: "compaction_start", compactionIndex: 13, reason: "context_guard" }).compactionIndex, 13);
+	assert.equal(sequencer.position({ ...base, type: "compaction_end", compactionIndex: 13, reason: "context_guard", aborted: false }).compactionIndex, 13);
+	assert.equal(sequencer.position({ ...base, type: "compaction_start", compactionIndex: 14, reason: "context_guard" }).compactionIndex, 14);
+});
+
 test("output render sequencer is monotonic when the wall clock does not advance", () => {
 	const sequencer = new OutputRenderSequencer(() => 2_000);
 	const first = sequencer.position({ type: "execution_result", piboSessionId: "ps-sequence", eventId: "one", action: "status", result: {} });

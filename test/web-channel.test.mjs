@@ -3919,14 +3919,16 @@ test("chat web app writes assistant and tool output into the V2 data store", asy
 		assert.equal(sessionResponse.status, 200);
 		const sessionPayload = await sessionResponse.json();
 
-		for (let index = 0; index < 2; index += 1) {
-			emitOutput({
-				type: "assistant_message",
-				piboSessionId: sessionPayload.session.id,
-				eventId: "persist-run-1",
-				text: "assistant v2 persist",
-			});
-		}
+		const assistantOutput = {
+			type: "assistant_message",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "persist-run-1",
+			assistantIndex: 0,
+			renderSequence: 42,
+			text: "assistant v2 persist",
+		};
+		emitOutput(assistantOutput);
+		emitOutput(assistantOutput);
 		emitOutput({
 			type: "tool_execution_finished",
 			piboSessionId: sessionPayload.session.id,
@@ -3939,10 +3941,13 @@ test("chat web app writes assistant and tool output into the V2 data store", asy
 
 		const db = new DatabaseSync(dataStorePath, { readOnly: true });
 		try {
-			const eventRows = db.prepare("SELECT type FROM event_log WHERE session_id = ? ORDER BY stream_id ASC").all(sessionPayload.session.id);
+			const eventRows = db.prepare("SELECT type, attributes_json FROM event_log WHERE session_id = ? ORDER BY stream_id ASC").all(sessionPayload.session.id);
 			const messageRows = db.prepare("SELECT role, content_preview FROM chat_messages WHERE session_id = ? ORDER BY sequence ASC").all(sessionPayload.session.id);
 			const observationRows = db.prepare("SELECT kind, name, status FROM observations WHERE session_id = ? ORDER BY sequence ASC").all(sessionPayload.session.id);
 			assert.deepEqual(eventRows.map((row) => row.type), ["assistant_message", "tool_execution_finished"]);
+			const assistantAttributes = JSON.parse(eventRows[0].attributes_json);
+			assert.equal(assistantAttributes.assistantIndex, 0);
+			assert.equal(assistantAttributes.renderSequence, 42);
 			assert.deepEqual(messageRows.map((row) => ({ role: row.role, content_preview: row.content_preview })), [{ role: "assistant", content_preview: "assistant v2 persist" }]);
 			assert.deepEqual(observationRows.map((row) => row.kind), ["message", "tool"]);
 			assert.equal(observationRows[1].name, "read");

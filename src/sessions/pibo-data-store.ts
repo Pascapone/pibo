@@ -242,13 +242,6 @@ export class PiboDataSessionStore implements PiboSessionStore {
 				const index = attributes[indexAttribute];
 				if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0) continue;
 				maximum = Math.max(maximum, index);
-				if (
-					attributes.outputPartFingerprint === input.fingerprint
-					|| attributes.identityFingerprint === input.identityFingerprint
-				) {
-					this.observeOutputPartIndex(input, index);
-					return index;
-				}
 				latestTypeByIndex.set(index, row.type);
 			}
 			const latestOpen = [...latestTypeByIndex.entries()]
@@ -269,6 +262,12 @@ export class PiboDataSessionStore implements PiboSessionStore {
 				RETURNING next_index - 1 AS part_index
 			`).get(input.piboSessionId, input.eventId, input.kind, minimum, new Date().toISOString(), minimum) as { part_index: number };
 			return row.part_index;
+		});
+	}
+
+	observeOutputPart(input: OutputPartTransition & { index: number }): void {
+		this.dataStore.transaction(() => {
+			this.observeOutputPartIndex(input, input.index);
 		});
 	}
 

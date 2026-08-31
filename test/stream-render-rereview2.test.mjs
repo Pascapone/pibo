@@ -55,7 +55,7 @@ test("durable output part indices survive context-guard sequencer restart", () =
 			type: "assistant_message",
 			piboSessionId: session.id,
 			eventId: "turn-context-guard",
-			assistantIndex: 0,
+			contentIndex: 0,
 			text: "Answer before compaction",
 		});
 		ingest.ingestOutputEvent({ session, event: firstFinal });
@@ -80,19 +80,13 @@ test("durable output part indices survive context-guard sequencer restart", () =
 			type: "assistant_message",
 			piboSessionId: session.id,
 			eventId: "turn-context-guard",
-			assistantIndex: 0,
+			contentIndex: 0,
 			text: "Final answer after compaction",
 		});
 		assert.equal(resumedFinal.assistantIndex, 1);
 		assert.equal(ingest.ingestOutputEvent({ session: reopenedSession, event: resumedFinal }).duplicate, false);
 
-		const replay = resumedSequencer.position({
-			type: "assistant_message",
-			piboSessionId: session.id,
-			eventId: "turn-context-guard",
-			assistantIndex: 0,
-			text: "Final answer after compaction",
-		});
+		const replay = resumedSequencer.position(resumedFinal);
 		assert.equal(replay.assistantIndex, 1);
 		assert.equal(ingest.ingestOutputEvent({ session: reopenedSession, event: replay }).duplicate, true);
 		const events = dataStore.eventLog.listEvents({ sessionId: session.id });
@@ -102,6 +96,76 @@ test("durable output part indices survive context-guard sequencer restart", () =
 			"Final answer after compaction",
 		]);
 		assert.equal(events.filter((event) => event.type === "pibo.output.identity_collision").length, 0);
+	} finally {
+		dataStore?.close();
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("multi-response turns keep distinct output parts across repeated content and sequencer restart", () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-repeated-output-parts-");
+	let dataStore;
+	try {
+		dataStore = new PiboDataStore(databasePath);
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		const session = sessionStore.create({ id: "ps-repeated-output-parts", channel: "test", kind: "chat", profile: "base" });
+		const ingest = new ChatDataIngestService(dataStore);
+		const compactor = new OutputCompactor();
+		const downstreamSequencer = new OutputRenderSequencer(() => 2);
+		let routerSequencer = new OutputRenderSequencer({ now: () => 1, highWaterStore: sessionStore });
+		const positionedEvents = [];
+		const emit = (event) => {
+			const routed = routerSequencer.position({ piboSessionId: session.id, eventId: "turn-many-cycles", ...event });
+			const downstream = downstreamSequencer.position(routed);
+			for (const key of ["assistantIndex", "thinkingIndex", "usageIndex", "compactionIndex"]) {
+				if (key in routed) assert.equal(downstream[key], routed[key], `${key} changed downstream for ${event.type}`);
+			}
+			positionedEvents.push(downstream);
+			const prepared = compactor.prepare(downstream);
+			for (const persistedEvent of prepared.persistedEvents) {
+				ingest.ingestOutputEvent({ session, event: persistedEvent });
+			}
+			prepared.ack();
+			return downstream;
+		};
+
+		emit({ type: "message_started", text: "exercise many cycles", source: "user" });
+		for (let cycle = 0; cycle < 50; cycle += 1) {
+			if (cycle === 25) routerSequencer = new OutputRenderSequencer({ now: () => 1, highWaterStore: sessionStore });
+			const thinkingStarted = emit({ type: "thinking_started", contentIndex: 0 });
+			const thinkingDelta = emit({ type: "thinking_delta", contentIndex: 0, text: " repeated reasoning fragment" });
+			const thinkingFinished = emit({ type: "thinking_finished", contentIndex: 0, text: "same reasoning response" });
+			assert.equal(thinkingDelta.thinkingIndex, thinkingStarted.thinkingIndex);
+			assert.equal(thinkingFinished.thinkingIndex, thinkingStarted.thinkingIndex);
+
+			const assistantDelta = emit({ type: "assistant_delta", contentIndex: 1, text: " repeated assistant fragment" });
+			const assistantMessage = emit({ type: "assistant_message", contentIndex: 1, text: "same assistant response" });
+			assert.equal(assistantMessage.assistantIndex, assistantDelta.assistantIndex);
+			emit({ type: "assistant_usage", totalTokens: cycle + 1 });
+
+			const toolCallId = `tool-${cycle}`;
+			emit({ type: "tool_call", toolCallId, toolName: "read", args: { cycle }, argsComplete: true });
+			emit({ type: "tool_execution_started", toolCallId, toolName: "read", args: { cycle } });
+			emit({ type: "tool_execution_finished", toolCallId, toolName: "read", result: { cycle }, isError: false });
+		}
+		emit({ type: "message_finished", source: "user" });
+
+		const stored = dataStore.eventLog.listEvents({ sessionId: session.id, limit: 1_000 });
+		const byType = (type) => stored.filter((event) => event.type === type);
+		assert.equal(byType("message_started").length, 1);
+		assert.equal(byType("thinking_started").length, 50);
+		assert.equal(byType("thinking_finished").length, 50);
+		assert.deepEqual(byType("thinking_started").map((event) => event.attributes.thinkingIndex), Array.from({ length: 50 }, (_, index) => index));
+		assert.deepEqual(byType("thinking_finished").map((event) => event.attributes.thinkingIndex), Array.from({ length: 50 }, (_, index) => index));
+		assert.equal(byType("assistant_message").length, 50);
+		assert.deepEqual(byType("assistant_message").map((event) => event.attributes.assistantIndex), Array.from({ length: 50 }, (_, index) => index + 1));
+		assert.deepEqual(byType("assistant_usage").map((event) => event.attributes.usageIndex), Array.from({ length: 50 }, (_, index) => index));
+		assert.equal(byType("tool_call").length, 50);
+		assert.equal(byType("tool_execution_started").length, 50);
+		assert.equal(byType("tool_execution_finished").length, 50);
+		assert.equal(byType("message_finished").length, 1);
+		assert.equal(byType("pibo.output.identity_collision").length, 0);
+		assert.equal(positionedEvents.filter((event) => event.type === "thinking_started").length, 50);
 	} finally {
 		dataStore?.close();
 		fs.rmSync(directory, { recursive: true, force: true });
