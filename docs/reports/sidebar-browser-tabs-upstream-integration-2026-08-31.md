@@ -6,23 +6,23 @@ Date: 2026-08-31
 
 - Old feature head: `3514aa1ac88e1cdf5cbe52964bb64bb9c056bd23`
 - Requested release-bound base: `upstream/dev` at `081fb2c22461d66eb9a6b74c1acb9c4b63fdc03d`
-- Final current base: `upstream/dev` at `659c8d79918d74bebbb64e9d0abdb542795a90e7`
+- Final current base: `upstream/dev` at `c04f506ab64096d6c0b494d138dd78786fa0cb18`
 - Old merge base: `2aef244301f5d181624662fdad53e18e83e80bd9`
-- Backup ref: `backup/sidebar-browser-tabs-pre-upstream-rebase-20260831`
+- Backup refs: `backup/sidebar-browser-tabs-pre-upstream-rebase-20260831` and `backup/sidebar-browser-tabs-pre-pr-rebase-20260831`
 - Isolated worker: `pibo-dev-sidebar-browser-tabs-upstream-integration`
 
 The six feature commits rebased without textual conflicts. `git range-diff` marked every rebased feature patch equivalent (`=`):
 
 | Old | Rebased | Subject |
 | --- | --- | --- |
-| `e8fbb185` | `fc0758b6` | feat(chat-web): add desktop browser tab workspace |
-| `e95529b1` | `ee8a07c6` | fix(chat-web): harden desktop tab lifecycle |
-| `c0fb8567` | `a15215d8` | fix(chat-ui): harden desktop preview and workflow tabs |
-| `bded81e0` | `795ee2b8` | fix(chat-ui): close sidebar tab release gates |
-| `6bf93ae6` | `80bb08e8` | test(chat-ui): force development React harness |
-| `3514aa1a` | `c85fb7d3` | fix(chat-ui): preserve collapsed tabs on route reconcile |
+| `e8fbb185` | `844c1961` | feat(chat-web): add desktop browser tab workspace |
+| `e95529b1` | `40e7ac8b` | fix(chat-web): harden desktop tab lifecycle |
+| `c0fb8567` | `e51f86ef` | fix(chat-ui): harden desktop preview and workflow tabs |
+| `bded81e0` | `365b97c2` | fix(chat-ui): close sidebar tab release gates |
+| `6bf93ae6` | `2cb4d02c` | test(chat-ui): force development React harness |
+| `3514aa1a` | `296b310d` | fix(chat-ui): preserve collapsed tabs on route reconcile |
 
-The shared remote-tracking ref advanced during validation through PR #800 (`8e79e99c`, synchronous runtime child-output ordering). That update touches no Chat UI file. The completed seven-commit candidate was therefore rebased once more without conflicts. Its merge base is exactly `659c8d79`, and `git rev-list --left-right --count upstream/dev...HEAD` returned `0 7`.
+The shared remote-tracking ref advanced during validation through PR #800 (`8e79e99c`, synchronous runtime child-output ordering). That update touches no Chat UI file, so the validated candidate was rebased without conflicts. Immediately before PR creation, `upstream/dev` advanced again through PR #801 (`4829e0b0`, durable output-part identities). Its changes are limited to core output rendering, data ingestion/schema, session stores, and their regression test; they do not overlap the Chat UI feature range. The seven commits were rebased onto `c04f506a` without conflicts. The final branch is zero commits behind and seven commits ahead of `upstream/dev`.
 
 ## Semantic overlap review
 
@@ -86,4 +86,4 @@ The stable 12-second Desktop monitor recorded 4 requests, 0 Project requests, 0 
 
 ## Remaining release risk
 
-Exact Pibo2 acceptance has not been rerun on this rebased candidate. It must be rerun before a PR. The local Preview environment was unconfigured, so real Preview iframe/fullscreen lifecycle evidence remains the deterministic React coverage plus the prior historical acceptance, not a fresh 2026-08-31 live Preview run.
+Exact Pibo2 acceptance was not rerun on the final rebased candidate; the maintainer explicitly waived that additional gate for PR creation on 2026-08-31. The local Preview environment was unconfigured, so real Preview iframe/fullscreen lifecycle evidence remains the deterministic React coverage plus the prior historical acceptance, not a fresh 2026-08-31 live Preview run.
