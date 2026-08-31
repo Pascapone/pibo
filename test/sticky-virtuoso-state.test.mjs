@@ -10,7 +10,9 @@ test("sticky Virtuoso state handles intent, prepend, and anchor transactions", a
 		import assert from "node:assert/strict";
 		import {
 			captureStickyVisibleAnchors,
+			preferredStickyVisibleAnchor,
 			prependedItemCount,
+			resolveScrollbarDragMovement,
 			shouldReattachStickyAtBottom,
 			stickyAnchorLocation,
 			stickyPointerScrollMode,
@@ -58,6 +60,11 @@ test("sticky Virtuoso state handles intent, prepend, and anchor transactions", a
 			scrollTop: 99,
 		}), undefined, "one-pixel measurement jitter must remain ignored");
 
+		assert.deepEqual(resolveScrollbarDragMovement({ direction: undefined, oppositeCount: 0, previousScrollTop: 100, scrollTop: 80 }), { direction: "away", oppositeCount: 0, clamp: false });
+		assert.deepEqual(resolveScrollbarDragMovement({ direction: "away", oppositeCount: 0, previousScrollTop: 80, scrollTop: 90 }), { direction: "away", oppositeCount: 1, clamp: true }, "one opposite correction is treated as virtualizer measurement noise");
+		assert.deepEqual(resolveScrollbarDragMovement({ direction: "away", oppositeCount: 1, previousScrollTop: 80, scrollTop: 90 }), { direction: "toward", oppositeCount: 0, clamp: false }, "a repeated opposite movement remains an intentional thumb reversal");
+		assert.deepEqual(resolveScrollbarDragMovement({ direction: "away", oppositeCount: 1, previousScrollTop: 80, scrollTop: 60 }), { direction: "away", oppositeCount: 0, clamp: false });
+
 		assert.equal(shouldReattachStickyAtBottom(true, false), true);
 		assert.equal(shouldReattachStickyAtBottom(true, true), false);
 		assert.equal(shouldReattachStickyAtBottom(false, false), false);
@@ -81,6 +88,11 @@ test("sticky Virtuoso state handles intent, prepend, and anchor transactions", a
 			{ key: "row-b", dataIndex: 1, offset: -30 },
 			{ key: "row-c", dataIndex: 2, offset: 30 },
 		]);
+		assert.deepEqual(preferredStickyVisibleAnchor([
+			{ key: "large-clipped-row", dataIndex: 0, offset: -1_557 },
+			{ key: "first-nearby-row", dataIndex: 1, offset: 321 },
+			{ key: "later-row", dataIndex: 2, offset: 408 },
+		]), { key: "first-nearby-row", dataIndex: 1, offset: 321 }, "a deeply clipped dynamic row must not outrank the nearest stable row start");
 
 		assert.deepEqual(stickyAnchorLocation({
 			anchors,
@@ -91,6 +103,15 @@ test("sticky Virtuoso state handles intent, prepend, and anchor transactions", a
 			anchors,
 			nextKeys: ["replacement-a", "replacement-b"],
 		}), { index: 1, align: "start", behavior: "auto", offset: 30 });
+
+		assert.deepEqual(stickyAnchorLocation({
+			anchors: [
+				{ key: "tool-a", dataIndex: 1, offset: -10 },
+				{ key: "tool-b", dataIndex: 2, offset: 30 },
+			],
+			previousKeys: ["message-before", "tool-a", "tool-b", "assistant-after"],
+			nextKeys: ["message-before", "assistant-after"],
+		}), { index: 1, align: "start", behavior: "auto", offset: 10 }, "filtering every visible tool anchors the nearest surviving successor instead of reusing an unrelated numeric index");
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 });

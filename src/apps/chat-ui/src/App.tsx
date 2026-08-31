@@ -373,22 +373,35 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setSignalNow(Date.now());
 	}, [bootstrap]);
 
+	const commitSignalStatusSnapshot = useCallback((snapshot: PiboSignalStatusSnapshot) => {
+		if (!shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return false;
+		sessionStatusSignalsRef.current = snapshot;
+		setBootstrap((current) => current ? applySignalStatusSnapshotToBootstrap(current, snapshot) : current);
+		return true;
+	}, []);
+
+	const commitSignalStatusPatch = useCallback((patch: PiboSignalStatusPatch) => {
+		const result = applySignalStatusPatch(sessionStatusSignalsRef.current, patch);
+		if (result.needsRefresh) return false;
+		sessionStatusSignalsRef.current = result.snapshot;
+		setBootstrap((current) => current ? applySignalStatusPatchToBootstrap(current, patch) : current);
+		return true;
+	}, []);
+
 	useEffect(() => {
+		if (area === "sessions" && selectedBackendPiboSessionId) return undefined;
 		let active = true;
 		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
 		const controller = new AbortController();
-		const commitSignalStatusSnapshot = (snapshot: PiboSignalStatusSnapshot) => {
-			if (!active || controller.signal.aborted || !shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return;
-			sessionStatusSignalsRef.current = snapshot;
-			setBootstrap((current) => current ? applySignalStatusSnapshotToBootstrap(current, snapshot) : current);
-		};
 		const refreshSignalStatuses = (delayMs: number) => {
 			if (!active) return;
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			signalRecoveryTimer = setTimeout(() => {
 				signalRecoveryTimer = undefined;
 				fetchSignalStatuses({ signal: controller.signal })
-					.then(commitSignalStatusSnapshot)
+					.then((snapshot) => {
+						if (active && !controller.signal.aborted) commitSignalStatusSnapshot(snapshot);
+					})
 					.catch(() => {
 						if (!controller.signal.aborted) refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
 					});
@@ -404,14 +417,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				commitSignalStatusSnapshot(snapshot);
 			},
 			onPatch: (patch: PiboSignalStatusPatch) => {
-				if (!active) return;
-				const result = applySignalStatusPatch(sessionStatusSignalsRef.current, patch);
-				if (result.needsRefresh) {
-					refreshSignalStatuses(0);
-					return;
-				}
-				sessionStatusSignalsRef.current = result.snapshot;
-				setBootstrap((current) => current ? applySignalStatusPatchToBootstrap(current, patch) : current);
+				if (active && !commitSignalStatusPatch(patch)) refreshSignalStatuses(0);
 			},
 			onError: () => refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS),
 		};
@@ -435,7 +441,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			document.removeEventListener("visibilitychange", refreshVisibleSignalStatuses);
 			unsubscribeSignalStatuses();
 		};
-	}, []);
+	}, [area, commitSignalStatusPatch, commitSignalStatusSnapshot, selectedBackendPiboSessionId]);
 
 	useEffect(() => {
 		if (area !== "sessions" || !selectedBackendPiboSessionId) {
@@ -449,6 +455,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 		let active = true;
 		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
+		let signalStatusRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
 		const controller = new AbortController();
 		const commitSignalSnapshot = (snapshot: PiboSignalSnapshot) => {
 			if (!active || controller.signal.aborted || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
@@ -465,6 +472,20 @@ export function App({ route }: { route: ChatAppRoute }) {
 					.then(commitSignalSnapshot)
 					.catch(() => {
 						if (!controller.signal.aborted) refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
+					});
+			}, delayMs);
+		};
+		const refreshSignalStatuses = (delayMs: number) => {
+			if (!active) return;
+			if (signalStatusRecoveryTimer) clearTimeout(signalStatusRecoveryTimer);
+			signalStatusRecoveryTimer = setTimeout(() => {
+				signalStatusRecoveryTimer = undefined;
+				fetchSignalStatuses({ signal: controller.signal })
+					.then((snapshot) => {
+						if (active && !controller.signal.aborted) commitSignalStatusSnapshot(snapshot);
+					})
+					.catch(() => {
+						if (!controller.signal.aborted) refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
 					});
 			}, delayMs);
 		};
@@ -488,7 +509,21 @@ export function App({ route }: { route: ChatAppRoute }) {
 				setSessionSignals(result.snapshot);
 				setBootstrap((bootstrapData) => bootstrapData ? applySignalPatchToBootstrap(bootstrapData, patch) : bootstrapData);
 			},
-			onError: () => refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS),
+			onStatusSnapshot: (snapshot: PiboSignalStatusSnapshot) => {
+				if (!active || !shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return;
+				if (signalStatusRecoveryTimer) {
+					clearTimeout(signalStatusRecoveryTimer);
+					signalStatusRecoveryTimer = undefined;
+				}
+				commitSignalStatusSnapshot(snapshot);
+			},
+			onStatusPatch: (patch: PiboSignalStatusPatch) => {
+				if (active && !commitSignalStatusPatch(patch)) refreshSignalStatuses(0);
+			},
+			onError: () => {
+				refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
+				refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
+			},
 		};
 		let unsubscribeSignalTree: () => void = () => undefined;
 		const reconnectSignalTree = () => {
@@ -515,12 +550,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 			active = false;
 			controller.abort();
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
+			if (signalStatusRecoveryTimer) clearTimeout(signalStatusRecoveryTimer);
 			window.removeEventListener("pageshow", reconnectSignalTree);
 			document.removeEventListener("visibilitychange", refreshVisibleSignalTree);
 			window.clearInterval(signalReconcileTimer);
 			unsubscribeSignalTree();
 		};
-	}, [area, selectedBackendPiboSessionId]);
+	}, [area, commitSignalStatusPatch, commitSignalStatusSnapshot, selectedBackendPiboSessionId]);
 
 	useEffect(() => {
 		const nextExpiryMs = bootstrap ? nextRecentSessionSignalExpiryMs(bootstrap.sessions, signalNow) : undefined;
@@ -945,7 +981,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			latestRoomStreamId,
 		});
 		if (!roomSummaryUrl || !activeRoomId || typeof latestRoomStreamId !== "number") return;
-		const events = new EventSource(roomSummaryUrl);
+		let events: EventSource | undefined;
 		let navigationTimer: ReturnType<typeof setTimeout> | undefined;
 		const scheduleNavigationRefresh = () => {
 			if (selectedPiboSessionId && !selectedBackendPiboSessionId) return;
@@ -958,8 +994,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 					});
 			}, 900);
 		};
-		events.addEventListener("pibo", (message) => {
-			const event = chatStreamEvent(message);
+		const handleRoomSummaryEvent = (message: Event) => {
+			const event = chatStreamEvent(message as MessageEvent);
 			if (!event || event.type === "ready") return;
 			const messageStreamId = streamIdFromEventSourceId((message as MessageEvent).lastEventId);
 			const replayFrame = messageStreamId !== undefined && messageStreamId <= latestRoomStreamId;
@@ -973,10 +1009,25 @@ export function App({ route }: { route: ChatAppRoute }) {
 				updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, targetPiboSessionId, (node) => ({ ...node, status, lastActivityAt })));
 			}
 			if (!replayFrame && eventShouldRefreshNavigation(event)) scheduleNavigationRefresh();
-		});
-		return () => {
+		};
+		const suspendRoomSummary = () => {
 			if (navigationTimer) clearTimeout(navigationTimer);
-			events.close();
+			navigationTimer = undefined;
+			events?.close();
+			events = undefined;
+		};
+		const connectRoomSummary = () => {
+			suspendRoomSummary();
+			events = new EventSource(roomSummaryUrl);
+			events.addEventListener("pibo", handleRoomSummaryEvent);
+		};
+		connectRoomSummary();
+		window.addEventListener("pagehide", suspendRoomSummary);
+		window.addEventListener("pageshow", connectRoomSummary);
+		return () => {
+			window.removeEventListener("pagehide", suspendRoomSummary);
+			window.removeEventListener("pageshow", connectRoomSummary);
+			suspendRoomSummary();
 		};
 	}, [activeRoomId, area, bootstrap?.selectedRoomId, latestRoomStreamId, loadNavigation, selectedBackendPiboSessionId, selectedPiboSessionId, updateBootstrapCache]);
 

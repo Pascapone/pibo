@@ -25,11 +25,11 @@ import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDurati
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
 const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 4_800;
+const COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX = 800;
 const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
 const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
-const OLDER_TRACE_INTENT_SETTLE_MS = 700;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
 type TerminalNavigationKind = "system" | "tool" | "user";
 type TerminalImageDialogState = {
@@ -80,7 +80,6 @@ export function CompactTerminalSessionView({
 	const navigationCursorRef = useRef<Partial<Record<TerminalNavigationKind, string>>>({});
 	const rangePrefetchReadyRef = useRef(false);
 	const olderTraceIntentRef = useRef(false);
-	const olderTraceLoadTimerRef = useRef<number | undefined>(undefined);
 	const olderTraceRequestPendingRef = useRef(false);
 	const scrollbarDragActiveRef = useRef(false);
 	const scrollbarDragDeferredLoadRef = useRef(false);
@@ -108,64 +107,52 @@ export function CompactTerminalSessionView({
 		});
 	}, [piboSessionId, rows, selectedSessionStatus, traceView]);
 
-	const loadOlderTracePage = useCallback((settleScrollIntent: boolean) => {
+	const loadOlderTracePage = useCallback(() => {
 		if (!hasOlderTraceEvents || isFetchingOlderTracePage || olderTraceRequestPendingRef.current) return;
 		if (scrollbarDragActiveRef.current) {
 			scrollbarDragDeferredLoadRef.current = true;
 			return;
 		}
-		const load = () => {
-			olderTraceLoadTimerRef.current = undefined;
-			if (olderTraceRequestPendingRef.current) return;
-			olderTraceRequestPendingRef.current = true;
-			olderTraceIntentRef.current = false;
-			prepareOlderTracePrependRef.current();
-			onLoadOlderTracePage?.();
-		};
-		if (!settleScrollIntent || !olderTraceIntentRef.current) {
-			if (olderTraceLoadTimerRef.current !== undefined) window.clearTimeout(olderTraceLoadTimerRef.current);
-			load();
-			return;
-		}
-		if (olderTraceLoadTimerRef.current !== undefined) return;
-		olderTraceLoadTimerRef.current = window.setTimeout(load, OLDER_TRACE_INTENT_SETTLE_MS);
+		olderTraceRequestPendingRef.current = true;
+		olderTraceIntentRef.current = false;
+		prepareOlderTracePrependRef.current();
+		const request = onLoadOlderTracePage?.();
+		void Promise.resolve(request).then(
+			() => { olderTraceRequestPendingRef.current = false; },
+			() => { olderTraceRequestPendingRef.current = false; },
+		);
 	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
 	const loadOlderNearTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
 		if (!olderTraceIntentRef.current) return;
-		loadOlderTracePage(true);
+		loadOlderTracePage();
 	}, [loadOlderTracePage]);
 	const loadOlderAtTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
 		if (!olderTraceIntentRef.current && !scrollbarDragActiveRef.current) return;
-		loadOlderTracePage(false);
+		loadOlderTracePage();
 	}, [loadOlderTracePage]);
 	const handleScrollbarDragChange = useCallback((active: boolean) => {
 		scrollbarDragActiveRef.current = active;
-		if (active) {
-			if (olderTraceLoadTimerRef.current !== undefined) {
-				window.clearTimeout(olderTraceLoadTimerRef.current);
-				olderTraceLoadTimerRef.current = undefined;
-				scrollbarDragDeferredLoadRef.current = true;
-			}
-			return;
-		}
-		if (!scrollbarDragDeferredLoadRef.current) return;
+		if (active || !scrollbarDragDeferredLoadRef.current) return;
 		scrollbarDragDeferredLoadRef.current = false;
-		loadOlderTracePage(false);
+		loadOlderTracePage();
 	}, [loadOlderTracePage]);
 	const markOlderTraceIntent = useCallback((event?: Event, direction?: "away" | "toward") => {
 		if (isOlderTraceScrollIntent(event, direction)) olderTraceIntentRef.current = true;
 	}, []);
 	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
-		if (!rangePrefetchReadyRef.current) return;
+		if (!rangePrefetchReadyRef.current || toolDisplayMode !== "default") return;
 		if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderNearTop();
-	}, [loadOlderNearTop]);
+	}, [loadOlderNearTop, toolDisplayMode]);
 	const persistVisibleAnchor = useCallback((anchor: { key: string; offset: number } | undefined) => {
 		if (!piboSessionId) return;
 		writeTerminalReadingPosition(piboSessionId, anchor ? { rowId: anchor.key, offsetPx: anchor.offset } : undefined);
 	}, [piboSessionId]);
 
+	const olderTracePrefetchTopThreshold = toolDisplayMode === "default"
+		? OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX
+		: COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX;
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
 		itemKeys: rowKeys,
@@ -173,7 +160,7 @@ export function CompactTerminalSessionView({
 		resetKey: traceView?.piboSessionId,
 		contentKey: renderedContentKey,
 		atBottomThreshold: SHOW_LATEST_THRESHOLD_PX,
-		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
+		nearTopThreshold: olderTracePrefetchTopThreshold,
 		onAtTop: loadOlderAtTop,
 		onNearTop: loadOlderNearTop,
 		onUserScrollIntent: markOlderTraceIntent,
@@ -190,14 +177,6 @@ export function CompactTerminalSessionView({
 		setReloadReadingPosition(piboSessionId ? readTerminalReadingPosition(piboSessionId) : undefined);
 		setImageDialog(null);
 	}, [piboSessionId]);
-
-	useEffect(() => {
-		olderTraceRequestPendingRef.current = false;
-	}, [traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
-
-	useEffect(() => () => {
-		if (olderTraceLoadTimerRef.current !== undefined) window.clearTimeout(olderTraceLoadTimerRef.current);
-	}, []);
 
 	useEffect(() => {
 		if (!piboSessionId || !reloadReadingPosition) return undefined;
@@ -227,8 +206,17 @@ export function CompactTerminalSessionView({
 	useEffect(() => {
 		if (!piboSessionId) return undefined;
 		const persistBeforePageExit = () => { stickyView.captureVisibleAnchor(); };
+		const persistWhenHidden = () => {
+			if (document.visibilityState === "hidden") persistBeforePageExit();
+		};
+		window.addEventListener("beforeunload", persistBeforePageExit);
 		window.addEventListener("pagehide", persistBeforePageExit);
-		return () => window.removeEventListener("pagehide", persistBeforePageExit);
+		document.addEventListener("visibilitychange", persistWhenHidden);
+		return () => {
+			window.removeEventListener("beforeunload", persistBeforePageExit);
+			window.removeEventListener("pagehide", persistBeforePageExit);
+			document.removeEventListener("visibilitychange", persistWhenHidden);
+		};
 	}, [piboSessionId, stickyView.captureVisibleAnchor]);
 
 	useEffect(() => {

@@ -27,7 +27,7 @@ type TraceTimelineProps = {
 	onSessionAgentProfileChange?: (profile: string) => void;
 	onFork: (entryId: string) => void;
 	onOpenSession: (piboSessionId: string) => void;
-	onLoadOlderTracePage?: () => void;
+	onLoadOlderTracePage?: () => void | Promise<void>;
 	hasOlderTraceEvents?: boolean;
 	isFetchingOlderTracePage?: boolean;
 };
@@ -106,8 +106,10 @@ export function TraceTimeline({
 	const [expansionOverrides, setExpansionOverrides] = useState<Record<string, { contentExpanded: boolean; childrenExpanded: boolean }>>({});
 	const rangePrefetchReadyRef = useRef(false);
 	const olderTraceIntentRef = useRef(false);
+	const olderTraceRequestPendingRef = useRef(false);
 	const scrollbarDragActiveRef = useRef(false);
 	const scrollbarDragDeferredLoadRef = useRef(false);
+	const prepareOlderTracePrependRef = useRef<() => void>(() => undefined);
 
 	const spanTree = useMemo(() => {
 		if (!trace?.spans) return [];
@@ -146,13 +148,19 @@ export function TraceTimeline({
 	}, [expansionOverrides, trace?.id, trace?.status, visibleRows]);
 	const visibleRowKeys = useMemo(() => visibleRows.map((row) => row.id), [visibleRows]);
 	const loadOlderTracePage = useCallback(() => {
-		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return;
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage || olderTraceRequestPendingRef.current) return;
 		if (scrollbarDragActiveRef.current) {
 			scrollbarDragDeferredLoadRef.current = true;
 			return;
 		}
+		olderTraceRequestPendingRef.current = true;
 		olderTraceIntentRef.current = false;
-		onLoadOlderTracePage?.();
+		prepareOlderTracePrependRef.current();
+		const request = onLoadOlderTracePage?.();
+		void Promise.resolve(request).then(
+			() => { olderTraceRequestPendingRef.current = false; },
+			() => { olderTraceRequestPendingRef.current = false; },
+		);
 	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage]);
 	const loadOlderNearTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
@@ -161,6 +169,7 @@ export function TraceTimeline({
 	}, [loadOlderTracePage]);
 	const loadOlderAtTop = useCallback(() => {
 		if (!rangePrefetchReadyRef.current) return;
+		if (!olderTraceIntentRef.current && !scrollbarDragActiveRef.current) return;
 		loadOlderTracePage();
 	}, [loadOlderTracePage]);
 	const handleScrollbarDragChange = useCallback((active: boolean) => {
@@ -181,6 +190,7 @@ export function TraceTimeline({
 	const stickyView = useStickyVirtuoso({
 		itemCount: visibleRows.length,
 		itemKeys: visibleRowKeys,
+		isPrepending: isFetchingOlderTracePage,
 		resetKey: trace?.id,
 		contentKey: visibleRows,
 		nearTopThreshold: OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX,
@@ -189,19 +199,20 @@ export function TraceTimeline({
 		onUserScrollIntent: markOlderTraceIntent,
 		onScrollbarDragChange: handleScrollbarDragChange,
 	});
+	prepareOlderTracePrependRef.current = stickyView.prepareForPrepend;
 
 	useEffect(() => {
 		setExpansionOverrides({});
 		rangePrefetchReadyRef.current = false;
 		olderTraceIntentRef.current = false;
+		olderTraceRequestPendingRef.current = false;
 		scrollbarDragActiveRef.current = false;
 		scrollbarDragDeferredLoadRef.current = false;
 		const readyTimer = window.setTimeout(() => {
 			rangePrefetchReadyRef.current = true;
-			if (stickyView.isAtTop || stickyView.isScrolledToTop()) loadOlderAtTop();
 		}, 600);
 		return () => window.clearTimeout(readyTimer);
-	}, [expandThinking, loadOlderAtTop, stickyView.isAtTop, stickyView.isScrolledToTop, trace?.id]);
+	}, [expandThinking, trace?.id]);
 
 	useEffect(() => {
 		if (isFetchingOlderTracePage) return;
@@ -338,7 +349,7 @@ export function TraceTimeline({
 							Footer: isStreaming ? StreamingIndicator : undefined,
 						}}
 						itemContent={(_, row) => (
-							<div className="px-6 max-[980px]:px-2">
+							<div className="px-6 max-[980px]:px-2" data-row-id={row.id} data-pibo-trace-row="true">
 								<TraceSpanCard
 									span={row.span}
 									startTime={startTime}
