@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import type { AgentRuntimeHistoryEntry } from "../agent-runtime/history.js";
-import { isPiboOutputEvent, type PiboEventSource, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../core/events.js";
+import { isPiboOutputEvent } from "../apps/chat/output-event-policy.js";
+import type { PiboEventSource, PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/events.js";
 import { ChatDataIngestService } from "../data/ingest-service.js";
 import { PiboDataStore } from "../data/pibo-store.js";
 import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
@@ -35,8 +36,10 @@ export type OutputRepairAdapterEvidence = {
 	error?: string;
 };
 
+type RepairTerminalEvent = Extract<PiboOutputEvent, { type: "message_finished" | "session_error" }>;
+
 type ReliabilityEvidence = {
-	terminalEvents: Array<{ event: PiboOutputEvent; reference: string }>;
+	terminalEvents: Array<{ event: RepairTerminalEvent; reference: string }>;
 	references: string[];
 };
 
@@ -111,7 +114,7 @@ export type OutputRepairScopeResult = {
 
 type InternalRepairPlan = {
 	inspection: OutputTurnRepairInspection;
-	terminalEvent?: PiboOutputEvent;
+	terminalEvent?: RepairTerminalEvent;
 	evidenceReferences: string[];
 };
 
@@ -224,15 +227,23 @@ export function repairOutputTurns(input: {
 	const db = new DatabaseSync(input.store.path, { readOnly: true });
 	let candidates: CandidateRow[];
 	try {
-		const clauses = ["session_id = ?", "type = 'message_started'", "event_id IS NOT NULL"];
+		const clauses = ["startedAt IS NOT NULL", "messageStarted > 0", "terminalEvents = 0"];
 		const params: Array<string | number> = [input.piboSessionId];
-		if (input.since) { clauses.push("created_at >= ?"); params.push(input.since); }
-		if (input.before) { clauses.push("created_at < ?"); params.push(input.before); }
+		if (input.since) { clauses.push("startedAt >= ?"); params.push(input.since); }
+		if (input.before) { clauses.push("startedAt < ?"); params.push(input.before); }
 		candidates = db.prepare(`
-			SELECT event_id AS eventId, MIN(created_at) AS startedAt
-			FROM event_log
+			WITH turn_lifecycle AS (
+				SELECT event_id AS eventId,
+					MIN(CASE WHEN type = 'message_started' THEN created_at END) AS startedAt,
+					SUM(type = 'message_started') AS messageStarted,
+					SUM(type IN ('message_finished', 'session_error')) AS terminalEvents
+				FROM event_log
+				WHERE session_id = ? AND event_id IS NOT NULL
+				GROUP BY event_id
+			)
+			SELECT eventId, startedAt
+			FROM turn_lifecycle
 			WHERE ${clauses.join(" AND ")}
-			GROUP BY event_id
 			ORDER BY startedAt ASC
 			LIMIT ?
 		`).all(...params, limit) as CandidateRow[];
@@ -443,7 +454,7 @@ function buildRepairPlanFromDb(
 	if (adapterCompleted.length) completedSources.push("adapter_history");
 	if (!completedSources.length) return refuse("evidence_missing");
 	const source = messageSource(db, piboSessionId, eventId);
-	const terminalEvent: PiboOutputEvent = { type: "message_finished", piboSessionId, eventId, ...source };
+	const terminalEvent: RepairTerminalEvent = { type: "message_finished", piboSessionId, eventId, ...source };
 	return {
 		inspection: {
 			...base,
@@ -509,9 +520,9 @@ function outputEventsInPayload(value: PiboJsonValue | undefined): PiboOutputEven
 	return found;
 }
 
-function uniqueReliabilityTerminal(events: PiboOutputEvent[]): PiboOutputEvent | "conflict" | undefined {
+function uniqueReliabilityTerminal(events: RepairTerminalEvent[]): RepairTerminalEvent | "conflict" | undefined {
 	if (!events.length) return undefined;
-	const bySignature = new Map<string, PiboOutputEvent>();
+	const bySignature = new Map<string, RepairTerminalEvent>();
 	for (const event of events) bySignature.set(stableJson(event), event);
 	if (bySignature.size !== 1) return "conflict";
 	return [...bySignature.values()][0];
