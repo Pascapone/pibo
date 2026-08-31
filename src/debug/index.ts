@@ -94,6 +94,10 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			await runDebugJobs(args.slice(1));
 			return;
 		}
+		if (args[0] === "repair") {
+			await runDebugRepair(args.slice(1));
+			return;
+		}
 		if (args[0] === "runs") {
 			await runDebugRuns(args.slice(1));
 			return;
@@ -125,6 +129,35 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
 	}
+}
+
+async function runDebugRepair(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugRepairDiscovery();
+		return;
+	}
+	if (args[0] !== "output") {
+		throw new Error(`Unknown pibo debug repair command "${args[0]}". Run pibo debug repair --help.`);
+	}
+	if (args[1] === "--help" || args[1] === "-h") {
+		printDebugRepairDiscovery();
+		return;
+	}
+	const options = parseOptions(args.slice(1));
+	if (options.apply && options.dryRun) throw new Error("Choose either --dry-run or --apply");
+	if (options.destructive) throw new Error("Use --apply for output repair; --destructive is not supported");
+	const [piboSessionId, eventId] = options.positionals;
+	if (!piboSessionId || !eventId) throw new Error("pibo debug repair output requires <pibo-session-id> <event-id>");
+	const { formatJson } = await import("./sql.js");
+	const { formatOutputTurnRepair, repairOutputTurn } = await import("./output-repair.js");
+	const result = repairOutputTurn({
+		store: resolveDebugStore("pibo-data"),
+		piboSessionId,
+		eventId,
+		apply: options.apply,
+	});
+	if (options.json) console.log(formatJson(result));
+	else console.log(formatOutputTurnRepair(result));
 }
 
 async function runDebugResources(args: string[]): Promise<void> {
@@ -1054,6 +1087,7 @@ Commands:
   tool     Inspect one grouped tool call
   failures List failed tool calls and trace/session errors
   jobs     Inspect durable Pibo jobs and DLQ
+  repair   Dry-run or apply explicit persisted-output repairs
   runs     Inspect durable yielded runs
   resources Show gateway memory reserve, related child processes, and heavy daemons
   signals  Inspect live session signal snapshots through Chat Web APIs
@@ -1068,12 +1102,32 @@ Next:
   pibo debug messages <pibo-session-id> list
   pibo debug trace <pibo-session-id> --running-only
   pibo debug events stream --topic pibo.output
+  pibo debug repair output <pibo-session-id> <event-id> --dry-run
   pibo debug agents <parent-session-id> list
   pibo debug resources --json
   pibo debug signals tree ps_...
   pibo debug telemetry sessions --active
   pibo debug web targets
   pibo debug pty run -- pibo tui:sessions --demo
+`);
+}
+
+function printDebugRepairDiscovery(): void {
+	console.log(`pibo debug repair - explicitly repair persisted output
+
+Usage:
+  pibo debug repair output <pibo-session-id> <event-id> [--dry-run|--apply] [--json]
+
+Behavior:
+  Dry-run is the default. Repair requires exactly one persisted message start and no terminal event.
+  Confirm the target turn is not active before applying repair.
+  Turns with assistant output receive message_finished. Turns without assistant output receive session_error.
+  Repair does not delete or replay pending or dead output-persistence jobs.
+
+Next:
+  pibo debug repair output ps_... <event-id> --dry-run --json
+  pibo debug repair output ps_... <event-id> --apply --json
+  pibo debug jobs dead --queue output-persistence
 `);
 }
 
