@@ -80,6 +80,11 @@ def drain_child_output(read_fd, output, stream):
         return
 
 
+def join_child_output(threads):
+    for thread in threads:
+        thread.join(0.2)
+
+
 def routed_popen(*args, **kwargs):
     output = output_context.get()
     if output is None:
@@ -104,12 +109,39 @@ def routed_popen(*args, **kwargs):
             os.close(write_fd)
         raise
 
+    process_threads = []
     for read_fd, write_fd, stream in routes:
         os.close(write_fd)
         thread = threading.Thread(target=drain_child_output, args=(read_fd, output, stream), daemon=True)
         with output["lock"]:
             output["threads"].append(thread)
+        process_threads.append(thread)
         thread.start()
+
+    if process_threads:
+        original_wait = process.wait
+        original_poll = process.poll
+        original_communicate = process.communicate
+
+        def wait_with_output(*wait_args, **wait_kwargs):
+            result = original_wait(*wait_args, **wait_kwargs)
+            join_child_output(process_threads)
+            return result
+
+        def poll_with_output(*poll_args, **poll_kwargs):
+            result = original_poll(*poll_args, **poll_kwargs)
+            if result is not None:
+                join_child_output(process_threads)
+            return result
+
+        def communicate_with_output(*communicate_args, **communicate_kwargs):
+            result = original_communicate(*communicate_args, **communicate_kwargs)
+            join_child_output(process_threads)
+            return result
+
+        process.wait = wait_with_output
+        process.poll = poll_with_output
+        process.communicate = communicate_with_output
     return process
 
 
