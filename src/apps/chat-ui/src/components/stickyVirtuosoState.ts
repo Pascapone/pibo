@@ -4,6 +4,7 @@ export type StickyScrollIntentInput = {
 	type?: string;
 	key?: string;
 	deltaY?: number;
+	deltaMode?: number;
 	shiftKey?: boolean;
 };
 
@@ -41,6 +42,18 @@ export type StickyAnchorLocation = {
 	behavior: "auto";
 	offset: number;
 };
+
+export function stickyWheelOwnsViewport(input: StickyScrollIntentInput): boolean {
+	if (input.type !== "wheel" || (input.deltaY ?? 0) === 0) return false;
+	return (input.deltaMode ?? 0) !== 0 || Math.abs(input.deltaY ?? 0) >= 80;
+}
+
+export function stickyWheelPixelDelta(input: StickyScrollIntentInput, viewportHeight: number): number {
+	if (input.type !== "wheel" || (input.deltaY ?? 0) === 0) return 0;
+	if (input.deltaMode === 1) return (input.deltaY ?? 0) * 16;
+	if (input.deltaMode === 2) return (input.deltaY ?? 0) * viewportHeight;
+	return input.deltaY ?? 0;
+}
 
 export function stickyScrollIntentDirection(input: StickyScrollIntentInput): StickyScrollIntentDirection | undefined {
 	if (input.type === "wheel") {
