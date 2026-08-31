@@ -6,6 +6,7 @@ import {
 	dedupeTraceEvents,
 	findOpenTranscriptEventIds,
 	latestTraceStreamId,
+	markIncompletePersistedTurns,
 	mergeMessageTurnTimings,
 	messageTurnTimingsFromEvents,
 	reconcileTranscriptUserMessages,
@@ -124,6 +125,7 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 			sessionStatus,
 		);
 	}
+	markIncompletePersistedTurns(nodes, byId, input.session.id, events, turnTimings, sessionStatus);
 
 	const nestedNodes = nestTraceNodes(nodes);
 	reconcileAsyncAgentRunStatuses(nestedNodes);

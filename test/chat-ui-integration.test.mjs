@@ -317,6 +317,107 @@ test("execution commands after an errored turn remain chronological root nodes",
 	assert.equal(view.nodes.find((node) => node.title === "thinking")?.parentId, undefined);
 });
 
+test("idle persisted turns without a terminal project an explicit incomplete error", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		historyEntries: [
+			{
+				id: "product-user-incomplete",
+				type: "message",
+				source: "product",
+				turnId: "turn-incomplete",
+				createdAt: "2026-04-29T08:00:00.000Z",
+				role: "user",
+				content: "Persist this answer",
+				status: "complete",
+			},
+			{
+				id: "product-assistant-incomplete",
+				type: "message",
+				source: "product",
+				turnId: "turn-incomplete",
+				assistantIndex: 0,
+				createdAt: "2026-04-29T08:00:01.000Z",
+				role: "assistant",
+				content: "Persisted answer without a terminal",
+				status: "complete",
+			},
+		],
+		events: [
+			createEvent({
+				seq: 1,
+				type: "message_started",
+				payload: { type: "message_started", eventId: "turn-incomplete", text: "Persist this answer", source: "user" },
+			}),
+			createEvent({
+				seq: 2,
+				type: "assistant_message",
+				payload: { type: "assistant_message", eventId: "turn-incomplete", assistantIndex: 0, text: "Persisted answer without a terminal" },
+			}),
+		],
+	});
+
+	const turn = view.nodes.find((node) => node.id === "event:message:turn-incomplete");
+	assert.ok(turn, "expected the incomplete product-history turn to remain represented");
+	assert.equal(turn.status, "error");
+	assert.equal(turn.completedAt, undefined);
+	assert.match(turn.summary, /incomplete/i);
+	assert.deepEqual(turn.children.map((node) => node.type), ["assistant.message", "error"]);
+	const marker = turn.children.find((node) => node.id === "event:incomplete-turn:turn-incomplete");
+	assert.ok(marker, "expected a stable incomplete-turn marker");
+	assert.equal(marker.status, "error");
+	assert.match(marker.error, /message_started.*message_finished.*session_error/);
+
+	const rows = buildCompactTerminalRows(view, { showThinking: true });
+	const errorRow = rows.find((row) => row.id === marker.id);
+	assert.ok(errorRow, "expected the incomplete marker in Compact Terminal output");
+	assert.equal(errorRow.status, "error");
+	assert.match(rowText(errorRow), /Incomplete Turn/);
+});
+
+test("active persisted turns remain running without an incomplete marker", () => {
+	const view = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-active", text: "Still active", source: "user" } }),
+		createEvent({ seq: 2, type: "assistant_delta", payload: { type: "assistant_delta", eventId: "turn-active", text: "Working" } }),
+	], "running");
+
+	const turn = view.nodes.find((node) => node.id === "event:message:turn-active");
+	assert.equal(turn?.status, "running");
+	assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-active"), false);
+});
+
+test("terminal persisted turns do not project an incomplete marker", () => {
+	for (const terminal of [
+		{ type: "message_finished", eventId: "turn-terminal" },
+		{ type: "session_error", eventId: "turn-terminal", error: "failed explicitly" },
+	]) {
+		const view = createBaseView([
+			createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-terminal", text: "Terminal", source: "user" } }),
+			createEvent({ seq: 2, type: terminal.type, payload: terminal }),
+		], "idle");
+		assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-terminal"), false);
+	}
+});
+
+test("partial trace pages use full turn timing before marking a turn incomplete", () => {
+	const view = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		events: [
+			createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-paged", text: "Paged", source: "user" } }),
+		],
+		turnTimings: [{
+			eventId: "turn-paged",
+			startedAt: "2026-04-29T08:00:01.000Z",
+			completedAt: "2026-04-29T08:00:02.000Z",
+		}],
+	});
+
+	assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-paged"), false);
+	assert.equal(view.nodes.find((node) => node.id === "event:message:turn-paged")?.status, "done");
+});
+
 test("live repeated prompt does not confirm against settled canonical transcript text", () => {
 	const baseView = buildTraceViewFromEvents({
 		session: { id: "chat:test", piSessionId: "pi-test" },
