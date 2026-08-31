@@ -19,8 +19,17 @@ test("sticky Virtuoso state handles intent, prepend, and anchor transactions", a
 			stickyScrollIntentDirection,
 			stickyScrollPositionDirection,
 			stickyTouchScrollIntentDirection,
+			stickyWheelOwnsViewport,
+			stickyWheelPixelDelta,
 		} from "./src/apps/chat-ui/src/components/stickyVirtuosoState.ts";
 
+		assert.equal(stickyWheelOwnsViewport({ type: "wheel", deltaY: -32, deltaMode: 0 }), false, "fine touchpad-style wheel input retains projected stabilization");
+		assert.equal(stickyWheelOwnsViewport({ type: "wheel", deltaY: -120, deltaMode: 0 }), true, "coarse mouse-wheel notches own the native viewport");
+		assert.equal(stickyWheelOwnsViewport({ type: "wheel", deltaY: -3, deltaMode: 1 }), true, "line-mode wheel input owns the native viewport regardless of numeric delta");
+		assert.equal(stickyWheelOwnsViewport({ type: "wheel", deltaY: 0, deltaMode: 0 }), false);
+		assert.equal(stickyWheelPixelDelta({ type: "wheel", deltaY: -120, deltaMode: 0 }, 600), -120);
+		assert.equal(stickyWheelPixelDelta({ type: "wheel", deltaY: -3, deltaMode: 1 }, 600), -48);
+		assert.equal(stickyWheelPixelDelta({ type: "wheel", deltaY: -1, deltaMode: 2 }, 600), -600);
 		assert.equal(stickyScrollIntentDirection({ type: "wheel", deltaY: -1 }), "away");
 		assert.equal(stickyScrollIntentDirection({ type: "keydown", key: "ArrowUp" }), "away");
 		assert.equal(stickyScrollIntentDirection({ type: "keydown", key: " ", shiftKey: true }), "away");

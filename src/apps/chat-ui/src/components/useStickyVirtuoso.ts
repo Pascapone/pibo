@@ -11,6 +11,8 @@ import {
 	stickyScrollIntentDirection,
 	stickyScrollPositionDirection,
 	stickyTouchScrollIntentDirection,
+	stickyWheelOwnsViewport,
+	stickyWheelPixelDelta,
 	type StickyAnchorLocation,
 	type StickyPointerScrollMode,
 	type StickyScrollIntentDirection,
@@ -88,6 +90,9 @@ export function useStickyVirtuoso({
 	const userScrollDirectionRef = useRef<StickyScrollIntentDirection | undefined>(undefined);
 	const touchScrollIntentRef = useRef(false);
 	const wheelScrollIntentRef = useRef(false);
+	const nativeWheelScrollIntentRef = useRef(false);
+	const nativeWheelHistoryRequestRef = useRef<"at-top" | "near-top" | undefined>(undefined);
+	const flushNativeWheelHistoryRequestRef = useRef<(request: "at-top" | "near-top") => void>(() => {});
 	const userAnchorRestoreDeferredRef = useRef(false);
 	const userAnchorCaptureArmedRef = useRef(false);
 	const bottomReattachArmedRef = useRef(false);
@@ -167,6 +172,8 @@ export function useStickyVirtuoso({
 			clearAnchorLocks();
 			touchScrollIntentRef.current = false;
 			wheelScrollIntentRef.current = false;
+			nativeWheelScrollIntentRef.current = false;
+			nativeWheelHistoryRequestRef.current = undefined;
 			userAnchorRestoreDeferredRef.current = false;
 			if (!wasSticky && notifyAnchorChange) onVisibleAnchorChange?.(undefined);
 			bottomReattachArmedRef.current = false;
@@ -226,7 +233,7 @@ export function useStickyVirtuoso({
 	}, []);
 
 	const projectVisibleAnchorsForWheel = useCallback((event?: Event) => {
-		if (!(event instanceof WheelEvent) || stickyRef.current || event.deltaY === 0 || visibleAnchorsRef.current.length === 0) return;
+		if (!(event instanceof WheelEvent) || nativeWheelScrollIntentRef.current || stickyRef.current || event.deltaY === 0 || visibleAnchorsRef.current.length === 0) return;
 		visibleAnchorsRef.current = visibleAnchorsRef.current.map((anchor) => ({
 			...anchor,
 			offset: anchor.offset - event.deltaY,
@@ -244,16 +251,24 @@ export function useStickyVirtuoso({
 			userScrollDirectionRef.current = undefined;
 			touchScrollIntentRef.current = false;
 			wheelScrollIntentRef.current = false;
+			nativeWheelScrollIntentRef.current = false;
+			const historyRequest = nativeWheelHistoryRequestRef.current;
+			nativeWheelHistoryRequestRef.current = undefined;
 			userScrollIntentTimerRef.current = undefined;
-			if (!userAnchorRestoreDeferredRef.current) return;
-			userAnchorRestoreDeferredRef.current = false;
-			if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
-			anchorFrameRef.current = undefined;
-			clearAnchorLocks();
-			pendingAnchorsRef.current = undefined;
-			pendingAnchorItemKeysRef.current = undefined;
-			userAnchorCaptureArmedRef.current = false;
-			captureVisibleAnchors();
+			if (userAnchorRestoreDeferredRef.current) {
+				userAnchorRestoreDeferredRef.current = false;
+				if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
+				anchorFrameRef.current = undefined;
+				clearAnchorLocks();
+				pendingAnchorsRef.current = undefined;
+				pendingAnchorItemKeysRef.current = undefined;
+			}
+			if (historyRequest) {
+				userAnchorCaptureArmedRef.current = false;
+				const finalAnchor = captureVisibleAnchors();
+				if (finalAnchor) restoredAnchorLockRef.current = finalAnchor;
+				flushNativeWheelHistoryRequestRef.current(historyRequest);
+			}
 		}, USER_SCROLL_INTENT_MS);
 	}, [captureVisibleAnchors, clearAnchorLocks]);
 
@@ -411,6 +426,11 @@ export function useStickyVirtuoso({
 		});
 	}, [captureVisibleAnchors, onAtTop, scroller, stageVisibleAnchors, updateAtTopFromScrollTop]);
 
+	flushNativeWheelHistoryRequestRef.current = (request) => {
+		if (request === "at-top") requestAtTop();
+		else requestNearTop();
+	};
+
 	const isScrolledToTop = useCallback(() => {
 		if (!scroller) return false;
 		return updateAtTopFromScrollTop(getScrollTop(scroller));
@@ -463,6 +483,7 @@ export function useStickyVirtuoso({
 		userScrollIntentRef.current = true;
 		touchScrollIntentRef.current = event?.type === "touchmove";
 		wheelScrollIntentRef.current = event?.type === "wheel";
+		nativeWheelScrollIntentRef.current = stickyWheelOwnsViewport(scrollIntentInput(event));
 		const direction = directionOverride ?? stickyScrollIntentDirection(scrollIntentInput(event));
 		onUserScrollIntent?.(event, direction);
 		userScrollDirectionRef.current = direction;
@@ -484,10 +505,22 @@ export function useStickyVirtuoso({
 		if (anchorFrameRef.current !== undefined) cancelAnimationFrame(anchorFrameRef.current);
 		anchorFrameRef.current = undefined;
 		const scrollTop = scroller ? getScrollTop(scroller) : undefined;
-		if (scrollTop !== undefined && updateAtTopFromScrollTop(scrollTop)) requestAtTop();
-		else if (isNearTopHistoryIntent(event) && scrollTop !== undefined && scrollTop <= nearTopThreshold) requestNearTop();
+		if (scrollTop !== undefined && updateAtTopFromScrollTop(scrollTop)) {
+			if (nativeWheelScrollIntentRef.current) nativeWheelHistoryRequestRef.current = "at-top";
+			else requestAtTop();
+		} else if (isNearTopHistoryIntent(event) && scrollTop !== undefined && scrollTop <= nearTopThreshold) {
+			if (nativeWheelScrollIntentRef.current) nativeWheelHistoryRequestRef.current = "near-top";
+			else requestNearTop();
+		}
 		scheduleUserScrollIntentRelease();
 	}, [atBottomThreshold, captureVisibleAnchors, clearAnchorLocks, clearScheduledScroll, nearTopThreshold, onUserScrollIntent, projectVisibleAnchorsForWheel, requestAtTop, requestNearTop, scheduleUserScrollIntentRelease, scroller, setSticky, updateAtTopFromScrollTop]);
+
+	const applyCoarseWheel = useCallback((event: Event) => {
+		if (!(event instanceof WheelEvent) || !nativeWheelScrollIntentRef.current || !scroller) return;
+		event.preventDefault();
+		setScrollTop(scroller, getScrollTop(scroller) + stickyWheelPixelDelta(scrollIntentInput(event), getClientHeight(scroller)));
+		captureVisibleAnchors();
+	}, [captureVisibleAnchors, scroller]);
 
 	const clearPointerScrollMode = useCallback((expectedMode?: StickyPointerScrollMode) => {
 		const currentMode = pointerScrollModeRef.current;
@@ -570,8 +603,14 @@ export function useStickyVirtuoso({
 			}, USER_ANCHOR_FINAL_CAPTURE_MS);
 		}
 		if (updateAtTopFromScrollTop(scrollTop)) {
-			if (hasUserScrollIntent && userScrollDirectionRef.current === "away") requestAtTop();
-		} else if (readingAwayFromBottom && scrollTop <= nearTopThreshold) requestNearTop();
+			if (hasUserScrollIntent && userScrollDirectionRef.current === "away") {
+				if (nativeWheelScrollIntentRef.current) nativeWheelHistoryRequestRef.current = "at-top";
+				else requestAtTop();
+			}
+		} else if (readingAwayFromBottom && scrollTop <= nearTopThreshold) {
+			if (nativeWheelScrollIntentRef.current) nativeWheelHistoryRequestRef.current = "near-top";
+			else requestNearTop();
+		}
 		if (isAtBottom(scroller, atBottomThreshold)) {
 			if (shouldReattachStickyAtBottom(bottomReattachArmedRef.current, scrollingAwayFromBottom)) setSticky(true);
 			return;
@@ -616,7 +655,7 @@ export function useStickyVirtuoso({
 		};
 	}, [restoreVisibleAnchor, scheduleContentAnchorSettle, scroller]);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!scroller) return undefined;
 		const target: HTMLElement | Window = scroller;
 		const markIntentFromKey = (event: Event) => {
@@ -701,8 +740,9 @@ export function useStickyVirtuoso({
 		const markIntentFromWheel = (event: Event) => {
 			clearPointerScrollMode("middle");
 			markUserScrollIntent(event);
+			applyCoarseWheel(event);
 		};
-		target.addEventListener("wheel", markIntentFromWheel, { passive: true });
+		target.addEventListener("wheel", markIntentFromWheel, { passive: false });
 		target.addEventListener("touchstart", rememberTouch, { passive: true });
 		target.addEventListener("touchmove", markIntentFromTouch, { passive: true });
 		target.addEventListener("pointerdown", markIntentFromPointer, { passive: true });
@@ -722,7 +762,7 @@ export function useStickyVirtuoso({
 			window.removeEventListener("pointerup", finishScrollbarDrag);
 			window.removeEventListener("pointercancel", finishScrollbarDrag);
 		};
-	}, [captureVisibleAnchors, clearAnchorLocks, clearPointerScrollMode, clearScheduledScroll, markUserScrollIntent, onScrollbarDragChange, scroller, setSticky, updateFromScrollPosition]);
+	}, [applyCoarseWheel, captureVisibleAnchors, clearAnchorLocks, clearPointerScrollMode, clearScheduledScroll, markUserScrollIntent, onScrollbarDragChange, scroller, setSticky, updateFromScrollPosition]);
 
 	useLayoutEffect(() => {
 		clearAnchorLocks();
@@ -733,6 +773,8 @@ export function useStickyVirtuoso({
 		userAnchorFinalCaptureTimerRef.current = undefined;
 		touchScrollIntentRef.current = false;
 		wheelScrollIntentRef.current = false;
+		nativeWheelScrollIntentRef.current = false;
+		nativeWheelHistoryRequestRef.current = undefined;
 		userAnchorRestoreDeferredRef.current = false;
 		userAnchorCaptureArmedRef.current = false;
 		visibleAnchorsRef.current = [];
@@ -898,7 +940,7 @@ function isNearTopHistoryIntent(event?: Event) {
 }
 
 function scrollIntentInput(event?: Event) {
-	if (event instanceof WheelEvent) return { type: "wheel", deltaY: event.deltaY };
+	if (event instanceof WheelEvent) return { type: "wheel", deltaY: event.deltaY, deltaMode: event.deltaMode };
 	if (event instanceof KeyboardEvent) return { type: "keydown", key: event.key, shiftKey: event.shiftKey };
 	return { type: event?.type };
 }
