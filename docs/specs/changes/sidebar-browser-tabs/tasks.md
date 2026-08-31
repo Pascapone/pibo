@@ -51,3 +51,14 @@
 - [x] Run typecheck, build, Chat UI build, the complete relevant suite, and both exact tests sequentially with direct exit statuses.
 - [x] Validate Desktop Preview loss/exit and the Mobile workflow-version deep link in a headful browser.
 - [x] Update the validation evidence and prepare the release-gate batch for commit and fast-forward into `sidebar-browser-tabs`.
+
+## Upstream integration — 2026-08-31
+
+- [x] Preserve the old exact feature head under a local backup ref.
+- [x] Rebase all six feature commits onto release-bound `upstream/dev` and verify patch equivalence with `git range-diff`.
+- [x] Inspect the three overlapping paths and retain current terminal-scroll, signal/session lifecycle, route, auth, and Mobile behavior.
+- [x] Update two upstream source-contract tests for the combined Desktop/Mobile Agent Designer and Sessions-sidebar structure without weakening their semantic assertions.
+- [x] Run the 28-file focused/current suite, all 121 current Chat UI/Terminal test files, full typecheck, full build, and `git diff --check`.
+- [x] Validate Desktop at 1440×900 and 1920×1080, Mobile at exactly 390×844, and detached terminal scrolling with deterministic worker fixtures.
+- [x] Capture current screenshots, geometry, storage, history, and idle CDP evidence in a new 2026-08-31 artifact directory.
+- [ ] Re-run exact Pibo2 acceptance on the rebased candidate before opening a PR; this local integration package does not claim that external gate.

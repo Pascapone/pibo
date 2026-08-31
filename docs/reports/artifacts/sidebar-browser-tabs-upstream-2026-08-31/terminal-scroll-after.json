@@ -1,0 +1,94 @@
+{
+  "scrollTop": 183234,
+  "scrollHeight": 186400,
+  "clientHeight": 839,
+  "bottomGap": 2327,
+  "firstVisible": {
+    "id": "terminal:assistant:streaming-fixture-prelude-035b4f85-0584-4fd5-8e7c-3ff3e927fdfa:assistant:0",
+    "top": -42.59375,
+    "bottom": 14.796875
+  },
+  "visible": [
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-035b4f85-0584-4fd5-8e7c-3ff3e927fdfa:assistant:0",
+      "top": -42.59375,
+      "bottom": 14.796875
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-b2743fe8-3289-4369-9682-13a854b9757b:assistant:0",
+      "top": 14.796875,
+      "bottom": 72.1875
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-24710e82-4ed8-4f21-a3bd-1ff5510dacd1:assistant:0",
+      "top": 72.1875,
+      "bottom": 129.578125
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-a9f5750d-4357-4c40-b0f4-31fa7789d482:assistant:0",
+      "top": 129.578125,
+      "bottom": 186.96875
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-1ae4079c-4e19-4acf-bcde-d02b5da26929:assistant:0",
+      "top": 186.96875,
+      "bottom": 244.359375
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-c7903472-78d1-42d3-8b2b-8fb1ad5cb703:assistant:0",
+      "top": 244.359375,
+      "bottom": 301.75
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-6c0491ba-350e-4121-a9db-9a0e87c85385:assistant:0",
+      "top": 301.75,
+      "bottom": 359.140625
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-3725b712-fe99-417c-a551-22e68e12f6a3:assistant:0",
+      "top": 359.140625,
+      "bottom": 416.53125
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-be7bd48e-95f5-4a9a-9a17-35feda93cbd7:assistant:0",
+      "top": 416.53125,
+      "bottom": 473.921875
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-70676a37-1ed4-4424-ad4a-8ddac47ff278:assistant:0",
+      "top": 473.921875,
+      "bottom": 531.3125
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-2584cc51-99e3-40a6-bd91-0b7892ee62a4:assistant:0",
+      "top": 531.3125,
+      "bottom": 588.703125
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-91ad0eb0-f09e-4687-a078-38b126e65afe:assistant:0",
+      "top": 588.703125,
+      "bottom": 646.09375
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-57eaee8c-8ac7-48cb-9743-c845d360793e:assistant:0",
+      "top": 646.09375,
+      "bottom": 703.484375
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-58d004fc-802a-4e7a-8320-54a597e1a032:assistant:0",
+      "top": 703.484375,
+      "bottom": 760.875
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-92fc2189-de6d-422b-b579-424f72f54fd4:assistant:0",
+      "top": 760.875,
+      "bottom": 818.265625
+    },
+    {
+      "id": "terminal:assistant:streaming-fixture-prelude-287d9079-2d68-4fa0-8bd5-e9806828493d:assistant:0",
+      "top": 818.265625,
+      "bottom": 875.65625
+    }
+  ],
+  "detached": true
+}

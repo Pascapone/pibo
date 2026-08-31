@@ -102,7 +102,7 @@ test("Agent Designer exposes goal lifecycle tooling as a default-enabled package
 
 test("navigation away from Agent Designer waits for a successful autosave", () => {
 	assert.match(appSource, /useBlocker\(\{/);
-	assert.match(appSource, /disabled: area !== "agents"/);
+	assert.match(appSource, /disabled: desktopTabsEnabled[\s\S]{0,240}desktopActiveTab\.target\.route\.area !== "agents"[\s\S]{0,80}: area !== "agents"/);
 	assert.match(appSource, /await autosave\(\)[\s\S]*return false[\s\S]*catch[\s\S]*return true/);
 	assert.match(appSource, /onAutosaveHandlerChange=\{updateAgentAutosaveHandler\}/);
 });

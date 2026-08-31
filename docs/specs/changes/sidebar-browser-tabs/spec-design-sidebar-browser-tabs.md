@@ -1,8 +1,8 @@
 ---
 title: Desktop Browser Tabs for Pibo Chat
-version: 1.3
+version: 1.4
 date_created: 2026-08-30
-last_updated: 2026-08-30
+last_updated: 2026-08-31
 owner: Pibo
 tags: [chat-web, desktop, navigation, tabs, accessibility]
 ---
@@ -99,7 +99,7 @@ History policy:
 ## 6. Test automation strategy
 
 - Pure model/controller tests cover deduplication, close-neighbor selection, URL policy, guarded Agent transitions, bounds, persistence recovery, and route reconciliation.
-- React behavior tests use the controller-compatible `react-dom/test-utils.act` implementation and cover Preview iframe identity across tab switches and Preview fullscreen, automatic fullscreen exit after Preview loss, restored shell controls, inactive resource unmounting, post-close DOM focus, catalog containment, and annotation close. Route/model/render tests cover workflow-version path serialization, tab history/persistence, and exact Desktop/Mobile viewer output. Source-contract checks remain only for static wiring that cannot regress independently of those behavior tests.
+- React behavior tests spawn their child process with `NODE_ENV=development` and use React's development-entry `act` export. They cover Preview iframe identity across tab switches and Preview fullscreen, automatic fullscreen exit after Preview loss, restored shell controls, inactive resource unmounting, post-close DOM focus, catalog containment, and annotation close. Route/model/render tests cover workflow-version path serialization, tab history/persistence, and exact Desktop/Mobile viewer output. Source-contract checks remain only for static wiring that cannot regress independently of those behavior tests.
 - existing Chat Web route, storage, mobile navigation, sidebar, Preview, Raw Events, and fullscreen tests remain in the gate.
 - headful Browser Use validates 1440×900, 1920×1080, and 390×844. CDP records console and failed-network evidence.
 
