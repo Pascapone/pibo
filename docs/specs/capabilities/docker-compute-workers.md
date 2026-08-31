@@ -73,12 +73,13 @@ The compute system MUST rebuild `pibo:latest` only when the selected command's r
 
 #### Current
 
-One-time `spawn` checks `imageExists()` and `shouldRebuild()` using a source hash stored at `~/.pibo/compute-image-hash`. Dev `spawn` checks `shouldRebuildDeps()` using package and Dockerfile hashes stored at `~/.pibo/compute-dep-hash`. `rebuild` always builds and saves both hashes.
+One-time `spawn` checks `imageExists()` and `shouldRebuild()` using an effective Docker build-context hash stored at `~/.pibo/compute-image-hash`. Dev `spawn` checks `shouldRebuildDeps()` using package and Dockerfile hashes stored at `~/.pibo/compute-dep-hash`. `rebuild` always builds and saves both hashes.
 
 #### Acceptance
 
 - Missing image `pibo:latest` triggers a build before spawn.
-- One-time spawn rebuilds when TypeScript/TSX source, package files, or Dockerfile hashes differ from the saved source hash.
+- One-time spawn rebuilds when any file, path, symlink target, or permission in the effective Docker build context differs from the saved source hash.
+- One-time spawn follows `Dockerfile.dockerignore` when present and otherwise `.dockerignore`; changes to either ignore file or `Dockerfile` always invalidate the source hash.
 - Dev spawn rebuilds when `package.json`, `package-lock.json`, or `Dockerfile` hashes differ from the saved dependency hash.
 - `pibo compute rebuild` forces a Docker build and refreshes both hash files.
 - Hash files are stored under `~/.pibo/` and their parent directory is created when needed.
@@ -95,11 +96,12 @@ One-time `spawn` checks `imageExists()` and `shouldRebuild()` using a source has
 
 #### Current
 
-`spawnWorker()` runs `docker run -d`, labels the container with role `worker`, exposes container ports `4789`, `56663`, and `4788` on Docker-assigned host ports, starts the image command `gateway:web`, then reads the assigned ports with `docker port`.
+`spawnWorker()` runs `docker run -d`, labels the container with role `worker`, exposes container ports `4789`, `56663`, and `4788` on Docker-assigned host ports bound to `127.0.0.1`, starts the image command `gateway:web`, then reads the assigned ports with `docker port`.
 
 #### Acceptance
 
 - The returned JSON includes `id`, `image`, `gatewayHost`, `gatewayPort`, `cdpPort`, `webPort`, and `connect`.
+- `gatewayHost` matches the loopback host used for every published port.
 - Container names default to `pibo-worker-<random>` when no name is supplied.
 - Custom `--name` and `--controller` values are applied to the container name or labels.
 - `gatewayPort` maps container port `4789`.
@@ -119,15 +121,17 @@ One-time `spawn` checks `imageExists()` and `shouldRebuild()` using a source has
 
 #### Current
 
-`spawnDevWorker()` creates `.worktrees/<name>` with `git worktree add`, selects the first unused `pibo.compute.portBlock` among running dev containers, maps ports from base `4800 + block * 10`, mounts the worktree at `/workspace`, and keeps the container alive with `tail -f /dev/null`.
+`spawnDevWorker()` creates `.worktrees/<name>` with `git worktree add`, selects the first unused `pibo.compute.portBlock` among running dev containers, maps ports from base `4800 + block * 10` on `127.0.0.1`, mounts the worktree at `/workspace`, and keeps the container alive with `tail -f /dev/null`. A cross-process lock serializes port selection through successful Docker startup and is released after failed starts. Stale-lock reclamation verifies both PID liveness and, on Linux, the process start identity so PID reuse cannot preserve an abandoned reservation.
 
 #### Acceptance
 
 - Dev spawn creates or attaches the named Git worktree under `.worktrees/<name>`.
 - Dev worker ids use `pibo-dev-<worktree>`.
 - The returned JSON includes `worktree`, `gatewayPort`, `cdpPort`, `webPort`, `webUIPortChat`, `webUIPortContext`, and `connect`.
+- `gatewayHost` matches the loopback host used for every published port.
 - The container is labeled with role `dev`, created time, port block, worktree name, and optional controller.
 - Port blocks do not overlap with currently running dev containers that carry a port-block label.
+- Concurrent dev spawns receive distinct port blocks, including when they start from separate Pibo processes.
 - Host `node_modules` is mounted into `/workspace/node_modules` when it exists.
 
 #### Scenario: Two dev workers do not collide
@@ -377,7 +381,7 @@ This capability participates in the compute/browser resource lifecycle change. I
 |---|---|---|---|
 | CLI discovery | `pibo compute --help` lists `spawn`, `dev`, `rebuild`, `list`, `release`, and `reap`; output points to `pibo compute spawn --help` and `pibo compute dev --help`; `pibo compute dev --help` points only to `pibo compute dev spawn --help`. | REQ-001 | `test/compute-cli.test.mjs` |
 | CLI validation without Docker | `pibo compute dev spawn` without `--worktree` fails through Commander before Docker or Git commands run; unknown compute subcommands fail with help/error output. | REQ-001, REQ-004 | `test/compute-cli.test.mjs` |
-| Hash predicates | Dependency hash changes for `package.json`, `package-lock.json`, or `Dockerfile`; source hash includes TypeScript/TSX and package/Dockerfile inputs while skipping generated or local-state directories. | REQ-002 | unit test with temporary workspace |
+| Hash predicates | Dependency hash changes for `package.json`, `package-lock.json`, or `Dockerfile`; source hash includes the effective Docker build context while skipping `.dockerignore` exclusions. | REQ-002 | unit test with temporary workspace |
 | Docker command construction | Mock `docker` and `git` commands to verify one-time worker labels, dynamic exposed ports, dev worker labels, deterministic port mapping, optional controller labels, and node_modules mount behavior. | REQ-003, REQ-004 | command-stub unit test |
 | Cleanup selection | `listWorkers()` includes worker and dev roles by default; `reapWorkers()` removes only role `worker` by default and includes old dev workers only with `includeDev: true`; release never removes worktree directories. | REQ-007 | command-stub unit test |
 

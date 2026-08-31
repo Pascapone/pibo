@@ -364,6 +364,7 @@ export function useSessionTraceLiveStream({
 		const recoverOnline = () => recoverSelectedLiveStream(true);
 		const markSuspended = () => {
 			selectedPageSuspended.current = true;
+			selectedLiveStreamRef.current?.events.close();
 		};
 		const recoverWhenVisible = () => {
 			if (document.hidden) {

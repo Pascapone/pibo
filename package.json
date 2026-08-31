@@ -14,7 +14,12 @@
     "docs/ops/**",
     "README.md",
     "src/mcp/LICENSE.mcp-cli",
-    "npm-shrinkwrap.json"
+    "npm-shrinkwrap.json",
+    "compute-image/Dockerfile",
+    "compute-image/Dockerfile.dockerignore",
+    "scripts/docker-entrypoint.sh",
+    "scripts/prepare-browser-use-wrapper.sh",
+    "scripts/prepare-agent-browser-wrapper.sh"
   ],
   "bin": {
     "pibo": "dist/bin/pibo.js",
@@ -58,6 +63,7 @@
     "postpack": "node scripts/package-shrinkwrap.mjs clean"
   },
   "dependencies": {
+    "@balena/dockerignore": "1.0.2",
     "@earendil-works/pi-agent-core": "0.84.2",
     "@earendil-works/pi-ai": "0.84.2",
     "@earendil-works/pi-coding-agent": "0.84.2",

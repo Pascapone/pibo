@@ -83,6 +83,7 @@ import {
 import { isChatWebSessionArchived } from "./session-metadata.js";
 import { withWorkflowSessionKind } from "../../sessions/workflow-session-kind.js";
 import {
+	CustomAgentTargetReferenceError,
 	CustomAgentStore,
 	createDefaultCustomAgentStore,
 	previewCustomAgentCreate,
@@ -109,7 +110,7 @@ import { ScopedUserSkillManager } from "../../user-skills/manager.js";
 import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey } from "../../data/ingest-service.js";
 import { ChatEventCommandService } from "./data/event-command-service.js";
 import { ChatReadStateService } from "./data/read-state-service.js";
-import { ChatRoomService } from "./data/room-service.js";
+import { ChatRoomService, PiboRoomHierarchyCycleError } from "./data/room-service.js";
 import { ChatSessionQueryService } from "./data/session-query-service.js";
 import { ChatTimelineQueryService } from "./data/timeline-query-service.js";
 import { ChatHistoryQueryService, type ChatProductHistoryCoverage } from "./data/history-query-service.js";
@@ -3282,6 +3283,21 @@ function normalizeAgentDeleteConfirmation(value: unknown): string {
 	return value.trim();
 }
 
+function requireCustomAgentNotTargeted(
+	state: ChatWebAppState,
+	agent: CustomAgentDefinition,
+	options: { activeOnly?: boolean } = {},
+): void {
+	const dependents = state.agentStore.listReferencingAgents(agent.id)
+		.filter((dependent) => !options.activeOnly || !dependent.archivedAt);
+	if (dependents.length === 0) return;
+	const error = new CustomAgentTargetReferenceError(agent.profileName, dependents.map((dependent) => dependent.profileName));
+	const message = options.activeOnly
+		? error.message.replace("targeted by custom agents", "targeted by active custom agents")
+		: error.message;
+	throw new PiboWebHttpError(message, 409);
+}
+
 async function deleteSessionsForAgentProfile(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
@@ -3307,9 +3323,11 @@ async function deleteSessionsForAgentProfile(
 	const orderedIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
-	for (const id of orderedIds) await deleteSession(id);
-	state.sessionQuery.deleteSessions(orderedIds);
-	state.eventCommands.deleteSessions(orderedIds);
+	for (const id of orderedIds) {
+		await state.projectService.deleteProjectSessionWithCanonicalDelete(id, () => deleteSession(id));
+		state.sessionQuery.deleteSessions([id]);
+		state.eventCommands.deleteSessions([id]);
+	}
 	for (const id of orderedIds) disposeSessionStreamState(state, id);
 	return orderedIds;
 }
@@ -3338,9 +3356,11 @@ async function deleteSessionSubtree(
 	const orderedIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
-	for (const id of orderedIds) await deleteSession(id);
-	state.sessionQuery.deleteSessions(orderedIds);
-	state.eventCommands.deleteSessions(orderedIds);
+	for (const id of orderedIds) {
+		await state.projectService.deleteProjectSessionWithCanonicalDelete(id, () => deleteSession(id));
+		state.sessionQuery.deleteSessions([id]);
+		state.eventCommands.deleteSessions([id]);
+	}
 	for (const id of orderedIds) disposeSessionStreamState(state, id);
 	return orderedIds;
 }
@@ -3383,9 +3403,11 @@ async function deleteRoomTree(
 	const orderedSessionIds = [...ids].sort(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
-	for (const id of orderedSessionIds) await deleteSession(id);
-	state.sessionQuery.deleteSessions(orderedSessionIds);
-	state.eventCommands.deleteSessions(orderedSessionIds);
+	for (const id of orderedSessionIds) {
+		await state.projectService.deleteProjectSessionWithCanonicalDelete(id, () => deleteSession(id));
+		state.sessionQuery.deleteSessions([id]);
+		state.eventCommands.deleteSessions([id]);
+	}
 	for (const id of orderedSessionIds) disposeSessionStreamState(state, id);
 	state.eventCommands.deleteRooms(roomIds);
 	const orderedRoomIds = [...roomIds].reverse();
@@ -5068,7 +5090,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatProjectPatchBody>(request);
 				try {
-					requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					const existingProject = requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					if (existingProject.metadata.default === true) throw new PiboWebHttpError("Project Manager cannot be changed", 400);
 					const project = state.projectService.updateProject(projectResource.projectId, {
 						...(body.name !== undefined ? { name: normalizeRoomName(body.name) } : {}),
 						...(body.description !== undefined ? { description: normalizeProjectDescription(body.description) ?? null } : {}),
@@ -5087,7 +5110,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatProjectDeleteBody>(request);
 				try {
-					requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					const project = requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
+					if (project.metadata.default === true) throw new PiboWebHttpError("Project Manager cannot be deleted", 400);
 					return responseJson(state.projectService.deleteProject(projectResource.projectId, {
 						confirmName: normalizeRoomDeleteConfirmation(body.confirmName),
 						deleteFiles: body.deleteFiles === true,
@@ -5375,22 +5399,42 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const rootPiboSessionId = url.searchParams.get("rootPiboSessionId") ?? url.searchParams.get("piboSessionId");
 				if (!rootPiboSessionId) throw new PiboWebHttpError("rootPiboSessionId is required", 400);
 				requireSharedSession(context, rootPiboSessionId);
-				if (!context.channelContext.snapshotSignalTree || !context.channelContext.subscribeSignalTree) {
+				const includeStatuses = parseBooleanSearchParam(url, "includeStatuses");
+				if (
+					!context.channelContext.snapshotSignalTree
+					|| !context.channelContext.subscribeSignalTree
+					|| (includeStatuses && (!context.channelContext.snapshotSignalStatuses || !context.channelContext.subscribeSignalStatuses))
+				) {
 					throw new PiboWebHttpError("Signal registry is not available", 503);
 				}
-				let unsubscribe: (() => void) | undefined;
+				let unsubscribeTree: (() => void) | undefined;
+				let unsubscribeStatuses: (() => void) | undefined;
 				let heartbeat: ReturnType<typeof setInterval> | undefined;
+				let closed = false;
 				const stream = new ReadableStream<Uint8Array>({
 					start: (controller) => {
 						writeJsonSse(controller, "signal_snapshot", context.channelContext.snapshotSignalTree!(rootPiboSessionId));
-						unsubscribe = context.channelContext.subscribeSignalTree!(rootPiboSessionId, (patch) => {
-							writeJsonSse(controller, "signal_patch", patch, String(patch.toVersion));
+						unsubscribeTree = context.channelContext.subscribeSignalTree!(rootPiboSessionId, (patch) => {
+							if (!closed) writeJsonSse(controller, "signal_patch", patch, String(patch.toVersion));
 						});
-						heartbeat = setInterval(() => writeSseComment(controller, "heartbeat"), 25_000);
+						if (includeStatuses) {
+							writeJsonSse(controller, "signal_status_snapshot", context.channelContext.snapshotSignalStatuses!());
+							unsubscribeStatuses = context.channelContext.subscribeSignalStatuses!((patch) => {
+								if (closed) return;
+								const statusPatch = compactSignalStatusPatch(patch);
+								writeJsonSse(controller, "signal_status_patch", statusPatch, `${patch.rootPiboSessionId}:${patch.toVersion}`);
+							});
+						}
+						heartbeat = setInterval(() => {
+							if (!closed) writeSseComment(controller, "heartbeat");
+						}, 25_000);
 					},
 					cancel: () => {
-						unsubscribe?.();
-						unsubscribe = undefined;
+						closed = true;
+						unsubscribeTree?.();
+						unsubscribeTree = undefined;
+						unsubscribeStatuses?.();
+						unsubscribeStatuses = undefined;
 						if (heartbeat) clearInterval(heartbeat);
 						heartbeat = undefined;
 					},
@@ -5847,6 +5891,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (customAgentUpdateAffectsRuntime(update)) {
 					await requireValidCustomAgentRuntime(previewCustomAgentUpdate(existing, update), context);
 				}
+				if (archived === true && !existing.archivedAt) {
+					requireCustomAgentNotTargeted(state, existing, { activeOnly: true });
+				}
 				const updated = Object.keys(update).length ? state.agentStore.update(patchAgentId, update) : existing;
 				const afterUpdate = requireSharedAgent(updated);
 				const agent = archived === undefined ? afterUpdate : state.agentStore.setArchived(patchAgentId, archived);
@@ -5871,8 +5918,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (confirmName !== agent.profileName) {
 					throw new PiboWebHttpError(`Type "${agent.profileName}" to permanently delete this agent and its sessions.`, 400);
 				}
+				requireCustomAgentNotTargeted(state, agent);
 				const deletedSessionIds = await deleteSessionsForAgentProfile(state, context, webSession, [agent.profileName, ...agent.profileAliases]);
-				state.agentStore.delete(agent.id);
+				try {
+					state.agentStore.delete(agent.id);
+				} catch (error) {
+					if (error instanceof CustomAgentTargetReferenceError) throw new PiboWebHttpError(error.message, 409);
+					throw error;
+				}
 				context.channelContext.removeProfile?.(agent.profileName);
 				invalidateBootstrapCatalogCache(state);
 				return responseJson({ deletedAgentId: agent.id, deletedSessionIds });
@@ -6007,7 +6060,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const body = await readJsonBody<ChatRoomPatchBody>(request);
 				const update = createRoomUpdate(existingRoom, body);
 				if (update.parentRoomId) requireRoom(state, update.parentRoomId, webSession, "admin");
-				const room = state.roomService.updateRoom(roomResource.roomId, update);
+				let room: PiboRoom | undefined;
+				try {
+					room = state.roomService.updateRoom(roomResource.roomId, update);
+				} catch (error) {
+					if (error instanceof PiboRoomHierarchyCycleError) {
+						throw new PiboWebHttpError(error.message, 400);
+					}
+					throw error;
+				}
 				if (!room) throw new PiboWebHttpError("Room not found", 404);
 				return responseJson({ room });
 			}

@@ -141,7 +141,7 @@ export function subscribeSignalStatuses(
 	events.addEventListener("signal_status_snapshot", (message) => handlers.onSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusSnapshot));
 	events.addEventListener("signal_status_patch", (message) => handlers.onPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusPatch));
 	events.onerror = (event) => handlers.onError?.(event);
-	return () => events.close();
+	return closeEventSourceOnPageHide(events);
 }
 
 export function subscribeSignalTree(
@@ -149,15 +149,29 @@ export function subscribeSignalTree(
 	handlers: {
 		onSnapshot?: (snapshot: PiboSignalSnapshot) => void;
 		onPatch?: (patch: PiboSignalPatch) => void;
+		onStatusSnapshot?: (snapshot: PiboSignalStatusSnapshot) => void;
+		onStatusPatch?: (patch: PiboSignalStatusPatch) => void;
 		onError?: (event: Event) => void;
 	},
 ): () => void {
 	const params = new URLSearchParams({ rootPiboSessionId });
+	if (handlers.onStatusSnapshot || handlers.onStatusPatch) params.set("includeStatuses", "true");
 	const events = new EventSource(`/api/chat/signals/events?${params.toString()}`);
 	events.addEventListener("signal_snapshot", (message) => handlers.onSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalSnapshot));
 	events.addEventListener("signal_patch", (message) => handlers.onPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalPatch));
+	events.addEventListener("signal_status_snapshot", (message) => handlers.onStatusSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusSnapshot));
+	events.addEventListener("signal_status_patch", (message) => handlers.onStatusPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusPatch));
 	events.onerror = (event) => handlers.onError?.(event);
-	return () => events.close();
+	return closeEventSourceOnPageHide(events);
+}
+
+function closeEventSourceOnPageHide(events: EventSource): () => void {
+	const close = () => events.close();
+	window.addEventListener("pagehide", close);
+	return () => {
+		window.removeEventListener("pagehide", close);
+		close();
+	};
 }
 
 function toEtag(version: string): string {

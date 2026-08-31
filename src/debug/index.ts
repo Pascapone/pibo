@@ -590,6 +590,7 @@ async function runDebugEvents(args: string[]): Promise<void> {
 		const selector = options.positionals[2];
 		if (!selector) throw new Error("pibo debug events <pibo-session-id> show requires <stream-id-or-event-id>");
 		const result = inspectDebugEventShow(piboSessionId, resolveDebugStore("chat"), selector, { ...detailOptions(options), payload: options.payload, raw: options.raw, field: options.field });
+		if (!result.event) process.exitCode = 1;
 		if (options.json) console.log(formatJson(result));
 		else console.log(formatDebugEventShow(result));
 		return;

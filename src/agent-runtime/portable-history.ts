@@ -129,6 +129,10 @@ function optionalBoundedIdentifierText(value: string | null): string | undefined
 	return value ? boundedIdentifierText(value, "portable-id") : undefined;
 }
 
+function toolInvocationKey(turnId: string | null | undefined, toolCallId: string): string {
+	return JSON.stringify([turnId ?? null, toolCallId]);
+}
+
 function boundedText(value: string, maxBytes = MAX_ENTRY_BYTES): string {
 	if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
 	const suffix = "\n\n[Portable history entry truncated by Pibo.]";
@@ -370,16 +374,19 @@ export class PiboDataPortableHistoryProvider implements AgentRuntimePortableHist
 		const results = new Map<string, EventRow>();
 		for (const row of rows) {
 			if (!row.tool_call_id) continue;
+			const invocationKey = toolInvocationKey(row.turn_id, row.tool_call_id);
 			if (row.type === "tool_call") {
 				const attributes = parseObject(row.attributes_json);
-				const existing = calls.get(row.tool_call_id);
-				if (!existing || attributes.argsComplete === true) calls.set(row.tool_call_id, row);
+				const existing = calls.get(invocationKey);
+				if (!existing || attributes.argsComplete === true) calls.set(invocationKey, row);
 			} else {
-				results.set(row.tool_call_id, row);
+				results.set(invocationKey, row);
 			}
 		}
 		const entries: AgentRuntimeHistoryEntry[] = [];
-		for (const [toolCallId, row] of calls) {
+		for (const row of calls.values()) {
+			const toolCallId = row.tool_call_id;
+			if (!toolCallId) continue;
 			const attributes = parseObject(row.attributes_json);
 			const portableToolCallId = boundedIdentifierText(toolCallId, `tool-call-${row.stream_id}`);
 			const toolName = boundedIdentifierText(typeof attributes.toolName === "string" ? attributes.toolName : row.preview_text ?? "tool", "tool", 256);
@@ -403,7 +410,9 @@ export class PiboDataPortableHistoryProvider implements AgentRuntimePortableHist
 				toolName,
 			});
 		}
-		for (const [toolCallId, row] of results) {
+		for (const row of results.values()) {
+			const toolCallId = row.tool_call_id;
+			if (!toolCallId) continue;
 			const attributes = parseObject(row.attributes_json);
 			const portableToolCallId = boundedIdentifierText(toolCallId, `tool-call-${row.stream_id}`);
 			const toolName = boundedIdentifierText(typeof attributes.toolName === "string" ? attributes.toolName : row.preview_text ?? "tool", "tool", 256);
@@ -465,15 +474,15 @@ function normalizeToolPairs(entries: readonly AgentRuntimeHistoryEntry[]): Agent
 	const resultIds = new Set<string>();
 	for (const entry of entries) {
 		if (entry.type !== "message") continue;
-		if (entry.role === "tool" && entry.toolCallId) resultIds.add(entry.toolCallId);
+		if (entry.role === "tool" && entry.toolCallId) resultIds.add(toolInvocationKey(entry.turnId, entry.toolCallId));
 		if (!Array.isArray(entry.content)) continue;
 		for (const part of entry.content) {
-			if (part.type === "tool_call") callIds.add(part.toolCallId);
+			if (part.type === "tool_call") callIds.add(toolInvocationKey(entry.turnId, part.toolCallId));
 		}
 	}
 	return entries.map((entry) => {
 		if (entry.type !== "message") return entry;
-		if (entry.role === "tool" && entry.toolCallId && !callIds.has(entry.toolCallId)) {
+		if (entry.role === "tool" && entry.toolCallId && !callIds.has(toolInvocationKey(entry.turnId, entry.toolCallId))) {
 			return {
 				...entry,
 				role: "user",
@@ -489,7 +498,7 @@ function normalizeToolPairs(entries: readonly AgentRuntimeHistoryEntry[]): Agent
 		}
 		if (entry.role !== "assistant" || !Array.isArray(entry.content)) return entry;
 		const content = entry.content.map((part): AgentRuntimeHistoryContentPart => {
-			if (part.type !== "tool_call" || resultIds.has(part.toolCallId)) return part;
+			if (part.type !== "tool_call" || resultIds.has(toolInvocationKey(entry.turnId, part.toolCallId))) return part;
 			return {
 				type: "text",
 				text: `[Portable fallback: tool call "${part.toolName}" had no retained result.]\nInput: ${JSON.stringify(part.input ?? null)}`,

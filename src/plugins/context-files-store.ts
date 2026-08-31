@@ -628,6 +628,11 @@ export class ContextFileMetadataStore {
 					WHERE key = ?
 				`).run(file.workingContent, file.sourceContent ?? null, file.key);
 			}
+			for (const file of recovered) {
+				if (!file.restoreManagedFile) continue;
+				mkdirSync(dirname(file.managedPath), { recursive: true });
+				writeFileSync(file.managedPath, file.workingContent, "utf8");
+			}
 			const migratedAt = new Date().toISOString();
 			this.db.prepare(`
 				INSERT INTO context_file_store_meta (key, value) VALUES (?, ?)
@@ -641,12 +646,6 @@ export class ContextFileMetadataStore {
 		} catch (error) {
 			this.db.exec("ROLLBACK");
 			throw error;
-		}
-
-		for (const file of recovered) {
-			if (!file.restoreManagedFile) continue;
-			mkdirSync(dirname(file.managedPath), { recursive: true });
-			writeFileSync(file.managedPath, file.workingContent, "utf8");
 		}
 	}
 
