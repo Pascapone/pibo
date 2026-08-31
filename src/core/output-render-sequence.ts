@@ -5,6 +5,7 @@ const RENDER_SEQUENCE_SLOTS_PER_MILLISECOND = 1_000;
 const MAX_TRACKED_SESSIONS = 1_024;
 const MAX_RECENT_SEGMENTS_PER_SESSION = 1_024;
 const MAX_RECENT_TOOL_INVOCATIONS_PER_SESSION = 1_024;
+const MAX_RECENT_OUTPUT_PARTS_PER_SESSION = 1_024;
 
 export type OutputRenderHighWaterStore = {
 	claimOutputRenderSequence(piboSessionId: string, minimum: number): number;
@@ -13,6 +14,19 @@ export type OutputRenderHighWaterStore = {
 	observeOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string, ordinal: number): void;
 	claimOrAttachOutputToolInvocation?(input: OutputToolInvocationTransition): number;
 	observeOutputToolInvocation?(input: OutputToolInvocationTransition & { ordinal: number }): void;
+	claimOrAttachOutputPart?(input: OutputPartTransition): number;
+};
+
+export type OutputPartKind = "assistant" | "thinking" | "usage" | "compaction";
+
+export type OutputPartTransition = {
+	piboSessionId: string;
+	eventId: string;
+	kind: OutputPartKind;
+	proposedIndex: number;
+	fingerprint: string;
+	identityFingerprint: string;
+	terminal: boolean;
 };
 
 export type OutputToolInvocationTransition = {
@@ -39,6 +53,12 @@ type ToolInvocationState = {
 	persistedIdentity: boolean;
 };
 
+type OutputPartState = {
+	index: number;
+	fingerprints: Set<string>;
+	closed: boolean;
+};
+
 type SessionSequenceState = {
 	positions: Map<string, number>;
 	segmentEventIds: Map<string, string | undefined>;
@@ -46,6 +66,7 @@ type SessionSequenceState = {
 	completedSegments: Set<string>;
 	activeEventId?: string;
 	toolInvocations: Map<string, ToolInvocationState[]>;
+	outputParts: Map<string, OutputPartState[]>;
 	lastSequence: number;
 };
 
@@ -75,7 +96,8 @@ export class OutputRenderSequencer {
 	position<TEvent extends PiboOutputEvent>(event: TEvent): TEvent {
 		const state = this.sessionState(event.piboSessionId);
 		this.trackActiveTurn(state, event);
-		const eventWithToolIdentity = this.positionToolInvocation(state, event);
+		const eventWithPartIdentity = this.positionOutputPart(state, event);
+		const eventWithToolIdentity = this.positionToolInvocation(state, eventWithPartIdentity);
 		const key = outputRenderSegmentKey(eventWithToolIdentity, state.activeEventId);
 		const supplied = validRenderSequence(eventWithToolIdentity.renderSequence)
 			? eventWithToolIdentity.renderSequence
@@ -139,10 +161,55 @@ export class OutputRenderSequencer {
 			activeSegments: new Set(),
 			completedSegments: new Set(),
 			toolInvocations: new Map(),
+			outputParts: new Map(),
 			lastSequence: 0,
 		};
 		this.sessions.set(piboSessionId, state);
 		return state;
+	}
+
+	private positionOutputPart<TEvent extends PiboOutputEvent>(state: SessionSequenceState, event: TEvent): TEvent {
+		const transition = outputPartTransition(event, state.activeEventId);
+		if (!transition) return event;
+		const key = outputPartCounterKey(transition.eventId, transition.kind);
+		const parts = state.outputParts.get(key) ?? [];
+		if (!state.outputParts.has(key)) state.outputParts.set(key, parts);
+		const exact = parts.find((part) => part.fingerprints.has(transition.fingerprint));
+		const latestOpen = [...parts].reverse().find((part) => !part.closed);
+		const localMaximum = parts.reduce((maximum, part) => Math.max(maximum, part.index), -1);
+		const localIndex = exact?.index
+			?? latestOpen?.index
+			?? (transition.proposedIndex > localMaximum ? transition.proposedIndex : localMaximum + 1);
+		const index = validRenderSequence(event.renderSequence) || exact || latestOpen
+			? localIndex
+			: this.highWaterStore?.claimOrAttachOutputPart?.({ ...transition, proposedIndex: localIndex }) ?? localIndex;
+		let part = parts.find((candidate) => candidate.index === index);
+		if (!part) {
+			part = { index, fingerprints: new Set(), closed: false };
+			parts.push(part);
+		}
+		part.fingerprints.add(transition.fingerprint);
+		if (transition.terminal) part.closed = true;
+		this.trimOutputParts(state);
+		return withOutputPartIndex(event, transition.kind, index);
+	}
+
+	private trimOutputParts(state: SessionSequenceState): void {
+		let total = 0;
+		for (const parts of state.outputParts.values()) total += parts.length;
+		while (total > MAX_RECENT_OUTPUT_PARTS_PER_SESSION) {
+			let removed = false;
+			for (const [key, parts] of state.outputParts) {
+				const closedIndex = parts.findIndex((part) => part.closed);
+				if (closedIndex === -1) continue;
+				parts.splice(closedIndex, 1);
+				total -= 1;
+				if (!parts.length) state.outputParts.delete(key);
+				removed = true;
+				break;
+			}
+			if (!removed) break;
+		}
 	}
 
 	private positionToolInvocation<TEvent extends PiboOutputEvent>(state: SessionSequenceState, event: TEvent): TEvent {
@@ -292,6 +359,105 @@ function createInvocation(invocations: ToolInvocationState[], ordinal: number): 
 	const invocation = { ordinal, seen: new Set<PiboOutputEvent["type"]>(), closed: false, persistedIdentity: false };
 	invocations.push(invocation);
 	return invocation;
+}
+
+function outputPartTransition(event: PiboOutputEvent, activeEventId: string | undefined): OutputPartTransition | undefined {
+	const eventId = ("eventId" in event ? event.eventId : undefined) ?? activeEventId;
+	if (!eventId) return undefined;
+	if (event.type === "assistant_delta" || event.type === "assistant_message") {
+		return {
+			piboSessionId: event.piboSessionId,
+			eventId,
+			kind: "assistant",
+			proposedIndex: event.assistantIndex ?? event.contentIndex ?? 0,
+			fingerprint: outputPartFingerprint(event),
+			identityFingerprint: outputIdentityFingerprint(event),
+			terminal: event.type === "assistant_message",
+		};
+	}
+	if (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished") {
+		return {
+			piboSessionId: event.piboSessionId,
+			eventId,
+			kind: "thinking",
+			proposedIndex: event.thinkingIndex ?? event.contentIndex ?? 0,
+			fingerprint: outputPartFingerprint(event),
+			identityFingerprint: outputIdentityFingerprint(event),
+			terminal: event.type === "thinking_finished",
+		};
+	}
+	if (event.type === "assistant_usage") {
+		return {
+			piboSessionId: event.piboSessionId,
+			eventId,
+			kind: "usage",
+			proposedIndex: event.usageIndex ?? 0,
+			fingerprint: outputPartFingerprint(event),
+			identityFingerprint: outputIdentityFingerprint(event),
+			terminal: true,
+		};
+	}
+	if (event.type === "compaction_start" || event.type === "compaction_end") {
+		return {
+			piboSessionId: event.piboSessionId,
+			eventId,
+			kind: "compaction",
+			proposedIndex: event.compactionIndex ?? 0,
+			fingerprint: outputPartFingerprint(event),
+			identityFingerprint: outputIdentityFingerprint(event),
+			terminal: event.type === "compaction_end",
+		};
+	}
+	return undefined;
+}
+
+export function outputIdentityFingerprint(event: PiboOutputEvent): string {
+	const payload = { ...event } as Record<string, unknown>;
+	delete payload.renderSequence;
+	return createHash("sha256").update(stableJson(payload)).digest("hex");
+}
+
+export function outputPartFingerprint(event: PiboOutputEvent): string {
+	const payload = { ...event } as Record<string, unknown>;
+	delete payload.renderSequence;
+	delete payload.assistantIndex;
+	delete payload.thinkingIndex;
+	delete payload.usageIndex;
+	delete payload.compactionIndex;
+	delete payload.contentIndex;
+	return createHash("sha256").update(stableJson(payload)).digest("hex");
+}
+
+function stableJson(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+	if (value && typeof value === "object") {
+		return `{${Object.entries(value as Record<string, unknown>)
+			.filter(([, entry]) => entry !== undefined)
+			.sort(([left], [right]) => left.localeCompare(right))
+			.map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+			.join(",")}}`;
+	}
+	return JSON.stringify(value) ?? "null";
+}
+
+function outputPartCounterKey(eventId: string, kind: OutputPartKind): string {
+	return JSON.stringify([eventId, kind]);
+}
+
+function withOutputPartIndex<TEvent extends PiboOutputEvent>(event: TEvent, kind: OutputPartKind, index: number): TEvent {
+	if (kind === "assistant" && (event.type === "assistant_delta" || event.type === "assistant_message")) {
+		return event.assistantIndex === index ? event : { ...event, assistantIndex: index } as TEvent;
+	}
+	if (kind === "thinking" && (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished")) {
+		return event.thinkingIndex === index ? event : { ...event, thinkingIndex: index } as TEvent;
+	}
+	if (kind === "usage" && event.type === "assistant_usage") {
+		return event.usageIndex === index ? event : { ...event, usageIndex: index } as TEvent;
+	}
+	if (kind === "compaction" && (event.type === "compaction_start" || event.type === "compaction_end")) {
+		return event.compactionIndex === index ? event : { ...event, compactionIndex: index } as TEvent;
+	}
+	return event;
 }
 
 function segmentRemainsActive(event: PiboOutputEvent): boolean {
