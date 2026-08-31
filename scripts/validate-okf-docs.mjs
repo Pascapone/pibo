@@ -304,6 +304,7 @@ function validatePreservedBodyLinks({ data, body, failures, path, reporter }) {
 	} else {
 		for (const entry of preserved.unresolved_links) {
 			const target = entry?.target;
+			const rawTarget = typeof target === "string" ? target.split("#", 1)[0].split("?", 1)[0] : null;
 			if (!entry || typeof entry !== "object" || Array.isArray(entry) || Object.keys(entry).some((key) => !["target", "reason"].includes(key))) {
 				reporter.error("PIBO_PRESERVED_LINK_FIELD", path, "Each preserved unresolved link may contain only target and reason.");
 				valid = false;
@@ -314,8 +315,11 @@ function validatePreservedBodyLinks({ data, body, failures, path, reporter }) {
 			} catch {
 				// Invalid encoding is reported by normal link validation and is never suppressible.
 			}
-			const targetSegments = decodedTarget?.replace(/^\//, "").split("/") ?? [];
-			if (typeof target !== "string" || target !== target.trim() || !target || decodedTarget == null || isExternal(target) || isExternal(decodedTarget) || /[*?{}[\]]/.test(decodedTarget) || decodedTarget.endsWith("/") || targetSegments.some((segment) => segment === "." || segment === "..")) {
+			const rawDotSegments = rawTarget?.replace(/^\//, "").split("/").filter((segment) => segment === "." || segment === "..") ?? [];
+			const decodedDotSegments = decodedTarget?.replace(/^\//, "").split("/").filter((segment) => segment === "." || segment === "..") ?? [];
+			const encodedDotTraversal = rawDotSegments.length !== decodedDotSegments.length
+				|| rawDotSegments.some((segment, index) => segment !== decodedDotSegments[index]);
+			if (typeof target !== "string" || target !== target.trim() || !target || decodedTarget == null || isExternal(target) || isExternal(decodedTarget) || /[*?{}[\]]/.test(decodedTarget) || decodedTarget.endsWith("/") || encodedDotTraversal) {
 				reporter.error("PIBO_PRESERVED_LINK_TARGET", path, `Preserved unresolved-link target must name one exact local file: ${String(target)}`);
 				valid = false;
 				continue;
@@ -330,9 +334,9 @@ function validatePreservedBodyLinks({ data, body, failures, path, reporter }) {
 			} else declared.set(target, entry);
 		}
 	}
-	const failedTargets = new Set(failures.map((failure) => failure.target));
+	const failedTargets = new Set(failures.filter((failure) => failure.code === "PIBO_LINK_MISSING").map((failure) => failure.target));
 	for (const target of declared.keys()) {
-		if (!failedTargets.has(target)) reporter.error("PIBO_PRESERVED_LINK_UNUSED", path, `Declared preserved link is not currently unresolved: ${target}`);
+		if (!failedTargets.has(target)) reporter.error("PIBO_PRESERVED_LINK_UNUSED", path, `Declared preserved link is not an exact observed missing target inside docs/: ${target}`);
 	}
 	for (const failure of failures) {
 		if (!valid || failure.code !== "PIBO_LINK_MISSING" || !declared.has(failure.target)) reporter.error(failure.code, path, failure.message);

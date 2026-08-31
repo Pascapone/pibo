@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T03:21:15Z"
+  at: "2026-08-31T15:45:43Z"
 sources:
   - id: "okf-v0.2"
     resource: "https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/3fcbb9f828c2f23d109c855ee403c3a4c81f3a96/okf/SPEC.md"
@@ -95,7 +95,7 @@ preserved_body:
       reason: "The preserved source referenced a file that is not retained."
 ```
 
-`source_path` is one exact repository-relative Markdown lineage path, not a directory or pattern. `source_sha256` is the immutable body hash: strict mode hashes every byte after the frontmatter envelope and rejects a mismatch. The exception may suppress only an exact `PIBO_LINK_MISSING` whose resolved target remains inside `docs/`. Escape, invalid-encoding, external, traversal, broad, directory, and every other link failure are never suppressible. Declared targets may not contain `.` or `..` traversal segments. Each missing local link target must appear exactly, with a non-empty reason, in `unresolved_links`; strict mode rejects undeclared failures, duplicate or broad targets, and stale entries that no longer fail. Current or editable concepts cannot use this exception. Changing the body, including adding or repairing a link, requires normal migration into an editable concept instead of updating this envelope.
+`source_path` is one exact repository-relative Markdown lineage path, not a directory or pattern. `source_sha256` is the immutable body hash: strict mode hashes every byte after the frontmatter envelope and rejects a mismatch. This exception is Pibo policy, not OKF core. It may suppress only an exact raw target that link inspection reports as `PIBO_LINK_MISSING` after resolving it inside `docs/`. A raw relative target may contain literal `.` or `..` segments when that exact inspection succeeds; this does not relax traversal generally. Escapes, external URLs, invalid encoding, percent-encoded dot traversal, patterns, directories, stale declarations, mismatched raw targets, and non-missing failures are never suppressible. Each missing local link target must appear exactly, with a non-empty reason, in `unresolved_links`; strict mode rejects undeclared failures, duplicate or broad targets, and stale entries that no longer fail. Current or editable concepts cannot use this exception. Changing the body, including adding or repairing a link, requires normal migration into an editable concept instead of updating this envelope.
 
 # Specification traceability
 

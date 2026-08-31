@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-08-31
+
+- **Validator/profile correction**: Corrected the [preserved-body link rule](/project/documentation-profile.md#preserved-body-link-exception) so an exact raw relative target with literal dot segments is suppressible only when inspection observes the same in-bundle missing link, and recorded the narrow future-correction authority in the [migration plan](/plans/okf-migration.md#standing-authorization-for-trivial-corrections).
+
 ## 2026-08-30
 
 - **Review 10 remediation**: Made exact frontmatter envelopes portable across LF, CRLF, lone CR, and mixed Markdown line endings while preserving original body bytes.

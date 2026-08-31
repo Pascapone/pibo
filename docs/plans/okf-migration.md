@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai/codex"
-  at: "2026-08-29T17:20:46Z"
+  at: "2026-08-31T15:45:43Z"
 sources:
   - id: "foundation-decisions"
     resource: "scope: /tmp/pibo-okf-audits/foundation-decisions.md at base commit 2aef244301f5d181624662fdad53e18e83e80bd9"
@@ -65,6 +65,10 @@ The ledger records these paths once with the following binding decisions from th
 - Focused validator and authoring-guidance tests pass in the Docker worker.
 - Strict mode runs deterministically and reports the pending/profile baseline as failure.
 - Later completion requires zero pending records, strict conformance, canonical specification coverage, and an independent closure audit.
+
+# Standing authorization for trivial corrections
+
+Future agents may autonomously make similarly trivial, mechanically proven validator/profile corrections that do not generalize policy. Each correction must include focused tests, matching profile documentation, exact-scope evidence, and a fresh independent review. Material authority, security, package-scope, or ownership changes still require explicit user approval.
 
 # Risks and rollback
 

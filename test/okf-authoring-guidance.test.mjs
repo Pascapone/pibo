@@ -109,7 +109,20 @@ test("profile documents the shared requirement-ID grammar without requiring REQ"
 	assert.match(profile, /Only exact ordinary `pending` files are skipped/);
 	assert.match(profile, /rejects symlinked or non-directory parents/);
 	assert.match(profile, /HTML-encodes `&`, `<`, and `>` and entity-escapes Markdown punctuation/);
+	assert.match(profile, /This exception is Pibo policy, not OKF core/);
+	assert.match(profile, /exact raw target that link inspection reports as `PIBO_LINK_MISSING` after resolving it inside `docs\/`/);
+	assert.match(profile, /literal `\.` or `\.\.` segments/);
+	assert.match(profile, /percent-encoded dot traversal/);
 	for (const invalid of ["Bare `REQ-001`", "one-component `CTX-001`", "lowercase", "malformed"]) assert.match(profile, new RegExp(invalid));
+});
+
+test("migration plan records bounded standing authority for trivial validator and profile corrections", () => {
+	const plan = read("docs/plans/okf-migration.md");
+	assert.match(plan, /Future agents may autonomously make similarly trivial, mechanically proven validator\/profile corrections/);
+	for (const evidence of ["focused tests", "matching profile documentation", "exact-scope evidence", "fresh independent review"]) {
+		assert.match(plan, new RegExp(evidence));
+	}
+	assert.match(plan, /Material authority, security, package-scope, or ownership changes still require explicit user approval/);
 });
 
 test("host exceptions use exact path-specific role reasons", () => {

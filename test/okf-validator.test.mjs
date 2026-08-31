@@ -583,6 +583,59 @@ test("strict mode permits only exact immutable deprecated historical link except
 	assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
 }));
 
+test("nested preserved bodies allow only exact hash-bound raw dot-segment targets observed missing inside docs", () => withFixture(({ root, records }) => {
+	const path = "docs/legacy/archive/preserved-record.md";
+	const target = "../../capabilities/missing.md";
+	const body = `\n# Preserved record\n\n[Missing capability](${target})\n`;
+	const sourceSha256 = createHash("sha256").update(body).digest("hex");
+	const metadata = `preserved_body:\n  source_path: "docs/old/preserved-record.md"\n  source_sha256: "${sourceSha256}"\n  unresolved_links:\n    - target: "${target}"\n      reason: "The historical capability target was not retained."\n`;
+	const content = concept({
+		type: "Historical Record",
+		title: "Preserved record",
+		authority: "historical",
+		status: "deprecated",
+		sources: metadata,
+		body: `[Missing capability](${target})`,
+	});
+	write(root, path, content);
+	write(root, "docs/legacy/index.md", "# Legacy\n\n- [Archive](archive/)\n");
+	write(root, "docs/legacy/archive/index.md", "# Archive\n\n- [Preserved record](preserved-record.md)\n");
+	writeLedger(root, [
+		...records,
+		{ path: "docs/legacy/archive/index.md", state: "reserved" },
+		{ path, state: "conformant", type: "Historical Record", authority: "historical", status: "deprecated" },
+	]);
+
+	let result = validateRepository({ mode: "strict", projectRoot: root });
+	assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
+
+	write(root, path, content.replace(`target: "${target}"`, 'target: "../../capabilities/./missing.md"'));
+	result = validateRepository({ mode: "strict", projectRoot: root });
+	assert(result.errors.some((issue) => issue.code === "PIBO_LINK_MISSING" && issue.message.includes(target)), JSON.stringify(result.errors, null, 2));
+	assert(result.errors.some((issue) => issue.code === "PIBO_PRESERVED_LINK_UNUSED" && issue.message.includes("../../capabilities/./missing.md")));
+
+	write(root, path, content.replace(sourceSha256, "0".repeat(64)));
+	result = validateRepository({ mode: "strict", projectRoot: root });
+	assert(result.errors.some((issue) => issue.code === "PIBO_PRESERVED_BODY_HASH"));
+	assert(result.errors.some((issue) => issue.code === "PIBO_LINK_MISSING" && issue.message.includes(target)));
+
+	const encodedTarget = "%2e%2e/%2e%2e/capabilities/missing.md";
+	const encodedBody = `\n# Preserved record\n\n[Missing capability](${encodedTarget})\n`;
+	const encodedHash = createHash("sha256").update(encodedBody).digest("hex");
+	const encodedMetadata = metadata.replace(sourceSha256, encodedHash).replaceAll(target, encodedTarget);
+	write(root, path, concept({
+		type: "Historical Record",
+		title: "Preserved record",
+		authority: "historical",
+		status: "deprecated",
+		sources: encodedMetadata,
+		body: `[Missing capability](${encodedTarget})`,
+	}));
+	result = validateRepository({ mode: "strict", projectRoot: root });
+	assert(result.errors.some((issue) => issue.code === "PIBO_PRESERVED_LINK_TARGET" && issue.message.includes(encodedTarget)), JSON.stringify(result.errors, null, 2));
+	assert(result.errors.some((issue) => issue.code === "PIBO_LINK_MISSING" && issue.message.includes(encodedTarget)));
+}));
+
 test("preserved-body declarations cannot suppress escapes, invalid encoding, external, broad, directory, or traversal targets", () => withFixture(({ root, records }) => {
 	const path = "docs/legacy/adversarial-record.md";
 	const body = "\n# Adversarial record\n\n[Escape](../../outside.md)\n[Encoding](%E0%A4%A)\n[External](https://example.invalid/missing.md)\n[Missing](missing.md)\n";
@@ -595,7 +648,10 @@ test("preserved-body declarations cannot suppress escapes, invalid encoding, ext
 	assert(result.errors.some((issue) => issue.code === "PIBO_LINK_ESCAPE"), JSON.stringify(result.errors, null, 2));
 	assert(result.errors.some((issue) => issue.code === "PIBO_LINK_ENCODING"));
 	assert(result.errors.some((issue) => issue.code === "PIBO_LINK_MISSING" && issue.message.includes("missing.md")));
-	assert(result.errors.filter((issue) => issue.code === "PIBO_PRESERVED_LINK_TARGET").length >= 6);
+	assert(result.errors.some((issue) => issue.code === "PIBO_PRESERVED_LINK_UNUSED" && issue.message.includes("../../outside.md")));
+	for (const target of ["%2e%2e/%2e%2e/outside.md", "%E0%A4%A", "https://example.invalid/missing.md", "missing*", "missing/"]) {
+		assert(result.errors.some((issue) => issue.code === "PIBO_PRESERVED_LINK_TARGET" && issue.message.includes(target)), target);
+	}
 }));
 
 test("strict mode rejects mutable, current, undeclared, broad, and stale preserved-link exceptions", () => withFixture(({ root, records }) => {
