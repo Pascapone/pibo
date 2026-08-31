@@ -27,7 +27,7 @@ import {
   storedPiboEventFromV2Row,
   type EventLogRow,
 } from "../apps/chat/data/chat-data-mappers.js";
-import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey } from "../data/ingest-service.js";
+import { ChatDataIngestService, PiboOutputIdentityCollisionError, outputIdempotencyKey, outputPersistenceDeliveryKey } from "../data/ingest-service.js";
 import { OutputCompactor } from "../apps/chat/output-compactor.js";
 import { isPiboOutputEvent } from "../apps/chat/output-event-policy.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
@@ -809,6 +809,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       eventId: firstEvent ? outputPersistenceDeliveryKey(firstEvent) : undefined,
       payload: persistenceState as unknown as PiboJsonValue,
       run: (retryContext) => this.deliverOutputPersistenceState(retryContext),
+      isRetryable: (error) => !(error instanceof PiboOutputIdentityCollisionError),
       onSuccess,
       onDeadLetter,
     };
@@ -821,9 +822,7 @@ export class LocalCliSessionSource implements CliSessionSource {
     if (!session) throw new Error(`No session available for ${persistenceState.piboSessionId}`);
     for (const delivery of persistenceState.deliveries) {
       if (delivery.persisted) continue;
-      if (!this.ingestOutputEvent(session, delivery.event)) {
-        throw new Error(`Failed to persist ${outputPersistenceDeliveryKey(delivery.event)}`);
-      }
+      this.ingestOutputEvent(session, delivery.event);
       delivery.persisted = true;
       retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
     }
@@ -951,21 +950,15 @@ export class LocalCliSessionSource implements CliSessionSource {
   private ingestOutputEvent(
     session: PiboSession,
     event: PiboOutputEvent,
-  ): boolean {
-    if (!this.ingestService) return true;
-    try {
-      this.ingestService.ingestOutputEvent({
-        session,
-        roomId: roomIdFromSession(session),
-        actorId: session.profile,
-        event,
-        createdAt: this.now(),
-      });
-      return true;
-    } catch {
-      // The caller retains the prepared compaction and retries this exact event identity.
-      return false;
-    }
+  ): void {
+    if (!this.ingestService) return;
+    this.ingestService.ingestOutputEvent({
+      session,
+      roomId: roomIdFromSession(session),
+      actorId: session.profile,
+      event,
+      createdAt: this.now(),
+    });
   }
 
   private buildStatus(session: PiboSession): CliRuntimeStatus {

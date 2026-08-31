@@ -9,6 +9,7 @@ import { createChatWebApp } from "../dist/apps/chat/web-app.js";
 import { ChatReadStateService } from "../dist/apps/chat/data/read-state-service.js";
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 import { PiboAuthError } from "../dist/auth/types.js";
@@ -978,6 +979,78 @@ test("chat web trace includes live compactor snapshots without raw events", asyn
 		assert.equal(findAssistantOutput(refreshedTrace.nodes), "Hello world again");
 	} finally {
 		await channel.stop?.();
+	}
+});
+
+test("chat web dead-letters output identity collisions after one attempt", async () => {
+	const host = await startWebHostChannel({ auth: createFakeAuthService() });
+	try {
+		const sessionResponse = await fetch(`${host.baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const { session } = await sessionResponse.json();
+		const eventId = "web-permanent-collision";
+		const seedStore = new PiboDataStore(host.dataStorePath);
+		try {
+			new ChatDataIngestService(seedStore).ingestOutputEvent({
+				session,
+				event: {
+					type: "assistant_message",
+					piboSessionId: session.id,
+					eventId,
+					assistantIndex: 0,
+					renderSequence: 1,
+					text: "stored answer",
+				},
+			});
+		} finally {
+			seedStore.close();
+		}
+
+		host.emitOutput({
+			type: "assistant_message",
+			piboSessionId: session.id,
+			eventId,
+			assistantIndex: 0,
+			renderSequence: 2,
+			text: "conflicting answer",
+		});
+
+		await waitForCondition(() => {
+			const reliability = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				return Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count) === 1;
+			} finally {
+				reliability.close();
+			}
+		}, "output identity collision was not dead-lettered");
+
+		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+		try {
+			assert.equal(reliability.listJobs({ queue: "output-persistence" }).length, 0);
+			const dead = reliability.listDead({ queue: "output-persistence" });
+			assert.equal(dead.length, 1);
+			assert.equal(dead[0].attempts, 1);
+			assert.equal(dead[0].deadReason, "permanent");
+			assert.match(dead[0].lastError, /Pibo output identity collision/);
+		} finally {
+			reliability.close();
+		}
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'assistant_message'").get(session.id).count), 1);
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'pibo.output.identity_collision'").get(session.id).count), 1);
+		} finally {
+			data.close();
+		}
+		const debugResponse = await fetch(`${host.baseURL}/api/chat/debug/persistence`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(debugResponse.status, 200);
+		assert.deepEqual((await debugResponse.json()).retryCounters, { retriable: 0, permanent: 1, quarantined: 0 });
+	} finally {
+		await host.channel.stop?.();
 	}
 });
 
