@@ -340,8 +340,8 @@ Exact source files inspected for this owner:
 
 Related ownership boundaries:
 - SPC-RUN-003: [generation-resources-and-portable-tools.md](/specs/runtime/generation-resources-and-portable-tools.md) owns the linked contract; this specification does not duplicate it.
-- SPC-CMP-003: [browser-use-authenticated-leases.md](/specs/capabilities/browser-use-authenticated-leases.md) owns the linked contract; this specification does not duplicate it.
-- SPC-OP-001: [operator-cli-discovery-and-dispatch.md](/specs/capabilities/operator-cli-discovery-and-dispatch.md) owns the linked contract; this specification does not duplicate it.
+- SPC-CMP-003: [browser-pools-and-leases.md](/specs/compute/browser-pools-and-leases.md) owns the linked contract; this specification does not duplicate it.
+- SPC-OP-001: [operator-cli.md](/specs/operator/operator-cli.md) owns the linked contract; this specification does not duplicate it.
 
 The security policy/mechanics split is explicit: this specification defines the resource or security decision, while linked runtime, gateway, data, web, orchestration, compute, and operator owners provide their execution mechanics.
 
@@ -384,5 +384,5 @@ Package commands after authoring:
 # Related concepts
 
 - [SPC-RUN-003](/specs/runtime/generation-resources-and-portable-tools.md)
-- [SPC-CMP-003](/specs/capabilities/browser-use-authenticated-leases.md)
-- [SPC-OP-001](/specs/capabilities/operator-cli-discovery-and-dispatch.md)
+- [SPC-CMP-003](/specs/compute/browser-pools-and-leases.md)
+- [SPC-OP-001](/specs/operator/operator-cli.md)

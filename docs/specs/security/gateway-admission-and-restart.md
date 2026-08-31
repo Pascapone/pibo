@@ -327,9 +327,9 @@ Exact source files inspected for this owner:
 - "src/gateway/pidfile.ts"
 
 Related ownership boundaries:
-- SPC-ORCH-001: [yielded-run-control.md](/specs/capabilities/yielded-run-control.md) owns the linked contract; this specification does not duplicate it.
-- SPC-CMP-001: [docker-compute-workers.md](/specs/capabilities/docker-compute-workers.md) owns the linked contract; this specification does not duplicate it.
-- SPC-OP-001: [operator-cli-discovery-and-dispatch.md](/specs/capabilities/operator-cli-discovery-and-dispatch.md) owns the linked contract; this specification does not duplicate it.
+- SPC-ORCH-001: [yielded-runs.md](/specs/orchestration/yielded-runs.md) owns the linked contract; this specification does not duplicate it.
+- SPC-CMP-001: [workers-and-resource-lifecycle.md](/specs/compute/workers-and-resource-lifecycle.md) owns the linked contract; this specification does not duplicate it.
+- SPC-OP-001: [operator-cli.md](/specs/operator/operator-cli.md) owns the linked contract; this specification does not duplicate it.
 
 The security policy/mechanics split is explicit: this specification defines the resource or security decision, while linked runtime, gateway, data, web, orchestration, compute, and operator owners provide their execution mechanics.
 
@@ -374,6 +374,6 @@ Package commands after authoring:
 
 # Related concepts
 
-- [SPC-ORCH-001](/specs/capabilities/yielded-run-control.md)
-- [SPC-CMP-001](/specs/capabilities/docker-compute-workers.md)
-- [SPC-OP-001](/specs/capabilities/operator-cli-discovery-and-dispatch.md)
+- [SPC-ORCH-001](/specs/orchestration/yielded-runs.md)
+- [SPC-CMP-001](/specs/compute/workers-and-resource-lifecycle.md)
+- [SPC-OP-001](/specs/operator/operator-cli.md)

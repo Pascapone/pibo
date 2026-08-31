@@ -330,7 +330,7 @@ Exact source files inspected for this owner:
 
 Related ownership boundaries:
 - SPC-RUN-003: [generation-resources-and-portable-tools.md](/specs/runtime/generation-resources-and-portable-tools.md) owns the linked contract; this specification does not duplicate it.
-- SPC-SEC-002: [pibo-home-security.md](/specs/capabilities/pibo-home-security.md) owns the linked contract; this specification does not duplicate it.
+- SPC-SEC-002: [private-files-and-http.md](/specs/security/private-files-and-http.md) owns the linked contract; this specification does not duplicate it.
 
 The security policy/mechanics split is explicit: this specification defines the resource or security decision, while linked runtime, gateway, data, web, orchestration, compute, and operator owners provide their execution mechanics.
 
@@ -376,4 +376,4 @@ Package commands after authoring:
 # Related concepts
 
 - [SPC-RUN-003](/specs/runtime/generation-resources-and-portable-tools.md)
-- [SPC-SEC-002](/specs/capabilities/pibo-home-security.md)
+- [SPC-SEC-002](/specs/security/private-files-and-http.md)

@@ -252,7 +252,6 @@ Related concepts:
 - [/specs/compute/workers-and-resource-lifecycle.md](/specs/compute/workers-and-resource-lifecycle.md)
 - [/specs/security/web-machine-and-dev-auth.md](/specs/security/web-machine-and-dev-auth.md)
 - [/specs/operator/debug-web-and-pty.md](/specs/operator/debug-web-and-pty.md)
-- [/specs/capabilities/browser-use-authenticated-leases.md](/specs/capabilities/browser-use-authenticated-leases.md)
 
 ## Failure and security behavior
 

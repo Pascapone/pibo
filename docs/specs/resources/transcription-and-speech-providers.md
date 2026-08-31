@@ -322,7 +322,7 @@ Exact source files inspected for this owner:
 Related ownership boundaries:
 - SPC-RUN-008: [provider-model-controls.md](/specs/runtime/provider-model-controls.md) owns the linked contract; this specification does not duplicate it.
 - SPC-SEC-001: [web-machine-and-dev-auth.md](/specs/security/web-machine-and-dev-auth.md) owns the linked contract; this specification does not duplicate it.
-- SPC-WEB-003: [chat-web-file-upload.md](/specs/capabilities/chat-web-file-upload.md) owns the linked contract; this specification does not duplicate it.
+- SPC-WEB-003: [composer-delivery-files-and-media.md](/specs/web/composer-delivery-files-and-media.md) owns the linked contract; this specification does not duplicate it.
 
 The security policy/mechanics split is explicit: this specification defines the resource or security decision, while linked runtime, gateway, data, web, orchestration, compute, and operator owners provide their execution mechanics.
 
@@ -366,4 +366,4 @@ Package commands after authoring:
 
 - [SPC-RUN-008](/specs/runtime/provider-model-controls.md)
 - [SPC-SEC-001](/specs/security/web-machine-and-dev-auth.md)
-- [SPC-WEB-003](/specs/capabilities/chat-web-file-upload.md)
+- [SPC-WEB-003](/specs/web/composer-delivery-files-and-media.md)
