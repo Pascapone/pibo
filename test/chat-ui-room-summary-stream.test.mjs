@@ -34,3 +34,15 @@ test("room summary status cannot override an available global or selected signal
 	assert.match(source, /sessionStatusSignalsRef\.current\?\.sessions\[targetPiboSessionId\][\s\S]*sessionSignalsRef\.current\?\.sessions\[targetPiboSessionId\]/);
 	assert.match(source, /const status = signalStatus \?\? streamStatus/);
 });
+
+test("long-lived Chat streams release HTTP\/1.1 connections during page transitions", () => {
+	const appSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/App.tsx"), "utf8");
+	const signalSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/api-trace-signals.ts"), "utf8");
+	const liveTraceSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/tracing/use-session-trace-live-stream.ts"), "utf8");
+	assert.match(appSource, /window\.addEventListener\("pagehide", suspendRoomSummary\)/);
+	assert.match(appSource, /window\.addEventListener\("pageshow", connectRoomSummary\)/, "a bfcache restore reconnects the room summary stream");
+	assert.match(signalSource, /return closeEventSourceOnPageHide\(events\)/);
+	assert.match(signalSource, /window\.addEventListener\("pagehide", close\)/);
+	assert.match(liveTraceSource, /selectedLiveStreamRef\.current\?\.events\.close\(\)/, "the selected live stream closes before the next document competes for connections");
+	assert.match(liveTraceSource, /window\.addEventListener\("pageshow", recoverPageShow\)/, "the selected live stream reconnects after bfcache restore");
+});

@@ -63,6 +63,29 @@ export function stickyScrollPositionDirection(input: StickyScrollPositionInput):
 	return undefined;
 }
 
+export function resolveScrollbarDragMovement({
+	direction,
+	oppositeCount,
+	previousScrollTop,
+	scrollTop,
+}: {
+	direction?: StickyScrollIntentDirection;
+	oppositeCount: number;
+	previousScrollTop?: number;
+	scrollTop: number;
+}): { direction?: StickyScrollIntentDirection; oppositeCount: number; clamp: boolean } {
+	const movement = stickyScrollPositionDirection({
+		hasUserScrollIntent: true,
+		previousScrollTop,
+		scrollTop,
+	});
+	if (!movement) return { direction, oppositeCount, clamp: false };
+	if (!direction || movement === direction) return { direction: movement, oppositeCount: 0, clamp: false };
+	const nextOppositeCount = oppositeCount + 1;
+	if (nextOppositeCount < 2) return { direction, oppositeCount: nextOppositeCount, clamp: true };
+	return { direction: movement, oppositeCount: 0, clamp: false };
+}
+
 export function stickyTouchScrollIntentDirection(previousY: number | undefined, currentY: number | undefined): StickyScrollIntentDirection | undefined {
 	if (currentY === undefined || previousY === undefined || currentY === previousY) return undefined;
 	return currentY > previousY ? "away" : "toward";
@@ -113,19 +136,36 @@ export function captureStickyVisibleAnchors({
 		});
 }
 
+export function preferredStickyVisibleAnchor(anchors: readonly StickyVisibleAnchor[]): StickyVisibleAnchor | undefined {
+	return [...anchors].sort((left, right) => Math.abs(left.offset) - Math.abs(right.offset))[0];
+}
+
 export function stickyAnchorLocation({
 	anchors,
+	previousKeys,
 	nextKeys,
 }: {
 	anchors: readonly StickyVisibleAnchor[];
+	previousKeys?: readonly string[];
 	nextKeys: readonly string[];
 }): StickyAnchorLocation | undefined {
 	if (!anchors.length || !nextKeys.length) return undefined;
-	for (const anchor of anchors) {
+	const orderedAnchors = [...anchors].sort((left, right) => Math.abs(left.offset) - Math.abs(right.offset));
+	for (const anchor of orderedAnchors) {
 		const dataIndex = nextKeys.indexOf(anchor.key);
 		if (dataIndex >= 0) return anchorLocation(dataIndex, anchor.offset);
 	}
-	const fallback = anchors[0];
+	const fallback = orderedAnchors[0];
+	if (previousKeys?.length) {
+		for (let index = fallback.dataIndex; index < previousKeys.length; index += 1) {
+			const nextIndex = nextKeys.indexOf(previousKeys[index]);
+			if (nextIndex >= 0) return anchorLocation(nextIndex, fallback.offset);
+		}
+		for (let index = fallback.dataIndex - 1; index >= 0; index -= 1) {
+			const nextIndex = nextKeys.indexOf(previousKeys[index]);
+			if (nextIndex >= 0) return anchorLocation(nextIndex, fallback.offset);
+		}
+	}
 	const fallbackIndex = Math.min(Math.max(fallback.dataIndex, 0), nextKeys.length - 1);
 	return anchorLocation(fallbackIndex, fallback.offset);
 }

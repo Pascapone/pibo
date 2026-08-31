@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { checkActiveWork, RESTART_CONFIRMATION_TOKEN } from '../dist/gateway/cli.js';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -36,6 +36,51 @@ describe('gateway restart safety', () => {
   });
   it('exports the exact force confirmation token', () => {
     assert.equal(RESTART_CONFIRMATION_TOKEN, 'restart-active-agents');
+  });
+});
+
+describe('managed gateway help', () => {
+  it('keeps nested lifecycle help side-effect free', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pibo-gateway-help-'));
+    const markerPath = join(dir, 'manager-invoked');
+    const managerPath = join(dir, 'manager.mjs');
+    const scriptPath = join(dir, process.platform === 'win32' ? 'manager.cmd' : 'manager.sh');
+    writeFileSync(managerPath, `
+import { writeFileSync } from 'node:fs';
+writeFileSync(process.env.FAKE_GATEWAY_MANAGER_MARKER, process.argv.slice(2).join(' '));
+process.exitCode = 42;
+`, 'utf8');
+    if (process.platform === 'win32') {
+      writeFileSync(scriptPath, `@echo off\r\n"${process.execPath}" "${managerPath}" %*\r\n`, 'utf8');
+    } else {
+      writeFileSync(scriptPath, `#!/usr/bin/env bash\nset -euo pipefail\n"${process.execPath}" "${managerPath}" "$@"\n`, 'utf8');
+      chmodSync(scriptPath, 0o755);
+    }
+
+    try {
+      for (const target of ['web', 'dev']) {
+        for (const action of ['start', 'restart']) {
+          rmSync(markerPath, { force: true });
+          const result = spawnSync(process.execPath, ['dist/bin/pibo.js', 'gateway', target, action, '--help'], {
+            encoding: 'utf8',
+            env: {
+              ...process.env,
+              PIBO_GATEWAY_MANAGER_COMMAND: scriptPath,
+              PIBO_GATEWAY_WEB_PORT: '1',
+              PIBO_GATEWAY_DEV_PORT: '1',
+              FAKE_GATEWAY_MANAGER_MARKER: markerPath,
+            },
+          });
+          assert.equal(result.status, 0, `${target} ${action}\n${result.stdout}\n${result.stderr}`);
+          assert.match(result.stdout, /pibo gateway - Gateway management/);
+          assert.match(result.stdout, /Next:\n  pibo gateway web status\n  pibo gateway dev status/);
+          assert.doesNotMatch(result.stderr, /Starting|Restarting|Restart blocked/);
+          assert.equal(existsSync(markerPath), false, `${target} ${action} invoked the gateway manager`);
+        }
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

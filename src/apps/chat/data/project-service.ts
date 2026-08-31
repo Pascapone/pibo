@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, statSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { mkdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../../../core/pibo-home.js";
 import type { PiboJsonObject, PiboJsonValue } from "../../../core/events.js";
@@ -305,7 +305,7 @@ export class ChatProjectService {
 		const projectFolder = resolve(normalizeProjectFolder(input.projectFolder));
 		this.assertNameAvailable(name);
 		this.assertFolderAvailable(projectFolder);
-		this.ensureProjectFolderUsable(projectFolder);
+		this.ensureProjectFolderUsable(projectFolder, input.createFolder === true);
 		const now = new Date().toISOString();
 		const id = `prj_${randomUUID()}`;
 		this.db.prepare(`INSERT INTO projects (id, name, description, project_folder, configuration_status, metadata_json, created_at, updated_at)
@@ -326,13 +326,21 @@ export class ChatProjectService {
 	}
 
 	deleteProject(id: string, options: { confirmName: string; deleteFiles?: boolean }): { deletedProjectId: string } {
-		const project = this.requireProject(id, { includeArchived: true });
-		if (!project.archivedAt) throw new Error("Archive the project before permanently deleting it.");
-		if (options.confirmName !== project.name) throw new Error(`Type \"${project.name}\" to permanently delete this project.`);
-		this.db.prepare("DELETE FROM project_sessions WHERE project_id = ?").run(id);
-		this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
-		if (options.deleteFiles) rmSync(project.projectFolder, { recursive: true, force: true });
-		return { deletedProjectId: id };
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const project = this.requireProject(id, { includeArchived: true });
+			if (!project.archivedAt) throw new Error("Archive the project before permanently deleting it.");
+			if (options.confirmName !== project.name) throw new Error(`Type \"${project.name}\" to permanently delete this project.`);
+			if (options.deleteFiles) this.assertFolderDoesNotOverlapAnotherProject(project);
+			this.db.prepare("DELETE FROM project_sessions WHERE project_id = ?").run(id);
+			this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+			if (options.deleteFiles) rmSync(project.projectFolder, { recursive: true, force: true });
+			this.db.exec("COMMIT");
+			return { deletedProjectId: id };
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
 	}
 
 	listProjectSessions(projectId: string, options: { includeArchived?: boolean } = {}): PiboProjectSession[] {
@@ -343,6 +351,58 @@ export class ChatProjectService {
 	getProjectSession(piboSessionId: string): PiboProjectSession | undefined {
 		const row = this.db.prepare("SELECT * FROM project_sessions WHERE pibo_session_id = ?").get(piboSessionId) as ProjectSessionRow | undefined;
 		return row ? projectSessionFromRow(row) : undefined;
+	}
+
+	deleteProjectSessions(piboSessionIds: readonly string[]): number {
+		const ids = [...new Set(piboSessionIds.filter(Boolean))];
+		if (ids.length === 0) return 0;
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const deleted = this.deleteProjectSessionsLocked(ids, new Date().toISOString());
+			this.db.exec("COMMIT");
+			return deleted;
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
+	async deleteProjectSessionWithCanonicalDelete<T>(piboSessionId: string, deleteCanonicalSession: () => T | Promise<T>): Promise<T> {
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			this.deleteProjectSessionsLocked([piboSessionId], new Date().toISOString());
+			const result = await deleteCanonicalSession();
+			this.db.exec("COMMIT");
+			return result;
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
+	private deleteProjectSessionsLocked(ids: readonly string[], now: string): number {
+		const placeholders = ids.map(() => "?").join(", ");
+		const affectedProjects = this.db.prepare(`SELECT DISTINCT id FROM projects
+			WHERE current_main_session_id IN (${placeholders})
+			UNION
+			SELECT DISTINCT project_id AS id FROM project_sessions WHERE pibo_session_id IN (${placeholders})`)
+			.all(...ids, ...ids) as Array<{ id: string }>;
+		const deleted = this.db.prepare(`DELETE FROM project_sessions WHERE pibo_session_id IN (${placeholders})`).run(...ids);
+		for (const project of affectedProjects) {
+			const current = this.db.prepare("SELECT current_main_session_id FROM projects WHERE id = ?")
+				.get(project.id) as { current_main_session_id: string | null } | undefined;
+			if (!current?.current_main_session_id) continue;
+			const currentLink = this.db.prepare("SELECT 1 FROM project_sessions WHERE project_id = ? AND pibo_session_id = ?")
+				.get(project.id, current.current_main_session_id);
+			if (currentLink) continue;
+			const replacement = this.db.prepare(`SELECT pibo_session_id FROM project_sessions
+				WHERE project_id = ? AND kind = 'main' AND archived = 0
+				ORDER BY updated_at DESC, created_at DESC, pibo_session_id DESC
+				LIMIT 1`).get(project.id) as { pibo_session_id: string } | undefined;
+			this.db.prepare("UPDATE projects SET current_main_session_id = ?, updated_at = ? WHERE id = ?")
+				.run(replacement?.pibo_session_id ?? null, now, project.id);
+		}
+		return Number(deleted.changes ?? 0);
 	}
 
 	addProjectSession(input: { projectId: string; piboSessionId: string; kind?: PiboProjectSessionKind; workflowId?: PiboProjectWorkflowId; workflowVersion?: string; workflowRunId?: string; parentMainSessionId?: string; title?: string; state?: PiboProjectSessionState; configuration?: PiboProjectWorkflowSessionConfiguration }): PiboProjectSession {
@@ -930,9 +990,17 @@ export class ChatProjectService {
 		if (existing) throw new Error("Project folder already exists");
 	}
 
-	private ensureProjectFolderUsable(folder: string): void {
+	private assertFolderDoesNotOverlapAnotherProject(project: PiboProject): void {
+		const projects = this.db.prepare("SELECT name, project_folder FROM projects WHERE id != ? ORDER BY lower(name), created_at").all(project.id) as Array<Pick<ProjectRow, "name" | "project_folder">>;
+		const overlapping = projects.find((other) => pathsOverlap(project.projectFolder, other.project_folder));
+		if (overlapping) {
+			throw new Error(`Cannot delete project files because its folder overlaps Project \"${overlapping.name}\". Delete without deleting files or choose a non-overlapping folder.`);
+		}
+	}
+
+	private ensureProjectFolderUsable(folder: string, createFolder: boolean): void {
 		try {
-			mkdirSync(folder, { recursive: true });
+			if (createFolder) mkdirSync(folder, { recursive: true });
 			if (!statSync(folder).isDirectory()) throw new Error("Project folder is not a directory");
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -1193,6 +1261,36 @@ function normalizeProjectFolder(value: unknown): string {
 	else if (folder.startsWith("~/")) folder = `${process.env.HOME ?? ""}${folder.slice(1)}`;
 	if (!isAbsolute(folder)) throw new Error("Project folder must be an absolute path, e.g. ~/code/my-project or /home/me/code/my-project");
 	return folder;
+}
+
+function pathsOverlap(left: string, right: string): boolean {
+	if (pathContains(left, right) || pathContains(right, left)) return true;
+	const canonicalLeft = canonicalProjectPath(left);
+	const canonicalRight = canonicalProjectPath(right);
+	if (!canonicalLeft || !canonicalRight) return true;
+	return pathContains(canonicalLeft, canonicalRight) || pathContains(canonicalRight, canonicalLeft);
+}
+
+function canonicalProjectPath(path: string): string | undefined {
+	let current = resolve(path);
+	const missingSegments: string[] = [];
+	while (true) {
+		try {
+			return resolve(realpathSync(current), ...missingSegments);
+		} catch (error) {
+			const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+			if (code !== "ENOENT" && code !== "ENOTDIR") return undefined;
+			const parent = dirname(current);
+			if (parent === current) return undefined;
+			missingSegments.unshift(basename(current));
+			current = parent;
+		}
+	}
+}
+
+function pathContains(parent: string, candidate: string): boolean {
+	const pathFromParent = relative(resolve(parent), resolve(candidate));
+	return pathFromParent === "" || (pathFromParent !== ".." && !pathFromParent.startsWith(`..${sep}`) && !isAbsolute(pathFromParent));
 }
 
 const PROJECT_SESSION_STATES = new Set<PiboProjectSessionState>([

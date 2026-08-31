@@ -14,8 +14,10 @@ import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
+import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { configCommand } from "../dist/mcp/config-command.js";
 import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
 import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
@@ -185,12 +187,13 @@ function createLandingApps() {
 async function startWebHostChannel(options = {}) {
 	const emitted = [];
 	const listeners = new Set();
-	const sessions = options.sessions ?? new InMemoryPiboSessionStore();
+	const storageDir = options.storageDir ?? mkdtempSync(join(tmpdir(), "pibo-web-channel-"));
+	const sessionStorePath = join(storageDir, "pibo.sqlite");
+	const sessions = options.sessions ?? (options.persistSessions ? new PiboDataSessionStore(sessionStorePath) : new InMemoryPiboSessionStore());
 	const registeredSkills = [];
 	const unregisteredSkills = [];
 	const registeredUserSkillCatalog = new Map();
 	let profiles = [...(options.profiles ?? [])];
-	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-channel-"));
 	const agentStorePath = join(storageDir, "agents.sqlite");
 	const dataStorePath = join(storageDir, "pibo-chat-v2.sqlite");
 	const dataPayloadRootDir = join(storageDir, "payloads");
@@ -363,6 +366,8 @@ async function startWebHostChannel(options = {}) {
 		registeredSkills,
 		unregisteredSkills,
 		storageDir,
+		agentStorePath,
+		sessionStorePath,
 		dataStorePath,
 		dataPayloadRootDir,
 		reliabilityStorePath,
@@ -2788,6 +2793,173 @@ test("chat web app keeps the default room locked", async () => {
 			body: JSON.stringify({ confirmName: room.name }),
 		});
 		assert.equal(deleteResponse.status, 400);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app keeps Project Manager locked without replacing its canonical session", async () => {
+	const { channel, baseURL, sessions, storageDir, projectStorePath } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const headers = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+
+	try {
+		const firstBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(firstBootstrapResponse.status, 200);
+		const firstBootstrap = await firstBootstrapResponse.json();
+		const defaultProject = firstBootstrap.sharedDefaultProject;
+		const canonicalSessionId = firstBootstrap.selectedPiboSessionId;
+
+		const archiveResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(defaultProject.id)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ archived: true }),
+		});
+		const archivePayload = await archiveResponse.json();
+		const deleteResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(defaultProject.id)}`, {
+			method: "DELETE",
+			headers,
+			body: JSON.stringify({ confirmName: defaultProject.name, deleteFiles: false }),
+		});
+		const deletePayload = await deleteResponse.json();
+
+		const reloadedBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(reloadedBootstrapResponse.status, 200);
+		const reloadedBootstrap = await reloadedBootstrapResponse.json();
+
+		const ordinaryFolder = join(storageDir, "ordinary-project");
+		mkdirSync(ordinaryFolder, { recursive: true });
+		const createResponse = await fetch(`${baseURL}/api/chat/projects`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ name: "Ordinary Project", projectFolder: ordinaryFolder, createFolder: false }),
+		});
+		assert.equal(createResponse.status, 201);
+		const ordinaryProject = (await createResponse.json()).project;
+		const createSessionResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(ordinaryProject.id)}/sessions`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(createSessionResponse.status, 201);
+		const ordinarySession = (await createSessionResponse.json()).session;
+		const ordinaryArchiveResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(ordinaryProject.id)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ archived: true }),
+		});
+		assert.equal(ordinaryArchiveResponse.status, 200);
+		const ordinaryDeleteResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(ordinaryProject.id)}`, {
+			method: "DELETE",
+			headers,
+			body: JSON.stringify({ confirmName: ordinaryProject.name, deleteFiles: false }),
+		});
+		assert.equal(ordinaryDeleteResponse.status, 200);
+
+		assert.equal(archiveResponse.status, 400);
+		assert.deepEqual(archivePayload, { error: "Project Manager cannot be changed" });
+		assert.equal(deleteResponse.status, 400);
+		assert.deepEqual(deletePayload, { error: "Project Manager cannot be deleted" });
+		assert.equal(reloadedBootstrap.sharedDefaultProject.id, defaultProject.id);
+		assert.equal(reloadedBootstrap.selectedPiboSessionId, canonicalSessionId);
+		assert.deepEqual(reloadedBootstrap.projectSessions.map((session) => session.piboSessionId), [canonicalSessionId]);
+		assert.deepEqual(
+			sessions.list().filter((session) => session.metadata?.projectId === defaultProject.id).map((session) => session.id),
+			[canonicalSessionId],
+		);
+		assert.equal(sessions.get(ordinarySession.id)?.id, ordinarySession.id);
+
+		const projectDb = new DatabaseSync(projectStorePath, { readOnly: true });
+		try {
+			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM projects WHERE id = ?").get(defaultProject.id).count, 1);
+			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM project_sessions WHERE project_id = ? AND pibo_session_id = ?").get(defaultProject.id, canonicalSessionId).count, 1);
+			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM projects WHERE id = ?").get(ordinaryProject.id).count, 0);
+			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM project_sessions WHERE pibo_session_id = ?").get(ordinarySession.id).count, 0);
+		} finally {
+			projectDb.close();
+		}
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app rejects cyclic room parents and preserves valid room lifecycles", async () => {
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+	});
+	const headers = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+
+	try {
+		const createRoom = async (name, parentRoomId) => {
+			const response = await fetch(`${baseURL}/api/chat/rooms`, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ name, ...(parentRoomId ? { parentRoomId } : {}) }),
+			});
+			assert.equal(response.status, 201);
+			return (await response.json()).room;
+		};
+		const patchParent = (roomId, parentRoomId) => fetch(`${baseURL}/api/chat/rooms/${encodeURIComponent(roomId)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ parentRoomId }),
+		});
+
+		const roomA = await createRoom("Hierarchy A");
+		const roomB = await createRoom("Hierarchy B", roomA.id);
+		const roomC = await createRoom("Hierarchy C", roomB.id);
+
+		const selfParentResponse = await patchParent(roomA.id, roomA.id);
+		assert.equal(selfParentResponse.status, 400);
+		assert.deepEqual(await selfParentResponse.json(), { error: "Room parent assignment would create a cycle." });
+
+		const validReparentResponse = await patchParent(roomC.id, roomA.id);
+		assert.equal(validReparentResponse.status, 200);
+		assert.equal((await validReparentResponse.json()).room.parentRoomId, roomA.id);
+		assert.equal((await patchParent(roomC.id, roomB.id)).status, 200);
+
+		const ancestorCycleResponse = await patchParent(roomA.id, roomC.id);
+		assert.equal(ancestorCycleResponse.status, 400);
+		assert.deepEqual(await ancestorCycleResponse.json(), { error: "Room parent assignment would create a cycle." });
+
+		const roomsResponse = await fetch(`${baseURL}/api/chat/rooms`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(roomsResponse.status, 200);
+		const roomTree = (await roomsResponse.json()).rooms;
+		const persistedA = roomTree.find((room) => room.id === roomA.id);
+		assert.ok(persistedA);
+		assert.equal(persistedA.parentRoomId, undefined);
+		assert.equal(persistedA.children[0]?.id, roomB.id);
+		assert.equal(persistedA.children[0]?.children[0]?.id, roomC.id);
+
+		const archiveResponse = await fetch(`${baseURL}/api/chat/rooms/${encodeURIComponent(roomA.id)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ archived: true }),
+		});
+		assert.equal(archiveResponse.status, 200);
+
+		const deleteResponse = await fetch(`${baseURL}/api/chat/rooms/${encodeURIComponent(roomA.id)}`, {
+			method: "DELETE",
+			headers,
+			body: JSON.stringify({ confirmName: roomA.name }),
+		});
+		assert.equal(deleteResponse.status, 200);
+		assert.deepEqual(new Set((await deleteResponse.json()).deletedRoomIds), new Set([roomA.id, roomB.id, roomC.id]));
 	} finally {
 		await channel.stop?.();
 	}
@@ -8423,6 +8595,199 @@ test("chat web app exposes and updates MCP server descriptions", async () => {
 	}
 });
 
+test("chat web app updates MCP descriptions in their merged config source", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-web-mcp-source-"));
+	const project = join(root, "project");
+	const home = join(root, "home");
+	mkdirSync(project, { recursive: true });
+	mkdirSync(home, { recursive: true });
+	const projectPath = join(project, "mcp_servers.json");
+	const homePath = join(home, "mcp_servers.json");
+	writeFileSync(projectPath, `${JSON.stringify({
+		mcpServers: {
+			local: { command: "node", args: ["local.js"] },
+			shared: { command: "node", args: ["project-shared.js"] },
+		},
+	}, null, 2)}\n`);
+	writeFileSync(homePath, `${JSON.stringify({
+		mcpServers: {
+			inherited: { command: "node", args: ["home.js"], env: { FIXTURE: "preserved" } },
+			shared: { command: "node", args: ["home-shared.js"] },
+		},
+	}, null, 2)}\n`);
+	const previousConfigPath = process.env.MCP_CONFIG_PATH;
+	const previousHome = process.env.HOME;
+	const previousUserProfile = process.env.USERPROFILE;
+	process.env.MCP_CONFIG_PATH = projectPath;
+	process.env.HOME = home;
+	process.env.USERPROFILE = home;
+	let first;
+	let restarted;
+
+	try {
+		first = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+		});
+		const headers = { "content-type": "application/json", origin: first.baseURL, "x-test-user": "user-1" };
+		const catalog = await fetch(`${first.baseURL}/api/chat/agent-catalog`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(catalog.status, 200);
+		assert.deepEqual((await catalog.json()).catalog.mcpServers.map((server) => server.name), ["local", "shared", "inherited"]);
+
+		for (const [name, description] of [["inherited", "Home description."], ["shared", "Project description."], ["local", "Local description."]]) {
+			const response = await fetch(`${first.baseURL}/api/chat/mcp-servers/${name}/description`, {
+				method: "PATCH",
+				headers,
+				body: JSON.stringify({ description }),
+			});
+			assert.equal(response.status, 200, await response.text());
+		}
+		await first.channel.stop?.();
+		first = undefined;
+
+		restarted = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+		});
+		const restartedCatalog = await fetch(`${restarted.baseURL}/api/chat/agent-catalog`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(restartedCatalog.status, 200);
+		const descriptions = new Map((await restartedCatalog.json()).catalog.mcpServers.map((server) => [server.name, server.description]));
+		assert.equal(descriptions.get("inherited"), "Home description.");
+		assert.equal(descriptions.get("shared"), "Project description.");
+
+		const projectConfig = JSON.parse(readFileSync(projectPath, "utf-8"));
+		const homeConfig = JSON.parse(readFileSync(homePath, "utf-8"));
+		assert.equal(projectConfig.mcpServers.shared.pibo.description, "Project description.");
+		assert.equal(homeConfig.mcpServers.shared.pibo, undefined);
+		assert.deepEqual(homeConfig.mcpServers.inherited, {
+			command: "node",
+			args: ["home.js"],
+			env: { FIXTURE: "preserved" },
+			pibo: { description: "Home description.", descriptionSource: "user" },
+		});
+
+		chmodSync(homePath, 0o444);
+		const readOnly = await fetch(`${restarted.baseURL}/api/chat/mcp-servers/inherited/description`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: restarted.baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ description: "Must remain unchanged." }),
+		});
+		assert.notEqual(readOnly.status, 200);
+		assert.equal(JSON.parse(readFileSync(homePath, "utf-8")).mcpServers.inherited.pibo.description, "Home description.");
+		chmodSync(homePath, 0o644);
+
+		rmSync(homePath);
+		const missing = await fetch(`${restarted.baseURL}/api/chat/mcp-servers/inherited/description`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json", origin: restarted.baseURL, "x-test-user": "user-1" },
+			body: JSON.stringify({ description: "Must not move." }),
+		});
+		assert.notEqual(missing.status, 200);
+		assert.equal(JSON.parse(readFileSync(projectPath, "utf-8")).mcpServers.inherited, undefined);
+		assert.equal(statSync(projectPath).isFile(), true);
+	} finally {
+		await first?.channel.stop?.();
+		await restarted?.channel.stop?.();
+		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousConfigPath;
+		if (previousHome === undefined) delete process.env.HOME;
+		else process.env.HOME = previousHome;
+		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+		else process.env.USERPROFILE = previousUserProfile;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("chat agent API updates release MCP config removal guards and persist across restart", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-web-mcp-remove-"));
+	const agentStorePath = join(root, "chat-agents.sqlite");
+	const configPath = join(root, "mcp_servers.json");
+	writeFileSync(configPath, JSON.stringify({
+		mcpServers: { selected: { command: "node", args: ["selected.js"] } },
+	}));
+	const previousPiboHome = process.env.PIBO_HOME;
+	const previousConfigPath = process.env.MCP_CONFIG_PATH;
+	process.env.PIBO_HOME = root;
+	process.env.MCP_CONFIG_PATH = configPath;
+	let firstChannel;
+	let restartedChannel;
+	try {
+		const first = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			chat: { agentStorePath },
+		});
+		firstChannel = first.channel;
+		const headers = {
+			"content-type": "application/json",
+			origin: first.baseURL,
+			"x-test-user": "user-1",
+		};
+		const created = await fetch(`${first.baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ displayName: "api-selected", mcpServers: ["selected"] }),
+		});
+		assert.equal(created.status, 201);
+		const agent = (await created.json()).agent;
+
+		await assert.rejects(
+			configCommand({ action: "remove", name: "selected", configPath }),
+			/MCP_SERVER_IN_USE[\s\S]*api-selected/,
+		);
+		const updated = await fetch(`${first.baseURL}/api/chat/agents/${encodeURIComponent(agent.id)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify({ mcpServers: [] }),
+		});
+		assert.equal(updated.status, 200);
+		assert.deepEqual((await updated.json()).agent.mcpServers, []);
+		await configCommand({ action: "remove", name: "selected", configPath });
+
+		await first.channel.stop?.();
+		firstChannel = undefined;
+		const restarted = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			chat: { agentStorePath },
+		});
+		restartedChannel = restarted.channel;
+		const listed = await fetch(`${restarted.baseURL}/api/chat/agents?includeArchived=true`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(listed.status, 200);
+		assert.deepEqual((await listed.json()).agents.find((item) => item.id === agent.id).mcpServers, []);
+
+		await configCommand({
+			action: "add",
+			name: "selected",
+			serverJson: JSON.stringify({ command: "node", args: ["restored.js"] }),
+			configPath,
+		});
+		const restoredSelection = await fetch(`${restarted.baseURL}/api/chat/agents/${encodeURIComponent(agent.id)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: restarted.baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ mcpServers: ["selected"] }),
+		});
+		assert.equal(restoredSelection.status, 200);
+		await assert.rejects(
+			configCommand({ action: "remove", name: "selected", configPath }),
+			/MCP_SERVER_IN_USE[\s\S]*api-selected/,
+		);
+		assert.ok(JSON.parse(readFileSync(configPath, "utf8")).mcpServers.selected);
+	} finally {
+		await firstChannel?.stop?.();
+		await restartedChannel?.stop?.();
+		if (previousPiboHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = previousPiboHome;
+		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousConfigPath;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("chat web app archives and permanently deletes custom agents with their sessions", async () => {
 	const deletionOrder = [];
 	const { channel, baseURL, sessions } = await startWebHostChannel({
@@ -8541,6 +8906,332 @@ test("chat web app archives and permanently deletes custom agents with their ses
 		assert.deepEqual(deletionOrder, [childSession.id, sessionPayload.session.id]);
 		assert.equal(sessions.get(sessionPayload.session.id), undefined);
 		assert.equal(sessions.get(childSession.id), undefined);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat web app removes Project Session links when deleting agents or ordinary sessions and stays consistent after restart", async () => {
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-project-session-lifecycle-"));
+	let runtime = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: ["default"] }],
+		storageDir,
+		persistSessions: true,
+	});
+	const request = async (path, options = {}) => {
+		const response = await fetch(`${runtime.baseURL}${path}`, {
+			method: options.method,
+			headers: {
+				"x-test-user": "user-1",
+				...(options.body ? { "content-type": "application/json", origin: runtime.baseURL } : {}),
+			},
+			...(options.body ? { body: JSON.stringify(options.body) } : {}),
+		});
+		const payload = await response.json();
+		assert.ok(response.ok, `${options.method ?? "GET"} ${path}: ${response.status} ${JSON.stringify(payload)}`);
+		return payload;
+	};
+	const createProject = async (name) => (await request("/api/chat/projects", {
+		method: "POST",
+		body: { name, projectFolder: join(storageDir, name.toLowerCase().replaceAll(" ", "-")), createFolder: true },
+	})).project;
+	const createProjectSession = async (projectId, profile) => (await request(`/api/chat/projects/${projectId}/sessions`, {
+		method: "POST",
+		body: { profile },
+	})).session;
+	try {
+		const agent = (await request("/api/chat/agents", { method: "POST", body: { displayName: "linked-agent" } })).agent;
+		const firstProject = await createProject("First Lifecycle Project");
+		const secondProject = await createProject("Second Lifecycle Project");
+		const ordinaryProject = await createProject("Ordinary Lifecycle Project");
+		const firstControl = await createProjectSession(firstProject.id, "base");
+		const firstLinked = await createProjectSession(firstProject.id, agent.profileName);
+		const secondLinked = await createProjectSession(secondProject.id, agent.profileName);
+		const unlinked = (await request("/api/chat/sessions", { method: "POST", body: { profile: agent.profileName } })).session;
+		const ordinary = await createProjectSession(ordinaryProject.id, "base");
+
+		await request(`/api/chat/sessions/${ordinary.id}`, { method: "PATCH", body: { archived: true } });
+		const ordinaryDeleted = await request(`/api/chat/sessions/${ordinary.id}`, {
+			method: "DELETE",
+			body: { confirmText: "Delete this session" },
+		});
+		assert.deepEqual(ordinaryDeleted.deletedSessionIds, [ordinary.id]);
+
+		const projectsFixture = new DatabaseSync(runtime.projectStorePath);
+		projectsFixture.prepare("DELETE FROM project_sessions WHERE pibo_session_id = ?").run(secondLinked.id);
+		projectsFixture.close();
+
+		await request(`/api/chat/agents/${agent.id}`, { method: "PATCH", body: { archived: true } });
+		const deleted = await request(`/api/chat/agents/${agent.id}`, {
+			method: "DELETE",
+			body: { confirmName: agent.profileName },
+		});
+		assert.deepEqual(new Set(deleted.deletedSessionIds), new Set([firstLinked.id, secondLinked.id, unlinked.id]));
+
+		const unlinkedAgent = (await request("/api/chat/agents", { method: "POST", body: { displayName: "unlinked-agent" } })).agent;
+		await request(`/api/chat/agents/${unlinkedAgent.id}`, { method: "PATCH", body: { archived: true } });
+		const unlinkedDeleted = await request(`/api/chat/agents/${unlinkedAgent.id}`, {
+			method: "DELETE",
+			body: { confirmName: unlinkedAgent.profileName },
+		});
+		assert.deepEqual(unlinkedDeleted.deletedSessionIds, []);
+
+		const projectsDb = new DatabaseSync(runtime.projectStorePath, { readOnly: true });
+		assert.deepEqual(
+			projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ? ORDER BY created_at").all(firstProject.id)
+				.map((row) => row.pibo_session_id),
+			[firstControl.id],
+		);
+		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(firstProject.id).current_main_session_id, firstControl.id);
+		assert.deepEqual(projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ?").all(secondProject.id), []);
+		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(secondProject.id).current_main_session_id, null);
+		assert.deepEqual(projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ?").all(ordinaryProject.id), []);
+		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(ordinaryProject.id).current_main_session_id, null);
+		projectsDb.close();
+
+		const sessionsDb = new DatabaseSync(runtime.sessionStorePath, { readOnly: true });
+		assert.deepEqual(sessionsDb.prepare("SELECT id FROM sessions WHERE id IN (?, ?, ?, ?)").all(firstLinked.id, secondLinked.id, unlinked.id, ordinary.id), []);
+		sessionsDb.close();
+		const agentsDb = new DatabaseSync(runtime.agentStorePath, { readOnly: true });
+		assert.deepEqual(agentsDb.prepare("SELECT id FROM chat_agents WHERE id IN (?, ?)").all(agent.id, unlinkedAgent.id), []);
+		agentsDb.close();
+
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		runtime = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			profiles: [{ name: "base", aliases: ["default"] }],
+			storageDir,
+			persistSessions: true,
+		});
+		const firstBootstrap = await request(`/api/chat/projects/bootstrap?projectId=${encodeURIComponent(firstProject.id)}`);
+		assert.equal(firstBootstrap.project.currentMainSessionId, firstControl.id);
+		assert.deepEqual(firstBootstrap.projectSessions.map((session) => session.piboSessionId), [firstControl.id]);
+		assert.equal(firstBootstrap.selectedPiboSessionId, firstControl.id);
+		const secondBootstrap = await request(`/api/chat/projects/bootstrap?projectId=${encodeURIComponent(secondProject.id)}`);
+		assert.equal(secondBootstrap.project.currentMainSessionId, undefined);
+		assert.deepEqual(secondBootstrap.projectSessions, []);
+		assert.equal(secondBootstrap.selectedPiboSessionId, undefined);
+	} finally {
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		rmSync(storageDir, { recursive: true, force: true });
+	}
+});
+
+test("chat web app leaves agent, canonical session, and Project link intact when Project cleanup fails", async () => {
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-project-session-rollback-"));
+	const runtime = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: ["default"] }],
+		storageDir,
+		persistSessions: true,
+	});
+	const mutation = (path, method, body) => fetch(`${runtime.baseURL}${path}`, {
+		method,
+		headers: { "x-test-user": "user-1", "content-type": "application/json", origin: runtime.baseURL },
+		body: JSON.stringify(body),
+	});
+	try {
+		const agent = (await (await mutation("/api/chat/agents", "POST", { displayName: "rollback-agent" })).json()).agent;
+		const project = (await (await mutation("/api/chat/projects", "POST", {
+			name: "Rollback Lifecycle Project",
+			projectFolder: join(storageDir, "rollback-project"),
+			createFolder: true,
+		})).json()).project;
+		const session = (await (await mutation(`/api/chat/projects/${project.id}/sessions`, "POST", { profile: agent.profileName })).json()).session;
+		await mutation(`/api/chat/agents/${agent.id}`, "PATCH", { archived: true });
+
+		const fixture = new DatabaseSync(runtime.projectStorePath);
+		fixture.exec(`CREATE TRIGGER fail_project_session_delete
+			BEFORE DELETE ON project_sessions
+			BEGIN
+				SELECT RAISE(ABORT, 'synthetic project cleanup failure');
+			END;`);
+		fixture.close();
+		const rejected = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
+		assert.equal(rejected.status, 500);
+
+		const projectsDb = new DatabaseSync(runtime.projectStorePath);
+		assert.equal(projectsDb.prepare("SELECT count(*) AS count FROM project_sessions WHERE pibo_session_id = ?").get(session.id).count, 1);
+		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(project.id).current_main_session_id, session.id);
+		projectsDb.exec("DROP TRIGGER fail_project_session_delete");
+		projectsDb.close();
+		const sessionsDb = new DatabaseSync(runtime.sessionStorePath, { readOnly: true });
+		assert.equal(sessionsDb.prepare("SELECT count(*) AS count FROM sessions WHERE id = ?").get(session.id).count, 1);
+		sessionsDb.close();
+		const agentsDb = new DatabaseSync(runtime.agentStorePath, { readOnly: true });
+		assert.equal(agentsDb.prepare("SELECT count(*) AS count FROM chat_agents WHERE id = ?").get(agent.id).count, 1);
+		agentsDb.close();
+
+		const retried = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
+		assert.equal(retried.status, 200);
+		assert.deepEqual((await retried.json()).deletedSessionIds, [session.id]);
+	} finally {
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		rmSync(storageDir, { recursive: true, force: true });
+	}
+});
+
+test("chat web app preserves links for canonical sessions that survive a partial agent deletion failure", async () => {
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-project-session-partial-delete-"));
+	let deletionAttempt = 0;
+	let failSecondDeletion = true;
+	const runtime = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: ["default"] }],
+		storageDir,
+		persistSessions: true,
+		async deleteSession(id, store) {
+			deletionAttempt += 1;
+			if (failSecondDeletion && deletionAttempt === 2) throw new Error("synthetic canonical deletion failure");
+			return store.delete(id);
+		},
+	});
+	const mutation = (path, method, body) => fetch(`${runtime.baseURL}${path}`, {
+		method,
+		headers: { "x-test-user": "user-1", "content-type": "application/json", origin: runtime.baseURL },
+		body: JSON.stringify(body),
+	});
+	try {
+		const agent = (await (await mutation("/api/chat/agents", "POST", { displayName: "partial-delete-agent" })).json()).agent;
+		const project = (await (await mutation("/api/chat/projects", "POST", {
+			name: "Partial Delete Lifecycle Project",
+			projectFolder: join(storageDir, "partial-delete-project"),
+			createFolder: true,
+		})).json()).project;
+		const first = (await (await mutation(`/api/chat/projects/${project.id}/sessions`, "POST", { profile: agent.profileName })).json()).session;
+		const second = (await (await mutation(`/api/chat/projects/${project.id}/sessions`, "POST", { profile: agent.profileName })).json()).session;
+		await mutation(`/api/chat/agents/${agent.id}`, "PATCH", { archived: true });
+
+		const rejected = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
+		assert.equal(rejected.status, 500);
+
+		const projectsDb = new DatabaseSync(runtime.projectStorePath, { readOnly: true });
+		const remainingProjectSessionIds = projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ? ORDER BY created_at")
+			.all(project.id)
+			.map((row) => row.pibo_session_id);
+		assert.equal(remainingProjectSessionIds.length, 1);
+		const remainingSessionId = remainingProjectSessionIds[0];
+		const deletedSessionId = remainingSessionId === first.id ? second.id : first.id;
+		assert.ok(remainingSessionId === first.id || remainingSessionId === second.id);
+		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(project.id).current_main_session_id, remainingSessionId);
+		projectsDb.close();
+		const sessionsDb = new DatabaseSync(runtime.sessionStorePath, { readOnly: true });
+		assert.equal(sessionsDb.prepare("SELECT count(*) AS count FROM sessions WHERE id = ?").get(deletedSessionId).count, 0);
+		assert.equal(sessionsDb.prepare("SELECT count(*) AS count FROM sessions WHERE id = ?").get(remainingSessionId).count, 1);
+		sessionsDb.close();
+		const agentsDb = new DatabaseSync(runtime.agentStorePath, { readOnly: true });
+		assert.equal(agentsDb.prepare("SELECT count(*) AS count FROM chat_agents WHERE id = ?").get(agent.id).count, 1);
+		agentsDb.close();
+
+		deletionAttempt = 0;
+		failSecondDeletion = false;
+		const retried = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
+		assert.equal(retried.status, 200);
+		assert.deepEqual((await retried.json()).deletedSessionIds, [remainingSessionId]);
+	} finally {
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		rmSync(storageDir, { recursive: true, force: true });
+	}
+});
+
+test("chat web app preserves subagent targets until all dependents update away", async () => {
+	const deletedSessionIds = [];
+	const { channel, baseURL, sessions } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+		async deleteSession(id, store) {
+			deletedSessionIds.push(id);
+			return store.delete(id);
+		},
+	});
+	const headers = {
+		"content-type": "application/json",
+		origin: baseURL,
+		"x-test-user": "user-1",
+	};
+	const createAgent = async (body) => {
+		const response = await fetch(`${baseURL}/api/chat/agents`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(body),
+		});
+		assert.equal(response.status, 201);
+		return (await response.json()).agent;
+	};
+	const patchAgent = (id, body) => fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(id)}`, {
+		method: "PATCH",
+		headers,
+		body: JSON.stringify(body),
+	});
+	const deleteAgent = (id, confirmName) => fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(id)}`, {
+		method: "DELETE",
+		headers,
+		body: JSON.stringify({ confirmName }),
+	});
+
+	try {
+		const target = await createAgent({ displayName: "shared-target" });
+		const first = await createAgent({
+			displayName: "first-parent",
+			subagents: [{ name: "helper", targetProfile: target.profileName }],
+		});
+		const second = await createAgent({
+			displayName: "second-parent",
+			subagents: [{ name: "reviewer", targetProfile: target.id }],
+		});
+		const sessionResponse = await fetch(`${baseURL}/api/chat/sessions`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ profile: target.profileName }),
+		});
+		assert.equal(sessionResponse.status, 201);
+		const targetSession = (await sessionResponse.json()).session;
+
+		const archiveWithTwoDependents = await patchAgent(target.id, { archived: true });
+		assert.equal(archiveWithTwoDependents.status, 409);
+		assert.deepEqual(await archiveWithTwoDependents.json(), {
+			error: 'Custom agent "shared-target" is targeted by active custom agents: first-parent, second-parent',
+		});
+
+		assert.equal((await patchAgent(second.id, { archived: true })).status, 200);
+		const archiveWithOneDependent = await patchAgent(target.id, { archived: true });
+		assert.equal(archiveWithOneDependent.status, 409);
+		assert.deepEqual(await archiveWithOneDependent.json(), {
+			error: 'Custom agent "shared-target" is targeted by active custom agents: first-parent',
+		});
+
+		assert.equal((await patchAgent(first.id, { archived: true })).status, 200);
+		assert.equal((await patchAgent(target.id, { archived: true })).status, 200);
+		const blockedDelete = await deleteAgent(target.id, target.profileName);
+		assert.equal(blockedDelete.status, 409);
+		assert.deepEqual(await blockedDelete.json(), {
+			error: 'Custom agent "shared-target" is targeted by custom agents: first-parent, second-parent',
+		});
+		assert.deepEqual(deletedSessionIds, []);
+		assert.ok(sessions.get(targetSession.id));
+
+		assert.equal((await patchAgent(first.id, { subagents: [] })).status, 200);
+		assert.equal((await patchAgent(second.id, { subagents: [] })).status, 200);
+		const deleted = await deleteAgent(target.id, target.profileName);
+		assert.equal(deleted.status, 200);
+		assert.deepEqual(await deleted.json(), {
+			deletedAgentId: target.id,
+			deletedSessionIds: [targetSession.id],
+		});
+		assert.deepEqual(deletedSessionIds, [targetSession.id]);
+		assert.equal(sessions.get(targetSession.id), undefined);
+
+		const selfTarget = await createAgent({
+			displayName: "self-target",
+			subagents: [{ name: "self", targetProfile: "self-target" }],
+		});
+		assert.equal((await patchAgent(selfTarget.id, { archived: true })).status, 200);
+		assert.equal((await deleteAgent(selfTarget.id, selfTarget.profileName)).status, 200);
 	} finally {
 		await channel.stop?.();
 	}
