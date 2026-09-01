@@ -982,6 +982,122 @@ test("chat web trace includes live compactor snapshots without raw events", asyn
 	}
 });
 
+test("chat web persists terminal boundaries after a buffered output collision", async () => {
+	for (const boundaryType of ["message_finished", "session_error"]) {
+		const host = await startWebHostChannel({ auth: createFakeAuthService() });
+		try {
+			const sessionResponse = await fetch(`${host.baseURL}/api/chat/session`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(sessionResponse.status, 200);
+			const { session } = await sessionResponse.json();
+			const eventId = `web-boundary-collision-${boundaryType}`;
+
+			const seedStore = new PiboDataStore(host.dataStorePath);
+			try {
+				new ChatDataIngestService(seedStore).ingestOutputEvent({
+					session,
+					event: {
+						type: "assistant_message",
+						piboSessionId: session.id,
+						eventId,
+						assistantIndex: 0,
+						renderSequence: 1,
+						text: "stored answer",
+					},
+				});
+			} finally {
+				seedStore.close();
+			}
+
+			host.emitOutput({ type: "assistant_delta", piboSessionId: session.id, eventId, assistantIndex: 0, text: "conflicting boundary flush" });
+			host.emitOutput(boundaryType === "message_finished"
+				? { type: boundaryType, piboSessionId: session.id, eventId, source: "user" }
+				: { type: boundaryType, piboSessionId: session.id, eventId, error: "forced boundary error" });
+
+			await waitForCondition(() => {
+				const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+				const reliability = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+				try {
+					const terminalCount = Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = ?").get(session.id, boundaryType).count);
+					const collisionCount = Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'pibo.output.identity_collision'").get(session.id).count);
+					const terminalDeliveryCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ? AND event_id LIKE ?").get(session.id, `%:${boundaryType}:%`).count);
+					const deadCount = Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count);
+					return terminalCount === 1 && terminalDeliveryCount === 1 && collisionCount === 1 && deadCount === 1;
+				} finally {
+					data.close();
+					reliability.close();
+				}
+			}, `${boundaryType} was suppressed by the buffered collision`);
+
+			const traceResponse = await fetch(`${host.baseURL}/api/chat/trace?piboSessionId=${encodeURIComponent(session.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(traceResponse.status, 200);
+			assert.doesNotMatch(JSON.stringify((await traceResponse.json()).nodes), /conflicting boundary flush/);
+
+			host.emitOutput(boundaryType === "message_finished"
+				? { type: boundaryType, piboSessionId: session.id, eventId, source: "user" }
+				: { type: boundaryType, piboSessionId: session.id, eventId, error: "forced boundary error" });
+			await waitForCondition(() => {
+				const reliability = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+				try {
+					return Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_jobs WHERE queue = 'output-persistence'").get().count) === 0;
+				} finally {
+					reliability.close();
+				}
+			}, `${boundaryType} replay did not settle`);
+			const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+			const reliability = new DatabaseSync(host.reliabilityStorePath, { readOnly: true });
+			try {
+				assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = ?").get(session.id, boundaryType).count), 1);
+				assert.equal(Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ? AND event_id LIKE ?").get(session.id, `%:${boundaryType}:%`).count), 1);
+				assert.equal(Number(reliability.prepare("SELECT COUNT(*) AS count FROM pibo_dead_jobs WHERE queue = 'output-persistence'").get().count), 1);
+			} finally {
+				data.close();
+				reliability.close();
+			}
+		} finally {
+			await host.channel.stop?.();
+		}
+	}
+});
+
+test("chat web stops a delivery batch after losing durable checkpoint ownership", async () => {
+	const originalUpdateJobPayload = PiboReliabilityStore.prototype.updateJobPayload;
+	PiboReliabilityStore.prototype.updateJobPayload = () => false;
+	const host = await startWebHostChannel({ auth: createFakeAuthService() });
+	try {
+		const sessionResponse = await fetch(`${host.baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const { session } = await sessionResponse.json();
+		const eventId = "web-checkpoint-ownership-loss";
+		host.emitOutput({ type: "assistant_delta", piboSessionId: session.id, eventId, assistantIndex: 0, text: "buffered" });
+		host.emitOutput({ type: "message_finished", piboSessionId: session.id, eventId, source: "user" });
+
+		await waitForCondition(() => {
+			const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+			try {
+				return Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'assistant_message'").get(session.id).count) === 1;
+			} finally {
+				data.close();
+			}
+		}, "first delivery did not reach the failed durable checkpoint");
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'message_finished'").get(session.id).count), 0);
+		} finally {
+			data.close();
+		}
+	} finally {
+		PiboReliabilityStore.prototype.updateJobPayload = originalUpdateJobPayload;
+		await host.channel.stop?.();
+	}
+});
+
 test("chat web dead-letters output identity collisions after one attempt", async () => {
 	const host = await startWebHostChannel({ auth: createFakeAuthService() });
 	try {
@@ -3992,14 +4108,16 @@ test("chat web app writes assistant and tool output into the V2 data store", asy
 		assert.equal(sessionResponse.status, 200);
 		const sessionPayload = await sessionResponse.json();
 
-		for (let index = 0; index < 2; index += 1) {
-			emitOutput({
-				type: "assistant_message",
-				piboSessionId: sessionPayload.session.id,
-				eventId: "persist-run-1",
-				text: "assistant v2 persist",
-			});
-		}
+		const assistantOutput = {
+			type: "assistant_message",
+			piboSessionId: sessionPayload.session.id,
+			eventId: "persist-run-1",
+			assistantIndex: 0,
+			renderSequence: 42,
+			text: "assistant v2 persist",
+		};
+		emitOutput(assistantOutput);
+		emitOutput(assistantOutput);
 		emitOutput({
 			type: "tool_execution_finished",
 			piboSessionId: sessionPayload.session.id,
@@ -4012,10 +4130,13 @@ test("chat web app writes assistant and tool output into the V2 data store", asy
 
 		const db = new DatabaseSync(dataStorePath, { readOnly: true });
 		try {
-			const eventRows = db.prepare("SELECT type FROM event_log WHERE session_id = ? ORDER BY stream_id ASC").all(sessionPayload.session.id);
+			const eventRows = db.prepare("SELECT type, attributes_json FROM event_log WHERE session_id = ? ORDER BY stream_id ASC").all(sessionPayload.session.id);
 			const messageRows = db.prepare("SELECT role, content_preview FROM chat_messages WHERE session_id = ? ORDER BY sequence ASC").all(sessionPayload.session.id);
 			const observationRows = db.prepare("SELECT kind, name, status FROM observations WHERE session_id = ? ORDER BY sequence ASC").all(sessionPayload.session.id);
 			assert.deepEqual(eventRows.map((row) => row.type), ["assistant_message", "tool_execution_finished"]);
+			const assistantAttributes = JSON.parse(eventRows[0].attributes_json);
+			assert.equal(assistantAttributes.assistantIndex, 0);
+			assert.equal(assistantAttributes.renderSequence, 42);
 			assert.deepEqual(messageRows.map((row) => ({ role: row.role, content_preview: row.content_preview })), [{ role: "assistant", content_preview: "assistant v2 persist" }]);
 			assert.deepEqual(observationRows.map((row) => row.kind), ["message", "tool"]);
 			assert.equal(observationRows[1].name, "read");

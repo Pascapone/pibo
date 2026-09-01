@@ -86,6 +86,7 @@ export type PiboSessionStore = {
 	claimOrAttachOutputToolInvocation?(input: import("../core/output-render-sequence.js").OutputToolInvocationTransition): number;
 	observeOutputToolInvocation?(input: import("../core/output-render-sequence.js").OutputToolInvocationTransition & { ordinal: number }): void;
 	claimOrAttachOutputPart?(input: import("../core/output-render-sequence.js").OutputPartTransition): number;
+	observeOutputPart?(input: import("../core/output-render-sequence.js").OutputPartTransition & { index: number }): void;
 };
 
 export function createPiboSessionId(): string {

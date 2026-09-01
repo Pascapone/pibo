@@ -207,6 +207,20 @@ test("compactor prepare/ack retains a complete final across a failed write and r
 	assert.equal(compactor.debugState().assistantBufferCount, 0);
 });
 
+test("compactor discard clears boundary buffers after exhausted persistence", () => {
+	const compactor = new OutputCompactor();
+	compactor.prepare({ type: "assistant_delta", piboSessionId: "ps-discard", eventId: "turn", assistantIndex: 0, text: "stale answer" }).ack();
+	const boundary = compactor.prepare({ type: "message_finished", piboSessionId: "ps-discard", eventId: "turn", source: "user" });
+	assert.deepEqual(boundary.persistedEvents.map((event) => event.type), ["assistant_message", "message_finished"]);
+	boundary.discard();
+	assert.equal(compactor.debugState().assistantBufferCount, 0);
+	assert.equal(compactor.snapshotsForSession("ps-discard").length, 0);
+
+	const failedStart = compactor.prepare({ type: "thinking_started", piboSessionId: "ps-discard", eventId: "turn", thinkingIndex: 0 });
+	failedStart.discard();
+	assert.equal(compactor.debugState().thinkingBufferCount, 0);
+});
+
 test("delayed thinking-start acknowledgement cannot overwrite a newer delta buffer", () => {
 	const compactor = new OutputCompactor();
 	const started = compactor.prepare({ type: "thinking_started", piboSessionId: "ps-thinking-retry", eventId: "turn", thinkingIndex: 0 });

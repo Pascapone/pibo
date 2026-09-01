@@ -778,7 +778,9 @@ export class LocalCliSessionSource implements CliSessionSource {
     }
     const session = this.sessionStore.get(event.piboSessionId);
     if (!session) return;
-    const positionedEvent = this.outputRenderSequencer.position(event);
+    const positionedEvent = validRenderSequence(event.renderSequence)
+      ? event
+      : this.outputRenderSequencer.position(event);
     const compacted = this.outputCompactor.prepare(positionedEvent);
     if (compacted.persistedEvents.length === 0) {
       compacted.ack();
@@ -791,7 +793,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       this.outputPersistenceRetries.enqueue(this.createOutputPersistenceJob(
         persistenceState,
         () => compacted.ack(),
-        () => compacted.rollback(),
+        () => compacted.discard(),
       ));
     }
     for (const liveEvent of compacted.liveEvents) this.recordOutputEvent(liveEvent);
@@ -820,11 +822,21 @@ export class LocalCliSessionSource implements CliSessionSource {
     if (!persistenceState) throw new Error("Invalid durable CLI output persistence state");
     const session = this.sessionStore.get(persistenceState.piboSessionId);
     if (!session) throw new Error(`No session available for ${persistenceState.piboSessionId}`);
+    const errors: Error[] = [];
     for (const delivery of persistenceState.deliveries) {
       if (delivery.persisted) continue;
-      this.ingestOutputEvent(session, delivery.event);
+      try {
+        this.ingestOutputEvent(session, delivery.event);
+      } catch (error) {
+        errors.push(error instanceof Error ? error : new Error(String(error)));
+        continue;
+      }
       delivery.persisted = true;
       retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `Failed to persist one or more output deliveries: ${errors.map((error) => error.message).join("; ")}`);
     }
   }
 
