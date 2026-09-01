@@ -11,6 +11,7 @@ export type OutputCompactorResult = {
 
 export type PreparedOutputCompaction = OutputCompactorResult & {
 	ack(): void;
+	discard(): void;
 	rollback(): void;
 };
 
@@ -41,14 +42,15 @@ export class OutputCompactor {
 		const persistedEvents: PiboOutputEvent[] = [];
 		const snapshots: PiboOutputEvent[] = [];
 		let liveEvents: PiboOutputEvent[] = [event];
-		const mutations: Array<() => void> = [];
+		const ackMutations: Array<() => void> = [];
+		const discardMutations: Array<() => void> = [];
 
 		switch (event.type) {
 			case "assistant_delta": {
 				const key = assistantOutputKey(event);
 				const previous = this.assistantBuffers.get(key);
 				const next = { event, text: `${previous?.text ?? ""}${event.text}` };
-				mutations.push(() => this.setBuffer(this.assistantBuffers, key, next, event.piboSessionId));
+				ackMutations.push(() => this.setBuffer(this.assistantBuffers, key, next, event.piboSessionId));
 				snapshots.push({ ...event, text: next.text });
 				break;
 			}
@@ -56,9 +58,9 @@ export class OutputCompactor {
 				const key = assistantOutputKey(event);
 				const buffered = this.assistantBuffers.get(key);
 				const canonical = { ...event, text: event.text || buffered?.text || "" };
-				mutations.push(() => {
-					this.deleteBuffer(this.assistantBuffers, key, buffered, event.piboSessionId);
-				});
+				const clear = () => this.deleteBuffer(this.assistantBuffers, key, buffered, event.piboSessionId);
+				ackMutations.push(clear);
+				discardMutations.push(clear);
 				persistedEvents.push(canonical);
 				liveEvents = [canonical];
 				break;
@@ -66,7 +68,7 @@ export class OutputCompactor {
 			case "thinking_started": {
 				const key = thinkingOutputKey(event);
 				const next = { base: event, text: "" };
-				mutations.push(() => {
+				ackMutations.push(() => {
 					if (!this.thinkingBuffers.has(key)) this.setBuffer(this.thinkingBuffers, key, next, event.piboSessionId);
 				});
 				persistedEvents.push(event);
@@ -76,7 +78,7 @@ export class OutputCompactor {
 				const key = thinkingOutputKey(event);
 				const previous = this.thinkingBuffers.get(key);
 				const next = { base: previous?.base ?? event, text: `${previous?.text ?? ""}${event.text}` };
-				mutations.push(() => this.setBuffer(this.thinkingBuffers, key, next, event.piboSessionId));
+				ackMutations.push(() => this.setBuffer(this.thinkingBuffers, key, next, event.piboSessionId));
 				snapshots.push({ ...event, text: next.text });
 				break;
 			}
@@ -84,31 +86,31 @@ export class OutputCompactor {
 				const key = thinkingOutputKey(event);
 				const buffered = this.thinkingBuffers.get(key);
 				const canonical = { ...event, text: event.text || buffered?.text || "" };
-				mutations.push(() => {
-					this.deleteBuffer(this.thinkingBuffers, key, buffered, event.piboSessionId);
-				});
+				const clear = () => this.deleteBuffer(this.thinkingBuffers, key, buffered, event.piboSessionId);
+				ackMutations.push(clear);
+				discardMutations.push(clear);
 				persistedEvents.push(canonical);
 				liveEvents = [canonical];
 				break;
 			}
 			case "tool_execution_updated": {
 				const key = toolOutputKey(event);
-				mutations.push(() => this.setBuffer(this.toolSnapshots, key, event, event.piboSessionId));
+				ackMutations.push(() => this.setBuffer(this.toolSnapshots, key, event, event.piboSessionId));
 				snapshots.push(event);
 				break;
 			}
 			case "tool_execution_finished": {
 				const key = toolOutputKey(event);
 				const previous = this.toolSnapshots.get(key);
-				mutations.push(() => {
-					this.deleteBuffer(this.toolSnapshots, key, previous, event.piboSessionId);
-				});
+				const clear = () => this.deleteBuffer(this.toolSnapshots, key, previous, event.piboSessionId);
+				ackMutations.push(clear);
+				discardMutations.push(clear);
 				persistedEvents.push(event);
 				break;
 			}
 			case "message_finished":
 			case "session_error": {
-				const flushed = this.prepareBoundaryFlush(event, mutations);
+				const flushed = this.prepareBoundaryFlush(event, ackMutations, discardMutations);
 				persistedEvents.push(...flushed, event);
 				liveEvents = [...flushed, event];
 				break;
@@ -119,16 +121,18 @@ export class OutputCompactor {
 		}
 
 		let settled = false;
+		const settleBuffers = (mutations: Array<() => void>) => {
+			if (settled) return;
+			settled = true;
+			for (const mutate of mutations) mutate();
+			this.touchSession(event.piboSessionId);
+		};
 		return {
 			liveEvents,
 			persistedEvents,
 			snapshots,
-			ack: () => {
-				if (settled) return;
-				settled = true;
-				for (const mutate of mutations) mutate();
-				this.touchSession(event.piboSessionId);
-			},
+			ack: () => settleBuffers(ackMutations),
+			discard: () => settleBuffers(discardMutations),
 			rollback: () => {
 				settled = true;
 			},
@@ -193,14 +197,15 @@ export class OutputCompactor {
 
 	private prepareBoundaryFlush(
 		event: Extract<PiboOutputEvent, { type: "message_finished" | "session_error" }>,
-		mutations: Array<() => void>,
+		ackMutations: Array<() => void>,
+		discardMutations: Array<() => void>,
 	): PiboOutputEvent[] {
 		const flushed: PiboOutputEvent[] = [];
 		for (const [key, buffer] of this.assistantBuffers) {
 			if (!matchesBoundary(buffer.event, event)) continue;
-			mutations.push(() => {
-				this.deleteBuffer(this.assistantBuffers, key, buffer, buffer.event.piboSessionId);
-			});
+			const clear = () => this.deleteBuffer(this.assistantBuffers, key, buffer, buffer.event.piboSessionId);
+			ackMutations.push(clear);
+			discardMutations.push(clear);
 			flushed.push({
 				type: "assistant_message",
 				piboSessionId: buffer.event.piboSessionId,
@@ -213,9 +218,9 @@ export class OutputCompactor {
 		}
 		for (const [key, buffer] of this.thinkingBuffers) {
 			if (!matchesBoundary(buffer.base, event)) continue;
-			mutations.push(() => {
-				this.deleteBuffer(this.thinkingBuffers, key, buffer, buffer.base.piboSessionId);
-			});
+			const clear = () => this.deleteBuffer(this.thinkingBuffers, key, buffer, buffer.base.piboSessionId);
+			ackMutations.push(clear);
+			discardMutations.push(clear);
 			flushed.push({
 				type: "thinking_finished",
 				piboSessionId: buffer.base.piboSessionId,
