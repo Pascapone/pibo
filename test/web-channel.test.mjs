@@ -2246,6 +2246,8 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 			const response = await fetch(`${baseURL}${path}${separator}piboSessionId=${encodeURIComponent(branch.id)}`, { headers: { "x-test-user": "user-1" } });
 			assert.equal(response.status, 200);
 			const payload = await response.json();
+			assert.equal(payload.integrityStatus, undefined);
+			assert.doesNotMatch(JSON.stringify(payload), /incomplete-turn|Incomplete Turn/);
 			const projectedNodes = path.includes("timeline") ? payload.nodes : flattenTraceResponseNodes(payload.nodes);
 			const nativeMessages = projectedNodes
 				.filter((node) => node.nativeTurnId === "runtime-overflow" && (node.type === "user.message" || node.type === "assistant.message"));

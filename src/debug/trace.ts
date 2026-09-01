@@ -44,6 +44,7 @@ export type DebugTraceResult = {
 	nativeSessionId?: string;
 	runtimeBindingState?: string;
 	historySource: "product" | "native" | "events";
+	integrityStatus?: "incomplete";
 	title: string;
 	status: string;
 	statusSource: DebugTraceStatusSource;
@@ -177,6 +178,7 @@ export async function inspectDebugTrace(
 			errorNodeCount: statusSummary.errorNodeCount,
 			nodes: filtered,
 			rawNodeCount: rows.length,
+			...(view.integrityStatus ? { integrityStatus: view.integrityStatus } : {}),
 			...(options.check ? { checks: checkTraceView(view, adapterIssues) } : {}),
 			nextCommands: buildTraceNextCommands(view.piboSessionId, filtered),
 		};
@@ -215,6 +217,7 @@ export function formatDebugTrace(result: DebugTraceResult, options: { medium?: b
 		...(result.nativeSessionId ? [`nativeSessionId: ${result.nativeSessionId}`] : []),
 		...(result.runtimeBindingState ? [`runtimeBindingState: ${result.runtimeBindingState}`] : []),
 		`historySource: ${result.historySource}`,
+		...(result.integrityStatus ? [`integrityStatus: ${result.integrityStatus}`] : []),
 		`title: ${result.title}`,
 		`status: ${result.status}`,
 		`statusSource: ${result.statusSource}`,
