@@ -26,6 +26,9 @@ export type OutputPartTransition = {
 	kind: OutputPartKind;
 	proposedIndex: number;
 	suppliedIndex?: number;
+	canonicalIndex?: boolean;
+	fingerprint: string;
+	identityFingerprint: string;
 	terminal: boolean;
 };
 
@@ -174,7 +177,10 @@ export class OutputRenderSequencer {
 		const key = outputPartCounterKey(transition.eventId, transition.kind);
 		const parts = state.outputParts.get(key) ?? [];
 		if (!state.outputParts.has(key)) state.outputParts.set(key, parts);
-		if (transition.suppliedIndex !== undefined) {
+		const suppliedPart = transition.suppliedIndex === undefined
+			? undefined
+			: parts.find((part) => part.index === transition.suppliedIndex);
+		if (transition.suppliedIndex !== undefined && (transition.canonicalIndex || suppliedPart)) {
 			this.highWaterStore?.observeOutputPart?.({ ...transition, index: transition.suppliedIndex });
 			this.recordOutputPart(parts, transition.suppliedIndex, transition.terminal);
 			this.trimOutputParts(state);
@@ -385,7 +391,11 @@ function outputPartTransition(event: PiboOutputEvent, activeEventId: string | un
 			eventId,
 			kind: "assistant",
 			proposedIndex: event.assistantIndex ?? event.contentIndex ?? 0,
-			...(validOutputPartIndex(event.assistantIndex) ? { suppliedIndex: event.assistantIndex } : {}),
+			...(validOutputPartIndex(event.assistantIndex)
+				? { suppliedIndex: event.assistantIndex, canonicalIndex: validRenderSequence(event.renderSequence) }
+				: {}),
+			fingerprint: outputPartFingerprint(event),
+			identityFingerprint: outputIdentityFingerprint(event),
 			terminal: event.type === "assistant_message",
 		};
 	}
@@ -395,7 +405,11 @@ function outputPartTransition(event: PiboOutputEvent, activeEventId: string | un
 			eventId,
 			kind: "thinking",
 			proposedIndex: event.thinkingIndex ?? event.contentIndex ?? 0,
-			...(validOutputPartIndex(event.thinkingIndex) ? { suppliedIndex: event.thinkingIndex } : {}),
+			...(validOutputPartIndex(event.thinkingIndex)
+				? { suppliedIndex: event.thinkingIndex, canonicalIndex: validRenderSequence(event.renderSequence) }
+				: {}),
+			fingerprint: outputPartFingerprint(event),
+			identityFingerprint: outputIdentityFingerprint(event),
 			terminal: event.type === "thinking_finished",
 		};
 	}
@@ -405,7 +419,11 @@ function outputPartTransition(event: PiboOutputEvent, activeEventId: string | un
 			eventId,
 			kind: "usage",
 			proposedIndex: event.usageIndex ?? 0,
-			...(validOutputPartIndex(event.usageIndex) ? { suppliedIndex: event.usageIndex } : {}),
+			...(validOutputPartIndex(event.usageIndex)
+				? { suppliedIndex: event.usageIndex, canonicalIndex: validRenderSequence(event.renderSequence) }
+				: {}),
+			fingerprint: outputPartFingerprint(event),
+			identityFingerprint: outputIdentityFingerprint(event),
 			terminal: true,
 		};
 	}
@@ -415,7 +433,11 @@ function outputPartTransition(event: PiboOutputEvent, activeEventId: string | un
 			eventId,
 			kind: "compaction",
 			proposedIndex: event.compactionIndex ?? 0,
-			...(validOutputPartIndex(event.compactionIndex) ? { suppliedIndex: event.compactionIndex } : {}),
+			...(validOutputPartIndex(event.compactionIndex)
+				? { suppliedIndex: event.compactionIndex, canonicalIndex: validRenderSequence(event.renderSequence) }
+				: {}),
+			fingerprint: outputPartFingerprint(event),
+			identityFingerprint: outputIdentityFingerprint(event),
 			terminal: event.type === "compaction_end",
 		};
 	}

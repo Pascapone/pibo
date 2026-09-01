@@ -55,7 +55,7 @@ test("durable output part indices survive context-guard sequencer restart", () =
 			type: "assistant_message",
 			piboSessionId: session.id,
 			eventId: "turn-context-guard",
-			contentIndex: 0,
+			assistantIndex: 0,
 			text: "Answer before compaction",
 		});
 		ingest.ingestOutputEvent({ session, event: firstFinal });
@@ -80,7 +80,7 @@ test("durable output part indices survive context-guard sequencer restart", () =
 			type: "assistant_message",
 			piboSessionId: session.id,
 			eventId: "turn-context-guard",
-			contentIndex: 0,
+			assistantIndex: 0,
 			text: "Final answer after compaction",
 		});
 		assert.equal(resumedFinal.assistantIndex, 1);
@@ -132,16 +132,17 @@ test("multi-response turns keep distinct output parts across repeated content an
 		emit({ type: "message_started", text: "exercise many cycles", source: "user" });
 		for (let cycle = 0; cycle < 50; cycle += 1) {
 			if (cycle === 25) routerSequencer = new OutputRenderSequencer({ now: () => 1, highWaterStore: sessionStore });
-			const thinkingStarted = emit({ type: "thinking_started", contentIndex: 0 });
-			const thinkingDelta = emit({ type: "thinking_delta", contentIndex: 0, text: " repeated reasoning fragment" });
-			const thinkingFinished = emit({ type: "thinking_finished", contentIndex: 0, text: "same reasoning response" });
+			const producerIndex = cycle < 25 ? cycle : cycle - 25;
+			const thinkingStarted = emit({ type: "thinking_started", thinkingIndex: producerIndex, contentIndex: 0 });
+			const thinkingDelta = emit({ type: "thinking_delta", thinkingIndex: producerIndex, contentIndex: 0, text: " repeated reasoning fragment" });
+			const thinkingFinished = emit({ type: "thinking_finished", thinkingIndex: producerIndex, contentIndex: 0, text: "same reasoning response" });
 			assert.equal(thinkingDelta.thinkingIndex, thinkingStarted.thinkingIndex);
 			assert.equal(thinkingFinished.thinkingIndex, thinkingStarted.thinkingIndex);
 
-			const assistantDelta = emit({ type: "assistant_delta", contentIndex: 1, text: " repeated assistant fragment" });
-			const assistantMessage = emit({ type: "assistant_message", contentIndex: 1, text: "same assistant response" });
+			const assistantDelta = emit({ type: "assistant_delta", assistantIndex: producerIndex, contentIndex: 1, text: " repeated assistant fragment" });
+			const assistantMessage = emit({ type: "assistant_message", assistantIndex: producerIndex, contentIndex: 1, text: "same assistant response" });
 			assert.equal(assistantMessage.assistantIndex, assistantDelta.assistantIndex);
-			emit({ type: "assistant_usage", totalTokens: cycle + 1 });
+			emit({ type: "assistant_usage", usageIndex: producerIndex, totalTokens: cycle + 1 });
 
 			const toolCallId = `tool-${cycle}`;
 			emit({ type: "tool_call", toolCallId, toolName: "read", args: { cycle }, argsComplete: true });
@@ -158,7 +159,7 @@ test("multi-response turns keep distinct output parts across repeated content an
 		assert.deepEqual(byType("thinking_started").map((event) => event.attributes.thinkingIndex), Array.from({ length: 50 }, (_, index) => index));
 		assert.deepEqual(byType("thinking_finished").map((event) => event.attributes.thinkingIndex), Array.from({ length: 50 }, (_, index) => index));
 		assert.equal(byType("assistant_message").length, 50);
-		assert.deepEqual(byType("assistant_message").map((event) => event.attributes.assistantIndex), Array.from({ length: 50 }, (_, index) => index + 1));
+		assert.deepEqual(byType("assistant_message").map((event) => event.attributes.assistantIndex), Array.from({ length: 50 }, (_, index) => index));
 		assert.deepEqual(byType("assistant_usage").map((event) => event.attributes.usageIndex), Array.from({ length: 50 }, (_, index) => index));
 		assert.equal(byType("tool_call").length, 50);
 		assert.equal(byType("tool_execution_started").length, 50);
@@ -343,6 +344,65 @@ test("active sequencer and compactor sessions survive capacity while completed s
 	assert.ok(compactor.debugState().completedSessionCount <= 1_024, JSON.stringify(compactor.debugState()));
 	const parallelFinal = sequencer.position({ type: "assistant_message", piboSessionId: "ps-parallel", eventId: "turn-parallel-two", assistantIndex: 0, text: "two" });
 	assert.equal(parallelFinal.renderSequence, parallelActive.renderSequence);
+});
+
+test("concurrent and restarted sequencers reserve distinct raw output parts", () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-output-part-race-");
+	let firstDataStore;
+	let secondDataStore;
+	try {
+		firstDataStore = new PiboDataStore(databasePath);
+		secondDataStore = new PiboDataStore(databasePath);
+		const firstStore = new PiboDataSessionStore(firstDataStore);
+		const secondStore = new PiboDataSessionStore(secondDataStore);
+		const session = firstStore.create({ id: "ps-output-part-race", channel: "test", kind: "chat", profile: "base" });
+		const firstSequencer = new OutputRenderSequencer({ now: () => 1, highWaterStore: firstStore });
+		const secondSequencer = new OutputRenderSequencer({ now: () => 1, highWaterStore: secondStore });
+		const base = { piboSessionId: "ps-output-part-race", eventId: "same-turn", assistantIndex: 0 };
+		const first = firstSequencer.position({ ...base, type: "assistant_delta", text: "first" });
+		const second = secondSequencer.position({ ...base, type: "assistant_delta", text: "second" });
+		assert.deepEqual([first.assistantIndex, second.assistantIndex], [0, 1]);
+		new ChatDataIngestService(firstDataStore).ingestOutputEvent({ session, event: first });
+		const restarted = new OutputRenderSequencer({ now: () => 2, highWaterStore: secondStore });
+		const third = restarted.position({ ...base, type: "assistant_delta", text: "third" });
+		assert.equal(third.assistantIndex, 2);
+		const downstream = new OutputRenderSequencer({ now: () => 2, highWaterStore: secondStore });
+		assert.equal(downstream.position(first).assistantIndex, 0);
+	} finally {
+		firstDataStore?.close();
+		secondDataStore?.close();
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
+});
+
+test("completed-turn replay restores the supplied identity among identical parts", () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-output-part-replay-");
+	let dataStore;
+	try {
+		dataStore = new PiboDataStore(databasePath);
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		const session = sessionStore.create({ id: "ps-output-part-replay", channel: "test", kind: "chat", profile: "base" });
+		const ingest = new ChatDataIngestService(dataStore);
+		const sequencer = new OutputRenderSequencer({ now: () => 1, highWaterStore: sessionStore });
+		const base = { piboSessionId: session.id, eventId: "same-completed-turn", text: "identical" };
+		for (const assistantIndex of [0, 1]) {
+			ingest.ingestOutputEvent({
+				session,
+				event: sequencer.position({ ...base, type: "assistant_message", assistantIndex }),
+			});
+		}
+		ingest.ingestOutputEvent({
+			session,
+			event: sequencer.position({ ...base, type: "message_finished", source: "user" }),
+		});
+		const replaySequencer = new OutputRenderSequencer({ now: () => 2, highWaterStore: sessionStore });
+		const replay = replaySequencer.position({ ...base, type: "assistant_message", assistantIndex: 1 });
+		assert.equal(replay.assistantIndex, 1);
+		assert.equal(ingest.ingestOutputEvent({ session, event: replay }).duplicate, true);
+	} finally {
+		dataStore?.close();
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
 });
 
 test("two routers reserve distinct durable tool invocations and restart continues the ordinal", async () => {
