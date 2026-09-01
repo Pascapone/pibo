@@ -363,7 +363,7 @@ export function markIncompletePersistedTurns(
 	if (sessionStatus === "running") {
 		const currentTurn = [...turnTimings].reverse().find((timing) =>
 			timing.userMessageType !== "message_steered" &&
-			(timing.userText !== undefined || timing.startedAt !== undefined),
+			timing.startedAt !== undefined,
 		);
 		if (currentTurn?.startedAt !== undefined && currentTurn.completedAt === undefined) {
 			incompleteEventIds.delete(currentTurn.eventId);

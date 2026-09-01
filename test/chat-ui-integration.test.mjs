@@ -389,6 +389,19 @@ test("active persisted turns remain running without an incomplete marker", () =>
 	assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-active"), false);
 });
 
+test("a queued follow-up does not displace the currently started turn", () => {
+	const view = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-active", text: "Still active", source: "user" } }),
+		createEvent({ seq: 2, type: "assistant_delta", payload: { type: "assistant_delta", eventId: "turn-active", text: "Working" } }),
+		createEvent({ seq: 3, type: "message_queued", payload: { type: "message_queued", eventId: "turn-queued", text: "Next prompt", source: "user" } }),
+	], "running");
+
+	const turn = view.nodes.find((node) => node.id === "event:message:turn-active");
+	assert.equal(turn?.status, "running");
+	assert.equal(view.integrityStatus, undefined);
+	assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-active"), false);
+});
+
 test("a later active turn does not leave an older incomplete turn running", () => {
 	const view = createBaseView([
 		createEvent({ seq: 1, streamId: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-incomplete", text: "Old prompt", source: "user" } }),

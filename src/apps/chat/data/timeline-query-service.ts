@@ -31,6 +31,10 @@ export class ChatTimelineQueryService {
 	}
 
 	listMessageTurnTimings(piboSessionId: string): TraceMessageTurnTiming[] {
+		return this.scanMessageTurnTimings(piboSessionId).timings;
+	}
+
+	scanMessageTurnTimings(piboSessionId: string): { timings: TraceMessageTurnTiming[]; overflow: boolean } {
 		const rows = this.store.db.prepare(`
 			SELECT * FROM event_log
 			WHERE session_id = ?
@@ -38,9 +42,9 @@ export class ChatTimelineQueryService {
 			ORDER BY session_sequence ASC, stream_id ASC
 			LIMIT ?
 		`).all(piboSessionId, TRACE_RECONCILIATION_TIMING_CAP + 1) as EventLogRow[];
-		if (rows.length > TRACE_RECONCILIATION_TIMING_CAP) return [];
+		if (rows.length > TRACE_RECONCILIATION_TIMING_CAP) return { timings: [], overflow: true };
 		const events = rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
-		return messageTurnTimingsFromEvents(events);
+		return { timings: messageTurnTimingsFromEvents(events), overflow: false };
 	}
 
 	listTraceEvents(input: { piboSessionId: string; limit?: number; beforeOrAtSequence?: number; beforeSequence?: number; includeLive?: boolean } | string): ChatWebStoredPiboEvent[] {

@@ -390,6 +390,7 @@ type ChatTimelineQuery = {
 	listSessionEvents(piboSessionId: string, limit?: number): ChatWebStoredPiboEvent[];
 	listAllSessionEvents(piboSessionId: string): ChatWebStoredPiboEvent[];
 	listMessageTurnTimings(piboSessionId: string): TraceMessageTurnTiming[];
+	scanMessageTurnTimings(piboSessionId: string): { timings: TraceMessageTurnTiming[]; overflow: boolean };
 	listTraceEvents(input: { piboSessionId: string; limit?: number; beforeOrAtSequence?: number; beforeSequence?: number; includeLive?: boolean } | string): ChatWebStoredPiboEvent[];
 	isPayloadAttachedToTraceNode(input: { piboSessionId: string; payloadId: string; nodeId: string; payloadKind: "output" }): boolean;
 	countEventsByType(input?: { piboSessionId?: string; eventTypes?: string[] }): Array<{ eventType: string; count: number }>;
@@ -6343,7 +6344,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const productHistory = state.historyQuery.getProductHistoryCoverage(selectedSession.id);
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
-				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
+				const turnTimingScan = state.timelineQuery.scanMessageTurnTimings(selectedSession.id);
+				const turnTimings = turnTimingScan.timings;
 				const liveSnapshots = timelineCursor.kind === "tail" ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
 				const runtimeStatus = context.channelContext.getSessionRuntimeStatus
 					? context.channelContext.getSessionRuntimeStatus(selectedSession.id) ?? null
@@ -6423,6 +6425,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							historyInspection: history.inspection,
 							historyOrderOffset: history.orderOffset,
 							turnTimings,
+							turnTimingOverflow: turnTimingScan.overflow,
 							includeRawEvents: false,
 							latestStreamId,
 						});
@@ -6478,6 +6481,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							historyInspection,
 							historyOrderOffset: nativeHistory?.orderOffset,
 							turnTimings,
+							turnTimingOverflow: turnTimingScan.overflow,
 							includeRawEvents: false,
 							latestStreamId,
 						});
@@ -6609,7 +6613,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				}
 				const lastEventSequence = state.timelineQuery.getLatestEventSequence(selectedSession.id);
 				const latestStreamId = state.timelineQuery.getLatestStreamId({ piboSessionId: selectedSession.id });
-				const turnTimings = state.timelineQuery.listMessageTurnTimings(selectedSession.id);
+				const turnTimingScan = state.timelineQuery.scanMessageTurnTimings(selectedSession.id);
+				const turnTimings = turnTimingScan.timings;
 				const liveSnapshots = beforeSequence === undefined ? state.outputCompactor.snapshotsForSession(selectedSession.id) : [];
 				const runtimeStatus = context.channelContext.getSessionRuntimeStatus
 					? context.channelContext.getSessionRuntimeStatus(selectedSession.id) ?? null
@@ -6670,6 +6675,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						historyInspection: nativeHistory?.inspection,
 						historyOrderOffset: nativeHistory?.orderOffset,
 						turnTimings,
+						turnTimingOverflow: turnTimingScan.overflow,
 						includeRawEvents: false,
 						latestStreamId,
 					});
@@ -6728,6 +6734,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (!session) throw new PiboWebHttpError("Session not found", 404);
 				const ownedSessions = listSharedSessions(context);
 				const indexedSession = state.sessionQuery.getSession(piboSessionId);
+				const turnTimingScan = state.timelineQuery.scanMessageTurnTimings(piboSessionId);
 				const trace = await buildTraceView({
 					session,
 					sessions: ownedSessions,
@@ -6738,7 +6745,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						beforeSequence: eventSequence + 1,
 					}),
 					status: indexedSession?.status,
-					turnTimings: state.timelineQuery.listMessageTurnTimings(piboSessionId),
+					turnTimings: turnTimingScan.timings,
+					turnTimingOverflow: turnTimingScan.overflow,
 				});
 				return responseJson(trace);
 			}

@@ -117,6 +117,7 @@ type TraceBuildInput = {
 	/** @deprecated Pi compatibility input. Use historyOrderOffset. */
 	transcriptOrderOffset?: number;
 	turnTimings?: TraceMessageTurnTiming[];
+	turnTimingOverflow?: boolean;
 	includeRawEvents?: boolean;
 	rawEventsLimit?: number;
 	latestStreamId?: number;
@@ -227,6 +228,7 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 		},
 		events: input.events as unknown as import("../../shared/trace-types.js").ChatWebStoredEvent[],
 		turnTimings: input.turnTimings,
+		turnTimingOverflow: input.turnTimingOverflow,
 		historyEntries: entries,
 		historyReconciliationProof: input.historyReconciliationProof,
 		historyReconciliationAuthoritative: isBuiltInHistoryReconciliationProof(input.historyReconciliationProof),
