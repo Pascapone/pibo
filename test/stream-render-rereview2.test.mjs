@@ -10,7 +10,7 @@ import { LocalCliSessionSource } from "../dist/cli-session/localSessionSource.js
 import { OutputRenderSequencer } from "../dist/core/output-render-sequence.js";
 import { OutputPersistenceRetryQueue } from "../dist/core/output-persistence-retry.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { ChatDataIngestService, PiboOutputIdentityCollisionError, outputPersistenceErrorIsRetryable } from "../dist/data/ingest-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
@@ -269,6 +269,14 @@ test("persistence retry queue dead-letters permanent failures after one attempt"
 	assert.equal(retries.debugState().deadLetters[1].error, "payload_invalid");
 	assert.deepEqual(retries.debugState().counters, { retriable: 0, permanent: 1, quarantined: 1 });
 	retries.dispose();
+});
+
+test("output persistence retries mixed aggregate failures without retrying collision-only aggregates", () => {
+	const collision = new PiboOutputIdentityCollisionError("delivery", "existing", "incoming");
+	assert.equal(outputPersistenceErrorIsRetryable(collision), false);
+	assert.equal(outputPersistenceErrorIsRetryable(new AggregateError([collision], "collision-only")), false);
+	assert.equal(outputPersistenceErrorIsRetryable(new AggregateError([collision, new Error("transient")], "mixed")), true);
+	assert.equal(outputPersistenceErrorIsRetryable(new AggregateError([], "empty")), true);
 });
 
 test("legacy NULL session sequences remain reachable through tail and before pages after reopen", () => {

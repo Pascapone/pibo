@@ -27,7 +27,7 @@ import {
   storedPiboEventFromV2Row,
   type EventLogRow,
 } from "../apps/chat/data/chat-data-mappers.js";
-import { ChatDataIngestService, PiboOutputIdentityCollisionError, outputIdempotencyKey, outputPersistenceDeliveryKey } from "../data/ingest-service.js";
+import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../data/ingest-service.js";
 import { OutputCompactor } from "../apps/chat/output-compactor.js";
 import { isPiboOutputEvent } from "../apps/chat/output-event-policy.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
@@ -809,7 +809,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       eventId: firstEvent ? outputPersistenceDeliveryKey(firstEvent) : undefined,
       payload: persistenceState as unknown as PiboJsonValue,
       run: (retryContext) => this.deliverOutputPersistenceState(retryContext),
-      isRetryable: (error) => !(error instanceof PiboOutputIdentityCollisionError),
+      isRetryable: outputPersistenceErrorIsRetryable,
       onSuccess,
       onDeadLetter,
     };

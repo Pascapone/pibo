@@ -107,7 +107,7 @@ import { listMcpServerInfos } from "../../mcp/agent-context.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
 import { findPiPackage, listPiPackages } from "../../pi-packages/store.js";
 import { ScopedUserSkillManager } from "../../user-skills/manager.js";
-import { ChatDataIngestService, PiboOutputIdentityCollisionError, outputIdempotencyKey, outputPersistenceDeliveryKey } from "../../data/ingest-service.js";
+import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../../data/ingest-service.js";
 import { ChatEventCommandService } from "./data/event-command-service.js";
 import { ChatReadStateService } from "./data/read-state-service.js";
 import { ChatRoomService, PiboRoomHierarchyCycleError } from "./data/room-service.js";
@@ -1115,7 +1115,7 @@ function createWebOutputPersistenceJob(input: {
 		eventId: firstEvent ? outputPersistenceDeliveryKey(firstEvent) : undefined,
 		payload: input.persistenceState as unknown as PiboJsonValue,
 		run: (retryContext) => deliverWebOutputPersistenceState(input.state, input.context, retryContext),
-		isRetryable: (error) => !(error instanceof PiboOutputIdentityCollisionError),
+		isRetryable: outputPersistenceErrorIsRetryable,
 		onSuccess: input.onSuccess,
 		onDeadLetter: input.onDeadLetter,
 	};
