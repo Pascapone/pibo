@@ -15,6 +15,7 @@ export type OutputPersistenceRetryJob = {
 	eventId?: string;
 	payload?: PiboJsonValue;
 	run(context: OutputPersistenceRetryContext): void | Promise<void>;
+	isRetryable?(error: unknown): boolean;
 	onSuccess?(): void;
 	onDeadLetter?(error: unknown, attempts: number): void;
 };
@@ -69,6 +70,12 @@ export type OutputPersistenceDeadLetter = {
 	error: string;
 };
 
+export type OutputPersistenceRetryCounters = {
+	retriable: number;
+	permanent: number;
+	quarantined: number;
+};
+
 const DEFAULT_MAX_PENDING = 4_096;
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_BASE_DELAY_MS = 25;
@@ -92,6 +99,7 @@ class LostOutputPersistenceClaimError extends Error {
 export class OutputPersistenceRetryQueue {
 	private readonly pending = new Map<string, PendingJob>();
 	private readonly deadLetters: OutputPersistenceDeadLetter[] = [];
+	private readonly counters: OutputPersistenceRetryCounters = { retriable: 0, permanent: 0, quarantined: 0 };
 	private readonly maxPending: number;
 	private readonly maxAttempts: number;
 	private readonly baseDelayMs: number;
@@ -170,6 +178,7 @@ export class OutputPersistenceRetryQueue {
 
 	quarantine(reasonCode: string): void {
 		if (this.disposed) return;
+		this.counters.quarantined += 1;
 		this.recordDeadLetter(
 			{ key: `quarantine:${randomUUID()}`, payload: null, run() {} },
 			new Error(reasonCode),
@@ -236,11 +245,12 @@ export class OutputPersistenceRetryQueue {
 		this.notifyChange();
 	}
 
-	debugState(): { pending: number; activeHeartbeats: number; deadLetters: readonly OutputPersistenceDeadLetter[] } {
+	debugState(): { pending: number; activeHeartbeats: number; deadLetters: readonly OutputPersistenceDeadLetter[]; counters: OutputPersistenceRetryCounters } {
 		return {
 			pending: this.pending.size,
 			activeHeartbeats: [...this.pending.values()].filter((job) => job.heartbeatTimer !== undefined).length,
 			deadLetters: this.deadLetters.map((entry) => ({ ...entry })),
+			counters: { ...this.counters },
 		};
 	}
 
@@ -283,6 +293,7 @@ export class OutputPersistenceRetryQueue {
 			const parsed = parseDurableEnvelope(claimed.payload);
 			if (!parsed.envelope) {
 				this.durableStore?.quarantineJob(claimed.jobId, parsed.reason, correlationFields(job));
+				this.counters.quarantined += 1;
 				this.pending.delete(job.key);
 				return;
 			}
@@ -325,8 +336,24 @@ export class OutputPersistenceRetryQueue {
 		} catch (error) {
 			if (this.disposed) return;
 			job.durableClaimed = false;
+			if (error instanceof LostOutputPersistenceClaimError) {
+				this.reconcileClaimMiss(job);
+				return;
+			}
+			const retryable = job.isRetryable?.(error) ?? true;
+			if (!retryable) {
+				if (job.durableJobId && !this.durableStore?.fail(job.durableJobId, this.workerId, errorMessage(error), job.durableClaimToken, "permanent")) {
+					this.reconcileClaimMiss(job);
+					return;
+				}
+				this.counters.permanent += 1;
+				this.pending.delete(job.key);
+				this.recordDeadLetter(job, error, job.attempts, "permanent", false);
+				return;
+			}
+			this.counters.retriable += 1;
 			if (job.durableJobId) {
-				const retried = error instanceof LostOutputPersistenceClaimError ? false : this.durableStore?.retry(job.durableJobId, this.workerId, {
+				const retried = this.durableStore?.retry(job.durableJobId, this.workerId, {
 					error: errorMessage(error),
 					delayMs: retryDelay(job.attempts, this.baseDelayMs, this.maxDelayMs),
 					claimToken: job.durableClaimToken,
@@ -420,6 +447,7 @@ export class OutputPersistenceRetryQueue {
 				const parsed = parseDurableEnvelope(durableJob.payload);
 				if (!parsed.envelope) {
 					this.durableStore.quarantineJob(durableJob.jobId, parsed.reason);
+					this.counters.quarantined += 1;
 					continue;
 				}
 				const envelope = parsed.envelope;
@@ -436,6 +464,7 @@ export class OutputPersistenceRetryQueue {
 					});
 				} catch {
 					this.durableStore.quarantineJob(durableJob.jobId, "payload_invalid");
+					this.counters.quarantined += 1;
 					continue;
 				}
 				const pending: PendingJob = {

@@ -19,6 +19,7 @@ export function traceViewFromTimelinePage(page: TraceTimelinePage, rawEvents: Ch
 	return {
 		piboSessionId: page.piboSessionId,
 		piSessionId: page.piSessionId,
+		integrityStatus: page.integrityStatus,
 		title: page.title,
 		version: page.version,
 		latestStreamId: page.latestStreamId,

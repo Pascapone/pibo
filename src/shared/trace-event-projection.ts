@@ -339,6 +339,109 @@ function turnClosedAt(turn: PiboTraceNode, byId: Map<string, PiboTraceNode>): st
 	return error?.startedAt;
 }
 
+const INCOMPLETE_TURN_SUMMARY = "Incomplete output lifecycle";
+const INCOMPLETE_TURN_ERROR = "Persisted output has message_started but no message_finished or session_error event.";
+
+export function markIncompletePersistedTurns(
+	nodes: PiboTraceNode[],
+	byId: Map<string, PiboTraceNode>,
+	piboSessionId: string,
+	events: readonly ChatWebStoredEvent[],
+	turnTimings: readonly TraceMessageTurnTiming[],
+	sessionStatus: PiboWebSessionStatus,
+): boolean {
+	const lifecycleByEventId = new Map<string, { started: boolean; completed: boolean }>();
+	for (const timing of turnTimings) {
+		const lifecycle = lifecycleByEventId.get(timing.eventId) ?? { started: false, completed: false };
+		lifecycle.started ||= timing.startedAt !== undefined;
+		lifecycle.completed ||= timing.completedAt !== undefined;
+		lifecycleByEventId.set(timing.eventId, lifecycle);
+	}
+	const incompleteEventIds = new Set([...lifecycleByEventId].flatMap(([eventId, lifecycle]) =>
+		lifecycle.started && !lifecycle.completed ? [eventId] : [],
+	));
+	if (sessionStatus === "running") {
+		const currentTurn = [...turnTimings].reverse().find((timing) =>
+			timing.userMessageType !== "message_steered" &&
+			timing.startedAt !== undefined,
+		);
+		if (currentTurn?.startedAt !== undefined && currentTurn.completedAt === undefined) {
+			incompleteEventIds.delete(currentTurn.eventId);
+		}
+	}
+	if (incompleteEventIds.size === 0) return false;
+	const startByEventId = new Map<string, ChatWebStoredEvent>();
+	const lastByEventId = new Map<string, ChatWebStoredEvent>();
+	for (const storedEvent of events) {
+		const event = storedEvent.payload as PiboOutputEvent;
+		const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
+		if (!eventId || !incompleteEventIds.has(eventId)) continue;
+		if (event.type === "message_started" && !startByEventId.has(eventId)) startByEventId.set(eventId, storedEvent);
+		lastByEventId.set(eventId, storedEvent);
+	}
+
+	for (const eventId of incompleteEventIds) {
+		const start = startByEventId.get(eventId);
+		if (!start) continue;
+		const startEvent = start.payload as Extract<PiboOutputEvent, { type: "message_started" }>;
+		const turnId = messageTurnNodeId(eventId);
+		let turn = byId.get(turnId);
+		if (!turn) {
+			turn = traceNodeFromEvent(
+				piboSessionId,
+				startEvent,
+				new Map(),
+				new Map(),
+				sessionStatus,
+				start.createdAt,
+				start.eventSequence,
+				start.streamId,
+				start.streamFrameIndex,
+				start.traceSource,
+				start.id,
+			);
+			if (!turn) continue;
+			nodes.push(turn);
+			byId.set(turn.id, turn);
+		}
+		turn.status = "error";
+		turn.summary = INCOMPLETE_TURN_SUMMARY;
+		turn.error = INCOMPLETE_TURN_ERROR;
+
+		const markerId = `event:incomplete-turn:${eventId}`;
+		if (byId.has(markerId)) continue;
+		const last = lastByEventId.get(eventId) ?? start;
+		const marker: PiboTraceNode = {
+			id: markerId,
+			parentId: turnId,
+			piboSessionId,
+			eventId,
+			type: "error",
+			title: "Incomplete Turn",
+			status: "error",
+			startedAt: last.createdAt,
+			summary: INCOMPLETE_TURN_SUMMARY,
+			error: INCOMPLETE_TURN_ERROR,
+			output: INCOMPLETE_TURN_ERROR,
+			source: "event-log",
+			stableKey: `incomplete-turn:${eventId}`,
+			orderKey: eventTraceNodeOrder(
+				last.eventSequence,
+				"session_error",
+				last.streamId,
+				last.streamFrameIndex,
+				last.traceSource,
+				undefined,
+				last.createdAt,
+			),
+			children: [],
+		};
+		nodes.push(marker);
+		byId.set(marker.id, marker);
+	}
+	return [...incompleteEventIds].some((eventId) => byId.has(`event:incomplete-turn:${eventId}`));
+}
+
 export function eventsCanAffectAsyncAgentRunStatus(events: readonly ChatWebStoredEvent[]): boolean {
 	return events.some((event) => {
 		const type = (event.payload as PiboOutputEvent).type;

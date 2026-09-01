@@ -27,7 +27,7 @@ import {
   storedPiboEventFromV2Row,
   type EventLogRow,
 } from "../apps/chat/data/chat-data-mappers.js";
-import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey } from "../data/ingest-service.js";
+import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../data/ingest-service.js";
 import { OutputCompactor } from "../apps/chat/output-compactor.js";
 import { isPiboOutputEvent } from "../apps/chat/output-event-policy.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
@@ -778,7 +778,9 @@ export class LocalCliSessionSource implements CliSessionSource {
     }
     const session = this.sessionStore.get(event.piboSessionId);
     if (!session) return;
-    const positionedEvent = this.outputRenderSequencer.position(event);
+    const positionedEvent = validRenderSequence(event.renderSequence)
+      ? event
+      : this.outputRenderSequencer.position(event);
     const compacted = this.outputCompactor.prepare(positionedEvent);
     if (compacted.persistedEvents.length === 0) {
       compacted.ack();
@@ -791,7 +793,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       this.outputPersistenceRetries.enqueue(this.createOutputPersistenceJob(
         persistenceState,
         () => compacted.ack(),
-        () => compacted.rollback(),
+        () => compacted.discard(),
       ));
     }
     for (const liveEvent of compacted.liveEvents) this.recordOutputEvent(liveEvent);
@@ -809,6 +811,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       eventId: firstEvent ? outputPersistenceDeliveryKey(firstEvent) : undefined,
       payload: persistenceState as unknown as PiboJsonValue,
       run: (retryContext) => this.deliverOutputPersistenceState(retryContext),
+      isRetryable: outputPersistenceErrorIsRetryable,
       onSuccess,
       onDeadLetter,
     };
@@ -819,13 +822,21 @@ export class LocalCliSessionSource implements CliSessionSource {
     if (!persistenceState) throw new Error("Invalid durable CLI output persistence state");
     const session = this.sessionStore.get(persistenceState.piboSessionId);
     if (!session) throw new Error(`No session available for ${persistenceState.piboSessionId}`);
+    const errors: Error[] = [];
     for (const delivery of persistenceState.deliveries) {
       if (delivery.persisted) continue;
-      if (!this.ingestOutputEvent(session, delivery.event)) {
-        throw new Error(`Failed to persist ${outputPersistenceDeliveryKey(delivery.event)}`);
+      try {
+        this.ingestOutputEvent(session, delivery.event);
+      } catch (error) {
+        errors.push(error instanceof Error ? error : new Error(String(error)));
+        continue;
       }
       delivery.persisted = true;
       retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `Failed to persist one or more output deliveries: ${errors.map((error) => error.message).join("; ")}`);
     }
   }
 
@@ -951,21 +962,15 @@ export class LocalCliSessionSource implements CliSessionSource {
   private ingestOutputEvent(
     session: PiboSession,
     event: PiboOutputEvent,
-  ): boolean {
-    if (!this.ingestService) return true;
-    try {
-      this.ingestService.ingestOutputEvent({
-        session,
-        roomId: roomIdFromSession(session),
-        actorId: session.profile,
-        event,
-        createdAt: this.now(),
-      });
-      return true;
-    } catch {
-      // The caller retains the prepared compaction and retries this exact event identity.
-      return false;
-    }
+  ): void {
+    if (!this.ingestService) return;
+    this.ingestService.ingestOutputEvent({
+      session,
+      roomId: roomIdFromSession(session),
+      actorId: session.profile,
+      event,
+      createdAt: this.now(),
+    });
   }
 
   private buildStatus(session: PiboSession): CliRuntimeStatus {
