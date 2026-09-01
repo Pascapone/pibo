@@ -4,10 +4,32 @@
 
 ## Concepts
 
+* [Agent Runtime History and Debug](agent-runtime-history-and-debug.md) - Explains the current runtime&#45;neutral history, trace, migration, and debugging model&#46;
+* [Agent Runtime Operations](agent-runtime-operations.md) - Guides operators through current agent&#45;runtime inspection, authentication, controls, recovery, and failure triage&#46;
+* [Chat Streaming Debugging Runbook](chat-streaming-debugging-runbook.md) - Guides deterministic diagnosis of Chat Web streaming behavior from provider output through the rendered DOM&#46;
+* [Chat Streaming Regression Knowledge Base](chat-streaming-regressions.md) - Catalogs known Chat Web streaming regressions, benchmark pitfalls, and diagnostic signals&#46;
+* [Compute Browser Resource Lifecycle Rollout Checklist](compute-browser-resource-rollout-checklist.md) - Guides the safe rollout and verification of compute&#45;worker and browser&#45;resource lifecycle controls&#46;
+* [Compute Browser Resource Operating Model](compute-browser-resource-operating-model.md) - Explains the current ownership and lifecycle model for compute, browser, worktree, and job resources&#46;
+* [Embedded VS Code Web](vscode-web-integration.md) - Explains the current embedded VS Code Web topology, routing, theme, workspace, and security boundaries&#46;
+* [Installation profiles](installation-profiles.md) - Explains supported Pibo installation profiles, ownership boundaries, migration, upgrade, rollback, and recovery&#46;
+* [Isolated Deployment Pool Operations](isolated-deployment-pool-operations.md) - Guides operators through isolated deployment&#45;pool acquisition, validation, cleanup, and recovery&#46;
+* [Minimal Workflow Definition Examples](workflow-definition-examples.md) - Provides current minimal Pibo workflow&#45;definition examples and authoring checks&#46;
+* [Observability Telemetry Debug Playbooks](observability-telemetry-playbooks.md) - Guides operators through bounded observability and telemetry diagnostics for common runtime failures&#46;
+* [Observability Telemetry Rollout Verification](observability-telemetry-rollout-verification.md) - Summarizes the required verification and safety checks for observability telemetry rollout&#46;
 * [Pibo OKF documentation profile](documentation-profile.md) - Defines Pibo's taxonomy, authority, lifecycle, provenance, migration, and validation rules for the docs bundle&#46;
+* [Pibo Workflows](workflows.md) - Explains the current Pibo Workflows baseline, authoring model, execution direction, and security boundaries&#46;
+* [Session Live Previews](session-live-previews.md) - Explains current session live&#45;preview setup, lifecycle, limits, and access boundaries&#46;
+* [Web Annotations Rollout Checklist](web-annotations-rollout-checklist.md) - Guides worker, browser, security, privacy, and deployment validation for Web Annotations&#46;
+* [Web Annotations V1](web-annotations.md) - Explains the Web Annotations V1 user flow, lifecycle, tools, recovery, privacy, and known limits&#46;
+* [Workflow Interface Adapters](workflow-interface-adapters.md) - Explains when and how Pibo workflows use deterministic interface adapters and explicit agentic transformations&#46;
+* [Workflow Registry, Plugin Registration, and Debug Serialization](workflow-registry-and-debug-serialization.md) - Explains workflow registry ownership, plugin registration, human actions, and deterministic debug serialization&#46;
+* [Workflow XState Projection Semantics](workflow-xstate-projection.md) - Explains current deterministic XState projection semantics for workflow visualization and diagnostics&#46;
 
 ## Directories
 
+* [Architecture](architecture/) - Documentation under `architecture/`.
+* [Decisions](decisions/) - Documentation under `decisions/`.
+* [Design](design/) - Documentation under `design/`.
 * [Guides](guides/) - Documentation under `guides/`.
 * [Operations](operations/) - Documentation under `operations/`.
 * [References](references/) - Documentation under `references/`.

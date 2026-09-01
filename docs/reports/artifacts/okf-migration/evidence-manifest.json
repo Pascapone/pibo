@@ -1,4 +1,310 @@
 {
   "schema_version": "pibo-okf-evidence-manifest/1",
-  "evidence": []
+  "evidence": [
+    {
+      "path": "docs/reports/agent-management-tools-validation.md",
+      "id": "pibo-okf-c-reports:agent-management-tools-validation",
+      "sha256": "142262a2d5457ae92aee6ac50e74c85e8ebeba8b6daae746032cb84db67dbc56"
+    },
+    {
+      "path": "docs/reports/agent-runtime-foundation-validation-2026-08-14.md",
+      "id": "pibo-okf-c-reports:agent-runtime-foundation-validation-2026-08-14",
+      "sha256": "b89160f14c436c155f50474c439185e0f0f251f53bb4a0e2c18b52905ca2fa8e"
+    },
+    {
+      "path": "docs/reports/artifacts/chat-web-live-streaming-fix-2026-05-20/validation-summary.md",
+      "id": "pibo-okf-c-reports:artifacts:chat-web-live-streaming-fix-2026-05-20:validation-summary",
+      "sha256": "d68da3c2d89d439b07fa4b70fbe02624d1e99ea9d5a742ae0f449741a7925b24"
+    },
+    {
+      "path": "docs/reports/better-auth-sqlite-migration-hardening-validation-2026-08-20.md",
+      "id": "pibo-okf-c-reports:better-auth-sqlite-migration-hardening-validation-2026-08-20",
+      "sha256": "7319d744386f09fba18f1e05db485bf4c934b63be31bea7c16ad54fca1d6f889"
+    },
+    {
+      "path": "docs/reports/chatgpt-subscription-transcription-validation-2026-08-23.md",
+      "id": "pibo-okf-c-reports:chatgpt-subscription-transcription-validation-2026-08-23",
+      "sha256": "edb201516977e0c9a75bb8f1950c9887f0a977d3a8f62b297030298048de42a2"
+    },
+    {
+      "path": "docs/reports/codex-app-server-stdio-client-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:codex-app-server-stdio-client-validation-2026-08-15",
+      "sha256": "8656dd5259fff888e227c1d3b1c34937cfc17739a0fe036dbb02a1adaf59d605"
+    },
+    {
+      "path": "docs/reports/codex-native-deterministic-contract-matrix-validation-2026-08-16.md",
+      "id": "pibo-okf-c-reports:codex-native-deterministic-contract-matrix-validation-2026-08-16",
+      "sha256": "e37a4289b64d5a1f33d6ff7b040829a69dba01349e4161eb26b39c93f71c50cf"
+    },
+    {
+      "path": "docs/reports/codex-native-model-options-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:codex-native-model-options-validation-2026-08-15",
+      "sha256": "01bbe653ba2f98473b485b35963c4b2312d1e52e3f3ccda4abcf58b1356bb49c"
+    },
+    {
+      "path": "docs/reports/codex-native-process-isolation-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:codex-native-process-isolation-validation-2026-08-15",
+      "sha256": "bdc561a0d8baad9ee69490b8d8e096e3c7a61610f13af991eae6c4e60b8b9b41"
+    },
+    {
+      "path": "docs/reports/codex-native-profile-registration-validation-2026-08-16.md",
+      "id": "pibo-okf-c-reports:codex-native-profile-registration-validation-2026-08-16",
+      "sha256": "8d5229fc2af42a9603da8b3aa4bf51fef485f8ccab83babdf2feefa2ba6d5b3e"
+    },
+    {
+      "path": "docs/reports/codex-native-request-lifecycle-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:codex-native-request-lifecycle-validation-2026-08-15",
+      "sha256": "64d76032b17d5aaf9845ca7b6c3b21b99a4fe9e9b7569cb80cf0cf0bfb599069"
+    },
+    {
+      "path": "docs/reports/codex-native-resource-delivery-validation-2026-08-16.md",
+      "id": "pibo-okf-c-reports:codex-native-resource-delivery-validation-2026-08-16",
+      "sha256": "1d34487591aaea196093e9d352dd0ea2d0a0529ce90bb81456508761f5a60c22"
+    },
+    {
+      "path": "docs/reports/codex-native-subagent-validation-2026-08-16.md",
+      "id": "pibo-okf-c-reports:codex-native-subagent-validation-2026-08-16",
+      "sha256": "e9b31e3d89ea3f045dc47c649a1d2e46905a3e34d7e706aa8e9ed0b1fe322d5f"
+    },
+    {
+      "path": "docs/reports/codex-native-thread-lifecycle-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:codex-native-thread-lifecycle-validation-2026-08-15",
+      "sha256": "44d225bc1dd387bf46e5ef468c4c194c79f0e5f422d181a1f4d347529b8eaae7"
+    },
+    {
+      "path": "docs/reports/codex-native-tool-inventory-validation-2026-08-16.md",
+      "id": "pibo-okf-c-reports:codex-native-tool-inventory-validation-2026-08-16",
+      "sha256": "c4366df03b5481ba57bc5eeb6b6f89f966cf8125e33d01e9ec6d7e2b85ec1793"
+    },
+    {
+      "path": "docs/reports/codex-native-turn-lifecycle-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:codex-native-turn-lifecycle-validation-2026-08-15",
+      "sha256": "d31d99519822edb0fcbf8f31f738c2d62887b51a84acecf52c79a6faec5bc89b"
+    },
+    {
+      "path": "docs/reports/debug-trace-session-status-validation-2026-08-07.md",
+      "id": "pibo-okf-c-reports:debug-trace-session-status-validation-2026-08-07",
+      "sha256": "ad5c1f9855fcd7f90dcf3910dd2b70786b143719e6a29b882cc3c5b8ed15fefc"
+    },
+    {
+      "path": "docs/reports/failed-message-signal-status-validation-2026-08-07.md",
+      "id": "pibo-okf-c-reports:failed-message-signal-status-validation-2026-08-07",
+      "sha256": "30e6963d02a923bcb6a57fdc29888a142e533ebb1523a5435c27991cb429c64f"
+    },
+    {
+      "path": "docs/reports/immediate-top-trace-pagination-validation-2026-08-07.md",
+      "id": "pibo-okf-c-reports:immediate-top-trace-pagination-validation-2026-08-07",
+      "sha256": "854220ce43fad128cf984eb4deb4d999765cfd230ed491ee2c3eb9abd021f182"
+    },
+    {
+      "path": "docs/reports/incident-2026-05-16-stuck-toolcall-stream.md",
+      "id": "pibo-okf-c-reports:incident-2026-05-16-stuck-toolcall-stream",
+      "sha256": "173b956a4f4ed9aed63150369b2f499cf718f02541530a5170b0563c22a287c6"
+    },
+    {
+      "path": "docs/reports/isolated-deployment-pool-validation-2026-08-23.md",
+      "id": "pibo-okf-c-reports:isolated-deployment-pool-validation-2026-08-23",
+      "sha256": "6726b14491ac5b9f77c07781d66ee6f23159b7cc6448de01855eaea0c6dae82e"
+    },
+    {
+      "path": "docs/reports/live-recording-waveform-validation-2026-08-23.md",
+      "id": "pibo-okf-c-reports:live-recording-waveform-validation-2026-08-23",
+      "sha256": "3a723bd485577721cee6b05cc49c50a88d9418b27333e04af00964433682f283"
+    },
+    {
+      "path": "docs/reports/machine-key-web-auth-validation-2026-08-07.md",
+      "id": "pibo-okf-c-reports:machine-key-web-auth-validation-2026-08-07",
+      "sha256": "b0fa8b26b8b0ce9e6613efceea68cb229fbe0981c6a5a63a54c8e8a4be0b7c3d"
+    },
+    {
+      "path": "docs/reports/markdown-editor-quality-validation-2026-08-09.md",
+      "id": "pibo-okf-c-reports:markdown-editor-quality-validation-2026-08-09",
+      "sha256": "5ca7ac39619b0e585b3d17e519b151f09df6c063026ab8312e2562b1cc8f2ed6"
+    },
+    {
+      "path": "docs/reports/markdown-editor-smart-typing-validation-2026-08-10.md",
+      "id": "pibo-okf-c-reports:markdown-editor-smart-typing-validation-2026-08-10",
+      "sha256": "903b4b7e3c5849676573077036e2197075763847906690596841d7b1c28624d6"
+    },
+    {
+      "path": "docs/reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md",
+      "id": "pibo-okf-c-reports:multi-agent-runtime-adapter-final-audit-2026-08-16",
+      "sha256": "61b7bf021b7007cd17e0d9deb46af4c96504a50f63fc2886b8f4fc5507b749ba"
+    },
+    {
+      "path": "docs/reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md",
+      "id": "pibo-okf-c-reports:multi-agent-runtime-adapter-integrated-validation-2026-08-16",
+      "sha256": "0bf5cd043469cd0016eba631e3ca5e0a44cc8de946c7ed8c3867b2a8aa2fcfe1"
+    },
+    {
+      "path": "docs/reports/omp-runtime-final-audit-2026-08-17.md",
+      "id": "pibo-okf-c-reports:omp-runtime-final-audit-2026-08-17",
+      "sha256": "4f057370042db4c8bc2d3401fc6c0ec82d6e859fb5e2598047513388b93cd0fe"
+    },
+    {
+      "path": "docs/reports/pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:pi-agent-runtime-parity-approved-auth-validation-2026-08-15",
+      "sha256": "f67f6ab1ed654c4c4256d96aa664ac1a199781d7612c3f6639a40acbff27a0e9"
+    },
+    {
+      "path": "docs/reports/pi-runtime-adapter-parity-validation-2026-08-14.md",
+      "id": "pibo-okf-c-reports:pi-runtime-adapter-parity-validation-2026-08-14",
+      "sha256": "a6564cbbf6260026904f7074f810138004b990677ee7f9e4052eacabd76fa0cc"
+    },
+    {
+      "path": "docs/reports/pibo2-server-development-completion-audit-2026-08-07.md",
+      "id": "pibo-okf-c-reports:pibo2-server-development-completion-audit-2026-08-07",
+      "sha256": "aecbb8b2d040ab0408030096367a8c1d2af7a68709649884e34db4e0be06e4af"
+    },
+    {
+      "path": "docs/reports/pluggable-transcription-validation-2026-08-22.md",
+      "id": "pibo-okf-c-reports:pluggable-transcription-validation-2026-08-22",
+      "sha256": "bce986de98050e9d7081c25f7450c7b0dc648a60c4494cae3a03787d653b6c29"
+    },
+    {
+      "path": "docs/reports/portable-pibo-tools-mcp-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:portable-pibo-tools-mcp-validation-2026-08-15",
+      "sha256": "1bfdb091be65565f37036a73c4a09875d17266f384b7be604bae14f1a7a65af3"
+    },
+    {
+      "path": "docs/reports/preserve-session-overlays-validation-2026-08-07.md",
+      "id": "pibo-okf-c-reports:preserve-session-overlays-validation-2026-08-07",
+      "sha256": "b30057d3bc439624caeeb08446e89043f3803c470ca299d40873349e79dc6621"
+    },
+    {
+      "path": "docs/reports/private-chat-upload-storage-validation-2026-08-20.md",
+      "id": "pibo-okf-c-reports:private-chat-upload-storage-validation-2026-08-20",
+      "sha256": "400db03d7c043f7ee5cda65a265d2f342d3152ffc5f947a68b5cc0e0e9e3e7bf"
+    },
+    {
+      "path": "docs/reports/private-pibo-home-validation-2026-08-20.md",
+      "id": "pibo-okf-c-reports:private-pibo-home-validation-2026-08-20",
+      "sha256": "8b7b51aa3645eb38c83876ec34ba44b6f7ff5cd8de7ac048cff0373aa2f039be"
+    },
+    {
+      "path": "docs/reports/production-dependency-hardening-validation-2026-08-20.md",
+      "id": "pibo-okf-c-reports:production-dependency-hardening-validation-2026-08-20",
+      "sha256": "828c2ff3364078204aecce4ea03e0f0ad8886d42c29bc566dfeb1bdbeb64c697"
+    },
+    {
+      "path": "docs/reports/prs-523-530-merge-readiness-review-2026-08-21.md",
+      "id": "pibo-okf-c-reports:prs-523-530-merge-readiness-review-2026-08-21",
+      "sha256": "5374853a7b6e8e90fdfec9a640101686638c7db7e391b773d455e843b8f22d83"
+    },
+    {
+      "path": "docs/reports/release-1-4-6-notes.md",
+      "id": "pibo-okf-c-reports:release-1-4-6-notes",
+      "sha256": "feddbf86cbce4ab1a065618bfc996631194e277aa2db94233f319f8a15bc31a2"
+    },
+    {
+      "path": "docs/reports/resource-reaper-browser-profile-exemption-validation-2026-08-07.md",
+      "id": "pibo-okf-c-reports:resource-reaper-browser-profile-exemption-validation-2026-08-07",
+      "sha256": "8a2d28e73b73c957f2fc9a387e35c755376ffcee8ca8c0324cf5e1892980aa9d"
+    },
+    {
+      "path": "docs/reports/resource-reaper-home-scope-validation-2026-08-20.md",
+      "id": "pibo-okf-c-reports:resource-reaper-home-scope-validation-2026-08-20",
+      "sha256": "71926201ebb60ce58fc5a967ac69d1b45b26db6e9e14987035c1cb6439af3b55"
+    },
+    {
+      "path": "docs/reports/reviews/critic-approach-review-2.md",
+      "id": "pibo-okf-c-reports:reviews:critic-approach-review-2",
+      "sha256": "e7534b5022ffab9878c06e20ecfc5af76bd46282b222264a846ab3931461a2af"
+    },
+    {
+      "path": "docs/reports/reviews/critic-design-review-final.md",
+      "id": "pibo-okf-c-reports:reviews:critic-design-review-final",
+      "sha256": "ddb5e4f22b8928ce89ea799bfb992ec5b1424037814c94bacc18cafa1650d736"
+    },
+    {
+      "path": "docs/reports/reviews/critic-final-acceptance.md",
+      "id": "pibo-okf-c-reports:reviews:critic-final-acceptance",
+      "sha256": "255d7667488b9fd8d229e187a9383615adb49dfa1d7f58d6e106cc71372b7e91"
+    },
+    {
+      "path": "docs/reports/reviews/critic-implementation-review.md",
+      "id": "pibo-okf-c-reports:reviews:critic-implementation-review",
+      "sha256": "6d5441b673e6d7cb2bb6738e3445593a7c2638fe698718dbe57836d9c1174dd1"
+    },
+    {
+      "path": "docs/reports/runtime-adapter-authoring-skill-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:runtime-adapter-authoring-skill-validation-2026-08-15",
+      "sha256": "d458e0d9f69b0d7ab33d73227368d6dfbb236169ab678851e9767de12b33c99e"
+    },
+    {
+      "path": "docs/reports/runtime-auth-control-plane-validation-2026-08-16.md",
+      "id": "pibo-okf-c-reports:runtime-auth-control-plane-validation-2026-08-16",
+      "sha256": "237f19001b3d08bba7fab94baa09d87800cf4c13ad7d8054d91ab35bde122ab0"
+    },
+    {
+      "path": "docs/reports/runtime-aware-agent-designer-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:runtime-aware-agent-designer-validation-2026-08-15",
+      "sha256": "26a9279c9edf099b8c20cb4a2e5e8b22b826630176b0491911d1dda6a496d1a0"
+    },
+    {
+      "path": "docs/reports/runtime-binding-persistence-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:runtime-binding-persistence-validation-2026-08-15",
+      "sha256": "ce5196169d25a39e475f22259bf65ed8247731238c4c13d53a81e5a47dde877e"
+    },
+    {
+      "path": "docs/reports/runtime-neutral-history-trace-debug-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:runtime-neutral-history-trace-debug-validation-2026-08-15",
+      "sha256": "e7f04bc1f507aaa5331728b5743875544ded41a66b84a3927e462d1e74fc0c53"
+    },
+    {
+      "path": "docs/reports/runtime-portability-v4-1-validation-2026-08-20.md",
+      "id": "pibo-okf-c-reports:runtime-portability-v4-1-validation-2026-08-20",
+      "sha256": "9541c4a49d60bbbbe14551c8717b6ffb010bdf1a10994231640f931fbca5e181"
+    },
+    {
+      "path": "docs/reports/runtime-resource-materialization-validation-2026-08-15.md",
+      "id": "pibo-okf-c-reports:runtime-resource-materialization-validation-2026-08-15",
+      "sha256": "5dafc67f46a49d6c275b809ae1e8717f0157f62be996cb2b8c32834d2241ce1f"
+    },
+    {
+      "path": "docs/reports/session-cli-steering-validation-2026-08-24.md",
+      "id": "pibo-okf-c-reports:session-cli-steering-validation-2026-08-24",
+      "sha256": "525f598f0b513129217ea2786dc4116e643f0769da226d43991c0e2375fa1086"
+    },
+    {
+      "path": "docs/reports/signal-status-reconcile-load-validation-2026-08-07.md",
+      "id": "pibo-okf-c-reports:signal-status-reconcile-load-validation-2026-08-07",
+      "sha256": "93ea7a54d8058573c0bef86a315f8feab12e812a933b34a87cb659ecc90b8fb7"
+    },
+    {
+      "path": "docs/reports/signals-reliability-fix-validation-2026-05-19.md",
+      "id": "pibo-okf-c-reports:signals-reliability-fix-validation-2026-05-19",
+      "sha256": "fdac6172308c32d983e5221e9e2965d5e26c88bb74dd93ba8b2c46911065702e"
+    },
+    {
+      "path": "docs/reports/terminal-working-animation-restoration-validation-2026-08-16.md",
+      "id": "pibo-okf-c-reports:terminal-working-animation-restoration-validation-2026-08-16",
+      "sha256": "66e3d1554bf7d1d35d904bb0a481e6956ad853166815c6e5f30bad0f27c2b3b4"
+    },
+    {
+      "path": "docs/reports/terminal-working-indicator-validation-2026-08-07.md",
+      "id": "pibo-okf-c-reports:terminal-working-indicator-validation-2026-08-07",
+      "sha256": "6dfcc0c5171f90ce23638d807cdd6be33961fe050785ce5cdbe50c9d2cea69e8"
+    },
+    {
+      "path": "docs/reports/unread-count-index-validation-2026-08-07.md",
+      "id": "pibo-okf-c-reports:unread-count-index-validation-2026-08-07",
+      "sha256": "eb3c9af94bba8562af39fec28f498164f2a47897ffddf54029e882a7bfe56c17"
+    },
+    {
+      "path": "docs/reports/vscode-webview-sidecar-fixes-release-2026-06-16.md",
+      "id": "pibo-okf-c-reports:vscode-webview-sidecar-fixes-release-2026-06-16",
+      "sha256": "8efb2a460c566367e36a68697f3ec40f0bab3fe7d83e0b2719e2146a6b7d093c"
+    },
+    {
+      "path": "docs/reports/vscode-webview-sidecar-release-2026-06-15.md",
+      "id": "pibo-okf-c-reports:vscode-webview-sidecar-release-2026-06-15",
+      "sha256": "3cde48662927960be68b2e6cc08f6e8e77346d50b36a1be8f7208e051ac44b8c"
+    },
+    {
+      "path": "docs/reports/yielded-run-cancellation-validation-2026-08-20.md",
+      "id": "pibo-okf-c-reports:yielded-run-cancellation-validation-2026-08-20",
+      "sha256": "c705405eeeb91cc199e690c4eec2080ce44204286ef123daca5da3a106997e92"
+    }
+  ]
 }

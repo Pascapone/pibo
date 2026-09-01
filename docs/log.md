@@ -1,5 +1,10 @@
 # Pibo documentation update log
 
+## 2026-09-01
+
+- **Migration closure**: Reconstructed the complete 762-record migration ledger with zero pending records, retired 13 superseded README controls, and generated the final 106-index navigation closure.
+- **Evidence publication**: Registered 61 accepted C-REPORTS Evidence Reports in the immutable evidence manifest with hashes over their complete published files.
+
 ## 2026-08-31
 
 - **Validator/profile correction**: Corrected the [preserved-body link rule](/project/documentation-profile.md#preserved-body-link-exception) so an exact raw relative target with literal dot segments is suppressible only when inspection observes the same in-bundle missing link, and recorded the narrow future-correction authority in the [migration plan](/plans/okf-migration.md#standing-authorization-for-trivial-corrections).
