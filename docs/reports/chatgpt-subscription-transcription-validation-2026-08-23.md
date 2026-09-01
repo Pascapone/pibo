@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "ChatGPT Subscription Transcription Validation — 2026-08-23"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/chatgpt-subscription-transcription-validation-2026-08-23.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7ecbdf990cce607095605c058cff37b38d81320d"
+  source_bytes: 3029
+  source_sha256: "6868414e4955ed2c29ab4719376ac4a21c6a877612e76e711ac08827fa2f5f50"
+  source_body_sha256: "6868414e4955ed2c29ab4719376ac4a21c6a877612e76e711ac08827fa2f5f50"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:chatgpt-subscription-transcription-validation-2026-08-23"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # ChatGPT Subscription Transcription Validation — 2026-08-23
 
 ## Scope

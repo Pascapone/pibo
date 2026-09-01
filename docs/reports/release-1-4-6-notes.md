@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Pibo 1.4.6"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/release-1.4.6-notes.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d6b68734a803a655061c2b465a09093591f800af"
+  source_bytes: 2897
+  source_sha256: "d1787f1d5f9fc36c03c613bdfc0f45af4ebb006f475c415970cce6469fe05177"
+  source_body_sha256: "d1787f1d5f9fc36c03c613bdfc0f45af4ebb006f475c415970cce6469fe05177"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:release-1-4-6-notes"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Pibo 1.4.6
 
 Patch release promoting the July 1, 2026 fixes and CLI/tooling improvements from `main`.

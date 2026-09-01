@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Shared Agent Management Tools Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/agent-management-tools-validation.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "8de8da5d1d79831a987335a71608548e5625a4b7"
+  source_bytes: 8537
+  source_sha256: "d6a1b2f9315318cb9214899d63987b7f08a4026445a7a28f903ffd1b9618dcc5"
+  source_body_sha256: "d6a1b2f9315318cb9214899d63987b7f08a4026445a7a28f903ffd1b9618dcc5"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:agent-management-tools-validation"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Shared Agent Management Tools Validation
 
 **Date:** 2026-08-23

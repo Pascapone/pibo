@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Pi Agent Runtime Parity with Pibo2-Managed Authentication — 2026-08-15"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "409e2f3ec9e401bec0757f1f3a411a8a6248e4e8"
+  source_bytes: 8132
+  source_sha256: "8b069793182cd06899e6d21e45c60a9825481c49ede977b69b41a64b49b60aaf"
+  source_body_sha256: "8b069793182cd06899e6d21e45c60a9825481c49ede977b69b41a64b49b60aaf"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:pi-agent-runtime-parity-approved-auth-validation-2026-08-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Pi Agent Runtime Parity with Pibo2-Managed Authentication — 2026-08-15
 
 **Status:** Pass — task 2.11 and the native-Codex entry gate are complete

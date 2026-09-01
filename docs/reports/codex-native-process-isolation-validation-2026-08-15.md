@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Codex Native Process and Isolation Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/codex-native-process-isolation-validation-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "ada0f919a038e02260b39df38d267d8bac8331a7"
+  source_bytes: 7406
+  source_sha256: "ee84af8047068ce6fb679b78608b5ab2b375850db05d490618bec70a2ecbb5af"
+  source_body_sha256: "ee84af8047068ce6fb679b78608b5ab2b375850db05d490618bec70a2ecbb5af"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:codex-native-process-isolation-validation-2026-08-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Codex Native Process and Isolation Validation
 
 **Date:** 2026-08-15

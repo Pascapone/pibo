@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Unread count index validation — 2026-08-07"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/unread-count-index-validation-2026-08-07.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "cdaf5b8efa6c7dd0ed042ccfcaebd22f85d9f83d"
+  source_bytes: 6494
+  source_sha256: "11d256c91730e1039a5af62ca1314757aa83e786ea545170a40aa07f8d4e4803"
+  source_body_sha256: "11d256c91730e1039a5af62ca1314757aa83e786ea545170a40aa07f8d4e4803"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:unread-count-index-validation-2026-08-07"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Unread count index validation — 2026-08-07
 
 ## Verdict

@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Code Quality Refactoring Ralph Final Report — 2026-05-27"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/code-quality-refactor-ralph-final-2026-05-27.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "a576fcb35ebeac557fe9005ed9b31fe3d5663918"
+  source_bytes: 4688
+  source_sha256: "c1e27d2e6df91de8f74cd4f850be61abd63b26f10304af4f714e90e7c5c9076b"
+  source_body_sha256: "c1e27d2e6df91de8f74cd4f850be61abd63b26f10304af4f714e90e7c5c9076b"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Code Quality Refactoring Ralph Final Report — 2026-05-27
 
 ## Summary

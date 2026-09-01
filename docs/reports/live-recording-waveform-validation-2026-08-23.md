@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Live Recording Waveform Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/live-recording-waveform-validation-2026-08-23.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "0d8b402b1a650c03646843cba3457a13d53d7332"
+  source_bytes: 2693
+  source_sha256: "82c4ad2b7f36f3876ff033c99a51500afd45203172bf70265d7bd09fb89e0dd4"
+  source_body_sha256: "82c4ad2b7f36f3876ff033c99a51500afd45203172bf70265d7bd09fb89e0dd4"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:live-recording-waveform-validation-2026-08-23"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Live Recording Waveform Validation
 
 **Date:** August 23, 2026  

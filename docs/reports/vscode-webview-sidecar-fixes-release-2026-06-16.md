@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Pibo VS Code Extension 1.4.1 — Release Report"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/vscode-webview-sidecar-fixes-release-2026-06-16.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "ab91c3efb0bf20498491bd0a9474028afb67cc8f"
+  source_bytes: 5329
+  source_sha256: "f69f136a7851edd2988f06e3ac8468df961b4e33192c0a627c2207b5409c0ca7"
+  source_body_sha256: "f69f136a7851edd2988f06e3ac8468df961b4e33192c0a627c2207b5409c0ca7"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:vscode-webview-sidecar-fixes-release-2026-06-16"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Pibo VS Code Extension 1.4.1 — Release Report
 
 ## Why

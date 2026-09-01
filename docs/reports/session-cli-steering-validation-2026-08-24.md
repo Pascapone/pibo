@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Session CLI steering validation — 2026-08-24"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/session-cli-steering-validation-2026-08-24.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1cfeafcd5f287081bcb6fcf3562181f5fcb0d307"
+  source_bytes: 8157
+  source_sha256: "3bf926da38887c53ccdb098455dc357245bf39a7a73c55fe690ecdf5568d6d81"
+  source_body_sha256: "3bf926da38887c53ccdb098455dc357245bf39a7a73c55fe690ecdf5568d6d81"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:session-cli-steering-validation-2026-08-24"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Session CLI steering validation — 2026-08-24
 
 ## Review target

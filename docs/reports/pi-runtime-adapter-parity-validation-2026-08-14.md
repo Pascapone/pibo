@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Pi Runtime Adapter Parity Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/pi-runtime-adapter-parity-validation-2026-08-14.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "da07f77a7e53cabc9d4c5346cc52e70e5ac31a0c"
+  source_bytes: 7076
+  source_sha256: "7721225f8e02668d3e2d5af5bcce1a74d3184bafda9a91954b9ac8f246949850"
+  source_body_sha256: "7721225f8e02668d3e2d5af5bcce1a74d3184bafda9a91954b9ac8f246949850"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:pi-runtime-adapter-parity-validation-2026-08-14"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Pi Runtime Adapter Parity Validation
 
 **Status:** Local parity passed; authenticated Pibo2 structural/restart parity passed; real-model scenarios blocked by provider credentials/quota

@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Agent Runtime Foundation Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/agent-runtime-foundation-validation-2026-08-14.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "478fa8bd5d41af95a264d71d20e2ec2b08264ebf"
+  source_bytes: 2625
+  source_sha256: "d36dbec4f0e24c4af929dd01d4c41098ca3fc73862a624676ac7358cd6a08c98"
+  source_body_sha256: "d36dbec4f0e24c4af929dd01d4c41098ca3fc73862a624676ac7358cd6a08c98"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:agent-runtime-foundation-validation-2026-08-14"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Agent Runtime Foundation Validation
 
 **Status:** Passed

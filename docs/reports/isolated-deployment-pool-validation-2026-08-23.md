@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Isolated Deployment Pool Validation Report"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/isolated-deployment-pool-validation-2026-08-23.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "65cc218574aeb49b017b9fee7aacf167a21415f8"
+  source_bytes: 7877
+  source_sha256: "baf694bfb3df50e790cb107f238cc9b2e9fdf2ea4b0ea0ab23869c09bd800a9f"
+  source_body_sha256: "baf694bfb3df50e790cb107f238cc9b2e9fdf2ea4b0ea0ab23869c09bd800a9f"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:isolated-deployment-pool-validation-2026-08-23"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Isolated Deployment Pool Validation Report
 
 Date: 2026-08-23

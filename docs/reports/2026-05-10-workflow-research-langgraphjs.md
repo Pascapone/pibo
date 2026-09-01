@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "LangGraphJS-Analyse für Pibo Workflow System V1"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/2026-05-10-workflow-research-langgraphjs.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "c72a38915ad9d0a577ba07fb83e2783d07e02e6f"
+  source_bytes: 25506
+  source_sha256: "356764c300cbb9fcee51e362cb90fdfd70c1532f0e1d5194bc93c3dd850f9504"
+  source_body_sha256: "356764c300cbb9fcee51e362cb90fdfd70c1532f0e1d5194bc93c3dd850f9504"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # LangGraphJS-Analyse für Pibo Workflow System V1
 
 ## Executive Summary

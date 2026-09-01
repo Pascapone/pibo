@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Critic Review 2 — \"OMP as Pibo Runtime\" Approach & Design"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/plans/critic-approach-review-2.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "22dec11b0736127e60f5604c253fd9d497a8f916"
+  source_bytes: 11714
+  source_sha256: "7d5f312d3c08aeb2d89a81d649e7a79b307332d6dc87d04dc5232747810203df"
+  source_body_sha256: "7d5f312d3c08aeb2d89a81d649e7a79b307332d6dc87d04dc5232747810203df"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:reviews:critic-approach-review-2"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Critic Review 2 — "OMP as Pibo Runtime" Approach & Design
 
 **Reviewer:** CriticApproach2 (fresh; prior review discarded)

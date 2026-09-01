@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Agent Runtime Adapter Authoring Skill Validation — 2026-08-15"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/runtime-adapter-authoring-skill-validation-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7a3102b008e2a069a9b5de29c0ee8e1e5fad6cce"
+  source_bytes: 8306
+  source_sha256: "992281baef7b214d9fccf9034f25d11f57ccfc5f843719c62981a75b0cc143c3"
+  source_body_sha256: "992281baef7b214d9fccf9034f25d11f57ccfc5f843719c62981a75b0cc143c3"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:runtime-adapter-authoring-skill-validation-2026-08-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Agent Runtime Adapter Authoring Skill Validation — 2026-08-15
 
 **Status:** Pass

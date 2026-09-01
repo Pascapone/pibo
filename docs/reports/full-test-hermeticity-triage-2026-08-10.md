@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Full Test Suite Hermeticity Triage — 2026-08-10"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/full-test-hermeticity-triage-2026-08-10.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "c622b87367d5cbf35da7f53235c3bf12b6aa060f"
+  source_bytes: 23983
+  source_sha256: "08f4327b53200a1ec6b5013c6bcdb291d9d0a8634dccbc0531bb0c2506390a1f"
+  source_body_sha256: "08f4327b53200a1ec6b5013c6bcdb291d9d0a8634dccbc0531bb0c2506390a1f"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Full Test Suite Hermeticity Triage — 2026-08-10
 
 **Status:** Complete; published in upstream pull request #445

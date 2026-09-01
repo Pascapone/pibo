@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Resource reaper browser profile exemption validation — 2026-08-07"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/resource-reaper-browser-profile-exemption-validation-2026-08-07.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "64e52a9a6fccfeced811bdda976f900130364e75"
+  source_bytes: 9469
+  source_sha256: "af9b72e2da1f222283a923aad3d35da7a4d93f1cf221ad8a13e2289e1b901068"
+  source_body_sha256: "af9b72e2da1f222283a923aad3d35da7a4d93f1cf221ad8a13e2289e1b901068"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:resource-reaper-browser-profile-exemption-validation-2026-08-07"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Resource reaper browser profile exemption validation — 2026-08-07
 
 ## Verdict

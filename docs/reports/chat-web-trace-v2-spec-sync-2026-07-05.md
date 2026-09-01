@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Report: Chat Web Trace V2 Spec Sync - 2026-07-05"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/chat-web-trace-v2-spec-sync-2026-07-05.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "0d4fa18f9b597fee2563325eef5ab1ae4f9861c6"
+  source_bytes: 4151
+  source_sha256: "9c0d5f7d8787fe42e9286603696b205db7408a6d4d26342d5d92e1e6ea5e5e98"
+  source_body_sha256: "9c0d5f7d8787fe42e9286603696b205db7408a6d4d26342d5d92e1e6ea5e5e98"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Report: Chat Web Trace V2 Spec Sync - 2026-07-05
 
 **Status:** Completed documentation pass for the v1.7.0 release baseline

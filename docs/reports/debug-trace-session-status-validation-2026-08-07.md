@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Debug trace session-status validation — 2026-08-07"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/debug-trace-session-status-validation-2026-08-07.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "acf325a5ccd4d5e56d28b6c7b7545ab9769f7c31"
+  source_bytes: 2523
+  source_sha256: "666ce19cdde43503a6f0645768a503e3ad8d94628a48fbc9b27acf226cb3f7dc"
+  source_body_sha256: "666ce19cdde43503a6f0645768a503e3ad8d94628a48fbc9b27acf226cb3f7dc"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:debug-trace-session-status-validation-2026-08-07"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Debug trace session-status validation — 2026-08-07
 
 ## Result

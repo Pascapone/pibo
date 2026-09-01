@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Workflow Spec Inventory and Gap Report"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/2026-07-06-workflow-spec-inventory-and-gap-report.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2e05596246485d25ed45ca23606910954a5b3b68"
+  source_bytes: 4294
+  source_sha256: "193ca984f8b6a4e7dacbcb17689d9e9576384fbba4b42c2d87553d947005499f"
+  source_body_sha256: "193ca984f8b6a4e7dacbcb17689d9e9576384fbba4b42c2d87553d947005499f"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Workflow Spec Inventory and Gap Report
 
 **Date:** 2026-07-06

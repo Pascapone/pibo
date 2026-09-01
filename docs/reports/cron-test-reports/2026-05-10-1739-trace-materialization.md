@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Trace-Materialisierung und Live-Patching Test Review"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1739-trace-materialization.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "eb87168cf9afd5e0ff1cbc18d9a07872ea79d496"
+  source_bytes: 9383
+  source_sha256: "7ede515a82376e18777da8b3e9809db4747d72f230c693ef67723f8ec1979f18"
+  source_body_sha256: "7ede515a82376e18777da8b3e9809db4747d72f230c693ef67723f8ec1979f18"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Trace-Materialisierung und Live-Patching Test Review
 
 Datum: 2026-05-10 17:39 Europe/Berlin  
