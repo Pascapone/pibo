@@ -227,7 +227,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 	claimOrAttachOutputPart(input: OutputPartTransition): number {
 		return this.dataStore.transaction(() => {
 			const indexAttribute = outputPartIndexAttribute(input.kind);
-			const eventTypes = outputPartEventTypes(input.kind);
+			const eventTypes = [...outputPartEventTypes(input.kind), "message_finished"];
 			const placeholders = eventTypes.map(() => "?").join(", ");
 			const rows = this.db.prepare(`
 				SELECT type, attributes_json
@@ -236,27 +236,33 @@ export class PiboDataSessionStore implements PiboSessionStore {
 				ORDER BY stream_id ASC
 			`).all(input.piboSessionId, input.eventId, ...eventTypes) as Array<{ type: string; attributes_json: string }>;
 			let maximum = -1;
-			const latestTypeByIndex = new Map<number, string>();
+			let turnCompleted = false;
+			const persistedParts: Array<{ index: number; attributes: PiboJsonObject }> = [];
 			for (const row of rows) {
+				if (row.type === "message_finished") {
+					turnCompleted = true;
+					continue;
+				}
 				const attributes = parseJsonObject(row.attributes_json);
 				const index = attributes[indexAttribute];
 				if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0) continue;
 				maximum = Math.max(maximum, index);
-				if (
-					attributes.outputPartFingerprint === input.fingerprint
-					|| attributes.identityFingerprint === input.identityFingerprint
-				) {
-					this.observeOutputPartIndex(input, index);
-					return index;
-				}
-				latestTypeByIndex.set(index, row.type);
+				persistedParts.push({ index, attributes });
 			}
-			const latestOpen = [...latestTypeByIndex.entries()]
-				.filter(([, eventType]) => !outputPartEventIsTerminal(eventType))
-				.sort(([left], [right]) => right - left)[0]?.[0];
-			if (latestOpen !== undefined) {
-				this.observeOutputPartIndex(input, latestOpen);
-				return latestOpen;
+			// An unfinished durable part may still belong to another process. Only a
+			// completed turn provides enough evidence to reattach an exact replay.
+			if (turnCompleted) {
+				const matchesReplay = ({ attributes }: { attributes: PiboJsonObject }) =>
+					attributes.outputPartFingerprint === input.fingerprint
+					|| attributes.identityFingerprint === input.identityFingerprint;
+				const replay = (input.suppliedIndex === undefined
+					? undefined
+					: persistedParts.find((part) => part.index === input.suppliedIndex && matchesReplay(part)))
+					?? persistedParts.find(matchesReplay);
+				if (replay) {
+					this.observeOutputPartIndex(input, replay.index);
+					return replay.index;
+				}
 			}
 			const minimum = Math.max(input.proposedIndex, maximum + 1);
 			const row = this.db.prepare(`
@@ -269,6 +275,12 @@ export class PiboDataSessionStore implements PiboSessionStore {
 				RETURNING next_index - 1 AS part_index
 			`).get(input.piboSessionId, input.eventId, input.kind, minimum, new Date().toISOString(), minimum) as { part_index: number };
 			return row.part_index;
+		});
+	}
+
+	observeOutputPart(input: OutputPartTransition & { index: number }): void {
+		this.dataStore.transaction(() => {
+			this.observeOutputPartIndex(input, input.index);
 		});
 	}
 
@@ -799,13 +811,6 @@ function outputPartEventTypes(kind: OutputPartTransition["kind"]): string[] {
 		case "usage": return ["assistant_usage"];
 		case "compaction": return ["compaction_start", "compaction_end"];
 	}
-}
-
-function outputPartEventIsTerminal(eventType: string): boolean {
-	return eventType === "assistant_message"
-		|| eventType === "thinking_finished"
-		|| eventType === "assistant_usage"
-		|| eventType === "compaction_end";
 }
 
 function parseJsonObject(json: string | null | undefined): PiboJsonObject {

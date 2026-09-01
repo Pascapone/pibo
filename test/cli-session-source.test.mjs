@@ -5,6 +5,7 @@ import test from "node:test";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";
 import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 import { cliDefaultRoomId, CliSourceError, createDefaultFakeCliSessionSource, FakeCliSessionSource, LocalCliSessionSource, redactCliSecretText } from "../dist/cli-session/index.js";
+import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
@@ -245,6 +246,39 @@ test("local CLI compacts assistant and thinking deltas before persistence and re
 	assert.equal(dataStore.eventLog.listEvents({ sessionId: created.id }).some((event) => event.type === "pibo.output.identity_collision"), false);
 	reloaded.close();
 	await reloadedSource.close();
+	dataStore.close();
+});
+
+test("local CLI persists a message terminal after a buffered output collision", async () => {
+	const dataStore = new PiboDataStore(":memory:");
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	const listeners = new Set();
+	const router = {
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		async emit() { throw new Error("not used"); },
+	};
+	const source = new LocalCliSessionSource({ dataStore, sessionStore, router, now: () => fixedNow });
+	const created = await source.createSession({ title: "Terminal collision isolation", profile: "base" });
+	const eventId = "turn-terminal-collision";
+	const emit = (event) => {
+		for (const listener of listeners) listener({ piboSessionId: created.id, eventId, ...event });
+	};
+	emit({ type: "assistant_delta", assistantIndex: 0, text: "conflicting boundary flush" });
+	new ChatDataIngestService(dataStore).ingestOutputEvent({
+		session: sessionStore.get(created.id),
+		event: { type: "assistant_message", piboSessionId: created.id, eventId, assistantIndex: 0, renderSequence: 1, text: "stored answer" },
+	});
+	emit({ type: "message_finished", source: "user" });
+
+	const deadline = Date.now() + 2_000;
+	while (Date.now() < deadline) {
+		if (dataStore.eventLog.listEvents({ sessionId: created.id }).some((event) => event.type === "message_finished")) break;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	const events = dataStore.eventLog.listEvents({ sessionId: created.id });
+	assert.equal(events.filter((event) => event.type === "message_finished").length, 1);
+	assert.equal(events.filter((event) => event.type === "pibo.output.identity_collision").length, 1);
+	await source.close();
 	dataStore.close();
 });
 
