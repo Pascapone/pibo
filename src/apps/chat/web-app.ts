@@ -1131,6 +1131,13 @@ function deliverWebOutputPersistenceState(
 	if (!session) throw new Error(`No session available for ${persistenceState.piboSessionId}`);
 
 	const errors: unknown[] = [];
+	const checkpoint = () => {
+		try {
+			retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+		} catch (error) {
+			throw new WebOutputPersistenceCheckpointError(error);
+		}
+	};
 	for (const delivery of persistenceState.deliveries) {
 		try {
 			if (!delivery.v2) {
@@ -1152,13 +1159,13 @@ function deliverWebOutputPersistenceState(
 					eventId: eventIdentityForDelivery(delivery.event),
 					duplicate: ingested.duplicate,
 				};
-				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+				checkpoint();
 			}
 
 			if (!delivery.reliabilityDelivered) {
 				if (delivery.reliabilityPayload === undefined) {
 					delivery.reliabilityPayload = boundedReliabilityOutputPayload(state, delivery.event);
-					retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+					checkpoint();
 				}
 				const deliveryKey = delivery.deliveryId;
 				state.reliabilityStore.appendOnce({
@@ -1170,12 +1177,12 @@ function deliverWebOutputPersistenceState(
 					payload: delivery.reliabilityPayload,
 				});
 				delivery.reliabilityDelivered = true;
-				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+				checkpoint();
 			}
 
 			if (!delivery.sideEffectsDelivered && state.reliabilityStore.hasDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1")) {
 				delivery.sideEffectsDelivered = true;
-				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+				checkpoint();
 			} else if (!delivery.sideEffectsDelivered) {
 				const stored = storedChatEventForDelivery(persistenceState, delivery);
 				if (delivery.event.type === "assistant_message" || delivery.event.type === "message_finished" || delivery.event.type === "session_error") {
@@ -1194,13 +1201,21 @@ function deliverWebOutputPersistenceState(
 				// recording before sends would trade duplicates for silent loss.
 				state.reliabilityStore.recordDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1");
 				delivery.sideEffectsDelivered = true;
-				retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
+				checkpoint();
 			}
 		} catch (error) {
+			if (error instanceof WebOutputPersistenceCheckpointError) throw error.checkpointCause;
 			errors.push(error);
 		}
 	}
 	if (errors.length > 0) throw errors[0];
+}
+
+class WebOutputPersistenceCheckpointError extends Error {
+	constructor(readonly checkpointCause: unknown) {
+		super("Web output persistence checkpoint failed");
+		this.name = "WebOutputPersistenceCheckpointError";
+	}
 }
 
 function storedChatEventForDelivery(

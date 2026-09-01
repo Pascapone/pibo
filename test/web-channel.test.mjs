@@ -1063,6 +1063,41 @@ test("chat web persists terminal boundaries after a buffered output collision", 
 	}
 });
 
+test("chat web stops a delivery batch after losing durable checkpoint ownership", async () => {
+	const originalUpdateJobPayload = PiboReliabilityStore.prototype.updateJobPayload;
+	PiboReliabilityStore.prototype.updateJobPayload = () => false;
+	const host = await startWebHostChannel({ auth: createFakeAuthService() });
+	try {
+		const sessionResponse = await fetch(`${host.baseURL}/api/chat/session`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(sessionResponse.status, 200);
+		const { session } = await sessionResponse.json();
+		const eventId = "web-checkpoint-ownership-loss";
+		host.emitOutput({ type: "assistant_delta", piboSessionId: session.id, eventId, assistantIndex: 0, text: "buffered" });
+		host.emitOutput({ type: "message_finished", piboSessionId: session.id, eventId, source: "user" });
+
+		await waitForCondition(() => {
+			const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+			try {
+				return Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'assistant_message'").get(session.id).count) === 1;
+			} finally {
+				data.close();
+			}
+		}, "first delivery did not reach the failed durable checkpoint");
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		const data = new DatabaseSync(host.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(Number(data.prepare("SELECT COUNT(*) AS count FROM event_log WHERE session_id = ? AND type = 'message_finished'").get(session.id).count), 0);
+		} finally {
+			data.close();
+		}
+	} finally {
+		PiboReliabilityStore.prototype.updateJobPayload = originalUpdateJobPayload;
+		await host.channel.stop?.();
+	}
+});
+
 test("chat web automatically retries a once-only final persistence failure without producer replay", async () => {
 	const originalIngest = ChatDataIngestService.prototype.ingestOutputEvent;
 	let injected = false;
