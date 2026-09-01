@@ -12,7 +12,6 @@
     "context",
     "skills/builtin/**",
     "docs/project/operations/**",
-    "!docs/project/operations/vscode-extension-release.md",
     "docs/project/installation-profiles.md",
     "docs/project/guides/pibo-on-windows-via-wsl.md",
     "docs/project/guides/pibo-vscode-ext-quickstart.md",

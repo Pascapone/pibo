@@ -81,7 +81,7 @@ test("npm package excludes generated VSIX artifacts while keeping runtime assets
 		assert.equal(files.some((path) => path.startsWith("dist/apps/vscode-artifacts/")), false);
 		assert.equal(files.includes("dist/bin/pibo.js"), true);
 		assert.equal(files.some((path) => path.startsWith("dist/apps/chat-ui/")), true);
-		assert.equal(files.includes("docs/project/operations/vscode-extension-release.md"), false, "the stale pending release runbook must not be installed");
+		assert.equal(files.includes("docs/project/operations/vscode-extension-release.md"), true, "the conformant release runbook must be installed");
 		assert.equal(files.includes("docs/README.md"), false, "an incomplete legacy documentation README must not be installed");
 		assert.equal(files.includes("docs/project/README.md"), false, "an incomplete project documentation README must not be installed");
 		for (const path of [
@@ -120,7 +120,7 @@ test("npm package excludes generated VSIX artifacts while keeping runtime assets
 				[],
 				"every local link in the actual package README/documentation subset must resolve inside the archive",
 			);
-			assert.equal(archiveFiles.has("docs/project/operations/vscode-extension-release.md"), false);
+			assert.equal(archiveFiles.has("docs/project/operations/vscode-extension-release.md"), true);
 		} finally {
 			await rm(packDirectory, { recursive: true, force: true });
 		}
