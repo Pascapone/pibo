@@ -28,7 +28,7 @@ test("trace node order is monotonic within one projection source even when times
 	assert.deepEqual([second, first].toSorted(compareTraceNodes).map((entry) => entry.id), ["event-1", "event-2"]);
 });
 
-test("trace node order uses timestamps across incomparable projection sources", () => {
+test("trace node order does not use mutable timestamps across projection sources", () => {
 	const laterTranscript = node("transcript", {
 		startedAt: "2026-08-04T08:00:02.000Z",
 		orderKey: transcriptTraceOrder(0, 0, "execution.command"),
@@ -38,7 +38,7 @@ test("trace node order uses timestamps across incomparable projection sources", 
 		orderKey: eventTraceOrder(100, "execution.command"),
 	});
 
-	assert.deepEqual([laterTranscript, earlierEvent].toSorted(compareTraceNodes).map((entry) => entry.id), ["event", "transcript"]);
+	assert.deepEqual([laterTranscript, earlierEvent].toSorted(compareTraceNodes).map((entry) => entry.id), ["transcript", "event"]);
 });
 
 test("same-turn phase remains stable across projection sources", () => {
@@ -46,13 +46,13 @@ test("same-turn phase remains stable across projection sources", () => {
 		type: "assistant.message",
 		eventId: "turn-1",
 		startedAt: "2026-08-04T08:00:00.000Z",
-		orderKey: eventTraceOrder(1, "assistant.message"),
+		orderKey: { ...eventTraceOrder(1, "assistant.message"), renderSequence: 5 },
 	});
 	const reasoning = node("reasoning", {
 		type: "model.reasoning",
 		eventId: "turn-1",
 		startedAt: "2026-08-04T08:00:01.000Z",
-		orderKey: transcriptTraceOrder(10, 0, "model.reasoning"),
+		orderKey: { ...transcriptTraceOrder(10, 0, "model.reasoning"), renderSequence: 5 },
 	});
 
 	assert.deepEqual([assistant, reasoning].toSorted(compareTraceNodes).map((entry) => entry.id), ["reasoning", "assistant"]);

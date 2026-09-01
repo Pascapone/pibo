@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T06:15:00Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "WP02-DATA-SIG-001"
       status: "implemented"
@@ -115,6 +115,8 @@ traceability:
         - path: "test/chat-signals-api.test.mjs"
           name: "chat signal SSE sends snapshot then monotonic patches"
         - path: "test/chat-signals-api.test.mjs"
+          name: "chat selected signal SSE multiplexes tree and global status updates"
+        - path: "test/chat-signals-api.test.mjs"
           name: "chat signal SSE rejects missing root session id"
         - path: "test/chat-signals-api.test.mjs"
           name: "chat signal routes return 503 when registry functions are unavailable"
@@ -135,6 +137,8 @@ traceability:
       tests:
         - path: "test/signal-registry.test.mjs"
           name: "prune terminal node sends remove patch"
+        - path: "test/session-router-store.test.mjs"
+          name: "restart signal reconstruction roots nested sessions independently of store order"
       failures:
         - "All Chat signal routes call requireSession; session/tree routes also require a shared session."
         - "Missing registry capability returns 503; missing root query returns 400."
@@ -151,10 +155,10 @@ This specification describes implemented behavior at the traceability commit. Pl
 # Current behavior
 
 - Persistence and models: PiboSignalKind; PiboSignalStatus; PiboSignalNode; PiboSignalSnapshot; PiboSignalPatch; PiboSignalStatusSnapshot; PiboSignalStore=never; per-root in-memory versions.
-- Routes and protocols: GET /api/chat/signals/statuses; GET /api/chat/signals/status-events (SSE snapshot then cross-root patches); GET /api/chat/signals/session/:piboSessionId; GET /api/chat/signals/tree/:piboSessionId; GET /api/chat/signals/events?rootPiboSessionId=... (SSE snapshot then patches); 25-second SSE heartbeat comments
+- Routes and protocols: GET /api/chat/signals/statuses; GET /api/chat/signals/status-events (SSE snapshot then cross-root patches); GET /api/chat/signals/session/:piboSessionId; GET /api/chat/signals/tree/:piboSessionId; GET /api/chat/signals/events?rootPiboSessionId=... (SSE snapshot then tree and global-status patches); 25-second SSE heartbeat comments.
 - State transitions: Session lifecycle, accepted/rejected message, normalized output, queue, run, and recovery inputs project semantic node mutations. No semantic change emits no patch and does not advance updatedAt/version. Rejected accepted messages remove synthetic activity without disturbing unrelated active turns. Terminal node pruning emits remove patches after success/error TTLs.
 - Failure and security: All Chat signal routes call requireSession; session/tree routes also require a shared session. Missing registry capability returns 503; missing root query returns 400. Snapshots expose compact status/telemetry hints without payload bodies.
-- Compatibility: Version gaps require consumers to refresh a full snapshot. Tool and yielded-run errors remain child/local error facts and do not automatically promote the session to runtime error. Signals are reconstructable and non-durable.
+- Compatibility: Version gaps require consumers to refresh a full snapshot. Tool and yielded-run errors remain child/local error facts and do not automatically promote the session to runtime error. Signals are reconstructable and non-durable; restart reconstruction assigns nested roots independently of row order.
 
 # Requirements and invariants
 
@@ -226,7 +230,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
+Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
 
 Package verification commands:
 

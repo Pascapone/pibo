@@ -1672,7 +1672,7 @@ test("pibo debug trace prints rebuilt Chat Web trace nodes", async () => {
 	try {
 		const trace = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--running-only"], { cwd });
 		assert.match(trace.stdout, /status\ttype\ttitle\tid\trunId\tlinkedPiboSessionId/);
-		assert.match(trace.stdout, /running\ttool.call\t\s+bash\ttool:tool_1/);
+		assert.match(trace.stdout, /running\ttool.call\t\s+bash\ttool-invocation:/);
 		assert.match(trace.stdout, /nodes: 2/);
 
 		const json = await execFileAsync("node", [cliPath, "debug", "trace", "ps_running", "--json"], { cwd });
@@ -1784,6 +1784,67 @@ test("pibo debug messages, final, and events show drill down without SQL", async
 		assert.equal(parsed.message.role, "assistant");
 		assert.equal(parsed.message.streamId, 5);
 		assert.equal(parsed.source.path, "attributes_json.inlinePayload.text");
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug events show fails explicit lookups when the event is absent", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const existing = await execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show", "evt_5"], { cwd });
+		assert.match(existing.stdout, /event_id: evt_5/);
+
+		const existingJson = await execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show", "evt_5", "--json"], { cwd });
+		assert.equal(JSON.parse(existingJson.stdout).event.event_id, "evt_5");
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show", "evt_missing"], { cwd }),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.equal(error.stderr, "");
+				assert.match(error.stdout, /event: not found/);
+				assert.match(error.stdout, /pibo debug events ps_parent list/);
+				return true;
+			},
+		);
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show", "evt_missing", "--json"], { cwd }),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.equal(error.stderr, "");
+				const parsed = JSON.parse(error.stdout);
+				assert.equal(parsed.resultType, "debug.events.show");
+				assert.equal(parsed.selector, "evt_missing");
+				assert.equal(parsed.event, undefined);
+				return true;
+			},
+		);
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "events", "ps_missing", "show", "evt_missing"], { cwd }),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.match(error.stdout, /event: not found/);
+				return true;
+			},
+		);
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "events", "ps_parent", "show"], { cwd }),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.match(error.stderr, /show requires <stream-id-or-event-id>/);
+				return true;
+			},
+		);
+
+		const adjacent = await execFileAsync("node", [cliPath, "debug", "messages", "ps_parent", "show", "assistant:last"], { cwd });
+		assert.match(adjacent.stdout, /event_id: evt_5/);
+
+		const discovery = await execFileAsync("node", [cliPath, "debug", "events", "--help"], { cwd });
+		assert.match(discovery.stdout, /show <stream-id-or-event-id>/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -1913,7 +1974,7 @@ test("pibo debug jobs lists dead jobs and replays one", async () => {
 	const cwd = await makeDebugFixture();
 	try {
 		const live = await execFileAsync("node", [cliPath, "debug", "jobs", "list", "--queue", "runs"], { cwd });
-		assert.match(live.stdout, /jobId\tqueue\tstate\trunAt\tattempts\tworkerId\tlastError/);
+		assert.match(live.stdout, /jobId\tqueue\tstate\trunAt\tattempts\tpiboSessionId\teventId\tphase\tworkerId\tlastError/);
 		assert.match(live.stdout, /job_live\truns\tpending/);
 
 		const dead = await execFileAsync("node", [cliPath, "debug", "jobs", "dead", "--queue", "runs"], { cwd });
@@ -1925,6 +1986,25 @@ test("pibo debug jobs lists dead jobs and replays one", async () => {
 
 		const deadAfterReplay = await execFileAsync("node", [cliPath, "debug", "jobs", "dead", "--queue", "runs"], { cwd });
 		assert.doesNotMatch(deadAfterReplay.stdout, /job_dead/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug jobs exposes output persistence correlation and phase without payloads", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const result = await execFileAsync(
+			"node",
+			[cliPath, "debug", "jobs", "list", "--queue", "output-persistence", "--json"],
+			{ cwd },
+		);
+		const parsed = JSON.parse(result.stdout);
+		assert.equal(parsed.jobs[0].piboSessionId, "ps_pending_output");
+		assert.equal(parsed.jobs[0].eventId, "turn_pending_output");
+		assert.equal(parsed.jobs[0].phase, "reliability");
+		assert.equal("payload" in parsed.jobs[0], false);
+		assert.doesNotMatch(result.stdout, /secret-output-payload/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -2578,6 +2658,25 @@ async function makeDebugFixture() {
 		queue: "runs",
 		payload: { runId: "run_live", toolName: "helper" },
 		maxAttempts: 1,
+	});
+	reliability.enqueue({
+		jobId: "job_output_pending",
+		queue: "output-persistence",
+		payload: {
+			version: 1,
+			key: "delivery:pending-output",
+			piboSessionId: "ps_pending_output",
+			eventId: "turn_pending_output",
+			state: {
+				version: 1,
+				piboSessionId: "ps_pending_output",
+				deliveries: [{
+					event: { type: "assistant_message", text: "secret-output-payload" },
+					v2: { streamId: 9, createdAt: "2026-05-01T10:00:00.000Z", eventId: "turn_pending_output" },
+				}],
+			},
+		},
+		maxAttempts: 5,
 	});
 	const dead = reliability.enqueue({
 		jobId: "job_dead",

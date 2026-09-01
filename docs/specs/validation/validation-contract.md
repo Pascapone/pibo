@@ -13,11 +13,11 @@ generated:
   at: "2026-08-30T14:11:18.679Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-10-DELIVERY-VALIDATION"
   package_parent: "ca8de98aaf1a536006b9e5f0e3a070da1d5070bd"
   source_evidence: "performed"
@@ -25,7 +25,7 @@ implementation:
   build_typecheck_package_execution: "recorded by the package implementation audit; it does not expand normative scope"
   live_external_execution: "unperformed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "VALIDATION-PROJECT-001"
       status: "implemented"
@@ -214,9 +214,9 @@ traceability:
 ## Authority and evidence boundary
 
 - Stable concept: `SPC-VAL-001`.
-- Current-behavior authority: Foundation `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Current-behavior authority: upstream/dev refresh `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Raw-package parent: accepted commit `ca8de98aaf1a536006b9e5f0e3a070da1d5070bd`.
-- Source and named-test locators identify regular Foundation blobs. Executed package checks prove candidate/parent parity only; they do not prove live or external behavior.
+- Source and named-test locators identify regular upstream/dev refresh blobs. Executed package checks prove candidate/parent parity only; they do not prove live or external behavior.
 - This specification contains implemented current behavior only. Follow-ups and gaps are non-normative.
 
 ## Scope
@@ -448,7 +448,7 @@ These gaps do not define intended behavior. Any implementation change requires a
 
 ## Verification and traceability
 
-- Every requirement traces to exact regular files at Foundation `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Every requirement traces to exact regular files at upstream/dev refresh `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Named tests are identified by exact test names. Source-only requirements set `source_inspected: true` and carry a concrete follow-up.
 - Deterministic wrappers, source guards, archive checks, and accelerated fixtures are bounded evidence. They are not substitutes for headful VS Code, real workspace activation, real PTY, live browser/CDP, provider, controller gateway, Docker runtime, release publication, deployment, or Pibo2 acceptance.
 - Package execution results belong to the implementation audit, not to the normative current-behavior claim.

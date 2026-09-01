@@ -7,19 +7,19 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T08:51:56Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-RES-001"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-03-RESOURCES-SECURITY"
   source_evidence: "performed"
   focused_test_execution: "performed: 383 passed, 2 baseline failures in local-auth.test.mjs"
   build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "RES-AGT-001"
       status: "implemented"
@@ -63,6 +63,8 @@ traceability:
           symbol: "createDefaultCustomAgentStore"
         - path: "src/apps/chat/agent-store.ts"
           symbol: "isValidCustomAgentName"
+        - path: "src/apps/chat/agent-store.ts"
+          symbol: "CustomAgentTargetReferenceError"
       tests:
         - path: "test/agent-store.test.mjs"
           name: "custom agent store migrates old app-context tables with stable defaults"
@@ -72,6 +74,12 @@ traceability:
           name: "custom agent store records agent rename and deletion history"
         - path: "test/agent-store.test.mjs"
           name: "custom agent names are globally unique and lists are app-global across legacy accounts"
+        - path: "test/agent-store.test.mjs"
+          name: "custom agent store rejects deletion while surviving agents target the profile or an alias"
+        - path: "test/agent-store.test.mjs"
+          name: "custom agent deletion rolls back alias removal when deleting the agent fails"
+        - path: "test/chat-custom-agent-profiles.test.mjs"
+          name: "web gateway registry loads duplicate legacy custom agents after migration"
       public:
         - "Profile and Custom Agent definitions"
         - "chat_agent_folders, chat_agents, chat_agent_profile_aliases, chat_agent_events"
@@ -132,6 +140,8 @@ traceability:
           name: "chat web app changes session profiles only before the first trace event"
         - path: "test/web-channel.test.mjs"
           name: "chat web app canonicalizes legacy custom agent session profile aliases"
+        - path: "test/profile-cli.test.mjs"
+          name: "pibo profile resolves persisted subagent targets and recovers after a missing target is updated away"
       public:
         - "Profile and Custom Agent definitions"
         - "chat_agent_folders, chat_agents, chat_agent_profile_aliases, chat_agent_events"
@@ -150,7 +160,7 @@ verification:
   performed:
     - evidence_class: "source inspection"
       status: "performed"
-      detail: "Exact source files, symbols, test files, and test names were reconciled to Foundation commit 38bb6e57f118c1543e7263c68d27e5103d3b1262."
+      detail: "Exact source files, symbols, test files, and test names were reconciled to upstream/dev refresh commit 39090b8850758293e69380a52bb7498d7c955bc2."
     - evidence_class: "focused tests"
       status: "performed_with_baseline_failures"
       detail: "Exact parent/candidate inventory ran in the same fresh isolated worker: 385 tests, 383 passed, and 2 identical local-auth baseline assertions failed; no source or test files were changed."
@@ -182,7 +192,7 @@ This specification records current behavior only. It does not authorize unimplem
 
 # Current behavior and public surfaces
 
-The implementation state is current at the exact accepted Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+The implementation state is current at the exact accepted upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Implemented behavior:
 - "Profile and Custom Agent definitions"
@@ -191,6 +201,7 @@ Implemented behavior:
 - "Profiles select runtime/model/options/tools/packages/skills/subagents/context/MCP/Pi packages; user-editable agents add folders, aliases, archive, and audit events."
 - "InitialSessionContext carries runtime/options, model/fallbacks, thinking/fast settings, tools, skills, subagents, MCP servers, Pi packages, context files, diagnostics, and built-in modes."
 - "CustomAgentStore persists app-global agents, durable folders, rename aliases, archive state, and audit history in four SQLite tables."
+- "Legacy duplicate aliases remain loadable during migration. Permanent deletion rejects any surviving custom agent whose subagent target resolves through the profile or one of its aliases, reports the dependents, and rolls alias removal back if agent deletion fails."
 - "Profile construction skips stale skill/context/tool references rather than breaking catalog load; skills/context produce diagnostics, while stale tools currently produce a warning only."
 - "Create/update validates the selected runtime profile and rejects error diagnostics with HTTP 400; existing bound sessions remain frozen and legacy renamed profile aliases remain resolvable."
 
@@ -216,7 +227,7 @@ Persistence and lifecycle state: chat-agents.sqlite plus in-memory plugin profil
 
 Validate custom-agent runtime selection on create/update, reject runtime error diagnostics, and preserve diagnosable degradation for stale catalog references during profile construction.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -241,7 +252,7 @@ Validate custom-agent runtime selection on create/update, reject runtime error d
 
 Persist app-global custom agents, folders, rename aliases, archive state, and audit events with migration-safe defaults and uniqueness.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -263,7 +274,7 @@ Persist app-global custom agents, folders, rename aliases, archive state, and au
 
 Preserve configured runtime, adapter options, model/fallback, thinking/fast, subagent, MCP, Pi-package, tool, skill, and context selections in the profile input and expose runtime validation diagnostics without redefining effective runtime resolution.
 
-**Implementation state:** `implemented_at_baseline_with_RUN_008_boundary` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_RUN_008_boundary` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `medium`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -288,7 +299,7 @@ Preserve configured runtime, adapter options, model/fallback, thinking/fast, sub
 
 Freeze a session's selected profile after its first trace event and keep renamed profile aliases resolvable for existing sessions.
 
-**Implementation state:** `implemented_at_baseline_with_session_state_dependency` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_session_state_dependency` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -347,7 +358,7 @@ Open evidence gaps carried forward:
 
 # Verification and traceability
 
-All requirement traceability records use exact repository-relative regular files at `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+All requirement traceability records use exact repository-relative regular files at `39090b8850758293e69380a52bb7498d7c955bc2`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Performed evidence:
 - Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
@@ -359,7 +370,7 @@ Package commands after authoring:
 - `npm run typecheck` — passed
 - `npm run build` — passed, with existing Vite chunk-size warnings
 - Exact focused test inventory from the WP-03 brief — 385 tests: 383 passed and 2 identical local-auth baseline failures in exact parent/candidate runs
-- Foundation validator/authoring suite — 82 passed
+- upstream/dev refresh validator/authoring suite — 82 passed
 
 # Related concepts
 

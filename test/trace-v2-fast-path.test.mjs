@@ -125,6 +125,21 @@ function storedEvent(sequence, payload) {
 	};
 }
 
+test("trace v2 timeline preserves incomplete integrity status", () => {
+	const store = tempStore();
+	try {
+		const page = traceTimelinePageFromView({
+			trace: { ...largeTrace("bounded"), integrityStatus: "incomplete" },
+			payloadStore: store.payloads,
+			limit: 20,
+		});
+		assert.equal(page.integrityStatus, "incomplete");
+		assert.equal(Buffer.byteLength(JSON.stringify(page), "utf8") < TRACE_V2_TIMELINE_HARD_BYTES, true);
+	} finally {
+		store.close();
+	}
+});
+
 test("trace v2 timeline keeps large tool output behind payload refs", () => {
 	const store = tempStore();
 	try {

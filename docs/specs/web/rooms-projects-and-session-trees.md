@@ -9,14 +9,14 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T12:56:45Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
@@ -24,13 +24,15 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "WEB-TOPOLOGY-CONTAINERS-001"
       status: "implemented"
       sources:
         - path: "src/apps/chat/data/room-service.ts"
           symbol: "ChatRoomService"
+        - path: "src/apps/chat/data/room-service.ts"
+          symbol: "PiboRoomHierarchyCycleError"
         - path: "src/apps/chat/data/room-service.ts"
           symbol: "ensureDefaultRoom"
         - path: "src/apps/chat/data/room-service.ts"
@@ -50,6 +52,8 @@ traceability:
           name: "project service uses app-global storage and lists projects"
         - path: "test/project-service-workflow-link.test.mjs"
           name: "shared default project adopts a legacy personal project using the default folder"
+        - path: "test/chat-v2-native-services.test.mjs"
+          name: "V2-native chat services cover rooms, sessions, timeline, commands, and read state"
       public:
         - "/api/chat/rooms*"
         - "/api/chat/sessions*"
@@ -79,6 +83,8 @@ traceability:
           symbol: "createProjectWorkflowSessionSnapshot"
         - path: "src/apps/chat/project-workflow-sessions.ts"
           symbol: "createProjectWorkflowRunCurrent"
+        - path: "src/apps/chat-ui/src/session-trace-layout.tsx"
+          symbol: "shouldRenderSessionComposer"
       tests:
         - path: "test/project-service-workflow-link.test.mjs"
           name: "project workflow session records persist selection metadata before runs start"
@@ -88,6 +94,8 @@ traceability:
           name: "project workflow session snapshots persist configuration and effective definitions"
         - path: "test/project-service-workflow-link.test.mjs"
           name: "project sessions can link back to workflow run ids"
+        - path: "test/chat-ui-project-module-composer.test.mjs"
+          name: "Project module views hide the session composer without changing Terminal behavior"
       public:
         - "/api/chat/rooms*"
         - "/api/chat/sessions*"
@@ -120,6 +128,16 @@ traceability:
           name: "Chat Web mutates and routes historical account sessions by resource existence"
         - path: "test/chat-web-app-sessions.test.mjs"
           name: "Chat Web read state is shared across authenticated accounts"
+        - path: "test/project-service-store.test.mjs"
+          name: "project session deletion repairs current sessions across projects and is idempotent"
+        - path: "test/project-service-store.test.mjs"
+          name: "deleting Project files rejects a nested surviving Project without changing files or rows"
+        - path: "test/project-service-store.test.mjs"
+          name: "Project file deletion detects directory-symlink aliases in both containment directions"
+        - path: "test/chat-ui-delete-confirmation-modal-accessibility.test.mjs"
+          name: "session and room delete confirmations use the shared labelled modal contract"
+        - path: "test/chat-ui-inline-rename-accessibility.test.mjs"
+          name: "sidebar inline rename inputs have stable contextual accessible names"
       public:
         - "/api/chat/rooms*"
         - "/api/chat/sessions*"
@@ -169,7 +187,7 @@ App-global Room/Project topology, normal and workflow Session links, mutations/r
 
 ## Scope
 
-This specification describes implemented behavior at Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
 
 ### In scope
 
@@ -186,7 +204,7 @@ This specification describes implemented behavior at Foundation traceability com
 
 ### Routes and state
 
-Room, Session, Project, Project-Session, archive, rename, delete, read-cursor, and workflow-link operations are method-specific Chat API resources. UI state selects app-global resources by stable IDs.
+Room, Session, Project, Project-Session, archive, rename, delete, read-cursor, and workflow-link operations are method-specific Chat API resources. Room hierarchy changes reject cycles. UI state selects app-global resources by stable IDs.
 
 ### Cache, stream, files, and media
 
@@ -194,7 +212,7 @@ Tree pages and bootstrap/navigation caches are projections; attached file/media 
 
 ### Lifecycle and failure
 
-Default Room/Project adoption, archive visibility, immutable workflow Session selection/configuration, and delete/rename failures are explicit. Tree ordering and child linkage must be deterministic.
+Default Room/Project adoption, archive visibility, immutable workflow Session selection/configuration, and delete/rename failures are explicit. Project Session deletion repairs current-Session pointers and coordinates canonical deletion with rollback. File deletion rejects overlapping surviving Project roots, including symlink aliases; keep-files remains explicit. Tree ordering and child linkage must be deterministic.
 
 ### Security
 
@@ -202,7 +220,7 @@ Resource existence and App Context authorization gate access; historical account
 
 ### Accessibility and responsive behavior
 
-Session/Room buttons expose current state, status, archived/unread metadata, and mobile sidebar behavior from source. Headful tree navigation is unperformed.
+Session/Room buttons expose current state, status, archived/unread metadata, contextual inline-rename labels, shared labelled delete confirmation, and mobile sidebar behavior from source. Headful tree navigation is unperformed.
 
 ### Compatibility and integration
 
@@ -216,7 +234,7 @@ Rooms and Projects MUST be app-global resources, and default-container adoption 
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -235,7 +253,7 @@ Normal and workflow Project Session records MUST preserve stable Pibo Session id
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -254,7 +272,7 @@ Room, Project, and Session rename, archive, delete, and read-state mutations MUS
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -273,7 +291,7 @@ Room and Project trees MUST be deterministic, reject malformed bootstrap payload
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -337,8 +355,8 @@ Legacy personal default Projects can be adopted into shared app-global topology;
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
-- Imported or re-exported symbols use their canonical Foundation definition files in traceability.
+- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
+- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
 - Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
 - Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
 - Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.

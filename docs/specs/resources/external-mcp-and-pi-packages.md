@@ -7,19 +7,19 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T08:51:56Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-RES-004"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-03-RESOURCES-SECURITY"
   source_evidence: "performed"
   focused_test_execution: "performed: 383 passed, 2 baseline failures in local-auth.test.mjs"
   build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "RES-MCP-001"
       status: "implemented"
@@ -32,6 +32,10 @@ traceability:
           symbol: "loadConfig"
         - path: "src/mcp/config.ts"
           symbol: "filterTools"
+        - path: "src/mcp/config.ts"
+          symbol: "resolveMcpServerConfigSource"
+        - path: "src/mcp/agent-context.ts"
+          symbol: "setMcpServerDescription"
         - path: "src/mcp/daemon.ts"
           symbol: "runDaemon"
         - path: "src/mcp/daemon.ts"
@@ -57,6 +61,10 @@ traceability:
           name: "stale PID metadata never signals an unrelated reused process"
         - path: "test/mcp-daemon-ownership.test.mjs"
           name: "PID and endpoint cleanup preserve a newer generation in every owner path"
+        - path: "test/mcp-config-merge.test.mjs"
+          name: "MCP config source resolution follows merged precedence"
+        - path: "test/mcp-agent-context.test.mjs"
+          name: "MCP descriptions update the winning config source"
       public:
         - "pibo mcp command family"
         - "pibo pi-packages command family"
@@ -153,6 +161,8 @@ traceability:
           symbol: "parsePiPackageSource"
         - path: "src/pi-packages/cli.ts"
           symbol: "runPiPackagesCli"
+        - path: "src/mcp/config-command.ts"
+          symbol: "configCommand"
       tests:
         - path: "test/pi-packages.test.mjs"
           name: "pi package source parser rejects non-pi.dev URLs"
@@ -162,6 +172,10 @@ traceability:
           name: "chat web app manages Pi package registrations and custom agent selections"
         - path: "test/web-channel.test.mjs"
           name: "chat web app rejects non-pi.dev package sources from browser adds"
+        - path: "test/mcp-cli.test.mjs"
+          name: "pibo mcp config refuses to remove servers selected by custom agents"
+        - path: "test/mcp-cli.test.mjs"
+          name: "pibo mcp config allows removing an override when a lower-priority source retains the selected server"
       public:
         - "pibo mcp command family"
         - "pibo pi-packages command family"
@@ -180,7 +194,7 @@ verification:
   performed:
     - evidence_class: "source inspection"
       status: "performed"
-      detail: "Exact source files, symbols, test files, and test names were reconciled to Foundation commit 38bb6e57f118c1543e7263c68d27e5103d3b1262."
+      detail: "Exact source files, symbols, test files, and test names were reconciled to upstream/dev refresh commit 39090b8850758293e69380a52bb7498d7c955bc2."
     - evidence_class: "focused tests"
       status: "performed_with_baseline_failures"
       detail: "Exact parent/candidate inventory ran in the same fresh isolated worker: 385 tests, 383 passed, and 2 identical local-auth baseline assertions failed; no source or test files were changed."
@@ -221,7 +235,7 @@ This specification records current behavior only. It does not authorize unimplem
 
 # Current behavior and public surfaces
 
-The implementation state is current at the exact accepted Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+The implementation state is current at upstream refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Implemented behavior:
 - "pibo mcp command family"
@@ -229,6 +243,7 @@ Implemented behavior:
 - "Chat MCP descriptions and Pi package CRUD"
 - "CLI/runtime manage MCP config, daemon clients, tools/resources/calls and registered Pi extension packages; Chat exposes package CRUD and MCP descriptions."
 - "MCP configuration search order is explicit path, MCP_CONFIG_PATH, cwd, then home variants; first source wins a duplicate server name and disabledTools overrides allowedTools."
+- "Description edits update the highest-priority writable config source that contributes the server; they do not create shadow entries for unknown or registry-owned servers. Removing the last effective definition of an MCP server selected by any active or archived custom agent is rejected, while removing an override is allowed when a lower-priority source still supplies the server."
 - "MCP supports stdio or HTTP, bounded retries/timeouts/concurrency, filtered tools, resources/templates, daemon ownership/election/recovery, and a 1 MiB daemon response bound."
 - "Runtime resource sessions scope selected MCP secrets into generated environment references, retain resolved values only in ephemeral adapter environment, and redact known secret values from errors."
 - "Pi package records persist registered/install/error/enabled state; runtime options include only selected, enabled, installed packages and diagnose skipped entries."
@@ -256,7 +271,7 @@ Persistence and lifecycle state: MCP config/registry state and pi-packages.json-
 
 Merge MCP configuration with the documented first-source-wins precedence and manage one identity-checked daemon generation through election, claim/lease/PID ownership, stale recovery, and safe cleanup.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -287,7 +302,7 @@ Merge MCP configuration with the documented first-source-wins precedence and man
 
 Expose MCP tools, resources, templates, and calls through transport-exclusive validated configs, tool filters, configured concurrency/retry/time limits, bounded daemon messages, and focused progressive CLI errors.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -315,7 +330,7 @@ Expose MCP tools, resources, templates, and calls through transport-exclusive va
 
 Persist Pi package registration/install/error/enabled state and pass only selected, enabled, installed package paths to the Pi adapter, diagnosing unknown, disabled, failed, or missing selections.
 
-**Implementation state:** `implemented_at_baseline_with_RUN_004_execution_boundary` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_RUN_004_execution_boundary` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -340,7 +355,7 @@ Persist Pi package registration/install/error/enabled state and pass only select
 
 Scope MCP secret-bearing fields into ephemeral generated environment references and redact known values from runtime errors; reject invalid package source forms; enforce selected-package deletion conflict on the Chat Web route while documenting that CLI registration removal is not conflict-checked.
 
-**Implementation state:** `implemented_at_baseline_with_explicit_surface_asymmetry` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_explicit_surface_asymmetry` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `medium`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -410,7 +425,7 @@ Open evidence gaps carried forward:
 
 # Verification and traceability
 
-All requirement traceability records use exact repository-relative regular files at `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+All requirement traceability records use exact repository-relative regular files at `39090b8850758293e69380a52bb7498d7c955bc2`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Performed evidence:
 - Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
@@ -422,7 +437,7 @@ Package commands after authoring:
 - `npm run typecheck` — passed
 - `npm run build` — passed, with existing Vite chunk-size warnings
 - Exact focused test inventory from the WP-03 brief — 385 tests: 383 passed and 2 identical local-auth baseline failures in exact parent/candidate runs
-- Foundation validator/authoring suite — 82 passed
+- upstream/dev refresh validator/authoring suite — 82 passed
 
 # Related concepts
 

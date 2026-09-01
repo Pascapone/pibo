@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T06:15:00Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "WP02-DATA-STORE-001"
       status: "implemented"
@@ -24,6 +24,8 @@ traceability:
           symbol: "PiboDataStore"
         - path: "src/data/pibo-store.ts"
           symbol: "createDefaultPiboDataStore"
+        - path: "src/data/schema.ts"
+          symbol: "assertSupportedPiboDataSchemaVersion"
       tests:
         - path: "test/data-v2-store.test.mjs"
           name: "v2 schema migration is idempotent"
@@ -33,6 +35,12 @@ traceability:
           name: "fresh pibo chat schema omits retired room partition structures"
         - path: "test/app-context-fresh-schema.test.mjs"
           name: "fresh app-context schemas omit retired access-control structures"
+        - path: "test/data-schema-retired-scope-migration.test.mjs"
+          name: "an already-stamped schema v6 is repaired idempotently and preserves runtime bindings"
+        - path: "test/data-v2-store.test.mjs"
+          name: "pibo data store rejects future schemas without mutating them"
+        - path: "test/stream-render-final-review.test.mjs"
+          name: "schema v7 migration rolls every injected phase back and retries completely"
       failures:
         - "Bounded payload reads verify size and SHA-256."
         - "Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow."
@@ -61,6 +69,10 @@ traceability:
           symbol: "insertMessage"
         - path: "src/data/message-store.ts"
           symbol: "completeAssistantMessagesForTurn"
+        - path: "src/core/output-render-sequence.ts"
+          symbol: "OutputRenderSequencer"
+        - path: "src/sessions/pibo-data-store.ts"
+          symbol: "claimOutputRenderSequence"
       tests:
         - path: "test/data-v2-ingest-service.test.mjs"
           name: "chat data ingest writes user messages idempotently"
@@ -70,6 +82,12 @@ traceability:
           name: "chat data ingest records output identity collisions instead of silently dropping them"
         - path: "test/data-v2-ingest-service.test.mjs"
           name: "product history reconstructs full routed messages without native transcript data"
+        - path: "test/data-v2-ingest-service.test.mjs"
+          name: "chat data ingest round-trips immutable render sequence metadata"
+        - path: "test/output-render-sequence.test.mjs"
+          name: "output render sequencer preserves supplied canonical output part indices"
+        - path: "test/stream-render-block-review.test.mjs"
+          name: "render sequence survives a durable store restart and wall-clock rollback"
       failures:
         - "Bounded payload reads verify size and SHA-256."
         - "Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow."
@@ -119,11 +137,15 @@ traceability:
           symbol: "ChatReadStateService"
         - path: "src/apps/chat/data/event-command-service.ts"
           symbol: "ChatEventCommandService"
+        - path: "src/shared/trace-event-projection.ts"
+          symbol: "markIncompletePersistedTurns"
       tests:
         - path: "test/chat-v2-native-services.test.mjs"
           name: "session and navigation activity remain monotonic after stale compatibility projection"
         - path: "test/chat-v2-native-services.test.mjs"
           name: "timeline query retains full-history steering message identity metadata"
+        - path: "test/chat-ui-integration.test.mjs"
+          name: "idle persisted turns without a terminal project an explicit incomplete error"
       failures:
         - "Bounded payload reads verify size and SHA-256."
         - "Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow."
@@ -158,9 +180,9 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Persistence and models: PIBO_DATA_SCHEMA_VERSION=6; rooms; payloads; event_log; chat_messages; observations; session_stats; app_session_read_state; app_room_read_state; session_navigation; indexer_offsets; migration_import_map; external payload root with SHA-256 metadata, refcounting, gzip/identity encoding.
+- Persistence and models: `PIBO_DATA_SCHEMA_VERSION=7`; rooms; payloads; event log; chat messages; observations; session stats; app read state; navigation; indexer offsets; migration import map; durable render high-water, output-part, and tool-invocation counters; external payload root with SHA-256 metadata, refcounting, and gzip/identity encoding. Opening a supported legacy schema transactionally repairs retired required partition columns even when an earlier open stamped a later version; future schemas fail before mutation.
 - Routes and protocols: No HTTP route is owned; Chat query services are consumed by Web routes.
-- State transitions: User acceptance and output ingestion append idempotent event facts, then shadow normalized messages/observations. Client transaction IDs deduplicate retries; repeated text without a transaction ID remains distinct. Output identity collisions throw PiboOutputIdentityCollisionError instead of silently dropping data. Read cursors advance monotonically.
+- State transitions: User acceptance and output ingestion append idempotent event facts, then project normalized messages and observations. Client transaction IDs deduplicate retries; repeated text without a transaction ID remains distinct. Output identity collisions fail visibly. Canonical render sequence, output-part index, and tool-invocation ordinal survive restart and clock rollback. Read cursors advance monotonically, and an idle started turn without a terminal projects an explicit bounded incomplete-integrity marker rather than a false running state.
 - Failure and security: Bounded payload reads verify size and SHA-256. Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow. Missing or corrupt external payload content falls back to the durable preview where the history service supports it.
 - Compatibility: Legacy Pi binding columns are backfilled and old-writer Pi updates are synchronized by migration triggers. Live deltas are excluded from durable timeline facts by default. Projections are rebuildable and do not replace event_log facts.
 - Product-data boundary: App Context identifies one authenticated product data space; it is not a tenant or per-user datastore boundary.
@@ -169,11 +191,11 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 ## Requirement: WP02-DATA-STORE-001
 
-The specification SHALL define schema version 6 and assign only the listed non-session, non-telemetry product tables to this owner.
+The specification SHALL define schema version 7, repair supported legacy physical tables transactionally, reject unsupported future versions without mutation, and assign only the listed non-session, non-telemetry product tables to this owner.
 
 ## Requirement: WP02-DATA-STORE-002
 
-Accepted user messages and normalized output SHALL be ingested idempotently; unkeyed repeated text remains distinct and identity collisions fail visibly.
+Accepted user messages and normalized output SHALL be ingested idempotently; unkeyed repeated text remains distinct; identity collisions fail visibly; and durable render, part, and invocation identities remain monotonic across retries and restarts.
 
 ## Requirement: WP02-DATA-STORE-003
 
@@ -240,7 +262,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
+Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
 
 Package verification commands:
 

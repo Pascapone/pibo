@@ -16,6 +16,9 @@ import type {
 	PiboToolRunResult,
 } from "../runs/registry.js";
 
+const MAX_ATTEMPTS_ERROR = "Job exhausted retry attempts.";
+const MAX_ATTEMPTS_REASON = "max_attempts";
+
 export type PiboEventRetentionClass = "live_delta" | "trace_event" | "chat_message" | "audit_event" | string;
 
 export type PiboEventAppendInput = {
@@ -37,6 +40,12 @@ export type StoredPiboEvent = {
 	createdAt: string;
 	retentionClass: PiboEventRetentionClass;
 	payload: PiboJsonValue;
+};
+
+export type StoredPiboDeliveryReceipt = {
+	deliveryId: string;
+	projection: string;
+	deliveredAt: string;
 };
 
 export type PiboEventListInput = {
@@ -80,6 +89,17 @@ export type PiboJobEnqueueInput = {
 	expiresAt?: string;
 };
 
+export type PiboDeadJobEnqueueInput = {
+	jobId?: string;
+	queue: string;
+	payload?: PiboJsonValue;
+	attempts?: number;
+	maxAttempts?: number;
+	idempotencyKey?: string;
+	reason: string;
+	error?: string;
+};
+
 export type StoredPiboJob = {
 	jobId: string;
 	queue: string;
@@ -89,6 +109,7 @@ export type StoredPiboJob = {
 	priority: number;
 	workerId?: string;
 	claimExpiresAt?: string;
+	claimToken: number;
 	attempts: number;
 	maxAttempts: number;
 	idempotencyKey?: string;
@@ -119,6 +140,14 @@ export type PiboJobRetryInput = {
 	baseDelayMs?: number;
 	maxDelayMs?: number;
 	now?: Date;
+	claimToken?: number;
+};
+
+export type PiboJobListInput = {
+	queue?: string;
+	state?: PiboJobState;
+	limit?: number;
+	excludeJobIds?: readonly string[];
 };
 
 export type PiboDeadJobListInput = {
@@ -170,6 +199,7 @@ type PiboJobRow = {
 	priority: number;
 	worker_id: string | null;
 	claim_expires_at: string | null;
+	claim_token: number;
 	attempts: number;
 	max_attempts: number;
 	idempotency_key: string | null;
@@ -256,6 +286,11 @@ function ensurePiboRunColumn(db: DatabaseSync, name: string, definition: string)
 	if (!columns.has(name)) db.exec(`ALTER TABLE pibo_runs ADD COLUMN ${name} ${definition}`);
 }
 
+function ensurePiboJobColumn(db: DatabaseSync, name: string, definition: string): void {
+	const columns = sqliteTableColumns(db, "pibo_jobs");
+	if (!columns.has(name)) db.exec(`ALTER TABLE pibo_jobs ADD COLUMN ${name} ${definition}`);
+}
+
 export class PiboReliabilityStore {
 	private readonly db: DatabaseSync;
 	private readonly appendEventStatement: StatementSync;
@@ -293,6 +328,13 @@ export class PiboReliabilityStore {
 			CREATE INDEX IF NOT EXISTS idx_pibo_event_stream_topic_stream
 				ON pibo_event_stream(topic, stream_id);
 
+			CREATE TABLE IF NOT EXISTS pibo_delivery_receipts (
+				delivery_id TEXT NOT NULL,
+				projection TEXT NOT NULL,
+				delivered_at TEXT NOT NULL,
+				PRIMARY KEY(delivery_id, projection)
+			);
+
 			CREATE TABLE IF NOT EXISTS pibo_event_consumers (
 				consumer TEXT NOT NULL,
 				topic TEXT NOT NULL,
@@ -310,6 +352,7 @@ export class PiboReliabilityStore {
 				priority INTEGER NOT NULL DEFAULT 0,
 				worker_id TEXT,
 				claim_expires_at TEXT,
+				claim_token INTEGER NOT NULL DEFAULT 0,
 				attempts INTEGER NOT NULL DEFAULT 0,
 				max_attempts INTEGER NOT NULL DEFAULT 1,
 				idempotency_key TEXT,
@@ -376,6 +419,7 @@ export class PiboReliabilityStore {
 			CREATE INDEX IF NOT EXISTS idx_pibo_runs_status
 				ON pibo_runs(status);
 		`);
+		ensurePiboJobColumn(this.db, "claim_token", "INTEGER NOT NULL DEFAULT 0");
 		ensurePiboRunColumn(this.db, "timeout_ms", "INTEGER");
 		ensurePiboRunColumn(this.db, "timeout_at", "TEXT");
 		ensurePiboRunColumn(this.db, "timeout_phase", "TEXT");
@@ -417,6 +461,23 @@ export class PiboReliabilityStore {
 			if (existing) return existing;
 			throw error;
 		}
+	}
+
+	hasDeliveryReceipt(deliveryId: string, projection: string): boolean {
+		return this.db
+			.prepare("SELECT 1 AS found FROM pibo_delivery_receipts WHERE delivery_id = ? AND projection = ?")
+			.get(deliveryId, projection) !== undefined;
+	}
+
+	recordDeliveryReceipt(deliveryId: string, projection: string, deliveredAt = now()): StoredPiboDeliveryReceipt {
+		this.db.prepare(`
+			INSERT OR IGNORE INTO pibo_delivery_receipts (delivery_id, projection, delivered_at)
+			VALUES (?, ?, ?)
+		`).run(deliveryId, projection, deliveredAt);
+		const row = this.db
+			.prepare("SELECT delivery_id, projection, delivered_at FROM pibo_delivery_receipts WHERE delivery_id = ? AND projection = ?")
+			.get(deliveryId, projection) as { delivery_id: string; projection: string; delivered_at: string };
+		return { deliveryId: row.delivery_id, projection: row.projection, deliveredAt: row.delivered_at };
 	}
 
 	list(input: PiboEventListInput = {}): StoredPiboEvent[] {
@@ -572,58 +633,127 @@ export class PiboReliabilityStore {
 	claimBatch(workerId: string, limit: number, options: { visibilityTimeoutMs?: number; queue?: string } = {}): StoredPiboJob[] {
 		const timestamp = now();
 		const claimExpiresAt = new Date(Date.now() + (options.visibilityTimeoutMs ?? 30000)).toISOString();
-		const clauses = [
-			"((state = 'pending' AND run_at <= ?) OR (state = 'running' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?))",
-			"(expires_at IS NULL OR expires_at > ?)",
-		];
-		const values: Array<string | number> = [timestamp, timestamp, timestamp];
-		if (options.queue) {
-			clauses.push("queue = ?");
-			values.push(options.queue);
-		}
-		this.moveExpiredJobs(timestamp);
-		const rows = this.db
-			.prepare(`
-				UPDATE pibo_jobs
-				SET state = 'running',
-					worker_id = ?,
-					claim_expires_at = ?,
-					attempts = attempts + 1,
-					updated_at = ?
-				WHERE job_id IN (
-					SELECT job_id FROM pibo_jobs
-					WHERE ${clauses.join(" AND ")}
-					ORDER BY priority DESC, run_at ASC, created_at ASC
-					LIMIT ?
-				)
-				RETURNING *
-			`)
-			.all(workerId, claimExpiresAt, timestamp, ...values, clampLimit(limit)) as PiboJobRow[];
-		return rows.map(jobFromRow);
+		return this.inImmediateTransaction(() => {
+			const clauses = [
+				"((state = 'pending' AND run_at <= ?) OR (state = 'running' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?))",
+				"(expires_at IS NULL OR expires_at > ?)",
+				"attempts < max_attempts",
+			];
+			const values: Array<string | number> = [timestamp, timestamp, timestamp];
+			if (options.queue) {
+				clauses.push("queue = ?");
+				values.push(options.queue);
+			}
+			this.moveExpiredJobs(timestamp);
+			this.moveExhaustedRecoverableJobs(timestamp, { queue: options.queue });
+			const rows = this.db
+				.prepare(`
+					UPDATE pibo_jobs
+					SET state = 'running',
+						worker_id = ?,
+						claim_expires_at = ?,
+						claim_token = claim_token + 1,
+						attempts = attempts + 1,
+						updated_at = ?
+					WHERE job_id IN (
+						SELECT job_id FROM pibo_jobs
+						WHERE ${clauses.join(" AND ")}
+						ORDER BY priority DESC, run_at ASC, created_at ASC
+						LIMIT ?
+					)
+					RETURNING *
+				`)
+				.all(workerId, claimExpiresAt, timestamp, ...values, clampLimit(limit)) as PiboJobRow[];
+			return rows.map(jobFromRow);
+		});
 	}
 
 	claimJob(jobId: string, workerId: string, visibilityTimeoutMs = 30000): StoredPiboJob | undefined {
 		const timestamp = now();
 		const claimExpiresAt = new Date(Date.now() + visibilityTimeoutMs).toISOString();
-		const row = this.db
-			.prepare(`
+		return this.inImmediateTransaction(() => {
+			this.moveExpiredJobs(timestamp);
+			this.moveExhaustedRecoverableJobs(timestamp, { jobId });
+			const row = this.db
+				.prepare(`
+					UPDATE pibo_jobs
+					SET state = 'running',
+						worker_id = ?,
+						claim_expires_at = ?,
+						claim_token = claim_token + 1,
+						attempts = attempts + 1,
+						updated_at = ?
+					WHERE job_id = ?
+						AND state = 'pending'
+						AND run_at <= ?
+						AND attempts < max_attempts
+						AND (expires_at IS NULL OR expires_at > ?)
+					RETURNING *
+				`)
+				.get(workerId, claimExpiresAt, timestamp, jobId, timestamp, timestamp) as PiboJobRow | undefined;
+			return row ? jobFromRow(row) : undefined;
+		});
+	}
+
+	claimRecoverableJob(jobId: string, workerId: string, visibilityTimeoutMs = 30000, forcePending = false): StoredPiboJob | undefined {
+		const timestamp = now();
+		const claimExpiresAt = new Date(Date.now() + visibilityTimeoutMs).toISOString();
+		return this.inImmediateTransaction(() => {
+			this.moveExpiredJobs(timestamp);
+			this.moveExhaustedRecoverableJobs(timestamp, { jobId });
+			const row = this.db.prepare(`
 				UPDATE pibo_jobs
 				SET state = 'running',
 					worker_id = ?,
 					claim_expires_at = ?,
+					claim_token = claim_token + 1,
 					attempts = attempts + 1,
 					updated_at = ?
 				WHERE job_id = ?
-					AND state = 'pending'
-					AND run_at <= ?
+					AND (
+						(state = 'pending' AND (? = 1 OR run_at <= ?))
+						OR (state = 'running' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?)
+					)
+					AND attempts < max_attempts
 					AND (expires_at IS NULL OR expires_at > ?)
 				RETURNING *
-			`)
-			.get(workerId, claimExpiresAt, timestamp, jobId, timestamp, timestamp) as PiboJobRow | undefined;
-		return row ? jobFromRow(row) : undefined;
+			`).get(workerId, claimExpiresAt, timestamp, jobId, forcePending ? 1 : 0, timestamp, timestamp, timestamp) as PiboJobRow | undefined;
+			return row ? jobFromRow(row) : undefined;
+		});
 	}
 
-	ack(jobId: string, workerId: string): boolean {
+	updateJobPayload(jobId: string, workerId: string, payload: PiboJsonValue, claimToken?: number): boolean {
+		const result = this.db.prepare(`
+			UPDATE pibo_jobs
+			SET payload_json = ?, updated_at = ?
+			WHERE job_id = ? AND state = 'running' AND worker_id = ?
+				AND (? IS NULL OR claim_token = ?)
+				AND claim_expires_at IS NOT NULL AND claim_expires_at > ?
+		`).run(json(payload), now(), jobId, workerId, claimToken ?? null, claimToken ?? null, now());
+		return Number(result.changes ?? 0) > 0;
+	}
+
+	releaseJob(jobId: string, workerId: string, delayMs = 0, claimToken?: number): boolean {
+		const timestamp = now();
+		return this.inImmediateTransaction(() => {
+			const row = this.getLiveWorkerJob(jobId, workerId, timestamp, claimToken);
+			if (!row) return false;
+			if (row.attempts >= row.max_attempts) {
+				this.moveJobToDead(row, MAX_ATTEMPTS_ERROR, MAX_ATTEMPTS_REASON, timestamp);
+				return true;
+			}
+			const runAt = new Date(Date.parse(timestamp) + Math.max(0, delayMs)).toISOString();
+			const result = this.db.prepare(`
+				UPDATE pibo_jobs
+				SET state = 'pending', worker_id = NULL, claim_expires_at = NULL, run_at = ?, updated_at = ?
+				WHERE job_id = ? AND state = 'running' AND worker_id = ?
+					AND (? IS NULL OR claim_token = ?)
+			`).run(runAt, timestamp, jobId, workerId, claimToken ?? null, claimToken ?? null);
+			return Number(result.changes ?? 0) > 0;
+		});
+	}
+
+	ack(jobId: string, workerId: string, claimToken?: number): boolean {
 		const timestamp = now();
 		const result = this.db
 			.prepare(`
@@ -631,48 +761,54 @@ export class PiboReliabilityStore {
 				WHERE job_id = ?
 					AND state = 'running'
 					AND worker_id = ?
+					AND (? IS NULL OR claim_token = ?)
 					AND claim_expires_at IS NOT NULL
 					AND claim_expires_at > ?
 			`)
-			.run(jobId, workerId, timestamp);
+			.run(jobId, workerId, claimToken ?? null, claimToken ?? null, timestamp);
 		return Number(result.changes ?? 0) > 0;
 	}
 
 	retry(jobId: string, workerId: string, input: PiboJobRetryInput = {}): boolean {
 		const timestamp = now();
-		const row = this.getLiveWorkerJob(jobId, workerId, timestamp);
-		if (!row) return false;
-		const job = jobFromRow(row);
-		if (job.attempts >= job.maxAttempts) {
-			this.moveJobToDead(row, input.error ?? "Job exhausted retry attempts.", "max_attempts", timestamp);
-			return true;
-		}
-		const delayMs = input.delayMs ?? retryDelayMs(job.attempts, input);
-		const runAt = new Date(asDate(input.now).getTime() + delayMs).toISOString();
-		this.db
-			.prepare(`
-				UPDATE pibo_jobs
-				SET state = 'pending',
-					worker_id = NULL,
-					claim_expires_at = NULL,
-					run_at = ?,
-					updated_at = ?,
-					last_error = ?
-				WHERE job_id = ?
-			`)
-			.run(runAt, timestamp, input.error ?? null, jobId);
-		return true;
+		return this.inImmediateTransaction(() => {
+			const row = this.getLiveWorkerJob(jobId, workerId, timestamp, input.claimToken);
+			if (!row) return false;
+			const job = jobFromRow(row);
+			if (job.attempts >= job.maxAttempts) {
+				this.moveJobToDead(row, input.error ?? MAX_ATTEMPTS_ERROR, MAX_ATTEMPTS_REASON, timestamp);
+				return true;
+			}
+			const delayMs = input.delayMs ?? retryDelayMs(job.attempts, input);
+			const runAt = new Date(asDate(input.now).getTime() + delayMs).toISOString();
+			const result = this.db
+				.prepare(`
+					UPDATE pibo_jobs
+					SET state = 'pending',
+						worker_id = NULL,
+						claim_expires_at = NULL,
+						run_at = ?,
+						updated_at = ?,
+						last_error = ?
+					WHERE job_id = ? AND state = 'running' AND worker_id = ?
+						AND (? IS NULL OR claim_token = ?)
+				`)
+				.run(runAt, timestamp, input.error ?? null, jobId, workerId, input.claimToken ?? null, input.claimToken ?? null);
+			return Number(result.changes ?? 0) > 0;
+		});
 	}
 
-	fail(jobId: string, workerId: string, error: string): boolean {
+	fail(jobId: string, workerId: string, error: string, claimToken?: number, reason = "failed"): boolean {
 		const timestamp = now();
-		const row = this.getLiveWorkerJob(jobId, workerId, timestamp);
-		if (!row) return false;
-		this.moveJobToDead(row, error, "failed", timestamp);
-		return true;
+		return this.inImmediateTransaction(() => {
+			const row = this.getLiveWorkerJob(jobId, workerId, timestamp, claimToken);
+			if (!row) return false;
+			this.moveJobToDead(row, error, reason, timestamp);
+			return true;
+		});
 	}
 
-	heartbeat(jobId: string, workerId: string, extendMs: number): boolean {
+	heartbeat(jobId: string, workerId: string, extendMs: number, claimToken?: number): boolean {
 		const timestamp = now();
 		const claimExpiresAt = new Date(Date.now() + Math.max(1, extendMs)).toISOString();
 		const result = this.db
@@ -682,14 +818,15 @@ export class PiboReliabilityStore {
 				WHERE job_id = ?
 					AND state = 'running'
 					AND worker_id = ?
+					AND (? IS NULL OR claim_token = ?)
 					AND claim_expires_at IS NOT NULL
 					AND claim_expires_at > ?
 			`)
-			.run(claimExpiresAt, timestamp, jobId, workerId, timestamp);
+			.run(claimExpiresAt, timestamp, jobId, workerId, claimToken ?? null, claimToken ?? null, timestamp);
 		return Number(result.changes ?? 0) > 0;
 	}
 
-	listJobs(input: { queue?: string; state?: PiboJobState; limit?: number } = {}): StoredPiboJob[] {
+	listJobs(input: PiboJobListInput = {}): StoredPiboJob[] {
 		const clauses: string[] = [];
 		const values: string[] = [];
 		if (input.queue) {
@@ -700,11 +837,55 @@ export class PiboReliabilityStore {
 			clauses.push("state = ?");
 			values.push(input.state);
 		}
+		if (input.excludeJobIds?.length) {
+			clauses.push(`job_id NOT IN (${input.excludeJobIds.map(() => "?").join(", ")})`);
+			values.push(...input.excludeJobIds);
+		}
 		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 		const rows = this.db
 			.prepare(`SELECT * FROM pibo_jobs ${where} ORDER BY priority DESC, run_at ASC, created_at ASC LIMIT ?`)
 			.all(...values, clampLimit(input.limit, 100)) as PiboJobRow[];
-		return rows.map(jobFromRow);
+		const jobs: StoredPiboJob[] = [];
+		for (const row of rows) {
+			try {
+				jobs.push(jobFromRow(row));
+			} catch {
+				this.quarantineJobRow(row, "payload_malformed");
+			}
+		}
+		return jobs;
+	}
+
+	listRecoverableJobs(input: Omit<PiboJobListInput, "state"> & { includeDeferredPending?: boolean } = {}): StoredPiboJob[] {
+		const timestamp = now();
+		const clauses = [
+			"((state = 'pending' AND (? = 1 OR run_at <= ?)) OR (state = 'running' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?))",
+			"(expires_at IS NULL OR expires_at > ?)",
+		];
+		const values: Array<string | number> = [input.includeDeferredPending ? 1 : 0, timestamp, timestamp, timestamp];
+		if (input.queue) {
+			clauses.push("queue = ?");
+			values.push(input.queue);
+		}
+		if (input.excludeJobIds?.length) {
+			clauses.push(`job_id NOT IN (${input.excludeJobIds.map(() => "?").join(", ")})`);
+			values.push(...input.excludeJobIds);
+		}
+		const rows = this.db.prepare(`
+			SELECT * FROM pibo_jobs
+			WHERE ${clauses.join(" AND ")}
+			ORDER BY priority DESC, run_at ASC, created_at ASC
+			LIMIT ?
+		`).all(...values, clampLimit(input.limit, 100)) as PiboJobRow[];
+		const jobs: StoredPiboJob[] = [];
+		for (const row of rows) {
+			try {
+				jobs.push(jobFromRow(row));
+			} catch {
+				this.quarantineJobRow(row, "payload_malformed");
+			}
+		}
+		return jobs;
 	}
 
 	listDead(input: PiboDeadJobListInput = {}): StoredPiboDeadJob[] {
@@ -719,6 +900,67 @@ export class PiboReliabilityStore {
 			.prepare(`SELECT * FROM pibo_dead_jobs ${where} ORDER BY dead_at DESC LIMIT ?`)
 			.all(...values, clampLimit(input.limit, 100)) as PiboDeadJobRow[];
 		return rows.map(deadJobFromRow);
+	}
+
+	hasLiveJob(jobId: string): boolean {
+		return this.db.prepare("SELECT 1 AS found FROM pibo_jobs WHERE job_id = ?").get(jobId) !== undefined;
+	}
+
+	hasJobs(queue?: string): boolean {
+		return queue
+			? this.db.prepare("SELECT 1 AS found FROM pibo_jobs WHERE queue = ? LIMIT 1").get(queue) !== undefined
+			: this.db.prepare("SELECT 1 AS found FROM pibo_jobs LIMIT 1").get() !== undefined;
+	}
+
+	hasRecoverableJobs(queue: string, includeDeferredPending = false): boolean {
+		const timestamp = now();
+		return this.inImmediateTransaction(() => {
+			this.moveExpiredJobs(timestamp);
+			this.moveExhaustedRecoverableJobs(timestamp, { queue });
+			return this.db.prepare(`
+				SELECT 1 AS found FROM pibo_jobs
+				WHERE queue = ?
+					AND (
+						(state = 'pending' AND (? = 1 OR run_at <= ?))
+						OR (state = 'running' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?)
+					)
+					AND attempts < max_attempts
+					AND (expires_at IS NULL OR expires_at > ?)
+				LIMIT 1
+			`).get(queue, includeDeferredPending ? 1 : 0, timestamp, timestamp, timestamp) !== undefined;
+		});
+	}
+
+	quarantineJob(jobId: string, reason: string, correlation: { key?: string; piboSessionId?: string; eventId?: string } = {}): boolean {
+		const row = this.db.prepare("SELECT * FROM pibo_jobs WHERE job_id = ?").get(jobId) as PiboJobRow | undefined;
+		if (!row) return false;
+		this.quarantineJobRow(row, reason, correlation);
+		return true;
+	}
+
+	deadLetter(input: PiboDeadJobEnqueueInput): StoredPiboDeadJob {
+		const timestamp = now();
+		const jobId = input.jobId ?? `job_${randomUUID()}`;
+		this.db.prepare(`
+			INSERT OR REPLACE INTO pibo_dead_jobs (
+				job_id, queue, payload_json, attempts, max_attempts, idempotency_key, created_at,
+				updated_at, expires_at, last_error, dead_at, dead_reason
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+		`).run(
+			jobId,
+			input.queue,
+			json(input.payload ?? null),
+			Math.max(0, input.attempts ?? 0),
+			Math.max(1, input.maxAttempts ?? 1),
+			input.idempotencyKey ?? null,
+			timestamp,
+			timestamp,
+			input.error ?? input.reason,
+			timestamp,
+			input.reason,
+		);
+		const row = this.db.prepare("SELECT * FROM pibo_dead_jobs WHERE job_id = ?").get(jobId) as PiboDeadJobRow;
+		return deadJobFromRow(row);
 	}
 
 	requeueDead(jobId: string, input: PiboDeadJobReplayInput = {}): StoredPiboJob {
@@ -890,47 +1132,67 @@ export class PiboReliabilityStore {
 	}
 
 	recoverInterruptedRuns(workerId = `run-registry:${process.pid}`): PiboRunStoreRecord[] {
-		const rows = this.db.prepare("SELECT * FROM pibo_runs WHERE status = 'running'").all() as PiboRunRow[];
-		const recovered: PiboRunStoreRecord[] = [];
-		const timestamp = now();
-		for (const row of rows) {
-			if (row.job_id && this.hasUnexpiredJobClaim(row.job_id, timestamp, workerId)) continue;
-			const run = runFromRow(row);
-			if (run.timeoutAt && run.timeoutAt <= timestamp) {
-				const error = `Run deadline ${run.timeoutAt} elapsed before the interrupted runtime recovered.`;
-				if (run.jobId) this.moveLiveJobToDead(run.jobId, error, "timeout", timestamp);
-				recovered.push(
-					this.updateRun(run.runId, {
-						status: "timed_out",
-						error,
-						timeoutPhase: "lifetime",
-						summary: `${run.toolName} run started successfully, then reached its configured timeout.`,
-						completedAt: timestamp,
-					}) ?? run,
-				);
-				continue;
-			}
-			if (run.retryable && run.maxAttempts > 1) {
-				if (run.jobId) this.releaseJobForRetry(run.jobId, timestamp);
-				recovered.push(
-					this.updateRun(run.runId, {
-						status: "queued",
-						summary: `${run.toolName} run is queued for retry after interruption.`,
-					} as Partial<PiboRunStoreRecord>) ?? run,
-				);
-			} else {
-				if (run.jobId) this.moveLiveJobToDead(run.jobId, "Run was interrupted before completion and the tool is not retryable.", "interrupted", timestamp);
+		return this.inImmediateTransaction(() => {
+			const rows = this.db.prepare("SELECT * FROM pibo_runs WHERE status = 'running'").all() as PiboRunRow[];
+			const recovered: PiboRunStoreRecord[] = [];
+			const timestamp = now();
+			for (const row of rows) {
+				if (row.job_id && this.hasUnexpiredJobClaim(row.job_id, timestamp, workerId)) continue;
+				const run = runFromRow(row);
+				if (run.timeoutAt && run.timeoutAt <= timestamp) {
+					const error = `Run deadline ${run.timeoutAt} elapsed before the interrupted runtime recovered.`;
+					if (run.jobId) this.moveLiveJobToDead(run.jobId, error, "timeout", timestamp);
+					recovered.push(
+						this.updateRun(run.runId, {
+							status: "timed_out",
+							error,
+							timeoutPhase: "lifetime",
+							summary: `${run.toolName} run started successfully, then reached its configured timeout.`,
+							completedAt: timestamp,
+						}) ?? run,
+					);
+					continue;
+				}
+				const jobRow = run.jobId
+					? this.db.prepare("SELECT * FROM pibo_jobs WHERE job_id = ?").get(run.jobId) as PiboJobRow | undefined
+					: undefined;
+				if (run.retryable && jobRow && jobRow.attempts < jobRow.max_attempts) {
+					this.releaseJobForRetry(jobRow.job_id, timestamp);
+					recovered.push(
+						this.updateRun(run.runId, {
+							status: "queued",
+							summary: `${run.toolName} run is queued for retry after interruption.`,
+						} as Partial<PiboRunStoreRecord>) ?? run,
+					);
+					continue;
+				}
+				if (run.retryable && jobRow && jobRow.attempts >= jobRow.max_attempts) {
+					this.moveJobToDead(jobRow, MAX_ATTEMPTS_ERROR, MAX_ATTEMPTS_REASON, timestamp);
+					recovered.push(
+						this.updateRun(run.runId, {
+							status: "failed",
+							error: MAX_ATTEMPTS_ERROR,
+							summary: `${run.toolName} run failed after exhausting retry attempts.`,
+							completedAt: timestamp,
+						}) ?? run,
+					);
+					continue;
+				}
+				const error = run.retryable
+					? "Run was interrupted before completion and its retry job is no longer available."
+					: "Run was interrupted before completion and the tool is not retryable.";
+				if (jobRow) this.moveJobToDead(jobRow, error, "interrupted", timestamp);
 				recovered.push(
 					this.updateRun(run.runId, {
 						status: "failed",
-						error: "Run was interrupted before completion and the tool is not retryable.",
+						error,
 						summary: `${run.toolName} run failed.`,
 						completedAt: timestamp,
 					}) ?? run,
 				);
 			}
-		}
-		return recovered;
+			return recovered;
+		});
 	}
 
 	close(): void {
@@ -973,23 +1235,42 @@ export class PiboReliabilityStore {
 		return row ? jobFromRow(row) : undefined;
 	}
 
-	private getLiveWorkerJob(jobId: string, workerId: string, timestamp: string): PiboJobRow | undefined {
+	private getLiveWorkerJob(jobId: string, workerId: string, timestamp: string, claimToken?: number): PiboJobRow | undefined {
 		return this.db
 			.prepare(`
 				SELECT * FROM pibo_jobs
 				WHERE job_id = ?
 					AND state = 'running'
 					AND worker_id = ?
+					AND (? IS NULL OR claim_token = ?)
 					AND claim_expires_at IS NOT NULL
 					AND claim_expires_at > ?
 			`)
-			.get(jobId, workerId, timestamp) as PiboJobRow | undefined;
+			.get(jobId, workerId, claimToken ?? null, claimToken ?? null, timestamp) as PiboJobRow | undefined;
 	}
 
 	private moveExpiredJobs(timestamp: string): void {
 		const expired = this.db.prepare("SELECT * FROM pibo_jobs WHERE expires_at IS NOT NULL AND expires_at <= ?").all(timestamp) as
 			PiboJobRow[];
 		for (const row of expired) this.moveJobToDead(row, row.last_error ?? "Job expired.", "expired", timestamp);
+	}
+
+	private moveExhaustedRecoverableJobs(timestamp: string, options: { jobId?: string; queue?: string } = {}): void {
+		const clauses = [
+			"attempts >= max_attempts",
+			"(state = 'pending' OR (state = 'running' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ?))",
+		];
+		const values: string[] = [timestamp];
+		if (options.jobId) {
+			clauses.push("job_id = ?");
+			values.push(options.jobId);
+		}
+		if (options.queue) {
+			clauses.push("queue = ?");
+			values.push(options.queue);
+		}
+		const exhausted = this.db.prepare(`SELECT * FROM pibo_jobs WHERE ${clauses.join(" AND ")}`).all(...values) as PiboJobRow[];
+		for (const row of exhausted) this.moveJobToDead(row, MAX_ATTEMPTS_ERROR, MAX_ATTEMPTS_REASON, timestamp);
 	}
 
 	private hasUnexpiredJobClaim(jobId: string, timestamp: string, workerId: string): boolean {
@@ -1050,6 +1331,43 @@ export class PiboReliabilityStore {
 		this.db.prepare("DELETE FROM pibo_jobs WHERE job_id = ?").run(row.job_id);
 	}
 
+	private quarantineJobRow(
+		row: PiboJobRow,
+		reason: string,
+		correlation: { key?: string; piboSessionId?: string; eventId?: string } = {},
+	): void {
+		this.inImmediateTransaction(() => {
+			const current = this.db.prepare("SELECT * FROM pibo_jobs WHERE job_id = ?").get(row.job_id) as PiboJobRow | undefined;
+			if (!current) return;
+			const payload = {
+				version: 1,
+				key: correlation.key ?? current.job_id,
+				...(correlation.piboSessionId ? { piboSessionId: correlation.piboSessionId } : {}),
+				...(correlation.eventId ? { eventId: correlation.eventId } : {}),
+				state: { phase: "quarantined", reasonCode: reason },
+			} as PiboJsonValue;
+			const sanitized = {
+				...current,
+				payload_json: json(payload),
+				idempotency_key: correlation.key ?? null,
+				last_error: reason,
+			};
+			this.moveJobToDead(sanitized, reason, reason, now());
+		});
+	}
+
+	private inImmediateTransaction<T>(operation: () => T): T {
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const result = operation();
+			this.db.exec("COMMIT");
+			return result;
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
 	private requireRun(runId: string): PiboRunStoreRecord {
 		const run = this.getRun(runId);
 		if (!run) throw new Error(`Unknown run "${runId}"`);
@@ -1084,6 +1402,7 @@ function jobFromRow(row: PiboJobRow): StoredPiboJob {
 		priority: row.priority,
 		workerId: row.worker_id ?? undefined,
 		claimExpiresAt: row.claim_expires_at ?? undefined,
+		claimToken: row.claim_token,
 		attempts: row.attempts,
 		maxAttempts: row.max_attempts,
 		idempotencyKey: row.idempotency_key ?? undefined,
@@ -1098,7 +1417,7 @@ function deadJobFromRow(row: PiboDeadJobRow): StoredPiboDeadJob {
 	return {
 		jobId: row.job_id,
 		queue: row.queue,
-		payload: parseJson(row.payload_json),
+		payload: safeDeadPayload(row.payload_json, row.dead_reason, row.job_id),
 		attempts: row.attempts,
 		maxAttempts: row.max_attempts,
 		idempotencyKey: row.idempotency_key ?? undefined,
@@ -1109,6 +1428,14 @@ function deadJobFromRow(row: PiboDeadJobRow): StoredPiboDeadJob {
 		deadAt: row.dead_at,
 		deadReason: row.dead_reason,
 	};
+}
+
+function safeDeadPayload(value: string, reason: string, jobId: string): PiboJsonValue {
+	try {
+		return parseJson(value);
+	} catch {
+		return { version: 1, key: jobId, state: { phase: "quarantined", reasonCode: reason } };
+	}
 }
 
 function runFromRow(row: PiboRunRow): PiboRunStoreRecord {

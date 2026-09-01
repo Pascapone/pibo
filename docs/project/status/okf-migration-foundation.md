@@ -1,13 +1,13 @@
 ---
 type: "Status"
-title: "OKF migration foundation status"
-description: "Records the foundation-wave checkpoint for Pibo's controlled OKF v0.2 migration."
+title: "OKF migration status"
+description: "Retains the foundation checkpoint and records closure and upstream-refresh status for Pibo's OKF v0.2 bundle."
 tags: ["documentation", "migration", "okf"]
 status: "stable"
 authority: "informative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T03:21:15Z"
+  at: "2026-09-01T20:42:35Z"
 stale_after: "2026-09-29"
 sources:
   - id: "migration-plan"
@@ -17,7 +17,14 @@ sources:
 
 # Checkpoint
 
-The foundation wave establishes policy and executable gates. It does not complete the corpus or capability-specification migration.
+The foundation wave established policy and executable gates. The accepted migration later closed the corpus and capability-specification migration with 762 ledger records, zero pending records, and 106 generated directory indexes. This document retains the original foundation evidence below and records the current refresh contract rather than presenting that checkpoint as unfinished work.
+
+# Closure refresh
+
+- Accepted migration head before refresh: `7f6ad57f8117b54047ef705b7559225a1d2db5a4` (tree `937bd63140f70cc8552c87c638a4f4b589ad79db`).
+- Refresh source: current `upstream/dev` at `39090b8850758293e69380a52bb7498d7c955bc2`, merged without rewriting the accepted chain.
+- Upstream documentation disposition: preserve the accepted historical agent-management plan body; fold its new observation-query facts and the five retired capability-spec deltas into their canonical current specifications; do not restore retired competing authorities.
+- Closure gates: OKF core, migration, strict profile, indexes, log, preserved bodies, ledger/evidence accounting, focused tests, build/typecheck, and actual extracted-package link closure all must pass before the refresh candidate is ready for independent whole-diff review.
 
 # Baseline
 
@@ -64,10 +71,9 @@ The independent reviews rejected `3b0840f1c2792cb5a863edea1684517d48f12547` for 
 - Strict validator baseline: expected failure with 1,563 errors, including 658 pending entries and current corpus/profile/index violations.
 - Bulk corpus and canonical capability-specification rewrites: not started in this wave.
 
-# Remaining gates
+# Current gates
 
-1. Migrate non-spec concepts by function without changing host-owned formats.
-2. Reconcile each current specification against code and tests, then fold implemented change deltas into canonical owners.
-3. Archive completed packets only after their facts have requirement-level traceability.
-4. Reach zero core errors and pending ledger entries, then pass strict validation.
-5. Run an independent code-to-spec and corpus-completeness audit.
+1. Keep zero pending records and preserve exact host exceptions and immutable body envelopes.
+2. Refresh canonical specifications whenever current source/test behavior changes; keep desired work in plans and completed material in legacy.
+3. Regenerate ledger file accounting and indexes, update the explicit log, and verify the installed archive rather than trusting a dry-run listing.
+4. Require independent whole-diff review after the local refresh candidate passes its closure gates.

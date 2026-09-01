@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
+import type { OutputPartTransition, OutputToolInvocationTransition } from "../core/output-render-sequence.js";
 import { ChatDataIngestService } from "../data/ingest-service.js";
 import { PiboDataStore } from "../data/pibo-store.js";
 import type { StoredTelemetryTurn, TelemetryInterruptedTurnOutcome } from "../data/telemetry.js";
@@ -172,6 +173,253 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			id,
 		);
 		return this.get(id);
+	}
+
+	claimOutputRenderSequence(piboSessionId: string, minimum: number): number {
+		return this.dataStore.transaction(() => {
+			const session = this.db.prepare("SELECT 1 AS present FROM sessions WHERE id = ? AND deleted_at IS NULL").get(piboSessionId) as { present: number } | undefined;
+			if (!session) return minimum;
+			const row = this.db.prepare("SELECT high_water FROM session_output_render_high_water WHERE pibo_session_id = ?").get(piboSessionId) as { high_water: number } | undefined;
+			const current = Math.max(row?.high_water ?? 0, this.durableOutputRenderSequenceHighWater(piboSessionId));
+			const next = Math.max(minimum, current + 1);
+			this.db.prepare(`
+				INSERT INTO session_output_render_high_water (pibo_session_id, high_water, updated_at)
+				VALUES (?, ?, ?)
+				ON CONFLICT(pibo_session_id) DO UPDATE SET
+					high_water = MAX(session_output_render_high_water.high_water, excluded.high_water),
+					updated_at = CASE
+						WHEN excluded.high_water > session_output_render_high_water.high_water THEN excluded.updated_at
+						ELSE session_output_render_high_water.updated_at
+					END
+			`).run(piboSessionId, next, new Date().toISOString());
+			return next;
+		});
+	}
+
+	private durableOutputRenderSequenceHighWater(piboSessionId: string): number {
+		const row = this.db.prepare(`
+			SELECT MAX(MAX(
+				COALESCE(CAST(json_extract(attributes_json, '$.renderSequence') AS INTEGER), 0),
+				COALESCE(session_sequence, 0)
+			)) AS high_water
+			FROM event_log
+			WHERE session_id = ?
+		`).get(piboSessionId) as { high_water: number | null } | undefined;
+		const value = row?.high_water;
+		return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+	}
+
+	observeOutputRenderSequence(piboSessionId: string, sequence: number): void {
+		this.dataStore.transaction(() => {
+			this.db.prepare(`
+				INSERT INTO session_output_render_high_water (pibo_session_id, high_water, updated_at)
+				SELECT id, ?, ? FROM sessions WHERE id = ? AND deleted_at IS NULL
+				ON CONFLICT(pibo_session_id) DO UPDATE SET
+					high_water = MAX(session_output_render_high_water.high_water, excluded.high_water),
+					updated_at = CASE
+						WHEN excluded.high_water > session_output_render_high_water.high_water THEN excluded.updated_at
+						ELSE session_output_render_high_water.updated_at
+					END
+			`).run(sequence, new Date().toISOString(), piboSessionId);
+		});
+	}
+
+	claimOrAttachOutputPart(input: OutputPartTransition): number {
+		return this.dataStore.transaction(() => {
+			const indexAttribute = outputPartIndexAttribute(input.kind);
+			const eventTypes = [...outputPartEventTypes(input.kind), "message_finished"];
+			const placeholders = eventTypes.map(() => "?").join(", ");
+			const rows = this.db.prepare(`
+				SELECT type, attributes_json
+				FROM event_log
+				WHERE session_id = ? AND event_id = ? AND type IN (${placeholders})
+				ORDER BY stream_id ASC
+			`).all(input.piboSessionId, input.eventId, ...eventTypes) as Array<{ type: string; attributes_json: string }>;
+			let maximum = -1;
+			let turnCompleted = false;
+			const persistedParts: Array<{ index: number; attributes: PiboJsonObject }> = [];
+			for (const row of rows) {
+				if (row.type === "message_finished") {
+					turnCompleted = true;
+					continue;
+				}
+				const attributes = parseJsonObject(row.attributes_json);
+				const index = attributes[indexAttribute];
+				if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0) continue;
+				maximum = Math.max(maximum, index);
+				persistedParts.push({ index, attributes });
+			}
+			// An unfinished durable part may still belong to another process. Only a
+			// completed turn provides enough evidence to reattach an exact replay.
+			if (turnCompleted) {
+				const matchesReplay = ({ attributes }: { attributes: PiboJsonObject }) =>
+					attributes.outputPartFingerprint === input.fingerprint
+					|| attributes.identityFingerprint === input.identityFingerprint;
+				const replay = (input.suppliedIndex === undefined
+					? undefined
+					: persistedParts.find((part) => part.index === input.suppliedIndex && matchesReplay(part)))
+					?? persistedParts.find(matchesReplay);
+				if (replay) {
+					this.observeOutputPartIndex(input, replay.index);
+					return replay.index;
+				}
+			}
+			const minimum = Math.max(input.proposedIndex, maximum + 1);
+			const row = this.db.prepare(`
+				INSERT INTO session_output_part_counters (
+					pibo_session_id, event_id, part_kind, next_index, updated_at
+				) VALUES (?, ?, ?, ? + 1, ?)
+				ON CONFLICT(pibo_session_id, event_id, part_kind) DO UPDATE SET
+					next_index = MAX(session_output_part_counters.next_index, ?) + 1,
+					updated_at = excluded.updated_at
+				RETURNING next_index - 1 AS part_index
+			`).get(input.piboSessionId, input.eventId, input.kind, minimum, new Date().toISOString(), minimum) as { part_index: number };
+			return row.part_index;
+		});
+	}
+
+	observeOutputPart(input: OutputPartTransition & { index: number }): void {
+		this.dataStore.transaction(() => {
+			this.observeOutputPartIndex(input, input.index);
+		});
+	}
+
+	private observeOutputPartIndex(input: OutputPartTransition, index: number): void {
+		this.db.prepare(`
+			INSERT INTO session_output_part_counters (
+				pibo_session_id, event_id, part_kind, next_index, updated_at
+			) VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(pibo_session_id, event_id, part_kind) DO UPDATE SET
+				next_index = MAX(session_output_part_counters.next_index, excluded.next_index),
+				updated_at = CASE
+					WHEN excluded.next_index > session_output_part_counters.next_index THEN excluded.updated_at
+					ELSE session_output_part_counters.updated_at
+				END
+		`).run(input.piboSessionId, input.eventId, input.kind, index + 1, new Date().toISOString());
+	}
+
+	claimOutputToolInvocationOrdinal(piboSessionId: string, eventId: string, toolCallId: string): number {
+		return this.dataStore.transaction(() => {
+			const durable = this.db.prepare(`
+				SELECT MAX(COALESCE(CAST(json_extract(attributes_json, '$.toolInvocationOrdinal') AS INTEGER), 0)) AS maximum
+				FROM event_log
+				WHERE session_id = ? AND event_id = ? AND tool_call_id = ?
+			`).get(piboSessionId, eventId, toolCallId) as { maximum: number | null };
+			const minimumNextOrdinal = typeof durable.maximum === "number" && Number.isSafeInteger(durable.maximum)
+				? durable.maximum + 1
+				: 0;
+			const row = this.db.prepare(`
+				INSERT INTO session_tool_invocation_counters (
+					pibo_session_id, event_id, tool_call_id, next_ordinal, updated_at
+				) VALUES (?, ?, ?, ? + 1, ?)
+				ON CONFLICT(pibo_session_id, event_id, tool_call_id) DO UPDATE SET
+					next_ordinal = MAX(session_tool_invocation_counters.next_ordinal, ? ) + 1,
+					updated_at = excluded.updated_at
+				RETURNING next_ordinal - 1 AS ordinal
+			`).get(piboSessionId, eventId, toolCallId, minimumNextOrdinal, new Date().toISOString(), minimumNextOrdinal) as { ordinal: number };
+			return row.ordinal;
+		});
+	}
+
+	observeOutputToolInvocationOrdinal(piboSessionId: string, eventId: string, toolCallId: string, ordinal: number): void {
+		this.dataStore.transaction(() => {
+			this.db.prepare(`
+				INSERT INTO session_tool_invocation_counters (
+					pibo_session_id, event_id, tool_call_id, next_ordinal, updated_at
+				) VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT(pibo_session_id, event_id, tool_call_id) DO UPDATE SET
+					next_ordinal = MAX(session_tool_invocation_counters.next_ordinal, excluded.next_ordinal),
+					updated_at = CASE
+						WHEN excluded.next_ordinal > session_tool_invocation_counters.next_ordinal THEN excluded.updated_at
+						ELSE session_tool_invocation_counters.updated_at
+					END
+			`).run(piboSessionId, eventId, toolCallId, ordinal + 1, new Date().toISOString());
+		});
+	}
+
+	claimOrAttachOutputToolInvocation(input: OutputToolInvocationTransition): number {
+		return this.dataStore.transaction(() => {
+			const rows = this.db.prepare(`
+				SELECT invocation_ordinal, call_fingerprint, status, seen_call
+				FROM session_tool_invocations
+				WHERE pibo_session_id = ? AND event_id = ? AND tool_call_id = ?
+				ORDER BY invocation_ordinal DESC
+			`).all(input.piboSessionId, input.eventId, input.toolCallId) as Array<{
+				invocation_ordinal: number;
+				call_fingerprint: string | null;
+				status: "open" | "closed";
+				seen_call: number;
+			}>;
+			const latestOpen = rows.find((row) => row.status === "open");
+			let ordinal: number;
+			if (
+				input.eventType === "tool_call"
+				&& latestOpen
+				&& (
+					latestOpen.seen_call === 0
+					|| latestOpen.call_fingerprint === null
+					|| latestOpen.call_fingerprint === input.callFingerprint
+				)
+			) {
+				ordinal = latestOpen.invocation_ordinal;
+			} else if (input.eventType !== "tool_call" && latestOpen) {
+				ordinal = latestOpen.invocation_ordinal;
+			} else if (input.eventType !== "tool_call" && rows[0]) {
+				// A lifecycle replay after completion belongs to the last proven
+				// invocation. Only a new tool_call may cross a closed boundary.
+				ordinal = rows[0].invocation_ordinal;
+			} else {
+				ordinal = this.claimOutputToolInvocationOrdinal(input.piboSessionId, input.eventId, input.toolCallId);
+			}
+			this.persistToolInvocationTransition(input, ordinal);
+			return ordinal;
+		});
+	}
+
+	observeOutputToolInvocation(input: OutputToolInvocationTransition & { ordinal: number }): void {
+		this.dataStore.transaction(() => {
+			this.observeOutputToolInvocationOrdinal(input.piboSessionId, input.eventId, input.toolCallId, input.ordinal);
+			this.persistToolInvocationTransition(input, input.ordinal);
+		});
+	}
+
+	private persistToolInvocationTransition(input: OutputToolInvocationTransition, ordinal: number): void {
+		const timestamp = new Date().toISOString();
+		const seenCall = input.eventType === "tool_call" ? 1 : 0;
+		const seenStarted = input.eventType === "tool_execution_started" ? 1 : 0;
+		const seenUpdated = input.eventType === "tool_execution_updated" ? 1 : 0;
+		const seenFinished = input.eventType === "tool_execution_finished" ? 1 : 0;
+		this.db.prepare(`
+			INSERT INTO session_tool_invocations (
+				pibo_session_id, event_id, tool_call_id, invocation_ordinal,
+				call_fingerprint, status, seen_call, seen_started, seen_updated, seen_finished,
+				created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(pibo_session_id, event_id, tool_call_id, invocation_ordinal) DO UPDATE SET
+				call_fingerprint = COALESCE(session_tool_invocations.call_fingerprint, excluded.call_fingerprint),
+				status = CASE
+					WHEN session_tool_invocations.status = 'closed' OR excluded.status = 'closed' THEN 'closed'
+					ELSE 'open'
+				END,
+				seen_call = MAX(session_tool_invocations.seen_call, excluded.seen_call),
+				seen_started = MAX(session_tool_invocations.seen_started, excluded.seen_started),
+				seen_updated = MAX(session_tool_invocations.seen_updated, excluded.seen_updated),
+				seen_finished = MAX(session_tool_invocations.seen_finished, excluded.seen_finished),
+				updated_at = excluded.updated_at
+		`).run(
+			input.piboSessionId,
+			input.eventId,
+			input.toolCallId,
+			ordinal,
+			input.callFingerprint ?? null,
+			seenFinished ? "closed" : "open",
+			seenCall,
+			seenStarted,
+			seenUpdated,
+			seenFinished,
+			timestamp,
+			timestamp,
+		);
 	}
 
 	delete(id: string): boolean {
@@ -545,6 +793,24 @@ function runtimeBindingFromRow(row: SessionRow): RuntimeSessionBinding {
 
 function isRuntimeBindingState(value: string): value is RuntimeSessionBinding["state"] {
 	return value === "unbound" || value === "bound" || value === "missing" || value === "error";
+}
+
+function outputPartIndexAttribute(kind: OutputPartTransition["kind"]): string {
+	switch (kind) {
+		case "assistant": return "assistantIndex";
+		case "thinking": return "thinkingIndex";
+		case "usage": return "usageIndex";
+		case "compaction": return "compactionIndex";
+	}
+}
+
+function outputPartEventTypes(kind: OutputPartTransition["kind"]): string[] {
+	switch (kind) {
+		case "assistant": return ["assistant_delta", "assistant_message"];
+		case "thinking": return ["thinking_started", "thinking_delta", "thinking_finished"];
+		case "usage": return ["assistant_usage"];
+		case "compaction": return ["compaction_start", "compaction_end"];
+	}
 }
 
 function parseJsonObject(json: string | null | undefined): PiboJsonObject {

@@ -10,19 +10,19 @@ status: stable
 authority: normative
 generated:
   by: openai/codex
-  at: '2026-08-30T09:44:54Z'
+  at: '2026-09-01T20:42:35Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
-  title: Foundation source and test evidence for SPC-ORCH-001
+  title: upstream/dev refresh source and test evidence for SPC-ORCH-001
 implementation:
   state: current
-  baseline_commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  commit: 39090b8850758293e69380a52bb7498d7c955bc2
   requirements:
   - id: ORCH-RUN-001
     status: implemented
@@ -31,6 +31,8 @@ traceability:
       symbol: PIBO_RUN_TOOL_NAMES
     - path: src/runs/tools.ts
       symbol: createRunToolDefinitions
+    - path: src/agent-runtime/routed-session.ts
+      symbol: RUN_REMINDER_MAX_DURATION_MS
     - path: src/runs/tools.ts
       symbol: validateYieldedToolArguments
     - path: src/runs/registry.ts
@@ -87,6 +89,8 @@ traceability:
       name: tracked notifications preserve their causal origin and do not mix origins
     - path: test/run-reminder-guard.test.mjs
       name: run-reminder turns keep the normal toolset and stop repeated identical tool loops via the bounded guard
+    - path: test/runs.test.mjs
+      name: router coalesces generic run completion into a compact parent notification
     failures:
     - Run IDs from another controller are rejected; failed reminder delivery only releases unchanged state for retry.
     confidence: high
@@ -167,9 +171,9 @@ The registered yielded-run tools provide session-owned admission, observation, c
 
 - **Stable concept:** `SPC-ORCH-001`
 - **Target path:** `docs/specs/orchestration/yielded-runs.md`
-- **Authority:** Foundation source and test evidence at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- **Authority:** Current upstream source and test evidence at `39090b8850758293e69380a52bb7498d7c955bc2`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
-- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the Foundation commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
+- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the upstream/dev refresh commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
 ## Public surfaces
 
@@ -192,7 +196,7 @@ queued, running, completed, failed, timed_out, cancelled; tracked or detached co
 
 ### Timeouts Reminders
 
-wait clamps to 0..300000 ms and timeout is a non-error observation; configured execution expiry is timed_out with startup/lifetime phase; cancellation settlement is bounded at 15000 ms; tracked reminders remain causal, repeat until acknowledged/consumed, and are guarded without reducing the normal toolset.
+wait clamps to 0..300000 ms and timeout is a non-error observation; configured execution expiry is timed_out with startup/lifetime phase; cancellation settlement is bounded at 15000 ms; tracked reminders remain causal, repeat until acknowledged/consumed, and are guarded without reducing the normal toolset. Reminder guidance states the autonomous turn's 15-minute wall-clock limit and directs the model to finish promptly without starting new subagents, yielded runs, or other long-running work.
 
 ### Recovery Failure
 
@@ -231,7 +235,7 @@ Controller Pibo Session ownership gates all run-ID operations. Admission is gate
 
 The runtime MUST validate a registered yieldable target before admission, create a session-owned persisted run, enforce gateway and per-controller concurrency, and expose it through the seven pibo_run_* tools.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -254,9 +258,9 @@ Unknown or invalid tools fail before work starts; admission limits are controlle
 
 ### Requirement: ORCH-RUN-002
 
-Wait MUST be a bounded non-consuming observation, read MUST return terminal text/details and consume tracked terminal state, ack MUST be idempotent for unchanged state, and tracked reminders MUST preserve causal origin until acknowledged or consumed.
+Wait MUST be a bounded non-consuming observation, read MUST return terminal text/details and consume tracked terminal state, ack MUST be idempotent for unchanged state, and tracked reminders MUST preserve causal origin until acknowledged or consumed while stating the 15-minute autonomous-turn limit and deferring new long-running work.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -283,7 +287,7 @@ Run IDs from another controller are rejected; failed reminder delivery only rele
 
 Cancellation MUST target the exact live execution, wait for process/subagent settlement before committing cancelled state or releasing admission, and report a visible failure if settlement does not complete within 15000 ms.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -310,7 +314,7 @@ A rejected/non-settling cancellation leaves the run non-cancelled and does not f
 
 Startup recovery MUST deterministically classify interrupted persisted runs, and pruning MUST retain active and unconsumed tracked terminal runs while removing only eligible consumed/detached terminal records after their TTL.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -341,7 +345,7 @@ Recovery skips runs protected by an unexpired foreign job claim; terminal effect
 
 ## Verification boundary
 
-- Source/test baseline: `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Source/test baseline: `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Focused inventory: 24 files / 245 top-level declarations; `test/web-channel.test.mjs` is separate cross-boundary evidence with 113 declarations.
 - Requirement traceability: 25 unique requirements across six targets, 15 high confidence and 10 medium confidence, 138 source references, 75 named-test references / 74 unique names.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.
@@ -354,8 +358,8 @@ This appendix applies to all six WP-04 specifications. It records the correction
 
 #### CORR-001 — blocking
 
-- **Finding:** All package briefs and synthesis reports were generated against 2aef244301f5d181624662fdad53e18e83e80bd9, not Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262.
-- **Reconciliation:** Rebind every target, source/test trace, and evidence statement to Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262; retain WP-03 candidate only as a non-authoritative cross-owner reference.
+- **Finding:** All package briefs and synthesis reports were generated against 2aef244301f5d181624662fdad53e18e83e80bd9, not upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2.
+- **Reconciliation:** Rebind every target, source/test trace, and evidence statement to upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2; retain WP-03 candidate only as a non-authoritative cross-owner reference.
 
 #### CORR-002 — blocking
 
@@ -429,7 +433,7 @@ This appendix applies to all six WP-04 specifications. It records the correction
 3. The pibo_ralph_* tables or pibo-ralph.sqlite prove the old Ralph service is authoritative. They are compatibility names used by the common Loop store.
 4. The src/ralph seam has been removed. It remains in source and direct tests, but is not the currently registered path.
 5. Parent turn completion, pibo_run_wait timeout, or stale subagent telemetry cancels child work. They do not.
-6. A run reminder is a reduced-tool recovery turn. The normal toolset remains available and a separate bounded guard ends repetitive reminder turns.
+6. A run reminder is an autonomous recovery turn. The normal toolset remains available; the guidance defers new long-running work, and a separate bounded guard ends repetitive reminder turns.
 7. Every enabled Cron job always has nextRunAt. A failed at job remains enabled with no nextRunAt in current settlement code.
 8. Cron timeout aborts the created Pibo Session. Current code times out only the waiter and records an error.
 9. Workflow XState is execution truth. It is a derived inspection projection; the kernel/store facts are authoritative.

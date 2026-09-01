@@ -4,6 +4,7 @@ export type StickyScrollIntentInput = {
 	type?: string;
 	key?: string;
 	deltaY?: number;
+	deltaMode?: number;
 	shiftKey?: boolean;
 };
 
@@ -42,6 +43,18 @@ export type StickyAnchorLocation = {
 	offset: number;
 };
 
+export function stickyWheelOwnsViewport(input: StickyScrollIntentInput): boolean {
+	if (input.type !== "wheel" || (input.deltaY ?? 0) === 0) return false;
+	return (input.deltaMode ?? 0) !== 0 || Math.abs(input.deltaY ?? 0) >= 80;
+}
+
+export function stickyWheelPixelDelta(input: StickyScrollIntentInput, viewportHeight: number): number {
+	if (input.type !== "wheel" || (input.deltaY ?? 0) === 0) return 0;
+	if (input.deltaMode === 1) return (input.deltaY ?? 0) * 16;
+	if (input.deltaMode === 2) return (input.deltaY ?? 0) * viewportHeight;
+	return input.deltaY ?? 0;
+}
+
 export function stickyScrollIntentDirection(input: StickyScrollIntentInput): StickyScrollIntentDirection | undefined {
 	if (input.type === "wheel") {
 		if ((input.deltaY ?? 0) < 0) return "away";
@@ -61,6 +74,29 @@ export function stickyScrollPositionDirection(input: StickyScrollPositionInput):
 	if (input.scrollTop < input.previousScrollTop - 1) return "away";
 	if (input.scrollTop > input.previousScrollTop + 1) return "toward";
 	return undefined;
+}
+
+export function resolveScrollbarDragMovement({
+	direction,
+	oppositeCount,
+	previousScrollTop,
+	scrollTop,
+}: {
+	direction?: StickyScrollIntentDirection;
+	oppositeCount: number;
+	previousScrollTop?: number;
+	scrollTop: number;
+}): { direction?: StickyScrollIntentDirection; oppositeCount: number; clamp: boolean } {
+	const movement = stickyScrollPositionDirection({
+		hasUserScrollIntent: true,
+		previousScrollTop,
+		scrollTop,
+	});
+	if (!movement) return { direction, oppositeCount, clamp: false };
+	if (!direction || movement === direction) return { direction: movement, oppositeCount: 0, clamp: false };
+	const nextOppositeCount = oppositeCount + 1;
+	if (nextOppositeCount < 2) return { direction, oppositeCount: nextOppositeCount, clamp: true };
+	return { direction: movement, oppositeCount: 0, clamp: false };
 }
 
 export function stickyTouchScrollIntentDirection(previousY: number | undefined, currentY: number | undefined): StickyScrollIntentDirection | undefined {
@@ -113,19 +149,36 @@ export function captureStickyVisibleAnchors({
 		});
 }
 
+export function preferredStickyVisibleAnchor(anchors: readonly StickyVisibleAnchor[]): StickyVisibleAnchor | undefined {
+	return [...anchors].sort((left, right) => Math.abs(left.offset) - Math.abs(right.offset))[0];
+}
+
 export function stickyAnchorLocation({
 	anchors,
+	previousKeys,
 	nextKeys,
 }: {
 	anchors: readonly StickyVisibleAnchor[];
+	previousKeys?: readonly string[];
 	nextKeys: readonly string[];
 }): StickyAnchorLocation | undefined {
 	if (!anchors.length || !nextKeys.length) return undefined;
-	for (const anchor of anchors) {
+	const orderedAnchors = [...anchors].sort((left, right) => Math.abs(left.offset) - Math.abs(right.offset));
+	for (const anchor of orderedAnchors) {
 		const dataIndex = nextKeys.indexOf(anchor.key);
 		if (dataIndex >= 0) return anchorLocation(dataIndex, anchor.offset);
 	}
-	const fallback = anchors[0];
+	const fallback = orderedAnchors[0];
+	if (previousKeys?.length) {
+		for (let index = fallback.dataIndex; index < previousKeys.length; index += 1) {
+			const nextIndex = nextKeys.indexOf(previousKeys[index]);
+			if (nextIndex >= 0) return anchorLocation(nextIndex, fallback.offset);
+		}
+		for (let index = fallback.dataIndex - 1; index >= 0; index -= 1) {
+			const nextIndex = nextKeys.indexOf(previousKeys[index]);
+			if (nextIndex >= 0) return anchorLocation(nextIndex, fallback.offset);
+		}
+	}
 	const fallbackIndex = Math.min(Math.max(fallback.dataIndex, 0), nextKeys.length - 1);
 	return anchorLocation(fallbackIndex, fallback.offset);
 }

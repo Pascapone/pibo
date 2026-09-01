@@ -94,6 +94,18 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			await runDebugJobs(args.slice(1));
 			return;
 		}
+		if (args[0] === "integrity") {
+			await runDebugIntegrity(args.slice(1));
+			return;
+		}
+		if (args[0] === "persistence") {
+			await runDebugPersistence(args.slice(1));
+			return;
+		}
+		if (args[0] === "repair") {
+			await runDebugRepair(args.slice(1));
+			return;
+		}
 		if (args[0] === "runs") {
 			await runDebugRuns(args.slice(1));
 			return;
@@ -124,6 +136,200 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
+	}
+}
+
+async function runDebugIntegrity(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugIntegrityDiscovery();
+		return;
+	}
+	if (args[0] !== "output") {
+		throw new Error(`Unknown pibo debug integrity command "${args[0]}". Run pibo debug integrity --help.`);
+	}
+	if (args[1] === "--help" || args[1] === "-h") {
+		printDebugIntegrityDiscovery();
+		return;
+	}
+	await runOutputPersistenceInspection(args.slice(1), { allowPositionalSession: true, deadLettersOnly: false });
+}
+
+async function runDebugPersistence(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugPersistenceDiscovery();
+		return;
+	}
+	const command = args[0];
+	if (command !== "audit" && command !== "dead-letters") {
+		throw new Error(`Unknown pibo debug persistence command "${command}". Run pibo debug persistence --help.`);
+	}
+	if (args[1] === "--help" || args[1] === "-h") {
+		if (command === "audit") printDebugPersistenceAuditHelp();
+		else printDebugPersistenceDeadLettersHelp();
+		return;
+	}
+	await runOutputPersistenceInspection(args.slice(1), {
+		allowPositionalSession: false,
+		deadLettersOnly: command === "dead-letters",
+	});
+}
+
+async function runOutputPersistenceInspection(
+	args: string[],
+	mode: { allowPositionalSession: boolean; deadLettersOnly: boolean },
+): Promise<void> {
+	validateOutputPersistenceInspectionArgs(args, mode.allowPositionalSession);
+	const options = parseOptions(args);
+	if (options.after && !Number.isFinite(Date.parse(options.after))) throw new Error("--since must be an ISO date");
+	if (options.before && !Number.isFinite(Date.parse(options.before))) throw new Error("--before must be an ISO date");
+	if (options.after && options.before && Date.parse(options.after) >= Date.parse(options.before)) {
+		throw new Error("--since must be earlier than --before");
+	}
+	const { formatJson } = await import("./sql.js");
+	const {
+		formatOutputIntegrityAudit,
+		formatOutputPersistenceDeadLetters,
+		inspectOutputIntegrity,
+		outputPersistenceDeadLettersFromAudit,
+	} = await import("./output-integrity.js");
+	const audit = inspectOutputIntegrity({
+		dataStore: resolveDebugStore("pibo-data"),
+		reliabilityStore: resolveDebugStore("reliability"),
+		piboSessionId: options.key ?? (mode.allowPositionalSession ? options.positionals[0] : undefined),
+		since: options.after,
+		before: options.before,
+		limit: options.limit,
+		findingMode: mode.deadLettersOnly ? "dead_letters" : "all",
+	});
+	if (mode.deadLettersOnly) {
+		const result = outputPersistenceDeadLettersFromAudit(audit);
+		if (options.json) console.log(formatJson(result));
+		else console.log(formatOutputPersistenceDeadLetters(result));
+		return;
+	}
+	if (options.json) console.log(formatJson(audit));
+	else console.log(formatOutputIntegrityAudit(audit));
+}
+
+function validateOutputPersistenceInspectionArgs(args: string[], allowPositionalSession: boolean): void {
+	const valueOptions = new Set(["--session", "--since", "--before", "--limit"]);
+	let positionalCount = 0;
+	let hasSessionOption = false;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--json") continue;
+		if (arg === "--apply" || arg === "--dry-run") {
+			throw new Error(`Output persistence inspection is read-only; ${arg} is not supported`);
+		}
+		if (valueOptions.has(arg)) {
+			const value = args[index + 1];
+			if (!value || value.startsWith("-")) throw new Error(`${arg} requires a value`);
+			if (arg === "--session") hasSessionOption = true;
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("-")) {
+			throw new Error(`Unknown output persistence inspection option "${arg}"`);
+		}
+		positionalCount += 1;
+	}
+	if (!allowPositionalSession && positionalCount > 0) {
+		throw new Error("Use --session <pibo-session-id> to scope persistence inspection");
+	}
+	if (allowPositionalSession && positionalCount > 1) {
+		throw new Error("Use at most one positional Pibo Session ID");
+	}
+	if (allowPositionalSession && hasSessionOption && positionalCount > 0) {
+		throw new Error("Use either a positional Pibo Session ID or --session, not both");
+	}
+}
+
+async function runDebugRepair(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugRepairDiscovery();
+		return;
+	}
+	if (args[0] !== "output") {
+		throw new Error(`Unknown pibo debug repair command "${args[0]}". Run pibo debug repair --help.`);
+	}
+	if (args[1] === "--help" || args[1] === "-h") {
+		printDebugRepairDiscovery();
+		return;
+	}
+	const repairArgs = args.slice(1);
+	validateOutputRepairArgs(repairArgs);
+	const options = parseOptions(repairArgs);
+	if (options.apply && options.dryRun) throw new Error("Choose either --dry-run or --apply");
+	if (options.destructive) throw new Error("Use --apply for output repair; --destructive is not supported");
+	if (options.after && !Number.isFinite(Date.parse(options.after))) throw new Error("--since must be an ISO date");
+	if (options.before && !Number.isFinite(Date.parse(options.before))) throw new Error("--before must be an ISO date");
+	if (options.after && options.before && Date.parse(options.after) >= Date.parse(options.before)) {
+		throw new Error("--since must be earlier than --before");
+	}
+	if (options.key && options.positionals.length > 1) throw new Error("With --session, provide at most one positional <event-id>");
+	const piboSessionId = options.key ?? options.positionals[0];
+	const eventId = options.key ? options.positionals[0] : options.positionals[1];
+	if (!piboSessionId) throw new Error("pibo debug repair output requires a session id or --session <pibo-session-id>");
+	const { formatJson } = await import("./sql.js");
+	const {
+		formatOutputTurnRepair,
+		readOutputRepairAdapterEvidence,
+		repairOutputTurn,
+		repairOutputTurns,
+	} = await import("./output-repair.js");
+	const store = resolveDebugStore("pibo-data");
+	const reliabilityStore = resolveDebugStore("reliability");
+	const adapterEvidence = await readOutputRepairAdapterEvidence({ store, piboSessionId });
+	const result = eventId
+		? repairOutputTurn({ store, reliabilityStore, piboSessionId, eventId, adapterEvidence, apply: options.apply })
+		: repairOutputTurns({
+			store,
+			reliabilityStore,
+			piboSessionId,
+			since: options.after,
+			before: options.before,
+			limit: options.limit,
+			adapterEvidence,
+			apply: options.apply,
+		});
+	if (options.json) console.log(formatJson(result));
+	else console.log(formatOutputTurnRepair(result));
+}
+
+function validateOutputRepairArgs(args: string[]): void {
+	const valueOptions = new Set(["--session", "--since", "--before", "--limit"]);
+	const flagOptions = new Set(["--json", "--dry-run", "--apply", "--destructive"]);
+	const seen = new Set<string>();
+	const positionals: string[] = [];
+	let hasSessionOption = false;
+	let hasScopeOption = false;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (flagOptions.has(arg)) {
+			if (seen.has(arg)) throw new Error(`Output repair option ${arg} may only be provided once`);
+			seen.add(arg);
+			continue;
+		}
+		if (valueOptions.has(arg)) {
+			if (seen.has(arg)) throw new Error(`Output repair option ${arg} may only be provided once`);
+			const value = args[index + 1];
+			if (!value || value.startsWith("-")) throw new Error(`${arg} requires a value`);
+			seen.add(arg);
+			if (arg === "--session") hasSessionOption = true;
+			else hasScopeOption = true;
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("-")) throw new Error(`Unknown output repair option "${arg}"`);
+		positionals.push(arg);
+	}
+	if (hasSessionOption) {
+		if (positionals.length > 1) throw new Error("With --session, provide at most one positional <event-id>");
+	} else if (positionals.length !== 2) {
+		throw new Error("Exact output repair requires <pibo-session-id> <event-id>; use --session for scoped repair");
+	}
+	if (hasScopeOption && positionals.length > 0) {
+		throw new Error("--since, --before, and --limit are only supported for scoped repair without an <event-id>");
 	}
 }
 
@@ -590,6 +796,7 @@ async function runDebugEvents(args: string[]): Promise<void> {
 		const selector = options.positionals[2];
 		if (!selector) throw new Error("pibo debug events <pibo-session-id> show requires <stream-id-or-event-id>");
 		const result = inspectDebugEventShow(piboSessionId, resolveDebugStore("chat"), selector, { ...detailOptions(options), payload: options.payload, raw: options.raw, field: options.field });
+		if (!result.event) process.exitCode = 1;
 		if (options.json) console.log(formatJson(result));
 		else console.log(formatDebugEventShow(result));
 		return;
@@ -619,13 +826,13 @@ async function runDebugJobs(args: string[]): Promise<void> {
 	try {
 		if (command === "list") {
 			const jobs = reliability.listJobs({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
-			if (options.json) console.log(formatJson({ jobs }));
+			if (options.json) console.log(formatJson({ jobs: jobs.map(observableJobRow) }));
 			else console.log(formatRows(jobs.map(compactJobRow)));
 			return;
 		}
 		if (command === "dead") {
 			const jobs = reliability.listDead({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
-			if (options.json) console.log(formatJson({ jobs }));
+			if (options.json) console.log(formatJson({ jobs: jobs.map(observableDeadJobRow) }));
 			else console.log(formatRows(jobs.map(compactDeadJobRow)));
 			return;
 		}
@@ -808,9 +1015,9 @@ function parseOptions(args: string[]): ParsedOptions {
 			index += 1;
 			continue;
 		}
-		if (arg === "--after") {
+		if (arg === "--after" || arg === "--since") {
 			const value = args[index + 1];
-			if (!value) throw new Error("--after requires a value");
+			if (!value) throw new Error(`${arg} requires a value`);
 			parsed.after = value;
 			index += 1;
 			continue;
@@ -925,26 +1132,66 @@ function compactEventRow(event: { streamId: number; topic: string; key?: string;
 	};
 }
 
-function compactJobRow(job: { jobId: string; queue: string; state: string; runAt: string; attempts: number; maxAttempts: number; workerId?: string; lastError?: string }): Record<string, unknown> {
+function compactJobRow(job: { jobId: string; queue: string; state: string; payload: unknown; runAt: string; attempts: number; maxAttempts: number; workerId?: string; lastError?: string }): Record<string, unknown> {
+	const correlation = outputPersistenceJobCorrelation(job.payload);
 	return {
 		jobId: job.jobId,
 		queue: job.queue,
 		state: job.state,
 		runAt: job.runAt,
 		attempts: `${job.attempts}/${job.maxAttempts}`,
+		piboSessionId: correlation.piboSessionId,
+		eventId: correlation.eventId,
+		phase: correlation.phase,
 		workerId: job.workerId,
 		lastError: job.lastError,
 	};
 }
 
-function compactDeadJobRow(job: { jobId: string; queue: string; attempts: number; maxAttempts: number; deadAt: string; deadReason: string; lastError?: string }): Record<string, unknown> {
+function compactDeadJobRow(job: { jobId: string; queue: string; payload: unknown; attempts: number; maxAttempts: number; deadAt: string; deadReason: string; lastError?: string }): Record<string, unknown> {
+	const correlation = outputPersistenceJobCorrelation(job.payload);
 	return {
 		jobId: job.jobId,
 		queue: job.queue,
 		attempts: `${job.attempts}/${job.maxAttempts}`,
+		piboSessionId: correlation.piboSessionId,
+		eventId: correlation.eventId,
+		phase: correlation.phase,
 		deadAt: job.deadAt,
 		deadReason: job.deadReason,
 		lastError: job.lastError,
+	};
+}
+
+function observableJobRow(job: Parameters<typeof compactJobRow>[0]): Record<string, unknown> {
+	return { ...compactJobRow(job), attempts: job.attempts, maxAttempts: job.maxAttempts };
+}
+
+function observableDeadJobRow(job: Parameters<typeof compactDeadJobRow>[0]): Record<string, unknown> {
+	return { ...compactDeadJobRow(job), attempts: job.attempts, maxAttempts: job.maxAttempts };
+}
+
+function outputPersistenceJobCorrelation(payload: unknown): { piboSessionId?: string; eventId?: string; phase?: string } {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+	const envelope = payload as Record<string, unknown>;
+	const state = envelope.state;
+	let phase: string | undefined;
+	if (state && typeof state === "object" && !Array.isArray(state)) {
+		const deliveries = (state as Record<string, unknown>).deliveries;
+		if (Array.isArray(deliveries) && deliveries.length) {
+			const rows = deliveries.filter((delivery): delivery is Record<string, unknown> => !!delivery && typeof delivery === "object" && !Array.isArray(delivery));
+			if (rows.length === deliveries.length) {
+				if (rows.every((delivery) => delivery.sideEffectsDelivered === true || delivery.persisted === true)) phase = "delivered";
+				else if (rows.every((delivery) => delivery.reliabilityDelivered === true)) phase = "side-effects";
+				else if (rows.every((delivery) => delivery.v2 !== undefined)) phase = "reliability";
+				else phase = "v2";
+			}
+		}
+	}
+	return {
+		...(typeof envelope.piboSessionId === "string" ? { piboSessionId: envelope.piboSessionId } : {}),
+		...(typeof envelope.eventId === "string" ? { eventId: envelope.eventId } : {}),
+		...(phase ? { phase } : {}),
 	};
 }
 
@@ -1013,6 +1260,9 @@ Commands:
   tool     Inspect one grouped tool call
   failures List failed tool calls and trace/session errors
   jobs     Inspect durable Pibo jobs and DLQ
+  persistence Audit output persistence and related dead letters
+  integrity Compatibility alias for output persistence audit
+  repair   Dry-run or apply explicit persisted-output repairs
   runs     Inspect durable yielded runs
   resources Show gateway memory reserve, related child processes, and heavy daemons
   signals  Inspect live session signal snapshots through Chat Web APIs
@@ -1027,12 +1277,92 @@ Next:
   pibo debug messages <pibo-session-id> list
   pibo debug trace <pibo-session-id> --running-only
   pibo debug events stream --topic pibo.output
+  pibo debug persistence
+  pibo debug repair output <pibo-session-id> <event-id> --dry-run
   pibo debug agents <parent-session-id> list
   pibo debug resources --json
   pibo debug signals tree ps_...
   pibo debug telemetry sessions --active
   pibo debug web targets
   pibo debug pty run -- pibo tui:sessions --demo
+`);
+}
+
+function printDebugIntegrityDiscovery(): void {
+	console.log(`pibo debug integrity - compatibility alias for output persistence audit
+
+Usage:
+  pibo debug integrity output [<pibo-session-id>] [--since <iso-date>] [--before <iso-date>] [--limit n] [--json]
+
+Next:
+  pibo debug persistence audit --help
+`);
+}
+
+function printDebugPersistenceDiscovery(): void {
+	console.log(`pibo debug persistence - inspect persisted output without changing it
+
+Commands:
+  audit         Audit output lifecycle, identity, queue, and trace-status integrity
+  dead-letters  List output-persistence dead letters with collision relationships
+
+Next:
+  pibo debug persistence audit --help
+  pibo debug persistence dead-letters --help
+`);
+}
+
+function printDebugPersistenceAuditHelp(): void {
+	console.log(`pibo debug persistence audit - read-only output integrity audit
+
+Usage:
+  pibo debug persistence audit [--session <pibo-session-id>] [--since <iso-date>] [--before <iso-date>] [--limit n] [--json]
+
+Reports:
+  Incomplete or invalid turn, reasoning, and tool lifecycles; identity collisions; reused output keys; session/trace-status mismatches; and pending or dead output-persistence jobs.
+
+Next:
+  pibo debug persistence audit --json
+  pibo debug persistence audit --session ps_... --since 2026-08-01T00:00:00Z --json
+  pibo debug persistence dead-letters
+`);
+}
+
+function printDebugPersistenceDeadLettersHelp(): void {
+	console.log(`pibo debug persistence dead-letters - read-only output dead-letter inspection
+
+Usage:
+  pibo debug persistence dead-letters [--session <pibo-session-id>] [--since <iso-date>] [--before <iso-date>] [--limit n] [--json]
+
+Reports:
+  Output-persistence dead letters, permanent collision failures, and dead letters related to persisted collision diagnostics.
+
+Next:
+  pibo debug persistence dead-letters --json
+  pibo debug persistence audit --json
+`);
+}
+
+function printDebugRepairDiscovery(): void {
+	console.log(`pibo debug repair - explicitly repair persisted output
+
+Usage:
+  pibo debug repair output <pibo-session-id> <event-id> [--dry-run|--apply] [--json]
+  pibo debug repair output --session <pibo-session-id> [--since <iso-date>] [--before <iso-date>] [--limit n] [--dry-run|--apply] [--json]
+
+Behavior:
+  Dry-run is the default. --apply is required for every mutation.
+  Repair requires exactly one persisted message start, an inactive turn, no terminal event, and unambiguous evidence.
+  Evidence is limited to Reliability payloads, Pibo Product History, and exact adapter-history turn matches.
+  Repair never invents assistant content. Without an exact Reliability terminal, only a completed assistant record can justify message_finished.
+  Every applied terminal writes a pibo.output.repair_applied audit event in the same transaction.
+  Repair does not delete or replay pending or dead output-persistence jobs.
+
+Next:
+  pibo debug repair output ps_... <event-id> --dry-run --json
+  pibo debug repair output --session ps_... --before 2026-08-31T00:00:00Z --dry-run --json
+  pibo debug repair output ps_... <event-id> --apply --json
+  pibo debug jobs dead --queue output-persistence
 `);
 }
 

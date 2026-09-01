@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T04:15:54Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "RUN-BIND-001"
       status: "implemented"
@@ -44,11 +44,15 @@ traceability:
       sources:
         - path: "src/agent-runtime/portable-history.ts"
           symbol: "PiboDataPortableHistoryProvider"
+        - path: "src/agent-runtime/portable-history.ts"
+          symbol: "withPortableHistoryHandoffMetadata"
       tests:
         - path: "test/runtime-portability.test.mjs"
           name: "portable history is bounded, checkpointed, role-aware, and secret-redacted"
         - path: "test/runtime-portability.test.mjs"
           name: "portable history enforces its aggregate serialized handoff bound"
+        - path: "test/runtime-portability.test.mjs"
+          name: "portable history scopes provider-local tool ids by turn across SQLite restart"
       failures:
         - "Target startup failure preserves the same persisted checkpoint for retry; conflicting revisions fail explicitly."
         - "Only exact built-in store capabilities minted by createAgentRuntimeBindingPersistence are accepted; structural lookalikes are rejected; portable history is secret-redacted."
@@ -65,6 +69,8 @@ traceability:
           name: "runtime rebind quiesces the source before taking its portable-history checkpoint"
         - path: "test/runtime-portability.test.mjs"
           name: "runtime rebind retries the same persisted handoff checkpoint after target startup failure"
+        - path: "test/runtime-portability.test.mjs"
+          name: "cross-runtime rebind clears source model selection across restart while same-runtime rebind preserves it"
       failures:
         - "Target startup failure preserves the same persisted checkpoint for retry; conflicting revisions fail explicitly."
         - "Only exact built-in store capabilities minted by createAgentRuntimeBindingPersistence are accepted; structural lookalikes are rejected; portable history is secret-redacted."
@@ -79,10 +85,10 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Lifecycle: A rebind quiesces the source, persists one checkpointed handoff, opens the target, imports before first prompt, then clears or records the handoff retry-safely.
+- Lifecycle: A rebind quiesces the source, persists one checkpointed handoff, opens the target, imports before first prompt, then clears or records the handoff retry-safely. Cross-runtime rebind clears the source runtime's model and fallback selection across restart; same-runtime rebind preserves it.
 - State: Binding states are unbound, bound, missing, or error; writes are revision-checked and distinguish normal, repair, and rebind transitions.
 - Failure: Target startup failure preserves the same persisted checkpoint for retry; conflicting revisions fail explicitly.
-- Security: Only exact built-in store capabilities minted by createAgentRuntimeBindingPersistence are accepted; structural lookalikes are rejected; portable history is secret-redacted.
+- Security: Only exact built-in store capabilities minted by createAgentRuntimeBindingPersistence are accepted; structural lookalikes are rejected; portable history is secret-redacted and scopes provider-local reused tool IDs by turn, including after SQLite restart and truncation.
 - Compatibility: Legacy Pi rows migrate to a bound Pi runtime while the compatibility Pi column becomes nullable.
 
 # Requirements and invariants
@@ -135,7 +141,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality, not whether a command ran.
 
 Package verification commands:
 

@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-31T15:45:43Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "okf-v0.2"
     resource: "https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/3fcbb9f828c2f23d109c855ee403c3a4c81f3a96/okf/SPEC.md"
@@ -194,4 +194,4 @@ npm run docs:validator:test
 npm run docs:validate:strict
 ```
 
-`docs:validate:okf` is ledger-independent OKF v0.2 core validation. It checks only concept frontmatter, non-empty `type`, and the normative structure of present `index.md` and `log.md` files, including exact line-ending-independent frontmatter envelopes and fence-aware date-grouped log list entries; unknown concept types and keys, missing optional fields or reserved files, and broken links do not fail it. `docs:validate` aliases Pibo migration mode during the controlled migration. `docs:validate:migration` enforces complete-history pending lineage, descriptor-stable control-file reads, safe ledger paths, complete conformant index chains, and stable-evidence registration while global strict debt remains. Migration validation, index checking, log checking, and focused tests must pass on every migration commit. `docs:validate:strict` must fail while pending entries or profile violations remain; never weaken it to make an incomplete corpus pass.
+`docs:validate:okf` is ledger-independent OKF v0.2 core validation. It checks only concept frontmatter, non-empty `type`, and the normative structure of present `index.md` and `log.md` files, including exact line-ending-independent frontmatter envelopes and fence-aware date-grouped log list entries; unknown concept types and keys, missing optional fields or reserved files, and broken links do not fail it. Following migration closure, `docs:validate` aliases strict Pibo-profile validation. `docs:validate:migration` remains an explicit compatibility and complete-history control for ledger lineage, descriptor-stable control-file reads, safe ledger paths, complete conformant index chains, and stable-evidence registration. Core, migration, strict, index, log, preserved-body, and focused validator checks must pass for every documentation change. Any future pending entry or profile violation makes strict validation fail; never weaken it to admit incomplete corpus debt.

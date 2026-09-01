@@ -13,16 +13,16 @@ generated:
   at: '2026-08-30T09:44:54Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
-  title: Foundation source and test evidence for SPC-ORCH-005
+  title: upstream/dev refresh source and test evidence for SPC-ORCH-005
 implementation:
   state: current
-  baseline_commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  commit: 39090b8850758293e69380a52bb7498d7c955bc2
   requirements:
   - id: ORCH-WF-001
     status: implemented
@@ -180,9 +180,9 @@ The workflow package defines the current IR, registry, validation, schema-v3 sto
 
 - **Stable concept:** `SPC-ORCH-005`
 - **Target path:** `docs/specs/orchestration/workflow-framework-runtime-store.md`
-- **Authority:** Foundation source and test evidence at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- **Authority:** upstream/dev refresh source and test evidence at `39090b8850758293e69380a52bb7498d7c955bc2`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
-- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the Foundation commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
+- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the upstream/dev refresh commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
 ## Public surfaces
 
@@ -250,7 +250,7 @@ Human dispatch creates durable pending wait tokens; action apply checks ownershi
 
 The package MUST expose a serializable workflow IR with typed workflow/node ports, explicit node and edge kinds, registered executable references, stable diagnostics, and duplicate-safe registry operations.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -276,7 +276,7 @@ No inline executable code is part of IR; unknown/archived refs become diagnostic
 
 Validation MUST reject invalid strict schemas, incompatible/missing ports, unregistered handlers/adapters/guards/actions, undeclared or conflicting state access, invalid retries, and cycles lacking an explicit bounded guarded loop policy.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -302,7 +302,7 @@ Validation is diagnostic and non-executing; hidden LLM coercion and undeclared w
 
 Schema v3 and its store contracts MUST durably save and retrieve definition snapshots, identities, drafts, published versions, archive/tombstone state, runs, events, node attempts, edge transfers, checkpoints, wakeups, wait tokens, and human actions.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -329,7 +329,7 @@ Store records are JSON-serialized facts; list filters are bounded. No test in th
 
 The package MUST provide the implemented manual trigger traversal and agent/code/adapter/human/nested dispatch primitives, validate transferred payloads, persist dispatch facts when a store is supplied, enforce declared state access, and expose deterministic retry decisions; it MUST NOT be specified as a universal integrated restart-resuming graph executor.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -359,7 +359,7 @@ The recovery-named test verifies message completion/final-output handling, not c
 
 XState and compact Web UI models MUST be deterministic derived projections of workflow definitions and kernel snapshots, identify projection schema version 1, keep kernel facts authoritative, and omit private payloads.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -390,7 +390,7 @@ Projection state cannot mutate execution truth and declares exposesPrivatePayloa
 
 ## Verification boundary
 
-- Source/test baseline: `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Source/test baseline: `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Focused inventory: 24 files / 245 top-level declarations; `test/web-channel.test.mjs` is separate cross-boundary evidence with 113 declarations.
 - Requirement traceability: 25 unique requirements across six targets, 15 high confidence and 10 medium confidence, 138 source references, 75 named-test references / 74 unique names.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.

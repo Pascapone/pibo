@@ -10,19 +10,19 @@ status: stable
 authority: normative
 generated:
   by: openai/codex
-  at: '2026-08-30T09:44:54Z'
+  at: '2026-09-01T20:42:35Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
-  title: Foundation source and test evidence for SPC-ORCH-002
+  title: upstream/dev refresh source and test evidence for SPC-ORCH-002
 implementation:
   state: current
-  baseline_commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  commit: 39090b8850758293e69380a52bb7498d7c955bc2
   requirements:
   - id: ORCH-SUB-001
     status: implemented
@@ -73,6 +73,12 @@ traceability:
       symbol: resolvePiboSubagentRuntimeSelections
     - path: src/core/session-router.ts
       symbol: PiboSessionRouter
+    - path: src/subagents/observation-query.ts
+      symbol: preparePiboAgentObservationQuery
+    - path: src/subagents/observation-query.ts
+      symbol: selectPiboAgentObservationPage
+    - path: src/debug/agents.ts
+      symbol: runDebugAgentsCli
     tests:
     - path: test/subagents.test.mjs
       name: subagent runner freezes per-subagent model, thinking, and runtime overrides on new child sessions
@@ -104,6 +110,8 @@ traceability:
       name: bounded run waits do not cancel delegated agents and explicit cancellation preserves thread reuse
     - path: test/subagents.test.mjs
       name: agent observation polling is cursor-safe in descending order and reports retention loss
+    - path: test/debug-agents.test.mjs
+      name: debug delegated-agent CLI exposes and executes the shared observation filters
     failures:
     - Cross-parent child access is rejected; targeted abort rejection/non-settlement is surfaced rather than reported as cancellation.
     confidence: high
@@ -123,9 +131,9 @@ The registered agent tools define yielded-only sends, bounded observation, indep
 
 - **Stable concept:** `SPC-ORCH-002`
 - **Target path:** `docs/specs/orchestration/subagents.md`
-- **Authority:** Foundation source and test evidence at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- **Authority:** Current upstream source and test evidence at `39090b8850758293e69380a52bb7498d7c955bc2`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
-- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the Foundation commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
+- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the upstream/dev refresh commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
 ## Public surfaces
 
@@ -146,7 +154,7 @@ Children are direct owned subagent sessions with independent bindings. Default m
 
 ### Observation
 
-Observe defaults to 20 newest assistant messages, caps the requested limit at 200, filters at most 50 exact IDs/keys, and bounds text/tool/details to 4 KiB/768 B/32 KiB with cursor and retention-loss reporting.
+Observe defaults to the newest 20 completed assistant messages with tools hidden, caps the requested limit at 200, filters at most 50 exact IDs/keys, and bounds text/tool/details to 4 KiB/768 B/32 KiB with cursor and retention-loss reporting. Live router observation and persisted `pibo debug agents ... observe` share one query policy for role, identity, event, kind, time, text, tool-call, tool-visibility/detail, ordering, limits, and cursor-safe page selection. Persisted cursors are durable `streamId` values; live cursors remain router-lifetime `sequence` values, and yielded request IDs remain live-only until event-log provenance exists.
 
 ### Compatibility
 
@@ -175,7 +183,7 @@ Legacy per-subagent factories remain exported but outside current runtime assemb
 
 Delegated sends MUST execute only as the pibo_agents_send_message target of pibo_run_start; management list, observe, and kill remain direct tools.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -195,7 +203,7 @@ Direct send invocation fails before child creation; arguments are normalized bef
 
 A send MUST validate bounded name/depth/thread inputs before child creation, create a new child when threadKey is absent, reuse a non-killed owned child for the same stable threadKey, and update the reused child title without changing identity.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -219,7 +227,7 @@ Invalid/cancelled requests create no child; only direct children of the controll
 
 A newly created child MUST bind to the configured target profile/runtime and freeze its effective model, thinking, fast-mode, and runtime overrides independently of the parent; reuse MUST retain that child binding.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -239,9 +247,9 @@ Unknown targets or unavailable runtime bindings fail before delegated execution;
 
 ### Requirement: ORCH-SUB-004
 
-Observe and cancellation MUST use exact owned child/request identity; bounded wait MUST NOT cancel the request, queued-request cancellation MUST NOT abort another active request on a reused child, and kill MUST dispose the owned subtree and prevent reuse.
+Observe and cancellation MUST use exact owned child/request identity; live and persisted observation MUST share the same query policy where durable fields permit it; bounded wait MUST NOT cancel the request; queued-request cancellation MUST NOT abort another active request on a reused child; and kill MUST dispose the owned subtree and prevent reuse.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -272,7 +280,7 @@ Cross-parent child access is rejected; targeted abort rejection/non-settlement i
 
 ## Verification boundary
 
-- Source/test baseline: `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Source/test baseline: `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Focused inventory: 24 files / 245 top-level declarations; `test/web-channel.test.mjs` is separate cross-boundary evidence with 113 declarations.
 - Requirement traceability: 25 unique requirements across six targets, 15 high confidence and 10 medium confidence, 138 source references, 75 named-test references / 74 unique names.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.

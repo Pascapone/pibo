@@ -7,19 +7,19 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T08:51:56Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-SEC-002"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-03-RESOURCES-SECURITY"
   source_evidence: "performed"
   focused_test_execution: "performed: 383 passed, 2 baseline failures in local-auth.test.mjs"
   build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "SEC-FILE-001"
       status: "implemented"
@@ -168,7 +168,7 @@ verification:
   performed:
     - evidence_class: "source inspection"
       status: "performed"
-      detail: "Exact source files, symbols, test files, and test names were reconciled to Foundation commit 38bb6e57f118c1543e7263c68d27e5103d3b1262."
+      detail: "Exact source files, symbols, test files, and test names were reconciled to upstream/dev refresh commit 39090b8850758293e69380a52bb7498d7c955bc2."
     - evidence_class: "focused tests"
       status: "performed_with_baseline_failures"
       detail: "Exact parent/candidate inventory ran in the same fresh isolated worker: 385 tests, 383 passed, and 2 identical local-auth baseline assertions failed; no source or test files were changed."
@@ -212,7 +212,7 @@ This specification records current behavior only. It does not authorize unimplem
 
 # Current behavior and public surfaces
 
-The implementation state is current at the exact accepted Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+The implementation state is current at the exact accepted upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Implemented behavior:
 - "Private path and PIBO_HOME permission helpers"
@@ -248,7 +248,7 @@ Persistence and lifecycle state: Private directories/files and bounded upload/ar
 
 Create and tighten Pibo Home, private product directories, and private files with platform-appropriate protections, rejecting an invalid file-at-directory path.
 
-**Implementation state:** `implemented_at_baseline; direct Windows evidence required` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline; direct Windows evidence required` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -275,7 +275,7 @@ Create and tighten Pibo Home, private product directories, and private files wit
 
 Apply route-specific file authorization: private sanitized/exclusive uploads; root-bounded, realpath/no-follow, inode-checked and MIME/size-bounded image previews; and authenticated regular-file downloads resolved from absolute or workspace-relative paths without falsely claiming a download root sandbox.
 
-**Implementation state:** `implemented_at_baseline_with_intentional_download_breadth` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_intentional_download_breadth` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -302,7 +302,7 @@ Apply route-specific file authorization: private sanitized/exclusive uploads; ro
 
 Reject oversized host request bodies, reject invalid/non-object JSON, and require expected content type plus exact canonical same-origin evidence for mutating product routes; leave canonical URL translation and route mounting to GW-003.
 
-**Implementation state:** `implemented_at_baseline_with_GW_003_mechanics` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_GW_003_mechanics` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -331,7 +331,7 @@ Reject oversized host request bodies, reject invalid/non-object JSON, and requir
 
 Provide bounded recursive sensitive-value redaction and apply it at identified resource/runtime diagnostic sinks; require each owning subsystem to prove adoption instead of asserting universal log/trace/config/error redaction.
 
-**Implementation state:** `helper_implemented; sink-coverage evidence gap` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `helper_implemented; sink-coverage evidence gap` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `medium`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -394,7 +394,7 @@ Open evidence gaps carried forward:
 
 # Verification and traceability
 
-All requirement traceability records use exact repository-relative regular files at `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+All requirement traceability records use exact repository-relative regular files at `39090b8850758293e69380a52bb7498d7c955bc2`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Performed evidence:
 - Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
@@ -406,7 +406,7 @@ Package commands after authoring:
 - `npm run typecheck` — passed
 - `npm run build` — passed, with existing Vite chunk-size warnings
 - Exact focused test inventory from the WP-03 brief — 385 tests: 383 passed and 2 identical local-auth baseline failures in exact parent/candidate runs
-- Foundation validator/authoring suite — 82 passed
+- upstream/dev refresh validator/authoring suite — 82 passed
 
 # Related concepts
 

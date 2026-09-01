@@ -10,19 +10,19 @@ status: stable
 authority: normative
 generated:
   by: openai/codex
-  at: '2026-08-30T09:44:54Z'
+  at: '2026-09-01T20:42:35Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
-  title: Foundation source and test evidence for SPC-ORCH-003
+  title: upstream/dev refresh source and test evidence for SPC-ORCH-003
 implementation:
   state: current
-  baseline_commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  commit: 39090b8850758293e69380a52bb7498d7c955bc2
   requirements:
   - id: ORCH-LOOP-001
     status: implemented
@@ -39,11 +39,19 @@ traceability:
       symbol: PiboGoalStatus
     - path: src/loops/types.ts
       symbol: PiboLoopRunStatus
+    - path: src/loops/store.ts
+      symbol: PiboLoopActiveRunModeChangeError
     tests:
     - path: test/loop-goal-mode.test.mjs
       name: new loops default to goal while legacy rows load as ralph
     - path: test/loop-goal-mode.test.mjs
       name: goal mode reuses one Pibo Session while Ralph mode creates fresh sessions
+    - path: test/loop-mode-edit-ownership.test.mjs
+      name: active mode edits are rejected across CLI, API, and SQLite reopen
+    - path: test/loop-max-iterations-admission.test.mjs
+      name: CLI starts and automatic service restarts cannot exceed a persisted custom-policy cap
+    - path: test/loop-cli-targets.test.mjs
+      name: loop add requires exactly one target without unintended persistence
     failures:
     - Targets and profiles are validated; unknown profile disables/fails instead of retrying forever.
     confidence: high
@@ -120,6 +128,8 @@ traceability:
       symbol: evaluateLoopStopPolicy
     - path: src/loops/stopping.ts
       symbol: createBuiltInLoopStopConditions
+    - path: src/loops/service.ts
+      symbol: close
     tests:
     - path: test/ralph-run-timeout.test.mjs
       name: Ralph aborts the session before completing an explicitly timed-out run
@@ -131,6 +141,10 @@ traceability:
       name: Ralph resource cleanup failure marks run and job metadata dirty
     - path: test/ralph-resource-cleanup.test.mjs
       name: Ralph interrupted-run recovery marks possible browser resources dirty
+    - path: test/loop-admission-cancellation.test.mjs
+      name: cancellation before scheduler evaluation suppresses evaluation and provider emission
+    - path: test/loop-service-shutdown.test.mjs
+      name: Loop service shutdown drains an active run before closing its stores
     failures:
     - Named tests exercise the remaining PiboRalphService, not PiboLoopService; current Loop behavior is source-grounded but
       needs direct regression coverage.
@@ -151,9 +165,9 @@ The common Loop store and registered Loop service define Goal and Ralph behavior
 
 - **Stable concept:** `SPC-ORCH-003`
 - **Target path:** `docs/specs/orchestration/loops-goals-and-ralph.md`
-- **Authority:** Foundation source and test evidence at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- **Authority:** Current upstream source and test evidence at `39090b8850758293e69380a52bb7498d7c955bc2`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
-- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the Foundation commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
+- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the upstream/dev refresh commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
 ## Public surfaces
 
@@ -177,7 +191,7 @@ Both CLI names route to runLoopCli; pibo ralph supplies Ralph defaults. Commands
 
 ### State
 
-Modes are goal and ralph. Goal status is active/paused/blocked/budget_limited/complete; run status is running/ok/error/cancelled. Goal mode reuses lastPiboSessionId; Ralph mode creates a fresh Pibo Session per run.
+Modes are goal and ralph. Goal status is active/paused/blocked/budget_limited/complete; run status is running/ok/error/cancelled. Goal mode reuses lastPiboSessionId; Ralph mode creates a fresh Pibo Session per run. Active mode changes are rejected across CLI/API/store boundaries; stale completions cannot clear a newer reservation. A job has exactly one room/default-chat target, and persisted `maxIterations` is enforced at admission for manual and automatic starts.
 
 ### Timeouts Reminders Recovery
 
@@ -189,7 +203,7 @@ Goal tools are session/Goal-mode scoped. New goals use persisted uncached token 
 
 ### Resource Failure
 
-Stop is graceful; cancel aborts. Unknown profile is fatal. Retriable failures back off; non-retryable Goal failure blocks. Browser leases renew while active, release on clean settlement, and mark resources dirty on uncertain cleanup.
+Stop is graceful; cancel remains authoritative before, during, and after admission. Shutdown drains an active run before closing stores. Unknown profile is fatal. Retriable failures back off; non-retryable Goal failure blocks. Browser leases renew while active, release on clean settlement, and mark resources dirty on uncertain cleanup.
 
 ### Compatibility
 
@@ -225,7 +239,7 @@ The common Loop store still defaults to pibo-ralph.sqlite and pibo_ralph_* table
 
 The common Loop store/service MUST persist jobs, runs, facts, modes, stop policy, accounting, message state, and resource metadata; Goal mode MUST reuse one Pibo Session and Ralph mode MUST create a fresh session per run.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -249,7 +263,7 @@ Targets and profiles are validated; unknown profile disables/fails instead of re
 
 Goal tools MUST expose only get/create/update in an authorized Goal session; complete/blocked/budget_limited MUST stop continuation; blocked updates MUST follow the repeated-blocker contract; explicit confirmed operator reopen MUST preserve identity/session/history/accounting while starting a fresh blocked audit.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -277,7 +291,7 @@ Model tools cannot reopen; operator reopen requires confirmation/actor and rejec
 
 pibo loop and pibo ralph MUST remain aliases over the registered common Loop CLI/service/API and shared pibo_ralph_* compatibility store; documentation MUST NOT present src/ralph as the registered implementation or claim that the legacy seam/database names were removed.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -299,7 +313,7 @@ Compatibility aliases do not create a second authority; direct src/ralph tests p
 
 The registered Loop service MUST distinguish graceful stop from aborting cancel, apply bounded optional timeout/retry policy, recover interrupted rows, and settle browser-resource metadata; uncertain abort or cleanup MUST become terminal/dirty state rather than an assumed clean success.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -335,7 +349,7 @@ Named tests exercise the remaining PiboRalphService, not PiboLoopService; curren
 
 ## Verification boundary
 
-- Source/test baseline: `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Source/test baseline: `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Focused inventory: 24 files / 245 top-level declarations; `test/web-channel.test.mjs` is separate cross-boundary evidence with 113 declarations.
 - Requirement traceability: 25 unique requirements across six targets, 15 high confidence and 10 medium confidence, 138 source references, 75 named-test references / 74 unique names.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.

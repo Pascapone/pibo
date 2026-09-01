@@ -154,7 +154,7 @@ test("plan and evidence producers follow the corrected nested paths", () => {
 
 test("documentation package scripts expose core, migration, strict, index, and log checks", () => {
 	const pkg = JSON.parse(read("package.json"));
-	assert.equal(pkg.scripts["docs:validate"], "npm run docs:validate:migration");
+	assert.equal(pkg.scripts["docs:validate"], "npm run docs:validate:strict");
 	assert.match(pkg.scripts["docs:validate:okf"], /--mode core/);
 	assert.match(pkg.scripts["docs:validate:migration"], /--mode migration/);
 	assert.match(pkg.scripts["docs:validate:strict"], /--mode strict/);
@@ -165,7 +165,7 @@ test("documentation package scripts expose core, migration, strict, index, and l
 	assert(!pkg.files.includes("docs/ops/**"));
 });
 
-test("foundation relocations preserve the six pending source files byte for byte", () => {
+test("closed foundation relocations preserve the six accepted source bodies byte for byte", () => {
 	const expected = new Map([
 		["docs/project/guides/pibo-on-windows-via-wsl.md", "132f00469edcfa8915525bff4d0c9d82573ae53868a74db81d5224d354ce1d25"],
 		["docs/project/guides/pibo-vscode-ext-quickstart.md", "ff1b33edf70c89ce9b128382d05d5fa28735ede3fc3ba40429bece172fc2d716"],
@@ -174,32 +174,34 @@ test("foundation relocations preserve the six pending source files byte for byte
 		["docs/project/operations/upgrade-user-to-developer-host.md", "a48141d6456800b5e05472dfa7464d44a3b1605ad25a3209145a4d5bfcef22f8"],
 		["docs/project/operations/vscode-extension-release.md", "4d7588693a51389ebc3ea53eb088272743e707e3d81a5f436ab58578769f56c2"],
 	]);
-	for (const [path, hash] of expected) assert.equal(createHash("sha256").update(readFileSync(path)).digest("hex"), hash, path);
 	const ledger = JSON.parse(read("docs/project/okf-migration-ledger.json"));
-	for (const [path, hash] of expected) assert.equal(ledger.records.find((record) => record.path === path)?.source_sha256, hash, `${path} ledger lineage hash`);
+	for (const [path, hash] of expected) {
+		const content = readFileSync(path);
+		const envelope = /^---(?:\r\n|\n|\r)[\s\S]*?(?:\r\n|\n|\r)---(?:\r\n|\n|\r)/.exec(content.toString("utf8"));
+		assert(envelope, `${path} must have one frontmatter envelope`);
+		const body = content.subarray(Buffer.byteLength(envelope[0]));
+		assert.equal(createHash("sha256").update(body).digest("hex"), hash, path);
+		const record = ledger.records.find((candidate) => candidate.path === path);
+		assert.equal(record?.state, "conformant", `${path} ledger state`);
+		assert.equal(record?.body_sha256, hash, `${path} ledger body hash`);
+	}
 });
 
-test("pending bodies changed only to chase relocations remain at baseline bytes", () => {
-	const localAuthPaths = [
-		"docs/plans/local-auth-gateway-implementation-plan-2026-06-14.md",
-		"docs/legacy/plans/local-auth-gateway-implementation-plan-2026-06-14.md",
-	];
-	const presentLocalAuthPaths = localAuthPaths.filter((path) => existsSync(path));
-	assert.equal(presentLocalAuthPaths.length, 1, "exactly one local-auth plan path must exist");
-	const [localAuthPath] = presentLocalAuthPaths;
-	let localAuthBody = readFileSync(localAuthPath);
-	if (localAuthPath === localAuthPaths[1]) {
-		const envelope = /^---(?:\r\n|\n|\r)[\s\S]*?(?:\r\n|\n|\r)---(?:\r\n|\n|\r)/.exec(localAuthBody.toString("utf8"));
-		assert(envelope, `${localAuthPath} must have exactly one frontmatter envelope`);
-		localAuthBody = localAuthBody.subarray(Buffer.byteLength(envelope[0]));
-		assert.doesNotMatch(localAuthBody.toString("utf8"), /^---(?:\r\n|\n|\r)/, `${localAuthPath} has multiple frontmatter envelopes`);
-	}
-	assert.equal(createHash("sha256").update(localAuthBody).digest("hex"), "a21786efd362574041768edf331c0981922bd6be59ebf65731c38d39a9867fa5", localAuthPath);
-
+test("accepted historical plan bodies remain byte-preserved after upstream refresh", () => {
 	const expected = new Map([
-		["docs/specs/changes/bootstrap-host-installation/spec.md", "8b009ab60551f6076bb55f6f57f0d50224a6eb299f86c212ca0fa3f5d78f1e1e"],
+		["docs/legacy/plans/local-auth-gateway-implementation-plan-2026-06-14.md", "a21786efd362574041768edf331c0981922bd6be59ebf65731c38d39a9867fa5"],
+		["docs/legacy/plans/agent-management-tool-design.md", "ec1887fa28e2e52be8cb2308d1a5de03f5f9047ba10e1ef29fd53c58803d0813"],
 	]);
-	for (const [path, hash] of expected) assert.equal(createHash("sha256").update(readFileSync(path)).digest("hex"), hash, path);
+	const ledger = JSON.parse(read("docs/project/okf-migration-ledger.json"));
+	for (const [path, hash] of expected) {
+		const content = readFileSync(path);
+		const envelope = /^---(?:\r\n|\n|\r)[\s\S]*?(?:\r\n|\n|\r)---(?:\r\n|\n|\r)/.exec(content.toString("utf8"));
+		assert(envelope, `${path} must have exactly one frontmatter envelope`);
+		const body = content.subarray(Buffer.byteLength(envelope[0]));
+		assert.doesNotMatch(body.toString("utf8"), /^---(?:\r\n|\n|\r)/, `${path} has multiple frontmatter envelopes`);
+		assert.equal(createHash("sha256").update(body).digest("hex"), hash, path);
+		assert.equal(ledger.records.find((record) => record.path === path)?.body_sha256, hash, `${path} ledger body hash`);
+	}
 });
 
 test("generated root navigation links the ledger-owned active migration plan", () => {

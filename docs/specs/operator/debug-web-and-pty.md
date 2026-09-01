@@ -9,20 +9,20 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T10:45:00Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-05+09-COMPUTE-OPERATOR"
   source_evidence: "performed"
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "OP-DEBUG-001"
       status: "implemented"
@@ -57,6 +57,12 @@ traceability:
           symbol: inspectDebugEvents
         - path: src/debug/telemetry.ts
           symbol: inspectTelemetrySessions
+        - path: src/debug/output-integrity.ts
+          symbol: inspectOutputIntegrity
+        - path: src/debug/output-integrity.ts
+          symbol: outputPersistenceDeadLettersFromAudit
+        - path: src/debug/output-repair.ts
+          symbol: repairOutputTurns
       tests:
         - path: test/debug-cli.test.mjs
           name: "pibo debug db discovers schema and runs limited read-only SQL"
@@ -66,6 +72,12 @@ traceability:
           name: "pibo debug trace prints rebuilt Chat Web trace nodes"
         - path: test/debug-trace-checks.test.mjs
           name: "debug trace check reports duplicate stable keys"
+        - path: test/output-integrity-debug.test.mjs
+          name: "output integrity audit reports lifecycle, collision, and queue findings without writes"
+        - path: test/output-repair-debug.test.mjs
+          name: "output repair refuses missing, active, ambiguous, duplicate, complete, and conflicting targets"
+        - path: test/output-repair-debug.test.mjs
+          name: "scoped output repair is bounded by session and time and remains dry-run by default"
       public:
         - "pibo debug db|session|trace|messages|events|failures|telemetry|resources|runs|signals"
       failures:
@@ -113,6 +125,12 @@ traceability:
           name: "pibo debug pty scenario types input through an interactive PTY"
         - path: test/debug-pty.test.mjs
           name: "built-in mocked CLI session scenario follows the room and session picker flow"
+        - path: test/debug-pty.test.mjs
+          name: "pibo debug pty preserves missing event diagnostics with non-zero inner exits"
+        - path: test/debug-pty.test.mjs
+          name: "pibo debug pty enforces one wall-clock deadline across wait, text, and delay steps"
+        - path: test/debug-pty.test.mjs
+          name: "pibo debug pty stop patterns terminate a running process group"
       public:
         - "pibo debug pty run|scenario|list-scenarios"
         - "PTY scenario JSON"
@@ -166,7 +184,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### Commands
 
-- pibo debug db|session|trace|summary|messages|final|tool|failures|events|agents|jobs|runs|resources|signals|telemetry|web|pty; Web branches targets|attach-chat|snapshot|diff|watch|scenario|report; PTY branches run|scenario|list-scenarios.
+- pibo debug db|session|trace|summary|messages|final|tool|failures|events|agents|jobs|runs|resources|signals|telemetry|persistence|repair|web|pty; Web branches targets|attach-chat|snapshot|diff|watch|scenario|report; PTY branches run|scenario|list-scenarios.
 
 ### Apis
 
@@ -174,7 +192,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### State
 
-- Local debug defaults read owner stores read-only; output is bounded with byte/row/event limits and next commands. Optional explicit artifact directories hold Web/PTY JSON, text, raw, clean, screen, event, assertion, and metadata evidence.
+- Local debug defaults read owner stores read-only; persistence audit reports incomplete lifecycles, identity collisions, queue/dead-letter state, and bounded detail. Repair is dry-run by default and applies only with exact completed Product History, Reliability, or adapter evidence. Optional explicit artifact directories hold Web/PTY evidence.
 
 ### Lifecycle
 
@@ -182,7 +200,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### Failure
 
-- Unknown store/session/target, malformed scenario, assertion failure, timeout, ignored abort/cancel, and cleanup failure remain explicit. Real-provider runs require opt-in, positive iteration bound, timeouts, and stop condition.
+- Unknown store/session/target, malformed scenario, assertion failure, missing expected events, nonzero child exits, one wall-clock deadline, ignored abort/cancel, and cleanup failure remain explicit. Repair refuses active, ambiguous, duplicate, conflicting, already-complete, or evidence-free targets. Real-provider runs require opt-in, positive iteration bound, timeouts, and stop condition.
 
 ### Security
 
@@ -200,7 +218,7 @@ Expose bounded progressive discovery for all debug branches and drill from summa
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -215,7 +233,7 @@ Read and reconstruct owner data for sessions, messages, events, traces, failures
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -230,7 +248,7 @@ Capture Web targets, snapshots, diffs, bounded watches, scenarios, streaming ben
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -245,7 +263,7 @@ Run host or named-worker PTYs from validated scenarios with bounded terminal geo
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -260,7 +278,7 @@ Default diagnostics to bounded/read-only/mock behavior and require explicit appl
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -317,7 +335,7 @@ Related concepts:
 
 ## Verification and traceability
 
-All source and named-test references are bound to Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
+All source and named-test references are bound to upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
 
 Later validation commands:
 

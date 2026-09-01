@@ -19,7 +19,12 @@
     "!docs/project/README.md",
     "README.md",
     "src/mcp/LICENSE.mcp-cli",
-    "npm-shrinkwrap.json"
+    "npm-shrinkwrap.json",
+    "compute-image/Dockerfile",
+    "compute-image/Dockerfile.dockerignore",
+    "scripts/docker-entrypoint.sh",
+    "scripts/prepare-browser-use-wrapper.sh",
+    "scripts/prepare-agent-browser-wrapper.sh"
   ],
   "bin": {
     "pibo": "dist/bin/pibo.js",
@@ -53,7 +58,7 @@
     "build": "npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run web-ui:build && npm run vscode:webview:build && node scripts/ensure-bin-executable.mjs",
     "start": "node dist/bin/pibo.js",
     "test": "npm run build && node scripts/run-test-suite.mjs",
-    "docs:validate": "npm run docs:validate:migration",
+    "docs:validate": "npm run docs:validate:strict",
     "docs:validate:okf": "node scripts/validate-okf-docs.mjs --mode core",
     "docs:validate:migration": "node scripts/validate-okf-docs.mjs --mode migration",
     "docs:validate:strict": "node scripts/validate-okf-docs.mjs --mode strict",
@@ -71,6 +76,7 @@
     "postpack": "node scripts/package-shrinkwrap.mjs clean"
   },
   "dependencies": {
+    "@balena/dockerignore": "1.0.2",
     "@earendil-works/pi-agent-core": "0.84.2",
     "@earendil-works/pi-ai": "0.84.2",
     "@earendil-works/pi-coding-agent": "0.84.2",

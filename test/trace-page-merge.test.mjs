@@ -61,6 +61,56 @@ test("mergeOlderTracePage dedupes overlapping nested timeline nodes", () => {
 	assert.equal(merged.hasOlderEvents, true);
 });
 
+test("trace page merges preserve and clear incomplete integrity status from canonical nodes", () => {
+	const older = traceView({
+		integrityStatus: "incomplete",
+		nodes: [node("event:message:turn-incomplete", {
+			type: "agent.turn",
+			eventId: "turn-incomplete",
+			status: "error",
+			children: [node("event:incomplete-turn:turn-incomplete", {
+				parentId: "event:message:turn-incomplete",
+				type: "error",
+				eventId: "turn-incomplete",
+				status: "error",
+				stableKey: "incomplete-turn:turn-incomplete",
+			})],
+		})],
+	});
+	const mergedOlder = mergeOlderTracePage(traceView({ nodes: [node("new-tail")] }), older);
+	assert.equal(mergedOlder.integrityStatus, "incomplete");
+	assert.equal(flattenNodes(mergedOlder.nodes).some((entry) => entry.id === "event:incomplete-turn:turn-incomplete"), true);
+
+	const refreshed = traceView({
+		version: "terminal-version",
+		nodes: [node("event:message:turn-incomplete", {
+			type: "agent.turn",
+			eventId: "turn-incomplete",
+			status: "done",
+			completedAt: "2026-07-05T00:03:00.000Z",
+		})],
+	});
+	const mergedRefreshed = mergeRefreshedTracePage(mergedOlder, refreshed);
+	assert.equal(mergedRefreshed.integrityStatus, undefined);
+	assert.equal(flattenNodes(mergedRefreshed.nodes).some((entry) => entry.id === "event:incomplete-turn:turn-incomplete"), false);
+	assert.equal(flattenNodes(mergedRefreshed.nodes).find((entry) => entry.id === "event:message:turn-incomplete")?.status, "done");
+});
+
+test("trace page merges preserve bounded integrity status when the marker is outside the node slice", () => {
+	const current = traceView({
+		integrityStatus: "incomplete",
+		nodes: [node("bounded-tail")],
+	});
+	const mergedOlder = mergeOlderTracePage(current, traceView({ nodes: [node("bounded-older")] }));
+	assert.equal(mergedOlder.integrityStatus, "incomplete");
+
+	const refreshed = mergeRefreshedTracePage(mergedOlder, traceView({
+		version: "repaired-version",
+		nodes: [node("bounded-tail")],
+	}));
+	assert.equal(refreshed.integrityStatus, undefined);
+});
+
 test("mergeRefreshedTracePage preserves the loaded history window while refreshing the tail", () => {
 	const current = traceView({
 		version: "old-version",
@@ -92,6 +142,25 @@ test("mergeRefreshedTracePage preserves the loaded history window while refreshi
 	assert.equal(merged.firstEventSequence, 10);
 	assert.equal(merged.nextBeforeSequence, 9);
 	assert.equal(merged.eventLimit, 100);
+});
+
+test("mergeRefreshedTracePage keeps render positions stable across live to history source handoff", () => {
+	const current = traceView({
+		nodes: [
+			node("first", { source: "live", startedAt: undefined, orderKey: { ...liveOrder(90), renderSequence: 10 } }),
+			node("second", { source: "live", startedAt: undefined, orderKey: { ...liveOrder(80), renderSequence: 20 } }),
+		],
+	});
+	const refreshed = traceView({
+		nodes: [
+			node("first", { source: "transcript", startedAt: "2026-07-05T00:02:00.000Z", orderKey: { ...transcriptOrder(9), renderSequence: 10 } }),
+			node("second", { source: "event-log", startedAt: "2026-07-05T00:01:00.000Z", orderKey: { ...eventOrder(1), renderSequence: 20 } }),
+		],
+	});
+
+	const merged = mergeRefreshedTracePage(current, refreshed);
+	assert.deepEqual(merged.nodes.map((entry) => entry.id), ["first", "second"]);
+	assert.deepEqual(merged.nodes.map((entry) => entry.orderKey.renderSequence), [10, 20]);
 });
 
 test("mergeRefreshedTracePage retains a same-entry transcript part split from the refreshed tail", () => {
@@ -141,11 +210,11 @@ test("mergeRefreshedTracePage replaces stale tail nodes without dropping loaded 
 
 	const merged = mergeRefreshedTracePage(current, refreshed);
 	assert.deepEqual(merged.nodes.map((entry) => entry.id), [
+		"entry:legacy-run-notification",
+		"older-transcript",
 		"older-event",
 		"older-run-notification",
 		"older-yielded-run",
-		"entry:legacy-run-notification",
-		"older-transcript",
 		"shared",
 		"new-tail",
 	]);

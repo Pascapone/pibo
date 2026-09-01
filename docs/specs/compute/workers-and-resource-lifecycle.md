@@ -9,20 +9,20 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T10:45:00Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-05+09-COMPUTE-OPERATOR"
   source_evidence: "performed"
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "CMP-WORKER-001"
       status: "implemented"
@@ -35,11 +35,25 @@ traceability:
           symbol: createWorktree
         - path: src/compute/cli.ts
           symbol: runComputeCli
+        - path: src/compute/docker.ts
+          symbol: resolveComputeImageBuildConfig
+        - path: src/compute/docker.ts
+          symbol: getSourceHash
+        - path: src/compute/docker.ts
+          symbol: withDevPortAllocationLock
       tests:
         - path: test/compute-resource-policy.test.mjs
           name: "one-time worker docker run args include resource policy and inspectable labels"
         - path: test/compute-resource-policy.test.mjs
-          name: "dev worker docker run args include resource policy labels worktree metadata and bounded logs"
+          name: "dev worker docker run args expose the built worktree CLI with resource and metadata bounds"
+        - path: test/compute-image-build.test.mjs
+          name: "compute image build falls back to package-owned inputs outside a source checkout"
+        - path: test/compute-image-cache.test.mjs
+          name: "one-time image hash follows the effective Docker build context"
+        - path: test/compute-dev-port-allocation.test.mjs
+          name: "parallel compute dev spawns reserve distinct port blocks across processes"
+        - path: test/compute-endpoint-reporting.test.mjs
+          name: "compute spawn reports the loopback host used by its published ports"
       public:
         - "pibo compute spawn"
         - "pibo compute dev spawn"
@@ -109,6 +123,10 @@ traceability:
           name: "resource reap dry-run aggregates browser, stale-file, and compute plans while preserving worktrees"
         - path: test/resources-cli.test.mjs
           name: "unmanaged Chromium planning honors home scope, grace, and explicit exemptions before terminating process groups"
+        - path: test/compute-release-safety.test.mjs
+          name: "compute release rejects unmanaged targets and pins owned cleanup to the inspected container ID"
+        - path: test/compute-reap-cli.test.mjs
+          name: "compute reap rejects conflicting modes before Docker or lease mutation in either order"
       public:
         - "pibo compute reap"
         - "pibo resources reap"
@@ -153,6 +171,8 @@ This specification describes implemented behavior at the traceability commit. It
 ### State
 
 - Docker labels pibo.compute.role, createdAt, holder, worktree, worktreePath, portBlock, ttlSeconds, idleSeconds, lastUsedAt, cleanupState, dirtyReason, plus Ralph job/run labels.
+- Published worker ports bind to `127.0.0.1`; returned `gatewayHost` reports that reachable loopback host. Dev port-block selection is serialized across processes through an owner-identity lock that is released on failed starts and safely reclaims stale PID-reuse records.
+- One-time image reuse hashes the effective Docker build context, including paths, file modes, symlink targets, Dockerfile, and effective Dockerfile-specific ignore rules. Installed packages use the package-owned compute image inputs instead of requiring a source checkout.
 - Resource policy defaults: memory 2g, memory-swap 2g, pids 512, shm 512m, init enabled, restart=no, json-file logs 10m x3.
 - Worker lifecycle defaults: TTL 3600 seconds and idle 1800 seconds; resource-reaper state records last/next run and failures.
 
@@ -162,7 +182,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### Failure
 
-- Docker-unavailable and disk-pressure states become diagnostics; dirty/OOM/stopped workers remain inspectable; aggregate cleanup continues browser planning when Docker planning fails; failed cleanup remains dirty/auditable.
+- Docker-unavailable and disk-pressure states become diagnostics; dirty/OOM/stopped workers remain inspectable; aggregate cleanup continues browser planning when Docker planning fails; failed cleanup remains dirty/auditable. Release rejects unmanaged containers and pins deletion to the inspected container ID. Reap rejects conflicting modes and invalid ages before Docker or lease mutation.
 
 ### Security
 
@@ -180,12 +200,12 @@ Create one-time and dev workers with inspectable labels, preserved worktrees, de
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
 - Source: `src/compute/docker.ts` — `buildWorkerDockerRunArgs`; `src/compute/docker.ts` — `buildDevWorkerDockerRunArgs`; `src/compute/docker.ts` — `createWorktree`; `src/compute/cli.ts` — `runComputeCli`
-- Tests: `test/compute-resource-policy.test.mjs` — “one-time worker docker run args include resource policy and inspectable labels”; `test/compute-resource-policy.test.mjs` — “dev worker docker run args include resource policy labels worktree metadata and bounded logs”
+- Tests: `test/compute-resource-policy.test.mjs` — “one-time worker docker run args include resource policy and inspectable labels”; `test/compute-resource-policy.test.mjs` — “dev worker docker run args expose the built worktree CLI with resource and metadata bounds”
 - Failure/security boundary: Docker absence, pressure, dirty state, and failed cleanup remain inspectable; exact labels and preserved worktrees constrain lifecycle actions.
 - Confidence: **high**
 
@@ -195,7 +215,7 @@ Resolve and enforce CPU, memory, swap, pid, shared-memory, restart, log, TTL, an
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -210,7 +230,7 @@ Report aggregate compute/browser/reaper health while retaining each resource own
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -225,7 +245,7 @@ Plan cleanup by default, require explicit apply, recheck mutable state, preserve
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -278,7 +298,7 @@ Related concepts:
 
 ## Verification and traceability
 
-All source and named-test references are bound to Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
+All source and named-test references are bound to upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
 
 Later validation commands:
 

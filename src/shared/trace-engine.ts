@@ -6,6 +6,7 @@ import {
 	dedupeTraceEvents,
 	findOpenTranscriptEventIds,
 	latestTraceStreamId,
+	markIncompletePersistedTurns,
 	mergeMessageTurnTimings,
 	messageTurnTimingsFromEvents,
 	reconcileTranscriptUserMessages,
@@ -52,6 +53,7 @@ type TraceBuildInput = {
 	session: { id: string; piSessionId: string; title?: string | null };
 	events: ChatWebStoredEvent[];
 	turnTimings?: TraceMessageTurnTiming[];
+	turnTimingOverflow?: boolean;
 	historyEntries?: readonly AgentRuntimeHistoryEntry[];
 	historyReconciliationProof?: AgentRuntimeHistoryReconciliationProof;
 	historyReconciliationAuthoritative?: boolean;
@@ -76,7 +78,8 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	const openHistoryEventIds = findOpenTranscriptEventIds(events, sessionStatus);
 	const suppliedTurnTimings = input.turnTimings ?? [];
 	const eventTurnTimings = messageTurnTimingsFromEvents(events);
-	const timingOverflow = suppliedTurnTimings.length + eventTurnTimings.length > TRACE_RECONCILIATION_TIMING_CAP;
+	const timingOverflow = input.turnTimingOverflow === true
+		|| suppliedTurnTimings.length + eventTurnTimings.length > TRACE_RECONCILIATION_TIMING_CAP;
 	const turnTimings = timingOverflow
 		? []
 		: mergeMessageTurnTimings(suppliedTurnTimings, eventTurnTimings);
@@ -124,6 +127,7 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 			sessionStatus,
 		);
 	}
+	const hasIncompleteTurns = markIncompletePersistedTurns(nodes, byId, input.session.id, events, turnTimings, sessionStatus);
 
 	const nestedNodes = nestTraceNodes(nodes);
 	reconcileAsyncAgentRunStatuses(nestedNodes);
@@ -131,6 +135,7 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 	return {
 		piboSessionId: input.session.id,
 		piSessionId: input.session.piSessionId,
+		...(hasIncompleteTurns ? { integrityStatus: "incomplete" as const } : {}),
 		title: input.session.title ?? "Untitled Session",
 		version: "",
 		latestStreamId: latestTraceStreamId(events, input.latestStreamId),

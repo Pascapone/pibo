@@ -9,14 +9,14 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T12:56:45Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
@@ -24,7 +24,7 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "WEB-LIVE-PROJECTION-001"
       status: "implemented"
@@ -35,6 +35,10 @@ traceability:
           symbol: "nextTransientChatStreamFrameId"
         - path: "src/apps/chat/stream.ts"
           symbol: "chatStreamFramesFromOutputEvent"
+        - path: "src/core/output-persistence-retry.ts"
+          symbol: "OutputPersistenceRetryQueue"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "createWebOutputPersistenceJob"
         - path: "src/apps/chat-ui/src/cache.ts"
           symbol: "chatBootstrapQueryKey"
         - path: "src/apps/chat-ui/src/cache.ts"
@@ -44,6 +48,10 @@ traceability:
       tests:
         - path: "test/chat-ui-live-overlay.test.mjs"
           name: "live overlay trimming preserves bounded-page omissions until exact confirmation"
+        - path: "test/web-outbox-process-crash.test.mjs"
+          name: "real process crash recovers web outbox before-v2-write with one render identity"
+        - path: "test/web-outbox-process-crash.test.mjs"
+          name: "real process crash recovers web outbox after-live-send-before-receipt with one render identity"
       public:
         - "/api/chat/events"
         - "chatBootstrapQueryKey"
@@ -147,7 +155,7 @@ Durable page versus ephemeral stream separation, per-Session/request overlays, r
 
 ## Scope
 
-This specification describes implemented behavior at Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
 
 ### In scope
 
@@ -168,11 +176,11 @@ Durable bootstrap/navigation/trace pages have stable query keys. Ephemeral event
 
 ### Cache, stream, files, and media
 
-Live frames overlay but do not rewrite durable pages; confirmed persisted content trims overlays. Signal snapshots/patches update indexed status. File/media state remains SPC-WEB-003.
+Live frames overlay but do not rewrite durable pages; confirmed persisted content trims overlays. Persistable output enters a durable, checkpointed retry/outbox path spanning V2 history, Reliability delivery, live projection, receipts, and final acknowledgement. Signal snapshots/patches update indexed status. File/media state remains SPC-WEB-003.
 
 ### Lifecycle and failure
 
-Navigation restores the destination overlay before paint and prevents source-Session contamination. Rejected sends, emit failures, stale settled signals, duplicate events, and bounded-page omissions reconcile explicitly.
+Navigation restores the destination overlay before paint and prevents source-Session contamination. Rejected sends, emit failures, process crashes at persistence boundaries, stale claims, stale settled signals, duplicate events, and bounded-page omissions reconcile explicitly. Recovery produces one durable render identity and observable dead-letter state rather than fabricating success.
 
 ### Security
 
@@ -194,7 +202,7 @@ The browser MUST keep durable bootstrap/navigation/trace pages separate from bou
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -213,7 +221,7 @@ Live overlays MUST be keyed by Pibo Session and stable request/content identity,
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -232,7 +240,7 @@ Rejected sends, failed event emission, duplicate delivery, completed assistants,
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -251,7 +259,7 @@ Navigation cache reads, writes, invalidation, and overlay restoration MUST use e
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -314,8 +322,8 @@ Legacy/current persisted traces and live events merge by stable content identity
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
-- Imported or re-exported symbols use their canonical Foundation definition files in traceability.
+- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
+- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
 - Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
 - Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
 - Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.

@@ -9,20 +9,20 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T10:45:00Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-05+09-COMPUTE-OPERATOR"
   source_evidence: "performed"
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "CMP-BROWSER-001"
       status: "implemented"
@@ -86,6 +86,14 @@ traceability:
           name: "pibo tools browser-use auth leases coordinate managed browser-pool leases"
         - path: test/browser-pool-state.test.mjs
           name: "browser pool acquire permits same-lease reuse and expired lease takeover"
+        - path: test/tools-cli.test.mjs
+          name: "pibo tools agent-browser reuses lease identities and repairs legacy duplicates"
+        - path: test/tools-cli.test.mjs
+          name: "pibo tools browser-use lease warm-up interruption leaves registry management usable"
+        - path: test/tools-cli.test.mjs
+          name: "pibo tools browser-use safely recovers stale legacy locks and preserves live owner locks"
+        - path: test/tools-cli.test.mjs
+          name: "pibo tools browser-use serializes concurrent lease acquisition"
       public:
         - "pibo tools browser-use lease acquire|list|release|reap-stale"
         - "pibo tools agent-browser lease acquire|list|release|reap-stale"
@@ -176,7 +184,7 @@ Serialize pool mutations and persist identity, lifecycle, PID, CDP, lease, idle,
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -191,7 +199,7 @@ Create reusable closed auth templates and clone each lease into a private profil
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -206,7 +214,7 @@ Acquire, list, release, and stale-reap holder-scoped leases; describe renewal on
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -221,7 +229,7 @@ Expose both browser tools through progressive install, health, guide, environmen
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -274,7 +282,7 @@ Related concepts:
 
 ## Verification and traceability
 
-All source and named-test references are bound to Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
+All source and named-test references are bound to upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
 
 Later validation commands:
 

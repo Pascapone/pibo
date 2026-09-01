@@ -13,16 +13,16 @@ generated:
   at: '2026-08-30T09:44:54Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
-  title: Foundation source and test evidence for SPC-ORCH-006
+  title: upstream/dev refresh source and test evidence for SPC-ORCH-006
 implementation:
   state: current
-  baseline_commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  commit: 39090b8850758293e69380a52bb7498d7c955bc2
   requirements:
   - id: ORCH-WFP-001
     status: implemented
@@ -154,9 +154,9 @@ The Chat workflow catalog and Project services define lifecycle, manual draft ex
 
 - **Stable concept:** `SPC-ORCH-006`
 - **Target path:** `docs/specs/orchestration/workflow-catalog-and-project-execution.md`
-- **Authority:** Foundation source and test evidence at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- **Authority:** upstream/dev refresh source and test evidence at `39090b8850758293e69380a52bb7498d7c955bc2`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
-- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the Foundation commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
+- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the upstream/dev refresh commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
 ## Public surfaces
 
@@ -236,7 +236,7 @@ Workflow product data is app-global after authentication, not tenant-partitioned
 
 The product layer MUST persist one active workflow draft, revisioned prompt assets, immutable content-hashed published versions, archive/tombstone state, and lifecycle events; code workflows MUST remain read-only and deletion MUST preserve historical references.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -262,7 +262,7 @@ The named checklist tests inspect expected source/test coverage rather than exer
 
 Publish and manual draft execution MUST pass current definition, schema, registry-ref, and no-inline-code validation; manual execution MUST use the implemented trigger-to-agent subset and fail unsupported joins/shapes explicitly.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -286,7 +286,7 @@ Checklist tests are static coverage checks. Real manual traversal behavior is co
 
 Project workflow session creation MUST persist immutable configuration and pinned effective-definition/prompt-asset snapshots linked to a normal Pibo Session; start MUST be idempotent and create at most one persisted run for that configured session.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -313,7 +313,7 @@ Mismatched project/session/workflow identity is rejected; current start persists
 
 Project wait tokens and human actions MUST persist transactionally and be scoped to exact project/session/run ownership; only a pending, unexpired token offering the requested action may resolve, after which run/session state MUST resume or cancel atomically.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -343,7 +343,7 @@ Unknown, cross-session, expired, replayed, or unoffered actions fail. The projec
 
 ## Verification boundary
 
-- Source/test baseline: `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Source/test baseline: `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Focused inventory: 24 files / 245 top-level declarations; `test/web-channel.test.mjs` is separate cross-boundary evidence with 113 declarations.
 - Requirement traceability: 25 unique requirements across six targets, 15 high confidence and 10 medium confidence, 138 source references, 75 named-test references / 74 unique names.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.

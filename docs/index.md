@@ -10,7 +10,7 @@ okf_version: "0.2"
 
 * [Pibo OKF documentation profile](project/documentation-profile.md) - Defines Pibo's taxonomy, authority, lifecycle, provenance, migration, and validation rules for the docs bundle&#46;
 * [OKF documentation&#45;system migration](plans/okf-migration.md) - Controls the staged migration of Pibo documentation into a complete OKF v0&#46;2 bundle&#46;
-* [OKF migration foundation status](project/status/okf-migration-foundation.md) - Records the foundation&#45;wave checkpoint for Pibo's controlled OKF v0&#46;2 migration&#46;
+* [OKF migration status](project/status/okf-migration-foundation.md) - Retains the foundation checkpoint and records closure and upstream&#45;refresh status for Pibo's OKF v0&#46;2 bundle&#46;
 
 ## Directories
 

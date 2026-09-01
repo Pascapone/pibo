@@ -9,6 +9,7 @@ import {
 	type TraceChildSession,
 } from "./trace-subagent-links.js";
 import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
+import { qualifiedToolNodeId } from "./trace-tool-identity.js";
 
 export type PersistedHistoryMode = "none" | "product" | "native";
 
@@ -30,8 +31,17 @@ export function applySingleEventToNodes(
 	sessionStatus: PiboWebSessionStatus,
 ): void {
 	const payload = storedEvent.payload as PiboOutputEvent;
+	if (payload.type === "message_started" && payload.source === "user" && payload.eventId) {
+		const persistedUser = flattenTraceNodes([...nodes]).find((node) =>
+			node.type === "user.message"
+			&& isPersistedHistorySource(node.source)
+			&& node.eventId === payload.eventId
+		);
+		if (persistedUser) applyRenderSequence(persistedUser, storedEvent, payload);
+	}
 	const confirmedUserMessage = historyCoverage.mode !== "none" ? confirmedUserMessageEchoNode(nodes, storedEvent) : undefined;
 	if (confirmedUserMessage) {
+		applyRenderSequence(confirmedUserMessage, storedEvent, payload);
 		if (payload.type === "message_steered" && payload.activeEventId) {
 			confirmedUserMessage.parentId = messageTurnNodeId(payload.activeEventId);
 		}
@@ -43,9 +53,11 @@ export function applySingleEventToNodes(
 		historyCoversEvent(payload, historyCoverage) &&
 		!shouldKeepTranscriptEchoEvent(payload, openTranscriptEventIds)
 	) {
+		applyRenderSequenceToHistoryNode(byId, storedEvent, payload);
 		return;
 	}
 	if (isNativeHistoryToolEchoEvent(payload, historyCoverage, sessionStatus)) {
+		applyRenderSequenceToHistoryNode(byId, storedEvent, payload);
 		return;
 	}
 	if (payload.type === "assistant_delta") {
@@ -59,6 +71,7 @@ export function applySingleEventToNodes(
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
 			storedEvent.traceSource,
+			storedEvent.id,
 		);
 		return;
 	}
@@ -73,6 +86,7 @@ export function applySingleEventToNodes(
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
 			storedEvent.traceSource,
+			storedEvent.id,
 		);
 		return;
 	}
@@ -85,6 +99,7 @@ export function applySingleEventToNodes(
 			storedEvent.streamId,
 			storedEvent.streamFrameIndex,
 			storedEvent.traceSource,
+			storedEvent.id,
 		);
 		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
@@ -106,6 +121,7 @@ export function applySingleEventToNodes(
 		storedEvent.streamId,
 		storedEvent.streamFrameIndex,
 		storedEvent.traceSource,
+		storedEvent.id,
 	);
 	if (!node) return;
 	applyStoredPayloadRef(node, payload, storedEvent.storedPayloadRef);
@@ -159,11 +175,7 @@ export function applySingleEventToNodes(
 		}
 	}
 	if (node.toolCallId) {
-		const existing = [...byId.values()].find(
-			(candidate) =>
-				candidate.toolCallId === node.toolCallId &&
-				(candidate.type === "tool.call" || candidate.type === "agent.delegation"),
-		);
+		const existing = byId.get(node.id) ?? findUniqueLegacyToolTarget(byId, node, payload);
 		if (existing) {
 			if (isRunStartToolNode(existing) && node.type === "agent.delegation") {
 				attachAsyncAgentRunNode(existing, piboSessionId, storedEvent.createdAt, node);
@@ -197,6 +209,54 @@ export function applySingleEventToNodes(
 	for (const indexed of flattenTraceNodes([node])) byId.set(indexed.id, indexed);
 }
 
+function findUniqueLegacyToolTarget(
+	byId: ReadonlyMap<string, PiboTraceNode>,
+	update: PiboTraceNode,
+	event: PiboOutputEvent,
+): PiboTraceNode | undefined {
+	if ("eventId" in event && event.eventId) return undefined;
+	const candidates = [...byId.values()].filter((candidate) =>
+		candidate.toolCallId === update.toolCallId
+		&& (candidate.type === "tool.call" || candidate.type === "tool.result" || candidate.type === "agent.delegation")
+	);
+	return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+function applyRenderSequenceToHistoryNode(
+	byId: ReadonlyMap<string, PiboTraceNode>,
+	storedEvent: ChatWebStoredEvent,
+	event: PiboOutputEvent,
+): void {
+	const stableKey = eventStableKey(event, traceEventInstanceKey(storedEvent.eventSequence, storedEvent.streamId, event, storedEvent.id));
+	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
+	const target = [...byId.values()].find((node) =>
+		node.stableKey === stableKey
+		|| (
+			"toolCallId" in event
+			&& typeof event.toolCallId === "string"
+			&& node.toolCallId === event.toolCallId
+			&& (!eventId || !node.eventId || node.eventId === eventId)
+		)
+	);
+	if (target) applyRenderSequence(target, storedEvent, event);
+}
+
+function applyRenderSequence(
+	node: PiboTraceNode,
+	storedEvent: ChatWebStoredEvent,
+	event: PiboOutputEvent,
+): void {
+	const renderSequence = storedEvent.renderSequence ?? event.renderSequence;
+	const eventSequence = storedEvent.eventSequence ?? storedEvent.streamId;
+	if (renderSequence === undefined && eventSequence === undefined) return;
+	const orderKey = node.orderKey ?? eventTraceOrder(eventSequence, eventNodeKind(event.type));
+	node.orderKey = {
+		...orderKey,
+		...(eventSequence === undefined ? {} : { turnSeq: eventSequence, eventSequence }),
+		...(renderSequence === undefined ? {} : { renderSequence }),
+	};
+}
+
 function applyStoredPayloadRef(
 	node: PiboTraceNode,
 	event: PiboOutputEvent,
@@ -219,10 +279,12 @@ function assistantMessageNodeFromEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	storedInstanceId?: string,
 ): PiboTraceNode {
 	const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
 	const assistantId = assistantEventNodeId(event);
-	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:${event.type}:${cryptoSafeId(event)}`;
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
+	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:${event.type}:${fallbackIdentity}`;
 	return {
 		id,
 		piboSessionId,
@@ -236,8 +298,8 @@ function assistantMessageNodeFromEvent(
 		summary: event.text,
 		output: event.text,
 		source: "event-log",
-		stableKey: assistantId ? `assistant:${assistantId}` : eventStableKey(event),
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+		stableKey: assistantId ? `assistant:${assistantId}` : eventStableKey(event, fallbackIdentity),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 		children: [],
 	};
 }
@@ -275,6 +337,109 @@ function turnClosedAt(turn: PiboTraceNode, byId: Map<string, PiboTraceNode>): st
 		.sort(compareTraceNodes)
 		.at(0);
 	return error?.startedAt;
+}
+
+const INCOMPLETE_TURN_SUMMARY = "Incomplete output lifecycle";
+const INCOMPLETE_TURN_ERROR = "Persisted output has message_started but no message_finished or session_error event.";
+
+export function markIncompletePersistedTurns(
+	nodes: PiboTraceNode[],
+	byId: Map<string, PiboTraceNode>,
+	piboSessionId: string,
+	events: readonly ChatWebStoredEvent[],
+	turnTimings: readonly TraceMessageTurnTiming[],
+	sessionStatus: PiboWebSessionStatus,
+): boolean {
+	const lifecycleByEventId = new Map<string, { started: boolean; completed: boolean }>();
+	for (const timing of turnTimings) {
+		const lifecycle = lifecycleByEventId.get(timing.eventId) ?? { started: false, completed: false };
+		lifecycle.started ||= timing.startedAt !== undefined;
+		lifecycle.completed ||= timing.completedAt !== undefined;
+		lifecycleByEventId.set(timing.eventId, lifecycle);
+	}
+	const incompleteEventIds = new Set([...lifecycleByEventId].flatMap(([eventId, lifecycle]) =>
+		lifecycle.started && !lifecycle.completed ? [eventId] : [],
+	));
+	if (sessionStatus === "running") {
+		const currentTurn = [...turnTimings].reverse().find((timing) =>
+			timing.userMessageType !== "message_steered" &&
+			timing.startedAt !== undefined,
+		);
+		if (currentTurn?.startedAt !== undefined && currentTurn.completedAt === undefined) {
+			incompleteEventIds.delete(currentTurn.eventId);
+		}
+	}
+	if (incompleteEventIds.size === 0) return false;
+	const startByEventId = new Map<string, ChatWebStoredEvent>();
+	const lastByEventId = new Map<string, ChatWebStoredEvent>();
+	for (const storedEvent of events) {
+		const event = storedEvent.payload as PiboOutputEvent;
+		const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
+		if (!eventId || !incompleteEventIds.has(eventId)) continue;
+		if (event.type === "message_started" && !startByEventId.has(eventId)) startByEventId.set(eventId, storedEvent);
+		lastByEventId.set(eventId, storedEvent);
+	}
+
+	for (const eventId of incompleteEventIds) {
+		const start = startByEventId.get(eventId);
+		if (!start) continue;
+		const startEvent = start.payload as Extract<PiboOutputEvent, { type: "message_started" }>;
+		const turnId = messageTurnNodeId(eventId);
+		let turn = byId.get(turnId);
+		if (!turn) {
+			turn = traceNodeFromEvent(
+				piboSessionId,
+				startEvent,
+				new Map(),
+				new Map(),
+				sessionStatus,
+				start.createdAt,
+				start.eventSequence,
+				start.streamId,
+				start.streamFrameIndex,
+				start.traceSource,
+				start.id,
+			);
+			if (!turn) continue;
+			nodes.push(turn);
+			byId.set(turn.id, turn);
+		}
+		turn.status = "error";
+		turn.summary = INCOMPLETE_TURN_SUMMARY;
+		turn.error = INCOMPLETE_TURN_ERROR;
+
+		const markerId = `event:incomplete-turn:${eventId}`;
+		if (byId.has(markerId)) continue;
+		const last = lastByEventId.get(eventId) ?? start;
+		const marker: PiboTraceNode = {
+			id: markerId,
+			parentId: turnId,
+			piboSessionId,
+			eventId,
+			type: "error",
+			title: "Incomplete Turn",
+			status: "error",
+			startedAt: last.createdAt,
+			summary: INCOMPLETE_TURN_SUMMARY,
+			error: INCOMPLETE_TURN_ERROR,
+			output: INCOMPLETE_TURN_ERROR,
+			source: "event-log",
+			stableKey: `incomplete-turn:${eventId}`,
+			orderKey: eventTraceNodeOrder(
+				last.eventSequence,
+				"session_error",
+				last.streamId,
+				last.streamFrameIndex,
+				last.traceSource,
+				undefined,
+				last.createdAt,
+			),
+			children: [],
+		};
+		nodes.push(marker);
+		byId.set(marker.id, marker);
+	}
+	return [...incompleteEventIds].some((eventId) => byId.has(`event:incomplete-turn:${eventId}`));
 }
 
 export function eventsCanAffectAsyncAgentRunStatus(events: readonly ChatWebStoredEvent[]): boolean {
@@ -359,8 +524,9 @@ export function reconcileTranscriptUserMessages(
 		if ((event.type !== "message_queued" && event.type !== "message_steered") || event.source !== "user") continue;
 		const payloadEventId = typeof event.eventId === "string" ? event.eventId : undefined;
 		const eventId = payloadEventId ?? storedEvent.eventId;
-		const canonicalId = `event:${event.type}:${payloadEventId ?? cryptoSafeId(event)}`;
-		const stableKey = eventStableKey(event);
+		const fallbackIdentity = storedEvent.id ? `instance:${storedEvent.id}` : liveProjectionIdentity(event);
+		const canonicalId = `event:${event.type}:${payloadEventId ?? fallbackIdentity}`;
+		const stableKey = eventStableKey(event, fallbackIdentity);
 		const text = typeof event.text === "string" ? event.text : undefined;
 		const identityMatchIndex = transcriptUsers.findIndex((node) =>
 			transcriptUserMessageMatchesIdentity(node, canonicalId, stableKey, eventId),
@@ -391,8 +557,9 @@ function confirmedUserMessageEchoNode(nodes: readonly PiboTraceNode[], event: Ch
 	if ((payload.type !== "message_queued" && payload.type !== "message_steered") || payload.source !== "user") return undefined;
 	const payloadEventId = typeof payload.eventId === "string" ? payload.eventId : undefined;
 	const eventId = payloadEventId ?? event.eventId;
-	const canonicalId = `event:${payload.type}:${payloadEventId ?? cryptoSafeId(payload)}`;
-	const stableKey = eventStableKey(payload);
+	const fallbackIdentity = event.id ? `instance:${event.id}` : liveProjectionIdentity(payload);
+	const canonicalId = `event:${payload.type}:${payloadEventId ?? fallbackIdentity}`;
+	const stableKey = eventStableKey(payload, fallbackIdentity);
 	const text = typeof payload.text === "string" ? payload.text : undefined;
 	const transcriptUsers = flattenTraceNodes([...nodes]).filter(
 		(node) => node.type === "user.message" && isPersistedHistorySource(node.source),
@@ -500,9 +667,11 @@ function traceNodeFromEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	storedInstanceId?: string,
 ): PiboTraceNode | undefined {
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
-	const id = `event:${event.type}:${eventId ?? cryptoSafeId(event)}`;
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
+	const id = `event:${event.type}:${eventId ?? fallbackIdentity}`;
 	const turnParentId = eventId ? messageTurnNodeId(eventId) : undefined;
 	const base = {
 		id,
@@ -510,8 +679,8 @@ function traceNodeFromEvent(
 		eventId,
 		startedAt: createdAt,
 		source: "event-log" as const,
-		stableKey: eventStableKey(event),
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+		stableKey: eventStableKey(event, fallbackIdentity),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 		children: [] as PiboTraceNode[],
 	};
 
@@ -527,7 +696,7 @@ function traceNodeFromEvent(
 					startedAt: createdAt,
 					source: "event-log",
 					stableKey: eventId ? `run-notification:${eventId}` : id,
-					orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+					orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 					notification,
 				});
 			}
@@ -588,17 +757,19 @@ function traceNodeFromEvent(
 		case "tool_execution_started":
 		case "tool_execution_updated":
 		case "tool_execution_finished": {
+			const toolNodeId = toolInvocationNodeId(event);
 			const subagentTool = isSubagentToolName(event.toolName);
 			const linkedPiboSessionId =
-				linkedChildByToolCallId.get(event.toolCallId) ??
+				linkedChildByToolCallId.get(toolNodeId) ??
 				(subagentTool
 					? findLikelyTraceChildSession(piboSessionId, event.toolName, event, childByParent)
 					: undefined);
 			return {
 				...base,
-				id: `tool:${event.toolCallId}`,
+				id: toolNodeId,
 				parentId: turnParentId,
 				toolCallId: event.toolCallId,
+				toolInvocationOrdinal: event.toolInvocationOrdinal ?? 0,
 				intent: event.intent,
 				type: subagentTool ? "agent.delegation" : "tool.call",
 				title: event.toolName,
@@ -624,26 +795,28 @@ function traceNodeFromEvent(
 						? stringifyPreview(event.result)
 						: undefined,
 				linkedPiboSessionId,
-				stableKey: `tool:${event.toolCallId}`,
+				stableKey: toolNodeId,
 				children: [],
 			};
 		}
 		case "subagent_session": {
 			const childPiboSessionId = nonEmptyString(event.childPiboSessionId);
-			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
+			const toolNodeId = event.toolCallId ? toolInvocationNodeId(event) : undefined;
 			return {
 				...base,
-				id: event.toolCallId ? `tool:${event.toolCallId}` : `event:subagent_session:${eventInstanceKey}`,
+				id: toolNodeId ?? `event:subagent_session:${eventInstanceKey}`,
 				eventId,
 				toolCallId: event.toolCallId,
+				toolInvocationOrdinal: event.toolInvocationOrdinal,
 				type: "agent.delegation",
 				title: event.toolName,
 				status: sessionStatus === "running" ? "running" : "done",
 				summary: event.subagentName,
 				input: { subagentName: event.subagentName, threadKey: event.threadKey },
 				linkedPiboSessionId: childPiboSessionId,
-				stableKey: event.toolCallId
-					? `tool:${event.toolCallId}`
+				stableKey: toolNodeId
+					? toolNodeId
 					: childPiboSessionId ? `subagent:${childPiboSessionId}` : `subagent:event:${eventInstanceKey}`,
 				children: [],
 			};
@@ -659,7 +832,7 @@ function traceNodeFromEvent(
 				output: event.result,
 			};
 		case "compaction_start": {
-			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
 			return {
 				...base,
 				id: `event:compaction:${eventInstanceKey}`,
@@ -672,7 +845,7 @@ function traceNodeFromEvent(
 			};
 		}
 		case "compaction_end": {
-			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event);
+			const eventInstanceKey = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
 			return {
 				...base,
 				id: `event:compaction:end:${eventInstanceKey}`,
@@ -713,11 +886,13 @@ function mergeAssistantDeltaEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	storedInstanceId?: string,
 ): void {
 	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const assistantId = assistantEventNodeId(event);
-	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:assistant_delta:${cryptoSafeId(event)}`;
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
+	const id = assistantId ? assistantMessageNodeId(assistantId) : `event:assistant_delta:${fallbackIdentity}`;
 	const existing = byId.get(id);
 	if (existing) {
 		const text = `${typeof existing.output === "string" ? existing.output : ""}${event.text}`;
@@ -740,7 +915,7 @@ function mergeAssistantDeltaEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey: assistantId ? `assistant:${assistantId}` : id,
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 		children: [],
 	};
 	nodes.push(node);
@@ -775,11 +950,13 @@ function mergeThinkingDeltaEvent(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	storedInstanceId?: string,
 ): void {
 	if (typeof event.text !== "string" || event.text.length === 0) return;
 
 	const thinkingId = thinkingEventNodeId(event);
-	const id = thinkingId ? thinkingNodeId(thinkingId) : `event:thinking_delta:${cryptoSafeId(event)}`;
+	const fallbackIdentity = traceEventInstanceKey(eventSequence, streamId, event, storedInstanceId);
+	const id = thinkingId ? thinkingNodeId(thinkingId) : `event:thinking_delta:${fallbackIdentity}`;
 	const stableKey = thinkingId ? `reasoning:${thinkingId}` : id;
 	const existing = byId.get(id) ?? [...byId.values()].find(
 		(candidate) => candidate.type === "model.reasoning" && candidate.stableKey === stableKey,
@@ -805,7 +982,7 @@ function mergeThinkingDeltaEvent(
 		output: event.text,
 		source: "event-log",
 		stableKey,
-		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource),
+		orderKey: eventTraceNodeOrder(eventSequence, event.type, streamId, streamFrameIndex, traceSource, event.renderSequence, createdAt),
 		children: [],
 	};
 	nodes.push(node);
@@ -1048,11 +1225,26 @@ function eventTraceNodeOrder(
 	streamId?: number,
 	streamFrameIndex?: number,
 	traceSource?: ChatWebStoredEvent["traceSource"],
+	renderSequence?: number,
+	createdAt?: string,
 ): TraceOrderKey {
-	if (traceSource === "live") {
-		return liveTraceOrder(streamId, streamFrameIndex, eventNodeKind(type));
-	}
-	return eventTraceOrder(eventSequence, eventNodeKind(type));
+	const order = traceSource === "live"
+		? liveTraceOrder(streamId, streamFrameIndex, eventNodeKind(type))
+		: eventTraceOrder(eventSequence ?? streamId, eventNodeKind(type));
+	// Modern render sequences encode the first-visible millisecond plus a local
+	// slot. Deriving chronology from that immutable segment position keeps a
+	// live node in the same place when its persisted final receives a later
+	// database created_at timestamp.
+	const renderChronologyMs = renderSequence !== undefined && renderSequence >= 946_684_800_000_000
+		? Math.floor(renderSequence / 1_000)
+		: undefined;
+	const chronologyMs = renderChronologyMs
+		?? (createdAt && Number.isFinite(Date.parse(createdAt)) ? Date.parse(createdAt) : undefined);
+	return {
+		...order,
+		...(renderSequence === undefined ? {} : { renderSequence }),
+		...(chronologyMs === undefined ? {} : { chronologyMs }),
+	};
 }
 
 function eventNodeKind(type: PiboOutputEvent["type"]): PiboTraceNode["type"] {
@@ -1088,7 +1280,7 @@ function eventNodeKind(type: PiboOutputEvent["type"]): PiboTraceNode["type"] {
 	}
 }
 
-function eventStableKey(event: PiboOutputEvent): string {
+function eventStableKey(event: PiboOutputEvent, fallbackIdentity?: string): string {
 	const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
 	if (
 		event.type === "tool_call" ||
@@ -1096,9 +1288,9 @@ function eventStableKey(event: PiboOutputEvent): string {
 		event.type === "tool_execution_updated" ||
 		event.type === "tool_execution_finished"
 	) {
-		return `tool:${event.toolCallId}`;
+		return toolInvocationNodeId(event);
 	}
-	if (event.type === "subagent_session" && event.toolCallId) return `tool:${event.toolCallId}`;
+	if (event.type === "subagent_session" && event.toolCallId) return toolInvocationNodeId(event);
 	if (eventId && (event.type === "message_started" || event.type === "message_finished"))
 		return `turn:${eventId}`;
 	if (
@@ -1113,7 +1305,7 @@ function eventStableKey(event: PiboOutputEvent): string {
 		const assistantId = assistantEventNodeId(event);
 		if (assistantId) return `assistant:${assistantId}`;
 	}
-	return `event:${event.type}:${eventId ?? cryptoSafeId(event)}`;
+	return `event:${event.type}:${eventId ?? fallbackIdentity ?? liveProjectionIdentity(event)}`;
 }
 
 export function messageTurnNodeId(eventId: string): string {
@@ -1238,10 +1430,24 @@ function parseTimestamp(value: string | undefined): number | undefined {
 	return Number.isFinite(timestamp) ? timestamp : undefined;
 }
 
-function traceEventInstanceKey(eventSequence: number | undefined, streamId: number | undefined, event: PiboOutputEvent): string {
+function traceEventInstanceKey(
+	eventSequence: number | undefined,
+	streamId: number | undefined,
+	event: PiboOutputEvent,
+	storedInstanceId?: string,
+): string {
 	if (eventSequence !== undefined) return `sequence:${eventSequence}`;
 	if (streamId !== undefined) return `stream:${streamId}`;
-	return cryptoSafeId(event);
+	if (storedInstanceId) return `instance:${storedInstanceId}`;
+	return liveProjectionIdentity(event);
+}
+
+function toolInvocationNodeId(event: Extract<PiboOutputEvent, {
+	type: "tool_call" | "tool_execution_started" | "tool_execution_updated" | "tool_execution_finished" | "subagent_session";
+}>): string {
+	const eventId = event.eventId
+		?? (event.renderSequence !== undefined ? `render:${event.renderSequence}` : "unscoped");
+	return qualifiedToolNodeId(event.toolCallId ?? "unlinked", eventId, event.toolInvocationOrdinal ?? 0);
 }
 
 function nonEmptyString(value: unknown): string | undefined {
@@ -1249,24 +1455,13 @@ function nonEmptyString(value: unknown): string | undefined {
 	return value.trim() || undefined;
 }
 
-function cryptoSafeId(value: unknown): string {
-	return base64UrlEncode(new TextEncoder().encode(JSON.stringify(value))).slice(0, 48);
+function liveProjectionIdentity(value: object): string {
+	const existing = liveProjectionIdentityCache.get(value);
+	if (existing) return existing;
+	const identity = `live:${++liveProjectionIdentitySequence}`;
+	liveProjectionIdentityCache.set(value, identity);
+	return identity;
 }
 
-function base64UrlEncode(bytes: Uint8Array): string {
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-	let output = "";
-	let index = 0;
-	for (; index + 2 < bytes.length; index += 3) {
-		const value = (bytes[index] << 16) | (bytes[index + 1] << 8) | bytes[index + 2];
-		output += alphabet[(value >> 18) & 63] + alphabet[(value >> 12) & 63] + alphabet[(value >> 6) & 63] + alphabet[value & 63];
-	}
-	if (index < bytes.length) {
-		const first = bytes[index];
-		const second = index + 1 < bytes.length ? bytes[index + 1] : 0;
-		const value = (first << 16) | (second << 8);
-		output += alphabet[(value >> 18) & 63] + alphabet[(value >> 12) & 63];
-		if (index + 1 < bytes.length) output += alphabet[(value >> 6) & 63];
-	}
-	return output;
-}
+const liveProjectionIdentityCache = new WeakMap<object, string>();
+let liveProjectionIdentitySequence = 0;

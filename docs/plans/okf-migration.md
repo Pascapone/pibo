@@ -3,19 +3,19 @@ type: "Plan"
 title: "OKF documentation-system migration"
 description: "Controls the staged migration of Pibo documentation into a complete OKF v0.2 bundle."
 tags: ["documentation", "migration", "okf"]
-status: "draft"
+status: "stable"
 authority: "directive"
 generated:
   by: "openai/codex"
-  at: "2026-08-31T15:45:43Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-decisions"
     resource: "scope: /tmp/pibo-okf-audits/foundation-decisions.md at base commit 2aef244301f5d181624662fdad53e18e83e80bd9"
     title: "Pibo OKF foundation decisions"
 migration:
   base_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
-  phase: "foundation"
-  strict_ready: false
+  phase: "closure-refresh"
+  strict_ready: true
 ---
 
 # Goal
@@ -24,7 +24,7 @@ Migrate every Pibo documentation path into one conformant OKF concept or reserve
 
 # Non-goals
 
-- Do not bulk-convert the corpus in the foundation wave.
+- Do not reopen accepted preserved bodies or rewrite accepted migration history during refreshes.
 - Do not promote legacy reports, completed change packets, or unchecked specifications to current truth.
 - Do not add OKF metadata to host-owned files.
 - Do not claim the migration is complete while strict validation fails.
@@ -33,11 +33,11 @@ Migrate every Pibo documentation path into one conformant OKF concept or reserve
 
 | Phase | State | Completion condition |
 |---|---|---|
-| Evidence and ledger | complete for the pinned baseline | Every baseline Markdown path is classified once and audit disagreements are resolved. |
-| Foundation | current | Profile, reserved files, ledger, validators, tests, templates, and authoring rules are executable. |
-| Corpus migration | pending | Every pending non-spec concept is converted, moved, split, or excepted. |
-| Specification rewrite | pending | Each current capability has one code-grounded owner with requirement traceability. |
-| Closure audit | pending | Strict validation and independent coverage review pass with no material gap. |
+| Evidence and ledger | complete | Every repository Markdown path is classified once; ledger and evidence-manifest accounting are closed. |
+| Foundation | complete | Profile, reserved files, ledger, validators, tests, templates, and authoring rules are executable. |
+| Corpus migration | complete | Every concept is conformant or reserved and every native host document is an exact justified exception. |
+| Specification rewrite | complete | Implemented behavior has a code-grounded canonical owner with requirement traceability; desired work remains in plans. |
+| Closure audit | complete for the accepted migration; refresh validation required per code update | Strict validation and package/link closure pass before a refreshed candidate is committed. |
 
 # Resolved plan dispositions
 
@@ -81,4 +81,4 @@ Rollback the foundation as one commit if its validator or profile blocks legitim
 
 # Completion and successors
 
-This plan remains draft until strict validation and the independent closure audit pass. The [foundation status](/project/status/okf-migration-foundation.md) records the current checkpoint.
+The accepted migration reached zero pending ledger records and strict conformance on 2026-09-01. Subsequent upstream refreshes preserve the accepted commit chain, classify every upstream documentation delta, update canonical specifications against current code and tests, regenerate indexes and accounting, and rerun the full closure gates. The [migration status](/project/status/okf-migration-foundation.md) retains the foundation history and records the current closure state.

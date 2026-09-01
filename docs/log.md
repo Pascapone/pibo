@@ -2,6 +2,9 @@
 
 ## 2026-09-01
 
+- **Upstream refresh**: Merged `upstream/dev` at `39090b8850758293e69380a52bb7498d7c955bc2` into the accepted migration chain, classified all six upstream documentation modifications, preserved the historical agent-management body, and folded retired capability-document deltas into canonical current specifications.
+- **Current-contract reconciliation**: Refreshed canonical specifications and traceability for durable output sequencing, retries, integrity repair, compute and browser lifecycle, signals and routing, runtime workers, resources, Project lifecycle, and Chat/CLI accessibility against current source and tests.
+- **Package closure**: Updated strict-mode validation as the default documentation gate and retained package-owned compute-image inputs plus actual-archive link-closure coverage.
 - **Migration closure**: Reconstructed the complete 762-record migration ledger with zero pending records, retired 13 superseded README controls, and generated the final 106-index navigation closure.
 - **Evidence publication**: Registered 61 accepted C-REPORTS Evidence Reports in the immutable evidence manifest with hashes over their complete published files.
 

@@ -9,14 +9,14 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T12:56:45Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
@@ -24,7 +24,7 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "WEB-WORKFLOW-JOBS-001"
       status: "implemented"
@@ -80,6 +80,8 @@ traceability:
           symbol: "WorkflowGraphCanvas"
         - path: "src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx"
           symbol: "WorkflowRawIrEditor"
+        - path: "src/apps/chat-ui/src/workflows/workflow-context-menu-keyboard.ts"
+          symbol: "workflowContextMenuKeyAction"
       tests:
         - path: "test/chat-ui-workflow-graph-model.test.mjs"
           name: "workflow graph model projects nodes, edges, positions, and diagnostics"
@@ -87,6 +89,12 @@ traceability:
           name: "Workflow Builder exposes simple state mapping dropdown controls"
         - path: "test/workflow-v2-state-mapping-ui.test.mjs"
           name: "Workflow Builder state edits stay in Pibo Workflow IR and run state validation"
+        - path: "test/chat-ui-workflow-context-menu-accessibility.test.mjs"
+          name: "workflow graph context menu owns focus and keyboard events"
+        - path: "test/chat-ui-workflow-context-menu-accessibility.test.mjs"
+          name: "workflow graph context menu key model covers navigation, dismissal, and invocation"
+        - path: "test/chat-ui-workflow-edge-adapter-dialog.test.mjs"
+          name: "workflow edge adapter chooser uses the shared accessible dialog lifecycle"
       public:
         - "/api/chat/cron*"
         - "/api/chat/loop*"
@@ -208,7 +216,7 @@ Cron/Loop/Ralph controls, workflow draft authoring, graph/forms/raw IR/assets/pi
 
 ## Scope
 
-This specification describes implemented behavior at Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
 
 ### In scope
 
@@ -233,7 +241,7 @@ Catalog/action metadata refreshes workflow library and Project panels. Workflow 
 
 ### Lifecycle and failure
 
-Publish is gated on error diagnostics. Job failures remain visible. The supported manual text slice waits for message_finished/final assistant, preserves deterministic fan-out, and explicitly rejects unsupported joins.
+Publish is gated on error diagnostics. Graph context menus own focus and keyboard navigation/dismissal/invocation, and edge-adapter selection uses the shared labelled dialog lifecycle. Job failures remain visible. The supported manual text slice waits for message_finished/final assistant, preserves deterministic fan-out, and explicitly rejects unsupported joins.
 
 ### Security
 
@@ -241,7 +249,7 @@ Same-origin mutation and App Context apply; raw IR does not grant runtime capabi
 
 ### Accessibility and responsive behavior
 
-Job areas use labeled main regions/status, responsive sidebars at 980px, and bounded tables. Workflow search/listbox/status/form labels are source-defined. No headful evidence.
+Job areas use labeled main regions/status, responsive sidebars at 980px, and bounded tables. Workflow search/listbox/status/form labels, context-menu keyboard ownership, and dialog lifecycle are source-defined. No headful evidence.
 
 ### Compatibility and integration
 
@@ -255,7 +263,7 @@ The Web UI MUST expose current Cron, Loop/Goal, and Ralph list/create/update/sta
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -274,7 +282,7 @@ Workflow authoring MUST keep graph, forms, raw IR editor, asset references, node
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -293,7 +301,7 @@ Workflow library actions MUST expose source/status metadata and implement draft,
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -312,7 +320,7 @@ The currently supported manual text trigger MUST wait for message_finished and u
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -331,7 +339,7 @@ Project workflow UI MUST preserve chosen workflow/version/input/session configur
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -399,8 +407,8 @@ Loop includes Goal-mode accounting notices; Ralph remains a legacy route/area. F
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
-- Imported or re-exported symbols use their canonical Foundation definition files in traceability.
+- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
+- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
 - Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
 - Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
 - Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.

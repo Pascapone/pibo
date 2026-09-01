@@ -7,19 +7,19 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T08:51:56Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-RES-003"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-03-RESOURCES-SECURITY"
   source_evidence: "performed"
   focused_test_execution: "performed: 383 passed, 2 baseline failures in local-auth.test.mjs"
   build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "RES-SKC-001"
       status: "implemented"
@@ -53,6 +53,8 @@ traceability:
           name: "skills catalog lists built-in skills"
         - path: "test/skills-cli.test.mjs"
           name: "skills CLI supports workspace-local skill scope"
+        - path: "test/user-skills.test.mjs"
+          name: "user skills can be renamed, toggled, sorted, and deleted"
       public:
         - "pibo skills and user-skill APIs"
         - "context_files, context_file_revisions, context_file_manual_revisions, context_file_store_meta"
@@ -80,6 +82,8 @@ traceability:
           name: "manual-revisions v1 storage upgrades transactionally to the compatible schema"
         - path: "test/context-files-web.test.mjs"
           name: "context files revision migration preserves current content and old-writer compatibility"
+        - path: "test/context-files-web.test.mjs"
+          name: "context files migration retries managed file restoration before recording schema completion"
       public:
         - "pibo skills and user-skill APIs"
         - "context_files, context_file_revisions, context_file_manual_revisions, context_file_store_meta"
@@ -149,7 +153,7 @@ verification:
   performed:
     - evidence_class: "source inspection"
       status: "performed"
-      detail: "Exact source files, symbols, test files, and test names were reconciled to Foundation commit 38bb6e57f118c1543e7263c68d27e5103d3b1262."
+      detail: "Exact source files, symbols, test files, and test names were reconciled to upstream/dev refresh commit 39090b8850758293e69380a52bb7498d7c955bc2."
     - evidence_class: "focused tests"
       status: "performed_with_baseline_failures"
       detail: "Exact parent/candidate inventory ran in the same fresh isolated worker: 385 tests, 383 passed, and 2 identical local-auth baseline assertions failed; no source or test files were changed."
@@ -190,7 +194,7 @@ This specification records current behavior only. It does not authorize unimplem
 
 # Current behavior and public surfaces
 
-The implementation state is current at the exact accepted Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+The implementation state is current at the exact accepted upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Implemented behavior:
 - "pibo skills and user-skill APIs"
@@ -213,6 +217,7 @@ Public surfaces:
 - "Plugin-provided files are read-only unless managed; runtime delivery copies selected content only."
 - "Plugin files are read-only unless managed; selected skill/context content is copied only into runtime generations."
 - "Managed context-file migrations are transactional and refuse storage owned by another live gateway."
+- "User-skill rename preserves the exact instruction body while updating frontmatter identity. Context-file migration retries managed-file restoration before recording schema completion, so a transient restoration failure cannot permanently bless missing managed content."
 - "Autosave changes working content; only explicit manual revision creation appends named immutable revisions."
 - "Current user-skill URL installation has no explicit aggregate byte/depth/path-containment/signature/trust limit; do not claim those defenses exist."
 - "Runtime selected-only materialization belongs to RUN-003; this spec owns selection/catalog inputs and context persistence."
@@ -225,7 +230,7 @@ Persistence and lifecycle state: User skill directories and context file/revisio
 
 Discover built-in and enabled user SKILL.md packages, resolve same-id workspace skills before global skills, and support validated CRUD plus supported URL-source installation without executing downloaded skill content during install.
 
-**Implementation state:** `implemented_at_baseline_with_install_hardening_gap` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_install_hardening_gap` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -254,7 +259,7 @@ Discover built-in and enabled user SKILL.md packages, resolve same-id workspace 
 
 Persist managed context-file catalog records, working content, source state, immutable/manual revisions, and compatible schema migrations transactionally.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -276,7 +281,7 @@ Persist managed context-file catalog records, working content, source state, imm
 
 Treat plugin context files as read-only source material, permit edits only for managed copies, reject optimistic-version conflicts, and refuse migration storage owned by another live gateway.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -296,7 +301,7 @@ Treat plugin context files as read-only source material, permit edits only for m
 
 Expose stable skill/context contribution identities and selected profile keys to the runtime resource service; require RUN-003 to materialize only the generation's selected contributions and report missing selections diagnostically.
 
-**Implementation state:** `implemented_shared_boundary; direct focused WP-03 test gap` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_shared_boundary; direct focused WP-03 test gap` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `medium`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -359,7 +364,7 @@ Open evidence gaps carried forward:
 
 # Verification and traceability
 
-All requirement traceability records use exact repository-relative regular files at `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+All requirement traceability records use exact repository-relative regular files at `39090b8850758293e69380a52bb7498d7c955bc2`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Performed evidence:
 - Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
@@ -371,7 +376,7 @@ Package commands after authoring:
 - `npm run typecheck` — passed
 - `npm run build` — passed, with existing Vite chunk-size warnings
 - Exact focused test inventory from the WP-03 brief — 385 tests: 383 passed and 2 identical local-auth baseline failures in exact parent/candidate runs
-- Foundation validator/authoring suite — 82 passed
+- upstream/dev refresh validator/authoring suite — 82 passed
 
 # Related concepts
 

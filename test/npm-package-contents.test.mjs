@@ -81,6 +81,16 @@ test("npm package excludes generated VSIX artifacts while keeping runtime assets
 		assert.equal(files.some((path) => path.startsWith("dist/apps/vscode-artifacts/")), false);
 		assert.equal(files.includes("dist/bin/pibo.js"), true);
 		assert.equal(files.some((path) => path.startsWith("dist/apps/chat-ui/")), true);
+		assert.equal(files.includes(".dockerignore"), false, "packaged image context must retain built dist files");
+		for (const path of [
+			"compute-image/Dockerfile",
+			"compute-image/Dockerfile.dockerignore",
+			"scripts/docker-entrypoint.sh",
+			"scripts/prepare-agent-browser-wrapper.sh",
+			"scripts/prepare-browser-use-wrapper.sh",
+		]) {
+			assert.equal(files.includes(path), true, `npm package must include ${path}`);
+		}
 		assert.equal(files.includes("docs/project/operations/vscode-extension-release.md"), true, "the conformant release runbook must be installed");
 		assert.equal(files.includes("docs/README.md"), false, "an incomplete legacy documentation README must not be installed");
 		assert.equal(files.includes("docs/project/README.md"), false, "an incomplete project documentation README must not be installed");
@@ -130,5 +140,22 @@ test("npm package excludes generated VSIX artifacts while keeping runtime assets
 		if (!artifactsDirExisted && (await readdir(artifactsDir).catch(() => [])).length === 0) {
 			await rm(artifactsDir, { recursive: true, force: true });
 		}
+	}
+});
+
+test("npm package ships the unavailable-tool path contract", async () => {
+	const packageDir = await mkdtemp(join(tmpdir(), "pibo-package-tools-contract-"));
+	try {
+		const { stdout } = await execFileAsync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packageDir], {
+			cwd: process.cwd(),
+			maxBuffer: 16 * 1024 * 1024,
+		});
+		const [report] = JSON.parse(stdout);
+		const archivePath = join(packageDir, report.filename);
+		const { stdout: packagedToolsCli } = await execFileAsync("tar", ["-xOf", archivePath, "package/dist/tools/index.js"]);
+		assert.match(packagedToolsCli, /CLI_TOOL_NOT_INSTALLED/);
+		assert.match(packagedToolsCli, /Run pibo tools install/);
+	} finally {
+		await rm(packageDir, { recursive: true, force: true });
 	}
 });

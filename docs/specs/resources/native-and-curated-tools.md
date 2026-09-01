@@ -7,19 +7,19 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T08:51:56Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-RES-002"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-03-RESOURCES-SECURITY"
   source_evidence: "performed"
   focused_test_execution: "performed: 383 passed, 2 baseline failures in local-auth.test.mjs"
   build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "RES-TOOL-001"
       status: "implemented"
@@ -68,6 +68,10 @@ traceability:
           name: "node runtime captures stdout, stderr, inspect, vars, and closeOnSuccess"
         - path: "test/runtime-tool.test.mjs"
           name: "runtime can be selected by a registered profile and inspection"
+        - path: "test/runtime-child-process-stdio.test.mjs"
+          name: "node keeps inherited and captured child output separate from its protocol"
+        - path: "test/runtime-interrupt-lifecycle.test.mjs"
+          name: "node active interrupt preserves backend semantics and unaffected live sessions"
       public:
         - "runtime persistent code tool"
         - "native web search, Codex image generation, and Codex browser interface"
@@ -141,6 +145,8 @@ traceability:
         - path: "test/tools-cli.test.mjs"
           name: "pibo tools install supports a no-setup dry target"
         - path: "test/tools-cli.test.mjs"
+          name: "pibo tools doctor reports missing uv without provisioning it"
+        - path: "test/tools-cli.test.mjs"
           name: "pibo tools env wraps browser-use with the PIBo default profile"
       public:
         - "runtime persistent code tool"
@@ -160,7 +166,7 @@ verification:
   performed:
     - evidence_class: "source inspection"
       status: "performed"
-      detail: "Exact source files, symbols, test files, and test names were reconciled to Foundation commit 38bb6e57f118c1543e7263c68d27e5103d3b1262."
+      detail: "Exact source files, symbols, test files, and test names were reconciled to upstream/dev refresh commit 39090b8850758293e69380a52bb7498d7c955bc2."
     - evidence_class: "focused tests"
       status: "performed_with_baseline_failures"
       detail: "Exact parent/candidate inventory ran in the same fresh isolated worker: 385 tests, 383 passed, and 2 identical local-auth baseline assertions failed; no source or test files were changed."
@@ -192,7 +198,7 @@ This specification records current behavior only. It does not authorize unimplem
 
 # Current behavior and public surfaces
 
-The implementation state is current at the exact accepted Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+The implementation state is current at the exact accepted upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Implemented behavior:
 - "runtime persistent code tool"
@@ -201,8 +207,10 @@ Implemented behavior:
 - "JSON-Schema tools support progress/cancel/structured and image results; built-ins include persistent Node/Python runtime, web search, image generation, and browser interface."
 - "PiboToolDefinition is runtime-neutral, JSON-Schema-based, progress/abort-aware, and explicitly distinguishes portable from native-context execution."
 - "RuntimeSessionRegistry owns controller-session-scoped local Node/Python workers, bounded history, busy-state refusal, interruption, close, controller cleanup, and pruning; non-local targets are not implemented."
+- "Node and Python workers use a dedicated protocol descriptor so inherited child stdout/stderr remain ordinary execution output; interruption settles only the targeted busy session and repeated idle interruption is a no-op."
 - "Native web search, image generation, and browser interfaces have different contracts: provider-search filtering/lifecycle, private image artifact persistence with OAuth and edit bounds, and Pibo-session-bound browser controller state."
 - "The curated pibo tools CLI is progressively discoverable and separates list/show/install/remove/doctor/guide/env concerns."
+- "Tool health checks are read-only: a missing uv prerequisite is reported with recovery guidance and is never provisioned by doctor."
 
 Public surfaces:
 - "runtime persistent code tool"
@@ -227,7 +235,7 @@ Persistence and lifecycle state: Runtime worker processes and payload/image arti
 
 Register Pibo-owned tool definitions with JSON Schema, content/structured-result metadata, progress, abort, execution-mode, portability, and native-context eligibility.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -247,7 +255,7 @@ Register Pibo-owned tool definitions with JSON Schema, content/structured-result
 
 Manage controller-scoped local Node/Python runtime workers with explicit state, bounded history, startup timeout cleanup, busy refusal, interrupt, inspection, close, controller cleanup, and pruning.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -272,7 +280,7 @@ Manage controller-scoped local Node/Python runtime workers with explicit state, 
 
 Apply each native tool's own bounds: validate search domain filters and lifecycle descriptors, require Codex OAuth and bounded mutually-exclusive image edits with private artifacts, and bind browser controller/lease state to the Pibo session while omitting host capabilities from its Node REPL.
 
-**Implementation state:** `implemented_at_baseline_with_CMP_003_boundary` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_CMP_003_boundary` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -301,7 +309,7 @@ Apply each native tool's own bounds: validate search domain filters and lifecycl
 
 Keep pibo tools discovery compact and progressive through list, show, install/remove, doctor, guide, path, and environment subcommands; browser pool operations remain a linked CMP-003 surface.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -367,7 +375,7 @@ Open evidence gaps carried forward:
 
 # Verification and traceability
 
-All requirement traceability records use exact repository-relative regular files at `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+All requirement traceability records use exact repository-relative regular files at `39090b8850758293e69380a52bb7498d7c955bc2`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Performed evidence:
 - Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
@@ -379,7 +387,7 @@ Package commands after authoring:
 - `npm run typecheck` — passed
 - `npm run build` — passed, with existing Vite chunk-size warnings
 - Exact focused test inventory from the WP-03 brief — 385 tests: 383 passed and 2 identical local-auth baseline failures in exact parent/candidate runs
-- Foundation validator/authoring suite — 82 passed
+- upstream/dev refresh validator/authoring suite — 82 passed
 
 # Related concepts
 

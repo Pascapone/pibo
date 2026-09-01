@@ -6,6 +6,7 @@ import type { ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "../types/r
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import type { PayloadStore } from "../../../data/payload-store.js";
 import { tracePayloadRefForStoredPayload } from "../trace-v2.js";
+import { qualifiedToolNodeId } from "../../../shared/trace-tool-identity.js";
 
 type PiboPayloadReader = Pick<PayloadStore, "getPayload" | "readPayloadBytesBounded" | "readPayloadJsonBounded">;
 const MAX_TRACE_EVENT_HYDRATION_BYTES = 1024 * 1024;
@@ -71,7 +72,8 @@ export function storedPiboEventFromV2Row(row: EventLogRow, payloadStore?: PiboPa
 			...payloadIdentity,
 		})
 		: undefined;
-	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, eventId: row.event_id ?? undefined, streamId: row.stream_id, storedPayloadRef, type: row.type, createdAt: row.created_at, payload };
+	const renderSequence = numberAttribute(attributes, "renderSequence") ?? payload.renderSequence;
+	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, renderSequence, eventId: row.event_id ?? undefined, streamId: row.stream_id, storedPayloadRef, type: row.type, createdAt: row.created_at, payload };
 }
 
 export function storedChatEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader): StoredChatEvent {
@@ -81,10 +83,21 @@ export function storedChatEventFromV2Row(row: EventLogRow, payloadStore?: PiboPa
 
 function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, persistedPayload?: PiboJsonValue | string): PiboOutputEvent | undefined {
 	const inlinePayload = attributes.inlinePayload ?? persistedPayload;
-	if (inlinePayload && typeof inlinePayload === "object" && !Array.isArray(inlinePayload) && typeof inlinePayload.type === "string") return inlinePayload as PiboOutputEvent;
+	if (inlinePayload && typeof inlinePayload === "object" && !Array.isArray(inlinePayload) && typeof inlinePayload.type === "string") {
+		return compactObject({
+			...inlinePayload,
+			renderSequence: numberAttribute(attributes, "renderSequence") ?? inlinePayload.renderSequence,
+		}) as PiboOutputEvent;
+	}
 	const piboSessionId = row.session_id;
 	if (!piboSessionId) return undefined;
-	const base = compactObject({ piboSessionId, eventId: row.event_id ?? undefined }) as { piboSessionId: string; eventId?: string };
+	const eventIdentityScoped = typeof attributes.eventIdentityScoped === "boolean"
+		? attributes.eventIdentityScoped
+		: undefined;
+	const eventId = eventIdentityScoped === false
+		? undefined
+		: stringAttribute(attributes, "semanticEventId") ?? row.event_id ?? undefined;
+	const base = compactObject({ piboSessionId, eventId, renderSequence: numberAttribute(attributes, "renderSequence"), toolInvocationOrdinal: numberAttribute(attributes, "toolInvocationOrdinal") }) as { piboSessionId: string; eventId?: string; renderSequence?: number; toolInvocationOrdinal?: number };
 	if (row.type === "assistant_message" || row.type === "assistant_delta") {
 		return compactObject({
 			...base,
@@ -96,8 +109,17 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 	}
 	if (row.type === "message_queued") return { ...base, type: "message_queued", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", queuedMessages: numberAttribute(attributes, "queuedMessages") ?? 1 } as PiboOutputEvent;
 	if (row.type === "message_steered") return { ...base, type: "message_steered", text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "", source: stringAttribute(attributes, "source") ?? "user", activeEventId: stringAttribute(attributes, "activeEventId") } as PiboOutputEvent;
-	if (row.type === "message_started") return { ...base, type: "message_started", text: row.preview_text ?? "" };
-	if (row.type === "message_finished") return { ...base, type: "message_finished" };
+	if (row.type === "message_started") return compactObject({
+		...base,
+		type: "message_started",
+		text: stringAttribute(attributes, "inlineText") ?? row.preview_text ?? "",
+		source: stringAttribute(attributes, "source"),
+	}) as PiboOutputEvent;
+	if (row.type === "message_finished") return compactObject({
+		...base,
+		type: "message_finished",
+		source: stringAttribute(attributes, "source"),
+	}) as PiboOutputEvent;
 	if (row.type === "assistant_usage") {
 		return compactObject({
 			...base,
@@ -161,8 +183,12 @@ function tracePayloadIdentityForEvent(
 ): { nodeId: string; payloadKind: "input" | "output" } | undefined {
 	const toolCallId = stringAttribute(attributes, "toolCallId");
 	if (!toolCallId) return undefined;
-	if (row.type === "tool_call" || row.type === "tool_execution_started") return { nodeId: `tool:${toolCallId}`, payloadKind: "input" };
-	if (row.type === "tool_execution_updated" || row.type === "tool_execution_finished") return { nodeId: `tool:${toolCallId}`, payloadKind: "output" };
+	const eventId = stringAttribute(attributes, "semanticEventId") ?? row.event_id;
+	if (!eventId) return undefined;
+	const ordinal = numberAttribute(attributes, "toolInvocationOrdinal") ?? 0;
+	const nodeId = qualifiedToolNodeId(toolCallId, eventId, ordinal);
+	if (row.type === "tool_call" || row.type === "tool_execution_started") return { nodeId, payloadKind: "input" };
+	if (row.type === "tool_execution_updated" || row.type === "tool_execution_finished") return { nodeId, payloadKind: "output" };
 	return undefined;
 }
 
@@ -176,7 +202,12 @@ function isRecord(value: unknown): value is PiboJsonObject { return Boolean(valu
 export function nextSessionSequence(store: PiboDataStore, sessionId: string): number { const row = store.db.prepare("SELECT COALESCE(MAX(session_sequence), 0) + 1 AS next_sequence FROM event_log WHERE session_id = ?").get(sessionId) as { next_sequence: number }; return row.next_sequence; }
 export function compactObject(value: Record<string, unknown>): PiboJsonObject { return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as PiboJsonObject; }
 export function previewForPayload(payload: unknown): string | undefined { if (typeof payload === "object" && payload && "text" in payload && typeof payload.text === "string") return payload.text.slice(0, 512); if (typeof payload === "string") return payload.slice(0, 512); return undefined; }
-export function statusFromOutputEvent(event: PiboOutputEvent): ChatWebSessionIndexItem["status"] { if (event.type === "session_error") return "error"; if (event.type === "message_finished") return "idle"; return "running"; }
+export function statusFromOutputEvent(event: PiboOutputEvent): ChatWebSessionIndexItem["status"] | undefined {
+	if (event.type === "session_error") return "error";
+	if (event.type === "message_finished") return "idle";
+	if (event.type === "message_queued" || event.type === "message_steered" || event.type === "message_started") return "running";
+	return undefined;
+}
 function isRuntimeBindingState(value: string | null | undefined): value is NonNullable<ChatWebSessionIndexItem["runtimeBindingState"]> { return value === "unbound" || value === "bound" || value === "missing" || value === "error"; }
 function actorTypeValue(value: string | null): "user" | "assistant" | "system" | "agent" | undefined { return value === "user" || value === "assistant" || value === "system" || value === "agent" ? value : undefined; }
 function retentionClassValue(value: string): "live_delta" | "trace_event" | "chat_message" | "audit_event" { return value === "live_delta" || value === "chat_message" || value === "audit_event" ? value : "trace_event"; }

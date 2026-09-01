@@ -595,7 +595,7 @@ export function SessionTracePane({
     onFork,
     onOpenSession,
     onLoadOlderTracePage: () =>
-      void loadOlderTracePage(currentTraceView?.nextBeforeCursor ?? currentTraceView?.nextBeforeSequence),
+      loadOlderTracePage(currentTraceView?.nextBeforeCursor ?? currentTraceView?.nextBeforeSequence),
     hasOlderTraceEvents:
       currentTraceView?.hasOlderEvents === true ||
       currentTraceView?.nextBeforeCursor !== undefined ||

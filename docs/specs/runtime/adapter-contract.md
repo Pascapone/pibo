@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T04:15:54Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "RUN-SPI-001"
       status: "implemented"
@@ -34,9 +34,13 @@ traceability:
           symbol: "validateAgentRuntimeCapabilities"
         - path: "src/agent-runtime/contract.ts"
           symbol: "validateAgentRuntimeSessionContract"
+        - path: "src/agent-runtime/contract.ts"
+          symbol: "assertAgentRuntimeSessionContract"
       tests:
         - path: "test/agent-runtime-registry.test.mjs"
           name: "runtime registry validates descriptor and live-session capability claims"
+        - path: "test/agent-runtime-registry.test.mjs"
+          name: "runtime registry rejects partial sessions without masking contract errors during cleanup"
       failures:
         - "Unavailable diagnostics and missing required methods fail inspection/open explicitly."
         - "Generic auth results are sanitized before leaving the registry boundary."
@@ -134,7 +138,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Runtime admission validates the complete live-session contract before use; a partial session is rejected, cleanup still runs, and cleanup errors cannot mask the contract failure. Requirement confidence measures trace quality, not whether a command ran.
 
 Package verification commands:
 

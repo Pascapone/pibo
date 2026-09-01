@@ -28,6 +28,7 @@ export type PiboTraceNode = {
 	piboSessionId: string;
 	eventId?: string;
 	toolCallId?: string;
+	toolInvocationOrdinal?: number;
 	runId?: string;
 	intent?: string;
 	type: PiboTraceNodeType;
@@ -83,6 +84,7 @@ export type TraceTimelineNode = {
 	payloadRefs?: Partial<Record<"input" | "output" | "reasoning" | "error" | "raw", TracePayloadRef>>;
 	linkedPiboSessionId?: string;
 	toolCallId?: string;
+	toolInvocationOrdinal?: number;
 	runId?: string;
 	intent?: string;
 	eventId?: string;
@@ -95,6 +97,7 @@ export type TraceTimelineNode = {
 export type TraceTimelinePage = {
 	piboSessionId: string;
 	piSessionId: string;
+	integrityStatus?: "incomplete";
 	runtimeBinding?: PiboTraceRuntimeBinding;
 	title: string;
 	version: string;
@@ -149,6 +152,7 @@ export type ChatWebStoredEvent<T = unknown> = {
 	id: string;
 	piboSessionId?: string;
 	eventSequence?: number;
+	renderSequence?: number;
 	eventId?: string;
 	streamId?: number;
 	streamFrameIndex?: number;
@@ -186,6 +190,7 @@ export type PiboSessionTraceSummary = {
 export type PiboSessionTraceView = {
 	piboSessionId: string;
 	piSessionId: string;
+	integrityStatus?: "incomplete";
 	runtimeBinding?: PiboTraceRuntimeBinding;
 	title: string;
 	version: string;

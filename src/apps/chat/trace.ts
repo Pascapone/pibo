@@ -31,6 +31,8 @@ import { workflowSessionKindFromMetadata, type PiboWorkflowSessionKind } from ".
 
 export type PiboWebSessionStatus = "idle" | "running" | "error";
 
+export const TRACE_PROJECTION_VERSION = "runtime-history-v2-incomplete-status";
+
 export type PiboWebDerivedSessionNode = {
 	piboSessionId: string;
 	profile: string;
@@ -115,6 +117,7 @@ type TraceBuildInput = {
 	/** @deprecated Pi compatibility input. Use historyOrderOffset. */
 	transcriptOrderOffset?: number;
 	turnTimings?: TraceMessageTurnTiming[];
+	turnTimingOverflow?: boolean;
 	includeRawEvents?: boolean;
 	rawEventsLimit?: number;
 	latestStreamId?: number;
@@ -225,6 +228,7 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 		},
 		events: input.events as unknown as import("../../shared/trace-types.js").ChatWebStoredEvent[],
 		turnTimings: input.turnTimings,
+		turnTimingOverflow: input.turnTimingOverflow,
 		historyEntries: entries,
 		historyReconciliationProof: input.historyReconciliationProof,
 		historyReconciliationAuthoritative: isBuiltInHistoryReconciliationProof(input.historyReconciliationProof),
@@ -278,7 +282,7 @@ export function createTraceViewVersion(input: {
 	})).sort((left, right) => left.id.localeCompare(right.id));
 	const eventTail = input.events.at(-1);
 	return createHash("sha1").update(JSON.stringify({
-		traceProjection: "runtime-history-v1",
+		traceProjection: TRACE_PROJECTION_VERSION,
 		session: {
 			id: input.session.id,
 			piSessionId: input.session.piSessionId,

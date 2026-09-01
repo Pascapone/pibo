@@ -9,20 +9,20 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T10:45:00Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-05+09-COMPUTE-OPERATOR"
   source_evidence: "performed"
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "OP-TERMINAL-001"
       status: "implemented"
@@ -88,6 +88,12 @@ traceability:
           name: "Slash /fork-candidates opens a candidate picker and can fork by entry id"
         - path: test/cli-ui-session-app.test.mjs
           name: "default app viewport bounds large sessions and wraps narrow terminal lines"
+        - path: test/cli-ui-session-app.test.mjs
+          name: "Ink session input reducer edits at grapheme cursor boundaries"
+        - path: test/cli-ui-input-cursor.test.mjs
+          name: "cursor movement treats a joined emoji as one grapheme"
+        - path: test/cli-ui-room-switch.test.mjs
+          name: "cross-room selection clears the stale session before Project Room can receive input"
       public:
         - "InkSessionApp"
         - "runCliSessionsUi"
@@ -115,6 +121,10 @@ traceability:
           name: "local CLI close drains the owned router before unsubscribing and closing stores"
         - path: test/cli-ui-session-app.test.mjs
           name: "exit cleanup closes open session subscriptions and source idempotently"
+        - path: test/stream-render-rereview2.test.mjs
+          name: "local CLI automatically retries one failed final without producer replay"
+        - path: test/stream-render-final-review.test.mjs
+          name: "local CLI resumes a pending durable final after process restart without producer replay"
       public:
         - "CliSessionSource"
         - "LocalCliSessionSource"
@@ -160,7 +170,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### Lifecycle
 
-- List/select room and session; open and hydrate transcript/trace; subscribe live state; compose/send or execute slash action; reconcile stable row identity; close source/router/subscriptions idempotently.
+- List/select room and session as one ownership boundary; clear a stale Session before changing Rooms; open and hydrate transcript/trace; edit input at grapheme boundaries; compose/send or execute slash action; reconcile stable row identity; retry durable output persistence after transient failure or process restart; close source/router/subscriptions idempotently.
 
 ### Failure
 
@@ -182,7 +192,7 @@ Normalize product trace semantics into renderer-neutral compact rows for message
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -197,7 +207,7 @@ Preserve semantic order and stable conceptual identity across transcript, event-
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -212,7 +222,7 @@ Implement Ink room/session selection, composer, overlays, status/cards, keyboard
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -227,7 +237,7 @@ Hydrate and stream app-global rooms, sessions, agents, status, navigation, messa
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -284,7 +294,7 @@ Related concepts:
 
 ## Verification and traceability
 
-All source and named-test references are bound to Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
+All source and named-test references are bound to upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
 
 Later validation commands:
 

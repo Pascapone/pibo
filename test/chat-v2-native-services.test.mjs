@@ -153,7 +153,7 @@ test("timeline query preserves deferred payload identity on its exact tool node"
 			.find((candidate) => candidate.type === "tool_execution_finished");
 		assert.ok(event);
 		assert.equal(event.payload.type, "tool_execution_finished");
-		assert.equal(event.storedPayloadRef.nodeId, `tool:${providerToolCallId}`);
+		assert.equal(event.storedPayloadRef.nodeId, qualifiedNodeId);
 		assert.equal(event.storedPayloadRef.payloadKind, "output");
 		assert.equal(event.storedPayloadRef.byteLength, payload.byteSize);
 		assert.equal(event.storedPayloadRef.hash, payload.sha256);
@@ -333,6 +333,8 @@ test("message timing query accepts the shared cap and disables reconciliation at
 		}
 		assert.equal(timeline.listMessageTurnTimings("ps_timing_cap").length, 500);
 		assert.deepEqual(timeline.listMessageTurnTimings("ps_timing_overflow"), []);
+		assert.equal(timeline.scanMessageTurnTimings("ps_timing_cap").overflow, false);
+		assert.equal(timeline.scanMessageTurnTimings("ps_timing_overflow").overflow, true);
 	} finally {
 		store.close();
 	}

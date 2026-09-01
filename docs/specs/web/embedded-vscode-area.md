@@ -9,14 +9,14 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T12:56:45Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
@@ -24,7 +24,7 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "WEB-VSCODE-NAVIGATION-001"
       status: "implemented"
@@ -118,7 +118,7 @@ Conditional VS Code navigation, configured/empty/error/ready states, and a const
 
 ## Scope
 
-This specification describes implemented behavior at Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
 
 ### In scope
 
@@ -164,7 +164,7 @@ The Chat main navigation MUST expose the VS Code area only when bootstrap contai
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -183,7 +183,7 @@ The area MUST provide bounded unconfigured, loading, timeout/error, and retry st
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -202,7 +202,7 @@ Configured iframe URLs MUST resolve beneath the approved same-origin code-server
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -221,12 +221,12 @@ This specification MUST stop at the embedded same-origin code-server area and MU
 
 #### Current
 
-Foundation source inspection defines the current contract. No named test exists in the evidence set, so this requirement remains an explicit source-only gap and makes no focused-test claim.
+upstream/dev refresh source inspection defines the current contract. No named test exists in the evidence set, so this requirement remains an explicit source-only gap and makes no focused-test claim.
 
 #### Acceptance and boundaries
 
 - Source: `src/apps/chat-ui/src/VscodeArea.tsx` — `VscodeArea`; `src/apps/chat/web-app.ts` — `resolveChatWebIntegrations`
-- Tests: No named test exists in the Foundation evidence set; this requirement remains source-only.
+- Tests: No named test exists in the upstream/dev refresh evidence set; this requirement remains source-only.
 - Public surfaces: `/apps/chat/vscode`; `VscodeArea`; `bootstrap.integrations.vscodeWeb`
 - Failure/security boundary: No browser message bridge or extension privilege may be inferred from iframe presence.
 - Accessibility/responsive boundary: Only area/iframe accessibility is in scope; extension UI accessibility is not.
@@ -281,8 +281,8 @@ Standard workbench themes and same-origin paths are recognized. Hiding the integ
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
-- Imported or re-exported symbols use their canonical Foundation definition files in traceability.
+- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
+- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
 - Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
 - Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
 - Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.

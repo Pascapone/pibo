@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T04:15:54Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "PROD-HOME-001"
       status: "implemented"
@@ -66,6 +66,21 @@ traceability:
         - "A Pibo Home path that is a file is rejected; corrupt/unknown base-prompt state falls back to library mode."
         - "Pibo Home is mode 0700, rewritten configuration is mode 0600, and displayed secret keys are masked."
       confidence: "medium"
+    - id: "PROD-HOME-005"
+      status: "implemented"
+      sources:
+        - path: "src/previews/base-url.ts"
+          symbol: "parsePreviewBaseURL"
+        - path: "src/previews/config.ts"
+          symbol: "requirePreviewBaseURL"
+      tests:
+        - path: "test/preview-cli.test.mjs"
+          name: "preview base URL config rejects values that Preview commands cannot consume"
+        - path: "test/debug-pty.test.mjs"
+          name: "pibo debug pty reports invalid preview base URL config without replacing the prior value"
+      failures:
+        - "Invalid schemes, credentials, paths, queries, fragments, ports, or hostnames are rejected before replacing the prior Preview base URL."
+      confidence: "high"
 ---
 
 # Scope
@@ -81,6 +96,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 - Failure: A Pibo Home path that is a file is rejected; corrupt/unknown base-prompt state falls back to library mode.
 - Security: Pibo Home is mode 0700, rewritten configuration is mode 0600, and displayed secret keys are masked.
 - Compatibility: A leading UTF-8 BOM is accepted in config; legacy SYSTEM.md disables the managed base-prompt path.
+- Preview configuration accepts only a consumable HTTP(S) origin and rejects malformed or unsafe URL shapes without replacing the prior value.
 
 # Requirements and invariants
 
@@ -100,6 +116,10 @@ The default workspace SHALL be the user home when available and cwd otherwise.
 
 Base and compaction prompts SHALL support library/custom state under the workspace .pibo directory without losing saved custom content.
 
+## Requirement: PROD-HOME-005
+
+Preview base URL configuration SHALL validate the complete origin contract before persistence and SHALL preserve the prior value on failure.
+
 # Interfaces and ownership
 
 Implemented public contracts:
@@ -113,6 +133,7 @@ Implemented public contracts:
 - `savePiboConfig`
 - `readPiboBasePrompt`
 - `readPiboCompactionPrompt`
+- `parsePreviewBaseURL`
 
 Related ownership boundaries:
 
@@ -135,7 +156,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality, not whether a command ran.
 
 Package verification commands:
 

@@ -9,14 +9,14 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T12:56:45Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
@@ -24,7 +24,7 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "WEB-TRACE-PROJECTION-001"
       status: "implemented"
@@ -91,6 +91,8 @@ traceability:
           symbol: "mergeRefreshedTracePage"
         - path: "src/shared/trace-live-reducer.ts"
           symbol: "applyTraceLiveEvents"
+        - path: "src/shared/trace-event-projection.ts"
+          symbol: "markIncompletePersistedTurns"
       tests:
         - path: "test/trace-page-merge.test.mjs"
           name: "mergeOlderTracePage dedupes overlapping nested timeline nodes"
@@ -106,6 +108,10 @@ traceability:
           name: "mergeRefreshedTracePage refreshes the raw-event tail without dropping loaded history"
         - path: "test/trace-page-merge.test.mjs"
           name: "mergeOlderTracePage carries string cursors across transcript continuation pages"
+        - path: "test/chat-ui-integration.test.mjs"
+          name: "idle persisted turns without a terminal project an explicit incomplete error"
+        - path: "test/stream-render-block-review.test.mjs"
+          name: "mixed render-sequence ordering is transitive and permutation invariant"
       public:
         - "/api/chat/trace*"
         - "SessionTracePane"
@@ -138,6 +144,12 @@ traceability:
       tests:
         - path: "test/sticky-virtuoso-state.test.mjs"
           name: "sticky Virtuoso state handles intent, prepend, and anchor transactions"
+        - path: "test/use-sticky-virtuoso.test.mjs"
+          name: "useStickyVirtuoso uses one bottom target without a competing last-index scroll"
+        - path: "test/use-sticky-virtuoso.test.mjs"
+          name: "useStickyVirtuoso no longer applies blind scrollHeight growth compensation"
+        - path: "test/chat-ui-raw-events-responsive.test.mjs"
+          name: "Raw Events stays reachable as a labelled inspector at narrow widths"
       public:
         - "/api/chat/trace*"
         - "SessionTracePane"
@@ -193,7 +205,7 @@ Bounded trace projection, opt-in payload/raw detail, deterministic historical/li
 
 ## Scope
 
-This specification describes implemented behavior at Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
 
 ### In scope
 
@@ -215,11 +227,11 @@ Summary/timeline are bounded by default; raw event tail and payload chunks/image
 
 ### Cache, stream, files, and media
 
-Historical pages and SPC-WEB-004 live overlays merge by stable identities without rewriting prior facts. Payload/image retrieval is bounded and delegated to safe rendering.
+Historical pages and SPC-WEB-004 live overlays merge by stable identities and a transitive chronology across durable event/stream sequence and render sequence without rewriting prior facts. Idle persisted turns missing a terminal project an explicit incomplete integrity marker; active and terminal turns do not. Payload/image retrieval is bounded and delegated to safe rendering.
 
 ### Lifecycle and failure
 
-Pagination preserves reading anchors; refresh replaces stale tails without losing older loaded windows; malformed identity/payload refs fail closed. Workflow views show current projections without becoming execution truth.
+Pagination preserves reading anchors, uses one bottom target, and avoids blind scroll-height compensation; refresh replaces stale tails without losing older loaded windows. Raw Events remains a labelled inspector at narrow widths. Malformed identity/payload refs fail closed. Workflow views show current projections without becoming execution truth.
 
 ### Security
 
@@ -227,7 +239,7 @@ Private payloads/raw events are not default UI data. Diagnostic reports omit con
 
 ### Accessibility and responsive behavior
 
-Trace cards expose stable IDs/order metadata; sticky scrolling tracks user intent. Raw sidebar hides below 980px in source. Keyboard, screen-reader, and visual behavior need headful checks.
+Trace cards expose stable IDs/order metadata; sticky scrolling tracks user intent. The Raw Events inspector remains reachable at narrow widths. Keyboard, screen-reader, and visual behavior need headful checks.
 
 ### Compatibility and integration
 
@@ -241,7 +253,7 @@ Trace summary/timeline projection MUST be bounded, deterministic, omit raw event
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -260,7 +272,7 @@ Raw event tails, payload chunks, and trace images MUST be explicit, bounded, exa
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -279,7 +291,7 @@ Refreshing or prepending trace pages MUST merge overlapping nodes, preserve load
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -298,7 +310,7 @@ Virtualized trace scrolling MUST distinguish user intent from append/prepend tra
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -317,7 +329,7 @@ The read-only Session view registry MAY expose workflow XState projections, but 
 
 #### Current
 
-Foundation source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
 
 #### Acceptance and boundaries
 
@@ -383,8 +395,8 @@ Legacy/current runtime turns use stable product identity; workflow UI models acc
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
-- Imported or re-exported symbols use their canonical Foundation definition files in traceability.
+- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
+- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
 - Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
 - Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
 - Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.

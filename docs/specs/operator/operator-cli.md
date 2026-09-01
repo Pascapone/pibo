@@ -9,20 +9,20 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T10:45:00Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-05+09-COMPUTE-OPERATOR"
   source_evidence: "performed"
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "OP-CLI-001"
       status: "implemented"
@@ -53,6 +53,8 @@ traceability:
           symbol: runMcpCli
         - path: src/skills/cli.ts
           symbol: runSkillsCli
+        - path: src/gateway/cli.ts
+          symbol: runGatewayCli
       tests:
         - path: test/mcp-cli.test.mjs
           name: "pibo root help prints compact discovery"
@@ -60,6 +62,8 @@ traceability:
           name: "pibo mcp help stays progressive"
         - path: test/skills-cli.test.mjs
           name: "skills help exits successfully without a subcommand"
+        - path: test/gateway-restart-safety.test.mjs
+          name: "keeps nested lifecycle help side-effect free"
       public:
         - "pibo --help"
         - "domain --help/show/schema/paths/doctor/guides/guide surfaces"
@@ -166,11 +170,11 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### State
 
-- Any non-help/version command initializes private PIBO_HOME; config/profile and each feature retain their own stores. pibo data inventory is read-only; migrate sessions-to-v2 is idempotent but writes its explicit target.
+- Help and version paths, including nested gateway lifecycle help, return without initialization or lifecycle side effects. Other commands initialize private PIBO_HOME; config/profile and each feature retain their own stores. pibo data inventory is read-only; migrate sessions-to-v2 is idempotent but writes its explicit target.
 
 ### Lifecycle
 
-- Parse root help/version without home mutation; initialize private home for commands; dispatch one domain branch or Commander command; domain owner executes and closes its resources.
+- Parse root or nested help/version without home or gateway mutation; initialize private home for operational commands; dispatch one domain branch or Commander command; domain owner executes and closes its resources.
 
 ### Failure
 
@@ -192,7 +196,7 @@ Register and dispatch the complete root command surface, including compatibility
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -207,7 +211,7 @@ Keep root and nested help iterative: show immediate actions, concise context, an
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -222,7 +226,7 @@ Use bounded text/JSON output and shared error categories where adopted, while do
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -237,7 +241,7 @@ Delegate domain execution through one root entrypoint without copying each featu
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -252,7 +256,7 @@ Default risky cleanup and inspection to read-only or dry-run, require explicit m
 
 #### Current
 
-The Foundation implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
 
 #### Acceptance
 
@@ -312,7 +316,7 @@ Related concepts:
 
 ## Verification and traceability
 
-All source and named-test references are bound to Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
+All source and named-test references are bound to upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
 
 Later validation commands:
 

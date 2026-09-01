@@ -7,19 +7,19 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T08:51:56Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-SEC-003"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-03-RESOURCES-SECURITY"
   source_evidence: "performed"
   focused_test_execution: "performed: 383 passed, 2 baseline failures in local-auth.test.mjs"
   build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "SEC-GW-001"
       status: "implemented"
@@ -99,6 +99,8 @@ traceability:
           name: "blocks start when a legacy port-specific PID file has a live gateway owner"
         - path: "test/gateway-restart-safety.test.mjs"
           name: "blocks start when a reachable gateway has the wrong mode"
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "keeps nested lifecycle help side-effect free"
       public:
         - "Gateway resource guard and pressure diagnostics"
         - "pibo gateway web/dev status/start/stop/restart lifecycle"
@@ -150,7 +152,7 @@ verification:
   performed:
     - evidence_class: "source inspection"
       status: "performed"
-      detail: "Exact source files, symbols, test files, and test names were reconciled to Foundation commit 38bb6e57f118c1543e7263c68d27e5103d3b1262."
+      detail: "Exact source files, symbols, test files, and test names were reconciled to upstream/dev refresh commit 39090b8850758293e69380a52bb7498d7c955bc2."
     - evidence_class: "focused tests"
       status: "performed_with_baseline_failures"
       detail: "Exact parent/candidate inventory ran in the same fresh isolated worker: 385 tests, 383 passed, and 2 identical local-auth baseline assertions failed; no source or test files were changed."
@@ -191,7 +193,7 @@ This specification records current behavior only. It does not authorize unimplem
 
 # Current behavior and public surfaces
 
-The implementation state is current at the exact accepted Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+The implementation state is current at the exact accepted upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Implemented behavior:
 - "Gateway resource guard and pressure diagnostics"
@@ -200,6 +202,7 @@ Implemented behavior:
 - "Gateway resource snapshots apply off/warn/block policy to host available memory, gateway heap/RSS, selected child/known-daemon process rows, and yielded-run systemd units with sanitized bounded argument previews."
 - "GatewayWorkAdmissionController reserves yielded-run capacity globally and per session, checks host reserve, and releases idempotently; its only production call site is yielded-run tool admission in PiboSessionRouter."
 - "Managed pibo gateway web/dev status/start/restart uses home-scoped PID ownership, stale PID cleanup, target-mode checks, and health polling."
+- "Nested managed-lifecycle help returns before PID, process, port, or gateway state is inspected or mutated."
 - "Production web restart fails closed for unreachable/ambiguous status, processing/streaming/queued/stale-telemetry sessions, or active runs unless the exact force confirmation is supplied; dev restart is intentionally not active-work-gated."
 
 Public surfaces:
@@ -224,7 +227,7 @@ Persistence and lifecycle state: PID/status files and live process/resource snap
 
 Collect bounded gateway host/runtime pressure snapshots, selected process and yielded-unit diagnostics, severity checks, sanitized argument previews, and off/warn/block decisions.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -246,7 +249,7 @@ Collect bounded gateway host/runtime pressure snapshots, selected process and yi
 
 Reserve capacity only for yielded-run tool starts, reject unsafe starts in block mode for critical pressure/global/session/host-reserve limits, warn or allow in other modes, release reservations idempotently, and never kill active work; no delay/queue behavior is claimed.
 
-**Implementation state:** `implemented_at_baseline_with_ORCH_001_boundary` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_ORCH_001_boundary` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -268,7 +271,7 @@ Reserve capacity only for yielded-run tool starts, reject unsafe starts in block
 
 Use the managed pibo gateway web/dev CLI for normative status/start/restart operations, claiming home-scoped PID ownership exclusively, replacing stale claims safely, refusing parallel same-home owners and target-mode ambiguity, and preserving legacy generic commands as compatibility rather than canonical policy.
 
-**Implementation state:** `implemented_at_baseline_with_legacy_compatibility_surface` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline_with_legacy_compatibility_surface` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -294,7 +297,7 @@ Use the managed pibo gateway web/dev CLI for normative status/start/restart oper
 
 Fail closed on production restart when status is unavailable/ambiguous or sessions/runs are active, require the exact explicit force confirmation to override, and keep dev restart outside the production active-work gate.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -358,7 +361,7 @@ Open evidence gaps carried forward:
 
 # Verification and traceability
 
-All requirement traceability records use exact repository-relative regular files at `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+All requirement traceability records use exact repository-relative regular files at `39090b8850758293e69380a52bb7498d7c955bc2`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `39090b8850758293e69380a52bb7498d7c955bc2`.
 
 Performed evidence:
 - Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
@@ -370,7 +373,7 @@ Package commands after authoring:
 - `npm run typecheck` — passed
 - `npm run build` — passed, with existing Vite chunk-size warnings
 - Exact focused test inventory from the WP-03 brief — 385 tests: 383 passed and 2 identical local-auth baseline failures in exact parent/candidate runs
-- Foundation validator/authoring suite — 82 passed
+- upstream/dev refresh validator/authoring suite — 82 passed
 
 # Related concepts
 

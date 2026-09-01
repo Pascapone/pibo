@@ -13,16 +13,16 @@ generated:
   at: '2026-08-30T09:44:54Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
-  title: Foundation source and test evidence for SPC-ORCH-004
+  title: upstream/dev refresh source and test evidence for SPC-ORCH-004
 implementation:
   state: current
-  baseline_commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: 38bb6e57f118c1543e7263c68d27e5103d3b1262
+  commit: 39090b8850758293e69380a52bb7498d7c955bc2
   requirements:
   - id: ORCH-CRON-001
     status: implemented
@@ -134,9 +134,9 @@ The Cron store, service, CLI, and Chat API define scheduling, reservation, execu
 
 - **Stable concept:** `SPC-ORCH-004`
 - **Target path:** `docs/specs/orchestration/scheduled-jobs.md`
-- **Authority:** Foundation source and test evidence at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- **Authority:** upstream/dev refresh source and test evidence at `39090b8850758293e69380a52bb7498d7c955bc2`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
-- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the Foundation commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
+- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the upstream/dev refresh commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
 ## Public surfaces
 
@@ -198,7 +198,7 @@ Cron data is app-global after authentication, not account-tenant partitioned. Le
 
 Cron MUST validate and persist at/every/five-field-cron plus supported friendly forms, enforce future/minimum/timezone bounds, and compute deterministic next-run timestamps.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -224,7 +224,7 @@ Invalid schedules and targets fail before persistence; room/profile checks are r
 
 Due and manual execution reservations MUST be transactional, permit at most one running reservation per job, persist the run before dispatch, and respect service concurrency.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -244,7 +244,7 @@ BEGIN IMMEDIATE serializes reservations; manual run on a running job errors.
 
 Every reserved execution MUST create a normal visible kind=cron Pibo Session in the target room/default shared chat, persist cronJobId/cronRunId metadata, emit a service message, and settle from message_finished or session_error.
 
-**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -265,7 +265,7 @@ Archived/missing rooms fail dispatch; API mutations require same-origin JSON; th
 
 Settlement MUST atomically update job/run status and error counters, disable successful one-shots, delete only successful deleteAfterRun one-shots, compute recurring nextRunAt, and mark stale running reservations interrupted on startup.
 
-**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at Foundation; execution status is recorded in the implementation report.
+**Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
@@ -293,7 +293,7 @@ A failed at job is retained enabled without nextRunAt; specifications must recor
 
 ## Verification boundary
 
-- Source/test baseline: `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Source/test baseline: `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Focused inventory: 24 files / 245 top-level declarations; `test/web-channel.test.mjs` is separate cross-boundary evidence with 113 declarations.
 - Requirement traceability: 25 unique requirements across six targets, 15 high confidence and 10 medium confidence, 138 source references, 75 named-test references / 74 unique names.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.

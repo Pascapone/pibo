@@ -10,14 +10,14 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T14:11:18.484Z"
+  at: "2026-09-01T20:42:35Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
-    title: "Foundation source and named-test evidence"
+    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
+    title: "upstream/dev refresh source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-10-DELIVERY-VALIDATION"
   package_parent: "ca8de98aaf1a536006b9e5f0e3a070da1d5070bd"
   source_evidence: "performed"
@@ -25,7 +25,7 @@ implementation:
   build_typecheck_package_execution: "recorded by the package implementation audit; it does not expand normative scope"
   live_external_execution: "unperformed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   requirements:
     - id: "DELIVERY-PACKAGE-001"
       status: "implemented"
@@ -66,8 +66,6 @@ traceability:
           symbol: "await runPiboCli()"
         - path: "src/bin/rg.ts"
           symbol: "const child = spawn"
-        - path: "docs/specs/capabilities/package-build-and-distribution.md"
-          symbol: "# Spec: Package Build and Distribution"
       tests:
         - path: "test/rg-bin.test.mjs"
           name: "bundled rg wrapper executes ripgrep"
@@ -104,10 +102,10 @@ traceability:
           symbol: "preparePackageShrinkwrap"
         - path: "scripts/package-shrinkwrap.mjs"
           symbol: "cleanPackageShrinkwrap"
-        - path: "docs/specs/capabilities/package-build-and-distribution.md"
-          symbol: "# Spec: Package Build and Distribution"
-        - path: "docs/project/operations/index.md"
-          symbol: "# Project operations"
+        - path: "compute-image/Dockerfile"
+          symbol: "ENTRYPOINT"
+        - path: "compute-image/Dockerfile.dockerignore"
+          symbol: "node_modules"
       tests:
         - path: "test/npm-package-contents.test.mjs"
           name: "npm package excludes generated VSIX artifacts while keeping runtime assets"
@@ -115,6 +113,8 @@ traceability:
           name: "package lifecycle publishes the repository lock as npm-shrinkwrap.json"
         - path: "test/package-shrinkwrap.test.mjs"
           name: "published package metadata includes and cleans the generated shrinkwrap"
+        - path: "test/compute-image-build.test.mjs"
+          name: "compute image build falls back to package-owned inputs outside a source checkout"
       public:
         - "@pasko70/pibo npm tarball"
         - "prepack and postpack"
@@ -148,12 +148,6 @@ traceability:
           symbol: "inspectInstallation"
         - path: "src/setup/installation-profiles.ts"
           symbol: "uninstallInstallation"
-        - path: "docs/project/operations/install-user-host.md"
-          symbol: "# Install Pibo as a User Host"
-        - path: "docs/project/operations/install-developer-host.md"
-          symbol: "# Install Pibo as a Developer Host"
-        - path: "docs/project/operations/upgrade-user-to-developer-host.md"
-          symbol: "# Upgrade a User Host to a Developer Host"
       tests:
         - path: "test/setup-cli.test.mjs"
           name: "Batteries Included is the default complete profile with a loopback authenticated IDE route"
@@ -278,11 +272,14 @@ traceability:
           symbol: "scripts.release"
         - path: "package.json"
           symbol: "scripts.release:github"
-        - path: "docs/project/operations/vscode-extension-release.md"
-          symbol: "# Pibo VS Code Extension Release Runbook"
-        - path: "docs/project/guides/pibo-vscode-ext-quickstart.md"
-          symbol: "# Pibo Quick Start — CLI + VS Code Extension"
       source_inspected: true
+      tests:
+        - path: "test/create-github-release.test.mjs"
+          name: "uploads a valid asset after creating a new release"
+        - path: "test/create-github-release.test.mjs"
+          name: "accepts an asset exactly at the size limit during preflight"
+        - path: "test/create-github-release.test.mjs"
+          name: "keeps an existing release unchanged"
       public:
         - "npm run release"
         - "npm run release:github"
@@ -299,9 +296,9 @@ traceability:
 ## Authority and evidence boundary
 
 - Stable concept: `SPC-DEL-001`.
-- Current-behavior authority: Foundation `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Current-behavior authority: upstream refresh `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Raw-package parent: accepted commit `ca8de98aaf1a536006b9e5f0e3a070da1d5070bd`.
-- Source and named-test locators identify regular Foundation blobs. Executed package checks prove candidate/parent parity only; they do not prove live or external behavior.
+- Source and named-test locators identify regular upstream/dev refresh blobs. Executed package checks prove candidate/parent parity only; they do not prove live or external behavior.
 - This specification contains implemented current behavior only. Follow-ups and gaps are non-normative.
 
 ## Scope
@@ -330,7 +327,7 @@ traceability:
 
 ### State
 
-- Builds emit server/workflow declarations and JS under dist plus three Vite app roots; VSIX artifacts are excluded from npm packing.
+- Builds emit server/workflow declarations and JS under dist plus three Vite app roots; VSIX artifacts are excluded from npm packing. The package includes the package-owned compute-image Dockerfile, its Dockerfile-specific ignore file, and the three runtime preparation scripts required to build a worker outside a source checkout. The root `.dockerignore` remains excluded so packaged image builds retain `dist/`.
 - Setup records a private schemaVersion-1 manifest with owned-file digests, modes, components, and action fingerprints.
 - Gateway web and dev use distinct service names, ports, and default Pibo Homes; production restart inspects active runtime and yielded-run state.
 - Docker Compose persists /root/.pibo and /root/.browser-use; release artifacts live under dist/apps/vscode-artifacts.
@@ -340,13 +337,13 @@ traceability:
 - Root build compiles the private workflow workspace, server TypeScript, Chat and Context Vite apps, VS Code webview, and executable bins; extension bundling/VSIX packaging remains a separate command.
 - Setup plans before mutation, requires --apply --yes and root on Linux, preflights every destination, writes atomically, fingerprints completed actions, and preserves modified files/data on transitions and uninstall.
 - Deploy-dev syncs a clean canonical dev worktree, builds, and probes a configured public URL without restarting. Deploy-prod builds and refreshes the stable backup without restarting. Ordering and production approval are operator policy, not enforced between the two scripts.
-- Release writes root and extension versions, builds, packages VSIX, optionally publishes npm, and only creates a GitHub Release when HEAD already has the expected tag; it never creates/pushes commits or tags.
+- Release writes root and extension versions, builds, packages VSIX, optionally publishes npm, and only creates a GitHub Release when HEAD already has the expected tag; it never creates/pushes commits or tags. GitHub release creation validates asset existence, regular-file type, readability, and the 64 MiB limit before the first remote mutation.
 
 ### Failure
 
 - Build, pack, setup, deploy, backup, and release scripts fail on command errors; setup refuses unmanaged/modified target overwrites and incomplete public-auth configuration.
 - Production restart blocks on unreachable/ambiguous/wrong-mode status, processing, streaming, queued messages, stale telemetry, or active yielded runs unless the exact force confirmation token is supplied.
-- GitHub Release creation is tag-idempotent; if a release exists but the requested asset is absent, it returns without repairing/uploading the missing asset.
+- GitHub Release creation is tag-idempotent; invalid local assets fail before any GitHub request, upload failures remain explicit, and an existing release is left unchanged rather than repaired implicitly.
 
 ### Security
 
@@ -370,7 +367,7 @@ The delivery system MUST build the private workflow workspace, server TypeScript
 
 ### Acceptance and boundaries
 
-- Exact source evidence: `package.json:54` — `scripts.build`; `package.json:50` — `scripts.workflows:build`; `package.json:45` — `scripts.web-ui:build`; `package.json:47` — `scripts.vscode:webview:build`; `package.json:49` — `scripts.vscode:package`; `package.json:25` — `bin`; `tsconfig.json:2` — `compilerOptions`; `tsconfig.json:15` — `include`; `tsconfig.json:16` — `exclude`; `packages/workflows/package.json:16` — `scripts.build`; `packages/workflows/package.json:7` — `main`; `packages/workflows/package.json:8` — `types`; `packages/workflows/package.json:9` — `exports`; `src/apps/chat-ui/vite.config.ts:9` — `export default defineConfig({`; `src/apps/context-files-ui/vite.config.ts:9` — `export default defineConfig({`; `src/apps/chat-vscode/extension/webview/vite.config.ts:9` — `export default defineConfig({`; `src/bin/pibo.ts:5` — `await runPiboCli()`; `src/bin/rg.ts:6` — `const child = spawn`; `docs/specs/capabilities/package-build-and-distribution.md:1` — `# Spec: Package Build and Distribution`
+- Exact source evidence: `package.json:54` — `scripts.build`; `package.json:50` — `scripts.workflows:build`; `package.json:45` — `scripts.web-ui:build`; `package.json:47` — `scripts.vscode:webview:build`; `package.json:49` — `scripts.vscode:package`; `package.json:25` — `bin`; `tsconfig.json:2` — `compilerOptions`; `tsconfig.json:15` — `include`; `tsconfig.json:16` — `exclude`; `packages/workflows/package.json:16` — `scripts.build`; `packages/workflows/package.json:7` — `main`; `packages/workflows/package.json:8` — `types`; `packages/workflows/package.json:9` — `exports`; `src/apps/chat-ui/vite.config.ts:9` — `export default defineConfig({`; `src/apps/context-files-ui/vite.config.ts:9` — `export default defineConfig({`; `src/apps/chat-vscode/extension/webview/vite.config.ts:9` — `export default defineConfig({`; `src/bin/pibo.ts:5` — `await runPiboCli()`; `src/bin/rg.ts:6` — `const child = spawn`
 - Exact named tests: `test/rg-bin.test.mjs:5` — “bundled rg wrapper executes ripgrep”; `test/static-assets.test.mjs:77` — “built Chat and VS Code assets use explicit deterministic compression with stable caching”
 - Public surfaces: `npm run build`; `npm run vscode:package`; `pibo and rg binaries`
 - Failure boundary: Any sub-build failure stops the composed command; no partial-output rollback is promised.
@@ -393,7 +390,7 @@ The delivery system MUST pack only the root manifest allowlist, exclude dist/app
 
 ### Acceptance and boundaries
 
-- Exact source evidence: `package.json:9` — `files`; `package.json:74` — `dependencies`; `package.json:71` — `scripts.prepack`; `package.json:72` — `scripts.postpack`; `package.json:29` — `engines`; `package-lock.json:4` — `lockfileVersion`; `package-lock.json:6` — `packages`; `scripts/package-shrinkwrap.mjs:9` — `preparePackageShrinkwrap`; `scripts/package-shrinkwrap.mjs:21` — `cleanPackageShrinkwrap`; `docs/specs/capabilities/package-build-and-distribution.md:1` — `# Spec: Package Build and Distribution`; `docs/project/operations/index.md:1` — `# Project operations`
+- Exact source evidence: `package.json:9` — `files`; `package.json:74` — `dependencies`; `package.json:71` — `scripts.prepack`; `package.json:72` — `scripts.postpack`; `package.json:29` — `engines`; `package-lock.json:4` — `lockfileVersion`; `package-lock.json:6` — `packages`; `scripts/package-shrinkwrap.mjs:9` — `preparePackageShrinkwrap`; `scripts/package-shrinkwrap.mjs:21` — `cleanPackageShrinkwrap`; `compute-image/Dockerfile:1` — package-owned worker image; `compute-image/Dockerfile.dockerignore:1` — effective build-context exclusions; `docs/project/operations/index.md:1` — `# Project operations`
 - Exact named tests: `test/npm-package-contents.test.mjs:65` — “npm package excludes generated VSIX artifacts while keeping runtime assets”; `test/package-shrinkwrap.test.mjs:9` — “package lifecycle publishes the repository lock as npm-shrinkwrap.json”; `test/package-shrinkwrap.test.mjs:31` — “published package metadata includes and cleans the generated shrinkwrap”
 - Public surfaces: `@pasko70/pibo npm tarball`; `prepack and postpack`; `npm-shrinkwrap.json`
 - Failure boundary: Reject package-name mismatch and propagate copy/cleanup/pack failures; lifecycle cleanup is not transactional across process termination.
@@ -539,7 +536,7 @@ These gaps do not define intended behavior. Any implementation change requires a
 
 ## Verification and traceability
 
-- Every requirement traces to exact regular files at Foundation `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+- Every requirement traces to exact regular files at upstream/dev refresh `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Named tests are identified by exact test names. Source-only requirements set `source_inspected: true` and carry a concrete follow-up.
 - Deterministic wrappers, source guards, archive checks, and accelerated fixtures are bounded evidence. They are not substitutes for headful VS Code, real workspace activation, real PTY, live browser/CDP, provider, controller gateway, Docker runtime, release publication, deployment, or Pibo2 acceptance.
 - Package execution results belong to the implementation audit, not to the normative current-behavior claim.
