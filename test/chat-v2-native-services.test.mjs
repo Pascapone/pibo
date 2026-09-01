@@ -333,6 +333,8 @@ test("message timing query accepts the shared cap and disables reconciliation at
 		}
 		assert.equal(timeline.listMessageTurnTimings("ps_timing_cap").length, 500);
 		assert.deepEqual(timeline.listMessageTurnTimings("ps_timing_overflow"), []);
+		assert.equal(timeline.scanMessageTurnTimings("ps_timing_cap").overflow, false);
+		assert.equal(timeline.scanMessageTurnTimings("ps_timing_overflow").overflow, true);
 	} finally {
 		store.close();
 	}

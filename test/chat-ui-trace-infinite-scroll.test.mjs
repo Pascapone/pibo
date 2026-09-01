@@ -74,13 +74,14 @@ test("trace history pages use a latency-efficient bounded event count", async ()
 	assert.match(source, /DEFAULT_TRACE_EVENTS_PAGE_SIZE = 100/);
 });
 
-test("trace v2 adapter maps cursor.before into the older-page sequence", async () => {
+test("trace v2 adapter maps cursor.before and preserves integrity status", async () => {
 	const script = `
 		import assert from "node:assert/strict";
 		const { traceViewFromTimelinePage } = await import("./src/apps/chat-ui/src/tracing/trace-v2-adapter.ts");
 		const trace = traceViewFromTimelinePage({
 			piboSessionId: "ps-test",
 			piSessionId: "pi-test",
+			integrityStatus: "incomplete",
 			title: "Test",
 			version: "v1",
 			latestStreamId: 42,
@@ -90,6 +91,7 @@ test("trace v2 adapter maps cursor.before into the older-page sequence", async (
 			nodes: [],
 		});
 		assert.equal(trace.hasOlderEvents, true);
+		assert.equal(trace.integrityStatus, "incomplete");
 		assert.equal(trace.nextBeforeSequence, 4640);
 		assert.equal(trace.firstEventSequence, 4640);
 		assert.equal(trace.lastEventSequence, 4689);

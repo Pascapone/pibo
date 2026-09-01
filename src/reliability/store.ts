@@ -798,12 +798,12 @@ export class PiboReliabilityStore {
 		});
 	}
 
-	fail(jobId: string, workerId: string, error: string, claimToken?: number): boolean {
+	fail(jobId: string, workerId: string, error: string, claimToken?: number, reason = "failed"): boolean {
 		const timestamp = now();
 		return this.inImmediateTransaction(() => {
 			const row = this.getLiveWorkerJob(jobId, workerId, timestamp, claimToken);
 			if (!row) return false;
-			this.moveJobToDead(row, error, "failed", timestamp);
+			this.moveJobToDead(row, error, reason, timestamp);
 			return true;
 		});
 	}

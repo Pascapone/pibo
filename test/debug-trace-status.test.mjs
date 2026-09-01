@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import test from "node:test";
+import { formatDebugTrace } from "../dist/debug/trace.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -45,4 +46,21 @@ async function runScenario() {
 
 test("debug trace lifecycle is separate from historical node errors", async () => {
 	await assert.doesNotReject(runScenario());
+});
+
+test("debug trace text reports incomplete projection integrity", () => {
+	const formatted = formatDebugTrace({
+		piboSessionId: "ps_incomplete",
+		piSessionId: "pi_incomplete",
+		historySource: "events",
+		integrityStatus: "incomplete",
+		title: "Incomplete trace",
+		status: "done",
+		statusSource: "session-store",
+		errorNodeCount: 1,
+		nodes: [],
+		rawNodeCount: 0,
+	});
+
+	assert.match(formatted, /^integrityStatus: incomplete$/m);
 });

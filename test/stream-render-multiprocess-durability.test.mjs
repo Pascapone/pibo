@@ -216,6 +216,36 @@ test("capacity overflow survives reopen as a durable dead letter", async () => {
 	}
 });
 
+test("permanent durable failures dead-letter after one attempt", async () => {
+	const { directory, databasePath } = temporaryDatabase("pibo-output-permanent-");
+	try {
+		const store = new PiboReliabilityStore(databasePath);
+		const queue = new OutputPersistenceRetryQueue({ durableStore: store, queueName: "output-persistence-test", maxAttempts: 5, baseDelayMs: 1, maxDelayMs: 1 });
+		let attempts = 0;
+		queue.enqueue({
+			key: "permanent",
+			payload: { phase: "v2" },
+			isRetryable: () => false,
+			run() {
+				attempts += 1;
+				throw new Error("permanent collision");
+			},
+		});
+		await queue.drain();
+		const dead = store.listDead({ queue: "output-persistence-test" });
+		assert.equal(attempts, 1);
+		assert.equal(dead.length, 1);
+		assert.equal(dead[0].attempts, 1);
+		assert.equal(dead[0].deadReason, "permanent");
+		assert.equal(dead[0].lastError, "permanent collision");
+		assert.deepEqual(queue.debugState().counters, { retriable: 0, permanent: 1, quarantined: 0 });
+		queue.dispose();
+		store.close();
+	} finally {
+		rmSync(directory, { recursive: true, force: true });
+	}
+});
+
 test("unknown, versionless, and malformed durable payloads quarantine while later jobs continue", async () => {
 	const { directory, databasePath } = temporaryDatabase("pibo-output-quarantine-");
 	try {
@@ -241,6 +271,7 @@ test("unknown, versionless, and malformed durable payloads quarantine while late
 		assert.equal(JSON.stringify(dead).includes("unknown-secret"), false);
 		assert.equal(JSON.stringify(dead).includes("versionless-secret"), false);
 		assert.equal(store.listJobs({ queue: "output-persistence-test", limit: 10 }).length, 0);
+		assert.deepEqual(queue.debugState().counters, { retriable: 0, permanent: 0, quarantined: 2 });
 		queue.dispose();
 		store.close();
 	} finally {
@@ -301,7 +332,12 @@ test("clean shutdown aborts work, cancels heartbeat, and releases the fenced cla
 		queue.dispose();
 		await new Promise((resolve) => setTimeout(resolve, 25));
 		assert.equal(aborted, true);
-		assert.deepEqual(queue.debugState(), { pending: 0, activeHeartbeats: 0, deadLetters: [] });
+		assert.deepEqual(queue.debugState(), {
+			pending: 0,
+			activeHeartbeats: 0,
+			deadLetters: [],
+			counters: { retriable: 0, permanent: 0, quarantined: 0 },
+		});
 		const live = store.listJobs({ queue: "output-persistence-test" });
 		assert.equal(live.length, 1);
 		assert.equal(live[0].state, "pending");

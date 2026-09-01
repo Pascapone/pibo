@@ -91,8 +91,9 @@ async function runChatTraceHelpersScenario() {
 		const cache = new Map();
 		setTraceCache(cache, "a", trace, 2);
 		setTraceCache(cache, "b", { ...trace, version: "v2" }, 2);
-		setTraceCache(cache, "c", { ...trace, version: "v3" }, 2);
+		setTraceCache(cache, "c", { ...trace, version: "v3", integrityStatus: "incomplete" }, 2);
 		assert.deepEqual([...cache.keys()], ["b", "c"]);
+		assert.equal(cache.get("c").integrityStatus, "incomplete");
 		setTraceCache(cache, "raw", { ...trace, rawEvents: events }, 2);
 		assert.equal(cache.has("raw"), false);
 	`;

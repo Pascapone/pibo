@@ -15,6 +15,7 @@ export type OutputRenderHighWaterStore = {
 	claimOrAttachOutputToolInvocation?(input: OutputToolInvocationTransition): number;
 	observeOutputToolInvocation?(input: OutputToolInvocationTransition & { ordinal: number }): void;
 	claimOrAttachOutputPart?(input: OutputPartTransition): number;
+	observeOutputPart?(input: OutputPartTransition & { index: number }): void;
 };
 
 export type OutputPartKind = "assistant" | "thinking" | "usage" | "compaction";
@@ -24,6 +25,8 @@ export type OutputPartTransition = {
 	eventId: string;
 	kind: OutputPartKind;
 	proposedIndex: number;
+	suppliedIndex?: number;
+	canonicalIndex?: boolean;
 	fingerprint: string;
 	identityFingerprint: string;
 	terminal: boolean;
@@ -56,7 +59,6 @@ type ToolInvocationState = {
 
 type OutputPartState = {
 	index: number;
-	fingerprints: Set<string>;
 	closed: boolean;
 };
 
@@ -175,24 +177,34 @@ export class OutputRenderSequencer {
 		const key = outputPartCounterKey(transition.eventId, transition.kind);
 		const parts = state.outputParts.get(key) ?? [];
 		if (!state.outputParts.has(key)) state.outputParts.set(key, parts);
-		const exact = parts.find((part) => part.fingerprints.has(transition.fingerprint));
+		const suppliedPart = transition.suppliedIndex === undefined
+			? undefined
+			: parts.find((part) => part.index === transition.suppliedIndex);
+		if (transition.suppliedIndex !== undefined && (transition.canonicalIndex || suppliedPart)) {
+			this.highWaterStore?.observeOutputPart?.({ ...transition, index: transition.suppliedIndex });
+			this.recordOutputPart(parts, transition.suppliedIndex, transition.terminal);
+			this.trimOutputParts(state);
+			return event;
+		}
 		const latestOpen = [...parts].reverse().find((part) => !part.closed);
 		const localMaximum = parts.reduce((maximum, part) => Math.max(maximum, part.index), -1);
-		const localIndex = exact?.index
-			?? latestOpen?.index
+		const localIndex = latestOpen?.index
 			?? (transition.proposedIndex > localMaximum ? transition.proposedIndex : localMaximum + 1);
-		const index = validRenderSequence(event.renderSequence) || exact || latestOpen
+		const index = latestOpen
 			? localIndex
 			: this.highWaterStore?.claimOrAttachOutputPart?.({ ...transition, proposedIndex: localIndex }) ?? localIndex;
-		let part = parts.find((candidate) => candidate.index === index);
-		if (!part) {
-			part = { index, fingerprints: new Set(), closed: false };
-			parts.push(part);
-		}
-		part.fingerprints.add(transition.fingerprint);
-		if (transition.terminal) part.closed = true;
+		this.recordOutputPart(parts, index, transition.terminal);
 		this.trimOutputParts(state);
 		return withOutputPartIndex(event, transition.kind, index);
+	}
+
+	private recordOutputPart(parts: OutputPartState[], index: number, terminal: boolean): void {
+		let part = parts.find((candidate) => candidate.index === index);
+		if (!part) {
+			part = { index, closed: false };
+			parts.push(part);
+		}
+		if (terminal) part.closed = true;
 	}
 
 	private trimOutputParts(state: SessionSequenceState): void {
@@ -379,6 +391,9 @@ function outputPartTransition(event: PiboOutputEvent, activeEventId: string | un
 			eventId,
 			kind: "assistant",
 			proposedIndex: event.assistantIndex ?? event.contentIndex ?? 0,
+			...(validOutputPartIndex(event.assistantIndex)
+				? { suppliedIndex: event.assistantIndex, canonicalIndex: validRenderSequence(event.renderSequence) }
+				: {}),
 			fingerprint: outputPartFingerprint(event),
 			identityFingerprint: outputIdentityFingerprint(event),
 			terminal: event.type === "assistant_message",
@@ -390,6 +405,9 @@ function outputPartTransition(event: PiboOutputEvent, activeEventId: string | un
 			eventId,
 			kind: "thinking",
 			proposedIndex: event.thinkingIndex ?? event.contentIndex ?? 0,
+			...(validOutputPartIndex(event.thinkingIndex)
+				? { suppliedIndex: event.thinkingIndex, canonicalIndex: validRenderSequence(event.renderSequence) }
+				: {}),
 			fingerprint: outputPartFingerprint(event),
 			identityFingerprint: outputIdentityFingerprint(event),
 			terminal: event.type === "thinking_finished",
@@ -401,6 +419,9 @@ function outputPartTransition(event: PiboOutputEvent, activeEventId: string | un
 			eventId,
 			kind: "usage",
 			proposedIndex: event.usageIndex ?? 0,
+			...(validOutputPartIndex(event.usageIndex)
+				? { suppliedIndex: event.usageIndex, canonicalIndex: validRenderSequence(event.renderSequence) }
+				: {}),
 			fingerprint: outputPartFingerprint(event),
 			identityFingerprint: outputIdentityFingerprint(event),
 			terminal: true,
@@ -412,12 +433,19 @@ function outputPartTransition(event: PiboOutputEvent, activeEventId: string | un
 			eventId,
 			kind: "compaction",
 			proposedIndex: event.compactionIndex ?? 0,
+			...(validOutputPartIndex(event.compactionIndex)
+				? { suppliedIndex: event.compactionIndex, canonicalIndex: validRenderSequence(event.renderSequence) }
+				: {}),
 			fingerprint: outputPartFingerprint(event),
 			identityFingerprint: outputIdentityFingerprint(event),
 			terminal: event.type === "compaction_end",
 		};
 	}
 	return undefined;
+}
+
+function validOutputPartIndex(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 export function outputIdentityFingerprint(event: PiboOutputEvent): string {
