@@ -778,7 +778,9 @@ export class LocalCliSessionSource implements CliSessionSource {
     }
     const session = this.sessionStore.get(event.piboSessionId);
     if (!session) return;
-    const positionedEvent = this.outputRenderSequencer.position(event);
+    const positionedEvent = validRenderSequence(event.renderSequence)
+      ? event
+      : this.outputRenderSequencer.position(event);
     const compacted = this.outputCompactor.prepare(positionedEvent);
     if (compacted.persistedEvents.length === 0) {
       compacted.ack();

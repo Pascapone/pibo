@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
-import { OutputRenderSequencer } from "../../core/output-render-sequence.js";
+import { OutputRenderSequencer, validRenderSequence } from "../../core/output-render-sequence.js";
 import {
 	OutputPersistenceRetryQueue,
 	type OutputPersistenceRetryContext,
@@ -1047,7 +1047,9 @@ function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext)
 				recordPersistenceError(state.persistenceMetrics, new Error("runtime_output_event_invalid"));
 				return;
 			}
-			const positionedEvent = state.outputRenderSequencer.position(event);
+			const positionedEvent = validRenderSequence(event.renderSequence)
+				? event
+				: state.outputRenderSequencer.position(event);
 			state.activeTraceSessions.add(positionedEvent.piboSessionId);
 			const session = context.channelContext.getSession(positionedEvent.piboSessionId);
 			const room = session ? ensureSessionRoom(state, context, session) : undefined;
