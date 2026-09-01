@@ -829,7 +829,10 @@ export class LocalCliSessionSource implements CliSessionSource {
       delivery.persisted = true;
       retryContext.updatePayload(persistenceState as unknown as PiboJsonValue);
     }
-    if (errors.length > 0) throw errors[0];
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `Failed to persist one or more output deliveries: ${errors.map((error) => error.message).join("; ")}`);
+    }
   }
 
   private recordOutputEvent(event: PiboOutputEvent): void {

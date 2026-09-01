@@ -1208,7 +1208,11 @@ function deliverWebOutputPersistenceState(
 			errors.push(error);
 		}
 	}
-	if (errors.length > 0) throw errors[0];
+	if (errors.length === 1) throw errors[0];
+	if (errors.length > 1) {
+		const messages = errors.map((error) => error instanceof Error ? error.message : String(error));
+		throw new AggregateError(errors, `Failed to persist one or more output deliveries: ${messages.join("; ")}`);
+	}
 }
 
 class WebOutputPersistenceCheckpointError extends Error {
