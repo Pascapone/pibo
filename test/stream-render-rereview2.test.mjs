@@ -10,8 +10,9 @@ import { LocalCliSessionSource } from "../dist/cli-session/localSessionSource.js
 import { OutputRenderSequencer } from "../dist/core/output-render-sequence.js";
 import { OutputPersistenceRetryQueue } from "../dist/core/output-persistence-retry.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { ChatDataIngestService, PiboOutputIdentityCollisionError, outputPersistenceErrorIsRetryable } from "../dist/data/ingest-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
+import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
 import { compareTraceNodes } from "../dist/shared/trace-nodes.js";
 import { eventTraceOrder, historyTraceOrder } from "../dist/shared/trace-order.js";
@@ -252,6 +253,53 @@ test("local CLI automatically retries one failed final without producer replay",
 	}
 });
 
+test("local CLI dead-letters output identity collisions after one attempt", async () => {
+	const dataStore = new PiboDataStore(":memory:");
+	const reliabilityStore = new PiboReliabilityStore(":memory:");
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	const listeners = new Set();
+	const router = {
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		async emit() { throw new Error("not used"); },
+	};
+	const source = new LocalCliSessionSource({ dataStore, reliabilityStore, sessionStore, router, now: () => fixedNow });
+	try {
+		const created = await source.createSession({ title: "Permanent collision", profile: "base" });
+		new ChatDataIngestService(dataStore).ingestOutputEvent({
+			session: sessionStore.get(created.id),
+			event: {
+				type: "assistant_message",
+				piboSessionId: created.id,
+				eventId: "cli-permanent-collision",
+				assistantIndex: 0,
+				renderSequence: 1,
+				text: "stored answer",
+			},
+			createdAt: fixedNow,
+		});
+		for (const listener of listeners) {
+			listener({
+				type: "assistant_message",
+				piboSessionId: created.id,
+				eventId: "cli-permanent-collision",
+				assistantIndex: 0,
+				renderSequence: 2,
+				text: "conflicting answer",
+			});
+		}
+		await waitFor(() => reliabilityStore.listDead({ queue: "output-persistence-cli" }).length === 1);
+		const dead = reliabilityStore.listDead({ queue: "output-persistence-cli" });
+		assert.equal(dead[0].attempts, 1);
+		assert.equal(dead[0].deadReason, "permanent");
+		assert.match(dead[0].lastError, /Pibo output identity collision/);
+		assert.equal(dataStore.eventLog.listEvents({ sessionId: created.id }).filter((event) => event.type === "pibo.output.identity_collision").length, 1);
+	} finally {
+		await source.close();
+		reliabilityStore.close();
+		dataStore.close();
+	}
+});
+
 test("persistence retry queue bounds pending jobs and dead letters deterministically", async () => {
 	const retries = new OutputPersistenceRetryQueue({ maxPending: 2, maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1, maxDeadLetters: 2 });
 	for (const key of ["one", "two", "overflow"]) {
@@ -262,7 +310,38 @@ test("persistence retry queue bounds pending jobs and dead letters deterministic
 	await retries.drain();
 	assert.equal(retries.debugState().pending, 0);
 	assert.deepEqual(retries.debugState().deadLetters.map((entry) => entry.key), ["one", "two"]);
+	assert.deepEqual(retries.debugState().counters, { retriable: 4, permanent: 0, quarantined: 0 });
 	retries.dispose();
+});
+
+test("persistence retry queue dead-letters permanent failures after one attempt", async () => {
+	const retries = new OutputPersistenceRetryQueue({ maxAttempts: 5, baseDelayMs: 1, maxDelayMs: 1 });
+	let attempts = 0;
+	retries.enqueue({
+		key: "permanent",
+		isRetryable: () => false,
+		run() {
+			attempts += 1;
+			throw new Error("permanent collision");
+		},
+	});
+	await retries.drain();
+	retries.quarantine("payload_invalid");
+	assert.equal(attempts, 1);
+	assert.deepEqual(retries.debugState().deadLetters.map((entry) => entry.attempts), [1, 0]);
+	assert.equal(retries.debugState().deadLetters[0].key, "permanent");
+	assert.match(retries.debugState().deadLetters[1].key, /^quarantine:/);
+	assert.equal(retries.debugState().deadLetters[1].error, "payload_invalid");
+	assert.deepEqual(retries.debugState().counters, { retriable: 0, permanent: 1, quarantined: 1 });
+	retries.dispose();
+});
+
+test("output persistence retries mixed aggregate failures without retrying collision-only aggregates", () => {
+	const collision = new PiboOutputIdentityCollisionError("delivery", "existing", "incoming");
+	assert.equal(outputPersistenceErrorIsRetryable(collision), false);
+	assert.equal(outputPersistenceErrorIsRetryable(new AggregateError([collision], "collision-only")), false);
+	assert.equal(outputPersistenceErrorIsRetryable(new AggregateError([collision, new Error("transient")], "mixed")), true);
+	assert.equal(outputPersistenceErrorIsRetryable(new AggregateError([], "empty")), true);
 });
 
 test("legacy NULL session sequences remain reachable through tail and before pages after reopen", () => {

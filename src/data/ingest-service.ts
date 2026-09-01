@@ -53,6 +53,14 @@ export class PiboOutputIdentityCollisionError extends Error {
 	}
 }
 
+export function outputPersistenceErrorIsRetryable(error: unknown): boolean {
+	if (error instanceof PiboOutputIdentityCollisionError) return false;
+	if (error instanceof AggregateError) {
+		return error.errors.length === 0 || error.errors.some(outputPersistenceErrorIsRetryable);
+	}
+	return true;
+}
+
 const INLINE_MESSAGE_PAYLOAD_THRESHOLD_BYTES = 16 * 1024;
 const INLINE_JSON_PAYLOAD_THRESHOLD_BYTES = 16 * 1024;
 
