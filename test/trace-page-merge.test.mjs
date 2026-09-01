@@ -96,6 +96,21 @@ test("trace page merges preserve and clear incomplete integrity status from cano
 	assert.equal(flattenNodes(mergedRefreshed.nodes).find((entry) => entry.id === "event:message:turn-incomplete")?.status, "done");
 });
 
+test("trace page merges preserve bounded integrity status when the marker is outside the node slice", () => {
+	const current = traceView({
+		integrityStatus: "incomplete",
+		nodes: [node("bounded-tail")],
+	});
+	const mergedOlder = mergeOlderTracePage(current, traceView({ nodes: [node("bounded-older")] }));
+	assert.equal(mergedOlder.integrityStatus, "incomplete");
+
+	const refreshed = mergeRefreshedTracePage(mergedOlder, traceView({
+		version: "repaired-version",
+		nodes: [node("bounded-tail")],
+	}));
+	assert.equal(refreshed.integrityStatus, undefined);
+});
+
 test("mergeRefreshedTracePage preserves the loaded history window while refreshing the tail", () => {
 	const current = traceView({
 		version: "old-version",

@@ -350,7 +350,6 @@ export function markIncompletePersistedTurns(
 	turnTimings: readonly TraceMessageTurnTiming[],
 	sessionStatus: PiboWebSessionStatus,
 ): boolean {
-	if (sessionStatus === "running") return false;
 	const lifecycleByEventId = new Map<string, { started: boolean; completed: boolean }>();
 	for (const timing of turnTimings) {
 		const lifecycle = lifecycleByEventId.get(timing.eventId) ?? { started: false, completed: false };
@@ -361,6 +360,15 @@ export function markIncompletePersistedTurns(
 	const incompleteEventIds = new Set([...lifecycleByEventId].flatMap(([eventId, lifecycle]) =>
 		lifecycle.started && !lifecycle.completed ? [eventId] : [],
 	));
+	if (sessionStatus === "running") {
+		const currentTurn = [...turnTimings].reverse().find((timing) =>
+			timing.userMessageType !== "message_steered" &&
+			(timing.userText !== undefined || timing.startedAt !== undefined),
+		);
+		if (currentTurn?.startedAt !== undefined && currentTurn.completedAt === undefined) {
+			incompleteEventIds.delete(currentTurn.eventId);
+		}
+	}
 	if (incompleteEventIds.size === 0) return false;
 	const startByEventId = new Map<string, ChatWebStoredEvent>();
 	const lastByEventId = new Map<string, ChatWebStoredEvent>();

@@ -47,7 +47,7 @@ import {
 	type UpdatePiboRoomInput,
 } from "./types/rooms.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
-import { buildSessionNodes, buildTraceView, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
+import { buildSessionNodes, buildTraceView, TRACE_PROJECTION_VERSION, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
 import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { ChatWebStoredEvent, PiboSessionTraceSummary, PiboTraceNode, TraceTimelinePage } from "../../shared/trace-types.js";
 import {
@@ -1007,7 +1007,7 @@ function createFastTraceV2Version(input: {
 		.sort((left, right) => left.id.localeCompare(right.id));
 	return createHash("sha1")
 		.update(JSON.stringify({
-			traceProjection: "turn-timing-v2",
+			traceProjection: TRACE_PROJECTION_VERSION,
 			session: {
 				id: input.session.id,
 				piSessionId: input.session.piSessionId,

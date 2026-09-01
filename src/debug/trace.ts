@@ -217,6 +217,7 @@ export function formatDebugTrace(result: DebugTraceResult, options: { medium?: b
 		...(result.nativeSessionId ? [`nativeSessionId: ${result.nativeSessionId}`] : []),
 		...(result.runtimeBindingState ? [`runtimeBindingState: ${result.runtimeBindingState}`] : []),
 		`historySource: ${result.historySource}`,
+		...(result.integrityStatus ? [`integrityStatus: ${result.integrityStatus}`] : []),
 		`title: ${result.title}`,
 		`status: ${result.status}`,
 		`statusSource: ${result.statusSource}`,

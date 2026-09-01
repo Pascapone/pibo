@@ -389,6 +389,23 @@ test("active persisted turns remain running without an incomplete marker", () =>
 	assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-active"), false);
 });
 
+test("a later active turn does not leave an older incomplete turn running", () => {
+	const view = createBaseView([
+		createEvent({ seq: 1, streamId: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-incomplete", text: "Old prompt", source: "user" } }),
+		createEvent({ seq: 2, streamId: 2, type: "assistant_message", payload: { type: "assistant_message", eventId: "turn-incomplete", assistantIndex: 0, text: "Orphaned answer" } }),
+		createEvent({ seq: 3, streamId: 3, type: "message_started", payload: { type: "message_started", eventId: "turn-active", text: "Current prompt", source: "user" } }),
+		createEvent({ seq: 4, streamId: 4, type: "assistant_delta", payload: { type: "assistant_delta", eventId: "turn-active", text: "Working" } }),
+	], "running");
+
+	const incompleteTurn = view.nodes.find((node) => node.id === "event:message:turn-incomplete");
+	const activeTurn = view.nodes.find((node) => node.id === "event:message:turn-active");
+	assert.equal(view.integrityStatus, "incomplete");
+	assert.equal(incompleteTurn?.status, "error");
+	assert.equal(incompleteTurn?.children.some((node) => node.id === "event:incomplete-turn:turn-incomplete"), true);
+	assert.equal(activeTurn?.status, "running");
+	assert.equal(activeTurn?.children.some((node) => node.id === "event:incomplete-turn:turn-active"), false);
+});
+
 test("terminal persisted turns do not project an incomplete marker", () => {
 	for (const terminal of [
 		{ type: "message_finished", eventId: "turn-terminal" },

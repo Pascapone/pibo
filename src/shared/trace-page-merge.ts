@@ -9,7 +9,7 @@ export function mergeOlderTracePage(current: PiboSessionTraceView, older: PiboSe
 	return {
 		...current,
 		version: current.version,
-		integrityStatus: traceIntegrityStatus(nodes),
+		integrityStatus: traceIntegrityStatus(nodes) ?? current.integrityStatus ?? older.integrityStatus,
 		nodes,
 		rawEvents,
 		beforeCursor: older.beforeCursor ?? current.beforeCursor,
@@ -26,7 +26,7 @@ export function mergeRefreshedTracePage(current: PiboSessionTraceView, refreshed
 	const nodes = mergeRefreshedTraceNodes(current.nodes, refreshed);
 	return {
 		...refreshed,
-		integrityStatus: traceIntegrityStatus(nodes),
+		integrityStatus: traceIntegrityStatus(nodes) ?? refreshed.integrityStatus,
 		nodes,
 		rawEvents: mergeTraceRawEvents(current.rawEvents, refreshed.rawEvents, true),
 		beforeCursor: current.beforeCursor,
