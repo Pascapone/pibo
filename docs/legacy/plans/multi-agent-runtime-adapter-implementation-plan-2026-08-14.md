@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Multi-Agent Runtime Adapter Implementation Plan"
+description: "Preserves the completed multi-runtime adapter implementation plan as historical milestone context after canonical consolidation."
+tags: ["agent-runtime", "historical-plan", "runtime-adapters"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/plans/multi-agent-runtime-adapter-implementation-plan-2026-08-14.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "df1496f087e06e9a9d93c106467209065ab2575b"
+  source_bytes: 21069
+  source_sha256: "b7561b8f16b7f6a87818f2c017a72e2fe3ff2c4c1d2bb1ea7efbe775d7e10578"
+  source_body_sha256: "b7561b8f16b7f6a87818f2c017a72e2fe3ff2c4c1d2bb1ea7efbe775d7e10578"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Multi-Agent Runtime Adapter Implementation Plan
 
 **Status:** Active

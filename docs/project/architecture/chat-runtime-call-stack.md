@@ -1,3 +1,22 @@
+---
+type: "Decision Record"
+title: "Chat Runtime Call Stack"
+description: "Records the supporting end-to-end Chat runtime call stack and its principal failure boundaries."
+tags: ["architecture", "chat-web", "runtime"]
+status: "draft"
+authority: "supporting"
+migration_lineage:
+  source_path: "docs/project/architecture/chat-runtime-call-stack.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "51cf0020b591438c444d3d44ef8c0bd3ac02f1b9"
+  source_bytes: 9135
+  source_sha256: "dff06010a93803b434226ada059385336064399b50158d592a0d8b71755f1655"
+  source_body_sha256: "dff06010a93803b434226ada059385336064399b50158d592a0d8b71755f1655"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Chat Runtime Call Stack
 
 **Last reviewed:** 2026-08-25

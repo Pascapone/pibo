@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Web Annotations V1"
+description: "Explains the Web Annotations V1 user flow, lifecycle, tools, recovery, privacy, and known limits."
+tags: ["annotations", "reference", "web"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/web-annotations.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1eaeeb9d6c0cc646faf36504386246db4f03caf2"
+  source_bytes: 5033
+  source_sha256: "dc87c5705f40bf7d2aeccb06792cb78a6b00834df1c02bb6fbd81b6e7aaf3d8d"
+  source_body_sha256: "dc87c5705f40bf7d2aeccb06792cb78a6b00834df1c02bb6fbd81b6e7aaf3d8d"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Web Annotations V1
 
 Web Annotations let a user point at a live browser target and send that reference to the current Pibo Session. The first version starts in Chat Web, uses CDP to inject a runtime-only overlay, stores bounded annotation records, and exposes optional native tools to selected agents.

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Local Auth Gateway Implementation Plan"
+description: "Preserves the completed local-auth gateway implementation plan as historical context after canonical consolidation."
+tags: ["authentication", "gateway", "historical-plan"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/plans/local-auth-gateway-implementation-plan-2026-06-14.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "4bc7e7588d94ce5817e5ec88cef56142e666b1f9"
+  source_bytes: 23592
+  source_sha256: "a21786efd362574041768edf331c0981922bd6be59ebf65731c38d39a9867fa5"
+  source_body_sha256: "a21786efd362574041768edf331c0981922bd6be59ebf65731c38d39a9867fa5"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Local Auth Gateway Implementation Plan
 
 **Date:** 2026-06-14

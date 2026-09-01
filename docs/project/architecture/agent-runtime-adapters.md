@@ -1,3 +1,22 @@
+---
+type: "Decision Record"
+title: "Agent Runtime Adapter Architecture"
+description: "Records supporting architecture decisions for Pibo agent-runtime adapters and portable capability delivery."
+tags: ["agent-runtime", "architecture", "runtime-adapters"]
+status: "draft"
+authority: "supporting"
+migration_lineage:
+  source_path: "docs/project/architecture/agent-runtime-adapters.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "615ebce57115f226861c082792641086a7bcefd7"
+  source_bytes: 14808
+  source_sha256: "d9c54284fbcdd86f3b2b0185b1087fd5c62ec82e9ef439033a27f91d93362d6d"
+  source_body_sha256: "d9c54284fbcdd86f3b2b0185b1087fd5c62ec82e9ef439033a27f91d93362d6d"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Agent Runtime Adapter Architecture
 
 **Updated:** 2026-08-25

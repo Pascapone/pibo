@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Plan: Canonical Session Turn Lifecycle Signals"
+description: "Preserves the completed session-turn lifecycle signals plan as historical rationale after canonical consolidation."
+tags: ["historical-plan", "sessions", "signals"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/plans/session-turn-lifecycle-signals-plan.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f7e247c07c1f2b89f89051d9b066efc95699235e"
+  source_bytes: 6850
+  source_sha256: "f210e42343c06d3bba8ed10f25bf1005978d92f0313440cf61933ff40f41d9df"
+  source_body_sha256: "f210e42343c06d3bba8ed10f25bf1005978d92f0313440cf61933ff40f41d9df"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Plan: Canonical Session Turn Lifecycle Signals
 
 **Status:** Completed

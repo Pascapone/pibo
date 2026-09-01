@@ -1,3 +1,22 @@
+---
+type: "Decision Record"
+title: "Design System: Pibo Compact Terminal"
+description: "Preserves the supporting visual and interaction design rationale for Pibo's compact terminal session view."
+tags: ["chat-web", "compact-terminal", "design"]
+status: "draft"
+authority: "supporting"
+migration_lineage:
+  source_path: "TERMINAL_DESIGN.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "3153ebfee1c084021344ab0b502e267c446b0914"
+  source_bytes: 23378
+  source_sha256: "0faf4abf4a48f79b23f9a9cad421c97fa09519a3d356fc9dafb6be78ff62773b"
+  source_body_sha256: "0faf4abf4a48f79b23f9a9cad421c97fa09519a3d356fc9dafb6be78ff62773b"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Design System: Pibo Compact Terminal
 **Project ID:** local-reference-pibo-compact-terminal
 

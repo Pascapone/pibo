@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Chat Streaming Debugging Runbook"
+description: "Guides deterministic diagnosis of Chat Web streaming behavior from provider output through the rendered DOM."
+tags: ["chat-web", "debugging", "streaming"]
+status: "draft"
+authority: "directive"
+migration_lineage:
+  source_path: "docs/project/chat-streaming-debugging-runbook.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "623b091404ae34ce161213fd7bf3c316d6b5a854"
+  source_bytes: 6151
+  source_sha256: "611bea6e7d170b6459b740e4836003bbe37802dac9ba2135edf23642c41dfba8"
+  source_body_sha256: "611bea6e7d170b6459b740e4836003bbe37802dac9ba2135edf23642c41dfba8"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Chat Streaming Debugging Runbook
 
 This runbook describes how to diagnose Chat Web streaming regressions without guessing which layer is responsible.

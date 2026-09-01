@@ -1,9 +1,28 @@
+---
+type: "Historical Record"
+title: "Agent Management Tool and CLI Design"
+description: "Preserves the completed delegated-agent tool and CLI design as historical rationale after canonical consolidation."
+tags: ["delegated-agents", "historical-plan", "yielded-runs"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/plans/agent-management-tool-design.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d500bd038b1b0faf9c28b6a7f92f3fc2079747b5"
+  source_bytes: 10209
+  source_sha256: "0b42a2b82ce09a5294737dba1448552c0fb6ed0d79b7bbffbfe3abf3784f2d2a"
+  source_body_sha256: "0b42a2b82ce09a5294737dba1448552c0fb6ed0d79b7bbffbfe3abf3784f2d2a"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Agent Management Tool and CLI Design
 
 **Status:** Accepted; updated for yielded-only dispatch
 **Date:** 2026-08-23
 **Updated:** 2026-08-25
-**Capability spec:** [Agent Delegation and Management](../specs/capabilities/subagent-delegation.md)
+**Capability spec:** [Agent Delegation and Management](/specs/orchestration/subagents.md)
 
 ## Design Decisions
 

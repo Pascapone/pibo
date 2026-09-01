@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementation Plan: Codex/ChatGPT Image Generation Native Tool"
+description: "Preserves the completed Codex image-generation implementation plan as historical context after canonical consolidation."
+tags: ["historical-plan", "image-generation", "native-tools"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/plans/codex-chatgpt-image-generation-tool-implementation-plan-2026-06-30.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "31201db45eed16de05122a75dadce31ae0b25a93"
+  source_bytes: 18923
+  source_sha256: "05e5a873bc9e6d75e1749d9673fc7bba81f3ab7a667f97c8095e07908c6e2852"
+  source_body_sha256: "05e5a873bc9e6d75e1749d9673fc7bba81f3ab7a667f97c8095e07908c6e2852"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Implementation Plan: Codex/ChatGPT Image Generation Native Tool
 
 **Status:** Implementing

@@ -1,3 +1,22 @@
+---
+type: "Decision Record"
+title: "Pibo Organizer V1"
+description: "Records the supporting Organizer V1 architecture and product proposal for future evaluation."
+tags: ["architecture", "organizer", "proposal"]
+status: "draft"
+authority: "supporting"
+migration_lineage:
+  source_path: "docs/organizer-v1.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "39e3e413ff7f6ac8da74302f51ad3660ec277be1"
+  source_bytes: 36015
+  source_sha256: "4e0c31b3a98752ec769d04956d18625fd4e530e05e2658ccc032f846a445dac6"
+  source_body_sha256: "4e0c31b3a98752ec769d04956d18625fd4e530e05e2658ccc032f846a445dac6"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Pibo Organizer V1
 
 ## Purpose

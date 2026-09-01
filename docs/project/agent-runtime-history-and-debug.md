@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Agent Runtime History and Debug"
+description: "Explains the current runtime-neutral history, trace, migration, and debugging model."
+tags: ["agent-runtime", "debugging", "history"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/agent-runtime-history-and-debug.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "8f4076293fe8987506d046e8cd5e4bcc5d693b77"
+  source_bytes: 5541
+  source_sha256: "543f12d0ce1bb38fdf374dd4002046f7f7ec66836778ca7180180fb6749ebb37"
+  source_body_sha256: "543f12d0ce1bb38fdf374dd4002046f7f7ec66836778ca7180180fb6749ebb37"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Agent Runtime History and Debug
 
 **Updated:** 2026-08-16

@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Observability Telemetry Debug Playbooks"
+description: "Guides operators through bounded observability and telemetry diagnostics for common runtime failures."
+tags: ["debugging", "observability", "telemetry"]
+status: "draft"
+authority: "directive"
+migration_lineage:
+  source_path: "docs/project/observability-telemetry-playbooks.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "22972529f867f706067253b825da482442aa48fa"
+  source_bytes: 6056
+  source_sha256: "12fad17eb57627a7cfa97fd12d2a9f98e80eeed10ff5e2b62fdec4abffb9f26f"
+  source_body_sha256: "12fad17eb57627a7cfa97fd12d2a9f98e80eeed10ff5e2b62fdec4abffb9f26f"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Observability Telemetry Debug Playbooks
 
 Use these playbooks when a Pibo session stalls or telemetry looks suspicious. Start with bounded summary commands. Use JSON when an agent needs ids for the next command. Do not use payload preview commands unless the summary path fails; V1 preview capture is disabled/unavailable by default.

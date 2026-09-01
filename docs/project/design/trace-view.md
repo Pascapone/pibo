@@ -1,3 +1,22 @@
+---
+type: "Decision Record"
+title: "Design System: Pibo Trace View"
+description: "Preserves the supporting visual and interaction design rationale for Pibo's trace view."
+tags: ["chat-web", "design", "trace"]
+status: "draft"
+authority: "supporting"
+migration_lineage:
+  source_path: "TRACE_DESIGN.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b66eead8e72c507098419731b34fbe71d51e3e58"
+  source_bytes: 17009
+  source_sha256: "b82e0cd72c71aaf7882b0b1e4a06fa002f2d43df007482d76dc2ac8a812b48d7"
+  source_body_sha256: "b82e0cd72c71aaf7882b0b1e4a06fa002f2d43df007482d76dc2ac8a812b48d7"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Design System: Pibo Trace View
 **Project ID:** local-reference-pibo-trace-view
 

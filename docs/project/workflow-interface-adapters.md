@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Workflow Interface Adapters"
+description: "Explains when and how Pibo workflows use deterministic interface adapters and explicit agentic transformations."
+tags: ["adapters", "reference", "workflows"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/workflow-interface-adapters.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "8b2f940915631d76be00b8eea11d8ab3bf340db7"
+  source_bytes: 8417
+  source_sha256: "12a8573f8323b065b779712d873afeb1349aa5aa1398049b49067187a30c8404"
+  source_body_sha256: "12a8573f8323b065b779712d873afeb1349aa5aa1398049b49067187a30c8404"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Workflow Interface Adapters
 
 Interface adapters make data shape changes explicit in Pibo workflows. Direct edges are allowed only when the source node output port is compatible with the target node input port. When the contracts differ, V1 requires a registered deterministic TypeScript adapter referenced from the workflow definition.
