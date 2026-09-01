@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementation Plan: pibo compute CLI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/pibo-compute-cli-implementation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f029ea7f709e7a630cd363e1573575219be86bfb"
+  source_bytes: 7361
+  source_sha256: "d4ffeec95877610b6ff00fe09c65af1e513cd7b7b049319af3ca7b45b3f399ad"
+  source_body_sha256: "d4ffeec95877610b6ff00fe09c65af1e513cd7b7b049319af3ca7b45b3f399ad"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implementation Plan: `pibo compute` CLI
 
 ## Ziel

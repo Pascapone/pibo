@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementierungsplan: Inline-Skill-Expansion mit $"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/inline-skill-expansion-plan.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "307fa5daef10dc7b2d1ec0cb8e073a1811bdcdf7"
+  source_bytes: 5760
+  source_sha256: "2d7592bea0dfcc3c0d8c46cd34d74ab5fd1968d361e20d47f053df0cd15c9bfd"
+  source_body_sha256: "2d7592bea0dfcc3c0d8c46cd34d74ab5fd1968d361e20d47f053df0cd15c9bfd"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implementierungsplan: Inline-Skill-Expansion mit `$`
 
 **Ziel:** `$skill-name` überall im Nachrichtentext erkennen, den Originaltext unverändert lassen, und die Skill-Inhalte als Appendix am Ende anhängen.

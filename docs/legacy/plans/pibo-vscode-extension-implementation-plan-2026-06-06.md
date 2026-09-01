@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pibo VS Code Extension Implementation Plan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/plans/pibo-vscode-extension-implementation-plan-2026-06-06.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "04da5749233e217ab7362549bc640e9e718a7c3b"
+  source_bytes: 57928
+  source_sha256: "e0f81b284526a426f3889690b101a814a6d92129ddd768ef981a3cb47a1730b1"
+  source_body_sha256: "e0f81b284526a426f3889690b101a814a6d92129ddd768ef981a3cb47a1730b1"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Pibo VS Code Extension Implementation Plan
 
 Date: 2026-06-06

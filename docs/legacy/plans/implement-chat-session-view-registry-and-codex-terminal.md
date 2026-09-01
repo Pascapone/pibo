@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementierungsplan: Chat Session View Registry und Codex Compact Terminal View"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/implement-chat-session-view-registry-and-codex-terminal.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f8ee326a444d68e095536706d23d7d68efab77aa"
+  source_bytes: 13944
+  source_sha256: "799706161e7ea2b2c086b84ac97137dda4b1920f36d984e4ab49d08d5c091ef3"
+  source_body_sha256: "799706161e7ea2b2c086b84ac97137dda4b1920f36d984e4ab49d08d5c091ef3"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implementierungsplan: Chat Session View Registry und Codex Compact Terminal View
 
 ## Ziel

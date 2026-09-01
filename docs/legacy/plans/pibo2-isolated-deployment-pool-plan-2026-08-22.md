@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementierungsplan: Isolierter Pibo2 Deployment Pool"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/plans/pibo2-isolated-deployment-pool-plan-2026-08-22.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1bf705a401cf2e7da16240eeb5b0f5988d833e6c"
+  source_bytes: 29633
+  source_sha256: "3fb210428ccc4c2190f568b46c74fbc716987304204e19b1aa7cc56c94cb4ec1"
+  source_body_sha256: "3fb210428ccc4c2190f568b46c74fbc716987304204e19b1aa7cc56c94cb4ec1"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implementierungsplan: Isolierter Pibo2 Deployment Pool
 
 **Status:** Implemented and publicly activated

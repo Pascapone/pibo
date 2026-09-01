@@ -1,10 +1,29 @@
 ---
-title: Tool Review Feedback Loop Specification
-version: 0.1
-date_created: 2026-05-02
-last_updated: 2026-05-02
-owner: Pibo maintainers
-tags: [process, tools, review, feedback-loop, web-chat, gateway-actions]
+type: "Historical Record"
+title: "Tool Review Feedback Loop Specification"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-process-tool-review-feedback-loop.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d2dde71517addbd41d95e4abf5b487041b7550a5"
+  source_bytes: 15902
+  source_sha256: "141fd5420bcaff4a4bf8541b106636cffa5d64fd736f770338be6fefe33f074e"
+  source_body_sha256: "afef74fb67ec32ccdee5c7332dfea21a448e89eea08ce7135edf3695c3ac9845"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-process-tool-review-feedback-loop.md"
+  source_sha256: "afef74fb67ec32ccdee5c7332dfea21a448e89eea08ce7135edf3695c3ac9845"
+  unresolved_links:
+    - target: "../docs/architecture.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/architecture.md."
+    - target: "../docs/tool-review-hooks-analysis.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/tool-review-hooks-analysis.md."
 ---
 
 # Introduction

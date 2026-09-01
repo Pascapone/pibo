@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Runtime Session Spec: Stateful Python and Node Execution"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/runtime-session-spec.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "90e23e9ccaa88755119a3a51ac42d4e78a61542d"
+  source_bytes: 43832
+  source_sha256: "345bc0d5a8cf7294f802f304670b13f9afdb58d1d528a32585d562502007db4b"
+  source_body_sha256: "345bc0d5a8cf7294f802f304670b13f9afdb58d1d528a32585d562502007db4b"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Runtime Session Spec: Stateful Python and Node Execution
 
 Status: design spec / implementation planning

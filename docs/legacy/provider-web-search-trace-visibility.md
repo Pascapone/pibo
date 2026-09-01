@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Provider Web Search Trace Visibility"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/provider-web-search-trace-visibility.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "76653517c1adac49d5ba206f2c6aac9805a7c901"
+  source_bytes: 2781
+  source_sha256: "185003991171d8e4cd465fe8efcbffc9d0a6b8e13a381862dad19916637d4cb6"
+  source_body_sha256: "185003991171d8e4cd465fe8efcbffc9d0a6b8e13a381862dad19916637d4cb6"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Provider Web Search Trace Visibility
 
 ## Status

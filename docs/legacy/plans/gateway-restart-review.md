@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Review-Dokument: Gateway-Restart CLI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/gateway-restart-review.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "247e5af0aad177860245fbe77e5138a41bac43c6"
+  source_bytes: 3358
+  source_sha256: "989262b7f734911b021d2c9403f4ee611dc0d6826c3cd758317cfe5e7d2d1fae"
+  source_body_sha256: "989262b7f734911b021d2c9403f4ee611dc0d6826c3cd758317cfe5e7d2d1fae"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Review-Dokument: Gateway-Restart CLI
 
 ## Kontext

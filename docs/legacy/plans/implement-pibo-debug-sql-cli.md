@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Plan: Pibo Debug SQL CLI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/implement-pibo-debug-sql-cli.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d1ffa3106316f9750db71da86eea177006323f6f"
+  source_bytes: 11869
+  source_sha256: "3aa860c959fff0c62ca90b0dc7a40f71576ad648ae845ea2a6d06c4ec3f949f3"
+  source_body_sha256: "3aa860c959fff0c62ca90b0dc7a40f71576ad648ae845ea2a6d06c4ec3f949f3"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Plan: Pibo Debug SQL CLI
 
 ## Ziel

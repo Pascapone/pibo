@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow UI Authoring V2 — Versioning, Archive, and Delete Lifecycle"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/06-versioning-archive-delete-lifecycle.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "accbbf22be7eb64542505bca25a17b6da141cb6a"
+  source_bytes: 6998
+  source_sha256: "abf79613f29b3e37d14a5177ef01ed275bc1794b79dd70f2ef305df96f2dc27f"
+  source_body_sha256: "abf79613f29b3e37d14a5177ef01ed275bc1794b79dd70f2ef305df96f2dc27f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow UI Authoring V2 — Versioning, Archive, and Delete Lifecycle
 
 **Status:** Draft  

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design: Pibo Workflow System V1"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/design.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1c5b196b4b9c9836d3951724a0cb1f10a9678f03"
+  source_bytes: 18883
+  source_sha256: "7767ee5ef70105e8294bb952953e8b1923e9694c7f7f9b91a1bac36d129fa92e"
+  source_body_sha256: "7767ee5ef70105e8294bb952953e8b1923e9694c7f7f9b91a1bac36d129fa92e"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design: Pibo Workflow System V1
 
 **Status:** Draft  

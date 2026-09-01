@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementation Plan: pibo compute – Thin Docker Worker CLI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/pibo-compute-cli.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "163951ad65710af3737d7ff68d94a9b1d41ed390"
+  source_bytes: 6084
+  source_sha256: "5d4a6b7aecc99964c8d5d27d46d665b901e6b73181b0c87eff98e01365eb2498"
+  source_body_sha256: "5d4a6b7aecc99964c8d5d27d46d665b901e6b73181b0c87eff98e01365eb2498"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implementation Plan: `pibo compute` – Thin Docker Worker CLI
 
 ## Ziel

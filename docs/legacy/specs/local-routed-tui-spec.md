@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Local Routed TUI Spec"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "LOCAL_ROUTED_TUI_SPEC.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "c9d1fbde826216983d0fa1a5f472366be9df362a"
+  source_bytes: 9738
+  source_sha256: "e01c7b4a4b38e7d574b0d0c4faae3b6d6fa2c132fdf5489916dbfb410f7e08d6"
+  source_body_sha256: "e01c7b4a4b38e7d574b0d0c4faae3b6d6fa2c132fdf5489916dbfb410f7e08d6"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Local Routed TUI Spec
 
 This document describes a local native-feeling Pibo TUI that uses the same routed runtime as the gateway, web channel, and future channels.

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Report: Ink-basierte Pibo CLI Session UI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/ink-cli-session-subset-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "cc01665aaf1ace4fcde1650101c0479ce9ee27ba"
+  source_bytes: 18187
+  source_sha256: "153685737e027b083f90eac69e2741c6c8b150ce2cab0964eaea10decad12832"
+  source_body_sha256: "153685737e027b083f90eac69e2741c6c8b150ce2cab0964eaea10decad12832"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Report: Ink-basierte Pibo CLI Session UI
 
 **Status:** Investigation / Draft  

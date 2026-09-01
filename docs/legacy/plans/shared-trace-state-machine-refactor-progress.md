@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Fortschrittsbericht: Shared Trace State-Machine Refactor"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/shared-trace-state-machine-refactor-PROGRESS.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2361946940fdadfa57bcb3971f2f18d704ae52ba"
+  source_bytes: 4071
+  source_sha256: "789b0b9f9dfe32d33f05a7933b0788f817eeee2cd21d205a14faf303ff34e629"
+  source_body_sha256: "789b0b9f9dfe32d33f05a7933b0788f817eeee2cd21d205a14faf303ff34e629"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Fortschrittsbericht: Shared Trace State-Machine Refactor
 
 **Datum:** 2026-05-04

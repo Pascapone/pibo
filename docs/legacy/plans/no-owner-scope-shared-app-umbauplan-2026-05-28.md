@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Umbauplan: Pibo ohne Owner Scope"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/no-owner-scope-shared-app-umbauplan-2026-05-28.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "4505381b70c2e1d7ac4e8472b866e4417d80945a"
+  source_bytes: 17096
+  source_sha256: "cd85c84d65d3f6bc2b249cf816d3be9df5986c183598805f6fa4c3b218900c03"
+  source_body_sha256: "cd85c84d65d3f6bc2b249cf816d3be9df5986c183598805f6fa4c3b218900c03"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Umbauplan: Pibo ohne Owner Scope
 
 **Status:** Draft  

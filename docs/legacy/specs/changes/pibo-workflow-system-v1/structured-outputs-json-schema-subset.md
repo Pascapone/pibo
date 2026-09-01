@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pibo Workflow V1 Structured Outputs JSON Schema Subset"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/structured-outputs-json-schema-subset.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "bbc13b5a940c18166d6114ae35d1b6040df8d186"
+  source_bytes: 8765
+  source_sha256: "f025f28d91308d51983a4b1352aff5e5dd648495d71456737078dd5d68267dad"
+  source_body_sha256: "f025f28d91308d51983a4b1352aff5e5dd648495d71456737078dd5d68267dad"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Pibo Workflow V1 Structured Outputs JSON Schema Subset
 
 **Status:** Draft  

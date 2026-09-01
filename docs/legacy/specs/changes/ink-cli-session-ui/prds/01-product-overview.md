@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI — Product Overview"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui/prds/01-product-overview.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "79748687c7cee7a4a2781bd29bed47dc0c977bd6"
+  source_bytes: 4649
+  source_sha256: "8969aca4d54b37491df468e690268c90898b4915936dfda63b9d4206a596fed1"
+  source_body_sha256: "8969aca4d54b37491df468e690268c90898b4915936dfda63b9d4206a596fed1"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI — Product Overview
 
 **Status:** Draft  

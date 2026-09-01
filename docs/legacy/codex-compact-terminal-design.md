@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design System: Pibo Codex Compact Terminal"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/codex-compact-terminal-design.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f1f597aff95a49645a7eae03ea240796d390d8ad"
+  source_bytes: 18915
+  source_sha256: "9e13a4d724483813860c6bc045386e3b22f0da410212c61c76a9e4363a310ede"
+  source_body_sha256: "9e13a4d724483813860c6bc045386e3b22f0da410212c61c76a9e4363a310ede"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design System: Pibo Codex Compact Terminal
 **Project ID:** local-reference-pibo-codex-compact-terminal
 

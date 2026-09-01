@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Web Chat Trace UI Session Handoff"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/session-handoff-web-chat-trace-ui.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "17a5ab2a1e0653e32a79d559e83fb19c5cbe34e1"
+  source_bytes: 8879
+  source_sha256: "ef0209548be0c387f61bda79f50179bb3e5005fac21f5342eeebc88fc65cdf93"
+  source_body_sha256: "ef0209548be0c387f61bda79f50179bb3e5005fac21f5342eeebc88fc65cdf93"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Web Chat Trace UI Session Handoff
 
 Date: 2026-04-30

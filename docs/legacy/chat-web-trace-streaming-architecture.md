@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Trace And Streaming Architecture"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/chat-web-trace-streaming-architecture.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9ddb7009eef8787a67082882ac5713dedd595906"
+  source_bytes: 11922
+  source_sha256: "d0698551a3d6a0eb39ca97e862ba43d056947cb3d402d2a8214ef2bd6569c21a"
+  source_body_sha256: "d0698551a3d6a0eb39ca97e862ba43d056947cb3d402d2a8214ef2bd6569c21a"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Web Trace And Streaming Architecture
 
 Date: 2026-05-06

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Ink CLI Terminal Web-Derived Parity Final Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/ink-cli-terminal-web-derived-parity-final-2026-05-18.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "22b3177347cf4d2782002612d406448eb3d6728d"
+  source_bytes: 4450
+  source_sha256: "cff143da8d312aa29f27bcb22565ba7bf6cceb9a7d863907de16e3b9bb3710dd"
+  source_body_sha256: "cff143da8d312aa29f27bcb22565ba7bf6cceb9a7d863907de16e3b9bb3710dd"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Ink CLI Terminal Web-Derived Parity Final Report
 
 **Date:** 2026-05-18  

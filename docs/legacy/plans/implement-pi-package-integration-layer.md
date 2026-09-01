@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implement Pibo-Managed Pi Package Layer"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/implement-pi-package-integration-layer.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "90f37d01ae609350ebd0c30ef382f2a111537894"
+  source_bytes: 16262
+  source_sha256: "da54ff8c0c6743fe5193fb6ed1c8eb51df9870df177aea3a1f8b83eea855831d"
+  source_body_sha256: "da54ff8c0c6743fe5193fb6ed1c8eb51df9870df177aea3a1f8b83eea855831d"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implement Pibo-Managed Pi Package Layer
 
 ## Hard Constraint

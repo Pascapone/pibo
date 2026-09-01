@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow UI Authoring V2 — Implementation Completeness Contract"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/09-implementation-completeness-contract.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "cb4e2fac4399864bcd4c3cccb7dc13520bb9d7e6"
+  source_bytes: 36453
+  source_sha256: "58ea6c331583c0be9ecddd4eddac4c0635d98059c98ae95cf601e972b44ae2ba"
+  source_body_sha256: "58ea6c331583c0be9ecddd4eddac4c0635d98059c98ae95cf601e972b44ae2ba"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow UI Authoring V2 — Implementation Completeness Contract
 
 **Status:** Draft  

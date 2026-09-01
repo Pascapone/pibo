@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Production Deploy Report — Chat Data V2 Follow-up"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-08-chat-data-v2-production-deploy-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "e454aaff70541a5c22056603f3450d8e574f79ba"
+  source_bytes: 5944
+  source_sha256: "1264d21bd51ba9f6f984feef3ebb2949dd9367379a192c2b37c5bd39798e43d8"
+  source_body_sha256: "1264d21bd51ba9f6f984feef3ebb2949dd9367379a192c2b37c5bd39798e43d8"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 > Status: Superseded for runtime decisions. Chat Web was cut over to V2-only on 2026-05-09. Use `plans/2026-05-09-chat-data-v2-cleanup-and-session-unification-plan.md` and the final V2 removal report for current architecture.
 
 # Production Deploy Report — Chat Data V2 Follow-up

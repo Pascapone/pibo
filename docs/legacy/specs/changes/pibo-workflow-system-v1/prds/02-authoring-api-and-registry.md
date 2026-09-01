@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow System V1 — Authoring API and Workflow Registry"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/prds/02-authoring-api-and-registry.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2f232396949becb5cad9118723dcac12b3444dc5"
+  source_bytes: 6621
+  source_sha256: "08eb10e5bc5d929d30ffdc058a5fe332e621c8b52025eec3c34b30a9bc62f73e"
+  source_body_sha256: "08eb10e5bc5d929d30ffdc058a5fe332e621c8b52025eec3c34b30a9bc62f73e"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow System V1 — Authoring API and Workflow Registry
 
 **Status:** Draft  

@@ -1,10 +1,21 @@
 ---
-title: Pibo Session Model Rebuild
-version: 1.0
-date_created: 2026-04-29
-last_updated: 2026-05-01
-owner: Pibo
-tags: [architecture, sessions, routing, web-chat, plugins]
+type: "Historical Record"
+title: "Pibo Session Model Rebuild"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-architecture-pibo-session-model.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "677a9a8725974eae841092bbd736804799a7d193"
+  source_bytes: 19467
+  source_sha256: "b40d2bf05e3f2135c3a1cce88ff2ee49e929f8f9a7622a274694465ef94239eb"
+  source_body_sha256: "419db5ea1a968d2da956eeeb03cbb0a7b0ab50e6c17f98576f8d633cb60cb762"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
 ---
 
 # Introduction

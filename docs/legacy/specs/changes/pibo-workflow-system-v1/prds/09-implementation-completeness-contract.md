@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow System V1 — Implementation Completeness Contract"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/prds/09-implementation-completeness-contract.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d0bdca020ad217a5639f9f99ed50a0e1e49a3b1a"
+  source_bytes: 39593
+  source_sha256: "9312d01f8aa9a96fa363b01a30e5fb9d212fa0031d7cebb284c2b45ee7c72dce"
+  source_body_sha256: "9312d01f8aa9a96fa363b01a30e5fb9d212fa0031d7cebb284c2b45ee7c72dce"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow System V1 — Implementation Completeness Contract
 
 **Status:** Draft  

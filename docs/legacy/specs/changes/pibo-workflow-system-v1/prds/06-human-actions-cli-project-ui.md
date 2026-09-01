@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow System V1 — Human Actions, CLI, and Project UI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/prds/06-human-actions-cli-project-ui.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "6a948da95374e8da3bc3d00221495d9a657a008e"
+  source_bytes: 6198
+  source_sha256: "d6ab0e5cb9b02686b2e68854d21404b5653c212d49edd158eda293d5a37e4ac4"
+  source_body_sha256: "d6ab0e5cb9b02686b2e68854d21404b5653c212d49edd158eda293d5a37e4ac4"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow System V1 — Human Actions, CLI, and Project UI
 
 **Status:** Draft  

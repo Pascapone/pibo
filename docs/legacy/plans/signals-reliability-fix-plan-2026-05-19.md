@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Plan: Signals Reliability Fix"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/signals-reliability-fix-plan-2026-05-19.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "4ec2b7faf10ca265cf388d9de0e9a35e5f64d7b4"
+  source_bytes: 13592
+  source_sha256: "8998fd96be6fea493fa318531e62d78ee31b1e8039a7f7371d06d5030d73e871"
+  source_body_sha256: "8998fd96be6fea493fa318531e62d78ee31b1e8039a7f7371d06d5030d73e871"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Plan: Signals Reliability Fix
 
 **Status:** Draft

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "OpenAI Provider Web Search Validation - 2026-05-02"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/openai-provider-web-search-validation-2026-05-02.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7e30aaede94eb70f42d0332649b1545fa7f4156a"
+  source_bytes: 2267
+  source_sha256: "016d498c8ae17ac61905ed0c0c297b29d940a54a614a3a355dd3080f1b9968d7"
+  source_body_sha256: "016d498c8ae17ac61905ed0c0c297b29d940a54a614a3a355dd3080f1b9968d7"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # OpenAI Provider Web Search Validation - 2026-05-02
 
 ## Session Reviewed

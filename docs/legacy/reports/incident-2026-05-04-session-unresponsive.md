@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Incident Report: Session Unresponsive — psbb924959-31cf-47df-a0e8-832bf99968e2"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/incident-2026-05-04-session-unresponsive.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b0289cef0acc20be51627b0423620f47782a42f0"
+  source_bytes: 4878
+  source_sha256: "1571646e801cb32dc9ca095f4c99469c83ea1771e573f09430e8db0e9280fc60"
+  source_body_sha256: "1571646e801cb32dc9ca095f4c99469c83ea1771e573f09430e8db0e9280fc60"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Incident Report: Session Unresponsive — `ps_bb924959-31cf-47df-a0e8-832bf99968e2`
 
 **Date:** 2026-05-04  

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Data V2 Final Legacy Runtime Removal"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-09-chat-data-v2-final-legacy-removal-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "ad80c03c67f2b161ec3cdbf2bde3c0192191d592"
+  source_bytes: 2087
+  source_sha256: "eb2b836f44e864aea4697af4be532749ea25fedecccd7317fe3a7a67c0415466"
+  source_body_sha256: "eb2b836f44e864aea4697af4be532749ea25fedecccd7317fe3a7a67c0415466"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Data V2 Final Legacy Runtime Removal
 
 Date: 2026-05-09

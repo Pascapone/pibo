@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pi Package Gallery UI Analysis"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "handoffs/pi-package-gallery-ui-analysis-2026-05-02.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "89341f9695d5b2e7ae054440125bc4d6bd099bed"
+  source_bytes: 11303
+  source_sha256: "4f2e572c303e09a7bb8f9de1d7695ad9adf3e24406d87658e85d7b426a53d325"
+  source_body_sha256: "4f2e572c303e09a7bb8f9de1d7695ad9adf3e24406d87658e85d7b426a53d325"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Pi Package Gallery UI Analysis
 
 Date: 2026-05-02

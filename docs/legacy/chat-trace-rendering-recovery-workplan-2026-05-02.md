@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Trace Rendering Recovery Workplan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/chat-trace-rendering-recovery-workplan-2026-05-02.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "ac22b444fb5391731d3157f55dc53c9146089b98"
+  source_bytes: 10733
+  source_sha256: "e104297ad17bb5fd29deb90bb526ee966e149173fc738ee895e15f9ad905d684"
+  source_body_sha256: "e104297ad17bb5fd29deb90bb526ee966e149173fc738ee895e15f9ad905d684"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Trace Rendering Recovery Workplan
 
 Date: 2026-05-02

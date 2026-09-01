@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Final Owner Scope Removal Implementation Progress"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "IMPLEMENTATION_PROGRESS.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "fcd20cddcf14e7bbd5740dce8c990834ea7e002d"
+  source_bytes: 118391
+  source_sha256: "7ce342ab35b22d2555462b22c13cb3cdb9c9bb05aac79c9b52d33f4dcaba2851"
+  source_body_sha256: "7ce342ab35b22d2555462b22c13cb3cdb9c9bb05aac79c9b52d33f4dcaba2851"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Final Owner Scope Removal Implementation Progress
 
 ## Ralph job setup

@@ -1,10 +1,21 @@
 ---
-title: Pibo Session Signal System Specification
-version: 0.1
-date_created: 2026-05-06
-last_updated: 2026-05-06
-owner: Pibo maintainers
-tags: [architecture, signals, sessions, chat, observability, performance]
+type: "Historical Record"
+title: "Pibo Session Signal System Specification"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-architecture-session-signal-system.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9b7e0160ff2092476c2624b953693766516debc4"
+  source_bytes: 27695
+  source_sha256: "9ea75172a105e263271e233957103348012f8392ed94d870bdf38b5a1dbd99fe"
+  source_body_sha256: "2ed48fc4030f2e943fde735698a44ed1d40c699d4ac1ebc6b7b06aaff474689c"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
 ---
 
 # Introduction

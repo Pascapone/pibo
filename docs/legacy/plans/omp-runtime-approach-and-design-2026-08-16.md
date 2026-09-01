@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Oh My Pi (OMP) as a Pibo Agent Runtime — Approach & Design"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/plans/omp-runtime-approach-and-design-2026-08-16.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "cdb793c7b8e26ec67660ff5915040ca155db3bde"
+  source_bytes: 19797
+  source_sha256: "89a9c120dca91be3261b891dbf4eca66f248788651c8c27fdf872ea9c65eddf6"
+  source_body_sha256: "89a9c120dca91be3261b891dbf4eca66f248788651c8c27fdf872ea9c65eddf6"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Oh My Pi (OMP) as a Pibo Agent Runtime — Approach & Design
 
 **Status:** Proposed (critic gate pending)

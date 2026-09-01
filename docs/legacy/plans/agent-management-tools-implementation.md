@@ -1,9 +1,28 @@
+---
+type: "Historical Record"
+title: "Agent Management Tools Implementation Plan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/plans/agent-management-tools-implementation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "0a9c29ce0037883e9eca48980ff4d121f38f4f48"
+  source_bytes: 5048
+  source_sha256: "e962fc7d41974dbd58bd0eeb5d36c0d667c94c8dfddecf1c1040cba7c8d62d7f"
+  source_body_sha256: "e962fc7d41974dbd58bd0eeb5d36c0d667c94c8dfddecf1c1040cba7c8d62d7f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Agent Management Tools Implementation Plan
 
 **Status:** Done
 **Date:** 2026-08-23
 **Updated:** 2026-08-25
-**Spec:** [Agent Delegation and Management](../specs/capabilities/subagent-delegation.md)
+**Spec:** [Agent Delegation and Management](/specs/orchestration/subagents.md)
 **Design:** [Agent Management Tool and CLI Design](./agent-management-tool-design.md)
 
 ## Success Boundary

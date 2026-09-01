@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Installed Pibo Tool Context"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/pibo-tools-context.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7583ea20a0b83733a8fc6580e11d38dbf5885d4d"
+  source_bytes: 1190
+  source_sha256: "14ff38470ca93df7cd02e6852351f9b1077fb6a233aeac35f95f718be21bbce9"
+  source_body_sha256: "14ff38470ca93df7cd02e6852351f9b1077fb6a233aeac35f95f718be21bbce9"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Installed Pibo Tool Context
 
 Installed curated CLI tools can publish a short runtime-context snippet through the `pibo tools` registry.

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Web Compact Terminal Reference Audit"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/web-terminal-reference-audit.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d8083dda7bf572ae3ccb55b585dcde704b864a33"
+  source_bytes: 11488
+  source_sha256: "05a77dd14db80bfe9451c835c9d699ef796707223e5b8733ca37cb09c20545cc"
+  source_body_sha256: "05a77dd14db80bfe9451c835c9d699ef796707223e5b8733ca37cb09c20545cc"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Web Compact Terminal Reference Audit
 
 **Date:** 2026-05-17  

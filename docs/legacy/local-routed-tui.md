@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Local Routed TUI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/local-routed-tui.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2e4e37a7288eca37c16866d79fc81da1359dcc2c"
+  source_bytes: 5096
+  source_sha256: "e4e87a71ba8489f79551c7b2cc8fbd8f460356b19c86fa708be445d24c1e910d"
+  source_body_sha256: "e4e87a71ba8489f79551c7b2cc8fbd8f460356b19c86fa708be445d24c1e910d"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Local Routed TUI
 
 The local routed TUI is an explicit optional adapter for running a Pibo routed session directly in a terminal without starting the gateway daemon.

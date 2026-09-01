@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Session Signal System Implementation Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-06-session-signal-system-implementation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "a80f829216b9a1db67f25eb561e30e588684a614"
+  source_bytes: 5110
+  source_sha256: "ee498dc7cdcc378e1b47f2f6ec3cdc0643eb63cd2b61a6ade8ed49eac27907bb"
+  source_body_sha256: "ee498dc7cdcc378e1b47f2f6ec3cdc0643eb63cd2b61a6ade8ed49eac27907bb"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Session Signal System Implementation Report
 
 Date: 2026-05-06

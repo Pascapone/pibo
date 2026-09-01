@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Umbauplan: Shared Trace State-Machine"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/shared-trace-state-machine-refactor.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7a63edbeb6ce550bf8025cffc4ee5c123b9c1126"
+  source_bytes: 7148
+  source_sha256: "dc605ad9a55e5443b11c130403a576a226214abfc7c593eef5ec696537ca0898"
+  source_body_sha256: "dc605ad9a55e5443b11c130403a576a226214abfc7c593eef5ec696537ca0898"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Umbauplan: Shared Trace State-Machine
 
 **Datum:** 2026-05-04

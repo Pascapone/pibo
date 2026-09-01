@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 02: Shared Render Flow and Parity Fixtures"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/02-shared-render-flow-and-fixtures.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b61558e1d27aeca361f4dab28f5d22aa7f9f8737"
+  source_bytes: 5317
+  source_sha256: "7867c99c1004bb757bb100e2bcd149b58c7a023c73e00be4fe99985b93164765"
+  source_body_sha256: "7867c99c1004bb757bb100e2bcd149b58c7a023c73e00be4fe99985b93164765"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 02: Shared Render Flow and Parity Fixtures
 
 **Status:** Draft  

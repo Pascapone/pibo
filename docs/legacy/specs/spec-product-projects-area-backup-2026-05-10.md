@@ -1,11 +1,21 @@
 ---
-title: Pibo Projects Area
-version: 0.5
-date_created: 2026-05-05
-last_updated: 2026-05-09
-owner: Pibo
-status: draft
-tags: [product, web-chat, projects, sessions, workflow, state-machine, docker, worktree]
+type: "Historical Record"
+title: "Pibo Projects Area"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-product-projects-area.backup-2026-05-10.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "aaff8574ea140792a1d31ad06d5b685090f0babd"
+  source_bytes: 36567
+  source_sha256: "47bd114fb675057c5e3c8e1f2cd87daa3adf1c3e0c3adc3ca24144f291d1316a"
+  source_body_sha256: "b2856536e6014a468f47929a7dc84c9201ce945dca7bbad900eefab37fa9f08f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
 ---
 
 # Introduction

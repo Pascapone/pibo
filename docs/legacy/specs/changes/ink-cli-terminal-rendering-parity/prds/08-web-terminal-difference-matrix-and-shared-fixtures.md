@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 08: Web Terminal Difference Matrix and Shared Fixtures"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/08-web-terminal-difference-matrix-and-shared-fixtures.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "772327209e840aa3d7195f1942082b80760b8566"
+  source_bytes: 5583
+  source_sha256: "37dab045315b03cf089b65da0c12255beb155305b63c3cd8b5dbc32723cddbed"
+  source_body_sha256: "37dab045315b03cf089b65da0c12255beb155305b63c3cd8b5dbc32723cddbed"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 08: Web Terminal Difference Matrix and Shared Fixtures
 
 **Status:** Draft  

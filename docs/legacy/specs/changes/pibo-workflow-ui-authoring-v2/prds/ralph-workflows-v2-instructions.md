@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Ralph Auftrag: Pibo Workflow UI Authoring V2"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/ralph-workflows-v2-instructions.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "8340868fd9042b86e00073412020a68bf0e08fa2"
+  source_bytes: 6483
+  source_sha256: "450cd9133073b3b192e5f7df5b1793bc17499089674ca3cdc8c1b994f1ac76fa"
+  source_body_sha256: "450cd9133073b3b192e5f7df5b1793bc17499089674ca3cdc8c1b994f1ac76fa"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Ralph Auftrag: Pibo Workflow UI Authoring V2
 
 ## Worktree

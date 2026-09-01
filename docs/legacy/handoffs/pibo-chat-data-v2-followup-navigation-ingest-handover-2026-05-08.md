@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Handover — Pibo Chat Data System V2 Follow-up: Navigation Split + User Shadow Ingest"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "handoffs/pibo-chat-data-v2-followup-navigation-ingest-handover-2026-05-08.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2459748f67dfde8a94bfd23415d005960c33ea95"
+  source_bytes: 14356
+  source_sha256: "625127b451f84023721b7289c89b353bf37afdc6af1e3e68bd334225f366ef1c"
+  source_body_sha256: "625127b451f84023721b7289c89b353bf37afdc6af1e3e68bd334225f366ef1c"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 > Status: Superseded for runtime decisions. Chat Web was cut over to V2-only on 2026-05-09. Use `plans/2026-05-09-chat-data-v2-cleanup-and-session-unification-plan.md` and the final V2 removal report for current architecture.
 
 # Handover — Pibo Chat Data System V2 Follow-up: Navigation Split + User Shadow Ingest

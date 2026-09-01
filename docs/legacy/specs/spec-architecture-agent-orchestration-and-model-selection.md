@@ -1,10 +1,35 @@
 ---
-title: Pibo Agent Orchestration And Model Selection
-version: 1.0
-date_created: 2026-05-02
-last_updated: 2026-05-02
-owner: Pibo maintainers
-tags: [architecture, agents, subagents, orchestration, worktrees, models]
+type: "Historical Record"
+title: "Pibo Agent Orchestration And Model Selection"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-architecture-agent-orchestration-and-model-selection.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "01ef6febf41a505e6eef696428829b60e837266c"
+  source_bytes: 21952
+  source_sha256: "4498fea1531625acb959ae940f2af305c5f4bc6add9cef230adb53d259382868"
+  source_body_sha256: "a7ccddf56cf721d1346acecbf425e90d769faf1ef0bfc03af39caa2868aca048"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-architecture-agent-orchestration-and-model-selection.md"
+  source_sha256: "a7ccddf56cf721d1346acecbf425e90d769faf1ef0bfc03af39caa2868aca048"
+  unresolved_links:
+    - target: "HOME>/code/pibo/spec/spec-architecture-pibo-session-model.md:1"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/spec/spec-architecture-pibo-session-model.md:1."
+    - target: "HOME>/code/pibo/spec/spec-infrastructure-web-auth-chat.md:1"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/spec/spec-infrastructure-web-auth-chat.md:1."
+    - target: "HOME>/code/pibo/spec/spec-architecture-codex-compat-plugin.md:1"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/spec/spec-architecture-codex-compat-plugin.md:1."
+    - target: "HOME>/code/pibo/docs/architecture.md:89"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/docs/architecture.md:89."
+    - target: "HOME>/code/pibo/docs/agent-run-yield-spec.md:1"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/docs/agent-run-yield-spec.md:1."
 ---
 
 # Introduction

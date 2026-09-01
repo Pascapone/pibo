@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI V2 — Interactive Keyboard Flows"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/prds/06-interactive-keyboard-flows.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "026336c1c01a42d1b019a6af7850a7429a75cfa0"
+  source_bytes: 3027
+  source_sha256: "9cb06325c6cc1daa15dfe2ebc29d90ed6e22199140db6761c7e1e107cb3c478a"
+  source_body_sha256: "9cb06325c6cc1daa15dfe2ebc29d90ed6e22199140db6761c7e1e107cb3c478a"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI V2 — Interactive Keyboard Flows
 
 **Status:** Draft  

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Webchat OOM / Delta Compaction Incident and Hardening Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-05-webchat-oom-delta-compaction-incident-and-hardening-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "6e57eebe6dd82ec3a614661aa97292bc5993eb5d"
+  source_bytes: 11268
+  source_sha256: "6884c22a2a90ada84f044d8f2ffe01b7762869b3b71e451d542ab3426d6f7c5e"
+  source_body_sha256: "6884c22a2a90ada84f044d8f2ffe01b7762869b3b71e451d542ab3426d6f7c5e"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Webchat OOM / Delta Compaction Incident and Hardening Report
 
 Date: 2026-05-05

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Proposal: Compute Browser Resource Lifecycle"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/compute-browser-resource-lifecycle/proposal.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "be98568bb1df10c61c2e6e20d1d34f44d1418606"
+  source_bytes: 3721
+  source_sha256: "3d89e44e70e26e12751aae499219f4f2a250b6e29a770baa2b00111741a709ca"
+  source_body_sha256: "3d89e44e70e26e12751aae499219f4f2a250b6e29a770baa2b00111741a709ca"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Proposal: Compute Browser Resource Lifecycle
 
 ## Why

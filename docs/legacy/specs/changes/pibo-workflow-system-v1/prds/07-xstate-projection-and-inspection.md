@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow System V1 — XState Projection and Inspection"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/prds/07-xstate-projection-and-inspection.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b100069b8a39f5b51b6377e8e51d9e8d2cc006bf"
+  source_bytes: 5953
+  source_sha256: "3ea81190452bdc79a0e27e812954d7847484cd9f19227fdfd9b26b0084dd456c"
+  source_body_sha256: "3ea81190452bdc79a0e27e812954d7847484cd9f19227fdfd9b26b0084dd456c"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow System V1 — XState Projection and Inspection
 
 **Status:** Draft  

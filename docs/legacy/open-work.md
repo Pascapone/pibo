@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "mcp-native-extension-implementation-plan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "open-work.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "4098030a1d40fb8505aed8df242dd8810272ad85"
+  source_bytes: 3943
+  source_sha256: "b30867c221fe34231ef4a443c3cfabbf4d82dac8491ce8539b98b66024419f2d"
+  source_body_sha256: "b30867c221fe34231ef4a443c3cfabbf4d82dac8491ce8539b98b66024419f2d"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # mcp-native-extension-implementation-plan
   docs/mcp-native-extension-implementation-plan.md
 

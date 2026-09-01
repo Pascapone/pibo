@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI V2 — Shared Terminal View Model V2"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/prds/03-shared-terminal-view-model-v2.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "641f06b79ec1dfafaad7c399cc5975c55cd9a968"
+  source_bytes: 2762
+  source_sha256: "e0a9e125d5497190e430174577efc7bcf18e4dfbdc59f99dad00a5fbcb61a853"
+  source_body_sha256: "e0a9e125d5497190e430174577efc7bcf18e4dfbdc59f99dad00a5fbcb61a853"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI V2 — Shared Terminal View Model V2
 
 **Status:** Draft  

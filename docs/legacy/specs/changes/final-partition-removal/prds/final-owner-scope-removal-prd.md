@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Owner Scope vollständig entfernen"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/final-partition-removal/prds/final-owner-scope-removal-prd.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "560e0c4750383c25d0c2514c8a6fafc4f4e41af9"
+  source_bytes: 14809
+  source_sha256: "ad4b7b98db10561fc0cc70ea9ec9ac15fe992dc0b2c6ddce5ca859810b76afdb"
+  source_body_sha256: "ad4b7b98db10561fc0cc70ea9ec9ac15fe992dc0b2c6ddce5ca859810b76afdb"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Owner Scope vollständig entfernen
 
 **Status:** Draft  

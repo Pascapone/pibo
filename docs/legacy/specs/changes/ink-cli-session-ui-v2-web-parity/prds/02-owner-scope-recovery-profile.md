@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI V2 — Owner Scope and Recovery Profile"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/prds/02-owner-scope-recovery-profile.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f3cfd00ae66ab32e2793c228ac83dccd32791ae4"
+  source_bytes: 3439
+  source_sha256: "8048c2cc24db8bb9d730232a472a9f1d952c67d2bba44f93f51b5c991c55071e"
+  source_body_sha256: "8048c2cc24db8bb9d730232a472a9f1d952c67d2bba44f93f51b5c991c55071e"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI V2 — Owner Scope and Recovery Profile
 
 **Status:** Draft  

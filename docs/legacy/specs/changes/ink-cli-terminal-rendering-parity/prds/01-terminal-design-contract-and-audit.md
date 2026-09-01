@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 01: Terminal Design Contract and Current-State Audit"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/01-terminal-design-contract-and-audit.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "79710c40f28139a2cf04f13915352e2b0b422d26"
+  source_bytes: 5165
+  source_sha256: "8c2717105eb6ed2eb6f5807f6ba5c81568ca058400fc138a77a2805f8f039cdc"
+  source_body_sha256: "8c2717105eb6ed2eb6f5807f6ba5c81568ca058400fc138a77a2805f8f039cdc"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 01: Terminal Design Contract and Current-State Audit
 
 **Status:** Draft  

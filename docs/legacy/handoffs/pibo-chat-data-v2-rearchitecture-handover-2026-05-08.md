@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Handover — Pibo Chat Data System V2 Rearchitecture"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "handoffs/pibo-chat-data-v2-rearchitecture-handover-2026-05-08.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "5ed23b5991363024e445944b9f635805bfcd87b2"
+  source_bytes: 11771
+  source_sha256: "d3ecbb4a414801cfea52d3ad2ed61bc8dd219e6102df17e388e395ef036b8660"
+  source_body_sha256: "d3ecbb4a414801cfea52d3ad2ed61bc8dd219e6102df17e388e395ef036b8660"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Handover — Pibo Chat Data System V2 Rearchitecture
 
 Date: 2026-05-08  

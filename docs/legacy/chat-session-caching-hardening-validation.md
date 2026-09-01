@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Session Caching Hardening Validation"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/chat-session-caching-hardening-validation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "22b184a9063dc15ce13430782d39ab44682f1d72"
+  source_bytes: 2183
+  source_sha256: "d3f45c22be4af5694b672e8ade9250564fb461794430eb21a5174ca3cff56971"
+  source_body_sha256: "d3f45c22be4af5694b672e8ade9250564fb461794430eb21a5174ca3cff56971"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Session Caching Hardening Validation
 
 Date: 2026-05-02

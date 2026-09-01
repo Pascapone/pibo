@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pi Packages"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/pi-packages.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9e5c54d47b292f70bbd82d54dde5da09db93af4b"
+  source_bytes: 2305
+  source_sha256: "8f7a4c27868233493547465191e521c0f3a6c65e7150cd38c5c9a1ab5aff8880"
+  source_body_sha256: "8f7a4c27868233493547465191e521c0f3a6c65e7150cd38c5c9a1ab5aff8880"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Pi Packages
 
 `pibo pi-packages` registers Pi Coding Agent packages for opt-in use by Pibo profiles and custom agents.

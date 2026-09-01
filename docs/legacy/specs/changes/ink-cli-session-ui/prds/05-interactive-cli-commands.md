@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI — Interactive CLI Commands"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui/prds/05-interactive-cli-commands.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "45606ab3dcf7ca465d25c453252c36b0dc8c562c"
+  source_bytes: 5144
+  source_sha256: "24ae193be589b9501d0dd4896df55c9364f1129194668a5a58fd84a6125aede7"
+  source_body_sha256: "24ae193be589b9501d0dd4896df55c9364f1129194668a5a58fd84a6125aede7"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI — Interactive CLI Commands
 
 **Status:** Draft  

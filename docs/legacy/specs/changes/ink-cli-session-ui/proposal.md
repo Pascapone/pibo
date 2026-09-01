@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Proposal: Ink CLI Session UI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui/proposal.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9e500faf132bd2d3a0b8d5be82c4b21651a849ea"
+  source_bytes: 6109
+  source_sha256: "8cf37b38baf3efbad4e80e88dbaf2065671b401d588939e0d4f245d647db9c7c"
+  source_body_sha256: "8cf37b38baf3efbad4e80e88dbaf2065671b401d588939e0d4f245d647db9c7c"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Proposal: Ink CLI Session UI
 
 **Status:** Draft  

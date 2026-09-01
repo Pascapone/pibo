@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pibo Chat Data System — finaler Umbauplan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/pibo-chat-data-system-final-rearchitecture-plan-2026-05-08.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "058e64018afeb876ec7cef34548f50399982827b"
+  source_bytes: 49809
+  source_sha256: "03d2f16c9a88785efd5af7b90719cecdef7b49f5f7d20dd5f32dcada46388fd7"
+  source_body_sha256: "03d2f16c9a88785efd5af7b90719cecdef7b49f5f7d20dd5f32dcada46388fd7"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 > Status: Superseded for runtime decisions. Chat Web was cut over to V2-only on 2026-05-09. Use `plans/2026-05-09-chat-data-v2-cleanup-and-session-unification-plan.md` and the final V2 removal report for current architecture.
 
 # Pibo Chat Data System — finaler Umbauplan

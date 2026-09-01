@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Agent Run Yield Research"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/agent-run-yield-research.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7aa0679244039fc07acc6d32c4881932381b47aa"
+  source_bytes: 15150
+  source_sha256: "ae44b4126a1d9cdf2eb3d914234cb0a801e1eeaa8c9ca86baf43d2995ba65700"
+  source_body_sha256: "ae44b4126a1d9cdf2eb3d914234cb0a801e1eeaa8c9ca86baf43d2995ba65700"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Agent Run Yield Research
 
 This document captures the current findings about long-running agent tools, Codex-style yielding, and how the idea should translate into Pibo. It is intentionally a research note, not an implementation spec.

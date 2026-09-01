@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Proposal: Web Annotations Plugin"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/web-annotations-plugin/proposal.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2d3864039d93043b55036ceb411d6ae9de30093a"
+  source_bytes: 3312
+  source_sha256: "0f3333990c992447bf3ab6870f511ef0e9f3c153b8a4189929e908aa2aaee8ea"
+  source_body_sha256: "0f3333990c992447bf3ab6870f511ef0e9f3c153b8a4189929e908aa2aaee8ea"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Proposal: Web Annotations Plugin
 
 ## Why

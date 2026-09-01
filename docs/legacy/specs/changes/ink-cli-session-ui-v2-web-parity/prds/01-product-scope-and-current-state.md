@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI V2 — Product Scope and Current-State Audit"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/prds/01-product-scope-and-current-state.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "85dd44f8fafba02eee82db086039439809fb28a7"
+  source_bytes: 2715
+  source_sha256: "7d0ba204298442411ac5fe64a45d85d572fd6b509a01590b23a381b5155e2266"
+  source_body_sha256: "7d0ba204298442411ac5fe64a45d85d572fd6b509a01590b23a381b5155e2266"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI V2 — Product Scope and Current-State Audit
 
 **Status:** Draft  
