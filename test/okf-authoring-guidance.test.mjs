@@ -180,8 +180,23 @@ test("foundation relocations preserve the six pending source files byte for byte
 });
 
 test("pending bodies changed only to chase relocations remain at baseline bytes", () => {
+	const localAuthPaths = [
+		"docs/plans/local-auth-gateway-implementation-plan-2026-06-14.md",
+		"docs/legacy/plans/local-auth-gateway-implementation-plan-2026-06-14.md",
+	];
+	const presentLocalAuthPaths = localAuthPaths.filter((path) => existsSync(path));
+	assert.equal(presentLocalAuthPaths.length, 1, "exactly one local-auth plan path must exist");
+	const [localAuthPath] = presentLocalAuthPaths;
+	let localAuthBody = readFileSync(localAuthPath);
+	if (localAuthPath === localAuthPaths[1]) {
+		const envelope = /^---(?:\r\n|\n|\r)[\s\S]*?(?:\r\n|\n|\r)---(?:\r\n|\n|\r)/.exec(localAuthBody.toString("utf8"));
+		assert(envelope, `${localAuthPath} must have exactly one frontmatter envelope`);
+		localAuthBody = localAuthBody.subarray(Buffer.byteLength(envelope[0]));
+		assert.doesNotMatch(localAuthBody.toString("utf8"), /^---(?:\r\n|\n|\r)/, `${localAuthPath} has multiple frontmatter envelopes`);
+	}
+	assert.equal(createHash("sha256").update(localAuthBody).digest("hex"), "a21786efd362574041768edf331c0981922bd6be59ebf65731c38d39a9867fa5", localAuthPath);
+
 	const expected = new Map([
-		["docs/plans/local-auth-gateway-implementation-plan-2026-06-14.md", "a21786efd362574041768edf331c0981922bd6be59ebf65731c38d39a9867fa5"],
 		["docs/specs/changes/bootstrap-host-installation/spec.md", "8b009ab60551f6076bb55f6f57f0d50224a6eb299f86c212ca0fa3f5d78f1e1e"],
 	]);
 	for (const [path, hash] of expected) assert.equal(createHash("sha256").update(readFileSync(path)).digest("hex"), hash, path);
