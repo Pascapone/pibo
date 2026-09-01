@@ -102,6 +102,10 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			await runDebugPersistence(args.slice(1));
 			return;
 		}
+		if (args[0] === "repair") {
+			await runDebugRepair(args.slice(1));
+			return;
+		}
 		if (args[0] === "runs") {
 			await runDebugRuns(args.slice(1));
 			return;
@@ -237,6 +241,95 @@ function validateOutputPersistenceInspectionArgs(args: string[], allowPositional
 	}
 	if (allowPositionalSession && hasSessionOption && positionalCount > 0) {
 		throw new Error("Use either a positional Pibo Session ID or --session, not both");
+	}
+}
+
+async function runDebugRepair(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugRepairDiscovery();
+		return;
+	}
+	if (args[0] !== "output") {
+		throw new Error(`Unknown pibo debug repair command "${args[0]}". Run pibo debug repair --help.`);
+	}
+	if (args[1] === "--help" || args[1] === "-h") {
+		printDebugRepairDiscovery();
+		return;
+	}
+	const repairArgs = args.slice(1);
+	validateOutputRepairArgs(repairArgs);
+	const options = parseOptions(repairArgs);
+	if (options.apply && options.dryRun) throw new Error("Choose either --dry-run or --apply");
+	if (options.destructive) throw new Error("Use --apply for output repair; --destructive is not supported");
+	if (options.after && !Number.isFinite(Date.parse(options.after))) throw new Error("--since must be an ISO date");
+	if (options.before && !Number.isFinite(Date.parse(options.before))) throw new Error("--before must be an ISO date");
+	if (options.after && options.before && Date.parse(options.after) >= Date.parse(options.before)) {
+		throw new Error("--since must be earlier than --before");
+	}
+	if (options.key && options.positionals.length > 1) throw new Error("With --session, provide at most one positional <event-id>");
+	const piboSessionId = options.key ?? options.positionals[0];
+	const eventId = options.key ? options.positionals[0] : options.positionals[1];
+	if (!piboSessionId) throw new Error("pibo debug repair output requires a session id or --session <pibo-session-id>");
+	const { formatJson } = await import("./sql.js");
+	const {
+		formatOutputTurnRepair,
+		readOutputRepairAdapterEvidence,
+		repairOutputTurn,
+		repairOutputTurns,
+	} = await import("./output-repair.js");
+	const store = resolveDebugStore("pibo-data");
+	const reliabilityStore = resolveDebugStore("reliability");
+	const adapterEvidence = await readOutputRepairAdapterEvidence({ store, piboSessionId });
+	const result = eventId
+		? repairOutputTurn({ store, reliabilityStore, piboSessionId, eventId, adapterEvidence, apply: options.apply })
+		: repairOutputTurns({
+			store,
+			reliabilityStore,
+			piboSessionId,
+			since: options.after,
+			before: options.before,
+			limit: options.limit,
+			adapterEvidence,
+			apply: options.apply,
+		});
+	if (options.json) console.log(formatJson(result));
+	else console.log(formatOutputTurnRepair(result));
+}
+
+function validateOutputRepairArgs(args: string[]): void {
+	const valueOptions = new Set(["--session", "--since", "--before", "--limit"]);
+	const flagOptions = new Set(["--json", "--dry-run", "--apply", "--destructive"]);
+	const seen = new Set<string>();
+	const positionals: string[] = [];
+	let hasSessionOption = false;
+	let hasScopeOption = false;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (flagOptions.has(arg)) {
+			if (seen.has(arg)) throw new Error(`Output repair option ${arg} may only be provided once`);
+			seen.add(arg);
+			continue;
+		}
+		if (valueOptions.has(arg)) {
+			if (seen.has(arg)) throw new Error(`Output repair option ${arg} may only be provided once`);
+			const value = args[index + 1];
+			if (!value || value.startsWith("-")) throw new Error(`${arg} requires a value`);
+			seen.add(arg);
+			if (arg === "--session") hasSessionOption = true;
+			else hasScopeOption = true;
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("-")) throw new Error(`Unknown output repair option "${arg}"`);
+		positionals.push(arg);
+	}
+	if (hasSessionOption) {
+		if (positionals.length > 1) throw new Error("With --session, provide at most one positional <event-id>");
+	} else if (positionals.length !== 2) {
+		throw new Error("Exact output repair requires <pibo-session-id> <event-id>; use --session for scoped repair");
+	}
+	if (hasScopeOption && positionals.length > 0) {
+		throw new Error("--since, --before, and --limit are only supported for scoped repair without an <event-id>");
 	}
 }
 
@@ -1169,6 +1262,7 @@ Commands:
   jobs     Inspect durable Pibo jobs and DLQ
   persistence Audit output persistence and related dead letters
   integrity Compatibility alias for output persistence audit
+  repair   Dry-run or apply explicit persisted-output repairs
   runs     Inspect durable yielded runs
   resources Show gateway memory reserve, related child processes, and heavy daemons
   signals  Inspect live session signal snapshots through Chat Web APIs
@@ -1184,6 +1278,7 @@ Next:
   pibo debug trace <pibo-session-id> --running-only
   pibo debug events stream --topic pibo.output
   pibo debug persistence
+  pibo debug repair output <pibo-session-id> <event-id> --dry-run
   pibo debug agents <parent-session-id> list
   pibo debug resources --json
   pibo debug signals tree ps_...
@@ -1245,6 +1340,29 @@ Reports:
 Next:
   pibo debug persistence dead-letters --json
   pibo debug persistence audit --json
+`);
+}
+
+function printDebugRepairDiscovery(): void {
+	console.log(`pibo debug repair - explicitly repair persisted output
+
+Usage:
+  pibo debug repair output <pibo-session-id> <event-id> [--dry-run|--apply] [--json]
+  pibo debug repair output --session <pibo-session-id> [--since <iso-date>] [--before <iso-date>] [--limit n] [--dry-run|--apply] [--json]
+
+Behavior:
+  Dry-run is the default. --apply is required for every mutation.
+  Repair requires exactly one persisted message start, an inactive turn, no terminal event, and unambiguous evidence.
+  Evidence is limited to Reliability payloads, Pibo Product History, and exact adapter-history turn matches.
+  Repair never invents assistant content. Without an exact Reliability terminal, only a completed assistant record can justify message_finished.
+  Every applied terminal writes a pibo.output.repair_applied audit event in the same transaction.
+  Repair does not delete or replay pending or dead output-persistence jobs.
+
+Next:
+  pibo debug repair output ps_... <event-id> --dry-run --json
+  pibo debug repair output --session ps_... --before 2026-08-31T00:00:00Z --dry-run --json
+  pibo debug repair output ps_... <event-id> --apply --json
+  pibo debug jobs dead --queue output-persistence
 `);
 }
 
