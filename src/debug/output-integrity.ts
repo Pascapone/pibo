@@ -61,6 +61,7 @@ type OutputKeyReuseRow = {
 type SessionTraceStatusRow = {
 	sessionId: string;
 	sessionStatus: string;
+	projectedStatus: "idle" | "running" | "error";
 	openTurns: number;
 	lastAt: string;
 };
@@ -163,22 +164,26 @@ export function inspectOutputIntegrity(input: {
 
 	if (input.dataStore.exists) {
 		const db = new DatabaseSync(input.dataStore.path, { readOnly: true });
+		db.exec("BEGIN");
 		try {
 			if (tableExists(db, "event_log")) {
 				const scope = eventScope(input.piboSessionId, input.since, input.before);
+				const lifecycle = lifecycleScope(input.piboSessionId, input.since, input.before);
 				turnLifecycleIssues = countRows(db, `
 					SELECT COUNT(*) AS count FROM (
 						SELECT session_id, event_id
 						FROM event_log
 						WHERE event_id IS NOT NULL
 							AND type IN ('message_started', 'assistant_message', 'message_finished', 'session_error')
-							${scope.sql}
+							${lifecycle.whereSql}
 						GROUP BY session_id, event_id
-						HAVING SUM(type = 'message_started') != 1
+						HAVING (
+							SUM(type = 'message_started') != 1
 							OR SUM(type IN ('message_finished', 'session_error')) != 1
 							OR (SUM(type = 'message_finished') = 1 AND SUM(type = 'assistant_message') = 0)
+						) ${lifecycle.havingSql}
 					)
-				`, scope.params);
+				`, lifecycle.params);
 				thinkingLifecycleIssues = countRows(db, `
 					SELECT COUNT(*) AS count FROM (
 						SELECT session_id, event_id,
@@ -186,11 +191,14 @@ export function inspectOutputIntegrity(input: {
 						FROM event_log
 						WHERE event_id IS NOT NULL
 							AND type IN ('thinking_started', 'thinking_finished')
-							${scope.sql}
+							${lifecycle.whereSql}
 						GROUP BY session_id, event_id, thinking_index
-						HAVING SUM(type = 'thinking_started') != SUM(type = 'thinking_finished')
+						HAVING (
+							SUM(type = 'thinking_started') != 1
+							OR SUM(type = 'thinking_finished') != 1
+						) ${lifecycle.havingSql}
 					)
-				`, scope.params);
+				`, lifecycle.params);
 				toolLifecycleIssues = countRows(db, `
 					SELECT COUNT(*) AS count FROM (
 						SELECT session_id, event_id,
@@ -200,13 +208,15 @@ export function inspectOutputIntegrity(input: {
 						WHERE event_id IS NOT NULL
 							AND ${TOOL_CALL_ID_SQL} IS NOT NULL
 							AND type IN ('tool_call', 'tool_execution_started', 'tool_execution_finished')
-							${scope.sql}
+							${lifecycle.whereSql}
 						GROUP BY session_id, event_id, tool_call_id, tool_invocation_ordinal
-						HAVING SUM(type = 'tool_call') != 1
+						HAVING (
+							SUM(type = 'tool_call') != 1
 							OR SUM(type = 'tool_execution_started') != 1
 							OR SUM(type = 'tool_execution_finished') != 1
+						) ${lifecycle.havingSql}
 					)
-				`, scope.params);
+				`, lifecycle.params);
 				identityCollisions = countRows(db, `
 					SELECT COUNT(*) AS count
 					FROM event_log
@@ -233,7 +243,8 @@ export function inspectOutputIntegrity(input: {
 					)
 				`, [...scope.params, ...scope.params]);
 				if (tableExists(db, "sessions")) {
-					sessionTraceStatusMismatches = countRows(db, sessionTraceStatusSql(scope.sql, true), scope.params);
+					const traceStatus = sessionTraceStatusSql(input.piboSessionId, input.since, input.before, true);
+					sessionTraceStatusMismatches = countRows(db, traceStatus.sql, traceStatus.params);
 				}
 
 				findings.push(...queryRows<TurnLifecycleRow>(db, `
@@ -247,12 +258,12 @@ export function inspectOutputIntegrity(input: {
 					FROM event_log
 					WHERE event_id IS NOT NULL
 						AND type IN ('message_started', 'assistant_message', 'message_finished', 'session_error')
-						${scope.sql}
+						${lifecycle.whereSql}
 					GROUP BY session_id, event_id
-					HAVING started != 1 OR finished != 1 OR (messageFinished = 1 AND assistantMessages = 0)
+					HAVING (started != 1 OR finished != 1 OR (messageFinished = 1 AND assistantMessages = 0)) ${lifecycle.havingSql}
 					ORDER BY lastAt DESC
 					LIMIT ?
-				`, [...scope.params, limit]).map((row) => ({
+				`, [...lifecycle.params, limit]).map((row) => ({
 					kind: "turn_lifecycle" as const,
 					piboSessionId: row.sessionId,
 					eventId: row.eventId,
@@ -273,12 +284,12 @@ export function inspectOutputIntegrity(input: {
 					FROM event_log
 					WHERE event_id IS NOT NULL
 						AND type IN ('thinking_started', 'thinking_finished')
-						${scope.sql}
+						${lifecycle.whereSql}
 					GROUP BY session_id, event_id, thinkingIndex
-					HAVING started != finished
+					HAVING (started != 1 OR finished != 1) ${lifecycle.havingSql}
 					ORDER BY lastAt DESC
 					LIMIT ?
-				`, [...scope.params, limit]).map((row) => ({
+				`, [...lifecycle.params, limit]).map((row) => ({
 					kind: "thinking_lifecycle" as const,
 					piboSessionId: row.sessionId,
 					eventId: row.eventId,
@@ -300,12 +311,12 @@ export function inspectOutputIntegrity(input: {
 					WHERE event_id IS NOT NULL
 						AND ${TOOL_CALL_ID_SQL} IS NOT NULL
 						AND type IN ('tool_call', 'tool_execution_started', 'tool_execution_finished')
-						${scope.sql}
+						${lifecycle.whereSql}
 					GROUP BY session_id, event_id, toolCallId, toolInvocationOrdinal
-					HAVING called != 1 OR started != 1 OR finished != 1
+					HAVING (called != 1 OR started != 1 OR finished != 1) ${lifecycle.havingSql}
 					ORDER BY lastAt DESC
 					LIMIT ?
-				`, [...scope.params, limit]).map((row) => ({
+				`, [...lifecycle.params, limit]).map((row) => ({
 					kind: "tool_lifecycle" as const,
 					piboSessionId: row.sessionId,
 					eventId: row.eventId,
@@ -361,16 +372,21 @@ export function inspectOutputIntegrity(input: {
 					lastAt: row.lastAt,
 				})));
 				if (tableExists(db, "sessions")) {
-					findings.push(...queryRows<SessionTraceStatusRow>(db, sessionTraceStatusSql(scope.sql, false), [...scope.params, limit]).map((row) => ({
+					const traceStatus = sessionTraceStatusSql(input.piboSessionId, input.since, input.before, false);
+					findings.push(...queryRows<SessionTraceStatusRow>(db, traceStatus.sql, [...traceStatus.params, limit]).map((row) => ({
 						kind: "session_trace_status" as const,
 						piboSessionId: row.sessionId,
 						sessionStatus: row.sessionStatus,
-						projectedStatus: Number(row.openTurns) > 0 ? "running" as const : row.sessionStatus === "error" ? "error" as const : "idle" as const,
+						projectedStatus: row.projectedStatus,
 						openTurns: Number(row.openTurns),
 						lastAt: row.lastAt,
 					})));
 				}
 			}
+			db.exec("COMMIT");
+		} catch (error) {
+			if (db.isTransaction) db.exec("ROLLBACK");
+			throw error;
 		} finally {
 			db.close();
 		}
@@ -378,6 +394,7 @@ export function inspectOutputIntegrity(input: {
 
 	if (input.reliabilityStore.exists) {
 		const db = new DatabaseSync(input.reliabilityStore.path, { readOnly: true });
+		db.exec("BEGIN");
 		try {
 			const jobScope = reliabilityScope(input.piboSessionId, input.since, input.before, "updated_at");
 			const deadScope = reliabilityScope(input.piboSessionId, input.since, input.before, "dead_at");
@@ -418,6 +435,10 @@ export function inspectOutputIntegrity(input: {
 					LIMIT ?
 				`, [...deadScope.params, limit]).map((row) => deadJobFinding(row, collisionEventKeys)));
 			}
+			db.exec("COMMIT");
+		} catch (error) {
+			if (db.isTransaction) db.exec("ROLLBACK");
+			throw error;
 		} finally {
 			db.close();
 		}
@@ -594,6 +615,33 @@ function eventScope(piboSessionId: string | undefined, since: string | undefined
 	return { sql: clauses.length ? `AND ${clauses.join(" AND ")}` : "", params };
 }
 
+function lifecycleScope(piboSessionId: string | undefined, since: string | undefined, before: string | undefined): {
+	whereSql: string;
+	havingSql: string;
+	params: SqlValue[];
+} {
+	const whereClauses: string[] = [];
+	const havingClauses: string[] = [];
+	const params: SqlValue[] = [];
+	if (piboSessionId) {
+		whereClauses.push("session_id = ?");
+		params.push(piboSessionId);
+	}
+	if (since) {
+		havingClauses.push("MAX(created_at) >= ?");
+		params.push(since);
+	}
+	if (before) {
+		havingClauses.push("MAX(created_at) < ?");
+		params.push(before);
+	}
+	return {
+		whereSql: whereClauses.length ? `AND ${whereClauses.join(" AND ")}` : "",
+		havingSql: havingClauses.length ? `AND ${havingClauses.join(" AND ")}` : "",
+		params,
+	};
+}
+
 function reliabilityScope(piboSessionId: string | undefined, since: string | undefined, before: string | undefined, timeColumn: "updated_at" | "dead_at"): { sql: string; params: SqlValue[] } {
 	const clauses: string[] = [];
 	const params: SqlValue[] = [];
@@ -612,31 +660,64 @@ function reliabilityScope(piboSessionId: string | undefined, since: string | und
 	return { sql: clauses.length ? `AND ${clauses.join(" AND ")}` : "", params };
 }
 
-function sessionTraceStatusSql(eventScopeSql: string, countOnly: boolean): string {
-	const lifecycle = `
-		SELECT session_id, event_id,
-			SUM(type = 'message_started') AS started,
-			SUM(type IN ('message_finished', 'session_error')) AS finished,
-			MAX(created_at) AS last_at
-		FROM event_log
-		WHERE event_id IS NOT NULL
-			AND type IN ('message_started', 'message_finished', 'session_error')
-			${eventScopeSql}
-		GROUP BY session_id, event_id
+function sessionTraceStatusSql(
+	piboSessionId: string | undefined,
+	since: string | undefined,
+	before: string | undefined,
+	countOnly: boolean,
+): { sql: string; params: SqlValue[] } {
+	const clauses: string[] = [];
+	const params: SqlValue[] = [];
+	if (piboSessionId) {
+		clauses.push("latest.session_id = ?");
+		params.push(piboSessionId);
+	}
+	if (since) {
+		clauses.push("latest.created_at >= ?");
+		params.push(since);
+	}
+	if (before) {
+		clauses.push("latest.created_at < ?");
+		params.push(before);
+	}
+	const scopeSql = clauses.length ? `AND ${clauses.join(" AND ")}` : "";
+	const ctes = `
+		WITH ranked_status_events AS (
+			SELECT session_id, type, created_at,
+				ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY stream_id DESC) AS rank
+			FROM event_log
+			WHERE session_id IS NOT NULL
+				AND type IN ('message_started', 'message_finished', 'session_error')
+		), latest AS (
+			SELECT session_id, type, created_at
+			FROM ranked_status_events
+			WHERE rank = 1
+		), mismatches AS (
+			SELECT sessions.id AS sessionId, sessions.status AS sessionStatus,
+				CASE latest.type
+					WHEN 'session_error' THEN 'error'
+					WHEN 'message_started' THEN 'running'
+					ELSE 'idle'
+				END AS projectedStatus,
+				CASE WHEN latest.type = 'message_started' THEN 1 ELSE 0 END AS openTurns,
+				latest.created_at AS lastAt
+			FROM sessions
+			JOIN latest ON latest.session_id = sessions.id
+			WHERE CASE WHEN sessions.status IN ('running', 'error') THEN sessions.status ELSE 'idle' END
+				!= CASE latest.type
+					WHEN 'session_error' THEN 'error'
+					WHEN 'message_started' THEN 'running'
+					ELSE 'idle'
+				END
+				${scopeSql}
+		)
 	`;
-	const mismatches = `
-		SELECT sessions.id AS sessionId, sessions.status AS sessionStatus,
-			SUM(turn_lifecycle.started > 0 AND turn_lifecycle.finished = 0) AS openTurns,
-			MAX(turn_lifecycle.last_at) AS lastAt
-		FROM sessions
-		JOIN turn_lifecycle ON turn_lifecycle.session_id = sessions.id
-		GROUP BY sessions.id, sessions.status
-		HAVING (sessions.status = 'running' AND openTurns = 0)
-			OR (sessions.status != 'running' AND openTurns > 0)
-	`;
-	return countOnly
-		? `WITH turn_lifecycle AS (${lifecycle}), mismatches AS (${mismatches}) SELECT COUNT(*) AS count FROM mismatches`
-		: `WITH turn_lifecycle AS (${lifecycle}) ${mismatches} ORDER BY lastAt DESC LIMIT ?`;
+	return {
+		sql: countOnly
+			? `${ctes} SELECT COUNT(*) AS count FROM mismatches`
+			: `${ctes} SELECT * FROM mismatches ORDER BY lastAt DESC LIMIT ?`,
+		params,
+	};
 }
 
 function queryRows<TRow>(db: DatabaseSync, sql: string, params: SqlValue[]): TRow[] {

@@ -174,10 +174,8 @@ async function runOutputPersistenceInspection(
 	args: string[],
 	mode: { allowPositionalSession: boolean; deadLettersOnly: boolean },
 ): Promise<void> {
+	validateOutputPersistenceInspectionArgs(args, mode.allowPositionalSession);
 	const options = parseOptions(args);
-	if (!mode.allowPositionalSession && options.positionals.length) {
-		throw new Error("Use --session <pibo-session-id> to scope persistence inspection");
-	}
 	if (options.after && !Number.isFinite(Date.parse(options.after))) throw new Error("--since must be an ISO date");
 	if (options.before && !Number.isFinite(Date.parse(options.before))) throw new Error("--before must be an ISO date");
 	if (options.after && options.before && Date.parse(options.after) >= Date.parse(options.before)) {
@@ -207,6 +205,39 @@ async function runOutputPersistenceInspection(
 	}
 	if (options.json) console.log(formatJson(audit));
 	else console.log(formatOutputIntegrityAudit(audit));
+}
+
+function validateOutputPersistenceInspectionArgs(args: string[], allowPositionalSession: boolean): void {
+	const valueOptions = new Set(["--session", "--since", "--before", "--limit"]);
+	let positionalCount = 0;
+	let hasSessionOption = false;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--json") continue;
+		if (arg === "--apply" || arg === "--dry-run") {
+			throw new Error(`Output persistence inspection is read-only; ${arg} is not supported`);
+		}
+		if (valueOptions.has(arg)) {
+			const value = args[index + 1];
+			if (!value || value.startsWith("-")) throw new Error(`${arg} requires a value`);
+			if (arg === "--session") hasSessionOption = true;
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("-")) {
+			throw new Error(`Unknown output persistence inspection option "${arg}"`);
+		}
+		positionalCount += 1;
+	}
+	if (!allowPositionalSession && positionalCount > 0) {
+		throw new Error("Use --session <pibo-session-id> to scope persistence inspection");
+	}
+	if (allowPositionalSession && positionalCount > 1) {
+		throw new Error("Use at most one positional Pibo Session ID");
+	}
+	if (allowPositionalSession && hasSessionOption && positionalCount > 0) {
+		throw new Error("Use either a positional Pibo Session ID or --session, not both");
+	}
 }
 
 async function runDebugResources(args: string[]): Promise<void> {

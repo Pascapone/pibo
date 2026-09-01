@@ -117,6 +117,18 @@ function createFixture() {
 			"2026-08-30T11:00:00.000Z",
 			"payload_malformed",
 		);
+		reliability.db.prepare(`
+			UPDATE pibo_jobs
+			SET run_at = '2026-08-30T10:00:05.000Z',
+				created_at = '2026-08-30T10:00:05.000Z',
+				updated_at = '2026-08-30T10:00:05.000Z'
+		`).run();
+		reliability.db.prepare(`
+			UPDATE pibo_dead_jobs
+			SET created_at = CASE job_id WHEN 'job_dead_output' THEN '2026-08-30T10:00:06.000Z' ELSE created_at END,
+				updated_at = CASE job_id WHEN 'job_dead_output' THEN '2026-08-30T10:00:06.000Z' ELSE updated_at END,
+				dead_at = CASE job_id WHEN 'job_dead_output' THEN '2026-08-30T10:00:06.000Z' ELSE dead_at END
+		`).run();
 	} finally {
 		reliability.close();
 	}
@@ -204,6 +216,47 @@ test("output integrity audit supports session, cutoff, and bounded detail scopes
 		assert.equal(beforeIncomplete.summary.findingCount, 0, JSON.stringify(beforeIncomplete.summary));
 		const afterIncomplete = inspect(fixture, { since: "2026-09-01T00:00:00.000Z", limit: 20 });
 		assert.equal(afterIncomplete.summary.findingCount, 0);
+
+		const healthyAcrossSinceBoundary = inspect(fixture, {
+			piboSessionId: "ps_healthy",
+			since: "2026-08-29T10:00:04.000Z",
+			limit: 20,
+		});
+		assert.equal(healthyAcrossSinceBoundary.summary.findingCount, 0);
+		const healthyAcrossBeforeBoundary = inspect(fixture, {
+			piboSessionId: "ps_healthy",
+			before: "2026-08-29T10:00:04.000Z",
+			limit: 20,
+		});
+		assert.equal(healthyAcrossBeforeBoundary.summary.findingCount, 0);
+	} finally {
+		rmSync(fixture.root, { recursive: true, force: true });
+	}
+});
+
+test("output integrity audit matches terminal reconstruction and rejects duplicate thinking lifecycles", () => {
+	const fixture = createFixture();
+	const data = new PiboDataStore(fixture.dataPath);
+	try {
+		insertSession(data, "ps_historical_incomplete", "idle", "2026-08-28T10:00:00.000Z");
+		appendOutput(data, { sessionId: "ps_historical_incomplete", sequence: 1, type: "message_started", eventId: "turn-old", createdAt: "2026-08-28T10:00:00.000Z" });
+		appendOutput(data, { sessionId: "ps_historical_incomplete", sequence: 2, type: "message_started", eventId: "turn-new", createdAt: "2026-08-28T11:00:00.000Z" });
+		appendOutput(data, { sessionId: "ps_historical_incomplete", sequence: 3, type: "assistant_message", eventId: "turn-new", createdAt: "2026-08-28T11:00:01.000Z" });
+		appendOutput(data, { sessionId: "ps_historical_incomplete", sequence: 4, type: "message_finished", eventId: "turn-new", createdAt: "2026-08-28T11:00:02.000Z" });
+
+		appendOutput(data, { sessionId: "ps_healthy", sequence: 9, type: "thinking_started", eventId: "turn-healthy", attributes: { thinkingIndex: 0 }, createdAt: "2026-08-29T10:00:08.000Z" });
+		appendOutput(data, { sessionId: "ps_healthy", sequence: 10, type: "thinking_finished", eventId: "turn-healthy", attributes: { thinkingIndex: 0 }, createdAt: "2026-08-29T10:00:09.000Z" });
+	} finally {
+		data.close();
+	}
+	try {
+		const historical = inspect(fixture, { piboSessionId: "ps_historical_incomplete", limit: 20 });
+		assert.equal(historical.summary.turnLifecycleIssues, 1);
+		assert.equal(historical.summary.sessionTraceStatusMismatches, 0);
+
+		const duplicateThinking = inspect(fixture, { piboSessionId: "ps_healthy", limit: 20 });
+		assert.equal(duplicateThinking.summary.thinkingLifecycleIssues, 1);
+		assert.equal(duplicateThinking.findings.some((finding) => finding.kind === "thinking_lifecycle" && finding.started === 2 && finding.finished === 2), true);
 	} finally {
 		rmSync(fixture.root, { recursive: true, force: true });
 	}
@@ -254,6 +307,15 @@ test("pibo debug persistence stays progressive and returns read-only audit and d
 			env: { ...process.env, PIBO_HOME: fixture.home },
 		});
 		assert.equal(JSON.parse(compatibility.stdout).summary.findingCount, 8);
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "persistence", "audit", "--apply"], { env: { ...process.env, PIBO_HOME: fixture.home } }),
+			(error) => /read-only; --apply is not supported/.test(error.stderr),
+		);
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "integrity", "output", "ps_incomplete", "ps_healthy"], { env: { ...process.env, PIBO_HOME: fixture.home } }),
+			(error) => /at most one positional/.test(error.stderr),
+		);
 	} finally {
 		rmSync(fixture.root, { recursive: true, force: true });
 	}
