@@ -10,7 +10,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T14:11:18.679Z"
+  at: "2026-09-01T21:32:28Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -21,8 +21,8 @@ implementation:
   package: "WP-10-DELIVERY-VALIDATION"
   package_parent: "ca8de98aaf1a536006b9e5f0e3a070da1d5070bd"
   source_evidence: "performed"
-  focused_test_execution: "recorded by the package implementation audit; it does not expand normative scope"
-  build_typecheck_package_execution: "recorded by the package implementation audit; it does not expand normative scope"
+  focused_test_execution: "performed in Docker: 1,071 affected tests and the clean full suite passed"
+  build_typecheck_package_execution: "performed in Docker: build, typecheck, npm pack, and extracted-archive checks passed"
   live_external_execution: "unperformed"
 traceability:
   commit: "39090b8850758293e69380a52bb7498d7c955bc2"
@@ -419,8 +419,8 @@ node scripts/legacy-product-vocabulary-gate.mjs --json
 | Evidence class | Rebound status | Boundary |
 | --- | --- | --- |
 | source inspection | performed | Runner, test fixtures, fake adapter, UI/workflow tests, package scripts, and optional system scripts were inspected. |
-| focused tests | unperformed | Named tests were inspected but not run. |
-| build package checks | unperformed | No build, package, or installed-artifact check was run. |
+| focused tests | performed | The affected selection passed 1,071 tests; the clean full suite passed 2,638 tests with 0 failures and 5 skips. |
+| build package checks | performed-partial | Build, typecheck, actual npm pack, extracted archive membership, and packaged-document link closure passed. Installed-package execution, VSIX packaging, and Docker image build were not run. |
 | local real path pty headful browser validation | unperformed | No PTY scenario, browser/CDP flow, real path, or headful UI acceptance was run. |
 | external provider pibo2 acceptance | unperformed | No real provider or Pibo2 acceptance was run. |
 

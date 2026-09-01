@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T14:11:18.121Z"
+  at: "2026-09-01T21:32:28Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -20,8 +20,8 @@ implementation:
   package: "WP-08-VSCODE"
   package_parent: "ca8de98aaf1a536006b9e5f0e3a070da1d5070bd"
   source_evidence: "performed"
-  focused_test_execution: "recorded by the package implementation audit; it does not expand normative scope"
-  build_typecheck_package_execution: "recorded by the package implementation audit; it does not expand normative scope"
+  focused_test_execution: "performed in Docker as part of the affected and clean full suites"
+  build_typecheck_package_execution: "performed in Docker: root build and VS Code typecheck/webview build passed; VSIX packaging was not run"
   live_external_execution: "unperformed"
 traceability:
   commit: "39090b8850758293e69380a52bb7498d7c955bc2"
@@ -329,9 +329,9 @@ node scripts/run-test-suite.mjs test/chat-vscode/room-resolver.test.mjs test/cha
 
 | Evidence class | Rebound status | Boundary |
 | --- | --- | --- |
-| source inspection | performed | Manifest, activation, command, resolver, watcher, webview-state, and named test files were inspected at the baseline. |
-| focused tests | unperformed | Named Node tests were inspected but not run. |
-| build package checks | unperformed | Typecheck, build, and VSIX package checks were not run. |
+| source inspection | performed | Manifest, activation, command, resolver, watcher, webview-state, and named test files were re-resolved at the upstream/dev refresh target. |
+| focused tests | performed | Relevant Node tests ran within the affected selection and clean full suite; the full suite passed 2,638 tests with 0 failures and 5 skips. |
+| build package checks | performed-partial | Root build and VS Code typecheck/webview build passed. Extension-host/VSIX packaging was not run. |
 | local real path pty headful browser validation | unperformed | No real workspace, VS Code host, or headful webview was opened. |
 | external provider pibo2 acceptance | unperformed | No external provider or Pibo2 acceptance was run. |
 

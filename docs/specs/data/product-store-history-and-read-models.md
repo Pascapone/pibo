@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-01T21:32:28Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
@@ -30,7 +30,7 @@ traceability:
         - path: "test/data-v2-store.test.mjs"
           name: "v2 schema migration is idempotent"
         - path: "test/data-v2-store.test.mjs"
-          name: "schema v6 migration installs the exact tool lifecycle index"
+          name: "schema migration from v5 installs the exact tool lifecycle index"
         - path: "test/data-v2-store.test.mjs"
           name: "fresh pibo chat schema omits retired room partition structures"
         - path: "test/app-context-fresh-schema.test.mjs"
@@ -41,6 +41,8 @@ traceability:
           name: "pibo data store rejects future schemas without mutating them"
         - path: "test/stream-render-final-review.test.mjs"
           name: "schema v7 migration rolls every injected phase back and retries completely"
+        - path: "test/stream-render-final-review.test.mjs"
+          name: "schema v7 resumes an interrupted legacy negative sequence repair"
       failures:
         - "Bounded payload reads verify size and SHA-256."
         - "Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow."

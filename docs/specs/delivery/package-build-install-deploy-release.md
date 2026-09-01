@@ -10,7 +10,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-01T21:32:28Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -21,8 +21,8 @@ implementation:
   package: "WP-10-DELIVERY-VALIDATION"
   package_parent: "ca8de98aaf1a536006b9e5f0e3a070da1d5070bd"
   source_evidence: "performed"
-  focused_test_execution: "recorded by the package implementation audit; it does not expand normative scope"
-  build_typecheck_package_execution: "recorded by the package implementation audit; it does not expand normative scope"
+  focused_test_execution: "performed in Docker: package/release tests passed within the affected and full suites"
+  build_typecheck_package_execution: "performed in Docker: build, typecheck, npm pack, and extracted-archive inspection passed"
   live_external_execution: "unperformed"
 traceability:
   commit: "39090b8850758293e69380a52bb7498d7c955bc2"
@@ -124,7 +124,7 @@ traceability:
         - "Allowlisting limits published files; lock/shrinkwrap fixes the resolved graph even though manifest ranges remain."
         - "npm package lifecycle on Node >=24; tarball consumers receive pibo and rg bins, not declared main/types/exports."
       confidence: "high"
-      follow_up: "Run package tests and npm pack --dry-run, install the tarball into a clean temporary project, smoke pibo/rg, and decide whether package-root library imports are intentionally unsupported or require manifest exports."
+      follow_up: "Install the validated tarball into a clean temporary project and smoke pibo/rg; package-root library imports remain intentionally undeclared pending an explicit API decision."
     - id: "DELIVERY-PACKAGE-003"
       status: "implemented"
       sources:
@@ -279,6 +279,14 @@ traceability:
         - path: "test/create-github-release.test.mjs"
           name: "accepts an asset exactly at the size limit during preflight"
         - path: "test/create-github-release.test.mjs"
+          name: "rejects a missing asset before any GitHub request"
+        - path: "test/create-github-release.test.mjs"
+          name: "rejects a directory asset before any GitHub request"
+        - path: "test/create-github-release.test.mjs"
+          name: "rejects an oversized asset before any GitHub request"
+        - path: "test/create-github-release.test.mjs"
+          name: "CLI rejects an unreadable asset without remote mutation"
+        - path: "test/create-github-release.test.mjs"
           name: "keeps an existing release unchanged"
       public:
         - "npm run release"
@@ -287,9 +295,9 @@ traceability:
       failures:
         - "Reject invalid SemVer, dirty/mismatched tag, missing/wrong VSIX, oversized asset, or GitHub/npm errors; existing release returns without repair."
         - "GitHub asset is capped at 64 MiB but not signed or checksummed; credentials remain external environment concerns."
-        - "Node release scripts and external npm/git/GitHub CLIs; no focused release or Windows acceptance tests."
+        - "Node release scripts and external npm/git/GitHub CLIs; no live GitHub/npm publication or Windows acceptance was performed."
       confidence: "high"
-      follow_up: "Add hermetic tests for dry-run, two-manifest version writes, unchanged package-lock behavior, expected VSIX naming, existing/missing releases and assets, 64 MiB cap, and no tag/push; then test npm/GitHub flows only in disposable registries/repos."
+      follow_up: "Add missing hermetic release.mjs coverage for two-manifest version writes and tag/push boundaries; test live npm/GitHub flows only in disposable registries and repositories."
 ---
 # Package, Build, Installation, Deployment, and Release
 
@@ -390,14 +398,14 @@ The delivery system MUST pack only the root manifest allowlist, exclude dist/app
 
 ### Acceptance and boundaries
 
-- Exact source evidence: `package.json:9` — `files`; `package.json:74` — `dependencies`; `package.json:71` — `scripts.prepack`; `package.json:72` — `scripts.postpack`; `package.json:29` — `engines`; `package-lock.json:4` — `lockfileVersion`; `package-lock.json:6` — `packages`; `scripts/package-shrinkwrap.mjs:9` — `preparePackageShrinkwrap`; `scripts/package-shrinkwrap.mjs:21` — `cleanPackageShrinkwrap`; `compute-image/Dockerfile:1` — package-owned worker image; `compute-image/Dockerfile.dockerignore:1` — effective build-context exclusions; `docs/project/operations/index.md:1` — `# Project operations`
+- Exact source evidence: `package.json` — `files`, `dependencies`, `scripts.prepack`, `scripts.postpack`, and `engines`; `package-lock.json` — `lockfileVersion` and `packages`; `scripts/package-shrinkwrap.mjs` — `preparePackageShrinkwrap` and `cleanPackageShrinkwrap`; `compute-image/Dockerfile` — package-owned worker image; `compute-image/Dockerfile.dockerignore` — effective build-context exclusions; `docs/project/operations/index.md` — `# Project operations`
 - Exact named tests: `test/npm-package-contents.test.mjs:65` — “npm package excludes generated VSIX artifacts while keeping runtime assets”; `test/package-shrinkwrap.test.mjs:9` — “package lifecycle publishes the repository lock as npm-shrinkwrap.json”; `test/package-shrinkwrap.test.mjs:31` — “published package metadata includes and cleans the generated shrinkwrap”
 - Public surfaces: `@pasko70/pibo npm tarball`; `prepack and postpack`; `npm-shrinkwrap.json`
 - Failure boundary: Reject package-name mismatch and propagate copy/cleanup/pack failures; lifecycle cleanup is not transactional across process termination.
 - Security boundary: Allowlisting limits published files; lock/shrinkwrap fixes the resolved graph even though manifest ranges remain.
 - Platform and compatibility boundary: npm package lifecycle on Node >=24; tarball consumers receive pibo and rg bins, not declared main/types/exports.
 - Confidence: **high**
-- Evidence gap and follow-up: Run package tests and npm pack --dry-run, install the tarball into a clean temporary project, smoke pibo/rg, and decide whether package-root library imports are intentionally unsupported or require manifest exports.
+- Evidence gap and follow-up: The package tests, actual `npm pack`, extracted membership, and packaged-document link closure passed. Installing the tarball into a clean temporary project and smoking `pibo`/`rg` remain unperformed; package-root library imports remain intentionally undeclared pending an explicit API decision.
 
 #### Later validation commands
 
@@ -458,14 +466,14 @@ The delivery system MUST validate SemVer, update the root and extension package 
 
 ### Acceptance and boundaries
 
-- Exact source evidence: `scripts/release.mjs:34` — `parseArgs`; `scripts/release.mjs:83` — `currentGitCommit`; `scripts/release.mjs:87` — `currentGitTag`; `scripts/release.mjs:78` — `runInherit`; `scripts/release.mjs:95` — `const args = parseArgs`; `scripts/create-github-release.mjs:161` — `createRelease`; `scripts/create-github-release.mjs:38` — `ASSET_MAX_BYTES`; `scripts/vscode-package.mjs:63` — `expectedFilename`; `scripts/vscode-package.mjs:79` — `targetPath`; `scripts/vscode-package.mjs:85` — `latestPath`; `src/apps/chat-vscode/package.json:3` — `version`; `src/apps/chat-vscode/package.json:12` — `publisher`; `src/apps/chat-vscode/package.json:2` — `name`; `package.json:3` — `version`; `package.json:52` — `scripts.release`; `package.json:53` — `scripts.release:github`; `docs/project/operations/vscode-extension-release.md:1` — `# Pibo VS Code Extension Release Runbook`; `docs/project/guides/pibo-vscode-ext-quickstart.md:1` — `# Pibo Quick Start — CLI + VS Code Extension`
-- Named tests: none. Source inspection is recorded explicitly; the follow-up below is non-normative.
+- Exact source evidence: `scripts/release.mjs` — `parseArgs`, `currentGitCommit`, `currentGitTag`, and `runInherit`; `scripts/create-github-release.mjs` — `createRelease`, `preflightReleaseAsset`, and `ASSET_MAX_BYTES`; `scripts/vscode-package.mjs` — `expectedFilename`, `targetPath`, and `latestPath`; `src/apps/chat-vscode/package.json` — `version`, `publisher`, and `name`; `package.json` — `version`, `scripts.release`, and `scripts.release:github`; `docs/project/operations/vscode-extension-release.md` and `docs/project/guides/pibo-vscode-ext-quickstart.md` — release operation guidance.
+- Named tests: `test/create-github-release.test.mjs` — valid upload, missing/directory/oversized/unreadable preflight rejection before remote mutation, exact-size acceptance, existing-release preservation, and controlled upload-failure behavior.
 - Public surfaces: `npm run release`; `npm run release:github`; `GitHub Release VSIX asset`
 - Failure boundary: Reject invalid SemVer, dirty/mismatched tag, missing/wrong VSIX, oversized asset, or GitHub/npm errors; existing release returns without repair.
 - Security boundary: GitHub asset is capped at 64 MiB but not signed or checksummed; credentials remain external environment concerns.
-- Platform and compatibility boundary: Node release scripts and external npm/git/GitHub CLIs; no focused release or Windows acceptance tests.
+- Platform and compatibility boundary: Node release scripts and external npm/git/GitHub CLIs; no live GitHub/npm publication or Windows acceptance was performed.
 - Confidence: **high**
-- Evidence gap and follow-up: Add hermetic tests for dry-run, two-manifest version writes, unchanged package-lock behavior, expected VSIX naming, existing/missing releases and assets, 64 MiB cap, and no tag/push; then test npm/GitHub flows only in disposable registries/repos.
+- Evidence gap and follow-up: Add missing hermetic `release.mjs` coverage for two-manifest version writes and tag/push boundaries; test live npm/GitHub flows only in disposable registries and repositories.
 
 #### Later validation commands
 
@@ -506,8 +514,8 @@ node scripts/release.mjs --version 1.7.2 --dry-run
 | Evidence class | Rebound status | Boundary |
 | --- | --- | --- |
 | source inspection | performed | Package/build/config, setup, gateway, Docker, deploy, release, VSIX, and named test files were inspected. |
-| focused tests | unperformed | Named package/setup/gateway tests were inspected but not run; Docker/release-focused tests were absent. |
-| build package checks | unperformed | No build, typecheck, npm pack, VSIX package, Docker build, or installed-package check was run. |
+| focused tests | performed | Package, release-preflight, setup, gateway, and affected tests passed in the isolated worker; the clean full suite passed 2,638 tests with 0 failures and 5 skips. |
+| build package checks | performed-partial | Build, typecheck, actual npm pack, extracted archive membership, and packaged Markdown link closure passed. VSIX packaging, Docker image build, and clean-project tarball installation were not run. |
 | local real path pty headful browser validation | not-applicable | The canonical target does not require this evidence class; UI acceptance belongs to dependent targets. |
 | external provider pibo2 acceptance | unperformed | No npm, GitHub Release, Marketplace, external host, or Pibo2 acceptance was run. |
 

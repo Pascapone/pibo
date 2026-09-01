@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T08:51:56Z"
+  at: "2026-09-01T21:32:28Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-SEC-001"
@@ -16,7 +16,7 @@ implementation:
   baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
   package: "WP-03-RESOURCES-SECURITY"
   source_evidence: "performed"
-  focused_test_execution: "performed: 383 passed, 2 baseline failures in local-auth.test.mjs"
+  focused_test_execution: "performed in Docker: 1,071 affected tests passed; full suite 2,638 passed, 0 failed, 5 skipped"
   build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
 traceability:
   commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
@@ -176,8 +176,8 @@ verification:
       status: "performed"
       detail: "Exact source files, symbols, test files, and test names were reconciled to Foundation commit 38bb6e57f118c1543e7263c68d27e5103d3b1262."
     - evidence_class: "focused tests"
-      status: "performed_with_baseline_failures"
-      detail: "Exact parent/candidate inventory ran in the same fresh isolated worker: 385 tests, 383 passed, and 2 identical local-auth baseline assertions failed; no source or test files were changed."
+      status: "performed"
+      detail: "The affected-test selection passed 1,071 tests in the isolated worker. The clean full suite passed 2,638 tests with 0 failures and 5 skips."
     - evidence_class: "build/package checks"
       status: "performed"
       detail: "npm run typecheck and npm run build passed; build emitted existing Vite chunk-size warnings only."
@@ -198,7 +198,7 @@ open_evidence_gaps:
     gap: "Direct Windows Better Auth recovery, ACL, symlink/reparse-point, and machine-session validation remains unperformed."
   - id: "WP03-GAP-009"
     specs: ["SPC-RES-001", "SPC-RES-002", "SPC-RES-003", "SPC-RES-004", "SPC-RES-005", "SPC-SEC-001", "SPC-SEC-002", "SPC-SEC-003"]
-    gap: "Canonical synthesis and this read-only brief executed no focused tests, build/package checks, real paths, browser flows, or external/Pibo2 acceptance."
+    gap: "No real-path, browser, external-provider, package-manager, host-lifecycle, Windows, or Pibo2 acceptance was performed; deterministic tests, build, typecheck, and package checks are recorded in the implementation report."
 ---
 
 # Scope and exclusions
@@ -388,7 +388,7 @@ The following over-broad claims are rejected and must not be inferred from this 
 
 Open evidence gaps carried forward:
 - `WP03-GAP-005` — Direct Windows Better Auth recovery, ACL, symlink/reparse-point, and machine-session validation remains unperformed.
-- `WP03-GAP-009` — Canonical synthesis and this read-only brief executed no focused tests, build/package checks, real paths, browser flows, or external/Pibo2 acceptance.
+- `WP03-GAP-009` — No real-path, browser, external-provider, package-manager, host-lifecycle, Windows, or Pibo2 acceptance was performed; deterministic tests, build, typecheck, and package checks are recorded in the implementation report.
 
 # Verification and traceability
 
@@ -397,14 +397,15 @@ All requirement traceability records use exact repository-relative regular files
 Performed evidence:
 - Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
 
-Additional unperformed evidence:
+Additional evidence boundaries:
 - No browser, real provider, external MCP, real Pi package, Windows ACL/auth-recovery, real-host/systemd/pressure/restart, or Pibo2 evidence is claimed.
 
 Package commands after authoring:
 - `npm run typecheck` — passed
 - `npm run build` — passed, with existing Vite chunk-size warnings
-- Exact focused test inventory from the WP-03 brief — 385 tests: 383 passed and 2 identical local-auth baseline failures in exact parent/candidate runs
-- Foundation validator/authoring suite — 82 passed
+- Affected-test selection — 1,071 passed, 0 failed in the isolated worker
+- Clean full suite — 2,638 passed, 0 failed, 5 skipped
+- Current migration validator/authoring suite — 84 passed
 
 # Related concepts
 

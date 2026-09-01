@@ -7,6 +7,7 @@
 - **Package closure**: Updated strict-mode validation as the default documentation gate and retained package-owned compute-image inputs plus actual-archive link-closure coverage.
 - **Migration closure**: Reconstructed the complete 762-record migration ledger with zero pending records, retired 13 superseded README controls, and generated the final 106-index navigation closure.
 - **Evidence publication**: Registered 61 accepted C-REPORTS Evidence Reports in the immutable evidence manifest with hashes over their complete published files.
+- **Independent audit closure**: Re-resolved all 44 upstream-impacted normative specifications at `39090b8850758293e69380a52bb7498d7c955bc2`, corrected stale pre-refresh execution accounting and one renamed schema-migration test locator, and retained explicit real-path, browser, external-provider, Windows, publication, and Pibo2 evidence boundaries.
 
 ## 2026-08-31
 

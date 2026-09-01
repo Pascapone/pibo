@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-01T20:42:35Z",
+  "generated_at": "2026-09-01T21:32:28Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -24,7 +24,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 10844,
+      "file_sha256": "e856ef5f910f564f3b25a20720e9c74a0691e407e5d0bd8e0abf97b2b7225a24",
+      "body_sha256": "e856ef5f910f564f3b25a20720e9c74a0691e407e5d0bd8e0abf97b2b7225a24"
     },
     {
       "path": ".agents/skills/design-md/README.md",
@@ -33,7 +36,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 1273,
+      "file_sha256": "d8f3d639cf202f82e4f916600be16d3bf22d6ffc55c228d15cb93662612dc4e9",
+      "body_sha256": "d8f3d639cf202f82e4f916600be16d3bf22d6ffc55c228d15cb93662612dc4e9"
     },
     {
       "path": ".agents/skills/design-md/SKILL.md",
@@ -42,7 +48,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 9276,
+      "file_sha256": "78fca134e309567843c8bfcb482e79fa778c9f7fc99e2fba5fa1d0fe3ccec907",
+      "body_sha256": "bc775fd1fec3cdb6f212c067622bf7de11fb9bf5266a6ab783d4f5f789aabd89"
     },
     {
       "path": ".codex/skills/create-specification/SKILL.md",
@@ -51,7 +60,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 685,
+      "file_sha256": "2382922d33d50e97bbf978bed036b537ebc05a63476e973bc31f1c176637f6bb",
+      "body_sha256": "ae09a44fca5818eb00292790bae082206892981a81e469c3364f73757983a1de"
     },
     {
       "path": ".codex/skills/glossary/SKILL.md",
@@ -60,7 +72,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 1983,
+      "file_sha256": "a14eb9c75b1eb371dd69f27b19b2f595eb74d6093f4e871d1feda5e263652657",
+      "body_sha256": "d88ce76bae0fb0aba741cc8f47b962326fe1f0337e5da68bf565fe74294b70f6"
     },
     {
       "path": ".codex/skills/improve-codebase-architecture/SKILL.md",
@@ -69,7 +84,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 6349,
+      "file_sha256": "90a5e2cbab9d0ca66cee0ed5237740a4dd0dc50491ecd064681bafd0a01b6c63",
+      "body_sha256": "e2eb061560893dd9e69284695aa6ab5615d6f8bad19cd246f6d55ba41df64c35"
     },
     {
       "path": ".codex/skills/pibo-docker-dev/SKILL.md",
@@ -78,7 +96,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 5906,
+      "file_sha256": "40d0774394a8e5b8d7fa35a5b581b644b054a04cdcdf91fed6f865320cc4b63e",
+      "body_sha256": "951a6e30244128060bb57df1eb3a654504d507fcb8524733b41ccd2e05fc3777"
     },
     {
       "path": ".codex/skills/update-specification/SKILL.md",
@@ -87,7 +108,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 755,
+      "file_sha256": "79f6f7acd344c1ba803403e52074cad83c9f37f49da451166184ad88202cf1be",
+      "body_sha256": "96a95875073f43ea5374a3cf8d17aee91365546f98bae2a00401ac732d658597"
     },
     {
       "path": "AGENTS.md",
@@ -96,7 +120,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 7687,
+      "file_sha256": "13b28bf1394310f4d9d8d172e7989b7f5905a0955f5b5be606517d1beb509b1b",
+      "body_sha256": "13b28bf1394310f4d9d8d172e7989b7f5905a0955f5b5be606517d1beb509b1b"
     },
     {
       "path": "context/codex-base-prompt.md",
@@ -105,7 +132,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 10169,
+      "file_sha256": "602448a0886fe016e7cf8817ad5ee1cb600e61a09902da73023f8fa9ca873094",
+      "body_sha256": "602448a0886fe016e7cf8817ad5ee1cb600e61a09902da73023f8fa9ca873094"
     },
     {
       "path": "context/compute-worker.md",
@@ -114,7 +144,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 900,
+      "file_sha256": "1b5fe8e1a641978c0f89a1ccb18b624ae6555f4adaedbbc7cbd00ce302d74f8a",
+      "body_sha256": "1b5fe8e1a641978c0f89a1ccb18b624ae6555f4adaedbbc7cbd00ce302d74f8a"
     },
     {
       "path": "context/pibo-compaction-prompt.md",
@@ -123,7 +156,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 3102,
+      "file_sha256": "d7cbe1271677317e829868587ad1908cb9a9f3e817d04f240c5acc53d9876d86",
+      "body_sha256": "d7cbe1271677317e829868587ad1908cb9a9f3e817d04f240c5acc53d9876d86"
     },
     {
       "path": "context/pibo-native-tooling.md",
@@ -132,7 +168,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 2029,
+      "file_sha256": "145e724a83d427f6eabfafe2c64919050d7cfb203590e7e8aa9b7d0a11adabae",
+      "body_sha256": "145e724a83d427f6eabfafe2c64919050d7cfb203590e7e8aa9b7d0a11adabae"
     },
     {
       "path": "context/pibo-system-prompt.md",
@@ -141,7 +180,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 2709,
+      "file_sha256": "e28cc2e1a7bf70462c708a363a374cb8035e98f11827177d60e0325d0b1066b5",
+      "body_sha256": "e28cc2e1a7bf70462c708a363a374cb8035e98f11827177d60e0325d0b1066b5"
     },
     {
       "path": "DESIGN.md",
@@ -150,7 +192,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 18055,
+      "file_sha256": "d7edd2d289c2aa00631f3f42d624f00be4970efd100d34f751c27d9b1af56ac9",
+      "body_sha256": "d7edd2d289c2aa00631f3f42d624f00be4970efd100d34f751c27d9b1af56ac9"
     },
     {
       "path": "docs/index.md",
@@ -161,7 +206,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 940,
+      "file_sha256": "03396373c1d4cf85e15379abb5e4a0657aac129635c83665dc25a313434728a5",
+      "body_sha256": "85b56581bfdc28821fd55171ecd7a9f61802b3ca5b79991a1ddb08bc494fc2fb"
     },
     {
       "path": "docs/legacy/agent-run-yield-research.md",
@@ -655,7 +703,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 953,
+      "file_sha256": "4e51aa73202160f00e8fdf8ff811070f2eedea831eb8ab3f548127479998bfdd",
+      "body_sha256": "4e51aa73202160f00e8fdf8ff811070f2eedea831eb8ab3f548127479998bfdd"
     },
     {
       "path": "docs/legacy/handoffs/pi-package-gallery-ui-analysis-2026-05-02.md",
@@ -750,7 +801,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 7663,
+      "file_sha256": "9e96e4b03161cbaf23b935fbdcae52b26bbad6862bc772defeb3cfb0c7f7cca1",
+      "body_sha256": "9e96e4b03161cbaf23b935fbdcae52b26bbad6862bc772defeb3cfb0c7f7cca1"
     },
     {
       "path": "docs/legacy/inline-skill-expansion-plan.md",
@@ -1853,7 +1907,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 13319,
+      "file_sha256": "73eb8fe27202d11def78d47e52f9583ea3d8db823037198d6e2ab21ab35b9de7",
+      "body_sha256": "73eb8fe27202d11def78d47e52f9583ea3d8db823037198d6e2ab21ab35b9de7"
     },
     {
       "path": "docs/legacy/plans/interactive-login-menu.md",
@@ -2368,7 +2425,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 272,
+      "file_sha256": "8f599964d73ecf9c4cfb5ca13e909ce0632b9bc413b47031cd96f369f6532635",
+      "body_sha256": "8f599964d73ecf9c4cfb5ca13e909ce0632b9bc413b47031cd96f369f6532635"
     },
     {
       "path": "docs/legacy/provider-web-search-trace-visibility.md",
@@ -3135,7 +3195,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1484,
+      "file_sha256": "6657473640885f4409c063200b977f85c7ea1f415384039662789838a9843abc",
+      "body_sha256": "6657473640885f4409c063200b977f85c7ea1f415384039662789838a9843abc"
     },
     {
       "path": "docs/legacy/reports/final-owner-scope-current-docs-cleanup-us-025.md",
@@ -3398,7 +3461,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 12638,
+      "file_sha256": "3d6efa6b71c8f6ed571dc467beb2f3a74ec38e3c264b188f13ecc2cc8975ec27",
+      "body_sha256": "3d6efa6b71c8f6ed571dc467beb2f3a74ec38e3c264b188f13ecc2cc8975ec27"
     },
     {
       "path": "docs/legacy/reports/ink-cli-session-subset-report.md",
@@ -3883,7 +3949,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 653,
+      "file_sha256": "a9bfce1e22e1f02d659d1d47043262bbab3bde3edad5195b24be070e8596b720",
+      "body_sha256": "a9bfce1e22e1f02d659d1d47043262bbab3bde3edad5195b24be070e8596b720"
     },
     {
       "path": "docs/legacy/specs/changes/better-auth-sqlite-migration-hardening/proposal.md",
@@ -3942,7 +4011,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 598,
+      "file_sha256": "f2475e23fccbdd06e9c87aa3d53528a731c92d7122237c4ac280bebcc2668974",
+      "body_sha256": "f2475e23fccbdd06e9c87aa3d53528a731c92d7122237c4ac280bebcc2668974"
     },
     {
       "path": "docs/legacy/specs/changes/bootstrap-host-installation/proposal.md",
@@ -4010,7 +4082,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 837,
+      "file_sha256": "6c521625db89d8727b2d1ec485d31e611650769620d983a6cb070133447da9b1",
+      "body_sha256": "6c521625db89d8727b2d1ec485d31e611650769620d983a6cb070133447da9b1"
     },
     {
       "path": "docs/legacy/specs/changes/compute-browser-resource-lifecycle/prds/01-product-overview-and-incident-baseline.md",
@@ -4126,7 +4201,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1172,
+      "file_sha256": "95172d4d95edf487f3598d1171f8a261ea927798fdd590a625d48344f30453eb",
+      "body_sha256": "95172d4d95edf487f3598d1171f8a261ea927798fdd590a625d48344f30453eb"
     },
     {
       "path": "docs/legacy/specs/changes/compute-browser-resource-lifecycle/proposal.md",
@@ -4221,7 +4299,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 718,
+      "file_sha256": "db005496d61b349e7336cf413f2b17e821032c8752bd13b04d23c09380cc46a3",
+      "body_sha256": "db005496d61b349e7336cf413f2b17e821032c8752bd13b04d23c09380cc46a3"
     },
     {
       "path": "docs/legacy/specs/changes/context-build-inspector/proposal.md",
@@ -4295,7 +4376,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 265,
+      "file_sha256": "f10b36458316b1fb7a9c9b0c02b4146e3bd767db48dec87cd896058c2e968bdb",
+      "body_sha256": "f10b36458316b1fb7a9c9b0c02b4146e3bd767db48dec87cd896058c2e968bdb"
     },
     {
       "path": "docs/legacy/specs/changes/debug-trace-session-status/spec.md",
@@ -4339,7 +4423,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 763,
+      "file_sha256": "de40df69823a02ef9991476d07e1f9480619468b33805cfc7066985c94b86e1a",
+      "body_sha256": "de40df69823a02ef9991476d07e1f9480619468b33805cfc7066985c94b86e1a"
     },
     {
       "path": "docs/legacy/specs/changes/extensible-ralph-stop-conditions/proposal.md",
@@ -4413,7 +4500,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 162,
+      "file_sha256": "cf5f1fa553ea1935e8917e89639ce0026a46cbbf360d698ad3c0335a2e885a3d",
+      "body_sha256": "cf5f1fa553ea1935e8917e89639ce0026a46cbbf360d698ad3c0335a2e885a3d"
     },
     {
       "path": "docs/legacy/specs/changes/final-partition-removal/prds/final-owner-scope-removal-prd.md",
@@ -4445,7 +4535,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 300,
+      "file_sha256": "8bf91a6967542d8f44832a93d40c4d62d87bd2a957d08036bf8105e8e341811b",
+      "body_sha256": "8bf91a6967542d8f44832a93d40c4d62d87bd2a957d08036bf8105e8e341811b"
     },
     {
       "path": "docs/legacy/specs/changes/general-loop-module/design.md",
@@ -4468,7 +4561,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 347,
+      "file_sha256": "0e7f829e25bd8cc49a8f27754f9978fccbc704003db4c0028589650e867ca959",
+      "body_sha256": "0e7f829e25bd8cc49a8f27754f9978fccbc704003db4c0028589650e867ca959"
     },
     {
       "path": "docs/legacy/specs/changes/general-loop-module/spec.md",
@@ -4491,7 +4587,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 255,
+      "file_sha256": "5e8628070dfa5bfd5947536db8ba90907aff69295f70e4582f1bf9ce2cfda284",
+      "body_sha256": "5e8628070dfa5bfd5947536db8ba90907aff69295f70e4582f1bf9ce2cfda284"
     },
     {
       "path": "docs/legacy/specs/changes/immediate-top-trace-pagination/spec.md",
@@ -4514,7 +4613,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 4424,
+      "file_sha256": "9e305e49b7b864326efdd6ff38b64dac0a8282df7723f55bd12c434ebdab318e",
+      "body_sha256": "9e305e49b7b864326efdd6ff38b64dac0a8282df7723f55bd12c434ebdab318e"
     },
     {
       "path": "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/design.md",
@@ -4546,7 +4648,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 827,
+      "file_sha256": "cff976fae1e3c81fb8659ae54a23f48f4524452c861fe50ac4e78f3f35193f9f",
+      "body_sha256": "cff976fae1e3c81fb8659ae54a23f48f4524452c861fe50ac4e78f3f35193f9f"
     },
     {
       "path": "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/prds/01-product-scope-and-current-state.md",
@@ -4704,7 +4809,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1609,
+      "file_sha256": "fefda6018d0e5d01ce95bcc8aba35a932fdcf3e1c08839b93aa0dba1f30973c4",
+      "body_sha256": "fefda6018d0e5d01ce95bcc8aba35a932fdcf3e1c08839b93aa0dba1f30973c4"
     },
     {
       "path": "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/proposal.md",
@@ -4799,7 +4907,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 757,
+      "file_sha256": "1bda8494927ea8384c7703ab50af34956cc19b66d05eccf682f7c0ca05132588",
+      "body_sha256": "1bda8494927ea8384c7703ab50af34956cc19b66d05eccf682f7c0ca05132588"
     },
     {
       "path": "docs/legacy/specs/changes/ink-cli-session-ui/prds/01-product-overview.md",
@@ -4936,7 +5047,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1264,
+      "file_sha256": "7131f9b89b101359d14f569209f0547c4e7bc297bcb7afc4e353fbcef9afec7c",
+      "body_sha256": "7131f9b89b101359d14f569209f0547c4e7bc297bcb7afc4e353fbcef9afec7c"
     },
     {
       "path": "docs/legacy/specs/changes/ink-cli-session-ui/proposal.md",
@@ -5031,7 +5145,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1555,
+      "file_sha256": "d5c1ad3a52f6ce0199314865127ecea7ec72a68d4ff05334825af8e695eb0438",
+      "body_sha256": "d5c1ad3a52f6ce0199314865127ecea7ec72a68d4ff05334825af8e695eb0438"
     },
     {
       "path": "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/01-terminal-design-contract-and-audit.md",
@@ -5315,7 +5432,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 2827,
+      "file_sha256": "a667511ba6f36fc06afa17eeae54abbe4524353583e85be6403e315f7bbcb425",
+      "body_sha256": "a667511ba6f36fc06afa17eeae54abbe4524353583e85be6403e315f7bbcb425"
     },
     {
       "path": "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/proposal.md",
@@ -5485,7 +5605,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 608,
+      "file_sha256": "e9c3d4bd48d1eceef841ee61dab20ed14af5ada15c826d3912e41f8970d737ae",
+      "body_sha256": "e9c3d4bd48d1eceef841ee61dab20ed14af5ada15c826d3912e41f8970d737ae"
     },
     {
       "path": "docs/legacy/specs/changes/installation-profiles/proposal.md",
@@ -5544,7 +5667,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 583,
+      "file_sha256": "56263448cbd112047c264728aa048815f580af345a9b9c56d5fe1bda1951c446",
+      "body_sha256": "56263448cbd112047c264728aa048815f580af345a9b9c56d5fe1bda1951c446"
     },
     {
       "path": "docs/legacy/specs/changes/isolated-deployment-pool/proposal.md",
@@ -5603,7 +5729,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 619,
+      "file_sha256": "2e4982c782daa7858a855f37e21366a97d2b2a119a0e28e765d5ee711c9f8bb6",
+      "body_sha256": "2e4982c782daa7858a855f37e21366a97d2b2a119a0e28e765d5ee711c9f8bb6"
     },
     {
       "path": "docs/legacy/specs/changes/machine-key-web-auth/proposal.md",
@@ -5662,7 +5791,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 619,
+      "file_sha256": "362ea009cc496e1207149ab251685d394d9f58580425fc8d5c2920cb70674c4d",
+      "body_sha256": "362ea009cc496e1207149ab251685d394d9f58580425fc8d5c2920cb70674c4d"
     },
     {
       "path": "docs/legacy/specs/changes/multi-agent-runtime-adapters/proposal.md",
@@ -5709,7 +5841,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 236,
+      "file_sha256": "f8c35f91e0da0160f3943599a0147ead763f200f3ced3364ccf1e238bfd83e33",
+      "body_sha256": "f8c35f91e0da0160f3943599a0147ead763f200f3ced3364ccf1e238bfd83e33"
     },
     {
       "path": "docs/legacy/specs/changes/optimize-unread-count-index/spec.md",
@@ -5756,7 +5891,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 851,
+      "file_sha256": "2c2b4f618a413a25388b785dc2c7a07f10c623724c4af36c308e0e7806b5cfc0",
+      "body_sha256": "2c2b4f618a413a25388b785dc2c7a07f10c623724c4af36c308e0e7806b5cfc0"
     },
     {
       "path": "docs/legacy/specs/changes/pibo-observability-debug-telemetry/prds/01-product-overview.md",
@@ -5827,7 +5965,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1059,
+      "file_sha256": "250fca551fd6f9ec25c72ebd5a67072c9e3ec8f05778e70382801cf1bca5d544",
+      "body_sha256": "250fca551fd6f9ec25c72ebd5a67072c9e3ec8f05778e70382801cf1bca5d544"
     },
     {
       "path": "docs/legacy/specs/changes/pibo-observability-debug-telemetry/proposal.md",
@@ -5979,7 +6120,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1863,
+      "file_sha256": "5255ee6614f317972012c821e5a5f05da8a0b5c477a00e50db38c3ea143eb65d",
+      "body_sha256": "5255ee6614f317972012c821e5a5f05da8a0b5c477a00e50db38c3ea143eb65d"
     },
     {
       "path": "docs/legacy/specs/changes/pibo-workflow-system-v1/prds/01-product-overview.md",
@@ -6179,7 +6323,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 2058,
+      "file_sha256": "b66900ec8c7afd1fff1b6912e3e6f60e0986168128c741a8e2b524982d043fb1",
+      "body_sha256": "b66900ec8c7afd1fff1b6912e3e6f60e0986168128c741a8e2b524982d043fb1"
     },
     {
       "path": "docs/legacy/specs/changes/pibo-workflow-system-v1/proposal.md",
@@ -6337,7 +6484,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 988,
+      "file_sha256": "33fedaca710130259814866b858926974ea4127155709b5c19284381d372155b",
+      "body_sha256": "33fedaca710130259814866b858926974ea4127155709b5c19284381d372155b"
     },
     {
       "path": "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/01-product-overview.md",
@@ -6537,7 +6687,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 2386,
+      "file_sha256": "f50dea8d2102c3da068e0e9d2edd95d67ae5bc94bcd96be0cc0cc13ea1da4633",
+      "body_sha256": "f50dea8d2102c3da068e0e9d2edd95d67ae5bc94bcd96be0cc0cc13ea1da4633"
     },
     {
       "path": "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/ralph-workflows-v2-instructions.md",
@@ -6644,7 +6797,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 475,
+      "file_sha256": "789db4bc86f1c8d0942b49f9570920115882cffc5824e310e8816b1351e8cbe1",
+      "body_sha256": "789db4bc86f1c8d0942b49f9570920115882cffc5824e310e8816b1351e8cbe1"
     },
     {
       "path": "docs/legacy/specs/changes/pluggable-transcription/spec.md",
@@ -6679,7 +6835,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 253,
+      "file_sha256": "5a869c9a71bf1884f8314a4d129be56a39edd48e0c326a2bb3af773f84601174",
+      "body_sha256": "5a869c9a71bf1884f8314a4d129be56a39edd48e0c326a2bb3af773f84601174"
     },
     {
       "path": "docs/legacy/specs/changes/preserve-session-overlays/spec.md",
@@ -6714,7 +6873,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 679,
+      "file_sha256": "6c8ca9a63e15a4004fae3f2ebd6e797e26f4317fe384e724863ece8696dd01d4",
+      "body_sha256": "6c8ca9a63e15a4004fae3f2ebd6e797e26f4317fe384e724863ece8696dd01d4"
     },
     {
       "path": "docs/legacy/specs/changes/projects-room-parity-modular-clean-start/proposal.md",
@@ -6773,7 +6935,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 648,
+      "file_sha256": "58c0452ce023a34eeb3a4110892c122b45025249bc91374e84c87e8ee9c6d476",
+      "body_sha256": "58c0452ce023a34eeb3a4110892c122b45025249bc91374e84c87e8ee9c6d476"
     },
     {
       "path": "docs/legacy/specs/changes/pty-debug-e2e-tooling/prds/01-command-and-scenario-contract.md",
@@ -6868,7 +7033,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1309,
+      "file_sha256": "2a23339f0345b7a5cbbde73eae523fde34a9e5a8199903431f797c29d6dd8266",
+      "body_sha256": "2a23339f0345b7a5cbbde73eae523fde34a9e5a8199903431f797c29d6dd8266"
     },
     {
       "path": "docs/legacy/specs/changes/pty-debug-e2e-tooling/proposal.md",
@@ -6915,7 +7083,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 257,
+      "file_sha256": "53fdf71691d31c8f94c60cf2525f1873fda042aac77ab7ece1aac0cff4003332",
+      "body_sha256": "53fdf71691d31c8f94c60cf2525f1873fda042aac77ab7ece1aac0cff4003332"
     },
     {
       "path": "docs/legacy/specs/changes/resource-reaper-browser-profile-exemptions/spec.md",
@@ -6950,7 +7121,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 717,
+      "file_sha256": "4f9a5603751d8fb36c40aef48985f48c1b1c53d352876008e6d339305e11c981",
+      "body_sha256": "4f9a5603751d8fb36c40aef48985f48c1b1c53d352876008e6d339305e11c981"
     },
     {
       "path": "docs/legacy/specs/changes/runtime-auth-control-plane/proposal.md",
@@ -7009,7 +7183,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 613,
+      "file_sha256": "e7123f98512d7dc6ad36cc02ab63854f07805489785ae8a203f400e6b692eef8",
+      "body_sha256": "e7123f98512d7dc6ad36cc02ab63854f07805489785ae8a203f400e6b692eef8"
     },
     {
       "path": "docs/legacy/specs/changes/runtime-portability-v4-1/proposal.md",
@@ -7056,7 +7233,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 231,
+      "file_sha256": "cb7497ccb4a42822da79237605e3d2fa46e7dfaf171886d1624248f3df24d1e0",
+      "body_sha256": "cb7497ccb4a42822da79237605e3d2fa46e7dfaf171886d1624248f3df24d1e0"
     },
     {
       "path": "docs/legacy/specs/changes/session-goal-slash-command/spec.md",
@@ -7091,7 +7271,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 568,
+      "file_sha256": "39c150001b1bdb262cab7dba6bacc56370ef0d051c9a5d7056ec2d0f948c4c53",
+      "body_sha256": "39c150001b1bdb262cab7dba6bacc56370ef0d051c9a5d7056ec2d0f948c4c53"
     },
     {
       "path": "docs/legacy/specs/changes/session-live-previews/proposal.md",
@@ -7159,7 +7342,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 812,
+      "file_sha256": "56ee72ab4eef3b407821ad550fe37f8086899da8fe27245267013d2e556c6f83",
+      "body_sha256": "56ee72ab4eef3b407821ad550fe37f8086899da8fe27245267013d2e556c6f83"
     },
     {
       "path": "docs/legacy/specs/changes/shared-app-no-owner-scope/prds/index.md",
@@ -7170,7 +7356,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 475,
+      "file_sha256": "ff98835867908c51a5efd4db12821418c5bd73837a4197591d5f88afdbf4872b",
+      "body_sha256": "ff98835867908c51a5efd4db12821418c5bd73837a4197591d5f88afdbf4872b"
     },
     {
       "path": "docs/legacy/specs/changes/shared-app-no-owner-scope/prds/ralph-loop-prompt.md",
@@ -7286,7 +7475,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 259,
+      "file_sha256": "d03e8defc60a6a2d0f93d224ae116a76ea3669b59c53a49b670e4b829489237e",
+      "body_sha256": "d03e8defc60a6a2d0f93d224ae116a76ea3669b59c53a49b670e4b829489237e"
     },
     {
       "path": "docs/legacy/specs/changes/signal-status-reconcile-load/spec.md",
@@ -7309,7 +7501,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 240,
+      "file_sha256": "3e94bb767a86c546b8993e70f0edf7afe508e39a2f6dee6f3db30fa203fbce9a",
+      "body_sha256": "3e94bb767a86c546b8993e70f0edf7afe508e39a2f6dee6f3db30fa203fbce9a"
     },
     {
       "path": "docs/legacy/specs/changes/terminal-working-indicator/spec.md",
@@ -7353,7 +7548,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 777,
+      "file_sha256": "a0b7cdd54ba08225c54e87c84a466e08b25184dcf4aeaad8e1fdde8bf7cd45a0",
+      "body_sha256": "a0b7cdd54ba08225c54e87c84a466e08b25184dcf4aeaad8e1fdde8bf7cd45a0"
     },
     {
       "path": "docs/legacy/specs/changes/web-annotations-plugin/prds/01-product-overview.md",
@@ -7511,7 +7709,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1543,
+      "file_sha256": "f0c7921887d33fde1e05b047b26af21110fea0b7d8a23784e48e59f2b7212bb7",
+      "body_sha256": "f0c7921887d33fde1e05b047b26af21110fea0b7d8a23784e48e59f2b7212bb7"
     },
     {
       "path": "docs/legacy/specs/changes/web-annotations-plugin/proposal.md",
@@ -7597,7 +7798,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 598,
+      "file_sha256": "5ce01e6961cec00b23dc8faef6e19c27a3ef6850ee23380817fdac0e91524f6a",
+      "body_sha256": "5ce01e6961cec00b23dc8faef6e19c27a3ef6850ee23380817fdac0e91524f6a"
     },
     {
       "path": "docs/legacy/specs/changes/yielded-agent-orchestration/proposal.md",
@@ -7665,7 +7869,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 743,
+      "file_sha256": "031ce73fc82ca09ee4b2bfb2a2aa86cc2103928aa770bfabb474aa89d0453de7",
+      "body_sha256": "031ce73fc82ca09ee4b2bfb2a2aa86cc2103928aa770bfabb474aa89d0453de7"
     },
     {
       "path": "docs/legacy/specs/coverage/ralph-verification-gap-analysis-2026-05-11.md",
@@ -7718,7 +7925,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 3824,
+      "file_sha256": "5f9cf6c72662b7ce6b088a104b7d267e46334f19eff5b72c36a253d0fa2ebeb5",
+      "body_sha256": "5f9cf6c72662b7ce6b088a104b7d267e46334f19eff5b72c36a253d0fa2ebeb5"
     },
     {
       "path": "docs/legacy/specs/local-routed-tui-spec.md",
@@ -8189,7 +8399,10 @@
       "authority": null,
       "status": null,
       "lineage": null,
-      "reason": "Created as a reserved OKF navigation or update-history file."
+      "reason": "Created as a reserved OKF navigation or update-history file.",
+      "file_bytes": 6291,
+      "file_sha256": "367eab9316f2f134fea8005bc5b0e33a6b47f0c0eae2c4a32edd976c870fbfc1",
+      "body_sha256": "367eab9316f2f134fea8005bc5b0e33a6b47f0c0eae2c4a32edd976c870fbfc1"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -8224,7 +8437,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 1637,
+      "file_sha256": "f1d7a10ec7926961b57e6a85f3711815b82721be5594ef5f96a9f68c61cb85b8",
+      "body_sha256": "f1d7a10ec7926961b57e6a85f3711815b82721be5594ef5f96a9f68c61cb85b8"
     },
     {
       "path": "docs/plans/okf-migration.md",
@@ -8415,7 +8631,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 438,
+      "file_sha256": "c0582dec964b4e094f068f651b3e44a9d199a67caad690b1b755d412e353d2ae",
+      "body_sha256": "c0582dec964b4e094f068f651b3e44a9d199a67caad690b1b755d412e353d2ae"
     },
     {
       "path": "docs/project/chat-streaming-debugging-runbook.md",
@@ -8510,7 +8729,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 232,
+      "file_sha256": "acc06a868cd7861b6e3f8f5a73d9cdff1ae144e2dfb3eb32babf78f41a992b84",
+      "body_sha256": "acc06a868cd7861b6e3f8f5a73d9cdff1ae144e2dfb3eb32babf78f41a992b84"
     },
     {
       "path": "docs/project/decisions/organizer-v1-proposal.md",
@@ -8563,7 +8785,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 401,
+      "file_sha256": "7f0fce6e9198f14c1b9ac90a5701e84e684aded8ef8e1a332d4028b2953bb21e",
+      "body_sha256": "7f0fce6e9198f14c1b9ac90a5701e84e684aded8ef8e1a332d4028b2953bb21e"
     },
     {
       "path": "docs/project/design/trace-view.md",
@@ -8611,7 +8836,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 414,
+      "file_sha256": "ffc908602a3129dd10d1ebb44af136a2afb496ada385a8c16c486135d9f02b00",
+      "body_sha256": "ffc908602a3129dd10d1ebb44af136a2afb496ada385a8c16c486135d9f02b00"
     },
     {
       "path": "docs/project/guides/pibo-on-windows-via-wsl.md",
@@ -8648,7 +8876,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 4105,
+      "file_sha256": "534b52fdb3cd95980972c5fa043a324d1c6e86492cbcbd26cffde55602bb1315",
+      "body_sha256": "534b52fdb3cd95980972c5fa043a324d1c6e86492cbcbd26cffde55602bb1315"
     },
     {
       "path": "docs/project/installation-profiles.md",
@@ -8743,7 +8974,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 753,
+      "file_sha256": "8c9fd9b73f7e2349c912c03971c5cf79fac9e01ad01710ab24b03e464cc12654",
+      "body_sha256": "8c9fd9b73f7e2349c912c03971c5cf79fac9e01ad01710ab24b03e464cc12654"
     },
     {
       "path": "docs/project/operations/install-developer-host.md",
@@ -8806,7 +9040,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 236,
+      "file_sha256": "cbc17150e37d3822150877811827e0e3ae0d8aa69f5b6c893b0913b806080fdb",
+      "body_sha256": "cbc17150e37d3822150877811827e0e3ae0d8aa69f5b6c893b0913b806080fdb"
     },
     {
       "path": "docs/project/references/okf-concept-templates.md",
@@ -8851,7 +9088,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 260,
+      "file_sha256": "bdc669cb17ce93dce02c21847cf2f040ec2d3bef56e6a332632058ba9057b223",
+      "body_sha256": "bdc669cb17ce93dce02c21847cf2f040ec2d3bef56e6a332632058ba9057b223"
     },
     {
       "path": "docs/project/status/okf-migration-foundation.md",
@@ -9235,7 +9475,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 287,
+      "file_sha256": "84f9f29cef70fa57f6281c48001ddcc50dcad357edac9cce9d01b2ae07b593f0",
+      "body_sha256": "84f9f29cef70fa57f6281c48001ddcc50dcad357edac9cce9d01b2ae07b593f0"
     },
     {
       "path": "docs/reports/artifacts/chat-web-live-streaming-fix-2026-05-20/validation-summary.md",
@@ -9267,7 +9510,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 265,
+      "file_sha256": "cae49a6bad60b7d64524da2f6ffc7ff03fda88829fc7722ecadc245aff6ca7e6",
+      "body_sha256": "cae49a6bad60b7d64524da2f6ffc7ff03fda88829fc7722ecadc245aff6ca7e6"
     },
     {
       "path": "docs/reports/better-auth-sqlite-migration-hardening-validation-2026-08-20.md",
@@ -9737,7 +9983,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 4557,
+      "file_sha256": "e5a880e43c4dd413d30d6fb31e3775baccd7d797bd93b6fc5751352e6657ff65",
+      "body_sha256": "e5a880e43c4dd413d30d6fb31e3775baccd7d797bd93b6fc5751352e6657ff65"
     },
     {
       "path": "docs/reports/coverage/non-source-artifact-coverage-2026-05-10.md",
@@ -10526,7 +10775,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 3635,
+      "file_sha256": "9f3d94bca03b70e64e2675eed4548193547663880cb370c3a630c994e4b4db98",
+      "body_sha256": "9f3d94bca03b70e64e2675eed4548193547663880cb370c3a630c994e4b4db98"
     },
     {
       "path": "docs/reports/debug-trace-session-status-validation-2026-08-07.md",
@@ -10663,7 +10915,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 16819,
+      "file_sha256": "cb18f0663007b8098516406d18d4afd0ae72a9a70312a7d0fcd5b20dea2ee854",
+      "body_sha256": "cb18f0663007b8098516406d18d4afd0ae72a9a70312a7d0fcd5b20dea2ee854"
     },
     {
       "path": "docs/reports/ink-cli-v2-pty-smoke-scenarios.md",
@@ -11177,7 +11432,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 256,
+      "file_sha256": "5eba1f4f5daf667fbc2efd37123db22c54f02b01c4f0768713bf178d2ee3c763",
+      "body_sha256": "5eba1f4f5daf667fbc2efd37123db22c54f02b01c4f0768713bf178d2ee3c763"
     },
     {
       "path": "docs/reports/resource-reaper-browser-profile-exemption-validation-2026-08-07.md",
@@ -11314,7 +11572,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 851,
+      "file_sha256": "b76e5eed5e42f1ee5f1f275b404f3c21ee1fb9d7cc28056c27165ef457901815",
+      "body_sha256": "b76e5eed5e42f1ee5f1f275b404f3c21ee1fb9d7cc28056c27165ef457901815"
     },
     {
       "path": "docs/reports/runtime-adapter-authoring-skill-validation-2026-08-15.md",
@@ -11724,7 +11985,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 72,
+      "file_sha256": "03fef6b2b8036e7cea23bf0dde2721e53f87af2faa74598e5813c6bf6f34fd01",
+      "body_sha256": "03fef6b2b8036e7cea23bf0dde2721e53f87af2faa74598e5813c6bf6f34fd01"
     },
     {
       "path": "docs/specs/changes/better-auth-sqlite-migration-hardening/index.md",
@@ -11735,7 +11999,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 106,
+      "file_sha256": "375f524ac811264be5bf338117da4a305140115e4b96518a293eff7915ad515d",
+      "body_sha256": "375f524ac811264be5bf338117da4a305140115e4b96518a293eff7915ad515d"
     },
     {
       "path": "docs/specs/changes/bootstrap-host-installation/index.md",
@@ -11746,7 +12013,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 95,
+      "file_sha256": "68a14bd2318337d1680403f10c3a0b4768128b9185085e446a976168a3709383",
+      "body_sha256": "68a14bd2318337d1680403f10c3a0b4768128b9185085e446a976168a3709383"
     },
     {
       "path": "docs/specs/changes/chat-web-trace-v2-fast-path/index.md",
@@ -11757,7 +12027,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 95,
+      "file_sha256": "2900f52a8d790f576564cd6d1c602f35670927d9f6408854126bb9876f95e79e",
+      "body_sha256": "2900f52a8d790f576564cd6d1c602f35670927d9f6408854126bb9876f95e79e"
     },
     {
       "path": "docs/specs/changes/debug-trace-session-status/index.md",
@@ -11768,7 +12041,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 94,
+      "file_sha256": "4ee39c89dee7d6f0f41c8142e2b4a28a636811291c9f3b653b275f5d8d82622d",
+      "body_sha256": "4ee39c89dee7d6f0f41c8142e2b4a28a636811291c9f3b653b275f5d8d82622d"
     },
     {
       "path": "docs/specs/changes/gateway-resource-protection-workers/index.md",
@@ -11779,7 +12055,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 103,
+      "file_sha256": "98cb8f31022645b1e2792c4cfef2720c9167b184ff6b30c517bf68ed7e444594",
+      "body_sha256": "98cb8f31022645b1e2792c4cfef2720c9167b184ff6b30c517bf68ed7e444594"
     },
     {
       "path": "docs/specs/changes/index.md",
@@ -11790,7 +12069,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 2411,
+      "file_sha256": "63a834d2dfe6c6b9de9e739fdd148a7bc6219ae043763f9831866f47a8b18b95",
+      "body_sha256": "63a834d2dfe6c6b9de9e739fdd148a7bc6219ae043763f9831866f47a8b18b95"
     },
     {
       "path": "docs/specs/changes/machine-key-web-auth/index.md",
@@ -11801,7 +12083,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 88,
+      "file_sha256": "c705f0f61a98bf24d25f361e1805f7787f2adebbf0eb7faf74707925619446fd",
+      "body_sha256": "c705f0f61a98bf24d25f361e1805f7787f2adebbf0eb7faf74707925619446fd"
     },
     {
       "path": "docs/specs/changes/multi-agent-runtime-adapters/index.md",
@@ -11812,7 +12097,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 96,
+      "file_sha256": "658c0f379b7629a7c89a36cf9e9a29f9250471dc6efe7638d0db6aa3ffc78aa8",
+      "body_sha256": "658c0f379b7629a7c89a36cf9e9a29f9250471dc6efe7638d0db6aa3ffc78aa8"
     },
     {
       "path": "docs/specs/changes/pibo-observability-debug-telemetry/index.md",
@@ -11823,7 +12111,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 166,
+      "file_sha256": "890a50d5b6f4a35bac000b4e73d98ca2dc96beaaa955557beeb75083fc63e814",
+      "body_sha256": "890a50d5b6f4a35bac000b4e73d98ca2dc96beaaa955557beeb75083fc63e814"
     },
     {
       "path": "docs/specs/changes/pibo-observability-debug-telemetry/prds/index.md",
@@ -11834,7 +12125,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 107,
+      "file_sha256": "c30e874df72dab4ed3a21dac3523d727ca7d4b49834ec9770a0ce603ecbe3669",
+      "body_sha256": "c30e874df72dab4ed3a21dac3523d727ca7d4b49834ec9770a0ce603ecbe3669"
     },
     {
       "path": "docs/specs/changes/projects-room-parity-modular-clean-start/index.md",
@@ -11845,7 +12139,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 108,
+      "file_sha256": "a1082b3809828b601a561fa091d9e539f991e4131c77a9044bbfd5549742e930",
+      "body_sha256": "a1082b3809828b601a561fa091d9e539f991e4131c77a9044bbfd5549742e930"
     },
     {
       "path": "docs/specs/changes/pty-debug-e2e-tooling/index.md",
@@ -11856,7 +12153,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 153,
+      "file_sha256": "f1bfcb53ac3f831116a8ab4540d2c7d1fc76f83d020f5a7702a3430b1b369b09",
+      "body_sha256": "f1bfcb53ac3f831116a8ab4540d2c7d1fc76f83d020f5a7702a3430b1b369b09"
     },
     {
       "path": "docs/specs/changes/pty-debug-e2e-tooling/prds/index.md",
@@ -11867,7 +12167,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 94,
+      "file_sha256": "7935d18382bc5e13f56c26f8879d72158ce578391091a7c20afac0f141670e4f",
+      "body_sha256": "7935d18382bc5e13f56c26f8879d72158ce578391091a7c20afac0f141670e4f"
     },
     {
       "path": "docs/specs/changes/reconcile-rejected-message-signals/index.md",
@@ -11878,7 +12181,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 102,
+      "file_sha256": "3f7ecb934cfab9fbcf61c47b80f9b38d4309e4073198c866b3f49a870ab00559",
+      "body_sha256": "3f7ecb934cfab9fbcf61c47b80f9b38d4309e4073198c866b3f49a870ab00559"
     },
     {
       "path": "docs/specs/changes/runtime-auth-control-plane/index.md",
@@ -11889,7 +12195,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 94,
+      "file_sha256": "5c57faa7cbdc824ec5743faf21d9c5ba06ac471882397ac464c26a7d70519891",
+      "body_sha256": "5c57faa7cbdc824ec5743faf21d9c5ba06ac471882397ac464c26a7d70519891"
     },
     {
       "path": "docs/specs/changes/runtime-portability-v4-1/index.md",
@@ -11900,7 +12209,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 92,
+      "file_sha256": "faad08a38111deda4c2320529b6d7a645b35df76357dd585ebc7f54aeda25731",
+      "body_sha256": "faad08a38111deda4c2320529b6d7a645b35df76357dd585ebc7f54aeda25731"
     },
     {
       "path": "docs/specs/changes/session-live-previews/index.md",
@@ -11911,7 +12223,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 89,
+      "file_sha256": "986e5817e9512519695c81ccf502070e502e8bbacfce4ea8092bb003779aa298",
+      "body_sha256": "986e5817e9512519695c81ccf502070e502e8bbacfce4ea8092bb003779aa298"
     },
     {
       "path": "docs/specs/changes/telemetry-opt-in-archive-isolation/index.md",
@@ -11922,7 +12237,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 102,
+      "file_sha256": "c1c5a4de5c898b13a14cc2fdb290f5a6b0f0473d037d91099947c6871f4d3f76",
+      "body_sha256": "c1c5a4de5c898b13a14cc2fdb290f5a6b0f0473d037d91099947c6871f4d3f76"
     },
     {
       "path": "docs/specs/changes/workflow-runtime-foundation-manual-trigger/index.md",
@@ -11933,7 +12251,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 110,
+      "file_sha256": "371e14dd704819b01ff6512ba72fdf8bd9c89f96d594f5b63a5aeb68bb1c6f64",
+      "body_sha256": "371e14dd704819b01ff6512ba72fdf8bd9c89f96d594f5b63a5aeb68bb1c6f64"
     },
     {
       "path": "docs/specs/changes/yielded-agent-orchestration/index.md",
@@ -11944,7 +12265,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 95,
+      "file_sha256": "63c14e4857715a4ed4d94833df4d64cfedd25710e49255e02633433aadf18ab6",
+      "body_sha256": "63c14e4857715a4ed4d94833df4d64cfedd25710e49255e02633433aadf18ab6"
     },
     {
       "path": "docs/specs/compute/browser-pools-and-leases.md",
@@ -11979,7 +12303,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 991,
+      "file_sha256": "9a7e9aa5f43a2e3979d5ba1d9586a87840efc4aa232b30ca1141f6f5db54fa56",
+      "body_sha256": "9a7e9aa5f43a2e3979d5ba1d9586a87840efc4aa232b30ca1141f6f5db54fa56"
     },
     {
       "path": "docs/specs/compute/session-live-previews.md",
@@ -12014,7 +12341,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1019,
+      "file_sha256": "d0dd3ce1cbf57e8eb8cfc3c993ff3cb0d0736cd5ede1f0414b472254a2cf19de",
+      "body_sha256": "d0dd3ce1cbf57e8eb8cfc3c993ff3cb0d0736cd5ede1f0414b472254a2cf19de"
     },
     {
       "path": "docs/specs/data/product-store-history-and-read-models.md",
@@ -12023,8 +12353,8 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 16033,
-      "file_sha256": "18de4bc9137d04436d0eec98d967ddca742a1c60e3e83417b7c614612f5b6d67",
+      "file_bytes": 16180,
+      "file_sha256": "c5e27e0e5c4a1973e5d0f725f18fb060f542149424bdf63a45be465bfa3eeaf1",
       "body_sha256": "89687f75033f6e1d692b6104eb3d8ff64369e05314432c6421833ee4223bb0cd",
       "lineage": null
     },
@@ -12085,7 +12415,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 323,
+      "file_sha256": "38d4113fd90dc0c7ce566d7c837b8ed28d25f61173363512af57ee9e6e6cf373",
+      "body_sha256": "38d4113fd90dc0c7ce566d7c837b8ed28d25f61173363512af57ee9e6e6cf373"
     },
     {
       "path": "docs/specs/delivery/package-build-install-deploy-release.md",
@@ -12094,9 +12427,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 38728,
-      "file_sha256": "71cb694465d69bdb28d9d407d257a16ca83c17b6830d7914f4fcd7dcc26f0e3f",
-      "body_sha256": "50ee454d6d26ca003adce929158d0f2bd2a225b87d2813f959c77b13c9194607",
+      "file_bytes": 38907,
+      "file_sha256": "3ca609d48e7002219ed1dc860fbda2ac801ec328c0f81c59ff718a3c47256154",
+      "body_sha256": "7f0c53895059dcc596d7c2cc5978a3df386151012ed1ecc4de59f02d6e3cc234",
       "lineage": null
     },
     {
@@ -12108,7 +12441,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 892,
+      "file_sha256": "2ebc5109c5759edfffadca5b8fe2b6183021d76cb466db762a4494c09a5225b3",
+      "body_sha256": "2ebc5109c5759edfffadca5b8fe2b6183021d76cb466db762a4494c09a5225b3"
     },
     {
       "path": "docs/specs/gateway/local-protocol-and-client.md",
@@ -12167,7 +12503,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
-      "synthetic": false
+      "synthetic": false,
+      "file_bytes": 949,
+      "file_sha256": "6750f84701d0db7a7720ad5ff6be02d1fc53aa5acd9a6dce0ba7704d601efaf0",
+      "body_sha256": "6750f84701d0db7a7720ad5ff6be02d1fc53aa5acd9a6dce0ba7704d601efaf0"
     },
     {
       "path": "docs/specs/operator/debug-web-and-pty.md",
@@ -12190,7 +12529,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 819,
+      "file_sha256": "feb7fe072d34cb15c4224ff2b609068f7ccc8e07cdef6dfaf64f53b19adbf1bd",
+      "body_sha256": "feb7fe072d34cb15c4224ff2b609068f7ccc8e07cdef6dfaf64f53b19adbf1bd"
     },
     {
       "path": "docs/specs/operator/operator-cli.md",
@@ -12225,7 +12567,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1451,
+      "file_sha256": "c4335c25632d7fd0d2135bd3aab35d983d76e5d2b59e603277cbb69630904fa9",
+      "body_sha256": "c4335c25632d7fd0d2135bd3aab35d983d76e5d2b59e603277cbb69630904fa9"
     },
     {
       "path": "docs/specs/orchestration/loops-goals-and-ralph.md",
@@ -12332,7 +12677,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 699,
+      "file_sha256": "9f8ae361d6438508b67c6e97096504e2604feea54434999d990e1214cc6cd737",
+      "body_sha256": "9f8ae361d6438508b67c6e97096504e2604feea54434999d990e1214cc6cd737"
     },
     {
       "path": "docs/specs/product/plugin-profile-catalog.md",
@@ -12353,9 +12701,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 24185,
-      "file_sha256": "9b25031ba95f15c1b21bcc0ab5f27ddc24c541a60a47ca92b8929ac93c644a8a",
-      "body_sha256": "eceee32d43cae8dd01e89385e479ca705b32a95b870daf7494ca2f84250456c7",
+      "file_bytes": 24259,
+      "file_sha256": "cf74e4cfd291047aa183b9c2ebbb5c12f929ace456b36c8782d0c7903361301f",
+      "body_sha256": "85edf16de5efe0f314277e993bd0931b7f041b7363d1ce1e92d8154e25c1ce68",
       "lineage": null
     },
     {
@@ -12365,9 +12713,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 27385,
-      "file_sha256": "f9b4a10aa3f020b5f18e5dc61c6ac08c570cf971c1b2d702431c48810f03c267",
-      "body_sha256": "5956b1fee3e844ba675705235d493dbbe0fcaca730dcbe84b8944c2a2a1f7ed1",
+      "file_bytes": 27459,
+      "file_sha256": "ef73227a4b3d73e20ab1e60d88b93585524358172d52d056da4eab75a3f9d9a2",
+      "body_sha256": "7eefd2dca95ee41793a68a0e203b308827b8a4d05f702dfe7deb3befc37ff265",
       "lineage": null
     },
     {
@@ -12379,7 +12727,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1192,
+      "file_sha256": "74034f3a9da2089011e9f916a335cb235e86abe5dddd8f30d9bf30ad7a4e0266",
+      "body_sha256": "74034f3a9da2089011e9f916a335cb235e86abe5dddd8f30d9bf30ad7a4e0266"
     },
     {
       "path": "docs/specs/resources/native-and-curated-tools.md",
@@ -12388,9 +12739,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 24855,
-      "file_sha256": "c7e66d99f33691cb2b016cc152b327d7b64f89f4167f4903dffdcdbd85097a88",
-      "body_sha256": "8bd0ee2df000515dac046411576e21854ec2278a287270757e6062e4608b1154",
+      "file_bytes": 24929,
+      "file_sha256": "66953bbc9adb73365a2e6018e65ce023a85c5ee339b60a7dee4323034b745600",
+      "body_sha256": "44198a9ba89d5bb9f51f138054d03eb8ccad5fcf04c1a6d44110bf757435392c",
       "lineage": null
     },
     {
@@ -12400,9 +12751,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 24307,
-      "file_sha256": "d048952e2942ebd34ac706f4b2228c18af06fe93800fd311c5ff6dfa534baead",
-      "body_sha256": "fc2421236c45d3164c34d2a17f4bdcd1c3774c571610e5538263bfdd4a44f238",
+      "file_bytes": 24381,
+      "file_sha256": "33768f5daaa6d76e25891c4be564550f8818f4a109608f2edaee3d1d216e7719",
+      "body_sha256": "31febae33442ce3c2486b4e0f19bad229a09d3cd5f4fae4a41b0333335b3dd35",
       "lineage": null
     },
     {
@@ -12412,9 +12763,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 22323,
-      "file_sha256": "9ff7ade2916cea0b7f7c257bf8cf89aa8d261ddf211173b5d84b50317bcf96e3",
-      "body_sha256": "6b70510ae04fdba2411cf3bc894713c36ed1fef7b7557131d25b9a9e007f02c5",
+      "file_bytes": 22404,
+      "file_sha256": "c7f64fbb54d6e982442d141b5a9d4849c705fcf355034ba7232054788ca2e1f7",
+      "body_sha256": "eb08f081d985fdecdff7568e4464e8d024deba221ba560d04abd00df01647d80",
       "lineage": null
     },
     {
@@ -12474,7 +12825,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 1917,
+      "file_sha256": "97ec99877681cdd0a0f6536a5b35d6d7a49063189ff728378009fd2418a47931",
+      "body_sha256": "97ec99877681cdd0a0f6536a5b35d6d7a49063189ff728378009fd2418a47931"
     },
     {
       "path": "docs/specs/runtime/omp-adapter.md",
@@ -12531,9 +12885,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 24853,
-      "file_sha256": "035f21a61060f41614264a6d26e269028760d4b3af83b88c091431a709db62c7",
-      "body_sha256": "1c11dabf19c476d4796b7b58f36f0e4ebbea95977c89b58f2c4df1e80b313b11",
+      "file_bytes": 24927,
+      "file_sha256": "5fd8bd0340fb2e191b2d46ae78ab900126b44c105bc5bad950366a259c0a4a69",
+      "body_sha256": "eb1aede2be06a49c590da730cbbd5fab5ce72d41d1b1b628ab4acb5488c453b7",
       "lineage": null
     },
     {
@@ -12545,7 +12899,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 783,
+      "file_sha256": "788fe81e4007269f3831d0bd51525ebb04ae616b541a25a817de1d1424866713",
+      "body_sha256": "788fe81e4007269f3831d0bd51525ebb04ae616b541a25a817de1d1424866713"
     },
     {
       "path": "docs/specs/security/private-files-and-http.md",
@@ -12554,9 +12911,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 26840,
-      "file_sha256": "bec13957a99c6c3c79285737ecc1790861612eb30a9db4da50c44c5ffed9ad76",
-      "body_sha256": "856c09cce8efcc062333ee3bf64d8bf450fbd8a3b4770ac206d429eb635bc2e3",
+      "file_bytes": 26914,
+      "file_sha256": "68a5225bb689626191d212931e6d562369816939a2732c9a552ac5d16ab9fc1e",
+      "body_sha256": "d81cddba504d172aa9339837f5159762b55bd77ffff883ab0cd9c2cc12b03883",
       "lineage": null
     },
     {
@@ -12566,9 +12923,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 27095,
-      "file_sha256": "1010038bc9faf53ebc2f1602ceb1d0b74d1847645fe91bacb948a504cb6fa9a0",
-      "body_sha256": "3400eee4761a2be9ee67bd49c2af2239f0edd9e9adaecbd3f178599d2e1f27d1",
+      "file_bytes": 27176,
+      "file_sha256": "391bc9115acdd660169bf40e08969eb0509bc56106e42853105a44eab1b9b659",
+      "body_sha256": "c6bc729538333a062e5ce114e34238fcd5a3e02f13504f0ae978527ca4f74745",
       "lineage": null
     },
     {
@@ -12580,7 +12937,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 280,
+      "file_sha256": "2110f589d8c7de4916d9ab43c8a87f0e044bcc81b6ece679743133e85b1d41c5",
+      "body_sha256": "2110f589d8c7de4916d9ab43c8a87f0e044bcc81b6ece679743133e85b1d41c5"
     },
     {
       "path": "docs/specs/validation/validation-contract.md",
@@ -12589,9 +12949,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 32842,
-      "file_sha256": "f5a48418808d4c48b86a6f18a11083367e31548f8c88cb34d8ee44383e3e6f3c",
-      "body_sha256": "86db104e08879beed71d5a38e131fc104254b2f081a53fd326225fd37c22a4e8",
+      "file_bytes": 33045,
+      "file_sha256": "e17d16a2932a173bd617142a8f807428daf83d0b5ff129969676f93f22f903b7",
+      "body_sha256": "c551d5e97761d505efa4769e0d67dc368a5fd2e2c6d19d3696d6aca8a76930f0",
       "lineage": null
     },
     {
@@ -12601,9 +12961,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 24115,
-      "file_sha256": "4fe81636542c7e92d4a12d6c47ccde7812f84174a890e8d6ac642e6ff7255aa0",
-      "body_sha256": "3ffc21cecae3ec4134267956c443531aa3ea27d173dae3b16275e2f04b19d36b",
+      "file_bytes": 24279,
+      "file_sha256": "39f79a76a55e8806d20b0958c9ad75b0024202c2c38b7b0d668f454d08588679",
+      "body_sha256": "0688d57157401a2e377d05c115ed0b4ac5b610967648c32d664ec034602660c8",
       "lineage": null
     },
     {
@@ -12615,7 +12975,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 514,
+      "file_sha256": "1d81a6b4f1d5bfab568ba6ba8c9148dc8590b56f8fdbd24c83a2a1d4ca52a687",
+      "body_sha256": "1d81a6b4f1d5bfab568ba6ba8c9148dc8590b56f8fdbd24c83a2a1d4ca52a687"
     },
     {
       "path": "docs/specs/vscode/sidecar-webview-and-delivery.md",
@@ -12686,7 +13049,10 @@
       "lineage": null,
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
-      "synthetic": true
+      "synthetic": true,
+      "file_bytes": 2888,
+      "file_sha256": "6133f0f0bc85baf8215d0b4220c3babde7a5a2f883ee75087d87da9bd0213d9b",
+      "body_sha256": "6133f0f0bc85baf8215d0b4220c3babde7a5a2f883ee75087d87da9bd0213d9b"
     },
     {
       "path": "docs/specs/web/jobs-and-workflows-ui.md",
@@ -12767,7 +13133,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 946,
+      "file_sha256": "fd88a55acf636285b2629443b3d4541adf9fc0df069e9daa37009dd3be5954df",
+      "body_sha256": "fd88a55acf636285b2629443b3d4541adf9fc0df069e9daa37009dd3be5954df"
     },
     {
       "path": "examples/web/README.md",
@@ -12776,7 +13145,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 2976,
+      "file_sha256": "0603c7bfa78f9ddaa15e6a0e812dad56012aa60e3844af402f4821fbe37b2a0a",
+      "body_sha256": "0603c7bfa78f9ddaa15e6a0e812dad56012aa60e3844af402f4821fbe37b2a0a"
     },
     {
       "path": "GLOSSARY.md",
@@ -12785,7 +13157,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 12110,
+      "file_sha256": "53f9970e576ca271a5b0ae895e8a51a9b366e93044bc395b9daf022099179f3d",
+      "body_sha256": "53f9970e576ca271a5b0ae895e8a51a9b366e93044bc395b9daf022099179f3d"
     },
     {
       "path": "packages/workflows/README.md",
@@ -12794,7 +13169,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 1493,
+      "file_sha256": "1d578620bc44a7c40009a31db97deaddddf912cb68a7b15b4194abc9d6b4480a",
+      "body_sha256": "1d578620bc44a7c40009a31db97deaddddf912cb68a7b15b4194abc9d6b4480a"
     },
     {
       "path": "README.md",
@@ -12803,7 +13181,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 7718,
+      "file_sha256": "c8d3ad23b7e24a03c63555a75a24a40df05bfb467da40cc7536a7d50a74d50fc",
+      "body_sha256": "c8d3ad23b7e24a03c63555a75a24a40df05bfb467da40cc7536a7d50a74d50fc"
     },
     {
       "path": "skills/builtin/graphify/SKILL.md",
@@ -12812,7 +13193,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 2846,
+      "file_sha256": "625f8a14d39584bccd848bfc2d745b65af53a7422a7b18148a4e6b1645b0ac6b",
+      "body_sha256": "2912f9d9e6236501fa2c94f143107121ec27f2d9e30cf1b2a5f26b2c082726a9"
     },
     {
       "path": "skills/builtin/loop/SKILL.md",
@@ -12821,7 +13205,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 4268,
+      "file_sha256": "4bb2631f061bbaf9b5ed57c891739b5e93faa6f542ff2c721d82a24360f2494e",
+      "body_sha256": "b540c8d17fd7d57227ede0980007c2e061846b8e4ab76576459b555cf774bcd8"
     },
     {
       "path": "skills/builtin/pi-agent-harness/SKILL.md",
@@ -12830,7 +13217,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 13442,
+      "file_sha256": "e66003db86f8f7add903c6caa6fb28b0624dc60f75702e92374501ecda23c7f6",
+      "body_sha256": "b25c86fb1166974ced0d98d06742048ce75490ba0e6fafbd9bce23b59bb6b349"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/evals/fixtures/orion-full-harness.md",
@@ -12839,7 +13229,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 3614,
+      "file_sha256": "a760634b609e9510d42eec817a2dfd47549a738590bf2fa41a3092265ee3ecc0",
+      "body_sha256": "a760634b609e9510d42eec817a2dfd47549a738590bf2fa41a3092265ee3ecc0"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/evals/fixtures/relay-partial-harness.md",
@@ -12848,7 +13241,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 2603,
+      "file_sha256": "7df335ced527cd45653277782d5f81053f2c4a83414fd78d64e2ca4fe011380c",
+      "body_sha256": "7df335ced527cd45653277782d5f81053f2c4a83414fd78d64e2ca4fe011380c"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/evals/README.md",
@@ -12857,7 +13253,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 1520,
+      "file_sha256": "c93f6bd0ecf4b5bcc9b26fcc43bb544c866bcb5fad469184d82997a699571c43",
+      "body_sha256": "c93f6bd0ecf4b5bcc9b26fcc43bb544c866bcb5fad469184d82997a699571c43"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/references/capabilities-and-designer.md",
@@ -12866,7 +13265,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 9350,
+      "file_sha256": "c54608ecb1bd3f1743305321d93d1044a9e6b283c9a7288ff2d47a5e45ec147b",
+      "body_sha256": "c54608ecb1bd3f1743305321d93d1044a9e6b283c9a7288ff2d47a5e45ec147b"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/references/history-debug-and-security.md",
@@ -12875,7 +13277,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 8684,
+      "file_sha256": "56d1a7c3acd60fdb22ac8c2d2ec555722fdfdde8b38fc349440246b65dd40c95",
+      "body_sha256": "56d1a7c3acd60fdb22ac8c2d2ec555722fdfdde8b38fc349440246b65dd40c95"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/references/interfaces-and-registration.md",
@@ -12884,7 +13289,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 8052,
+      "file_sha256": "e45cdac34f2412ab9ade27a780a836764d2fdb04d624db25765054db05a187d3",
+      "body_sha256": "e45cdac34f2412ab9ade27a780a836764d2fdb04d624db25765054db05a187d3"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/references/lifecycle-bindings-and-events.md",
@@ -12893,7 +13301,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 8940,
+      "file_sha256": "04265fa7efc4be8f8a88172fc9c7a9e600bc21274352c8bf1ba746dada90aa3d",
+      "body_sha256": "04265fa7efc4be8f8a88172fc9c7a9e600bc21274352c8bf1ba746dada90aa3d"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/references/portable-delivery-and-native-behavior.md",
@@ -12902,7 +13313,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 12499,
+      "file_sha256": "ef328bb397a3bc5810ab9e2fb4d7b78904ade7915e47e2b02272850f1d44e611",
+      "body_sha256": "ef328bb397a3bc5810ab9e2fb4d7b78904ade7915e47e2b02272850f1d44e611"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/references/testing-migration-and-validation.md",
@@ -12911,7 +13325,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 11800,
+      "file_sha256": "d80be0c2f3e22876926f2b1c3e3403ffb2e20dcf3f47f95eb523ae45459ee13c",
+      "body_sha256": "d80be0c2f3e22876926f2b1c3e3403ffb2e20dcf3f47f95eb523ae45459ee13c"
     },
     {
       "path": "skills/builtin/pibo-agent-runtime-adapter/SKILL.md",
@@ -12920,7 +13337,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 11071,
+      "file_sha256": "e84623e6b565ac6036e458e2b6d358bea4180f3e6fc5fc72edb32db1d4ef60a7",
+      "body_sha256": "65b2e6cecc2a663e5e5d816af1296f036d99906f3f48cab287cdbe57d5dd0120"
     },
     {
       "path": "skills/builtin/pibo-docker-system/SKILL.md",
@@ -12929,7 +13349,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 8086,
+      "file_sha256": "bce3bd5101a7feb6bb21f5edc1a48d8bb7c0cf1af1abd83dbc732aaf9d99ca5a",
+      "body_sha256": "a1b7f0cea33fab40e6fd3e048461b4b0c300140c2e4ee0594a7bff86c93af3a2"
     },
     {
       "path": "skills/builtin/pibo-spec-writing/SKILL.md",
@@ -12938,7 +13361,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 12647,
+      "file_sha256": "b1ae682c956883439b98d8e0011aaece1e17ddc703dbed8b2faba31f0410eb48",
+      "body_sha256": "a5623cfd16c39d19ec210536f580342442f4e79cf84921c9787fb7b752375d94"
     },
     {
       "path": "skills/builtin/prd/SKILL.md",
@@ -12947,7 +13373,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 5074,
+      "file_sha256": "9caecd14cfb8fcbce70aab77d1a68afab687b610099efc226cac9cc75787bf08",
+      "body_sha256": "7f87531d00af2dbffe7428f378386effdb872595c5fb9f791290034af7ce9291"
     },
     {
       "path": "skills/builtin/ralph-loop/SKILL.md",
@@ -12956,7 +13385,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 13797,
+      "file_sha256": "799dfbaedbcbd39dfb8004858fa9a2edc3f6d45e0074852598d3174839a7c82b",
+      "body_sha256": "39969ae32b3209680d05a7ff1970ad4aa39829959a042ab647b152345314103b"
     },
     {
       "path": "skills/builtin/ralph-prd-json/SKILL.md",
@@ -12965,7 +13397,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 4977,
+      "file_sha256": "258e6fb413dde60388bafbc3da5e149bb710bef3d26fc6310827dd7891927475",
+      "body_sha256": "0c3d69bba66819a47b98778258135731753b353f1a3f35ca1df2df118cfb1475"
     },
     {
       "path": "skills/builtin/skill-creator/agents/analyzer.md",
@@ -12974,7 +13409,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 10376,
+      "file_sha256": "bf68f4cac5a56c673a928c2e6d619586c5b93ea364026ab37547772cb45a663a",
+      "body_sha256": "bf68f4cac5a56c673a928c2e6d619586c5b93ea364026ab37547772cb45a663a"
     },
     {
       "path": "skills/builtin/skill-creator/agents/comparator.md",
@@ -12983,7 +13421,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 7287,
+      "file_sha256": "fe1fc9787c495d864c5d6eada47396478572325fde1b33a96d78bf4b849b7a3e",
+      "body_sha256": "fe1fc9787c495d864c5d6eada47396478572325fde1b33a96d78bf4b849b7a3e"
     },
     {
       "path": "skills/builtin/skill-creator/agents/grader.md",
@@ -12992,7 +13433,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 9049,
+      "file_sha256": "57134da0c1a4eea33fbd74a1c9c44aa814f07d6bc64de303edb586f941e5d21a",
+      "body_sha256": "57134da0c1a4eea33fbd74a1c9c44aa814f07d6bc64de303edb586f941e5d21a"
     },
     {
       "path": "skills/builtin/skill-creator/references/schemas.md",
@@ -13001,7 +13445,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 12061,
+      "file_sha256": "8e8876180a8989b406a4d3edddf875b04cdfd5805cc8616686d552b11ce4455f",
+      "body_sha256": "8e8876180a8989b406a4d3edddf875b04cdfd5805cc8616686d552b11ce4455f"
     },
     {
       "path": "skills/builtin/skill-creator/SKILL.md",
@@ -13010,7 +13457,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 34594,
+      "file_sha256": "c7f6868121f5fcac0b40ea2377460db9bf559da082d62d0d58fa2a658577cf92",
+      "body_sha256": "70f10db33ae6a42fdf7f05ea27a9856ef251869c33214628ba3a0d693318cb23"
     },
     {
       "path": "skills/builtin/web-annotations/SKILL.md",
@@ -13019,7 +13469,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 5019,
+      "file_sha256": "60e782f7c97e171cd10c656733463918f23c34a5ee36b5bb7c20c3f5aff6d0e7",
+      "body_sha256": "60e782f7c97e171cd10c656733463918f23c34a5ee36b5bb7c20c3f5aff6d0e7"
     },
     {
       "path": "src/apps/chat-vscode/README.md",
@@ -13028,7 +13481,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 9090,
+      "file_sha256": "8137e1acde2e985155e952c1c94bf88a4b6776797385158b3c70b0747a7a6dd7",
+      "body_sha256": "8137e1acde2e985155e952c1c94bf88a4b6776797385158b3c70b0747a7a6dd7"
     },
     {
       "path": "src/skills/pibo-debug-auth/SKILL.md",
@@ -13037,7 +13493,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 6742,
+      "file_sha256": "9be10f7f45852cbfd654d2042d7fc568ab53197c0d9c557a5ff76c0c17571bf9",
+      "body_sha256": "3dc4f9ec2e7dd49f6d5c4f7ddcab93fe7826d931c783e6a8d05233fe314b30b0"
     },
     {
       "path": "test/fixtures/web-annotations/README.md",
@@ -13046,7 +13505,10 @@
       "classification": "host-owned exception",
       "authority": null,
       "status": null,
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 753,
+      "file_sha256": "bc272fe67a166fcd2ac96fe4ae95f0da6c40707502a439ba599e1e6646e43965",
+      "body_sha256": "bc272fe67a166fcd2ac96fe4ae95f0da6c40707502a439ba599e1e6646e43965"
     }
   ]
 }
