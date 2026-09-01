@@ -1,3 +1,46 @@
+---
+type: "Historical Record"
+title: "Association Architecture Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/association-architecture-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d3089025f941b9797e67ba9c5a26a6b65c002c73"
+  source_bytes: 12574
+  source_sha256: "842f7bb307aa0c9e8aec8fc2da3982ca387229d70531d0a67edf1b7e09874b85"
+  source_body_sha256: "842f7bb307aa0c9e8aec8fc2da3982ca387229d70531d0a67edf1b7e09874b85"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/association-architecture-report.md"
+  source_sha256: "842f7bb307aa0c9e8aec8fc2da3982ca387229d70531d0a67edf1b7e09874b85"
+  unresolved_links:
+    - target: "HOME>/code/pibo/src/core/runtime.ts:105"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pibo/src/core/runtime.ts:105."
+    - target: "HOME>/code/pibo/src/core/runtime.ts:224"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pibo/src/core/runtime.ts:224."
+    - target: "HOME>/code/pibo/src/core/routed-session.ts:105"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pibo/src/core/routed-session.ts:105."
+    - target: "HOME>/code/pibo/src/core/routed-session.ts:127"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pibo/src/core/routed-session.ts:127."
+    - target: "HOME>/code/pibo/src/core/events.ts:235"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pibo/src/core/events.ts:235."
+    - target: "HOME>/code/pibo/src/plugins/types.ts:172"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pibo/src/plugins/types.ts:172."
+    - target: "HOME>/code/pibo/src/plugins/registry.ts:310"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pibo/src/plugins/registry.ts:310."
+    - target: "HOME>/code/pibo/src/core/session-router.ts:487"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pibo/src/core/session-router.ts:487."
+    - target: "HOME>/code/pi-mono/packages/coding-agent/src/core/agent-session.ts:372"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pi-mono/packages/coding-agent/src/core/agent-session.ts:372."
+    - target: "HOME>/code/pi-mono/packages/coding-agent/src/core/agent-session.ts:396"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/<HOME>/code/pi-mono/packages/coding-agent/src/core/agent-session.ts:396."
+---
 # Association Architecture Report
 
 Stand: 2026-05-02.

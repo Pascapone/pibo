@@ -10,6 +10,24 @@ license: MIT
 
 Design comprehensive, production-grade Product Requirements Documents (PRDs) that bridge the gap between business vision and technical execution. This skill works for modern software systems, ensuring that requirements are clearly defined.
 
+## Pibo documentation contract
+
+When saving a PRD in this repository, read `docs/index.md` and `docs/project/documentation-profile.md`. A PRD describes intended work, so save it as a conformant `Plan` under `docs/plans/`, with `authority: "directive"`; never save planned behavior as a current Specification. Use the required profile fields, lowercase kebab-case, one migration-ledger record, generated indexes, and an explicit `docs/log.md` entry. Keep this runtime-loaded `SKILL.md` in its native frontmatter format.
+
+Start a saved PRD with:
+
+```yaml
+---
+type: "Plan"
+title: "<title>"
+description: "<one-sentence intended outcome.>"
+tags: ["<subject>"]
+status: "draft"
+authority: "directive"
+generated: { by: "<actor/version>", at: "<ISO-8601 datetime>" }
+---
+```
+
 ## When to Use
 
 Use this skill when:

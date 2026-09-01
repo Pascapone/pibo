@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Web Annotations Rollout Checklist"
+description: "Guides worker, browser, security, privacy, and deployment validation for Web Annotations."
+tags: ["annotations", "rollout", "web"]
+status: "draft"
+authority: "directive"
+migration_lineage:
+  source_path: "docs/project/web-annotations-rollout-checklist.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "11beebf8e2a8838f50b7bf2edc067975be17a2d9"
+  source_bytes: 2404
+  source_sha256: "7e2b838a33337ad0e138439145f2bd5c002eb488dec53b401770fdc0dfd6802c"
+  source_body_sha256: "7e2b838a33337ad0e138439145f2bd5c002eb488dec53b401770fdc0dfd6802c"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Web Annotations Rollout Checklist
 
 Use this checklist before enabling Web Annotations outside the dedicated Docker worker.

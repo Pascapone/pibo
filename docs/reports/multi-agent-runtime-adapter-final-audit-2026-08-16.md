@@ -1,8 +1,30 @@
+---
+type: "Evidence Report"
+title: "Multi-Agent Runtime Adapter Final Audit"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "ab3d070c754c4983bf4ebaeb777cea60fb323660"
+  source_bytes: 11299
+  source_sha256: "eb378ffb280e4ead60e2d284d7b4a6254028bd2bbc197e0b746eaaadb84dbfdb"
+  source_body_sha256: "eb378ffb280e4ead60e2d284d7b4a6254028bd2bbc197e0b746eaaadb84dbfdb"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:multi-agent-runtime-adapter-final-audit-2026-08-16"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Multi-Agent Runtime Adapter Final Audit
 
 **Date:** 2026-08-16
 
-**Scope:** REQ-001 through REQ-019 in [`../specs/changes/multi-agent-runtime-adapters/spec.md`](../specs/changes/multi-agent-runtime-adapters/spec.md)
+**Scope:** REQ-001 through REQ-019 in [`../specs/changes/multi-agent-runtime-adapters/spec.md`](../legacy/specs/changes/multi-agent-runtime-adapters/spec.md)
 
 **Overall result:** **PASS.** The August 16 follow-up audit found and corrected the Chat Web-to-Pi provider-auth bypass. The runtime-neutral correction passes local/full verification, focused PR review packaging, exact Pibo2 public-Web validation, managed native-Codex authentication, and one bounded public production-provider turn.
 

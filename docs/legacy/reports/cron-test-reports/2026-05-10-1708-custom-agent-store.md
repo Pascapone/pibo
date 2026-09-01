@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Test-Review: Custom-Agent-Store und Profil-Brücke"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/cron-test-reports/2026-05-10-1708-custom-agent-store.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "004f10d70ca754487db7d7a415e6ae99814f3793"
+  source_bytes: 11135
+  source_sha256: "d94ba1551d86877485ed5c1b500fdcac265db9fb33f084bea17558b57434d890"
+  source_body_sha256: "d94ba1551d86877485ed5c1b500fdcac265db9fb33f084bea17558b57434d890"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Test-Review: Custom-Agent-Store und Profil-Brücke
 
 Datum: 2026-05-10 17:08 Europe/Berlin

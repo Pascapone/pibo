@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "XState-Analyse für Pibo Workflow V1"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/2026-05-10-workflow-research-xstate.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b8d2c12e0d56b235f55733e79d08641c900ed0c6"
+  source_bytes: 27740
+  source_sha256: "9e3c47ed1cfec1ec45980b9fce8330dc103a255cb830fe30754d66cca8cd50b0"
+  source_body_sha256: "9e3c47ed1cfec1ec45980b9fce8330dc103a255cb830fe30754d66cca8cd50b0"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # XState-Analyse für Pibo Workflow V1
 
 Datum: 2026-05-10

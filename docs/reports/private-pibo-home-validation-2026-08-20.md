@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Private Pibo Home Validation — 2026-08-20"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/private-pibo-home-validation-2026-08-20.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "974d175b28144f56671500ff3102bb3777ecdf68"
+  source_bytes: 5500
+  source_sha256: "c3ab02d6badebc66c26d8bfdbd7b970249a794c3eb6dca51177cbb8c5a6b73d8"
+  source_body_sha256: "c3ab02d6badebc66c26d8bfdbd7b970249a794c3eb6dca51177cbb8c5a6b73d8"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:private-pibo-home-validation-2026-08-20"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Private Pibo Home Validation — 2026-08-20
 
 **Branch:** `fix/private-pibo-home`

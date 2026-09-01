@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Signals and Unread Debug Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-09-chat-signals-unread-debug-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "09f55a039b8b910043d06af23a95fead3c45f1ce"
+  source_bytes: 13125
+  source_sha256: "2857b38619b8ba81e1f20b0b66d875f1217b115ed3a7ce4c2fd4be9d36f3ed85"
+  source_body_sha256: "2857b38619b8ba81e1f20b0b66d875f1217b115ed3a7ce4c2fd4be9d36f3ed85"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Signals and Unread Debug Report
 
 Date: 2026-05-09  

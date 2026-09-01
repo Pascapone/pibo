@@ -1,10 +1,31 @@
 ---
-title: MCP Agent Context and Designer Integration
-version: 1.0
-date_created: 2026-05-02
-last_updated: 2026-05-02
-owner: Pibo maintainers
-tags: [architecture, mcp, agent-designer, context, cli]
+type: "Historical Record"
+title: "MCP Agent Context and Designer Integration"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-architecture-mcp-agent-context.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "682c58e526942b92d3da4e8aeb0c43568308b419"
+  source_bytes: 14265
+  source_sha256: "9918a9fdd49dfc3f2c01e696c58d8c9523cd01286ed7de4a14583c20736e9a9c"
+  source_body_sha256: "4703ade7465ef9dee45c5e692dfec92ba9c5bbab15a7ea7655c3913865afe691"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-architecture-mcp-agent-context.md"
+  source_sha256: "4703ade7465ef9dee45c5e692dfec92ba9c5bbab15a7ea7655c3913865afe691"
+  unresolved_links:
+    - target: "../docs/mcp.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/mcp.md."
+    - target: "../docs/pibo-tools-context.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/pibo-tools-context.md."
+    - target: "../GLOSSARY.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/GLOSSARY.md."
 ---
 
 # Introduction

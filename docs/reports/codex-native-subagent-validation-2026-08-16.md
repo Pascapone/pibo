@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Native Codex Pibo-Managed Subagent Validation — 2026-08-16"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/codex-native-subagent-validation-2026-08-16.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "aa2d3408bd925538f8a72c4b8bad63292b2484ac"
+  source_bytes: 9351
+  source_sha256: "979150ed69f17b70b0e3efc8d4f734055a953e8eabeb27017306ecf9db14fa21"
+  source_body_sha256: "979150ed69f17b70b0e3efc8d4f734055a953e8eabeb27017306ecf9db14fa21"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:codex-native-subagent-validation-2026-08-16"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Native Codex Pibo-Managed Subagent Validation — 2026-08-16
 
 ## Scope

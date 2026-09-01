@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Gateway Fallback Recovery"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/gateway-fallback-recovery.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "fa10c3f558b857fdb5495acd2e017f66e313312c"
+  source_bytes: 8560
+  source_sha256: "8d22b25d2988aa8304540793544ef9e1b8a2453601ee3f03a4855645e782262b"
+  source_body_sha256: "8d22b25d2988aa8304540793544ef9e1b8a2453601ee3f03a4855645e782262b"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Gateway Fallback Recovery
 
 Dokumentation des automatischen Failover-Systems für das Pibo Gateway.

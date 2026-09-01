@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Spec: Extensible Ralph Stop Conditions"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/extensible-ralph-stop-conditions/spec.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "05ff64cf17b320c5d35145b74a9b0f1c5895c7aa"
+  source_bytes: 22846
+  source_sha256: "460abe8555e9bced24ff6122a3561087b5d4cfba9962c442ab8ab29ce6e9ec56"
+  source_body_sha256: "460abe8555e9bced24ff6122a3561087b5d4cfba9962c442ab8ab29ce6e9ec56"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Spec: Extensible Ralph Stop Conditions
 
 **Status:** Draft  

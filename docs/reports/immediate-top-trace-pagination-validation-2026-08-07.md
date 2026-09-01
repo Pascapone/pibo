@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Immediate top trace pagination validation — 2026-08-07"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/immediate-top-trace-pagination-validation-2026-08-07.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "6d74281f2e2f3c4fc6259ce62c2f3f620f252f97"
+  source_bytes: 5823
+  source_sha256: "2069c97f1461cf31bf6f822975b51c6ca18d8839117cf6efe200a6fb412876ac"
+  source_body_sha256: "2069c97f1461cf31bf6f822975b51c6ca18d8839117cf6efe200a6fb412876ac"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:immediate-top-trace-pagination-validation-2026-08-07"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Immediate top trace pagination validation — 2026-08-07
 
 ## Verdict

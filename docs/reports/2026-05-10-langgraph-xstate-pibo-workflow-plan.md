@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Report: LangGraph as Reference, XState as Orchestration Model, Pibo-Native Workflow System"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/2026-05-10-langgraph-xstate-pibo-workflow-plan.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d2867a6788bb574ebf1de526caa50d847a199789"
+  source_bytes: 8795
+  source_sha256: "8cf114ecd399c7b4c98b29b6d6b42364e5d89ef2a7b171e7cfb9786b5f205557"
+  source_body_sha256: "8cf114ecd399c7b4c98b29b6d6b42364e5d89ef2a7b171e7cfb9786b5f205557"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Report: LangGraph as Reference, XState as Orchestration Model, Pibo-Native Workflow System
 
 **Date:** 2026-05-10  

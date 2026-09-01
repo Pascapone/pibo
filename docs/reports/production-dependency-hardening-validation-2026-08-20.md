@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Production Dependency Hardening Validation — 2026-08-20"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/production-dependency-hardening-validation-2026-08-20.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "8613823411df50252ae81f79300cdb59887db0d2"
+  source_bytes: 6773
+  source_sha256: "1d6d009cba4e3bc987bf038b8473e65ec29af1705ce28277c6e83970b69aafcf"
+  source_body_sha256: "1d6d009cba4e3bc987bf038b8473e65ec29af1705ce28277c6e83970b69aafcf"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:production-dependency-hardening-validation-2026-08-20"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Production Dependency Hardening Validation — 2026-08-20
 
 **Status:** PASS for source, packed-install, integrated, and deployed production-audit validation. Direct Windows/NTFS validation remains an external gate for the separately scoped Better Auth migration.

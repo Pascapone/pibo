@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Installation profiles"
+description: "Explains supported Pibo installation profiles, ownership boundaries, migration, upgrade, rollback, and recovery."
+tags: ["installation", "operations", "profiles"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/installation-profiles.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "04ba7be002c1a1cee6f0fa173801dd870127f7b3"
+  source_bytes: 6918
+  source_sha256: "b0bc367fcf9fb515803da3f305b66467b1c1947c26ef755f1f8c019b5bfe7f82"
+  source_body_sha256: "b0bc367fcf9fb515803da3f305b66467b1c1947c26ef755f1f8c019b5bfe7f82"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Installation profiles
 
 Pibo's package installation remains side-effect free. After `npm install -g @pasko70/pibo`, use `pibo setup` to inspect or apply one of two supported host profiles.

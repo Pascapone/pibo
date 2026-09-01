@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Web Compact Terminal Difference Matrix"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/web-terminal-difference-matrix.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "6ecd6c94ce48d3010766a865db81f8da833e71cb"
+  source_bytes: 7378
+  source_sha256: "0dd07d59aa564003599f4cad49b51fd57a175e6da6b14828161a42903c230ef9"
+  source_body_sha256: "0dd07d59aa564003599f4cad49b51fd57a175e6da6b14828161a42903c230ef9"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Web Compact Terminal Difference Matrix
 
 **Date:** 2026-05-17  

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design: XState Integration for Pibo Workflows"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/design-xstate-integration.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "6b71d8ef7d60e5836383ea2416fb2804f3b98150"
+  source_bytes: 12650
+  source_sha256: "d48cd5e0b0294a2c20f08c81b716da4887db2b3a5f315d6b435025f93ffbd70e"
+  source_body_sha256: "d48cd5e0b0294a2c20f08c81b716da4887db2b3a5f315d6b435025f93ffbd70e"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design: XState Integration for Pibo Workflows
 
 **Status:** Draft  

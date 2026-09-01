@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 03: Transcript Command Results and Slash Palette"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/03-transcript-command-results-and-slash-palette.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "3fbefc01be9a0d07207d6a37817d5488886351da"
+  source_bytes: 6128
+  source_sha256: "e6d87cbec9d7119c07dde61c4a1f0fb5416d20a8d7d932cf5b0367b80947aabe"
+  source_body_sha256: "e6d87cbec9d7119c07dde61c4a1f0fb5416d20a8d7d932cf5b0367b80947aabe"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 03: Transcript Command Results and Slash Palette
 
 **Status:** Draft  

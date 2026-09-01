@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Signal status reconciliation validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/signal-status-reconcile-load-validation-2026-08-07.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "db6548c824cc91a252474f0839bd0990ec8e12b2"
+  source_bytes: 3112
+  source_sha256: "0bf0472f6cb60f865e84195aa00dc54941c6bc454db000f763025263d4ec7aab"
+  source_body_sha256: "0bf0472f6cb60f865e84195aa00dc54941c6bc454db000f763025263d4ec7aab"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:signal-status-reconcile-load-validation-2026-08-07"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Signal status reconciliation validation
 
 **Date:** 2026-08-07  

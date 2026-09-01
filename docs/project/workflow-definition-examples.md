@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Minimal Workflow Definition Examples"
+description: "Provides current minimal Pibo workflow-definition examples and authoring checks."
+tags: ["examples", "reference", "workflows"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/workflow-definition-examples.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "e7318859b181e8f8a09b02fe0a50eb93b39998f9"
+  source_bytes: 5877
+  source_sha256: "6ca827c01ac3ff17605b67030f84c1d3cd694d9fa7af48880b3e412f91d4c938"
+  source_body_sha256: "6ca827c01ac3ff17605b67030f84c1d3cd694d9fa7af48880b3e412f91d4c938"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Minimal Workflow Definition Examples
 
 This document shows small TypeScript-managed workflow definitions for Pibo Workflow System V1. The examples use the public `@pasko70/pibo-workflows` package surface and keep executable code behind Workflow Registry refs so definitions remain serializable.

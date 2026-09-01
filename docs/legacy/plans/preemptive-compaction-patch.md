@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Preemptive Compaction Patch"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/preemptive-compaction-patch.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "e2b587b99d8ee61cd290733e35ce4e6db05ee3a4"
+  source_bytes: 5182
+  source_sha256: "83abc29aa5a32ddc650b7369c44497efbe6a38e46c3b2d7f8eb808fb97af3126"
+  source_body_sha256: "83abc29aa5a32ddc650b7369c44497efbe6a38e46c3b2d7f8eb808fb97af3126"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Preemptive Compaction Patch
 
 ## Problem

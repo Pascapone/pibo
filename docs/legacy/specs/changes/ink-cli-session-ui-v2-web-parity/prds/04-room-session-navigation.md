@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI V2 — Room and Session Navigation"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/prds/04-room-session-navigation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "fda70adf3e29823df20ccb34ed672725e2936f6a"
+  source_bytes: 2589
+  source_sha256: "6cb4d41b0e6ae61e69221816e90b983228e15204f10839f1b1917bd5f1ce099d"
+  source_body_sha256: "6cb4d41b0e6ae61e69221816e90b983228e15204f10839f1b1917bd5f1ce099d"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI V2 — Room and Session Navigation
 
 **Status:** Draft  

@@ -1,10 +1,33 @@
 ---
-title: Pibo Web Chat Trace UI
-version: 0.1
-date_created: 2026-04-28
-last_updated: 2026-05-02
-owner: Pibo
-tags: [design, web, chat, tracing, sessions, subagents]
+type: "Historical Record"
+title: "Pibo Web Chat Trace UI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-design-web-chat-trace-ui.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "0bcc142d95394d980cfff30d76e1ab0031b05d4b"
+  source_bytes: 49052
+  source_sha256: "0e36299dcdd68fcdfb88633f9f97264b69b77b24b8f74ba4e596056d9478f2bc"
+  source_body_sha256: "b4f66de5332273238c9109c9183a52e8e9f61213fccdfbce91bcdb43979296a2"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-design-web-chat-trace-ui.md"
+  source_sha256: "b4f66de5332273238c9109c9183a52e8e9f61213fccdfbce91bcdb43979296a2"
+  unresolved_links:
+    - target: "../docs/architecture.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/architecture.md."
+    - target: "../docs/progress.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/progress.md."
+    - target: "../DESIGN.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/DESIGN.md."
+    - target: "../docs/web-chat-tracing-ui-reference.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/web-chat-tracing-ui-reference.md."
 ---
 
 # Introduction

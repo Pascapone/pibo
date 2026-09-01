@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Graphlib-Analyse für Pibo Workflow System V1"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/2026-05-10-workflow-research-graphlib.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "4dd9a7781fbb97aed4e33c614d230c0563920d79"
+  source_bytes: 22618
+  source_sha256: "256aae5b9a769eac28b0da18ec29f7622d8fff0ddbc4a6322d4992671bf8888b"
+  source_body_sha256: "256aae5b9a769eac28b0da18ec29f7622d8fff0ddbc4a6322d4992671bf8888b"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Graphlib-Analyse für Pibo Workflow System V1
 
 ## Executive Summary

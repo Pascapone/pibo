@@ -1,10 +1,29 @@
 ---
-title: Pibo Event And Gateway Schema Specification
-version: 1.0
-date_created: 2026-04-28
-last_updated: 2026-05-02
-owner: Pibo maintainers
-tags: [schema, events, gateway, sessions]
+type: "Historical Record"
+title: "Pibo Event And Gateway Schema Specification"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-schema-events-and-gateway.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "ab41fda8076e08667f154cb32e19a755358d96b5"
+  source_bytes: 13554
+  source_sha256: "5706a6d86b926b1282af1805ef1526fdf92e2b1c4a6e2d71c12ab2447c5ec493"
+  source_body_sha256: "b83b1c5f4899d0e2733f8922d3559f945417d998e321a2bb3dc5e753ed0ea9fb"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-schema-events-and-gateway.md"
+  source_sha256: "b83b1c5f4899d0e2733f8922d3559f945417d998e321a2bb3dc5e753ed0ea9fb"
+  unresolved_links:
+    - target: "../docs/architecture.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/architecture.md."
+    - target: "../examples/gateway/README.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/examples/gateway/README.md."
 ---
 
 # Introduction

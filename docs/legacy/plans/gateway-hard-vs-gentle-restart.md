@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Plan: Hard Restart vs. Gentle Restart für das Pibo Gateway"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/gateway-hard-vs-gentle-restart.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "664bd98ed44233c25a945be4a849283056b349da"
+  source_bytes: 10524
+  source_sha256: "166d15ab1de6ee23e9de80c38b90e0084fe7a5112e6f07ab27e91bfd92630133"
+  source_body_sha256: "166d15ab1de6ee23e9de80c38b90e0084fe7a5112e6f07ab27e91bfd92630133"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Plan: Hard Restart vs. Gentle Restart für das Pibo Gateway
 
 > Status: Analyse abgeschlossen, wartet auf Umsetzung  

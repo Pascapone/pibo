@@ -1,10 +1,33 @@
 ---
-title: Pibo Operator CLI Specification
-version: 1.1
-date_created: 2026-04-28
-last_updated: 2026-05-01
-owner: Pibo maintainers
-tags: [tool, cli, mcp, external-tools, config, debug]
+type: "Historical Record"
+title: "Pibo Operator CLI Specification"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-tool-operator-cli.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9324960c5476297163f685da8bb6e0c279f670e3"
+  source_bytes: 15719
+  source_sha256: "c87d43aead7565d7a875e599a03bed9fded0bd3bcf1b66e3da87f80de50fa6de"
+  source_body_sha256: "a5460d901535ca600b42a24abdf4f45e776d2585b98aa28a1961cc1f36c4a5f5"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-tool-operator-cli.md"
+  source_sha256: "a5460d901535ca600b42a24abdf4f45e776d2585b98aa28a1961cc1f36c4a5f5"
+  unresolved_links:
+    - target: "../RULES.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/RULES.md."
+    - target: "../docs/mcp.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/mcp.md."
+    - target: "../docs/tools.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/tools.md."
+    - target: "../docs/architecture.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/architecture.md."
 ---
 
 # Introduction

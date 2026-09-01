@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Signal System Strategy and E2E Prep"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/signal-system-strategy-and-e2e-prep-2026-05-19.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b9577f7abbc8b817e6f54f9f883a459bfd517eeb"
+  source_bytes: 11127
+  source_sha256: "fa01788228ad8f99cbad4e2a4356f83b335360a564d4faf72b466e1522ccdaaf"
+  source_body_sha256: "fa01788228ad8f99cbad4e2a4356f83b335360a564d4faf72b466e1522ccdaaf"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Signal System Strategy and E2E Prep
 
 Date: 2026-05-19

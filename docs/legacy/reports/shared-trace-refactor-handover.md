@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Handover: Shared Trace Refactor – Implementierungsstand"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/shared-trace-refactor-handover.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "aec3f03a4ab142f53f4b1b66ac7a3c351f6ae278"
+  source_bytes: 3315
+  source_sha256: "965192abf5e1c30344b6e61a1f9e3d18c60651206e356eafd5b280544d429011"
+  source_body_sha256: "965192abf5e1c30344b6e61a1f9e3d18c60651206e356eafd5b280544d429011"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Handover: Shared Trace Refactor – Implementierungsstand
 
 **Datum:** 2026-05-04  

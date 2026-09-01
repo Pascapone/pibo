@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Test-Review: Web-HTTP-Helpers und Web-Channel-Basisflüsse"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1449-web-http-channel.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "84c72216ac024d292102d2f5eebff62f95404c80"
+  source_bytes: 10431
+  source_sha256: "9d27c9b0c727990915ef875626fd24e51080f8bf35ef28dc2a6d05b3fe6b8e2c"
+  source_body_sha256: "9d27c9b0c727990915ef875626fd24e51080f8bf35ef28dc2a6d05b3fe6b8e2c"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Test-Review: Web-HTTP-Helpers und Web-Channel-Basisflüsse
 
 Datum: 2026-05-10 14:49 Europe/Berlin

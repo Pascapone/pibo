@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Manual Workflow Validation: Bounded Review/Fix Loop"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-11-workflow-manual-bounded-review-loop.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "114a8b4af3ce368f809296c76582099ec292341e"
+  source_bytes: 2943
+  source_sha256: "071991a94931987f678916eca8cf39cd80371328735dd42f84b7570363ee2a17"
+  source_body_sha256: "071991a94931987f678916eca8cf39cd80371328735dd42f84b7570363ee2a17"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Manual Workflow Validation: Bounded Review/Fix Loop
 
 **Date:** 2026-05-11 04:14 UTC  

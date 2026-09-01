@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Webchat OOM / Delta Compaction E2E + UX Validation"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-05-webchat-oom-e2e-ux-validation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b236733d450dd9da2133124d920b4b3230d0d1bd"
+  source_bytes: 7094
+  source_sha256: "4832cc96a0260ffc31d12117245da9f9d48fbf9e681c05f5d80599b41421f1b4"
+  source_body_sha256: "4832cc96a0260ffc31d12117245da9f9d48fbf9e681c05f5d80599b41421f1b4"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Webchat OOM / Delta Compaction E2E + UX Validation
 
 Date: 2026-05-05

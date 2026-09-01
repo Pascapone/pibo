@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI V2 — Web-Parity Rendering and PTY Validation"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/prds/07-web-parity-rendering-and-pty-validation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "026549a0740b7d8e866edc77a69506f3b83a9a81"
+  source_bytes: 3228
+  source_sha256: "4cea3d9e0b3d5e2e968b359f8af4647c66de38988dc7abc2b41ccf4eab777a53"
+  source_body_sha256: "4cea3d9e0b3d5e2e968b359f8af4647c66de38988dc7abc2b41ccf4eab777a53"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI V2 — Web-Parity Rendering and PTY Validation
 
 **Status:** Draft  

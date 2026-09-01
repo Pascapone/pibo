@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Compute Worker Limits and Lifecycle"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/compute-browser-resource-lifecycle/prds/04-compute-worker-limits-and-lifecycle.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b6517fc74cc29bb4334983563dad70f99edeee29"
+  source_bytes: 4820
+  source_sha256: "0f1f751717835fbc4aa13c50391ca82314e5165b56279af657c96d1e46410a36"
+  source_body_sha256: "0f1f751717835fbc4aa13c50391ca82314e5165b56279af657c96d1e46410a36"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Compute Worker Limits and Lifecycle
 
 **Status:** Draft  

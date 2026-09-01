@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design: Pibo Workflow Authoring API"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/design-authoring-api.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "4184551a17d996581d5fffe26e011ec59e5071ed"
+  source_bytes: 21128
+  source_sha256: "229a3df9f82d2d6f9ace89f774d2d023d7fec839c915456184e9df38ce28398f"
+  source_body_sha256: "229a3df9f82d2d6f9ace89f774d2d023d7fec839c915456184e9df38ce28398f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design: Pibo Workflow Authoring API
 
 **Status:** Draft  

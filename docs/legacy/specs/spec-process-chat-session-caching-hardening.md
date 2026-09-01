@@ -1,10 +1,35 @@
 ---
-title: Chat Session Caching Hardening And Browser Validation
-version: 0.1
-date_created: 2026-05-02
-last_updated: 2026-05-02
-owner: Pibo
-tags: [process, chat, caching, browser, validation, scalability]
+type: "Historical Record"
+title: "Chat Session Caching Hardening And Browser Validation"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-process-chat-session-caching-hardening.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "5b36dbce299573117f1eb84f43c1ef8813a9b06c"
+  source_bytes: 17329
+  source_sha256: "fcb3a926789a7308933d8ec7a3643897f38d29173a878a0aba08ce23354b7a62"
+  source_body_sha256: "58294f9f5ed381f12243b6dfefb7286f6deb78caae601bec1963e70d0aca86ec"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-process-chat-session-caching-hardening.md"
+  source_sha256: "58294f9f5ed381f12243b6dfefb7286f6deb78caae601bec1963e70d0aca86ec"
+  unresolved_links:
+    - target: "HOME>/code/pibo/spec/spec-design-web-chat-trace-ui.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/spec/spec-design-web-chat-trace-ui.md."
+    - target: "HOME>/code/pibo/plans/harden-chat-trace-rendering.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/plans/harden-chat-trace-rendering.md."
+    - target: "HOME>/code/pibo/plans/optimize-chat-trace-streaming-performance.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/plans/optimize-chat-trace-streaming-performance.md."
+    - target: "HOME>/code/pibo/RULES.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/RULES.md."
+    - target: "HOME>/code/pibo/GLOSSARY.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/GLOSSARY.md."
 ---
 
 # Introduction

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Report: Shared Trace Refactor – Problemanalyse & Erkenntnisse"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/shared-trace-refactor-probleme-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "bcd3a63650b7b7b08443487b28d1cfde5693c107"
+  source_bytes: 8281
+  source_sha256: "2767d0d939f1f10ca037a5f8f3966a860f60a7afcf7587ce7d20f047cfa005d6"
+  source_body_sha256: "2767d0d939f1f10ca037a5f8f3966a860f60a7afcf7587ce7d20f047cfa005d6"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Report: Shared Trace Refactor – Problemanalyse & Erkenntnisse
 
 **Datum:** 2026-05-04

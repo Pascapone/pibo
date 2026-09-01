@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "US-001 Owner/Principal Source Inventory"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/us-001-owner-principal-source-inventory.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "6328ea1363a4cf6bcddaac3cba7452326805c805"
+  source_bytes: 16077
+  source_sha256: "4e8a1ff75ce3a90379e6995eae9c596a4e2d55a146864cb403d42fac5dd259b0"
+  source_body_sha256: "4e8a1ff75ce3a90379e6995eae9c596a4e2d55a146864cb403d42fac5dd259b0"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # US-001 Owner/Principal Source Inventory
 
 Generated: 2026-05-30

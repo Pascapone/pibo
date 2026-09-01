@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Windows-Kompatibilität Scan"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/windows-compatibility-scan-2026-06-14.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "302d722dbaa8aa3a365913346007f65c94beab73"
+  source_bytes: 13678
+  source_sha256: "c4a3682703ff066458f3a3a1c14aab3737eb2e24bb9880c9554eb6437d6e9d1e"
+  source_body_sha256: "c4a3682703ff066458f3a3a1c14aab3737eb2e24bb9880c9554eb6437d6e9d1e"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Windows-Kompatibilität Scan
 
 **Datum:** 2026-06-14

@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Markdown Editor Quality Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/markdown-editor-quality-validation-2026-08-09.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "85bf1c13dab1bd385f91e80fd3423621d935dc93"
+  source_bytes: 8749
+  source_sha256: "39f3aa5e62919df6c059f261f082905fd4e98f546172af8ac5bb7b6e4eb11cc5"
+  source_body_sha256: "39f3aa5e62919df6c059f261f082905fd4e98f546172af8ac5bb7b6e4eb11cc5"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:markdown-editor-quality-validation-2026-08-09"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Markdown Editor Quality Validation
 
 **Date:** 2026-08-09

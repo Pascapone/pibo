@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Native Codex Tool Preservation and Inspection Validation — 2026-08-16"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/codex-native-tool-inventory-validation-2026-08-16.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "df32785088f9832d9bf0e8f015f96468e98a74dd"
+  source_bytes: 8198
+  source_sha256: "3c6c488a321b2c8113319a1c4442315fd60a9a1b09e7ca42960f4c6d33af8c1a"
+  source_body_sha256: "3c6c488a321b2c8113319a1c4442315fd60a9a1b09e7ca42960f4c6d33af8c1a"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:codex-native-tool-inventory-validation-2026-08-16"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Native Codex Tool Preservation and Inspection Validation — 2026-08-16
 
 ## Scope

@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Test-Review: Plugin-Registry und Codex-kompatible Profiloberfläche"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1529-plugin-registry.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "c0ed885b846dbd8b9a4a8643defaf025d58ec66b"
+  source_bytes: 8489
+  source_sha256: "ae3623709102899637ad44c2ee92624e962508d910552dc0386783a111a0d78f"
+  source_body_sha256: "ae3623709102899637ad44c2ee92624e962508d910552dc0386783a111a0d78f"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Test-Review: Plugin-Registry und Codex-kompatible Profiloberfläche
 
 **Zeitpunkt:** 2026-05-10 15:29 Europe/Berlin  

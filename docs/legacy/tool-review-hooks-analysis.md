@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Tool Review Hooks Analysis"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/tool-review-hooks-analysis.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "dfef5fe4774362e36e8a8c26e53fb373a8d094ce"
+  source_bytes: 17035
+  source_sha256: "293947ca9552e9e383ba77a94ddd4fb239c16f08b1d222c954e18c3136d3944f"
+  source_body_sha256: "293947ca9552e9e383ba77a94ddd4fb239c16f08b1d222c954e18c3136d3944f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Tool Review Hooks Analysis
 
 Date: 2026-05-02

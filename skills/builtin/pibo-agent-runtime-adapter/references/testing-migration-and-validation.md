@@ -228,7 +228,9 @@ A turn that reaches queue/idle but fails provider authentication proves only rou
 
 ## Validation report
 
-Write `docs/reports/<adapter-or-milestone>-validation-YYYY-MM-DD.md` containing:
+Publish validation as an `Evidence Report` at `docs/reports/evidence/<adapter-or-milestone>-validation-YYYY-MM-DD.md`. Read `docs/project/documentation-profile.md` first, include all required frontmatter plus `evidence: { id, published_at }`, register the final SHA-256 in `docs/reports/artifacts/okf-migration/evidence-manifest.json`, and never edit the published bytes in place. Add the ledger record, run `npm run docs:indexes:write`, and update `docs/log.md` explicitly. Corrections and reruns receive a new identity and path.
+
+The report body contains:
 
 - status and scope;
 - branch, PR, commits, package version/path/checksum;

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Data V2 No-Legacy Cutover Implementation"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-09-chat-data-v2-no-legacy-cutover-implementation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f4a7495c83651c58ce62e3a383b146562278e326"
+  source_bytes: 2338
+  source_sha256: "05ef207f7ca8487c9d5f90a87741c6100b88f06343ca538abc68b78d0edcc041"
+  source_body_sha256: "05ef207f7ca8487c9d5f90a87741c6100b88f06343ca538abc68b78d0edcc041"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Data V2 No-Legacy Cutover Implementation
 
 Date: 2026-05-09

@@ -1,7 +1,21 @@
 ---
-title: Web Chat Tracing UI Reference
-date_created: 2026-04-28
-purpose: Reference context for designing Pibo's next-generation Chat Web App from the pydantic-tracing UI.
+type: "Historical Record"
+title: "Web Chat Tracing UI Reference"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/web-chat-tracing-ui-reference.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9ae812e25440d929ac86de21a49a416a970f4809"
+  source_bytes: 12184
+  source_sha256: "898ef3b0877d6982ba9023d5dae41bc197bbe0e3509ffaa86c0f37f0fb422d98"
+  source_body_sha256: "3a9e817cbde449362338990314ff172ec504f126393f2db70d23194e42e78d59"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
 ---
 
 # Web Chat Tracing UI Reference

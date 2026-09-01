@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Cron Scheduler Core Follow-up Test Review"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1718-cron-scheduler-core.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2ef7c2744db2e35783bd8c3258e14935cc2ab29c"
+  source_bytes: 8884
+  source_sha256: "ac89e6fc3d25a6c0abafa1218bdf48045c8de3e63a48ae8d15b2215444e9689c"
+  source_body_sha256: "ac89e6fc3d25a6c0abafa1218bdf48045c8de3e63a48ae8d15b2215444e9689c"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Cron Scheduler Core Follow-up Test Review
 
 Datum: 2026-05-10 17:18 Europe/Berlin  

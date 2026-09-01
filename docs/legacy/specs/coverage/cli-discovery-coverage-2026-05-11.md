@@ -1,3 +1,44 @@
+---
+type: "Historical Record"
+title: "Coverage Analysis: CLI Discovery Verification 2026-05-11"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/coverage/cli-discovery-coverage-2026-05-11.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "446c61fc23c0d84be5a257a5804cb46c2159f00e"
+  source_bytes: 8434
+  source_sha256: "d3fde3a073358981d249622f994d3a125a6be86f8f9f23f3cdcafc4b1f593c01"
+  source_body_sha256: "d3fde3a073358981d249622f994d3a125a6be86f8f9f23f3cdcafc4b1f593c01"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/coverage/cli-discovery-coverage-2026-05-11.md"
+  source_sha256: "d3fde3a073358981d249622f994d3a125a6be86f8f9f23f3cdcafc4b1f593c01"
+  unresolved_links:
+    - target: "../capabilities/operator-cli-discovery-and-dispatch.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/operator-cli-discovery-and-dispatch.md."
+    - target: "../capabilities/operator-cli-error-contract.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/operator-cli-error-contract.md."
+    - target: "../capabilities/curated-cli-tools.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/curated-cli-tools.md."
+    - target: "../capabilities/debug-cli.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/debug-cli.md."
+    - target: "../capabilities/data-maintenance-cli.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/data-maintenance-cli.md."
+    - target: "../capabilities/mcp-server-integration.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/mcp-server-integration.md."
+    - target: "../capabilities/pi-packages.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/pi-packages.md."
+    - target: "../capabilities/scheduled-pibo-jobs.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/scheduled-pibo-jobs.md."
+    - target: "../capabilities/continuous-ralph-jobs.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/continuous-ralph-jobs.md."
+---
 # Coverage Analysis: CLI Discovery Verification 2026-05-11
 
 **Status:** Draft  

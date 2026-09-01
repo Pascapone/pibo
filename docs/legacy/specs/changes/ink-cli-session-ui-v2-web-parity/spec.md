@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Spec: Ink CLI Session UI V2 Web Parity"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/spec.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "51129450c4a715bd5600fc1b21d8a2495c07464c"
+  source_bytes: 21201
+  source_sha256: "ca429a8343dcc254b17858438a98b7112ae3a13b297dfdeded3d158c79ff54f7"
+  source_body_sha256: "ca429a8343dcc254b17858438a98b7112ae3a13b297dfdeded3d158c79ff54f7"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Spec: Ink CLI Session UI V2 Web Parity
 
 **Status:** Implemented with follow-up rendering gaps  

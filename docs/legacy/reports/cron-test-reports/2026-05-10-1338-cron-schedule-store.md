@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Cron Schedule/Store Test Review"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/cron-test-reports/2026-05-10-1338-cron-schedule-store.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d03d5b9e74c8a56fecae9d5e900b485008d05124"
+  source_bytes: 8079
+  source_sha256: "5d23daf71ca425b02c3c9ad530b3b81a603b8957ac857bee50e6beff7a5c4d1c"
+  source_body_sha256: "5d23daf71ca425b02c3c9ad530b3b81a603b8957ac857bee50e6beff7a5c4d1c"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Cron Schedule/Store Test Review
 
 Datum: 2026-05-10 13:38 Europe/Berlin  

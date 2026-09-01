@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Report: Observer-gated Chat Streaming"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-18-observer-gated-chat-streaming.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "81e7fb0a074de5ed34135b171aa440850058a8fe"
+  source_bytes: 15748
+  source_sha256: "4fff585a96ac0979bd3461aadcd14a3c15e2d19c222a12963bb2b1275b92b172"
+  source_body_sha256: "4fff585a96ac0979bd3461aadcd14a3c15e2d19c222a12963bb2b1275b92b172"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Report: Observer-gated Chat Streaming
 
 **Date:** 2026-05-18

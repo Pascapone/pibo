@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Test-Review: Model-Katalog, Model-Defaults und Active-Model-Freeze"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1458-model-selection-defaults.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "73739378fb194c0df059121e9b28148b15a8e447"
+  source_bytes: 14530
+  source_sha256: "4505dc9f105619997df95bf4580987128b35f1efec1c02d1c3222603cbd7544c"
+  source_body_sha256: "4505dc9f105619997df95bf4580987128b35f1efec1c02d1c3222603cbd7544c"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Test-Review: Model-Katalog, Model-Defaults und Active-Model-Freeze
 
 Datum: 2026-05-10 14:58 Europe/Berlin

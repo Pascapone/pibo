@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Native Codex Resource Delivery Validation — 2026-08-16"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/codex-native-resource-delivery-validation-2026-08-16.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "86a57a85faf9d13e1fa54ea7edc5ecd2b038c066"
+  source_bytes: 13493
+  source_sha256: "8fedd78cf2d0e290862d2c769f16295ed4774316695990b6697fed813bb61a8a"
+  source_body_sha256: "8fedd78cf2d0e290862d2c769f16295ed4774316695990b6697fed813bb61a8a"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:codex-native-resource-delivery-validation-2026-08-16"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Native Codex Resource Delivery Validation — 2026-08-16
 
 ## Scope

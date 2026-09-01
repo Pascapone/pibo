@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Plan: owner und shared:app vollständig aus aktivem Pibo entfernen"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/app-context-vocabulary-purge-plan-2026-06-01.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "54f6d1bd7d712407118368240689c635b02d9456"
+  source_bytes: 20504
+  source_sha256: "8981bcd524272c95bda771b7835f7f94c3bbb07066fac46bd4378701d95071f8"
+  source_body_sha256: "8981bcd524272c95bda771b7835f7f94c3bbb07066fac46bd4378701d95071f8"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Plan: `owner` und `shared:app` vollständig aus aktivem Pibo entfernen
 
 **Status:** Draft  

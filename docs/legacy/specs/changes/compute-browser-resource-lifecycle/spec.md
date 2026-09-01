@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Spec: Compute Browser Resource Lifecycle"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/compute-browser-resource-lifecycle/spec.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f81486462837b45f5aa9dedf9a8b17e10ce8ba46"
+  source_bytes: 21313
+  source_sha256: "86ad2a441baeeaff6ea40914c66c08109b482a65265af61a13c4a897cb42e3a2"
+  source_body_sha256: "86ad2a441baeeaff6ea40914c66c08109b482a65265af61a13c4a897cb42e3a2"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Spec: Compute Browser Resource Lifecycle
 
 **Status:** Draft  

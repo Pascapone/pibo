@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pibo Architecture"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/architecture.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "226f305817c77ec549ef1fc560fd2e4389928686"
+  source_bytes: 36622
+  source_sha256: "2406770465d5217ac2bad151c91805756f3fa443d64d9a595dfef86b7dc802d6"
+  source_body_sha256: "2406770465d5217ac2bad151c91805756f3fa443d64d9a595dfef86b7dc802d6"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Pibo Architecture
 
 Pibo is a thin TypeScript harness around Pi Coding Agent. Pi remains the inner engine for model turns, tools, streaming, sessions, and compaction. Pibo owns the outer product boundary: profiles, plugin registration, channels, routing, Pibo Sessions, and transport-specific adapters.

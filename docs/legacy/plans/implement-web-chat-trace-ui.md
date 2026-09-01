@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementierungsplan: Web Chat Trace UI"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/implement-web-chat-trace-ui.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "8d9407d3a2938652e00884a09c9741595a4a788d"
+  source_bytes: 10527
+  source_sha256: "8786be6f183cb2565320925bb5dcb0e535fd053b8d871727f1358a676f426598"
+  source_body_sha256: "8786be6f183cb2565320925bb5dcb0e535fd053b8d871727f1358a676f426598"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implementierungsplan: Web Chat Trace UI
 
 ## Ziel

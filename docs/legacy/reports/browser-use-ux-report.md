@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "UX Report: Browser-Use Tool"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/browser-use-ux-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "3bd1aa9854794151994cf190688e620d80fa9f6f"
+  source_bytes: 7317
+  source_sha256: "f09b5b72112c806ef63d6e12a358d93a1c07492540a0f062033eb026cecc0607"
+  source_body_sha256: "f09b5b72112c806ef63d6e12a358d93a1c07492540a0f062033eb026cecc0607"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # UX Report: Browser-Use Tool
 **Datum:** 2026-05-03
 **Tester:** Pibo (Coding Agent)

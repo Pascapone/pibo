@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Spec: Context Build Inspector"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/context-build-inspector/spec.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "45d0bd897d7791a33c75510a3ddcf15b0403bf5a"
+  source_bytes: 21087
+  source_sha256: "682dd79dd5fd0680dd983cacf7beadf3ecbfddf4fcf67326862f5b6cf203b1c9"
+  source_body_sha256: "682dd79dd5fd0680dd983cacf7beadf3ecbfddf4fcf67326862f5b6cf203b1c9"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Spec: Context Build Inspector
 
 **Status:** Done

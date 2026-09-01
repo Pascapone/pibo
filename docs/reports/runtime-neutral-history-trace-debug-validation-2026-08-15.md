@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Runtime-Neutral History, Trace, and Debug Validation — 2026-08-15"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/runtime-neutral-history-trace-debug-validation-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d677a1f8f1ebf7072894352f6c7984bf4d9d16a3"
+  source_bytes: 11556
+  source_sha256: "5e982fc417c12e486e833c8d20c8d2edd0f726f2bdecdead56aeae249fb5afac"
+  source_body_sha256: "5e982fc417c12e486e833c8d20c8d2edd0f726f2bdecdead56aeae249fb5afac"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:runtime-neutral-history-trace-debug-validation-2026-08-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Runtime-Neutral History, Trace, and Debug Validation — 2026-08-15
 
 **Status:** Pass

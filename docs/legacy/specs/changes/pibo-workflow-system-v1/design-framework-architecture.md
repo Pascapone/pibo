@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design: Pibo Workflow Framework Architecture"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/design-framework-architecture.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9eff53873865385ed16a547973b5c022cfb30b5b"
+  source_bytes: 19026
+  source_sha256: "a6062dc267452c6e12cf3aca7026d0513a6a7ea7388ea693bfad59a0b0c6c088"
+  source_body_sha256: "a6062dc267452c6e12cf3aca7026d0513a6a7ea7388ea693bfad59a0b0c6c088"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design: Pibo Workflow Framework Architecture
 
 **Status:** Draft  

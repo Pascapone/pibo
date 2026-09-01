@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Report: Gateway OOM Follow-up — 2026-07-04"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/gateway-oom-followup-2026-07-04.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "59aae449609b4ea292a134da684d36ebf0fc0e93"
+  source_bytes: 6882
+  source_sha256: "4a239cd4009d3af71d8fca052208913515eeda231d35b7a3cb9fdd42ff42d697"
+  source_body_sha256: "4a239cd4009d3af71d8fca052208913515eeda231d35b7a3cb9fdd42ff42d697"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Report: Gateway OOM Follow-up — 2026-07-04
 
 **Status:** Draft

@@ -11,7 +11,12 @@
     "!dist/apps/vscode-artifacts/**",
     "context",
     "skills/builtin/**",
-    "docs/ops/**",
+    "docs/project/operations/**",
+    "docs/project/installation-profiles.md",
+    "docs/project/guides/pibo-on-windows-via-wsl.md",
+    "docs/project/guides/pibo-vscode-ext-quickstart.md",
+    "!docs/README.md",
+    "!docs/project/README.md",
     "README.md",
     "src/mcp/LICENSE.mcp-cli",
     "npm-shrinkwrap.json",
@@ -53,6 +58,14 @@
     "build": "npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run web-ui:build && npm run vscode:webview:build && node scripts/ensure-bin-executable.mjs",
     "start": "node dist/bin/pibo.js",
     "test": "npm run build && node scripts/run-test-suite.mjs",
+    "docs:validate": "npm run docs:validate:strict",
+    "docs:validate:okf": "node scripts/validate-okf-docs.mjs --mode core",
+    "docs:validate:migration": "node scripts/validate-okf-docs.mjs --mode migration",
+    "docs:validate:strict": "node scripts/validate-okf-docs.mjs --mode strict",
+    "docs:indexes:write": "node scripts/generate-okf-indexes.mjs",
+    "docs:indexes:check": "node scripts/generate-okf-indexes.mjs --check",
+    "docs:log:check": "node scripts/check-okf-log.mjs",
+    "docs:validator:test": "node --test test/okf-validator.test.mjs test/okf-authoring-guidance.test.mjs",
     "check:product-vocab": "node scripts/legacy-product-vocabulary-gate.mjs",
     "validate:ink-web-derived": "node scripts/ink-cli-web-derived-parity-validate.mjs",
     "compute:limited-worker-smoke": "node scripts/compute-limited-worker-smoke.mjs",
@@ -111,6 +124,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
     "vite-tsconfig-paths": "^5.1.4",
-    "vscode": "file:src/apps/chat-vscode/extension/vscode-shim"
+    "vscode": "file:src/apps/chat-vscode/extension/vscode-shim",
+    "yaml": "^2.9.0"
   }
 }

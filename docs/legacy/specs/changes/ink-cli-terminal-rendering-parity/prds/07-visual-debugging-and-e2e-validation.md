@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 07: Visual Debugging and End-to-End Validation"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/07-visual-debugging-and-e2e-validation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "6fd005fca5d2b4fba6008a86377b26c27cbd4591"
+  source_bytes: 5632
+  source_sha256: "1af6fc7e1291c9dc149de688bd61dd016f30b74a783b49685b032b31896aa4b9"
+  source_body_sha256: "1af6fc7e1291c9dc149de688bd61dd016f30b74a783b49685b032b31896aa4b9"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 07: Visual Debugging and End-to-End Validation
 
 **Status:** Draft  

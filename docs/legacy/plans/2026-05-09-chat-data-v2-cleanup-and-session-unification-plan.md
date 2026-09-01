@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Data V2 Cleanup and Pibo Session Unification Plan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/2026-05-09-chat-data-v2-cleanup-and-session-unification-plan.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "81af0f941a826ddc25f1d6ec8b9a44a4f92959aa"
+  source_bytes: 23883
+  source_sha256: "5ab49fd03c6ac9fa0bf4b4ec8000adf6f4cd41f25bc29fa23def993ddc7a1720"
+  source_body_sha256: "5ab49fd03c6ac9fa0bf4b4ec8000adf6f4cd41f25bc29fa23def993ddc7a1720"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Data V2 Cleanup and Pibo Session Unification Plan
 
 Date: 2026-05-09  

@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "OMP RPC Server — JSON-lines-over-stdio Protocol (reference)"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/omp-rpc-protocol.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "329331b7218467939da89336b7894a101fb8232b"
+  source_bytes: 12870
+  source_sha256: "cb30686bec4e2d473f2db7db979d9c276bfaddf9516f56ec2c12f47bb74f5cd2"
+  source_body_sha256: "cb30686bec4e2d473f2db7db979d9c276bfaddf9516f56ec2c12f47bb74f5cd2"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # OMP RPC Server — JSON-lines-over-stdio Protocol (reference)
 
 Source: Oh My Pi `packages/coding-agent/src/modes/rpc/` (rpc-types.ts, rpc-frame.ts, rpc-mode.ts, rpc-messages.ts, rpc-input.ts) at `@oh-my-pi/pi-coding-agent` 17.3.5. Paths relative to `C:/Users/pasca/Coding/oh-my-pi` (also `/root/omp`).
