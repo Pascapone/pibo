@@ -148,7 +148,8 @@ export function repairOutputTurn(input: {
 	const data = new PiboDataStore(input.store.path);
 	try {
 		return data.transaction(() => {
-			const current = buildRepairPlanFromDb(data.db, input.piboSessionId, input.eventId, reliabilityEvidence, input.adapterEvidence);
+			const currentReliabilityEvidence = collectReliabilityEvidence(input.reliabilityStore, input.piboSessionId, input.eventId);
+			const current = buildRepairPlanFromDb(data.db, input.piboSessionId, input.eventId, currentReliabilityEvidence, input.adapterEvidence);
 			if (!current.inspection.repairable || !current.terminalEvent) {
 				return { ...base, applied: false, inspection: current.inspection };
 			}
@@ -363,8 +364,14 @@ function buildRepairPlan(input: {
 }, reliabilityEvidence = collectReliabilityEvidence(input.reliabilityStore, input.piboSessionId, input.eventId)): InternalRepairPlan {
 	if (!input.store.exists) throw new Error(`Debug store "pibo-data" not found at ${input.store.path}`);
 	const db = new DatabaseSync(input.store.path, { readOnly: true });
+	db.exec("BEGIN");
 	try {
-		return buildRepairPlanFromDb(db, input.piboSessionId, input.eventId, reliabilityEvidence, input.adapterEvidence);
+		const plan = buildRepairPlanFromDb(db, input.piboSessionId, input.eventId, reliabilityEvidence, input.adapterEvidence);
+		db.exec("COMMIT");
+		return plan;
+	} catch (error) {
+		if (db.isTransaction) db.exec("ROLLBACK");
+		throw error;
 	} finally {
 		db.close();
 	}
@@ -432,6 +439,7 @@ function buildRepairPlanFromDb(
 
 	const exactTerminal = uniqueReliabilityTerminal(reliability.terminalEvents.map((item) => item.event));
 	if (exactTerminal === "conflict") return refuse("evidence_conflict");
+	if (observed.openThinkingParts || observed.openToolInvocations) return refuse("lifecycle_open");
 	if (exactTerminal) {
 		const sources: OutputRepairEvidenceSource[] = ["reliability_payload"];
 		return {
@@ -448,7 +456,6 @@ function buildRepairPlanFromDb(
 			evidenceReferences: reliability.references,
 		};
 	}
-	if (observed.openThinkingParts || observed.openToolInvocations) return refuse("lifecycle_open");
 	const completedSources: OutputRepairEvidenceSource[] = [];
 	if (productCompleted) completedSources.push("pibo_product_history");
 	if (adapterCompleted.length) completedSources.push("adapter_history");
@@ -469,6 +476,7 @@ function buildRepairPlanFromDb(
 function collectReliabilityEvidence(store: ResolvedPiboDebugStore | undefined, piboSessionId: string, eventId: string): ReliabilityEvidence {
 	if (!store?.exists) return { terminalEvents: [], references: [] };
 	const db = new DatabaseSync(store.path, { readOnly: true });
+	db.exec("BEGIN");
 	try {
 		const rows: Array<ReliabilityPayloadRow & { table: string }> = [];
 		for (const table of ["pibo_jobs", "pibo_dead_jobs"]) {
@@ -491,10 +499,15 @@ function collectReliabilityEvidence(store: ResolvedPiboDebugStore | undefined, p
 				terminalEvents.push({ event, reference: `${row.table}:${row.jobId}` });
 			}
 		}
-		return {
+		const evidence = {
 			terminalEvents,
 			references: [...new Set(terminalEvents.map((item) => item.reference))].slice(0, 50),
 		};
+		db.exec("COMMIT");
+		return evidence;
+	} catch (error) {
+		if (db.isTransaction) db.exec("ROLLBACK");
+		throw error;
 	} finally {
 		db.close();
 	}
@@ -545,7 +558,8 @@ function countOpenThinkingParts(db: DatabaseSync, piboSessionId: string, eventId
 			FROM event_log
 			WHERE session_id = ? AND event_id = ? AND type IN ('thinking_started', 'thinking_finished')
 			GROUP BY thinking_index
-			HAVING SUM(type = 'thinking_started') != SUM(type = 'thinking_finished')
+			HAVING SUM(type = 'thinking_started') != 1
+				OR SUM(type = 'thinking_finished') != 1
 		)
 	`).get(piboSessionId, eventId) as CountRow;
 	return Number(row.count);

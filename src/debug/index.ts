@@ -143,7 +143,9 @@ async function runDebugRepair(args: string[]): Promise<void> {
 		printDebugRepairDiscovery();
 		return;
 	}
-	const options = parseOptions(args.slice(1));
+	const repairArgs = args.slice(1);
+	validateOutputRepairArgs(repairArgs);
+	const options = parseOptions(repairArgs);
 	if (options.apply && options.dryRun) throw new Error("Choose either --dry-run or --apply");
 	if (options.destructive) throw new Error("Use --apply for output repair; --destructive is not supported");
 	if (options.after && !Number.isFinite(Date.parse(options.after))) throw new Error("--since must be an ISO date");
@@ -179,6 +181,43 @@ async function runDebugRepair(args: string[]): Promise<void> {
 		});
 	if (options.json) console.log(formatJson(result));
 	else console.log(formatOutputTurnRepair(result));
+}
+
+function validateOutputRepairArgs(args: string[]): void {
+	const valueOptions = new Set(["--session", "--since", "--before", "--limit"]);
+	const flagOptions = new Set(["--json", "--dry-run", "--apply", "--destructive"]);
+	const seen = new Set<string>();
+	const positionals: string[] = [];
+	let hasSessionOption = false;
+	let hasScopeOption = false;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (flagOptions.has(arg)) {
+			if (seen.has(arg)) throw new Error(`Output repair option ${arg} may only be provided once`);
+			seen.add(arg);
+			continue;
+		}
+		if (valueOptions.has(arg)) {
+			if (seen.has(arg)) throw new Error(`Output repair option ${arg} may only be provided once`);
+			const value = args[index + 1];
+			if (!value || value.startsWith("-")) throw new Error(`${arg} requires a value`);
+			seen.add(arg);
+			if (arg === "--session") hasSessionOption = true;
+			else hasScopeOption = true;
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("-")) throw new Error(`Unknown output repair option "${arg}"`);
+		positionals.push(arg);
+	}
+	if (hasSessionOption) {
+		if (positionals.length > 1) throw new Error("With --session, provide at most one positional <event-id>");
+	} else if (positionals.length !== 2) {
+		throw new Error("Exact output repair requires <pibo-session-id> <event-id>; use --session for scoped repair");
+	}
+	if (hasScopeOption && positionals.length > 0) {
+		throw new Error("--since, --before, and --limit are only supported for scoped repair without an <event-id>");
+	}
 }
 
 async function runDebugResources(args: string[]): Promise<void> {

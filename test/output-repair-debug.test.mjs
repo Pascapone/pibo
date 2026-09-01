@@ -243,6 +243,72 @@ test("output repair replays an exact Reliability terminal without inventing cont
 	}
 });
 
+test("exact Reliability evidence cannot bypass open or duplicated sub-lifecycles", () => {
+	const fixture = createFixture();
+	const data = new PiboDataStore(fixture.dataPath);
+	try {
+		append(data, { sessionId: "ps_reliability", sequence: 2, type: "thinking_started", eventId: "turn-reliability", attributes: { thinkingIndex: 0 } });
+		append(data, { sessionId: "ps_success", sequence: 8, type: "thinking_started", eventId: "turn-success", attributes: { thinkingIndex: 0 } });
+		append(data, { sessionId: "ps_success", sequence: 9, type: "thinking_finished", eventId: "turn-success", attributes: { thinkingIndex: 0 } });
+	} finally {
+		data.close();
+	}
+	try {
+		const exactTerminal = repairOutputTurn({
+			store: fixture.store,
+			reliabilityStore: fixture.reliabilityStore,
+			piboSessionId: "ps_reliability",
+			eventId: "turn-reliability",
+			apply: true,
+		});
+		assert.equal(exactTerminal.applied, false);
+		assert.equal(exactTerminal.inspection.reason, "lifecycle_open");
+		assert.deepEqual(terminalRows(fixture.dataPath, "ps_reliability", "turn-reliability"), []);
+
+		const duplicatedThinking = repairOutputTurn({
+			store: fixture.store,
+			piboSessionId: "ps_success",
+			eventId: "turn-success",
+			apply: true,
+		});
+		assert.equal(duplicatedThinking.applied, false);
+		assert.equal(duplicatedThinking.inspection.reason, "lifecycle_open");
+		assert.deepEqual(terminalRows(fixture.dataPath, "ps_success", "turn-success"), []);
+	} finally {
+		rmSync(fixture.root, { recursive: true, force: true });
+	}
+});
+
+test("output repair rolls back the terminal when the paired audit event fails", () => {
+	const fixture = createFixture();
+	const data = new PiboDataStore(fixture.dataPath);
+	try {
+		data.db.exec(`
+			CREATE TRIGGER reject_output_repair_audit
+			BEFORE INSERT ON event_log
+			WHEN NEW.type = 'pibo.output.repair_applied'
+			BEGIN
+				SELECT RAISE(ABORT, 'reject repair audit');
+			END
+		`);
+	} finally {
+		data.close();
+	}
+	try {
+		assert.throws(() => repairOutputTurn({
+			store: fixture.store,
+			reliabilityStore: fixture.reliabilityStore,
+			piboSessionId: "ps_success",
+			eventId: "turn-success",
+			apply: true,
+		}), /reject repair audit/);
+		assert.deepEqual(terminalRows(fixture.dataPath, "ps_success", "turn-success"), []);
+		assert.deepEqual(auditRows(fixture.dataPath, "ps_success", "turn-success"), []);
+	} finally {
+		rmSync(fixture.root, { recursive: true, force: true });
+	}
+});
+
 test("output repair accepts only exact completed adapter-history turn evidence", () => {
 	const fixture = createFixture();
 	try {
@@ -338,6 +404,22 @@ test("pibo debug repair stays progressive, defaults to dry-run, scopes by time, 
 		await assert.rejects(
 			execFileAsync("node", [cliPath, "debug", "repair", "output", "--session", "ps_scope", "--since", "2026-09-01T00:00:00Z", "--before", "2026-08-31T00:00:00Z"], { env }),
 			/--since must be earlier than --before/,
+		);
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "repair", "output", "ps_success", "--apply"], { env }),
+			/use --session for scoped repair/,
+		);
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "repair", "output", "ps_success", "turn-success", "extra", "--apply"], { env }),
+			/Exact output repair requires/,
+		);
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "repair", "output", "ps_success", "turn-success", "--full"], { env }),
+			/Unknown output repair option "--full"/,
+		);
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "repair", "output", "--session", "ps_scope", "turn-old", "--limit", "1"], { env }),
+			/only supported for scoped repair without an <event-id>/,
 		);
 	} finally {
 		rmSync(fixture.root, { recursive: true, force: true });
