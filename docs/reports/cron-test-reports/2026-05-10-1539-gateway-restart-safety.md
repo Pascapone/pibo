@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Test-Review: Gateway-Restart-Safety"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1539-gateway-restart-safety.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b8dbed2d5fc0b115afd92f4a9e35faee6721621a"
+  source_bytes: 6416
+  source_sha256: "e3f91b963044d6956302efaff7d15e9fbb3ba96f1921cbbde4c8c6ac52712611"
+  source_body_sha256: "e3f91b963044d6956302efaff7d15e9fbb3ba96f1921cbbde4c8c6ac52712611"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Test-Review: Gateway-Restart-Safety
 
 Datum: 2026-05-10 15:39 Europe/Berlin

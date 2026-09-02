@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementation Plan: Observer-gated Chat Streaming"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/2026-05-18-observer-gated-chat-streaming-implementation-plan.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "0f47e9f4aac38f486690788a76cd482ebe313195"
+  source_bytes: 26551
+  source_sha256: "772b4e962b7aeb39a95d8b3aa1adce64092f015cdb4592c3a51e59716afac028"
+  source_body_sha256: "772b4e962b7aeb39a95d8b3aa1adce64092f015cdb4592c3a51e59716afac028"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implementation Plan: Observer-gated Chat Streaming
 
 **Date:** 2026-05-18

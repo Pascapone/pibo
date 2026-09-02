@@ -1,10 +1,32 @@
+---
+type: "Evidence Report"
+title: "VS Code Webview Sidecar — 1.4.0 Release Report"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/vscode-webview-sidecar-release-2026-06-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2bc37984a19dab0602ef3b7eac04788ee89a9c45"
+  source_bytes: 8109
+  source_sha256: "51bc23bd0018e033cb6df5096382d3155b00173319b802885e8cd89df1d53274"
+  source_body_sha256: "51bc23bd0018e033cb6df5096382d3155b00173319b802885e8cd89df1d53274"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:vscode-webview-sidecar-release-2026-06-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # VS Code Webview Sidecar — 1.4.0 Release Report
 
 **Date:** 2026-06-15
 **Status:** Feature complete, release prepped, awaiting upstream review
 **Target version:** 1.4.0
 **Feature PR:** <https://github.com/Pascapone/pibo/pull/123>
-**Plan:** [`docs/plans/vscode-webview-sidecar-implementation-plan-2026-06-15.md`](../plans/vscode-webview-sidecar-implementation-plan-2026-06-15.md)
+**Plan:** [`docs/plans/vscode-webview-sidecar-implementation-plan-2026-06-15.md`](../project/operations/vscode-extension-release.md)
 
 ## Summary
 
@@ -96,7 +118,7 @@ landed in `upstream/dev` and `upstream/dev` has been synced to
 ## What Remains Before Tagging 1.4.0
 
 The standard release flow from
-[`github-server-flow`](../../.pibo/user-skills/github-server-flow/SKILL.md):
+[`github-server-flow`](../project/operations/vscode-extension-release.md):
 
 1. **Maintainer reviews and merges PR #123** (feature → `upstream/dev`).
 2. **Sync `origin/main` to `upstream/main`** if needed (it is

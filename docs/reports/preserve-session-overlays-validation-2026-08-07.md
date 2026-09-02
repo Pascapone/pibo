@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Preserve session overlays validation — 2026-08-07"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/preserve-session-overlays-validation-2026-08-07.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "fb6da860eb43d93f162a587ce17daa1f14295196"
+  source_bytes: 7737
+  source_sha256: "18658a608b79682d6341e7cfe6cab9acf0b6a52f470aa210530c41604258b16a"
+  source_body_sha256: "18658a608b79682d6341e7cfe6cab9acf0b6a52f470aa210530c41604258b16a"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:preserve-session-overlays-validation-2026-08-07"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Preserve session overlays validation — 2026-08-07
 
 ## Verdict

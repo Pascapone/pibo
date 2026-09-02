@@ -1,3 +1,22 @@
+---
+type: "Plan"
+title: "Windows Better Auth Direct Validation Plan"
+description: "Defines the active direct Windows validation work for Better Auth SQLite recovery and packed installation behavior."
+tags: ["authentication", "validation", "windows"]
+status: "draft"
+authority: "directive"
+migration_lineage:
+  source_path: "docs/plans/windows-better-auth-direct-validation.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "a8a06e49df7e08492e3d5af2d57e32288b30b4ab"
+  source_bytes: 5599
+  source_sha256: "b530482ba23b810e509a9e12dc19a79d2aea4c05b04d1f6d9409584f172f5539"
+  source_body_sha256: "b530482ba23b810e509a9e12dc19a79d2aea4c05b04d1f6d9409584f172f5539"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Windows Better Auth Direct Validation Plan
 
 **Status:** Ready; waiting for the previously authorized Windows Server host to be started.

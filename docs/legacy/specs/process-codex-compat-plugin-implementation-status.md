@@ -1,10 +1,21 @@
 ---
-title: Codex Compatibility Plugin Implementation Status
-version: 1.0
-date_created: 2026-05-02
-last_updated: 2026-05-02
-owner: Pibo maintainers
-tags: [process, implementation-status, codex-compat, plugins, profiles, tools, prompt]
+type: "Historical Record"
+title: "Codex Compatibility Plugin Implementation Status"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/process-codex-compat-plugin-implementation-status.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "089087c354af89cf61427cd49848ec02c874d8d8"
+  source_bytes: 17196
+  source_sha256: "faf0a157c82b43a896c1af42b8e6cc907e4790ef2470f35de64fb0cbba5bf8d2"
+  source_body_sha256: "1683468f242e70df82a03f2ecd69a3d0d4822170963997030936a9ff48f8a2dc"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
 ---
 
 # Introduction

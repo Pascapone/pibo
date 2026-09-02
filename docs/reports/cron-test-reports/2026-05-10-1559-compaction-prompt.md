@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Test-Review: Compaction Prompt und Runtime-Compaction"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1559-compaction-prompt.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "96b29b9dd326c5418fd0abf7bced46a2aa73d7d0"
+  source_bytes: 9127
+  source_sha256: "1c2569cd454986a0995e2f6a208a3f841f86fb6a6b4268d8cd1272a760cf6c0d"
+  source_body_sha256: "1c2569cd454986a0995e2f6a208a3f841f86fb6a6b4268d8cd1272a760cf6c0d"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Test-Review: Compaction Prompt und Runtime-Compaction
 
 **Zeitpunkt:** 2026-05-10 15:59 Europe/Berlin  

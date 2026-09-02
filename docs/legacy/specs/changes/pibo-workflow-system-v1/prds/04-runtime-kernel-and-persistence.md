@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow System V1 — Runtime Kernel and Persistence"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/prds/04-runtime-kernel-and-persistence.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "3325180292edb94b7c07f4bf7da95c3f39bd56a6"
+  source_bytes: 6556
+  source_sha256: "68cecf34ebf7521b39787a4b08f40d3ca5498add4c60d9f5487a7e1d5c0757ff"
+  source_body_sha256: "68cecf34ebf7521b39787a4b08f40d3ca5498add4c60d9f5487a7e1d5c0757ff"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow System V1 — Runtime Kernel and Persistence
 
 **Status:** Draft  

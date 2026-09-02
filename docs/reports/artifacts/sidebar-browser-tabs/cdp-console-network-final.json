@@ -1,0 +1,69 @@
+{
+  "target": "http://localhost:4788/apps/chat/workflows/view/simple-chat/1.0.0",
+  "durationMs": 12000,
+  "summary": {
+    "requestCount": 10,
+    "projectRequestCount": 0,
+    "eventSourceRequestCount": 0,
+    "abortedRequestCount": 0,
+    "preexistingFailureCount": 0,
+    "preexistingLogEventCount": 1,
+    "errorCount": 0
+  },
+  "requests": [
+    {
+      "url": "http://localhost:4788/api/chat/loops/session-goal?piboSessionId=ps_b3ae49ec-682c-4093-8a87-cd552332f89b",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:4788/health",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:4788/api/previews?piboSessionId=ps_b3ae49ec-682c-4093-8a87-cd552332f89b",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:4788/api/chat/navigation?piboSessionId=ps_b3ae49ec-682c-4093-8a87-cd552332f89b&roomId=room_150f4b72-d042-43a0-a657-caaa82c4a49a",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:4788/health",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:4788/api/chat/loops/session-goal?piboSessionId=ps_b3ae49ec-682c-4093-8a87-cd552332f89b",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:4788/api/previews?piboSessionId=ps_b3ae49ec-682c-4093-8a87-cd552332f89b",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:4788/health",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:4788/api/chat/loops/session-goal?piboSessionId=ps_b3ae49ec-682c-4093-8a87-cd552332f89b",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:4788/api/previews?piboSessionId=ps_b3ae49ec-682c-4093-8a87-cd552332f89b",
+      "type": "Fetch"
+    }
+  ],
+  "events": [],
+  "preexistingFailures": [],
+  "preexistingLogEvents": [
+    {
+      "kind": "log-warning",
+      "detail": {
+        "source": "security",
+        "level": "warning",
+        "text": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+        "timestamp": 1788061116904.357,
+        "url": "http://localhost:4788/api/previews/pv-60d0734891cf9077c8/open?piboPreviewReload=0"
+      }
+    }
+  ]
+}

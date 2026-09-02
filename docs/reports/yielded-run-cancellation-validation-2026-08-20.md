@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Yielded-Run Cancellation Validation — 2026-08-20"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/yielded-run-cancellation-validation-2026-08-20.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9fab9f83eebe985485e2f60993d7cd56571cce6a"
+  source_bytes: 4269
+  source_sha256: "81ee870cea59ce98ce12604a18f6828670e373e06fb001a6682c2627ffd09629"
+  source_body_sha256: "81ee870cea59ce98ce12604a18f6828670e373e06fb001a6682c2627ffd09629"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:yielded-run-cancellation-validation-2026-08-20"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Yielded-Run Cancellation Validation — 2026-08-20
 
 **Status:** PASS for focused, canonical, packed-install, and exact Pibo2 installed-artifact validation.

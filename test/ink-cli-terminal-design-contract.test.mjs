@@ -23,9 +23,10 @@ test("Ink terminal design contract records non-negotiable rendering rules", () =
 	assert.match(contract, /Forbidden parity claims[\s\S]*only evidence[\s\S]*src\/session-ui/, "shared data alone must not be enough to claim parity");
 });
 
-test("Ink terminal visual evidence gate is reusable and linked from PRD catalog", () => {
+test("Ink terminal visual evidence gate is reusable and indexed with its PRD catalog", () => {
 	const contract = fs.readFileSync(contractPath, "utf8");
-	const readme = fs.readFileSync("docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/README.md", "utf8");
+	const parentIndex = fs.readFileSync("docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/index.md", "utf8");
+	const prdIndex = fs.readFileSync("docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/index.md", "utf8");
 	for (const phrase of [
 		"Story id(s)",
 		"Design rules checked",
@@ -41,7 +42,9 @@ test("Ink terminal visual evidence gate is reusable and linked from PRD catalog"
 	]) {
 		assert.match(contract, new RegExp(escapeRegExp(phrase)), `${phrase} should be required by the visual evidence gate`);
 	}
-	assert.match(readme, /terminal-design-contract\.md#visual-evidence-checklist/, "PRD catalog should point Ralph agents to the gate before later PRDs");
+	assert.match(parentIndex, /\(terminal-design-contract\.md\)/, "the generated parent index should retain the visual evidence contract");
+	assert.match(parentIndex, /\(prds\/\)/, "the generated parent index should retain the PRD catalog");
+	assert.match(prdIndex, /\(01-terminal-design-contract-and-audit\.md\)/, "the generated PRD catalog should retain its first design-contract story");
 });
 
 function escapeRegExp(value) {

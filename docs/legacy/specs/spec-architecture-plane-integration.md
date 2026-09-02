@@ -1,10 +1,21 @@
 ---
-title: Plane External Issue Tracker Integration
-version: 1.0
-date_created: 2026-05-02
-last_updated: 2026-05-02
-owner: Pibo
-tags: [architecture, integration, plane, issue-tracker, agents, automations]
+type: "Historical Record"
+title: "Plane External Issue Tracker Integration"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-architecture-plane-integration.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "57e815e5ae0ed5aa99f7b765cd4c507a31c5d161"
+  source_bytes: 34328
+  source_sha256: "e840fc88975f23f359899a2fddf64df290526aad5bff79ad81cfe6f3739d06d2"
+  source_body_sha256: "d3726c951e1c94379ae2de5a4205898ba626523baf92f1e99db417afa94318b2"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
 ---
 
 # Introduction

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pibo MCP"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/mcp.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7046213cfadea0943f07a0d824af66bca2ca07bd"
+  source_bytes: 7598
+  source_sha256: "971b0da8eb07f6d13e948a57c95480da4c1cbd318f048946f1ed7c98ac4a82bd"
+  source_body_sha256: "971b0da8eb07f6d13e948a57c95480da4c1cbd318f048946f1ed7c98ac4a82bd"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Pibo MCP
 
 `pibo mcp` is the local operator CLI for external MCP servers. It is intentionally separate from the pibo plugin runtime: MCP servers are configured in `mcp_servers.json`, started as external stdio or HTTP servers, and called from the shell.

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pibo Cron Jobs Implementation Plan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/cron-jobs-implementation-plan.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9673595ed30c8b9ed63c94aaafcd840b78ac22dd"
+  source_bytes: 33835
+  source_sha256: "eefae491c09ecae3337f43b92e0e57d025bc18d28a9a0019ed393876053fe81f"
+  source_body_sha256: "eefae491c09ecae3337f43b92e0e57d025bc18d28a9a0019ed393876053fe81f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Pibo Cron Jobs Implementation Plan
 
 ## Status

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Tasks: Shared App Without Owner Scope"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/shared-app-no-owner-scope/tasks.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "dda1262a670d98f465e2fc8416d6c2f46ff6f5ff"
+  source_bytes: 7231
+  source_sha256: "5aaa9d67d08622899411f51b8d2278f54865f3d33725346f4e95230a44f84f61"
+  source_body_sha256: "5aaa9d67d08622899411f51b8d2278f54865f3d33725346f4e95230a44f84f61"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Tasks: Shared App Without Owner Scope
 
 **Status:** Draft  

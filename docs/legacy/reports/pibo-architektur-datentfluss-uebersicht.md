@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pibo Architektur – Datenfluss Übersicht"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/pibo-architektur-datentfluss-uebersicht.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7e10c6c8ea67ff012ed2d2280022534ec2947936"
+  source_bytes: 25979
+  source_sha256: "09ead6809251c1257853ae8372ec3308a8aa60c4ceced731a207eab8705e2dc2"
+  source_body_sha256: "09ead6809251c1257853ae8372ec3308a8aa60c4ceced731a207eab8705e2dc2"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Pibo Architektur – Datenfluss Übersicht
 
 > Persönliches Dokument. Kein Fluff. Nur Code und Datenflüsse.

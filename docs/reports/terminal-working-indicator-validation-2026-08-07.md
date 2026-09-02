@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Terminal working indicator validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/terminal-working-indicator-validation-2026-08-07.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "bde907cfa80c2049192becdb44768bd2b92fefa5"
+  source_bytes: 3571
+  source_sha256: "bce0a071bc4196ceddc6b9754297c11bd7848bf0e7cfd4b1fb8b297356523a88"
+  source_body_sha256: "bce0a071bc4196ceddc6b9754297c11bd7848bf0e7cfd4b1fb8b297356523a88"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:terminal-working-indicator-validation-2026-08-07"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Terminal working indicator validation
 
 **Date:** 2026-08-07  

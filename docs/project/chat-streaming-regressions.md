@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Chat Streaming Regression Knowledge Base"
+description: "Catalogs known Chat Web streaming regressions, benchmark pitfalls, and diagnostic signals."
+tags: ["chat-web", "regressions", "streaming"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/chat-streaming-regressions.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9578b0b075aad07006dd2475f43352b31ced20aa"
+  source_bytes: 5945
+  source_sha256: "5e77b2b2c4e4cd557cb9bbf1cbe9e239861fc8e1db458e62ef5580bacb309755"
+  source_body_sha256: "5e77b2b2c4e4cd557cb9bbf1cbe9e239861fc8e1db458e62ef5580bacb309755"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Chat Streaming Regression Knowledge Base
 
 This document records known Chat Web streaming failure modes and the benchmark signals that catch them.

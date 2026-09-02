@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI V2 — Slash Command Catalog and Actions"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/prds/05-slash-command-catalog-and-actions.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "bfa96b8b4da15f7fdee308b424edd3e4153ec272"
+  source_bytes: 2812
+  source_sha256: "3e84661d6d5e3581d832b5936c27da999d1d719bb9952edb3bfc776ab2fcfc7f"
+  source_body_sha256: "3e84661d6d5e3581d832b5936c27da999d1d719bb9952edb3bfc776ab2fcfc7f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI V2 — Slash Command Catalog and Actions
 
 **Status:** Draft  

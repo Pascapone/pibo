@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Pibo Workflows"
+description: "Explains the current Pibo Workflows baseline, authoring model, execution direction, and security boundaries."
+tags: ["architecture", "reference", "workflows"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/workflows.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "15cd892fc5e295c5bc3b0b74039757ed733b0de0"
+  source_bytes: 7533
+  source_sha256: "677643fdf4d73d50d4cf63159add7604ffe88954994dad5ae47f0ea47f2ef4a0"
+  source_body_sha256: "677643fdf4d73d50d4cf63159add7604ffe88954994dad5ae47f0ea47f2ef4a0"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Pibo Workflows
 
 Pibo Workflows are the product path for repeatable, inspectable multi-step agent work. A workflow is a versioned graph with explicit inputs, outputs, nodes, edges, adapters, guards, state, and runtime facts.

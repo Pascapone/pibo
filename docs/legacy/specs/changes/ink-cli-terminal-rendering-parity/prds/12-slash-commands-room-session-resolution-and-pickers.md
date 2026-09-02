@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 12: Slash Commands, Room/Session Resolution, and Pickers"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/12-slash-commands-room-session-resolution-and-pickers.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "52387ef9e05868ec73d02c0cff8ee032f2d8b7f2"
+  source_bytes: 4481
+  source_sha256: "2e065df11bd72c1f7e19e37104ebe9a1b066392787e7a0c34fc11f518cc2e1ef"
+  source_body_sha256: "2e065df11bd72c1f7e19e37104ebe9a1b066392787e7a0c34fc11f518cc2e1ef"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 12: Slash Commands, Room/Session Resolution, and Pickers
 
 **Status:** Draft  

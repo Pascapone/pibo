@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow System V1 — Interfaces, Composition, Adapters, and State"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/prds/03-interfaces-composition-state.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b18747f03444b47fed4b3e377dbfce3c30312e34"
+  source_bytes: 6286
+  source_sha256: "6378a76d4cd8e2272e96cf40f597bbdc1e6e76df890940ba15fc7e942b04fc4d"
+  source_body_sha256: "6378a76d4cd8e2272e96cf40f597bbdc1e6e76df890940ba15fc7e942b04fc4d"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow System V1 — Interfaces, Composition, Adapters, and State
 
 **Status:** Draft  

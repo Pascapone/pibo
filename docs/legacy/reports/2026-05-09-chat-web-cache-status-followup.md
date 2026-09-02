@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Cache Status Follow-Up"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-09-chat-web-cache-status-followup.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "500a1c80b02f39c77cc96050eed3013ab13edbc8"
+  source_bytes: 3029
+  source_sha256: "c6a5c32b45c81c4954e24eb6f08da4d85c41b1aabad7d1647f903647e0f7ec2f"
+  source_body_sha256: "c6a5c32b45c81c4954e24eb6f08da4d85c41b1aabad7d1647f903647e0f7ec2f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Web Cache Status Follow-Up
 
 Date: 2026-05-09

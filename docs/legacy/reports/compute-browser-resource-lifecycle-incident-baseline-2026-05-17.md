@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Report: Compute Browser Resource Lifecycle Incident Baseline"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/compute-browser-resource-lifecycle-incident-baseline-2026-05-17.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "eef2b97bc0889d6276c4979524d05ae56dff78e3"
+  source_bytes: 4884
+  source_sha256: "024bf14e178de448b0816c896d170b3fd8f49136e32b322a7173701fb761742e"
+  source_body_sha256: "024bf14e178de448b0816c896d170b3fd8f49136e32b322a7173701fb761742e"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Report: Compute Browser Resource Lifecycle Incident Baseline
 
 **Date:** 2026-05-17  

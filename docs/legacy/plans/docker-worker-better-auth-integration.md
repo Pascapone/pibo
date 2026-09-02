@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Plan: Docker Compute Worker mit Better-Auth-Integration"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/docker-worker-better-auth-integration.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "ea0efd3e93019d9e2a8677e8f5464fe97a227a39"
+  source_bytes: 5454
+  source_sha256: "84110c75890933b1a2233b65ba0ee679001423b9932127f05ca983d0b8df0f94"
+  source_body_sha256: "84110c75890933b1a2233b65ba0ee679001423b9932127f05ca983d0b8df0f94"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Plan: Docker Compute Worker mit Better-Auth-Integration
 
 ## Ziel

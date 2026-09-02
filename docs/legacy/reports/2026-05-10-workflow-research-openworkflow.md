@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "OpenWorkflow-Recherchebericht für Pibo Workflow System V1"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-10-workflow-research-openworkflow.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "df628ad054560ecda03a89bf7cac9993ba90fbbd"
+  source_bytes: 24988
+  source_sha256: "11d9053ef65abc60526fc670dab18bb43125ef676884f141e422c89f73d520fc"
+  source_body_sha256: "11d9053ef65abc60526fc670dab18bb43125ef676884f141e422c89f73d520fc"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # OpenWorkflow-Recherchebericht für Pibo Workflow System V1
 
 ## Executive Summary

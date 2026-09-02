@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Browser Cleanup and Stale Process Reaping"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/compute-browser-resource-lifecycle/prds/03-browser-cleanup-and-stale-process-reaping.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d6d610741848416c1cf9eeddb8c377a8259ed9c8"
+  source_bytes: 4960
+  source_sha256: "7028d9bf236de7db63397124bcc7dcb1b76e5d069ad72637ef80042a2937a9ad"
+  source_body_sha256: "7028d9bf236de7db63397124bcc7dcb1b76e5d069ad72637ef80042a2937a9ad"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Browser Cleanup and Stale Process Reaping
 
 **Status:** Draft  

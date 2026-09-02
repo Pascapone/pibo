@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Finaler Umbauplan: Owner Scope vollständig entfernen"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/final-partition-removal-umbauplan-2026-05-31.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "529621a287ae20b9f93839ebb26df6ee9d666125"
+  source_bytes: 25358
+  source_sha256: "48936c4d0325ac80522cd0ee3aa45d700bde64f96d576f333295e2854c79970a"
+  source_body_sha256: "48936c4d0325ac80522cd0ee3aa45d700bde64f96d576f333295e2854c79970a"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Finaler Umbauplan: Owner Scope vollständig entfernen
 
 **Status:** Draft  

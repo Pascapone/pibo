@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Isolated Deployment Pool Operations"
+description: "Guides operators through isolated deployment-pool acquisition, validation, cleanup, and recovery."
+tags: ["deployment-pool", "operations", "validation"]
+status: "draft"
+authority: "directive"
+migration_lineage:
+  source_path: "docs/project/isolated-deployment-pool-operations.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "fb28658be199e723f258a838d61adef4a967bca1"
+  source_bytes: 7086
+  source_sha256: "7a851d1ceb889c1c934c88dbc0244a6e5de9f98971373aa7494df7b0e325b746"
+  source_body_sha256: "7a851d1ceb889c1c934c88dbc0244a6e5de9f98971373aa7494df7b0e325b746"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Isolated Deployment Pool Operations
 
 ## Purpose

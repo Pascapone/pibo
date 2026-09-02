@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI — SSH and Recovery Hardening"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui/prds/06-ssh-recovery-hardening.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "37e3676174d3531f40efc9238c9073a74d3e4da9"
+  source_bytes: 5879
+  source_sha256: "5704f401efcb75790b09d59e169f94515980a8a5da4bb510a0e053cff822254b"
+  source_body_sha256: "5704f401efcb75790b09d59e169f94515980a8a5da4bb510a0e053cff822254b"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI — SSH and Recovery Hardening
 
 **Status:** Draft  

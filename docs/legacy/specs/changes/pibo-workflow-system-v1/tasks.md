@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Tasks: Pibo Workflow System V1"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-system-v1/tasks.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "bd8e971e8d27f0567ccbf7ad2a5d66018ab33cec"
+  source_bytes: 7013
+  source_sha256: "5e92d5db519575c9f60360078f029f3246022700aae842ad2f0a34e0f23ff3b6"
+  source_body_sha256: "5e92d5db519575c9f60360078f029f3246022700aae842ad2f0a34e0f23ff3b6"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Tasks: Pibo Workflow System V1
 
 **Status:** Draft  

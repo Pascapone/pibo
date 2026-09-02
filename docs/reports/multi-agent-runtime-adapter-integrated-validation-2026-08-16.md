@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Multi-Agent Runtime Adapter Integrated Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1bfb9a43d57de270e6441da2a742762a8c16c902"
+  source_bytes: 13391
+  source_sha256: "a8fd282f97d3e15297923f38455b42189fb795e26bd90d794baa111a20994f92"
+  source_body_sha256: "a8fd282f97d3e15297923f38455b42189fb795e26bd90d794baa111a20994f92"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:multi-agent-runtime-adapter-integrated-validation-2026-08-16"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Multi-Agent Runtime Adapter Integrated Validation
 
 **Date:** 2026-08-16

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Bericht: Plan für einen Trace-Render-Consistency-Debugger"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/trace-render-debug-plan.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "0ccbb25eb65dece55b4405ef9dc94495eba53fb3"
+  source_bytes: 25908
+  source_sha256: "c670bcee3d3f19d0a746a733237368e18a91ccc4658d3b5582e7c3404eadbc57"
+  source_body_sha256: "c670bcee3d3f19d0a746a733237368e18a91ccc4658d3b5582e7c3404eadbc57"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Bericht: Plan für einen Trace-Render-Consistency-Debugger
 
 **Datum:** 2026-05-04  

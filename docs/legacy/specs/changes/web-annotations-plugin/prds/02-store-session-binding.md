@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Web Annotations Plugin — Store and Session Binding"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/web-annotations-plugin/prds/02-store-session-binding.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b7f669ba993ce5462e607a1be5a61288c759e122"
+  source_bytes: 5734
+  source_sha256: "28eaa5e48dbc189e3b19d47310faf651155eb5172bea1651823276722d8e4a97"
+  source_body_sha256: "28eaa5e48dbc189e3b19d47310faf651155eb5172bea1651823276722d8e4a97"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Web Annotations Plugin — Store and Session Binding
 
 **Status:** Draft  

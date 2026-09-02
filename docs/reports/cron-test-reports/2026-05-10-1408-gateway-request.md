@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Cron Test Review: Gateway Request Helper"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1408-gateway-request.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "661fbf1241c43c12da4931e10089792d0b2df6e0"
+  source_bytes: 12568
+  source_sha256: "2987a255866a1f08ed83d28fe4673a1aa32b019a46cb675dab0edf95c189d6cc"
+  source_body_sha256: "2987a255866a1f08ed83d28fe4673a1aa32b019a46cb675dab0edf95c189d6cc"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Cron Test Review: Gateway Request Helper
 
 **Lauf:** 2026-05-10 14:08 Europe/Berlin  

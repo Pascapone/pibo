@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Slash Command Behavior Matrix"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/slash-command-behavior-matrix.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "5cb02ca230648c7363fc350f085113d83c5cfb7d"
+  source_bytes: 6648
+  source_sha256: "561a21569a8f80bef188737661abb160c8af8e3fa2b4b6f707d12576b96a32b9"
+  source_body_sha256: "561a21569a8f80bef188737661abb160c8af8e3fa2b4b6f707d12576b96a32b9"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Slash Command Behavior Matrix
 
 **Date:** 2026-05-18  

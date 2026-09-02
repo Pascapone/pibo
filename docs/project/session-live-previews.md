@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Session Live Previews"
+description: "Explains current session live-preview setup, lifecycle, limits, and access boundaries."
+tags: ["operations", "previews", "sessions"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/session-live-previews.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "3d73df5a9a9c337b40b5a658cf3867b62006f07d"
+  source_bytes: 4376
+  source_sha256: "ac1eed234dc204a640d9295264aa5616f539bcea4216b0ba49fcf06e0a368ad5"
+  source_body_sha256: "ac1eed234dc204a640d9295264aa5616f539bcea4216b0ba49fcf06e0a368ad5"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Session Live Previews
 
 Session Live Previews expose an explicitly selected loopback development port through an isolated, authenticated browser origin and attach it to the Pibo Session doing the work.

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ink CLI Session UI — Session Source and Runtime Integration"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui/prds/04-session-source-runtime-integration.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "5eb394201a51c08122e7ce382a3c605353dd9741"
+  source_bytes: 4008
+  source_sha256: "37bffaa94582bae2c12327e12edcded891402ac26484651e5f5c1cd1343b7640"
+  source_body_sha256: "37bffaa94582bae2c12327e12edcded891402ac26484651e5f5c1cd1343b7640"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ink CLI Session UI — Session Source and Runtime Integration
 
 **Status:** Draft  

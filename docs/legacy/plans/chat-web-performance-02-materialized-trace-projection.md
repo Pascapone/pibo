@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Performance 02: Trace Views inkrementell materialisieren"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/chat-web-performance-02-materialized-trace-projection.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f9e60ca41eed3547a6042adad8a3d343d11e52af"
+  source_bytes: 5378
+  source_sha256: "7172a19b0a927388d7db59ce4cc6cd52ede3e8a0ad341d934c6394d9889d32dd"
+  source_body_sha256: "7172a19b0a927388d7db59ce4cc6cd52ede3e8a0ad341d934c6394d9889d32dd"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Web Performance 02: Trace Views inkrementell materialisieren
 
 ## Zweck

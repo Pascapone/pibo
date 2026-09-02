@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Runtime Resource Materialization Validation — 2026-08-15"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/runtime-resource-materialization-validation-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "8a7c442823c5b8da0988fe0d39a7a810dcaf5dca"
+  source_bytes: 8762
+  source_sha256: "9bba5ac82a7cd1c39a50487222e4a711363d0957368e99bfaa99f212951beb33"
+  source_body_sha256: "9bba5ac82a7cd1c39a50487222e4a711363d0957368e99bfaa99f212951beb33"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:runtime-resource-materialization-validation-2026-08-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Runtime Resource Materialization Validation — 2026-08-15
 
 **Status:** Pass

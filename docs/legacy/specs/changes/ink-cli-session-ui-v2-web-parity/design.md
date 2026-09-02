@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design: Ink CLI Session UI V2 Web Parity"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-session-ui-v2-web-parity/design.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "6a5929c3251346e40c6f85fea1be52af86eae1f8"
+  source_bytes: 11589
+  source_sha256: "689f98bc6d2ff890e963ba5699e04dadb96e37b268f3cd71c6acce9f4117d4de"
+  source_body_sha256: "689f98bc6d2ff890e963ba5699e04dadb96e37b268f3cd71c6acce9f4117d4de"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design: Ink CLI Session UI V2 Web Parity
 
 ## Context

@@ -1,3 +1,34 @@
+---
+type: "Historical Record"
+title: "Coverage Analysis: Ralph Verification Gap Analysis 2026-05-11"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/coverage/ralph-verification-gap-analysis-2026-05-11.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b23a76641c76064a3b431a0334ebe2bc7b996975"
+  source_bytes: 8644
+  source_sha256: "171bfa71ff255481ea7801ccdbec86b03e8354f2b298e5dbdc608f0fbae99c19"
+  source_body_sha256: "171bfa71ff255481ea7801ccdbec86b03e8354f2b298e5dbdc608f0fbae99c19"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/coverage/ralph-verification-gap-analysis-2026-05-11.md"
+  source_sha256: "171bfa71ff255481ea7801ccdbec86b03e8354f2b298e5dbdc608f0fbae99c19"
+  unresolved_links:
+    - target: "../capabilities/continuous-ralph-jobs.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/continuous-ralph-jobs.md."
+    - target: "../capabilities/scheduled-pibo-jobs.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/scheduled-pibo-jobs.md."
+    - target: "../capabilities/chat-web-rooms-and-event-streams.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/chat-web-rooms-and-event-streams.md."
+    - target: "../capabilities/web-auth-and-same-origin-host.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/capabilities/web-auth-and-same-origin-host.md."
+---
 # Coverage Analysis: Ralph Verification Gap Analysis 2026-05-11
 
 **Status:** Draft  

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design: Shared App Without Owner Scope"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/shared-app-no-owner-scope/design.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9230121f719428b32d8aff9f86d77e23631adb16"
+  source_bytes: 7437
+  source_sha256: "127a51271d46b75cc61cacc5a6935e7bd18ebfde9831f28f028aecc01dc3656c"
+  source_body_sha256: "127a51271d46b75cc61cacc5a6935e7bd18ebfde9831f28f028aecc01dc3656c"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design: Shared App Without Owner Scope
 
 **Status:** Draft  

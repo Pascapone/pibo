@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Native Web Search Provider"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/native-web-search-provider.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7c74c591504cf5fde3b923a3c9a920e72dcbcd7a"
+  source_bytes: 2292
+  source_sha256: "513499e892afd598cbdcf87b9d29548011703382ee9cf4b2c30723be33fcc906"
+  source_body_sha256: "513499e892afd598cbdcf87b9d29548011703382ee9cf4b2c30723be33fcc906"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Native Web Search Provider
 
 `web_search` is a Pibo native tool. Profiles select the stable tool name `web_search`; the selected native tool carries provider metadata that tells the runtime how to make the provider capability available.

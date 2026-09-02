@@ -1,0 +1,44 @@
+{
+  "url": "http://127.0.0.1:4788/apps/chat/rooms/room_e7b0ad23-05cb-47c0-a0b1-548776563c07/sessions/ps_7d7934ac-e0c3-4476-978a-2f3265938e97?view=terminal",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "area": "sessions",
+  "desktopSidebar": {
+    "x": 0,
+    "y": 0,
+    "width": 0,
+    "height": 0
+  },
+  "desktopCenter": {
+    "x": 0,
+    "y": 0,
+    "width": 1920,
+    "height": 1080
+  },
+  "desktopTabs": {
+    "x": 0,
+    "y": 0,
+    "width": 0,
+    "height": 0
+  },
+  "mobileRouteShell": null,
+  "activeTab": "Preview",
+  "tabOrder": [
+    "Project · prj_default",
+    "Agent Designer",
+    "Preview"
+  ],
+  "activePanelText": "Live preview  are not configured on thi  Pibo in tance.",
+  "activeElement": "SessionsShared ChatShared ChatRoomsNo roomsSessionsbasecodex-nativeorpUntitled SessionUntitled SessionRoomShared Chat·Untitled SessionNo visible trace rows yet.basecodex-nativeorpProject · prj_defaultAgent DesignerPreviewAgentsCustom AgentsUnfiled0No custom agentsRead-only Profilesbaseplugin profilecodex-nativeplugin profileorpplugin profileAgent Designerbaseread-only plugin profileThis profile is registered by a plugin. Copy it to create an editable custom agent.IdentityAgent nameDescriptionBase agent with only the four Pi built-in tools.RuntimeAgent RuntimeavailableRuntime instancePi Coding Agent · piNative Codex App Server · codex-native (unavailable)Oh My Pi Native · omp-native (unavailable)adapter pi · embedded · pi-sdkAdapter profile optionsAdvanced JSON{}Options are validated by the selected runtime before saving.pi_runtime_availablePi Coding Agent SDK 0.84.2 is available in-process.Sessionspersistent + resumePibo toolsdirectNative tool inspectionnativeNative tool yieldingnativeTool intentsoptionalExternal MCPmaterialized:isolated-pibo-mcp-configSkillsnativeContextnativeModelscatalogReasoningsupportedApprovalsunsupportedHistorysupportedTool intent tracingAdds a required concise intent to every Pi tool call. Disabled by default.Main AgentModel & ReasoningMain Agent ModelProvider requests follow this order from top to bottom.Primary providerUnsetUnset to use the settings default.DefaultAmazon BedrockAnt LingAnthropicAzure OpenAIBasetenCerebrasCloudflare AI GatewayCloudflare Workers AIDeepSeekFireworksGitHub CopilotglmGoogleGoogle Vertex AIGroqHugging FaceKimi For CodingMiniMaxMiniMax CNMistralMoonshot AIMoonshot AI CNNVIDIAOpenAIOpenAI CodexOpenCode GoOpenCode ZenOpenRouterQwen Token PlanQwen Token Plan CNQwen Token Plan IndividualTogetherVercel AI GatewayxAIXiaomiXiaomi Token Plan AMSXiaomi Token Plan CNXiaomi Token Plan SGPZ.AIZ.AI Coding CNSelect provider firstThinkingUnsetDefaultoffminimallowmediumhighxhighmaxFastFast offAutomatic Context DiscoveryPi Built-in Toolsbasic model tools4/4ToolsBuilt-in ToolsBuilt-in Pibo tool catalog0/7Codex Compatpibo.codex-compat0/3Pibo Web Annotationspibo.web-annotations0/6SkillsBuilt-in SkillsPibo-owned built-in skill catalog0/11Packagespibo-goal-controlExpose get_goal, create_goal, and update_goal for persisted Goal Loop lifecycle and accounting.portable packagepibo-run-controlExpose pibo_run_* for Pibo-managed tools and subagents. Private harness-native tools are included only when the runtime declares native-tool yielding.portable + runtime-nativePi Packages0 available / 0 selected / 0 registeredNo installed and enabled Pi packages available. Manage Pi Packages in Settings.Context FilesAgentGlobalBuilt-in Context FilesPibo built-in context file catalog0/1Codex Compatpibo.codex-compat0/1SubagentsDescriptions are shown to the parent agent. Model, thinking, and runtime overrides apply to newly created child sessions.No subagents configuredMCP ServersNo MCP servers configuredLive previews are not configured on this Pibo instance.",
+  "loadingProjects": false,
+  "failedResources": [
+    "http://127.0.0.1:4788/apps/chat/assets/index-CPcBn1Ig.js",
+    "http://127.0.0.1:4788/apps/chat/assets/dist-CqM4On9D.js",
+    "http://127.0.0.1:4788/apps/chat/assets/dist-DLJCGrGQ.js",
+    "http://127.0.0.1:4788/apps/chat/assets/dist-S3zJGntM.js",
+    "http://127.0.0.1:4788/apps/chat/assets/index-Bs-urGdW.css",
+    "http://127.0.0.1:4788/apps/chat/assets/pwa-images/android/launchericon-512x512.png"
+  ]
+}

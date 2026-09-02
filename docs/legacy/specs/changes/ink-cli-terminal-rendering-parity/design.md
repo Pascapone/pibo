@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design: Ink CLI Terminal Rendering Parity"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/design.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "13009c61f9f9f8121e09d2f0b69d64ecec53c28d"
+  source_bytes: 7060
+  source_sha256: "6983a136ef615f000b38017b14d6e82e6571b616c843fec60799526c84945403"
+  source_body_sha256: "6983a136ef615f000b38017b14d6e82e6571b616c843fec60799526c84945403"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design: Ink CLI Terminal Rendering Parity
 
 ## Context

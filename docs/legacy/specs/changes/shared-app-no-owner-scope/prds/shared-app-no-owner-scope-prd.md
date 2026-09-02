@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Shared App Without Owner Scope"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/shared-app-no-owner-scope/prds/shared-app-no-owner-scope-prd.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "fff7b6fa6c5d1fd2994148c01507f74fbe73e57f"
+  source_bytes: 16059
+  source_sha256: "7293ab1f82bdfe8680a75d8ee67e3b1f1aca128a8a657ba9f9464948e22699c1"
+  source_body_sha256: "7293ab1f82bdfe8680a75d8ee67e3b1f1aca128a8a657ba9f9464948e22699c1"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Shared App Without Owner Scope
 
 **Status:** Draft  

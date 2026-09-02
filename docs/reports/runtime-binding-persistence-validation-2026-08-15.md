@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Runtime Binding Persistence Validation — 2026-08-15"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/runtime-binding-persistence-validation-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b06edb7de322dd6c5bd5534b61a45fae1d5d9462"
+  source_bytes: 7206
+  source_sha256: "ca6fe2ac6e0fe705d1dacac433bf8f57c636d94853db26ec3d1a858e3735d8d2"
+  source_body_sha256: "ca6fe2ac6e0fe705d1dacac433bf8f57c636d94853db26ec3d1a858e3735d8d2"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:runtime-binding-persistence-validation-2026-08-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Runtime Binding Persistence Validation — 2026-08-15
 
 **Status:** Passed for migration, compatibility, authenticated API/UI, empty-session and durable-session restart behavior, CAS, debug, signals, and rollback boundary.

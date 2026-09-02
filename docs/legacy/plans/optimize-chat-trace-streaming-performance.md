@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Umbauplan: Chat Trace Streaming Performance"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/optimize-chat-trace-streaming-performance.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d5308cf64014a0386325dc4d0f56b47662cddbf7"
+  source_bytes: 12812
+  source_sha256: "eed600b5f7111e869f011b291f3bf26b949eb4ba8f47cc594edc63ce8657d5c3"
+  source_body_sha256: "eed600b5f7111e869f011b291f3bf26b949eb4ba8f47cc594edc63ce8657d5c3"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Umbauplan: Chat Trace Streaming Performance
 
 ## Ziel

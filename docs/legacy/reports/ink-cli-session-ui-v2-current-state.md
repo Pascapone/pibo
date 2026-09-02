@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Ink CLI Session UI V2 Current-State Audit"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/ink-cli-session-ui-v2-current-state.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "8f022dede9158d29edff8e8eb5fb1f1da3f4f5a3"
+  source_bytes: 16303
+  source_sha256: "2687473e7d2d4ef65e7293045fc73504def056d93c9282283c9edf71660d588d"
+  source_body_sha256: "2687473e7d2d4ef65e7293045fc73504def056d93c9282283c9edf71660d588d"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Ink CLI Session UI V2 Current-State Audit
 
 **Date:** 2026-05-17  

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Signals E2E Root-Cause Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/signals-e2e-root-cause-2026-05-19.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "ca3e8de2f98f60683778460515a9b71818caef64"
+  source_bytes: 15015
+  source_sha256: "9124279e00ac544623346224d0c6e5a365ba9eb38ada2e14697608ec0f00f9ac"
+  source_body_sha256: "9124279e00ac544623346224d0c6e5a365ba9eb38ada2e14697608ec0f00f9ac"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Signals E2E Root-Cause Report
 
 Date: 2026-05-19

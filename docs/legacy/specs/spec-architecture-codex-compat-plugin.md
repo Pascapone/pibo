@@ -1,10 +1,33 @@
 ---
-title: Pibo Codex Compatibility Plugin Specification
-version: 1.0
-date_created: 2026-05-02
-last_updated: 2026-05-02
-owner: Pibo maintainers
-tags: [architecture, design, plugins, profiles, tools, prompt, subagents, auth]
+type: "Historical Record"
+title: "Pibo Codex Compatibility Plugin Specification"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-architecture-codex-compat-plugin.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "ae822f50c6ea64e4e03e79cd3ad3ed3b8f8ed692"
+  source_bytes: 23833
+  source_sha256: "d15f498dabbed19a7dbd2bced1270c8062861aa1071f00fe648fd76a9682e6e3"
+  source_body_sha256: "89f82a572e9af32cc024c771aaa060d6b2440c6d77236be16d4069f208cd923d"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-architecture-codex-compat-plugin.md"
+  source_sha256: "89f82a572e9af32cc024c771aaa060d6b2440c6d77236be16d4069f208cd923d"
+  unresolved_links:
+    - target: "HOME>/code/pibo/spec/spec-architecture-runtime-boundary.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/spec/spec-architecture-runtime-boundary.md."
+    - target: "HOME>/code/pibo/spec/spec-architecture-pibo-session-model.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/spec/spec-architecture-pibo-session-model.md."
+    - target: "HOME>/code/pibo/docs/architecture.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/docs/architecture.md."
+    - target: "HOME>/code/pibo/docs/codex-harness-analysis.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/specs/<HOME>/code/pibo/docs/codex-harness-analysis.md."
 ---
 
 # Introduction

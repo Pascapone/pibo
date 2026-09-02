@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Native Codex Model, Options, and Context-Usage Validation — 2026-08-15"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/codex-native-model-options-validation-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "171bb18c755ab4ba467791df700792d0c9b9d79d"
+  source_bytes: 10036
+  source_sha256: "f4a1c34226ded2bd0db4cee8f0810a50fa451e756906750b650d1ef0c7001ce9"
+  source_body_sha256: "f4a1c34226ded2bd0db4cee8f0810a50fa451e756906750b650d1ef0c7001ce9"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:codex-native-model-options-validation-2026-08-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Native Codex Model, Options, and Context-Usage Validation — 2026-08-15
 
 ## Scope

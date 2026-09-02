@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Pibo2 yielded-run resource hang — 2026-08-08"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/pibo2-yielded-run-resource-hang-2026-08-08.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "21b53e2cbd550f1b652e1de65a99a286ac399563"
+  source_bytes: 6219
+  source_sha256: "218bd0268528b7172ef278f6ed68587bf4d24fc1c464a2d5feb50a93feb58697"
+  source_body_sha256: "218bd0268528b7172ef278f6ed68587bf4d24fc1c464a2d5feb50a93feb58697"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Pibo2 yielded-run resource hang — 2026-08-08
 
 ## Summary

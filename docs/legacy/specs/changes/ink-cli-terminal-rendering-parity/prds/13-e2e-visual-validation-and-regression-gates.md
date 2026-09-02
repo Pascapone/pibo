@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 13: E2E Visual Validation and Regression Gates"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/13-e2e-visual-validation-and-regression-gates.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "181fc7727b206210c23852f0b600bc216a3cf149"
+  source_bytes: 3330
+  source_sha256: "c035768430b668562099eac3e4490e3e53a8292a03af32f3063cdeec4204a6dc"
+  source_body_sha256: "c035768430b668562099eac3e4490e3e53a8292a03af32f3063cdeec4204a6dc"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 13: E2E Visual Validation and Regression Gates
 
 **Status:** Draft  

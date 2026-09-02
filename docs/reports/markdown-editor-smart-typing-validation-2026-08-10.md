@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Markdown Editor Smart Typing Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/markdown-editor-smart-typing-validation-2026-08-10.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "33e9a6eff088e557fdb32148f2f9e28c7717e752"
+  source_bytes: 7843
+  source_sha256: "d0d687b96ec8e469eac6bd01594d344d8dc008e3ff099dc16a772798f034b0db"
+  source_body_sha256: "d0d687b96ec8e469eac6bd01594d344d8dc008e3ff099dc16a772798f034b0db"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:markdown-editor-smart-typing-validation-2026-08-10"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Markdown Editor Smart Typing Validation
 
 **Date:** 2026-08-10

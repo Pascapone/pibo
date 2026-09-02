@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Webchat OOM Analysis Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-05-webchat-oom-analysis.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "411017bc6e61a96e2fa094062314812b0fd31aa3"
+  source_bytes: 16742
+  source_sha256: "153cdb85755ec0885cd871f5b12269c8462836375094ba03ffe06cd9738c1e1c"
+  source_body_sha256: "153cdb85755ec0885cd871f5b12269c8462836375094ba03ffe06cd9738c1e1c"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Webchat OOM Analysis Report
 
 Date: 2026-05-05

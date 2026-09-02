@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Better Auth SQLite Migration Hardening Validation — 2026-08-20"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/better-auth-sqlite-migration-hardening-validation-2026-08-20.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "bffdcb9cc4c41fb68ad1d1784cc4e656fbf2a1b2"
+  source_bytes: 6636
+  source_sha256: "a3105f17b85dc98421cd6964ef9a6901d2c34430a0fe8383f984a85da6363d24"
+  source_body_sha256: "a3105f17b85dc98421cd6964ef9a6901d2c34430a0fe8383f984a85da6363d24"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:better-auth-sqlite-migration-hardening-validation-2026-08-20"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Better Auth SQLite Migration Hardening Validation — 2026-08-20
 
 **Status:** PASS for implementation, deterministic regression coverage, packed installation, and exact-candidate Pibo2 deployment. Direct execution on a Windows host remains an external release gate.

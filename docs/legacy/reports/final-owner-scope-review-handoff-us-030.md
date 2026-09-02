@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "US-030 Final Owner Scope Removal Review Handoff"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/final-owner-scope-review-handoff-us-030.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "63dd370f308dd707f551f8bfdb3575cee61716b7"
+  source_bytes: 8190
+  source_sha256: "cdc814e34331ff32b91b8107e1ff5cb62af208b5e012acbb2f23f306720db151"
+  source_body_sha256: "cdc814e34331ff32b91b8107e1ff5cb62af208b5e012acbb2f23f306720db151"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # US-030 Final Owner Scope Removal Review Handoff
 
 **Date:** 2026-06-01  

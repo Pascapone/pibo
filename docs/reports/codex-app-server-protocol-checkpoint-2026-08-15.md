@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Codex App Server Protocol Checkpoint — 2026-08-15"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/codex-app-server-protocol-checkpoint-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "33fcdc4ce2ac46da4c005833ddac57d47b967399"
+  source_bytes: 8372
+  source_sha256: "303c184762f03a7bde69dca4c9aa9685558829208acbc1f074118098c8bab696"
+  source_body_sha256: "303c184762f03a7bde69dca4c9aa9685558829208acbc1f074118098c8bab696"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Codex App Server Protocol Checkpoint — 2026-08-15
 
 **Status:** Milestone 9.1 pass; Pi-parity gate subsequently resolved with approved Pibo2-managed authentication; Milestone 9.2 unblocked

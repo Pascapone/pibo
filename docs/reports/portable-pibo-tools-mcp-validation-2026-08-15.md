@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Portable Pibo Tools and Session-Scoped MCP Validation — 2026-08-15"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/portable-pibo-tools-mcp-validation-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d8b5652858f9341728cd3b3389f4d2ac7a6018f0"
+  source_bytes: 11135
+  source_sha256: "72ff85ad222e5d392e2e82a065d3822d7a81f68e0ae47465d396fdba47969d47"
+  source_body_sha256: "72ff85ad222e5d392e2e82a065d3822d7a81f68e0ae47465d396fdba47969d47"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:portable-pibo-tools-mcp-validation-2026-08-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Portable Pibo Tools and Session-Scoped MCP Validation — 2026-08-15
 
 **Status:** Passed for the portable-tool contract, Pi direct compiler, session-scoped MCP bridge, credential isolation, payload offloading, capability inspection, and authenticated Pibo2 UI/API validation.

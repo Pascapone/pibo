@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Native Web Search Provider Implementation Plan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/implement-native-web-search-provider.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "cd6efaf538988c1643ec2c99c4b9113ed130aa01"
+  source_bytes: 2069
+  source_sha256: "882c0b185c39917f77f3ad03aedf932d242e2173ece6c2e24a48318ea2129983"
+  source_body_sha256: "882c0b185c39917f77f3ad03aedf932d242e2173ece6c2e24a48318ea2129983"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Native Web Search Provider Implementation Plan
 
 ## Goal

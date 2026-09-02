@@ -1,0 +1,53 @@
+{
+  "date": "2026-08-31",
+  "worker": "pibo-dev-sidebar-browser-tabs-pibo2-followup",
+  "headed": true,
+  "desktop1440": {
+    "viewport": [1440, 900],
+    "seededRooms": ["Release Validation", "AI Research", "Pibo Core"],
+    "selectedSessions": ["Pibo Core Session 3", "Pibo Core Session 2", "Pibo Core Session 1"],
+    "newTabsCreatedTogether": 2,
+    "catalogReplacedActiveNewTab": true,
+    "existingSingletonClosedTemporaryTab": true,
+    "pointerDropOrder": ["Projects", "Project · prj_default", "New Tab"],
+    "dropGapClearedAfterDrop": true,
+    "keyboardReorderOrder": ["Projects", "New Tab", "Project · prj_default"],
+    "keyboardCloseFocusedNeighbor": "Project · prj_default",
+    "resizedWidth": 568,
+    "reloadCollapsedDomWidth": 44,
+    "reloadStoredCollapsed": true,
+    "reloadStoredWidth": 568
+  },
+  "desktop1920": {
+    "viewport": [1920, 1080],
+    "agentDesignerReadyText": "Identity",
+    "workflowUrl": "/apps/chat/workflows/view/simple-chat/1.0.0",
+    "workflowViewerReadyText": "Selected workflow",
+    "historyBackForwardPreservedWorkflow": true,
+    "vscodeFallback": "VS Code Web unavailable",
+    "terminalFullscreen": {
+      "leftWidth": 0,
+      "centerWidth": 1920,
+      "rightWidth": 0
+    },
+    "preview": "Live previews are not configured on this Pibo instance."
+  },
+  "mobile390": {
+    "viewport": [390, 844],
+    "desktopShell": false,
+    "workspaceTablist": false,
+    "routeShell": true,
+    "terminalToggle": true,
+    "workflowToggle": true,
+    "rawEvents": true,
+    "webAnnotations": true,
+    "workflowVersionViewer": true
+  },
+  "idleMonitor12Seconds": {
+    "requests": 4,
+    "projectRequests": 0,
+    "eventSourceRequests": 0,
+    "abortedRequests": 0,
+    "consoleOrHttpErrors": 0
+  }
+}

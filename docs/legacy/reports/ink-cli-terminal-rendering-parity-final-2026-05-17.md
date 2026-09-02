@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Ink CLI Terminal Rendering Parity Final Evidence"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/ink-cli-terminal-rendering-parity-final-2026-05-17.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "636d0b9e04564ce0ce75123c45ec2502d8ea0675"
+  source_bytes: 8739
+  source_sha256: "17997c62c393f08cb0407d711ef3f265f3b3560557c8712089fdc49ba3b6d88e"
+  source_body_sha256: "17997c62c393f08cb0407d711ef3f265f3b3560557c8712089fdc49ba3b6d88e"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Ink CLI Terminal Rendering Parity Final Evidence
 
 Date: 2026-05-17

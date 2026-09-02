@@ -192,7 +192,7 @@ export function createUserHostSetupPlan(options: {
 	const warnings: string[] = [];
 	if (!options.domain) warnings.push("No production domain was provided; generated Caddy/Auth examples use placeholders.");
 	if (process.platform === "win32" && !isWsl()) {
-		warnings.push("Pibo host setup targets Linux. Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run setup inside the WSL distribution. See docs/guides/pibo-on-windows-via-wsl.md.");
+		warnings.push("Pibo host setup targets Linux. Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run setup inside the WSL distribution. See docs/project/guides/pibo-on-windows-via-wsl.md.");
 	}
 	const generatedFiles: GeneratedFile[] = [
 		{
@@ -283,7 +283,7 @@ export function createDeveloperHostSetupPlan(options: {
 	if (!options.origin) warnings.push("No origin fork was provided. Developer hosts should use a server-specific fork as origin.");
 	if (!options.prodDomain || !options.devDomain) warnings.push("Production and dev domains should both be configured before requesting HTTPS certificates.");
 	if (process.platform === "win32" && !isWsl()) {
-		warnings.push("Pibo developer-host setup targets Linux. Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run setup inside the WSL distribution. See docs/guides/pibo-on-windows-via-wsl.md.");
+		warnings.push("Pibo developer-host setup targets Linux. Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run setup inside the WSL distribution. See docs/project/guides/pibo-on-windows-via-wsl.md.");
 	}
 	const generatedFiles: GeneratedFile[] = [
 		{
@@ -589,12 +589,12 @@ async function createDoctorStatus(options: { piboHome?: string; domain?: string;
 	if (wslInfo.isWsl) {
 		const versionLabel = wslInfo.version ? `WSL${wslInfo.version}` : "WSL";
 		const distroLabel = wslInfo.distro ? ` (${wslInfo.distro})` : "";
-		checks.push({ name: "platform.wsl", status: "ok", detail: `Running inside ${versionLabel}${distroLabel}; Pibo is fully supported here. See docs/guides/pibo-on-windows-via-wsl.md.` });
+		checks.push({ name: "platform.wsl", status: "ok", detail: `Running inside ${versionLabel}${distroLabel}; Pibo is fully supported here. See docs/project/guides/pibo-on-windows-via-wsl.md.` });
 	} else if (process.platform === "win32") {
 		checks.push({
 			name: "platform.wsl",
 			status: "fail",
-			detail: "Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run Pibo inside the WSL distribution. See docs/guides/pibo-on-windows-via-wsl.md.",
+			detail: "Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run Pibo inside the WSL distribution. See docs/project/guides/pibo-on-windows-via-wsl.md.",
 		});
 	}
 	checks.push(...swapCheck(options.minSwapGb));
@@ -692,7 +692,7 @@ async function createDoctorStatus(options: { piboHome?: string; domain?: string;
 		recommendations.push("You are inside WSL: install pibo with `npm install -g @pasko70/pibo` in the WSL shell, then open this folder in VSCode via the WSL extension so the editor talks to the WSL gateway.");
 		recommendations.push("Browser-Use and Agent-Browser work directly under WSLg on Windows 11. On Windows 10, install an X server (e.g. VcXsrv) and export DISPLAY=:0 inside WSL.");
 	} else if (process.platform === "win32") {
-		recommendations.push("Pibo does not run natively on Windows. Install WSL2 with `wsl --install` and follow docs/guides/pibo-on-windows-via-wsl.md.");
+		recommendations.push("Pibo does not run natively on Windows. Install WSL2 with `wsl --install` and follow docs/project/guides/pibo-on-windows-via-wsl.md.");
 	}
 	return {
 		node: process.versions.node,

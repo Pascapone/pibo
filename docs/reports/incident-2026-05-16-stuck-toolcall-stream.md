@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Incident 2026-05-16: Chat Web session stuck in partial tool call"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/incident-2026-05-16-stuck-toolcall-stream.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "543a0bd2710a47c45cd899064f3399f26f048ae8"
+  source_bytes: 5348
+  source_sha256: "5f17414fe89414d6692d6be76b1dff99208da176074ba8c01e2b6c699f46efb8"
+  source_body_sha256: "5f17414fe89414d6692d6be76b1dff99208da176074ba8c01e2b6c699f46efb8"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:incident-2026-05-16-stuck-toolcall-stream"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Incident 2026-05-16: Chat Web session stuck in partial tool call
 
 ## Summary

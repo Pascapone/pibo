@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "US-026 Full Docker Validation on Ownerless Fresh Test Databases"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/final-owner-scope-full-docker-validation-us-026.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f4f4320447d8676e057e71d2fde7fb78a6e9f5a1"
+  source_bytes: 3849
+  source_sha256: "897ac52de845b1b34d3537aa99b90019f0dc1f8c7159f85a9aa96c16ec0888e9"
+  source_body_sha256: "897ac52de845b1b34d3537aa99b90019f0dc1f8c7159f85a9aa96c16ec0888e9"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # US-026 Full Docker Validation on Ownerless Fresh Test Databases
 
 **Date:** 2026-06-01  

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Fixplan: Webchat OOM + Delta Compaction"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/2026-05-05-webchat-oom-and-delta-compaction-fix-plan.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "c8ed95dacc249463f7c9dd7bf6e866ea9192fabf"
+  source_bytes: 33081
+  source_sha256: "c1d242216812720bf48db1291a66a845efe16064a27cf816448121cf62819fd5"
+  source_body_sha256: "c1d242216812720bf48db1291a66a845efe16064a27cf816448121cf62819fd5"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Fixplan: Webchat OOM + Delta Compaction
 
 Datum: 2026-05-05

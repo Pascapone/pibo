@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Workflow Registry, Plugin Registration, and Debug Serialization"
+description: "Explains workflow registry ownership, plugin registration, human actions, and deterministic debug serialization."
+tags: ["debugging", "registry", "workflows"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/workflow-registry-and-debug-serialization.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9bfd78a2688f916975e4f51b3fc3632cb22270e2"
+  source_bytes: 12203
+  source_sha256: "1e8438664a3018b6784a77a5d5f5a6bedce971e854597169c942692774686703"
+  source_body_sha256: "1e8438664a3018b6784a77a5d5f5a6bedce971e854597169c942692774686703"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Workflow Registry, Plugin Registration, and Debug Serialization
 
 Pibo Workflow System V1 keeps workflow definitions serializable and resolves executable behavior through a scoped Workflow Registry. Use this document when adding registered TypeScript handlers, adapters, prompt builders, routing metadata, human actions, or deterministic debug snapshots.

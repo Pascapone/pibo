@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Finaler Umsetzungsplan: Webchat OOM + Delta Compaction"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/2026-05-05-final-webchat-oom-delta-compaction-plan.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "77ef198ff01d2718007bce32ede9ebecd56e24bf"
+  source_bytes: 18857
+  source_sha256: "2e4ee7ea40c2299090d0fdf4850408b0bd47977dca7a5655c3b7a74415ddbd26"
+  source_body_sha256: "2e4ee7ea40c2299090d0fdf4850408b0bd47977dca7a5655c3b7a74415ddbd26"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Finaler Umsetzungsplan: Webchat OOM + Delta Compaction
 
 Datum: 2026-05-05

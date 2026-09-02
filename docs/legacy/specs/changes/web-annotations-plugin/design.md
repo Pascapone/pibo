@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design: Web Annotations Plugin"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/web-annotations-plugin/design.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "deb8ac678c3138a8297de00ec72eccef3a0914cc"
+  source_bytes: 12547
+  source_sha256: "b0981f986fef93a39bf0e16a43ce863f8365bf66dd58439058570a05dc423171"
+  source_body_sha256: "b0981f986fef93a39bf0e16a43ce863f8365bf66dd58439058570a05dc423171"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design: Web Annotations Plugin
 
 ## Context

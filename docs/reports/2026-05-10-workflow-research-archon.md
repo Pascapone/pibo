@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Archon-Recherchebericht für Pibo Workflow System V1"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/2026-05-10-workflow-research-archon.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "c76588e78c56320cd7846735c1683f76815de485"
+  source_bytes: 33834
+  source_sha256: "a0ad077bfeec95865218b8b66422b622cc72d77abf766a8e67745063810f47bc"
+  source_body_sha256: "a0ad077bfeec95865218b8b66422b622cc72d77abf766a8e67745063810f47bc"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Archon-Recherchebericht für Pibo Workflow System V1
 
 **Datum:** 2026-05-10  

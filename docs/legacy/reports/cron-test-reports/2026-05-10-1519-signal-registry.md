@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Test-Review: Signal Registry und Chat-Signal-API"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/cron-test-reports/2026-05-10-1519-signal-registry.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2f435324efa8b7d21a5fd12e904415ca7eafcfbc"
+  source_bytes: 13480
+  source_sha256: "306f64869460075ee47da0e30fea23253c5d37056e22fa08d2e4fdfc990fb3f5"
+  source_body_sha256: "306f64869460075ee47da0e30fea23253c5d37056e22fa08d2e4fdfc990fb3f5"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Test-Review: Signal Registry und Chat-Signal-API
 
 Lauf: 2026-05-10 15:19 Europe/Berlin  

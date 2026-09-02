@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Workflow Manual Validation: One-node pibo-agent"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-11-workflow-manual-one-node-pibo-agent.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9a24f9cdde8750f0f7f39ee927ed0e93ac5e1648"
+  source_bytes: 2350
+  source_sha256: "bbd6ac73fc2512ca270126625c6d262740abefeb59866c46d812b845c460b2c6"
+  source_body_sha256: "bbd6ac73fc2512ca270126625c6d262740abefeb59866c46d812b845c460b2c6"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Workflow Manual Validation: One-node `pibo-agent`
 
 **Date:** 2026-05-11 04:10 UTC  

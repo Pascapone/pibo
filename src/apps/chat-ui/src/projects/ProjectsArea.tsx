@@ -427,6 +427,13 @@ export function ProjectsArea({
     });
     return true;
   };
+  const refreshProjectTrace = useCallback(async () => undefined, []);
+  const refreshProjectBootstrap = useCallback(async () => {
+    await load({
+      projectId: traceProject?.id,
+      piboSessionId: tracePiboSessionId ?? undefined,
+    });
+  }, [load, tracePiboSessionId, traceProject?.id]);
 
   if (loading && !data) {
     return (
@@ -604,13 +611,8 @@ export function ProjectsArea({
         onSelectSessionView={selectProjectSessionView}
         onCommand={runCommand}
         onThinkingLevelChange={onThinkingLevelChange}
-        onRefreshTrace={async () => undefined}
-        onRefreshBootstrap={async () => {
-          await load({
-            projectId: traceProject?.id,
-            piboSessionId: tracePiboSessionId ?? undefined,
-          });
-        }}
+        onRefreshTrace={refreshProjectTrace}
+        onRefreshBootstrap={refreshProjectBootstrap}
         onSend={async (
           text,
           _webAnnotationIds,

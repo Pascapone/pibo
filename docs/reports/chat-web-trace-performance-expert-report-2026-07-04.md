@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Expert Report: Chat Web Trace Performance and Gateway Responsiveness"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/chat-web-trace-performance-expert-report-2026-07-04.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "a8d4ebd7b178916126d57b6f1e04faa260eaaf24"
+  source_bytes: 35053
+  source_sha256: "ab8e78b8e06646aabade0748b8aa5ecb257e2f42530d800eaceaa7dd9295d025"
+  source_body_sha256: "ab8e78b8e06646aabade0748b8aa5ecb257e2f42530d800eaceaa7dd9295d025"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Expert Report: Chat Web Trace Performance and Gateway Responsiveness
 
 **Status:** Draft

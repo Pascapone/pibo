@@ -21,10 +21,12 @@ export function useSessionWebAnnotations({
 	selectedPiboSessionId,
 	onError,
 	formatError,
+	forcePanelVisible = false,
 }: {
 	selectedPiboSessionId: string | null | undefined;
 	onError: (message: string | null) => void;
 	formatError: (caught: unknown, fallback: string) => string;
+	forcePanelVisible?: boolean;
 }) {
 	const [selectedWebAnnotationIds, setSelectedWebAnnotationIds] = useState<string[]>([]);
 	const [webAnnotationsPanelVisible, setWebAnnotationsPanelVisible] = useState(false);
@@ -37,7 +39,7 @@ export function useSessionWebAnnotations({
 		&& webAnnotationOverlayState?.piboSessionId === selectedPiboSessionId
 		&& webAnnotationOverlayState.installed,
 	);
-	const webAnnotationsPanelRendered = Boolean(selectedPiboSessionId) && (webAnnotationsPanelVisible || webAnnotationOverlayInstalled);
+	const webAnnotationsPanelRendered = Boolean(selectedPiboSessionId) && (forcePanelVisible || webAnnotationsPanelVisible || webAnnotationOverlayInstalled);
 
 	const webAnnotationsQuery = useQuery({
 		queryKey: ["web-annotations", "app", selectedPiboSessionId],
