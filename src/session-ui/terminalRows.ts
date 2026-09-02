@@ -132,6 +132,8 @@ type RowCandidate = {
 export const COMPACT_TERMINAL_OUTPUT_PREVIEW_LINES = 5;
 export const COMPACT_TERMINAL_EXPLORING_PREVIEW_LINES = 6;
 
+const NATIVE_HISTORY_ASSISTANT_ECHO_MAX_SKEW_MS = 1_000;
+
 const CODEX_COMPATIBLE_TOOL_LABELS: Readonly<Record<string, string>> = {
 	browser_use_open_tabs: "browser_use.open_tabs",
 	browser_use_take_screenshot: "browser_use.take_screenshot",
@@ -358,7 +360,88 @@ function reconcileConceptualRowCandidates(candidates: readonly RowCandidate[]): 
 			},
 		};
 	}
-	return reconciled;
+	return reconcileNativeHistoryAssistantEchoes(reconciled);
+}
+
+// Large native histories intentionally keep fail-closed fallback identities. Collapse only
+// an unambiguous, near-simultaneous event-log echo without changing the trace identity model.
+function reconcileNativeHistoryAssistantEchoes(candidates: readonly RowCandidate[]): RowCandidate[] {
+	const groups = new Map<string, { canonical: number[]; fallback: number[] }>();
+	for (let index = 0; index < candidates.length; index += 1) {
+		const row = candidates[index]!.row;
+		const source = isCanonicalEventAssistant(row)
+			? "canonical"
+			: isNativeHistoryAssistantFallback(row)
+				? "fallback"
+				: undefined;
+		const partIndex = assistantPartIndex(row.id);
+		if (!source || partIndex === undefined || typeof row.output !== "string") continue;
+		const key = `${partIndex}\0${row.output}`;
+		const group = groups.get(key) ?? { canonical: [], fallback: [] };
+		group[source].push(index);
+		groups.set(key, group);
+	}
+
+	const next = [...candidates];
+	const removed = new Set<number>();
+	for (const group of groups.values()) {
+		if (group.canonical.length !== 1 || group.fallback.length !== 1) continue;
+		const canonicalIndex = group.canonical[0]!;
+		const fallbackIndex = group.fallback[0]!;
+		const canonical = next[canonicalIndex]!;
+		const fallback = next[fallbackIndex]!;
+		if (!nativeHistoryAssistantEchoTimestampsMatch(canonical.row, fallback.row)) continue;
+		next[canonicalIndex] = mergeNativeHistoryAssistantEcho(canonical, fallback);
+		removed.add(fallbackIndex);
+	}
+	return next.filter((_, index) => !removed.has(index));
+}
+
+function mergeNativeHistoryAssistantEcho(canonical: RowCandidate, fallback: RowCandidate): RowCandidate {
+	return {
+		...fallback,
+		...canonical,
+		turnId: canonical.turnId ?? fallback.turnId,
+		row: {
+			...fallback.row,
+			...canonical.row,
+			sourceNodeIds: [...new Set([...canonical.row.sourceNodeIds, ...fallback.row.sourceNodeIds])],
+			completedAt: canonical.row.completedAt ?? fallback.row.completedAt,
+			durationMs: canonical.row.durationMs ?? fallback.row.durationMs,
+			payloadRefs: { ...fallback.row.payloadRefs, ...canonical.row.payloadRefs },
+		},
+	};
+}
+
+function isCanonicalEventAssistant(row: CompactTerminalRow): boolean {
+	const eventId = row.eventId;
+	return row.kind === "message.assistant"
+		&& row.status === "done"
+		&& row.orderSource === "event-log"
+		&& eventId !== undefined
+		&& !eventId.startsWith("native-history-group:");
+}
+
+function isNativeHistoryAssistantFallback(row: CompactTerminalRow): boolean {
+	return row.kind === "message.assistant"
+		&& row.status === "done"
+		&& row.orderSource === "transcript"
+		&& row.eventId?.startsWith("native-history-group:") === true;
+}
+
+function nativeHistoryAssistantEchoTimestampsMatch(canonical: CompactTerminalRow, fallback: CompactTerminalRow): boolean {
+	const canonicalAt = Date.parse(canonical.completedAt ?? canonical.startedAt ?? "");
+	const fallbackAt = Date.parse(fallback.completedAt ?? fallback.startedAt ?? "");
+	return Number.isFinite(canonicalAt)
+		&& Number.isFinite(fallbackAt)
+		&& Math.abs(canonicalAt - fallbackAt) <= NATIVE_HISTORY_ASSISTANT_ECHO_MAX_SKEW_MS;
+}
+
+function assistantPartIndex(rowId: string): number | undefined {
+	const match = rowId.match(/:assistant:(\d+)$/);
+	if (!match) return undefined;
+	const index = Number(match[1]);
+	return Number.isSafeInteger(index) ? index : undefined;
 }
 
 function mergeImagePreviews(
