@@ -31,6 +31,8 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 	assert.match(responsivePane, /observer\.observe\(rootElement\)/);
 	assert.match(responsivePane, /breakpoint = 760/);
 	assert.match(responsivePane, /grid-cols-\[var\(--pibo-panel-sidebar-width\)_minmax\(0,1fr\)\]/);
+	assert.match(responsivePane, /w-\[min\(var\(--pibo-panel-sidebar-width\),86%\)\]/);
+	assert.doesNotMatch(responsivePane, /w-\[min\(\$\{/);
 	assert.match(responsivePane, /aria-modal=\{layout\.isOverlay && layout\.isOpen \? true : undefined\}/);
 
 	for (const source of [loops, cron, agents]) {

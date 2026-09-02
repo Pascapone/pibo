@@ -108,7 +108,7 @@ export function ResponsiveTabSidebarPanel({
 				aria-modal={layout.isOverlay && layout.isOpen ? true : undefined}
 				aria-label={layout.isOverlay && layout.isOpen ? `${label} sidebar` : undefined}
 				tabIndex={layout.isOverlay && layout.isOpen ? -1 : undefined}
-				className={`min-h-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] flex flex-col ${layout.isOverlay ? `absolute inset-y-0 left-0 z-40 w-[min(${sidebarWidth}px,86%)] transition-transform duration-200 ${layout.isOpen ? "translate-x-0" : "-translate-x-full"}` : "relative"}`}
+				className={`min-h-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] flex flex-col ${layout.isOverlay ? `absolute inset-y-0 left-0 z-40 w-[min(var(--pibo-panel-sidebar-width),86%)] transition-transform duration-200 ${layout.isOpen ? "translate-x-0" : "-translate-x-full"}` : "relative"}`}
 			>
 				{layout.isOverlay ? (
 					<div className="flex h-10 items-center justify-between border-b border-slate-800 px-3 text-xs font-bold uppercase tracking-wider">
