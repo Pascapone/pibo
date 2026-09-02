@@ -1,3 +1,15 @@
+---
+type: "Validation Report"
+title: "Sidebar browser tabs: upstream integration validation"
+description: "Records upstream rebasing, regression coverage, and headful browser validation for the desktop browser-tab workspace."
+tags: ["chat-web", "sidebar-browser-tabs", "validation"]
+status: "stable"
+authority: "evidentiary"
+generated:
+  by: "openai/codex"
+  at: "2026-09-02T05:59:53Z"
+---
+
 # Sidebar browser tabs: upstream integration validation
 
 Date: 2026-08-31

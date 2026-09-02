@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-02
+
+- **Integration correction**: Converted the three sidebar browser-tab validation reports to conformant OKF concepts and moved the completed inventory, specification/design, and task ledger into [legacy change history](/legacy/specs/changes/sidebar-browser-tabs/).
+
 ## 2026-09-01
 
 - **Upstream refresh**: Merged `upstream/dev` at `39090b8850758293e69380a52bb7498d7c955bc2` into the accepted migration chain, classified all six upstream documentation modifications, preserved the historical agent-management body, and folded retired capability-document deltas into canonical current specifications.

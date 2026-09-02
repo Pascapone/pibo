@@ -1,3 +1,15 @@
+---
+type: "Historical Record"
+title: "Sidebar browser tabs implementation tasks"
+description: "Historical task ledger from the completed sidebar browser-tabs change packet."
+tags: ["sidebar-browser-tabs", "change-packet", "history"]
+status: "deprecated"
+authority: "historical"
+generated:
+  by: "openai/codex"
+  at: "2026-09-02T05:59:53Z"
+---
+
 # Implementation tasks
 
 - [x] Start `sidebar-browser-tabs` from current `upstream/dev` and spawn the isolated compute worker.

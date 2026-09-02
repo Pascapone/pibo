@@ -1,10 +1,18 @@
 ---
-title: Desktop Browser Tabs for Pibo Chat
-version: 1.5
-date_created: 2026-08-30
-last_updated: 2026-08-31
-owner: Pibo
-tags: [chat-web, desktop, navigation, tabs, accessibility]
+type: "Historical Record"
+title: "Desktop Browser Tabs for Pibo Chat"
+description: "Historical specification and design from the completed sidebar browser-tabs change packet."
+tags: ["sidebar-browser-tabs", "change-packet", "history"]
+status: "deprecated"
+authority: "historical"
+generated:
+  by: "openai/codex"
+  at: "2026-09-02T05:59:53Z"
+legacy_metadata:
+  version: 1.5
+  date_created: "2026-08-30"
+  last_updated: "2026-08-31"
+  owner: "Pibo"
 ---
 
 # Introduction

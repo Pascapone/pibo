@@ -1,3 +1,15 @@
+---
+type: "Validation Report"
+title: "Sidebar browser tabs validation"
+description: "Records implementation, automated, and headful browser validation for the desktop browser-tab workspace."
+tags: ["chat-web", "sidebar-browser-tabs", "validation"]
+status: "stable"
+authority: "evidentiary"
+generated:
+  by: "openai/codex"
+  at: "2026-09-02T05:59:53Z"
+---
+
 # Sidebar browser tabs validation
 
 ## Scope
