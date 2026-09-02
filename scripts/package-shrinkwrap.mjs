@@ -14,6 +14,9 @@ export async function preparePackageShrinkwrap(root = defaultRoot) {
 	if (packageLock.name !== packageJson.name || lockedRoot?.name !== packageJson.name) {
 		throw new Error("package-lock.json does not describe the package being packed");
 	}
+	if (packageLock.version !== packageJson.version || lockedRoot.version !== packageJson.version) {
+		throw new Error("package-lock.json version does not match package.json version");
+	}
 
 	await copyFile(resolve(root, "package-lock.json"), resolve(root, "npm-shrinkwrap.json"));
 }
