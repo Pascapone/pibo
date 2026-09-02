@@ -56,7 +56,11 @@ test("app chrome, sidebars, raw events, and terminal metadata are gated by Termi
 	const terminalSource = fs.readFileSync("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx", "utf8");
 
 	assert.match(appSource, /data-pibo-terminal-fullscreen=\{isTerminalFullscreen \? "true" : "false"\}/);
-	assert.match(appSource, /\{isTerminalFullscreen \? null : \(\s*<AppHeader/);
+	assert.match(appSource, /const isAppFullscreen = isTerminalFullscreen \|\| isDesktopPreviewFullscreen/);
+	assert.match(appSource, /\{isAppFullscreen \? null : \(\s*<AppHeader/);
+	assert.match(appSource, /data-pibo-debug="desktop-session-sidebar"[^>]*hidden=\{isAppFullscreen\}/);
+	assert.match(appSource, /<DesktopTabSidebar[\s\S]*hidden=\{isTerminalFullscreen\}/);
+	assert.match(appSource, /isTerminalFullscreen \? "min-w-0" : "min-w-\[420px\]"/);
 	assert.match(appSource, /isTerminalFullscreen \? "hidden" : mobileSidebarOpen/);
 	assert.match(layoutSource, /visible=\{showRawEvents && !terminalFullscreen\}/);
 	assert.match(layoutSource, /!terminalFullscreen && webAnnotationsPanelRendered/);

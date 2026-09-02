@@ -1,0 +1,23 @@
+{
+  "url": "http://127.0.0.1:4788/apps/chat/workflows/view/simple-chat/1.0.0",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "area": "workflows",
+  "previewFullscreen": "false",
+  "terminalFullscreen": "false",
+  "desktopSidebar": null,
+  "desktopCenter": null,
+  "desktopTabs": null,
+  "mobileRouteShell": {
+    "x": 0,
+    "y": 56,
+    "width": 390,
+    "height": 788
+  },
+  "tabOrder": [],
+  "activeElement": "Pibo Chatsessionsprojectsworkflowscronloopsagentscontextsettingsdev@pibo.localWorkflow version viewerSimple ChatThis separate viewer is the nested workflow navigation target. Parent graphs do not inline-expand nested workflow internals in V2.Back to WorkflowsSelected workflow: Simple Chatsimple-chat@1.0.0Baseline Project chat workflow that preserves the existing one-session chat behavior.code sourcepublishedprojectchatViewer mode shows registry metadata and navigation context only. To change a child workflow, open its own UI draft or duplicate/edit a published workflow from the Workflow Library.",
+  "loadingProjects": false,
+  "failedResources": []
+}

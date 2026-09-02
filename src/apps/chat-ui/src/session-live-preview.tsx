@@ -36,6 +36,7 @@ export function SessionLivePreviewPanel({
 	onStop,
 	onRemove,
 	onEnterFullscreen,
+	onExitFullscreen,
 }: {
 	previews: readonly SessionLivePreview[];
 	selectedPreview?: SessionLivePreview;
@@ -51,8 +52,14 @@ export function SessionLivePreviewPanel({
 	onStop: (previewId: string) => void;
 	onRemove: (previewId: string) => void;
 	onEnterFullscreen?: () => void;
+	onExitFullscreen?: () => void;
 }) {
 	const [copied, setCopied] = useState(false);
+	const onExitFullscreenRef = useRef(onExitFullscreen);
+	onExitFullscreenRef.current = onExitFullscreen;
+	useEffect(() => {
+		if (fullscreen && !selectedPreview) onExitFullscreenRef.current?.();
+	}, [fullscreen, selectedPreview]);
 	if (loading) return <PreviewMessage label="Loading live previews…" />;
 	if (error) return <PreviewMessage label={error} tone="error" />;
 	if (!selectedPreview) return <PreviewMessage label="No active live preview is attached to this Pibo Session." />;
@@ -79,7 +86,16 @@ export function SessionLivePreviewPanel({
 			data-pibo-preview-fullscreen={fullscreen ? "true" : "false"}
 			className="min-h-0 flex-1 bg-[#0e1116] flex flex-col"
 		>
-			{fullscreen ? null : (
+			{fullscreen && onExitFullscreen ? (
+				<PreviewFullscreenTopBar
+					preview={selectedPreview}
+					actionPending={actionPending}
+					onReload={onReload}
+					onStart={() => onStart(selectedPreview.id)}
+					onStop={() => onStop(selectedPreview.id)}
+					onExit={onExitFullscreen}
+				/>
+			) : fullscreen ? null : (
 				<div className="min-h-11 border-b border-slate-800 bg-[#151f24] px-3 flex items-center gap-2 max-[640px]:flex-wrap max-[640px]:py-1.5">
 					<label className="sr-only" htmlFor="session-live-preview-select">Selected live preview</label>
 					<select

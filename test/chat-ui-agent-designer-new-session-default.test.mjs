@@ -14,6 +14,6 @@ test("Agent Designer keeps browsing and explicit session creation separate from 
 
 test("only the Sessions new-session dropdown updates the persisted profile preference", () => {
 	assert.match(appSource, /const setPreferredNewSessionProfile = useCallback\([\s\S]{0,500}writeStoredNewSessionProfile\(profile, roomId\)/);
-	assert.match(appSource, /onNewSessionProfileChange=\{setPreferredNewSessionProfile\}/);
-	assert.equal(appSource.match(/setPreferredNewSessionProfile/g)?.length, 2);
+	assert.equal(appSource.match(/onNewSessionProfileChange=\{setPreferredNewSessionProfile\}/g)?.length, 2);
+	assert.equal(appSource.match(/setPreferredNewSessionProfile/g)?.length, 3);
 });

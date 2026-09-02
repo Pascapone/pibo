@@ -37,6 +37,7 @@ export function SessionTraceHeader({
   allowedSessionViewIds,
   extraViewTabs,
   activeViewId,
+  desktopTerminalOnly = false,
   terminalFullscreenAvailable,
   onEnterTerminalFullscreen,
   onOpenSessionWindow,
@@ -69,6 +70,7 @@ export function SessionTraceHeader({
   allowedSessionViewIds?: readonly ChatSessionViewId[];
   extraViewTabs?: readonly SessionTraceHeaderExtraViewTab[];
   activeViewId?: string;
+  desktopTerminalOnly?: boolean;
   terminalFullscreenAvailable?: boolean;
   onEnterTerminalFullscreen?: () => void;
   onOpenSessionWindow?: () => void;
@@ -162,15 +164,17 @@ export function SessionTraceHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2 max-[980px]:w-full max-[980px]:flex-wrap max-[980px]:gap-1">
-        <WebAnnotationsEntryPoints
-          piboSessionId={piboSessionId}
-          piboRoomId={piboRoomId}
-          disabled={webAnnotationsDisabled}
-          panelVisible={webAnnotationsPanelRendered}
-          onShowPanel={onShowWebAnnotationsPanel}
-          onHidePanel={onHideWebAnnotationsPanel}
-          onError={onError}
-        />
+        {desktopTerminalOnly ? null : (
+          <WebAnnotationsEntryPoints
+            piboSessionId={piboSessionId}
+            piboRoomId={piboRoomId}
+            disabled={webAnnotationsDisabled}
+            panelVisible={webAnnotationsPanelRendered}
+            onShowPanel={onShowWebAnnotationsPanel}
+            onHidePanel={onHideWebAnnotationsPanel}
+            onError={onError}
+          />
+        )}
         {onOpenSessionWindow ? (
           <button
             type="button"
@@ -196,7 +200,7 @@ export function SessionTraceHeader({
           <option value="slim">Tools: Slim</option>
           <option value="intent" disabled={!toolIntentSupported}>Tools: Intent</option>
         </select>
-        <div
+        {desktopTerminalOnly ? null : <div
           role="group"
           aria-label="Session views"
           className="flex items-center rounded-sm border border-slate-700 bg-[#0e1116] p-0.5"
@@ -261,7 +265,7 @@ export function SessionTraceHeader({
               </button>
             );
           })}
-        </div>
+        </div>}
         {terminalFullscreenAvailable && onEnterTerminalFullscreen ? (
           <button
             type="button"
@@ -274,15 +278,17 @@ export function SessionTraceHeader({
             <Maximize2 size={14} />
           </button>
         ) : null}
-        <HeaderIconButton
-          onClick={onToggleRawEvents}
-          title={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
-          ariaLabel="Raw Events"
-          ariaControls="raw-events-inspector"
-          active={showRawEvents}
-        >
-          <Bug size={14} />
-        </HeaderIconButton>
+        {desktopTerminalOnly ? null : (
+          <HeaderIconButton
+            onClick={onToggleRawEvents}
+            title={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
+            ariaLabel="Raw Events"
+            ariaControls="raw-events-inspector"
+            active={showRawEvents}
+          >
+            <Bug size={14} />
+          </HeaderIconButton>
+        )}
         <HeaderIconButton
           onClick={onToggleThinking}
           title={showThinking ? "Hide Thinking" : "Show Thinking"}

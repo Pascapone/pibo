@@ -78,6 +78,14 @@ async function runAppRoutesScenario() {
 			{ to: "/vscode", replace: false },
 		);
 		assert.deepEqual(
+			chatNavigationRequest({ area: "workflows", viewWorkflowId: "wf_1", viewWorkflowVersion: "v2" }, false, "terminal"),
+			{
+				to: "/workflows/view/$workflowId/$workflowVersion",
+				params: { workflowId: "wf_1", workflowVersion: "v2" },
+				replace: false,
+			},
+		);
+		assert.deepEqual(
 			chatNavigationRequest({ area: "settings", panel: "skills" }, true, "terminal"),
 			{ to: "/settings/skills", replace: true },
 		);
