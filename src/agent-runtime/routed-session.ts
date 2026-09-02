@@ -759,7 +759,9 @@ export class RuntimeRoutedSession {
 				}));
 				return;
 			case "compaction_end":
-				if (event.result && !event.aborted) this.resetContentIndices();
+				// Compaction continues the same product turn and eventId, so close open
+				// blocks without reusing their persisted output-part indices.
+				if (event.result && !event.aborted) this.closeActiveContentParts();
 				this.emit(this.withActiveMessage({
 					type: "compaction_end",
 					piboSessionId: this.piboSessionId,
@@ -1310,10 +1312,14 @@ export class RuntimeRoutedSession {
 		});
 	}
 
-	private resetContentIndices(): void {
+	private closeActiveContentParts(): void {
 		this.activeAssistantIndex = undefined;
-		this.nextAssistantIndex = 0;
 		this.activeThinkingIndex = undefined;
+	}
+
+	private resetContentIndices(): void {
+		this.closeActiveContentParts();
+		this.nextAssistantIndex = 0;
 		this.nextThinkingIndex = 0;
 	}
 

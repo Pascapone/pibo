@@ -132,6 +132,72 @@ test("generic routed orchestration queues and correlates a non-Pi fake adapter",
 	assert.throws(() => portableTools.createDefinitions(), /disposed/);
 });
 
+test("generic routed session preserves output identities across successful compaction", async () => {
+	const listeners = new Set();
+	const runtimeSession = {
+		adapterId: "compaction-fake",
+		runtimeInstanceId: "compaction-fake",
+		cwd: process.cwd(),
+		capabilities: createMinimalAgentRuntimeCapabilities(),
+		getBinding: () => ({
+			piboSessionId: "ps_compaction",
+			runtimeInstanceId: "compaction-fake",
+			adapterId: "compaction-fake",
+			state: "bound",
+		}),
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		async prompt() {
+			for (const listener of listeners) {
+				listener({ type: "reasoning_started" });
+				listener({ type: "reasoning_finished", text: "before reasoning" });
+				listener({ type: "assistant_message", text: "before compaction" });
+				listener({ type: "compaction_start", reason: "context_guard" });
+				listener({ type: "compaction_end", reason: "context_guard", result: { summary: "compact" }, aborted: false });
+				listener({ type: "reasoning_started" });
+				listener({ type: "reasoning_finished", text: "after reasoning" });
+				listener({ type: "assistant_message", text: "after compaction" });
+			}
+		},
+		async abort() {},
+		async dispose() {},
+		getStatus: () => ({ streaming: false, enabledTools: [], cwd: process.cwd() }),
+	};
+	const events = [];
+	const routed = new RuntimeRoutedSession(
+		"ps_compaction",
+		runtimeSession,
+		(event) => events.push(event),
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+	);
+	try {
+		routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_compaction",
+			id: "compaction-message",
+			text: "continue after compaction",
+			source: "user",
+		});
+		await waitFor(() => events.some((event) => event.type === "message_finished"));
+		assert.deepEqual(
+			events.filter((event) => event.type === "thinking_finished").map((event) => event.thinkingIndex),
+			[0, 1],
+		);
+		assert.deepEqual(
+			events.filter((event) => event.type === "assistant_message").map((event) => event.assistantIndex),
+			[0, 1],
+		);
+		assert.deepEqual(
+			events.filter((event) => event.type === "compaction_start" || event.type === "compaction_end").map((event) => event.eventId),
+			["compaction-message", "compaction-message"],
+		);
+	} finally {
+		await routed.dispose();
+	}
+});
+
 test("generic routed orchestration tries ordered provider fallbacks and restores the primary model", async () => {
 	const primary = { provider: "openai", id: "gpt-primary" };
 	const fallbackOne = { provider: "anthropic", id: "claude-fallback" };
