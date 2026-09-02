@@ -313,7 +313,12 @@ test("execution commands after an errored turn remain chronological root nodes",
 		createEvent({ seq: 3, type: "execution_result", createdAt: "2026-04-29T08:00:02.000Z", payload: { type: "execution_result", eventId: "cmd-thinking", action: "thinking", result: { level: "high" } } }),
 	], "idle");
 
-	assert.deepEqual(view.nodes.map((node) => node.title), ["Agent Turn", "Session Error", "thinking"]);
+	assert.deepEqual(view.nodes.map((node) => node.title), ["Agent Turn", "thinking"]);
+	const turn = view.nodes.find((node) => node.type === "agent.turn");
+	assert.equal(turn?.status, "error");
+	assert.equal(turn?.completedAt, "2026-04-29T08:00:01.000Z");
+	assert.equal(turn?.error, "boom");
+	assert.deepEqual(turn?.children.map((node) => node.title), ["Session Error"]);
 	assert.equal(view.nodes.find((node) => node.title === "thinking")?.parentId, undefined);
 });
 
@@ -402,12 +407,13 @@ test("a queued follow-up does not displace the currently started turn", () => {
 	assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-active"), false);
 });
 
-test("a later active turn does not leave an older incomplete turn running", () => {
+test("a later active turn does not leave an older incomplete turn or tool running", () => {
 	const view = createBaseView([
 		createEvent({ seq: 1, streamId: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-incomplete", text: "Old prompt", source: "user" } }),
-		createEvent({ seq: 2, streamId: 2, type: "assistant_message", payload: { type: "assistant_message", eventId: "turn-incomplete", assistantIndex: 0, text: "Orphaned answer" } }),
-		createEvent({ seq: 3, streamId: 3, type: "message_started", payload: { type: "message_started", eventId: "turn-active", text: "Current prompt", source: "user" } }),
-		createEvent({ seq: 4, streamId: 4, type: "assistant_delta", payload: { type: "assistant_delta", eventId: "turn-active", text: "Working" } }),
+		createEvent({ seq: 2, streamId: 2, type: "tool_execution_started", payload: { type: "tool_execution_started", eventId: "turn-incomplete", toolCallId: "old-tool", toolInvocationOrdinal: 0, toolName: "bash", args: { command: "sleep 30" } } }),
+		createEvent({ seq: 3, streamId: 3, type: "assistant_message", payload: { type: "assistant_message", eventId: "turn-incomplete", assistantIndex: 0, text: "Orphaned answer" } }),
+		createEvent({ seq: 4, streamId: 4, type: "message_started", payload: { type: "message_started", eventId: "turn-active", text: "Current prompt", source: "user" } }),
+		createEvent({ seq: 5, streamId: 5, type: "tool_execution_started", payload: { type: "tool_execution_started", eventId: "turn-active", toolCallId: "current-tool", toolInvocationOrdinal: 0, toolName: "bash", args: { command: "pwd" } } }),
 	], "running");
 
 	const incompleteTurn = view.nodes.find((node) => node.id === "event:message:turn-incomplete");
@@ -415,22 +421,55 @@ test("a later active turn does not leave an older incomplete turn running", () =
 	assert.equal(view.integrityStatus, "incomplete");
 	assert.equal(incompleteTurn?.status, "error");
 	assert.equal(incompleteTurn?.children.some((node) => node.id === "event:incomplete-turn:turn-incomplete"), true);
+	const oldTool = incompleteTurn?.children.find((node) => node.toolCallId === "old-tool");
+	assert.equal(oldTool?.status, "error");
+	assert.match(oldTool?.error ?? "", /message_started.*message_finished.*session_error/);
 	assert.equal(activeTurn?.status, "running");
+	assert.equal(activeTurn?.children.find((node) => node.toolCallId === "current-tool")?.status, "running");
 	assert.equal(activeTurn?.children.some((node) => node.id === "event:incomplete-turn:turn-active"), false);
 });
 
-test("terminal persisted turns do not project an incomplete marker", () => {
-	for (const terminal of [
-		{ type: "message_finished", eventId: "turn-terminal" },
-		{ type: "session_error", eventId: "turn-terminal", error: "failed explicitly" },
-	]) {
-		const view = createBaseView([
-			createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-terminal", text: "Terminal", source: "user" } }),
-			createEvent({ seq: 2, type: terminal.type, payload: terminal }),
-		], "idle");
-		assert.equal(view.integrityStatus, undefined);
-		assert.equal(flatNodes(view).some((node) => node.id === "event:incomplete-turn:turn-terminal"), false);
-	}
+test("terminal persisted turns use their matching terminal event", () => {
+	const finished = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-finished", text: "Terminal", source: "user" } }),
+		createEvent({ seq: 2, type: "message_finished", payload: { type: "message_finished", eventId: "turn-finished" } }),
+	], "running");
+	const finishedTurn = finished.nodes.find((node) => node.id === "event:message:turn-finished");
+	assert.equal(finished.integrityStatus, undefined);
+	assert.equal(finishedTurn?.status, "done");
+	assert.equal(finishedTurn?.completedAt, "2026-04-29T08:00:02.000Z");
+
+	const errored = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-errored", text: "Terminal", source: "user" } }),
+		createEvent({ seq: 2, type: "tool_execution_started", payload: { type: "tool_execution_started", eventId: "turn-errored", toolCallId: "interrupted-tool", toolInvocationOrdinal: 0, toolName: "bash", args: { command: "restart" } } }),
+		createEvent({ seq: 3, type: "session_error", payload: { type: "session_error", eventId: "turn-errored", error: "failed explicitly" } }),
+	], "running");
+	const erroredTurn = errored.nodes.find((node) => node.id === "event:message:turn-errored");
+	assert.equal(errored.integrityStatus, undefined);
+	assert.equal(erroredTurn?.status, "error");
+	assert.equal(erroredTurn?.completedAt, "2026-04-29T08:00:03.000Z");
+	assert.equal(erroredTurn?.error, "failed explicitly");
+	assert.equal(erroredTurn?.children.find((node) => node.toolCallId === "interrupted-tool")?.status, "error");
+	assert.equal(erroredTurn?.children.find((node) => node.title === "Session Error")?.parentId, erroredTurn?.id);
+	assert.equal(flatNodes(errored).some((node) => node.id === "event:incomplete-turn:turn-errored"), false);
+});
+
+test("live session errors settle the active turn and its open tool", () => {
+	const base = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-live-error", text: "Restart", source: "user" } }),
+		createEvent({ seq: 2, type: "tool_execution_started", payload: { type: "tool_execution_started", eventId: "turn-live-error", toolCallId: "restart-tool", toolInvocationOrdinal: 0, toolName: "bash", args: { command: "restart" } } }),
+	], "running");
+	const patched = patchTraceViewWithEvent(base, createEvent({
+		seq: 3,
+		type: "session_error",
+		payload: { type: "session_error", eventId: "turn-live-error", error: "gateway restarted" },
+	}), "idle");
+
+	const turn = patched.nodes.find((node) => node.id === "event:message:turn-live-error");
+	assert.equal(turn?.status, "error");
+	assert.equal(turn?.completedAt, "2026-04-29T08:00:03.000Z");
+	assert.equal(turn?.children.find((node) => node.toolCallId === "restart-tool")?.status, "error");
+	assert.equal(turn?.children.find((node) => node.title === "Session Error")?.status, "error");
 });
 
 test("partial trace pages use full turn timing before marking a turn incomplete", () => {
