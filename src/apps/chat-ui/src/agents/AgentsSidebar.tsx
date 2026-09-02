@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode, type RefObject } from "react";
 import {
 	Archive,
 	ArchiveRestore,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { ActionMenu, ActionMenuItem } from "../action-menu";
 import { mobileSidebarA11yProps } from "../mobile-sidebar-accessibility";
+import type { PaneSurface } from "../responsive-pane-sidebar";
 import type { BootstrapData, CustomAgent, CustomAgentFolder } from "../types";
 import type { AgentDraft } from "./agent-designer-model";
 
@@ -33,6 +34,8 @@ type AgentsSidebarProps = {
 	mobileSidebarOpen: boolean;
 	isMobileSidebarViewport: boolean;
 	onCloseMobileSidebar: () => void;
+	surface: PaneSurface;
+	sidebarRef: RefObject<HTMLElement | null>;
 	onCreateAgent: (folderId?: string) => void;
 	onCreateFolder: (name: string) => Promise<void>;
 	onRenameFolder: (folderId: string, name: string) => Promise<void>;
@@ -61,6 +64,8 @@ export function AgentsSidebar({
 	mobileSidebarOpen,
 	isMobileSidebarViewport,
 	onCloseMobileSidebar,
+	surface,
+	sidebarRef,
 	onCreateAgent,
 	onCreateFolder,
 	onRenameFolder,
@@ -78,9 +83,9 @@ export function AgentsSidebar({
 	const [creatingFolder, setCreatingFolder] = useState(false);
 	const [folderName, setFolderName] = useState("");
 	const [submittingFolder, setSubmittingFolder] = useState(false);
+	const [readOnlyProfilesExpanded, setReadOnlyProfilesExpanded] = useState(true);
 	const knownFolderIds = useMemo(() => new Set(folders.map((folder) => folder.id)), [folders]);
 	const activeByFolder = useMemo(() => agentsByFolder(activeAgents, knownFolderIds), [activeAgents, knownFolderIds]);
-	const archivedByFolder = useMemo(() => agentsByFolder(archivedAgents, knownFolderIds), [archivedAgents, knownFolderIds]);
 	const allByFolder = useMemo(() => agentsByFolder([...activeAgents, ...archivedAgents], knownFolderIds), [activeAgents, archivedAgents, knownFolderIds]);
 	const unsavedFolderId = draft.folderId && knownFolderIds.has(draft.folderId) ? draft.folderId : undefined;
 
@@ -101,13 +106,12 @@ export function AgentsSidebar({
 
 	return (
 		<aside
+			ref={sidebarRef}
 			data-pibo-mobile-sidebar
 			{...mobileSidebarA11yProps(isMobileSidebarViewport, mobileSidebarOpen, "Agents sidebar")}
 			data-pibo-debug="agents-sidebar"
 			data-pibo-state={mobileSidebarOpen ? "open" : "closed"}
-			className={`min-h-0 overflow-hidden flex flex-col bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[300px] max-[980px]:max-w-[86vw] max-[980px]:transition-transform max-[980px]:duration-200 ${
-				mobileSidebarOpen ? "max-[980px]:translate-x-0" : "max-[980px]:-translate-x-full"
-			}`}
+			className={`min-h-0 overflow-hidden flex flex-col bg-[#1a262b] border-r border-slate-800 ${isMobileSidebarViewport ? `${surface === "tab" ? "absolute" : "fixed"} left-0 top-0 bottom-0 z-40 w-[300px] max-w-[86vw] transition-transform duration-200 ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"}` : "relative"}`}
 		>
 			<div className="h-11 shrink-0 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider max-[980px]:h-auto max-[980px]:py-2">
 				<span>Agents</span>
@@ -124,9 +128,9 @@ export function AgentsSidebar({
 					<button type="button" onClick={onRefresh} title="Refresh agents" aria-label="Refresh agents" className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
 						<RefreshCw size={13} />
 					</button>
-					<button type="button" onClick={onCloseMobileSidebar} title="Close sidebar" aria-label="Close sidebar" className="min-[981px]:hidden h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
+					{isMobileSidebarViewport ? <button type="button" onClick={onCloseMobileSidebar} title="Close sidebar" aria-label="Close sidebar" className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
 						<X size={13} />
-					</button>
+					</button> : null}
 				</div>
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -201,21 +205,12 @@ export function AgentsSidebar({
 					/>
 				</div>
 
-				{showArchivedAgents ? (
-					<div className="mb-4 border-t border-slate-800 pt-3">
-						<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Archived Agents</div>
-						{folders.map((folder) => {
-							const assigned = archivedByFolder.get(folder.id) ?? [];
-							if (!assigned.length) return null;
-							return <ArchivedAgentGroup key={folder.id} label={folder.name} agents={assigned} folders={folders} draft={draft} onSelectAgent={onSelectAgent} onCopyAgent={onCopyAgent} onMoveAgent={onMoveAgent} />;
-						})}
-						{(archivedByFolder.get(UNFILED_KEY) ?? []).length ? <ArchivedAgentGroup label="Unfiled" agents={archivedByFolder.get(UNFILED_KEY) ?? []} folders={folders} draft={draft} onSelectAgent={onSelectAgent} onCopyAgent={onCopyAgent} onMoveAgent={onMoveAgent} /> : null}
-						{archivedAgents.length === 0 ? <EmptySidebarState label="No archived agents" /> : null}
-					</div>
-				) : null}
+				<SystemAgentFolderGroup label="Archive" count={archivedAgents.length} expanded={showArchivedAgents} onToggle={onToggleArchivedAgents}>
+					{archivedAgents.map((agent) => <CustomAgentSidebarRow key={agent.id} agent={agent} folders={folders} selected={draft.source === "custom" && draft.id === agent.id} createSessionDisabled onSelect={() => onSelectAgent(agent)} onCopy={() => onCopyAgent(agent)} onMove={(folderId) => onMoveAgent(agent, folderId)} onCreateSession={() => {}} forceActionsVisible={isMobileSidebarViewport} />)}
+					{archivedAgents.length === 0 ? <EmptySidebarState label="No archived agents" /> : null}
+				</SystemAgentFolderGroup>
 
-				<div className="border-t border-slate-800 pt-3">
-					<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Read-only Profiles</div>
+				<SystemAgentFolderGroup label="Read-only Profiles" count={pluginProfiles.length} expanded={readOnlyProfilesExpanded} onToggle={() => setReadOnlyProfilesExpanded((current) => !current)}>
 					{pluginProfiles.map((profile) => (
 						<ProfileSidebarRow
 							key={profile.name}
@@ -225,9 +220,10 @@ export function AgentsSidebar({
 							onSelect={() => onSelectProfile(profile)}
 							onCopy={() => onCopyProfile(profile)}
 							onCreateSession={() => onCreateProfileSession(profile)}
+							forceActionsVisible={isMobileSidebarViewport}
 						/>
 					))}
-				</div>
+				</SystemAgentFolderGroup>
 			</div>
 		</aside>
 	);
@@ -244,6 +240,23 @@ function agentsByFolder(agents: CustomAgent[], knownFolderIds: ReadonlySet<strin
 		groups.set(key, items);
 	}
 	return groups;
+}
+
+function SystemAgentFolderGroup({ label, count, expanded, onToggle, children }: { label: string; count: number; expanded: boolean; onToggle: () => void; children: ReactNode }) {
+	return (
+		<div className="mb-2 border border-slate-800 bg-[#151f24]/70 rounded-sm">
+			<div className="flex min-h-9 items-center gap-1 border-b border-slate-800/80 px-1.5">
+				<button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} ${label}`} className="h-7 w-7 shrink-0 inline-flex items-center justify-center text-slate-500 hover:text-[#11a4d4]">
+					{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+				</button>
+				<span className="h-6 w-6 shrink-0 inline-flex items-center justify-center rounded-sm bg-slate-800 text-slate-400"><Folder size={13} /></span>
+				<button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left text-xs font-semibold text-slate-300"><span className="block truncate">{label}</span></button>
+				<span className="min-w-5 text-center font-mono text-[10px] tabular-nums text-slate-500">{count}</span>
+				<span className="h-7 w-6" aria-hidden="true" />
+			</div>
+			{expanded ? <div className="p-1">{children}</div> : null}
+		</div>
+	);
 }
 
 function AgentFolderGroup({
@@ -356,23 +369,6 @@ function AgentFolderGroup({
 	);
 }
 
-function ArchivedAgentGroup({ label, agents, folders, draft, onSelectAgent, onCopyAgent, onMoveAgent }: {
-	label: string;
-	agents: CustomAgent[];
-	folders: CustomAgentFolder[];
-	draft: AgentDraft;
-	onSelectAgent: (agent: CustomAgent) => void;
-	onCopyAgent: (agent: CustomAgent) => void;
-	onMoveAgent: (agent: CustomAgent, folderId?: string) => void;
-}) {
-	return (
-		<div className="mb-2">
-			<div className="px-1 py-1 text-[10px] text-slate-600">{label}</div>
-			{agents.map((agent) => <CustomAgentSidebarRow key={agent.id} agent={agent} folders={folders} selected={draft.source === "custom" && draft.id === agent.id} createSessionDisabled onSelect={() => onSelectAgent(agent)} onCopy={() => onCopyAgent(agent)} onMove={(folderId) => onMoveAgent(agent, folderId)} onCreateSession={() => {}} />)}
-		</div>
-	);
-}
-
 function UnsavedAgentRow({ draft }: { draft: AgentDraft }) {
 	return (
 		<div className="mb-1 flex items-center gap-2 border border-[#11a4d4] bg-[#11a4d4]/10 px-2 py-2 rounded-sm">
@@ -385,7 +381,7 @@ function UnsavedAgentRow({ draft }: { draft: AgentDraft }) {
 	);
 }
 
-function CustomAgentSidebarRow({ agent, folders, selected, createSessionDisabled, onSelect, onCopy, onMove, onCreateSession }: {
+function CustomAgentSidebarRow({ agent, folders, selected, createSessionDisabled, onSelect, onCopy, onMove, onCreateSession, forceActionsVisible = false }: {
 	agent: CustomAgent;
 	folders: CustomAgentFolder[];
 	selected: boolean;
@@ -394,6 +390,7 @@ function CustomAgentSidebarRow({ agent, folders, selected, createSessionDisabled
 	onCopy: () => void;
 	onMove: (folderId?: string) => void;
 	onCreateSession: () => void;
+	forceActionsVisible?: boolean;
 }) {
 	return (
 		<div className={`group mb-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border rounded-sm ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-transparent hover:border-slate-700 hover:bg-slate-900/30"}`}>
@@ -401,7 +398,7 @@ function CustomAgentSidebarRow({ agent, folders, selected, createSessionDisabled
 				<span className="block truncate text-[13px] text-slate-200">{agent.displayName}</span>
 				<span className="block truncate font-mono text-[10px] text-slate-500">{agent.profileName}</span>
 			</button>
-			<div className="pr-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
+			<div className={`pr-0.5 transition-opacity ${forceActionsVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-[980px]:opacity-100"}`}>
 				<ActionMenu label={`Actions for agent ${agent.displayName}`} estimatedHeight={Math.min(420, 120 + folders.length * 40)}>
 					<ActionMenuItem disabled={createSessionDisabled || Boolean(agent.archivedAt)} onSelect={onCreateSession}><MessageSquarePlus size={15} /> New session</ActionMenuItem>
 					<ActionMenuItem onSelect={onCopy}><CopyPlus size={15} /> Copy as new agent</ActionMenuItem>
@@ -418,13 +415,14 @@ function CustomAgentSidebarRow({ agent, folders, selected, createSessionDisabled
 	);
 }
 
-function ProfileSidebarRow({ profile, selected, creatingSession, onSelect, onCopy, onCreateSession }: {
+function ProfileSidebarRow({ profile, selected, creatingSession, onSelect, onCopy, onCreateSession, forceActionsVisible = false }: {
 	profile: BootstrapData["agents"][number];
 	selected: boolean;
 	creatingSession: boolean;
 	onSelect: () => void;
 	onCopy: () => void;
 	onCreateSession: () => void;
+	forceActionsVisible?: boolean;
 }) {
 	return (
 		<div className={`group mb-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border rounded-sm ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-transparent hover:border-slate-700 hover:bg-slate-900/30"}`}>
@@ -432,7 +430,7 @@ function ProfileSidebarRow({ profile, selected, creatingSession, onSelect, onCop
 				<span className="block truncate text-[13px] text-slate-200">{profile.name}</span>
 				<span className="block truncate font-mono text-[10px] text-slate-500">plugin profile</span>
 			</button>
-			<div className="pr-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
+			<div className={`pr-0.5 transition-opacity ${forceActionsVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-[980px]:opacity-100"}`}>
 				<ActionMenu label={`Actions for profile ${profile.name}`} estimatedHeight={96}>
 					<ActionMenuItem disabled={creatingSession} onSelect={onCreateSession}><MessageSquarePlus size={15} /> New session</ActionMenuItem>
 					<ActionMenuItem onSelect={onCopy}><CopyPlus size={15} /> Copy as custom agent</ActionMenuItem>

@@ -274,7 +274,7 @@ function YieldedRunConcurrencySettings() {
 			<p className="mb-4 text-xs text-slate-400">
 				Limit concurrent yielded tool and subagent runs across the gateway and within each controlling Pibo Session.
 			</p>
-			<div className="grid gap-4 sm:grid-cols-2">
+			<div className="grid gap-4 sm:grid-cols-2 @max-[520px]:grid-cols-1">
 				<label className="block text-xs text-slate-300" htmlFor="gateway-concurrent-yielded-runs">
 					<span className="mb-1 block font-semibold">Gateway limit</span>
 					<input

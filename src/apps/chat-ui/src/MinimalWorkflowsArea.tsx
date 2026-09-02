@@ -220,7 +220,7 @@ export function MinimalWorkflowsArea({
   const statusTone = errorMessage ? "error" : busy || isLoading ? "busy" : "status";
 
   return (
-    <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#101d22] text-slate-200" aria-label="Workflows">
+    <main className="@container flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#101d22] text-slate-200" aria-label="Workflows">
       <CreateWorkflowDialog
         open={createWorkflowDialogOpen}
         onClose={() => setCreateWorkflowDialogOpen(false)}

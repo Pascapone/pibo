@@ -7,6 +7,7 @@ import {
 	ChevronRight,
 	Edit3,
 	MessageSquarePlus,
+	PanelLeftOpen,
 	Plus,
 	RefreshCw,
 	Server,
@@ -61,6 +62,7 @@ import {
 	SchemaRuntimeOptionsFields,
 	SelectionCheckbox,
 } from "./designer-ui";
+import { usePaneSidebar, type PaneSurface } from "../responsive-pane-sidebar";
 import { AgentsSidebar } from "./AgentsSidebar";
 
 const AGENT_AUTOSAVE_DELAY_MS = 900;
@@ -147,6 +149,7 @@ export function AgentsView({
 	mobileSidebarOpen,
 	isMobileSidebarViewport,
 	onCloseMobileSidebar,
+	surface = "route",
 }: {
 	agents: BootstrapData["agents"];
 	initialCustomAgents: CustomAgent[];
@@ -162,7 +165,14 @@ export function AgentsView({
 	mobileSidebarOpen: boolean;
 	isMobileSidebarViewport: boolean;
 	onCloseMobileSidebar: () => void;
+	surface?: PaneSurface;
 }) {
+	const sidebar = usePaneSidebar({
+		surface,
+		mobileOpen: mobileSidebarOpen,
+		mobileViewport: isMobileSidebarViewport,
+		onMobileClose: onCloseMobileSidebar,
+	});
 	const [initialDraftState] = useState(() => {
 		const pending = readPendingAgentDraft();
 		const initialDraft = pending?.draft ?? selectExistingAgentDraft(agents, initialCustomAgents, initialCatalog);
@@ -518,7 +528,7 @@ export function AgentsView({
 			];
 			const nextDraft = createBlankAgentDraft(catalog ?? undefined, uniqueDraftAgentName(usedNames), folderId);
 			activateDraft(nextDraft, null);
-			onCloseMobileSidebar();
+			sidebar.closeSidebar();
 		});
 	};
 
@@ -658,12 +668,12 @@ export function AgentsView({
 	};
 
 	return (
-		<>
+		<div ref={sidebar.rootRef} className={`relative grid h-full min-h-0 overflow-hidden ${sidebar.isOverlay ? "grid-cols-1" : "grid-cols-[300px_minmax(0,1fr)]"}`}>
 			<div
 				data-pibo-mobile-sidebar-backdrop
 				aria-hidden="true"
-				className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
-				onClick={onCloseMobileSidebar}
+				className={`${surface === "tab" ? "absolute" : "fixed"} inset-0 z-30 bg-black/60 transition-opacity duration-200 ${sidebar.isOverlay ? "block" : "hidden"} ${sidebar.isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+				onClick={sidebar.closeSidebar}
 			/>
 			<AgentsSidebar
 				folders={agentFolders}
@@ -675,9 +685,11 @@ export function AgentsView({
 				unsavedAgentDraftVisible={unsavedAgentDraftVisible}
 				showArchivedAgents={showArchivedAgents}
 				creatingSession={creatingSession}
-				mobileSidebarOpen={mobileSidebarOpen}
-				isMobileSidebarViewport={isMobileSidebarViewport}
-				onCloseMobileSidebar={onCloseMobileSidebar}
+				mobileSidebarOpen={sidebar.isOpen}
+				isMobileSidebarViewport={sidebar.isOverlay}
+				onCloseMobileSidebar={sidebar.closeSidebar}
+				surface={surface}
+				sidebarRef={sidebar.sidebarRef}
 				onCreateAgent={createNewAgentDraft}
 				onCreateFolder={createFolder}
 				onRenameFolder={renameFolder}
@@ -686,43 +698,44 @@ export function AgentsView({
 				onRefresh={() => void runAfterAutosave(onAgentsChanged)}
 				onSelectAgent={(agent) => {
 					if (draft.source === "custom" && draft.id === agent.id) {
-						onCloseMobileSidebar();
+						sidebar.closeSidebar();
 						return;
 					}
 					void runAfterAutosave(() => {
 						const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
 						const nextDraft = agentToDraft(latestAgent);
 						activateDraft(nextDraft, agentDraftSignature(nextDraft));
-						onCloseMobileSidebar();
+						sidebar.closeSidebar();
 					});
 				}}
 				onCopyAgent={(agent) => void runAfterAutosave(() => {
 					const latestAgent = customAgentsRef.current.find((item) => item.id === agent.id) ?? agent;
 					activateDraft(copyCustomAgentToDraft(latestAgent), null);
-					onCloseMobileSidebar();
+					sidebar.closeSidebar();
 				})}
 				onMoveAgent={moveAgent}
 				onCreateAgentSession={(agent) => void runAfterAutosave(() => {
 					onCreateSession(agent.profileName);
-					onCloseMobileSidebar();
+					sidebar.closeSidebar();
 				})}
 				onSelectProfile={(profile) => void runAfterAutosave(() => {
 					const nextDraft = profileToDraft(profile, catalog ?? undefined);
 					activateDraft(nextDraft, agentDraftSignature(nextDraft));
-					onCloseMobileSidebar();
+					sidebar.closeSidebar();
 				})}
 				onCopyProfile={(profile) => void runAfterAutosave(() => {
 					activateDraft(copyProfileToDraft(profile, catalog ?? undefined), null);
-					onCloseMobileSidebar();
+					sidebar.closeSidebar();
 				})}
 				onCreateProfileSession={(profile) => void runAfterAutosave(() => {
 					onCreateSession(profile.name);
-					onCloseMobileSidebar();
+					sidebar.closeSidebar();
 				})}
 			/>
-			<main className="min-h-0 overflow-y-auto bg-[#101d22]" data-pibo-debug="agent-designer-main">
+			<main className="@container min-h-0 min-w-0 overflow-y-auto bg-[#101d22]" data-pibo-debug="agent-designer-main">
 				<div className="sticky top-0 z-20 border-b border-slate-800 bg-[#101d22]/95 backdrop-blur-sm">
-					<div className="mx-auto flex min-h-16 max-w-[1180px] items-center justify-between gap-3 px-4 py-3 sm:px-6">
+					<div className="mx-auto flex min-h-16 max-w-[1180px] items-center justify-between gap-3 px-4 py-3 sm:px-6 @max-[520px]:items-start @max-[520px]:px-3">
+					{surface === "tab" && sidebar.isOverlay ? <button ref={sidebar.triggerRef} type="button" onClick={sidebar.openSidebar} className="inline-flex h-8 shrink-0 items-center gap-2 rounded-sm border border-slate-700 px-2 text-xs font-semibold text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]" aria-label="Open Agents"><PanelLeftOpen size={13} /> Agents</button> : null}
 					<div className="min-w-0">
 						<h1 className="text-sm font-bold uppercase tracking-wider">Agent Designer</h1>
 						<div className="font-mono text-[11px] text-slate-500 truncate">{draftProfileName}</div>
@@ -750,7 +763,7 @@ export function AgentsView({
 					</div>
 					</div>
 				</div>
-				<div className="mx-auto grid max-w-[1180px] gap-4 px-4 py-4 sm:px-6 sm:py-6">
+				<div className="mx-auto grid max-w-[1180px] gap-4 px-4 py-4 sm:px-6 sm:py-6 @max-[520px]:px-3 @max-[520px]:py-3">
 				{designerAvailable ? null : <div className="border border-[#f59e0b]/60 bg-[#f59e0b]/10 text-amber-100 px-3 py-2 text-sm rounded-sm">{agentDesignerUnavailableMessage()}</div>}
 				{noAgentSelected ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">Select an existing agent or use New Agent to create one.</div> : null}
 				{draft.source === "profile" ? <div className="mb-3 border border-slate-700 bg-[#151f24] text-slate-300 px-3 py-2 text-sm rounded-sm">This profile is registered by a plugin. Copy it to create an editable custom agent.</div> : null}
@@ -1066,7 +1079,7 @@ export function AgentsView({
 				</div>
 				</div>
 			</main>
-		</>
+		</div>
 	);
 }
 
@@ -1181,7 +1194,7 @@ function BuiltinToolsDesigner({
 			{open ? (
 				<div className="border-t border-slate-800 p-2 grid gap-2">
 					{capabilityUnavailableReason ? <RuntimeCapabilityNotice reason={capabilityUnavailableReason} /> : null}
-					<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">
+					<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 @max-[680px]:grid-cols-1 gap-2">
 						{DEFAULT_BUILTIN_TOOL_NAMES.map((toolName) => (
 							<CatalogToggle
 								key={toolName}
@@ -1273,7 +1286,7 @@ function SubagentDesigner({
 						?? (subagent.model && reasoningValues?.length === 0 ? `Model "${subagent.model.id}" does not advertise a selectable reasoning effort.` : null);
 					return (
 						<div key={index} className="grid gap-3 border border-slate-800 bg-[#151f24] p-3 rounded-sm">
-							<div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_auto] max-[1100px]:grid-cols-1 gap-2">
+							<div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_auto] max-[1100px]:grid-cols-1 @max-[760px]:grid-cols-1 gap-2">
 								<label className="grid gap-1">
 									<span className="text-[10px] uppercase tracking-wider text-slate-500">Name</span>
 									<input name={`subagents.${index}.name`} aria-label={`Subagent ${index + 1} name`} value={subagent.name} disabled={configurationReadOnly} onChange={(event) => updateSubagent(index, { name: event.target.value })} className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60" placeholder="name" />
@@ -1377,7 +1390,7 @@ function McpServersDesigner({
 	return (
 		<DesignerPanel title="MCP Servers">
 			{capabilityUnavailableReason ? <RuntimeCapabilityNotice reason={capabilityUnavailableReason} /> : null}
-			<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">
+			<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 @max-[680px]:grid-cols-1 gap-2">
 				{servers ? servers.map((server) => {
 					const selected = draft.mcpServers.includes(server.name);
 					const selectionDisabled = readOnly || (!server.hasDescription && !selected) || Boolean(capabilityUnavailableReason && !selected);
