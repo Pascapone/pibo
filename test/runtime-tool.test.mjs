@@ -8,6 +8,7 @@ import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { RuntimeSessionRegistry } from "../dist/tools/runtime/registry.js";
+import { createRuntimeToolDefinition } from "../dist/tools/runtime/tool.js";
 
 const defaultPythonExecutable = process.platform === "win32" ? "python" : "python3";
 const pythonAvailable = spawnSync(defaultPythonExecutable, ["--version"], { stdio: "ignore" }).status === 0;
@@ -23,6 +24,37 @@ async function withRuntimeRegistry(run) {
 		rmSync(cwd, { recursive: true, force: true });
 	}
 }
+
+test("implicit runtime exec preserves auto-start errors", async () => {
+	await withRuntimeRegistry(async (registry) => {
+		for (const runtime of ["node", "python"]) {
+			const tool = createRuntimeToolDefinition(registry.createController(`controller-${runtime}`));
+			for (const targetType of ["docker", "ssh"]) {
+				const result = await tool.execute("implicit-exec", {
+					action: "exec",
+					runtime,
+					target: { type: targetType },
+					code: runtime === "python" ? "value = 1" : "globalThis.value = 1",
+				});
+				assert.equal(result.details.status, "error");
+				assert.equal(result.details.sessionId, "auto");
+				assert.equal(result.details.error?.name, "UnsupportedRuntimeTarget");
+				assert.match(result.details.error?.message ?? "", new RegExp(targetType));
+			}
+
+			const missing = await tool.execute("implicit-exec", {
+				action: "exec",
+				runtime,
+				target: { type: "local", executable: "/definitely/missing-pibo-runtime-executable" },
+				code: runtime === "python" ? "value = 1" : "globalThis.value = 1",
+			});
+			assert.equal(missing.details.status, "failed");
+			assert.notEqual(missing.details.error?.name, "RuntimeNotFound");
+			assert.match(missing.details.error?.message ?? "", /missing-pibo-runtime-executable|ENOENT/);
+			assert.deepEqual(registry.list(`controller-${runtime}`).sessions, []);
+		}
+	});
+});
 
 for (const runtime of ["node", "python"]) {
 	test(`${runtime} runtime startup timeout force-closes the unregistered worker`, {
