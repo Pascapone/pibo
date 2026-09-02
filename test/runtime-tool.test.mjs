@@ -184,15 +184,21 @@ test("node runtime captures stdout, stderr, inspect, vars, and closeOnSuccess", 
 
 		const output = await registry.exec("controller", {
 			sessionId,
-			code: "globalThis.public = 2; console.log('out'); console.error('err'); function f(a, b = 1) { return a + b; } globalThis.f = f;",
+			code: "let lexicalLet = 11; const lexicalConst = 22; class LexicalClass {}; var varBinding = 33; globalThis.public = 2; console.log('out'); console.error('err'); function f(a, b = 1) { return a + b; } globalThis.f = f;",
 		});
 		assert.equal(output.status, "ok");
 		assert.equal(output.stdout, "out\n");
 		assert.equal(output.stderr, "err\n");
+		assert.equal((await registry.exec("controller", { sessionId, code: "lexicalLet += 100" })).status, "ok");
 
 		const vars = await registry.vars("controller", { sessionId });
 		assert.equal(vars.status, "ok");
-		assert.ok(vars.variables.some((entry) => entry.name === "public"));
+		const variables = new Map(vars.variables.map((entry) => [entry.name, entry.summary]));
+		assert.equal(variables.get("lexicalLet")?.repr, "111");
+		assert.equal(variables.get("lexicalConst")?.repr, "22");
+		assert.equal(variables.get("LexicalClass")?.type, "function");
+		assert.equal(variables.get("varBinding")?.repr, "33");
+		assert.equal(variables.get("public")?.repr, "2");
 
 		const inspected = await registry.inspect("controller", { sessionId, expression: "f", what: "signature" });
 		assert.equal(inspected.status, "ok");
