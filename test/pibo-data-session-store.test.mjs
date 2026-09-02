@@ -132,3 +132,79 @@ test("pibo data migrate sessions-to-v2 is idempotent", async () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("pibo data migration leaves skipped newer runtime bindings unchanged", async () => {
+	const dir = tempDir();
+	try {
+		const sourcePath = join(dir, "pibo-sessions.sqlite");
+		const source = new DatabaseSync(sourcePath);
+		source.exec(`
+			CREATE TABLE pibo_sessions (
+				id TEXT PRIMARY KEY,
+				pi_session_id TEXT NOT NULL UNIQUE,
+				channel TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				profile TEXT NOT NULL,
+				${retiredStorageColumn} TEXT,
+				parent_id TEXT,
+				origin_id TEXT,
+				workspace TEXT,
+				title TEXT,
+				metadata_json TEXT,
+				active_model_json TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+		`);
+		source.prepare("INSERT INTO pibo_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+			.run("ps_collision", "pi_legacy_older", "pibo.chat-web", "chat", "default", retiredSharedScope, null, null, "/legacy", "Legacy", '{"chatRoomId":"room_legacy"}', null, "2026-08-29T00:00:00.000Z", "2026-08-29T00:01:00.000Z");
+		source.close();
+
+		const targetPath = join(dir, "pibo.sqlite");
+		let store = new PiboDataSessionStore(targetPath);
+		store.create({
+			id: "ps_collision",
+			piSessionId: "pi_target_newer",
+			runtimeBinding: {
+				runtimeInstanceId: "pi",
+				adapterId: "pi",
+				nativeSessionId: "pi_target_newer",
+				state: "bound",
+				protocol: "pi-sdk",
+			},
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "default",
+			workspace: "/target",
+			title: "Target newer",
+			metadata: { chatRoomId: "room_target" },
+		});
+		const before = store.get("ps_collision");
+		store.close();
+
+		const reports = [];
+		const originalLog = console.log;
+		console.log = (value) => reports.push(String(value));
+		try {
+			await runDataCli(["node", "pibo", "migrate", "sessions-to-v2", "--from", sourcePath, "--to", targetPath, "--json"]);
+			await runDataCli(["node", "pibo", "migrate", "sessions-to-v2", "--from", sourcePath, "--to", targetPath, "--json"]);
+		} finally {
+			console.log = originalLog;
+		}
+		assert.deepEqual(reports.map((report) => JSON.parse(report)).map(({ inserted, updated, skipped }) => ({ inserted, updated, skipped })), [
+			{ inserted: 0, updated: 0, skipped: 1 },
+			{ inserted: 0, updated: 0, skipped: 1 },
+		]);
+
+		store = new PiboDataSessionStore(targetPath);
+		const after = store.get("ps_collision");
+		assert.equal(after?.piSessionId, "pi_target_newer");
+		assert.equal(after?.title, "Target newer");
+		assert.equal(after?.runtimeBinding?.nativeSessionId, "pi_target_newer");
+		assert.equal(after?.runtimeBinding?.revision, before?.runtimeBinding?.revision);
+		assert.equal(after?.runtimeBinding?.updatedAt, before?.runtimeBinding?.updatedAt);
+		store.close();
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

@@ -132,6 +132,7 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 		for (const row of rows) {
 			const existing = target.db.prepare("SELECT updated_at FROM sessions WHERE id = ?").get(row.id) as { updated_at: string } | undefined;
 			const metadata = parseJsonObject(row.metadata_json);
+			let migrateBinding = false;
 			const rootSessionId = row.parent_id ? (typeof metadata.rootSessionId === "string" ? metadata.rootSessionId : row.parent_id) : row.id;
 			if (!existing) {
 				const columns = [
@@ -162,6 +163,7 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 					row.updated_at,
 				);
 				report.inserted++;
+				migrateBinding = true;
 			} else if (row.updated_at > existing.updated_at) {
 				target.db.prepare(`
 					UPDATE sessions SET
@@ -186,9 +188,11 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 					row.id,
 				);
 				report.updated++;
+				migrateBinding = true;
 			} else {
 				report.skipped++;
 			}
+			if (!migrateBinding) continue;
 			target.db.prepare(`
 				INSERT INTO session_runtime_bindings (
 					pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
