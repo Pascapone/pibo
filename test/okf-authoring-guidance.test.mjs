@@ -8,8 +8,10 @@ const read = (path) => readFileSync(path, "utf8");
 test("repository guidance preserves the five-root OKF topology", () => {
 	const agents = read("AGENTS.md");
 	assert.match(agents, /docs\/project\/documentation-profile\.md/);
+	assert.match(agents, /maintain-okf-docs/);
 	assert.match(agents, /five top-level roots/);
 	assert.match(agents, /implemented behavior only/);
+	assert.doesNotMatch(agents, /migration entries are pending|Update `docs\/project\/okf-migration-ledger\.json`/);
 	for (const forbidden of ["decisions", "guides", "research", "status", "feedback", "evidence", "history", "references", "ops"]) {
 		assert.equal(existsSync(`docs/${forbidden}`), false, `forbidden top-level docs/${forbidden} exists`);
 	}
