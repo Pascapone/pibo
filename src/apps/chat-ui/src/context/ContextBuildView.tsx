@@ -283,7 +283,7 @@ function MetadataGrid({ metadata }: { metadata: Record<string, unknown> }) {
 	const entries = Object.entries(metadata).filter(([key]) => key !== "inspectorOrigin");
 	if (!entries.length) return null;
 	return (
-		<div className="grid gap-1 border border-slate-800 bg-[#151f24] p-2 sm:grid-cols-2 xl:grid-cols-3">
+		<div className="grid gap-1 border border-slate-800 bg-[#151f24] p-2 sm:grid-cols-2 xl:grid-cols-3 @max-[620px]:grid-cols-1">
 			{entries.map(([key, value]) => (
 				<div key={key} className="min-w-0 font-mono text-[10px] text-slate-500">
 					<span className="text-slate-400">{key}</span>: <span className="break-all text-slate-300">{formatValue(value)}</span>

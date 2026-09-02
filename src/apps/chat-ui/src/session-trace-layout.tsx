@@ -42,6 +42,7 @@ type SessionTraceLayoutProps = {
   webAnnotationsPanelProps: ComponentProps<typeof WebAnnotationsSessionPanel>;
   runtimeRequestPanel?: ReactNode;
   composerProps: ComponentProps<typeof Composer>;
+  containerResponsive?: boolean;
 };
 
 export function shouldRenderSessionComposer({
@@ -83,6 +84,7 @@ export function SessionTraceLayout({
   webAnnotationsPanelProps,
   runtimeRequestPanel,
   composerProps,
+  containerResponsive = false,
 }: SessionTraceLayoutProps) {
   const terminalLoading = roomNavigationPending || (sessionNavigationPending && !currentTraceView) || loadingTrace;
   return (
@@ -108,7 +110,7 @@ export function SessionTraceLayout({
                 : "empty"
         }
         data-pibo-terminal-fullscreen={terminalFullscreen ? "true" : "false"}
-        className="min-h-0 h-full flex flex-col"
+        className={`min-h-0 h-full flex flex-col ${containerResponsive ? "@container" : ""}`}
       >
         {terminalFullscreen ? (
           fullscreenTopBar ?? (

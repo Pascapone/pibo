@@ -384,7 +384,7 @@ export function AgentRuntimeSelector({
 					{selected?.available ? "available" : selected?.enabled === false ? "disabled" : "unavailable"}
 				</span>
 			</div>
-			<div className="grid gap-2 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)]">
+			<div className="grid gap-2 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)] @max-[720px]:grid-cols-1">
 				<div className="grid gap-2 content-start">
 					<label className="text-[11px] uppercase tracking-wider text-slate-500" htmlFor="agent-runtime-instance">Runtime instance</label>
 					<select
@@ -579,7 +579,7 @@ function RuntimeCapabilitySummary({ runtime }: { runtime: AgentRuntimeCatalogEnt
 		["History", capabilities.maintenance.history ? "supported" : "unsupported", capabilities.maintenance.history],
 	];
 	return (
-		<div className="grid grid-cols-3 max-[1100px]:grid-cols-2 max-[700px]:grid-cols-1 gap-1" aria-label="Effective runtime capabilities">
+		<div className="grid grid-cols-3 max-[1100px]:grid-cols-2 max-[700px]:grid-cols-1 @max-[620px]:grid-cols-1 gap-1" aria-label="Effective runtime capabilities">
 			{rows.map(([label, value, supported]) => (
 				<div key={label} className="border border-slate-800 bg-[#151f24] px-2 py-1.5 rounded-sm">
 					<div className="text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
@@ -684,12 +684,12 @@ export function AgentRuntimeOptions({
 						onModelChange={onModelChange}
 						onFallbacksChange={onModelFallbacksChange}
 					/>
-					<div className={`grid gap-3 ${showFast ? "lg:grid-cols-[minmax(150px,190px)_auto]" : "lg:grid-cols-[minmax(150px,190px)]"} lg:items-start`}>
+					<div className={`grid gap-3 ${showFast ? "lg:grid-cols-[minmax(150px,190px)_auto]" : "lg:grid-cols-[minmax(150px,190px)]"} lg:items-start @max-[680px]:grid-cols-1`}>
 						{reasoningControls}
 					</div>
 				</>
 			) : (
-				<div className={`grid gap-3 ${showFast ? "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)_auto]" : "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)]"} lg:items-start`}>
+				<div className={`grid gap-3 ${showFast ? "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)_auto]" : "lg:grid-cols-[minmax(0,1fr)_minmax(150px,190px)]"} lg:items-start @max-[680px]:grid-cols-1`}>
 					<ModelSelector
 						title={modelTitle}
 						catalog={modelCatalog}
@@ -968,7 +968,7 @@ function ModelSelector({
 						: "No configured providers. Configure a provider under Settings > Providers."}
 				</div>
 			) : null}
-			<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 gap-2">
+			<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 @max-[680px]:grid-cols-1 gap-2">
 				<select
 					name={`${title} provider`}
 					aria-label={`${title} provider`}

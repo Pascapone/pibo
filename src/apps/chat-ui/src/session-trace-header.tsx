@@ -121,7 +121,7 @@ export function SessionTraceHeader({
   };
 
   return (
-    <div className="h-14 px-4 bg-[#151f24] border-b border-slate-800 flex items-center justify-between max-[980px]:h-auto max-[980px]:flex-wrap max-[980px]:py-2 max-[980px]:gap-2">
+    <div className="h-14 px-4 bg-[#151f24] border-b border-slate-800 flex items-center justify-between max-[980px]:h-auto max-[980px]:flex-wrap max-[980px]:py-2 max-[980px]:gap-2 @max-[680px]:h-auto @max-[680px]:flex-wrap @max-[680px]:gap-2 @max-[680px]:py-2">
       <div className="min-w-0 flex-1">
         <h1 className="text-base font-semibold truncate">{title}</h1>
         <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-slate-500">
@@ -163,7 +163,7 @@ export function SessionTraceHeader({
           ) : null}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 max-[980px]:w-full max-[980px]:flex-wrap max-[980px]:gap-1">
+      <div className="flex shrink-0 items-center gap-2 max-[980px]:w-full max-[980px]:flex-wrap max-[980px]:gap-1 @max-[680px]:w-full @max-[680px]:flex-wrap @max-[680px]:gap-1">
         {desktopTerminalOnly ? null : (
           <WebAnnotationsEntryPoints
             piboSessionId={piboSessionId}
@@ -228,7 +228,7 @@ export function SessionTraceHeader({
                     : `Switch to ${view.label} view`
                 }
                 aria-pressed={selectedViewId === view.id}
-                className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide max-[980px]:min-w-0 max-[980px]:px-1.5 disabled:cursor-not-allowed disabled:text-slate-600 ${
+                className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide max-[980px]:min-w-0 max-[980px]:px-1.5 @max-[680px]:min-w-0 @max-[680px]:px-1.5 disabled:cursor-not-allowed disabled:text-slate-600 ${
                   selectedViewId === view.id
                     ? "bg-[#11a4d4]/10 text-[#11a4d4]"
                     : "text-slate-400 hover:text-[#11a4d4] disabled:hover:text-slate-600"
@@ -255,7 +255,7 @@ export function SessionTraceHeader({
                     : `Switch to ${view.label} view`
                 }
                 aria-pressed={active}
-                className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide max-[980px]:min-w-0 max-[980px]:px-1.5 disabled:cursor-not-allowed disabled:text-slate-600 ${
+                className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide max-[980px]:min-w-0 max-[980px]:px-1.5 @max-[680px]:min-w-0 @max-[680px]:px-1.5 disabled:cursor-not-allowed disabled:text-slate-600 ${
                   active
                     ? "bg-[#11a4d4]/10 text-[#11a4d4]"
                     : "text-slate-400 hover:text-[#11a4d4] disabled:hover:text-slate-600"

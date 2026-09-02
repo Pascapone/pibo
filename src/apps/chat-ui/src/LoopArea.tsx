@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, Bot, Copy, Loader2, Play, Plus, RefreshCw, Save, Square, Trash2, X, XCircle } from "lucide-react";
+import { AlertTriangle, Bot, Copy, Loader2, PanelLeftOpen, Play, Plus, RefreshCw, Save, Square, Trash2, X, XCircle } from "lucide-react";
 import { cancelLoopJob, deleteLoopJob, getLoopConditions, getLoopJobs, getLoopRuns, getLoopStatus, getLoopTemplates, patchLoopJob, postLoopJob, reopenLoopJob, startLoopJob, stopLoopJob, type LoopJobInput } from "./api-loops";
 import { copyTextToClipboard } from "./clipboard";
 import { goalActiveTimeSeconds } from "./goal-time";
 import { isArchivedRoom } from "./session-sidebar-helpers";
 import { mobileSidebarA11yProps, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
+import { usePaneSidebar, type PaneSurface } from "./responsive-pane-sidebar";
 import { THINKING_LEVELS } from "./types";
 import type { AgentProfile, BootstrapData, CustomAgent, ModelCatalog, ModelProfile, PiboLoopJob, PiboLoopJobTemplate, PiboLoopMode, PiboLoopRun, PiboLoopStatus, PiboLoopStopConditionInfo, PiboLoopStopPolicy, PiboRoom, ThinkingLevel } from "./types";
 
@@ -34,8 +35,14 @@ export function writableLoopRooms(rooms: PiboRoom[]): PiboRoom[] {
 	return rooms.filter((room) => !isArchivedRoom(room));
 }
 
-export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSidebar }: { bootstrap: BootstrapData; mobileSidebarOpen?: boolean; onCloseMobileSidebar?: () => void }) {
+export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSidebar, surface = "route" }: { bootstrap: BootstrapData; mobileSidebarOpen?: boolean; onCloseMobileSidebar?: () => void; surface?: PaneSurface }) {
 	const isMobileSidebarViewport = useMobileSidebarViewport();
+	const sidebar = usePaneSidebar({
+		surface,
+		mobileOpen: mobileSidebarOpen,
+		mobileViewport: isMobileSidebarViewport,
+		onMobileClose: onCloseMobileSidebar ?? (() => undefined),
+	});
 	const rooms = bootstrap.rooms ?? [];
 	const writableRooms = useMemo(() => writableLoopRooms(rooms), [rooms]);
 	const defaultRoomId = writableRooms[0]?.id;
@@ -91,11 +98,11 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 		setSelectedJobId(job.id);
 		setSelectedTemplateId("");
 		setDraft(draftFromJob(job, defaultProfile, defaultRoomId));
-		onCloseMobileSidebar?.();
+		sidebar.closeSidebar();
 		const response = await getLoopRuns(job.id, 100);
 		setRuns(response.runs);
 	};
-	const newJob = () => { setSelectedJobId(null); setSelectedTemplateId(""); setDraft(emptyDraft(defaultProfile, defaultRoomId)); setRuns([]); onCloseMobileSidebar?.(); };
+	const newJob = () => { setSelectedJobId(null); setSelectedTemplateId(""); setDraft(emptyDraft(defaultProfile, defaultRoomId)); setRuns([]); sidebar.closeSidebar(); };
 	const applyTemplate = (templateId: string) => {
 		setSelectedTemplateId(templateId);
 		if (!templateId) { setDraft(emptyDraft(defaultProfile, defaultRoomId)); return; }
@@ -111,28 +118,27 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 	const reopen = async () => { if (!selectedJob || !canReopenGoal || !window.confirm(`Reopen terminal Goal "${selectedJob.name}" with its existing history?`)) return; setSaving(true); setError(null); try { await reopenLoopJob(selectedJob.id); await refresh(selectedJob.id); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setSaving(false); } };
 
 	return (
-		<div className="min-h-0 grid grid-cols-[340px_minmax(0,1fr)] max-[980px]:grid-cols-1 h-full overflow-hidden">
+		<div ref={sidebar.rootRef} className={`relative min-h-0 grid h-full overflow-hidden ${sidebar.isOverlay ? "grid-cols-1" : "grid-cols-[minmax(280px,340px)_minmax(0,1fr)]"}`}>
 			<div
 				data-pibo-mobile-sidebar-backdrop
 				aria-hidden="true"
-				className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
-					mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+				className={`${surface === "tab" ? "absolute" : "fixed"} inset-0 z-30 bg-black/60 transition-opacity duration-200 ${sidebar.isOverlay ? "block" : "hidden"} ${
+					sidebar.isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
 				}`}
-				onClick={onCloseMobileSidebar}
+				onClick={sidebar.closeSidebar}
 			/>
 			<aside
+				ref={sidebar.sidebarRef}
 				data-pibo-mobile-sidebar
-				{...mobileSidebarA11yProps(isMobileSidebarViewport, mobileSidebarOpen, "Loop jobs sidebar")}
-				className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
-					mobileSidebarOpen ? "max-[980px]:translate-x-0" : "max-[980px]:-translate-x-full"
-				}`}
+				{...mobileSidebarA11yProps(sidebar.isOverlay, sidebar.isOpen, "Loop jobs sidebar")}
+				className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 ${sidebar.isOverlay ? `${surface === "tab" ? "absolute" : "fixed"} left-0 top-0 bottom-0 z-40 w-[min(340px,86%)] transition-transform duration-200 ${sidebar.isOpen ? "translate-x-0" : "-translate-x-full"}` : "relative"}`}
 			>
 				<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider max-[980px]:h-auto max-[980px]:py-2">
 					<span className="inline-flex items-center gap-2"><Bot size={14} /> Loop Jobs</span>
 					<div className="flex items-center gap-1">
 						<button type="button" onClick={() => void refresh()} title="Refresh" aria-label="Refresh" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><RefreshCw size={13} /></button>
 						<button type="button" onClick={newJob} title="New Loop Job" aria-label="New Loop Job" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><Plus size={13} /></button>
-						<button type="button" onClick={onCloseMobileSidebar} title="Close sidebar" aria-label="Close sidebar" className="min-[981px]:hidden p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><X size={13} /></button>
+						{sidebar.isOverlay ? <button type="button" onClick={sidebar.closeSidebar} title="Close sidebar" aria-label="Close sidebar" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><X size={13} /></button> : null}
 					</div>
 				</div>
 				<div className="p-3 space-y-3">
@@ -160,8 +166,9 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 				</div>
 			</aside>
 
-			<main className="min-h-0 overflow-auto">
-				<div className="max-w-5xl mx-auto p-5 space-y-5">
+			<main className="@container min-h-0 min-w-0 overflow-auto">
+				<div className="max-w-5xl mx-auto p-5 @max-[520px]:p-3 space-y-5">
+					{surface === "tab" && sidebar.isOverlay ? <button ref={sidebar.triggerRef} type="button" onClick={sidebar.openSidebar} className="inline-flex h-8 items-center gap-2 rounded-sm border border-slate-700 px-2 text-xs font-semibold text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]" aria-label="Open Loop jobs"><PanelLeftOpen size={13} /> Loop jobs</button> : null}
 					<div className="flex items-start justify-between gap-3 flex-wrap">
 						<div>
 							<div className="text-xs uppercase tracking-[0.16em] text-[#11a4d4] font-bold">Continuous Pibo Sessions</div>
@@ -191,7 +198,7 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 					{selectedJob?.mode === "goal" ? <div className="grid max-w-sm"><Stat label="Active Goal time" value={formatDurationSeconds(goalActiveTimeSeconds(selectedJob))} /></div> : null}
 					{selectedJob?.mode === "goal" && selectedJob.state.usage ? <LoopUsageSummary job={selectedJob} /> : null}
 
-					<section className="grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] gap-4 max-[980px]:grid-cols-1">
+					<section className="grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] gap-4 max-[980px]:grid-cols-1 @max-[720px]:grid-cols-1">
 						<Panel title="Job">
 							<Field label="Mode"><select className={inputClass} value={draft.mode} onChange={(event) => setDraft({ ...draft, mode: event.target.value as PiboLoopMode })}><option value="goal">Goal — continue in the same session</option><option value="ralph">Ralph — fresh session each run</option></select></Field>
 							<Field label="Template"><select className={inputClass} value={selectedTemplateId} onChange={(event) => applyTemplate(event.target.value)}><option value="">Blank job</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></Field>
@@ -201,7 +208,7 @@ export function LoopArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 							<Field label="Agent"><select className={inputClass} value={draft.profile} onChange={(event) => setDraft({ ...draft, profile: event.target.value })}>{agentOptions.map((profile) => <option key={profile.name} value={profile.name}>{profile.label}</option>)}{draft.profile && !agentOptions.some((profile) => profile.name === draft.profile) ? <option value={draft.profile}>{draft.profile} (missing)</option> : null}</select></Field>
 							<div className="space-y-2">
 								<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Target</div>
-								<div className="grid grid-cols-2 gap-2">
+								<div className="grid grid-cols-2 gap-2 @max-[420px]:grid-cols-1">
 									<RadioCard name="loop-target-kind" checked={draft.targetKind === "default-chat"} title="Shared Chat" description="Runs in the shared default chat" onChange={() => setDraft({ ...draft, targetKind: "default-chat" })} />
 									<RadioCard name="loop-target-kind" checked={draft.targetKind === "room"} title="Room" description="Uses a room workspace" onChange={() => setDraft({ ...draft, targetKind: "room" })} />
 								</div>
@@ -312,7 +319,7 @@ export function LoopUsageSummary({ job }: { job: PiboLoopJob }) {
 	const usage = job.state.usage;
 	if (!usage) return null;
 	return (
-		<div data-pibo-loop-recursive-usage className="grid grid-cols-6 gap-3 max-[1100px]:grid-cols-3 max-[720px]:grid-cols-2 max-[520px]:grid-cols-1">
+		<div data-pibo-loop-recursive-usage className="grid grid-cols-6 gap-3 max-[1100px]:grid-cols-3 max-[720px]:grid-cols-2 max-[520px]:grid-cols-1 @max-[720px]:grid-cols-2 @max-[420px]:grid-cols-1">
 			<Stat label="Model turns" value={formatTokenCount(usage.total.assistantTurns)} />
 			<Stat label="All model tokens" value={formatTokenCount(usage.total.totalTokens)} />
 			<Stat label="Delegated tokens" value={formatTokenCount(usage.descendants.totalTokens)} />
@@ -339,7 +346,7 @@ function StopConditionsEditor({ conditions, value, onChange }: { conditions: Pib
 	return (
 		<Panel title="Stop Conditions">
 			<div className="text-xs text-slate-500">Optional JSON policy. Empty uses Goal status plus max-iterations in Goal mode, and promise-complete plus max-iterations in Ralph mode.</div>
-			<div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+			<div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3 @max-[640px]:grid-cols-1">
 				{conditions.map((condition) => (
 					<div key={condition.type} className="rounded-sm border border-slate-800 bg-[#101d22] p-3 text-xs">
 						<div className="font-medium text-slate-200">{condition.name}</div>
@@ -368,7 +375,7 @@ function ModelOverrideSelector({ catalog, value, disabled, onChange }: { catalog
 	const hasStaleProvider = Boolean(providerId) && !selectedProvider;
 	const hasStaleModel = Boolean(providerId && modelId && selectedProvider && !selectedModel);
 	useEffect(() => { setProviderId(value?.provider ?? ""); setModelId(value?.id ?? ""); }, [value?.provider, value?.id]);
-	return <div className="grid gap-2"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Model</span><button type="button" disabled={disabled || (!providerId && !modelId)} onClick={() => { setProviderId(""); setModelId(""); onChange(undefined); }} className="text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300 disabled:opacity-50">Unset</button></div><div className="grid grid-cols-2 gap-2"><select value={providerId} disabled={disabled} onChange={(event) => { const next = event.target.value; setProviderId(next); setModelId(""); if (!next) onChange(undefined); }} className={inputClass}><option value="">Default</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}{hasStaleProvider ? <option value={providerId}>{providerId} (missing)</option> : null}</select><select value={modelId} disabled={disabled || !providerId} onChange={(event) => { const next = event.target.value; setModelId(next); if (providerId && next) onChange({ provider: providerId, id: next }); }} className={inputClass}><option value="">{providerId ? "Select model" : "Default"}</option>{selectedProvider?.models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}{hasStaleModel ? <option value={modelId}>{modelId} (missing)</option> : null}</select></div>{providerId && selectedProvider ? <div className="text-xs text-slate-600">{selectedProvider.authConfigured ? "Provider auth configured." : "Provider auth missing."}</div> : null}</div>;
+	return <div className="grid gap-2"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Model</span><button type="button" disabled={disabled || (!providerId && !modelId)} onClick={() => { setProviderId(""); setModelId(""); onChange(undefined); }} className="text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300 disabled:opacity-50">Unset</button></div><div className="grid grid-cols-2 gap-2 @max-[420px]:grid-cols-1"><select value={providerId} disabled={disabled} onChange={(event) => { const next = event.target.value; setProviderId(next); setModelId(""); if (!next) onChange(undefined); }} className={inputClass}><option value="">Default</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}{hasStaleProvider ? <option value={providerId}>{providerId} (missing)</option> : null}</select><select value={modelId} disabled={disabled || !providerId} onChange={(event) => { const next = event.target.value; setModelId(next); if (providerId && next) onChange({ provider: providerId, id: next }); }} className={inputClass}><option value="">{providerId ? "Select model" : "Default"}</option>{selectedProvider?.models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}{hasStaleModel ? <option value={modelId}>{modelId} (missing)</option> : null}</select></div>{providerId && selectedProvider ? <div className="text-xs text-slate-600">{selectedProvider.authConfigured ? "Provider auth configured." : "Provider auth missing."}</div> : null}</div>;
 }
 
 function ThinkingOverrideSelector({ value, disabled, onChange }: { value?: ThinkingLevel; disabled: boolean; onChange: (value: ThinkingLevel | undefined) => void }) {
