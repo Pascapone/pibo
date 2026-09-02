@@ -1,3 +1,4 @@
+import { PanelLeftOpen } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteProject,
@@ -17,6 +18,8 @@ import type {
   ThinkingLevel,
 } from "../types";
 import { readStoredComposerDraft } from "../app-storage";
+import { useMobileSidebarViewport } from "../mobile-sidebar-accessibility";
+import { usePaneSidebar, type PaneSurface } from "../responsive-pane-sidebar";
 import {
   defaultProfileFromBootstrap,
   findSessionNode,
@@ -81,6 +84,7 @@ export function ProjectsArea({
   onEnterTerminalFullscreen,
   onExitTerminalFullscreen,
   onError,
+  surface = "route",
 }: {
   baseBootstrap: BootstrapData;
   routeProjectId?: string;
@@ -111,7 +115,15 @@ export function ProjectsArea({
   onEnterTerminalFullscreen: () => void;
   onExitTerminalFullscreen: () => void;
   onError: (message: string | null) => void;
+  surface?: PaneSurface;
 }) {
+  const isMobileSidebarViewport = useMobileSidebarViewport();
+  const sidebar = usePaneSidebar({
+    surface,
+    mobileOpen: mobileSidebarOpen,
+    mobileViewport: isMobileSidebarViewport,
+    onMobileClose: onCloseMobileSidebar,
+  });
   const [data, setData] = useState<ProjectsBootstrapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showArchivedProjects, setShowArchivedProjects] = useState(
@@ -467,25 +479,39 @@ export function ProjectsArea({
     );
   }
 
+  const tabHidesRawEvents = surface === "tab" && sidebar.isOverlay;
+  const effectiveShowRawEvents = showRawEvents && !tabHidesRawEvents;
+  const projectGridColumns = terminalFullscreen
+    ? "grid-cols-1"
+    : sidebar.isOverlay
+      ? effectiveShowRawEvents ? "grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"
+      : effectiveShowRawEvents ? "grid-cols-[300px_minmax(0,1fr)_320px]" : "grid-cols-[300px_minmax(0,1fr)]";
+
   return (
-    <>
+    <div ref={sidebar.rootRef} className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <CreateProjectDialog
         open={createProjectDialogOpen && !traceSelection.navigationPending}
         onClose={() => setCreateProjectDialogOpen(false)}
         onCreate={createProject}
         onCreated={openCreatedProject}
       />
+      {surface === "tab" && sidebar.isOverlay && !terminalFullscreen ? (
+        <div className="flex h-10 shrink-0 items-center border-b border-slate-800 bg-[#151f24] px-3">
+          <button ref={sidebar.triggerRef} type="button" onClick={sidebar.openSidebar} className="inline-flex h-7 items-center gap-2 rounded-sm border border-slate-700 px-2 text-xs font-semibold text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]" aria-label="Open Projects"><PanelLeftOpen size={13} /> Projects</button>
+        </div>
+      ) : null}
+      <div className={`relative grid min-h-0 min-w-0 flex-1 overflow-hidden ${projectGridColumns}`}>
       {terminalFullscreen ? null : (
         <>
           <div
             data-pibo-mobile-sidebar-backdrop
             aria-hidden="true"
-            className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
-              mobileSidebarOpen
+            className={`${surface === "tab" ? "absolute" : "fixed"} inset-0 z-30 bg-black/60 transition-opacity duration-200 ${sidebar.isOverlay ? "block" : "hidden"} ${
+              sidebar.isOpen
                 ? "opacity-100 pointer-events-auto"
                 : "opacity-0 pointer-events-none"
             }`}
-            onClick={onCloseMobileSidebar}
+            onClick={sidebar.closeSidebar}
           />
           <ProjectsSidebar
         data={data}
@@ -500,9 +526,12 @@ export function ProjectsArea({
         navigationPending={traceSelection.navigationPending}
         showArchivedProjects={showArchivedProjects}
         showArchivedSessions={showArchivedSessions}
-        mobileSidebarOpen={mobileSidebarOpen}
+        mobileSidebarOpen={sidebar.isOpen}
+        isMobileSidebarViewport={sidebar.isOverlay}
+        surface={surface}
+        sidebarRef={sidebar.sidebarRef}
         onRefresh={() => void load()}
-        onCloseMobileSidebar={onCloseMobileSidebar}
+        onCloseMobileSidebar={sidebar.closeSidebar}
         onCreateProject={() => {
           if (!navigationPendingRef.current) setCreateProjectDialogOpen(true);
         }}
@@ -571,6 +600,7 @@ export function ProjectsArea({
         sessionViewId="terminal"
         sessionViews={sessionViews}
         currentSessionView={projectCurrentSessionView}
+        containerResponsive={surface === "tab"}
         allowedSessionViewIds={["terminal"]}
         extraViewTabs={projectExtraViewTabs}
         activeViewId={
@@ -583,7 +613,7 @@ export function ProjectsArea({
         terminalFullscreen={terminalFullscreen}
         onEnterTerminalFullscreen={onEnterTerminalFullscreen}
         onExitTerminalFullscreen={onExitTerminalFullscreen}
-        showRawEvents={showRawEvents}
+        showRawEvents={effectiveShowRawEvents}
         showThinking={showThinking}
         expandThinking={expandThinking}
         toolDisplayMode={toolDisplayMode}
@@ -625,7 +655,8 @@ export function ProjectsArea({
         }}
         onError={onError}
       />
-    </>
+      </div>
+    </div>
   );
 }
 

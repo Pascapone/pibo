@@ -124,6 +124,7 @@ import {
 import { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstrap-error";
 import { errorMessage } from "./error-message";
 import { SettingsSidebar } from "./settings/SettingsSidebar";
+import { ResponsiveTabSidebarPanel } from "./responsive-pane-sidebar";
 import { SettingsView } from "./settings/SettingsView";
 import type { SettingsPanel } from "./settings/types";
 import { ProjectsArea } from "./projects/ProjectsArea";
@@ -1651,9 +1652,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const isAppFullscreen = isTerminalFullscreen || isDesktopPreviewFullscreen;
 	const routeShellClassName = isTerminalFullscreen
 		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
-		: (area === "vscode" || area === "workflows" || area === "cron" || area === "loops")
+		: (area === "vscode" || area === "workflows" || area === "cron" || area === "loops" || area === "agents" || area === "projects")
 			? "h-full overflow-hidden"
-			: `grid ${(area === "sessions" || area === "projects") && showRawEvents
+			: `grid ${area === "sessions" && showRawEvents
 				? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
 				: "grid-cols-[300px_minmax(0,1fr)] max-[980px]:grid-cols-1"
 			}`;
@@ -1729,8 +1730,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 		const panelRoute = tab.target.route;
 		if (panelRoute.area === "vscode") return <VscodeArea integration={bootstrap.integrations?.vscode} />;
-		if (panelRoute.area === "cron") return <CronArea bootstrap={bootstrap} mobileSidebarOpen={false} onCloseMobileSidebar={() => undefined} />;
-		if (panelRoute.area === "loops") return <LoopArea bootstrap={bootstrap} mobileSidebarOpen={false} onCloseMobileSidebar={() => undefined} />;
+		if (panelRoute.area === "cron") return <CronArea bootstrap={bootstrap} mobileSidebarOpen={false} onCloseMobileSidebar={() => undefined} surface="tab" />;
+		if (panelRoute.area === "loops") return <LoopArea bootstrap={bootstrap} mobileSidebarOpen={false} onCloseMobileSidebar={() => undefined} surface="tab" />;
 		if (panelRoute.area === "agents") {
 			return (
 				<AgentsView
@@ -1748,6 +1749,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					mobileSidebarOpen={false}
 					isMobileSidebarViewport={false}
 					onCloseMobileSidebar={() => undefined}
+					surface="tab"
 				/>
 			);
 		}
@@ -1787,23 +1789,29 @@ export function App({ route }: { route: ChatAppRoute }) {
 					onToolDisplayModeChange={(mode) => { setToolDisplayMode(mode); writeStoredToolDisplayMode(mode); }}
 					onThinkingLevelChange={(level) => void postAction(panelRoute.piboSessionId ?? "", "thinking", { level })}
 					onError={setError}
+					surface="tab"
 				/>
 			);
 		}
 		if (panelRoute.area === "context") {
 			return (
-				<div className="grid h-full min-h-0 grid-cols-[210px_minmax(0,1fr)] overflow-hidden">
-					<aside className="min-h-0 overflow-hidden border-r border-slate-800 bg-[#1a262b]"><ContextSidebar activePanel={contextPanel} onSelect={setContextPanel} toolCount={bootstrap.agentCatalog?.piboTools.length ?? 0} mcpServerCount={bootstrap.agentCatalog?.mcpServers.length ?? 0} /></aside>
-					<main className="min-h-0 overflow-auto">{contextPanel === "pibo-tools" ? <PiboToolsView tools={bootstrap.agentCatalog?.piboTools ?? []} /> : contextPanel === "mcp-tools" ? <McpToolsView servers={bootstrap.agentCatalog?.mcpServers ?? []} selectedServerName={selectedMcpServerName} onServerSaved={updateMcpServerInBootstrap} /> : contextPanel === "build-context" ? <ContextBuildView piboSessionId={panelRoute.piboSessionId ?? selectedPiboSessionId} /> : contextPanel === "base-prompt" ? <BasePromptView /> : contextPanel === "compaction-prompt" ? <CompactionPromptView /> : <ContextFilesView agentProfiles={contextAgentProfiles} selectedFileKey={selectedContextFileKey} />}</main>
-				</div>
+				<ResponsiveTabSidebarPanel
+					label="Context"
+					sidebar={<ContextSidebar activePanel={contextPanel} onSelect={setContextPanel} toolCount={bootstrap.agentCatalog?.piboTools.length ?? 0} mcpServerCount={bootstrap.agentCatalog?.mcpServers.length ?? 0} />}
+					contentOverflow="hidden"
+				>
+					{contextPanel === "pibo-tools" ? <PiboToolsView tools={bootstrap.agentCatalog?.piboTools ?? []} /> : contextPanel === "mcp-tools" ? <McpToolsView servers={bootstrap.agentCatalog?.mcpServers ?? []} selectedServerName={selectedMcpServerName} onServerSaved={updateMcpServerInBootstrap} /> : contextPanel === "build-context" ? <ContextBuildView piboSessionId={panelRoute.piboSessionId ?? selectedPiboSessionId} /> : contextPanel === "base-prompt" ? <BasePromptView /> : contextPanel === "compaction-prompt" ? <CompactionPromptView /> : <ContextFilesView agentProfiles={contextAgentProfiles} selectedFileKey={selectedContextFileKey} />}
+				</ResponsiveTabSidebarPanel>
 			);
 		}
 		const panel = panelRoute.panel ?? "general";
 		return (
-			<div className="grid h-full min-h-0 grid-cols-[210px_minmax(0,1fr)] overflow-hidden">
-				<aside className="min-h-0 overflow-hidden border-r border-slate-800 bg-[#1a262b]"><SettingsSidebar activePanel={panel} onSelect={(nextPanel) => navigateToRoute({ area: "settings", panel: nextPanel })} piPackageCount={bootstrap.agentCatalog?.piPackages.length ?? 0} userSkillCount={bootstrap.agentCatalog?.userSkills.length ?? 0} /></aside>
-				<main className="min-h-0 overflow-auto"><SettingsView activePanel={panel} showThinking={showThinking} setShowThinking={setShowThinking} expandThinking={expandThinking} setExpandThinking={setExpandThinking} modelDefaults={bootstrap.modelDefaults} modelCatalog={bootstrap.modelCatalog} onModelDefaultsChanged={(modelDefaults) => setBootstrap((current) => current ? { ...current, modelDefaults } : current)} piPackages={bootstrap.agentCatalog?.piPackages} onPiPackageChanged={upsertPiPackageInBootstrap} onPiPackageRemoved={removePiPackageFromBootstrap} userSkills={bootstrap.agentCatalog?.userSkills} onUserSkillChanged={upsertUserSkillInBootstrap} onUserSkillRemoved={removeUserSkillFromBootstrap} piboSessionId={selectedPiboSessionId} onProviderAuthChanged={refreshAfterProviderAuthChanged} /></main>
-			</div>
+			<ResponsiveTabSidebarPanel
+				label="Settings"
+				sidebar={<SettingsSidebar activePanel={panel} onSelect={(nextPanel) => navigateToRoute({ area: "settings", panel: nextPanel })} piPackageCount={bootstrap.agentCatalog?.piPackages.length ?? 0} userSkillCount={bootstrap.agentCatalog?.userSkills.length ?? 0} />}
+			>
+				<SettingsView activePanel={panel} showThinking={showThinking} setShowThinking={setShowThinking} expandThinking={expandThinking} setExpandThinking={setExpandThinking} modelDefaults={bootstrap.modelDefaults} modelCatalog={bootstrap.modelCatalog} onModelDefaultsChanged={(modelDefaults) => setBootstrap((current) => current ? { ...current, modelDefaults } : current)} piPackages={bootstrap.agentCatalog?.piPackages} onPiPackageChanged={upsertPiPackageInBootstrap} onPiPackageRemoved={removePiPackageFromBootstrap} userSkills={bootstrap.agentCatalog?.userSkills} onUserSkillChanged={upsertUserSkillInBootstrap} onUserSkillRemoved={removeUserSkillFromBootstrap} piboSessionId={selectedPiboSessionId} onProviderAuthChanged={refreshAfterProviderAuthChanged} />
+			</ResponsiveTabSidebarPanel>
 		);
 	};
 

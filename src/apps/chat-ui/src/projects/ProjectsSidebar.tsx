@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -13,7 +13,8 @@ import {
   X,
 } from "lucide-react";
 import { SessionNode } from "../session-node";
-import { mobileSidebarA11yProps, useMobileSidebarViewport } from "../mobile-sidebar-accessibility";
+import { mobileSidebarA11yProps } from "../mobile-sidebar-accessibility";
+import type { PaneSurface } from "../responsive-pane-sidebar";
 import type { PiboProject, PiboWebSessionNode } from "../types";
 
 export function ProjectsSidebar({
@@ -30,6 +31,9 @@ export function ProjectsSidebar({
   showArchivedProjects,
   showArchivedSessions,
   mobileSidebarOpen,
+  isMobileSidebarViewport,
+  surface,
+  sidebarRef,
   onRefresh,
   onCloseMobileSidebar,
   onCreateProject,
@@ -66,6 +70,9 @@ export function ProjectsSidebar({
   showArchivedProjects: boolean;
   showArchivedSessions: boolean;
   mobileSidebarOpen: boolean;
+  isMobileSidebarViewport: boolean;
+  surface: PaneSurface;
+  sidebarRef: RefObject<HTMLElement | null>;
   onRefresh: () => void;
   onCloseMobileSidebar: () => void;
   onCreateProject: () => void;
@@ -83,21 +90,17 @@ export function ProjectsSidebar({
   onViewContext: (piboSessionId: string) => void;
   onAutoRenameConsumed: () => void;
 }) {
-  const isMobileSidebarViewport = useMobileSidebarViewport();
   const signalNow = Date.now();
   const listedActiveProjects = activeProjects.filter(
     (project) => project.id !== data.sharedDefaultProject.id,
   );
   return (
     <aside
+      ref={sidebarRef}
       data-pibo-mobile-sidebar
       data-pibo-navigation-pending={navigationPending ? "true" : "false"}
       {...mobileSidebarA11yProps(isMobileSidebarViewport, mobileSidebarOpen, "Projects sidebar")}
-      className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
-        mobileSidebarOpen
-          ? "max-[980px]:translate-x-0"
-          : "max-[980px]:-translate-x-full"
-      }`}
+      className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 ${isMobileSidebarViewport ? `${surface === "tab" ? "absolute" : "fixed"} left-0 top-0 bottom-0 z-40 w-[min(300px,86vw)] transition-transform duration-200 ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"}` : "relative"}`}
     >
       <div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider max-[980px]:h-auto max-[980px]:py-2">
         <span>projects</span>
@@ -111,15 +114,15 @@ export function ProjectsSidebar({
           >
             <RefreshCw size={13} />
           </button>
-          <button
+          {isMobileSidebarViewport ? <button
             type="button"
             onClick={onCloseMobileSidebar}
             title="Close sidebar"
             aria-label="Close sidebar"
-            className="min-[981px]:hidden p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+            className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
           >
             <X size={13} />
-          </button>
+          </button> : null}
         </div>
       </div>
       <div className="p-2 space-y-3">

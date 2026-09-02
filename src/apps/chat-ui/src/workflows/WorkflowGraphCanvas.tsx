@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
 	Background,
 	BaseEdge,
@@ -714,7 +714,7 @@ export function WorkflowGraphCanvas({
 	];
 
 	return (
-		<section className={`${fullHeight ? "flex h-full min-h-0 flex-col" : "grid"} gap-4 rounded-sm border border-slate-800 bg-[#151f24]/70 p-4`} aria-labelledby="workflow-graph-canvas-title">
+		<section className={`@container ${fullHeight ? "flex h-full min-h-0 flex-col" : "grid"} gap-4 rounded-sm border border-slate-800 bg-[#151f24]/70 p-4 @max-[520px]:p-3`} aria-labelledby="workflow-graph-canvas-title">
 			<WorkflowGraphRunStyles />
 			{compactHeader ? null : <div className="flex flex-wrap items-start justify-between gap-3">
 				<div>
@@ -735,8 +735,8 @@ export function WorkflowGraphCanvas({
 			</div>}
 
 			<div
-				className={`${fullHeight ? "min-h-0 flex-1" : ""} grid min-w-0 gap-3 text-xs`}
-				style={{ gridTemplateColumns: `minmax(0, 1fr) ${inspectorWidth}px` }}
+				className={`${fullHeight ? "min-h-0 flex-1" : ""} grid min-w-0 grid-cols-[minmax(0,1fr)_var(--workflow-inspector-width)] gap-3 text-xs @max-[760px]:grid-cols-1 @max-[760px]:overflow-y-auto`}
+				style={{ "--workflow-inspector-width": `${inspectorWidth}px` } as CSSProperties}
 			>
 				<div ref={graphCanvasRef} className={`${fullHeight ? "h-full min-h-[360px]" : "h-[420px]"} relative min-w-0 overflow-hidden rounded-sm border border-slate-800 bg-[#0c171c]`} aria-label="Workflow graph canvas" role="group" tabIndex={0} onKeyDownCapture={handleGraphContextMenuKeyDown}>
 					<ReactFlow<WorkflowGraphFlowNode, WorkflowGraphFlowEdge>
@@ -837,10 +837,10 @@ export function WorkflowGraphCanvas({
 					) : null}
 				</div>
 
-				<aside className="relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-sm border border-slate-800 bg-[#0f1b20]" aria-label="Workflow editor inspector panel">
+				<aside className="relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-sm border border-slate-800 bg-[#0f1b20] @max-[760px]:min-h-[360px]" aria-label="Workflow editor inspector panel">
 					<button
 						type="button"
-						className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize border-l border-[#11a4d4]/20 bg-[#11a4d4]/10 opacity-60 transition hover:bg-[#11a4d4]/30 hover:opacity-100"
+						className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize border-l border-[#11a4d4]/20 bg-[#11a4d4]/10 opacity-60 transition hover:bg-[#11a4d4]/30 hover:opacity-100 @max-[760px]:hidden"
 						onMouseDown={startInspectorResize}
 						aria-label="Resize workflow inspector"
 						title="Drag to resize inspector"

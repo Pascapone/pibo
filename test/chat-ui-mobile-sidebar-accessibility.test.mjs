@@ -127,11 +127,12 @@ test("every responsive Chat Web drawer applies shared modal semantics and preser
 	for (const [path, label] of drawers) {
 		const source = await readFile(path, "utf8");
 		assert.match(source, /data-pibo-mobile-sidebar/);
-		assert.match(source, new RegExp(`mobileSidebarA11yProps\\(isMobileSidebarViewport, mobileSidebarOpen, "${label}"\\)`));
+		assert.match(source, new RegExp(`mobileSidebarA11yProps\\([^)]*"${label}"\\)`));
 	}
 
 	const backdropSources = await Promise.all([
 		"src/apps/chat-ui/src/App.tsx",
+		"src/apps/chat-ui/src/responsive-pane-sidebar.tsx",
 		"src/apps/chat-ui/src/projects/ProjectsArea.tsx",
 		"src/apps/chat-ui/src/agents/AgentsView.tsx",
 		"src/apps/chat-ui/src/CronArea.tsx",
@@ -159,6 +160,8 @@ test("App owns initial focus, bidirectional containment, Escape close, and delay
 	assert.match(helperSource, /applyMobileSidebarBackgroundIsolation/);
 	assert.match(helperSource, /requestAnimationFrame/);
 	assert.match(helperSource, /triggerRef\.current/);
+	assert.match(helperSource, /sidebarRef\?\.current/);
+	assert.match(helperSource, /rootRef\?\.current/);
 	assert.match(chromeSource, /mobileSidebarTriggerRef/);
 	assert.match(chromeSource, /ref=\{mobileSidebarTriggerRef\}/);
 });

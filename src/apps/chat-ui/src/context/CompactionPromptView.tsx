@@ -107,8 +107,8 @@ export function CompactionPromptView() {
 				</div>
 			</div>
 
-			<div className="grid min-h-0 flex-1 grid-cols-[250px_minmax(0,1fr)] max-[980px]:grid-cols-1">
-				<aside className="border-r border-slate-800 bg-[#151f24] p-3 max-[980px]:border-b max-[980px]:border-r-0">
+			<div className="grid min-h-0 flex-1 grid-cols-[250px_minmax(0,1fr)] max-[980px]:grid-cols-1 @max-[720px]:grid-cols-1">
+				<aside className="border-r border-slate-800 bg-[#151f24] p-3 max-[980px]:border-b max-[980px]:border-r-0 @max-[720px]:border-b @max-[720px]:border-r-0">
 					<div className="mb-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Source</div>
 					<button
 						type="button"

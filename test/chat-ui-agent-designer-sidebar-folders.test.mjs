@@ -16,13 +16,17 @@ test("Agent Designer uses the standard responsive sidebar contract", () => {
 	assert.match(appSource, /mobileSidebarOpen=\{mobileSidebarOpen\}/);
 	assert.match(appSource, /isMobileSidebarViewport=\{isMobileSidebarViewport\}/);
 	assert.match(appSource, /onCloseMobileSidebar=\{closeMobileSidebar\}/);
+	assert.match(appSource, /surface="tab"/);
+	assert.match(agentsViewSource, /usePaneSidebar/);
 	assert.match(agentsViewSource, /data-pibo-mobile-sidebar-backdrop/);
+	assert.match(agentsViewSource, /grid-cols-\[300px_minmax\(0,1fr\)\]/);
 	assert.match(agentsViewSource, /<AgentsSidebar/);
 	assert.match(sidebarSource, /mobileSidebarA11yProps\(isMobileSidebarViewport, mobileSidebarOpen, "Agents sidebar"\)/);
 	assert.match(sidebarSource, /error && isMobileSidebarViewport/);
 	assert.match(sidebarSource, /role="alert"/);
-	assert.match(sidebarSource, /max-\[980px\]:-translate-x-full/);
-	assert.match(sidebarSource, /min-\[981px\]:hidden/);
+	assert.match(sidebarSource, /surface === "tab" \? "absolute" : "fixed"/);
+	assert.match(sidebarSource, /mobileSidebarOpen \? "translate-x-0" : "-translate-x-full"/);
+	assert.match(sidebarSource, /isMobileSidebarViewport \? <button[^>]*onClick=\{onCloseMobileSidebar\}/);
 });
 
 test("Agent picker exposes folder creation, rename, assignment, and empty-folder deletion", () => {
@@ -34,6 +38,9 @@ test("Agent picker exposes folder creation, rename, assignment, and empty-folder
 	assert.match(sidebarSource, /Delete empty folder/);
 	assert.match(sidebarSource, /Move to/);
 	assert.match(sidebarSource, /onMove\(folder\.id\)/);
+	assert.match(sidebarSource, /SystemAgentFolderGroup label="Archive"/);
+	assert.match(sidebarSource, /SystemAgentFolderGroup label="Read-only Profiles"/);
+	assert.doesNotMatch(sidebarSource, /ArchivedAgentGroup/);
 	assert.match(apiSource, /postAgentFolder/);
 	assert.match(apiSource, /patchAgentFolder/);
 	assert.match(apiSource, /deleteAgentFolder/);
