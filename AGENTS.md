@@ -55,28 +55,12 @@ Server access details are configured in the operator environment. Do not hard-co
 If you are doing any frontend design for the Web Chat App, be sure to read `DESIGN.md`. Validate visual changes in a headful browser through Browser Use at the relevant viewports, and use Chrome DevTools/CDP for technical inspection. Agent Browser or headless-only checks are not sufficient as final design validation.
 
 ## Documentation Structure
-`docs/` is the Pibo OKF v0.2 bundle root. Before creating or changing documentation, read `docs/index.md` and `docs/project/documentation-profile.md`.
+`docs/` is Pibo's OKF v0.2 bundle. Use the `maintain-okf-docs` skill; `docs/index.md` and `docs/project/documentation-profile.md` are authoritative. Do not duplicate their detailed rules here.
 
-Use this structure:
-
-```text
-docs/
-  project/  Current governance, architecture, decisions, guides, operations, references, and status
-  specs/    Implemented current product, technical, and implementation contracts
-  plans/    Intended changes, acceptance, risks, and rollback
-  reports/  Investigations, validation, incidents, research, feedback, evidence, and artifacts
-  legacy/   Superseded documents, completed change packets, closed plans, and handoffs
-```
-
-Rules:
-
-- Keep these five top-level roots. Express narrower functions through concept type and nested directories; do not create another top-level directory under `docs/`.
-- Every non-reserved Markdown file under `docs/` is an OKF concept with the profile's required frontmatter. `index.md` and `log.md` keep their reserved forms.
-- Current specifications describe implemented behavior only. Put desired behavior in `plans/`. Treat `specs/changes/` as migration input: fold implemented deltas into canonical specs, move active work to plans, and move completed packets to legacy.
-- Keep location-sensitive host files such as `AGENTS.md`, `GLOSSARY.md`, `DESIGN.md`, runtime prompts, `SKILL.md`, package readmes, and fixtures in their native formats. Record each exact exception in the migration ledger.
-- Only deprecated historical or evidentiary concepts may retain unresolved legacy links, and only through the profile's exact immutable `preserved_body` metadata. Current concepts cannot use this exception.
-- Update `docs/project/okf-migration-ledger.json`, run `npm run docs:indexes:write`, and update `docs/log.md` explicitly with documentation changes. The index generator never creates `README.md`.
-- Run `npm run docs:validate:okf`, `npm run docs:validate:migration`, `npm run docs:indexes:check`, `npm run docs:log:check`, and focused documentation tests before handoff. Run `npm run docs:validate:strict` as the final profile gate; it must remain failing while migration entries are pending.
+- Keep the five top-level roots: `project/`, `specs/`, `plans/`, `reports/`, and `legacy/`.
+- Put implemented behavior only in `specs/`; intended work in `plans/`; current project knowledge in `project/`; evidence and research in `reports/`; and superseded or completed material in `legacy/`.
+- Keep host-owned files such as `AGENTS.md`, `GLOSSARY.md`, `DESIGN.md`, and `SKILL.md` in their native formats.
+- Before handoff, follow the skill's index and log steps, then run `npm run docs:validate` and focused documentation tests.
 
 # Pibo Rules
 
