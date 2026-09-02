@@ -4319,9 +4319,15 @@ function submitProjectWorkflowHumanAction(input: {
 		humanActionOptions: WORKFLOW_HUMAN_ACTION_REF_OPTIONS,
 	});
 	if (validation.diagnostics.length) {
-		if (waitToken && validation.expiredAt) {
-			input.state.projectService.saveProjectWorkflowWaitToken({ ...waitToken, status: "expired", resolvedAt: validation.checkedAt });
-		}
+		const responseWaitToken = waitToken && validation.expiredAt
+			? input.state.projectService.expireProjectWorkflowWaitToken({
+				projectId: project.id,
+				piboSessionId: session.id,
+				workflowRunId: projectSession.workflowRunId,
+				waitTokenId: waitToken.id,
+				resolvedAt: validation.checkedAt,
+			}).waitToken
+			: waitToken;
 		recordWorkflowLifecycleEvent(input.state, input.webSession, {
 			type: "workflow.human_action.submitted",
 			workflowId: projectSession.workflowId,
@@ -4333,7 +4339,7 @@ function submitProjectWorkflowHumanAction(input: {
 			diagnostics: validation.diagnostics,
 			payload: projectWorkflowHumanActionLifecyclePayload(request),
 		});
-		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", validation.diagnostics, validation.httpStatus, waitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
+		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", validation.diagnostics, validation.httpStatus, responseWaitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
 	}
 
 	try {
@@ -4383,7 +4389,8 @@ function submitProjectWorkflowHumanAction(input: {
 			diagnostics,
 			payload: projectWorkflowHumanActionLifecyclePayload(request),
 		});
-		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", diagnostics, 409, waitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
+		const responseWaitToken = input.state.projectService.getProjectWorkflowWaitToken(request.waitTokenId) ?? waitToken;
+		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", diagnostics, 409, responseWaitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
 	}
 }
 

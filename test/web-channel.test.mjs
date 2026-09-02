@@ -7899,6 +7899,15 @@ test("chat web app resolves Project workflow human wait tokens through preserved
 		assert.equal(expiredResponse.status, 409);
 		const expiredPayload = await expiredResponse.json();
 		assert.equal(expiredPayload.diagnostics[0].code, "WorkflowRuntimeError.waitTokenExpired");
+		assert.equal(expiredPayload.waitToken, undefined);
+		const expiredDb = new DatabaseSync(projectStorePath, { readOnly: true });
+		try {
+			const expiredToken = expiredDb.prepare("SELECT status, resolved_at FROM project_workflow_wait_tokens WHERE id = ?").get("wwt_expired");
+			assert.equal(expiredToken.status, "expired");
+			assert.ok(expiredToken.resolved_at);
+		} finally {
+			expiredDb.close();
+		}
 
 		const lifecycleResponse = await fetch(`${baseURL}/api/chat/workflows/lifecycle-events?projectId=${encodeURIComponent(projectId)}&limit=200`, {
 			headers: { "x-test-user": "user-1" },
