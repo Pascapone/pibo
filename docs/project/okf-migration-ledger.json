@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-02T05:59:53Z",
+  "generated_at": "2026-09-02T09:42:16Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -121,9 +121,9 @@
       "authority": null,
       "status": null,
       "lineage": null,
-      "file_bytes": 7687,
-      "file_sha256": "13b28bf1394310f4d9d8d172e7989b7f5905a0955f5b5be606517d1beb509b1b",
-      "body_sha256": "13b28bf1394310f4d9d8d172e7989b7f5905a0955f5b5be606517d1beb509b1b"
+      "file_bytes": 6292,
+      "file_sha256": "e265b9244824addab9a636902273fb8b77d6dc1c98a9443d3b8d2d4fa5bb22b1",
+      "body_sha256": "e265b9244824addab9a636902273fb8b77d6dc1c98a9443d3b8d2d4fa5bb22b1"
     },
     {
       "path": "context/codex-base-prompt.md",
@@ -8400,9 +8400,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 6291,
-      "file_sha256": "367eab9316f2f134fea8005bc5b0e33a6b47f0c0eae2c4a32edd976c870fbfc1",
-      "body_sha256": "367eab9316f2f134fea8005bc5b0e33a6b47f0c0eae2c4a32edd976c870fbfc1"
+      "file_bytes": 6781,
+      "file_sha256": "38a80fcf6ab4866ea91f3c790735d96e980919d944ca266c60a060fb64e89124",
+      "body_sha256": "38a80fcf6ab4866ea91f3c790735d96e980919d944ca266c60a060fb64e89124"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",

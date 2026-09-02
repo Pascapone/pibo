@@ -2,6 +2,7 @@
 
 ## 2026-09-02
 
+- **Project documentation rules**: Replaced migration-era instructions in `AGENTS.md` with concise OKF v0.2 guidance that delegates detailed workflow rules to `maintain-okf-docs` and the documentation profile.
 - **Integration correction**: Converted the three sidebar browser-tab validation reports to conformant OKF concepts and moved the completed inventory, specification/design, and task ledger into [legacy change history](/legacy/specs/changes/sidebar-browser-tabs/).
 
 ## 2026-09-01
