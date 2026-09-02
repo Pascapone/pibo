@@ -22,5 +22,5 @@ test("VS Code webview provides the query client required by SessionTracePane", (
 });
 
 test("shared session layout fills the VS Code webview height", () => {
-	assert.match(layoutSource, /className="min-h-0 h-full flex flex-col"/);
+	assert.match(layoutSource, /className=\{`min-h-0 h-full flex flex-col \$\{containerResponsive \? "@container" : ""\}`\}/);
 });
