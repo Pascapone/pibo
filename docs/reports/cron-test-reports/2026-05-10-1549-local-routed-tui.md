@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Test-Review: Local Routed TUI"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1549-local-routed-tui.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "a71b6854f51db749e730b8d851b41f095c420156"
+  source_bytes: 10955
+  source_sha256: "b87e0d71f4772dd403bbf896fcafcc1280bba16e96df8ad55524f781d489551e"
+  source_body_sha256: "b87e0d71f4772dd403bbf896fcafcc1280bba16e96df8ad55524f781d489551e"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Test-Review: Local Routed TUI
 
 **Datum:** 2026-05-10 15:49 Europe/Berlin  

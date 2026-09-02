@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Proposal: Extensible Ralph Stop Conditions"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/extensible-ralph-stop-conditions/proposal.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "8bfa0fab4f454da249166beb308d33ce33c6c89c"
+  source_bytes: 3442
+  source_sha256: "6d7d2358138a1f896a7b876fa3f9406102fc1cabfb4a6fbc960ecc8cde5536ce"
+  source_body_sha256: "6d7d2358138a1f896a7b876fa3f9406102fc1cabfb4a6fbc960ecc8cde5536ce"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Proposal: Extensible Ralph Stop Conditions
 
 ## Why

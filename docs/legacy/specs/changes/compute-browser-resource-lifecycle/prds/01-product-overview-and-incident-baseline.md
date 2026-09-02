@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Compute Browser Resource Lifecycle — Product Overview and Incident Baseline"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/compute-browser-resource-lifecycle/prds/01-product-overview-and-incident-baseline.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "03c544c3b08fa3fc2f192f5691a10a394be19052"
+  source_bytes: 6682
+  source_sha256: "fcc21b9904097e393d0ff095bd5d948a106de5edf775442cc63c8ca29abfa89f"
+  source_body_sha256: "fcc21b9904097e393d0ff095bd5d948a106de5edf775442cc63c8ca29abfa89f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Compute Browser Resource Lifecycle — Product Overview and Incident Baseline
 
 **Status:** Draft  

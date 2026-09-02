@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Pibo Progress"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/progress.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "39e376a18d5c8c7d4d166038017acec72460acd6"
+  source_bytes: 18419
+  source_sha256: "ca917b0340b0a0d947880a056e9d25b80c50de1b3fcb7e8029c10f7183c83649"
+  source_body_sha256: "ca917b0340b0a0d947880a056e9d25b80c50de1b3fcb7e8029c10f7183c83649"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Pibo Progress
 
 Pibo is a minimal TypeScript wrapper around Pi Coding Agent. This file is a short project status note. The architectural snapshot lives in `docs/architecture.md`; local routed TUI usage lives in `docs/local-routed-tui.md`; MCP usage lives in `docs/mcp.md`; curated CLI tool usage lives in `docs/tools.md`.

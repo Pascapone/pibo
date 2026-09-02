@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Report: US-002 Owner Scope Search Gate"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/final-owner-scope-search-gate-us-002.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d5248b63e04d036d35dcec71bd2c62bd9aeb5dce"
+  source_bytes: 2420
+  source_sha256: "97893c71458efe7cdd2c2ecc6a82562ee434d2763c8988b08a68af1b3b9c965d"
+  source_body_sha256: "97893c71458efe7cdd2c2ecc6a82562ee434d2763c8988b08a68af1b3b9c965d"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Report: US-002 Owner Scope Search Gate
 
 **Created:** 2026-06-01  

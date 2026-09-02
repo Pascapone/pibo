@@ -1,0 +1,40 @@
+---
+type: "Historical Record"
+title: "Spec: Preserve optimistic sends across session switches"
+description: "Historical copy of a completed Pibo change-packet document."
+tags: ["preserve-session-overlays", "change-packet", "history"]
+status: "deprecated"
+authority: "historical"
+generated:
+  by: "process:pibo-okf-b02-completed-history"
+  at: "2026-08-30T18:25:11Z"
+---
+# Spec: Preserve optimistic sends across session switches
+
+**Status:** Done
+**Created:** 2026-08-07
+**Source:** Pibo2 authenticated steering/session-switch reproduction
+**Related:** `docs/reports/preserve-session-overlays-validation-2026-08-07.md`
+
+## Why
+
+During a running turn, choosing Steer and immediately switching to another session clears the single live trace overlay. Returning to the original session temporarily hides the accepted optimistic message and active footer until trace and signal recovery complete. The delivery dialog also remains visible until post-send refetches finish.
+
+## Goal
+
+Keep each session's live overlay across navigation and close delivery choice UI immediately after Queue or Steer is selected.
+
+## Requirements
+
+1. Every live-overlay mutation MUST update a session-keyed cache so switching away cannot capture a stale pre-send overlay.
+2. Switching back MUST select the cached base trace and overlay synchronously during render, before network refetch completion or effect-driven state restoration.
+3. Confirmed events MUST still be trimmed from cached overlays when the bounded base trace contains exact confirmation evidence; a newer tail cursor alone MUST NOT discard an event omitted from the current page.
+4. Compact Terminal session changes MUST reset sticky-scroll state without remounting the virtual list, so cached rows can update in the return render.
+5. Queue or Steer selection MUST close the delivery dialog before awaiting network/refetch work.
+6. Send failure MUST remove the optimistic event from both visible and off-screen cached overlays, restore composer text, and show the error.
+
+## Acceptance Criteria
+
+- Unit tests prove overlay cache restore, bounded-page preservation, and exact-confirmation reconciliation.
+- Source tests prove delivery uses a captured plan and closes before awaiting.
+- A real Pibo2 steer-switch-return watch keeps the optimistic message and Terminal footer visible from the first return sample and keeps the dialog closed.

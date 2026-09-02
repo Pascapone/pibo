@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Performance Follow-ups"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/chat-web-performance-follow-ups.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "914d63faee6b54987ceeb2d82578093a7293bed7"
+  source_bytes: 4154
+  source_sha256: "f38871533f14988ae1a61879e94b1660b9ad8e01bc7e821e2cff51677f627a03"
+  source_body_sha256: "f38871533f14988ae1a61879e94b1660b9ad8e01bc7e821e2cff51677f627a03"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Web Performance Follow-ups
 
 This document preserves performance improvements that were identified but not implemented in the May 7, 2026 optimization patch.

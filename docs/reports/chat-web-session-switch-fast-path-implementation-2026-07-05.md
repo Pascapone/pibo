@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Chat Web Session Switch Fast Path Implementation Report"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/chat-web-session-switch-fast-path-implementation-2026-07-05.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "518458bc7d7724ff48d0c1b5c2158459f8996463"
+  source_bytes: 3653
+  source_sha256: "1229981c39cba25af1eabf25e1d012353411136efa818d84d5ca7377cd8f6249"
+  source_body_sha256: "1229981c39cba25af1eabf25e1d012353411136efa818d84d5ca7377cd8f6249"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Chat Web Session Switch Fast Path Implementation Report
 
 Date: 2026-07-05

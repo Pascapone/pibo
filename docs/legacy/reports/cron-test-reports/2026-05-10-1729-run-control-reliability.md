@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Test-Review: Run-Control und Reliability-Grenze"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/cron-test-reports/2026-05-10-1729-run-control-reliability.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "d504902929d329c8093d427b41c464b378619bd6"
+  source_bytes: 10839
+  source_sha256: "86e8c765170ec63ecaebf26a866e311b1f95c60a11ea10ed546f0171f2649dfb"
+  source_body_sha256: "86e8c765170ec63ecaebf26a866e311b1f95c60a11ea10ed546f0171f2649dfb"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Test-Review: Run-Control und Reliability-Grenze
 
 Datum: 2026-05-10 17:29 Europe/Berlin

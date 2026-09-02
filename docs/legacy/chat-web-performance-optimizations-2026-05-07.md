@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Performance Optimizations — 2026-05-07"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/chat-web-performance-optimizations-2026-05-07.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "74f15117efcaab7b4fcfa1d95989ab9b52355e88"
+  source_bytes: 2489
+  source_sha256: "047bcca0fe448463370ab5e7ac9b0b95f0bcfcd9caa3bb8818bc5f28b9e2b9ee"
+  source_body_sha256: "047bcca0fe448463370ab5e7ac9b0b95f0bcfcd9caa3bb8818bc5f28b9e2b9ee"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Web Performance Optimizations — 2026-05-07
 
 This note documents the low-risk performance work completed on May 7, 2026.

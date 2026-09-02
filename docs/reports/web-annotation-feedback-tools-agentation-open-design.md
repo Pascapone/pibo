@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Web Annotation Feedback Tools: Agentation + Open Design"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/web-annotation-feedback-tools-agentation-open-design.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1cec701ca48edc56c486814967b90c2629972275"
+  source_bytes: 19651
+  source_sha256: "86bca989e9b1f502050e2489649113979ccd8a18ef2dd60a84653c26e7eff64d"
+  source_body_sha256: "86bca989e9b1f502050e2489649113979ccd8a18ef2dd60a84653c26e7eff64d"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Web Annotation Feedback Tools: Agentation + Open Design
 
 Datum: 2026-05-16

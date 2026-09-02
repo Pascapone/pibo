@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "US-017 Current Docs Owner/Principal Review"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/us-017-current-docs-owner-principal-review.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "36ebb7a50bc5b83a9c0f1b7ae74c3ebc094966dc"
+  source_bytes: 3309
+  source_sha256: "394da8ba629da1f1c3d28bc94a49842fd0c00ead0706d234989200475ae79502"
+  source_body_sha256: "394da8ba629da1f1c3d28bc94a49842fd0c00ead0706d234989200475ae79502"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # US-017 Current Docs Owner/Principal Review
 
 Date: 2026-05-30

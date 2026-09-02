@@ -1,0 +1,37 @@
+{
+  "url": "http://127.0.0.1:4788/apps/chat/projects/prj_default/sessions/ps_47adbb86-0348-4d67-a861-54617873e8cd?view=terminal",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "area": "sessions",
+  "desktopSidebar": {
+    "x": 0,
+    "y": 56,
+    "width": 300,
+    "height": 844
+  },
+  "desktopCenter": {
+    "x": 300,
+    "y": 56,
+    "width": 596,
+    "height": 844
+  },
+  "desktopTabs": {
+    "x": 896,
+    "y": 56,
+    "width": 544,
+    "height": 844
+  },
+  "mobileRouteShell": null,
+  "activeTab": "Project · prj_default",
+  "tabOrder": [
+    "Preview",
+    "Project · prj_default",
+    "VS Code"
+  ],
+  "activePanelText": "projectsProject ManagerProject Managerdefault project management workspaceProjectsNo projectsProject SessionsSessions run in the project workspaceUntitled SessionUntitled SessionProjectProject Manager·ps_47adbb86-0348-4d67-a861-54617873e8cdTools: DefaultTools: HideTools: SlimTools: IntentTerminalWorkflowInfobasepi · boundbaseNo visible trace rows yet.basecodex-nativeorp",
+  "activeElement": "Pibo Chatdev@pibo.localSessionsShared ChatShared ChatRoomsNo roomsSessionsbasecodex-nativeorpUntitled SessionUntitled SessionUntitled SessionRoomShared Chat·ps_7d7934ac-e0c3-4476-978a-2f3265938e97Tools: DefaultTools: HideTools: SlimTools: IntentTerminalWorkflowbasepi · boundbaseNo visible trace rows yet.basecodex-nativeorpPreviewProject · prj_defaultVS CodeLive previews are not configured on this Pibo instance.projectsProject ManagerProject Managerdefault project management workspaceProjectsNo projectsProject SessionsSessions run in the project workspaceUntitled SessionUntitled SessionProjectProject Manager·ps_47adbb86-0348-4d67-a861-54617873e8cdTools: DefaultTools: HideTools: SlimTools: IntentTerminalWorkflowInfobasepi · boundbaseNo visible trace rows yet.basecodex-nativeorp VS Code Web unavailableConfigure PIBO_VSCODE_WEB_URL on the gateway to enable the embedded IDE.",
+  "loadingProjects": false,
+  "failedResources": []
+}

@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Machine-key Web authentication validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/machine-key-web-auth-validation-2026-08-07.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b869172908429f97f0afef1cc66a4ce4e2bbd0b4"
+  source_bytes: 6297
+  source_sha256: "2ea7c15672767f7fceec92b48392eba4c4a59a1a2011c4c4df53b3016d1130c0"
+  source_body_sha256: "2ea7c15672767f7fceec92b48392eba4c4a59a1a2011c4c4df53b3016d1130c0"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:machine-key-web-auth-validation-2026-08-07"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Machine-key Web authentication validation
 
 **Date:** 2026-08-07  

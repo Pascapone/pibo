@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Interactive Collaboration Analysis"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/interactive-collaboration-analysis-2026-05-02.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "000706e8ee99729d5354f4be44f4a35eda00ef4c"
+  source_bytes: 12039
+  source_sha256: "c943b0d341cfa8f008e2361b326c8e8584c2f73204cd67257ff261a5ffea18b2"
+  source_body_sha256: "c943b0d341cfa8f008e2361b326c8e8584c2f73204cd67257ff261a5ffea18b2"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Interactive Collaboration Analysis
 
 Date: 2026-05-02

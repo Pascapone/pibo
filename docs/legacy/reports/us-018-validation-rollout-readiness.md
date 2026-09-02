@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "US-018 Validation and Rollout Readiness Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/us-018-validation-rollout-readiness.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2d622a488c16a20d7986cd656228f89683dae15a"
+  source_bytes: 7737
+  source_sha256: "f84760671235f58d8049cddbf79ab9ca52e00ddfad2fed26f3237634ebe9f9b3"
+  source_body_sha256: "f84760671235f58d8049cddbf79ab9ca52e00ddfad2fed26f3237634ebe9f9b3"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # US-018 Validation and Rollout Readiness Report
 
 Date: 2026-05-30

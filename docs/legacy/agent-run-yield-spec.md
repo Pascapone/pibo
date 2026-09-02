@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Agent Run Yield Spec"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/agent-run-yield-spec.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "24fc1b8da2a88c85336961d22c30251639cacb4e"
+  source_bytes: 11773
+  source_sha256: "f622283f2b1ace80a79822f226a0bea71042beda49b28eeb5ae65a92e207b943"
+  source_body_sha256: "f622283f2b1ace80a79822f226a0bea71042beda49b28eeb5ae65a92e207b943"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Agent Run Yield Spec
 
 This spec turns the research note in `docs/agent-run-yield-research.md` into the implementation direction for Pibo. V1 was scoped to subagent runs. V2 generalizes yielded runs so any registered yieldable tool can run through the same run-control lifecycle.

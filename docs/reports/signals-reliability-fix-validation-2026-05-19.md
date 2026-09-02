@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Signals Reliability Fix Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/signals-reliability-fix-validation-2026-05-19.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f910119bc8b927103fd6ce9a35985998e2fcdb43"
+  source_bytes: 3941
+  source_sha256: "0e673e26b4b263623d82bfdde23e2ec9788f1cf0cb87a3d667bfc481ac5ef352"
+  source_body_sha256: "0e673e26b4b263623d82bfdde23e2ec9788f1cf0cb87a3d667bfc481ac5ef352"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:signals-reliability-fix-validation-2026-05-19"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Signals Reliability Fix Validation
 
 **Date:** 2026-05-19

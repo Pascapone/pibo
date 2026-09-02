@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Test-Review: Gateway-Channel-Lifecycle und Channel Runtime Context"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1626-channel-runtime.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "124acbed30f808ad8905471b18ba38db8852723c"
+  source_bytes: 7660
+  source_sha256: "6216472b053b8e5ee182cb63d43f9ca62a2c4af3c2464f8982cee6774f165eb4"
+  source_body_sha256: "6216472b053b8e5ee182cb63d43f9ca62a2c4af3c2464f8982cee6774f165eb4"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Test-Review: Gateway-Channel-Lifecycle und Channel Runtime Context
 
 **Zeitpunkt:** 2026-05-10 16:26 Europe/Berlin  

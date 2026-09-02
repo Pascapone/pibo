@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Code Quality Refactoring Ralph Insights — 2026-05-27"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/code-quality-refactor-ralph-insights-2026-05-27.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "6f3304a76c19119697fd8b152f5a123b1753e785"
+  source_bytes: 88710
+  source_sha256: "a9341ddfb78d119cec9e5f90dc7f6e1b57043b915ddcfaec405d89428e3ac2fd"
+  source_body_sha256: "a9341ddfb78d119cec9e5f90dc7f6e1b57043b915ddcfaec405d89428e3ac2fd"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Code Quality Refactoring Ralph Insights — 2026-05-27
 
 This report preserves durable findings from the Ralph code-quality refactoring loop. It replaces the root-level `RESPONSIBILITY_REFACTOR_INSIGHTS.md` tracking file so the repository keeps useful architectural context under `docs/reports/`.

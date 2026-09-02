@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Web Annotations Remote Architecture Assessment"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/web-annotations-remote-architecture-assessment.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "3ea1bfb8a148a7ed4523a4aae299e1a5ff5925bf"
+  source_bytes: 17901
+  source_sha256: "541c7d6c6bf66620372f0518bfc2a3567ebc8823ce83e1807f273187f398c162"
+  source_body_sha256: "541c7d6c6bf66620372f0518bfc2a3567ebc8823ce83e1807f273187f398c162"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Web Annotations Remote Architecture Assessment
 
 **Date:** 2026-05-17

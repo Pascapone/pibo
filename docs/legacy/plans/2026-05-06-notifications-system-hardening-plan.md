@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementationsplan: Chat Notifications und Session-Signale härten"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/2026-05-06-notifications-system-hardening-plan.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "a3119e63f0c09e9b0339b3d538268127cc3ae60e"
+  source_bytes: 8221
+  source_sha256: "2cf54aba764843025ac8f09af6ddcb159db6084bf724af4739344b2bab7f5c18"
+  source_body_sha256: "2cf54aba764843025ac8f09af6ddcb159db6084bf724af4739344b2bab7f5c18"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implementationsplan: Chat Notifications und Session-Signale härten
 
 Datum: 2026-05-06

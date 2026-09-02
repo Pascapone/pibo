@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 11: JSON, Markdown, and Syntax Rendering Parity"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/11-json-markdown-and-syntax-rendering-parity.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1b6d2bb82a0bd4f9be051911679a4cc295c680c5"
+  source_bytes: 3521
+  source_sha256: "b3dcd2e2d7485c2ab4085fec7288c24568cfb3491cb1a8d0451924f120666fb0"
+  source_body_sha256: "b3dcd2e2d7485c2ab4085fec7288c24568cfb3491cb1a8d0451924f120666fb0"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 11: JSON, Markdown, and Syntax Rendering Parity
 
 **Status:** Draft  

@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Compute Browser Resource Operating Model"
+description: "Explains the current ownership and lifecycle model for compute, browser, worktree, and job resources."
+tags: ["browser", "compute", "resources"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/compute-browser-resource-operating-model.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2e062863006a2010c75598fc8b362f4b3dd940cb"
+  source_bytes: 4550
+  source_sha256: "4731d1e2432bfb30266f20e76b82e6ce052bee31c24f5b5a75f1212ccf00dbdf"
+  source_body_sha256: "4731d1e2432bfb30266f20e76b82e6ce052bee31c24f5b5a75f1212ccf00dbdf"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Compute Browser Resource Operating Model
 
 **Status:** Draft

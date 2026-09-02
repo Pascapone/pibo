@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow UI Authoring V2 — Validation, Security, Testing, and Rollout"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/08-validation-security-testing-rollout.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "c2abc20df0589ea3286c085fc8d5d716d8100e18"
+  source_bytes: 12182
+  source_sha256: "18a31699d4dc1579f2befc8599d42ac1a1886ade1e341cf395ead803a59c17ea"
+  source_body_sha256: "18a31699d4dc1579f2befc8599d42ac1a1886ade1e341cf395ead803a59c17ea"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow UI Authoring V2 — Validation, Security, Testing, and Rollout
 
 **Status:** Draft  

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Remaining Cache and Pagination Implementation Plan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-09-chat-web-remaining-cache-pagination-plan.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "33b64c9156bb68cbde1edd81efc60640e8e50fc1"
+  source_bytes: 10512
+  source_sha256: "2c3d3ca782a1bf4e7938a679fefac4b40559a7211f8edb5b27ddcd0457d56f18"
+  source_body_sha256: "2c3d3ca782a1bf4e7938a679fefac4b40559a7211f8edb5b27ddcd0457d56f18"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Web Remaining Cache and Pagination Implementation Plan
 
 Date: 2026-05-09

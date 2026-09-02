@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Runtime Portability v4.1 Validation Report"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/runtime-portability-v4-1-validation-2026-08-20.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "bb017959922dc9e2919eee3ebb2a9ac556d8d401"
+  source_bytes: 14053
+  source_sha256: "d6ec903b4288d35ff3c4efda0cd76dd10d74c62521602641f5d00c96a557b43e"
+  source_body_sha256: "d6ec903b4288d35ff3c4efda0cd76dd10d74c62521602641f5d00c96a557b43e"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:runtime-portability-v4-1-validation-2026-08-20"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Runtime Portability v4.1 Validation Report
 
 **Date:** 2026-08-20

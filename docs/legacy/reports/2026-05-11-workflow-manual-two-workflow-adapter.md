@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Manual workflow validation: two-workflow composition with explicit adapter"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-11-workflow-manual-two-workflow-adapter.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7a9b8444ef18f160cd6b141f3a1cef6b3f2ae464"
+  source_bytes: 3015
+  source_sha256: "abd1cfecb9f102905a3d7cc34a2d8af9d33f366c57c33e870a9922650946b8c8"
+  source_body_sha256: "abd1cfecb9f102905a3d7cc34a2d8af9d33f366c57c33e870a9922650946b8c8"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Manual workflow validation: two-workflow composition with explicit adapter
 
 **Date:** 2026-05-11 04:08 UTC  

@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Test-Review: Better-Auth-Konfiguration und Web-Gateway-Auth-Boundary"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1648-better-auth-config.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1297b53ec6503e32b846804e16cd54ff371bfbe0"
+  source_bytes: 7753
+  source_sha256: "83d644d3358617193cd68e2b4eec7c10153cfb8e79355adb0e2dc1d05563e3bc"
+  source_body_sha256: "83d644d3358617193cd68e2b4eec7c10153cfb8e79355adb0e2dc1d05563e3bc"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Test-Review: Better-Auth-Konfiguration und Web-Gateway-Auth-Boundary
 
 Datum: 2026-05-10 16:48 Europe/Berlin

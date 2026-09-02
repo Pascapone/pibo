@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Runtime-Aware Agent Designer Validation — 2026-08-15"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/runtime-aware-agent-designer-validation-2026-08-15.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f404ae231a182a0d7c78a5aa0d9210a8164b6c83"
+  source_bytes: 8472
+  source_sha256: "ab8bd5ec3cdb0c7d3058392cc48e9d7dfaf9f39fa840683666f1d1a03fba0643"
+  source_body_sha256: "ab8bd5ec3cdb0c7d3058392cc48e9d7dfaf9f39fa840683666f1d1a03fba0643"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:runtime-aware-agent-designer-validation-2026-08-15"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Runtime-Aware Agent Designer Validation — 2026-08-15
 
 ## Scope

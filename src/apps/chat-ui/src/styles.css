@@ -77,6 +77,19 @@ pre {
 	50% { opacity: 0.45; box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); transform: scale(0.9); }
 }
 
+@keyframes desktop-tab-drop-gap-enter {
+	from { width: 0; opacity: 0; }
+	to { width: 0.5rem; opacity: 1; }
+}
+
+.desktop-tab-drop-gap {
+	animation: desktop-tab-drop-gap-enter 120ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.desktop-tab-drop-gap { animation: none; }
+}
+
 .compact-terminal-working-scramble {
 	display: inline-flex;
 	width: 10ch;

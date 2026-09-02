@@ -82,6 +82,17 @@ async function runSessionViewToggleAccessibilityScenario() {
 		const fullscreenAvailable = render({ terminalFullscreenAvailable: true, onEnterTerminalFullscreen() {} });
 		assert.match(buttonOpeningTag(fullscreenAvailable, "Enter Terminal fullscreen"), /title="Enter Terminal fullscreen"/);
 
+		const desktopTerminal = render({ desktopTerminalOnly: true, terminalFullscreenAvailable: true, onEnterTerminalFullscreen() {} });
+		assert.doesNotMatch(desktopTerminal, /aria-label="Session views"/);
+		assert.doesNotMatch(desktopTerminal, /Switch to Terminal view|Switch to Workflow view/);
+		assert.doesNotMatch(desktopTerminal, /aria-label="Raw Events"/);
+		assert.doesNotMatch(desktopTerminal, /Web annotations/);
+		assert.match(desktopTerminal, /aria-label="Tool display mode"/);
+		assert.match(desktopTerminal, /aria-label="Thinking"/);
+		assert.match(desktopTerminal, /aria-label="Enter Terminal fullscreen"/);
+		assert.match(normal, /aria-label="Session views"/);
+		assert.match(normal, /aria-label="Raw Events"/);
+
 		const routed = render({ allowedSessionViewIds: ["terminal"] });
 		const disabledWorkflow = buttonOpeningTag(routed, "Workflow view unavailable for this Project session kind");
 		assert.match(disabledWorkflow, /disabled=""/);

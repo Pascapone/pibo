@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 06: Pickers, Overlays, and Keyboard Flows"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/06-pickers-overlays-and-keyboard-flows.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2bca028f399031c9d588fc62e5a0355d8ae98b70"
+  source_bytes: 6333
+  source_sha256: "b5061781b8065a338d963d4f4e96d944350d5c7001bc71730273e56b0c53dfb8"
+  source_body_sha256: "b5061781b8065a338d963d4f4e96d944350d5c7001bc71730273e56b0c53dfb8"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 06: Pickers, Overlays, and Keyboard Flows
 
 **Status:** Draft  

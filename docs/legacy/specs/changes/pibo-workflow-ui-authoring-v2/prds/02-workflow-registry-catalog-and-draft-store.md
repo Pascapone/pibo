@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow UI Authoring V2 — Workflow Registry, Catalog, and Draft Store"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/02-workflow-registry-catalog-and-draft-store.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "acef41382aa8d6b8f2e9c81d29c604fceab6727b"
+  source_bytes: 12161
+  source_sha256: "7f14285f1015e9f917c0aaf14acf9dbed01c0a74dec06dcae6adb90eacccd238"
+  source_body_sha256: "7f14285f1015e9f917c0aaf14acf9dbed01c0a74dec06dcae6adb90eacccd238"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow UI Authoring V2 — Workflow Registry, Catalog, and Draft Store
 
 **Status:** Draft  

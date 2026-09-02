@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "PRs #523–#530 independent merge-readiness review"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/prs-523-530-merge-readiness-review-2026-08-21.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "a992b5cdcefb39446615c9c9ee6ab41406c57b3c"
+  source_bytes: 12831
+  source_sha256: "9fede68f5ca76ac1142b1b7d5d2f15cafcf73c272427e9baed62c5ffec361497"
+  source_body_sha256: "9fede68f5ca76ac1142b1b7d5d2f15cafcf73c272427e9baed62c5ffec361497"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:prs-523-530-merge-readiness-review-2026-08-21"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # PRs #523–#530 independent merge-readiness review
 
 Date: August 21, 2026

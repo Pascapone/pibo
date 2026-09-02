@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Agent Runtime Operations"
+description: "Guides operators through current agent-runtime inspection, authentication, controls, recovery, and failure triage."
+tags: ["agent-runtime", "operations", "runbook"]
+status: "draft"
+authority: "directive"
+migration_lineage:
+  source_path: "docs/project/agent-runtime-operations.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f36fc5cb57586c0cc5c552a4e6eeaa75525b3a85"
+  source_bytes: 12014
+  source_sha256: "2f28143b5f39e8053f7f9ffa832248f17e935d0e72363d74bf11a9285366c0b5"
+  source_body_sha256: "2f28143b5f39e8053f7f9ffa832248f17e935d0e72363d74bf11a9285366c0b5"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Agent Runtime Operations
 
 **Updated:** 2026-08-25

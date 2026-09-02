@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow UI Authoring V2 — Workflow Builder and IR Editing"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/04-workflow-builder-and-ir-editing.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "15480ebf95378642c92f9f0cc6f6b2db0203dd1d"
+  source_bytes: 8331
+  source_sha256: "a6aba129d3a730ac072f1bd49e2a35a212e48a670e16d38779cdfa774e1d5d68"
+  source_body_sha256: "a6aba129d3a730ac072f1bd49e2a35a212e48a670e16d38779cdfa774e1d5d68"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow UI Authoring V2 — Workflow Builder and IR Editing
 
 **Status:** Draft  

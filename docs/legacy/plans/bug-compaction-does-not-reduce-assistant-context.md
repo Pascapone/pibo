@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Bug: Compaction reduziert Agent-Kontext, aber nicht den Assistant-Kontext"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/bug-compaction-does-not-reduce-assistant-context.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7eb8b7d52da92a47ed2060fef605578a08cb87a2"
+  source_bytes: 9761
+  source_sha256: "0fdcd61fd723748fe11544119d6deb3fdd241167e4af0075740ca9186710d8fc"
+  source_body_sha256: "0fdcd61fd723748fe11544119d6deb3fdd241167e4af0075740ca9186710d8fc"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Bug: Compaction reduziert Agent-Kontext, aber nicht den Assistant-Kontext
 
 ## Status

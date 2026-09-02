@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Observability Telemetry Rollout Verification"
+description: "Summarizes the required verification and safety checks for observability telemetry rollout."
+tags: ["observability", "telemetry", "verification"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/observability-telemetry-rollout-verification.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1383d52c6a28064b5da671fb8072319e02d88317"
+  source_bytes: 4140
+  source_sha256: "8ce41971ef8ef8074c98e9809a1c384519460991355f6443103e90bab340d6dd"
+  source_body_sha256: "8ce41971ef8ef8074c98e9809a1c384519460991355f6443103e90bab340d6dd"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Observability Telemetry Rollout Verification
 
 Use this checklist before enabling observability telemetry outside local development. It covers the change set in `docs/specs/changes/pibo-observability-debug-telemetry/` and the capability specs `docs/specs/capabilities/runtime-observability-telemetry.md` and `docs/specs/capabilities/debug-cli.md`.

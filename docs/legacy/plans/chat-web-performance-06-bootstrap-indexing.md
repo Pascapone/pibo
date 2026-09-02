@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Performance 06: Wiederholtes Bootstrap Indexing vermeiden"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/chat-web-performance-06-bootstrap-indexing.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9ff3d2143be06c443925cbc4e4fc0a06a08eaf1d"
+  source_bytes: 5382
+  source_sha256: "f40066a698076506b16d0b7de1dac4d903efdc6f05dabe4e3a1b5c4665ffeebd"
+  source_body_sha256: "f40066a698076506b16d0b7de1dac4d903efdc6f05dabe4e3a1b5c4665ffeebd"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Web Performance 06: Wiederholtes Bootstrap Indexing vermeiden
 
 ## Zweck

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Performance 05: Frontend Trace Transforms optimieren"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/chat-web-performance-05-frontend-trace-transforms.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "e8b139ca130eb2e3bc806ba43895482917e159c6"
+  source_bytes: 6305
+  source_sha256: "c6404554dbf6a366a823fd99efdcbfb7b4c6cdb1b3665dc45c408dbe860158cb"
+  source_body_sha256: "c6404554dbf6a366a823fd99efdcbfb7b4c6cdb1b3665dc45c408dbe860158cb"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 > Status: Still relevant for frontend trace performance. Data-system assumptions that mention legacy stores are superseded by the V2-only cutover.
 
 # Chat Web Performance 05: Frontend Trace Transforms optimieren

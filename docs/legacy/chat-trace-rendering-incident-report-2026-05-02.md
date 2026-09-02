@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Trace Rendering Incident Report: Thinking Blocks And Tool Visibility"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/chat-trace-rendering-incident-report-2026-05-02.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b1c268a110fb81bf7716db559b2d9795acced26f"
+  source_bytes: 19617
+  source_sha256: "0f5bc0a2663093d8b671aaae5a4464ab4681f4311ee532d60a99bddbf89255d9"
+  source_body_sha256: "0f5bc0a2663093d8b671aaae5a4464ab4681f4311ee532d60a99bddbf89255d9"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Trace Rendering Incident Report: Thinking Blocks And Tool Visibility
 
 Date: 2026-05-02

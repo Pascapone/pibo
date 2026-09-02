@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Pibo Workflow UI Authoring V2 — Composition, Nodes, and Capability Pickers"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/prds/05-composition-node-and-capability-pickers.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "e92cc27c25c1ef14f9250cf2d86c7df481a2be96"
+  source_bytes: 6427
+  source_sha256: "d8b3e9ec5ba34d5ea95ccb57cd26f969534db73eb2d5f19b1ed4c15ca7a580f2"
+  source_body_sha256: "d8b3e9ec5ba34d5ea95ccb57cd26f969534db73eb2d5f19b1ed4c15ca7a580f2"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Pibo Workflow UI Authoring V2 — Composition, Nodes, and Capability Pickers
 
 **Status:** Draft  

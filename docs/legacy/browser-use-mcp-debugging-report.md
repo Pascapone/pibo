@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Browser Use and MCP Debugging Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/browser-use-mcp-debugging-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "154f7b5e24d3f330084e253e7a4c53d6e119bdf5"
+  source_bytes: 9982
+  source_sha256: "9b931bac96f90c68abbef8580898edfbb4347744f2f622b6059d7fd242f8fde5"
+  source_body_sha256: "9b931bac96f90c68abbef8580898edfbb4347744f2f622b6059d7fd242f8fde5"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Browser Use and MCP Debugging Report
 
 ## Context

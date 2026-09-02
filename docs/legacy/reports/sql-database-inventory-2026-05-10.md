@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "SQL Database Inventory"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/sql-database-inventory-2026-05-10.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "004bec69773820bec3ce661b3fd02b32a4a9f2d2"
+  source_bytes: 48022
+  source_sha256: "adb8a1baded51fcdfe8695d5b6785fd27b073028b9ded37378f7f4f5ec3351b3"
+  source_body_sha256: "adb8a1baded51fcdfe8695d5b6785fd27b073028b9ded37378f7f4f5ec3351b3"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # SQL Database Inventory
 
 Generated: 2026-05-10

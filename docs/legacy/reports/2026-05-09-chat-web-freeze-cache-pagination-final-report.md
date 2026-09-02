@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Freeze, Cache, and Pagination Final Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-09-chat-web-freeze-cache-pagination-final-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "24b1897423ffc2089ea67ee4615f87ce77b60a36"
+  source_bytes: 8088
+  source_sha256: "0b217a47bb60b94532217545b2493fe6fccb8c8c3cc0008a781b109fef35909b"
+  source_body_sha256: "0b217a47bb60b94532217545b2493fe6fccb8c8c3cc0008a781b109fef35909b"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Web Freeze, Cache, and Pagination Final Report
 
 Date: 2026-05-09

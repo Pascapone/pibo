@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "US-027 Migrated Sandbox Docker Validation"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/final-owner-scope-migrated-sandbox-validation-us-027.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9330e099b8604332a12f5ed406f556de406495fa"
+  source_bytes: 5333
+  source_sha256: "3bcc826ef8cd5682b4de51c2927389bd9136206c5a4303a071a78d7e411d12c9"
+  source_body_sha256: "3bcc826ef8cd5682b4de51c2927389bd9136206c5a4303a071a78d7e411d12c9"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # US-027 Migrated Sandbox Docker Validation
 
 **Date:** 2026-06-01  

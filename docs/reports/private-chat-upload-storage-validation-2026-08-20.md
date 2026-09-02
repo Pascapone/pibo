@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Private Chat Upload Storage Validation — 2026-08-20"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/private-chat-upload-storage-validation-2026-08-20.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "55dd28385a5c846b1a3b8611eb461cb9a42d93d8"
+  source_bytes: 4168
+  source_sha256: "d56ee8e9bc9554485b314bad94f8677eea58a029f4a211cfcfd6179d33a13947"
+  source_body_sha256: "d56ee8e9bc9554485b314bad94f8677eea58a029f4a211cfcfd6179d33a13947"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:private-chat-upload-storage-validation-2026-08-20"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Private Chat Upload Storage Validation — 2026-08-20
 
 **Status:** PASS for focused, canonical, packed-install, and authenticated Pibo2 validation.

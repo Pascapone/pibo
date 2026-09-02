@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 05: Status and Runtime Cards"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/05-status-and-runtime-cards.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "41cd66985d13a9bc06f0807ac811b71487a1b297"
+  source_bytes: 6412
+  source_sha256: "e0422e6302abf515c84477fb13f3c649ba7bf6981ae8148d2963c0cb25f84386"
+  source_body_sha256: "e0422e6302abf515c84477fb13f3c649ba7bf6981ae8148d2963c0cb25f84386"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 05: Status and Runtime Cards
 
 **Status:** Draft  

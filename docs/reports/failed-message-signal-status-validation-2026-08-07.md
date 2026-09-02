@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Failed message signal reconciliation validation — 2026-08-07"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/failed-message-signal-status-validation-2026-08-07.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "db0b066c83e12a4a6be943ce3bea332b8cc522a4"
+  source_bytes: 6019
+  source_sha256: "73fafc7a3dd7f051dc98369b232ea065d728107da33920847fd2a16f2bccdf3c"
+  source_body_sha256: "73fafc7a3dd7f051dc98369b232ea065d728107da33920847fd2a16f2bccdf3c"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:failed-message-signal-status-validation-2026-08-07"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Failed message signal reconciliation validation — 2026-08-07
 
 ## Verdict

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Statuslampen / Notifications – Analyse-Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/2026-05-05-chat-status-lamp-notification-analysis.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "12e379e7d2dc92200a88c77f6601d2a2314cdac1"
+  source_bytes: 4802
+  source_sha256: "8f3f398f9ed0476394b00389543ae0882f242e0ba710f43962e61d19a3f923f3"
+  source_body_sha256: "8f3f398f9ed0476394b00389543ae0882f242e0ba710f43962e61d19a3f923f3"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Statuslampen / Notifications – Analyse-Report
 
 Datum: 2026-05-05

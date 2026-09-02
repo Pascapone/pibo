@@ -1,15 +1,17 @@
 ---
 name: pibo-spec-writing
-description: Defines how Pibo specs are written, structured, reviewed, and split into proposals, capability specs, phase specs, designs, and tasks. Use this whenever the user asks to create, review, rewrite, compare, or implement a spec; mentions requirements, acceptance criteria, scope, roadmap, proposal, design plan, tasks, OpenSpec, Spec Kit, GSD, or spec-driven development; or asks where project documentation should live.
+description: Defines how Pibo current domain specifications and supporting plans, proposals, technical designs, product requirements, task ledgers, and decisions are written and reviewed. Use this whenever the user asks to create, review, rewrite, compare, or implement a spec; mentions requirements, acceptance criteria, scope, roadmap, proposal, design plan, tasks, OpenSpec, Spec Kit, GSD, or spec-driven development; or asks where project documentation should live.
 ---
 
 # Pibo Spec Writing
 
 Use this skill when creating or reviewing specs for Pibo. A good Pibo spec is behavior-first, scoped, testable, concise, and traceable to implementation work. Keep implementation details out of the spec unless they are externally visible constraints.
 
+Before writing, read `docs/index.md` and `docs/project/documentation-profile.md`. Keep this host-owned `SKILL.md` in its native format; apply OKF metadata only to concepts under `docs/`.
+
 ## Core principles
 
-Write specs so another agent can implement and verify the work without reading the original chat.
+Write current specs so another agent can understand and verify implemented behavior without reading the original chat. Put behavior that is not implemented in a Plan.
 
 1. Start with why the change matters.
 2. Define the observable behavior, not the code shape.
@@ -17,65 +19,73 @@ Write specs so another agent can implement and verify the work without reading t
 4. Make every requirement testable.
 5. Add scenarios or acceptance criteria for each important behavior.
 6. Track assumptions and open questions instead of hiding them.
-7. Link requirements to phases, tasks, or plans when the work is large.
+7. Give every requirement a stable ID and exact source/test traceability at the checked commit.
 8. Use clear prose: active voice, concrete words, short paragraphs, and no puffery.
-9. For user-facing UI, CLI, TUI, gateway, runtime, or agent-routing changes, name the expected verification level instead of assuming unit tests are enough.
+9. For user-facing UI, CLI, TUI, gateway, runtime, or agent-routing behavior, name the concrete source, test, build, browser, and Pibo2 evidence that applies instead of assuming unit tests are enough.
 
 ## Where specs live
 
-Follow the project documentation structure:
+Follow the five-root Pibo OKF profile:
 
 ```text
 docs/
-  project/  Current project docs and canonical documentation
-  specs/    Product, technical, and implementation specifications
-  plans/    Implementation plans and design plans
-  reports/  Investigation, validation, and generated reports
-  legacy/   Old documentation kept for reference
+  project/  Current governance, architecture, decisions, guides, operations, references, and status
+  specs/    Implemented current contracts only
+  plans/    Intended changes, acceptance, risks, and rollback
+  reports/  Investigation, validation, incidents, research, feedback, evidence, and artifacts
+  legacy/   Superseded material, completed packets, closed plans, and handoffs
 ```
 
-Do not create new root-level `plans/`, `reports/`, or `specs/` directories.
+Do not create another top-level directory under `docs/`. Every concept requires profile frontmatter, migration-ledger ownership, generated-index coverage through `npm run docs:indexes:write`, and an explicit `docs/log.md` entry.
 
-Use `docs/specs/` for durable specs. Use `docs/plans/` for implementation plans. Use `docs/reports/` for analyses, validations, and findings.
+Write visible single-line `title`, `description`, and tag values. Do not use bidi controls, format characters, default-ignorable code points, U+2800 BRAILLE PATTERN BLANK, the blank fillers U+115F, U+1160, U+17B4, U+17B5, U+3164, or U+FFA0, or labels composed only of whitespace and combining marks. Normal visible Unicode and normalized accented text are valid.
+
+The complete approved type vocabulary is:
+
+- `project/`: `Documentation Profile`, `Architecture`, `Design System`, `Decision Record`, `Guide`, `Runbook`, `Reference`, `Status`.
+- `specs/`: `Specification`.
+- `plans/`: `Plan`, `Change Proposal`, `Technical Design`, `Product Requirement`, `Task Ledger`.
+- `reports/`: `Evidence Report`, `Validation Report`, `Investigation Report`, `Incident Report`, `Coverage Report`, `Review Record`, `Release Record`, `Research`, `Feedback`, `Reference`, `Status`.
+- `legacy/`: `Historical Record`.
+
+Use the compact templates in `docs/project/references/okf-concept-templates.md`. Requirement IDs need at least two semantic uppercase components before the numeric suffix, for example `PROD-CTX-001`, `WP02-DATA-STORE-001`, or `PIBO-ROUTING-REQ-001`. The `REQ` component is optional; a repository-global `REQ-001` is invalid.
+
+Only a fence-aware ATX heading whose content starts exactly with the case-sensitive marker `Requirement:` is a formal body requirement. Put one raw, unformatted ASCII ID immediately after the marker, then separate its prose title with a colon or whitespace. Every frontmatter requirement ID needs exactly one explicit heading, and every valid explicit heading needs one frontmatter owner. Formatting, links, escapes, trailing punctuation, Unicode lookalikes, invisible or control characters, malformed IDs, and missing tokens are invalid in the ID position. Plain headings such as `RFC-9110 semantics`, `ISO-8601 timestamps`, `HTTP-404 responses`, dates, prose, and unmarked ID-looking text are ordinary headings.
+
+Do not write raw `<!--` or `-->` anywhere outside fenced code in a current Specification, including inline-code or escaped examples. The validator rejects both delimiters and parses requirements from unchanged non-fenced source lines. Use visible prose or fenced examples instead. Use CommonMark fences: a backtick opener's info string cannot contain a backtick, and a closer must use the opener character with at least the opener length. An invalid opener does not protect example content from validation. LF, CRLF, and lone CR are equivalent line endings for scanning.
 
 ## Choose the right spec shape
 
-### Capability spec
+### Current domain specification
 
-Use a capability spec for durable system behavior, especially behavior that should remain true after the current change ships.
+Use one domain-scoped Specification for durable behavior implemented at the checked code baseline. Do not mix target behavior into a current specification.
 
 Good path:
 
 ```text
-docs/specs/capabilities/<capability-name>.md
+docs/specs/<domain>/<spec-name>.md
 ```
 
-Use this for auth behavior, session routing, profile behavior, tool registration, gateway contracts, API behavior, UI behavior, or other long-lived contracts.
+Choose a stable product or technical domain such as authentication, routing, tools, gateway, API, or UI. Do not create a broad `docs/specs/capabilities/` catch-all. Do not create new change packets under `docs/specs/changes/`; that existing tree is migration input whose implemented facts must fold into canonical domain specifications.
 
-### Change spec
+### Change plan
 
-Use a change spec when proposing a feature, fix, or migration.
+Use a Plan when proposing a feature, fix, or migration. Put supporting rationale in a Decision Record under `docs/project/decisions/` when it must outlive the plan.
 
 Good path:
 
 ```text
-docs/specs/changes/<change-name>/
-  proposal.md
-  spec.md
-  design.md       # include when technical choices matter
-  tasks.md        # include when ready to implement
+docs/plans/<change-name>.md
 ```
 
-### Phase spec
+### Phased plan
 
-Use a phase spec for multi-step work that needs a roadmap.
+Use one Plan with phases for multi-step work that needs a roadmap.
 
 Good path:
 
 ```text
-docs/specs/phases/<NN-phase-name>/
-  spec.md
-  context.md      # implementation decisions, references, existing-code notes
+docs/plans/<change-name>.md
 ```
 
 ## Required structure for most Pibo specs
@@ -83,110 +93,54 @@ docs/specs/phases/<NN-phase-name>/
 Use this template unless the task clearly needs a smaller artifact.
 
 ```markdown
-# Spec: [Name]
+---
+type: "Specification"
+title: "<name>"
+description: "<one-sentence implemented contract.>"
+tags: ["<subject>"]
+status: "draft"
+authority: "normative"
+generated: { by: "<actor/version>", at: "<ISO-8601 datetime>" }
+traceability:
+  commit: "<40-character checked commit>"
+  requirements:
+    - id: "PIBO-EXAMPLE-001"
+      status: "implemented"
+      sources: [{ path: "src/example.ts", symbol: "publicSurface" }]
+      tests: [{ path: "test/example.test.mjs", name: "proves the behavior" }]
+      public: ["<command, route, type, table, or plugin id>"]
+      failures: ["<failure or security behavior>"]
+      confidence: "high"
+---
 
-**Status:** Draft | Approved | Implementing | Done
-**Created:** YYYY-MM-DD
-**Requester / Source:** [user, issue, discussion, or change]
-**Related docs:** [links]
-
-## Why
-
-[Problem, opportunity, or user need. One or two concrete paragraphs.]
-
-## Goal
-
-[One precise sentence that says what changes from current state to target state.]
-
-## Background / Current State
-
-[What exists today. What is broken, missing, confusing, slow, unsafe, or expensive.]
-
-## Scope
-
-### In Scope
-
-- [Concrete behavior or deliverable]
-
-### Out of Scope
-
-- [Excluded item] — [reason]
-
-## Requirements
-
-### Requirement: [Name]
-
-The system MUST/SHALL [observable behavior].
-
-#### Current
-
-[Current behavior or absence of behavior.]
-
-#### Target
-
-[Desired behavior.]
-
-#### Acceptance
-
-[Concrete pass/fail check.]
-
-#### Scenario: [Name]
-
-- GIVEN [state]
-- WHEN [action/event]
-- THEN [expected outcome]
-
-## Edge Cases
-
-- [Boundary, failure, permission, concurrency, or empty-state case]
-
-## Constraints
-
-- **Compatibility:** ...
-- **Security / Privacy:** ...
-- **Performance:** ...
-- **Dependencies:** ...
-
-## Success Criteria
-
-- [ ] SC-001: [Measurable or directly observable outcome]
-- [ ] SC-002: [Another pass/fail outcome]
-
-## Assumptions and Open Questions
-
-### Assumptions
-
-- [Reasonable default taken to keep progress moving]
-
-### Open Questions
-
-- [Question that materially affects scope, UX, security, or architecture]
-
-## Traceability
-
-| Requirement | Scenario / Story | Plan / Task | Status |
-|---|---|---|---|
-| REQ-001 | [Scenario] | [Plan or task] | Pending |
+# Scope
+# Current behavior
+# Requirements and invariants
+## Requirement: PIBO-EXAMPLE-001: <Implemented behavior>
+# Interfaces and ownership
+# Failure and security behavior
+# Known limits
+# Verification and traceability
+# Related concepts
 ```
+
+Use `status: stable` only after source and test reconciliation. Add `verified` only after an actual check; authorship or a passing formatter is not verification.
+
+Requirement `confidence` is exactly `high`, `medium`, or `low`. Do not invent numeric levels, extra labels, or synonyms.
 
 ## Minimal spec
 
-For small work, use the shortest form that remains testable:
+For a small implemented contract, keep the required frontmatter and traceability above, then use the shortest body that remains verifiable:
 
 ```markdown
-# Spec: [Name]
-
-## Why
-## Goal
-## Scope
-### In Scope
-### Out of Scope
-## Requirements
-## Acceptance Criteria
-## Assumptions / Open Questions
+# Scope
+# Current behavior
+## Requirement: PIBO-EXAMPLE-001: <Implemented behavior>
+# Failure behavior
+# Verification
 ```
 
-Use the full template when the change touches multiple modules, changes public behavior, affects auth/security/data, or will be implemented across multiple sessions.
+Use a Plan, not a Specification, when the behavior will be implemented later.
 
 ## Requirement rules
 
@@ -195,7 +149,7 @@ Write requirements as behavior contracts.
 Good:
 
 ```markdown
-### Requirement: Dev gateway status is discoverable
+### Requirement: PIBO-GATEWAY-001: Dev gateway status is discoverable
 
 The CLI MUST show whether the dev gateway is running, its PID when known, and the command to inspect logs.
 
@@ -208,7 +162,7 @@ The CLI MUST show whether the dev gateway is running, its PID when known, and th
 Weak:
 
 ```markdown
-### Requirement: Improve gateway status
+### Requirement: PIBO-GATEWAY-001: Improve gateway status
 Make gateway status better and more robust.
 ```
 
@@ -228,6 +182,16 @@ If visual or behavioral parity is required, add acceptance checks that compare t
 
 For user-facing UI, CLI, TUI, gateway, runtime, auth, or agent-routing specs, include at least one realistic validation scenario for the default user path when feasible. Fake data, demo mode, mocks, and render snapshots are useful, but they should not be the only acceptance evidence for behavior users will exercise directly unless the real path is unavailable or explicitly out of scope.
 
+Record concrete verification evidence where it applies:
+
+- source evidence: exact paths, symbols, commands, routes, types, tables, or other public surfaces inspected;
+- test evidence: exact test paths, cases, and commands run;
+- build evidence: the exact build or type-check command and result;
+- browser evidence: the exercised user flow, relevant viewport, and console, network, or DOM checks;
+- Pibo2 evidence: the worker, session, command, or runtime flow and its observable result.
+
+Do not replace these facts with an undefined verification scale. Set requirement `confidence` to exactly one of `high`, `medium`, or `low`, and use it only for confidence in the traced claim, not as a substitute for evidence.
+
 ## Scenario rules
 
 Prefer GIVEN / WHEN / THEN for user-visible behavior and system contracts. Use WHEN / THEN only for simple event-response behavior.
@@ -239,57 +203,36 @@ Cover at least:
 - invalid input or permission failure
 - migration or compatibility path when relevant
 
-## Proposal structure
+## Plan structure
 
-Use `proposal.md` to explain intent before deep design.
+Use a `Plan` concept under `docs/plans/` to explain intent before implementation.
 
 ```markdown
-# Proposal: [Change]
-
-## Why
-
-## What Changes
-
-## Capabilities
-
-### New Capabilities
-- `<kebab-name>`: [brief behavior area]
-
-### Modified Capabilities
-- `<existing-name>`: [changed behavior]
-
-## Impact
-
-- **Code:** ...
-- **APIs / CLI:** ...
-- **Data:** ...
-- **Auth / Security:** ...
-- **Docs:** ...
+# Context
+# Goal
+# Non-goals
+# Work
+# Acceptance
+# Risks and rollback
+# Completion and successors
 ```
 
 ## Design structure
 
-Use `design.md` when technical choices matter. Keep requirements in the spec; put implementation choices here.
+Use a `Decision Record` under `docs/project/decisions/` when technical choices must outlive the plan. Use `type: "Decision Record"` and `authority: "supporting"`.
 
 ```markdown
-# Design: [Change]
-
-## Context
-## Goals / Non-Goals
-## Decisions
-### Decision: [Choice]
-- **Choice:** ...
-- **Rationale:** ...
-- **Alternatives considered:** ...
-
-## Risks / Trade-offs
-## Migration / Rollback
-## Open Questions
+# Context
+# Decision
+# Alternatives
+# Consequences
+# Rollback
+# Evidence
 ```
 
 ## Tasks structure
 
-Use `tasks.md` only after the spec and design are stable enough to act on.
+Keep executable tasks in the owning Plan only after the goal and acceptance conditions are stable enough to act on.
 
 ```markdown
 # Tasks: [Change]
@@ -312,15 +255,14 @@ Tasks should be small enough for one agent session. Include file paths and valid
 
 Before treating a spec as ready, check:
 
-- [ ] The `Why` names a real problem or opportunity.
-- [ ] The `Goal` is specific and measurable.
-- [ ] Scope has both in-scope and out-of-scope items.
+- [ ] The file is a conformant OKF concept under `docs/specs/` and has one ledger owner.
+- [ ] Every claim describes implemented behavior at `traceability.commit`.
 - [ ] Requirements use MUST or SHALL for mandatory behavior.
 - [ ] Each requirement has acceptance checks or scenarios.
 - [ ] Edge cases include failure and empty-state behavior where relevant.
-- [ ] Assumptions are visible.
-- [ ] Open questions are few and material.
-- [ ] Implementation details live in `design.md` or `tasks.md`, not in behavioral requirements.
+- [ ] Every requirement names exact source paths, symbols or public surfaces, tests or an explicit source-inspected gap, failure behavior, and `confidence` set to `high`, `medium`, or `low`.
+- [ ] Planned work and open product choices live in a Plan; durable rationale lives in a Decision Record.
+- [ ] Generated indexes and the explicit `docs/log.md` entry link the concept.
 - [ ] The spec is concise, concrete, and free of promotional language.
 
 ## Writing style

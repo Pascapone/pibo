@@ -1,10 +1,33 @@
 ---
-title: Pibo Runtime Boundary Specification
-version: 1.0
-date_created: 2026-04-28
-last_updated: 2026-05-01
-owner: Pibo maintainers
-tags: [architecture, runtime, plugins, profiles, channels, subagents, runs]
+type: "Historical Record"
+title: "Pibo Runtime Boundary Specification"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-architecture-runtime-boundary.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "420602263be83427c6cd7299885c7d39ab369ae8"
+  source_bytes: 16871
+  source_sha256: "6f0af7e44733e9b5474cabaa7264b54161c76a1fb1b1856f9d4061720ada3f99"
+  source_body_sha256: "7221f7d033eac685d3c7d1fa11e02611ff972ae380a84a92b479bbdd7cf40007"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-architecture-runtime-boundary.md"
+  source_sha256: "7221f7d033eac685d3c7d1fa11e02611ff972ae380a84a92b479bbdd7cf40007"
+  unresolved_links:
+    - target: "../../specs/capabilities/subagent-delegation.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/specs/capabilities/subagent-delegation.md."
+    - target: "../docs/architecture.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/architecture.md."
+    - target: "../docs/agent-run-yield-spec.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/agent-run-yield-spec.md."
+    - target: "../RULES.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/RULES.md."
 ---
 
 # Introduction

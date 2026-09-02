@@ -1,0 +1,34 @@
+{
+  "target": "http://127.0.0.1:4788/apps/chat/rooms/room_b5cf3680-db60-4efc-82fc-f426eb3be97e/sessions/ps_c443228a-1c6a-4ce5-9d67-6e970386258e?view=terminal",
+  "durationMs": 12000,
+  "summary": {
+    "requestCount": 4,
+    "projectRequestCount": 0,
+    "eventSourceRequestCount": 0,
+    "abortedRequestCount": 0,
+    "preexistingFailureCount": 0,
+    "preexistingLogEventCount": 0,
+    "errorCount": 0
+  },
+  "requests": [
+    {
+      "url": "http://127.0.0.1:4788/health",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://127.0.0.1:4788/api/chat/loops/session-goal?piboSessionId=ps_c443228a-1c6a-4ce5-9d67-6e970386258e",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://127.0.0.1:4788/health",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://127.0.0.1:4788/api/chat/loops/session-goal?piboSessionId=ps_c443228a-1c6a-4ce5-9d67-6e970386258e",
+      "type": "Fetch"
+    }
+  ],
+  "events": [],
+  "preexistingFailures": [],
+  "preexistingLogEvents": []
+}

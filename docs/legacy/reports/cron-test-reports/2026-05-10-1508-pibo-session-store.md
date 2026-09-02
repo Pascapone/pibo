@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Test-Review: Pibo Session Store und Router-Store-Kopplung"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/cron-test-reports/2026-05-10-1508-pibo-session-store.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "a767d46405ef824d8dd9cac298e4a6c22da8d89d"
+  source_bytes: 9598
+  source_sha256: "93ffe5cd56736243321fb9071e2653fb3053467a777265b8560d3792103d8806"
+  source_body_sha256: "93ffe5cd56736243321fb9071e2653fb3053467a777265b8560d3792103d8806"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Test-Review: Pibo Session Store und Router-Store-Kopplung
 
 Datum: 2026-05-10 15:08 Europe/Berlin  

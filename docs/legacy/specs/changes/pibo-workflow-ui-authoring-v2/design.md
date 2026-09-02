@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Design: Pibo Workflow UI Authoring V2"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/pibo-workflow-ui-authoring-v2/design.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "de57d4a0208e2caf697f3f423c216fe022da2b0f"
+  source_bytes: 18448
+  source_sha256: "10e2d078d705f3141c85898dde55ebd80207e961cfccf903248487df09d431d4"
+  source_body_sha256: "10e2d078d705f3141c85898dde55ebd80207e961cfccf903248487df09d431d4"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Design: Pibo Workflow UI Authoring V2
 
 **Status:** Draft v0.2

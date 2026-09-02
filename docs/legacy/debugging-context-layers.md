@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Debugging Context Layers"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/debugging-context-layers.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "02e6e267d7fd05268f93d8ac9d3f2ce88c375e9a"
+  source_bytes: 2521
+  source_sha256: "cb05afc58d3045af6dd7ff2cce1d51cd33efae4e75cc3f329fcdb60479e93f7a"
+  source_body_sha256: "cb05afc58d3045af6dd7ff2cce1d51cd33efae4e75cc3f329fcdb60479e93f7a"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Debugging Context Layers
 
 This note records where debugging knowledge should live so future agents do not have to rediscover the same setup paths.

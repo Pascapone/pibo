@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Ralph Resource Ownership and Operational Health"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/compute-browser-resource-lifecycle/prds/05-ralph-resource-ownership-and-operational-health.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2a4e5003434b363a78063e4047ec8409206c4c80"
+  source_bytes: 5665
+  source_sha256: "0b448a0944763f8047fe854dd3bc35969450205edd583cb0e901c69429a21846"
+  source_body_sha256: "0b448a0944763f8047fe854dd3bc35969450205edd583cb0e901c69429a21846"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Ralph Resource Ownership and Operational Health
 
 **Status:** Draft  

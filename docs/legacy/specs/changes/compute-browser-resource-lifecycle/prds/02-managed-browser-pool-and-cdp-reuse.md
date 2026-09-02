@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD: Managed Browser Pool and CDP Reuse"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/compute-browser-resource-lifecycle/prds/02-managed-browser-pool-and-cdp-reuse.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7c7c55d2211a09d29544470e0f65372d5b083ef0"
+  source_bytes: 4805
+  source_sha256: "74d68b7b099d945734bfed2e6512d8f8d9c6ff525159c899d91b47f50d6fff39"
+  source_body_sha256: "74d68b7b099d945734bfed2e6512d8f8d9c6ff525159c899d91b47f50d6fff39"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD: Managed Browser Pool and CDP Reuse
 
 **Status:** Draft  

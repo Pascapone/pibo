@@ -1,221 +1,100 @@
-# Plan: Pibo Fast Gateway and Trace Architecture Roadmap
+---
+type: "Plan"
+title: "Pibo Gateway and Trace Architecture Follow-up Roadmap"
+description: "Tracks only the unimplemented gateway and trace architecture follow-up work after the shipped hot-path phases."
+tags: ["gateway", "performance", "trace"]
+status: "draft"
+authority: "directive"
+migration_lineage:
+  source_path: "docs/plans/pibo-fast-gateway-and-trace-roadmap.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "f04f83a648829039e58572a56d01e2a8304f0895"
+  source_bytes: 10484
+  source_sha256: "bce63e852d96121a47738b0b3267ca18989ed0a037c79199b9e5ee0c80158d7f"
+  source_body_sha256: "bce63e852d96121a47738b0b3267ca18989ed0a037c79199b9e5ee0c80158d7f"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
+# Pibo Gateway and Trace Architecture Follow-up Roadmap
 
-**Status:** Active roadmap; v1.7.0 shipped Phases 0-2 hot-path baseline
-**Created:** 2026-07-04
-**Updated:** 2026-07-05
-**Source:** Chat Web trace performance incidents, OOM follow-up, expert report, and Umbau specs
+This plan retains only the unimplemented work that follows the shipped gateway and Trace V2 hot-path baseline. Implemented gateway, trace, and telemetry behavior is owned by the current canonical specifications; this plan is not a competing description of shipped behavior.
 
-## Purpose
+## Canonical current owners
 
-This plan orders the performance/reliability work so Pibo becomes fast before it becomes elaborate. The goal is a Chat Web UI that feels like a local terminal: quick first content, smooth session switching, incremental live updates, and details on demand.
+- [Web Host and Channel](/specs/gateway/web-host-and-channel.md)
+- [Trace, Terminal, Scrolling, and Workflow Projection](/specs/web/trace-terminal-scrolling-and-workflow-projection.md)
+- [Telemetry](/specs/data/telemetry.md)
 
-As of `v1.7.0`, the first performance release has shipped the new hot-path philosophy:
+## Goal
 
-- structure is the hot path;
-- payloads and raw events are cold paths;
-- normal Chat Web uses compact Trace V2 timeline pages;
-- large payloads are exposed by payload refs and explicit range reads;
-- raw events are fetched through a separate bounded debug endpoint;
-- gateway caches, replay buffers, reliability payloads, and route responses have survival guardrails.
+Complete the remaining architecture without moving heavy projection, archive, retention, export, or worker execution onto the gateway request path. The gateway must remain a responsive control plane while raw sources remain authoritative and compact projections remain rebuildable.
 
-This does not mean the whole roadmap is complete. Persistent projection, true SSE trace patches, telemetry capture/archive isolation, and full worker resource isolation remain follow-up architecture.
+## Workstream 1: Formal live trace patches
 
-## Source Specs
+- Define and version a compact server-sent event trace-patch protocol.
+- Apply patches to loaded timeline pages without reloading historical pages for normal streaming deltas.
+- Settle provider, turn, and session terminal states correctly after finish, error, cancellation, and reconnect.
+- Resume from a bounded cursor or compact delta without replaying full history.
 
-- `docs/specs/changes/chat-web-trace-v2-fast-path/`
-- `docs/specs/changes/telemetry-opt-in-archive-isolation/`
-- `docs/specs/changes/gateway-resource-protection-workers/`
+### Acceptance
 
-## Target End State
+- Active streaming does not reload historical timeline pages.
+- Reconnect resumes through a bounded cursor or compact delta.
+- Session and turn status settles correctly after every terminal outcome.
 
-### Gateway
+## Workstream 2: Persistent trace projection
 
-The gateway is a responsive control plane. It serves UI, auth, lightweight APIs, summaries, timeline pages, job status, and cancellation. It does not build huge trace objects, scan raw archives, run retention, execute tools, or compress huge JSON in its event loop.
+- Add compact indexed trace-node, trace-payload, and trace-session-state storage.
+- Project new events incrementally while retaining raw sources as the rebuild authority.
+- Lazy-backfill older sessions under explicit time, row, payload, and memory budgets.
+- Expose bounded projection status, drift diagnostics, and an explicit rebuild operation.
 
-### Trace UI
-
-Chat Web renders compact timeline pages. Payloads are lazy. Raw events are separate. Live updates are patches. Infinite scroll uses trace cursors and preloads before the user reaches the top. Session switching cancels stale requests and does not keep full payloads in memory.
-
-### Data
-
-Operational data remains available by default. Verbose telemetry is opt-in and isolated. Reliability/event-stream payloads are bounded and reference large bodies. Trace projection stores compact rows and payload refs. Raw sources remain authoritative and rebuildable.
-
-### Workers
-
-Heavy work runs as jobs: projection rebuilds, telemetry archive inspection, retention/prune, exports, and eventually agent/runtime/tool execution. Workers have resource policies and cancellation. Gateway stays responsive under worker load.
-
-### Observability
-
-Pibo always exposes bounded self-observability: heap, RSS, event-loop delay, active streams, trace cache bytes, replay buffer bytes, route response sizes, DB/WAL sizes, large payload counters, and recent warnings. Diagnostics must not parse large payloads.
-
-## Phased Delivery
-
-## Phase 0: Survival Guardrails
-
-**v1.7.0 status:** Shipped for the Chat Web gateway hot path.
-
-Ship before claiming any fix.
-
-- Add gateway memory/resource diagnostics.
-- Add trace route response/serialization/compression timing.
-- Add trace cache byte budgets and eviction.
-- Add replay buffer byte budgets and metrics.
-- Bound reliability `pibo.output` inline payloads.
-- Store large operational output as payload refs/previews.
-- Warn/fail on unsupported Node versions for gateway use.
-- Avoid synchronous `gzipSync` for large JSON.
-
-### Shipped Baseline
-
-- Gateway diagnostics expose process memory, event-loop delay, stream/listener counts, trace timeline cache bytes, transient replay buffer bytes, reliability payload buckets, and recent warnings.
-- Trace timeline page cache and transient replay buffers have byte/count budgets and eviction.
-- Reliability `pibo.output` writes are compacted when over the inline budget and large values move to payload refs/previews.
-- Large JSON responses skip synchronous gzip above the configured sync-compression threshold.
-- Trace response helpers report serialized byte size and JSON serialization timing.
-- Unsupported Node versions now produce startup/runtime warning behavior as part of gateway hardening.
-
-### Exit Criteria
-
-- Synthetic large trace and large tool-output workloads do not OOM the gateway.
-- Operator can see memory/cache/payload pressure before failure.
-- Normal app shell remains responsive during trace stress.
-
-## Phase 1: Trace V2 Hot Path
-
-**v1.7.0 status:** Shipped for the default Chat Web terminal path.
-
-- Add Trace V2 DTOs.
-- Add `/api/chat/trace/timeline`.
-- Add hard timeline response caps.
-- Add payload refs in timeline rows.
-- Keep old full trace endpoint bounded and debug-only.
-
-### Shipped Baseline
-
-- Added shared Trace V2 DTOs for timeline nodes, payload refs, timeline pages, payload chunks, and raw event pages.
-- Added `/api/chat/trace/timeline`, with tail and `before` cursor reads, response byte cap, no-store headers, and ETag/version handling for tail reads.
-- The default Chat Web trace hook calls the timeline endpoint instead of old `/api/chat/trace`.
-- Timeline rows contain bounded inline-small payloads plus refs for larger payloads; they do not carry unbounded raw event bodies.
-- Old `/api/chat/trace` remains as compatibility/debug and returns `413` when the estimated V1 response exceeds the compatibility budget.
-
-### Exit Criteria
-
-- Default Chat Web session view no longer calls old `/api/chat/trace`.
-- Timeline pages are normally below 100 KB and hard-capped.
-- Large tool output does not enlarge the timeline response.
-
-## Phase 2: Lazy Payloads and Raw Event Split
-
-**v1.7.0 status:** Shipped as the first lazy split. UX for richer payload expansion/download remains a follow-up.
-
-- Add `/api/chat/trace/payload/:ref` with range reads.
-- Add `/api/chat/trace/raw-events`.
-- Move Raw Events UI to separate paginated endpoint.
-- Add payload chunk caching policy and eviction.
-
-### Shipped Baseline
-
-- Added `/api/chat/trace/payload/:payloadRef?offset=...&limit=...` with default and maximum range limits.
-- Added `/api/chat/trace/raw-events` with pagination limits and a hard response byte cap.
-- Raw Events UI reads the raw-events endpoint independently from the normal timeline.
-- React Query stores bounded timeline/raw pages; payload chunks are fetched explicitly through the payload API and are not part of the default timeline cache.
-
-### Remaining Follow-up
-
-- Add a richer explicit download path for full payloads where allowed.
-- Add direct UI affordances for loading additional payload chunks beyond the first rendered preview.
-- Add stricter payload chunk cache eviction if payload-expansion UX begins caching chunks longer than the current query defaults.
-
-### Exit Criteria
-
-- Expanding a large node fetches payload chunk(s), not full history.
-- Raw events never piggyback on normal timeline.
-- Browser memory remains stable when large payloads are not expanded.
-
-## Phase 3: Live Patch Model
-
-**v1.7.0 status:** Partial. Live overlay and bounded timeline refresh behavior exist, but the formal SSE trace patch protocol is not complete.
-
-- Emit trace node patches over SSE.
-- Apply patches to loaded timeline pages.
-- Stop full trace/timeline reloads for normal streaming deltas.
-- Fix stale provider/turn terminal states.
-
-### Exit Criteria
-
-- Active streaming updates do not reload historical pages.
-- Session status settles correctly after finish/error/abort.
-- Reconnect resumes from cursor or compact delta.
-
-## Phase 4: Persistent Projection
-
-**v1.7.0 status:** Not shipped. The current implementation is still an adapter over existing trace/raw sources with bounded tail transcript reads.
-
-- Add `trace_nodes`, `trace_payloads`, and `trace_session_state`.
-- Project new events incrementally.
-- Lazy-backfill old sessions with strict budgets.
-- Add projection status and rebuild affordance.
-
-### Exit Criteria
+### Acceptance
 
 - Projected sessions read from compact indexed rows.
-- Old large sessions open with bounded tail while backfill proceeds.
-- Projection drift can be diagnosed and repaired.
+- Large historical sessions open from a bounded tail while backfill proceeds.
+- Projection drift is diagnosable and repairable without blocking the gateway event loop.
 
-## Phase 5: Telemetry Isolation
+## Workstream 3: Telemetry capture and archive isolation
 
-**v1.7.0 status:** Not shipped except for overlapping hot-path reliability payload bounds and gateway diagnostics.
+- Keep detailed telemetry disabled by default.
+- Add explicit, bounded capture runs with isolated active storage.
+- Archive and inspect telemetry through explicit offline or worker-owned operations.
+- Keep legacy live telemetry inert unless an operator deliberately invokes bounded maintenance tooling.
 
-- Disable detailed telemetry by default.
-- Add explicit capture runs.
-- Store active capture in isolated DB/archive path.
-- Archive and inspect telemetry explicitly and bounded.
-- Treat legacy live telemetry as inert unless operator runs offline tools.
+### Acceptance
 
-### Exit Criteria
+- A fresh installation writes no detailed provider-event telemetry by default.
+- A large telemetry archive cannot affect gateway startup or bootstrap.
+- Archive inspection, retention, and maintenance never run in request handlers.
 
-- Fresh install writes no detailed provider-event telemetry by default.
-- Large telemetry archive cannot affect gateway startup/bootstrap.
-- Archive maintenance never runs in the request path.
+## Workstream 4: Worker resource protection
 
-## Phase 6: Worker Resource Protection
+- Move projection rebuild, telemetry inspection, retention, export, and other long maintenance work to managed jobs.
+- Give jobs durable progress, heartbeat, cancellation, terminal failure state, and explicit ownership.
+- Enforce platform-appropriate resource policies, beginning with Linux systemd/cgroups and documenting Windows Job Object support or an explicit fallback.
+- Keep Docker as an optional isolated backend where its lifecycle and resource limits are appropriate.
 
-**v1.7.0 status:** Not shipped. Full worker isolation intentionally remains after hot-path fixes.
+### Acceptance
 
-- Add job model for long work.
-- Move maintenance, retention, export, trace rebuild, and telemetry inspection to workers.
-- Add systemd/cgroups backend first for Linux production.
-- Add Windows Job Object or clearly reported fallback.
-- Add Docker backend optionally.
+- The gateway remains responsive while heavy jobs run.
+- Every job exposes progress, heartbeat, cancellation, and terminal state.
+- A resource-limit violation terminates or fails the worker job rather than the gateway.
 
-### Exit Criteria
+## Release gates
 
-- Gateway remains responsive while heavy jobs run.
-- Jobs expose progress, heartbeat, cancellation, and failure state.
-- Resource-limit violations stop the worker/job, not the gateway.
+- Focused source and test evidence proves each workstream's implemented contract before its claims move into a stable specification.
+- Stress validation demonstrates bounded gateway memory, event-loop delay, response sizes, and browser memory under large-session and large-payload workloads.
+- Failure, cancellation, reconnect, rebuild, and rollback paths are tested explicitly.
+- Operator diagnostics remain bounded and available when detailed telemetry is disabled.
 
-## Release Gates
+## Non-negotiable constraints
 
-A release may claim the Phase 0-2 Chat Web trace/gateway hot-path issue is fixed only when:
-
-- default Chat Web session load uses Trace V2 timeline;
-- timeline responses are bounded and payload-free by default;
-- large payloads load only on expansion;
-- raw events are separate and paginated;
-- live updates do not reload full history for normal tail updates;
-- gateway diagnostics expose memory, event-loop, cache, replay, payload, and route byte metrics;
-- no large JSON response uses synchronous gateway-event-loop compression;
-- unsupported Node versions fail or warn before gateway operation;
-- synthetic large-session and large-tool-output tests pass;
-- browser validation confirms fast open/switch/scroll/expand behavior.
-
-The broader architecture is complete only when later releases also ship persistent projection, formal trace live patches, telemetry archive isolation, and worker resource protection.
-
-## Non-Negotiable Rules
-
-- Structure is hot path; payloads are cold path.
+- Structure is the hot path; payloads are cold paths.
 - Debug detail is opt-in and bounded.
 - Retention and archive maintenance never run in request handlers.
-- UI virtualization does not justify unbounded server/browser payloads.
-- Gateway self-observability must stay available when detailed telemetry is off.
-- Raw sources remain authoritative; projections are rebuildable.
+- UI virtualization does not justify unbounded server or browser payloads.
+- Gateway self-observability remains available when detailed telemetry is disabled.
+- Raw sources remain authoritative and projections remain rebuildable.

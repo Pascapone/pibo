@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Multi-Agent Runtime Adapter Architecture Investigation"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/multi-agent-runtime-adapter-architecture-investigation-2026-08-14.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "223b43a55367e01a3a1d89064a091ea9affa949c"
+  source_bytes: 47028
+  source_sha256: "accf76ce19363a2f5ad43faa97c47d17f94ba5dd38a93743b2a59721342c50e4"
+  source_body_sha256: "accf76ce19363a2f5ad43faa97c47d17f94ba5dd38a93743b2a59721342c50e4"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Multi-Agent Runtime Adapter Architecture Investigation
 
 **Status:** Investigation / proposed direction

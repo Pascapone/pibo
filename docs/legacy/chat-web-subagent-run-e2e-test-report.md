@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Web Subagent Run E2E Test Report"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/chat-web-subagent-run-e2e-test-report.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "7f52baabf88cef6140138a6093fa75433dfb1e0a"
+  source_bytes: 3085
+  source_sha256: "a83218f3d73e87f48ff7aae53b889282b5423c5e2514bd8fbb46eb293f05b6b3"
+  source_body_sha256: "a83218f3d73e87f48ff7aae53b889282b5423c5e2514bd8fbb46eb293f05b6b3"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Web Subagent Run E2E Test Report
 
 Date: 2026-05-01

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Dev Web Gateway"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/dev-web-gateway.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "168a6a856c43b87a278f7987605d761060a9485c"
+  source_bytes: 2840
+  source_sha256: "ea480c6f925cbaff813bad19310ac6d7e6f1effba15ee309f252bb05f263dcc3"
+  source_body_sha256: "ea480c6f925cbaff813bad19310ac6d7e6f1effba15ee309f252bb05f263dcc3"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Dev Web Gateway
 
 Pibo has a staging-grade web gateway for testing changes before production.

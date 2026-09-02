@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Ink CLI V2 PTY Smoke Scenarios"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/ink-cli-v2-pty-smoke-scenarios.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "4a898562d508fbf30d2fcd1443083c77e55b96da"
+  source_bytes: 3604
+  source_sha256: "3903c90bd90aa89b5317ad50ed76fe475a8f321140ad138ba9ad23177647091b"
+  source_body_sha256: "3903c90bd90aa89b5317ad50ed76fe475a8f321140ad138ba9ad23177647091b"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Ink CLI V2 PTY Smoke Scenarios
 
 Reusable PTY smoke runner:

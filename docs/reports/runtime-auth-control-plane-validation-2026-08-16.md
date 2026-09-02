@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Runtime Auth Control Plane Validation"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/runtime-auth-control-plane-validation-2026-08-16.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "b26d09dac9c737b59c5287c5f97eabef1135acb3"
+  source_bytes: 11703
+  source_sha256: "1494de82c002954e68863e13f808ce80255e0fb3cb5907f4b47587ef277ba278"
+  source_body_sha256: "1494de82c002954e68863e13f808ce80255e0fb3cb5907f4b47587ef277ba278"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:runtime-auth-control-plane-validation-2026-08-16"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Runtime Auth Control Plane Validation
 
 **Date:** 2026-08-16  

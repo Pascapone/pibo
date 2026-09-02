@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Oh My Pi (OMP) as Pibo Runtime — Final Audit Report"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/omp-runtime-final-audit-2026-08-17.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "190b2af46fd403d13e0768ba64fead69e22dae91"
+  source_bytes: 6963
+  source_sha256: "237e6b85689bd020afea8ebb3710d724b66821c61af6e091ad70f48d9fa6aef1"
+  source_body_sha256: "237e6b85689bd020afea8ebb3710d724b66821c61af6e091ad70f48d9fa6aef1"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:omp-runtime-final-audit-2026-08-17"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Oh My Pi (OMP) as Pibo Runtime — Final Audit Report
 
 **Date:** 2026-08-17

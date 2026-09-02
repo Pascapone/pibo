@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Incident Report: browser-use Start-Timeout bei E2E-Test"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/browser-use-incident-2026-05-04.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "03062a368ab25042dfeba9cb87a32d2bee776099"
+  source_bytes: 3785
+  source_sha256: "a44415202311ab6e04ddb3a49374a3cf6bca068da129b03bfcbad6919b497e77"
+  source_body_sha256: "a44415202311ab6e04ddb3a49374a3cf6bca068da129b03bfcbad6919b497e77"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Incident Report: browser-use Start-Timeout bei E2E-Test
 
 **Datum:** 2026-05-04 23:40 UTC  

@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "US-001 SQLite Owner/Principal Counts"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/us-001-sqlite-owner-principal-counts.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "898ccf8161b28a800b2d899da460c451d1944f82"
+  source_bytes: 2207
+  source_sha256: "9494d5f1d4219aa101cab004906c49a63e18c613bc596678f320c4009ba2fb28"
+  source_body_sha256: "9494d5f1d4219aa101cab004906c49a63e18c613bc596678f320c4009ba2fb28"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # US-001 SQLite Owner/Principal Counts
 
 Generated: 2026-05-30

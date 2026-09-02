@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Coverage Analysis: Source Test Gap Priorities 2026-05-11"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/coverage/source-test-gap-priorities-2026-05-11.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "9fe8c22bb15d0eb121c311c227fec0751c1f9c8c"
+  source_bytes: 10535
+  source_sha256: "074e559b697400cc1f6f923be46eb3a375fab3572fd0332284169fcbaf9410eb"
+  source_body_sha256: "074e559b697400cc1f6f923be46eb3a375fab3572fd0332284169fcbaf9410eb"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Coverage Analysis: Source Test Gap Priorities 2026-05-11
 
 **Status:** Draft  

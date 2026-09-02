@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "PRD 10: Row-First Layout, Spacing, and Status Compactness"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/changes/ink-cli-terminal-rendering-parity/prds/10-row-first-layout-spacing-and-status-compactness.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "2ea10bd828f186e3fcf3842db2ca8d564661e173"
+  source_bytes: 3591
+  source_sha256: "af272b744ba71cb15d4338c99ef7d4b7e97973ea04d2d56a28406038d0c1dc7f"
+  source_body_sha256: "af272b744ba71cb15d4338c99ef7d4b7e97973ea04d2d56a28406038d0c1dc7f"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # PRD 10: Row-First Layout, Spacing, and Status Compactness
 
 **Status:** Draft  

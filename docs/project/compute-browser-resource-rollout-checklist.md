@@ -1,3 +1,22 @@
+---
+type: "Guide"
+title: "Compute Browser Resource Lifecycle Rollout Checklist"
+description: "Guides the safe rollout and verification of compute-worker and browser-resource lifecycle controls."
+tags: ["browser", "compute", "rollout"]
+status: "draft"
+authority: "directive"
+migration_lineage:
+  source_path: "docs/project/compute-browser-resource-rollout-checklist.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "3f1bf7e5ad2cd939ca05a9f6748cec10069b6eab"
+  source_bytes: 7205
+  source_sha256: "cb593cb936e7297daa1c023d913861e4e9b96981cd9adf0eccf4e30cff5c584e"
+  source_body_sha256: "cb593cb936e7297daa1c023d913861e4e9b96981cd9adf0eccf4e30cff5c584e"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Compute Browser Resource Lifecycle Rollout Checklist
 
 **Status:** Draft

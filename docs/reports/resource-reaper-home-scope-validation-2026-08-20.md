@@ -1,3 +1,25 @@
+---
+type: "Evidence Report"
+title: "Resource Reaper Home-Scope Validation — 2026-08-20"
+description: "Preserves the original report body as stable evidence without promoting historical claims."
+tags: ["evidence","migration","report"]
+status: "stable"
+authority: "evidentiary"
+migration_lineage:
+  source_path: "docs/reports/resource-reaper-home-scope-validation-2026-08-20.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "78a12acf39a76beea8079657f4974ba1971a6771"
+  source_bytes: 3414
+  source_sha256: "b7acde6c1670e16d4ff8549f66836e7546273ed83f771bf93194901ab72e89cd"
+  source_body_sha256: "b7acde6c1670e16d4ff8549f66836e7546273ed83f771bf93194901ab72e89cd"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+evidence:
+  id: "pibo-okf-c-reports:resource-reaper-home-scope-validation-2026-08-20"
+  published_at: "2026-09-01T07:57:34Z"
+---
 # Resource Reaper Home-Scope Validation — 2026-08-20
 
 **Status:** PASS for focused implementation, integrated deployment, and sustained Pibo2 browser stability.

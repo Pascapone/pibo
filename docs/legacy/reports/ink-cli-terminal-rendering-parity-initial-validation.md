@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Ink CLI Terminal Rendering Parity: Initial Validation"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/reports/ink-cli-terminal-rendering-parity-initial-validation.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "dba312ebaa85388d5f6e01b216076e092fc69897"
+  source_bytes: 2653
+  source_sha256: "a1e625db3db98f03b66ebe3015c37888e9767699f1f6dfc1559bc78260cb3071"
+  source_body_sha256: "a1e625db3db98f03b66ebe3015c37888e9767699f1f6dfc1559bc78260cb3071"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Ink CLI Terminal Rendering Parity: Initial Validation
 
 **Date:** 2026-05-17

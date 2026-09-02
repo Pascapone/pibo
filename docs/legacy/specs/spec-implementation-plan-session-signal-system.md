@@ -1,12 +1,21 @@
 ---
-title: Pibo Session Signal System Implementation Plan
-version: 0.1
-date_created: 2026-05-06
-last_updated: 2026-05-06
-owner: Pibo maintainers
-tags: [implementation-plan, signals, sessions, chat, notifications, traces]
-related_specs:
-  - spec/spec-architecture-session-signal-system.md
+type: "Historical Record"
+title: "Pibo Session Signal System Implementation Plan"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-implementation-plan-session-signal-system.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "dbb5ad897b8c219010bc6fe3c8842c696c9f747b"
+  source_bytes: 25575
+  source_sha256: "13b4ace0b88de97cdbdba77a76debf5a203abde32a00ce3400ab66b293a374ff"
+  source_body_sha256: "08cc2652ddb11dbdd2e4c6c6e8960af7a24db5930b25dd6f7c8656e4c3b9fa25"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
 ---
 
 # Introduction

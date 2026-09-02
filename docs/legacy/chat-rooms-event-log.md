@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Chat Rooms And Durable Event Log"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/chat-rooms-event-log.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "a87e21aa99710f1f0febf60e7168acd308fa3cad"
+  source_bytes: 7240
+  source_sha256: "abcc41fe66e5b991ba21355e8dccf0122cf75df12c88278d93d8d5c2429cf0af"
+  source_body_sha256: "abcc41fe66e5b991ba21355e8dccf0122cf75df12c88278d93d8d5c2429cf0af"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Chat Rooms And Durable Event Log
 
 The Chat Web App is now organized around user-facing **Pibo Rooms** while still routing agent execution through **Pibo Sessions**.

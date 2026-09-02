@@ -1,3 +1,22 @@
+---
+type: "Research"
+title: "Test-Review: Context-Files Web API und Revisionen"
+description: "Preserves the original report body as stable research without promoting historical claims."
+tags: ["migration","research","report"]
+status: "stable"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/reports/cron-test-reports/2026-05-10-1619-context-files-web-api.md"
+  source_commit: "15f2cd832e627d49c71be6a60708e5409be8772f"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "37cabcdb33554816c024b57bfb4fc356cac3a04e"
+  source_bytes: 6987
+  source_sha256: "62918b5b392ec8aa0662d918faab00a8ff18e9099cc85115efba33fdff885809"
+  source_body_sha256: "62918b5b392ec8aa0662d918faab00a8ff18e9099cc85115efba33fdff885809"
+generated:
+  by: "process:pibo-okf-c-reports"
+  at: "2026-09-01T07:57:34Z"
+---
 # Test-Review: Context-Files Web API und Revisionen
 
 Datum: 2026-05-10 16:19  

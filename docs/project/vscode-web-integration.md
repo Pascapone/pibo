@@ -1,3 +1,22 @@
+---
+type: "Reference"
+title: "Embedded VS Code Web"
+description: "Explains the current embedded VS Code Web topology, routing, theme, workspace, and security boundaries."
+tags: ["integration", "vscode", "web"]
+status: "draft"
+authority: "informative"
+migration_lineage:
+  source_path: "docs/project/vscode-web-integration.md"
+  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "253e3082ee9c8ba8fd8c921519a38569e96ab76e"
+  source_bytes: 4575
+  source_sha256: "51feb80e8b62b3a02696e7c6166aa9e7c9ba56ba121a9823aec5a856c2afe567"
+  source_body_sha256: "51feb80e8b62b3a02696e7c6166aa9e7c9ba56ba121a9823aec5a856c2afe567"
+generated:
+  by: "process:pibo-okf-p-current-project-plans"
+  at: "2026-08-31T22:47:46Z"
+---
 # Embedded VS Code Web
 
 Pibo Chat can expose a `VS Code` main-navigation area that embeds a separately running VS Code browser server. The tab is enabled only when the gateway has `PIBO_VSCODE_WEB_URL` configured.

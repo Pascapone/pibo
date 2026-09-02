@@ -1,10 +1,31 @@
 ---
-title: Pibo Web Gateway Auth And Chat Specification
-version: 1.1
-date_created: 2026-04-28
-last_updated: 2026-05-01
-owner: Pibo maintainers
-tags: [infrastructure, web, auth, gateway, chat]
+type: "Historical Record"
+title: "Pibo Web Gateway Auth And Chat Specification"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/specs/spec-infrastructure-web-auth-chat.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "bcba2e239a4e978f1ecbc1025e1584a979387d1e"
+  source_bytes: 28859
+  source_sha256: "1fcb163f7a442d97201d338244993db3eeb11a24324c631838b35636277f5491"
+  source_body_sha256: "6d5753df25c605854b44ebb547da187da1688f3d88e7af061e931f5fb518607a"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+preserved_body:
+  source_path: "docs/legacy/specs/spec-infrastructure-web-auth-chat.md"
+  source_sha256: "6d5753df25c605854b44ebb547da187da1688f3d88e7af061e931f5fb518607a"
+  unresolved_links:
+    - target: "../docs/architecture.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/architecture.md."
+    - target: "../README.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/README.md."
+    - target: "../docs/dev-web-gateway.md"
+      reason: "Preserve the immutable historical body; after relocation it resolves to missing path docs/legacy/docs/dev-web-gateway.md."
 ---
 
 # Introduction

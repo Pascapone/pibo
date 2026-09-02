@@ -1,3 +1,22 @@
+---
+type: "Historical Record"
+title: "Implementation Plan: Pibo Compute Pool mit Traefik"
+description: "Preserves the original body as a deprecated historical record without promoting historical claims."
+tags: ["historical","legacy","migration"]
+status: "deprecated"
+authority: "historical"
+migration_lineage:
+  source_path: "docs/legacy/plans/docker-pool-with-traefik.md"
+  source_commit: "0cd6a73449e1b555fa6e590d839d7e03c8dc98bf"
+  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
+  baseline_blob_oid: "1bbfa48993303025c4aabb01c4b8c4311aa5e6b4"
+  source_bytes: 9096
+  source_sha256: "15fe732d2ff08076742b843619d1e5dbcf8267ffaa509fafeb9fc672f407030e"
+  source_body_sha256: "15fe732d2ff08076742b843619d1e5dbcf8267ffaa509fafeb9fc672f407030e"
+generated:
+  by: "process:pibo-okf-c-legacy"
+  at: "2026-09-01T09:50:26Z"
+---
 # Implementation Plan: Pibo Compute Pool mit Traefik
 
 ## Ziel

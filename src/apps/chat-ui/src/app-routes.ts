@@ -30,6 +30,7 @@ type ChatRouteNavigationRequest =
 	| { to: "/projects"; search: SessionViewSearch; replace: boolean }
 	| { to: "/vscode"; replace: boolean }
 	| { to: "/workflows/drafts/$draftId"; params: { draftId: string }; replace: boolean }
+	| { to: "/workflows/view/$workflowId/$workflowVersion"; params: { workflowId: string; workflowVersion: string }; replace: boolean }
 	| { to: "/workflows"; replace: boolean }
 	| { to: "/agents"; replace: boolean }
 	| { to: "/cron"; replace: boolean }
@@ -97,6 +98,13 @@ export function chatNavigationRequest(target: ChatAppRoute, replace: boolean, ne
 	if (target.area === "vscode") return { to: "/vscode", replace };
 	if (target.area === "workflows") {
 		if (target.draftId) return { to: "/workflows/drafts/$draftId", params: { draftId: target.draftId }, replace };
+		if (target.viewWorkflowId && target.viewWorkflowVersion) {
+			return {
+				to: "/workflows/view/$workflowId/$workflowVersion",
+				params: { workflowId: target.viewWorkflowId, workflowVersion: target.viewWorkflowVersion },
+				replace,
+			};
+		}
 		return { to: "/workflows", replace };
 	}
 	if (target.area === "agents") return { to: "/agents", replace };
