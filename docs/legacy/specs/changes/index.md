@@ -34,6 +34,7 @@
 * [Session goal slash command](session-goal-slash-command/) - Documentation under `session&#45;goal&#45;slash&#45;command/`.
 * [Session live previews](session-live-previews/) - Documentation under `session&#45;live&#45;previews/`.
 * [Shared app no owner scope](shared-app-no-owner-scope/) - Documentation under `shared&#45;app&#45;no&#45;owner&#45;scope/`.
+* [Sidebar browser tabs](sidebar-browser-tabs/) - Documentation under `sidebar&#45;browser&#45;tabs/`.
 * [Signal status reconcile load](signal-status-reconcile-load/) - Documentation under `signal&#45;status&#45;reconcile&#45;load/`.
 * [Terminal working indicator](terminal-working-indicator/) - Documentation under `terminal&#45;working&#45;indicator/`.
 * [Web annotations plugin](web-annotations-plugin/) - Documentation under `web&#45;annotations&#45;plugin/`.

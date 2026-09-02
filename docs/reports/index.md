@@ -69,6 +69,9 @@
 * [Runtime&#45;Neutral History, Trace, and Debug Validation — 2026&#45;08&#45;15](runtime-neutral-history-trace-debug-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Session CLI steering validation — 2026&#45;08&#45;24](session-cli-steering-validation-2026-08-24.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Shared Agent Management Tools Validation](agent-management-tools-validation.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Sidebar browser tabs validation](sidebar-browser-tabs-validation-2026-08-30.md) - Records implementation, automated, and headful browser validation for the desktop browser&#45;tab workspace&#46;
+* [Sidebar browser tabs: maintainer screenshot follow&#45;up](sidebar-browser-tabs-maintainer-followup-2026-08-31.md) - Records maintainer&#45;requested sidebar browser&#45;tab corrections and their automated and headful validation&#46;
+* [Sidebar browser tabs: upstream integration validation](sidebar-browser-tabs-upstream-integration-2026-08-31.md) - Records upstream rebasing, regression coverage, and headful browser validation for the desktop browser&#45;tab workspace&#46;
 * [Signal status reconciliation validation](signal-status-reconcile-load-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Signals Reliability Fix Validation](signals-reliability-fix-validation-2026-05-19.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Terminal working animation restoration validation](terminal-working-animation-restoration-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;

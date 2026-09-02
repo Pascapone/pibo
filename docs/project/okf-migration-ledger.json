@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-01T21:32:28Z",
+  "generated_at": "2026-09-02T05:59:53Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -13509,6 +13509,92 @@
       "file_bytes": 753,
       "file_sha256": "bc272fe67a166fcd2ac96fe4ae95f0da6c40707502a439ba599e1e6646e43965",
       "body_sha256": "bc272fe67a166fcd2ac96fe4ae95f0da6c40707502a439ba599e1e6646e43965"
+    },
+    {
+      "path": "docs/reports/sidebar-browser-tabs-maintainer-followup-2026-08-31.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 7965,
+      "file_sha256": "d33634f404cdb3b32a232227013491617976e4ded6cf39a9d032e60802058775",
+      "body_sha256": "cd717b9f5971570f680916fcee822a1d5fffa2aa6bfab4dd5c030126c011ddb5",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/sidebar-browser-tabs-upstream-integration-2026-08-31.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 9680,
+      "file_sha256": "c9c41237c53efdbfeb7af436f11d1e44e55e5cf6aa6411c4de709e4f27d916a8",
+      "body_sha256": "fbd950d795096456d86fca44fbdbdc8ea92cf8b611a67848bda5281896d7f17a",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/sidebar-browser-tabs-validation-2026-08-30.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 18396,
+      "file_sha256": "8ecbba2cfd8814d8e4ac46bf25592dd74dcea6f682bec1a68ff4d4dc5f465f22",
+      "body_sha256": "6a9634516f0f1c793207621b667774ae83ac15296ac1fe51bd3d2cabdf2f75f0",
+      "lineage": null
+    },
+    {
+      "path": "docs/legacy/specs/changes/sidebar-browser-tabs/inventory.md",
+      "state": "conformant",
+      "classification": "historical material",
+      "type": "Historical Record",
+      "authority": "historical",
+      "status": "deprecated",
+      "file_bytes": 3034,
+      "file_sha256": "022a9f6f808daceb2dd6b5553f6217c8cbfc0a05bcd37660160cff883b6416d8",
+      "body_sha256": "ab40d886ca95c66bef96ccda47a0dca7ffda5e15dc70defde444a6f4414db135",
+      "lineage": null
+    },
+    {
+      "path": "docs/legacy/specs/changes/sidebar-browser-tabs/spec-design-sidebar-browser-tabs.md",
+      "state": "conformant",
+      "classification": "historical material",
+      "type": "Historical Record",
+      "authority": "historical",
+      "status": "deprecated",
+      "file_bytes": 14185,
+      "file_sha256": "fa1f4de6a90d0fd611d9ddc83ddd814d0094f1b1710f4058536bd7c96a9cf9af",
+      "body_sha256": "ae8127e5805bc9a513502b79adb14d826adba0f5057d5718ef474bc0820382d0",
+      "lineage": null
+    },
+    {
+      "path": "docs/legacy/specs/changes/sidebar-browser-tabs/tasks.md",
+      "state": "conformant",
+      "classification": "historical material",
+      "type": "Historical Record",
+      "authority": "historical",
+      "status": "deprecated",
+      "file_bytes": 6408,
+      "file_sha256": "a2cdb36f926e364821aec927c68cc4780e2d52c1359e06f61033f652b260620d",
+      "body_sha256": "c67c4226a02d128b28ac4ae73cc95c365de8591fe3abd2a2ddb745f9833096ac",
+      "lineage": null
+    },
+    {
+      "path": "docs/legacy/specs/changes/sidebar-browser-tabs/index.md",
+      "state": "reserved",
+      "classification": "reserved index/log",
+      "authority": null,
+      "status": null,
+      "lineage": null,
+      "reason": "Required OKF index for the completed sidebar browser-tabs historical change packet.",
+      "current_present": false,
+      "synthetic": true,
+      "file_bytes": 560,
+      "file_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25",
+      "body_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25"
     }
   ]
 }

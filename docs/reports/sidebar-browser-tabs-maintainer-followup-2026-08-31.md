@@ -1,3 +1,15 @@
+---
+type: "Validation Report"
+title: "Sidebar browser tabs: maintainer screenshot follow-up"
+description: "Records maintainer-requested sidebar browser-tab corrections and their automated and headful validation."
+tags: ["chat-web", "sidebar-browser-tabs", "validation"]
+status: "stable"
+authority: "evidentiary"
+generated:
+  by: "openai/codex"
+  at: "2026-09-02T05:59:53Z"
+---
+
 # Sidebar browser tabs: maintainer screenshot follow-up
 
 Date: 2026-08-31

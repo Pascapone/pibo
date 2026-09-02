@@ -1,3 +1,15 @@
+---
+type: "Historical Record"
+title: "Desktop surface inventory"
+description: "Historical inventory from the completed sidebar browser-tabs change packet."
+tags: ["sidebar-browser-tabs", "change-packet", "history"]
+status: "deprecated"
+authority: "historical"
+generated:
+  by: "openai/codex"
+  at: "2026-09-02T05:59:53Z"
+---
+
 # Desktop surface inventory
 
 This inventory records every existing top-level route and session-related side surface found on `upstream/dev` at `2aef2443`.
