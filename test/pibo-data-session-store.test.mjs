@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -32,6 +32,27 @@ function assertAppContextSessionsSchema(dbPath) {
 	} finally {
 		db.close();
 	}
+}
+
+function createLegacySessionsTable(db) {
+	db.exec(`
+		CREATE TABLE pibo_sessions (
+			id TEXT PRIMARY KEY,
+			pi_session_id TEXT NOT NULL UNIQUE,
+			channel TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			profile TEXT NOT NULL,
+			${retiredStorageColumn} TEXT,
+			parent_id TEXT,
+			origin_id TEXT,
+			workspace TEXT,
+			title TEXT,
+			metadata_json TEXT,
+			active_model_json TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+	`);
 }
 
 test("pibo data session store persists structured session fields", () => {
@@ -73,29 +94,50 @@ test("pibo data session store persists structured session fields", () => {
 	}
 });
 
+test("pibo data migrate sessions-to-v2 rejects a non-legacy source before creating the target", async () => {
+	const dir = tempDir();
+	try {
+		const sourcePath = join(dir, "not-a-legacy-store.sqlite");
+		const targetPath = join(dir, "pibo.sqlite");
+		const source = new DatabaseSync(sourcePath);
+		source.exec("CREATE TABLE unrelated_fixture (id TEXT PRIMARY KEY)");
+		source.close();
+
+		await assert.rejects(
+			runDataCli(["node", "pibo", "migrate", "sessions-to-v2", "--from", sourcePath, "--to", targetPath, "--json"]),
+			/required legacy table "pibo_sessions" is missing/,
+		);
+		assert.equal(existsSync(targetPath), false);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("pibo data migrate sessions-to-v2 accepts a valid empty legacy source", async () => {
+	const dir = tempDir();
+	try {
+		const sourcePath = join(dir, "pibo-sessions.sqlite");
+		const targetPath = join(dir, "pibo.sqlite");
+		const source = new DatabaseSync(sourcePath);
+		createLegacySessionsTable(source);
+		source.close();
+
+		await runDataCli(["node", "pibo", "migrate", "sessions-to-v2", "--from", sourcePath, "--to", targetPath, "--json"]);
+		assert.equal(existsSync(targetPath), true);
+		const store = new PiboDataSessionStore(targetPath);
+		assert.equal(store.list().length, 0);
+		store.close();
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("pibo data migrate sessions-to-v2 is idempotent", async () => {
 	const dir = tempDir();
 	try {
 		const sourcePath = join(dir, "pibo-sessions.sqlite");
 		const source = new DatabaseSync(sourcePath);
-		source.exec(`
-			CREATE TABLE pibo_sessions (
-				id TEXT PRIMARY KEY,
-				pi_session_id TEXT NOT NULL UNIQUE,
-				channel TEXT NOT NULL,
-				kind TEXT NOT NULL,
-				profile TEXT NOT NULL,
-				${retiredStorageColumn} TEXT,
-				parent_id TEXT,
-				origin_id TEXT,
-				workspace TEXT,
-				title TEXT,
-				metadata_json TEXT,
-				active_model_json TEXT,
-				created_at TEXT NOT NULL,
-				updated_at TEXT NOT NULL
-			);
-		`);
+		createLegacySessionsTable(source);
 		source.prepare("INSERT INTO pibo_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 			.run("ps_shared", "pi_shared", "pibo.chat-web", "chat", "default", retiredSharedScope, null, null, "/tmp", "Shared", '{"chatRoomId":"room_shared"}', '{"provider":"openai","id":"gpt-test"}', "2026-05-09T00:00:00.000Z", "2026-05-09T00:01:00.000Z");
 		source.prepare("INSERT INTO pibo_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
