@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CalendarClock, Loader2, Pause, Play, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, Loader2, PanelLeftOpen, Pause, Play, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import {
 	deleteCronJob,
 	getCronJobs,
@@ -12,6 +12,7 @@ import {
 	type CronScheduleInput,
 } from "./api-cron";
 import { mobileSidebarA11yProps, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
+import { usePaneSidebar, type PaneSurface } from "./responsive-pane-sidebar";
 import type { AgentProfile, BootstrapData, CustomAgent, PiboCronJob, PiboCronRun, PiboCronStatus, PiboRoom } from "./types";
 
 type ScheduleKind = "in" | "at" | "every" | "daily" | "weekly" | "monthly" | "cron";
@@ -71,8 +72,14 @@ const weekdayOptions = [
 	{ value: 0, short: "Sun", label: "Sunday" },
 ];
 
-export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSidebar }: { bootstrap: BootstrapData; mobileSidebarOpen?: boolean; onCloseMobileSidebar?: () => void }) {
+export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSidebar, surface = "route" }: { bootstrap: BootstrapData; mobileSidebarOpen?: boolean; onCloseMobileSidebar?: () => void; surface?: PaneSurface }) {
 	const isMobileSidebarViewport = useMobileSidebarViewport();
+	const sidebar = usePaneSidebar({
+		surface,
+		mobileOpen: mobileSidebarOpen,
+		mobileViewport: isMobileSidebarViewport,
+		onMobileClose: onCloseMobileSidebar ?? (() => undefined),
+	});
 	const rooms = useMemo(() => flattenRooms(bootstrap.rooms), [bootstrap.rooms]);
 	const agentOptions = useMemo(() => profileOptions(bootstrap.agents, bootstrap.customAgents), [bootstrap.agents, bootstrap.customAgents]);
 	const defaultProfile = agentOptions[0]?.name ?? "base";
@@ -117,12 +124,13 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 	const startNewJob = () => {
 		setSelectedJobId(null);
 		setDraft(createEmptyDraft(defaultProfile, rooms));
+		sidebar.closeSidebar();
 	};
 
 	const selectJob = async (job: PiboCronJob) => {
 		setSelectedJobId(job.id);
 		setDraft(draftFromJob(job, defaultProfile, rooms));
-		onCloseMobileSidebar?.();
+		sidebar.closeSidebar();
 		try {
 			const response = await getCronRuns(job.id, 100);
 			setRuns(response.runs);
@@ -190,28 +198,27 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 	};
 
 	return (
-		<div className="min-h-0 grid grid-cols-[340px_minmax(0,1fr)] max-[980px]:grid-cols-1 h-full overflow-hidden">
+		<div ref={sidebar.rootRef} className={`relative min-h-0 grid h-full overflow-hidden ${sidebar.isOverlay ? "grid-cols-1" : "grid-cols-[minmax(280px,340px)_minmax(0,1fr)]"}`}>
 			<div
 				data-pibo-mobile-sidebar-backdrop
 				aria-hidden="true"
-				className={`fixed inset-0 z-30 bg-black/60 min-[981px]:hidden transition-opacity duration-200 ${
-					mobileSidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+				className={`${surface === "tab" ? "absolute" : "fixed"} inset-0 z-30 bg-black/60 transition-opacity duration-200 ${sidebar.isOverlay ? "block" : "hidden"} ${
+					sidebar.isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
 				}`}
-				onClick={onCloseMobileSidebar}
+				onClick={sidebar.closeSidebar}
 			/>
 			<aside
+				ref={sidebar.sidebarRef}
 				data-pibo-mobile-sidebar
-				{...mobileSidebarA11yProps(isMobileSidebarViewport, mobileSidebarOpen, "Cron jobs sidebar")}
-				className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 max-[980px]:fixed max-[980px]:left-0 max-[980px]:top-0 max-[980px]:bottom-0 max-[980px]:z-40 max-[980px]:w-[280px] max-[980px]:transition-transform max-[980px]:duration-200 ${
-					mobileSidebarOpen ? "max-[980px]:translate-x-0" : "max-[980px]:-translate-x-full"
-				}`}
+				{...mobileSidebarA11yProps(sidebar.isOverlay, sidebar.isOpen, "Cron jobs sidebar")}
+				className={`min-h-0 overflow-auto bg-[#1a262b] border-r border-slate-800 ${sidebar.isOverlay ? `${surface === "tab" ? "absolute" : "fixed"} left-0 top-0 bottom-0 z-40 w-[min(340px,86%)] transition-transform duration-200 ${sidebar.isOpen ? "translate-x-0" : "-translate-x-full"}` : "relative"}`}
 			>
 				<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider max-[980px]:h-auto max-[980px]:py-2">
 					<span className="inline-flex items-center gap-2"><CalendarClock size={14} /> Cron Jobs</span>
 					<div className="flex items-center gap-1">
 						<button type="button" onClick={() => void load()} title="Refresh" aria-label="Refresh" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><RefreshCw size={13} /></button>
 						<button type="button" onClick={startNewJob} title="New Cron Job" aria-label="New Cron Job" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><Plus size={13} /></button>
-						<button type="button" onClick={onCloseMobileSidebar} title="Close sidebar" aria-label="Close sidebar" className="min-[981px]:hidden p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><X size={13} /></button>
+						{sidebar.isOverlay ? <button type="button" onClick={sidebar.closeSidebar} title="Close sidebar" aria-label="Close sidebar" className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><X size={13} /></button> : null}
 					</div>
 				</div>
 				<div className="p-3 space-y-3">
@@ -238,15 +245,16 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 					</div>
 				</div>
 			</aside>
-			<main className="min-h-0 overflow-auto">
-				<div className="max-w-5xl mx-auto p-5 space-y-5">
+			<main className="@container min-h-0 min-w-0 overflow-auto">
+				<div className="max-w-5xl mx-auto p-5 @max-[520px]:p-3 space-y-5">
+					{surface === "tab" && sidebar.isOverlay ? <button ref={sidebar.triggerRef} type="button" onClick={sidebar.openSidebar} className="inline-flex h-8 items-center gap-2 rounded-sm border border-slate-700 px-2 text-xs font-semibold text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]" aria-label="Open Cron jobs"><PanelLeftOpen size={13} /> Cron jobs</button> : null}
 					<div className="flex items-start justify-between gap-3 flex-wrap">
 						<div>
 							<div className="text-xs uppercase tracking-[0.16em] text-[#11a4d4] font-bold">Scheduled Pibo Sessions</div>
 							<h1 className="text-2xl font-bold text-slate-100">{selectedJob ? selectedJob.name : "New cron job"}</h1>
 							<p className="text-sm text-slate-400">Each run creates a visible Pibo Session in the selected Shared Chat or Room.</p>
 						</div>
-						<div className="flex items-center gap-2">
+						<div className="flex items-center gap-2 flex-wrap">
 							{selectedJobIsRecurring ? <button type="button" onClick={() => void toggleSelectedJobEnabled()} disabled={saving} className={`h-9 px-3 inline-flex items-center gap-2 rounded-sm border disabled:opacity-50 ${selectedJob?.enabled ? "border-amber-500/50 text-amber-300 hover:border-amber-400" : "border-emerald-500/50 text-emerald-300 hover:border-emerald-400"}`}>{selectedJob?.enabled ? <Pause size={14} /> : <Play size={14} />} {selectedJob?.enabled ? "Stop" : "Resume"}</button> : null}
 							{selectedJob ? <button type="button" onClick={() => void runNow()} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"><Play size={14} /> Run now</button> : null}
 							<button type="button" onClick={() => void saveJob()} disabled={saving} className="h-9 px-3 inline-flex items-center gap-2 rounded-sm border border-[#11a4d4] bg-[#11a4d4]/10 text-[#11a4d4] disabled:opacity-50">{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save</button>
@@ -256,27 +264,27 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 
 					{error ? <ErrorBox message={error} /> : null}
 
-					<section className="grid grid-cols-2 gap-4 max-[980px]:grid-cols-1">
+					<section className="grid grid-cols-2 gap-4 max-[980px]:grid-cols-1 @max-[720px]:grid-cols-1">
 						<Panel title="Job">
 							<Field label="Name"><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} className={inputClass} placeholder="Daily standup summary" /></Field>
 							<Field label="Description"><input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className={inputClass} placeholder="Optional" /></Field>
 							<Field label="Agent"><select value={draft.profile} onChange={(event) => setDraft({ ...draft, profile: event.target.value })} className={inputClass}>{agentOptions.map((agent) => <option key={agent.name} value={agent.name}>{agent.name}</option>)}</select></Field>
 							<div className="space-y-2">
 								<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Target</div>
-								<div className="grid grid-cols-2 gap-2">
+								<div className="grid grid-cols-2 gap-2 @max-[420px]:grid-cols-1">
 									<RadioCard name="target-kind" checked={draft.targetKind === "default-chat"} title="Shared Chat" description="Runs in the shared default chat" onChange={() => setDraft({ ...draft, targetKind: "default-chat" })} />
 									<RadioCard name="target-kind" checked={draft.targetKind === "room"} title="Room" description="Uses the room workspace" onChange={() => setDraft({ ...draft, targetKind: "room" })} />
 								</div>
 							</div>
 							{draft.targetKind === "room" ? <Field label="Room"><select value={draft.roomId} onChange={(event) => setDraft({ ...draft, roomId: event.target.value })} className={inputClass}>{rooms.map((room) => <option key={room.id} value={room.id} disabled={room.archived}>{room.label}{room.archived ? " (archived)" : ""}</option>)}</select></Field> : null}
-							<div className="grid grid-cols-2 gap-2 pt-1">
+							<div className="grid grid-cols-2 gap-2 pt-1 @max-[420px]:grid-cols-1">
 								<Toggle checked={draft.enabled} label="Enabled" onChange={(checked) => setDraft({ ...draft, enabled: checked })} />
 								<Toggle checked={draft.deleteAfterRun} label="Delete one-shot after success" onChange={(checked) => setDraft({ ...draft, deleteAfterRun: checked })} />
 							</div>
 						</Panel>
 
 						<Panel title="Schedule Builder">
-							<div className="grid grid-cols-2 gap-2 max-[720px]:grid-cols-1">
+							<div className="grid grid-cols-2 gap-2 max-[720px]:grid-cols-1 @max-[520px]:grid-cols-1">
 								{schedulePresets.map((preset) => (
 									<RadioCard key={preset.kind} name="schedule-kind" checked={draft.scheduleKind === preset.kind} title={preset.title} description={preset.description} onChange={() => setDraft({ ...draft, scheduleKind: preset.kind })} />
 								))}
@@ -286,7 +294,7 @@ export function CronArea({ bootstrap, mobileSidebarOpen = false, onCloseMobileSi
 								{draft.scheduleKind === "in" ? <DurationPicker label="Run after" amount={draft.inAmount} unit={draft.inUnit} onAmount={(inAmount) => setDraft({ ...draft, inAmount })} onUnit={(inUnit) => setDraft({ ...draft, inUnit })} /> : null}
 
 								{draft.scheduleKind === "at" ? (
-									<div className="grid grid-cols-2 gap-3">
+									<div className="grid grid-cols-2 gap-3 @max-[420px]:grid-cols-1">
 										<Field label="Date"><input type="date" value={draft.atDate} onChange={(event) => setDraft({ ...draft, atDate: event.target.value })} className={inputClass} /></Field>
 										<Field label="Time"><input type="time" value={draft.atTime} onChange={(event) => setDraft({ ...draft, atTime: event.target.value })} className={inputClass} /></Field>
 									</div>
@@ -389,9 +397,9 @@ function DurationPicker({ label, amount, unit, onAmount, onUnit }: { label: stri
 	return (
 		<div className="space-y-2">
 			<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
-			<div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2 max-[720px]:grid-cols-1">
+			<div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2 max-[720px]:grid-cols-1 @max-[520px]:grid-cols-1">
 				<input type="number" min="1" step="1" value={amount} onChange={(event) => onAmount(event.target.value)} className={inputClass} />
-				<div className="grid grid-cols-3 gap-2">
+				<div className="grid grid-cols-3 gap-2 @max-[360px]:grid-cols-1">
 					<RadioPill name={`${label}-unit`} checked={unit === "minutes"} label="Minutes" onChange={() => onUnit("minutes")} />
 					<RadioPill name={`${label}-unit`} checked={unit === "hours"} label="Hours" onChange={() => onUnit("hours")} />
 					<RadioPill name={`${label}-unit`} checked={unit === "days"} label="Days" onChange={() => onUnit("days")} />

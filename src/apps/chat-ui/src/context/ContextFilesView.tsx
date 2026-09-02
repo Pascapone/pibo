@@ -335,7 +335,7 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 	return (
 		<div className={`context-files-view${filePanelOpen ? " context-files-view--panel-open" : ""}`}>
 			<main className="context-files-workspace flex min-h-0 min-w-0 flex-col bg-[#101d22]">
-				<div className="flex h-14 items-center justify-between gap-3 border-b border-slate-800 bg-[#151f24] px-4 max-[640px]:h-auto max-[640px]:flex-wrap max-[640px]:py-3">
+				<div className="flex h-14 items-center justify-between gap-3 border-b border-slate-800 bg-[#151f24] px-4 max-[640px]:h-auto max-[640px]:flex-wrap max-[640px]:py-3 @max-[520px]:h-auto @max-[520px]:flex-wrap @max-[520px]:py-3">
 					<div className="min-w-0">
 						<div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#11a4d4]">
 							{selectedFile ? scopeLabel(selectedFile) : "Context File"}
@@ -381,7 +381,7 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 					</div>
 				</div>
 
-				<div className="flex min-h-0 flex-1 flex-col gap-3 p-4 max-[640px]:p-3">
+				<div className="flex min-h-0 flex-1 flex-col gap-3 p-4 max-[640px]:p-3 @max-[520px]:p-3">
 					{error ? <StatusBanner tone="error" text={error} /> : null}
 					{conflict ? <StatusBanner tone="warning" text={conflict} /> : null}
 					{document ? (

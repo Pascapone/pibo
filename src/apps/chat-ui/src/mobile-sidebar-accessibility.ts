@@ -114,11 +114,15 @@ export function useMobileSidebarModal({
 	isOpen,
 	onClose,
 	triggerRef,
+	sidebarRef,
+	rootRef,
 }: {
 	isMobileViewport: boolean;
 	isOpen: boolean;
 	onClose: () => void;
 	triggerRef: RefObject<HTMLButtonElement | null>;
+	sidebarRef?: RefObject<HTMLElement | null>;
+	rootRef?: RefObject<HTMLElement | null>;
 }): () => void {
 	const restoreTriggerFocusRef = useRef(false);
 	const requestClose = useCallback(() => {
@@ -134,10 +138,11 @@ export function useMobileSidebarModal({
 			return () => window.cancelAnimationFrame(frame);
 		}
 
-		const sidebar = document.querySelector<HTMLElement>(MOBILE_SIDEBAR_SELECTOR);
+		const sidebar = sidebarRef?.current ?? document.querySelector<HTMLElement>(MOBILE_SIDEBAR_SELECTOR);
 		if (!sidebar) return;
+		const root = rootRef?.current ?? document.body;
 
-		const restoreBackground = applyMobileSidebarBackgroundIsolation(sidebar, document.body);
+		const restoreBackground = applyMobileSidebarBackgroundIsolation(sidebar, root);
 		const focusFrame = window.requestAnimationFrame(() => {
 			const focusable = mobileSidebarFocusableElements(sidebar);
 			mobileSidebarInitialFocusTarget<FocusTarget>(focusable, sidebar).focus();
@@ -172,7 +177,7 @@ export function useMobileSidebarModal({
 			document.removeEventListener("keydown", handleKeyDown, true);
 			restoreBackground();
 		};
-	}, [isMobileViewport, isOpen, requestClose, triggerRef]);
+	}, [isMobileViewport, isOpen, requestClose, rootRef, sidebarRef, triggerRef]);
 
 	return requestClose;
 }

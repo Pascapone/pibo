@@ -132,6 +132,7 @@ export function SessionTracePane({
   sessionViews,
   currentSessionView,
   desktopTerminalOnly = false,
+  containerResponsive = false,
   allowedSessionViewIds,
   creatingSession,
   terminalFullscreen = false,
@@ -192,6 +193,7 @@ export function SessionTracePane({
   sessionViews: ReturnType<typeof listChatSessionViews>;
   currentSessionView: ReturnType<typeof getChatSessionView>;
   desktopTerminalOnly?: boolean;
+  containerResponsive?: boolean;
   allowedSessionViewIds?: readonly ChatSessionViewId[];
   creatingSession: boolean;
   terminalFullscreen?: boolean;
@@ -999,6 +1001,7 @@ export function SessionTracePane({
           onError={onError}
         />
       ) : undefined}
+      containerResponsive={containerResponsive}
       composerProps={{
         sessionId: selectedPiboSessionId,
         disabled: composerDisabled,
