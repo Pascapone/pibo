@@ -36,19 +36,42 @@ test("desktop workspace tabs expose New Tab catalog, ARIA tabs, keyboard and poi
 });
 
 test("App gates the new three-region shell to Desktop and keeps the route shell for Mobile", async () => {
-	const [app, chrome, pane] = await Promise.all([
+	const [app, chrome, pane, desktopSidebar] = await Promise.all([
 		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/app-chrome.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8"),
+		readFile("src/apps/chat-ui/src/desktop-session-sidebar.tsx", "utf8"),
 	]);
 	assert.match(app, /const desktopTabsEnabled = !isMobileSidebarViewport/);
 	assert.match(app, /desktopTabsEnabled \? \(/);
-	assert.match(app, /data-pibo-debug="desktop-session-sidebar"/);
-	assert.match(app, /data-pibo-debug="desktop-session-sidebar"[^>]*className="[^"]*flex flex-col/);
+	assert.match(app, /<DesktopSessionSidebar/);
+	assert.match(desktopSidebar, /data-pibo-debug="desktop-session-sidebar"/);
+	assert.match(desktopSidebar, /aria-label="Resize Sessions sidebar"/);
+	assert.match(desktopSidebar, /aria-label="Collapse Sessions sidebar"/);
+	assert.match(desktopSidebar, /aria-label="Reopen Sessions sidebar"/);
 	assert.match(app, /data-pibo-debug="desktop-session-center"/);
+	assert.match(app, /className="min-h-0 min-w-\[250px\] flex-1 overflow-hidden"/);
+	assert.match(app, /desktopTerminalOnly[\s\S]*containerResponsive/);
 	assert.match(app, /data-pibo-debug="route-shell"/);
-	assert.match(app, /desktopTabMode=\{desktopTabsEnabled\}/);
-	assert.match(chrome, /desktopTabMode \? null : <nav aria-label="Main navigation"/);
+	assert.match(app, /isAppFullscreen \|\| desktopTabsEnabled \? null : \(/);
+	assert.match(app, /desktopTabsEnabled \? "grid-rows-\[auto_1fr\]"/);
+	assert.match(app, /<DesktopSessionSidebar[\s\S]*identity=\{identity\}/);
+	assert.match(desktopSidebar, /data-pibo-debug="desktop-sidebar-app-header"/);
+	assert.match(desktopSidebar, />Pibo Chat</);
+	assert.match(desktopSidebar, /<AccountMenu identity=\{identity\}/);
+	assert.match(chrome, /export function AccountMenu/);
+	assert.match(chrome, /data-pibo-debug="account-avatar"/);
+	assert.match(chrome, /title=\{identityLabel\}/);
+	assert.match(chrome, /rounded-full/);
+	assert.match(chrome, /aria-haspopup="menu"/);
+	assert.match(chrome, /role="menu"/);
+	assert.match(chrome, /role="menuitem"/);
+	assert.match(chrome, /aria-label="Sign out"/);
+	assert.match(chrome, /createPortal/);
+	assert.match(chrome, /document\.addEventListener\("pointerdown", closeFromOutside\)/);
+	assert.match(chrome, /event\.key !== "Escape"/);
+	assert.doesNotMatch(app, /desktopTabMode=/);
+	assert.doesNotMatch(chrome, /desktopTabMode/);
 	assert.match(pane, /createPortal\(desktopToolPanels\[tool\]/);
 	assert.match(pane, /forcePanelVisible: Boolean\(desktopToolHosts\?\.\["web-annotations"\]\)/);
 	assert.match(app, /sessionViewId="terminal"[\s\S]*currentSessionView=\{terminalSessionView\}[\s\S]*desktopTerminalOnly/);

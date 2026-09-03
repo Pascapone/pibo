@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, LogOut, List, Menu, RefreshCw, UserRound } from "lucide-react";
 import { signInWithGoogle, signOut } from "./api-auth";
 import type { BootstrapData } from "./types";
@@ -27,7 +28,6 @@ const MAIN_NAV_MENU_ID = "main-navigation-menu";
 
 type AppHeaderProps = {
 	area: AppArea;
-	desktopTabMode?: boolean;
 	identity: BootstrapData["identity"];
 	mobileAreaMenuOpen: boolean;
 	mobileSidebarTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -40,6 +40,108 @@ type AppHeaderProps = {
 	onCloseMobileAreaMenu: () => void;
 };
 
+export function AccountMenu({ identity, size = "default" }: { identity: BootstrapData["identity"]; size?: "default" | "large" }) {
+	const [open, setOpen] = useState(false);
+	const [position, setPosition] = useState({ left: 8, top: 8 });
+	const triggerRef = useRef<HTMLButtonElement>(null);
+	const menuRef = useRef<HTMLDivElement>(null);
+	const menuId = useId();
+	const identityLabel = identity.email || identity.name || identity.userId;
+	const avatarClass = size === "large" ? "h-8 w-8" : "h-7 w-7";
+	const iconSize = size === "large" ? 15 : 14;
+	const updateMenuPosition = useCallback(() => {
+		const rect = triggerRef.current?.getBoundingClientRect();
+		if (!rect) return;
+		const menuWidth = 176;
+		setPosition({
+			left: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.right - menuWidth)),
+			top: rect.bottom + 8,
+		});
+	}, []);
+
+	useLayoutEffect(() => {
+		if (!open) return;
+		updateMenuPosition();
+		menuRef.current?.querySelector<HTMLButtonElement>("[role=menuitem]")?.focus();
+	}, [open, updateMenuPosition]);
+
+	useEffect(() => {
+		if (!open) return;
+		const closeFromOutside = (event: PointerEvent) => {
+			const target = event.target as Node;
+			if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+			setOpen(false);
+		};
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			setOpen(false);
+			triggerRef.current?.focus();
+		};
+		document.addEventListener("pointerdown", closeFromOutside);
+		document.addEventListener("keydown", handleKeyDown);
+		window.addEventListener("resize", updateMenuPosition);
+		window.addEventListener("scroll", updateMenuPosition, true);
+		return () => {
+			document.removeEventListener("pointerdown", closeFromOutside);
+			document.removeEventListener("keydown", handleKeyDown);
+			window.removeEventListener("resize", updateMenuPosition);
+			window.removeEventListener("scroll", updateMenuPosition, true);
+		};
+	}, [open, updateMenuPosition]);
+
+	const openMenu = () => {
+		updateMenuPosition();
+		setOpen(true);
+	};
+
+	return (
+		<>
+			<button
+				ref={triggerRef}
+				type="button"
+				data-pibo-debug="account-avatar"
+				title={identityLabel}
+				aria-label="Open account menu"
+				aria-haspopup="menu"
+				aria-controls={menuId}
+				aria-expanded={open}
+				onClick={() => open ? setOpen(false) : openMenu()}
+				onKeyDown={(event) => {
+					if (event.key !== "ArrowDown") return;
+					event.preventDefault();
+					openMenu();
+				}}
+				className={`inline-flex ${avatarClass} shrink-0 items-center justify-center rounded-full bg-[#101a1f] text-slate-300 ring-1 ring-inset ring-slate-600 outline-none transition-colors hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] hover:ring-[#11a4d4] focus-visible:ring-2 focus-visible:ring-[#11a4d4]`}
+			>
+				<UserRound size={iconSize} />
+			</button>
+			{open && typeof document !== "undefined" ? createPortal(
+				<div
+					ref={menuRef}
+					id={menuId}
+					role="menu"
+					aria-label="Account menu"
+					className="fixed z-[100] w-44 rounded-sm border border-slate-700 bg-[#1a262b] p-1 shadow-xl"
+					style={position}
+				>
+					<button
+						type="button"
+						role="menuitem"
+						aria-label="Sign out"
+						onClick={() => void signOut().then(() => location.reload())}
+						className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-xs text-slate-300 outline-none hover:bg-slate-800 hover:text-[#11a4d4] focus-visible:bg-slate-800 focus-visible:text-[#11a4d4]"
+					>
+						<LogOut size={14} />
+						<span>Sign out</span>
+					</button>
+				</div>,
+				document.body,
+			) : null}
+		</>
+	);
+}
+
 export function FallbackGatewayBanner() {
 	return (
 		<div className="fixed top-0 left-0 right-0 z-50 bg-red-600 text-white text-center text-sm font-bold py-1.5 px-4 flex items-center justify-center gap-2 shadow-lg">
@@ -51,7 +153,6 @@ export function FallbackGatewayBanner() {
 
 export function AppHeader({
 	area,
-	desktopTabMode = false,
 	identity,
 	mobileAreaMenuOpen,
 	mobileSidebarTriggerRef,
@@ -63,7 +164,6 @@ export function AppHeader({
 	onToggleMobileAreaMenu,
 	onCloseMobileAreaMenu,
 }: AppHeaderProps) {
-	const identityLabel = identity.email || identity.name || identity.userId;
 	const mobileAreaMenuRef = useRef<HTMLDivElement>(null);
 	const mobileAreaMenuButtonRef = useRef<HTMLButtonElement>(null);
 	const mobileAreaMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -161,7 +261,7 @@ export function AppHeader({
 				<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Logo" className="h-5 w-auto shrink-0" />
 				<div className="truncate font-extrabold tracking-[0.08em] uppercase text-lg max-[420px]:text-base">Pibo Chat</div>
 			</div>
-			{desktopTabMode ? null : <nav aria-label="Main navigation" className="flex gap-1 max-[1200px]:hidden min-[1201px]:absolute min-[1201px]:left-1/2 min-[1201px]:-translate-x-1/2">
+			<nav aria-label="Main navigation" className="flex gap-1 max-[1200px]:hidden min-[1201px]:absolute min-[1201px]:left-1/2 min-[1201px]:-translate-x-1/2">
 				{navigationAreas.map((item) => (
 					<button
 						key={item}
@@ -178,14 +278,10 @@ export function AppHeader({
 						</span>
 					</button>
 				))}
-			</nav>}
+			</nav>
 			<div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-xs text-slate-400 min-[1201px]:ml-0">
-				<UserRound size={14} />
-				<span className={`truncate ${vscodeEnabled ? "max-[1500px]:hidden" : "max-[600px]:hidden"}`}>{identityLabel}</span>
-				<button type="button" onClick={() => void signOut().then(() => location.reload())} className="p-1 border border-slate-700 rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4]" title="Sign out" aria-label="Sign out">
-					<LogOut size={14} />
-				</button>
-				{desktopTabMode ? null : <div className="relative min-[1201px]:hidden" ref={mobileAreaMenuRef}>
+				<AccountMenu identity={identity} />
+				<div className="relative min-[1201px]:hidden" ref={mobileAreaMenuRef}>
 					<button
 						ref={mobileAreaMenuButtonRef}
 						type="button"
@@ -235,7 +331,7 @@ export function AppHeader({
 							))}
 						</div>
 					) : null}
-				</div>}
+				</div>
 			</div>
 		</header>
 	);
