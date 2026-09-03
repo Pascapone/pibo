@@ -354,6 +354,9 @@ async function runDebugDb(args: string[]): Promise<void> {
 	const command = args[0];
 	const options = parseOptions(args.slice(1));
 	if (command === "stores") {
+		const unknownOption = options.positionals.find((value) => value.startsWith("-"));
+		if (unknownOption) throw new Error(`Unknown option "${unknownOption}" for pibo debug db stores. Run pibo debug db --help.`);
+		if (options.positionals.length > 0) throw new Error("pibo debug db stores accepts no positional arguments. Run pibo debug db --help.");
 		const stores = resolveDebugStores();
 		if (options.json) {
 			console.log(JSON.stringify({ stores }, null, 2));
