@@ -154,7 +154,9 @@ export class RuntimeSessionRegistry {
 		result.executionCount = session.executionCount;
 		session.lastExecAt = startedAt;
 		session.updatedAt = nowIso();
-		session.status = session.backend.isAlive() ? "idle" : "failed";
+		session.status = session.backend.isAlive()
+			? session.backend.isBusy?.() === true ? "busy" : "idle"
+			: "failed";
 		this.appendHistory(session, {
 			id: randomUUID(),
 			startedAt,
@@ -300,6 +302,9 @@ export class RuntimeSessionRegistry {
 	private reconcileSession(session: RuntimeSession): RuntimeSession {
 		if (session.status !== "closed" && session.status !== "failed" && !session.backend.isAlive()) {
 			session.status = "failed";
+			session.updatedAt = nowIso();
+		} else if (session.status === "busy" && session.backend.isBusy?.() === false) {
+			session.status = "idle";
 			session.updatedAt = nowIso();
 		}
 		return session;

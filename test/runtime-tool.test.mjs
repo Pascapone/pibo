@@ -111,6 +111,35 @@ pythonTest("python runtime preserves variables across exec calls", async () => {
 	});
 });
 
+pythonTest("python runtime remains busy until timed-out code actually settles", async () => {
+	await withRuntimeRegistry(async (registry) => {
+		const start = await registry.start("controller", { runtime: "python" });
+		const sessionId = start.sessionId;
+		assert.ok(sessionId);
+
+		const timedOut = await registry.exec("controller", {
+			sessionId,
+			code: "import time\ntime.sleep(0.2)\nlate_value = 42",
+			timeoutMs: 20,
+		});
+		assert.equal(timedOut.status, "timeout");
+		assert.equal(registry.list("controller").sessions[0]?.status, "busy");
+
+		const retry = await registry.exec("controller", { sessionId, code: "late_value", mode: "eval", timeoutMs: 20 });
+		assert.equal(retry.status, "failed");
+		assert.equal(retry.error?.name, "RuntimeBusy");
+
+		const deadline = Date.now() + 1000;
+		while (registry.list("controller").sessions[0]?.status === "busy" && Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		assert.equal(registry.list("controller").sessions[0]?.status, "idle");
+		const lateValue = await registry.exec("controller", { sessionId, code: "late_value", mode: "eval" });
+		assert.equal(lateValue.status, "ok");
+		assert.equal(lateValue.result?.repr, "42");
+	});
+});
+
 pythonTest("python runtime errors keep prior state and expose failing line", async () => {
 	await withRuntimeRegistry(async (registry) => {
 		const start = await registry.start("controller", { runtime: "python" });
