@@ -64,6 +64,7 @@ function notFoundVars(sessionId = "auto"): RuntimeVarsResult {
 
 export class RuntimeSessionRegistry {
 	private readonly sessions = new Map<string, RuntimeSession>();
+	private readonly defaultStarts = new Map<string, Promise<RuntimeStartResult>>();
 	private readonly maxHistoryEntries: number;
 
 	constructor(private readonly options: RuntimeSessionRegistryOptions) {
@@ -119,12 +120,7 @@ export class RuntimeSessionRegistry {
 			: this.getDefault(controllerPiboSessionId, input.runtime ?? "python");
 		if (!input.sessionId && !session) {
 			const runtime = input.runtime ?? "python";
-			const started = await this.start(controllerPiboSessionId, {
-				runtime,
-				name: input.name,
-				target: input.target,
-				timeoutMs: input.timeoutMs,
-			});
+			const started = await this.getOrStartDefault(controllerPiboSessionId, input);
 			if (started.status !== "ok" || !started.sessionId) {
 				return {
 					status: started.status === "ok" ? "failed" : started.status,
@@ -272,6 +268,28 @@ export class RuntimeSessionRegistry {
 			return status !== "closed" && status !== "failed";
 		});
 	}
+
+	private async getOrStartDefault(controllerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeStartResult> {
+		const runtime = input.runtime ?? "python";
+		const existing = this.getDefault(controllerPiboSessionId, runtime);
+		if (existing) return { status: "ok", sessionId: existing.sessionId, runtime: existing.runtime };
+		const key = `${controllerPiboSessionId}\0${runtime}`;
+		const pending = this.defaultStarts.get(key);
+		if (pending) return pending;
+		const start = this.start(controllerPiboSessionId, {
+			runtime,
+			name: input.name,
+			target: input.target,
+			timeoutMs: input.timeoutMs,
+		});
+		this.defaultStarts.set(key, start);
+		try {
+			return await start;
+		} finally {
+			if (this.defaultStarts.get(key) === start) this.defaultStarts.delete(key);
+		}
+	}
+
 
 	private getSessionForController(controllerPiboSessionId: string, sessionId: string): RuntimeSession | undefined {
 		const session = this.sessions.get(sessionId);
