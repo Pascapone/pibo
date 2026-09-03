@@ -302,7 +302,7 @@ export function createDeveloperHostSetupPlan(options: {
 				piboHome: prodHome,
 				serviceKind: "prod",
 				webPort: prodWebPort,
-				execStart: `${prodEntrypoint} gateway:web --web-host 127.0.0.1 --web-port ${prodWebPort}`,
+				execStart: `${prodEntrypoint} gateway:web --web-host 127.0.0.1 --web-port ${prodWebPort} --gateway-port ${prodGatewayPort}`,
 			}),
 		},
 		{
