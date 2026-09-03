@@ -118,6 +118,7 @@ export function CatalogToggle({
 				if (!disabled) onToggle();
 			}}
 			aria-disabled={disabled}
+			aria-pressed={checked}
 			className={`min-w-0 border rounded-sm p-2 text-left grid grid-cols-[18px_1fr] gap-2 ${disabled && !onAction ? "opacity-60" : ""} ${
 				checked ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#151f24] hover:border-slate-700"
 			}`}
@@ -191,7 +192,7 @@ export function PiPackageCard({
 	return (
 		<div className={`border rounded-sm ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#151f24]"} ${!pkg.enabled ? "opacity-75" : ""}`}>
 			<div className="grid grid-cols-[1fr_auto] gap-2 p-2">
-				<button type="button" disabled={!selectable} onClick={onToggleSelected} className="min-w-0 grid grid-cols-[18px_1fr] gap-2 text-left disabled:cursor-not-allowed">
+				<button type="button" disabled={!selectable} aria-pressed={selected} onClick={onToggleSelected} className="min-w-0 grid grid-cols-[18px_1fr] gap-2 text-left disabled:cursor-not-allowed">
 					<SelectionCheckbox checked={selected} disabled={!selectable} className="mt-0.5" />
 					<span className="min-w-0">
 						<span className="flex items-center gap-2">
