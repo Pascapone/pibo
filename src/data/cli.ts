@@ -136,6 +136,7 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 			const existing = target.db.prepare("SELECT updated_at FROM sessions WHERE id = ?").get(row.id) as { updated_at: string } | undefined;
 			const metadata = parseJsonObject(row.metadata_json);
 			let migrateBinding = false;
+			const roomId = typeof metadata.chatRoomId === "string" ? metadata.chatRoomId : null;
 			const rootSessionId = row.parent_id ? (typeof metadata.rootSessionId === "string" ? metadata.rootSessionId : row.parent_id) : row.id;
 			if (!existing) {
 				const columns = [
@@ -149,7 +150,7 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 				`).run(
 					row.id,
 					row.pi_session_id,
-					typeof metadata.chatRoomId === "string" ? metadata.chatRoomId : null,
+					roomId,
 					rootSessionId,
 					row.parent_id,
 					row.origin_id,
@@ -170,12 +171,13 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 			} else if (row.updated_at > existing.updated_at) {
 				target.db.prepare(`
 					UPDATE sessions SET
-						pi_session_id = ?, root_session_id = ?, parent_id = ?, origin_id = ?,
+						pi_session_id = ?, room_id = ?, root_session_id = ?, parent_id = ?, origin_id = ?,
 						channel = ?, kind = ?, profile = ?, active_model_json = ?, workspace = ?, title = ?,
 						metadata_json = ?, updated_at = ?, last_activity_at = MAX(last_activity_at, ?)
 					WHERE id = ?
 				`).run(
 					row.pi_session_id,
+					roomId,
 					rootSessionId,
 					row.parent_id,
 					row.origin_id,
