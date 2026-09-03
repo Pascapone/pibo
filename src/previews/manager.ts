@@ -4,8 +4,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { basename } from "node:path";
 import { promisify } from "node:util";
-import { sanitizePreviewServerSettings, type PreviewServerSettings } from "../core/preview-server-settings.js";
-import { loadPreviewConfig } from "./config.js";
+import type { PreviewServerSettings } from "../core/preview-server-settings.js";
+import { loadEffectivePreviewServerSettings } from "./config.js";
 import {
 	findPreviewTargetProcess,
 	isPreviewTargetProcessCurrent,
@@ -55,13 +55,7 @@ export function validatePreviewStartCommand(value: string): string {
 
 export async function startManagedPreview(store: PreviewStore, id: string, options: PreviewManagerOptions = {}): Promise<PreviewExposure> {
 	const controller = options.controller ?? createDefaultPreviewProcessController();
-	const settings = options.settings ?? (() => {
-		const previewConfig = loadPreviewConfig();
-		return sanitizePreviewServerSettings({
-			maxRunningServers: previewConfig.maxRunningServers,
-			autoStopMinutes: previewConfig.autoStopMinutes,
-		});
-	})();
+	const settings = options.settings ?? loadEffectivePreviewServerSettings();
 	const now = options.now?.() ?? new Date();
 	await reconcileManagedPreviews(store, { ...options, controller, settings, now: () => now });
 
