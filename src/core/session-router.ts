@@ -1432,7 +1432,7 @@ export class PiboSessionRouter {
 		if (current !== expected) return;
 		const status = current.getStatus();
 		if (status.disposed || status.processing || status.streaming || status.queuedMessages > 0) return;
-		await this.resetCachedSession(piboSessionId, "routed runtime idle timeout");
+		await this.resetCachedSession(piboSessionId);
 	}
 
 	private async getOrCreateSession(piboSessionId: string): Promise<RoutedSession> {

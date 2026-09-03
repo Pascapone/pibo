@@ -791,6 +791,36 @@ test("session router evicts only idle routed runtimes and preserves yielded runs
 	}
 });
 
+test("idle runtime eviction keeps durable session signals reopenable", async () => {
+	const registry = createTestRegistry("status", async () => ({ disposed: false }));
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store, { id: "ps_idle_signal" });
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		pluginRegistry: registry,
+		profile: registry.createProfile("test-profile"),
+		routedSessionIdleTimeoutMs: 20,
+	});
+
+	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_idle_signal", action: "status" });
+		await waitFor(() => router.getPiboSessionIds().length === 0);
+		const afterEviction = router.snapshotSignalSession("ps_idle_signal").sessions.ps_idle_signal;
+		assert.equal(afterEviction.localStatus, "idle");
+		assert.equal(afterEviction.aggregateStatus, "idle");
+		assert.ok(store.get("ps_idle_signal"));
+
+		const reopened = await router.emit({ type: "execution", piboSessionId: "ps_idle_signal", action: "status" });
+		assert.equal(reopened.result.disposed, false);
+		const afterReopen = router.snapshotSignalSession("ps_idle_signal").sessions.ps_idle_signal;
+		assert.equal(afterReopen.localStatus, "idle");
+		assert.equal(afterReopen.aggregateStatus, "idle");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("dispose removes cached parent and child routed runtimes", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({
