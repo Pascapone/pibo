@@ -273,6 +273,21 @@ test("Vanilla contains only core gateway and Chat Web resources", () => {
 	assert.ok(plan.ports.every((port) => port.exposure === "loopback"));
 });
 
+test("generated systemd units quote configurable paths with spaces", () => {
+	const piboHome = "/var/lib/pibo home test";
+	const workspaceRoot = "/srv/pibo workspace test";
+	const plan = createInstallationPlan({ profile: "batteries-included", piboHome, workspaceRoot });
+	const gateway = plan.files.find((file) => file.path === "/etc/systemd/system/pibo-web.service").content;
+	const codeServer = plan.files.find((file) => file.path === "/etc/systemd/system/pibo-code-server.service").content;
+
+	assert.match(gateway, /Environment="PIBO_HOME=\/var\/lib\/pibo home test"/);
+	assert.match(gateway, /Environment="PIBO_VSCODE_WORKSPACE_ROOT=\/srv\/pibo workspace test"/);
+	assert.match(gateway, /Environment="MCP_CONFIG_PATH=\/var\/lib\/pibo home test\/setup\/mcp-defaults\.json"/);
+	assert.match(codeServer, /WorkingDirectory=\/srv\/pibo workspace test/);
+	assert.match(codeServer, /--disable-workspace-trust "\/srv\/pibo workspace test"/);
+	assert.match(codeServer, /ReadWritePaths="\/srv\/pibo workspace test" \/var\/lib\/pibo-code/);
+});
+
 test("setup preflights every target before writing and preserves unmanaged files", () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-profile-preflight-"));
 	try {

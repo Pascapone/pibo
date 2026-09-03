@@ -116,6 +116,10 @@ function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+function systemdQuote(value: string): string {
+	return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
 function normalizeContent(content: string): string {
 	return content.endsWith("\n") ? content : `${content}\n`;
 }
@@ -126,8 +130,8 @@ export function installationManifestPath(piboHome: string): string {
 
 function gatewayService(options: { piboHome: string; workspaceRoot: string; hasVscode: boolean; hasMcpDefaults: boolean; piboCommand: string }): string {
 	const integrationEnvironment = [
-		...(options.hasVscode ? ["Environment=PIBO_VSCODE_WEB_URL=/apps/vscode/", `Environment=PIBO_VSCODE_WORKSPACE_ROOT=${options.workspaceRoot}`] : []),
-		...(options.hasMcpDefaults ? [`Environment=MCP_CONFIG_PATH=${options.piboHome}/setup/mcp-defaults.json`] : []),
+		...(options.hasVscode ? ["Environment=PIBO_VSCODE_WEB_URL=/apps/vscode/", `Environment=${systemdQuote(`PIBO_VSCODE_WORKSPACE_ROOT=${options.workspaceRoot}`)}`] : []),
+		...(options.hasMcpDefaults ? [`Environment=${systemdQuote(`MCP_CONFIG_PATH=${options.piboHome}/setup/mcp-defaults.json`)}`] : []),
 	];
 	return `[Unit]
 Description=Pibo web gateway
@@ -139,7 +143,7 @@ Type=simple
 User=root
 WorkingDirectory=/root
 Environment=HOME=/root
-Environment=PIBO_HOME=${options.piboHome}
+Environment=${systemdQuote(`PIBO_HOME=${options.piboHome}`)}
 Environment=NODE_ENV=production
 Environment=PIBO_GATEWAY_WEB_PORT=4788
 ${integrationEnvironment.length > 0 ? `${integrationEnvironment.join("\n")}\n` : ""}ExecStart=${options.piboCommand} gateway:web --web-host 127.0.0.1 --web-port 4788
@@ -167,14 +171,14 @@ WorkingDirectory=${workspaceRoot}
 Environment=HOME=/var/lib/pibo-code
 Environment=XDG_DATA_HOME=/var/lib/pibo-code/.local/share
 Environment=XDG_CONFIG_HOME=/var/lib/pibo-code/.config
-ExecStart=/opt/pibo/code-server/${CODE_SERVER_VERSION}/bin/code-server --bind-addr 127.0.0.1:4790 --auth none --disable-telemetry --disable-update-check --disable-workspace-trust ${workspaceRoot}
+ExecStart=/opt/pibo/code-server/${CODE_SERVER_VERSION}/bin/code-server --bind-addr 127.0.0.1:4790 --auth none --disable-telemetry --disable-update-check --disable-workspace-trust ${systemdQuote(workspaceRoot)}
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=${workspaceRoot} /var/lib/pibo-code
+ReadWritePaths=${systemdQuote(workspaceRoot)} /var/lib/pibo-code
 
 [Install]
 WantedBy=multi-user.target
