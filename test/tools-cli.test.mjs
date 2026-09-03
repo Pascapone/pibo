@@ -1051,6 +1051,70 @@ test("pibo tools browser-use manages isolated authenticated leases", posixWrappe
 	}
 });
 
+test("pibo tools browser-use preserves a live profile when pool cleanup fails", posixWrapperTest, async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-release-failure-"));
+	let browser;
+	try {
+		const env = { ...process.env, PIBO_HOME: join(cwd, "pibo-home") };
+		const acquired = await execFileAsync("node", [
+			cliPath,
+			"tools",
+			"browser-use",
+			"lease",
+			"acquire",
+			"--app",
+			"pibo-chat",
+			"--holder",
+			"release-failure",
+			"--template-dir",
+			join(cwd, "empty-template"),
+			"--json",
+		], { cwd, env });
+		const lease = JSON.parse(acquired.stdout);
+		browser = spawnBrowserLikeProcess("chromium", lease.userDataDir);
+		await waitForProcess(browser.pid, true);
+		await writeFile(join(lease.userDataDir, "preserve-me"), "profile-data", "utf8");
+
+		const poolStatePath = join(lease.browserPoolRootDir, "browser-pools", lease.browserPoolWorkerId, lease.browserPoolId, "state.json");
+		await mkdir(dirname(poolStatePath), { recursive: true });
+		await writeFile(poolStatePath, `${JSON.stringify({
+			workerId: lease.browserPoolWorkerId,
+			poolId: lease.browserPoolId,
+			maxBrowserProcesses: 1,
+			pid: browser.pid,
+			processGroupId: browser.pid,
+			cdpUrl: "http://127.0.0.1:9",
+			userDataDir: lease.userDataDir,
+			activeLeaseId: lease.browserPoolLeaseId,
+			activeLeaseCount: 1,
+			holder: "release-failure",
+			state: "leased",
+			cleanupStatus: "not-attempted",
+		}, null, 2)}\n`, "utf8");
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "release", lease.id, "--delete-profile"], { cwd, env }),
+			(error) => {
+				assert.match(error.stderr, /Browser pool cleanup failed/);
+				assert.match(error.stderr, /auth lease and profile were preserved/);
+				assert.match(error.stderr, /pool reap/);
+				return true;
+			},
+		);
+
+		assert.equal(await readFile(join(lease.userDataDir, "preserve-me"), "utf8"), "profile-data");
+		assert.equal(processIsAlive(browser.pid), true);
+		const poolState = JSON.parse(await readFile(poolStatePath, "utf8"));
+		assert.equal(poolState.state, "dirty");
+		assert.equal(poolState.cleanupStatus, "failed");
+		const authLeases = JSON.parse((await execFileAsync("node", [cliPath, "tools", "browser-use", "lease", "list", "--json"], { cwd, env })).stdout);
+		assert.equal(authLeases.find((candidate) => candidate.id === lease.id).status, "active");
+	} finally {
+		if (browser) terminateProcess(browser);
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo tools browser-use lease warm-up interruption leaves registry management usable", posixWrapperTest, async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-browser-use-interrupt-"));
 	let acquireProcess;

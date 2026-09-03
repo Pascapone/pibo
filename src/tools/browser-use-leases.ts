@@ -374,11 +374,11 @@ function killLeaseProcess(status: CliToolStatus, lease: BrowserUseLease): void {
   }
 }
 
-async function releaseAssociatedBrowserPoolLease(status: CliToolStatus, lease: BrowserUseLease): Promise<void> {
-  if (!lease.browserPoolLeaseId) return;
+async function releaseAssociatedBrowserPoolLease(status: CliToolStatus, lease: BrowserUseLease) {
+  if (!lease.browserPoolLeaseId) return undefined;
   const identity = browserPoolIdentityForLease(status, lease);
   const paths = browserPoolPaths(browserPoolRootForLease(status, lease), identity);
-  await releaseBrowserPoolLease(paths, identity, { leaseId: lease.browserPoolLeaseId });
+  return releaseBrowserPoolLease(paths, identity, { leaseId: lease.browserPoolLeaseId });
 }
 
 async function reapAssociatedBrowserPoolLeaseProcess(status: CliToolStatus, lease: BrowserUseLease): Promise<boolean> {
@@ -745,7 +745,17 @@ export async function releaseBrowserUseLease(
       );
     }
     if (lease.browserPoolLeaseId) {
-      await releaseAssociatedBrowserPoolLease(context.status, lease);
+      const poolRelease = await releaseAssociatedBrowserPoolLease(context.status, lease);
+      if (poolRelease && (poolRelease.cleanupStatus === 'failed' || poolRelease.state.state === 'dirty')) {
+        throw new Error(
+          formatCliError({
+            code: ErrorCode.CLIENT_ERROR,
+            type: 'BROWSER_USE_POOL_CLEANUP_FAILED',
+            message: `Browser pool cleanup failed for lease "${lease.id}": ${poolRelease.lastError ?? 'managed browser cleanup failed'}`,
+            suggestion: `The auth lease and profile were preserved. Run \`pibo tools browser-use pool reap --worker-id ${poolRelease.state.workerId} --pool-id ${poolRelease.state.poolId} --idle-timeout-ms 0\`, then retry release.`,
+          }),
+        );
+      }
     } else {
       killLeaseProcess(context.status, lease);
     }
