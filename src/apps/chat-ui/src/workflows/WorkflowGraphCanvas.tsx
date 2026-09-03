@@ -116,6 +116,18 @@ type WorkflowGraphContextMenuEvent = {
 	stopPropagation: () => void;
 };
 
+const INSPECTOR_MIN_WIDTH = 360;
+const INSPECTOR_KEYBOARD_STEP = 24;
+
+function inspectorMaxWidth(): number {
+	if (typeof window === "undefined") return 720;
+	return Math.min(720, Math.max(440, window.innerWidth - 520));
+}
+
+function clampInspectorWidth(width: number): number {
+	return Math.max(INSPECTOR_MIN_WIDTH, Math.min(inspectorMaxWidth(), width));
+}
+
 export function WorkflowGraphCanvas({
 	draft,
 	onDraftChange,
@@ -675,9 +687,7 @@ export function WorkflowGraphCanvas({
 	const startInspectorResize = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
 		event.preventDefault();
 		const handleMove = (moveEvent: MouseEvent) => {
-			const maxWidth = Math.min(720, Math.max(420, window.innerWidth - 520));
-			const nextWidth = Math.max(360, Math.min(maxWidth, window.innerWidth - moveEvent.clientX - 32));
-			setInspectorWidth(nextWidth);
+			setInspectorWidth(clampInspectorWidth(window.innerWidth - moveEvent.clientX - 32));
 		};
 		const stopResize = () => {
 			document.removeEventListener("mousemove", handleMove);
@@ -690,6 +700,17 @@ export function WorkflowGraphCanvas({
 		document.addEventListener("mousemove", handleMove);
 		document.addEventListener("mouseup", stopResize);
 	}, []);
+
+	const handleInspectorResizeKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+		let nextWidth: number | undefined;
+		if (event.key === "ArrowLeft") nextWidth = inspectorWidth + INSPECTOR_KEYBOARD_STEP;
+		else if (event.key === "ArrowRight") nextWidth = inspectorWidth - INSPECTOR_KEYBOARD_STEP;
+		else if (event.key === "Home") nextWidth = INSPECTOR_MIN_WIDTH;
+		else if (event.key === "End") nextWidth = inspectorMaxWidth();
+		if (nextWidth === undefined) return;
+		event.preventDefault();
+		setInspectorWidth(clampInspectorWidth(nextWidth));
+	};
 
 	const selectedDescription = describeSelectedGraphElement(draft.definition, selectedElement);
 	const selectedNodeDefinition = selectedElement?.type === "node" ? readWorkflowNodeDefinitions(draft.definition)[selectedElement.id] : undefined;
@@ -840,15 +861,22 @@ export function WorkflowGraphCanvas({
 				<aside className="relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-sm border border-slate-800 bg-[#0f1b20] @max-[760px]:min-h-[360px]" aria-label="Workflow editor inspector panel">
 					<button
 						type="button"
-						className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize border-l border-[#11a4d4]/20 bg-[#11a4d4]/10 opacity-60 transition hover:bg-[#11a4d4]/30 hover:opacity-100 @max-[760px]:hidden"
+						className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize border-l border-[#11a4d4]/20 bg-[#11a4d4]/10 opacity-60 transition hover:bg-[#11a4d4]/30 hover:opacity-100 focus:opacity-100 @max-[760px]:hidden"
 						onMouseDown={startInspectorResize}
+						onKeyDown={handleInspectorResizeKeyDown}
+						role="separator"
+						aria-orientation="vertical"
+						aria-valuemin={INSPECTOR_MIN_WIDTH}
+						aria-valuemax={inspectorMaxWidth()}
+						aria-valuenow={inspectorWidth}
+						aria-valuetext={`${inspectorWidth} pixels`}
 						aria-label="Resize workflow inspector"
-						title="Drag to resize inspector"
+						title="Drag or use Left and Right Arrow to resize inspector"
 					/>
 					<header className="shrink-0 border-b border-slate-800 bg-[#101d22] p-2">
 						<div className="min-w-0">
 							<div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#11a4d4]">Workflow editor</div>
-							<div className="mt-0.5 truncate text-[11px] text-slate-500">Drag edge to resize</div>
+							<div className="mt-0.5 truncate text-[11px] text-slate-500">Drag edge or use arrow keys to resize</div>
 						</div>
 						<nav className="mt-2 grid grid-cols-3 gap-1" aria-label="Workflow inspector sections">
 							{inspectorTabs.map((tab) => {
