@@ -364,12 +364,12 @@ function parsePtyOptions(args: string[]): PtyOptions {
 		else if (arg === "--max-iterations") options.maxIterations = requireOptionValue(args, ++index, arg);
 		else if (arg === "--name") options.name = requireOptionValue(args, ++index, arg);
 		else if (arg === "--env") options.env.push(requireOptionValue(args, ++index, arg));
-		else if (arg === "--expect") options.expect.push(requireOptionValue(args, ++index, arg));
-		else if (arg === "--reject") options.reject.push(requireOptionValue(args, ++index, arg));
-		else if (arg === "--stop-pattern") options.stopPatterns.push(requireOptionValue(args, ++index, arg));
-		else if (arg === "--type") options.steps.push({ typeText: requireOptionValue(args, ++index, arg) });
+		else if (arg === "--expect") options.expect.push(requireTextOptionValue(args, ++index, arg));
+		else if (arg === "--reject") options.reject.push(requireTextOptionValue(args, ++index, arg));
+		else if (arg === "--stop-pattern") options.stopPatterns.push(requireTextOptionValue(args, ++index, arg));
+		else if (arg === "--type") options.steps.push({ typeText: requireTextOptionValue(args, ++index, arg) });
 		else if (arg === "--press") options.steps.push({ press: requireOptionValue(args, ++index, arg) });
-		else if (arg === "--wait-for") options.steps.push({ waitFor: requireOptionValue(args, ++index, arg) });
+		else if (arg === "--wait-for") options.steps.push({ waitFor: requireTextOptionValue(args, ++index, arg) });
 		else if (arg === "--sleep-ms") options.steps.push({ sleepMs: parseNonNegativeInteger(requireOptionValue(args, ++index, arg), arg) });
 		else if (arg === "--builtin") options.builtin = requireOptionValue(args, ++index, arg);
 		else if (arg === "--help" || arg === "-h") {
@@ -388,6 +388,12 @@ function parsePtyOptions(args: string[]): PtyOptions {
 function requireOptionValue(args: string[], index: number, option: string): string {
 	const value = args[index];
 	if (!value || value.startsWith("--")) throw new Error(`${option} requires a value`);
+	return value;
+}
+
+function requireTextOptionValue(args: string[], index: number, option: string): string {
+	const value = args[index];
+	if (value === undefined) throw new Error(`${option} requires a value`);
 	return value;
 }
 
