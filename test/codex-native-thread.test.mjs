@@ -750,6 +750,50 @@ test("Codex native thread history is normalized, paginated, redacted, and cursor
 	);
 });
 
+test("Codex native history inspection reuses recent process-backed metadata and refreshes it after reads", async (t) => {
+	const root = await testRoot(t);
+	const { adapter, instanceId } = createAdapter(root, "codex-native-history-cache");
+	const config = runtimeConfig(root);
+	const threadId = "thread-history-cache";
+	const binding = boundBinding(instanceId, "ps_codex_history_cache", threadId);
+	const seed = async (name, updatedAt) => await seedThread(config, {
+		runtimeInstanceId: instanceId,
+		threadId,
+		workspace: root,
+		cwd: root,
+		name,
+		preview: name,
+		createdAt: 1_780_000_000,
+		updatedAt,
+		turns: seededTurns(),
+	});
+	await seed("First title", 1_780_000_010);
+
+	const originalNow = Date.now;
+	let now = originalNow();
+	Date.now = () => now;
+	try {
+		const first = await adapter.inspectHistory({ binding, workspace: root });
+		assert.equal(first.title, "First title");
+
+		await seed("Second title", 1_780_000_020);
+		const cached = await adapter.inspectHistory({ binding, workspace: root });
+		assert.equal(cached.title, "First title", "a repeated inspection should avoid another app-server startup inside the TTL");
+
+		const page = await adapter.readHistory({ binding, workspace: root, limit: 2 });
+		assert.equal(page.inspection.title, "Second title");
+		const refreshedByRead = await adapter.inspectHistory({ binding, workspace: root });
+		assert.equal(refreshedByRead.title, "Second title", "a full history read should refresh the inspection cache");
+
+		await seed("Third title", 1_780_000_030);
+		now += 5_001;
+		const expired = await adapter.inspectHistory({ binding, workspace: root });
+		assert.equal(expired.title, "Third title");
+	} finally {
+		Date.now = originalNow;
+	}
+});
+
 test("Codex native thread controls list and fork through stable App Server methods", async (t) => {
 	const root = await testRoot(t);
 	const { registry, adapter, instanceId } = createAdapter(root);
