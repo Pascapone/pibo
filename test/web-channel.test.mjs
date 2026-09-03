@@ -8591,6 +8591,46 @@ test("chat web app manages user skill routes and syncs the capability catalog", 
 			assert.deepEqual(unregisteredSkills, ["browser-skill"]);
 			assert.deepEqual(registeredSkills.map((skill) => skill.name), ["browser-skill", "renamed-browser-skill"]);
 
+			const dependentAgentResponse = await fetch(`${baseURL}/api/chat/agents`, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: JSON.stringify({ displayName: "skill-dependent-agent", skills: ["renamed-browser-skill"] }),
+			});
+			assert.equal(dependentAgentResponse.status, 201);
+			const dependentAgent = (await dependentAgentResponse.json()).agent;
+
+			const blockedDelete = await fetch(`${baseURL}/api/chat/user-skills/${encodeURIComponent(createdPayload.skill.id)}`, {
+				method: "DELETE",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: "{}",
+			});
+			assert.equal(blockedDelete.status, 409);
+			assert.match((await blockedDelete.json()).error, /selected by custom agents: skill-dependent-agent/);
+			const preservedSkill = await fetch(`${baseURL}/api/chat/user-skills/${encodeURIComponent(createdPayload.skill.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(preservedSkill.status, 200);
+			assert.equal((await preservedSkill.json()).skill.name, "renamed-browser-skill");
+
+			const unlinkAgent = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(dependentAgent.id)}`, {
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: JSON.stringify({ skills: [] }),
+			});
+			assert.equal(unlinkAgent.status, 200);
+
 			const disabled = await fetch(`${baseURL}/api/chat/user-skills/${encodeURIComponent(createdPayload.skill.id)}`, {
 				method: "PATCH",
 				headers: {

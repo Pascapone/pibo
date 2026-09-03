@@ -3305,6 +3305,12 @@ function agentsSelectingPiPackage(state: ChatWebAppState, packageId: string): Cu
 		.filter((agent) => agent.piPackages.some((selected) => aliases.has(selected)));
 }
 
+function agentsSelectingSkill(state: ChatWebAppState, skillName: string): CustomAgentDefinition[] {
+	return state.agentStore
+		.list({ includeArchived: true })
+		.filter((agent) => agent.skills.includes(skillName));
+}
+
 function normalizeAgentDeleteConfirmation(value: unknown): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw new PiboWebHttpError("Type the agent name to permanently delete it.", 400);
@@ -5839,6 +5845,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						state.syncedUserSkillNames = names;
 					},
 					invalidateBootstrapCatalogCache: () => invalidateBootstrapCatalogCache(state),
+					agentsSelectingSkill: (skillName) => agentsSelectingSkill(state, skillName),
 				});
 			}
 
