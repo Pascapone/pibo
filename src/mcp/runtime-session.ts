@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { redactSensitiveText } from "../core/sensitive-data-redaction.js";
 import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -130,7 +131,7 @@ export function redactMcpRuntimeError(error: unknown, secretValues: readonly str
 	for (const value of secretValues) {
 		if (value) message = message.split(value).join("[REDACTED]");
 	}
-	return message.replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]");
+	return redactSensitiveText(message).replaceAll("[redacted]", "[REDACTED]");
 }
 
 export async function verifyPiboMcpServer(

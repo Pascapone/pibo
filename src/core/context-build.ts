@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createDefaultPiboProfile } from "./default-profile.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "./model-defaults.js";
+import { redactSensitiveText } from "./sensitive-data-redaction.js";
 import { getMcpAgentContextFile } from "../mcp/agent-context.js";
 import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
 import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
@@ -192,11 +193,6 @@ type NodeInput = Omit<PiboContextBuildNode, "order" | "children"> & {
 };
 
 const SECRET_KEY_RE = /(api[_-]?key|authorization|bearer|cookie|credential|oauth|password|secret|token)/i;
-const SECRET_TEXT_PATTERNS: RegExp[] = [
-	/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi,
-	/\b(sk|pk|rk)-[A-Za-z0-9_-]{16,}\b/g,
-	/\b(api[_-]?key|authorization|cookie|password|secret|token)\b\s*[:=]\s*[^\s\n,;]+/gi,
-];
 
 function byteLength(text: string): number {
 	return Buffer.byteLength(text, "utf-8");
@@ -231,14 +227,7 @@ function applyTokenEstimates(node: PiboContextBuildNode): PiboContextBuildNode {
 }
 
 function redactText(text: string): { value: string; redacted: boolean } {
-	let value = text;
-	for (const pattern of SECRET_TEXT_PATTERNS) {
-		value = value.replace(pattern, (match) => {
-			const separator = match.match(/[:=]/)?.[0];
-			if (!separator) return "[REDACTED]";
-			return `${match.slice(0, match.indexOf(separator) + 1)} [REDACTED]`;
-		});
-	}
+	const value = redactSensitiveText(text).replaceAll("[redacted]", "[REDACTED]");
 	return { value, redacted: value !== text };
 }
 

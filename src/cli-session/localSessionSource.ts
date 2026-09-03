@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { redactSensitiveText } from "../core/sensitive-data-redaction.js";
 import {
   DEFAULT_PIBO_PROFILE_NAME,
   resolvePiboProfileNameFromRegistryOrDefault,
@@ -1088,19 +1089,7 @@ function parseCliOutputPersistenceState(value: PiboJsonValue): CliOutputPersiste
 }
 
 export function redactCliSecretText(text: string): string {
-  return text
-    .replace(
-      /\b([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*)\s*=\s*([^\s]+)/gi,
-      "$1=[redacted]",
-    )
-    .replace(
-      /\b(api[_-]?key|token|secret|password)\s*[:=]\s*([^\s]+)/gi,
-      "$1=[redacted]",
-    )
-    .replace(
-      /\b(?:sk|pk|pibo|ghp|github_pat)_[A-Za-z0-9_\-]{8,}\b/g,
-      "[redacted]",
-    );
+  return redactSensitiveText(text);
 }
 
 function sessionToSummary(

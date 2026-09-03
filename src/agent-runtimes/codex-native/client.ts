@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { redactSensitiveText } from "../../core/sensitive-data-redaction.js";
 import type {
 	CodexAppServerClientInfo,
 	CodexAppServerInitializeCapabilities,
@@ -211,11 +212,7 @@ function validateInitializeResponse(value: unknown): CodexAppServerInitializeRes
 }
 
 function redactCodexAppServerDiagnostic(value: string): string {
-	return value
-		.replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
-		.replace(/\b(?:sk|pk|ghp|github_pat|pibo)[-_][A-Za-z0-9_-]{8,}\b/g, "[redacted]")
-		.replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted]")
-		.replace(/\b(access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|token|secret|password)\b(\s*["']?\s*[:=]\s*["']?)([^\s"'&,}]+)/gi, "$1$2[redacted]")
+	return redactSensitiveText(value)
 		.replace(/`(?:\/|[A-Za-z]:[\\/])[^`\r\n]+`/g, "`[redacted path]`")
 		.replace(/\bfile:\/\/\/?[^\s"'`,)]+/gi, "file://[redacted path]")
 		.slice(0, 4_000);

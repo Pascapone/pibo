@@ -1,3 +1,5 @@
+import { redactSensitiveText } from "../core/sensitive-data-redaction.js";
+
 export const AGENT_RUNTIME_AUTH_METHOD_IDS = ["device_code", "browser_oauth", "api_key"] as const;
 export type AgentRuntimeAuthMethodId = (typeof AGENT_RUNTIME_AUTH_METHOD_IDS)[number];
 
@@ -104,11 +106,8 @@ export type AgentRuntimeAuthCatalog = {
 };
 
 export function redactAgentRuntimeAuthText(value: string, maxLength = 1_000): string {
-	return value
-		.replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
-		.replace(/\b(?:sk|pk|ghp|github_pat|pibo)[-_][A-Za-z0-9_-]{8,}\b/g, "[redacted]")
-		.replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted]")
-		.replace(/\b(access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|token|secret|password|account[_-]?id)\b(\s*["']?\s*[:=]\s*["']?)([^\s"'&,}]+)/gi, "$1$2[redacted]")
+	return redactSensitiveText(value)
+		.replace(/\b(account[_-]?id)\b(\s*["']?\s*[:=]\s*["']?)([^\s"'&,}]+)/gi, "$1$2[redacted]")
 		.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted account]")
 		.replace(/`(?:\/|[A-Za-z]:[\\/])[^`\r\n]+`/g, "`[redacted path]`")
 		.replace(/\bfile:\/\/\/?[^\s"'`,)]+/gi, "file://[redacted path]")
