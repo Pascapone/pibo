@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 const calls = [];
 const logPath = process.env.PIBO_RELEASE_MOCK_LOG;
 const existingRelease = process.env.PIBO_RELEASE_MOCK_EXISTING === "1";
+const existingAsset = process.env.PIBO_RELEASE_MOCK_EXISTING_ASSET !== "0";
 const uploadStatus = Number(process.env.PIBO_RELEASE_MOCK_UPLOAD_STATUS ?? "201");
 
 function jsonResponse(body, status = 200) {
@@ -29,7 +30,9 @@ globalThis.fetch = async (url, init = {}) => {
 			id: 7,
 			html_url: "https://github.test/synthetic/release-fixture/releases/tag/v9.9.9",
 			upload_url: "https://uploads.github.test/releases/7/assets{?name,label}",
-			assets: [{ name: "fixture.vsix", size: 7, browser_download_url: "https://downloads.github.test/fixture.vsix" }],
+			assets: existingAsset
+				? [{ name: "fixture.vsix", size: 7, browser_download_url: "https://downloads.github.test/fixture.vsix" }]
+				: [],
 		});
 	}
 	if (href.endsWith("/releases") && method === "POST") {
