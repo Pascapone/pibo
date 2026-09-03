@@ -124,9 +124,12 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 	const report: SessionMigrationReport = { from: input.from, to: input.to, inputExists: existsSync(input.from), read: 0, inserted: 0, updated: 0, skipped: 0 };
 	if (!report.inputExists) return report;
 	const source = new DatabaseSync(input.from, { readOnly: true });
-	const target = new PiboDataStore(input.to);
+	let target: PiboDataStore | undefined;
 	try {
-		if (!hasTable(source, "pibo_sessions")) return report;
+		if (!hasTable(source, "pibo_sessions")) {
+			throw new Error(`Cannot migrate sessions from "${input.from}": required legacy table "pibo_sessions" is missing.`);
+		}
+		target = new PiboDataStore(input.to);
 		const rows = source.prepare("SELECT * FROM pibo_sessions ORDER BY created_at ASC").all() as LegacySessionRow[];
 		report.read = rows.length;
 		for (const row of rows) {
@@ -209,7 +212,7 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 		}
 	} finally {
 		source.close();
-		target.close();
+		target?.close();
 	}
 	return report;
 }
