@@ -871,7 +871,7 @@ export function createAgentInput(body: ChatAgentBody) {
 export function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 	const update: UpdateCustomAgentInput = {};
 	if (body.displayName !== undefined) update.displayName = normalizeAgentDisplayName(body.displayName);
-	if (body.description !== undefined) update.description = normalizeAgentDescription(body.description);
+	if (body.description !== undefined) update.description = normalizeAgentDescription(body.description) ?? null;
 	if (body.folderId !== undefined) update.folderId = normalizeAgentFolderId(body.folderId);
 	if (body.runtimeInstanceId !== undefined) update.runtimeInstanceId = normalizeAgentRuntimeInstanceId(body.runtimeInstanceId);
 	if (body.runtimeOptions !== undefined) update.runtimeOptions = normalizeAgentRuntimeOptions(body.runtimeOptions);
