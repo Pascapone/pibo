@@ -220,6 +220,44 @@ test("pibo debug pty scenario types input through an interactive PTY", { skip: !
 	}
 });
 
+test("pibo debug pty repeated waits require a newer prompt occurrence", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const scenarioPath = join(dir, "repeated-wait.json");
+		const artifactDir = join(dir, "artifacts");
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "repeated-wait",
+			command: [
+				"bash",
+				"-lc",
+				"printf 'PROMPT>\\n'; IFS= read -r first; if IFS= read -r -t 0.2 early; then printf 'EARLY:%s\\n' \"$early\"; exit 0; fi; printf 'PROMPT>\\n'; IFS= read -r second; printf 'RESULT:%s|%s\\n' \"$first\" \"$second\"",
+			],
+			timeoutMs: 5000,
+			idleTimeoutMs: 2000,
+			inputDelayMs: 1,
+			artifact: true,
+			artifactDir,
+			steps: [
+				{ waitFor: "PROMPT>" },
+				{ typeText: "first" },
+				{ press: "Enter" },
+				{ waitFor: "PROMPT>" },
+				{ typeText: "second" },
+				{ press: "Enter" },
+			],
+			expect: ["RESULT:first|second"],
+			reject: ["EARLY:second"],
+		}, null, 2));
+		const result = await execFileAsync("node", [cliPath, "debug", "pty", "scenario", scenarioPath]);
+		assert.match(result.stdout, /PTY passed: repeated-wait/);
+		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+		assert.match(clean, /PROMPT>[\s\S]*PROMPT>[\s\S]*RESULT:first\|second/);
+		assert.doesNotMatch(clean, /EARLY:second/);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug pty preserves missing event diagnostics with non-zero inner exits", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {
