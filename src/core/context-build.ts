@@ -49,6 +49,7 @@ export type PiboContextBuildNodeKind =
 export type PiboContextBuildNodeSource =
 	| "library"
 	| "custom"
+	| "legacy"
 	| "managed"
 	| "plugin"
 	| "generated"
@@ -499,7 +500,9 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 		const generatedAt = new Date().toISOString();
 		const resourceLoader = runtime.services.resourceLoader;
 		const basePrompt = await readPiboBasePrompt(cwd);
-		const activePrompt = basePrompt.effectiveMode === "custom" ? basePrompt.custom : basePrompt.library;
+		const activePrompt = basePrompt.effectiveMode === "legacy"
+			? basePrompt.legacy
+			: basePrompt.effectiveMode === "custom" ? basePrompt.custom : basePrompt.library;
 		const activeToolNames = new Set(runtime.session.getActiveToolNames());
 		const allTools = runtime.session.getAllTools();
 		const toolInfoByName = new Map(allTools.map((tool) => [tool.name, tool]));

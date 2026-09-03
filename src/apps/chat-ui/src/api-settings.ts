@@ -2,10 +2,11 @@ import { requestJson } from "./api-http";
 import type { ModelDefaults } from "./types";
 
 export type BasePromptMode = "library" | "custom";
+export type BasePromptEffectiveMode = BasePromptMode | "legacy";
 
 export type BasePromptSnapshot = {
 	mode: BasePromptMode;
-	effectiveMode: BasePromptMode;
+	effectiveMode: BasePromptEffectiveMode;
 	library: {
 		path: string;
 		markdown: string;
@@ -15,6 +16,11 @@ export type BasePromptSnapshot = {
 		markdown: string;
 		exists: boolean;
 		updatedAt?: string;
+	};
+	legacy: {
+		path: string;
+		markdown: string;
+		exists: boolean;
 	};
 };
 

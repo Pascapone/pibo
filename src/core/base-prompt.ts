@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type PiboBasePromptMode = "library" | "custom";
+export type PiboBasePromptEffectiveMode = PiboBasePromptMode | "legacy";
 
 export type PiboBasePromptState = {
 	mode: PiboBasePromptMode;
@@ -12,7 +13,7 @@ export type PiboBasePromptState = {
 
 export type PiboBasePromptSnapshot = {
 	mode: PiboBasePromptMode;
-	effectiveMode: PiboBasePromptMode;
+	effectiveMode: PiboBasePromptEffectiveMode;
 	library: {
 		path: string;
 		markdown: string;
@@ -22,6 +23,11 @@ export type PiboBasePromptSnapshot = {
 		markdown: string;
 		exists: boolean;
 		updatedAt?: string;
+	};
+	legacy: {
+		path: string;
+		markdown: string;
+		exists: boolean;
 	};
 };
 
@@ -34,6 +40,15 @@ function getBasePromptStatePath(cwd: string): string {
 
 function getCustomBasePromptPath(cwd: string): string {
 	return resolve(cwd, ".pibo/base-prompt.md");
+}
+
+function getLegacyBasePromptPath(cwd: string): string {
+	return resolve(cwd, ".pibo/SYSTEM.md");
+}
+
+function effectiveMode(state: PiboBasePromptState, customExists: boolean, legacyExists: boolean): PiboBasePromptEffectiveMode {
+	if (legacyExists) return "legacy";
+	return state.mode === "custom" && customExists ? "custom" : "library";
 }
 
 function normalizeMode(value: unknown): PiboBasePromptMode {
@@ -61,8 +76,7 @@ function writeBasePromptState(cwd: string, state: PiboBasePromptState): void {
 }
 
 export function getActivePiboBasePromptPath(cwd = process.cwd()): string | undefined {
-	const legacyOverridePath = resolve(cwd, ".pibo/SYSTEM.md");
-	if (existsSync(legacyOverridePath)) return undefined;
+	if (existsSync(getLegacyBasePromptPath(cwd))) return undefined;
 
 	const customPath = getCustomBasePromptPath(cwd);
 	const state = readBasePromptState(cwd);
@@ -73,15 +87,18 @@ export function getActivePiboBasePromptPath(cwd = process.cwd()): string | undef
 export async function readPiboBasePrompt(cwd = process.cwd()): Promise<PiboBasePromptSnapshot> {
 	const state = readBasePromptState(cwd);
 	const customPath = getCustomBasePromptPath(cwd);
+	const legacyPath = getLegacyBasePromptPath(cwd);
 	const customExists = existsSync(customPath);
-	const [libraryMarkdown, customMarkdown] = await Promise.all([
+	const legacyExists = existsSync(legacyPath);
+	const [libraryMarkdown, customMarkdown, legacyMarkdown] = await Promise.all([
 		readFile(PIBO_LIBRARY_BASE_PROMPT_PATH, "utf-8"),
 		customExists ? readFile(customPath, "utf-8") : Promise.resolve(""),
+		legacyExists ? readFile(legacyPath, "utf-8") : Promise.resolve(""),
 	]);
 
 	return {
 		mode: state.mode,
-		effectiveMode: state.mode === "custom" && customExists ? "custom" : "library",
+		effectiveMode: effectiveMode(state, customExists, legacyExists),
 		library: {
 			path: PIBO_LIBRARY_BASE_PROMPT_PATH,
 			markdown: libraryMarkdown,
@@ -91,6 +108,11 @@ export async function readPiboBasePrompt(cwd = process.cwd()): Promise<PiboBaseP
 			markdown: customMarkdown,
 			exists: customExists,
 			updatedAt: customExists ? state.updatedAt : undefined,
+		},
+		legacy: {
+			path: legacyPath,
+			markdown: legacyMarkdown,
+			exists: legacyExists,
 		},
 	};
 }
@@ -117,9 +139,11 @@ export function setPiboBasePromptMode(mode: PiboBasePromptMode, cwd = process.cw
 	});
 	const state = readBasePromptState(cwd);
 	const customExists = existsSync(customPath);
+	const legacyPath = getLegacyBasePromptPath(cwd);
+	const legacyExists = existsSync(legacyPath);
 	return {
 		mode: state.mode,
-		effectiveMode: state.mode === "custom" && customExists ? "custom" : "library",
+		effectiveMode: effectiveMode(state, customExists, legacyExists),
 		library: {
 			path: PIBO_LIBRARY_BASE_PROMPT_PATH,
 			markdown: readFileSync(PIBO_LIBRARY_BASE_PROMPT_PATH, "utf-8"),
@@ -129,6 +153,11 @@ export function setPiboBasePromptMode(mode: PiboBasePromptMode, cwd = process.cw
 			markdown: customExists ? readFileSync(customPath, "utf-8") : "",
 			exists: customExists,
 			updatedAt: customExists ? state.updatedAt : undefined,
+		},
+		legacy: {
+			path: legacyPath,
+			markdown: legacyExists ? readFileSync(legacyPath, "utf-8") : "",
+			exists: legacyExists,
 		},
 	};
 }
