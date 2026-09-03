@@ -105,6 +105,24 @@ test("user-host setup omits Caddy output when no production domain is provided",
 	}
 });
 
+test("user-host setup persists a custom managed gateway service identity", () => {
+	const piboHome = "/srv/pibo-custom";
+	const plan = JSON.parse(pibo([
+		"setup",
+		"user-host",
+		"--domain",
+		"pibo.example.com",
+		"--pibo-home",
+		piboHome,
+		"--service-name",
+		"pibo-web-custom",
+		"--json",
+	]));
+	const identity = plan.generatedFiles.find((file) => file.path === `${piboHome}/gateway-web-service`);
+	assert.ok(identity);
+	assert.equal(identity.content, "pibo-web-custom\n");
+});
+
 test("developer-host setup plan isolates prod and dev gateways", () => {
 	const plan = JSON.parse(pibo([
 		"setup",

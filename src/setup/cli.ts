@@ -213,6 +213,13 @@ export function createUserHostSetupPlan(options: {
 			content: userEnvTemplate({ domain: options.domain, piboHome }),
 		},
 	];
+	if (serviceName !== "pibo-web") {
+		generatedFiles.push({
+			path: `${piboHome}/gateway-web-service`,
+			purpose: "Managed production gateway service identity",
+			content: `${serviceName}\n`,
+		});
+	}
 	if (options.includeCaddy !== false && options.domain) {
 		generatedFiles.push({
 			path: "/etc/caddy/Caddyfile",
