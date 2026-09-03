@@ -275,19 +275,21 @@ test("the sidebar keeps one global status feed while selected signal updates sha
 	assert.match(source, /overlayCurrentSignals\(\{ \.\.\.current, sessions: appendSessionRoots\(current\.sessions, page\.sessions\) \}\)/, "newly paged sessions receive cached global statuses immediately");
 });
 
-test("restored or newly visible pages reconnect and refresh the selected signal tree", () => {
+test("restored or newly visible pages reconnect and arm a delayed selected-tree fallback", () => {
 	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
 	assert.match(source, /window\.addEventListener\("pageshow", reconnectSignalTree\)/);
 	assert.match(source, /document\.addEventListener\("visibilitychange", refreshVisibleSignalTree\)/);
-	assert.match(source, /unsubscribeSignalTree\(\)[\s\S]*subscribeSignalTree[\s\S]*refreshSignalSnapshot\(0\)/);
+	assert.match(source, /unsubscribeSignalTree\(\)[\s\S]*subscribeSignalTree[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS\)/);
 });
 
-test("selected sessions recover missing snapshots and reconcile active turns", () => {
+test("selected sessions recover missing snapshots and reconcile active turns without duplicating healthy stream snapshots", () => {
 	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
-	assert.match(source, /SIGNAL_TREE_RECONCILE_INTERVAL_MS = 5_000/);
+	assert.match(source, /SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS = 5_000/);
+	assert.match(source, /SIGNAL_TREE_RECONCILE_INTERVAL_MS = 30_000/);
 	assert.match(source, /retainSelectedSignalSnapshot\(sessionSignalsRef\.current, selectedBackendPiboSessionId\)/);
 	assert.match(source, /\.catch\(\(\) => \{[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS\)/, "failed initial REST snapshots retry instead of being swallowed");
 	assert.match(source, /shouldReconcileSelectedSignalTree\(sessionSignalsRef\.current, selectedBackendPiboSessionId, selectedSession\?\.status\)/);
+	assert.match(source, /unsubscribeSignalTree = subscribeSignalTree\(selectedBackendPiboSessionId, signalTreeHandlers\);[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS\)/);
 	assert.match(source, /window\.setInterval\([\s\S]*shouldReconcileSignalTree\(\)[\s\S]*refreshSignalSnapshot\(0\)[\s\S]*SIGNAL_TREE_RECONCILE_INTERVAL_MS/);
 	assert.match(source, /window\.clearInterval\(signalReconcileTimer\)/);
 });

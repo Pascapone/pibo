@@ -1,3 +1,14 @@
+export function shouldRefreshNavigationFromRoomSummary(input: {
+	replayFrame: boolean;
+	eventRefreshesNavigation: boolean;
+	targetPiboSessionId: string | undefined;
+	selectedBackendPiboSessionId: string | undefined;
+}): boolean {
+	return !input.replayFrame
+		&& input.eventRefreshesNavigation
+		&& (!input.selectedBackendPiboSessionId || input.targetPiboSessionId !== input.selectedBackendPiboSessionId);
+}
+
 export function roomSummaryStreamUrl(input: {
 	area: string;
 	activeRoomId: string | null | undefined;

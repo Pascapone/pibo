@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { PiboJsonObject, PiboJsonValue } from "../core/events.js";
 import type { RuntimeSessionBinding } from "../sessions/runtime-binding.js";
 import type { AgentRuntimeDiagnostic } from "./types.js";
@@ -116,24 +117,12 @@ export function createCompleteHistoryReconciliationProof(
 }
 
 export function historyReconciliationDigest(entries: readonly AgentRuntimeHistoryEntry[]): string {
-	const mask = 0xffff_ffff_ffff_ffffn;
-	const prime = 0x100000001b3n;
-	const hashes = [
-		0xcbf29ce484222325n,
-		0x84222325cbf29ce4n,
-		0x9e3779b97f4a7c15n,
-		0x517cc1b727220a95n,
-	];
+	const hash = createHash("sha256");
 	for (const entry of entries) {
-		const signature = `${historyReconciliationEntrySignature(entry)}\n`;
-		for (let index = 0; index < signature.length; index += 1) {
-			const codeUnit = BigInt(signature.charCodeAt(index));
-			for (let hashIndex = 0; hashIndex < hashes.length; hashIndex += 1) {
-				hashes[hashIndex] = ((hashes[hashIndex]! ^ codeUnit) * prime) & mask;
-			}
-		}
+		hash.update(historyReconciliationEntrySignature(entry));
+		hash.update("\n");
 	}
-	return hashes.map((hash) => hash.toString(16).padStart(16, "0")).join("");
+	return hash.digest("hex");
 }
 
 export function historyReconciliationEntrySignature(entry: AgentRuntimeHistoryEntry): string {

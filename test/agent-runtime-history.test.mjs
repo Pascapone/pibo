@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +16,10 @@ import { isBuiltInHistoryReconciliationProof } from "../dist/agent-runtimes/hist
 import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
 import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
+import {
+	historyReconciliationDigest,
+	historyReconciliationEntrySignature,
+} from "../dist/agent-runtime/history.js";
 
 function buildTraceViewFromEvents(input) {
 	return buildRuntimeNeutralTraceView({
@@ -46,6 +51,42 @@ function message(id, role, content, timestamp, extra = {}) {
 		message: { role, content, ...extra },
 	};
 }
+
+test("history reconciliation digest uses native SHA-256 over stable entry signatures", () => {
+	const entries = [
+		{
+			id: "history-user",
+			type: "message",
+			source: "native",
+			createdAt: "2026-09-03T00:00:00.000Z",
+			sequence: 17,
+			historyPosition: "native:1",
+			role: "user",
+			content: "Grüße 🌍",
+		},
+		{
+			id: "history-assistant",
+			type: "message",
+			source: "native",
+			createdAt: "2026-09-03T00:00:01.000Z",
+			sequence: 18,
+			historyPosition: "native:2",
+			role: "assistant",
+			content: [{ type: "text", text: "done" }],
+			status: "complete",
+		},
+	];
+	const expected = createHash("sha256");
+	for (const entry of entries) {
+		expected.update(historyReconciliationEntrySignature(entry));
+		expected.update("\n");
+	}
+	const digest = historyReconciliationDigest(entries);
+	assert.equal(digest, expected.digest("hex"));
+	assert.match(digest, /^[a-f0-9]{64}$/);
+	assert.equal(historyReconciliationDigest(entries.map((entry) => ({ ...entry, sequence: 999 }))), digest);
+	assert.notEqual(historyReconciliationDigest([{ ...entries[0], content: "changed" }, entries[1]]), digest);
+});
 
 test("Pi history provider resolves, paginates, and normalizes native JSONL behind the adapter", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pibo-pi-history-"));
