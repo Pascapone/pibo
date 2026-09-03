@@ -40,7 +40,7 @@ export type PiboToolPayloadWriteInput = {
 	toolName: string;
 	toolCallId: string;
 	contentType: string;
-	value: string | Uint8Array;
+	value: PiboJsonValue | string | Uint8Array;
 };
 
 export type PiboToolPayloadWriteResult = {
@@ -175,7 +175,7 @@ async function storeLargeContent(options: {
 	tool: PiboToolDefinition;
 	toolCallId: string;
 	contentType: string;
-	value: string | Uint8Array;
+	value: PiboJsonValue | string | Uint8Array;
 }): Promise<PiboToolPayloadWriteResult> {
 	return await options.writer.write({
 		piboSessionId: options.scope.piboSessionId,
@@ -276,7 +276,7 @@ async function piboResultToMcp(
 				tool: options.tool,
 				toolCallId: options.toolCallId,
 				contentType: "application/json",
-				value: encoded,
+				value: structuredContent,
 			});
 			payloadRefs.push(stored.ref);
 			structuredContent = undefined;

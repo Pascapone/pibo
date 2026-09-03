@@ -200,6 +200,32 @@ test("trace image payloads bind exact bytes to one session, node, and output ref
 	}
 });
 
+test("trace materialization isolates text that matches existing JSON bytes", () => {
+	const store = tempStore();
+	try {
+		const structured = { kind: "tool_result", value: "x".repeat(12 * 1024) };
+		const text = JSON.stringify(structured);
+		const jsonPayload = store.payloads.writePayload({
+			value: structured,
+			contentType: "application/json",
+			retentionClass: "trace_event",
+		});
+		const page = traceTimelinePageFromView({ trace: largeTrace(text), payloadStore: store.payloads, limit: 20 });
+		const textRef = page.nodes[0].payloadRefs.output;
+		const textPayloadId = parseTracePayloadRef(textRef.ref).payloadId;
+		const textPayload = store.payloads.getPayload(textPayloadId);
+
+		assert.equal(textRef.contentType, "text/plain");
+		assert.notEqual(textPayloadId, jsonPayload.id);
+		assert.equal(textPayload.sha256, jsonPayload.sha256);
+		assert.equal(textPayload.contentType, "text/plain; charset=utf-8");
+		assert.equal(store.payloads.readPayloadText(textPayloadId), text);
+		assert.deepEqual(store.payloads.readPayloadJson(jsonPayload.id), structured);
+	} finally {
+		store.close();
+	}
+});
+
 test("inline-derived payload refs remain stable and content-canonical for equal bytes", () => {
 	const store = tempStore();
 	try {
