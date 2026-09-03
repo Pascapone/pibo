@@ -33,6 +33,19 @@ export type StoredPayload = {
 	lastVerifiedAt?: string;
 };
 
+export class PiboPayloadMetadataConflictError extends Error {
+	constructor(
+		readonly sha256: string,
+		readonly existingContentType: string,
+		readonly requestedContentType: string,
+		readonly existingRetentionClass: string,
+		readonly requestedRetentionClass: string,
+	) {
+		super(`Payload bytes already exist with incompatible metadata: content type ${existingContentType} vs ${requestedContentType}; retention class ${existingRetentionClass} vs ${requestedRetentionClass}`);
+		this.name = "PiboPayloadMetadataConflictError";
+	}
+}
+
 type PayloadRow = {
 	id: string;
 	sha256: string;
@@ -67,6 +80,15 @@ export class PayloadStore {
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
 		const existing = this.findBySha256(sha256);
 		if (existing) {
+			if (existing.contentType !== contentType || existing.retentionClass !== input.retentionClass) {
+				throw new PiboPayloadMetadataConflictError(
+					sha256,
+					existing.contentType,
+					contentType,
+					existing.retentionClass,
+					input.retentionClass,
+				);
+			}
 			this.db.prepare("UPDATE payloads SET ref_count = ref_count + 1 WHERE id = ?").run(existing.id);
 			return this.getPayload(existing.id) ?? existing;
 		}
