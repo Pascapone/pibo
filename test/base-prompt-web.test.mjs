@@ -230,6 +230,9 @@ test("chat gateway-settings API validates and persists yielded-run concurrency",
 test("chat base-prompt API validates same-origin mutations and accepts empty custom markdown", async () => {
 	const originalCwd = process.cwd();
 	const dir = mkdtempSync(join(tmpdir(), "pibo-base-prompt-web-"));
+	mkdirSync(join(dir, ".pibo"), { recursive: true });
+	const legacyPath = join(dir, ".pibo/SYSTEM.md");
+	writeFileSync(legacyPath, "legacy API prompt");
 	process.chdir(dir);
 	const { channel, baseURL, dispose } = await startChatHost(dir);
 	try {
@@ -238,7 +241,9 @@ test("chat base-prompt API validates same-origin mutations and accepts empty cus
 		});
 		assert.equal(current.response.status, 200);
 		assert.equal(current.data.basePrompt.mode, "library");
-		assert.equal(current.data.basePrompt.effectiveMode, "library");
+		assert.equal(current.data.basePrompt.effectiveMode, "legacy");
+		assert.equal(current.data.basePrompt.legacy.path, legacyPath);
+		assert.equal(current.data.basePrompt.legacy.markdown, "legacy API prompt");
 
 		const missingOrigin = await fetch(`${baseURL}/api/chat/base-prompt`, {
 			method: "PATCH",
@@ -262,8 +267,16 @@ test("chat base-prompt API validates same-origin mutations and accepts empty cus
 		});
 		assert.equal(saved.response.status, 200);
 		assert.equal(saved.data.basePrompt.mode, "custom");
-		assert.equal(saved.data.basePrompt.effectiveMode, "custom");
+		assert.equal(saved.data.basePrompt.effectiveMode, "legacy");
 		assert.equal(saved.data.basePrompt.custom.markdown, "");
+
+		rmSync(legacyPath);
+		const activated = await fetchJson(`${baseURL}/api/chat/base-prompt`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(activated.response.status, 200);
+		assert.equal(activated.data.basePrompt.mode, "custom");
+		assert.equal(activated.data.basePrompt.effectiveMode, "custom");
 	} finally {
 		await channel.stop?.();
 		dispose();
