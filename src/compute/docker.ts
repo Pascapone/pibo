@@ -477,6 +477,7 @@ function buildComputeWorkerMetadataLabels(options: ComputeWorkerMetadataLabelOpt
 		`${LABEL_PORT_BLOCK}=${options.portBlock}`,
 		`${LABEL_TTL_SECONDS}=${options.ttlSeconds}`,
 		`${LABEL_IDLE_SECONDS}=${options.idleSeconds}`,
+		`${LABEL_LAST_USED_AT}=${options.createdAt}`,
 		...(options.holder ? [`${LABEL_HOLDER}=${options.holder}`] : []),
 		...(options.worktree ? [`${LABEL_WORKTREE}=${options.worktree}`] : []),
 		...(options.worktreePath ? [`${LABEL_WORKTREE_PATH}=${options.worktreePath}`] : []),
@@ -782,6 +783,8 @@ export interface WorkerInfo {
 	hostPid?: number;
 	createdAt: string;
 	lastUsedAt?: string;
+	ttlSeconds?: number;
+	idleSeconds?: number;
 	holder?: string;
 	worktree?: string;
 	worktreePath?: string;
@@ -929,6 +932,8 @@ function workerFromLabels(base: { id: string; name: string; state: string; statu
 		hostPid: base.hostPid,
 		createdAt: base.labels[LABEL_CREATED_AT] ?? "unknown",
 		lastUsedAt: base.labels[LABEL_LAST_USED_AT],
+		ttlSeconds: numberLabel(base.labels[LABEL_TTL_SECONDS]),
+		idleSeconds: numberLabel(base.labels[LABEL_IDLE_SECONDS]),
 		holder: base.labels[LABEL_HOLDER],
 		worktree: base.labels[LABEL_WORKTREE],
 		worktreePath: base.labels[LABEL_WORKTREE_PATH],
@@ -1094,11 +1099,14 @@ export function buildComputeWorkerReapPlan(workers: WorkerInfo[], options: Compu
 		const skipReasons: string[] = [];
 		const created = new Date(worker.createdAt).getTime();
 		const ageMinutes = Number.isNaN(created) ? undefined : (now.getTime() - created) / 1000 / 60;
+		const lastUsed = new Date(worker.lastUsedAt ?? worker.createdAt).getTime();
 		if (worker.role === "dev" && !resolved.includeDev) skipReasons.push("dev-worker-preserved");
 		if (worker.role !== "worker" && worker.role !== "dev") skipReasons.push("unsupported-role");
 		if (resolved.includeStopped && isStoppedWorker(worker)) reasons.push("stopped");
 		if (resolved.includeDirty && isDirtyWorker(worker)) reasons.push(worker.oomKilled ? "oom-killed" : "dirty");
 		if (ageMinutes !== undefined && ageMinutes > resolved.maxAgeMinutes) reasons.push("old");
+		if (ageMinutes !== undefined && worker.ttlSeconds !== undefined && worker.ttlSeconds > 0 && ageMinutes * 60 >= worker.ttlSeconds) reasons.push("ttl-expired");
+		if (!Number.isNaN(lastUsed) && worker.idleSeconds !== undefined && worker.idleSeconds > 0 && now.getTime() - lastUsed >= worker.idleSeconds * 1000) reasons.push("idle-expired");
 		if (reasons.length === 0) skipReasons.push("not-selected");
 		const action = skipReasons.length === 0 ? "remove" : "skip";
 		return {
