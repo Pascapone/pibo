@@ -586,6 +586,22 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 	];
 }
 
+export function validateDevWorktreeName(name: string): void {
+	if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(name)) {
+		throw new Error("Dev worktree name must use only letters, numbers, dots, underscores, and hyphens, and must start with a letter or number");
+	}
+}
+
+async function localBranchExists(repoDir: string, name: string): Promise<boolean> {
+	try {
+		await execFileAsync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${name}`], { cwd: repoDir });
+		return true;
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === 1) return false;
+		throw error;
+	}
+}
+
 export async function spawnDevWorker(options: {
 	repoDir: string;
 	worktreeName: string;
@@ -596,62 +612,74 @@ export async function spawnDevWorker(options: {
 	ralphJobId?: string;
 	ralphRunId?: string;
 }): Promise<SpawnedDevWorker> {
+	validateDevWorktreeName(options.worktreeName);
+	const branchExisted = await localBranchExists(options.repoDir, options.worktreeName);
 	const worktreePath = path.join(options.repoDir, ".worktrees", options.worktreeName);
 	await createWorktree(options.repoDir, options.worktreeName);
 
-	const id = `pibo-dev-${options.worktreeName}`;
-	const createdAt = new Date().toISOString();
-
-	// Mount host node_modules into the container so dependencies are immediately available
-	const hostNodeModules = path.join(options.repoDir, "node_modules");
-	let nodeModulesMount: string | undefined;
 	try {
-		const { stdout } = await execFileAsync("ls", ["-d", hostNodeModules]);
-		if (stdout.trim()) nodeModulesMount = hostNodeModules;
-	} catch {
-		// host node_modules does not exist; skip mount
-	}
+		const id = `pibo-dev-${options.worktreeName}`;
+		const createdAt = new Date().toISOString();
 
-	const ports = await withDevPortAllocationLock(async () => {
-		const block = await findNextPortBlock();
-		const base = DEV_PORT_BASE + block * DEV_PORT_BLOCK_SIZE;
-		const gatewayPort = base;
-		const cdpPort = base + 1;
-		const webPort = base + 2;
-		const webUIPortChat = base + 3;
-		const webUIPortContext = base + 4;
-		const args = buildDevWorkerDockerRunArgs({
-			id,
-			imageName: options.imageName,
-			worktreePath,
-			worktreeName: options.worktreeName,
-			block,
-			gatewayPort,
-			cdpPort,
-			webPort,
-			webUIPortChat,
-			webUIPortContext,
-			createdAt,
-			holder: options.holder,
-			ttlSeconds: options.ttlSeconds,
-			idleSeconds: options.idleSeconds,
-			ralphJobId: options.ralphJobId,
-			ralphRunId: options.ralphRunId,
-			hostNodeModules: nodeModulesMount,
+		// Mount host node_modules into the container so dependencies are immediately available
+		const hostNodeModules = path.join(options.repoDir, "node_modules");
+		let nodeModulesMount: string | undefined;
+		try {
+			const { stdout } = await execFileAsync("ls", ["-d", hostNodeModules]);
+			if (stdout.trim()) nodeModulesMount = hostNodeModules;
+		} catch {
+			// host node_modules does not exist; skip mount
+		}
+
+		const ports = await withDevPortAllocationLock(async () => {
+			const block = await findNextPortBlock();
+			const base = DEV_PORT_BASE + block * DEV_PORT_BLOCK_SIZE;
+			const gatewayPort = base;
+			const cdpPort = base + 1;
+			const webPort = base + 2;
+			const webUIPortChat = base + 3;
+			const webUIPortContext = base + 4;
+			const args = buildDevWorkerDockerRunArgs({
+				id,
+				imageName: options.imageName,
+				worktreePath,
+				worktreeName: options.worktreeName,
+				block,
+				gatewayPort,
+				cdpPort,
+				webPort,
+				webUIPortChat,
+				webUIPortContext,
+				createdAt,
+				holder: options.holder,
+				ttlSeconds: options.ttlSeconds,
+				idleSeconds: options.idleSeconds,
+				ralphJobId: options.ralphJobId,
+				ralphRunId: options.ralphRunId,
+				hostNodeModules: nodeModulesMount,
+			});
+
+			await execFileAsync("docker", args, { cwd: options.repoDir });
+			return { gatewayPort, cdpPort, webPort, webUIPortChat, webUIPortContext };
 		});
 
-		await execFileAsync("docker", args, { cwd: options.repoDir });
-		return { gatewayPort, cdpPort, webPort, webUIPortChat, webUIPortContext };
-	});
-
-	return {
-		id,
-		image: options.imageName ?? IMAGE_NAME,
-		gatewayHost: COMPUTE_PUBLISH_HOST,
-		...ports,
-		connect: `docker exec -it ${id} bash`,
-		worktree: worktreePath,
-	};
+		return {
+			id,
+			image: options.imageName ?? IMAGE_NAME,
+			gatewayHost: COMPUTE_PUBLISH_HOST,
+			...ports,
+			connect: `docker exec -it ${id} bash`,
+			worktree: worktreePath,
+		};
+	} catch (error) {
+		const cleanupErrors: unknown[] = [];
+		try { await execFileAsync("git", ["worktree", "remove", "--force", worktreePath], { cwd: options.repoDir }); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+		if (!branchExisted) {
+			try { await execFileAsync("git", ["branch", "-D", options.worktreeName], { cwd: options.repoDir }); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+		}
+		if (cleanupErrors.length > 0) throw new AggregateError([error, ...cleanupErrors], `Dev worker spawn failed and cleanup was incomplete for ${options.worktreeName}`);
+		throw error;
+	}
 }
 
 export interface BuildWorkerDockerRunArgsOptions {

@@ -39,6 +39,7 @@ import {
 	parseDockerWorkerInspect,
 	parseDockerWorkerListLine,
 	resolveComputeWorkerLifecycle,
+	spawnDevWorker,
 } from '../dist/compute/docker.js';
 import { renderComputeDiskDiagnosticsText, renderComputeReapPlanText, renderComputeResourceHealthText, renderComputeWorkerListText } from '../dist/compute/cli.js';
 import { buildComputeResourceHealth, parseDockerContainerIdFromCgroup, parseProcessList } from '../dist/compute/resource-health.js';
@@ -518,6 +519,42 @@ test('limited worker smoke script skips clearly when Docker is unavailable or ap
 	assert.match(stdout, /Limited worker smoke skipped:/);
 	assert.match(stdout, /pass --apply/);
 	assert.match(stdout, /Next: npm run --silent dev -- compute spawn/);
+});
+
+test('dev worker spawn rejects Docker-unsafe names before creating Git resources', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'pibo-dev-name-validation-'));
+	try {
+		await execFileAsync('git', ['init', '--initial-branch=dev', root]);
+		await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: root });
+		await execFileAsync('git', ['config', 'user.name', 'Pibo Test'], { cwd: root });
+		await writeFile(join(root, 'README.md'), 'fixture\n');
+		await execFileAsync('git', ['add', 'README.md'], { cwd: root });
+		await execFileAsync('git', ['commit', '-m', 'fixture'], { cwd: root });
+
+		await assert.rejects(
+			spawnDevWorker({ repoDir: root, worktreeName: 'repro@invalid-docker-name' }),
+			/Dev worktree name must use only letters, numbers, dots, underscores, and hyphens/,
+		);
+		await assert.rejects(readFile(join(root, '.worktrees', 'repro@invalid-docker-name')), { code: 'ENOENT' });
+		const worktrees = await execFileAsync('git', ['worktree', 'list', '--porcelain'], { cwd: root });
+		assert.doesNotMatch(worktrees.stdout, /repro@invalid-docker-name/);
+		await assert.rejects(execFileAsync('git', ['show-ref', '--verify', 'refs/heads/repro@invalid-docker-name'], { cwd: root }));
+
+		const binDir = join(root, 'bin');
+		await mkdir(binDir);
+		await writeFile(join(binDir, 'docker'), '#!/bin/sh\ncase "$1" in\n  ps) exit 0;;\n  run) echo "simulated docker run failure" >&2; exit 125;;\nesac\n');
+		await chmod(join(binDir, 'docker'), 0o755);
+		const child = await execFileAsync(process.execPath, [
+			new URL('./fixtures/compute-dev-spawn-child.mjs', import.meta.url).pathname,
+			root,
+			'valid-failed-spawn',
+		], { env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ''}` } });
+		assert.equal(JSON.parse(child.stdout).ok, false);
+		await assert.rejects(readFile(join(root, '.worktrees', 'valid-failed-spawn')), { code: 'ENOENT' });
+		await assert.rejects(execFileAsync('git', ['show-ref', '--verify', '--quiet', 'refs/heads/valid-failed-spawn'], { cwd: root }));
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test('dev worker docker run args expose the built worktree CLI with resource and metadata bounds', () => {
