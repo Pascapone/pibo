@@ -524,6 +524,7 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 	let stopReason = "completed";
 	let exitCode: number | null = null;
 	let signal: NodeJS.Signals | null = null;
+	const waitCursor = { cleanOffset: 0 };
 	try {
 		validateProviderSafety(scenario, options);
 		runner = await startRunner(scenario);
@@ -548,7 +549,7 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 				}
 			}
 			await checkIdle(runner, refreshOutputTimestamp, scenario.idleTimeoutMs);
-			await runStep(runner, scenario, step, assertions, refreshOutputTimestamp, deadline);
+			await runStep(runner, scenario, step, assertions, refreshOutputTimestamp, deadline, waitCursor);
 			throwIfDeadlineExpired(deadline);
 			refreshOutputTimestamp();
 			const clean = cleanTerminalText(runner.getRawOutput());
@@ -759,9 +760,10 @@ async function runStep(
 	assertions: AssertionResult[],
 	markOutput: () => number,
 	deadline: MonotonicDeadline,
+	waitCursor: { cleanOffset: number },
 ): Promise<void> {
 	if (step.waitFor !== undefined) {
-		await waitForText(runner, step.waitFor, step.timeoutMs ?? scenario.timeoutMs, scenario.idleTimeoutMs, markOutput, deadline);
+		await waitForText(runner, step.waitFor, step.timeoutMs ?? scenario.timeoutMs, scenario.idleTimeoutMs, markOutput, deadline, waitCursor);
 		return;
 	}
 	if (step.typeText !== undefined) {
@@ -805,12 +807,18 @@ async function waitForText(
 	idleTimeoutMs: number,
 	markOutput: () => number,
 	globalDeadline: MonotonicDeadline,
+	cursor: { cleanOffset: number },
 ): Promise<void> {
 	const stepDeadline = performance.now() + timeoutMs;
 	while (true) {
 		throwIfDeadlineExpired(globalDeadline);
 		const lastOutputAt = markOutput();
-		if (cleanTerminalText(runner.getRawOutput()).includes(pattern)) return;
+		const clean = cleanTerminalText(runner.getRawOutput());
+		const matchIndex = clean.indexOf(pattern, Math.min(cursor.cleanOffset, clean.length));
+		if (matchIndex >= 0) {
+			cursor.cleanOffset = matchIndex + pattern.length;
+			return;
+		}
 		const now = performance.now();
 		if (now - lastOutputAt > idleTimeoutMs) {
 			await runner.terminate("idle_timeout");
