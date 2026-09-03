@@ -277,6 +277,50 @@ test("portable history is bounded, checkpointed, role-aware, and secret-redacted
 	assert.equal(orphan?.toolCallId, undefined);
 });
 
+test("portable history retains a contiguous most-recent suffix", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-portable-history-suffix-"));
+	const store = new PiboDataStore(":memory:", { payloadRootDir: join(root, "payloads") });
+	t.after(async () => {
+		store.close();
+		await rm(root, { recursive: true, force: true });
+	});
+	const session = sessionRecord("ps_portable_history_suffix");
+	const ingest = new ChatDataIngestService(store);
+	const messages = [
+		["OLD_SMALL", 1_000, "o"],
+		["NEWER_SKIPPED", 200_000, "m"],
+		["LATEST_1", 230_000, "a"],
+		["LATEST_2", 230_000, "b"],
+		["LATEST_3", 230_000, "c"],
+		["LATEST_4", 230_000, "d"],
+	];
+	for (const [index, [label, bytes, fill]] of messages.entries()) {
+		ingest.ingestOutputEvent({
+			session,
+			roomId: session.metadata.chatRoomId,
+			actorId: "agent:test",
+			createdAt: `2026-08-30T00:00:0${index + 1}.000Z`,
+			event: {
+				type: "assistant_message",
+				piboSessionId: session.id,
+				eventId: `turn-${index + 1}`,
+				assistantIndex: 0,
+				text: `${label}|${fill.repeat(bytes)}`,
+			},
+		});
+	}
+	const provider = new PiboDataPortableHistoryProvider(store);
+	const checkpoint = provider.createCheckpoint(session.id);
+	const history = provider.read({ piboSession: session, sourceBinding: session.runtimeBinding, checkpoint });
+	const labels = history.entries.flatMap((entry) => {
+		if (entry.type !== "message" || typeof entry.content !== "string") return [];
+		return messages.map(([label]) => label).filter((label) => entry.content.startsWith(`${label}|`));
+	});
+	assert.deepEqual(labels, ["LATEST_1", "LATEST_2", "LATEST_3", "LATEST_4"]);
+	assert.equal(history.omittedEntries, 2);
+	assert.match(history.entries.find((entry) => entry.id === "portable:bounded-fallback")?.content ?? "", /older portable history entries? (?:was|were) omitted/);
+});
+
 test("portable history scopes provider-local tool ids by turn across SQLite restart", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-portable-history-reused-tool-id-"));
 	const databasePath = join(root, "pibo.sqlite");
