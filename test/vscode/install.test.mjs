@@ -247,6 +247,35 @@ describe("vscode/install", () => {
 			assert.equal(manifest.tagName, "v1.3.0");
 		}
 
+		// Successful install command with the extension absent from the installed list → failed.
+		{
+			const dir = mkdtempSync(join(tmpdir(), "pibo-vscode-install-"));
+			const codeDir = mkdtempSync(join(tmpdir(), "pibo-vscode-code-"));
+			writeFileSync(join(codeDir, "code"), "#!/bin/sh\\nexit 0\\n");
+			const cacheDir = join(dir, "cache");
+			const localVsix = join(dir, "pibo.vsix");
+			writeFileSync(localVsix, "local-vsix");
+			const errors = [];
+			const spawnImpl = (_bin, args) => {
+				if (args[0] === "--install-extension") return fakeChild("ok\\n", "", 0);
+				if (args[0] === "--list-extensions") return fakeChild("other.publisher@9.9.9\\n", "", 0);
+				return fakeChild("", "", 1);
+			};
+			const result = await runInstall({
+				owner: "Pascapone",
+				repo: "pibo",
+				env: { PATH: codeDir },
+				cacheDir,
+				vsixPath: localVsix,
+				spawnImpl,
+				error: (message) => errors.push(message),
+			});
+			assert.equal(result.status, "failed");
+			assert.match(result.reason, /not in the installed list/);
+			assert.deepEqual(errors, [result.reason]);
+			assert.equal(existsSync(join(cacheDir, "last-installed.json")), false);
+		}
+
 		// --vsix <path>: skips network, runs code --install-extension on the local file.
 		{
 			const dir = mkdtempSync(join(tmpdir(), "pibo-vscode-install-"));
@@ -305,6 +334,36 @@ describe("vscode/install", () => {
 
 	test("resolves and installs the Pibo VS Code extension", async () => {
 		await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: root });
+	});
+
+	test("install CLI exits nonzero when post-install verification cannot find the extension", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "pibo-vscode-cli-install-"));
+		const codeDir = join(dir, "bin");
+		const { mkdirSync } = await import("node:fs");
+		mkdirSync(codeDir);
+		writeFileSync(join(codeDir, "code"), `#!/bin/sh
+case "$1" in
+  --install-extension) echo "installation reported successful"; exit 0 ;;
+  --list-extensions) echo "other.publisher@9.9.9"; exit 0 ;;
+  *) exit 64 ;;
+esac
+`, { mode: 0o755 });
+		const localVsix = join(dir, "pibo.vsix");
+		writeFileSync(localVsix, "local-vsix");
+
+		await assert.rejects(
+			execFileAsync(process.execPath, ["dist/bin/pibo.js", "vscode", "install", "--vsix", localVsix, "--json"], {
+				cwd: root,
+				env: { ...process.env, PATH: `${codeDir}:${process.env.PATH ?? ""}`, PIBO_HOME: join(dir, "home") },
+			}),
+			(error) => {
+				assert.equal(error.code, 1);
+				assert.match(error.stderr, /not in the installed list/);
+				assert.match(error.stdout, /"status": "failed"/);
+				assert.doesNotMatch(error.stdout, /"status": "installed"/);
+				return true;
+			},
+		);
 	});
 });
 

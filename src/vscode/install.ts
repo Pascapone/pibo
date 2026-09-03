@@ -206,8 +206,6 @@ export async function runInstall(options: InstallCommandOptions): Promise<Instal
 		return { status: "failed", reason, codeBinary: detected.path, tagName: artifact.tagName };
 	}
 
-	writeCachedTagManifest(cacheDir, artifact.tagName, artifact.vsixPath);
-
 	try {
 		const installed = await listInstalledExtensions({
 			binary: detected.path,
@@ -215,17 +213,19 @@ export async function runInstall(options: InstallCommandOptions): Promise<Instal
 			env: options.env,
 		});
 		const ours = installed.find((entry) => entry.id === PIBO_VSCODE_EXTENSION_ID);
-		if (ours) {
-			log(`Installed ${ours.id}@${ours.version ?? "?"} via ${detected.path}`);
-		} else {
-			log(`code --install-extension reported success but ${PIBO_VSCODE_EXTENSION_ID} is not in the installed list.`);
+		if (!ours) {
+			const reason = `code --install-extension reported success but ${PIBO_VSCODE_EXTENSION_ID} is not in the installed list.`;
+			errorLog(reason);
+			return { status: "failed", reason, codeBinary: detected.path, tagName: artifact.tagName };
 		}
+		log(`Installed ${ours.id}@${ours.version ?? "?"} via ${detected.path}`);
 	} catch (listError) {
 		// Listing the installed extensions is a best-effort check; do not fail the install on a listing error.
 		const reason = listError instanceof Error ? listError.message : String(listError);
 		log(`Install completed; failed to verify via --list-extensions: ${reason}`);
 	}
 
+	writeCachedTagManifest(cacheDir, artifact.tagName, artifact.vsixPath);
 	return { status: "installed", tagName: artifact.tagName, vsixPath: artifact.vsixPath, codeBinary: detected.path };
 }
 
