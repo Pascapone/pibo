@@ -263,7 +263,7 @@ export function TerminalStatusCard({ row, piboSessionId }: { row: CompactTermina
 			{refreshError ? <div className="mb-2 text-[11px] text-[#ef4444]" role="alert">{refreshError}</div> : null}
 
 			{/* Session Info */}
-			<div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+			<div className="grid grid-cols-1 gap-1.5 @min-[420px]:grid-cols-2">
 				{sessionField ? <StatusFieldRow field={sessionField} icon="session" /> : null}
 				{cwdField ? <StatusFieldRow field={cwdField} icon="cwd" /> : null}
 				{secondaryFields.slice(0, 8).map((field) => (

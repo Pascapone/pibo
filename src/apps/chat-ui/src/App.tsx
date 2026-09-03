@@ -29,6 +29,8 @@ import type { PiPackageCatalogItem } from "./agents/agent-designer-model";
 import { AgentsView } from "./agents/AgentsView";
 import { SessionTracePane } from "./session-trace-pane";
 import { SessionSidebar } from "./session-sidebar";
+import { DesktopSessionSidebar, useDesktopSessionSidebar } from "./desktop-session-sidebar";
+import { DESKTOP_COLLAPSED_SIDEBAR_WIDTH } from "./desktop-session-sidebar-model";
 import { getChatSessionView, listChatSessionViews } from "./session-views/registry";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
 import {
@@ -280,6 +282,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const isMobileSidebarViewport = useMobileSidebarViewport();
 	const desktopTabsEnabled = !isMobileSidebarViewport;
 	const desktopWorkspace = useDesktopTabWorkspace(route, desktopTabsEnabled);
+	const desktopSessionSidebar = useDesktopSessionSidebar();
 	const desktopActiveTab = activeDesktopTab(desktopWorkspace.state);
 	const desktopActiveTool = desktopTabTool(desktopActiveTab);
 	const desktopPanelRoute = desktopActiveTab?.target.kind === "route" ? desktopActiveTab.target.route : undefined;
@@ -1857,20 +1860,15 @@ export function App({ route }: { route: ChatAppRoute }) {
 					data-pibo-area={desktopPanelRoute?.area ?? "sessions"}
 					className="min-h-0 flex overflow-hidden"
 				>
-					<aside data-pibo-debug="desktop-session-sidebar" tabIndex={-1} hidden={isAppFullscreen} aria-hidden={isAppFullscreen || undefined} className="min-h-0 w-[300px] shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]">
-						<div className="h-11 px-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold uppercase tracking-wider">
-							<span>Sessions</span>
-							<button
-								type="button"
-								onClick={() => void loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true }).then((data) => {
-									if (selectedPiboSessionId) void refreshTrace(selectedPiboSessionId);
-									navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
-								})}
-								title="Refresh Sessions"
-								aria-label="Refresh Sessions"
-								className="p-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"
-							><RefreshCw size={13} /></button>
-						</div>
+					<DesktopSessionSidebar
+						state={desktopSessionSidebar.state}
+						onStateChange={desktopSessionSidebar.setState}
+						onRefresh={() => void loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true }).then((data) => {
+							if (selectedPiboSessionId) void refreshTrace(selectedPiboSessionId);
+							navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
+						})}
+						hidden={isAppFullscreen}
+					>
 						<SessionSidebar
 							bootstrap={bootstrap}
 							selectedRoomId={selectedRoomId}
@@ -1915,8 +1913,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 							autoRenameSessionId={autoRenameSessionId}
 							onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
 						/>
-					</aside>
-					<main data-pibo-debug="desktop-session-center" hidden={isDesktopPreviewFullscreen} aria-hidden={isDesktopPreviewFullscreen || undefined} className={`min-h-0 flex-1 overflow-hidden ${isTerminalFullscreen ? "min-w-0" : "min-w-[420px]"}`}>
+					</DesktopSessionSidebar>
+					<main data-pibo-debug="desktop-session-center" hidden={isDesktopPreviewFullscreen} aria-hidden={isDesktopPreviewFullscreen || undefined} className="min-h-0 min-w-[250px] flex-1 overflow-hidden">
 						<SessionTracePane
 							bootstrap={bootstrap}
 							selectedPiboSessionId={selectedPiboSessionId}
@@ -1934,6 +1932,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							sessionViews={sessionViews}
 							currentSessionView={terminalSessionView}
 							desktopTerminalOnly
+							containerResponsive
 							creatingSession={creatingSession}
 							terminalFullscreen={isTerminalFullscreen}
 							onEnterTerminalFullscreen={enterTerminalFullscreen}
@@ -1985,6 +1984,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onClose={closeDesktopWorkspaceTab}
 						onFocusSessions={(newTab) => void focusDesktopSessions(newTab)}
 						renderPanel={(tab, active) => renderDesktopPanel(tab, active)}
+						reservedLeftWidth={desktopSessionSidebar.state.collapsed ? DESKTOP_COLLAPSED_SIDEBAR_WIDTH : desktopSessionSidebar.state.width}
 						hidden={isTerminalFullscreen}
 						fullscreen={isDesktopPreviewFullscreen}
 					/>

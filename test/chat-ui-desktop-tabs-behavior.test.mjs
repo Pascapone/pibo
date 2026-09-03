@@ -112,6 +112,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 				onActivate: (tab) => setState((current) => model.activateDesktopTab(current, tab.id)),
 				onClose: (tab) => { setState((current) => model.closeDesktopTab(current, tab.id)); return true; },
 				onFocusSessions: (tab) => setState((current) => model.closeDesktopTab(current, tab.id)),
+				reservedLeftWidth: 300,
 				renderPanel: (tab) => tab.target.kind === "session-tool" && tab.target.tool === "preview"
 					? React.createElement(SessionLivePreviewPanel, {
 						previews: selectedPreview ? [selectedPreview] : [], selectedPreview, loading: false, reloadKey: 0,

@@ -50,6 +50,7 @@ test("Terminal fullscreen keeps the project or room context beside the session n
 
 test("app chrome, sidebars, raw events, and terminal metadata are gated by Terminal fullscreen", () => {
 	const appSource = fs.readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
+	const desktopSidebarSource = fs.readFileSync("src/apps/chat-ui/src/desktop-session-sidebar.tsx", "utf8");
 	const layoutSource = fs.readFileSync("src/apps/chat-ui/src/session-trace-layout.tsx", "utf8");
 	const paneSource = fs.readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
 	const projectsSource = fs.readFileSync("src/apps/chat-ui/src/projects/ProjectsArea.tsx", "utf8");
@@ -58,9 +59,10 @@ test("app chrome, sidebars, raw events, and terminal metadata are gated by Termi
 	assert.match(appSource, /data-pibo-terminal-fullscreen=\{isTerminalFullscreen \? "true" : "false"\}/);
 	assert.match(appSource, /const isAppFullscreen = isTerminalFullscreen \|\| isDesktopPreviewFullscreen/);
 	assert.match(appSource, /\{isAppFullscreen \? null : \(\s*<AppHeader/);
-	assert.match(appSource, /data-pibo-debug="desktop-session-sidebar"[^>]*hidden=\{isAppFullscreen\}/);
+	assert.match(appSource, /<DesktopSessionSidebar[\s\S]*hidden=\{isAppFullscreen\}/);
+	assert.match(desktopSidebarSource, /data-pibo-debug="desktop-session-sidebar"/);
 	assert.match(appSource, /<DesktopTabSidebar[\s\S]*hidden=\{isTerminalFullscreen\}/);
-	assert.match(appSource, /isTerminalFullscreen \? "min-w-0" : "min-w-\[420px\]"/);
+	assert.match(appSource, /className="min-h-0 min-w-\[250px\] flex-1 overflow-hidden"/);
 	assert.match(appSource, /isTerminalFullscreen \? "hidden" : mobileSidebarOpen/);
 	assert.match(layoutSource, /visible=\{showRawEvents && !terminalFullscreen\}/);
 	assert.match(layoutSource, /!terminalFullscreen && webAnnotationsPanelRendered/);
