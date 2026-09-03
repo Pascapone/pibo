@@ -178,11 +178,11 @@ function resultText(prefix: string, value: unknown): string {
 
 export function normalizePiboAgentSessionName(value: unknown): string {
 	if (typeof value !== "string") throw new Error("Agent session name is required.");
-	if ([...value].length > PIBO_AGENT_SESSION_NAME_MAX_LENGTH) {
-		throw new Error(`Agent session name must be at most ${PIBO_AGENT_SESSION_NAME_MAX_LENGTH} characters.`);
-	}
 	const normalized = value.trim();
 	if (!normalized) throw new Error("Agent session name must not be empty.");
+	if ([...normalized].length > PIBO_AGENT_SESSION_NAME_MAX_LENGTH) {
+		throw new Error(`Agent session name must be at most ${PIBO_AGENT_SESSION_NAME_MAX_LENGTH} characters.`);
+	}
 	return normalized;
 }
 

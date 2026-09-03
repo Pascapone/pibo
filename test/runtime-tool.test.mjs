@@ -8,6 +8,7 @@ import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { RuntimeSessionRegistry } from "../dist/tools/runtime/registry.js";
+import { createRuntimeToolDefinition } from "../dist/tools/runtime/tool.js";
 
 const defaultPythonExecutable = process.platform === "win32" ? "python" : "python3";
 const pythonAvailable = spawnSync(defaultPythonExecutable, ["--version"], { stdio: "ignore" }).status === 0;
@@ -22,6 +23,54 @@ async function withRuntimeRegistry(run) {
 		await registry.closeAll({ force: true });
 		rmSync(cwd, { recursive: true, force: true });
 	}
+}
+
+test("implicit runtime exec preserves auto-start errors", async () => {
+	await withRuntimeRegistry(async (registry) => {
+		for (const runtime of ["node", "python"]) {
+			const tool = createRuntimeToolDefinition(registry.createController(`controller-${runtime}`));
+			for (const targetType of ["docker", "ssh"]) {
+				const result = await tool.execute("implicit-exec", {
+					action: "exec",
+					runtime,
+					target: { type: targetType },
+					code: runtime === "python" ? "value = 1" : "globalThis.value = 1",
+				});
+				assert.equal(result.details.status, "error");
+				assert.equal(result.details.sessionId, "auto");
+				assert.equal(result.details.error?.name, "UnsupportedRuntimeTarget");
+				assert.match(result.details.error?.message ?? "", new RegExp(targetType));
+			}
+
+			const missing = await tool.execute("implicit-exec", {
+				action: "exec",
+				runtime,
+				target: { type: "local", executable: "/definitely/missing-pibo-runtime-executable" },
+				code: runtime === "python" ? "value = 1" : "globalThis.value = 1",
+			});
+			assert.equal(missing.details.status, "failed");
+			assert.notEqual(missing.details.error?.name, "RuntimeNotFound");
+			assert.match(missing.details.error?.message ?? "", /missing-pibo-runtime-executable|ENOENT/);
+			assert.deepEqual(registry.list(`controller-${runtime}`).sessions, []);
+		}
+	});
+});
+
+for (const runtime of ["node", "python"]) {
+	const runtimeTest = runtime === "python" ? pythonTest : test;
+	runtimeTest(`${runtime} concurrent implicit exec calls share one default startup`, async () => {
+		await withRuntimeRegistry(async (registry) => {
+			const assignments = runtime === "node"
+				? ["globalThis.left = 'left'", "globalThis.right = 'right'"]
+				: ["left = 'left'", "right = 'right'"];
+			const results = await Promise.all(assignments.map((code) => registry.exec("controller", { runtime, code })));
+			assert.equal(new Set(results.map((result) => result.sessionId)).size, 1);
+			assert.equal(results.filter((result) => result.status === "ok").length, 1);
+			const busy = results.find((result) => result.status === "failed");
+			assert.equal(busy?.error?.name, "RuntimeBusy");
+			assert.equal(registry.list("controller").sessions.filter((session) => session.runtime === runtime).length, 1);
+		});
+	});
 }
 
 for (const runtime of ["node", "python"]) {
@@ -59,6 +108,35 @@ pythonTest("python runtime preserves variables across exec calls", async () => {
 		const result = await registry.exec("controller", { sessionId, code: "x + 1", mode: "eval" });
 		assert.equal(result.status, "ok");
 		assert.equal(result.result?.repr, "2");
+	});
+});
+
+pythonTest("python runtime remains busy until timed-out code actually settles", async () => {
+	await withRuntimeRegistry(async (registry) => {
+		const start = await registry.start("controller", { runtime: "python" });
+		const sessionId = start.sessionId;
+		assert.ok(sessionId);
+
+		const timedOut = await registry.exec("controller", {
+			sessionId,
+			code: "import time\ntime.sleep(0.2)\nlate_value = 42",
+			timeoutMs: 20,
+		});
+		assert.equal(timedOut.status, "timeout");
+		assert.equal(registry.list("controller").sessions[0]?.status, "busy");
+
+		const retry = await registry.exec("controller", { sessionId, code: "late_value", mode: "eval", timeoutMs: 20 });
+		assert.equal(retry.status, "failed");
+		assert.equal(retry.error?.name, "RuntimeBusy");
+
+		const deadline = Date.now() + 1000;
+		while (registry.list("controller").sessions[0]?.status === "busy" && Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		assert.equal(registry.list("controller").sessions[0]?.status, "idle");
+		const lateValue = await registry.exec("controller", { sessionId, code: "late_value", mode: "eval" });
+		assert.equal(lateValue.status, "ok");
+		assert.equal(lateValue.result?.repr, "42");
 	});
 });
 
@@ -184,15 +262,21 @@ test("node runtime captures stdout, stderr, inspect, vars, and closeOnSuccess", 
 
 		const output = await registry.exec("controller", {
 			sessionId,
-			code: "globalThis.public = 2; console.log('out'); console.error('err'); function f(a, b = 1) { return a + b; } globalThis.f = f;",
+			code: "let lexicalLet = 11; const lexicalConst = 22; class LexicalClass {}; var varBinding = 33; globalThis.public = 2; console.log('out'); console.error('err'); function f(a, b = 1) { return a + b; } globalThis.f = f;",
 		});
 		assert.equal(output.status, "ok");
 		assert.equal(output.stdout, "out\n");
 		assert.equal(output.stderr, "err\n");
+		assert.equal((await registry.exec("controller", { sessionId, code: "lexicalLet += 100" })).status, "ok");
 
 		const vars = await registry.vars("controller", { sessionId });
 		assert.equal(vars.status, "ok");
-		assert.ok(vars.variables.some((entry) => entry.name === "public"));
+		const variables = new Map(vars.variables.map((entry) => [entry.name, entry.summary]));
+		assert.equal(variables.get("lexicalLet")?.repr, "111");
+		assert.equal(variables.get("lexicalConst")?.repr, "22");
+		assert.equal(variables.get("LexicalClass")?.type, "function");
+		assert.equal(variables.get("varBinding")?.repr, "33");
+		assert.equal(variables.get("public")?.repr, "2");
 
 		const inspected = await registry.inspect("controller", { sessionId, expression: "f", what: "signature" });
 		assert.equal(inspected.status, "ok");

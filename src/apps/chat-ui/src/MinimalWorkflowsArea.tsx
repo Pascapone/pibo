@@ -16,6 +16,9 @@ import { WorkflowInspectorsPanel } from "./workflows/WorkflowInspectorsPanel";
 import { CreateWorkflowDialog } from "./workflows/CreateWorkflowDialog";
 import { readWorkflowEdgeDefinitions, readWorkflowNodeDefinitions } from "./workflows/workflow-graph-model";
 
+const WORKFLOW_PICKER_LISTBOX_ID = "workflow-picker-results";
+const workflowPickerOptionId = (index: number) => `workflow-picker-option-${index}`;
+
 export function MinimalWorkflowsArea({
   draftId,
   onNavigateDraft,
@@ -28,6 +31,7 @@ export function MinimalWorkflowsArea({
   const [readOnlyView, setReadOnlyView] = useState<ReadOnlyWorkflowView | undefined>();
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [activePickerIndex, setActivePickerIndex] = useState<number | undefined>();
   const [createWorkflowDialogOpen, setCreateWorkflowDialogOpen] = useState(false);
   const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
   const [draftLoadState, setDraftLoadState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
@@ -35,6 +39,7 @@ export function MinimalWorkflowsArea({
   const [message, setMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const pickerRef = useRef<HTMLDivElement | null>(null);
+  const activePickerOptionRef = useRef<HTMLButtonElement | null>(null);
 
   const loadWorkflows = useCallback(async () => {
     setLoadState("loading");
@@ -81,7 +86,10 @@ export function MinimalWorkflowsArea({
 
   useEffect(() => {
     function handleDocumentPointerDown(event: PointerEvent) {
-      if (!pickerRef.current?.contains(event.target as Node)) setPickerOpen(false);
+      if (!pickerRef.current?.contains(event.target as Node)) {
+        setPickerOpen(false);
+        setActivePickerIndex(undefined);
+      }
     }
     document.addEventListener("pointerdown", handleDocumentPointerDown);
     return () => document.removeEventListener("pointerdown", handleDocumentPointerDown);
@@ -95,10 +103,17 @@ export function MinimalWorkflowsArea({
     if (!terms.length || selectedOption?.label === query) return options;
     return options.filter((option) => terms.every((term) => option.searchText.includes(term)));
   }, [options, query, selectedOption]);
+  const boundedActivePickerIndex = activePickerIndex !== undefined && activePickerIndex < filteredOptions.length
+    ? activePickerIndex
+    : undefined;
 
   useEffect(() => {
     if (selectedOption && !pickerOpen) setQuery(selectedOption.label);
   }, [pickerOpen, selectedOption]);
+
+  useEffect(() => {
+    activePickerOptionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [boundedActivePickerIndex]);
 
   const openReadOnlyWorkflow = async (option: WorkflowPickerOption) => {
     if (!option.latestPublishedVersion) throw new Error("This workflow has no draft or published version to open.");
@@ -130,6 +145,7 @@ export function MinimalWorkflowsArea({
   const selectWorkflow = async (option: WorkflowPickerOption) => {
     setBusy("select");
     setPickerOpen(false);
+    setActivePickerIndex(undefined);
     setMessage(undefined);
     setErrorMessage(undefined);
     try {
@@ -197,6 +213,34 @@ export function MinimalWorkflowsArea({
     }
   };
 
+  const handlePickerKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape" && pickerOpen) {
+      event.preventDefault();
+      setPickerOpen(false);
+      setActivePickerIndex(undefined);
+      return;
+    }
+    if (event.key === "Enter" && pickerOpen && boundedActivePickerIndex !== undefined && !busy) {
+      event.preventDefault();
+      void selectWorkflow(filteredOptions[boundedActivePickerIndex]);
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    setPickerOpen(true);
+    if (!filteredOptions.length) {
+      setActivePickerIndex(undefined);
+      return;
+    }
+    setActivePickerIndex((current) => {
+      const bounded = current !== undefined && current < filteredOptions.length ? current : undefined;
+      if (bounded === undefined) return event.key === "ArrowDown" ? 0 : filteredOptions.length - 1;
+      return event.key === "ArrowDown"
+        ? (bounded + 1) % filteredOptions.length
+        : (bounded - 1 + filteredOptions.length) % filteredOptions.length;
+    });
+  };
+
   const updateDraftDefinition = useCallback((definition: WorkflowDraftRecord["definition"]) => {
     setDraft((current) => current ? { ...current, definition } : current);
   }, []);
@@ -244,28 +288,44 @@ export function MinimalWorkflowsArea({
             <input
               className="min-w-0 flex-1 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-600"
               value={query}
-              onFocus={() => setPickerOpen(true)}
+              onFocus={() => {
+                setPickerOpen(true);
+                const selectedIndex = filteredOptions.findIndex((option) => option.workflowId === activeWorkflowId);
+                setActivePickerIndex(selectedIndex >= 0 ? selectedIndex : undefined);
+              }}
               onChange={(event) => {
                 setQuery(event.target.value);
                 setPickerOpen(true);
+                setActivePickerIndex(undefined);
               }}
+              onKeyDown={handlePickerKeyDown}
               placeholder="Search workflows by name, id, tag, status…"
               aria-label="Search workflows"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-haspopup="listbox"
+              aria-expanded={pickerOpen}
+              aria-controls={WORKFLOW_PICKER_LISTBOX_ID}
+              aria-activedescendant={pickerOpen && boundedActivePickerIndex !== undefined ? workflowPickerOptionId(boundedActivePickerIndex) : undefined}
             />
           </div>
           {pickerOpen ? (
-            <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-80 overflow-auto rounded-sm border border-slate-700 bg-[#151f24] p-1 shadow-2xl" role="listbox" aria-label="Workflow results">
+            <div id={WORKFLOW_PICKER_LISTBOX_ID} className="absolute left-0 right-0 top-full z-40 mt-1 max-h-80 overflow-auto rounded-sm border border-slate-700 bg-[#151f24] p-1 shadow-2xl" role="listbox" aria-label="Workflow results">
               {loadState === "loading" ? <WorkflowPickerMessage>Loading workflows…</WorkflowPickerMessage> : null}
               {loadState === "loaded" && filteredOptions.length === 0 ? <WorkflowPickerMessage>No workflows match this search.</WorkflowPickerMessage> : null}
-              {filteredOptions.map((option) => (
+              {filteredOptions.map((option, index) => (
                 <button
                   key={option.workflowId}
+                  id={workflowPickerOptionId(index)}
+                  ref={index === boundedActivePickerIndex ? activePickerOptionRef : null}
                   type="button"
-                  className={`flex w-full items-start justify-between gap-3 rounded-sm px-3 py-2 text-left text-xs transition hover:bg-slate-800/80 ${activeWorkflowId === option.workflowId ? "bg-[#11a4d4]/10 text-[#8bdcf4]" : "text-slate-300"}`}
+                  className={`flex w-full items-start justify-between gap-3 rounded-sm px-3 py-2 text-left text-xs transition hover:bg-slate-800/80 ${index === boundedActivePickerIndex || (boundedActivePickerIndex === undefined && activeWorkflowId === option.workflowId) ? "bg-[#11a4d4]/10 text-[#8bdcf4]" : "text-slate-300"}`}
                   onClick={() => void selectWorkflow(option)}
+                  onFocus={() => setActivePickerIndex(index)}
+                  onPointerMove={() => setActivePickerIndex(index)}
                   disabled={Boolean(busy)}
                   role="option"
-                  aria-selected={activeWorkflowId === option.workflowId}
+                  aria-selected={boundedActivePickerIndex !== undefined ? index === boundedActivePickerIndex : activeWorkflowId === option.workflowId}
                 >
                   <span className="min-w-0">
                     <span className="block truncate font-semibold">{option.label}</span>

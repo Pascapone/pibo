@@ -1,3 +1,5 @@
+import { redactSensitiveText } from "../core/sensitive-data-redaction.js";
+
 export type TerminalProgressTone = "green" | "yellow" | "red" | "cyan" | "neutral";
 
 export type TerminalProgressDescriptor = {
@@ -94,10 +96,7 @@ export function progressBarText(descriptor: TerminalProgressDescriptor, width = 
 }
 
 export function redactTerminalSecret(text: string): string {
-	return text
-		.replace(/\b([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*)\s*=\s*([^\s]+)/gi, "$1=[redacted]")
-		.replace(/\b(api[_-]?key|token|secret|password)\s*[:=]\s*([^\s]+)/gi, "$1=[redacted]")
-		.replace(/\b(?:sk|pk|pibo|ghp|github_pat)_[A-Za-z0-9_\-]{8,}\b/g, "[redacted]");
+	return redactSensitiveText(text).replace(/\b([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD)[A-Z0-9_]*)\s*:\s*\[redacted\]/gi, "$1=[redacted]");
 }
 
 function contextProgress(usage: BuildTerminalStatusInput["contextUsage"]): TerminalProgressDescriptor {

@@ -208,7 +208,7 @@ export async function createRelease(options) {
 	);
 	const apiOptions = { userAgent: USER_AGENT };
 
-	// Idempotency: if a release for this tag already exists, return it.
+	// Idempotency: reuse a release for this tag when it already exists.
 	let existing = null;
 	try {
 		existing = await ghWithFetch(
@@ -222,18 +222,8 @@ export async function createRelease(options) {
 	} catch (err) {
 		if (!/404/.test(String(err && err.message))) throw err;
 	}
-	if (existing) {
-		let existingAsset;
-		if (options.assetPath) {
-			const wantName = options.assetName ?? basename(options.assetPath);
-			existingAsset = (existing.assets || []).find((a) => a.name === wantName);
-		}
-		return { release: existing, asset: existingAsset, alreadyExisted: true };
-	}
-
-	const releaseName =
-		options.name ?? `Pibo ${options.tag.replace(/^v/, "")}`;
-	const release = await ghWithFetch(
+	const alreadyExisted = Boolean(existing);
+	const release = existing ?? await ghWithFetch(
 		fetchImpl,
 		"POST",
 		`${GITHUB_API_ROOT}/repos/${encodeURIComponent(options.owner)}/${encodeURIComponent(options.repo)}/releases`,
@@ -241,7 +231,7 @@ export async function createRelease(options) {
 		{
 			tag_name: options.tag,
 			target_commitish: options.targetCommitish ?? DEFAULT_TARGET,
-			name: releaseName,
+			name: options.name ?? `Pibo ${options.tag.replace(/^v/, "")}`,
 			body: options.body ?? "",
 			draft: options.draft ?? false,
 			prerelease: options.prerelease ?? false,
@@ -250,8 +240,10 @@ export async function createRelease(options) {
 		apiOptions,
 	);
 
-	let uploadedAsset;
-	if (preparedAsset) {
+	let uploadedAsset = preparedAsset
+		? (release.assets || []).find((asset) => asset.name === preparedAsset.name)
+		: undefined;
+	if (preparedAsset && !uploadedAsset) {
 		const uploadUrl =
 			`${release.upload_url.split("{")[0]}?name=${encodeURIComponent(preparedAsset.name)}`;
 		const response = await fetchImpl(uploadUrl, {
@@ -273,7 +265,7 @@ export async function createRelease(options) {
 		uploadedAsset = await response.json();
 	}
 
-	return { release, asset: uploadedAsset, alreadyExisted: false };
+	return { release, asset: uploadedAsset, alreadyExisted };
 }
 
 function basename(path) {

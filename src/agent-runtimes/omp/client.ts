@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { redactSensitiveText } from "../../core/sensitive-data-redaction.js";
 import { randomUUID } from "node:crypto";
 import {
 	OMP_RPC_CHUNK_PAYLOAD_BYTES,
@@ -188,10 +189,7 @@ export class OmpRpcClient {
 	 * stderr (which may echo prompts or provider keys) cannot leak secrets.
 	 */
 	private static redactDiagnostic(message: string): string {
-		return message
-			.replace(/\b(?:sk|rk|pk|ghp|github_pat)[-_][A-Za-z0-9._~+/-]{8,}\b/g, "[redacted]")
-			.replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
-			.replace(/\b(?:api[_-]?key|secret|token|password)\b(?=[:=]\s*)\s*[^\s,;]+/gi, "$1 [redacted]");
+		return redactSensitiveText(message);
 	}
 
 	private emitDiagnostic(message: string): void {

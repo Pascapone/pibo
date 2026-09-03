@@ -64,6 +64,6 @@ test("Terminal view wires drag events into the existing chat upload attachment p
   assert.match(targetSource, /event\.preventDefault\(\);[\s\S]*event\.dataTransfer\.dropEffect/);
   assert.match(targetSource, /await onFilesDropped\(files\)/);
   assert.match(paneSource, /currentSessionView\.id === "terminal"/);
-  assert.match(paneSource, /const result = await uploadChatFiles\(files\);\s*attachUploadedFiles\(result\.files\);/);
+  assert.match(paneSource, /assertChatUploadCapacity\(selectedUploadAttachments\.length, files\.length\);\s*const result = await uploadChatFiles\(files\);\s*attachUploadedFiles\(result\.files\);/);
   assert.match(layoutSource, /<TerminalFileDropTarget[\s\S]*enabled=\{terminalFileDropEnabled\}[\s\S]*onFilesDropped=\{onTerminalFilesDropped\}/);
 });

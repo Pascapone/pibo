@@ -143,6 +143,32 @@ test("npm package excludes generated VSIX artifacts while keeping runtime assets
 	}
 });
 
+test("npm package supports imports from the package root", async () => {
+	const packageDir = await mkdtemp(join(tmpdir(), "pibo-package-root-"));
+	const consumerDir = join(packageDir, "consumer");
+	try {
+		const { stdout } = await execFileAsync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packageDir], {
+			cwd: process.cwd(),
+			maxBuffer: 16 * 1024 * 1024,
+		});
+		const [report] = JSON.parse(stdout);
+		const archivePath = join(packageDir, report.filename);
+		await mkdir(consumerDir, { recursive: true });
+		await execFileAsync("npm", ["install", "--ignore-scripts", "--no-package-lock", "--no-save", archivePath], {
+			cwd: consumerDir,
+			maxBuffer: 16 * 1024 * 1024,
+		});
+		const imported = await execFileAsync(process.execPath, [
+			"--input-type=module",
+			"--eval",
+			"import { createDefaultPiboProfile } from '@pasko70/pibo'; console.log(typeof createDefaultPiboProfile)",
+		], { cwd: consumerDir });
+		assert.equal(imported.stdout.trim(), "function");
+	} finally {
+		await rm(packageDir, { recursive: true, force: true });
+	}
+});
+
 test("npm package ships the unavailable-tool path contract", async () => {
 	const packageDir = await mkdtemp(join(tmpdir(), "pibo-package-tools-contract-"));
 	try {

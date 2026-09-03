@@ -1,7 +1,8 @@
 import type { SaveCustomAgentInput } from "../api-agent-designer";
 import { THINKING_LEVELS, type AgentCatalog, type AgentRuntimeCatalogEntry, type BootstrapData, type CustomAgent, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
 
-export type AgentDraft = Omit<SaveCustomAgentInput, "mainModel" | "subagentModel"> & {
+export type AgentDraft = Omit<SaveCustomAgentInput, "description" | "mainModel" | "subagentModel"> & {
+	description?: string;
 	mainModel?: ModelProfile;
 	subagentModel?: ModelProfile;
 	id?: string;
@@ -40,7 +41,7 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 	};
 	return {
 		displayName: draft.displayName.trim(),
-		description: (draft.description ?? "").trim() || undefined,
+		description: (draft.description ?? "").trim() || null,
 		folderId: draft.folderId ?? null,
 		runtimeInstanceId: (draft.runtimeInstanceId ?? "pi").trim() || "pi",
 		runtimeOptions: draft.runtimeOptions && typeof draft.runtimeOptions === "object" && !Array.isArray(draft.runtimeOptions)

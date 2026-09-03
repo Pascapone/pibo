@@ -135,6 +135,27 @@ type PtyScenario = {
 	stopPatterns?: string[];
 };
 
+const PTY_SCENARIO_FIELDS = new Set<keyof PtyScenario>([
+	"name",
+	"command",
+	"cwd",
+	"workdir",
+	"env",
+	"rows",
+	"cols",
+	"timeoutMs",
+	"idleTimeoutMs",
+	"inputDelayMs",
+	"providerMode",
+	"maxIterations",
+	"artifactDir",
+	"artifact",
+	"steps",
+	"expect",
+	"reject",
+	"stopPatterns",
+]);
+
 type PtyOptions = {
 	positionals: string[];
 	rows?: string;
@@ -343,12 +364,12 @@ function parsePtyOptions(args: string[]): PtyOptions {
 		else if (arg === "--max-iterations") options.maxIterations = requireOptionValue(args, ++index, arg);
 		else if (arg === "--name") options.name = requireOptionValue(args, ++index, arg);
 		else if (arg === "--env") options.env.push(requireOptionValue(args, ++index, arg));
-		else if (arg === "--expect") options.expect.push(requireOptionValue(args, ++index, arg));
-		else if (arg === "--reject") options.reject.push(requireOptionValue(args, ++index, arg));
-		else if (arg === "--stop-pattern") options.stopPatterns.push(requireOptionValue(args, ++index, arg));
-		else if (arg === "--type") options.steps.push({ typeText: requireOptionValue(args, ++index, arg) });
+		else if (arg === "--expect") options.expect.push(requireTextOptionValue(args, ++index, arg));
+		else if (arg === "--reject") options.reject.push(requireTextOptionValue(args, ++index, arg));
+		else if (arg === "--stop-pattern") options.stopPatterns.push(requireTextOptionValue(args, ++index, arg));
+		else if (arg === "--type") options.steps.push({ typeText: requireTextOptionValue(args, ++index, arg) });
 		else if (arg === "--press") options.steps.push({ press: requireOptionValue(args, ++index, arg) });
-		else if (arg === "--wait-for") options.steps.push({ waitFor: requireOptionValue(args, ++index, arg) });
+		else if (arg === "--wait-for") options.steps.push({ waitFor: requireTextOptionValue(args, ++index, arg) });
 		else if (arg === "--sleep-ms") options.steps.push({ sleepMs: parseNonNegativeInteger(requireOptionValue(args, ++index, arg), arg) });
 		else if (arg === "--builtin") options.builtin = requireOptionValue(args, ++index, arg);
 		else if (arg === "--help" || arg === "-h") {
@@ -367,6 +388,12 @@ function parsePtyOptions(args: string[]): PtyOptions {
 function requireOptionValue(args: string[], index: number, option: string): string {
 	const value = args[index];
 	if (!value || value.startsWith("--")) throw new Error(`${option} requires a value`);
+	return value;
+}
+
+function requireTextOptionValue(args: string[], index: number, option: string): string {
+	const value = args[index];
+	if (value === undefined) throw new Error(`${option} requires a value`);
 	return value;
 }
 
@@ -464,6 +491,9 @@ function applyScenarioOverrides(scenario: PtyScenario, options: PtyOptions): Pty
 function validateScenario(value: unknown, source: string): PtyScenario {
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${source}: scenario must be an object`);
 	const raw = value as Record<string, unknown>;
+	for (const field of Object.keys(raw)) {
+		if (!PTY_SCENARIO_FIELDS.has(field as keyof PtyScenario)) throw new Error(`${source}: unknown field "${field}"`);
+	}
 	if (!Array.isArray(raw.command) || raw.command.some((item) => typeof item !== "string") || raw.command.length === 0) {
 		throw new Error(`${source}: command must be a non-empty string array`);
 	}
@@ -524,6 +554,7 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 	let stopReason = "completed";
 	let exitCode: number | null = null;
 	let signal: NodeJS.Signals | null = null;
+	const waitCursor = { cleanOffset: 0 };
 	try {
 		validateProviderSafety(scenario, options);
 		runner = await startRunner(scenario);
@@ -548,7 +579,7 @@ async function executePtyScenario(input: PtyScenario, options: PtyOptions): Prom
 				}
 			}
 			await checkIdle(runner, refreshOutputTimestamp, scenario.idleTimeoutMs);
-			await runStep(runner, scenario, step, assertions, refreshOutputTimestamp, deadline);
+			await runStep(runner, scenario, step, assertions, refreshOutputTimestamp, deadline, waitCursor);
 			throwIfDeadlineExpired(deadline);
 			refreshOutputTimestamp();
 			const clean = cleanTerminalText(runner.getRawOutput());
@@ -759,9 +790,10 @@ async function runStep(
 	assertions: AssertionResult[],
 	markOutput: () => number,
 	deadline: MonotonicDeadline,
+	waitCursor: { cleanOffset: number },
 ): Promise<void> {
 	if (step.waitFor !== undefined) {
-		await waitForText(runner, step.waitFor, step.timeoutMs ?? scenario.timeoutMs, scenario.idleTimeoutMs, markOutput, deadline);
+		await waitForText(runner, step.waitFor, step.timeoutMs ?? scenario.timeoutMs, scenario.idleTimeoutMs, markOutput, deadline, waitCursor);
 		return;
 	}
 	if (step.typeText !== undefined) {
@@ -805,12 +837,18 @@ async function waitForText(
 	idleTimeoutMs: number,
 	markOutput: () => number,
 	globalDeadline: MonotonicDeadline,
+	cursor: { cleanOffset: number },
 ): Promise<void> {
 	const stepDeadline = performance.now() + timeoutMs;
 	while (true) {
 		throwIfDeadlineExpired(globalDeadline);
 		const lastOutputAt = markOutput();
-		if (cleanTerminalText(runner.getRawOutput()).includes(pattern)) return;
+		const clean = cleanTerminalText(runner.getRawOutput());
+		const matchIndex = clean.indexOf(pattern, Math.min(cursor.cleanOffset, clean.length));
+		if (matchIndex >= 0) {
+			cursor.cleanOffset = matchIndex + pattern.length;
+			return;
+		}
 		const now = performance.now();
 		if (now - lastOutputAt > idleTimeoutMs) {
 			await runner.terminate("idle_timeout");

@@ -33,6 +33,19 @@ export type StoredPayload = {
 	lastVerifiedAt?: string;
 };
 
+export class PiboPayloadMetadataConflictError extends Error {
+	constructor(
+		readonly sha256: string,
+		readonly existingContentType: string,
+		readonly requestedContentType: string,
+		readonly existingRetentionClass: string,
+		readonly requestedRetentionClass: string,
+	) {
+		super(`Payload bytes already exist with incompatible metadata: content type ${existingContentType} vs ${requestedContentType}; retention class ${existingRetentionClass} vs ${requestedRetentionClass}`);
+		this.name = "PiboPayloadMetadataConflictError";
+	}
+}
+
 type PayloadRow = {
 	id: string;
 	sha256: string;
@@ -67,6 +80,15 @@ export class PayloadStore {
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
 		const existing = this.findBySha256(sha256);
 		if (existing) {
+			if (existing.contentType !== contentType || existing.retentionClass !== input.retentionClass) {
+				throw new PiboPayloadMetadataConflictError(
+					sha256,
+					existing.contentType,
+					contentType,
+					existing.retentionClass,
+					input.retentionClass,
+				);
+			}
 			this.db.prepare("UPDATE payloads SET ref_count = ref_count + 1 WHERE id = ?").run(existing.id);
 			return this.getPayload(existing.id) ?? existing;
 		}
@@ -166,6 +188,24 @@ export class PayloadStore {
 	findBySha256(sha256: string): StoredPayload | undefined {
 		const row = this.db.prepare("SELECT * FROM payloads WHERE sha256 = ?").get(sha256) as PayloadRow | undefined;
 		return row ? payloadFromRow(row) : undefined;
+	}
+
+	releaseReferences(id: string, count = 1): StoredPayload | undefined {
+		if (!Number.isSafeInteger(count) || count < 1) throw new RangeError("count must be a positive safe integer");
+		const row = this.db.prepare("SELECT * FROM payloads WHERE id = ?").get(id) as PayloadRow | undefined;
+		if (!row) return undefined;
+		if (row.ref_count > count) {
+			this.db.prepare("UPDATE payloads SET ref_count = ref_count - ? WHERE id = ?").run(count, id);
+			return undefined;
+		}
+		this.db.prepare("DELETE FROM payloads WHERE id = ?").run(id);
+		return payloadFromRow(row);
+	}
+
+	removeReleasedFile(payload: StoredPayload): void {
+		if (payload.storageKind !== "file" || !payload.storagePath) return;
+		const absolutePath = this.rootDir === ":memory:" ? payload.storagePath : join(this.rootDir, payload.storagePath);
+		rmSync(absolutePath, { force: true });
 	}
 }
 

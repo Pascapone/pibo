@@ -2,6 +2,8 @@
   "name": "@pasko70/pibo",
   "version": "3.2.3",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "workspaces": [
     "packages/workflows"
   ],

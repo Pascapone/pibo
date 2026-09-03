@@ -158,6 +158,7 @@ export function ProjectsSidebar({
                 onClick={onToggleArchivedProjects}
                 title="Archived Projects"
                 aria-label="Archived Projects"
+                aria-pressed={showArchivedProjects}
                 className={`h-6 w-6 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedProjects ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
               >
                 {showArchivedProjects ? (
@@ -234,11 +235,8 @@ export function ProjectsSidebar({
                     ? "Hide Archived Project Sessions"
                     : "Show Archived Project Sessions"
                 }
-                aria-label={
-                  showArchivedSessions
-                    ? "Hide Archived Project Sessions"
-                    : "Show Archived Project Sessions"
-                }
+                aria-label="Archived Project Sessions"
+                aria-pressed={showArchivedSessions}
                 className={`h-6 w-6 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedSessions ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
               >
                 {showArchivedSessions ? (

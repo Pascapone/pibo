@@ -39,7 +39,7 @@ import { useCurrentSessionTrace } from "./tracing/use-current-session-trace";
 import { useSessionTracePage } from "./tracing/use-session-trace-page";
 import { useSessionTraceLiveStream } from "./tracing/use-session-trace-live-stream";
 import type { RuntimeRequestStreamEvent } from "./tracing/chat-stream-events";
-import { useSessionUploadAttachments } from "./chat-upload-attachments";
+import { assertChatUploadCapacity, useSessionUploadAttachments } from "./chat-upload-attachments";
 import { useSessionWebAnnotations } from "./use-session-web-annotations";
 import { compactWebAnnotationError, WebAnnotationsSessionPanel } from "./web-annotations";
 import {
@@ -482,12 +482,13 @@ export function SessionTracePane({
     (activeViewId ?? sessionViewId) === "terminal";
   const handleTerminalFilesDropped = useCallback(async (files: readonly File[]) => {
     try {
+      assertChatUploadCapacity(selectedUploadAttachments.length, files.length);
       const result = await uploadChatFiles(files);
       attachUploadedFiles(result.files);
     } catch (caught) {
       onError(errorMessage(caught));
     }
-  }, [attachUploadedFiles, onError]);
+  }, [attachUploadedFiles, onError, selectedUploadAttachments.length]);
 
   const headerPiboSessionId =
     currentTraceView?.piboSessionId ?? selectedPiboSessionId ?? "";

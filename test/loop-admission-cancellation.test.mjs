@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { PiboLoopService } from "../dist/loops/service.js";
+import { PiboLoopCapacityError, PiboLoopService } from "../dist/loops/service.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 
@@ -126,12 +126,50 @@ test("cancellation after admission aborts the queued provider turn", async () =>
 	}
 });
 
+test("manual starts share the service-wide concurrency admission", async () => {
+	const harness = await createHarness("goal", { maxConcurrentRuns: 1 });
+	const secondJob = harness.store.createJob({
+		mode: "goal",
+		name: "second capacity fixture",
+		target: { kind: "default-chat" },
+		profile: "base",
+		prompt: "Wait for capacity.",
+		enabled: false,
+		stopPolicy: harness.job.stopPolicy,
+	});
+	try {
+		harness.service.start();
+		const starts = [harness.service.startJob(harness.job.id), harness.service.startJob(secondJob.id)];
+		await harness.waitForEvaluations(1);
+		harness.releaseEvaluation();
+		const results = await Promise.allSettled(starts);
+		assert.equal(results.filter((result) => result.status === "fulfilled" && result.value).length, 1);
+		const rejected = results.find((result) => result.status === "rejected");
+		assert.ok(rejected?.reason instanceof PiboLoopCapacityError);
+		await waitFor(() => harness.messages.length === 1);
+		assert.equal(harness.store.listRuns({}).filter((run) => run.status === "running").length, 1);
+
+		harness.finishMessage(harness.messages[0], "capacity released");
+		await waitFor(() => harness.store.listRuns({}).every((run) => run.status !== "running"));
+		const retryId = results[0].status === "rejected" ? harness.job.id : secondJob.id;
+		const retry = await harness.service.startJob(retryId);
+		assert.ok(retry);
+		await waitFor(() => harness.messages.length === 2);
+		harness.finishMessage(harness.messages[1], "retry admitted");
+		await waitFor(() => harness.store.getRun(retry.id)?.status === "ok");
+	} finally {
+		harness.releaseEvaluation();
+		await harness.service.stop();
+		await harness.cleanup();
+	}
+});
+
 test("concurrent manual triggers reserve and emit only one turn", async () => {
 	const harness = await createHarness("goal");
 	try {
 		harness.service.start();
 		const starts = [harness.service.startJob(harness.job.id), harness.service.startJob(harness.job.id)];
-		await harness.waitForEvaluations(2);
+		await harness.waitForEvaluations(1);
 		harness.releaseEvaluation();
 		const runs = await Promise.all(starts);
 		const admitted = runs.filter(Boolean);
@@ -206,6 +244,7 @@ async function createHarness(mode, input = {}) {
 		dataStorePath: join(root, "data.sqlite"),
 		dataPayloadRootDir: join(root, "payloads"),
 		intervalMs: 60_000,
+		maxConcurrentRuns: input.maxConcurrentRuns,
 		runTimeoutMs: 5_000,
 	});
 	const job = store.createJob({

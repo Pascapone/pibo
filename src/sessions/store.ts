@@ -81,6 +81,7 @@ export type PiboSessionStore = {
 	close?(): void;
 	claimOutputRenderSequence?(piboSessionId: string, minimum: number): number;
 	observeOutputRenderSequence?(piboSessionId: string, sequence: number): void;
+	claimAgentObservationSequence?(parentPiboSessionId: string, minimum: number): number;
 	claimOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string): number;
 	observeOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string, ordinal: number): void;
 	claimOrAttachOutputToolInvocation?(input: import("../core/output-render-sequence.js").OutputToolInvocationTransition): number;
@@ -141,6 +142,7 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 	private readonly byPiSessionId = new Map<string, PiboSession>();
 	private readonly byNativeSession = new Map<string, PiboSession>();
 	private readonly outputRenderHighWater = new Map<string, number>();
+	private readonly agentObservationNextSequence = new Map<string, number>();
 	private readonly outputToolInvocationNextOrdinal = new Map<string, number>();
 
 	get(id: string): PiboSession | undefined {
@@ -219,6 +221,13 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		if (sequence > current) this.outputRenderHighWater.set(piboSessionId, sequence);
 	}
 
+	claimAgentObservationSequence(parentPiboSessionId: string, minimum: number): number {
+		if (!this.byId.has(parentPiboSessionId)) return minimum;
+		const sequence = Math.max(minimum, this.agentObservationNextSequence.get(parentPiboSessionId) ?? 1);
+		this.agentObservationNextSequence.set(parentPiboSessionId, sequence + 1);
+		return sequence;
+	}
+
 	claimOutputToolInvocationOrdinal(piboSessionId: string, eventId: string, toolCallId: string): number {
 		const key = outputToolInvocationCounterKey(piboSessionId, eventId, toolCallId);
 		const ordinal = this.outputToolInvocationNextOrdinal.get(key) ?? 0;
@@ -265,6 +274,7 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		const nativeKey = runtimeBindingNativeKey(existing.runtimeBinding);
 		if (nativeKey) this.byNativeSession.delete(nativeKey);
 		this.outputRenderHighWater.delete(id);
+		this.agentObservationNextSequence.delete(id);
 		const counterPrefix = `${JSON.stringify([id]).slice(0, -1)},`;
 		for (const key of this.outputToolInvocationNextOrdinal.keys()) {
 			if (key.startsWith(counterPrefix)) this.outputToolInvocationNextOrdinal.delete(key);

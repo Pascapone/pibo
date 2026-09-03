@@ -107,7 +107,8 @@ export type CreateCustomAgentInput = {
 	goalControl?: boolean;
 };
 
-export type UpdateCustomAgentInput = Omit<Partial<CreateCustomAgentInput>, "folderId" | "nativeSubagents" | "autoContextFiles" | "mainModel" | "subagentModel"> & {
+export type UpdateCustomAgentInput = Omit<Partial<CreateCustomAgentInput>, "description" | "folderId" | "nativeSubagents" | "autoContextFiles" | "mainModel" | "subagentModel"> & {
+	description?: string | null;
 	folderId?: string | null;
 	nativeSubagents?: boolean | null;
 	autoContextFiles?: boolean | null;
@@ -208,7 +209,7 @@ export function previewCustomAgentUpdate(
 		profileName,
 		displayName: input.displayName ?? existing.displayName,
 		folderId: input.folderId === undefined ? existing.folderId : input.folderId ?? undefined,
-		description: input.description === undefined ? existing.description : input.description,
+		description: input.description === undefined ? existing.description : input.description ?? undefined,
 		runtimeInstanceId: input.runtimeInstanceId === undefined ? existing.runtimeInstanceId : sanitizeRuntimeInstanceId(input.runtimeInstanceId),
 		runtimeOptions: input.runtimeOptions === undefined ? existing.runtimeOptions : cloneRuntimeOptions(input.runtimeOptions),
 		nativeSubagents: input.nativeSubagents === undefined ? existing.nativeSubagents : sanitizeBoolean(input.nativeSubagents),

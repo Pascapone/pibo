@@ -420,7 +420,7 @@ test("renderCliStatusCardText renders shared status bars and redacts secrets", (
 		queuedMessages: 2,
 		processing: true,
 		streaming: false,
-		cwd: "/workspace",
+		cwd: "/tmp/pibo-stream-render-determinism-v2",
 		contextUsage: { tokens: 500, contextWindow: 1000, percent: 50 },
 		providerUsage: { provider: "openai", planType: "team", limits: [{ label: "requests", usedPercent: 80, remainingPercent: 20, resetsAt: "2026-05-17T01:00:00.000Z" }], credits: { balance: "$5.00" } },
 		activeTools: ["bash"],
@@ -435,6 +435,7 @@ test("renderCliStatusCardText renders shared status bars and redacts secrets", (
 	assert.match(text, /Model: openai\/gpt-status/);
 	assert.match(text, /Runtime: processing/);
 	assert.match(text, /Queue: 2/);
+	assert.match(text, /CWD: \/tmp\/pibo-stream-render-determinism-v2/);
 	assert.match(text, /Context: .*50\.0%/);
 	assert.match(text, /openai requests: .*20\.0%/);
 	assert.match(text, /20\.0% remaining/);

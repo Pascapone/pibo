@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { parseFriendlySchedule } from "./schedule.js";
 import { createDefaultPiboCronStore } from "./store.js";
-import type { PiboCronTarget } from "./types.js";
+import type { PiboCronJob, PiboCronScheduleUi, PiboCronTarget } from "./types.js";
 
 function printDiscovery(): void {
 	console.log(`pibo cron
@@ -37,21 +37,45 @@ function maybeTargetFromOptions(options: { room?: string; defaultChat?: boolean 
 	return targetFromOptions(options);
 }
 
+function scheduleSelectors(options: Record<string, unknown>, positionalCron?: string): string[] {
+	const candidates: Array<[string, boolean]> = [
+		["--in", typeof options.in === "string"],
+		["--at", typeof options.at === "string"],
+		["--every", typeof options.every === "string"],
+		["--daily", typeof options.daily === "string"],
+		["--weekly", typeof options.weekly === "string"],
+		["--monthly", typeof options.monthly === "string" || typeof options.monthly === "number"],
+		["--cron", typeof options.cron === "string"],
+		["positional cron expression", Boolean(positionalCron)],
+	];
+	return candidates.filter(([, selected]) => selected).map(([selector]) => selector);
+}
+
 function hasScheduleOptions(options: Record<string, unknown>, positionalCron?: string): boolean {
-	return Boolean(
-		positionalCron ||
-		typeof options.in === "string" ||
-		typeof options.at === "string" ||
-		typeof options.every === "string" ||
-		typeof options.daily === "string" ||
-		typeof options.weekly === "string" ||
-		typeof options.monthly === "string" ||
-		typeof options.monthly === "number" ||
-		typeof options.cron === "string"
-	);
+	return scheduleSelectors(options, positionalCron).length > 0;
+}
+
+function scheduleWithTimezone(job: PiboCronJob, tz: string) {
+	if (job.schedule.kind !== "cron") throw new Error("--tz can only update an existing wall-clock cron schedule");
+	let scheduleUi: PiboCronScheduleUi | undefined;
+	if (job.scheduleUi) {
+		switch (job.scheduleUi.preset) {
+			case "daily":
+			case "weekly":
+			case "monthly":
+			case "advanced":
+				scheduleUi = { ...job.scheduleUi, tz };
+				break;
+			default:
+				scheduleUi = job.scheduleUi;
+		}
+	}
+	return { schedule: { ...job.schedule, tz }, scheduleUi };
 }
 
 function scheduleFromOptions(options: Record<string, unknown>, positionalCron?: string) {
+	const selectors = scheduleSelectors(options, positionalCron);
+	if (selectors.length > 1) throw new Error(`Conflicting schedule selectors: ${selectors.join(", ")}. Choose exactly one schedule source.`);
 	if (typeof options.in === "string") return parseFriendlySchedule({ kind: "in", value: options.in });
 	if (typeof options.at === "string") return parseFriendlySchedule({ kind: "at", value: options.at, tz: typeof options.tz === "string" ? options.tz : undefined });
 	if (typeof options.every === "string") return parseFriendlySchedule({ kind: "every", value: options.every });
@@ -167,7 +191,12 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 		.action((id: string, cronExprParts: string[], options) => {
 			const store = createDefaultPiboCronStore({ path: program.opts().store });
 			const positionalCron = Array.isArray(cronExprParts) && cronExprParts.length ? cronExprParts.join(" ") : undefined;
-			const normalized = hasScheduleOptions(options, positionalCron) ? scheduleFromOptions(options, positionalCron) : undefined;
+			let normalized = hasScheduleOptions(options, positionalCron) ? scheduleFromOptions(options, positionalCron) : undefined;
+			if (!normalized && typeof options.tz === "string") {
+				const existing = store.getJob(id);
+				if (!existing) throw new Error("Cron job not found");
+				normalized = scheduleWithTimezone(existing, options.tz);
+			}
 			const target = maybeTargetFromOptions(options);
 			const patch = {
 				...(options.name !== undefined ? { name: options.name } : {}),

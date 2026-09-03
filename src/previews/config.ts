@@ -1,4 +1,6 @@
 import { loadPiboConfig } from "../config/config.js";
+import { sanitizePreviewServerSettings, type PreviewServerSettings } from "../core/preview-server-settings.js";
+import { loadPiboUserSettings } from "../core/user-settings.js";
 import { parsePreviewBaseURL } from "./base-url.js";
 
 export const DEFAULT_PREVIEW_TTL_MINUTES = 8 * 60;
@@ -16,6 +18,15 @@ export type PreviewConfig = {
 
 export function loadPreviewConfig(): PreviewConfig {
 	return loadPiboConfig().preview ?? {};
+}
+
+export function loadEffectivePreviewServerSettings(): PreviewServerSettings {
+	const config = loadPreviewConfig();
+	const userSettings = loadPiboUserSettings().previewServers;
+	return sanitizePreviewServerSettings({
+		maxRunningServers: config.maxRunningServers ?? userSettings.maxRunningServers,
+		autoStopMinutes: config.autoStopMinutes ?? userSettings.autoStopMinutes,
+	});
 }
 
 export function requirePreviewBaseURL(value = loadPreviewConfig().baseURL): URL {

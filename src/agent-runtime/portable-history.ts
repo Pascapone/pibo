@@ -523,7 +523,7 @@ function boundEntries(
 		const entry = entries[index];
 		const normalized = normalizeEntrySize(entry);
 		const size = entryBytes(normalized);
-		if (selected.length >= limits.maxEntries || bytes + size > limits.maxBytes) continue;
+		if (selected.length >= limits.maxEntries || bytes + size > limits.maxBytes) break;
 		selected.push(normalized);
 		bytes += size;
 	}

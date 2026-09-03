@@ -477,6 +477,7 @@ function buildComputeWorkerMetadataLabels(options: ComputeWorkerMetadataLabelOpt
 		`${LABEL_PORT_BLOCK}=${options.portBlock}`,
 		`${LABEL_TTL_SECONDS}=${options.ttlSeconds}`,
 		`${LABEL_IDLE_SECONDS}=${options.idleSeconds}`,
+		`${LABEL_LAST_USED_AT}=${options.createdAt}`,
 		...(options.holder ? [`${LABEL_HOLDER}=${options.holder}`] : []),
 		...(options.worktree ? [`${LABEL_WORKTREE}=${options.worktree}`] : []),
 		...(options.worktreePath ? [`${LABEL_WORKTREE_PATH}=${options.worktreePath}`] : []),
@@ -585,6 +586,22 @@ export function buildDevWorkerDockerRunArgs(options: BuildDevWorkerDockerRunArgs
 	];
 }
 
+export function validateDevWorktreeName(name: string): void {
+	if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(name)) {
+		throw new Error("Dev worktree name must use only letters, numbers, dots, underscores, and hyphens, and must start with a letter or number");
+	}
+}
+
+async function localBranchExists(repoDir: string, name: string): Promise<boolean> {
+	try {
+		await execFileAsync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${name}`], { cwd: repoDir });
+		return true;
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === 1) return false;
+		throw error;
+	}
+}
+
 export async function spawnDevWorker(options: {
 	repoDir: string;
 	worktreeName: string;
@@ -595,62 +612,74 @@ export async function spawnDevWorker(options: {
 	ralphJobId?: string;
 	ralphRunId?: string;
 }): Promise<SpawnedDevWorker> {
+	validateDevWorktreeName(options.worktreeName);
+	const branchExisted = await localBranchExists(options.repoDir, options.worktreeName);
 	const worktreePath = path.join(options.repoDir, ".worktrees", options.worktreeName);
 	await createWorktree(options.repoDir, options.worktreeName);
 
-	const id = `pibo-dev-${options.worktreeName}`;
-	const createdAt = new Date().toISOString();
-
-	// Mount host node_modules into the container so dependencies are immediately available
-	const hostNodeModules = path.join(options.repoDir, "node_modules");
-	let nodeModulesMount: string | undefined;
 	try {
-		const { stdout } = await execFileAsync("ls", ["-d", hostNodeModules]);
-		if (stdout.trim()) nodeModulesMount = hostNodeModules;
-	} catch {
-		// host node_modules does not exist; skip mount
-	}
+		const id = `pibo-dev-${options.worktreeName}`;
+		const createdAt = new Date().toISOString();
 
-	const ports = await withDevPortAllocationLock(async () => {
-		const block = await findNextPortBlock();
-		const base = DEV_PORT_BASE + block * DEV_PORT_BLOCK_SIZE;
-		const gatewayPort = base;
-		const cdpPort = base + 1;
-		const webPort = base + 2;
-		const webUIPortChat = base + 3;
-		const webUIPortContext = base + 4;
-		const args = buildDevWorkerDockerRunArgs({
-			id,
-			imageName: options.imageName,
-			worktreePath,
-			worktreeName: options.worktreeName,
-			block,
-			gatewayPort,
-			cdpPort,
-			webPort,
-			webUIPortChat,
-			webUIPortContext,
-			createdAt,
-			holder: options.holder,
-			ttlSeconds: options.ttlSeconds,
-			idleSeconds: options.idleSeconds,
-			ralphJobId: options.ralphJobId,
-			ralphRunId: options.ralphRunId,
-			hostNodeModules: nodeModulesMount,
+		// Mount host node_modules into the container so dependencies are immediately available
+		const hostNodeModules = path.join(options.repoDir, "node_modules");
+		let nodeModulesMount: string | undefined;
+		try {
+			const { stdout } = await execFileAsync("ls", ["-d", hostNodeModules]);
+			if (stdout.trim()) nodeModulesMount = hostNodeModules;
+		} catch {
+			// host node_modules does not exist; skip mount
+		}
+
+		const ports = await withDevPortAllocationLock(async () => {
+			const block = await findNextPortBlock();
+			const base = DEV_PORT_BASE + block * DEV_PORT_BLOCK_SIZE;
+			const gatewayPort = base;
+			const cdpPort = base + 1;
+			const webPort = base + 2;
+			const webUIPortChat = base + 3;
+			const webUIPortContext = base + 4;
+			const args = buildDevWorkerDockerRunArgs({
+				id,
+				imageName: options.imageName,
+				worktreePath,
+				worktreeName: options.worktreeName,
+				block,
+				gatewayPort,
+				cdpPort,
+				webPort,
+				webUIPortChat,
+				webUIPortContext,
+				createdAt,
+				holder: options.holder,
+				ttlSeconds: options.ttlSeconds,
+				idleSeconds: options.idleSeconds,
+				ralphJobId: options.ralphJobId,
+				ralphRunId: options.ralphRunId,
+				hostNodeModules: nodeModulesMount,
+			});
+
+			await execFileAsync("docker", args, { cwd: options.repoDir });
+			return { gatewayPort, cdpPort, webPort, webUIPortChat, webUIPortContext };
 		});
 
-		await execFileAsync("docker", args, { cwd: options.repoDir });
-		return { gatewayPort, cdpPort, webPort, webUIPortChat, webUIPortContext };
-	});
-
-	return {
-		id,
-		image: options.imageName ?? IMAGE_NAME,
-		gatewayHost: COMPUTE_PUBLISH_HOST,
-		...ports,
-		connect: `docker exec -it ${id} bash`,
-		worktree: worktreePath,
-	};
+		return {
+			id,
+			image: options.imageName ?? IMAGE_NAME,
+			gatewayHost: COMPUTE_PUBLISH_HOST,
+			...ports,
+			connect: `docker exec -it ${id} bash`,
+			worktree: worktreePath,
+		};
+	} catch (error) {
+		const cleanupErrors: unknown[] = [];
+		try { await execFileAsync("git", ["worktree", "remove", "--force", worktreePath], { cwd: options.repoDir }); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+		if (!branchExisted) {
+			try { await execFileAsync("git", ["branch", "-D", options.worktreeName], { cwd: options.repoDir }); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+		}
+		if (cleanupErrors.length > 0) throw new AggregateError([error, ...cleanupErrors], `Dev worker spawn failed and cleanup was incomplete for ${options.worktreeName}`);
+		throw error;
+	}
 }
 
 export interface BuildWorkerDockerRunArgsOptions {
@@ -782,6 +811,8 @@ export interface WorkerInfo {
 	hostPid?: number;
 	createdAt: string;
 	lastUsedAt?: string;
+	ttlSeconds?: number;
+	idleSeconds?: number;
 	holder?: string;
 	worktree?: string;
 	worktreePath?: string;
@@ -929,6 +960,8 @@ function workerFromLabels(base: { id: string; name: string; state: string; statu
 		hostPid: base.hostPid,
 		createdAt: base.labels[LABEL_CREATED_AT] ?? "unknown",
 		lastUsedAt: base.labels[LABEL_LAST_USED_AT],
+		ttlSeconds: numberLabel(base.labels[LABEL_TTL_SECONDS]),
+		idleSeconds: numberLabel(base.labels[LABEL_IDLE_SECONDS]),
 		holder: base.labels[LABEL_HOLDER],
 		worktree: base.labels[LABEL_WORKTREE],
 		worktreePath: base.labels[LABEL_WORKTREE_PATH],
@@ -1094,11 +1127,14 @@ export function buildComputeWorkerReapPlan(workers: WorkerInfo[], options: Compu
 		const skipReasons: string[] = [];
 		const created = new Date(worker.createdAt).getTime();
 		const ageMinutes = Number.isNaN(created) ? undefined : (now.getTime() - created) / 1000 / 60;
+		const lastUsed = new Date(worker.lastUsedAt ?? worker.createdAt).getTime();
 		if (worker.role === "dev" && !resolved.includeDev) skipReasons.push("dev-worker-preserved");
 		if (worker.role !== "worker" && worker.role !== "dev") skipReasons.push("unsupported-role");
 		if (resolved.includeStopped && isStoppedWorker(worker)) reasons.push("stopped");
 		if (resolved.includeDirty && isDirtyWorker(worker)) reasons.push(worker.oomKilled ? "oom-killed" : "dirty");
 		if (ageMinutes !== undefined && ageMinutes > resolved.maxAgeMinutes) reasons.push("old");
+		if (ageMinutes !== undefined && worker.ttlSeconds !== undefined && worker.ttlSeconds > 0 && ageMinutes * 60 >= worker.ttlSeconds) reasons.push("ttl-expired");
+		if (!Number.isNaN(lastUsed) && worker.idleSeconds !== undefined && worker.idleSeconds > 0 && now.getTime() - lastUsed >= worker.idleSeconds * 1000) reasons.push("idle-expired");
 		if (reasons.length === 0) skipReasons.push("not-selected");
 		const action = skipReasons.length === 0 ? "remove" : "skip";
 		return {
