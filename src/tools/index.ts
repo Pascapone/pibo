@@ -765,7 +765,6 @@ export async function runToolsCli(argv = process.argv): Promise<void> {
   program
     .name('pibo tools')
     .description('Install and inspect curated external CLI tools')
-    .helpOption(false)
     .showHelpAfterError();
 
   program
