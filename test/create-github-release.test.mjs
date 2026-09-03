@@ -21,7 +21,7 @@ function jsonResponse(body, status = 200) {
 	});
 }
 
-function createFetchMock({ existing = false, uploadStatus = 201 } = {}) {
+function createFetchMock({ existing = false, existingAsset = true, uploadStatus = 201 } = {}) {
 	const calls = [];
 	const fetchImpl = async (url, init = {}) => {
 		const href = String(url);
@@ -39,7 +39,9 @@ function createFetchMock({ existing = false, uploadStatus = 201 } = {}) {
 				id: 7,
 				html_url: "https://github.test/releases/tag/v9.9.9",
 				upload_url: "https://uploads.github.test/releases/7/assets{?name,label}",
-				assets: [{ name: "fixture.vsix", size: 7, browser_download_url: "https://downloads.github.test/fixture.vsix" }],
+				assets: existingAsset
+					? [{ name: "fixture.vsix", size: 7, browser_download_url: "https://downloads.github.test/fixture.vsix" }]
+					: [],
 			});
 		}
 		if (href.endsWith("/releases") && method === "POST") {
@@ -162,6 +164,19 @@ test("keeps an existing release unchanged", async (t) => {
 	assert.equal(mock.calls.some(({ href }) => href.startsWith("https://uploads.github.test/")), false);
 });
 
+test("uploads a requested asset missing from an existing release", async (t) => {
+	const fixture = await makeFixture(t);
+	const assetPath = join(fixture.root, "fixture.vsix");
+	await writeFile(assetPath, "fixture");
+	const mock = createFetchMock({ existing: true, existingAsset: false });
+	const result = await createRelease(releaseOptions(fixture, assetPath, mock.fetchImpl));
+
+	assert.equal(result.alreadyExisted, true);
+	assert.equal(result.asset.name, "fixture.vsix");
+	assert.equal(releasePosts(mock.calls).length, 0);
+	assert.equal(mock.calls.filter(({ href }) => href.startsWith("https://uploads.github.test/")).length, 1);
+});
+
 test("reports a synthetic upload failure after valid local preflight", async (t) => {
 	const fixture = await makeFixture(t);
 	const assetPath = join(fixture.root, "fixture.vsix");
@@ -205,6 +220,7 @@ async function runCli(fixture, assetPath, options = {}) {
 				...process.env,
 				PIBO_RELEASE_MOCK_LOG: logPath,
 				PIBO_RELEASE_MOCK_EXISTING: options.existing ? "1" : "0",
+				PIBO_RELEASE_MOCK_EXISTING_ASSET: options.existingAsset === false ? "0" : "1",
 				PIBO_RELEASE_MOCK_UPLOAD_STATUS: String(options.uploadStatus ?? 201),
 			},
 			uid: options.uid,
@@ -259,6 +275,19 @@ test("CLI uploads a valid asset through synthetic GitHub endpoints", async (t) =
 	assert.match(result.stdout, /^\[create-release\] asset: https:\/\/downloads\.github\.test\/fixture\.vsix \(7 bytes\)$/m);
 	assert.equal(result.stderr, "");
 	assert.deepEqual(result.calls.map(({ method }) => method), ["GET", "POST", "GET", "POST", "POST"]);
+});
+
+test("CLI uploads a missing asset to an existing release", async (t) => {
+	const fixture = await makeFixture(t);
+	const assetPath = join(fixture.root, "fixture.vsix");
+	await writeFile(assetPath, "fixture");
+	const result = await runCli(fixture, assetPath, { existing: true, existingAsset: false });
+
+	assert.equal(result.code, 0);
+	assert.match(result.stdout, /^\[create-release\] release for v9\.9\.9 already exists: https:\/\/github\.test\//m);
+	assert.match(result.stdout, /^\[create-release\] asset: https:\/\/downloads\.github\.test\/fixture\.vsix \(7 bytes\)$/m);
+	assert.equal(releasePosts(result.calls).length, 0);
+	assert.equal(result.calls.filter(({ href }) => href.startsWith("https://uploads.github.test/")).length, 1);
 });
 
 test("CLI preserves controlled error output for a synthetic upload failure", async (t) => {
