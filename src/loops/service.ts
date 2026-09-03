@@ -24,6 +24,9 @@ function errorMessage(error: unknown): string { return error instanceof Error ? 
 class LoopRunTimeoutError extends Error {
 	constructor(message: string, readonly abortFailed = false) { super(message); this.name = 'LoopRunTimeoutError'; }
 }
+export class PiboLoopCapacityError extends Error {
+	constructor() { super('Loop run capacity is currently full'); this.name = 'PiboLoopCapacityError'; }
+}
 class LoopContinuationInvalidatedError extends Error {
 	constructor(message: string) { super(message); this.name = 'LoopContinuationInvalidatedError'; }
 }
@@ -79,6 +82,7 @@ export class PiboLoopService {
 	private readonly random: () => number;
 	private timer: NodeJS.Timeout | undefined;
 	private activeRuns = 0;
+	private admissionTail: Promise<void> = Promise.resolve();
 	private activeRunWork = new Set<Promise<void>>();
 	private pendingRunStarts = 0;
 	private schedulerWork: Promise<void> | undefined;
@@ -132,12 +136,17 @@ export class PiboLoopService {
 		if (this.stopped) return undefined;
 		this.pendingRunStarts += 1;
 		try {
-			const job = this.store.updateJob(id, { enabled: true });
-			if (!job) return undefined;
-			const reserved = await this.reserveAfterBeforeRunEvaluation(job);
-			if (!reserved) return undefined;
-			this.launchReservedRun(reserved.job, reserved.run);
-			return reserved.run;
+			return await this.withAdmissionLock(async () => {
+				const existing = this.store.getJob(id);
+				if (!existing || existing.state.runningAt) return undefined;
+				if (this.activeRuns >= this.maxConcurrentRuns) throw new PiboLoopCapacityError();
+				const job = this.store.updateJob(id, { enabled: true });
+				if (!job) return undefined;
+				const reserved = await this.reserveAfterBeforeRunEvaluation(job);
+				if (!reserved) return undefined;
+				this.launchReservedRun(reserved.job, reserved.run);
+				return reserved.run;
+			});
 		} finally {
 			this.pendingRunStarts -= 1;
 			this.notifyOwnedWorkChange();
@@ -258,7 +267,8 @@ export class PiboLoopService {
 		}, delayMs ?? this.intervalMs);
 	}
 	private armSoon(): void { this.arm(250); }
-	private async tick(): Promise<void> { if (this.stopped) return; try { await this.abortCancelRequestedJobs(); const capacity = this.maxConcurrentRuns - this.activeRuns; if (capacity > 0) { const jobs = this.store.listJobs({ includeDisabled: false }).filter((job) => !job.state.runningAt).slice(0, capacity); for (const job of jobs) { const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (reserved) this.launchReservedRun(reserved.job, reserved.run); } } } catch (error) { console.error('[loop] scheduler tick failed', error); } finally { this.arm(); } }
+	private async tick(): Promise<void> { if (this.stopped) return; try { await this.abortCancelRequestedJobs(); const jobs = this.store.listJobs({ includeDisabled: false }).filter((job) => !job.state.runningAt); for (const job of jobs) { const admitted = await this.withAdmissionLock(async () => { if (this.activeRuns >= this.maxConcurrentRuns) return false; const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (!reserved) return true; this.launchReservedRun(reserved.job, reserved.run); return true; }); if (!admitted) break; } } catch (error) { console.error('[loop] scheduler tick failed', error); } finally { this.arm(); } }
+	private async withAdmissionLock<T>(action: () => Promise<T>): Promise<T> { const previous = this.admissionTail; let release!: () => void; this.admissionTail = new Promise<void>((resolve) => { release = resolve; }); await previous; try { return await action(); } finally { release(); } }
 	private async reserveAfterBeforeRunEvaluation(job: PiboLoopJob): Promise<{ job: PiboLoopJob; run: PiboLoopRun } | undefined> {
 		const fresh = this.store.getJob(job.id) ?? job;
 		const now = this.now();

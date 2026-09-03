@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { handleChatLoopApiRequest } from "../dist/apps/chat/loop-api.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
@@ -43,6 +44,13 @@ test("Loop API defaults to goal and the Ralph alias defaults to legacy mode", as
 	} finally {
 		store.close();
 	}
+});
+
+test("Loop and legacy Ralph start APIs expose capacity conflicts distinctly", async () => {
+	const loopApi = await readFile(new URL("../src/apps/chat/loop-api.ts", import.meta.url), "utf8");
+	const ralphApi = await readFile(new URL("../src/apps/chat/ralph-api.ts", import.meta.url), "utf8");
+	assert.match(loopApi, /error instanceof PiboLoopCapacityError[^}]+PiboWebHttpError\(error\.message, 409\)/);
+	assert.match(ralphApi, /error instanceof PiboRalphCapacityError[^}]+PiboWebHttpError\(error\.message, 409\)/);
 });
 
 test("Loop API resolves the Goal associated with a Pibo Session", async () => {
