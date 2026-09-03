@@ -288,7 +288,7 @@ async function startWebHostChannel(options = {}) {
 			return [];
 		},
 		getProfiles() {
-			return profiles;
+			return options.getProfiles ? options.getProfiles(profiles) : profiles;
 		},
 		...(options.createProfile ? { createProfile: options.createProfile } : {}),
 		getCapabilityCatalog() {
@@ -2656,6 +2656,36 @@ test("chat navigation returns sidebar data without catalog payload", async () =>
 		assert.equal(Object.hasOwn(payload, "modelCatalog"), false);
 		assert.equal(Object.hasOwn(payload, "agentCatalog"), false);
 		assert.equal(Object.hasOwn(payload, "capabilities"), false);
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("chat navigation snapshots profile metadata once while canonicalizing the session list", async () => {
+	const sessions = new InMemoryPiboSessionStore();
+	const created = Array.from({ length: 5 }, (_, index) => sessions.create({
+		id: `ps_profile_snapshot_${index}`,
+		channel: "pibo.chat-web",
+		kind: "chat",
+		profile: "base",
+	}));
+	let getProfilesCalls = 0;
+	const { channel, baseURL } = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		sessions,
+		profiles: [{ name: "base", aliases: [] }],
+		getProfiles(registeredProfiles) {
+			getProfilesCalls += 1;
+			return registeredProfiles;
+		},
+	});
+
+	try {
+		const response = await fetch(`${baseURL}/api/chat/navigation?piboSessionId=${encodeURIComponent(created[0].id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(response.status, 200);
+		assert.equal(getProfilesCalls, 2, "selected-session and list canonicalization should each use one profile snapshot");
 	} finally {
 		await channel.stop?.();
 	}

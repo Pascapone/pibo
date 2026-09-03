@@ -159,7 +159,7 @@ import {
 	upsertAgentCatalogUserSkill,
 } from "./app-agent-catalog-mutations";
 import { useAppDeleteActions } from "./app-delete-actions";
-import { roomSummaryStreamUrl } from "./room-summary-stream";
+import { roomSummaryStreamUrl, shouldRefreshNavigationFromRoomSummary } from "./room-summary-stream";
 import { selectedSessionBackendId } from "./selected-session-backend";
 import {
 	DesktopTabSidebar,
@@ -192,7 +192,8 @@ type LoadNavigationOptions = {
 };
 
 const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;
-const SIGNAL_TREE_RECONCILE_INTERVAL_MS = 5_000;
+const SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS = 5_000;
+const SIGNAL_TREE_RECONCILE_INTERVAL_MS = 30_000;
 const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;
 const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
@@ -567,7 +568,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (!active) return;
 			unsubscribeSignalTree();
 			unsubscribeSignalTree = subscribeSignalTree(selectedBackendPiboSessionId, signalTreeHandlers);
-			refreshSignalSnapshot(0);
+			refreshSignalSnapshot(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS);
 		};
 		const refreshVisibleSignalTree = () => {
 			if (document.visibilityState === "visible") reconnectSignalTree();
@@ -582,7 +583,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		const signalReconcileTimer = window.setInterval(() => {
 			if (document.visibilityState === "visible" && shouldReconcileSignalTree()) refreshSignalSnapshot(0);
 		}, SIGNAL_TREE_RECONCILE_INTERVAL_MS);
-		refreshSignalSnapshot(0);
+		refreshSignalSnapshot(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS);
 		return () => {
 			active = false;
 			controller.abort();
@@ -1053,7 +1054,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 				const lastActivityAt = new Date().toISOString();
 				updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, targetPiboSessionId, (node) => ({ ...node, status, lastActivityAt })));
 			}
-			if (!replayFrame && eventShouldRefreshNavigation(event)) scheduleNavigationRefresh();
+			if (shouldRefreshNavigationFromRoomSummary({
+				replayFrame,
+				eventRefreshesNavigation: eventShouldRefreshNavigation(event),
+				targetPiboSessionId,
+				selectedBackendPiboSessionId: selectedBackendPiboSessionId ?? undefined,
+			})) scheduleNavigationRefresh();
 		};
 		const suspendRoomSummary = () => {
 			if (navigationTimer) clearTimeout(navigationTimer);

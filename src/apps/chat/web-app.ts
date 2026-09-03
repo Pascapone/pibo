@@ -1404,13 +1404,18 @@ function markActiveSessionRead(state: ChatWebAppState, piboSessionId: string, st
 
 function listSharedSessions(context: PiboWebAppContext): PiboSession[] {
 	const sessions = context.channelContext.listSessions?.() ?? context.channelContext.findSessions({});
+	const profiles = context.channelContext.getProfiles?.();
 	return sessions
-		.map((session) => canonicalizeSessionProfile(context, session))
+		.map((session) => canonicalizeSessionProfile(context, session, profiles))
 		.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-function canonicalizeSessionProfile(context: PiboWebAppContext, session: PiboSession): PiboSession {
-	const canonicalProfile = canonicalProfileName(context, session.profile);
+function canonicalizeSessionProfile(
+	context: PiboWebAppContext,
+	session: PiboSession,
+	profiles = context.channelContext.getProfiles?.(),
+): PiboSession {
+	const canonicalProfile = canonicalProfileName(profiles, session.profile);
 	if (!canonicalProfile || canonicalProfile === session.profile) return session;
 	return context.channelContext.updateSession?.(session.id, { profile: canonicalProfile }) ?? {
 		...session,
@@ -1418,8 +1423,11 @@ function canonicalizeSessionProfile(context: PiboWebAppContext, session: PiboSes
 	};
 }
 
-function canonicalProfileName(context: PiboWebAppContext, profileName: string): string | undefined {
-	const matched = context.channelContext.getProfiles?.().find(
+function canonicalProfileName(
+	profiles: readonly { name: string; aliases: readonly string[] }[] | undefined,
+	profileName: string,
+): string | undefined {
+	const matched = profiles?.find(
 		(profile) => profile.name === profileName || profile.aliases.includes(profileName),
 	);
 	return matched?.name;
@@ -3709,30 +3717,58 @@ function hasUnreadInSessionSubtree(sessions: readonly PiboSession[], sessionUnre
 	return sessionSubtree(sessions, rootSessionId).some((session) => (sessionUnreadCounts.get(session.id) ?? 0) > 0);
 }
 
+function sessionIdsWithUnreadInSubtree(
+	sessions: readonly PiboSession[],
+	sessionUnreadCounts: ReadonlyMap<string, number>,
+): ReadonlySet<string> {
+	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+	const result = new Set<string>();
+	for (const session of sessions) {
+		if ((sessionUnreadCounts.get(session.id) ?? 0) <= 0) continue;
+		let current: PiboSession | undefined = session;
+		const visited = new Set<string>();
+		while (current && !visited.has(current.id)) {
+			visited.add(current.id);
+			result.add(current.id);
+			current = current.parentId ? sessionsById.get(current.parentId) : undefined;
+		}
+	}
+	return result;
+}
+
+type SignalStatusOptions = {
+	sessions?: readonly PiboSession[];
+	sessionUnreadCounts?: ReadonlyMap<string, number>;
+	sessionIdsWithUnreadInSubtree?: ReadonlySet<string>;
+};
+
+function signalStatusHasUnreadError(options: SignalStatusOptions, piboSessionId: string): boolean {
+	if (options.sessionIdsWithUnreadInSubtree) return options.sessionIdsWithUnreadInSubtree.has(piboSessionId);
+	return options.sessions && options.sessionUnreadCounts
+		? hasUnreadInSessionSubtree(options.sessions, options.sessionUnreadCounts, piboSessionId)
+		: true;
+}
+
 function signalStatusFromSnapshot(
 	snapshot: ReturnType<NonNullable<PiboWebAppContext["channelContext"]["snapshotSignalSession"]>> | undefined,
 	piboSessionId: string,
-	options: { sessions?: readonly PiboSession[]; sessionUnreadCounts?: ReadonlyMap<string, number> } = {},
+	options: SignalStatusOptions = {},
 ): { status?: PiboWebSessionStatus; updatedAt?: string } | undefined {
 	const session = snapshot?.sessions[piboSessionId];
 	if (!session) return undefined;
 	const summary = summarizeSessionSignalStatus(session);
 	if (summary.status === "running") return { status: "running", updatedAt: session.updatedAt };
-	const hasUnreadError = options.sessions && options.sessionUnreadCounts
-		? hasUnreadInSessionSubtree(options.sessions, options.sessionUnreadCounts, piboSessionId)
-		: true;
+	const hasUnreadError = signalStatusHasUnreadError(options, piboSessionId);
 	return { status: summary.status === "error" && hasUnreadError ? "error" : "idle", updatedAt: session.updatedAt };
 }
 
 function signalStatusFromSummary(
 	summary: PiboSessionSignalStatus | undefined,
 	piboSessionId: string,
-	options: { sessions?: readonly PiboSession[]; sessionUnreadCounts?: ReadonlyMap<string, number> } = {},
+	options: SignalStatusOptions = {},
 ): { status?: PiboWebSessionStatus; updatedAt?: string } | undefined {
 	if (!summary) return undefined;
-	const hasUnreadError = options.sessions && options.sessionUnreadCounts
-		? hasUnreadInSessionSubtree(options.sessions, options.sessionUnreadCounts, piboSessionId)
-		: true;
+	const hasUnreadError = signalStatusHasUnreadError(options, piboSessionId);
 	if (summary.isTreeActive || summary.status === "running") return { status: "running", updatedAt: summary.updatedAt };
 	if (summary.status === "error" && hasUnreadError) return { status: "error", updatedAt: summary.updatedAt };
 	return { status: "idle", updatedAt: summary.updatedAt };
@@ -3749,11 +3785,12 @@ function sessionIndexItemsWithSignalState(
 	const snapshotSignalSession = context.channelContext.snapshotSignalSession;
 	if (!signalStatuses && !snapshotSignalSession) return [...indexItems];
 	const bySessionId = new Map(indexItems.map((item) => [item.piboSessionId, item]));
+	const unreadSessionSubtreeIds = sessionIdsWithUnreadInSubtree(sessions, sessionUnreadCounts);
 	for (const session of sessions) {
 		const existing = bySessionId.get(session.id);
 		const signal = signalStatuses
-			? signalStatusFromSummary(signalStatuses[session.id], session.id, { sessions, sessionUnreadCounts })
-			: signalStatusFromSnapshot(snapshotSignalSession?.(session.id), session.id, { sessions, sessionUnreadCounts });
+			? signalStatusFromSummary(signalStatuses[session.id], session.id, { sessionIdsWithUnreadInSubtree: unreadSessionSubtreeIds })
+			: signalStatusFromSnapshot(snapshotSignalSession?.(session.id), session.id, { sessionIdsWithUnreadInSubtree: unreadSessionSubtreeIds });
 		if (!signal?.status) continue;
 		if (signal.status === "idle" && existing?.status !== "running" && existing?.status !== "error") continue;
 		bySessionId.set(session.id, {

@@ -544,3 +544,59 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 
 	store.close();
 });
+
+test("unread counts drive the partial index from read cursors across deduplicated batches", () => {
+	const store = tempStore("pibo-chat-v2-unread-range-");
+	try {
+		const commands = new ChatEventCommandService(store);
+		const readState = new ChatReadStateService(store);
+		const roomId = "room_unread_range";
+		const targetSessionId = "ps_unread_range_target";
+		const missingReadStateSessionId = "ps_unread_range_missing";
+		const append = (piboSessionId, eventType, retentionClass = "chat_message") => commands.appendEvent({
+			roomId,
+			piboSessionId,
+			eventType,
+			actorType: eventType === "user.message.accepted" ? "user" : "assistant",
+			actorId: "test:unread-range",
+			retentionClass,
+			payload: { type: eventType, piboSessionId, roomId, text: eventType },
+		});
+
+		append(targetSessionId, "user.message.accepted");
+		const atCursor = append(targetSessionId, "assistant_message");
+		readState.markSessionRead(targetSessionId, atCursor.streamId);
+		append(targetSessionId, "user.message.accepted");
+		append(targetSessionId, "assistant_message");
+		append(targetSessionId, "session_error", "trace_event");
+		append(targetSessionId, "assistant_delta", "live_event");
+		append(missingReadStateSessionId, "assistant_message");
+
+		const fillerIds = Array.from({ length: 399 }, (_, index) => `ps_unread_range_filler_${index}`);
+		const uniqueIds = [targetSessionId, ...fillerIds, missingReadStateSessionId];
+		let unreadSql;
+		const originalPrepare = store.db.prepare.bind(store.db);
+		store.db.prepare = (sql) => {
+			if (!unreadSql && sql.includes("WITH requested(session_id)")) unreadSql = sql;
+			return originalPrepare(sql);
+		};
+		const counts = readState.countUnreadMessagesBySession({
+			piboSessionIds: [...uniqueIds, targetSessionId, missingReadStateSessionId],
+		});
+		store.db.prepare = originalPrepare;
+
+		assert.deepEqual([...counts.entries()].sort(), [
+			[missingReadStateSessionId, 1],
+			[targetSessionId, 3],
+		]);
+		assert.ok(unreadSql, "expected the unread-count query to be captured");
+		const details = originalPrepare(`EXPLAIN QUERY PLAN ${unreadSql}`)
+			.all(...uniqueIds.slice(0, 400))
+			.map((row) => String(row.detail));
+		assert.ok(details.some((detail) =>
+			detail.includes("idx_event_log_unread_session_stream")
+			&& /session_id=\?.*stream_id>\?/i.test(detail)), details.join("\n"));
+	} finally {
+		store.close();
+	}
+});

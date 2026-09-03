@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 async function runRoomSummaryStreamScenario() {
 	const script = `
 		import assert from "node:assert/strict";
-		const { roomSummaryStreamUrl } = await import("./src/apps/chat-ui/src/room-summary-stream.ts");
+		const { roomSummaryStreamUrl, shouldRefreshNavigationFromRoomSummary } = await import("./src/apps/chat-ui/src/room-summary-stream.ts");
 
 		assert.equal(roomSummaryStreamUrl({ area: "settings", activeRoomId: "room-new", bootstrapSelectedRoomId: "room-new", latestRoomStreamId: 42 }), null);
 		assert.equal(roomSummaryStreamUrl({ area: "sessions", activeRoomId: null, bootstrapSelectedRoomId: "room-new", latestRoomStreamId: 42 }), null);
@@ -21,6 +21,11 @@ async function runRoomSummaryStreamScenario() {
 		const url = roomSummaryStreamUrl({ area: "sessions", activeRoomId: "room-new", bootstrapSelectedRoomId: "room-new", latestRoomStreamId: 42 });
 		assert.equal(url, "/api/chat/events?roomId=room-new&mode=summary&since=42%3A999999");
 		assert.ok(!url.includes("since=0%3A999999"));
+
+		assert.equal(shouldRefreshNavigationFromRoomSummary({ replayFrame: false, eventRefreshesNavigation: true, targetPiboSessionId: "ps-selected", selectedBackendPiboSessionId: "ps-selected" }), false, "the selected live stream owns selected-session refreshes");
+		assert.equal(shouldRefreshNavigationFromRoomSummary({ replayFrame: false, eventRefreshesNavigation: true, targetPiboSessionId: "ps-other", selectedBackendPiboSessionId: "ps-selected" }), true);
+		assert.equal(shouldRefreshNavigationFromRoomSummary({ replayFrame: true, eventRefreshesNavigation: true, targetPiboSessionId: "ps-other", selectedBackendPiboSessionId: "ps-selected" }), false);
+		assert.equal(shouldRefreshNavigationFromRoomSummary({ replayFrame: false, eventRefreshesNavigation: false, targetPiboSessionId: "ps-other", selectedBackendPiboSessionId: "ps-selected" }), false);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }

@@ -971,6 +971,7 @@ const codexNativeHistoryReaders = new WeakMap<
 	object,
 	(piboSessionId: string, workspace: string, threadId: string, includeTurns: boolean) => Promise<CodexAppServerThread>
 >();
+const CODEX_NATIVE_HISTORY_INSPECTION_CACHE_TTL_MS = 5_000;
 const startCodexNativeHistoryProcess = startCodexNativeAppServer;
 const readCodexNativeHistoryThread = CodexNativeThreadController.read;
 
@@ -1003,6 +1004,7 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly displayName: string;
 	readonly enabled: boolean;
 	private modelCatalogCache?: { expiresAt: number; value: Promise<CodexNativeModelCatalog> };
+	private readonly historyInspectionCache = new Map<string, { expiresAt: number; value: Promise<AgentRuntimeHistoryInspection> }>();
 	private readonly authController: CodexNativeAuthController;
 
 	constructor(
@@ -1078,6 +1080,41 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	async disposeAuth(): Promise<void> {
 		await this.authController.dispose();
+	}
+
+	private historyInspectionCacheKey(
+		input: Pick<InspectAgentRuntimeHistoryInput, "binding" | "workspace">,
+		threadId: string,
+	): string {
+		return `${input.binding.piboSessionId}\0${input.workspace}\0${threadId}`;
+	}
+
+	private cacheHistoryInspection(cacheKey: string, inspection: AgentRuntimeHistoryInspection): void {
+		this.historyInspectionCache.set(cacheKey, {
+			expiresAt: Date.now() + CODEX_NATIVE_HISTORY_INSPECTION_CACHE_TTL_MS,
+			value: Promise.resolve(inspection),
+		});
+	}
+
+	private async readHistoryInspection(
+		input: InspectAgentRuntimeHistoryInput,
+		threadId: string,
+	): Promise<AgentRuntimeHistoryInspection> {
+		try {
+			const readHistory = codexNativeHistoryReaders.get(this);
+			if (!readHistory) throw new Error("Codex built-in history reader is unavailable.");
+			const thread = await readHistory(input.binding.piboSessionId, input.workspace, threadId, false);
+			return inspectCodexThreadHistory(this.instanceId, input.binding, thread);
+		} catch (error) {
+			return unavailableCodexThreadHistoryInspection(
+				this.instanceId,
+				input.binding,
+				error instanceof CodexNativeThreadMissingError ? "codex_native_history_not_found" : "codex_native_history_unavailable",
+				error instanceof CodexNativeThreadMissingError
+					? "The bound Codex thread is unavailable for native history inspection."
+					: "Codex native history inspection failed safely.",
+			);
+		}
 	}
 
 	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] {
@@ -1366,21 +1403,17 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				"The Codex runtime binding has no native thread id for history lookup.",
 			);
 		}
-		try {
-			const readHistory = codexNativeHistoryReaders.get(this);
-			if (!readHistory) throw new Error("Codex built-in history reader is unavailable.");
-			const thread = await readHistory(input.binding.piboSessionId, input.workspace, threadId, false);
-			return inspectCodexThreadHistory(this.instanceId, input.binding, thread);
-		} catch (error) {
-			return unavailableCodexThreadHistoryInspection(
-				this.instanceId,
-				input.binding,
-				error instanceof CodexNativeThreadMissingError ? "codex_native_history_not_found" : "codex_native_history_unavailable",
-				error instanceof CodexNativeThreadMissingError
-					? "The bound Codex thread is unavailable for native history inspection."
-					: "Codex native history inspection failed safely.",
-			);
+		const cacheKey = this.historyInspectionCacheKey(input, threadId);
+		const cached = this.historyInspectionCache.get(cacheKey);
+		if (cached && cached.expiresAt > Date.now()) return await cached.value;
+		const value = this.readHistoryInspection(input, threadId);
+		const entry = { expiresAt: Date.now() + CODEX_NATIVE_HISTORY_INSPECTION_CACHE_TTL_MS, value };
+		this.historyInspectionCache.set(cacheKey, entry);
+		const inspection = await value;
+		if (!inspection.available && this.historyInspectionCache.get(cacheKey) === entry) {
+			this.historyInspectionCache.delete(cacheKey);
 		}
+		return inspection;
 	}
 
 	async readHistory(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage> {
@@ -1396,19 +1429,23 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				inspection,
 			};
 		}
+		const cacheKey = this.historyInspectionCacheKey(input, threadId);
 		try {
 			const readHistory = codexNativeHistoryReaders.get(this);
 			if (!readHistory) throw new Error("Codex built-in history reader is unavailable.");
 			const thread = await readHistory(input.binding.piboSessionId, input.workspace, threadId, true);
-			return bindCodexNativeCompleteHistoryProof(pageCodexThreadHistory({
+			const page = pageCodexThreadHistory({
 				runtimeInstanceId: this.instanceId,
 				binding: input.binding,
 				thread,
 				cursor: input.cursor,
 				beforeTimestamp: input.beforeTimestamp,
 				limit: input.limit,
-			}));
+			});
+			if (page.inspection) this.cacheHistoryInspection(cacheKey, page.inspection);
+			return bindCodexNativeCompleteHistoryProof(page);
 		} catch (error) {
+			this.historyInspectionCache.delete(cacheKey);
 			if (error instanceof CodexNativeThreadMissingError) {
 				const inspection = unavailableCodexThreadHistoryInspection(
 					this.instanceId,

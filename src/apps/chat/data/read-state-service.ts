@@ -17,20 +17,22 @@ export class ChatReadStateService {
 
 	countUnreadMessagesBySession(input: { piboSessionIds: string[] }): Map<string, number> {
 		const counts = new Map<string, number>();
-		if (!input.piboSessionIds.length) return counts;
-		for (let offset = 0; offset < input.piboSessionIds.length; offset += 400) {
-			const ids = [...new Set(input.piboSessionIds)].slice(offset, offset + 400);
-			const placeholders = ids.map(() => "?").join(", ");
+		const uniqueIds = [...new Set(input.piboSessionIds)];
+		if (!uniqueIds.length) return counts;
+		for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+			const ids = uniqueIds.slice(offset, offset + 400);
+			const requested = ids.map(() => "(?)").join(", ");
 			const rows = this.store.db.prepare(`
+				WITH requested(session_id) AS (VALUES ${requested})
 				SELECT e.session_id, COUNT(*) AS count
-				FROM event_log e
-				LEFT JOIN app_session_read_state reads ON reads.session_id = e.session_id
-				WHERE e.session_id IN (${placeholders})
+				FROM requested r
+				LEFT JOIN app_session_read_state reads ON reads.session_id = r.session_id
+				JOIN event_log e
+					ON e.session_id = r.session_id
 					AND e.stream_id > COALESCE(reads.last_read_stream_id, 0)
-					AND (
-						(e.retention_class = 'chat_message' AND e.type IN ('user.message.accepted', 'assistant_message'))
-						OR e.type = 'session_error'
-					)
+				WHERE
+					(e.retention_class = 'chat_message' AND e.type IN ('user.message.accepted', 'assistant_message'))
+					OR e.type = 'session_error'
 				GROUP BY e.session_id
 			`).all(...ids) as Array<{ session_id: string; count: number }>;
 			for (const row of rows) if (Number(row.count) > 0) counts.set(row.session_id, Number(row.count));
