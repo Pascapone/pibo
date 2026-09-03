@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { PiboPayloadMetadataConflictError } from "../dist/data/payload-store.js";
 import { applyPiboDataSchema, PIBO_DATA_SCHEMA_VERSION } from "../dist/data/schema.js";
 import { hydrateDebugEventRow } from "../dist/debug/persisted-payloads.js";
 
@@ -69,6 +68,10 @@ test("v2 schema migration is idempotent", () => {
 	assert.equal(
 		(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'index' AND name = 'idx_session_runtime_bindings_native'").get()).count,
 		1,
+	);
+	assert.deepEqual(
+		db.prepare("SELECT name FROM pragma_index_info('idx_payloads_identity') ORDER BY seqno").all().map((row) => row.name),
+		["sha256", "content_type", "retention_class"],
 	);
 	db.close();
 });
@@ -143,6 +146,57 @@ test("schema migration from v5 installs the exact tool lifecycle index", () => {
 	assert.match(index.sql, /session_id, tool_call_id, event_id, session_sequence ASC, stream_id ASC/);
 	assert.equal((db.prepare("PRAGMA user_version").get()).user_version, PIBO_DATA_SCHEMA_VERSION);
 	db.close();
+});
+
+test("schema v8 migrates payload identity without rewriting existing payload files", (t) => {
+	const dir = tempDir("pibo-data-v8-payload-identity-");
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const dbPath = join(dir, "pibo.sqlite");
+	const payloadRootDir = join(dir, "payloads");
+	const text = '{"kind":"legacy","value":42}';
+	let store = new PiboDataStore(dbPath, { payloadRootDir });
+	const legacy = store.payloads.writePayload({
+		value: text,
+		contentType: "text/plain; charset=utf-8",
+		retentionClass: "trace_event",
+	});
+	const legacyPath = legacy.storagePath;
+	store.db.exec(`
+		DROP INDEX idx_payloads_identity;
+		CREATE UNIQUE INDEX idx_payloads_sha256_v7 ON payloads(sha256);
+		PRAGMA user_version = 7;
+	`);
+	store.close();
+
+	store = new PiboDataStore(dbPath, { payloadRootDir });
+	assert.equal(store.db.prepare("PRAGMA user_version").get().user_version, PIBO_DATA_SCHEMA_VERSION);
+	assert.equal(store.payloads.getPayload(legacy.id).storagePath, legacyPath);
+	assert.equal(store.payloads.readPayloadText(legacy.id), text);
+	assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'index' AND name = 'idx_payloads_sha256_v7'").get().count, 0);
+	assert.deepEqual(
+		store.db.prepare("SELECT name FROM pragma_index_info('idx_payloads_identity') ORDER BY seqno").all().map((row) => row.name),
+		["sha256", "content_type", "retention_class"],
+	);
+	const structured = store.payloads.writePayload({
+		value: { kind: "legacy", value: 42 },
+		contentType: "application/json",
+		retentionClass: "trace_event",
+	});
+	assert.equal(structured.sha256, legacy.sha256);
+	assert.notEqual(structured.id, legacy.id);
+	assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM payloads WHERE sha256 = ?").get(legacy.sha256).count, 2);
+	const queryPlan = store.db.prepare(`
+		EXPLAIN QUERY PLAN
+		SELECT * FROM payloads WHERE sha256 = ? AND content_type = ? AND retention_class = ?
+	`).all(legacy.sha256, legacy.contentType, legacy.retentionClass);
+	assert.ok(queryPlan.some((row) => String(row.detail).includes("idx_payloads_identity")));
+	store.close();
+
+	store = new PiboDataStore(dbPath, { payloadRootDir });
+	assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM payloads WHERE sha256 = ?").get(legacy.sha256).count, 2);
+	assert.equal(store.payloads.readPayloadText(legacy.id), text);
+	assert.deepEqual(store.payloads.readPayloadJson(structured.id), { kind: "legacy", value: 42 });
+	store.close();
 });
 
 test("schema upgrades preserve post-v5 session history metadata", (t) => {
@@ -223,40 +277,66 @@ test("payload store writes, reads, and dedupes payloads", () => {
 	store.close();
 });
 
-test("payload deduplication rejects incompatible interpretation metadata", () => {
+test("payload deduplication keeps incompatible interpretation metadata isolated", () => {
 	const dir = tempDir("pibo-data-payload-metadata-");
 	const store = new PiboDataStore(join(dir, "pibo.sqlite"), { payloadRootDir: join(dir, "payloads") });
 	const text = '{"kind":"tool_result","value":42}';
-	const first = store.payloads.writePayload({
+	const plain = store.payloads.writePayload({
+		value: text,
+		contentType: "text/plain; charset=utf-8",
+		retentionClass: "chat_message",
+	});
+	const json = store.payloads.writePayload({
+		value: { kind: "tool_result", value: 42 },
+		contentType: "application/json",
+		retentionClass: "tool_result",
+	});
+	const audit = store.payloads.writePayload({
+		value: text,
+		contentType: "text/plain; charset=utf-8",
+		retentionClass: "audit_event",
+	});
+	const duplicatePlain = store.payloads.writePayload({
 		value: text,
 		contentType: "text/plain; charset=utf-8",
 		retentionClass: "chat_message",
 	});
 
-	assert.throws(
-		() => store.payloads.writePayload({
-			value: { kind: "tool_result", value: 42 },
-			contentType: "application/json",
-			retentionClass: "tool_result",
-		}),
-		(error) => {
-			assert.ok(error instanceof PiboPayloadMetadataConflictError);
-			assert.equal(error.sha256, first.sha256);
-			assert.equal(error.existingContentType, "text/plain; charset=utf-8");
-			assert.equal(error.requestedContentType, "application/json");
-			assert.equal(error.existingRetentionClass, "chat_message");
-			assert.equal(error.requestedRetentionClass, "tool_result");
-			return true;
-		},
-	);
-	assert.throws(
-		() => store.payloads.writePayload({ value: text, contentType: first.contentType, retentionClass: "audit_event" }),
-		PiboPayloadMetadataConflictError,
-	);
-	assert.equal(store.payloads.getPayload(first.id).refCount, 1);
-	assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM payloads").get().count, 1);
-	const hydrated = hydrateDebugEventRow({ payload_ref: first.id, attributes_json: "{}" }, store.payloads);
+	assert.equal(plain.sha256, json.sha256);
+	assert.equal(plain.sha256, audit.sha256);
+	assert.notEqual(plain.id, json.id);
+	assert.notEqual(plain.id, audit.id);
+	assert.equal(duplicatePlain.id, plain.id);
+	assert.equal(store.payloads.getPayload(plain.id).refCount, 2);
+	assert.equal(store.payloads.readPayloadText(plain.id), text);
+	assert.deepEqual(store.payloads.readPayloadJson(json.id), { kind: "tool_result", value: 42 });
+	assert.equal(store.payloads.readPayloadText(audit.id), text);
+	assert.equal(new Set([plain.storagePath, json.storagePath, audit.storagePath]).size, 3);
+	assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM payloads WHERE sha256 = ?").get(plain.sha256).count, 3);
+	const hydrated = hydrateDebugEventRow({ payload_ref: plain.id, attributes_json: "{}" }, store.payloads);
 	assert.equal(JSON.parse(hydrated.attributes_json).inlinePayload, text);
+
+	store.payloads.releaseReferences(plain.id, 2);
+	store.payloads.removeReleasedFile(plain);
+	assert.equal(existsSync(join(dir, "payloads", plain.storagePath)), false);
+	assert.deepEqual(store.payloads.readPayloadJson(json.id), { kind: "tool_result", value: 42 });
+	assert.equal(store.payloads.readPayloadText(audit.id), text);
+
+	store.close();
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("application/json payloads serialize primitive strings as valid JSON", () => {
+	const dir = tempDir("pibo-data-json-string-");
+	const store = new PiboDataStore(join(dir, "pibo.sqlite"), { payloadRootDir: join(dir, "payloads") });
+	const payload = store.payloads.writePayload({
+		value: "ordinary text",
+		contentType: "application/json",
+		retentionClass: "trace_event",
+	});
+
+	assert.equal(store.payloads.readPayloadText(payload.id), '"ordinary text"');
+	assert.equal(store.payloads.readPayloadJson(payload.id), "ordinary text");
 
 	store.close();
 	rmSync(dir, { recursive: true, force: true });

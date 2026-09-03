@@ -178,8 +178,10 @@ test("session-scoped MCP bridge enforces tool isolation and preserves progress, 
 		resolveTools: () => exposedTools,
 		payloadWriter: {
 			write(input) {
-				const byteLength = typeof input.value === "string" ? Buffer.byteLength(input.value) : input.value.byteLength;
-				const result = { ref: `payload_${payloadWrites.length + 1}`, byteLength, preview: "preview" };
+				const bytes = input.value instanceof Uint8Array
+					? input.value
+					: Buffer.from(typeof input.value === "string" ? input.value : JSON.stringify(input.value));
+				const result = { ref: `payload_${payloadWrites.length + 1}`, byteLength: bytes.byteLength, preview: "preview" };
 				payloadWrites.push({ input, result });
 				return result;
 			},
@@ -246,6 +248,8 @@ test("session-scoped MCP bridge enforces tool isolation and preserves progress, 
 	assert.equal(payloadWrites.length, 2);
 	assert.equal(largeResult.structuredContent, undefined);
 	assert.equal(largeResult._meta.payloadRefs.length, 2);
+	assert.equal(payloadWrites[1].input.contentType, "application/json");
+	assert.deepEqual(payloadWrites[1].input.value, { value: "y".repeat(256) });
 	assert.match(largeResult.content.map((item) => item.type === "text" ? item.text : "").join("\n"), /Large result stored/);
 	assert.match(largeResult.content.map((item) => item.type === "text" ? item.text : "").join("\n"), /Structured result stored/);
 	const completeRunRead = await a.client.callTool({ name: "pibo_run_read", arguments: { runId: "run_large" } });

@@ -10,6 +10,7 @@ import { PiboDataStore } from "../dist/data/pibo-store.js";
 import {
 	applyPiboDataSchema,
 	PIBO_DATA_SCHEMA_MIGRATION_STEPS,
+	PIBO_DATA_SCHEMA_VERSION,
 } from "../dist/data/schema.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { OutputPersistenceRetryQueue } from "../dist/core/output-persistence-retry.js";
@@ -52,7 +53,7 @@ function prepareLegacyV6Database(databasePath) {
 	store.close();
 }
 
-test("schema v7 migration rolls every injected phase back and retries completely", () => {
+test("current schema migration rolls every injected phase back and retries completely", () => {
 	const { directory, databasePath } = temporaryDatabase("pibo-schema-v7-atomic-");
 	try {
 		prepareLegacyV6Database(databasePath);
@@ -69,7 +70,7 @@ test("schema v7 migration rolls every injected phase back and retries completely
 				assert.equal(db.isTransaction, false);
 			}
 			applyPiboDataSchema(db);
-			assert.equal(Number(db.prepare("PRAGMA user_version").get().user_version), 7);
+			assert.equal(Number(db.prepare("PRAGMA user_version").get().user_version), PIBO_DATA_SCHEMA_VERSION);
 			assert.deepEqual(
 				db.prepare("SELECT session_sequence FROM event_log ORDER BY stream_id").all().map((row) => row.session_sequence),
 				[1, 2, 3, 4],
@@ -83,13 +84,13 @@ test("schema v7 migration rolls every injected phase back and retries completely
 	}
 });
 
-test("schema v7 resumes an interrupted legacy negative sequence repair", () => {
+test("current schema resumes an interrupted legacy negative sequence repair", () => {
 	const { directory, databasePath } = temporaryDatabase("pibo-schema-v7-resume-");
 	try {
 		prepareLegacyV6Database(databasePath);
 		const broken = new DatabaseSync(databasePath);
 		try {
-			broken.exec("UPDATE event_log SET session_sequence = -stream_id; PRAGMA user_version = 7;");
+			broken.exec(`UPDATE event_log SET session_sequence = -stream_id; PRAGMA user_version = ${PIBO_DATA_SCHEMA_VERSION};`);
 		} finally {
 			broken.close();
 		}
