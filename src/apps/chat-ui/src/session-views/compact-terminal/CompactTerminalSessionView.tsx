@@ -267,7 +267,7 @@ export function CompactTerminalSessionView({
 		if (previewable.length) setImageDialog({ images: previewable, index: 0 });
 	}, []);
 	const renderRow = useCallback((_: number, row: CompactTerminalRow) => (
-		<div className="px-4">
+		<div className="px-4 @max-[420px]:px-2">
 			<TerminalRow
 				row={row}
 				expanded={expandedRows.has(row.id)}
@@ -414,7 +414,7 @@ function TerminalHeader({
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
 }) {
 	return (
-		<div data-pibo-debug="compact-terminal-header" className="border-b border-[#2a2a2a] bg-[#111111] px-4 py-2 text-[11px]">
+		<div data-pibo-debug="compact-terminal-header" className="border-b border-[#2a2a2a] bg-[#111111] px-4 py-2 text-[11px] @max-[420px]:px-2">
 			<div className="flex flex-wrap items-center gap-2">
 				{sessionAgentProfile ? <TerminalBadge tone="neutral">{sessionAgentProfile}</TerminalBadge> : null}
 				{sessionRuntimeBinding ? (
@@ -933,7 +933,7 @@ function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: s
 
 	return (
 		<div
-			className="border-t border-[#141414] px-4 py-2"
+			className="border-t border-[#141414] px-4 py-2 @max-[420px]:px-2"
 			role="status"
 			aria-live="polite"
 			aria-label={footerAriaLabel}
@@ -1153,7 +1153,7 @@ function EmptyTerminalState({
 	message?: string;
 }) {
 	return (
-		<div className="flex min-h-full flex-col items-center justify-center gap-4 px-6 py-10 text-center text-[12px] text-[#737373]">
+		<div className="flex min-h-full flex-col items-center justify-center gap-4 px-6 py-10 text-center text-[12px] text-[#737373] @max-[420px]:px-3">
 			<div>{isLoading ? "Loading trace…" : message ?? "No trace selected."}</div>
 			{agentProfiles.length ? (
 				<div className="flex flex-wrap items-center justify-center gap-2">
