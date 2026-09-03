@@ -216,6 +216,13 @@ function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchem
 			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
 
+		CREATE TABLE IF NOT EXISTS session_agent_observation_counters (
+			parent_pibo_session_id TEXT PRIMARY KEY,
+			next_sequence INTEGER NOT NULL CHECK(next_sequence >= 1),
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY (parent_pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+
 		CREATE TABLE IF NOT EXISTS session_output_part_counters (
 			pibo_session_id TEXT NOT NULL,
 			event_id TEXT NOT NULL,
