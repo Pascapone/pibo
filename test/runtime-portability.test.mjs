@@ -85,7 +85,7 @@ function ingestConversation(store, session) {
 			eventId: "portable-turn-1",
 			toolCallId: "sk-tool-call-secret-12345678",
 			toolName: "lookup",
-			args: { query: "alpha", apiKey: "sk-tool-secret-12345678" },
+			args: { query: "alpha pibo-docker-system", apiKey: "sk-tool-secret-12345678" },
 			argsComplete: true,
 		},
 	});
@@ -100,7 +100,7 @@ function ingestConversation(store, session) {
 			eventId: "portable-turn-1",
 			toolCallId: "sk-tool-call-secret-12345678",
 			toolName: "lookup",
-			result: { answer: "alpha", Authorization: "Bearer portable-result-secret" },
+			result: { answer: "/tmp/pibo-stream-render-determinism-v2", Authorization: "Bearer portable-result-secret" },
 			isError: false,
 		},
 	});
@@ -114,7 +114,7 @@ function ingestConversation(store, session) {
 			piboSessionId: session.id,
 			eventId: "portable-turn-1",
 			assistantIndex: 0,
-			text: "Alpha is remembered.",
+			text: "Alpha is remembered by pibo-v2-github-flow and pibo-debug-auth.",
 		},
 	});
 	store.eventLog.appendEvent({
@@ -226,6 +226,10 @@ test("portable history is bounded, checkpointed, role-aware, and secret-redacted
 	assert.equal(history.checkpoint.maxSessionSequence, 6);
 	assert.match(serialized, /Remember alpha/);
 	assert.match(serialized, /Alpha is remembered/);
+	assert.match(serialized, /pibo-v2-github-flow/);
+	assert.match(serialized, /pibo-docker-system/);
+	assert.match(serialized, /pibo-debug-auth/);
+	assert.match(serialized, /\/tmp\/pibo-stream-render-determinism-v2/);
 	assert.doesNotMatch(serialized, /after the handoff checkpoint/);
 	assert.doesNotMatch(serialized, /sk-portable-secret|sk-tool-secret|sk-tool-call-secret|portable-result-secret/);
 	assert.match(serialized, /\[redacted\]/);

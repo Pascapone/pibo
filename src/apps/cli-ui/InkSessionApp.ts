@@ -11,6 +11,7 @@ import {
 	groupSlashCommandsForHelp,
 	normalizeCommandErrorDescriptor,
 	progressBarText,
+	redactTerminalSecret,
 	type BuildTerminalStatusInput,
 	type CommandResultDescriptor,
 	type CommandResultMenuItem,
@@ -1523,10 +1524,7 @@ export function formatCliSessionError(error: unknown): string {
 }
 
 function redactCliSessionStatusText(text: string): string {
-	return text
-		.replace(/\b([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*)\s*=\s*([^\s]+)/gi, "$1=[redacted]")
-		.replace(/\b(api[_-]?key|token|secret|password)\s*[:=]\s*([^\s]+)/gi, "$1=[redacted]")
-		.replace(/\b(?:sk|pk|pibo|ghp|github_pat)_[A-Za-z0-9_\-]{8,}\b/g, "[redacted]");
+	return redactTerminalSecret(text);
 }
 
 function errorMessage(error: unknown): string {
