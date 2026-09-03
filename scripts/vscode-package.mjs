@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { replaceDirectory } from "./lib/replace-directory.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
@@ -35,26 +36,9 @@ function run(commandParts, args, cwd) {
 	execFileSync(command, [...prefixArgs, ...args], { cwd, stdio: "inherit" });
 }
 
-function copyDirectory(src, dst) {
-	if (!existsSync(src)) {
-		throw new Error(`source directory not found: ${src}`);
-	}
-	mkdirSync(dst, { recursive: true });
-	for (const entry of readdirSync(src)) {
-		const s = resolve(src, entry);
-		const d = resolve(dst, entry);
-		const stat = statSync(s);
-		if (stat.isDirectory()) {
-			copyDirectory(s, d);
-		} else {
-			copyFileSync(s, d);
-		}
-	}
-}
-
 run(npmCommand, ["run", "--silent", "vscode:webview:build"], root);
 run(npmCommand, ["run", "--silent", "vscode:extension:build"], root);
-copyDirectory(webviewOutDir, sidecarBundleDir);
+replaceDirectory(webviewOutDir, sidecarBundleDir);
 console.log(`[vscode-package] copied ${webviewOutDir} -> ${sidecarBundleDir}`);
 
 const manifest = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8"));
