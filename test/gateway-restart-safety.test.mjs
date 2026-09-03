@@ -171,6 +171,43 @@ describe('gateway status endpoint', () => {
 
 
 describe('gateway start command', () => {
+  it('uses the custom web service identity persisted by user-host setup', async () => {
+    const port = await freePort();
+    const dir = mkdtempSync(join(tmpdir(), 'pibo-gateway-service-name-'));
+    const markerPath = join(dir, 'manager-argv');
+    const managerPath = join(dir, 'manager.mjs');
+    const scriptPath = join(dir, process.platform === 'win32' ? 'manager.cmd' : 'manager.sh');
+    writeFileSync(join(dir, 'gateway-web-service'), 'pibo-web-custom\n', 'utf8');
+    writeFileSync(managerPath, `
+import { writeFileSync } from 'node:fs';
+writeFileSync(process.env.FAKE_GATEWAY_MANAGER_MARKER, process.argv.slice(2).join(' '));
+process.exitCode = 42;
+`, 'utf8');
+    if (process.platform === 'win32') {
+      writeFileSync(scriptPath, `@echo off\r\n"${process.execPath}" "${managerPath}" %*\r\n`, 'utf8');
+    } else {
+      writeFileSync(scriptPath, `#!/usr/bin/env bash\nset -euo pipefail\n"${process.execPath}" "${managerPath}" "$@"\n`, 'utf8');
+      chmodSync(scriptPath, 0o755);
+    }
+
+    try {
+      const result = spawnSync(process.execPath, ['dist/bin/pibo.js', 'gateway', 'web', 'start'], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PIBO_HOME: dir,
+          PIBO_GATEWAY_WEB_PORT: String(port),
+          PIBO_GATEWAY_MANAGER_COMMAND: scriptPath,
+          FAKE_GATEWAY_MANAGER_MARKER: markerPath,
+        },
+      });
+      assert.notEqual(result.status, 0);
+      assert.equal(readFileSync(markerPath, 'utf8'), 'start pibo-web-custom');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('starts a dev gateway that is not reachable yet', async () => {
     const port = await freePort();
     const dir = mkdtempSync(join(tmpdir(), 'pibo-gateway-start-'));
