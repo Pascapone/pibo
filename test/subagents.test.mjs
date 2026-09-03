@@ -250,6 +250,10 @@ test("legacy subagent tool exports remain available, stay outside runtime assemb
 		/Agent session name must be at most 40 characters/,
 	);
 	assert.equal(calls.length, 0);
+	assert.equal(
+		tool.prepareInput({ sessionName: ` ${fortyCombiningCodePoints} `, message: "trim before validating" }).sessionName,
+		fortyCombiningCodePoints,
+	);
 	await tool.execute("tool-legacy-combining-exact", { sessionName: fortyCombiningCodePoints, message: "exactly 40 code points" });
 	assert.equal(calls[0].sessionName, fortyCombiningCodePoints);
 	const result = await tool.execute("tool-legacy", { sessionName: "  Legacy research  ", message: "inspect", threadKey: "migration" });
