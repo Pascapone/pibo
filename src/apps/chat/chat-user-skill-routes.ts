@@ -112,6 +112,8 @@ function syncAndInvalidate(options: ChatUserSkillRouteHandlerOptions): void {
 	options.invalidateBootstrapCatalogCache();
 }
 
+type SkillAgentSelection = { profileName: string };
+
 type ChatUserSkillRouteHandlerOptions = {
 	route: ChatUserSkillRoute;
 	request: Request;
@@ -120,6 +122,7 @@ type ChatUserSkillRouteHandlerOptions = {
 	previouslySyncedNames?: Set<string>;
 	setSyncedUserSkillNames: (names: Set<string>) => void;
 	invalidateBootstrapCatalogCache: () => void;
+	agentsSelectingSkill: (skillName: string) => readonly SkillAgentSelection[];
 };
 
 function requestScope(request: Request, fallback: UserSkillListScope = "all"): UserSkillListScope {
@@ -211,6 +214,18 @@ export async function handleChatUserSkillRoute(options: ChatUserSkillRouteHandle
 			const scope = requestScope(request);
 			const existing = userSkillManager.get(route.skillId, scope);
 			if (!existing) throw new PiboWebHttpError("Skill not found", 404);
+			const hasEnabledReplacement = userSkillManager.list("all").some((skill) => (
+				skill.id !== existing.id && skill.enabled && skill.name === existing.name
+			));
+			const affectedAgents = existing.enabled && !hasEnabledReplacement
+				? options.agentsSelectingSkill(existing.name)
+				: [];
+			if (affectedAgents.length > 0) {
+				throw new PiboWebHttpError(
+					`Skill is selected by custom agents: ${affectedAgents.map((agent) => agent.profileName).join(", ")}`,
+					409,
+				);
+			}
 			userSkillManager.remove(existing.id, scope);
 			syncAndInvalidate(options);
 			return responseJson({ removedSkillId: existing.id });
