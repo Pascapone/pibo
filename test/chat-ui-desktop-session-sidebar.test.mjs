@@ -64,6 +64,12 @@ test("Desktop sidebar preserves the existing Rooms, profile, and Sessions data c
 	assert.match(html, /aria-label="New Session"/);
 });
 
+test("Desktop sidebar resize handle stays fully inside the clipped sidebar", async () => {
+	const component = await readFile("src/apps/chat-ui/src/desktop-session-sidebar.tsx", "utf8");
+	assert.match(component, /absolute inset-y-0 right-0 z-20 w-2 touch-none cursor-col-resize/);
+	assert.doesNotMatch(component, /absolute inset-y-0 -right-1/);
+});
+
 test("Desktop sidebar width and collapse state are bounded and persisted", async () => {
 	const script = `
 		import assert from "node:assert/strict";

@@ -78,7 +78,7 @@ export function DesktopSessionSidebar({
 					const currentWidth = event.currentTarget.parentElement?.getBoundingClientRect().width ?? state.width;
 					onStateChange(resizeDesktopSessionSidebar(state, currentWidth + (event.key === "ArrowRight" ? 24 : -24)));
 				}}
-				className={`absolute inset-y-0 -right-1 z-20 w-2 touch-none cursor-col-resize outline-none hover:bg-[#11a4d4]/35 focus-visible:bg-[#11a4d4]/60 ${state.collapsed ? "hidden" : ""}`}
+				className={`absolute inset-y-0 right-0 z-20 w-2 touch-none cursor-col-resize outline-none hover:bg-[#11a4d4]/35 focus-visible:bg-[#11a4d4]/60 ${state.collapsed ? "hidden" : ""}`}
 			/>
 			{state.collapsed ? (
 				<div className="flex h-full flex-col items-center gap-2 bg-[#151f24] py-2">
