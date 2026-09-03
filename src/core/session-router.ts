@@ -510,6 +510,8 @@ type ActiveSubagentRequestSettlement =
 	| { status: "rejected"; reason: unknown };
 
 type ActiveSubagentRequest = {
+	agentId: string;
+	requestId: string;
 	abortController: AbortController;
 	settled: Promise<ActiveSubagentRequestSettlement>;
 };
@@ -2284,6 +2286,8 @@ export class PiboSessionRouter {
 					resolveSettled = resolve;
 				});
 				const untrack = this.trackActiveSubagent(parentPiboSessionId, {
+					agentId: child.id,
+					requestId,
 					abortController: parentAbortController,
 					settled,
 				});
@@ -2373,8 +2377,21 @@ export class PiboSessionRouter {
 		const child = this.requireManagedAgent(parentPiboSessionId, agentId);
 		const ids = [agentId, ...this.descendantSessionIds(agentId)];
 		const idSet = new Set(ids);
+		const activeParentRunIds = new Set(
+			[...(this.activeSubagentRequests.get(parentPiboSessionId) ?? [])]
+				.filter((request) => idSet.has(request.agentId))
+				.map((request) => request.requestId),
+		);
 		const cancellableRuns = this.runRegistry.listAll({ includeConsumed: true, includeDetached: true })
-			.filter((run) => idSet.has(run.controllerPiboSessionId) && !isTerminalRunStatus(run.status));
+			.filter((run) => !isTerminalRunStatus(run.status) && (
+				idSet.has(run.controllerPiboSessionId)
+				|| (run.controllerPiboSessionId === parentPiboSessionId && activeParentRunIds.has(run.runId))
+			));
+		const reason = `killed by parent ${parentPiboSessionId}`;
+		await this.cancelRunsAfterSettlement(
+			cancellableRuns.filter((run) => run.controllerPiboSessionId === parentPiboSessionId),
+			reason,
+		);
 		await Promise.allSettled(ids.flatMap((id) => this.sessions.has(id)
 			? [this.emit({ type: "execution", piboSessionId: id, action: "abort", id: randomUUID() })]
 			: []));
@@ -2387,7 +2404,7 @@ export class PiboSessionRouter {
 				},
 			});
 		}
-		await this.disposeSessionSubtree(agentId, `killed by parent ${parentPiboSessionId}`, { cancelRuns: true });
+		await this.disposeSessionSubtree(agentId, reason, { cancelRuns: true });
 		const cancelledRuns = cancellableRuns.flatMap((run) => {
 			const current = this.runRegistry.status(run.controllerPiboSessionId, run.runId);
 			return current.status === "cancelled" ? [run.runId] : [];
