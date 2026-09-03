@@ -37,12 +37,13 @@ test("desktop and mobile main navigation identify the active area", async () => 
 	assert.match(markup, /<nav aria-label="Main navigation"/);
 	assert.equal(currentButtons.length, 2, "expected one current desktop item and one current mobile item");
 	for (const [, contents] of currentButtons) assert.match(contents, />VS Code</);
-	assert.match(markup, /max-\[1500px\]:hidden/);
+	assert.match(markup, /title="test@example\.com"/);
+	assert.doesNotMatch(markup, />test@example\.com</);
 });
 
-test("main navigation hides VS Code without changing the existing account-label breakpoint", async () => {
+test("main navigation hides VS Code and keeps the account label tooltip-only", async () => {
 	const markup = await renderHeader("sessions", false);
 	assert.doesNotMatch(markup, />VS Code</);
-	assert.match(markup, /max-\[600px\]:hidden/);
-	assert.doesNotMatch(markup, /max-\[1500px\]:hidden/);
+	assert.match(markup, /title="test@example\.com"/);
+	assert.doesNotMatch(markup, />test@example\.com</);
 });

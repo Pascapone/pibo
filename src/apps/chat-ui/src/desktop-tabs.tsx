@@ -33,6 +33,7 @@ import {
 	type SetStateAction,
 } from "react";
 import type { ChatAppRoute } from "./app-routes";
+import { DESKTOP_COLLAPSED_SIDEBAR_WIDTH, DESKTOP_TERMINAL_MIN_WIDTH } from "./desktop-session-sidebar-model";
 import {
 	activateDesktopTab,
 	activeDesktopTab,
@@ -132,6 +133,7 @@ export function DesktopTabSidebar({
 	onClose,
 	onFocusSessions,
 	renderPanel,
+	reservedLeftWidth,
 	hidden = false,
 	fullscreen = false,
 }: {
@@ -142,6 +144,7 @@ export function DesktopTabSidebar({
 	onClose: (tab: DesktopTab) => boolean | Promise<boolean>;
 	onFocusSessions: (newTab: DesktopTab) => void | Promise<void>;
 	renderPanel: (tab: DesktopTab, active: boolean) => ReactNode;
+	reservedLeftWidth: number;
 	hidden?: boolean;
 	fullscreen?: boolean;
 }) {
@@ -234,7 +237,7 @@ export function DesktopTabSidebar({
 	const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
 		event.preventDefault();
 		const startX = event.clientX;
-		const startWidth = state.width;
+		const startWidth = event.currentTarget.parentElement?.getBoundingClientRect().width ?? state.width;
 		const move = (moveEvent: PointerEvent) => onStateChange(resizeDesktopTabs(state, startWidth + startX - moveEvent.clientX));
 		const stop = () => {
 			window.removeEventListener("pointermove", move);
@@ -250,7 +253,11 @@ export function DesktopTabSidebar({
 
 	const shellStyle = {
 		"--pibo-desktop-tabs-width": `${state.width}px`,
-		width: fullscreen ? "100%" : state.collapsed ? "44px" : `min(${state.width}px, calc(100vw - 740px))`,
+		width: fullscreen
+			? "100%"
+			: state.collapsed
+				? `${DESKTOP_COLLAPSED_SIDEBAR_WIDTH}px`
+				: `min(${state.width}px, max(0px, calc(100vw - ${reservedLeftWidth + DESKTOP_TERMINAL_MIN_WIDTH}px)))`,
 	} as CSSProperties;
 
 	return (
@@ -276,9 +283,10 @@ export function DesktopTabSidebar({
 				onKeyDown={(event) => {
 					if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 					event.preventDefault();
-					onStateChange(resizeDesktopTabs(state, state.width + (event.key === "ArrowLeft" ? 24 : -24)));
+					const currentWidth = event.currentTarget.parentElement?.getBoundingClientRect().width ?? state.width;
+					onStateChange(resizeDesktopTabs(state, currentWidth + (event.key === "ArrowLeft" ? 24 : -24)));
 				}}
-				className={`absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize outline-none hover:bg-[#11a4d4]/35 focus-visible:bg-[#11a4d4]/60 ${state.collapsed || fullscreen ? "hidden" : ""}`}
+				className={`absolute inset-y-0 -left-1 z-20 w-2 touch-none cursor-col-resize outline-none hover:bg-[#11a4d4]/35 focus-visible:bg-[#11a4d4]/60 ${state.collapsed || fullscreen ? "hidden" : ""}`}
 			/>
 			{state.collapsed && !fullscreen ? (
 				<div className="flex h-full flex-col items-center gap-2 border-l border-slate-800 bg-[#151f24] py-2">

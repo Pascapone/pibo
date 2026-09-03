@@ -542,7 +542,7 @@ export function Composer({
 			data-pibo-debug="composer"
 			data-pibo-session-id={sessionId ?? undefined}
 			data-pibo-state={disabled ? "disabled" : value ? "non-empty" : "empty"}
-			className="relative p-3 bg-[#151f24] border-t border-slate-800 max-[980px]:p-2"
+			className="relative p-3 bg-[#151f24] border-t border-slate-800 max-[980px]:p-2 @max-[420px]:p-2"
 		>
 			<input
 				ref={fileInputRef}

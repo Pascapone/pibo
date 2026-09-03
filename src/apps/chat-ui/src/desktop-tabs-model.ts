@@ -3,7 +3,7 @@ import type { ChatAppRoute } from "./app-routes";
 export const DESKTOP_TABS_STORAGE_KEY = "pibo.chat.desktopTabs.v1";
 export const DESKTOP_TAB_STATE_VERSION = 1 as const;
 export const DESKTOP_TAB_MIN_WIDTH = 360;
-export const DESKTOP_TAB_MAX_WIDTH = 920;
+export const DESKTOP_TAB_MAX_WIDTH = 3840;
 export const DESKTOP_TAB_DEFAULT_WIDTH = 520;
 export const DESKTOP_TAB_LIMIT = 24;
 
