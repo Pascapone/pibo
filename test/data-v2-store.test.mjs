@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
+import { PiboPayloadMetadataConflictError } from "../dist/data/payload-store.js";
 import { applyPiboDataSchema, PIBO_DATA_SCHEMA_VERSION } from "../dist/data/schema.js";
+import { hydrateDebugEventRow } from "../dist/debug/persisted-payloads.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredStorageColumn = `${retiredWord}_scope`;
@@ -219,6 +221,45 @@ test("payload store writes, reads, and dedupes payloads", () => {
 	);
 
 	store.close();
+});
+
+test("payload deduplication rejects incompatible interpretation metadata", () => {
+	const dir = tempDir("pibo-data-payload-metadata-");
+	const store = new PiboDataStore(join(dir, "pibo.sqlite"), { payloadRootDir: join(dir, "payloads") });
+	const text = '{"kind":"tool_result","value":42}';
+	const first = store.payloads.writePayload({
+		value: text,
+		contentType: "text/plain; charset=utf-8",
+		retentionClass: "chat_message",
+	});
+
+	assert.throws(
+		() => store.payloads.writePayload({
+			value: { kind: "tool_result", value: 42 },
+			contentType: "application/json",
+			retentionClass: "tool_result",
+		}),
+		(error) => {
+			assert.ok(error instanceof PiboPayloadMetadataConflictError);
+			assert.equal(error.sha256, first.sha256);
+			assert.equal(error.existingContentType, "text/plain; charset=utf-8");
+			assert.equal(error.requestedContentType, "application/json");
+			assert.equal(error.existingRetentionClass, "chat_message");
+			assert.equal(error.requestedRetentionClass, "tool_result");
+			return true;
+		},
+	);
+	assert.throws(
+		() => store.payloads.writePayload({ value: text, contentType: first.contentType, retentionClass: "audit_event" }),
+		PiboPayloadMetadataConflictError,
+	);
+	assert.equal(store.payloads.getPayload(first.id).refCount, 1);
+	assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM payloads").get().count, 1);
+	const hydrated = hydrateDebugEventRow({ payload_ref: first.id, attributes_json: "{}" }, store.payloads);
+	assert.equal(JSON.parse(hydrated.attributes_json).inlinePayload, text);
+
+	store.close();
+	rmSync(dir, { recursive: true, force: true });
 });
 
 test("event log append is idempotent by idempotency key", () => {
