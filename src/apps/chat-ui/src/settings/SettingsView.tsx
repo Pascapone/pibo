@@ -477,9 +477,10 @@ function UserTimezoneSettings() {
 
 	return (
 		<div className="border-b border-slate-800 pb-4 mb-4">
-			<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">App timezone</div>
+			<label htmlFor="app-timezone" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">App timezone</label>
 			<div className="max-w-xl">
 				<select
+					id="app-timezone"
 					value={draft}
 					disabled={isLoading || saving}
 					onChange={(event) => {

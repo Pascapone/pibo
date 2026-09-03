@@ -169,5 +169,6 @@ export type RuntimeBackend = {
 	interrupt(): Promise<RuntimeInterruptResult>;
 	close(force?: boolean): Promise<void>;
 	isAlive(): boolean;
+	isBusy?(): boolean;
 	getRecord(): Pick<RuntimeSessionRecord, "pid" | "cwd" | "executable">;
 };

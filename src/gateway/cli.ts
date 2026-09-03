@@ -98,7 +98,16 @@ function expectedMode(target: GatewayTarget): GatewayMode {
 
 function gatewayServiceName(target: GatewayTarget): string {
 	const fromEnv = target === "web" ? process.env.PIBO_GATEWAY_WEB_SERVICE : process.env.PIBO_GATEWAY_DEV_SERVICE;
-	return fromEnv || (target === "web" ? "pibo-web" : "pibo-web-dev");
+	if (fromEnv) return fromEnv;
+	if (target === "web") {
+		try {
+			const persisted = readFileSync(join(managedGatewayHome(target), "gateway-web-service"), "utf8").trim();
+			if (/^[A-Za-z0-9_.@-]+$/.test(persisted)) return persisted;
+		} catch {
+			// Fall back to the default service name when setup has not persisted an override.
+		}
+	}
+	return target === "web" ? "pibo-web" : "pibo-web-dev";
 }
 
 function gatewayManagerCommand(): string {
@@ -111,7 +120,9 @@ function shouldUseWindowsGatewayManager(): boolean {
 
 function managedGatewayHome(target: GatewayTarget): string {
 	const fromEnv = target === "web" ? process.env.PIBO_GATEWAY_WEB_HOME : process.env.PIBO_GATEWAY_DEV_HOME;
-	return fromEnv || join(homedir(), target === "web" ? ".pibo" : ".pibo-dev");
+	if (fromEnv) return fromEnv;
+	if (target === "web" && process.env.PIBO_HOME) return process.env.PIBO_HOME;
+	return join(homedir(), target === "web" ? ".pibo" : ".pibo-dev");
 }
 
 function targetGatewayPort(target: GatewayTarget): number {

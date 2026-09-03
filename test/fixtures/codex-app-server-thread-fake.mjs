@@ -352,7 +352,7 @@ if (args[0] === "--version") {
 			server: "native-server",
 			tool: "lookup",
 			status: "inProgress",
-			arguments: { query: "pibo", apiKey: "sk-fixture-secret" },
+			arguments: { query: "pibo-docker-system", apiKey: "sk-fixture-secret" },
 		});
 		notify("item/mcpToolCall/progress", {
 			threadId: active.threadId,
@@ -366,8 +366,8 @@ if (args[0] === "--version") {
 			server: "native-server",
 			tool: "lookup",
 			status: "completed",
-			arguments: { query: "pibo", apiKey: "sk-fixture-secret" },
-			result: { content: "found", accessToken: "fixture-token" },
+			arguments: { query: "pibo-docker-system", apiKey: "sk-fixture-secret" },
+			result: { content: "/tmp/pibo-stream-render-determinism-v2", accessToken: "fixture-token" },
 		});
 	};
 	const emitAssistant = (active, text) => {
@@ -660,9 +660,11 @@ if (args[0] === "--version") {
 		}
 		emitReasoning(active);
 		if (active.mode.includes("tools")) emitTools(active);
-		const answer = active.mode.includes("redaction")
-			? "Bearer sk-fixture-secret token=fixture-token"
-			: "Codex answer.";
+		const answer = active.mode.includes("identifier-preservation")
+			? "pibo-v2-github-flow pibo-docker-system pibo-docker-dev pibo-debug-auth /tmp/pibo-stream-render-determinism-v2"
+			: active.mode.includes("redaction")
+				? "Bearer sk-fixture-secret token=fixture-token"
+				: "Codex answer.";
 		const finalAssistant = emitAssistant(active, answer);
 		emitUsage(active);
 		completeActive(active, "completed", finalAssistant);

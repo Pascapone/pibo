@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -64,6 +64,47 @@ test("session and navigation activity remain monotonic after stale compatibility
 		assert.deepEqual(sessions.upsertSessionsIfChanged([piboSession]), { checked: 1, written: 0, skipped: 1 });
 	} finally {
 		store.close();
+	}
+});
+
+test("permanent session deletion releases externalized payload references and files", () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-chat-v2-payload-delete-"));
+	const dataPath = join(root, "pibo.sqlite");
+	const payloadRoot = join(root, "payloads");
+	let store = new PiboDataStore(dataPath, { payloadRootDir: payloadRoot });
+	try {
+		const rooms = new ChatRoomService(store);
+		const sessions = new ChatSessionQueryService(store);
+		const ingest = new ChatDataIngestService(store);
+		const room = rooms.ensureDefaultRoom();
+		const firstSession = session("ps_payload_first", room.id);
+		const secondSession = session("ps_payload_second", room.id);
+		const text = "shared-large-payload-".repeat(1_200);
+		const first = ingest.ingestUserMessageAccepted({ session: firstSession, roomId: room.id, actorId: "user:test", text, clientTxnId: "payload-first" });
+		ingest.ingestUserMessageAccepted({ session: secondSession, roomId: room.id, actorId: "user:test", text, clientTxnId: "payload-second" });
+		const message = store.db.prepare("SELECT content_payload_ref FROM chat_messages WHERE id = ?").get(first.messageId);
+		const payloadId = message.content_payload_ref;
+		const payload = store.payloads.getPayload(payloadId);
+		const payloadPath = join(payloadRoot, payload.storagePath);
+		assert.equal(payload.refCount, 2);
+		assert.equal(existsSync(payloadPath), true);
+
+		assert.equal(sessions.deleteSessions([firstSession.id]), 1);
+		assert.equal(store.payloads.getPayload(payloadId)?.refCount, 1);
+		assert.equal(existsSync(payloadPath), true);
+		assert.equal(store.payloads.readPayloadText(payloadId), text);
+
+		assert.equal(sessions.deleteSessions([secondSession.id]), 1);
+		assert.equal(store.payloads.getPayload(payloadId), undefined);
+		assert.equal(existsSync(payloadPath), false);
+		store.close();
+
+		store = new PiboDataStore(dataPath, { payloadRootDir: payloadRoot });
+		assert.equal(store.payloads.getPayload(payloadId), undefined);
+		assert.equal(existsSync(payloadPath), false);
+	} finally {
+		store.close();
+		rmSync(root, { recursive: true, force: true });
 	}
 });
 

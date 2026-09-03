@@ -63,7 +63,7 @@ export type ContextBuildSnapshot = {
 
 export type SaveCustomAgentInput = {
 	displayName: string;
-	description?: string;
+	description?: string | null;
 	folderId?: string | null;
 	runtimeInstanceId: string;
 	runtimeOptions: Record<string, unknown>;

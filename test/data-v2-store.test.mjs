@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
+import { PiboPayloadMetadataConflictError } from "../dist/data/payload-store.js";
 import { applyPiboDataSchema, PIBO_DATA_SCHEMA_VERSION } from "../dist/data/schema.js";
+import { hydrateDebugEventRow } from "../dist/debug/persisted-payloads.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredStorageColumn = `${retiredWord}_scope`;
@@ -143,6 +145,40 @@ test("schema migration from v5 installs the exact tool lifecycle index", () => {
 	db.close();
 });
 
+test("schema upgrades preserve post-v5 session history metadata", (t) => {
+	const dir = tempDir("pibo-data-v5-history-metadata-");
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const dbPath = join(dir, "pibo.sqlite");
+	const db = new DatabaseSync(dbPath);
+	applyPiboDataSchema(db);
+	const timestamp = "2026-09-03T00:00:00.000Z";
+	db.prepare(`
+		INSERT INTO sessions (
+			id, pi_session_id, channel, kind, profile, title, status,
+			metadata_json, created_at, updated_at, last_activity_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`).run("ps_created_on_v5", "pi-created-on-v5", "test", "chat", "base", "Created on v5", "idle", "{}", timestamp, timestamp, timestamp);
+	db.prepare("UPDATE session_runtime_bindings SET metadata_json = ? WHERE pibo_session_id = ?")
+		.run('{"createdOn":"v5"}', "ps_created_on_v5");
+	db.exec("PRAGMA user_version = 5");
+	db.close();
+
+	const store = new PiboDataStore(dbPath, { payloadRootDir: join(dir, "payloads") });
+	assert.equal(store.db.prepare("PRAGMA user_version").get().user_version, PIBO_DATA_SCHEMA_VERSION);
+	assert.deepEqual(
+		JSON.parse(store.db.prepare("SELECT metadata_json FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_created_on_v5").metadata_json),
+		{ createdOn: "v5" },
+	);
+	store.close();
+
+	const reopened = new PiboDataStore(dbPath, { payloadRootDir: join(dir, "payloads") });
+	assert.deepEqual(
+		JSON.parse(reopened.db.prepare("SELECT metadata_json FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_created_on_v5").metadata_json),
+		{ createdOn: "v5" },
+	);
+	reopened.close();
+});
+
 test("fresh pibo chat schema omits retired room partition structures", () => {
 	const dir = tempDir("pibo-chat-app-context-schema-");
 	const db = new DatabaseSync(join(dir, "pibo.sqlite"));
@@ -185,6 +221,45 @@ test("payload store writes, reads, and dedupes payloads", () => {
 	);
 
 	store.close();
+});
+
+test("payload deduplication rejects incompatible interpretation metadata", () => {
+	const dir = tempDir("pibo-data-payload-metadata-");
+	const store = new PiboDataStore(join(dir, "pibo.sqlite"), { payloadRootDir: join(dir, "payloads") });
+	const text = '{"kind":"tool_result","value":42}';
+	const first = store.payloads.writePayload({
+		value: text,
+		contentType: "text/plain; charset=utf-8",
+		retentionClass: "chat_message",
+	});
+
+	assert.throws(
+		() => store.payloads.writePayload({
+			value: { kind: "tool_result", value: 42 },
+			contentType: "application/json",
+			retentionClass: "tool_result",
+		}),
+		(error) => {
+			assert.ok(error instanceof PiboPayloadMetadataConflictError);
+			assert.equal(error.sha256, first.sha256);
+			assert.equal(error.existingContentType, "text/plain; charset=utf-8");
+			assert.equal(error.requestedContentType, "application/json");
+			assert.equal(error.existingRetentionClass, "chat_message");
+			assert.equal(error.requestedRetentionClass, "tool_result");
+			return true;
+		},
+	);
+	assert.throws(
+		() => store.payloads.writePayload({ value: text, contentType: first.contentType, retentionClass: "audit_event" }),
+		PiboPayloadMetadataConflictError,
+	);
+	assert.equal(store.payloads.getPayload(first.id).refCount, 1);
+	assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM payloads").get().count, 1);
+	const hydrated = hydrateDebugEventRow({ payload_ref: first.id, attributes_json: "{}" }, store.payloads);
+	assert.equal(JSON.parse(hydrated.attributes_json).inlinePayload, text);
+
+	store.close();
+	rmSync(dir, { recursive: true, force: true });
 });
 
 test("event log append is idempotent by idempotency key", () => {

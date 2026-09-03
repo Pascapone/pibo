@@ -33,6 +33,10 @@ test("new Loop UI defaults to same-session goal mode and exposes legacy Ralph mo
 	assert.match(stdout, /Pre-turn Token Reserve/);
 	assert.match(stdout, /cache reads and writes are excluded/);
 	assert.match(stdout, /final turn can overshoot/);
+	for (const label of ["Model provider", "Model", "Thinking", "Fast mode"]) {
+		assert.match(stdout, new RegExp(`aria-label="${label}"`));
+	}
+	assert.match(stdout, /<select aria-label="Model"[^>]*disabled=""/);
 });
 
 test("Loop UI renders recursive model usage and reported cost", async () => {

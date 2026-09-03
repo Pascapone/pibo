@@ -53,9 +53,8 @@ export async function runVscodeCli(argv = process.argv): Promise<void> {
 				console.log(JSON.stringify(result, null, 2));
 			} else if (result.status === "installed") {
 				console.log(`installed\t${result.tagName}\t${result.vsixPath}`);
-			} else {
-				process.exitCode = 1;
 			}
+			if (result.status === "failed") process.exitCode = 1;
 		});
 
 	program

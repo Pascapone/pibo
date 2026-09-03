@@ -18,6 +18,9 @@ export type PiboRalphBrowserPoolRelease = (paths: BrowserPoolPaths, identity: Br
 export type PiboRalphResourceCleanupOptions = { browserPoolRootDir?: string; browserPoolId?: string; releaseBrowserPoolLease?: PiboRalphBrowserPoolRelease };
 export type PiboRalphServiceOptions = { store?: PiboRalphStore; context: PiboChannelContext; dataStorePath?: string; dataPayloadRootDir?: string; intervalMs?: number; maxConcurrentRuns?: number; runTimeoutMs?: number; resourceCleanup?: PiboRalphResourceCleanupOptions };
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+export class PiboRalphCapacityError extends Error {
+	constructor() { super('Ralph run capacity is currently full'); this.name = 'PiboRalphCapacityError'; }
+}
 class RalphRunTimeoutError extends Error {
 	constructor(message: string, readonly abortFailed = false) { super(message); this.name = 'RalphRunTimeoutError'; }
 }
@@ -48,6 +51,7 @@ export class PiboRalphService {
 	private readonly runTimeoutMs: number | undefined;
 	private timer: NodeJS.Timeout | undefined;
 	private activeRuns = 0;
+	private admissionTail: Promise<void> = Promise.resolve();
 	private stopped = true;
 	private cancelledRuns = new Set<string>();
 	private unsubscribeProductEvents: (() => void) | undefined;
@@ -62,7 +66,7 @@ export class PiboRalphService {
 	start(): void { if (!this.stopped) return; this.stopped = false; this.store.recoverInterruptedRuns(); this.unsubscribeProductEvents = this.options.context.subscribeProductEvents?.((event) => this.handleProductEvent(event)); this.arm(250); }
 	stop(): void { this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = undefined; this.unsubscribeProductEvents?.(); this.unsubscribeProductEvents = undefined; this.dataStore.close(); this.store.close(); }
 	status(): PiboRalphStatus { return { enabled: !this.stopped, ...this.store.status() }; }
-	async startJob(id: string): Promise<PiboRalphRun | undefined> { const job = this.store.updateJob(id, { enabled: true }); if (!job) return undefined; const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (!reserved) return undefined; void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon()); return reserved.run; }
+	async startJob(id: string): Promise<PiboRalphRun | undefined> { return await this.withAdmissionLock(async () => { const existing = this.store.getJob(id); if (!existing || existing.state.runningAt) return undefined; if (this.activeRuns >= this.maxConcurrentRuns) throw new PiboRalphCapacityError(); const job = this.store.updateJob(id, { enabled: true }); if (!job) return undefined; const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (!reserved) return undefined; void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon()); return reserved.run; }); }
 	stopJob(id: string): PiboRalphJob | undefined { const job = this.store.requestStop(id); this.armSoon(); return job; }
 	async cancelJob(id: string): Promise<PiboRalphJob | undefined> {
 		const job = this.store.requestCancel(id); if (!job) return undefined;
@@ -71,7 +75,8 @@ export class PiboRalphService {
 	}
 	private arm(delayMs?: number): void { if (this.stopped) return; if (this.timer) clearTimeout(this.timer); this.timer = setTimeout(() => void this.tick(), delayMs ?? this.intervalMs); }
 	private armSoon(): void { this.arm(250); }
-	private async tick(): Promise<void> { if (this.stopped) return; try { await this.abortCancelRequestedJobs(); const capacity = this.maxConcurrentRuns - this.activeRuns; if (capacity > 0) { const jobs = this.store.listJobs({ includeDisabled: false }).filter((job) => !job.state.runningAt).slice(0, capacity); for (const job of jobs) { const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (reserved) void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon()); } } } catch (error) { console.error('[ralph] scheduler tick failed', error); } finally { this.arm(); } }
+	private async tick(): Promise<void> { if (this.stopped) return; try { await this.abortCancelRequestedJobs(); const jobs = this.store.listJobs({ includeDisabled: false }).filter((job) => !job.state.runningAt); for (const job of jobs) { const admitted = await this.withAdmissionLock(async () => { if (this.activeRuns >= this.maxConcurrentRuns) return false; const reserved = await this.reserveAfterBeforeRunEvaluation(job); if (!reserved) return true; void this.executeReserved(reserved.job, reserved.run).finally(() => this.armSoon()); return true; }); if (!admitted) break; } } catch (error) { console.error('[ralph] scheduler tick failed', error); } finally { this.arm(); } }
+	private async withAdmissionLock<T>(action: () => Promise<T>): Promise<T> { const previous = this.admissionTail; let release!: () => void; this.admissionTail = new Promise<void>((resolve) => { release = resolve; }); await previous; try { return await action(); } finally { release(); } }
 	private async reserveAfterBeforeRunEvaluation(job: PiboRalphJob): Promise<{ job: PiboRalphJob; run: PiboRalphRun } | undefined> {
 		const fresh = this.store.getJob(job.id) ?? job;
 		if (!fresh.enabled || fresh.state.runningAt) return undefined;

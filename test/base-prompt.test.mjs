@@ -91,10 +91,33 @@ test("base prompt falls back to library when state mode is unknown", async () =>
 		assert.equal(basename(getActivePiboBasePromptPath(cwd)), "pibo-system-prompt.md");
 	}));
 
-test("base prompt path is disabled when legacy SYSTEM.md override exists", () =>
-	withTempCwd((cwd) => {
+test("legacy SYSTEM.md remains the reported effective prompt until it is removed", () =>
+	withTempCwd(async (cwd) => {
 		mkdirSync(join(cwd, ".pibo"), { recursive: true });
-		writeFileSync(join(cwd, ".pibo/SYSTEM.md"), "legacy prompt");
+		const legacyPath = join(cwd, ".pibo/SYSTEM.md");
+		writeFileSync(legacyPath, "legacy prompt");
 
+		const initial = await readPiboBasePrompt(cwd);
+		assert.equal(initial.mode, "library");
+		assert.equal(initial.effectiveMode, "legacy");
+		assert.equal(initial.legacy.path, legacyPath);
+		assert.equal(initial.legacy.markdown, "legacy prompt");
+		assert.equal(initial.legacy.exists, true);
 		assert.equal(getActivePiboBasePromptPath(cwd), undefined);
+
+		const saved = await savePiboCustomBasePrompt("saved custom prompt", cwd);
+		assert.equal(saved.mode, "custom");
+		assert.equal(saved.effectiveMode, "legacy");
+		assert.equal(saved.custom.markdown, "saved custom prompt");
+		assert.equal(saved.legacy.markdown, "legacy prompt");
+		assert.equal(getActivePiboBasePromptPath(cwd), undefined);
+
+		const reloaded = await readPiboBasePrompt(cwd);
+		assert.equal(reloaded.mode, "custom");
+		assert.equal(reloaded.effectiveMode, "legacy");
+
+		rmSync(legacyPath);
+		const activated = await readPiboBasePrompt(cwd);
+		assert.equal(activated.effectiveMode, "custom");
+		assert.equal(getActivePiboBasePromptPath(cwd), activated.custom.path);
 	}));

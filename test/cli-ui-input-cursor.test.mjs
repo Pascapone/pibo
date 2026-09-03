@@ -21,7 +21,7 @@ async function hasPythonPtyDriver() {
 	return false;
 }
 
-async function runCursorScenario(name, editSteps, expected, rejected = []) {
+async function runCursorScenario(name, editSteps, expected, rejected = [], options = {}) {
 	const dir = await mkdtemp(join(tmpdir(), `pibo-cli-cursor-${name}-`));
 	const artifactDir = join(dir, "artifacts");
 	const scenarioPath = join(dir, "scenario.json");
@@ -34,7 +34,7 @@ async function runCursorScenario(name, editSteps, expected, rejected = []) {
 			cols: 100,
 			timeoutMs: 30_000,
 			idleTimeoutMs: 10_000,
-			inputDelayMs: 20,
+			inputDelayMs: options.inputDelayMs ?? 20,
 			artifact: true,
 			artifactDir,
 			env: { PIBO_HOME: join(dir, "home") },
@@ -45,7 +45,7 @@ async function runCursorScenario(name, editSteps, expected, rejected = []) {
 				{ press: "Enter" },
 				{ waitFor: "Opened session", timeoutMs: 10_000 },
 				...editSteps,
-				{ sleepMs: 200 },
+				...(options.beforeSubmitDelayMs === 0 ? [] : [{ sleepMs: options.beforeSubmitDelayMs ?? 200 }]),
 				{ press: "Enter" },
 				{ waitFor: expected === "Status — status" ? expected : "Message sent", timeoutMs: 10_000 },
 				{ sleepMs: 200 },
@@ -70,6 +70,12 @@ async function runCursorScenario(name, editSteps, expected, rejected = []) {
 		await rm(dir, { recursive: true, force: true });
 	}
 }
+
+test("rapid input followed by Enter submits the complete draft", { skip: !ptyAvailable }, async () => {
+	await runCursorScenario("rapid-submit", [
+		{ typeText: "quick submit" },
+	], "Message sent.", [], { inputDelayMs: 1, beforeSubmitDelayMs: 0 });
+});
 
 test("Left Arrow inserts a typo correction at the cursor", { skip: !ptyAvailable }, async () => {
 	await runCursorScenario("left", [
@@ -98,6 +104,12 @@ test("cursor movement treats a joined emoji as one grapheme", { skip: !ptyAvaila
 		{ writeBytes: "\u001b[C" },
 		{ typeText: "B" },
 	], "› A👩‍💻BC", ["› A👩‍💻CB", "�"]);
+});
+
+test("a leading d is preserved when an expandable transcript row exists", { skip: !ptyAvailable }, async () => {
+	await runCursorScenario("leading-d", [
+		{ typeText: "details probe" },
+	], "› details probe", ["› etails probe"]);
 });
 
 test("command correction and ordinary typing retain their modes", { skip: !ptyAvailable }, async () => {

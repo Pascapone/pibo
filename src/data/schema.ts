@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 export const PIBO_DATA_SCHEMA_VERSION = 7;
 
+const NATIVE_HISTORY_FALLBACK_SCHEMA_VERSION = 5;
 const retiredScopeColumn = ["owner", "scope"].join("_");
 
 type RetiredScopeTable = {
@@ -214,6 +215,13 @@ function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchem
 			high_water INTEGER NOT NULL CHECK(high_water >= 0),
 			updated_at TEXT NOT NULL,
 			FOREIGN KEY (pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS session_agent_observation_counters (
+			parent_pibo_session_id TEXT PRIMARY KEY,
+			next_sequence INTEGER NOT NULL CHECK(next_sequence >= 1),
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY (parent_pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
 
 		CREATE TABLE IF NOT EXISTS session_output_part_counters (
@@ -801,7 +809,7 @@ function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchem
 	hooks.afterStep?.("sequence-repair-backfill");
 	db.exec("DROP TABLE pibo_v7_sequence_repair_sessions");
 	hooks.afterStep?.("sequence-repair-cleanup");
-	if (previousVersion < PIBO_DATA_SCHEMA_VERSION && hadSessionsBeforeMigration) {
+	if (previousVersion < NATIVE_HISTORY_FALLBACK_SCHEMA_VERSION && hadSessionsBeforeMigration) {
 		const rows = db.prepare("SELECT pibo_session_id, metadata_json FROM session_runtime_bindings").all() as Array<{
 			pibo_session_id: string;
 			metadata_json: string;

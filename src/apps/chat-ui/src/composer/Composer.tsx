@@ -4,7 +4,7 @@ import { uploadChatFiles, type ChatUploadedFile } from "../api-chat-files";
 import { transcribeChatAudio } from "../api-transcription";
 import type { WebAnnotationMessageAttachment } from "../api-web-annotations";
 import { appendStoredComposerHistory, readStoredComposerHistory } from "../app-storage";
-import type { UploadedChatAttachment } from "../chat-upload-attachments";
+import { assertChatUploadCapacity, type UploadedChatAttachment } from "../chat-upload-attachments";
 import { copyTextToClipboard } from "../clipboard";
 import {
 	appendRecordingWaveformSample,
@@ -398,6 +398,12 @@ export function Composer({
 
 	const handleFileSelection = async (selectedFiles: readonly File[]) => {
 		if (!selectedFiles.length) return;
+		try {
+			assertChatUploadCapacity(selectedUploadAttachments.length, selectedFiles.length);
+		} catch (caught) {
+			setUploadStatus({ message: caught instanceof Error ? caught.message : String(caught), error: true });
+			return;
+		}
 		setUploading(true);
 		setUploadStatus({ message: `Uploading ${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"}...`, error: false });
 		try {
@@ -550,7 +556,7 @@ export function Composer({
 				}}
 			/>
 			{uploadStatus ? (
-				<div className={`mb-2 flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${uploadStatus.error ? "border-red-900 bg-red-950/40 text-red-200" : uploadStatus.copyText ? "border-green-900/60 bg-green-950/30 text-green-300" : "border-slate-700 bg-[#0e1116] text-slate-300"}`}>
+				<div role={uploadStatus.error ? "alert" : "status"} aria-live={uploadStatus.error ? "assertive" : "polite"} aria-atomic="true" className={`mb-2 flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${uploadStatus.error ? "border-red-900 bg-red-950/40 text-red-200" : uploadStatus.copyText ? "border-green-900/60 bg-green-950/30 text-green-300" : "border-slate-700 bg-[#0e1116] text-slate-300"}`}>
 					<span className="min-w-0 flex-1 truncate">{uploadStatus.message}</span>
 					{uploadStatus.copyText ? (
 						<button
@@ -575,7 +581,7 @@ export function Composer({
 				</div>
 			) : null}
 			{transcriptionStatus ? (
-				<div className={`mb-2 flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${transcriptionStatus.error ? "border-red-900 bg-red-950/40 text-red-200" : "border-slate-700 bg-[#0e1116] text-slate-300"}`} data-pibo-debug="composer-transcription-status">
+				<div role={transcriptionStatus.error ? "alert" : "status"} aria-live={transcriptionStatus.error ? "assertive" : "polite"} aria-atomic="true" className={`mb-2 flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${transcriptionStatus.error ? "border-red-900 bg-red-950/40 text-red-200" : "border-slate-700 bg-[#0e1116] text-slate-300"}`} data-pibo-debug="composer-transcription-status">
 					{transcribing && !transcriptionStatus.error ? <LoaderCircle size={13} className="shrink-0 animate-spin text-[#11a4d4]" /> : null}
 					<span className="min-w-0 flex-1 truncate">{transcriptionStatus.message}</span>
 					{transcriptionStatus.error ? (

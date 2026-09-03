@@ -17,6 +17,7 @@ import {
 	getDefaultMachineKeyStorePath,
 	importMachineKeyRecord,
 	listMachineKeys,
+	parseIsoTimestamp,
 	parseMachineKeyRecord,
 	revokeMachineKey,
 } from "./machine-keys.js";
@@ -148,10 +149,9 @@ function writePrivateNewFile(path: string, content: string): void {
 
 function parseExpiresAt(value: string | undefined): string | undefined {
 	if (value === undefined) return undefined;
-	const timestamp = Date.parse(value);
-	if (Number.isNaN(timestamp)) throw new Error("--expires-at must be an ISO timestamp");
-	if (timestamp <= Date.now()) throw new Error("--expires-at must be in the future");
-	return new Date(timestamp).toISOString();
+	const expiresAt = parseIsoTimestamp(value, "--expires-at");
+	if (Date.parse(expiresAt) <= Date.now()) throw new Error("--expires-at must be in the future");
+	return expiresAt;
 }
 
 export async function runAuthCli(argv = process.argv): Promise<void> {

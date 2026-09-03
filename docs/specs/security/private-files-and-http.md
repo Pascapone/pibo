@@ -7,19 +7,19 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T21:32:28Z"
+  at: "2026-09-03T09:44:17Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-SEC-002"
 implementation:
   state: "current"
-  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  baseline_commit: "3118eb35403a5f2037c97f7cf408572cc24c2b68"
   package: "WP-03-RESOURCES-SECURITY"
   source_evidence: "performed"
-  focused_test_execution: "performed in Docker: 1,071 affected tests passed; full suite 2,638 passed, 0 failed, 5 skipped"
+  focused_test_execution: "performed in Docker: redaction, Codex Native, portable-history, terminal, OMP, context-build, and MCP bridge suites passed; the full suite passed once, and a repeated run's known patchTraceViewWithEvent performance flake passed in isolation"
   build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "3118eb35403a5f2037c97f7cf408572cc24c2b68"
   requirements:
     - id: "SEC-FILE-001"
       status: "implemented"
@@ -143,22 +143,33 @@ traceability:
           symbol: "redactSensitiveText"
         - path: "src/core/sensitive-data-redaction.ts"
           symbol: "redactSensitiveValue"
+        - path: "src/agent-runtimes/codex-native/redaction.ts"
+          symbol: "redactCodexNativeSensitiveText"
+        - path: "src/agent-runtime/portable-history.ts"
+          symbol: "PiboDataPortableHistoryProvider"
+        - path: "src/session-ui/statusViewModel.ts"
+          symbol: "redactTerminalSecret"
+        - path: "src/agent-runtime/auth.ts"
+          symbol: "redactAgentRuntimeAuthText"
         - path: "src/mcp/runtime-session.ts"
           symbol: "redactMcpRuntimeError"
-        - path: "src/agent-runtime/resource-service.ts"
-          symbol: "redactResourceError"
       tests:
-        - path: "test/web-channel.test.mjs"
-          name: "workflow diagnostics are redacted and scoped to owning Project sessions"
+        - path: "test/sensitive-data-redaction.test.mjs"
+          name: "sensitive text redaction preserves ordinary Pibo identifiers and paths"
+        - path: "test/codex-native-turn.test.mjs"
+          name: "Codex native preserves ordinary Pibo identifiers in assistant streaming and completed messages"
+        - path: "test/runtime-portability.test.mjs"
+          name: "portable history is bounded, checkpointed, role-aware, and secret-redacted"
+        - path: "test/cli-ui-session-app.test.mjs"
+          name: "renderCliStatusCardText renders shared status bars and redacts secrets"
       public:
-        - "Private path and PIBO_HOME permission helpers"
-        - "shared HTTP JSON/same-origin/error helpers"
-        - "authorized upload, download, image preview, payload, and artifact file access"
-        - "Protects PIBO_HOME trees and validates upload/download/image/payload paths, JSON bodies, same-origin requests, and identified redaction sinks."
+        - "Central free-text and structured-value credential redaction policy"
+        - "Codex Native output, portable history, runtime auth diagnostics, MCP diagnostics, and shared terminal rendering"
       failures:
-        - "Implemented path, body, origin, file-type, and identified redaction checks fail closed where their route applies; authenticated downloads and universal redaction coverage retain the documented boundaries."
-        - "Identified redaction sinks remove known secret values from their outputs; universal config, log, trace, and error sink coverage is unproven."
-      confidence: "medium"
+        - "Known credential formats, bearer values, JWT-shaped values, named secret assignments, and structured secret fields are replaced before identified sinks persist or render them."
+        - "Ordinary Pibo product identifiers and paths are not credential formats and must remain unchanged."
+        - "Redaction remains best-effort at identified callers; universal config, log, trace, and error coverage is not claimed."
+      confidence: "high"
 verification:
   required_evidence_classes:
     - "source inspection"
@@ -168,13 +179,13 @@ verification:
   performed:
     - evidence_class: "source inspection"
       status: "performed"
-      detail: "Exact source files, symbols, test files, and test names were reconciled to upstream/dev refresh commit 39090b8850758293e69380a52bb7498d7c955bc2."
+      detail: "Exact source files, symbols, test files, and test names were reconciled to topic implementation commit 3118eb35403a5f2037c97f7cf408572cc24c2b68."
     - evidence_class: "focused tests"
       status: "performed"
-      detail: "The affected-test selection passed 1,071 tests in the isolated worker. The clean full suite passed 2,638 tests with 0 failures and 5 skips."
+      detail: "Focused redaction, Codex Native, portable-history, terminal, OMP, context-build, and MCP bridge suites passed in the isolated Docker worker. The full suite passed once. A repeated full-suite run hit only the known patchTraceViewWithEvent performance threshold flake, which passed immediately in isolation."
     - evidence_class: "build/package checks"
       status: "performed"
-      detail: "npm run typecheck and npm run build passed; build emitted existing Vite chunk-size warnings only."
+      detail: "npm run typecheck and npm run build passed."
   unperformed:
     - evidence_class: "local real-path/PTY/headful browser validation"
       status: "unperformed"
@@ -212,7 +223,7 @@ This specification records current behavior only. It does not authorize unimplem
 
 # Current behavior and public surfaces
 
-The implementation state is current at the exact accepted upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`.
+The implementation state is current at the exact accepted upstream/dev refresh traceability commit `3118eb35403a5f2037c97f7cf408572cc24c2b68`.
 
 Implemented behavior:
 - "Private path and PIBO_HOME permission helpers"
@@ -248,7 +259,7 @@ Persistence and lifecycle state: Private directories/files and bounded upload/ar
 
 Create and tighten Pibo Home, private product directories, and private files with platform-appropriate protections, rejecting an invalid file-at-directory path.
 
-**Implementation state:** `implemented_at_baseline; direct Windows evidence required` at `39090b8850758293e69380a52bb7498d7c955bc2`.
+**Implementation state:** `implemented_at_baseline; direct Windows evidence required` at `3118eb35403a5f2037c97f7cf408572cc24c2b68`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -275,7 +286,7 @@ Create and tighten Pibo Home, private product directories, and private files wit
 
 Apply route-specific file authorization: private sanitized/exclusive uploads; root-bounded, realpath/no-follow, inode-checked and MIME/size-bounded image previews; and authenticated regular-file downloads resolved from absolute or workspace-relative paths without falsely claiming a download root sandbox.
 
-**Implementation state:** `implemented_at_baseline_with_intentional_download_breadth` at `39090b8850758293e69380a52bb7498d7c955bc2`.
+**Implementation state:** `implemented_at_baseline_with_intentional_download_breadth` at `3118eb35403a5f2037c97f7cf408572cc24c2b68`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -302,7 +313,7 @@ Apply route-specific file authorization: private sanitized/exclusive uploads; ro
 
 Reject oversized host request bodies, reject invalid/non-object JSON, and require expected content type plus exact canonical same-origin evidence for mutating product routes; leave canonical URL translation and route mounting to GW-003.
 
-**Implementation state:** `implemented_at_baseline_with_GW_003_mechanics` at `39090b8850758293e69380a52bb7498d7c955bc2`.
+**Implementation state:** `implemented_at_baseline_with_GW_003_mechanics` at `3118eb35403a5f2037c97f7cf408572cc24c2b68`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -327,24 +338,45 @@ Reject oversized host request bodies, reject invalid/non-object JSON, and requir
 **Acceptance boundary:** The named source and test records are exact regular-file evidence records. Their presence does not mean the named test ran in this package execution.
 
 
-## Requirement: SEC-FILE-004: Provide bounded recursive sensitive-value redaction and apply it at identified resource/runtime diagnostic sinks; require each owning subsystem to prove adoption instead of asserting universal log/trace/config/error redaction
+## Requirement: SEC-FILE-004: Narrow credential redaction protects identified output sinks without treating product identifiers as secrets
 
-Provide bounded recursive sensitive-value redaction and apply it at identified resource/runtime diagnostic sinks; require each owning subsystem to prove adoption instead of asserting universal log/trace/config/error redaction.
+Pibo MUST retain best-effort free-text redaction at identified runtime, portable-history, diagnostic, and terminal sinks because providers and tools can echo credentials into ordinary output. The shared policy MUST match only strong credential signals: bearer values, documented credential prefixes with bounded minimum lengths, JWT-shaped values, named secret assignments, and structured fields whose keys identify secrets.
 
-**Implementation state:** `helper_implemented; sink-coverage evidence gap` at `39090b8850758293e69380a52bb7498d7c955bc2`.
+Ordinary product names, command arguments, and paths MUST remain unchanged. In particular, `pibo-v2-github-flow`, `pibo-docker-system`, `pibo-docker-dev`, `pibo-debug-auth`, and paths containing those components are not credentials. `pibo` MUST NOT be a credential prefix.
 
-**Confidence:** `medium`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
+The identified sinks redact before Pibo persistence or rendering. This deliberately prevents likely credentials from becoming canonical product data. Pibo does not retain a parallel raw copy in Product History. Harness-native history may retain source text under its own protection, but callers MUST NOT depend on that as a recovery channel.
+
+Redaction helpers and adapters MUST use the shared text policy instead of maintaining independent credential-prefix expressions. Sink-specific code may add narrower protection for private paths, account identities, or explicitly supplied secret values.
+
+**Implementation state:** `implemented_with_narrow_shared_policy; universal sink coverage not claimed` at `3118eb35403a5f2037c97f7cf408572cc24c2b68`.
+
+**Confidence:** `high`. Confidence describes source/test trace quality, not universal sink coverage.
 
 **Source traceability:**
-- `src/core/sensitive-data-redaction.ts` — `redactSensitiveText`
-- `src/core/sensitive-data-redaction.ts` — `redactSensitiveValue`
+- `src/core/sensitive-data-redaction.ts` — `redactSensitiveText`, `redactSensitiveValue`
+- `src/agent-runtimes/codex-native/redaction.ts` — `redactCodexNativeSensitiveText`, `redactCodexNativeValue`
+- `src/agent-runtime/portable-history.ts` — `PiboDataPortableHistoryProvider`
+- `src/session-ui/statusViewModel.ts` — `redactTerminalSecret`
+- `src/agent-runtime/auth.ts` — `redactAgentRuntimeAuthText`
 - `src/mcp/runtime-session.ts` — `redactMcpRuntimeError`
-- `src/agent-runtime/resource-service.ts` — `redactResourceError`
 
 **Named test traceability:**
-- `test/web-channel.test.mjs` — `workflow diagnostics are redacted and scoped to owning Project sessions`
+- `test/sensitive-data-redaction.test.mjs` — `sensitive text redaction preserves ordinary Pibo identifiers and paths`
+- `test/codex-native-turn.test.mjs` — `Codex native preserves ordinary Pibo identifiers in assistant streaming and completed messages`
+- `test/runtime-portability.test.mjs` — `portable history is bounded, checkpointed, role-aware, and secret-redacted`
+- `test/cli-ui-session-app.test.mjs` — `renderCliStatusCardText renders shared status bars and redacts secrets`
 
-**Acceptance boundary:** The named source and test records are exact regular-file evidence records. Their presence does not mean the named test ran in this package execution.
+**Scenario: Ordinary product output survives**
+- GIVEN an assistant message, tool argument or result, portable-history entry, or terminal field contains an ordinary `pibo-*` identifier or path
+- WHEN an identified sink applies the shared redaction policy
+- THEN the identifier or path remains unchanged
+
+**Scenario: Strong credential evidence is removed**
+- GIVEN text contains a bearer value, documented credential token, JWT-shaped value, or named secret assignment, or a structured object contains a secret-keyed field
+- WHEN an identified sink applies the shared redaction policy
+- THEN the likely credential value is replaced before persistence or rendering
+
+**Acceptance boundary:** The implementation proves the shared helper and named adopters. It does not claim universal redaction across every config, log, trace, or error sink.
 
 
 # Interfaces and ownership
@@ -352,13 +384,18 @@ Provide bounded recursive sensitive-value redaction and apply it at identified r
 Capability IDs: "pibo.security.files-http".
 
 Exact source files inspected for this owner:
+- "src/agent-runtime/auth.ts"
+- "src/agent-runtime/portable-history.ts"
 - "src/agent-runtime/resource-service.ts"
+- "src/agent-runtimes/codex-native/redaction.ts"
+- "src/agent-runtimes/omp/client.ts"
 - "src/apps/chat/chat-files.ts"
 - "src/apps/chat/web-app.ts"
 - "src/core/pibo-home.ts"
 - "src/core/private-path.ts"
 - "src/core/sensitive-data-redaction.ts"
 - "src/mcp/runtime-session.ts"
+- "src/session-ui/statusViewModel.ts"
 - "src/web/channel.ts"
 - "src/web/http.ts"
 
@@ -371,13 +408,14 @@ The security policy/mechanics split is explicit: this specification defines the 
 # Failure, security, privacy, and compatibility behavior
 
 - "Implemented path, body, origin, file-type, and identified redaction checks fail closed where their route applies; authenticated downloads and universal redaction coverage retain the documented boundaries."
-- "Identified redaction sinks remove known secret values from their outputs; universal config, log, trace, and error sink coverage is unproven."
+- "Identified redaction sinks remove likely credentials while preserving ordinary Pibo identifiers and paths; universal config, log, trace, and error sink coverage is unproven."
 
 Compatibility and privacy limits:
 - "Image preview traversal, root escape, unsupported active formats, oversize decoded bytes, symlink swaps, and opened-file identity changes fail."
 - "Same-origin validation compares Origin with the canonical request URL origin; reverse-proxy/channel mechanics belong to GW-003."
 - "The download route is a trusted authenticated local-operator feature, not a workspace-only sandbox; specifications must not claim traversal/root escape rejection for downloads."
 - "Redaction is best-effort at callers that invoke the helper; do not claim every log, trace, config, or error sink is automatically sanitized."
+- "The false-positive budget excludes generic product prefixes and public identifiers; `pibo-*` and generic `pk-*` text remain visible unless a separate strong signal marks the containing value as sensitive."
 
 # Known limits and rejected stale claims
 
@@ -394,10 +432,10 @@ Open evidence gaps carried forward:
 
 # Verification and traceability
 
-All requirement traceability records use exact repository-relative regular files at `39090b8850758293e69380a52bb7498d7c955bc2`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `39090b8850758293e69380a52bb7498d7c955bc2`.
+All requirement traceability records use exact repository-relative regular files at `3118eb35403a5f2037c97f7cf408572cc24c2b68`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `3118eb35403a5f2037c97f7cf408572cc24c2b68`.
 
 Performed evidence:
-- Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
+- Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the topic implementation commit were checked.
 
 Additional evidence boundaries:
 - No browser, real provider, external MCP, real Pi package, Windows ACL/auth-recovery, real-host/systemd/pressure/restart, or Pibo2 evidence is claimed.

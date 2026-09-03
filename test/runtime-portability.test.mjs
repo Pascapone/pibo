@@ -85,7 +85,7 @@ function ingestConversation(store, session) {
 			eventId: "portable-turn-1",
 			toolCallId: "sk-tool-call-secret-12345678",
 			toolName: "lookup",
-			args: { query: "alpha", apiKey: "sk-tool-secret-12345678" },
+			args: { query: "alpha pibo-docker-system", apiKey: "sk-tool-secret-12345678" },
 			argsComplete: true,
 		},
 	});
@@ -100,7 +100,7 @@ function ingestConversation(store, session) {
 			eventId: "portable-turn-1",
 			toolCallId: "sk-tool-call-secret-12345678",
 			toolName: "lookup",
-			result: { answer: "alpha", Authorization: "Bearer portable-result-secret" },
+			result: { answer: "/tmp/pibo-stream-render-determinism-v2", Authorization: "Bearer portable-result-secret" },
 			isError: false,
 		},
 	});
@@ -114,7 +114,7 @@ function ingestConversation(store, session) {
 			piboSessionId: session.id,
 			eventId: "portable-turn-1",
 			assistantIndex: 0,
-			text: "Alpha is remembered.",
+			text: "Alpha is remembered by pibo-v2-github-flow and pibo-debug-auth.",
 		},
 	});
 	store.eventLog.appendEvent({
@@ -226,6 +226,10 @@ test("portable history is bounded, checkpointed, role-aware, and secret-redacted
 	assert.equal(history.checkpoint.maxSessionSequence, 6);
 	assert.match(serialized, /Remember alpha/);
 	assert.match(serialized, /Alpha is remembered/);
+	assert.match(serialized, /pibo-v2-github-flow/);
+	assert.match(serialized, /pibo-docker-system/);
+	assert.match(serialized, /pibo-debug-auth/);
+	assert.match(serialized, /\/tmp\/pibo-stream-render-determinism-v2/);
 	assert.doesNotMatch(serialized, /after the handoff checkpoint/);
 	assert.doesNotMatch(serialized, /sk-portable-secret|sk-tool-secret|sk-tool-call-secret|portable-result-secret/);
 	assert.match(serialized, /\[redacted\]/);
@@ -275,6 +279,50 @@ test("portable history is bounded, checkpointed, role-aware, and secret-redacted
 	assert.equal(orphan?.type, "message");
 	assert.equal(orphan?.role, "user", "orphan tool results must not produce invalid native tool history");
 	assert.equal(orphan?.toolCallId, undefined);
+});
+
+test("portable history retains a contiguous most-recent suffix", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-portable-history-suffix-"));
+	const store = new PiboDataStore(":memory:", { payloadRootDir: join(root, "payloads") });
+	t.after(async () => {
+		store.close();
+		await rm(root, { recursive: true, force: true });
+	});
+	const session = sessionRecord("ps_portable_history_suffix");
+	const ingest = new ChatDataIngestService(store);
+	const messages = [
+		["OLD_SMALL", 1_000, "o"],
+		["NEWER_SKIPPED", 200_000, "m"],
+		["LATEST_1", 230_000, "a"],
+		["LATEST_2", 230_000, "b"],
+		["LATEST_3", 230_000, "c"],
+		["LATEST_4", 230_000, "d"],
+	];
+	for (const [index, [label, bytes, fill]] of messages.entries()) {
+		ingest.ingestOutputEvent({
+			session,
+			roomId: session.metadata.chatRoomId,
+			actorId: "agent:test",
+			createdAt: `2026-08-30T00:00:0${index + 1}.000Z`,
+			event: {
+				type: "assistant_message",
+				piboSessionId: session.id,
+				eventId: `turn-${index + 1}`,
+				assistantIndex: 0,
+				text: `${label}|${fill.repeat(bytes)}`,
+			},
+		});
+	}
+	const provider = new PiboDataPortableHistoryProvider(store);
+	const checkpoint = provider.createCheckpoint(session.id);
+	const history = provider.read({ piboSession: session, sourceBinding: session.runtimeBinding, checkpoint });
+	const labels = history.entries.flatMap((entry) => {
+		if (entry.type !== "message" || typeof entry.content !== "string") return [];
+		return messages.map(([label]) => label).filter((label) => entry.content.startsWith(`${label}|`));
+	});
+	assert.deepEqual(labels, ["LATEST_1", "LATEST_2", "LATEST_3", "LATEST_4"]);
+	assert.equal(history.omittedEntries, 2);
+	assert.match(history.entries.find((entry) => entry.id === "portable:bounded-fallback")?.content ?? "", /older portable history entries? (?:was|were) omitted/);
 });
 
 test("portable history scopes provider-local tool ids by turn across SQLite restart", async (t) => {

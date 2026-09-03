@@ -53,6 +53,28 @@ test('cron store validates required job fields before persisting', () => {
   }
 });
 
+test('cron store refuses to enable an expired one-shot schedule', () => {
+  const store = createStore();
+  try {
+    const job = store.createJob(baseJobInput({
+      enabled: false,
+      schedule: { kind: 'at', at: '2026-09-02T08:00:00.000Z' },
+    }), new Date('2026-09-02T07:30:00.000Z'));
+    assert.equal(job.enabled, false);
+    assert.equal(job.state.nextRunAt, undefined);
+
+    assert.throws(
+      () => store.updateJob(job.id, { enabled: true }, new Date('2026-09-03T08:00:00.000Z')),
+      /schedule has no future run/,
+    );
+    const unchanged = store.getJob(job.id);
+    assert.equal(unchanged.enabled, false);
+    assert.equal(unchanged.state.nextRunAt, undefined);
+  } finally {
+    store.close();
+  }
+});
+
 test('cron store completes recurring runs and schedules the next tick', () => {
   const store = createStore();
   try {

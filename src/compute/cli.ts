@@ -36,10 +36,14 @@ function printJson(value: unknown): void {
 	console.log(JSON.stringify(value, null, 2));
 }
 
-function parsePositiveIntegerOption(value: string | undefined): number | undefined {
-	if (value === undefined || value.trim() === "") return undefined;
-	const parsed = Number(value);
-	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+function positiveIntegerOption(optionName: string): (value: string) => number {
+	return (value) => {
+		const parsed = Number(value);
+		if (value.trim() === "" || !Number.isInteger(parsed) || parsed <= 0) {
+			throw new InvalidArgumentError(`${optionName} must be a positive integer`);
+		}
+		return parsed;
+	};
 }
 
 function parseNonNegativeNumber(value: string): number {
@@ -255,8 +259,8 @@ Next:
 		.description("Create a one-time worker from the current Docker image")
 		.option("--name <name>", "Set the container name")
 		.option("--holder <holder>", "Tag the container holder")
-		.option("--ttl-seconds <n>", "Tag the worker TTL in seconds")
-		.option("--idle-seconds <n>", "Tag the worker idle retention in seconds")
+		.option("--ttl-seconds <n>", "Tag the worker TTL in seconds", positiveIntegerOption("--ttl-seconds"))
+		.option("--idle-seconds <n>", "Tag the worker idle retention in seconds", positiveIntegerOption("--idle-seconds"))
 		.option("--ralph-job-id <id>", "Tag the Ralph job id when this worker is Ralph-owned")
 		.option("--ralph-run-id <id>", "Tag the Ralph run id when this worker is Ralph-owned")
 		.addHelpText(
@@ -272,7 +276,7 @@ Environment:
   PIBO_COMPUTE_WORKSPACE   Use an explicit workspace or source checkout.
 `,
 		)
-		.action(async (options: { name?: string; holder?: string; ttlSeconds?: string; idleSeconds?: string; ralphJobId?: string; ralphRunId?: string }) => {
+		.action(async (options: { name?: string; holder?: string; ttlSeconds?: number; idleSeconds?: number; ralphJobId?: string; ralphRunId?: string }) => {
 			await mkdir(path.dirname(HASH_FILE), { recursive: true });
 			const image = computeImageBuildConfig();
 
@@ -289,8 +293,8 @@ Environment:
 				imageName: image.imageName,
 				name: options.name,
 				holder: options.holder,
-				ttlSeconds: parsePositiveIntegerOption(options.ttlSeconds),
-				idleSeconds: parsePositiveIntegerOption(options.idleSeconds),
+				ttlSeconds: options.ttlSeconds,
+				idleSeconds: options.idleSeconds,
 				ralphJobId: options.ralphJobId,
 				ralphRunId: options.ralphRunId,
 			});
@@ -318,8 +322,8 @@ Next:
 		.requiredOption("--worktree <name>", "Name the Git worktree and branch")
 		.option("--repo <path>", "Use this repository", WORKSPACE_DIR)
 		.option("--holder <holder>", "Tag the container holder")
-		.option("--ttl-seconds <n>", "Tag the worker TTL in seconds")
-		.option("--idle-seconds <n>", "Tag the worker idle retention in seconds")
+		.option("--ttl-seconds <n>", "Tag the worker TTL in seconds", positiveIntegerOption("--ttl-seconds"))
+		.option("--idle-seconds <n>", "Tag the worker idle retention in seconds", positiveIntegerOption("--idle-seconds"))
 		.option("--ralph-job-id <id>", "Tag the Ralph job id when this worker is Ralph-owned")
 		.option("--ralph-run-id <id>", "Tag the Ralph run id when this worker is Ralph-owned")
 		.addHelpText(
@@ -331,7 +335,7 @@ Example:
   $ pibo compute dev spawn --worktree my-fix
 `,
 		)
-		.action(async (options: { worktree: string; repo: string; holder?: string; ttlSeconds?: string; idleSeconds?: string; ralphJobId?: string; ralphRunId?: string }) => {
+		.action(async (options: { worktree: string; repo: string; holder?: string; ttlSeconds?: number; idleSeconds?: number; ralphJobId?: string; ralphRunId?: string }) => {
 			await mkdir(path.dirname(DEP_HASH_FILE), { recursive: true });
 			const image = resolveComputeImageBuildConfig(options.repo, { packageRoot: options.repo });
 
@@ -353,8 +357,8 @@ Example:
 				worktreeName: options.worktree,
 				imageName: image.imageName,
 				holder: options.holder,
-				ttlSeconds: parsePositiveIntegerOption(options.ttlSeconds),
-				idleSeconds: parsePositiveIntegerOption(options.idleSeconds),
+				ttlSeconds: options.ttlSeconds,
+				idleSeconds: options.idleSeconds,
 				ralphJobId: options.ralphJobId,
 				ralphRunId: options.ralphRunId,
 			});

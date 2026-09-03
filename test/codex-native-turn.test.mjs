@@ -187,6 +187,19 @@ test("Codex native normalizes assistant, reasoning, usage, terminal ordering, an
 	await resumed.dispose();
 });
 
+test("Codex native preserves ordinary Pibo identifiers in assistant streaming and completed messages", async (t) => {
+	const root = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "identifier-preservation");
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "[identifier-preservation] report product artifacts", source: "rpc" });
+
+	const expected = "pibo-v2-github-flow pibo-docker-system pibo-docker-dev pibo-debug-auth /tmp/pibo-stream-render-determinism-v2";
+	assert.equal(events.filter((event) => event.type === "assistant_delta").map((event) => event.text).join(""), expected);
+	assert.deepEqual(events.filter((event) => event.type === "assistant_message").map((event) => event.text), [expected]);
+	await session.dispose();
+});
+
 test("Codex native imports portable history with thread/inject_items before the first prompt", async (t) => {
 	const root = await testRoot(t);
 	const { registry, instanceId } = createAdapter(root, "codex-native-history-import");
@@ -292,7 +305,9 @@ test("Codex native maps native command, file, and MCP item lifecycles with bound
 	assert.deepEqual(session.getStatus().enabledTools, ["codex_command", "codex_file_change", "native-server/lookup"]);
 	assert.equal(Object.hasOwn(calls[0].args, "cwd"), false);
 	assert.equal(calls[2].args.arguments.apiKey, "[redacted]");
+	assert.equal(calls[2].args.arguments.query, "pibo-docker-system");
 	assert.equal(finishes[2].result.result.accessToken, "[redacted]");
+	assert.equal(finishes[2].result.result.content, "/tmp/pibo-stream-render-determinism-v2");
 	assert.doesNotMatch(JSON.stringify(events), /sk-fixture-secret|fixture-token/);
 	await session.dispose();
 });

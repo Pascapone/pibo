@@ -186,7 +186,7 @@ export class PiboCronStore {
 			runningAt: existing.state.runningAt,
 			nextRunAt: next.enabled ? computeNextRunAt(next.schedule, now)?.toISOString() : undefined,
 		};
-		if (next.enabled && !next.state.nextRunAt && next.schedule.kind !== "at") throw new Error("schedule has no future run");
+		if (next.enabled && !next.state.nextRunAt) throw new Error("schedule has no future run");
 		this.writeJob(next);
 		return this.getJob(id);
 	}

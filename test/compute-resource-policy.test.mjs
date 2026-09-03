@@ -39,6 +39,7 @@ import {
 	parseDockerWorkerInspect,
 	parseDockerWorkerListLine,
 	resolveComputeWorkerLifecycle,
+	spawnDevWorker,
 } from '../dist/compute/docker.js';
 import { renderComputeDiskDiagnosticsText, renderComputeReapPlanText, renderComputeResourceHealthText, renderComputeWorkerListText } from '../dist/compute/cli.js';
 import { buildComputeResourceHealth, parseDockerContainerIdFromCgroup, parseProcessList } from '../dist/compute/resource-health.js';
@@ -155,6 +156,7 @@ test('one-time worker docker run args include resource policy and inspectable la
 	assert.ok(runLabels.includes('pibo.compute.port.cdp=56663'));
 	assert.ok(runLabels.includes(`${LABEL_TTL_SECONDS}=7200`));
 	assert.ok(runLabels.includes(`${LABEL_IDLE_SECONDS}=1800`));
+	assert.ok(runLabels.includes(`${LABEL_LAST_USED_AT}=2026-05-17T00:00:00.000Z`));
 	assert.ok(runLabels.includes(`${LABEL_RALPH_JOB_ID}=ralph-job-1`));
 	assert.ok(runLabels.includes(`${LABEL_RALPH_RUN_ID}=rrun-1`));
 	assert.ok(runLabels.includes(`${COMPUTE_RESOURCE_POLICY_LABELS.memory}=3g`));
@@ -194,6 +196,8 @@ test('compute list parsing exposes Ralph metadata from Docker labels', () => {
 			'pibo.compute.worktree=ralph-test',
 			'pibo.compute.worktreePath=/repo/.worktrees/ralph-test',
 			`${LABEL_LAST_USED_AT}=2026-05-17T00:10:00.000Z`,
+			`${LABEL_TTL_SECONDS}=3600`,
+			`${LABEL_IDLE_SECONDS}=1800`,
 			'pibo.ralph.jobId=ralph_job_1',
 			'pibo.ralph.runId=rrun_1',
 			`${COMPUTE_RESOURCE_POLICY_LABELS.memory}=2g`,
@@ -210,6 +214,8 @@ test('compute list parsing exposes Ralph metadata from Docker labels', () => {
 	assert.equal(worker.ports, '0.0.0.0:4830->4789/tcp');
 	assert.equal(worker.createdAt, '2026-05-17T00:00:00.000Z');
 	assert.equal(worker.lastUsedAt, '2026-05-17T00:10:00.000Z');
+	assert.equal(worker.ttlSeconds, 3600);
+	assert.equal(worker.idleSeconds, 1800);
 	assert.equal(worker.holder, 'user:test');
 	assert.equal(worker.worktree, 'ralph-test');
 	assert.equal(worker.worktreePath, '/repo/.worktrees/ralph-test');
@@ -319,6 +325,41 @@ test('compute reap dry-run plans selected and skipped workers with worktree pres
 	assert.match(text, /Apply equivalent plan with: pibo compute reap --apply --max-age-minutes 59/);
 	assert.match(text, /Review equivalent dry-run with: pibo compute reap --dry-run --max-age-minutes 59/);
 	assert.match(text, /Worktrees are preserved/);
+});
+
+test('compute reap enforces per-worker TTL and idle retention before the global age limit', () => {
+	const plan = buildComputeWorkerReapPlan([
+		workerFixture('pibo-dev-retention-expired', {
+			Created: '2026-05-17T00:56:00.000Z',
+			Labels: {
+				'pibo.compute.role': 'dev',
+				[LABEL_TTL_SECONDS]: '1',
+				[LABEL_IDLE_SECONDS]: '1',
+			},
+			State: { Status: 'running', Running: true, OOMKilled: false, Dead: false, ExitCode: 0 },
+		}),
+		workerFixture('pibo-worker-recently-used', {
+			Created: '2026-05-17T00:00:00.000Z',
+			Labels: {
+				[LABEL_TTL_SECONDS]: '7200',
+				[LABEL_IDLE_SECONDS]: '60',
+				[LABEL_LAST_USED_AT]: '2026-05-17T00:59:30.000Z',
+			},
+			State: { Status: 'running', Running: true, OOMKilled: false, Dead: false, ExitCode: 0 },
+		}),
+	], { includeDev: true, now: new Date('2026-05-17T01:00:00.000Z'), maxAgeMinutes: 60 });
+
+	const expired = plan.items.find((item) => item.worker.name === 'pibo-dev-retention-expired');
+	assert.equal(expired.action, 'remove');
+	assert.deepEqual(expired.reasons, ['ttl-expired', 'idle-expired']);
+	assert.deepEqual(expired.skipReasons, []);
+	assert.equal(expired.worker.ttlSeconds, 1);
+	assert.equal(expired.worker.idleSeconds, 1);
+
+	const retained = plan.items.find((item) => item.worker.name === 'pibo-worker-recently-used');
+	assert.equal(retained.action, 'skip');
+	assert.deepEqual(retained.reasons, []);
+	assert.deepEqual(retained.skipReasons, ['not-selected']);
 });
 
 test('compute reap include-dev, dirty, and max-age selectors choose expected containers', () => {
@@ -480,6 +521,42 @@ test('limited worker smoke script skips clearly when Docker is unavailable or ap
 	assert.match(stdout, /Next: npm run --silent dev -- compute spawn/);
 });
 
+test('dev worker spawn rejects Docker-unsafe names before creating Git resources', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'pibo-dev-name-validation-'));
+	try {
+		await execFileAsync('git', ['init', '--initial-branch=dev', root]);
+		await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: root });
+		await execFileAsync('git', ['config', 'user.name', 'Pibo Test'], { cwd: root });
+		await writeFile(join(root, 'README.md'), 'fixture\n');
+		await execFileAsync('git', ['add', 'README.md'], { cwd: root });
+		await execFileAsync('git', ['commit', '-m', 'fixture'], { cwd: root });
+
+		await assert.rejects(
+			spawnDevWorker({ repoDir: root, worktreeName: 'repro@invalid-docker-name' }),
+			/Dev worktree name must use only letters, numbers, dots, underscores, and hyphens/,
+		);
+		await assert.rejects(readFile(join(root, '.worktrees', 'repro@invalid-docker-name')), { code: 'ENOENT' });
+		const worktrees = await execFileAsync('git', ['worktree', 'list', '--porcelain'], { cwd: root });
+		assert.doesNotMatch(worktrees.stdout, /repro@invalid-docker-name/);
+		await assert.rejects(execFileAsync('git', ['show-ref', '--verify', 'refs/heads/repro@invalid-docker-name'], { cwd: root }));
+
+		const binDir = join(root, 'bin');
+		await mkdir(binDir);
+		await writeFile(join(binDir, 'docker'), '#!/bin/sh\ncase "$1" in\n  ps) exit 0;;\n  run) echo "simulated docker run failure" >&2; exit 125;;\nesac\n');
+		await chmod(join(binDir, 'docker'), 0o755);
+		const child = await execFileAsync(process.execPath, [
+			new URL('./fixtures/compute-dev-spawn-child.mjs', import.meta.url).pathname,
+			root,
+			'valid-failed-spawn',
+		], { env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ''}` } });
+		assert.equal(JSON.parse(child.stdout).ok, false);
+		await assert.rejects(readFile(join(root, '.worktrees', 'valid-failed-spawn')), { code: 'ENOENT' });
+		await assert.rejects(execFileAsync('git', ['show-ref', '--verify', '--quiet', 'refs/heads/valid-failed-spawn'], { cwd: root }));
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test('dev worker docker run args expose the built worktree CLI with resource and metadata bounds', () => {
 	const args = buildDevWorkerDockerRunArgs({
 		id: 'pibo-dev-policy',
@@ -533,6 +610,7 @@ test('dev worker docker run args expose the built worktree CLI with resource and
 	assert.ok(runLabels.includes('pibo.compute.port.chatUi=4873'));
 	assert.ok(runLabels.includes(`${LABEL_TTL_SECONDS}=5400`));
 	assert.ok(runLabels.includes(`${LABEL_IDLE_SECONDS}=2700`));
+	assert.ok(runLabels.includes(`${LABEL_LAST_USED_AT}=2026-05-17T00:00:00.000Z`));
 	assert.ok(runLabels.includes(`${LABEL_RALPH_JOB_ID}=ralph-job-2`));
 	assert.ok(runLabels.includes(`${LABEL_RALPH_RUN_ID}=rrun-2`));
 	assert.ok(runLabels.includes(`${COMPUTE_RESOURCE_POLICY_LABELS.memory}=3g`));

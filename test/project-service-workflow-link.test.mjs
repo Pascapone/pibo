@@ -466,6 +466,126 @@ test("project workflow start creates one run per configured session", () => {
 	}
 });
 
+test("expiring workflow wait tokens preserves actionable waits and fails orphaned waiting runs", () => {
+	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-workflow-expiry-"));
+	const databasePath = join(tempRoot, "web-projects.sqlite");
+	let service = new ChatProjectService(databasePath);
+
+	try {
+		const project = service.createProject({
+			name: "Workflow Expiry Project",
+			projectFolder: join(tempRoot, "project"),
+			createFolder: true,
+		});
+		service.addProjectSession({
+			projectId: project.id,
+			piboSessionId: "ps_expiry_workflow",
+			kind: "main",
+			workflowId: "standard-project",
+			workflowVersion: "1.0.0",
+			state: "configured",
+		});
+		const snapshot = {
+			id: "wfs_expiry",
+			schemaVersion: 1,
+			createdAt: "2026-01-01T00:00:00.000Z",
+			createdBy: "user-1",
+			projectId: project.id,
+			piboSessionId: "ps_expiry_workflow",
+			workflow: {
+				id: "standard-project",
+				version: "1.0.0",
+				source: "code",
+				title: "Standard Project",
+				tags: ["project"],
+				baseDefinitionHash: "sha256:base",
+				effectiveDefinitionHash: "sha256:effective",
+			},
+			baseDefinition: { id: "standard-project", version: "1.0.0", nodes: {} },
+			effectiveDefinition: { id: "standard-project", version: "1.0.0", nodes: {} },
+			inputValues: {},
+			promptOverrides: {},
+			overridePolicy: {
+				promptEligibility: "metadata.sessionOverrides.prompt===true-and-direct-promptTemplate",
+				eligiblePromptNodeIds: [],
+				modelScope: "workflow",
+				thinkingLevelScope: "workflow",
+				fastModeScope: "workflow",
+			},
+			promptAssetPins: [],
+			validation: { trigger: "before_project_session_creation", ok: true, validatedAt: "2026-01-01T00:00:00.000Z" },
+			deletedDefinitionFallback: {
+				workflowId: "standard-project",
+				workflowVersion: "1.0.0",
+				effectiveDefinitionHash: "sha256:effective",
+			},
+		};
+		service.saveWorkflowSessionSnapshot(snapshot);
+		service.startWorkflowSessionRun({
+			projectId: project.id,
+			piboSessionId: "ps_expiry_workflow",
+			runId: "wfr_expiry",
+			workflowId: "standard-project",
+			workflowVersion: "1.0.0",
+			snapshotId: snapshot.id,
+			effectiveDefinitionHash: snapshot.workflow.effectiveDefinitionHash,
+			current: { status: "running" },
+			inputValues: {},
+		});
+		const token = (id, expiresAt) => ({
+			id,
+			projectId: project.id,
+			piboSessionId: "ps_expiry_workflow",
+			workflowRunId: "wfr_expiry",
+			actions: [{ id: "fixture.humanActions.approve", kind: "approve" }],
+			prompt: `Review ${id}`,
+			status: "pending",
+			createdAt: "2026-01-01T00:00:00.000Z",
+			expiresAt,
+		});
+		service.saveProjectWorkflowWaitToken(token("wwt_expired", "2026-02-01T00:00:00.000Z"));
+		service.saveProjectWorkflowWaitToken(token("wwt_also_expired", "2026-03-01T00:00:00.000Z"));
+		service.saveProjectWorkflowWaitToken(token("wwt_live", "2099-01-01T00:00:00.000Z"));
+
+		assert.throws(() => service.resolveProjectWorkflowHumanAction({
+			projectId: project.id,
+			piboSessionId: "ps_expiry_workflow",
+			workflowRunId: "wfr_expiry",
+			waitTokenId: "wwt_expired",
+			actionId: "fixture.humanActions.approve",
+			kind: "approve",
+			actedAt: "2026-09-02T00:00:00.000Z",
+		}), /expired at 2026-02-01/);
+		assert.equal(service.getProjectWorkflowWaitToken("wwt_expired")?.status, "expired");
+		assert.equal(service.getProjectWorkflowWaitToken("wwt_also_expired")?.status, "expired");
+		assert.equal(service.getProjectWorkflowRun("wfr_expiry")?.status, "waiting");
+		assert.equal(service.getProjectSession("ps_expiry_workflow")?.state, "waiting");
+		assert.deepEqual(service.listProjectWorkflowWaitTokens({ workflowRunId: "wfr_expiry", status: "pending" }).map((entry) => entry.id), ["wwt_live"]);
+
+		const orphaned = service.expireProjectWorkflowWaitToken({
+			projectId: project.id,
+			piboSessionId: "ps_expiry_workflow",
+			workflowRunId: "wfr_expiry",
+			waitTokenId: "wwt_live",
+			resolvedAt: "2100-01-01T00:00:00.000Z",
+		});
+		assert.equal(orphaned.waitToken.status, "expired");
+		assert.equal(orphaned.run.status, "failed");
+		assert.equal(orphaned.run.failedAt, "2100-01-01T00:00:00.000Z");
+		assert.equal(orphaned.projectSession.state, "failed");
+		assert.equal(service.listProjectWorkflowWaitTokens({ workflowRunId: "wfr_expiry", status: "pending" }).length, 0);
+
+		service.close();
+		service = new ChatProjectService(databasePath);
+		assert.equal(service.getProjectWorkflowWaitToken("wwt_live")?.status, "expired");
+		assert.equal(service.getProjectWorkflowRun("wfr_expiry")?.status, "failed");
+		assert.equal(service.getProjectSession("ps_expiry_workflow")?.state, "failed");
+	} finally {
+		service.close();
+		rmSync(tempRoot, { recursive: true, force: true });
+	}
+});
+
 test("project sessions can link back to workflow run ids", () => {
 	const tempRoot = mkdtempSync(join(tmpdir(), "pibo-project-workflow-link-"));
 	const service = new ChatProjectService(join(tempRoot, "web-projects.sqlite"));

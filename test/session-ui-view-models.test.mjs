@@ -68,12 +68,13 @@ test("shared terminal card descriptors cover rich terminal row kinds", () => {
 
 test("shared status view model preserves unavailable usage and redacts secrets", () => {
 	const unavailable = buildTerminalStatusViewModel({
-		message: "OPENAI_API_KEY=sk_secret123456789 should hide",
+		message: "OPENAI_API_KEY=sk_secret123456789 should hide; pibo-docker-system stays visible",
 	});
 	assert.equal(unavailable.progress.find((item) => item.id === "context").state, "unavailable");
 	assert.equal(unavailable.progress.find((item) => item.id === "provider").state, "unavailable");
 	assert.match(unavailable.fields.find((item) => item.id === "message").value, /\[redacted\]/);
 	assert.doesNotMatch(unavailable.fields.find((item) => item.id === "message").value, /sk_secret/);
+	assert.match(unavailable.fields.find((item) => item.id === "message").value, /pibo-docker-system stays visible/);
 
 	const zero = buildTerminalStatusViewModel({ contextUsage: { tokens: 0, contextWindow: 1000, percent: 0 } });
 	const context = zero.progress.find((item) => item.id === "context");

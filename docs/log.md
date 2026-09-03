@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-03
+
+- **Security contract correction**: Narrowed the [sensitive-output redaction policy](/specs/security/private-files-and-http.md#requirement-sec-file-004-narrow-credential-redaction-protects-identified-output-sinks-without-treating-product-identifiers-as-secrets) to strong credential signals, preserved ordinary `pibo-*` identifiers and paths, and recorded the pre-persistence threat-model decision and sink-coverage limit.
+
 ## 2026-09-02
 
 - **Project documentation rules**: Replaced migration-era instructions in `AGENTS.md` with concise OKF v0.2 guidance that delegates detailed workflow rules to `maintain-okf-docs` and the documentation profile.
