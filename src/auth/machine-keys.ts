@@ -64,11 +64,25 @@ function hashMachineKeyToken(token: string): Buffer {
 	return createHash("sha256").update(token, "utf8").digest();
 }
 
-function parseIsoTimestamp(value: unknown, field: string): string {
-	if (typeof value !== "string" || value.length === 0 || Number.isNaN(Date.parse(value))) {
+export function parseIsoTimestamp(value: unknown, field: string): string {
+	if (typeof value !== "string") throw new Error(`${field} must be an ISO timestamp`);
+	const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/);
+	if (!match) throw new Error(`${field} must be an ISO timestamp`);
+	const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match;
+	const year = Number(yearText);
+	const month = Number(monthText);
+	const day = Number(dayText);
+	const hour = Number(hourText);
+	const minute = Number(minuteText);
+	const second = Number(secondText);
+	const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+	const daysByMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+	if (month < 1 || month > 12 || day < 1 || day > daysByMonth[month - 1] || hour > 23 || minute > 59 || second > 59) {
 		throw new Error(`${field} must be an ISO timestamp`);
 	}
-	return new Date(value).toISOString();
+	const timestamp = Date.parse(value);
+	if (Number.isNaN(timestamp)) throw new Error(`${field} must be an ISO timestamp`);
+	return new Date(timestamp).toISOString();
 }
 
 function optionalString(value: unknown, field: string): string | undefined {
