@@ -352,6 +352,7 @@ export type ChatWebIntegrations = {
 
 export type ChatWebAppOptions = {
 	defaultProfile?: string;
+	piPackageStoreCwd?: string;
 	agentStorePath?: string;
 	userSkillGlobalRoot?: string;
 	userSkillWorkspaceRoot?: string;
@@ -3514,6 +3515,7 @@ async function buildContextBuildSnapshotForRequest(input: {
 	context: PiboWebAppContext;
 	webSession: PiboWebSession;
 	piboSessionId?: string;
+	piPackageStoreCwd: string;
 }): Promise<PiboContextBuildSnapshot> {
 	const createProfile = input.context.channelContext.createProfile;
 	if (!createProfile) throw new PiboWebHttpError("Profile inspection is not available", 503);
@@ -3577,6 +3579,7 @@ async function buildContextBuildSnapshotForRequest(input: {
 		if (runtime.adapterId === "pi" && runtimeInfo.available) {
 			const snapshot = await inspectPiboContextBuild({
 				cwd,
+				piPackageStoreCwd: input.piPackageStoreCwd,
 				profile,
 				activeModel: selectedSession.activeModel,
 				thinkingLevel: initialThinkingLevel,
@@ -4319,9 +4322,15 @@ function submitProjectWorkflowHumanAction(input: {
 		humanActionOptions: WORKFLOW_HUMAN_ACTION_REF_OPTIONS,
 	});
 	if (validation.diagnostics.length) {
-		if (waitToken && validation.expiredAt) {
-			input.state.projectService.saveProjectWorkflowWaitToken({ ...waitToken, status: "expired", resolvedAt: validation.checkedAt });
-		}
+		const responseWaitToken = waitToken && validation.expiredAt
+			? input.state.projectService.expireProjectWorkflowWaitToken({
+				projectId: project.id,
+				piboSessionId: session.id,
+				workflowRunId: projectSession.workflowRunId,
+				waitTokenId: waitToken.id,
+				resolvedAt: validation.checkedAt,
+			}).waitToken
+			: waitToken;
 		recordWorkflowLifecycleEvent(input.state, input.webSession, {
 			type: "workflow.human_action.submitted",
 			workflowId: projectSession.workflowId,
@@ -4333,7 +4342,7 @@ function submitProjectWorkflowHumanAction(input: {
 			diagnostics: validation.diagnostics,
 			payload: projectWorkflowHumanActionLifecyclePayload(request),
 		});
-		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", validation.diagnostics, validation.httpStatus, waitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
+		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", validation.diagnostics, validation.httpStatus, responseWaitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
 	}
 
 	try {
@@ -4383,7 +4392,8 @@ function submitProjectWorkflowHumanAction(input: {
 			diagnostics,
 			payload: projectWorkflowHumanActionLifecyclePayload(request),
 		});
-		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", diagnostics, 409, waitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
+		const responseWaitToken = input.state.projectService.getProjectWorkflowWaitToken(request.waitTokenId) ?? waitToken;
+		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", diagnostics, 409, responseWaitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
 	}
 }
 
@@ -4417,6 +4427,7 @@ async function sendProjectMessage(input: {
 	const selectedSession = requireSharedSession(input.context, input.body.piboSessionId);
 	const projectSession = input.state.projectService.getProjectSession(selectedSession.id);
 	if (!projectSession) throw new PiboWebHttpError("Project session not found", 404);
+	requireSharedProject(input.state, input.webSession, projectSession.projectId);
 	const actorId = auditActorIdFor(input.webSession);
 	const duplicate = clientTxnId ? input.state.eventCommands.findByClientTxn(undefined, actorId, clientTxnId) : undefined;
 	if (duplicate) return responseJson({ duplicate: true, event: duplicate });
@@ -4703,6 +4714,7 @@ async function sendChatMessage(input: {
 
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 	const integrations = resolveChatWebIntegrations(options);
+	const piPackageStoreCwd = options.piPackageStoreCwd ?? process.cwd();
 	ensurePrivateChatUploadDirectory();
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
@@ -5040,6 +5052,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					context,
 					webSession,
 					piboSessionId: url.searchParams.get("piboSessionId") || undefined,
+					piPackageStoreCwd,
 				});
 				return responseJson({ snapshot });
 			}

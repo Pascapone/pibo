@@ -192,6 +192,7 @@ export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 
 export type PiAgentRuntimeCompatibilityServices = {
 	persistSession?: boolean;
+	piPackageStoreCwd?: string;
 	thinkingLevel?: PiboRuntimeOptions["thinkingLevel"];
 	retryDefaults?: PiboRuntimeRetryDefaults;
 	extensionFactories?: ExtensionFactory[];
@@ -774,6 +775,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		const intentTracing = piIntentTracingEnabled(profile.runtimeOptions);
 		const runtime = await createPiboRuntime({
 			cwd: input.workspace,
+			piPackageStoreCwd: compatibility?.piPackageStoreCwd,
 			persistSession: compatibility?.persistSession,
 			profile,
 			thinkingLevel: compatibility?.thinkingLevel,

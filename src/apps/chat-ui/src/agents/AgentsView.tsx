@@ -1021,9 +1021,9 @@ export function AgentsView({
 								<Plus size={14} />
 							</button>
 						</div>
-						<div className="inline-flex w-fit gap-1 border border-slate-800 bg-[#0e1116] rounded-sm p-1">
-							<button type="button" disabled={readOnly || Boolean(contextUnavailableReason)} onClick={() => setNewContextFileScope("agent")} className={`px-2 py-1 text-xs rounded-sm ${newContextFileScope === "agent" ? "bg-[#11a4d4]/20 text-sky-100" : "text-slate-500 hover:text-slate-300"}`}>Agent</button>
-							<button type="button" disabled={readOnly || Boolean(contextUnavailableReason)} onClick={() => setNewContextFileScope("global")} className={`px-2 py-1 text-xs rounded-sm ${newContextFileScope === "global" ? "bg-[#11a4d4]/20 text-sky-100" : "text-slate-500 hover:text-slate-300"}`}>Global</button>
+						<div role="group" aria-label="New context file scope" className="inline-flex w-fit gap-1 border border-slate-800 bg-[#0e1116] rounded-sm p-1">
+							<button type="button" aria-pressed={newContextFileScope === "agent"} disabled={readOnly || Boolean(contextUnavailableReason)} onClick={() => setNewContextFileScope("agent")} className={`px-2 py-1 text-xs rounded-sm ${newContextFileScope === "agent" ? "bg-[#11a4d4]/20 text-sky-100" : "text-slate-500 hover:text-slate-300"}`}>Agent</button>
+							<button type="button" aria-pressed={newContextFileScope === "global"} disabled={readOnly || Boolean(contextUnavailableReason)} onClick={() => setNewContextFileScope("global")} className={`px-2 py-1 text-xs rounded-sm ${newContextFileScope === "global" ? "bg-[#11a4d4]/20 text-sky-100" : "text-slate-500 hover:text-slate-300"}`}>Global</button>
 						</div>
 						<CatalogGroupGrid
 							groups={contextFileGroups}

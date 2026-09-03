@@ -117,6 +117,8 @@ export function applyPiboRuntimeRetryDefaults(
 
 export type PiboRuntimeOptions = {
 	cwd?: string;
+	/** Workspace containing the Pi package catalog selected by product configuration. */
+	piPackageStoreCwd?: string;
 	persistSession?: boolean;
 	profile?: InitialSessionContext;
 	thinkingLevel?: PiboThinkingLevel;
@@ -396,7 +398,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		const skillPaths = options.resources
 			? [...options.resources.getSkillPaths("source")]
 			: getEnabledSkillPaths(runtimeCwd, profile);
-		const piPackageOptions = getPiPackageRuntimeOptions(runtimeCwd, profile);
+		const piPackageOptions = getPiPackageRuntimeOptions(options.piPackageStoreCwd ?? runtimeCwd, profile);
 		let runtimeSettingsManager: SettingsManager | undefined;
 		const services = await createAgentSessionServices({
 			cwd: runtimeCwd,
