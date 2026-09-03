@@ -3,6 +3,7 @@ import { chatRoomIdFromMetadata } from "../types/rooms.js";
 import type { ChatWebSessionBootstrapIndexResult, ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboSession } from "../../../sessions/store.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
+import type { StoredPayload } from "../../../data/payload-store.js";
 import { sessionFromRow, statusFromOutputEvent, type SessionRow } from "./chat-data-mappers.js";
 import { rootSessionId } from "../../../data/session-store.js";
 
@@ -93,12 +94,49 @@ export class ChatSessionQueryService {
 	deleteSessions(piboSessionIds: string[]): number {
 		if (!piboSessionIds.length) return 0;
 		const placeholders = piboSessionIds.map(() => "?").join(", ");
-		this.store.db.prepare(`DELETE FROM observations WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
-		this.store.db.prepare(`DELETE FROM chat_messages WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
-		this.store.db.prepare(`DELETE FROM event_log WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
-		this.store.db.prepare(`DELETE FROM session_navigation WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
-		const result = this.store.db.prepare(`UPDATE sessions SET deleted_at = COALESCE(deleted_at, ?) WHERE id IN (${placeholders})`).run(new Date().toISOString(), ...piboSessionIds);
-		return Number(result.changes ?? 0);
+		const payloadReleaseCounts = this.payloadReleaseCounts(placeholders, piboSessionIds);
+		const releasedPayloads: StoredPayload[] = [];
+		const deleted = this.store.transaction(() => {
+			this.store.db.prepare(`DELETE FROM observations WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
+			this.store.db.prepare(`DELETE FROM chat_messages WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
+			this.store.db.prepare(`DELETE FROM event_log WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
+			this.store.db.prepare(`DELETE FROM session_navigation WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
+			for (const [payloadId, count] of payloadReleaseCounts) {
+				const released = this.store.payloads.releaseReferences(payloadId, count);
+				if (released) releasedPayloads.push(released);
+			}
+			const result = this.store.db.prepare(`UPDATE sessions SET deleted_at = COALESCE(deleted_at, ?) WHERE id IN (${placeholders})`).run(new Date().toISOString(), ...piboSessionIds);
+			return Number(result.changes ?? 0);
+		});
+		for (const payload of releasedPayloads) this.store.payloads.removeReleasedFile(payload);
+		return deleted;
+	}
+
+	private payloadReleaseCounts(placeholders: string, piboSessionIds: string[]): Map<string, number> {
+		const logicalReferences = new Map<string, Set<string>>();
+		const add = (payloadId: string | null, key: string) => {
+			if (!payloadId) return;
+			let references = logicalReferences.get(payloadId);
+			if (!references) {
+				references = new Set();
+				logicalReferences.set(payloadId, references);
+			}
+			references.add(key);
+		};
+		const events = this.store.db.prepare(`SELECT stream_id, payload_ref FROM event_log WHERE session_id IN (${placeholders}) AND payload_ref IS NOT NULL`).all(...piboSessionIds) as Array<{ stream_id: number; payload_ref: string }>;
+		const eventPayloads = new Map(events.map((row) => [row.stream_id, row.payload_ref]));
+		for (const row of events) add(row.payload_ref, `event:${row.stream_id}`);
+		const messages = this.store.db.prepare(`SELECT id, source_stream_id, content_payload_ref FROM chat_messages WHERE session_id IN (${placeholders}) AND content_payload_ref IS NOT NULL`).all(...piboSessionIds) as Array<{ id: string; source_stream_id: number | null; content_payload_ref: string }>;
+		for (const row of messages) {
+			const linked = row.source_stream_id !== null && eventPayloads.get(row.source_stream_id) === row.content_payload_ref;
+			add(row.content_payload_ref, linked ? `event:${row.source_stream_id}` : `message:${row.id}`);
+		}
+		const observations = this.store.db.prepare(`SELECT id, event_stream_id, payload_ref FROM observations WHERE session_id IN (${placeholders}) AND payload_ref IS NOT NULL`).all(...piboSessionIds) as Array<{ id: string; event_stream_id: number | null; payload_ref: string }>;
+		for (const row of observations) {
+			const linked = row.event_stream_id !== null && eventPayloads.get(row.event_stream_id) === row.payload_ref;
+			add(row.payload_ref, linked ? `event:${row.event_stream_id}` : `observation:${row.id}`);
+		}
+		return new Map([...logicalReferences].map(([payloadId, references]) => [payloadId, references.size]));
 	}
 
 	close(): void {}
