@@ -4424,6 +4424,7 @@ async function sendProjectMessage(input: {
 	const selectedSession = requireSharedSession(input.context, input.body.piboSessionId);
 	const projectSession = input.state.projectService.getProjectSession(selectedSession.id);
 	if (!projectSession) throw new PiboWebHttpError("Project session not found", 404);
+	requireSharedProject(input.state, input.webSession, projectSession.projectId);
 	const actorId = auditActorIdFor(input.webSession);
 	const duplicate = clientTxnId ? input.state.eventCommands.findByClientTxn(undefined, actorId, clientTxnId) : undefined;
 	if (duplicate) return responseJson({ duplicate: true, event: duplicate });

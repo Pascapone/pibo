@@ -3083,6 +3083,92 @@ test("chat web app keeps Project Manager locked without replacing its canonical 
 	}
 });
 
+test("chat web app rejects messages for archived Projects after restart", async () => {
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-archived-project-message-"));
+	let runtime = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		storageDir,
+		persistSessions: true,
+	});
+	const mutation = (path, body) => fetch(`${runtime.baseURL}${path}`, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			origin: runtime.baseURL,
+			"x-test-user": "user-1",
+		},
+		body: JSON.stringify(body),
+	});
+	try {
+		const projectResponse = await mutation("/api/chat/projects", {
+			name: "Archived Message Project",
+			projectFolder: join(storageDir, "archived-message-project"),
+			createFolder: true,
+		});
+		assert.equal(projectResponse.status, 201);
+		const project = (await projectResponse.json()).project;
+		const sessionResponse = await mutation(`/api/chat/projects/${encodeURIComponent(project.id)}/sessions`, {});
+		assert.equal(sessionResponse.status, 201);
+		const session = (await sessionResponse.json()).session;
+
+		const acceptedResponse = await mutation("/api/chat/projects/message", {
+			piboSessionId: session.id,
+			text: "active project control",
+			clientTxnId: "active-project-message",
+			delivery: "queue",
+		});
+		assert.equal(acceptedResponse.status, 200);
+		assert.equal(runtime.emitted.length, 1);
+
+		const archiveResponse = await fetch(`${runtime.baseURL}/api/chat/projects/${encodeURIComponent(project.id)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: runtime.baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ archived: true }),
+		});
+		assert.equal(archiveResponse.status, 200);
+
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		runtime = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			storageDir,
+			persistSessions: true,
+		});
+
+		const rejectedResponse = await mutation("/api/chat/projects/message", {
+			piboSessionId: session.id,
+			text: "must not be accepted after archive",
+			clientTxnId: "archived-project-message",
+			delivery: "queue",
+		});
+		assert.equal(rejectedResponse.status, 404);
+		assert.deepEqual(await rejectedResponse.json(), { error: "Project not found" });
+		assert.deepEqual(runtime.emitted, []);
+
+		const projectDb = new DatabaseSync(runtime.projectStorePath, { readOnly: true });
+		try {
+			assert.equal(typeof projectDb.prepare("SELECT archived_at FROM projects WHERE id = ?").get(project.id).archived_at, "string");
+			assert.equal(projectDb.prepare("SELECT archived FROM project_sessions WHERE pibo_session_id = ?").get(session.id).archived, 0);
+		} finally {
+			projectDb.close();
+		}
+		const dataDb = new DatabaseSync(runtime.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(dataDb.prepare("SELECT count(*) AS count FROM event_log WHERE session_id = ? AND type = 'user.message.accepted'").get(session.id).count, 1);
+		} finally {
+			dataDb.close();
+		}
+	} finally {
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		rmSync(storageDir, { recursive: true, force: true });
+	}
+});
+
 test("chat web app rejects cyclic room parents and preserves valid room lifecycles", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
