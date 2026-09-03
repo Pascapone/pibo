@@ -188,6 +188,22 @@ test("pibo tools exposes Graphify as a curated CLI tool", async () => {
 	}
 });
 
+test("pibo tools leaf commands support standard help flags", async () => {
+	const cases = [
+		{ args: ["list", "--help"], usage: /Usage: pibo tools list \[options\]/ },
+		{ args: ["show", "browser-use", "--help"], usage: /Usage: pibo tools show \[options\] <name>/ },
+		{ args: ["guides", "browser-use", "-h"], usage: /Usage: pibo tools guides \[options\] <name>/ },
+		{ args: ["browser-use", "targets", "--help"], usage: /Usage: pibo tools browser-use targets \[options\]/ },
+		{ args: ["agent-browser", "targets", "-h"], usage: /Usage: pibo tools agent-browser targets \[options\]/ },
+	];
+	for (const fixture of cases) {
+		const result = await execFileAsync("node", [cliPath, "tools", ...fixture.args]);
+		assert.match(result.stdout, fixture.usage);
+		assert.match(result.stdout, /-h, --help\s+display help for command/);
+		assert.equal(result.stderr, "");
+	}
+});
+
 test("pibo tools exposes Loop guides and helper discovery", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-tools-loop-guide-"));
 	try {
