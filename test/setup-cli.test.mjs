@@ -114,12 +114,21 @@ test("developer-host setup plan isolates prod and dev gateways", () => {
 });
 
 test("developer-host generated files pin prod and dev to branch-specific entrypoints", () => {
-	const plan = JSON.parse(pibo(["setup", "developer-host", "--json"]));
+	const plan = JSON.parse(pibo([
+		"setup",
+		"developer-host",
+		"--prod-web-port",
+		"5510",
+		"--prod-gateway-port",
+		"6510",
+		"--json",
+	]));
 	const prodService = plan.generatedFiles.find((file) => file.path === "/etc/systemd/system/pibo-web.service");
 	const wrapper = plan.generatedFiles.find((file) => file.path === "/usr/local/bin/pibo-web-dev-start.mjs");
 	assert.ok(prodService);
 	assert.ok(wrapper);
 	assert.match(prodService.content, /ExecStart=\/usr\/bin\/node \/root\/code\/pibo\/dist\/bin\/pibo\.js gateway:web/);
+	assert.match(prodService.content, /--web-port 5510 --gateway-port 6510/);
 	assert.doesNotMatch(prodService.content, /ExecStart=\/usr\/bin\/pibo/);
 	assert.match(wrapper.content, /port: 4809/);
 	assert.match(wrapper.content, /port: 4808/);
