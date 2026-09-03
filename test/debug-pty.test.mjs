@@ -49,6 +49,30 @@ test("pibo debug pty help is discoverable", async () => {
 	assert.match(pty.stdout, /--max-iterations <n>/);
 });
 
+test("pibo debug pty scenario rejects unknown top-level fields before launch", async () => {
+	const dir = await makeTempDir();
+	try {
+		const scenarioPath = join(dir, "unknown-field.json");
+		const markerPath = join(dir, "launched.txt");
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "unknown-field",
+			command: [process.execPath, "-e", `require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'launched')`],
+			expects: ["never accepted"],
+		}));
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "pty", "scenario", scenarioPath]),
+			(error) => {
+				assert.match(error.stderr, /unknown field "expects"/);
+				assert.match(error.stderr, /unknown-field\.json/);
+				return true;
+			},
+		);
+		await assert.rejects(readFile(markerPath, "utf8"), { code: "ENOENT" });
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug pty run captures host PTY output and artifacts", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {
