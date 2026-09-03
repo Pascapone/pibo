@@ -407,10 +407,6 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 			commitInputState((current) => reduceInkSessionInputState(current, { type: "backspace" }));
 			return;
 		}
-		if (input === "d" && !key.ctrl && !key.meta && stateRef.current.input.length === 0 && !stateRef.current.picker && !stateRef.current.slashSuggestions && canToggleSelectedRowDetails(stateRef.current)) {
-			commitInputState((current) => reduceInkSessionInputState(current, { type: "toggle-details" }));
-			return;
-		}
 		if (input && !returnTerminatedInput && !key.ctrl && !key.meta) {
 			commitInputState((current) => reduceInkSessionInputState(current, { type: "text", value: input }));
 		}
@@ -717,7 +713,7 @@ export function cliCommandSummaryText(catalog: readonly SlashCommandDescriptor[]
 }
 
 export function cliCommandHintText(): string {
-	return "commands: / opens palette · /status runtime · /room /session navigate · /help catalog · ↑↓ focus rows · d/enter details · ctrl-c exit";
+	return "commands: / opens palette · /status runtime · /room /session navigate · /help catalog · ↑↓ focus rows · enter details · ctrl-c exit";
 }
 
 export function cliSessionSlashHelpText(catalog: readonly SlashCommandDescriptor[] = buildSlashCommandCatalog()): string {
