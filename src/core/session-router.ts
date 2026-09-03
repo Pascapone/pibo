@@ -2643,9 +2643,14 @@ export class PiboSessionRouter {
 			: eventId
 				? this.subagentRequestIdsByEvent.get(subagentRequestEventKey(session.id, eventId))
 				: undefined;
+		const sequence = this.sessionStore.claimAgentObservationSequence?.(
+			session.parentId,
+			this.nextAgentObservationSequence,
+		) ?? this.nextAgentObservationSequence;
+		this.nextAgentObservationSequence = Math.max(this.nextAgentObservationSequence, sequence + 1);
 		const observation: StoredAgentObservation = {
 			managingParentId: session.parentId,
-			sequence: this.nextAgentObservationSequence++,
+			sequence,
 			createdAt: new Date().toISOString(),
 			...(requestId ? { requestId } : {}),
 			agentId: session.id,
