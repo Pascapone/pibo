@@ -7,7 +7,7 @@ import { PiboWebHttpError } from "../../web/http.js";
 import { imageMimeTypeFromBytes, TRACE_IMAGE_MAX_DECODED_BYTES, type TraceImagePayload } from "./trace-v2.js";
 
 export const CHAT_UPLOAD_DIR = piboHomePath("uploads");
-const CHAT_FILE_ATTACHMENT_LIMIT = 10;
+export const CHAT_FILE_ATTACHMENT_LIMIT = 10;
 
 export type ChatFileMessageAttachment = {
 	name: string;
@@ -51,6 +51,7 @@ export async function saveUploadedChatFiles(request: Request): Promise<{ uploadD
 		if (isUploadedChatFile(value)) files.push(value);
 	}
 	if (!files.length) throw new PiboWebHttpError("No files were uploaded", 400);
+	if (files.length > CHAT_FILE_ATTACHMENT_LIMIT) throw new PiboWebHttpError(`At most ${CHAT_FILE_ATTACHMENT_LIMIT} uploaded files can be attached`, 400);
 
 	ensurePrivateChatUploadDirectory();
 	const saved = [];

@@ -8,7 +8,15 @@ export type UploadedChatAttachment = ChatUploadedFile & {
 
 export type UploadedChatAttachmentsBySession = Record<string, UploadedChatAttachment[]>;
 
-const MAX_SELECTED_UPLOAD_ATTACHMENTS = 10;
+export const MAX_SELECTED_UPLOAD_ATTACHMENTS = 10;
+
+export function assertChatUploadCapacity(selectedCount: number, newFileCount: number): void {
+	const remaining = Math.max(0, MAX_SELECTED_UPLOAD_ATTACHMENTS - selectedCount);
+	if (newFileCount <= remaining) return;
+	throw new Error(remaining === 0
+		? `At most ${MAX_SELECTED_UPLOAD_ATTACHMENTS} uploaded files can be attached; remove an attachment before uploading another file`
+		: `At most ${MAX_SELECTED_UPLOAD_ATTACHMENTS} uploaded files can be attached; only ${remaining} attachment slot${remaining === 1 ? " is" : "s are"} available`);
+}
 
 export function addUploadedChatAttachmentsForSession(
 	current: UploadedChatAttachmentsBySession,
@@ -23,9 +31,10 @@ export function addUploadedChatAttachmentsForSession(
 		.filter((file) => file.path && !existingPaths.has(file.path))
 		.map((file): UploadedChatAttachment => ({ ...file, id: createAttachmentId() }));
 	if (!additions.length) return current;
+	assertChatUploadCapacity(existing.length, additions.length);
 	return {
 		...current,
-		[sessionId]: [...existing, ...additions].slice(0, MAX_SELECTED_UPLOAD_ATTACHMENTS),
+		[sessionId]: [...existing, ...additions],
 	};
 }
 

@@ -4,7 +4,7 @@ import { uploadChatFiles, type ChatUploadedFile } from "../api-chat-files";
 import { transcribeChatAudio } from "../api-transcription";
 import type { WebAnnotationMessageAttachment } from "../api-web-annotations";
 import { appendStoredComposerHistory, readStoredComposerHistory } from "../app-storage";
-import type { UploadedChatAttachment } from "../chat-upload-attachments";
+import { assertChatUploadCapacity, type UploadedChatAttachment } from "../chat-upload-attachments";
 import { copyTextToClipboard } from "../clipboard";
 import {
 	appendRecordingWaveformSample,
@@ -398,6 +398,12 @@ export function Composer({
 
 	const handleFileSelection = async (selectedFiles: readonly File[]) => {
 		if (!selectedFiles.length) return;
+		try {
+			assertChatUploadCapacity(selectedUploadAttachments.length, selectedFiles.length);
+		} catch (caught) {
+			setUploadStatus({ message: caught instanceof Error ? caught.message : String(caught), error: true });
+			return;
+		}
 		setUploading(true);
 		setUploadStatus({ message: `Uploading ${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"}...`, error: false });
 		try {

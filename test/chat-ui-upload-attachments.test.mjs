@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import test from "node:test";
 
@@ -10,6 +11,7 @@ async function runUploadAttachmentScenario() {
 		import assert from "node:assert/strict";
 		const {
 			addUploadedChatAttachmentsForSession,
+			assertChatUploadCapacity,
 			detachUploadedChatAttachmentForSession,
 			clearUploadedChatAttachmentsForSession,
 		} = await import("./src/apps/chat-ui/src/chat-upload-attachments.ts");
@@ -36,12 +38,12 @@ async function runUploadAttachmentScenario() {
 		assert.equal(added["ps-1"][1].contentType, "text/plain");
 
 		const full = { "ps-1": Array.from({ length: 9 }, (_, index) => ({ id: \`existing-\${index}\`, name: \`file-\${index}\`, path: \`/tmp/file-\${index}\`, size: index })) };
-		const capped = addUploadedChatAttachmentsForSession(full, "ps-1", [
+		assert.throws(() => assertChatUploadCapacity(9, 2), /only 1 attachment slot is available/);
+		assert.throws(() => addUploadedChatAttachmentsForSession(full, "ps-1", [
 			{ name: "a", path: "/tmp/a", size: 1 },
 			{ name: "b", path: "/tmp/b", size: 1 },
-		], createId);
-		assert.equal(capped["ps-1"].length, 10);
-		assert.deepEqual(capped["ps-1"].slice(-2).map((attachment) => attachment.path), ["/tmp/file-8", "/tmp/a"]);
+		], createId), /only 1 attachment slot is available/);
+		assert.equal(full["ps-1"].length, 9);
 
 		const detached = detachUploadedChatAttachmentForSession(added, "ps-1", "upload-test-1");
 		assert.deepEqual(detached["ps-1"].map((attachment) => attachment.id), ["existing"]);
@@ -56,4 +58,10 @@ async function runUploadAttachmentScenario() {
 
 test("chat upload attachment helpers preserve per-session selection behavior", async () => {
 	await assert.doesNotReject(runUploadAttachmentScenario());
+});
+
+test("composer rejects overflow before starting the upload request", () => {
+	const source = readFileSync("src/apps/chat-ui/src/composer/Composer.tsx", "utf8");
+	assert.match(source, /assertChatUploadCapacity\(selectedUploadAttachments\.length, selectedFiles\.length\);[\s\S]*setUploading\(true\);[\s\S]*await uploadChatFiles\(selectedFiles\)/);
+	assert.match(source, /setUploadStatus\(\{ message: caught instanceof Error \? caught\.message : String\(caught\), error: true \}\);\s*return;/);
 });
