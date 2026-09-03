@@ -135,6 +135,27 @@ type PtyScenario = {
 	stopPatterns?: string[];
 };
 
+const PTY_SCENARIO_FIELDS = new Set<keyof PtyScenario>([
+	"name",
+	"command",
+	"cwd",
+	"workdir",
+	"env",
+	"rows",
+	"cols",
+	"timeoutMs",
+	"idleTimeoutMs",
+	"inputDelayMs",
+	"providerMode",
+	"maxIterations",
+	"artifactDir",
+	"artifact",
+	"steps",
+	"expect",
+	"reject",
+	"stopPatterns",
+]);
+
 type PtyOptions = {
 	positionals: string[];
 	rows?: string;
@@ -464,6 +485,9 @@ function applyScenarioOverrides(scenario: PtyScenario, options: PtyOptions): Pty
 function validateScenario(value: unknown, source: string): PtyScenario {
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${source}: scenario must be an object`);
 	const raw = value as Record<string, unknown>;
+	for (const field of Object.keys(raw)) {
+		if (!PTY_SCENARIO_FIELDS.has(field as keyof PtyScenario)) throw new Error(`${source}: unknown field "${field}"`);
+	}
 	if (!Array.isArray(raw.command) || raw.command.some((item) => typeof item !== "string") || raw.command.length === 0) {
 		throw new Error(`${source}: command must be a non-empty string array`);
 	}
