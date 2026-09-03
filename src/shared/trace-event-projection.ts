@@ -125,6 +125,9 @@ export function applySingleEventToNodes(
 	);
 	if (!node) return;
 	applyStoredPayloadRef(node, payload, storedEvent.storedPayloadRef);
+	if (payload.type === "session_error" && payload.eventId) {
+		node.parentId = settleTurnFromSessionError(byId, payload.eventId, payload, storedEvent.createdAt);
+	}
 	if (
 		node.type === "user.message" &&
 		node.status === "running" &&
@@ -408,9 +411,10 @@ export function markIncompletePersistedTurns(
 		turn.summary = INCOMPLETE_TURN_SUMMARY;
 		turn.error = INCOMPLETE_TURN_ERROR;
 
+		const last = lastByEventId.get(eventId) ?? start;
+		settleInterruptedTurnChildren(byId, turnId, INCOMPLETE_TURN_ERROR);
 		const markerId = `event:incomplete-turn:${eventId}`;
 		if (byId.has(markerId)) continue;
-		const last = lastByEventId.get(eventId) ?? start;
 		const marker: PiboTraceNode = {
 			id: markerId,
 			parentId: turnId,
@@ -440,6 +444,46 @@ export function markIncompletePersistedTurns(
 		byId.set(marker.id, marker);
 	}
 	return [...incompleteEventIds].some((eventId) => byId.has(`event:incomplete-turn:${eventId}`));
+}
+
+function settleTurnFromSessionError(
+	byId: Map<string, PiboTraceNode>,
+	eventId: string,
+	event: Extract<PiboOutputEvent, { type: "session_error" }>,
+	completedAt: string | undefined,
+): string | undefined {
+	const turnId = messageTurnNodeId(eventId);
+	const turn = byId.get(turnId) ?? [...byId.values()].find(
+		(candidate) => candidate.type === "agent.turn" && candidate.eventId === eventId,
+	);
+	if (!turn) return undefined;
+	turn.status = "error";
+	turn.completedAt = completedAt ?? turn.completedAt;
+	turn.summary = event.errorDetails?.userMessage ?? event.error;
+	turn.error = event.error;
+	settleInterruptedTurnChildren(byId, turn.id, event.error, completedAt);
+	return turn.id;
+}
+
+function settleInterruptedTurnChildren(
+	byId: ReadonlyMap<string, PiboTraceNode>,
+	turnId: string,
+	error: string,
+	completedAt?: string,
+): void {
+	for (const node of byId.values()) {
+		if (node.parentId !== turnId) continue;
+		const isOpenContent = node.status === "running" && (
+			node.type === "assistant.message" ||
+			node.type === "model.reasoning" ||
+			node.type === "tool.call"
+		);
+		const isUnfinishedTool = node.type === "tool.call" && node.completedAt === undefined;
+		if (!isOpenContent && !isUnfinishedTool) continue;
+		node.status = "error";
+		node.completedAt = completedAt;
+		node.error = error;
+	}
 }
 
 export function eventsCanAffectAsyncAgentRunStatus(events: readonly ChatWebStoredEvent[]): boolean {

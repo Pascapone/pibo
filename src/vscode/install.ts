@@ -12,6 +12,7 @@
  * repeated installs do not re-download.
  */
 
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -27,7 +28,6 @@ import {
 	type InstallResult,
 	type SpawnLike,
 } from "./types.js";
-import { findVsixAsset, fetchRelease } from "./vsix-fetcher.js";
 
 export type InstallCommandOptions = {
 	vsixPath?: string;
@@ -59,6 +59,10 @@ function getCacheDir(options: { cacheDir?: string; env?: NodeJS.ProcessEnv }): s
 
 function cacheKeyForVersion(tagName: string): string {
 	return tagName.replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
+function cacheTagForUrl(url: string): string {
+	return `url-${createHash("sha256").update(url).digest("hex").slice(0, 16)}`;
 }
 
 function readCachedVsix(cacheDir: string, tagName: string): string | undefined {
@@ -114,19 +118,22 @@ export async function resolveVsixArtifact(options: {
 		return { tagName: "local", vsixPath: absolute };
 	}
 
+	if (options.fromUrl) {
+		const tagName = cacheTagForUrl(options.fromUrl);
+		if (!options.skipCache) {
+			const cached = readCachedVsix(options.cacheDir, tagName);
+			if (cached) return { tagName, vsixPath: cached };
+		}
+		const bytes = await downloadVsixAsset({ url: options.fromUrl, fetchImpl: options.fetchImpl });
+		const cachedPath = writeCachedVsix(options.cacheDir, tagName, bytes);
+		return { tagName, vsixPath: cachedPath, bytes };
+	}
+
 	if (!options.skipCache && !options.version) {
 		const cachedTag = readCachedTagManifest(options.cacheDir);
 		if (cachedTag?.tagName && cachedTag.vsixPath && existsSync(cachedTag.vsixPath)) {
 			return { tagName: cachedTag.tagName, vsixPath: cachedTag.vsixPath };
 		}
-	}
-
-	if (options.fromUrl) {
-		const release = await fetchRelease({ owner: options.owner, repo: options.repo, fetchImpl: options.fetchImpl });
-		const asset = findVsixAsset(release) ?? { name: "remote.vsix", browserDownloadUrl: options.fromUrl, size: 0, contentType: "application/octet-stream" };
-		const bytes = await downloadVsixAsset({ url: options.fromUrl, fetchImpl: options.fetchImpl });
-		const cachedPath = writeCachedVsix(options.cacheDir, release.tagName, bytes);
-		return { tagName: release.tagName, vsixPath: cachedPath, bytes };
 	}
 
 	const result = await fetchLatestVsix({

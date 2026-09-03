@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { parseFriendlySchedule } from "./schedule.js";
 import { createDefaultPiboCronStore } from "./store.js";
-import type { PiboCronTarget } from "./types.js";
+import type { PiboCronJob, PiboCronScheduleUi, PiboCronTarget } from "./types.js";
 
 function printDiscovery(): void {
 	console.log(`pibo cron
@@ -49,6 +49,24 @@ function hasScheduleOptions(options: Record<string, unknown>, positionalCron?: s
 		typeof options.monthly === "number" ||
 		typeof options.cron === "string"
 	);
+}
+
+function scheduleWithTimezone(job: PiboCronJob, tz: string) {
+	if (job.schedule.kind !== "cron") throw new Error("--tz can only update an existing wall-clock cron schedule");
+	let scheduleUi: PiboCronScheduleUi | undefined;
+	if (job.scheduleUi) {
+		switch (job.scheduleUi.preset) {
+			case "daily":
+			case "weekly":
+			case "monthly":
+			case "advanced":
+				scheduleUi = { ...job.scheduleUi, tz };
+				break;
+			default:
+				scheduleUi = job.scheduleUi;
+		}
+	}
+	return { schedule: { ...job.schedule, tz }, scheduleUi };
 }
 
 function scheduleFromOptions(options: Record<string, unknown>, positionalCron?: string) {
@@ -167,7 +185,12 @@ export async function runCronCli(argv = process.argv): Promise<void> {
 		.action((id: string, cronExprParts: string[], options) => {
 			const store = createDefaultPiboCronStore({ path: program.opts().store });
 			const positionalCron = Array.isArray(cronExprParts) && cronExprParts.length ? cronExprParts.join(" ") : undefined;
-			const normalized = hasScheduleOptions(options, positionalCron) ? scheduleFromOptions(options, positionalCron) : undefined;
+			let normalized = hasScheduleOptions(options, positionalCron) ? scheduleFromOptions(options, positionalCron) : undefined;
+			if (!normalized && typeof options.tz === "string") {
+				const existing = store.getJob(id);
+				if (!existing) throw new Error("Cron job not found");
+				normalized = scheduleWithTimezone(existing, options.tz);
+			}
 			const target = maybeTargetFromOptions(options);
 			const patch = {
 				...(options.name !== undefined ? { name: options.name } : {}),

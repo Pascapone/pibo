@@ -1624,6 +1624,7 @@ export class PiboSessionRouter {
 					...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
 					compatibility: {
 						persistSession: this.options.persistSession,
+						piPackageStoreCwd: this.options.piPackageStoreCwd,
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
 						retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
 						extensionFactories: [

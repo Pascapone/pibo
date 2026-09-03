@@ -159,6 +159,8 @@ export function WorkflowGraphCanvas({
 	const graphCanvasRef = useRef<HTMLDivElement | null>(null);
 	const contextMenuRef = useRef<HTMLDivElement | null>(null);
 	const contextMenuInvokerRef = useRef<HTMLElement | null>(null);
+	const manualTriggerInputRef = useRef<HTMLTextAreaElement | null>(null);
+	const manualTriggerInvokerRef = useRef<HTMLElement | null>(null);
 	const runVisualTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
 	useEffect(() => {
@@ -459,12 +461,32 @@ export function WorkflowGraphCanvas({
 		setContextMenu(undefined);
 	}, []);
 
+	const closeManualTriggerDialog = useCallback(() => {
+		if (manualTriggerDialog?.status === "running") return;
+		const invoker = manualTriggerInvokerRef.current;
+		setManualTriggerDialog(undefined);
+		requestAnimationFrame(() => invoker?.focus());
+	}, [manualTriggerDialog?.status]);
+
+	useLayoutEffect(() => {
+		if (!manualTriggerDialog) return;
+		manualTriggerInputRef.current?.focus();
+	}, [manualTriggerDialog?.triggerNodeId]);
+
 	const openManualTriggerDialog = useCallback((triggerNodeId: string) => {
+		manualTriggerInvokerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		setSelectedElement({ type: "node", id: triggerNodeId });
 		setInspectorTab("status");
 		setContextMenu(undefined);
 		setManualTriggerDialog({ triggerNodeId, input: "", status: "idle" });
 	}, []);
+
+	const handleManualTriggerDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+		if (event.key !== "Escape" || manualTriggerDialog?.status === "running") return;
+		event.preventDefault();
+		event.stopPropagation();
+		closeManualTriggerDialog();
+	};
 
 	const renderedNodes = useMemo<WorkflowGraphFlowNode[]>(() => nodes.map((node) => ({
 		...node,
@@ -768,17 +790,17 @@ export function WorkflowGraphCanvas({
 						<Controls showInteractive={false} />
 					</ReactFlow>
 					{manualTriggerDialog ? (
-						<div className="absolute bottom-3 left-3 z-40 w-[360px] max-w-[calc(100%-1.5rem)] rounded-sm border border-emerald-700/70 bg-[#101d22] p-3 text-xs shadow-xl shadow-black/40" role="dialog" aria-label="Manual trigger test run">
+						<div className="absolute bottom-3 left-3 z-40 w-[360px] max-w-[calc(100%-1.5rem)] rounded-sm border border-emerald-700/70 bg-[#101d22] p-3 text-xs shadow-xl shadow-black/40" role="dialog" aria-label="Manual trigger test run" onKeyDown={handleManualTriggerDialogKeyDown}>
 							<div className="flex items-start justify-between gap-3">
 								<div>
 									<div className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">Manual trigger</div>
 									<div className="mt-1 font-mono text-[11px] text-slate-400">{manualTriggerDialog.triggerNodeId}</div>
 								</div>
-								<button type="button" className="rounded-sm border border-slate-700 px-2 py-1 text-slate-400 transition hover:border-slate-500 hover:text-slate-100" onClick={() => setManualTriggerDialog(undefined)} disabled={manualTriggerDialog.status === "running"} aria-label="Close manual trigger dialog"><X size={13} /></button>
+								<button type="button" className="rounded-sm border border-slate-700 px-2 py-1 text-slate-400 transition hover:border-slate-500 hover:text-slate-100" onClick={closeManualTriggerDialog} disabled={manualTriggerDialog.status === "running"} aria-label="Close manual trigger dialog"><X size={13} /></button>
 							</div>
 							<label className="mt-3 grid gap-1 font-semibold text-slate-300">
 								<span>Prompt input</span>
-								<textarea className="min-h-24 resize-y rounded-sm border border-slate-700 bg-[#151f24] px-2 py-2 font-mono text-[11px] text-slate-100 outline-none transition focus:border-emerald-500" value={manualTriggerDialog.input} onChange={(event) => setManualTriggerDialog((current) => current ? { ...current, input: event.target.value } : current)} disabled={manualTriggerDialog.status === "running"} placeholder="Write the text prompt for the first agent…" />
+								<textarea ref={manualTriggerInputRef} className="min-h-24 resize-y rounded-sm border border-slate-700 bg-[#151f24] px-2 py-2 font-mono text-[11px] text-slate-100 outline-none transition focus:border-emerald-500" value={manualTriggerDialog.input} onChange={(event) => setManualTriggerDialog((current) => current ? { ...current, input: event.target.value } : current)} disabled={manualTriggerDialog.status === "running"} placeholder="Write the text prompt for the first agent…" />
 							</label>
 							<div className="mt-3 flex gap-2">
 								<button type="button" className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm border border-emerald-600/70 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-100 transition hover:border-emerald-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-50" onClick={runManualTrigger} disabled={manualTriggerDialog.status === "running"}>
@@ -859,6 +881,7 @@ export function WorkflowGraphCanvas({
 										type="button"
 										className={`inline-flex items-center justify-center gap-2 rounded-sm border px-2 py-2 text-[11px] font-semibold transition ${inspectorTab === tab.id ? "border-[#11a4d4]/70 bg-[#11a4d4]/10 text-[#8bdcf4]" : "border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-100"}`}
 										onClick={() => setInspectorTab(tab.id)}
+										aria-pressed={inspectorTab === tab.id}
 										title={tab.label}
 									>
 										<Icon size={14} />
