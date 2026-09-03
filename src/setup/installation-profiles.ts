@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 
 export type InstallationProfileName = "batteries-included" | "vanilla";
 export type InstallationComponentName = "core" | "vscode-web" | "browser-tools" | "managed-browser" | "web-annotations" | "mcp-defaults";
@@ -381,7 +381,18 @@ function ownedDirectoryMarkerParent(path: string): string | undefined {
 
 function outputPath(path: string, root?: string): string {
 	if (!root) return path;
-	return isAbsolute(path) ? join(root, path.replace(/^\/+/, "")) : join(root, path);
+	const resolvedRoot = resolve(root);
+	const stagedPath = isAbsolute(path) ? relative(parse(path).root, path) : path;
+	const destination = resolve(resolvedRoot, stagedPath);
+	const relativeDestination = relative(resolvedRoot, destination);
+	if (relativeDestination === ".." || relativeDestination.startsWith(`..${sep}`) || isAbsolute(relativeDestination)) {
+		throw new Error(`Refusing staged path outside root: ${path}`);
+	}
+	return destination;
+}
+
+export function installationOutputPath(path: string, root?: string): string {
+	return outputPath(path, root);
 }
 
 function atomicWrite(path: string, content: string, mode?: number): void {

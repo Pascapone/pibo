@@ -289,6 +289,34 @@ test("setup preflights every target before writing and preserves unmanaged files
 	}
 });
 
+test("staged setup rejects relative Pibo Home paths that escape the root", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-profile-containment-"));
+	const root = join(dir, "stage");
+	const escapedHome = join(dir, "escaped-home");
+	mkdirSync(root);
+	try {
+		assert.throws(
+			() => pibo(["setup", "install", "--profile", "batteries-included", "--pibo-home", "../escaped-home", "--write-to", root]),
+			/Refusing staged path outside root: \.\.\/escaped-home\/setup\/installation\.json/,
+		);
+		assert.equal(existsSync(escapedHome), false);
+		assert.throws(
+			() => pibo(["setup", "status", "--pibo-home", "../escaped-home", "--root", root, "--json"]),
+			/Refusing staged path outside root/,
+		);
+		assert.throws(
+			() => pibo(["setup", "uninstall", "--pibo-home", "../escaped-home", "--root", root, "--yes", "--json"]),
+			/Refusing staged path outside root/,
+		);
+		assert.equal(existsSync(escapedHome), false);
+
+		pibo(["setup", "install", "--profile", "vanilla", "--pibo-home", "contained-home", "--write-to", root]);
+		assert.equal(existsSync(join(root, "contained-home/setup/installation.json")), true);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("profile staging is idempotent and status reports pinned component versions", () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-profile-"));
 	const piboHome = "/var/lib/pibo-test";
