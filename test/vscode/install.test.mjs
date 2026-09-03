@@ -107,6 +107,47 @@ describe("vscode/install", () => {
 			assert.equal(fetched, false, "should not have called fetch when cache is valid");
 		}
 
+		// --from-url downloads independently of GitHub Releases and uses a URL-specific cache key.
+		{
+			const dir = mkdtempSync(join(tmpdir(), "pibo-vscode-install-"));
+			const cacheDir = join(dir, "cache");
+			const { mkdirSync } = await import("node:fs");
+			const unrelatedVsix = join(cacheDir, "v-unrelated", "pibo.vsix");
+			mkdirSync(join(cacheDir, "v-unrelated"), { recursive: true });
+			writeFileSync(unrelatedVsix, "unrelated-release");
+			writeFileSync(join(cacheDir, "last-installed.json"), JSON.stringify({ tagName: "v-unrelated", vsixPath: unrelatedVsix }));
+			const customUrl = "https://mirror.example.invalid/pibo-custom.vsix";
+			const calls = [];
+			const fetchImpl = async (url) => {
+				calls.push(String(url));
+				if (String(url) !== customUrl) return new Response("{}", { status: 404 });
+				return new Response(new Uint8Array([80, 73, 66, 79]), { status: 200 });
+			};
+			const result = await resolveVsixArtifact({
+				fromUrl: customUrl,
+				owner: "synthetic-owner",
+				repo: "mirror-only",
+				cacheDir,
+				fetchImpl,
+			});
+			assert.deepEqual(calls, [customUrl]);
+			assert.match(result.tagName, /^url-[a-f0-9]{16}$/);
+			assert.notEqual(result.tagName, "v-unrelated");
+			assert.deepEqual([...readFileSync(result.vsixPath)], [80, 73, 66, 79]);
+
+			calls.length = 0;
+			const cached = await resolveVsixArtifact({
+				fromUrl: customUrl,
+				owner: "different-owner",
+				repo: "different-repo",
+				cacheDir,
+				fetchImpl,
+			});
+			assert.equal(cached.tagName, result.tagName);
+			assert.equal(cached.vsixPath, result.vsixPath);
+			assert.deepEqual(calls, []);
+		}
+
 		// --version <tag>: pin to a specific release.
 		{
 			const dir = mkdtempSync(join(tmpdir(), "pibo-vscode-install-"));
