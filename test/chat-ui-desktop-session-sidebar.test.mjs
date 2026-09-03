@@ -85,8 +85,11 @@ test("Desktop sidebar owns the desktop brand and tooltip-only account controls",
 	assert.match(html, /@max-\[190px\]:h-20/);
 	assert.match(html, />Pibo Chat</);
 	assert.match(html, /title="test@example\.com"/);
-	assert.match(html, /aria-label="Signed in as test@example\.com"/);
-	assert.match(html, /aria-label="Sign out"/);
+	assert.match(html, /aria-label="Open account menu"/);
+	assert.match(html, /aria-haspopup="menu"/);
+	assert.match(html, /aria-expanded="false"/);
+	assert.match(html, /rounded-full/);
+	assert.doesNotMatch(html, /aria-label="Sign out"/);
 	assert.doesNotMatch(html, />test@example\.com</);
 });
 

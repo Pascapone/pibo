@@ -1,6 +1,6 @@
-import { LogOut, PanelLeftClose, PanelLeftOpen, RefreshCw, UserRound } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, RefreshCw } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { signOut } from "./api-auth";
+import { AccountMenu } from "./app-chrome";
 import type { BootstrapData } from "./types";
 import {
 	DESKTOP_COLLAPSED_SIDEBAR_WIDTH,
@@ -36,7 +36,6 @@ export function DesktopSessionSidebar({
 	children: ReactNode;
 	hidden?: boolean;
 }) {
-	const identityLabel = identity.email || identity.name || identity.userId;
 	const shellStyle = {
 		width: state.collapsed ? `${DESKTOP_COLLAPSED_SIDEBAR_WIDTH}px` : `${state.width}px`,
 	} as CSSProperties;
@@ -90,8 +89,7 @@ export function DesktopSessionSidebar({
 					<div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-slate-800">
 						<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Pibo Chat" title="Pibo Chat" className="h-5 w-5" />
 					</div>
-					<span tabIndex={0} title={identityLabel} aria-label={`Signed in as ${identityLabel}`} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-400 outline-none hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><UserRound size={15} /></span>
-					<button type="button" onClick={() => void signOut().then(() => location.reload())} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]" title="Sign out" aria-label="Sign out"><LogOut size={15} /></button>
+					<AccountMenu identity={identity} size="large" />
 					<button
 						type="button"
 						onClick={() => onStateChange({ ...state, collapsed: false })}
@@ -110,9 +108,8 @@ export function DesktopSessionSidebar({
 							<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Logo" className="h-4 w-4 shrink-0" />
 							<span className="truncate text-xs font-extrabold uppercase tracking-[0.06em] text-slate-100">Pibo Chat</span>
 						</div>
-						<div className="ml-auto flex shrink-0 items-center gap-1 @max-[190px]:mx-auto">
-							<span tabIndex={0} title={identityLabel} aria-label={`Signed in as ${identityLabel}`} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-700 text-slate-400 outline-none hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><UserRound size={13} /></span>
-							<button type="button" onClick={() => void signOut().then(() => location.reload())} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]" title="Sign out" aria-label="Sign out"><LogOut size={13} /></button>
+						<div className="ml-auto flex shrink-0 items-center @max-[190px]:mx-auto">
+							<AccountMenu identity={identity} />
 						</div>
 					</div>
 					<div className="flex h-11 shrink-0 items-center justify-between border-b border-slate-800 px-3 text-xs font-bold uppercase tracking-wider">
