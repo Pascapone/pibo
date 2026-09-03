@@ -32,6 +32,15 @@ const extensionPackageJsonPath = resolve(root, "src/apps/chat-vscode/package.jso
 const artifactsDir = resolve(root, "dist/apps/vscode-artifacts");
 const npmCommand = process.platform === "win32" ? ["cmd.exe", "/c", "npm.cmd"] : ["npm"];
 
+function isValidSemver(version) {
+	const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/.exec(version);
+	if (!match) return false;
+	const prerelease = match[4]?.split(".") ?? [];
+	if (prerelease.some((identifier) => identifier.length === 0 || (/^\d+$/.test(identifier) && identifier.length > 1 && identifier.startsWith("0")))) return false;
+	const build = match[5]?.split(".") ?? [];
+	return build.every((identifier) => identifier.length > 0);
+}
+
 function parseArgs(argv) {
 	const result = { version: undefined, publishNpm: false, createRelease: false, dryRun: false };
 	for (let i = 0; i < argv.length; i++) {
@@ -58,7 +67,7 @@ function parseArgs(argv) {
 	if (!result.version) {
 		throw new Error("--version is required (e.g., --version 1.3.0)");
 	}
-	if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$/.test(result.version)) {
+	if (!isValidSemver(result.version)) {
 		throw new Error(`Version ${result.version} is not a valid semver string`);
 	}
 	return result;
