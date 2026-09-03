@@ -71,6 +71,78 @@ test('cron CLI creates shared jobs without retired partition scope', async () =>
   }
 });
 
+test('cron CLI rejects conflicting schedule selectors without creating or changing a job', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pibo-cron-conflict-'));
+  const storePath = join(root, 'cron.sqlite');
+  try {
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'cron',
+        '--store',
+        storePath,
+        'add',
+        '--default-chat',
+        '--daily',
+        '12:34',
+        '--every',
+        '5m',
+        '--prompt',
+        'ambiguous',
+        '--disabled',
+        '--json',
+      ]),
+      (error) => {
+        assert.match(error.stderr, /Conflicting schedule selectors: --every, --daily/);
+        return true;
+      },
+    );
+    const empty = await execFileAsync('node', [cliPath, 'cron', '--store', storePath, 'list', '--all', '--json']);
+    assert.deepEqual(JSON.parse(empty.stdout), []);
+
+    const added = await execFileAsync('node', [
+      cliPath,
+      'cron',
+      '--store',
+      storePath,
+      'add',
+      '--default-chat',
+      '--daily',
+      '09:10',
+      '--prompt',
+      'stable schedule',
+      '--disabled',
+      '--json',
+    ]);
+    const original = JSON.parse(added.stdout);
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'cron',
+        '--store',
+        storePath,
+        'edit',
+        original.id,
+        '--every',
+        '5m',
+        '--cron',
+        '0 8 * * *',
+        '--json',
+      ]),
+      (error) => {
+        assert.match(error.stderr, /Conflicting schedule selectors: --every, --cron/);
+        return true;
+      },
+    );
+    const listed = await execFileAsync('node', [cliPath, 'cron', '--store', storePath, 'list', '--all', '--json']);
+    const [persisted] = JSON.parse(listed.stdout);
+    assert.deepEqual(persisted.schedule, original.schedule);
+    assert.deepEqual(persisted.scheduleUi, original.scheduleUi);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('cron CLI help exposes only app-context target options', async () => {
   const result = await execFileAsync('node', [cliPath, 'cron', 'add', '--help']);
   const legacyPartitionOption = [`--${retiredWord}`, '-scope'].join('');

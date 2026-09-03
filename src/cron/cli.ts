@@ -37,18 +37,22 @@ function maybeTargetFromOptions(options: { room?: string; defaultChat?: boolean 
 	return targetFromOptions(options);
 }
 
+function scheduleSelectors(options: Record<string, unknown>, positionalCron?: string): string[] {
+	const candidates: Array<[string, boolean]> = [
+		["--in", typeof options.in === "string"],
+		["--at", typeof options.at === "string"],
+		["--every", typeof options.every === "string"],
+		["--daily", typeof options.daily === "string"],
+		["--weekly", typeof options.weekly === "string"],
+		["--monthly", typeof options.monthly === "string" || typeof options.monthly === "number"],
+		["--cron", typeof options.cron === "string"],
+		["positional cron expression", Boolean(positionalCron)],
+	];
+	return candidates.filter(([, selected]) => selected).map(([selector]) => selector);
+}
+
 function hasScheduleOptions(options: Record<string, unknown>, positionalCron?: string): boolean {
-	return Boolean(
-		positionalCron ||
-		typeof options.in === "string" ||
-		typeof options.at === "string" ||
-		typeof options.every === "string" ||
-		typeof options.daily === "string" ||
-		typeof options.weekly === "string" ||
-		typeof options.monthly === "string" ||
-		typeof options.monthly === "number" ||
-		typeof options.cron === "string"
-	);
+	return scheduleSelectors(options, positionalCron).length > 0;
 }
 
 function scheduleWithTimezone(job: PiboCronJob, tz: string) {
@@ -70,6 +74,8 @@ function scheduleWithTimezone(job: PiboCronJob, tz: string) {
 }
 
 function scheduleFromOptions(options: Record<string, unknown>, positionalCron?: string) {
+	const selectors = scheduleSelectors(options, positionalCron);
+	if (selectors.length > 1) throw new Error(`Conflicting schedule selectors: ${selectors.join(", ")}. Choose exactly one schedule source.`);
 	if (typeof options.in === "string") return parseFriendlySchedule({ kind: "in", value: options.in });
 	if (typeof options.at === "string") return parseFriendlySchedule({ kind: "at", value: options.at, tz: typeof options.tz === "string" ? options.tz : undefined });
 	if (typeof options.every === "string") return parseFriendlySchedule({ kind: "every", value: options.every });
