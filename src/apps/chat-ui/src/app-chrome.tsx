@@ -27,7 +27,6 @@ const MAIN_NAV_MENU_ID = "main-navigation-menu";
 
 type AppHeaderProps = {
 	area: AppArea;
-	desktopTabMode?: boolean;
 	identity: BootstrapData["identity"];
 	mobileAreaMenuOpen: boolean;
 	mobileSidebarTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -51,7 +50,6 @@ export function FallbackGatewayBanner() {
 
 export function AppHeader({
 	area,
-	desktopTabMode = false,
 	identity,
 	mobileAreaMenuOpen,
 	mobileSidebarTriggerRef,
@@ -161,7 +159,7 @@ export function AppHeader({
 				<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Logo" className="h-5 w-auto shrink-0" />
 				<div className="truncate font-extrabold tracking-[0.08em] uppercase text-lg max-[420px]:text-base">Pibo Chat</div>
 			</div>
-			{desktopTabMode ? null : <nav aria-label="Main navigation" className="flex gap-1 max-[1200px]:hidden min-[1201px]:absolute min-[1201px]:left-1/2 min-[1201px]:-translate-x-1/2">
+			<nav aria-label="Main navigation" className="flex gap-1 max-[1200px]:hidden min-[1201px]:absolute min-[1201px]:left-1/2 min-[1201px]:-translate-x-1/2">
 				{navigationAreas.map((item) => (
 					<button
 						key={item}
@@ -178,14 +176,13 @@ export function AppHeader({
 						</span>
 					</button>
 				))}
-			</nav>}
+			</nav>
 			<div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-xs text-slate-400 min-[1201px]:ml-0">
-				<UserRound size={14} />
-				<span className={`truncate ${vscodeEnabled ? "max-[1500px]:hidden" : "max-[600px]:hidden"}`}>{identityLabel}</span>
+				<span tabIndex={0} title={identityLabel} aria-label={`Signed in as ${identityLabel}`} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-700 outline-none hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><UserRound size={14} /></span>
 				<button type="button" onClick={() => void signOut().then(() => location.reload())} className="p-1 border border-slate-700 rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4]" title="Sign out" aria-label="Sign out">
 					<LogOut size={14} />
 				</button>
-				{desktopTabMode ? null : <div className="relative min-[1201px]:hidden" ref={mobileAreaMenuRef}>
+				<div className="relative min-[1201px]:hidden" ref={mobileAreaMenuRef}>
 					<button
 						ref={mobileAreaMenuButtonRef}
 						type="button"
@@ -235,7 +232,7 @@ export function AppHeader({
 							))}
 						</div>
 					) : null}
-				</div>}
+				</div>
 			</div>
 		</header>
 	);

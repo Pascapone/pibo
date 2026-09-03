@@ -1828,12 +1828,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 				data-pibo-selected-session-id={selectedPiboSessionId ?? bootstrap.selectedPiboSessionId ?? undefined}
 				data-pibo-terminal-fullscreen={isTerminalFullscreen ? "true" : "false"}
 				data-pibo-preview-fullscreen={isDesktopPreviewFullscreen ? "true" : "false"}
-				className={`h-dvh overflow-hidden bg-[#101d22] text-slate-200 grid ${isAppFullscreen ? "grid-rows-[1fr]" : "grid-rows-[auto_auto_1fr]"}`}
+				className={`h-dvh overflow-hidden bg-[#101d22] text-slate-200 grid ${isAppFullscreen ? "grid-rows-[1fr]" : desktopTabsEnabled ? "grid-rows-[auto_1fr]" : "grid-rows-[auto_auto_1fr]"}`}
 			>
-				{isAppFullscreen ? null : (
+				{isAppFullscreen || desktopTabsEnabled ? null : (
 					<AppHeader
 						area={area}
-						desktopTabMode={desktopTabsEnabled}
 						identity={identity}
 						mobileAreaMenuOpen={mobileAreaMenuOpen}
 						mobileSidebarTriggerRef={mobileSidebarTriggerRef}
@@ -1863,6 +1862,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					<DesktopSessionSidebar
 						state={desktopSessionSidebar.state}
 						onStateChange={desktopSessionSidebar.setState}
+						identity={identity}
 						onRefresh={() => void loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true }).then((data) => {
 							if (selectedPiboSessionId) void refreshTrace(selectedPiboSessionId);
 							navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);

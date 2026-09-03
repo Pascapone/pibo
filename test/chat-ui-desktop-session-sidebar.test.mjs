@@ -11,6 +11,7 @@ test("Desktop sidebar preserves the existing Rooms, profile, and Sessions data c
 	const desktopSidebar = app.match(/<DesktopSessionSidebar[\s\S]*?<\/DesktopSessionSidebar>/)?.[0] ?? "";
 	assert.match(desktopSidebar, /state=\{desktopSessionSidebar\.state\}/);
 	assert.match(desktopSidebar, /onStateChange=\{desktopSessionSidebar\.setState\}/);
+	assert.match(desktopSidebar, /identity=\{identity\}/);
 	for (const wiring of [
 		"bootstrap={bootstrap}",
 		"visibleActiveSessions={visibleActiveSessions}",
@@ -62,6 +63,31 @@ test("Desktop sidebar preserves the existing Rooms, profile, and Sessions data c
 	assert.match(html, /data-pibo-session-id="ps-one"[^>]*data-pibo-unread-count="3"/);
 	assert.match(html, /aria-label="New Room"/);
 	assert.match(html, /aria-label="New Session"/);
+});
+
+test("Desktop sidebar owns the desktop brand and tooltip-only account controls", async () => {
+	const script = `
+		import React from "react";
+		import { renderToStaticMarkup } from "react-dom/server";
+		import { DesktopSessionSidebar } from "./src/apps/chat-ui/src/desktop-session-sidebar.tsx";
+		globalThis.React = React;
+		const html = renderToStaticMarkup(React.createElement(DesktopSessionSidebar, {
+			state: { version: 1, width: 300, collapsed: false },
+			onStateChange() {},
+			onRefresh() {},
+			identity: { userId: "test-user", name: "Test User", email: "test@example.com" },
+		}, React.createElement("div", null, "Sidebar content")));
+		console.log(JSON.stringify(html));
+	`;
+	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	const html = JSON.parse(stdout);
+	assert.match(html, /data-pibo-debug="desktop-sidebar-app-header"/);
+	assert.match(html, /@max-\[190px\]:h-20/);
+	assert.match(html, />Pibo Chat</);
+	assert.match(html, /title="test@example\.com"/);
+	assert.match(html, /aria-label="Signed in as test@example\.com"/);
+	assert.match(html, /aria-label="Sign out"/);
+	assert.doesNotMatch(html, />test@example\.com</);
 });
 
 test("Desktop sidebar resize handle stays fully inside the clipped sidebar", async () => {

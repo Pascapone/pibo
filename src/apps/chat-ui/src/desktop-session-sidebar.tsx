@@ -1,5 +1,7 @@
-import { PanelLeftClose, PanelLeftOpen, RefreshCw } from "lucide-react";
+import { LogOut, PanelLeftClose, PanelLeftOpen, RefreshCw, UserRound } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { signOut } from "./api-auth";
+import type { BootstrapData } from "./types";
 import {
 	DESKTOP_COLLAPSED_SIDEBAR_WIDTH,
 	DESKTOP_SESSION_SIDEBAR_MAX_WIDTH,
@@ -23,15 +25,18 @@ export function DesktopSessionSidebar({
 	state,
 	onStateChange,
 	onRefresh,
+	identity,
 	children,
 	hidden = false,
 }: {
 	state: DesktopSessionSidebarState;
 	onStateChange: (state: DesktopSessionSidebarState) => void;
 	onRefresh: () => void;
+	identity: BootstrapData["identity"];
 	children: ReactNode;
 	hidden?: boolean;
 }) {
+	const identityLabel = identity.email || identity.name || identity.userId;
 	const shellStyle = {
 		width: state.collapsed ? `${DESKTOP_COLLAPSED_SIDEBAR_WIDTH}px` : `${state.width}px`,
 	} as CSSProperties;
@@ -60,7 +65,7 @@ export function DesktopSessionSidebar({
 			tabIndex={-1}
 			hidden={hidden}
 			aria-hidden={hidden || undefined}
-			className="relative min-h-0 shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"
+			className="@container relative min-h-0 shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"
 			style={shellStyle}
 		>
 			<div
@@ -81,7 +86,12 @@ export function DesktopSessionSidebar({
 				className={`absolute inset-y-0 right-0 z-20 w-2 touch-none cursor-col-resize outline-none hover:bg-[#11a4d4]/35 focus-visible:bg-[#11a4d4]/60 ${state.collapsed ? "hidden" : ""}`}
 			/>
 			{state.collapsed ? (
-				<div className="flex h-full flex-col items-center gap-2 bg-[#151f24] py-2">
+				<div className="flex h-full flex-col items-center gap-2 bg-[#151f24] pb-2">
+					<div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-slate-800">
+						<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Pibo Chat" title="Pibo Chat" className="h-5 w-5" />
+					</div>
+					<span tabIndex={0} title={identityLabel} aria-label={`Signed in as ${identityLabel}`} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-400 outline-none hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><UserRound size={15} /></span>
+					<button type="button" onClick={() => void signOut().then(() => location.reload())} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]" title="Sign out" aria-label="Sign out"><LogOut size={15} /></button>
 					<button
 						type="button"
 						onClick={() => onStateChange({ ...state, collapsed: false })}
@@ -95,6 +105,16 @@ export function DesktopSessionSidebar({
 				</div>
 			) : (
 				<div className="flex h-full min-h-0 flex-col">
+					<div data-pibo-debug="desktop-sidebar-app-header" className="flex h-14 shrink-0 items-center gap-1 border-b border-slate-800 bg-[#1a262b] px-2 @max-[190px]:h-20 @max-[190px]:flex-col @max-[190px]:justify-center @max-[190px]:gap-1 @max-[190px]:py-2">
+						<div className="flex min-w-0 items-center gap-1.5 @max-[190px]:w-full @max-[190px]:justify-center">
+							<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Logo" className="h-4 w-4 shrink-0" />
+							<span className="truncate text-xs font-extrabold uppercase tracking-[0.06em] text-slate-100">Pibo Chat</span>
+						</div>
+						<div className="ml-auto flex shrink-0 items-center gap-1 @max-[190px]:mx-auto">
+							<span tabIndex={0} title={identityLabel} aria-label={`Signed in as ${identityLabel}`} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-700 text-slate-400 outline-none hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><UserRound size={13} /></span>
+							<button type="button" onClick={() => void signOut().then(() => location.reload())} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]" title="Sign out" aria-label="Sign out"><LogOut size={13} /></button>
+						</div>
+					</div>
 					<div className="flex h-11 shrink-0 items-center justify-between border-b border-slate-800 px-3 text-xs font-bold uppercase tracking-wider">
 						<span className="truncate">Sessions</span>
 						<div className="flex shrink-0 items-center gap-1">

@@ -53,8 +53,16 @@ test("App gates the new three-region shell to Desktop and keeps the route shell 
 	assert.match(app, /className="min-h-0 min-w-\[250px\] flex-1 overflow-hidden"/);
 	assert.match(app, /desktopTerminalOnly[\s\S]*containerResponsive/);
 	assert.match(app, /data-pibo-debug="route-shell"/);
-	assert.match(app, /desktopTabMode=\{desktopTabsEnabled\}/);
-	assert.match(chrome, /desktopTabMode \? null : <nav aria-label="Main navigation"/);
+	assert.match(app, /isAppFullscreen \|\| desktopTabsEnabled \? null : \(/);
+	assert.match(app, /desktopTabsEnabled \? "grid-rows-\[auto_1fr\]"/);
+	assert.match(app, /<DesktopSessionSidebar[\s\S]*identity=\{identity\}/);
+	assert.match(desktopSidebar, /data-pibo-debug="desktop-sidebar-app-header"/);
+	assert.match(desktopSidebar, />Pibo Chat</);
+	assert.match(desktopSidebar, /title=\{identityLabel\}/);
+	assert.match(desktopSidebar, /aria-label=\{`Signed in as \$\{identityLabel\}`\}/);
+	assert.match(desktopSidebar, /aria-label="Sign out"/);
+	assert.doesNotMatch(app, /desktopTabMode=/);
+	assert.doesNotMatch(chrome, /desktopTabMode/);
 	assert.match(pane, /createPortal\(desktopToolPanels\[tool\]/);
 	assert.match(pane, /forcePanelVisible: Boolean\(desktopToolHosts\?\.\["web-annotations"\]\)/);
 	assert.match(app, /sessionViewId="terminal"[\s\S]*currentSessionView=\{terminalSessionView\}[\s\S]*desktopTerminalOnly/);
