@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 7;
+export const PIBO_DATA_SCHEMA_VERSION = 8;
 
 const NATIVE_HISTORY_FALLBACK_SCHEMA_VERSION = 5;
 const retiredScopeColumn = ["owner", "scope"].join("_");
@@ -10,6 +10,29 @@ type RetiredScopeTable = {
 	columns: string[];
 	definition: string;
 };
+
+const payloadTableDefinition = `
+	id TEXT PRIMARY KEY,
+	sha256 TEXT NOT NULL,
+	storage_kind TEXT NOT NULL,
+	storage_path TEXT,
+	content_type TEXT NOT NULL,
+	encoding TEXT NOT NULL DEFAULT 'gzip',
+	byte_size INTEGER NOT NULL,
+	compressed_byte_size INTEGER,
+	preview_text TEXT,
+	retention_class TEXT NOT NULL,
+	ref_count INTEGER NOT NULL DEFAULT 0,
+	status TEXT NOT NULL DEFAULT 'committed',
+	created_at TEXT NOT NULL,
+	last_verified_at TEXT
+`;
+
+const payloadTableColumns = [
+	"id", "sha256", "storage_kind", "storage_path", "content_type", "encoding",
+	"byte_size", "compressed_byte_size", "preview_text", "retention_class", "ref_count",
+	"status", "created_at", "last_verified_at",
+];
 
 const retiredScopeTables: RetiredScopeTable[] = [
 	{
@@ -108,6 +131,27 @@ function rebuildRetiredScopeTables(db: DatabaseSync, tablesToRebuild: RetiredSco
 	}
 }
 
+function payloadTableNeedsMetadataIdentityRebuild(db: DatabaseSync): boolean {
+	const table = db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'payloads'").get();
+	if (!table) return false;
+	const indexes = db.prepare("SELECT name FROM pragma_index_list('payloads') WHERE \"unique\" = 1").all() as Array<{ name: string }>;
+	return indexes.some((index) => {
+		const columns = db.prepare("SELECT name FROM pragma_index_info(?) ORDER BY seqno").all(index.name) as Array<{ name: string }>;
+		return columns.length === 1 && columns[0]?.name === "sha256";
+	});
+}
+
+function rebuildPayloadTableForMetadataIdentity(db: DatabaseSync): void {
+	const columns = payloadTableColumns.join(", ");
+	db.exec(`
+		DROP TABLE IF EXISTS __pibo_schema_v8_payloads;
+		CREATE TABLE __pibo_schema_v8_payloads (${payloadTableDefinition});
+		INSERT INTO __pibo_schema_v8_payloads (${columns}) SELECT ${columns} FROM payloads;
+		DROP TABLE payloads;
+		ALTER TABLE __pibo_schema_v8_payloads RENAME TO payloads;
+	`);
+}
+
 export function assertSupportedPiboDataSchemaVersion(db: DatabaseSync): number {
 	const version = Number((db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)?.user_version ?? 0);
 	if (version > PIBO_DATA_SCHEMA_VERSION) {
@@ -117,6 +161,7 @@ export function assertSupportedPiboDataSchemaVersion(db: DatabaseSync): number {
 }
 
 export const PIBO_DATA_SCHEMA_MIGRATION_STEPS = [
+	"payload-metadata-identity",
 	"schema",
 	"runtime-bindings",
 	"render-high-water",
@@ -137,18 +182,20 @@ export type PiboDataSchemaMigrationHooks = {
 export function applyPiboDataSchema(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks = {}): void {
 	const previousVersion = assertSupportedPiboDataSchemaVersion(db);
 	const tablesToRebuild = retiredScopeTablesToRebuild(db);
+	const rebuildPayloadTable = payloadTableNeedsMetadataIdentityRebuild(db);
+	const requiresTableRebuild = tablesToRebuild.length > 0 || rebuildPayloadTable;
 	const ownsTransaction = !db.isTransaction;
-	if (!ownsTransaction && tablesToRebuild.length > 0) {
+	if (!ownsTransaction && requiresTableRebuild) {
 		throw new Error("Pibo data schema migration requires an independent transaction");
 	}
 	const foreignKeysEnabled = ownsTransaction
-		&& tablesToRebuild.length > 0
+		&& requiresTableRebuild
 		&& Number((db.prepare("PRAGMA foreign_keys").get() as { foreign_keys?: number }).foreign_keys ?? 0) === 1;
 	if (foreignKeysEnabled) db.exec("PRAGMA foreign_keys = OFF");
 	try {
 		if (ownsTransaction) db.exec("BEGIN IMMEDIATE");
-		applyPiboDataSchemaInTransaction(db, hooks, previousVersion, tablesToRebuild);
-		if (tablesToRebuild.length > 0) {
+		applyPiboDataSchemaInTransaction(db, hooks, previousVersion, tablesToRebuild, rebuildPayloadTable);
+		if (requiresTableRebuild) {
 			const violations = db.prepare("PRAGMA foreign_key_check").all();
 			if (violations.length > 0) {
 				throw new Error(`Pibo data schema migration would retain ${violations.length} foreign-key violation(s)`);
@@ -163,11 +210,19 @@ export function applyPiboDataSchema(db: DatabaseSync, hooks: PiboDataSchemaMigra
 	}
 }
 
-function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchemaMigrationHooks, previousVersion: number, tablesToRebuild: RetiredScopeTable[]): void {
+function applyPiboDataSchemaInTransaction(
+	db: DatabaseSync,
+	hooks: PiboDataSchemaMigrationHooks,
+	previousVersion: number,
+	tablesToRebuild: RetiredScopeTable[],
+	rebuildPayloadTable: boolean,
+): void {
 	const existingSessionCount = db.prepare("SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'sessions'").get() as { count: number };
 	const hadSessionsBeforeMigration = existingSessionCount.count > 0
 		&& Number((db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number }).count) > 0;
 	rebuildRetiredScopeTables(db, tablesToRebuild);
+	if (rebuildPayloadTable) rebuildPayloadTableForMetadataIdentity(db);
+	hooks.afterStep?.("payload-metadata-identity");
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
@@ -317,22 +372,9 @@ function applyPiboDataSchemaInTransaction(db: DatabaseSync, hooks: PiboDataSchem
 		);
 
 
-		CREATE TABLE IF NOT EXISTS payloads (
-			id TEXT PRIMARY KEY,
-			sha256 TEXT NOT NULL UNIQUE,
-			storage_kind TEXT NOT NULL,
-			storage_path TEXT,
-			content_type TEXT NOT NULL,
-			encoding TEXT NOT NULL DEFAULT 'gzip',
-			byte_size INTEGER NOT NULL,
-			compressed_byte_size INTEGER,
-			preview_text TEXT,
-			retention_class TEXT NOT NULL,
-			ref_count INTEGER NOT NULL DEFAULT 0,
-			status TEXT NOT NULL DEFAULT 'committed',
-			created_at TEXT NOT NULL,
-			last_verified_at TEXT
-		);
+		CREATE TABLE IF NOT EXISTS payloads (${payloadTableDefinition});
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_payloads_identity
+			ON payloads(sha256, content_type, retention_class);
 
 		CREATE TABLE IF NOT EXISTS event_log (
 			stream_id INTEGER PRIMARY KEY,

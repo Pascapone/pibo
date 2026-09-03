@@ -1,6 +1,6 @@
 {
   "name": "@pasko70/pibo",
-  "version": "3.2.4",
+  "version": "3.2.5",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
