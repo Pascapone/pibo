@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T21:32:28Z"
+  at: "2026-09-03T15:55:41Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "cd13474b2b2fd4cd388e6229db7ec75418f496e9"
   requirements:
     - id: "WP02-DATA-STORE-001"
       status: "implemented"
@@ -39,10 +39,12 @@ traceability:
           name: "an already-stamped schema v6 is repaired idempotently and preserves runtime bindings"
         - path: "test/data-v2-store.test.mjs"
           name: "pibo data store rejects future schemas without mutating them"
+        - path: "test/data-v2-store.test.mjs"
+          name: "schema v8 migrates payload identity without rewriting existing payload files"
         - path: "test/stream-render-final-review.test.mjs"
-          name: "schema v7 migration rolls every injected phase back and retries completely"
+          name: "current schema migration rolls every injected phase back and retries completely"
         - path: "test/stream-render-final-review.test.mjs"
-          name: "schema v7 resumes an interrupted legacy negative sequence repair"
+          name: "current schema resumes an interrupted legacy negative sequence repair"
       failures:
         - "Bounded payload reads verify size and SHA-256."
         - "Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow."
@@ -108,6 +110,10 @@ traceability:
           symbol: "readPayloadJsonBounded"
         - path: "src/data/payload-store.ts"
           symbol: "findBySha256"
+        - path: "src/data/schema.ts"
+          symbol: "idx_payloads_identity"
+        - path: "src/tools/mcp-bridge.ts"
+          symbol: "piboResultToMcp"
         - path: "src/apps/chat/data/history-query-service.ts"
           symbol: "ChatHistoryQueryService"
         - path: "src/apps/chat/data/history-query-service.ts"
@@ -115,6 +121,14 @@ traceability:
       tests:
         - path: "test/data-v2-store.test.mjs"
           name: "payload store writes, reads, and dedupes payloads"
+        - path: "test/data-v2-store.test.mjs"
+          name: "payload deduplication keeps incompatible interpretation metadata isolated"
+        - path: "test/data-v2-store.test.mjs"
+          name: "application/json payloads serialize primitive strings as valid JSON"
+        - path: "test/trace-v2-fast-path.test.mjs"
+          name: "trace materialization isolates text that matches existing JSON bytes"
+        - path: "test/pibo-tool-mcp-bridge.test.mjs"
+          name: "session-scoped MCP bridge enforces tool isolation and preserves progress, content, errors, correlation, and large results"
         - path: "test/data-v2-ingest-service.test.mjs"
           name: "chat data ingest externalizes large user message payloads"
       failures:
@@ -182,7 +196,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Persistence and models: `PIBO_DATA_SCHEMA_VERSION=7`; rooms; payloads; event log; chat messages; observations; session stats; app read state; navigation; indexer offsets; migration import map; durable render high-water, output-part, and tool-invocation counters; external payload root with SHA-256 metadata, refcounting, and gzip/identity encoding. Opening a supported legacy schema transactionally repairs retired required partition columns even when an earlier open stamped a later version; future schemas fail before mutation.
+- Persistence and models: `PIBO_DATA_SCHEMA_VERSION=8`; rooms; payloads; event log; chat messages; observations; session stats; app read state; navigation; indexer offsets; migration import map; durable render high-water, output-part, and tool-invocation counters; external payload root with SHA-256 metadata, refcounting, and gzip/identity encoding. Payload deduplication uses SHA-256, content type, and retention class as one indexed semantic identity, while different metadata variants retain isolated rows and files. Opening a supported legacy schema transactionally repairs retired required partition columns and migrates the former SHA-only payload uniqueness without rewriting existing payload files; future schemas fail before mutation.
 - Routes and protocols: No HTTP route is owned; Chat query services are consumed by Web routes.
 - State transitions: User acceptance and output ingestion append idempotent event facts, then project normalized messages and observations. Client transaction IDs deduplicate retries; repeated text without a transaction ID remains distinct. Output identity collisions fail visibly. Canonical render sequence, output-part index, and tool-invocation ordinal survive restart and clock rollback. Read cursors advance monotonically, and an idle started turn without a terminal projects an explicit bounded incomplete-integrity marker rather than a false running state.
 - Failure and security: Bounded payload reads verify size and SHA-256. Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow. Missing or corrupt external payload content falls back to the durable preview where the history service supports it.
@@ -193,7 +207,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 ## Requirement: WP02-DATA-STORE-001
 
-The specification SHALL define schema version 7, repair supported legacy physical tables transactionally, reject unsupported future versions without mutation, and assign only the listed non-session, non-telemetry product tables to this owner.
+The specification SHALL define schema version 8, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-session, non-telemetry product tables to this owner.
 
 ## Requirement: WP02-DATA-STORE-002
 
@@ -201,7 +215,7 @@ Accepted user messages and normalized output SHALL be ingested idempotently; unk
 
 ## Requirement: WP02-DATA-STORE-003
 
-Over-budget values SHALL use content-addressed external payload storage with deduplication, bounded integrity-checked reads, and durable-preview fallback where exposed.
+Over-budget values SHALL use content-addressed external payload storage with indexed deduplication by SHA-256, content type, and retention class. Equal bytes with different metadata SHALL remain isolated, JSON values including primitive strings SHALL use valid JSON serialization, and bounded reads SHALL verify integrity.
 
 ## Requirement: WP02-DATA-STORE-004
 
@@ -251,6 +265,7 @@ Related ownership boundaries:
 # Failure and security behavior
 
 - Bounded payload reads verify size and SHA-256.
+- Equal payload bytes with different content types or retention classes use separate metadata identities and storage paths instead of failing or inheriting incompatible metadata.
 - Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow.
 - Missing or corrupt external payload content falls back to the durable preview where the history service supports it.
 
@@ -264,13 +279,13 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
+Source symbols and named tests are bound to commit `cd13474b2b2fd4cd388e6229db7ec75418f496e9`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
 
 Package verification commands:
 
 - `npm run build`
 - `npm run typecheck`
-- `node scripts/run-test-suite.mjs test/data-v2-store.test.mjs test/app-context-fresh-schema.test.mjs test/data-v2-ingest-service.test.mjs test/chat-v2-native-services.test.mjs`
+- `node scripts/run-test-suite.mjs test/data-v2-store.test.mjs test/trace-v2-fast-path.test.mjs test/pibo-tool-mcp-bridge.test.mjs test/stream-render-final-review.test.mjs test/app-context-fresh-schema.test.mjs test/data-v2-ingest-service.test.mjs test/chat-v2-native-services.test.mjs`
 
 # Related concepts
 

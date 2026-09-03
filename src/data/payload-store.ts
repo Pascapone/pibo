@@ -78,17 +78,8 @@ export class PayloadStore {
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		const bytes = payloadToBytes(input.value, contentType);
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
-		const existing = this.findBySha256(sha256);
+		const existing = this.findByIdentity(sha256, contentType, input.retentionClass);
 		if (existing) {
-			if (existing.contentType !== contentType || existing.retentionClass !== input.retentionClass) {
-				throw new PiboPayloadMetadataConflictError(
-					sha256,
-					existing.contentType,
-					contentType,
-					existing.retentionClass,
-					input.retentionClass,
-				);
-			}
 			this.db.prepare("UPDATE payloads SET ref_count = ref_count + 1 WHERE id = ?").run(existing.id);
 			return this.getPayload(existing.id) ?? existing;
 		}
@@ -97,7 +88,7 @@ export class PayloadStore {
 		const encoding = shouldCompress ? "gzip" : "identity";
 		const bytesToStore = shouldCompress ? gzipSync(bytes) : bytes;
 		const compressedByteSize = shouldCompress ? bytesToStore.byteLength : null;
-		const relativePath = buildRelativePayloadPath(sha256, contentType, encoding);
+		const relativePath = buildRelativePayloadPath(sha256, contentType, input.retentionClass, encoding);
 		const absolutePath = this.rootDir === ":memory:" ? relativePath : join(this.rootDir, relativePath);
 		writePayloadFile(absolutePath, bytesToStore);
 		const id = input.id ?? `payload_${randomUUID()}`;
@@ -186,7 +177,15 @@ export class PayloadStore {
 	}
 
 	findBySha256(sha256: string): StoredPayload | undefined {
-		const row = this.db.prepare("SELECT * FROM payloads WHERE sha256 = ?").get(sha256) as PayloadRow | undefined;
+		const row = this.db.prepare("SELECT * FROM payloads WHERE sha256 = ? ORDER BY created_at ASC, id ASC LIMIT 1").get(sha256) as PayloadRow | undefined;
+		return row ? payloadFromRow(row) : undefined;
+	}
+
+	private findByIdentity(sha256: string, contentType: string, retentionClass: string): StoredPayload | undefined {
+		const row = this.db.prepare(`
+			SELECT * FROM payloads
+			WHERE sha256 = ? AND content_type = ? AND retention_class = ?
+		`).get(sha256, contentType, retentionClass) as PayloadRow | undefined;
 		return row ? payloadFromRow(row) : undefined;
 	}
 
@@ -238,9 +237,9 @@ function defaultContentType(value: PayloadWriteInput["value"]): string {
 }
 
 function payloadToBytes(value: PayloadWriteInput["value"], contentType: string): Uint8Array {
-	if (typeof value === "string") return Buffer.from(value, "utf8");
 	if (value instanceof Uint8Array) return value;
 	if (contentType.includes("json")) return Buffer.from(JSON.stringify(value), "utf8");
+	if (typeof value === "string") return Buffer.from(value, "utf8");
 	return Buffer.from(String(value), "utf8");
 }
 
@@ -251,10 +250,16 @@ function previewTextFromValue(value: PayloadWriteInput["value"]): string | undef
 	return normalized ? normalized.slice(0, 1024) : undefined;
 }
 
-function buildRelativePayloadPath(sha256: string, contentType: string, encoding: string): string {
+function buildRelativePayloadPath(sha256: string, contentType: string, retentionClass: string, encoding: string): string {
 	const extension = extensionForContentType(contentType);
 	const suffix = encoding === "gzip" ? `${extension}.gz` : extension;
-	return join("sha256", sha256.slice(0, 2), sha256.slice(2, 4), `${sha256}.${suffix}`);
+	const metadataHash = createHash("sha256")
+		.update(contentType)
+		.update("\0")
+		.update(retentionClass)
+		.digest("hex")
+		.slice(0, 16);
+	return join("sha256", sha256.slice(0, 2), sha256.slice(2, 4), `${sha256}.${metadataHash}.${suffix}`);
 }
 
 function extensionForContentType(contentType: string): string {
