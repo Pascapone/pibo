@@ -2,7 +2,7 @@
 // Orchestrate a Pibo release end-to-end.
 //
 // Steps:
-//   1. Bump the version in package.json (root) AND src/apps/chat-vscode/package.json.
+//   1. Bump the version in package.json, package-lock.json, and the VS Code extension manifest.
 //   2. Run the full build (tsc + web-ui + vscode webview + esbuild).
 //   3. Package the VS Code extension into dist/apps/vscode-artifacts/.
 //   4. (Optional) Publish the npm package: `npm publish`.
@@ -27,9 +27,19 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const rootPackageJsonPath = resolve(root, "package.json");
+const rootPackageLockPath = resolve(root, "package-lock.json");
 const extensionPackageJsonPath = resolve(root, "src/apps/chat-vscode/package.json");
 const artifactsDir = resolve(root, "dist/apps/vscode-artifacts");
 const npmCommand = process.platform === "win32" ? ["cmd.exe", "/c", "npm.cmd"] : ["npm"];
+
+function isValidSemver(version) {
+	const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/.exec(version);
+	if (!match) return false;
+	const prerelease = match[4]?.split(".") ?? [];
+	if (prerelease.some((identifier) => identifier.length === 0 || (/^\d+$/.test(identifier) && identifier.length > 1 && identifier.startsWith("0")))) return false;
+	const build = match[5]?.split(".") ?? [];
+	return build.every((identifier) => identifier.length > 0);
+}
 
 function parseArgs(argv) {
 	const result = { version: undefined, publishNpm: false, createRelease: false, dryRun: false };
@@ -57,7 +67,7 @@ function parseArgs(argv) {
 	if (!result.version) {
 		throw new Error("--version is required (e.g., --version 1.3.0)");
 	}
-	if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$/.test(result.version)) {
+	if (!isValidSemver(result.version)) {
 		throw new Error(`Version ${result.version} is not a valid semver string`);
 	}
 	return result;
@@ -94,7 +104,12 @@ function currentGitTag() {
 
 const args = parseArgs(process.argv.slice(2));
 const currentRoot = readJson(rootPackageJsonPath);
+const currentLock = readJson(rootPackageLockPath);
+const currentLockedRoot = currentLock.packages?.[""];
 const currentExtension = readJson(extensionPackageJsonPath);
+if (currentLock.name !== currentRoot.name || currentLockedRoot?.name !== currentRoot.name) {
+	throw new Error("package-lock.json does not describe the root package");
+}
 
 console.log(`[release] root @pasko70/pibo: ${currentRoot.version} -> ${args.version}`);
 console.log(`[release] ${currentExtension.publisher}.${currentExtension.name}: ${currentExtension.version} -> ${args.version}`);
@@ -107,10 +122,14 @@ if (args.dryRun) {
 currentRoot.version = args.version;
 writeJson(rootPackageJsonPath, currentRoot);
 
+currentLock.version = args.version;
+currentLockedRoot.version = args.version;
+writeJson(rootPackageLockPath, currentLock);
+
 currentExtension.version = args.version;
 writeJson(extensionPackageJsonPath, currentExtension);
 
-console.log(`[release] updated version in both package.json files`);
+console.log(`[release] updated package manifests and root lock metadata`);
 
 runInherit(npmCommand, ["run", "--silent", "build"]);
 console.log(`[release] built server + web UIs + VS Code WebView`);

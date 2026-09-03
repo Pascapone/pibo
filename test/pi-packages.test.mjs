@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -221,6 +221,21 @@ test("pibo pi-packages CLI provides progressive help and local add/list/remove",
 
 	const inspected = await execFileAsync("node", [cliPath, "pi-packages", "inspect", "local-cli-package"], { cwd });
 	assert.match(inspected.stdout, /"installStatus": "installed"/);
+
+	const missingPackageDir = `${packageDir}-missing`;
+	renameSync(packageDir, missingPackageDir);
+	await assert.rejects(
+		execFileAsync("node", [cliPath, "pi-packages", "doctor"], { cwd }),
+		(error) => {
+			assert.equal(error.code, 1);
+			assert.match(error.stdout, /local-cli-package\s+error/);
+			assert.match(error.stdout, /Local Pi package path does not exist/);
+			return true;
+		},
+	);
+	renameSync(missingPackageDir, packageDir);
+	const healthy = await execFileAsync("node", [cliPath, "pi-packages", "doctor"], { cwd });
+	assert.match(healthy.stdout, /local-cli-package\s+ok/);
 
 	const removed = await execFileAsync("node", [cliPath, "pi-packages", "remove", "local-cli-package"], { cwd });
 	assert.match(removed.stdout, /Removed Pi package local-cli-package/);

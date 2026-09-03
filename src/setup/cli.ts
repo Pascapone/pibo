@@ -190,7 +190,7 @@ export function createUserHostSetupPlan(options: {
 	const piboCommand = options.piboCommand ?? "/usr/bin/pibo";
 	const wwwDomain = options.wwwDomain ?? (options.domain ? `www.${options.domain}` : undefined);
 	const warnings: string[] = [];
-	if (!options.domain) warnings.push("No production domain was provided; generated Caddy/Auth examples use placeholders.");
+	if (!options.domain) warnings.push("No production domain was provided; the Caddyfile is omitted and Auth examples use placeholders.");
 	if (process.platform === "win32" && !isWsl()) {
 		warnings.push("Pibo host setup targets Linux. Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run setup inside the WSL distribution. See docs/project/guides/pibo-on-windows-via-wsl.md.");
 	}
@@ -220,7 +220,7 @@ export function createUserHostSetupPlan(options: {
 			content: `${serviceName}\n`,
 		});
 	}
-	if (options.includeCaddy !== false) {
+	if (options.includeCaddy !== false && options.domain) {
 		generatedFiles.push({
 			path: "/etc/caddy/Caddyfile",
 			purpose: "HTTPS reverse proxy for the production gateway",

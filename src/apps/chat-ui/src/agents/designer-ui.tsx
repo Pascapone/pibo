@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type DragEvent, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, ExternalLink, GripVertical, Plus, Power, PowerOff, Trash2, X } from "lucide-react";
 import { THINKING_LEVELS, type AgentRuntimeCapabilityDelivery, type AgentRuntimeCatalogEntry, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
 import { CATALOG_GROUP_RENDER_LIMIT, piPackageMeta, type CatalogGroup, type PiPackageCatalogItem } from "./agent-designer-model";
@@ -47,6 +47,7 @@ function CatalogGroupCard<T>({
 	renderItem: (item: T) => ReactNode;
 }) {
 	const [open, setOpen] = useState(group.defaultOpen);
+	const contentId = useId();
 	const visibleItems = group.items.slice(0, CATALOG_GROUP_RENDER_LIMIT);
 	const hiddenCount = group.items.length - visibleItems.length;
 	const accentClass = group.kind === "custom" || group.kind === "user"
@@ -54,7 +55,13 @@ function CatalogGroupCard<T>({
 		: "border-[#11a4d4]/70 text-sky-100 bg-[#11a4d4]/10";
 	return (
 		<div className={`border rounded-sm ${open ? "border-slate-700 bg-[#101d22]" : "border-slate-800 bg-[#151f24] hover:border-slate-700"}`}>
-			<button type="button" onClick={() => setOpen((current) => !current)} className="flex w-full items-center gap-2 p-2 text-left">
+			<button
+				type="button"
+				onClick={() => setOpen((current) => !current)}
+				aria-expanded={open}
+				aria-controls={contentId}
+				className="flex w-full items-center gap-2 p-2 text-left"
+			>
 				<span className={`h-6 w-6 shrink-0 inline-flex items-center justify-center border rounded-sm ${accentClass}`}>
 					{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
 				</span>
@@ -67,12 +74,14 @@ function CatalogGroupCard<T>({
 					<span className="text-slate-500">/{group.totalCount}</span>
 				</span>
 			</button>
-			{open ? (
-				<div className="border-t border-slate-800 p-2">
-					<div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-2">{visibleItems.map(renderItem)}</div>
-					{hiddenCount > 0 ? <div className="mt-2 text-xs text-slate-500">Showing first {CATALOG_GROUP_RENDER_LIMIT} of {group.items.length} items. Use Context to manage the full catalog.</div> : null}
-				</div>
-			) : null}
+			<div id={contentId} hidden={!open} className="border-t border-slate-800 p-2">
+				{open ? (
+					<>
+						<div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-2">{visibleItems.map(renderItem)}</div>
+						{hiddenCount > 0 ? <div className="mt-2 text-xs text-slate-500">Showing first {CATALOG_GROUP_RENDER_LIMIT} of {group.items.length} items. Use Context to manage the full catalog.</div> : null}
+					</>
+				) : null}
+			</div>
 		</div>
 	);
 }
@@ -109,6 +118,7 @@ export function CatalogToggle({
 				if (!disabled) onToggle();
 			}}
 			aria-disabled={disabled}
+			aria-pressed={checked}
 			className={`min-w-0 border rounded-sm p-2 text-left grid grid-cols-[18px_1fr] gap-2 ${disabled && !onAction ? "opacity-60" : ""} ${
 				checked ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#151f24] hover:border-slate-700"
 			}`}
@@ -182,7 +192,7 @@ export function PiPackageCard({
 	return (
 		<div className={`border rounded-sm ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#151f24]"} ${!pkg.enabled ? "opacity-75" : ""}`}>
 			<div className="grid grid-cols-[1fr_auto] gap-2 p-2">
-				<button type="button" disabled={!selectable} onClick={onToggleSelected} className="min-w-0 grid grid-cols-[18px_1fr] gap-2 text-left disabled:cursor-not-allowed">
+				<button type="button" disabled={!selectable} aria-pressed={selected} onClick={onToggleSelected} className="min-w-0 grid grid-cols-[18px_1fr] gap-2 text-left disabled:cursor-not-allowed">
 					<SelectionCheckbox checked={selected} disabled={!selectable} className="mt-0.5" />
 					<span className="min-w-0">
 						<span className="flex items-center gap-2">

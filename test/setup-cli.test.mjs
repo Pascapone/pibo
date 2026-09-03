@@ -90,6 +90,21 @@ test("user-host setup plan is minimal and has one service", () => {
 	assert.ok(!plan.requiredHostPackages.some((item) => /git/i.test(item)));
 });
 
+test("user-host setup omits Caddy output when no production domain is provided", () => {
+	const plan = JSON.parse(pibo(["setup", "user-host", "--json"]));
+	assert.equal(plan.generatedFiles.some((file) => file.path === "/etc/caddy/Caddyfile"), false);
+	assert.ok(plan.warnings.some((warning) => /Caddyfile is omitted/.test(warning)));
+
+	const dir = mkdtempSync(join(tmpdir(), "pibo-user-host-no-domain-"));
+	try {
+		const output = pibo(["setup", "user-host", "--write-to", dir]);
+		assert.match(output, /Caddyfile is omitted/);
+		assert.equal(existsSync(join(dir, "etc/caddy/Caddyfile")), false);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("user-host setup persists a custom managed gateway service identity", () => {
 	const piboHome = "/srv/pibo-custom";
 	const plan = JSON.parse(pibo([

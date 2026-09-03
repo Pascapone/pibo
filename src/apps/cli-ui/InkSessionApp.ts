@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput, usePaste } from "ink";
 import { isCliSourceError } from "../../cli-session/index.js";
 import {
 	buildCompactTerminalRows,
@@ -127,6 +127,12 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 	const closedRef = useRef(false);
 	const stateRef = useRef(state);
 	const pickerActivationRef = useRef<InkPickerActivationGuard>({ inFlight: false });
+	const commitInputState = useCallback((update: (current: InkSessionAppState) => InkSessionAppState) => {
+		const next = update(stateRef.current);
+		stateRef.current = next;
+		setState(next);
+		return next;
+	}, []);
 
 	useEffect(() => {
 		stateRef.current = state;
@@ -323,80 +329,90 @@ export function InkSessionApp({ source, initialSessionId, maxRows, maxLineChars,
 		};
 	}, [cleanup, initialSessionId, openRoomPicker, openSession, source]);
 
+	usePaste((input) => {
+		if (closedRef.current || input.length === 0) return;
+		commitInputState((current) => reduceInkSessionInputState(current, { type: "text", value: input }));
+	});
+
 	useInput((input, key) => {
 		if (closedRef.current) return;
+		const returnTerminatedInput = !key.ctrl && !key.meta && !key.return && (input.endsWith("\r") || input.endsWith("\n"));
+		if (returnTerminatedInput) {
+			const text = input.slice(0, -1);
+			if (text.length > 0) commitInputState((current) => reduceInkSessionInputState(current, { type: "text", value: text }));
+		}
 		if (key.ctrl && input === "c") {
 			requestExit();
 			return;
 		}
 		if (key.escape) {
-			setState((current) => reduceInkSessionInputState(current, { type: "escape" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "escape" }));
 			return;
 		}
 		if (key.upArrow) {
-			setState((current) => reduceInkSessionInputState(current, { type: "up" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "up" }));
 			return;
 		}
 		if (key.downArrow) {
-			setState((current) => reduceInkSessionInputState(current, { type: "down" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "down" }));
 			return;
 		}
 		if (key.leftArrow) {
-			setState((current) => reduceInkSessionInputState(current, { type: "left" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "left" }));
 			return;
 		}
 		if (key.rightArrow) {
-			setState((current) => reduceInkSessionInputState(current, { type: "right" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "right" }));
 			return;
 		}
 		if (key.home) {
-			setState((current) => reduceInkSessionInputState(current, { type: "home" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "home" }));
 			return;
 		}
 		if (key.end) {
-			setState((current) => reduceInkSessionInputState(current, { type: "end" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "end" }));
 			return;
 		}
-		if (key.return) {
+		if (key.return || returnTerminatedInput) {
 			const submitted = stateRef.current.input;
 			if (submitted.length === 0 && !stateRef.current.picker && !stateRef.current.slashSuggestions && canToggleSelectedRowDetails(stateRef.current)) {
-				setState((current) => reduceInkSessionInputState(current, { type: "toggle-details" }));
+				commitInputState((current) => reduceInkSessionInputState(current, { type: "toggle-details" }));
 				return;
 			}
 			if (stateRef.current.slashSuggestions && !stateRef.current.picker) {
 				const accepted = acceptSlashSuggestion(stateRef.current);
 				if (accepted.runInput) {
-					setState((current) => ({ ...current, input: "", inputCursor: 0, slashSuggestions: undefined, message: undefined, error: undefined }));
+					commitInputState((current) => ({ ...current, input: "", inputCursor: 0, slashSuggestions: undefined, message: undefined, error: undefined }));
 					void submitCommandOrMessage(accepted.runInput);
 				} else {
-					setState((current) => ({ ...current, input: accepted.input, inputCursor: accepted.input.length, slashSuggestions: undefined, message: `Accepted ${accepted.input.trim()}. Press Enter to run or add arguments.`, error: undefined }));
+					commitInputState((current) => ({ ...current, input: accepted.input, inputCursor: accepted.input.length, slashSuggestions: undefined, message: `Accepted ${accepted.input.trim()}. Press Enter to run or add arguments.`, error: undefined }));
 				}
 				return;
 			}
 			if (submitted.trimStart().startsWith("/")) {
-				setState((current) => reduceInkSessionInputState(current, { type: "enter" }));
+				commitInputState((current) => reduceInkSessionInputState(current, { type: "enter" }));
 				void submitCommandOrMessage(submitted);
 				return;
 			}
 			if (stateRef.current.picker) {
-				setState((current) => reduceInkSessionInputState(current, { type: "enter" }));
+				commitInputState((current) => reduceInkSessionInputState(current, { type: "enter" }));
 				void selectPickerItem();
 				return;
 			}
-			setState((current) => reduceInkSessionInputState(current, { type: "enter" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "enter" }));
 			void submitCommandOrMessage(submitted);
 			return;
 		}
 		if (key.backspace || key.delete) {
-			setState((current) => reduceInkSessionInputState(current, { type: "backspace" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "backspace" }));
 			return;
 		}
 		if (input === "d" && !key.ctrl && !key.meta && stateRef.current.input.length === 0 && !stateRef.current.picker && !stateRef.current.slashSuggestions && canToggleSelectedRowDetails(stateRef.current)) {
-			setState((current) => reduceInkSessionInputState(current, { type: "toggle-details" }));
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "toggle-details" }));
 			return;
 		}
-		if (input && !key.ctrl && !key.meta) {
-			setState((current) => reduceInkSessionInputState(current, { type: "text", value: input }));
+		if (input && !returnTerminatedInput && !key.ctrl && !key.meta) {
+			commitInputState((current) => reduceInkSessionInputState(current, { type: "text", value: input }));
 		}
 	});
 

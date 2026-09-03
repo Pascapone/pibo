@@ -116,6 +116,18 @@ type WorkflowGraphContextMenuEvent = {
 	stopPropagation: () => void;
 };
 
+const INSPECTOR_MIN_WIDTH = 360;
+const INSPECTOR_KEYBOARD_STEP = 24;
+
+function inspectorMaxWidth(): number {
+	if (typeof window === "undefined") return 720;
+	return Math.min(720, Math.max(440, window.innerWidth - 520));
+}
+
+function clampInspectorWidth(width: number): number {
+	return Math.max(INSPECTOR_MIN_WIDTH, Math.min(inspectorMaxWidth(), width));
+}
+
 export function WorkflowGraphCanvas({
 	draft,
 	onDraftChange,
@@ -159,6 +171,8 @@ export function WorkflowGraphCanvas({
 	const graphCanvasRef = useRef<HTMLDivElement | null>(null);
 	const contextMenuRef = useRef<HTMLDivElement | null>(null);
 	const contextMenuInvokerRef = useRef<HTMLElement | null>(null);
+	const manualTriggerInputRef = useRef<HTMLTextAreaElement | null>(null);
+	const manualTriggerInvokerRef = useRef<HTMLElement | null>(null);
 	const runVisualTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
 	useEffect(() => {
@@ -459,12 +473,32 @@ export function WorkflowGraphCanvas({
 		setContextMenu(undefined);
 	}, []);
 
+	const closeManualTriggerDialog = useCallback(() => {
+		if (manualTriggerDialog?.status === "running") return;
+		const invoker = manualTriggerInvokerRef.current;
+		setManualTriggerDialog(undefined);
+		requestAnimationFrame(() => invoker?.focus());
+	}, [manualTriggerDialog?.status]);
+
+	useLayoutEffect(() => {
+		if (!manualTriggerDialog) return;
+		manualTriggerInputRef.current?.focus();
+	}, [manualTriggerDialog?.triggerNodeId]);
+
 	const openManualTriggerDialog = useCallback((triggerNodeId: string) => {
+		manualTriggerInvokerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		setSelectedElement({ type: "node", id: triggerNodeId });
 		setInspectorTab("status");
 		setContextMenu(undefined);
 		setManualTriggerDialog({ triggerNodeId, input: "", status: "idle" });
 	}, []);
+
+	const handleManualTriggerDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+		if (event.key !== "Escape" || manualTriggerDialog?.status === "running") return;
+		event.preventDefault();
+		event.stopPropagation();
+		closeManualTriggerDialog();
+	};
 
 	const renderedNodes = useMemo<WorkflowGraphFlowNode[]>(() => nodes.map((node) => ({
 		...node,
@@ -675,9 +709,7 @@ export function WorkflowGraphCanvas({
 	const startInspectorResize = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
 		event.preventDefault();
 		const handleMove = (moveEvent: MouseEvent) => {
-			const maxWidth = Math.min(720, Math.max(420, window.innerWidth - 520));
-			const nextWidth = Math.max(360, Math.min(maxWidth, window.innerWidth - moveEvent.clientX - 32));
-			setInspectorWidth(nextWidth);
+			setInspectorWidth(clampInspectorWidth(window.innerWidth - moveEvent.clientX - 32));
 		};
 		const stopResize = () => {
 			document.removeEventListener("mousemove", handleMove);
@@ -690,6 +722,17 @@ export function WorkflowGraphCanvas({
 		document.addEventListener("mousemove", handleMove);
 		document.addEventListener("mouseup", stopResize);
 	}, []);
+
+	const handleInspectorResizeKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+		let nextWidth: number | undefined;
+		if (event.key === "ArrowLeft") nextWidth = inspectorWidth + INSPECTOR_KEYBOARD_STEP;
+		else if (event.key === "ArrowRight") nextWidth = inspectorWidth - INSPECTOR_KEYBOARD_STEP;
+		else if (event.key === "Home") nextWidth = INSPECTOR_MIN_WIDTH;
+		else if (event.key === "End") nextWidth = inspectorMaxWidth();
+		if (nextWidth === undefined) return;
+		event.preventDefault();
+		setInspectorWidth(clampInspectorWidth(nextWidth));
+	};
 
 	const selectedDescription = describeSelectedGraphElement(draft.definition, selectedElement);
 	const selectedNodeDefinition = selectedElement?.type === "node" ? readWorkflowNodeDefinitions(draft.definition)[selectedElement.id] : undefined;
@@ -768,17 +811,17 @@ export function WorkflowGraphCanvas({
 						<Controls showInteractive={false} />
 					</ReactFlow>
 					{manualTriggerDialog ? (
-						<div className="absolute bottom-3 left-3 z-40 w-[360px] max-w-[calc(100%-1.5rem)] rounded-sm border border-emerald-700/70 bg-[#101d22] p-3 text-xs shadow-xl shadow-black/40" role="dialog" aria-label="Manual trigger test run">
+						<div className="absolute bottom-3 left-3 z-40 w-[360px] max-w-[calc(100%-1.5rem)] rounded-sm border border-emerald-700/70 bg-[#101d22] p-3 text-xs shadow-xl shadow-black/40" role="dialog" aria-label="Manual trigger test run" onKeyDown={handleManualTriggerDialogKeyDown}>
 							<div className="flex items-start justify-between gap-3">
 								<div>
 									<div className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">Manual trigger</div>
 									<div className="mt-1 font-mono text-[11px] text-slate-400">{manualTriggerDialog.triggerNodeId}</div>
 								</div>
-								<button type="button" className="rounded-sm border border-slate-700 px-2 py-1 text-slate-400 transition hover:border-slate-500 hover:text-slate-100" onClick={() => setManualTriggerDialog(undefined)} disabled={manualTriggerDialog.status === "running"} aria-label="Close manual trigger dialog"><X size={13} /></button>
+								<button type="button" className="rounded-sm border border-slate-700 px-2 py-1 text-slate-400 transition hover:border-slate-500 hover:text-slate-100" onClick={closeManualTriggerDialog} disabled={manualTriggerDialog.status === "running"} aria-label="Close manual trigger dialog"><X size={13} /></button>
 							</div>
 							<label className="mt-3 grid gap-1 font-semibold text-slate-300">
 								<span>Prompt input</span>
-								<textarea className="min-h-24 resize-y rounded-sm border border-slate-700 bg-[#151f24] px-2 py-2 font-mono text-[11px] text-slate-100 outline-none transition focus:border-emerald-500" value={manualTriggerDialog.input} onChange={(event) => setManualTriggerDialog((current) => current ? { ...current, input: event.target.value } : current)} disabled={manualTriggerDialog.status === "running"} placeholder="Write the text prompt for the first agent…" />
+								<textarea ref={manualTriggerInputRef} className="min-h-24 resize-y rounded-sm border border-slate-700 bg-[#151f24] px-2 py-2 font-mono text-[11px] text-slate-100 outline-none transition focus:border-emerald-500" value={manualTriggerDialog.input} onChange={(event) => setManualTriggerDialog((current) => current ? { ...current, input: event.target.value } : current)} disabled={manualTriggerDialog.status === "running"} placeholder="Write the text prompt for the first agent…" />
 							</label>
 							<div className="mt-3 flex gap-2">
 								<button type="button" className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm border border-emerald-600/70 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-100 transition hover:border-emerald-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-50" onClick={runManualTrigger} disabled={manualTriggerDialog.status === "running"}>
@@ -840,15 +883,22 @@ export function WorkflowGraphCanvas({
 				<aside className="relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-sm border border-slate-800 bg-[#0f1b20] @max-[760px]:min-h-[360px]" aria-label="Workflow editor inspector panel">
 					<button
 						type="button"
-						className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize border-l border-[#11a4d4]/20 bg-[#11a4d4]/10 opacity-60 transition hover:bg-[#11a4d4]/30 hover:opacity-100 @max-[760px]:hidden"
+						className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize border-l border-[#11a4d4]/20 bg-[#11a4d4]/10 opacity-60 transition hover:bg-[#11a4d4]/30 hover:opacity-100 focus:opacity-100 @max-[760px]:hidden"
 						onMouseDown={startInspectorResize}
+						onKeyDown={handleInspectorResizeKeyDown}
+						role="separator"
+						aria-orientation="vertical"
+						aria-valuemin={INSPECTOR_MIN_WIDTH}
+						aria-valuemax={inspectorMaxWidth()}
+						aria-valuenow={inspectorWidth}
+						aria-valuetext={`${inspectorWidth} pixels`}
 						aria-label="Resize workflow inspector"
-						title="Drag to resize inspector"
+						title="Drag or use Left and Right Arrow to resize inspector"
 					/>
 					<header className="shrink-0 border-b border-slate-800 bg-[#101d22] p-2">
 						<div className="min-w-0">
 							<div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#11a4d4]">Workflow editor</div>
-							<div className="mt-0.5 truncate text-[11px] text-slate-500">Drag edge to resize</div>
+							<div className="mt-0.5 truncate text-[11px] text-slate-500">Drag edge or use arrow keys to resize</div>
 						</div>
 						<nav className="mt-2 grid grid-cols-3 gap-1" aria-label="Workflow inspector sections">
 							{inspectorTabs.map((tab) => {
@@ -859,6 +909,7 @@ export function WorkflowGraphCanvas({
 										type="button"
 										className={`inline-flex items-center justify-center gap-2 rounded-sm border px-2 py-2 text-[11px] font-semibold transition ${inspectorTab === tab.id ? "border-[#11a4d4]/70 bg-[#11a4d4]/10 text-[#8bdcf4]" : "border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-100"}`}
 										onClick={() => setInspectorTab(tab.id)}
+										aria-pressed={inspectorTab === tab.id}
 										title={tab.label}
 									>
 										<Icon size={14} />

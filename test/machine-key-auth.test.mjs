@@ -35,6 +35,14 @@ test("machine-key generation keeps the raw secret out of the record", () => {
 	assert.match(generated.record.hash, /^[a-f0-9]{64}$/);
 	assert.equal(JSON.stringify(generated.record).includes(generated.token), false);
 	assert.equal(generated.record.identity.provider, "machine-key");
+	assert.throws(
+		() => generateMachineKey({ label: "ambiguous date", identity: testIdentity(), expiresAt: "01/02/2037" }),
+		/expiresAt must be an ISO timestamp/,
+	);
+	assert.throws(
+		() => generateMachineKey({ label: "invalid date", identity: testIdentity(), expiresAt: "2037-02-30T00:00:00Z" }),
+		/expiresAt must be an ISO timestamp/,
+	);
 });
 
 test("machine-key store imports private records and lists only redacted metadata", (t) => {
