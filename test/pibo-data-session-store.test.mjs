@@ -73,7 +73,7 @@ test("pibo data session store persists structured session fields", () => {
 	}
 });
 
-test("pibo data migrate sessions-to-v2 is idempotent", async () => {
+test("pibo data migrate sessions-to-v2 is idempotent and refreshes structured room ids", async () => {
 	const dir = tempDir();
 	try {
 		const sourcePath = join(dir, "pibo-sessions.sqlite");
@@ -127,6 +127,19 @@ test("pibo data migrate sessions-to-v2 is idempotent", async () => {
 		assert.deepEqual(child?.metadata, { rootSessionId: "ps_shared", chatRoomId: "room_shared" });
 		assert.equal(store.list().length, 2);
 		store.close();
+
+		const newerSource = new DatabaseSync(sourcePath);
+		newerSource.prepare("UPDATE pibo_sessions SET metadata_json = ?, updated_at = ? WHERE id = ?")
+			.run('{"chatRoomId":"room_new"}', "2026-05-09T00:04:00.000Z", "ps_shared");
+		newerSource.close();
+		await runDataCli(["node", "pibo", "migrate", "sessions-to-v2", "--root", dir, "--json"]);
+
+		const updated = new DatabaseSync(dbPath, { readOnly: true });
+		const updatedRow = updated.prepare("SELECT room_id, metadata_json, updated_at FROM sessions WHERE id = ?").get("ps_shared");
+		updated.close();
+		assert.equal(updatedRow.room_id, "room_new");
+		assert.equal(JSON.parse(updatedRow.metadata_json).chatRoomId, "room_new");
+		assert.equal(updatedRow.updated_at, "2026-05-09T00:04:00.000Z");
 		assertAppContextSessionsSchema(dbPath);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
