@@ -1,5 +1,6 @@
 export const NODE_RUNTIME_WORKER_SOURCE = String.raw`
 const vm = require("node:vm");
+const inspector = require("node:inspector");
 const util = require("node:util");
 const fs = require("node:fs");
 const childProcess = require("node:child_process");
@@ -153,6 +154,7 @@ const consoleProxy = {
 	dir: (value, options) => appendStdout(util.inspect(value, options) + "\n"),
 };
 
+const runtimeContextName = "pibo-runtime-" + process.pid;
 const context = vm.createContext({
 	console: consoleProxy,
 	require: runtimeRequire,
@@ -169,9 +171,23 @@ const context = vm.createContext({
 	setImmediate,
 	clearImmediate,
 	queueMicrotask,
-});
+}, { name: runtimeContextName });
 context.global = context;
 context.globalThis = context;
+
+const inspectorSession = new inspector.Session();
+let runtimeContextId;
+inspectorSession.on("Runtime.executionContextCreated", ({ params }) => {
+	if (params.context.name === runtimeContextName) runtimeContextId = params.context.id;
+});
+inspectorSession.connect();
+const inspectorReady = inspectorPost("Runtime.enable");
+
+function inspectorPost(method, params = {}) {
+	return new Promise((resolve, reject) => {
+		inspectorSession.post(method, params, (error, result) => error ? reject(error) : resolve(result));
+	});
+}
 
 async function execute(req) {
 	const mode = req.mode || "exec";
@@ -230,16 +246,31 @@ async function inspectValue(req) {
 	}
 }
 
-function listVars(req) {
+async function listVars(req) {
 	const includePrivate = Boolean(req.includePrivate);
 	const maxItems = Number(req.maxItems || 100);
 	const maxBytes = Number(req.maxBytes || 4096);
 	const hidden = new Set(["console", "require", "process", "Buffer", "URL", "URLSearchParams", "TextEncoder", "TextDecoder", "global", "globalThis"]);
+	const lexicalNames = new Set();
+	try {
+		await inspectorReady;
+		if (runtimeContextId !== undefined) {
+			const result = await inspectorPost("Runtime.globalLexicalScopeNames", { executionContextId: runtimeContextId });
+			for (const name of result.names || []) lexicalNames.add(name);
+		}
+	} catch {}
+	const names = new Set([...Object.keys(context), ...lexicalNames]);
 	const variables = [];
-	for (const name of Object.keys(context).sort()) {
+	for (const name of [...names].sort()) {
 		if (hidden.has(name)) continue;
 		if (!includePrivate && name.startsWith("_")) continue;
-		variables.push({ name, summary: summarize(context[name], maxBytes) });
+		let value;
+		try {
+			value = lexicalNames.has(name) ? vm.runInContext(name, context, { filename: "<pibo-runtime>", timeout: 15000 }) : context[name];
+		} catch {
+			continue;
+		}
+		variables.push({ name, summary: summarize(value, maxBytes) });
 		if (variables.length >= maxItems) break;
 	}
 	return { id: req.id, status: "ok", variables, truncated: variables.length >= maxItems };
@@ -253,7 +284,10 @@ async function handle(req) {
 	if (req.type === "exec") return await execute(req);
 	if (req.type === "inspect") return await inspectValue(req);
 	if (req.type === "vars") return listVars(req);
-	if (req.type === "shutdown") return { id: req.id, status: "ok", shutdown: true };
+	if (req.type === "shutdown") {
+		inspectorSession.disconnect();
+		return { id: req.id, status: "ok", shutdown: true };
+	}
 	return { id: req.id, status: "error", error: { name: "RuntimeProtocolError", message: "unknown request type " + req.type } };
 }
 
