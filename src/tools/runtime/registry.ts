@@ -114,9 +114,28 @@ export class RuntimeSessionRegistry {
 	}
 
 	async exec(controllerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeExecResult> {
-		const session = input.sessionId
+		let session = input.sessionId
 			? this.getSessionForController(controllerPiboSessionId, input.sessionId)
-			: await this.getOrStartDefault(controllerPiboSessionId, input);
+			: this.getDefault(controllerPiboSessionId, input.runtime ?? "python");
+		if (!input.sessionId && !session) {
+			const runtime = input.runtime ?? "python";
+			const started = await this.start(controllerPiboSessionId, {
+				runtime,
+				name: input.name,
+				target: input.target,
+				timeoutMs: input.timeoutMs,
+			});
+			if (started.status !== "ok" || !started.sessionId) {
+				return {
+					status: started.status === "ok" ? "failed" : started.status,
+					sessionId: started.sessionId ?? "auto",
+					runtime: started.runtime ?? runtime,
+					durationMs: 0,
+					error: started.error ?? { name: "RuntimeStartError", message: "Runtime session failed to start." },
+				};
+			}
+			session = this.getSessionForController(controllerPiboSessionId, started.sessionId);
+		}
 		const sessionId = input.sessionId ?? session?.sessionId ?? "auto";
 		if (!session) return notFoundExec(sessionId);
 		if (session.status === "closed" || session.status === "failed") return notFoundExec(sessionId);
@@ -252,19 +271,6 @@ export class RuntimeSessionRegistry {
 			const status = this.reconcileSession(session).status;
 			return status !== "closed" && status !== "failed";
 		});
-	}
-
-	private async getOrStartDefault(controllerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeSession | undefined> {
-		const runtime = input.runtime ?? "python";
-		const existing = this.getDefault(controllerPiboSessionId, runtime);
-		if (existing) return existing;
-		const started = await this.start(controllerPiboSessionId, {
-			runtime,
-			name: input.name,
-			target: input.target,
-			timeoutMs: input.timeoutMs,
-		});
-		return started.sessionId ? this.getSessionForController(controllerPiboSessionId, started.sessionId) : undefined;
 	}
 
 	private getSessionForController(controllerPiboSessionId: string, sessionId: string): RuntimeSession | undefined {
