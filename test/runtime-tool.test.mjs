@@ -25,6 +25,23 @@ async function withRuntimeRegistry(run) {
 }
 
 for (const runtime of ["node", "python"]) {
+	const runtimeTest = runtime === "python" ? pythonTest : test;
+	runtimeTest(`${runtime} concurrent implicit exec calls share one default startup`, async () => {
+		await withRuntimeRegistry(async (registry) => {
+			const assignments = runtime === "node"
+				? ["globalThis.left = 'left'", "globalThis.right = 'right'"]
+				: ["left = 'left'", "right = 'right'"];
+			const results = await Promise.all(assignments.map((code) => registry.exec("controller", { runtime, code })));
+			assert.equal(new Set(results.map((result) => result.sessionId)).size, 1);
+			assert.equal(results.filter((result) => result.status === "ok").length, 1);
+			const busy = results.find((result) => result.status === "failed");
+			assert.equal(busy?.error?.name, "RuntimeBusy");
+			assert.equal(registry.list("controller").sessions.filter((session) => session.runtime === runtime).length, 1);
+		});
+	});
+}
+
+for (const runtime of ["node", "python"]) {
 	test(`${runtime} runtime startup timeout force-closes the unregistered worker`, {
 		skip: process.platform === "win32" ? "POSIX worker fixture" : false,
 	}, async () => {

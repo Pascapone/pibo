@@ -64,6 +64,7 @@ function notFoundVars(sessionId = "auto"): RuntimeVarsResult {
 
 export class RuntimeSessionRegistry {
 	private readonly sessions = new Map<string, RuntimeSession>();
+	private readonly defaultStarts = new Map<string, Promise<RuntimeSession | undefined>>();
 	private readonly maxHistoryEntries: number;
 
 	constructor(private readonly options: RuntimeSessionRegistryOptions) {
@@ -258,13 +259,21 @@ export class RuntimeSessionRegistry {
 		const runtime = input.runtime ?? "python";
 		const existing = this.getDefault(controllerPiboSessionId, runtime);
 		if (existing) return existing;
-		const started = await this.start(controllerPiboSessionId, {
+		const key = `${controllerPiboSessionId}\0${runtime}`;
+		const pending = this.defaultStarts.get(key);
+		if (pending) return pending;
+		const start = this.start(controllerPiboSessionId, {
 			runtime,
 			name: input.name,
 			target: input.target,
 			timeoutMs: input.timeoutMs,
-		});
-		return started.sessionId ? this.getSessionForController(controllerPiboSessionId, started.sessionId) : undefined;
+		}).then((started) => started.sessionId ? this.getSessionForController(controllerPiboSessionId, started.sessionId) : undefined);
+		this.defaultStarts.set(key, start);
+		try {
+			return await start;
+		} finally {
+			if (this.defaultStarts.get(key) === start) this.defaultStarts.delete(key);
+		}
 	}
 
 	private getSessionForController(controllerPiboSessionId: string, sessionId: string): RuntimeSession | undefined {
