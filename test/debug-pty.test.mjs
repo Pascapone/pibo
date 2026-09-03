@@ -84,6 +84,45 @@ test("pibo debug pty run captures host PTY output and artifacts", { skip: !(awai
 	}
 });
 
+test("pibo debug pty run accepts text option values beginning with dashes", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const artifactDir = join(dir, "artifacts");
+		const result = await execFileAsync("node", [
+			cliPath,
+			"debug",
+			"pty",
+			"run",
+			"--artifact",
+			"--artifact-dir",
+			artifactDir,
+			"--wait-for",
+			"--ready",
+			"--type",
+			"--help",
+			"--press",
+			"Enter",
+			"--expect",
+			"--ready",
+			"--expect",
+			"got:--help",
+			"--reject",
+			"--wrong",
+			"--",
+			"sh",
+			"-lc",
+			"printf '%s\\n' --ready; IFS= read -r line; printf 'got:%s\\n' \"$line\"",
+		]);
+		assert.match(result.stdout, /PTY passed: adhoc-run/);
+		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+		assert.match(clean, /--ready/);
+		assert.match(clean, /got:--help/);
+		assert.doesNotMatch(clean, /--wrong/);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug pty failed run preserves the nonzero child exit code in artifacts", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {
