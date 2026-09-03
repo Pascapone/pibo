@@ -58,6 +58,7 @@ export async function runPiPackagesCli(argv = process.argv): Promise<void> {
 			console.log("No Pi packages registered.");
 			return;
 		}
+		let hasErrors = false;
 		for (const pkg of packages) {
 			const diagnostics: string[] = [];
 			try {
@@ -73,11 +74,13 @@ export async function runPiPackagesCli(argv = process.argv): Promise<void> {
 				}
 			}
 			const status = diagnostics.length || pkg.installStatus === "error" || pkg.installStatus === "missing" ? "error" : "ok";
+			if (status === "error") hasErrors = true;
 			console.log(`${pkg.name}\t${status}\t${pkg.installSpec}`);
 			for (const diagnostic of [...pkg.diagnostics.map((item) => item.message), ...diagnostics]) {
 				console.log(`  ${diagnostic}`);
 			}
 		}
+		if (hasErrors) process.exitCode = 1;
 	});
 
 	await program.parseAsync(argv);

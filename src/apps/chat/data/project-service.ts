@@ -599,6 +599,29 @@ export class ChatProjectService {
 		return rows.map(projectWorkflowWaitTokenFromRow);
 	}
 
+	expireProjectWorkflowWaitToken(input: {
+		projectId: string;
+		piboSessionId: string;
+		workflowRunId: string;
+		waitTokenId: string;
+		resolvedAt?: string;
+	}): { waitToken: PiboProjectWorkflowWaitToken; run: PiboProjectWorkflowRun; projectSession: PiboProjectSession } {
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const token = this.getProjectWorkflowWaitToken(input.waitTokenId);
+			if (!token) throw new Error("Workflow wait token not found");
+			if (token.projectId !== input.projectId || token.piboSessionId !== input.piboSessionId || token.workflowRunId !== input.workflowRunId) {
+				throw new Error("Workflow wait token does not belong to this Project workflow session");
+			}
+			const result = this.expireProjectWorkflowWaitTokenLocked(token, input.resolvedAt ?? new Date().toISOString());
+			this.db.exec("COMMIT");
+			return result;
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
 	listProjectWorkflowHumanActions(filter: { projectId?: string; piboSessionId?: string; workflowRunId?: string; waitTokenId?: string; limit?: number } = {}): PiboProjectWorkflowHumanActionRecord[] {
 		const clauses: string[] = [];
 		const values: Array<string | number> = [];
@@ -646,7 +669,7 @@ export class ChatProjectService {
 			if (token.status !== "pending") throw new Error(`Workflow wait token is ${token.status} and cannot be resolved again`);
 			const actedAt = input.actedAt ?? new Date().toISOString();
 			if (token.expiresAt && Date.parse(token.expiresAt) <= Date.parse(actedAt)) {
-				this.db.prepare("UPDATE project_workflow_wait_tokens SET status = 'expired', resolved_at = ? WHERE id = ?").run(actedAt, token.id);
+				this.expireProjectWorkflowWaitTokenLocked(token, actedAt);
 				this.db.exec("COMMIT");
 				throw new Error(`Workflow wait token expired at ${token.expiresAt}`);
 			}
@@ -789,6 +812,36 @@ export class ChatProjectService {
 		const now = new Date().toISOString();
 		this.db.prepare("UPDATE project_sessions SET archived = ?, updated_at = ? WHERE pibo_session_id = ?").run(archived ? 1 : 0, now, piboSessionId);
 		return this.getProjectSession(piboSessionId);
+	}
+
+	private expireProjectWorkflowWaitTokenLocked(
+		token: PiboProjectWorkflowWaitToken,
+		resolvedAt: string,
+	): { waitToken: PiboProjectWorkflowWaitToken; run: PiboProjectWorkflowRun; projectSession: PiboProjectSession } {
+		if (token.status !== "pending") throw new Error(`Workflow wait token is ${token.status} and cannot be expired again`);
+		const resolvedAtMs = Date.parse(resolvedAt);
+		if (!Number.isFinite(resolvedAtMs)) throw new Error("Workflow wait token expiry resolution time is invalid");
+		if (!token.expiresAt || Date.parse(token.expiresAt) > resolvedAtMs) throw new Error("Workflow wait token has not expired");
+		const pendingTokens = this.db.prepare(`SELECT id, expires_at FROM project_workflow_wait_tokens
+			WHERE project_id = ? AND pibo_session_id = ? AND workflow_run_id = ? AND status = 'pending'`)
+			.all(token.projectId, token.piboSessionId, token.workflowRunId) as Array<{ id: string; expires_at: string | null }>;
+		const expire = this.db.prepare("UPDATE project_workflow_wait_tokens SET status = 'expired', resolved_at = ? WHERE id = ? AND status = 'pending'");
+		for (const pendingToken of pendingTokens) {
+			if (pendingToken.expires_at && Date.parse(pendingToken.expires_at) <= resolvedAtMs) expire.run(resolvedAt, pendingToken.id);
+		}
+		const pending = this.db.prepare(`SELECT COUNT(*) AS count FROM project_workflow_wait_tokens
+			WHERE project_id = ? AND pibo_session_id = ? AND workflow_run_id = ? AND status = 'pending'`)
+			.get(token.projectId, token.piboSessionId, token.workflowRunId) as { count: number };
+		const nextStatus: PiboProjectWorkflowRunStatus = pending.count === 0 ? "failed" : "waiting";
+		this.db.prepare("UPDATE project_workflow_runs SET status = ?, updated_at = ?, failed_at = CASE WHEN ? = 'failed' THEN COALESCE(failed_at, ?) ELSE failed_at END WHERE id = ? AND project_id = ? AND pibo_session_id = ? AND status IN ('running', 'waiting')")
+			.run(nextStatus, resolvedAt, nextStatus, resolvedAt, token.workflowRunId, token.projectId, token.piboSessionId);
+		this.db.prepare("UPDATE project_sessions SET state = ?, updated_at = ? WHERE pibo_session_id = ? AND project_id = ? AND state IN ('running', 'waiting')")
+			.run(nextStatus, resolvedAt, token.piboSessionId, token.projectId);
+		return {
+			waitToken: this.getProjectWorkflowWaitToken(token.id)!,
+			run: this.getProjectWorkflowRun(token.workflowRunId)!,
+			projectSession: this.getProjectSession(token.piboSessionId)!,
+		};
 	}
 
 	private insertProjectWorkflowRunForExistingSession(row: ProjectSessionRow, input: {

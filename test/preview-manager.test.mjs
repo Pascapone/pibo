@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { updatePiboUserSettings } from "../dist/core/user-settings.js";
 import {
 	createDefaultPreviewProcessController,
 	reconcileManagedPreviews,
@@ -94,6 +95,43 @@ async function createManagedExposure(store, id, now = new Date("2026-08-23T12:00
 
 const settings = { maxRunningServers: 3, autoStopMinutes: 10 };
 const reservationIdentity = (id) => ({ kind: "process", id: `fake-reservation-${id}` });
+
+test("managed Preview defaults use persisted user settings", async () => {
+	const home = mkdtempSync(join(tmpdir(), "pibo-preview-user-settings-"));
+	const previousHome = process.env.PIBO_HOME;
+	const store = new PreviewStore(":memory:");
+	const controller = createFakeController();
+	try {
+		process.env.PIBO_HOME = home;
+		updatePiboUserSettings({ previewServers: { maxRunningServers: 1, autoStopMinutes: 37 } });
+		const startedAt = new Date("2026-09-03T05:00:00.000Z");
+		await createManagedExposure(store, "pv-user-settings-one", startedAt);
+		await createManagedExposure(store, "pv-user-settings-two", startedAt);
+
+		const first = await startManagedPreview(store, "pv-user-settings-one", {
+			controller,
+			now: () => startedAt,
+			startupTimeoutMs: 2_000,
+			pollIntervalMs: 10,
+		});
+		assert.equal(first.serverStopAt, "2026-09-03T05:37:00.000Z");
+		await assert.rejects(
+			startManagedPreview(store, "pv-user-settings-two", {
+				controller,
+				now: () => startedAt,
+				startupTimeoutMs: 2_000,
+				pollIntervalMs: 10,
+			}),
+			(error) => error instanceof PreviewCapacityError,
+		);
+	} finally {
+		await controller.closeAll();
+		store.close();
+		if (previousHome === undefined) delete process.env.PIBO_HOME;
+		else process.env.PIBO_HOME = previousHome;
+		rmSync(home, { recursive: true, force: true });
+	}
+});
 
 test("managed Preview lifecycle uses a fixed lease and can stop and restart independently", async (t) => {
 	const store = new PreviewStore(":memory:");

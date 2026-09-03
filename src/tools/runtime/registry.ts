@@ -64,6 +64,7 @@ function notFoundVars(sessionId = "auto"): RuntimeVarsResult {
 
 export class RuntimeSessionRegistry {
 	private readonly sessions = new Map<string, RuntimeSession>();
+	private readonly defaultStarts = new Map<string, Promise<RuntimeStartResult>>();
 	private readonly maxHistoryEntries: number;
 
 	constructor(private readonly options: RuntimeSessionRegistryOptions) {
@@ -114,9 +115,23 @@ export class RuntimeSessionRegistry {
 	}
 
 	async exec(controllerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeExecResult> {
-		const session = input.sessionId
+		let session = input.sessionId
 			? this.getSessionForController(controllerPiboSessionId, input.sessionId)
-			: await this.getOrStartDefault(controllerPiboSessionId, input);
+			: this.getDefault(controllerPiboSessionId, input.runtime ?? "python");
+		if (!input.sessionId && !session) {
+			const runtime = input.runtime ?? "python";
+			const started = await this.getOrStartDefault(controllerPiboSessionId, input);
+			if (started.status !== "ok" || !started.sessionId) {
+				return {
+					status: started.status === "ok" ? "failed" : started.status,
+					sessionId: started.sessionId ?? "auto",
+					runtime: started.runtime ?? runtime,
+					durationMs: 0,
+					error: started.error ?? { name: "RuntimeStartError", message: "Runtime session failed to start." },
+				};
+			}
+			session = this.getSessionForController(controllerPiboSessionId, started.sessionId);
+		}
 		const sessionId = input.sessionId ?? session?.sessionId ?? "auto";
 		if (!session) return notFoundExec(sessionId);
 		if (session.status === "closed" || session.status === "failed") return notFoundExec(sessionId);
@@ -139,7 +154,9 @@ export class RuntimeSessionRegistry {
 		result.executionCount = session.executionCount;
 		session.lastExecAt = startedAt;
 		session.updatedAt = nowIso();
-		session.status = session.backend.isAlive() ? "idle" : "failed";
+		session.status = session.backend.isAlive()
+			? session.backend.isBusy?.() === true ? "busy" : "idle"
+			: "failed";
 		this.appendHistory(session, {
 			id: randomUUID(),
 			startedAt,
@@ -254,18 +271,27 @@ export class RuntimeSessionRegistry {
 		});
 	}
 
-	private async getOrStartDefault(controllerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeSession | undefined> {
+	private async getOrStartDefault(controllerPiboSessionId: string, input: RuntimeExecInput): Promise<RuntimeStartResult> {
 		const runtime = input.runtime ?? "python";
 		const existing = this.getDefault(controllerPiboSessionId, runtime);
-		if (existing) return existing;
-		const started = await this.start(controllerPiboSessionId, {
+		if (existing) return { status: "ok", sessionId: existing.sessionId, runtime: existing.runtime };
+		const key = `${controllerPiboSessionId}\0${runtime}`;
+		const pending = this.defaultStarts.get(key);
+		if (pending) return pending;
+		const start = this.start(controllerPiboSessionId, {
 			runtime,
 			name: input.name,
 			target: input.target,
 			timeoutMs: input.timeoutMs,
 		});
-		return started.sessionId ? this.getSessionForController(controllerPiboSessionId, started.sessionId) : undefined;
+		this.defaultStarts.set(key, start);
+		try {
+			return await start;
+		} finally {
+			if (this.defaultStarts.get(key) === start) this.defaultStarts.delete(key);
+		}
 	}
+
 
 	private getSessionForController(controllerPiboSessionId: string, sessionId: string): RuntimeSession | undefined {
 		const session = this.sessions.get(sessionId);
@@ -276,6 +302,9 @@ export class RuntimeSessionRegistry {
 	private reconcileSession(session: RuntimeSession): RuntimeSession {
 		if (session.status !== "closed" && session.status !== "failed" && !session.backend.isAlive()) {
 			session.status = "failed";
+			session.updatedAt = nowIso();
+		} else if (session.status === "busy" && session.backend.isBusy?.() === false) {
+			session.status = "idle";
 			session.updatedAt = nowIso();
 		}
 		return session;

@@ -49,6 +49,30 @@ test("pibo debug pty help is discoverable", async () => {
 	assert.match(pty.stdout, /--max-iterations <n>/);
 });
 
+test("pibo debug pty scenario rejects unknown top-level fields before launch", async () => {
+	const dir = await makeTempDir();
+	try {
+		const scenarioPath = join(dir, "unknown-field.json");
+		const markerPath = join(dir, "launched.txt");
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "unknown-field",
+			command: [process.execPath, "-e", `require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'launched')`],
+			expects: ["never accepted"],
+		}));
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "pty", "scenario", scenarioPath]),
+			(error) => {
+				assert.match(error.stderr, /unknown field "expects"/);
+				assert.match(error.stderr, /unknown-field\.json/);
+				return true;
+			},
+		);
+		await assert.rejects(readFile(markerPath, "utf8"), { code: "ENOENT" });
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug pty run captures host PTY output and artifacts", { skip: !(await hasPythonPtyDriver()) }, async () => {
 	const dir = await makeTempDir();
 	try {
@@ -191,6 +215,44 @@ test("pibo debug pty scenario types input through an interactive PTY", { skip: !
 		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
 		assert.match(clean, /ready/);
 		assert.match(clean, /got:abc/);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug pty repeated waits require a newer prompt occurrence", { skip: !(await hasPythonPtyDriver()) }, async () => {
+	const dir = await makeTempDir();
+	try {
+		const scenarioPath = join(dir, "repeated-wait.json");
+		const artifactDir = join(dir, "artifacts");
+		await writeFile(scenarioPath, JSON.stringify({
+			name: "repeated-wait",
+			command: [
+				"bash",
+				"-lc",
+				"printf 'PROMPT>\\n'; IFS= read -r first; if IFS= read -r -t 0.2 early; then printf 'EARLY:%s\\n' \"$early\"; exit 0; fi; printf 'PROMPT>\\n'; IFS= read -r second; printf 'RESULT:%s|%s\\n' \"$first\" \"$second\"",
+			],
+			timeoutMs: 5000,
+			idleTimeoutMs: 2000,
+			inputDelayMs: 1,
+			artifact: true,
+			artifactDir,
+			steps: [
+				{ waitFor: "PROMPT>" },
+				{ typeText: "first" },
+				{ press: "Enter" },
+				{ waitFor: "PROMPT>" },
+				{ typeText: "second" },
+				{ press: "Enter" },
+			],
+			expect: ["RESULT:first|second"],
+			reject: ["EARLY:second"],
+		}, null, 2));
+		const result = await execFileAsync("node", [cliPath, "debug", "pty", "scenario", scenarioPath]);
+		assert.match(result.stdout, /PTY passed: repeated-wait/);
+		const clean = await readFile(join(artifactDir, "clean.txt"), "utf8");
+		assert.match(clean, /PROMPT>[\s\S]*PROMPT>[\s\S]*RESULT:first\|second/);
+		assert.doesNotMatch(clean, /EARLY:second/);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}

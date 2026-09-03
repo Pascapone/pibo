@@ -90,6 +90,39 @@ test("user-host setup plan is minimal and has one service", () => {
 	assert.ok(!plan.requiredHostPackages.some((item) => /git/i.test(item)));
 });
 
+test("user-host setup omits Caddy output when no production domain is provided", () => {
+	const plan = JSON.parse(pibo(["setup", "user-host", "--json"]));
+	assert.equal(plan.generatedFiles.some((file) => file.path === "/etc/caddy/Caddyfile"), false);
+	assert.ok(plan.warnings.some((warning) => /Caddyfile is omitted/.test(warning)));
+
+	const dir = mkdtempSync(join(tmpdir(), "pibo-user-host-no-domain-"));
+	try {
+		const output = pibo(["setup", "user-host", "--write-to", dir]);
+		assert.match(output, /Caddyfile is omitted/);
+		assert.equal(existsSync(join(dir, "etc/caddy/Caddyfile")), false);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("user-host setup persists a custom managed gateway service identity", () => {
+	const piboHome = "/srv/pibo-custom";
+	const plan = JSON.parse(pibo([
+		"setup",
+		"user-host",
+		"--domain",
+		"pibo.example.com",
+		"--pibo-home",
+		piboHome,
+		"--service-name",
+		"pibo-web-custom",
+		"--json",
+	]));
+	const identity = plan.generatedFiles.find((file) => file.path === `${piboHome}/gateway-web-service`);
+	assert.ok(identity);
+	assert.equal(identity.content, "pibo-web-custom\n");
+});
+
 test("developer-host setup plan isolates prod and dev gateways", () => {
 	const plan = JSON.parse(pibo([
 		"setup",
@@ -114,12 +147,21 @@ test("developer-host setup plan isolates prod and dev gateways", () => {
 });
 
 test("developer-host generated files pin prod and dev to branch-specific entrypoints", () => {
-	const plan = JSON.parse(pibo(["setup", "developer-host", "--json"]));
+	const plan = JSON.parse(pibo([
+		"setup",
+		"developer-host",
+		"--prod-web-port",
+		"5510",
+		"--prod-gateway-port",
+		"6510",
+		"--json",
+	]));
 	const prodService = plan.generatedFiles.find((file) => file.path === "/etc/systemd/system/pibo-web.service");
 	const wrapper = plan.generatedFiles.find((file) => file.path === "/usr/local/bin/pibo-web-dev-start.mjs");
 	assert.ok(prodService);
 	assert.ok(wrapper);
 	assert.match(prodService.content, /ExecStart=\/usr\/bin\/node \/root\/code\/pibo\/dist\/bin\/pibo\.js gateway:web/);
+	assert.match(prodService.content, /--web-port 5510 --gateway-port 6510/);
 	assert.doesNotMatch(prodService.content, /ExecStart=\/usr\/bin\/pibo/);
 	assert.match(wrapper.content, /port: 4809/);
 	assert.match(wrapper.content, /port: 4808/);
@@ -231,6 +273,21 @@ test("Vanilla contains only core gateway and Chat Web resources", () => {
 	assert.ok(plan.ports.every((port) => port.exposure === "loopback"));
 });
 
+test("generated systemd units quote configurable paths with spaces", () => {
+	const piboHome = "/var/lib/pibo home test";
+	const workspaceRoot = "/srv/pibo workspace test";
+	const plan = createInstallationPlan({ profile: "batteries-included", piboHome, workspaceRoot });
+	const gateway = plan.files.find((file) => file.path === "/etc/systemd/system/pibo-web.service").content;
+	const codeServer = plan.files.find((file) => file.path === "/etc/systemd/system/pibo-code-server.service").content;
+
+	assert.match(gateway, /Environment="PIBO_HOME=\/var\/lib\/pibo home test"/);
+	assert.match(gateway, /Environment="PIBO_VSCODE_WORKSPACE_ROOT=\/srv\/pibo workspace test"/);
+	assert.match(gateway, /Environment="MCP_CONFIG_PATH=\/var\/lib\/pibo home test\/setup\/mcp-defaults\.json"/);
+	assert.match(codeServer, /WorkingDirectory=\/srv\/pibo workspace test/);
+	assert.match(codeServer, /--disable-workspace-trust "\/srv\/pibo workspace test"/);
+	assert.match(codeServer, /ReadWritePaths="\/srv\/pibo workspace test" \/var\/lib\/pibo-code/);
+});
+
 test("setup preflights every target before writing and preserves unmanaged files", () => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-profile-preflight-"));
 	try {
@@ -242,6 +299,34 @@ test("setup preflights every target before writing and preserves unmanaged files
 		assert.equal(readFileSync(caddyPath, "utf8"), "existing operator config\n");
 		assert.equal(existsSync(join(dir, "etc/systemd/system/pibo-web.service")), false);
 		assert.equal(existsSync(join(dir, "root/.pibo/setup/installation.json")), false);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("staged setup rejects relative Pibo Home paths that escape the root", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-profile-containment-"));
+	const root = join(dir, "stage");
+	const escapedHome = join(dir, "escaped-home");
+	mkdirSync(root);
+	try {
+		assert.throws(
+			() => pibo(["setup", "install", "--profile", "batteries-included", "--pibo-home", "../escaped-home", "--write-to", root]),
+			/Refusing staged path outside root: \.\.\/escaped-home\/setup\/installation\.json/,
+		);
+		assert.equal(existsSync(escapedHome), false);
+		assert.throws(
+			() => pibo(["setup", "status", "--pibo-home", "../escaped-home", "--root", root, "--json"]),
+			/Refusing staged path outside root/,
+		);
+		assert.throws(
+			() => pibo(["setup", "uninstall", "--pibo-home", "../escaped-home", "--root", root, "--yes", "--json"]),
+			/Refusing staged path outside root/,
+		);
+		assert.equal(existsSync(escapedHome), false);
+
+		pibo(["setup", "install", "--profile", "vanilla", "--pibo-home", "contained-home", "--write-to", root]);
+		assert.equal(existsSync(join(root, "contained-home/setup/installation.json")), true);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

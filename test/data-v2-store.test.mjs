@@ -143,6 +143,40 @@ test("schema migration from v5 installs the exact tool lifecycle index", () => {
 	db.close();
 });
 
+test("schema upgrades preserve post-v5 session history metadata", (t) => {
+	const dir = tempDir("pibo-data-v5-history-metadata-");
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const dbPath = join(dir, "pibo.sqlite");
+	const db = new DatabaseSync(dbPath);
+	applyPiboDataSchema(db);
+	const timestamp = "2026-09-03T00:00:00.000Z";
+	db.prepare(`
+		INSERT INTO sessions (
+			id, pi_session_id, channel, kind, profile, title, status,
+			metadata_json, created_at, updated_at, last_activity_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`).run("ps_created_on_v5", "pi-created-on-v5", "test", "chat", "base", "Created on v5", "idle", "{}", timestamp, timestamp, timestamp);
+	db.prepare("UPDATE session_runtime_bindings SET metadata_json = ? WHERE pibo_session_id = ?")
+		.run('{"createdOn":"v5"}', "ps_created_on_v5");
+	db.exec("PRAGMA user_version = 5");
+	db.close();
+
+	const store = new PiboDataStore(dbPath, { payloadRootDir: join(dir, "payloads") });
+	assert.equal(store.db.prepare("PRAGMA user_version").get().user_version, PIBO_DATA_SCHEMA_VERSION);
+	assert.deepEqual(
+		JSON.parse(store.db.prepare("SELECT metadata_json FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_created_on_v5").metadata_json),
+		{ createdOn: "v5" },
+	);
+	store.close();
+
+	const reopened = new PiboDataStore(dbPath, { payloadRootDir: join(dir, "payloads") });
+	assert.deepEqual(
+		JSON.parse(reopened.db.prepare("SELECT metadata_json FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_created_on_v5").metadata_json),
+		{ createdOn: "v5" },
+	);
+	reopened.close();
+});
+
 test("fresh pibo chat schema omits retired room partition structures", () => {
 	const dir = tempDir("pibo-chat-app-context-schema-");
 	const db = new DatabaseSync(join(dir, "pibo.sqlite"));

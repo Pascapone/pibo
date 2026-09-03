@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -48,6 +48,28 @@ test("machine-key CLI resolves, generates, imports, lists, and revokes without l
 	const identityJson = JSON.parse(identity.stdout);
 	assert.equal(identityJson.userId, "user-123");
 	writeFileSync(identityPath, identity.stdout, { mode: 0o600 });
+
+	const ambiguousSecretPath = join(home, "credentials", "ambiguous-machine-key");
+	const ambiguousRecordPath = join(home, "out", "ambiguous-machine-key-record.json");
+	const ambiguous = runPibo(home, [
+		"auth",
+		"machine-key",
+		"generate",
+		"--identity-file",
+		identityPath,
+		"--label",
+		"ambiguous-date",
+		"--secret-output",
+		ambiguousSecretPath,
+		"--record-output",
+		ambiguousRecordPath,
+		"--expires-at",
+		"01/02/2037",
+	]);
+	assert.notEqual(ambiguous.status, 0);
+	assert.match(ambiguous.stderr, /--expires-at must be an ISO timestamp/);
+	assert.equal(existsSync(ambiguousSecretPath), false);
+	assert.equal(existsSync(ambiguousRecordPath), false);
 
 	const generated = runPibo(home, [
 		"auth",

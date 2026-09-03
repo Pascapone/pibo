@@ -11,6 +11,7 @@ import {
 	createInstallationPlan,
 	inspectInstallation,
 	installationManifestPath,
+	installationOutputPath,
 	materializeInstallationPlan,
 	parseInstallationComponent,
 	parseInstallationProfile,
@@ -190,7 +191,7 @@ export function createUserHostSetupPlan(options: {
 	const piboCommand = options.piboCommand ?? "/usr/bin/pibo";
 	const wwwDomain = options.wwwDomain ?? (options.domain ? `www.${options.domain}` : undefined);
 	const warnings: string[] = [];
-	if (!options.domain) warnings.push("No production domain was provided; generated Caddy/Auth examples use placeholders.");
+	if (!options.domain) warnings.push("No production domain was provided; the Caddyfile is omitted and Auth examples use placeholders.");
 	if (process.platform === "win32" && !isWsl()) {
 		warnings.push("Pibo host setup targets Linux. Native Windows is not supported. Install WSL2 (https://aka.ms/wsl) and run setup inside the WSL distribution. See docs/project/guides/pibo-on-windows-via-wsl.md.");
 	}
@@ -213,7 +214,14 @@ export function createUserHostSetupPlan(options: {
 			content: userEnvTemplate({ domain: options.domain, piboHome }),
 		},
 	];
-	if (options.includeCaddy !== false) {
+	if (serviceName !== "pibo-web") {
+		generatedFiles.push({
+			path: `${piboHome}/gateway-web-service`,
+			purpose: "Managed production gateway service identity",
+			content: `${serviceName}\n`,
+		});
+	}
+	if (options.includeCaddy !== false && options.domain) {
 		generatedFiles.push({
 			path: "/etc/caddy/Caddyfile",
 			purpose: "HTTPS reverse proxy for the production gateway",
@@ -295,7 +303,7 @@ export function createDeveloperHostSetupPlan(options: {
 				piboHome: prodHome,
 				serviceKind: "prod",
 				webPort: prodWebPort,
-				execStart: `${prodEntrypoint} gateway:web --web-host 127.0.0.1 --web-port ${prodWebPort}`,
+				execStart: `${prodEntrypoint} gateway:web --web-host 127.0.0.1 --web-port ${prodWebPort} --gateway-port ${prodGatewayPort}`,
 			}),
 		},
 		{
@@ -930,7 +938,7 @@ export async function runSetupCli(argv = process.argv): Promise<void> {
 		.option("--json", "Print the upgrade plan as JSON without applying")
 		.action((options: { piboHome: string; root?: string; apply?: boolean; yes?: boolean; json?: boolean }) => {
 			if (options.root && options.apply) throw new Error("Use either --root for staging or --apply for the host, not both");
-			const manifestPath = options.root ? join(options.root, installationManifestPath(options.piboHome).replace(/^\/+/, "")) : installationManifestPath(options.piboHome);
+			const manifestPath = installationOutputPath(installationManifestPath(options.piboHome), options.root);
 			const manifest = readInstallationManifest(manifestPath);
 			if (!manifest) throw new Error(`No installation manifest found at ${manifestPath}`);
 			const plan = createInstallationPlan({ profile: manifest.profile, piboHome: manifest.piboHome, workspaceRoot: manifest.workspaceRoot, piboCommand: manifest.piboCommand, piboVersion: currentPiboVersion(), domain: manifest.domain, additionalComponents: manifest.components.map((component) => component.name) });
@@ -949,7 +957,7 @@ export async function runSetupCli(argv = process.argv): Promise<void> {
 		.option("--json", "Print the component-add plan as JSON without applying")
 		.action((name: string, options: { piboHome: string; root?: string; apply?: boolean; yes?: boolean; json?: boolean }) => {
 			if (options.root && options.apply) throw new Error("Use either --root for staging or --apply for the host, not both");
-			const manifestPath = options.root ? join(options.root, installationManifestPath(options.piboHome).replace(/^\/+/, "")) : installationManifestPath(options.piboHome);
+			const manifestPath = installationOutputPath(installationManifestPath(options.piboHome), options.root);
 			const manifest = readInstallationManifest(manifestPath);
 			if (!manifest) throw new Error(`No installation manifest found at ${manifestPath}`);
 			const additionalComponents = [...manifest.components.map((entry) => entry.name), parseInstallationComponent(name)];
@@ -968,7 +976,7 @@ export async function runSetupCli(argv = process.argv): Promise<void> {
 		.option("--json", "Print machine-readable JSON")
 		.action((options: { piboHome: string; root?: string; apply?: boolean; yes?: boolean; json?: boolean }) => {
 			if (options.root && options.apply) throw new Error("Use either --root for staging or --apply for the host, not both");
-			const manifestPath = options.root ? join(options.root, installationManifestPath(options.piboHome).replace(/^\/+/, "")) : installationManifestPath(options.piboHome);
+			const manifestPath = installationOutputPath(installationManifestPath(options.piboHome), options.root);
 			const manifest = readInstallationManifest(manifestPath);
 			if (!manifest) throw new Error(`No installation manifest found at ${manifestPath}`);
 			const uninstallPlan = {

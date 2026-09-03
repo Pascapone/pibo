@@ -224,6 +224,24 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		});
 	}
 
+	claimAgentObservationSequence(parentPiboSessionId: string, minimum: number): number {
+		return this.dataStore.transaction(() => {
+			const session = this.db.prepare("SELECT 1 AS present FROM sessions WHERE id = ? AND deleted_at IS NULL").get(parentPiboSessionId) as { present: number } | undefined;
+			if (!session) return minimum;
+			const row = this.db.prepare("SELECT next_sequence FROM session_agent_observation_counters WHERE parent_pibo_session_id = ?").get(parentPiboSessionId) as { next_sequence: number } | undefined;
+			const migrationSafeSeed = Math.trunc(Date.now()) * 1_000;
+			const sequence = Math.max(minimum, row?.next_sequence ?? migrationSafeSeed);
+			this.db.prepare(`
+				INSERT INTO session_agent_observation_counters (parent_pibo_session_id, next_sequence, updated_at)
+				VALUES (?, ?, ?)
+				ON CONFLICT(parent_pibo_session_id) DO UPDATE SET
+					next_sequence = excluded.next_sequence,
+					updated_at = excluded.updated_at
+			`).run(parentPiboSessionId, sequence + 1, new Date().toISOString());
+			return sequence;
+		});
+	}
+
 	claimOrAttachOutputPart(input: OutputPartTransition): number {
 		return this.dataStore.transaction(() => {
 			const indexAttribute = outputPartIndexAttribute(input.kind);

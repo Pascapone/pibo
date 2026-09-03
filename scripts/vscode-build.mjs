@@ -9,9 +9,10 @@
 // from dist/apps/chat-vscode-web/ for browser users.
 
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { replaceDirectory } from "./lib/replace-directory.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
@@ -24,23 +25,6 @@ const sidecarBundleOutDir = resolve(packageDir, "dist/chat-vscode-web");
 
 if (!existsSync(extensionOutDir)) mkdirSync(extensionOutDir, { recursive: true });
 if (!existsSync(webviewOutDir)) mkdirSync(webviewOutDir, { recursive: true });
-
-function copyDirectory(src, dst) {
-	if (!existsSync(src)) {
-		throw new Error(`source directory not found: ${src}`);
-	}
-	mkdirSync(dst, { recursive: true });
-	for (const entry of readdirSync(src)) {
-		const s = resolve(src, entry);
-		const d = resolve(dst, entry);
-		const stat = statSync(s);
-		if (stat.isDirectory()) {
-			copyDirectory(s, d);
-		} else {
-			copyFileSync(s, d);
-		}
-	}
-}
 
 function run(command, args, cwd) {
 	console.log(`[vscode-build] ${command} ${args.join(" ")}`);
@@ -64,7 +48,7 @@ run(
 	root,
 );
 
-copyDirectory(webviewOutDir, sidecarBundleOutDir);
+replaceDirectory(webviewOutDir, sidecarBundleOutDir);
 console.log(`[vscode-build] copied ${webviewOutDir} -> ${sidecarBundleOutDir}`);
 
 console.log("[vscode-build] done.");

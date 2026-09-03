@@ -1573,6 +1573,33 @@ test("pibo debug db discovers schema and runs limited read-only SQL", async () =
 	}
 });
 
+test("pibo debug db stores rejects unknown options and extra positionals", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const valid = await execFileAsync("node", [cliPath, "debug", "db", "stores", "--json"], { cwd });
+		assert.ok(Array.isArray(JSON.parse(valid.stdout).stores));
+
+		for (const token of ["--jsoon", "--definitely-unknown"]) {
+			await assert.rejects(
+				execFileAsync("node", [cliPath, "debug", "db", "stores", token], { cwd }),
+				(error) => {
+					assert.equal(error.stdout, "");
+					assert.match(error.stderr, new RegExp(`Unknown option "${token}"`));
+					assert.match(error.stderr, /Run pibo debug db --help/);
+					return true;
+				},
+			);
+		}
+
+		await assert.rejects(
+			execFileAsync("node", [cliPath, "debug", "db", "stores", "extra"], { cwd }),
+			/pibo debug db stores accepts no positional arguments/,
+		);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
 test("pibo debug db rejects mutating and multi-statement SQL", async () => {
 	const cwd = await makeDebugFixture();
 	try {

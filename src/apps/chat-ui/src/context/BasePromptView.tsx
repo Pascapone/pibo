@@ -5,13 +5,14 @@ import {
 	getBasePrompt,
 	saveCustomBasePrompt,
 	setBasePromptMode,
+	type BasePromptEffectiveMode,
 	type BasePromptMode,
 	type BasePromptSnapshot,
 } from "../api-settings";
 
 export function BasePromptView() {
 	const [snapshot, setSnapshot] = useState<BasePromptSnapshot | null>(null);
-	const [viewMode, setViewMode] = useState<BasePromptMode>("library");
+	const [viewMode, setViewMode] = useState<BasePromptEffectiveMode>("library");
 	const [customMarkdown, setCustomMarkdown] = useState("");
 	const [saveState, setSaveState] = useState<SaveState>("saved");
 	const [loading, setLoading] = useState(true);
@@ -40,6 +41,7 @@ export function BasePromptView() {
 
 	const visibleMarkdown = useMemo(() => {
 		if (!snapshot) return "";
+		if (viewMode === "legacy") return snapshot.legacy.markdown;
 		return viewMode === "library" ? snapshot.library.markdown : customMarkdown;
 	}, [customMarkdown, snapshot, viewMode]);
 
@@ -78,18 +80,24 @@ export function BasePromptView() {
 	}, [customMarkdown]);
 
 	const customActive = snapshot?.effectiveMode === "custom";
+	const customConfigured = snapshot?.mode === "custom";
+	const libraryActive = snapshot?.effectiveMode === "library";
+	const activeTitle = snapshot?.effectiveMode === "legacy"
+		? "Legacy Base Prompt"
+		: customActive ? "Custom Base Prompt" : "Library Base Prompt";
+	const activePath = snapshot
+		? snapshot.effectiveMode === "legacy"
+			? snapshot.legacy.path
+			: customActive ? snapshot.custom.path : snapshot.library.path
+		: "loading";
 
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-[#101d22]">
 			<div className="flex h-14 items-center justify-between gap-3 border-b border-slate-800 bg-[#151f24] px-4">
 				<div className="min-w-0">
 					<div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#11a4d4]">Base Prompt</div>
-					<h2 className="truncate text-base font-semibold text-slate-100">
-						{snapshot?.effectiveMode === "custom" ? "Custom Base Prompt" : "Library Base Prompt"}
-					</h2>
-					<div className="truncate font-mono text-[11px] text-slate-500">
-						{snapshot ? (snapshot.effectiveMode === "custom" ? snapshot.custom.path : snapshot.library.path) : "loading"}
-					</div>
+					<h2 className="truncate text-base font-semibold text-slate-100">{activeTitle}</h2>
+					<div className="truncate font-mono text-[11px] text-slate-500">{activePath}</div>
 				</div>
 				<div className="flex items-center gap-2">
 					<span className={`inline-flex h-8 items-center gap-1.5 border px-2.5 text-xs ${customActive ? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#7dd3fc]" : "border-slate-700 bg-[#101d22] text-slate-300"}`}>
@@ -110,6 +118,19 @@ export function BasePromptView() {
 			<div className="grid min-h-0 flex-1 grid-cols-[250px_minmax(0,1fr)] max-[980px]:grid-cols-1 @max-[720px]:grid-cols-1">
 				<aside className="border-r border-slate-800 bg-[#151f24] p-3 max-[980px]:border-b max-[980px]:border-r-0 @max-[720px]:border-b @max-[720px]:border-r-0">
 					<div className="mb-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Source</div>
+					{snapshot?.legacy.exists ? (
+						<button
+							type="button"
+							onClick={() => setViewMode("legacy")}
+							className={`mb-2 w-full border p-2 text-left ${viewMode === "legacy" ? "border-amber-500 bg-amber-500/10" : "border-amber-900/70 bg-amber-950/20 hover:border-amber-700"}`}
+						>
+							<span className="flex items-center justify-between gap-2">
+								<span className="block text-sm text-amber-100">Legacy SYSTEM.md</span>
+								<span className="font-mono text-[10px] uppercase tracking-wider text-amber-300">Active</span>
+							</span>
+							<span className="block truncate font-mono text-[10px] text-amber-500/80">read-only compatibility override</span>
+						</button>
+					) : null}
 					<button
 						type="button"
 						onClick={() => setViewMode("library")}
@@ -117,7 +138,7 @@ export function BasePromptView() {
 					>
 						<span className="flex items-center justify-between gap-2">
 							<span className="block text-sm text-slate-200">Library</span>
-							{!customActive ? <span className="font-mono text-[10px] uppercase tracking-wider text-[#7dd3fc]">Active</span> : null}
+							{libraryActive ? <span className="font-mono text-[10px] uppercase tracking-wider text-[#7dd3fc]">Active</span> : null}
 						</span>
 						<span className="block truncate font-mono text-[10px] text-slate-500">read-only</span>
 					</button>
@@ -135,9 +156,10 @@ export function BasePromptView() {
 
 					<div className="space-y-2">
 						<CustomBasePromptToggle
-							checked={customActive}
+							checked={customConfigured}
+							activeMode={snapshot?.effectiveMode ?? "library"}
 							disabled={busy || !snapshot}
-							onToggle={() => void activateMode(customActive ? "library" : "custom")}
+							onToggle={() => void activateMode(customConfigured ? "library" : "custom")}
 						/>
 						<button
 							type="button"
@@ -158,7 +180,7 @@ export function BasePromptView() {
 					) : (
 						<textarea
 							value={visibleMarkdown}
-							readOnly={viewMode === "library"}
+							readOnly={viewMode !== "custom"}
 							onChange={(event) => {
 								setCustomMarkdown(event.target.value);
 								setSaveState("idle");
@@ -175,10 +197,12 @@ export function BasePromptView() {
 
 function CustomBasePromptToggle({
 	checked,
+	activeMode,
 	disabled,
 	onToggle,
 }: {
 	checked: boolean;
+	activeMode: BasePromptEffectiveMode;
 	disabled?: boolean;
 	onToggle: () => void;
 }) {
@@ -193,7 +217,7 @@ function CustomBasePromptToggle({
 			<SelectionCheckbox checked={checked} disabled={disabled} />
 			<span className="min-w-0">
 				<span className="block truncate">Use custom base prompt</span>
-				<span className="block truncate font-mono text-[10px] text-slate-500">{checked ? "custom active" : "library active"}</span>
+				<span className="block truncate font-mono text-[10px] text-slate-500">{activeMode === "legacy" ? "legacy override active" : `${activeMode} active`}</span>
 			</span>
 		</button>
 	);

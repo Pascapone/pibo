@@ -16,6 +16,7 @@ import type {
 } from "./types.js";
 
 type Pending = {
+	requestType: string;
 	resolve(value: WorkerResponse): void;
 	reject(error: Error): void;
 	timer: NodeJS.Timeout;
@@ -134,6 +135,10 @@ export class PythonRuntimeBackend implements RuntimeBackend {
 		return this.alive;
 	}
 
+	isBusy(): boolean {
+		return [...this.pending.values()].some((pending) => pending.requestType === "exec");
+	}
+
 	getRecord() {
 		return { pid: this.child.pid, cwd: this.cwd, executable: this.executable };
 	}
@@ -240,10 +245,10 @@ export class PythonRuntimeBackend implements RuntimeBackend {
 		const id = `req_${++this.requestCounter}`;
 		return new Promise((resolveRequest, rejectRequest) => {
 			const timer = setTimeout(() => {
-				this.pending.delete(id);
+				if (!this.pending.has(id)) return;
 				rejectRequest(new TimeoutError(`Runtime request ${type} timed out after ${timeoutMs}ms`));
 			}, timeoutMs);
-			this.pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
+			this.pending.set(id, { requestType: type, resolve: resolveRequest, reject: rejectRequest, timer });
 			this.child.stdin.write(`${JSON.stringify({ id, type, ...payload })}\n`);
 		});
 	}

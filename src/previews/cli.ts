@@ -1,9 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import { Command } from "commander";
-import { sanitizePreviewServerSettings } from "../core/preview-server-settings.js";
 import { createDefaultPiboDataSessionStore } from "../sessions/pibo-data-store.js";
-import { DEFAULT_PREVIEW_TTL_MINUTES, loadPreviewConfig, previewPublicURL, requirePreviewBaseURL } from "./config.js";
+import { DEFAULT_PREVIEW_TTL_MINUTES, loadEffectivePreviewServerSettings, loadPreviewConfig, previewPublicURL, requirePreviewBaseURL } from "./config.js";
 import {
 	reconcileManagedPreviews,
 	startManagedPreview,
@@ -268,10 +267,7 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 			const baseURL = requirePreviewBaseURL();
 			if (!id) {
 				const config = loadPreviewConfig();
-				const serverLimits = sanitizePreviewServerSettings({
-					maxRunningServers: config.maxRunningServers,
-					autoStopMinutes: config.autoStopMinutes,
-				});
+				const serverLimits = loadEffectivePreviewServerSettings();
 				const store = createDefaultPreviewStore();
 				let diagnostics;
 				try {

@@ -10,6 +10,24 @@ import { getSourceHash } from '../dist/compute/docker.js';
 
 const execFileAsync = promisify(execFile);
 
+test('compute spawn commands reject invalid explicit retention before Docker or worktree work', async () => {
+	for (const fixture of [
+		{ args: ['compute', 'spawn', '--name', 'invalid-retention', '--ttl-seconds', '0'], option: '--ttl-seconds' },
+		{ args: ['compute', 'spawn', '--name', 'invalid-retention', '--idle-seconds', 'not-a-number'], option: '--idle-seconds' },
+		{ args: ['compute', 'dev', 'spawn', '--worktree', 'invalid-retention', '--ttl-seconds', '1.5'], option: '--ttl-seconds' },
+		{ args: ['compute', 'dev', 'spawn', '--worktree', 'invalid-retention', '--idle-seconds', '-2'], option: '--idle-seconds' },
+	]) {
+		await assert.rejects(
+			execFileAsync(process.execPath, ['dist/bin/pibo.js', ...fixture.args], { cwd: process.cwd() }),
+			(error) => {
+				assert.match(error.stderr, new RegExp(`${fixture.option} must be a positive integer`));
+				assert.doesNotMatch(error.stderr, /Checking Docker image status|Creating git worktree|Building pibo:latest/);
+				return true;
+			},
+		);
+	}
+});
+
 test('compute spawn reports the loopback host used by its published ports', async () => {
 	const fixtureRoot = await mkdtemp(join(tmpdir(), 'pibo-compute-endpoint-'));
 	const fakeBin = join(fixtureRoot, 'bin');
@@ -50,6 +68,10 @@ printf '203.0.113.9\\n'
 			'spawn',
 			'--name',
 			'pibo-endpoint-test',
+			'--ttl-seconds',
+			'17',
+			'--idle-seconds',
+			'23',
 		], {
 			cwd: workspace,
 			env: {
@@ -75,6 +97,8 @@ printf '203.0.113.9\\n'
 		assert.match(dockerCalls, /-p 127\.0\.0\.1::4789/);
 		assert.match(dockerCalls, /-p 127\.0\.0\.1::56663/);
 		assert.match(dockerCalls, /-p 127\.0\.0\.1::4788/);
+		assert.match(dockerCalls, /pibo\.compute\.ttlSeconds=17/);
+		assert.match(dockerCalls, /pibo\.compute\.idleSeconds=23/);
 		await assert.rejects(access(hostnameLog), { code: 'ENOENT' });
 	} finally {
 		await rm(fixtureRoot, { recursive: true, force: true });

@@ -124,14 +124,19 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 	const report: SessionMigrationReport = { from: input.from, to: input.to, inputExists: existsSync(input.from), read: 0, inserted: 0, updated: 0, skipped: 0 };
 	if (!report.inputExists) return report;
 	const source = new DatabaseSync(input.from, { readOnly: true });
-	const target = new PiboDataStore(input.to);
+	let target: PiboDataStore | undefined;
 	try {
-		if (!hasTable(source, "pibo_sessions")) return report;
+		if (!hasTable(source, "pibo_sessions")) {
+			throw new Error(`Cannot migrate sessions from "${input.from}": required legacy table "pibo_sessions" is missing.`);
+		}
+		target = new PiboDataStore(input.to);
 		const rows = source.prepare("SELECT * FROM pibo_sessions ORDER BY created_at ASC").all() as LegacySessionRow[];
 		report.read = rows.length;
 		for (const row of rows) {
 			const existing = target.db.prepare("SELECT updated_at FROM sessions WHERE id = ?").get(row.id) as { updated_at: string } | undefined;
 			const metadata = parseJsonObject(row.metadata_json);
+			let migrateBinding = false;
+			const roomId = typeof metadata.chatRoomId === "string" ? metadata.chatRoomId : null;
 			const rootSessionId = row.parent_id ? (typeof metadata.rootSessionId === "string" ? metadata.rootSessionId : row.parent_id) : row.id;
 			if (!existing) {
 				const columns = [
@@ -145,7 +150,7 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 				`).run(
 					row.id,
 					row.pi_session_id,
-					typeof metadata.chatRoomId === "string" ? metadata.chatRoomId : null,
+					roomId,
 					rootSessionId,
 					row.parent_id,
 					row.origin_id,
@@ -162,15 +167,17 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 					row.updated_at,
 				);
 				report.inserted++;
+				migrateBinding = true;
 			} else if (row.updated_at > existing.updated_at) {
 				target.db.prepare(`
 					UPDATE sessions SET
-						pi_session_id = ?, root_session_id = ?, parent_id = ?, origin_id = ?,
+						pi_session_id = ?, room_id = ?, root_session_id = ?, parent_id = ?, origin_id = ?,
 						channel = ?, kind = ?, profile = ?, active_model_json = ?, workspace = ?, title = ?,
 						metadata_json = ?, updated_at = ?, last_activity_at = MAX(last_activity_at, ?)
 					WHERE id = ?
 				`).run(
 					row.pi_session_id,
+					roomId,
 					rootSessionId,
 					row.parent_id,
 					row.origin_id,
@@ -186,9 +193,11 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 					row.id,
 				);
 				report.updated++;
+				migrateBinding = true;
 			} else {
 				report.skipped++;
 			}
+			if (!migrateBinding) continue;
 			target.db.prepare(`
 				INSERT INTO session_runtime_bindings (
 					pibo_session_id, runtime_instance_id, runtime_adapter_id, native_session_id,
@@ -209,7 +218,7 @@ function migrateSessionsToV2(input: { from: string; to: string }): SessionMigrat
 		}
 	} finally {
 		source.close();
-		target.close();
+		target?.close();
 	}
 	return report;
 }

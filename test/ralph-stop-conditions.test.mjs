@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { PiboPluginRegistry, definePiboPlugin } from "../dist/plugins/registry.js";
-import { PiboRalphService } from "../dist/ralph/service.js";
+import { PiboRalphCapacityError, PiboRalphService } from "../dist/ralph/service.js";
 import { PiboRalphStore } from "../dist/ralph/store.js";
 import { createBuiltInRalphStopConditions, evaluateRalphStopPolicy, PROMISE_COMPLETE_STOP_TOKEN } from "../dist/ralph/stopping.js";
 import { createPiboSession } from "../dist/sessions/store.js";
@@ -103,6 +103,39 @@ test("Ralph promise-complete condition requires marker on its own line", async (
 	const ownLine = await evaluateRalphStopPolicy({ job, phase: "after-run", definitions: createBuiltInRalphStopConditions(), facts, outcome: { status: "ok", finalAnswer: `done\n${PROMISE_COMPLETE_STOP_TOKEN}` } });
 	assert.equal(ownLine.evaluation.finalAction, "stop-after-run");
 	assert.equal(ownLine.evaluation.reason, "promise-complete");
+});
+
+test("legacy Ralph manual starts share the service-wide concurrency admission", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-ralph-capacity-"));
+	const store = new PiboRalphStore({ path: ":memory:" });
+	const listeners = new Set();
+	const messages = [];
+	let sessionNumber = 0;
+	const context = {
+		async emit(event) { if (event.type === "message") messages.push(event); return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id ?? "evt", action: "test", result: {} }; },
+		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+		createSession(input) { sessionNumber += 1; return createPiboSession({ ...input, id: `ps_ralph_capacity_${sessionNumber}` }); },
+		getSession() { return undefined; }, findSessions() { return []; }, getGatewayActions() { return []; }, getWebApps() { return []; },
+		getRalphStopConditionDefinitions() { return createBuiltInRalphStopConditions(); },
+	};
+	const service = new PiboRalphService({ store, context, dataStorePath: join(dir, "data.sqlite"), dataPayloadRootDir: join(dir, "payloads"), maxConcurrentRuns: 1, runTimeoutMs: 5_000 });
+	const jobs = ["first", "second"].map((name) => store.createJob({ target: { kind: "default-chat" }, profile: "base", prompt: name, enabled: false, maxIterations: 1 }));
+	const finish = (message) => { for (const listener of listeners) { listener({ type: "assistant_message", piboSessionId: message.piboSessionId, eventId: message.id, text: "done" }); listener({ type: "message_finished", piboSessionId: message.piboSessionId, eventId: message.id }); } };
+	try {
+		const results = await Promise.allSettled(jobs.map((job) => service.startJob(job.id)));
+		assert.equal(results.filter((result) => result.status === "fulfilled" && result.value).length, 1);
+		assert.ok(results.find((result) => result.status === "rejected")?.reason instanceof PiboRalphCapacityError);
+		await waitFor(() => messages.length === 1);
+		assert.equal(store.listRuns({}).filter((run) => run.status === "running").length, 1);
+		finish(messages[0]);
+		await waitFor(() => store.listRuns({}).every((run) => run.status !== "running"));
+		const retryId = results[0].status === "rejected" ? jobs[0].id : jobs[1].id;
+		const retry = await service.startJob(retryId);
+		assert.ok(retry);
+		await waitFor(() => messages.length === 2);
+		finish(messages[1]);
+		await waitFor(() => store.listRuns({}).find((run) => run.id === retry.id)?.status === "ok");
+	} finally { service.stop(); await rm(dir, { recursive: true, force: true }); }
 });
 
 test("Ralph service preserves promise-complete and max-iteration stop behavior through conditions", async () => {

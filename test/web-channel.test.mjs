@@ -3083,6 +3083,92 @@ test("chat web app keeps Project Manager locked without replacing its canonical 
 	}
 });
 
+test("chat web app rejects messages for archived Projects after restart", async () => {
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-archived-project-message-"));
+	let runtime = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		storageDir,
+		persistSessions: true,
+	});
+	const mutation = (path, body) => fetch(`${runtime.baseURL}${path}`, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			origin: runtime.baseURL,
+			"x-test-user": "user-1",
+		},
+		body: JSON.stringify(body),
+	});
+	try {
+		const projectResponse = await mutation("/api/chat/projects", {
+			name: "Archived Message Project",
+			projectFolder: join(storageDir, "archived-message-project"),
+			createFolder: true,
+		});
+		assert.equal(projectResponse.status, 201);
+		const project = (await projectResponse.json()).project;
+		const sessionResponse = await mutation(`/api/chat/projects/${encodeURIComponent(project.id)}/sessions`, {});
+		assert.equal(sessionResponse.status, 201);
+		const session = (await sessionResponse.json()).session;
+
+		const acceptedResponse = await mutation("/api/chat/projects/message", {
+			piboSessionId: session.id,
+			text: "active project control",
+			clientTxnId: "active-project-message",
+			delivery: "queue",
+		});
+		assert.equal(acceptedResponse.status, 200);
+		assert.equal(runtime.emitted.length, 1);
+
+		const archiveResponse = await fetch(`${runtime.baseURL}/api/chat/projects/${encodeURIComponent(project.id)}`, {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+				origin: runtime.baseURL,
+				"x-test-user": "user-1",
+			},
+			body: JSON.stringify({ archived: true }),
+		});
+		assert.equal(archiveResponse.status, 200);
+
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		runtime = await startWebHostChannel({
+			auth: createFakeAuthService(),
+			storageDir,
+			persistSessions: true,
+		});
+
+		const rejectedResponse = await mutation("/api/chat/projects/message", {
+			piboSessionId: session.id,
+			text: "must not be accepted after archive",
+			clientTxnId: "archived-project-message",
+			delivery: "queue",
+		});
+		assert.equal(rejectedResponse.status, 404);
+		assert.deepEqual(await rejectedResponse.json(), { error: "Project not found" });
+		assert.deepEqual(runtime.emitted, []);
+
+		const projectDb = new DatabaseSync(runtime.projectStorePath, { readOnly: true });
+		try {
+			assert.equal(typeof projectDb.prepare("SELECT archived_at FROM projects WHERE id = ?").get(project.id).archived_at, "string");
+			assert.equal(projectDb.prepare("SELECT archived FROM project_sessions WHERE pibo_session_id = ?").get(session.id).archived, 0);
+		} finally {
+			projectDb.close();
+		}
+		const dataDb = new DatabaseSync(runtime.dataStorePath, { readOnly: true });
+		try {
+			assert.equal(dataDb.prepare("SELECT count(*) AS count FROM event_log WHERE session_id = ? AND type = 'user.message.accepted'").get(session.id).count, 1);
+		} finally {
+			dataDb.close();
+		}
+	} finally {
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		rmSync(storageDir, { recursive: true, force: true });
+	}
+});
+
 test("chat web app rejects cyclic room parents and preserves valid room lifecycles", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
@@ -7899,6 +7985,15 @@ test("chat web app resolves Project workflow human wait tokens through preserved
 		assert.equal(expiredResponse.status, 409);
 		const expiredPayload = await expiredResponse.json();
 		assert.equal(expiredPayload.diagnostics[0].code, "WorkflowRuntimeError.waitTokenExpired");
+		assert.equal(expiredPayload.waitToken, undefined);
+		const expiredDb = new DatabaseSync(projectStorePath, { readOnly: true });
+		try {
+			const expiredToken = expiredDb.prepare("SELECT status, resolved_at FROM project_workflow_wait_tokens WHERE id = ?").get("wwt_expired");
+			assert.equal(expiredToken.status, "expired");
+			assert.ok(expiredToken.resolved_at);
+		} finally {
+			expiredDb.close();
+		}
 
 		const lifecycleResponse = await fetch(`${baseURL}/api/chat/workflows/lifecycle-events?projectId=${encodeURIComponent(projectId)}&limit=200`, {
 			headers: { "x-test-user": "user-1" },
@@ -8425,6 +8520,9 @@ test("chat web app manages Pi package registrations and custom agent selections"
 		const { channel, baseURL } = await startWebHostChannel({
 			auth: createFakeAuthService(),
 			profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+			createProfile: (name) => new InitialSessionContextBuilder(name)
+				.withPiPackages([{ id: "local-web-package" }])
+				.createSession(),
 		});
 
 		try {
@@ -8464,6 +8562,38 @@ test("chat web app manages Pi package registrations and custom agent selections"
 			assert.equal(createdAgent.status, 201);
 			const agentPayload = await createdAgent.json();
 			assert.deepEqual(agentPayload.agent.piPackages, ["local-web-package"]);
+
+			const enabled = await fetch(`${baseURL}/api/chat/pi-packages/${encodeURIComponent("local-web-package")}`, {
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: JSON.stringify({ enabled: true }),
+			});
+			assert.equal(enabled.status, 200);
+
+			const createdSession = await fetch(`${baseURL}/api/chat/sessions`, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: JSON.stringify({ profile: agentPayload.agent.profileName }),
+			});
+			assert.equal(createdSession.status, 201);
+			const sessionPayload = await createdSession.json();
+			assert.notEqual(sessionPayload.session.workspace, cwd);
+
+			const contextBuild = await fetch(`${baseURL}/api/chat/context-build?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			const contextPayload = await contextBuild.json();
+			assert.equal(contextBuild.status, 200, JSON.stringify(contextPayload));
+			assert.equal(contextPayload.snapshot.summary.errors, 0);
+			assert.ok(contextPayload.snapshot.diagnostics.some((diagnostic) => diagnostic.message === "Loaded Pi package local-web-package (skill)"));
 
 			const blockedDelete = await fetch(`${baseURL}/api/chat/pi-packages/${encodeURIComponent("local-web-package")}`, {
 				method: "DELETE",
@@ -8590,6 +8720,46 @@ test("chat web app manages user skill routes and syncs the capability catalog", 
 			assert.equal((await renamed.json()).skill.name, "renamed-browser-skill");
 			assert.deepEqual(unregisteredSkills, ["browser-skill"]);
 			assert.deepEqual(registeredSkills.map((skill) => skill.name), ["browser-skill", "renamed-browser-skill"]);
+
+			const dependentAgentResponse = await fetch(`${baseURL}/api/chat/agents`, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: JSON.stringify({ displayName: "skill-dependent-agent", skills: ["renamed-browser-skill"] }),
+			});
+			assert.equal(dependentAgentResponse.status, 201);
+			const dependentAgent = (await dependentAgentResponse.json()).agent;
+
+			const blockedDelete = await fetch(`${baseURL}/api/chat/user-skills/${encodeURIComponent(createdPayload.skill.id)}`, {
+				method: "DELETE",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: "{}",
+			});
+			assert.equal(blockedDelete.status, 409);
+			assert.match((await blockedDelete.json()).error, /selected by custom agents: skill-dependent-agent/);
+			const preservedSkill = await fetch(`${baseURL}/api/chat/user-skills/${encodeURIComponent(createdPayload.skill.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			assert.equal(preservedSkill.status, 200);
+			assert.equal((await preservedSkill.json()).skill.name, "renamed-browser-skill");
+
+			const unlinkAgent = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(dependentAgent.id)}`, {
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: JSON.stringify({ skills: [] }),
+			});
+			assert.equal(unlinkAgent.status, 200);
 
 			const disabled = await fetch(`${baseURL}/api/chat/user-skills/${encodeURIComponent(createdPayload.skill.id)}`, {
 				method: "PATCH",
