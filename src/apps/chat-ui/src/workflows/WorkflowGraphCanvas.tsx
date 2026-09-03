@@ -859,6 +859,7 @@ export function WorkflowGraphCanvas({
 										type="button"
 										className={`inline-flex items-center justify-center gap-2 rounded-sm border px-2 py-2 text-[11px] font-semibold transition ${inspectorTab === tab.id ? "border-[#11a4d4]/70 bg-[#11a4d4]/10 text-[#8bdcf4]" : "border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-100"}`}
 										onClick={() => setInspectorTab(tab.id)}
+										aria-pressed={inspectorTab === tab.id}
 										title={tab.label}
 									>
 										<Icon size={14} />
