@@ -155,6 +155,7 @@ test('one-time worker docker run args include resource policy and inspectable la
 	assert.ok(runLabels.includes('pibo.compute.port.cdp=56663'));
 	assert.ok(runLabels.includes(`${LABEL_TTL_SECONDS}=7200`));
 	assert.ok(runLabels.includes(`${LABEL_IDLE_SECONDS}=1800`));
+	assert.ok(runLabels.includes(`${LABEL_LAST_USED_AT}=2026-05-17T00:00:00.000Z`));
 	assert.ok(runLabels.includes(`${LABEL_RALPH_JOB_ID}=ralph-job-1`));
 	assert.ok(runLabels.includes(`${LABEL_RALPH_RUN_ID}=rrun-1`));
 	assert.ok(runLabels.includes(`${COMPUTE_RESOURCE_POLICY_LABELS.memory}=3g`));
@@ -194,6 +195,8 @@ test('compute list parsing exposes Ralph metadata from Docker labels', () => {
 			'pibo.compute.worktree=ralph-test',
 			'pibo.compute.worktreePath=/repo/.worktrees/ralph-test',
 			`${LABEL_LAST_USED_AT}=2026-05-17T00:10:00.000Z`,
+			`${LABEL_TTL_SECONDS}=3600`,
+			`${LABEL_IDLE_SECONDS}=1800`,
 			'pibo.ralph.jobId=ralph_job_1',
 			'pibo.ralph.runId=rrun_1',
 			`${COMPUTE_RESOURCE_POLICY_LABELS.memory}=2g`,
@@ -210,6 +213,8 @@ test('compute list parsing exposes Ralph metadata from Docker labels', () => {
 	assert.equal(worker.ports, '0.0.0.0:4830->4789/tcp');
 	assert.equal(worker.createdAt, '2026-05-17T00:00:00.000Z');
 	assert.equal(worker.lastUsedAt, '2026-05-17T00:10:00.000Z');
+	assert.equal(worker.ttlSeconds, 3600);
+	assert.equal(worker.idleSeconds, 1800);
 	assert.equal(worker.holder, 'user:test');
 	assert.equal(worker.worktree, 'ralph-test');
 	assert.equal(worker.worktreePath, '/repo/.worktrees/ralph-test');
@@ -319,6 +324,41 @@ test('compute reap dry-run plans selected and skipped workers with worktree pres
 	assert.match(text, /Apply equivalent plan with: pibo compute reap --apply --max-age-minutes 59/);
 	assert.match(text, /Review equivalent dry-run with: pibo compute reap --dry-run --max-age-minutes 59/);
 	assert.match(text, /Worktrees are preserved/);
+});
+
+test('compute reap enforces per-worker TTL and idle retention before the global age limit', () => {
+	const plan = buildComputeWorkerReapPlan([
+		workerFixture('pibo-dev-retention-expired', {
+			Created: '2026-05-17T00:56:00.000Z',
+			Labels: {
+				'pibo.compute.role': 'dev',
+				[LABEL_TTL_SECONDS]: '1',
+				[LABEL_IDLE_SECONDS]: '1',
+			},
+			State: { Status: 'running', Running: true, OOMKilled: false, Dead: false, ExitCode: 0 },
+		}),
+		workerFixture('pibo-worker-recently-used', {
+			Created: '2026-05-17T00:00:00.000Z',
+			Labels: {
+				[LABEL_TTL_SECONDS]: '7200',
+				[LABEL_IDLE_SECONDS]: '60',
+				[LABEL_LAST_USED_AT]: '2026-05-17T00:59:30.000Z',
+			},
+			State: { Status: 'running', Running: true, OOMKilled: false, Dead: false, ExitCode: 0 },
+		}),
+	], { includeDev: true, now: new Date('2026-05-17T01:00:00.000Z'), maxAgeMinutes: 60 });
+
+	const expired = plan.items.find((item) => item.worker.name === 'pibo-dev-retention-expired');
+	assert.equal(expired.action, 'remove');
+	assert.deepEqual(expired.reasons, ['ttl-expired', 'idle-expired']);
+	assert.deepEqual(expired.skipReasons, []);
+	assert.equal(expired.worker.ttlSeconds, 1);
+	assert.equal(expired.worker.idleSeconds, 1);
+
+	const retained = plan.items.find((item) => item.worker.name === 'pibo-worker-recently-used');
+	assert.equal(retained.action, 'skip');
+	assert.deepEqual(retained.reasons, []);
+	assert.deepEqual(retained.skipReasons, ['not-selected']);
 });
 
 test('compute reap include-dev, dirty, and max-age selectors choose expected containers', () => {
@@ -533,6 +573,7 @@ test('dev worker docker run args expose the built worktree CLI with resource and
 	assert.ok(runLabels.includes('pibo.compute.port.chatUi=4873'));
 	assert.ok(runLabels.includes(`${LABEL_TTL_SECONDS}=5400`));
 	assert.ok(runLabels.includes(`${LABEL_IDLE_SECONDS}=2700`));
+	assert.ok(runLabels.includes(`${LABEL_LAST_USED_AT}=2026-05-17T00:00:00.000Z`));
 	assert.ok(runLabels.includes(`${LABEL_RALPH_JOB_ID}=ralph-job-2`));
 	assert.ok(runLabels.includes(`${LABEL_RALPH_RUN_ID}=rrun-2`));
 	assert.ok(runLabels.includes(`${COMPUTE_RESOURCE_POLICY_LABELS.memory}=3g`));
