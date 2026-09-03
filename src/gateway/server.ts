@@ -38,6 +38,7 @@ export type GatewayServerOptions = {
 	maxBackpressureBytes?: number;
 	resourceReaper?: ResourceReaperServiceOptions | false;
 	loopStorePath?: string;
+	piPackageStoreCwd?: string;
 };
 
 type GatewayQueuedFrame = {
@@ -239,6 +240,7 @@ export class PiboGatewayServer {
 			&& (this.options.persistSession !== false || hasExplicitPersistentStore);
 		this.router = new PiboSessionRouter({
 			persistSession: this.options.persistSession,
+			piPackageStoreCwd: this.options.piPackageStoreCwd ?? process.cwd(),
 			pluginRegistry: this.pluginRegistry,
 			sessionStore: this.sessionStore,
 			messagePreflight: createLoopMessagePreflight({ path: this.options.loopStorePath }),

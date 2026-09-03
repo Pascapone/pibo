@@ -8520,6 +8520,9 @@ test("chat web app manages Pi package registrations and custom agent selections"
 		const { channel, baseURL } = await startWebHostChannel({
 			auth: createFakeAuthService(),
 			profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
+			createProfile: (name) => new InitialSessionContextBuilder(name)
+				.withPiPackages([{ id: "local-web-package" }])
+				.createSession(),
 		});
 
 		try {
@@ -8559,6 +8562,38 @@ test("chat web app manages Pi package registrations and custom agent selections"
 			assert.equal(createdAgent.status, 201);
 			const agentPayload = await createdAgent.json();
 			assert.deepEqual(agentPayload.agent.piPackages, ["local-web-package"]);
+
+			const enabled = await fetch(`${baseURL}/api/chat/pi-packages/${encodeURIComponent("local-web-package")}`, {
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: JSON.stringify({ enabled: true }),
+			});
+			assert.equal(enabled.status, 200);
+
+			const createdSession = await fetch(`${baseURL}/api/chat/sessions`, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					origin: baseURL,
+					"x-test-user": "user-1",
+				},
+				body: JSON.stringify({ profile: agentPayload.agent.profileName }),
+			});
+			assert.equal(createdSession.status, 201);
+			const sessionPayload = await createdSession.json();
+			assert.notEqual(sessionPayload.session.workspace, cwd);
+
+			const contextBuild = await fetch(`${baseURL}/api/chat/context-build?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
+				headers: { "x-test-user": "user-1" },
+			});
+			const contextPayload = await contextBuild.json();
+			assert.equal(contextBuild.status, 200, JSON.stringify(contextPayload));
+			assert.equal(contextPayload.snapshot.summary.errors, 0);
+			assert.ok(contextPayload.snapshot.diagnostics.some((diagnostic) => diagnostic.message === "Loaded Pi package local-web-package (skill)"));
 
 			const blockedDelete = await fetch(`${baseURL}/api/chat/pi-packages/${encodeURIComponent("local-web-package")}`, {
 				method: "DELETE",
