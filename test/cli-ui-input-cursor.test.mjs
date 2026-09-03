@@ -100,6 +100,12 @@ test("cursor movement treats a joined emoji as one grapheme", { skip: !ptyAvaila
 	], "› A👩‍💻BC", ["› A👩‍💻CB", "�"]);
 });
 
+test("a leading d is preserved when an expandable transcript row exists", { skip: !ptyAvailable }, async () => {
+	await runCursorScenario("leading-d", [
+		{ typeText: "details probe" },
+	], "› details probe", ["› etails probe"]);
+});
+
 test("command correction and ordinary typing retain their modes", { skip: !ptyAvailable }, async () => {
 	await runCursorScenario("command", [
 		{ typeText: "/sttus" },
