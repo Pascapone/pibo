@@ -10,19 +10,19 @@ status: stable
 authority: normative
 generated:
   by: openai/codex
-  at: '2026-09-04T17:26:26Z'
+  at: '2026-09-04T18:12:48Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: Committed implementation and test evidence for SPC-ORCH-002
 implementation:
   state: current
-  baseline_commit: 9ca49ac9084b7cff616d8efcffb0568c5183863e
+  baseline_commit: a6914aa70cb9c11efcc17526bff1489bfb478607
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: 9ca49ac9084b7cff616d8efcffb0568c5183863e
+  commit: a6914aa70cb9c11efcc17526bff1489bfb478607
   requirements:
   - id: ORCH-SUB-001
     status: implemented
@@ -141,12 +141,24 @@ traceability:
       name: profiles can expose subagents as active router tools
     - path: test/subagents.test.mjs
       name: agents controller lists, filters observations, kills owned children, and does not reuse killed threads
+    - path: test/subagents.test.mjs
+      name: agent observation regex bounds dense and empty matches by the input batch
+    - path: test/subagents.test.mjs
+      name: agent observation regex streams sparse fixed batches with stable cursor pagination
+    - path: test/subagents.test.mjs
+      name: agent observation regex rejects NUL boundaries without leaking process errors
+    - path: test/subagents.test.mjs
+      name: agent observation regex resolves the optional platform binary only for regex queries
+    - path: test/subagents.test.mjs
+      name: agent observation regex preserves null-data anchors and inline multiline flags
     - path: test/debug-agents.test.mjs
       name: debug delegated-agent inspection lists owned children and applies exact observation filters
     - path: test/debug-agents.test.mjs
       name: debug delegated-agent CLI exposes and executes the shared observation filters
     failures:
     - Invalid textRegex inputs fail with a deterministic error before observation results are returned.
+    - NUL text and literal or escaped NUL patterns are rejected instead of crossing observation boundaries or reaching Node process errors.
+    - Regex use fails with an explicit availability error when the optional rg platform binary is absent; non-regex filters remain available.
     confidence: high
 ---
 # Spec: Delegated Agents and Reusable Child Sessions
@@ -164,7 +176,7 @@ The registered agent tools define yielded-only sends, bounded observation, indep
 
 - **Stable concept:** `SPC-ORCH-002`
 - **Target path:** `docs/specs/orchestration/subagents.md`
-- **Authority:** Current source and test evidence at `9ca49ac9084b7cff616d8efcffb0568c5183863e`.
+- **Authority:** Current source and test evidence at `a6914aa70cb9c11efcc17526bff1489bfb478607`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
 - **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the committed implementation candidate. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
@@ -214,7 +226,9 @@ The complete optional Observe filter surface is:
 }
 ```
 
-Array values use OR semantics within their field; different fields use AND semantics. `textContains` remains a case-insensitive substring match against normalized observation text. `textRegex` matches the same text with the bundled rg default Rust regex engine and is case-sensitive unless the pattern sets an inline flag such as `(?i)`. When callers provide both fields, both must match. Invalid Rust regex syntax fails with a deterministic validation error. The persisted debug projection exposes the same regex filter as `pibo debug agents ... observe --regex <pattern>`.
+Array values use OR semantics within their field; different fields use AND semantics. `textContains` remains a case-insensitive substring match against normalized observation text. `textRegex` matches the same text with the bundled rg default Rust regex engine and is case-sensitive unless the pattern sets an inline flag such as `(?i)`. Rg's normal line-anchor behavior and inline multiline or dot-all flags apply. When callers provide both fields, both must match. Invalid Rust regex syntax fails with a deterministic validation error.
+
+Regex candidates are consumed from the observation source in batches bounded to 128 observations and a 64 KiB target. Each candidate is searched as a separate private record, and rg emits at most one fixed identifier per matching observation, so dense valid patterns do not amplify output by submatch count. Pagination retains at most `limit + 1` matches, stops after that lookahead is found, and preserves sparse scans, source order, cursor behavior, and the existing no-regex fast path. Observation text containing a literal NUL and patterns containing a literal NUL or a Rust NUL escape are rejected deterministically because they cannot preserve the practical rg record contract safely. The optional platform rg binary is resolved only when `textRegex` is present; a missing binary does not affect unfiltered or `textContains` queries and produces a regex-specific availability error when requested. The persisted debug projection exposes the same regex filter as `pibo debug agents ... observe --regex <pattern>`.
 
 ### Compatibility
 
@@ -331,29 +345,34 @@ Cross-parent child access is rejected; targeted abort rejection/non-settlement i
 
 ### Requirement: ORCH-SUB-005
 
-Observe MUST preserve the case-insensitive `textContains` substring filter and MUST accept optional `textRegex` for case-sensitive matching against the same normalized observation text with rg's default Rust regex syntax. If both filters are present, Observe MUST require both to match. Invalid regex syntax MUST return a deterministic validation error without crashing the router or debug command.
+Observe MUST preserve the case-insensitive `textContains` substring filter and MUST accept optional `textRegex` for case-sensitive matching against the same normalized observation text with rg's default Rust regex syntax. If both filters are present, Observe MUST require both to match. Regex matching MUST stream fixed-size source batches, bound output independently of submatch density, retain at most `limit + 1` matches, and stop source consumption after that lookahead is found. Invalid regex syntax, unsupported NUL text or patterns, and an unavailable optional rg platform binary MUST return deterministic regex-specific errors without crashing the router or debug command. Non-regex observation MUST NOT resolve or require the optional binary.
 
 **Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at the committed implementation candidate; focused execution status is recorded in the candidate handoff.
 
 #### Current behavior and limits
 
-Inline Rust regex flags such as `(?i)` can change case behavior. Rust regex rejects unsupported constructs such as backreferences. Live and persisted observation use the same prepared query and batched matcher; callers of the persisted debug projection pass the pattern through `--regex`.
+Inline Rust regex flags such as `(?i)`, `(?m)`, and `(?s)` change case, line-anchor, and dot/newline behavior. Rust regex rejects unsupported constructs such as backreferences. Live and persisted observation use the same lazy prepared query and bounded batched matcher; callers of the persisted debug projection pass the pattern through `--regex`.
 
 #### Acceptance evidence
 
 - Exact source evidence:
   - `src/subagents/tool.ts:91` — `PiboAgentObserveInput` (type_or_class)
   - `src/subagents/tool.ts:257` — `createAgentToolDefinitions` (exported_symbol)
-  - `src/subagents/context.ts:5` — `getDelegatedAgentContextFile` (exported_symbol)
-  - `src/subagents/observation-query.ts:42` — `preparePiboAgentObservationQuery` (exported_symbol)
-  - `src/subagents/observation-query.ts:123` — `selectPiboAgentObservationPage` (exported_symbol)
-  - `src/subagents/observation-text-regex.ts:48` — `preparePiboAgentObservationTextRegex` (exported_symbol)
-  - `src/subagents/observation-text-regex.ts:71` — `matchPiboAgentObservationTextRegex` (exported_symbol)
+  - `src/subagents/context.ts:6` — `getDelegatedAgentContextFile` (exported_symbol)
+  - `src/subagents/observation-query.ts:44` — `preparePiboAgentObservationQuery` (exported_symbol)
+  - `src/subagents/observation-query.ts:125` — `selectPiboAgentObservationPage` (exported_symbol)
+  - `src/subagents/observation-text-regex.ts:86` — `preparePiboAgentObservationTextRegex` (exported_symbol)
+  - `src/subagents/observation-text-regex.ts:100` — `matchPiboAgentObservationTextRegex` (exported_symbol)
   - `src/debug/agents.ts:64` — `runDebugAgentsCli` (exported_symbol)
 - Exact named tests:
-  - `test/subagents.test.mjs:174` — “delegated agents expose four stable shared tools and reject duplicate exact names”
-  - `test/subagents.test.mjs:612` — “profiles can expose subagents as active router tools”
-  - `test/subagents.test.mjs:1216` — “agents controller lists, filters observations, kills owned children, and does not reuse killed threads”
+  - `test/subagents.test.mjs:182` — “delegated agents expose four stable shared tools and reject duplicate exact names”
+  - `test/subagents.test.mjs:228` — “agent observation regex bounds dense and empty matches by the input batch”
+  - `test/subagents.test.mjs:249` — “agent observation regex streams sparse fixed batches with stable cursor pagination”
+  - `test/subagents.test.mjs:301` — “agent observation regex rejects NUL boundaries without leaking process errors”
+  - `test/subagents.test.mjs:324` — “agent observation regex resolves the optional platform binary only for regex queries”
+  - `test/subagents.test.mjs:356` — “agent observation regex preserves null-data anchors and inline multiline flags”
+  - `test/subagents.test.mjs:782` — “profiles can expose subagents as active router tools”
+  - `test/subagents.test.mjs:1386` — “agents controller lists, filters observations, kills owned children, and does not reuse killed threads”
   - `test/debug-agents.test.mjs:89` — “debug delegated-agent inspection lists owned children and applies exact observation filters”
   - `test/debug-agents.test.mjs:191` — “debug delegated-agent CLI exposes and executes the shared observation filters”
 - Acceptance must preserve the stated failure behavior and must not promote unexecuted Pibo2 evidence to verified behavior.
@@ -369,7 +388,7 @@ Inline Rust regex flags such as `(?i)` can change case behavior. Rust regex reje
 
 ## Verification boundary
 
-- Source/test baseline: `9ca49ac9084b7cff616d8efcffb0568c5183863e`.
+- Source/test baseline: `a6914aa70cb9c11efcc17526bff1489bfb478607`.
 - Focused Docker execution covers the Observe schema, runtime context, live query, persisted query, regex validation, and debug CLI paths; exact commands and results belong in the candidate handoff.
 - Pibo2 acceptance of the exact committed candidate remains an independent pre-PR gate.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.
