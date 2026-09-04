@@ -182,9 +182,20 @@ export async function deleteRoom(roomId: string, confirmName: string): Promise<{
 
 export async function patchSession(
 	piboSessionId: string,
-	input: { title?: string | null; archived?: boolean; profile?: string; activeModel?: ModelProfile | null },
+	input: { title?: string | null; archived?: boolean; pinned?: boolean; profile?: string; activeModel?: ModelProfile | null },
 ): Promise<{ session: PiboSession }> {
 	return requestJson<{ session: PiboSession }>(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}`, {
+		method: "PATCH",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(input),
+	});
+}
+
+export async function patchSessionOrder(
+	piboSessionId: string,
+	input: { targetPiboSessionId: string; position: "before" | "after" },
+): Promise<{ orderedSessionIds: string[] }> {
+	return requestJson<{ orderedSessionIds: string[] }>(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/order`, {
 		method: "PATCH",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(input),

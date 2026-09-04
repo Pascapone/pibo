@@ -106,6 +106,7 @@ export type PiboNativeToolInfo = {
 	yieldable: boolean;
 	hasDefinition: boolean;
 	portable: boolean;
+	replacesBuiltinTools?: string[];
 	pluginId?: string;
 	pluginName?: string;
 	providerTool?: ProviderToolProfile;

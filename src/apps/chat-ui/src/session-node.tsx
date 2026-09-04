@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type DragEventHandler } from "react";
 import {
 	Archive,
 	ArchiveRestore,
@@ -6,8 +6,11 @@ import {
 	Check,
 	Copy,
 	Edit3,
+	GripVertical,
 	Layers,
 	Loader2,
+	Pin,
+	PinOff,
 	Trash2,
 	User,
 	UserRound,
@@ -25,12 +28,20 @@ export function SessionNode({
 	onSelect,
 	onRename,
 	onArchive,
+	onPinnedChange,
 	onDelete,
 	onViewContext,
 	depth = 0,
 	loadingPiboSessionId,
 	autoRename = false,
 	onAutoRenameConsumed,
+	draggable = false,
+	dropPosition = null,
+	onSessionDragStart,
+	onSessionDragOver,
+	onSessionDrop,
+	onSessionDragEnd,
+	showDragHandle = false,
 	showWorkflowSessionKindMarkers = false,
 	mutationsDisabled = false,
 }: {
@@ -41,12 +52,20 @@ export function SessionNode({
 	onSelect: (piboSessionId: string) => void;
 	onRename: (piboSessionId: string, title: string | null) => void;
 	onArchive: (piboSessionId: string, archived: boolean) => void;
+	onPinnedChange?: (piboSessionId: string, pinned: boolean) => void;
 	onDelete: (node: PiboWebSessionNode) => void;
 	onViewContext: (piboSessionId: string) => void;
 	depth?: number;
 	loadingPiboSessionId?: string | null;
 	autoRename?: boolean;
 	onAutoRenameConsumed?: () => void;
+	draggable?: boolean;
+	dropPosition?: "before" | "after" | null;
+	onSessionDragStart?: DragEventHandler<HTMLDivElement>;
+	onSessionDragOver?: DragEventHandler<HTMLDivElement>;
+	onSessionDrop?: DragEventHandler<HTMLDivElement>;
+	onSessionDragEnd?: DragEventHandler<HTMLDivElement>;
+	showDragHandle?: boolean;
 	showWorkflowSessionKindMarkers?: boolean;
 	mutationsDisabled?: boolean;
 }) {
@@ -101,6 +120,7 @@ export function SessionNode({
 	const loading = loadingPiboSessionId === node.piboSessionId;
 	const workflowKind = showWorkflowSessionKindMarkers ? workflowSessionKindPresentation(node.workflowSessionKind) : null;
 	const WorkflowKindIcon = workflowKind?.Icon;
+	const pinActionAvailable = depth === 0 && !node.archived && Boolean(onPinnedChange);
 
 	return (
 		<div>
@@ -112,13 +132,20 @@ export function SessionNode({
 				data-pibo-selected={node.piboSessionId === selectedPiboSessionId ? "true" : "false"}
 				data-pibo-state={loading ? "loading" : node.status ?? "idle"}
 				data-pibo-archived={node.archived ? "true" : "false"}
+				data-pibo-pinned={node.pinned ? "true" : "false"}
 				data-pibo-unread-count={node.unreadCount ?? 0}
-				className={`group w-full grid grid-cols-[1fr_auto] gap-0.5 items-center mb-0.5 border rounded-sm ${
+				draggable={draggable}
+				onDragStart={onSessionDragStart}
+				onDragOver={onSessionDragOver}
+				onDrop={onSessionDrop}
+				onDragEnd={onSessionDragEnd}
+				className={`group relative w-full grid grid-cols-[1fr_auto] gap-0.5 items-center mb-0.5 border rounded-sm ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${
 					node.piboSessionId === selectedPiboSessionId ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-transparent"
 				}`}
 				style={{ paddingLeft: 8 + depth * 14 }}
 				title={sessionTooltip}
 			>
+				{dropPosition === "before" ? <span className="pointer-events-none absolute inset-x-1 -top-px z-10 h-px bg-[#11a4d4]" /> : null}
 				{editing && !mutationsDisabled ? (
 					<form
 						className="min-w-0 grid grid-cols-[1fr_auto_auto] gap-1 py-1 pr-1"
@@ -181,9 +208,15 @@ export function SessionNode({
 							aria-current={node.piboSessionId === selectedPiboSessionId ? "page" : undefined}
 							className="h-7 max-[980px]:h-8 min-w-0 text-left px-1 flex items-center gap-1.5"
 						>
+							{showDragHandle ? <GripVertical size={12} className="shrink-0 text-slate-600" aria-hidden="true" /> : null}
 							{workflowKind && WorkflowKindIcon ? (
 								<span className={`h-4 w-4 shrink-0 inline-flex items-center justify-center rounded-sm border ${workflowKind.className}`} title={workflowKind.ariaLabel} aria-label={workflowKind.ariaLabel}>
 									<WorkflowKindIcon size={11} aria-hidden="true" />
+								</span>
+							) : null}
+							{node.pinned && !node.archived ? (
+								<span className="shrink-0 text-[#11a4d4]" title="Pinned session" aria-label="Pinned session">
+									<Pin size={11} fill="currentColor" aria-hidden="true" />
 								</span>
 							) : null}
 							<span className={`block min-w-0 truncate text-[13px] leading-none ${node.archived ? "text-slate-500" : "text-slate-200"}`}>{safeTitle}</span>
@@ -216,7 +249,7 @@ export function SessionNode({
 					<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
 						<ActionMenu
 							label={`Actions for session ${safeTitle}`}
-							estimatedHeight={144}
+							estimatedHeight={pinActionAvailable ? 192 : 144}
 							disabled={mutationsDisabled}
 						>
 							{node.archived ? (
@@ -233,6 +266,11 @@ export function SessionNode({
 								</>
 							) : (
 								<>
+									{pinActionAvailable ? (
+										<ActionMenuItem onSelect={() => onPinnedChange?.(node.piboSessionId, !node.pinned)}>
+											{node.pinned ? <PinOff size={16} /> : <Pin size={16} />} {node.pinned ? "Unpin Session" : "Pin Session"}
+										</ActionMenuItem>
+									) : null}
 									<ActionMenuItem onSelect={() => setEditing(true)}>
 										<Edit3 size={16} /> Rename Session
 									</ActionMenuItem>
@@ -247,6 +285,7 @@ export function SessionNode({
 						</ActionMenu>
 					</div>
 				)}
+				{dropPosition === "after" ? <span className="pointer-events-none absolute inset-x-1 -bottom-px z-10 h-px bg-[#11a4d4]" /> : null}
 			</div>
 			{hasChildren ? (
 				<div id={subsessionsRegionId} hidden={!expanded}>

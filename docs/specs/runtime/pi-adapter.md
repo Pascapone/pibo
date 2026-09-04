@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-04T14:26:38Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "31e486b257207dc52b7e63388d9937a62f62f2c6"
   requirements:
     - id: "RUN-PI-001"
       status: "implemented"
@@ -36,6 +36,8 @@ traceability:
           symbol: "@earendil-works/pi-agent-core"
         - path: "package-lock.json"
           symbol: "@earendil-works/pi-agent-core"
+        - path: "package.json"
+          symbol: "@earendil-works/pi-server"
       tests:
         - path: "test/pi-runtime-dependency-pin.test.mjs"
           name: "Pi runtime packages use one exact compatible version"
@@ -88,7 +90,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 # Current behavior
 
 - Lifecycle: The built-in Pi instance opens the existing Pi runtime, preserves the requested session id, normalizes output, and disposes idempotently.
-- State: Built-in adapter, driver, and instance identity is pi; package version is exactly 0.84.2; intent tracing is off unless a boolean runtime option enables it.
+- State: Built-in adapter, driver, and instance identity is pi; the direct Pi runtime package set and adapter protocol version are exactly 0.85.0; intent tracing is off unless a boolean runtime option enables it.
 - Failure: Unsupported controls fail explicitly; external harness-native tools without an explicit host-tool capability cannot be wrapped, while Pi direct/native tools remain supported; transcript repair fails closed rather than rerunning durable tool effects.
 - Security: Pi Bash inherits only router-owned adapter environment without process-global mutation.
 - Compatibility: Pi-backed codex compatibility can be explicitly registered but is not a default profile; exact package pins are one compatible version.
@@ -101,7 +103,7 @@ The core plugin SHALL register the Pi driver and configured instance with adapte
 
 ## Requirement: RUN-PI-002
 
-The Pi runtime package set and adapter protocol version SHALL remain pinned to the exact compatible version 0.84.2.
+The Pi runtime package set and adapter protocol version SHALL remain pinned to the exact compatible version 0.85.0. The direct package set SHALL include `@earendil-works/pi-server` because the published 0.85.0 coding-agent entrypoint imports that package.
 
 ## Requirement: RUN-PI-003
 
@@ -143,7 +145,9 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `31e486b257207dc52b7e63388d9937a62f62f2c6`. Requirement confidence measures trace quality, not whether a command ran.
+
+The 0.85.0 upgrade passed the complete TypeScript build and focused Pi/runtime routing tests. The explicit `@earendil-works/pi-server@0.85.0` pin closes the package entrypoint's published runtime import and is covered by the exact-version lockfile test.
 
 Package verification commands:
 

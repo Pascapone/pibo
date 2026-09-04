@@ -84,6 +84,8 @@ export type SessionSidebarProps = {
 	onSelectSession: (piboSessionId: string) => void | Promise<void>;
 	onRenameSession: (piboSessionId: string, title: string | null) => void | Promise<void>;
 	onArchiveSession: (piboSessionId: string, archived: boolean) => void | Promise<void>;
+	onPinnedSessionChange: (piboSessionId: string, pinned: boolean) => void | Promise<void>;
+	onReorderSession: (piboSessionId: string, targetPiboSessionId: string, position: "before" | "after") => void | Promise<void>;
 	onDeleteSession: (node: PiboWebSessionNode) => void;
 	onViewContext: (piboSessionId: string) => void;
 	loadingPiboSessionId?: string | null;
@@ -129,6 +131,8 @@ export function SessionSidebar({
 	onSelectSession,
 	onRenameSession,
 	onArchiveSession,
+	onPinnedSessionChange,
+	onReorderSession,
 	onDeleteSession,
 	onViewContext,
 	loadingPiboSessionId,
@@ -140,6 +144,9 @@ export function SessionSidebar({
 	const sharedDefaultRoom = findSharedDefaultRoom(bootstrap.rooms);
 	const roomGroups = splitRoomNodes(bootstrap.rooms);
 	const archivedSessionsToggleRef = useRef<HTMLButtonElement>(null);
+	const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
+	const [dropIndicator, setDropIndicator] = useState<{ targetPiboSessionId: string; position: "before" | "after" } | null>(null);
+	const firstUnpinnedSessionIndex = visibleActiveSessions.findIndex((session) => !session.pinned);
 	const handleToggleArchivedSessions = async () => {
 		const restoreFocus = archivedSessionsToggleRef.current === document.activeElement;
 		try {
@@ -291,23 +298,62 @@ export function SessionSidebar({
 					<RoomSessionsLoadingSkeleton />
 				) : (
 					<>
-				{visibleActiveSessions.map((session) => (
-					<SessionNode
-						key={session.piboSessionId}
-						node={session}
-						signalNow={signalNow}
-						selectedPiboSessionId={selectedPiboSessionId}
-						selectedSessionPathIds={selectedSessionPathIds}
-						onSelect={(piboSessionId) => void onSelectSession(piboSessionId)}
-						onRename={(piboSessionId, title) => void onRenameSession(piboSessionId, title)}
-						onArchive={(piboSessionId, archived) => void onArchiveSession(piboSessionId, archived)}
-						onDelete={onDeleteSession}
-						onViewContext={onViewContext}
-						loadingPiboSessionId={loadingPiboSessionId}
-						autoRename={autoRenameSessionId === session.piboSessionId}
-						onAutoRenameConsumed={() => onAutoRenameConsumed()}
-					/>
-				))}
+				{visibleActiveSessions.map((session, index) => {
+					const showPinnedDivider = firstUnpinnedSessionIndex > 0 && index === firstUnpinnedSessionIndex;
+					const indicator = dropIndicator?.targetPiboSessionId === session.piboSessionId ? dropIndicator.position : null;
+					return (
+						<div key={session.piboSessionId}>
+							{showPinnedDivider ? <div data-pibo-debug="pinned-session-divider" className="mx-2 my-1 border-t border-slate-700/80" aria-hidden="true" /> : null}
+							<SessionNode
+								node={session}
+								signalNow={signalNow}
+								selectedPiboSessionId={selectedPiboSessionId}
+								selectedSessionPathIds={selectedSessionPathIds}
+								onSelect={(piboSessionId) => void onSelectSession(piboSessionId)}
+								onRename={(piboSessionId, title) => void onRenameSession(piboSessionId, title)}
+								onArchive={(piboSessionId, archived) => void onArchiveSession(piboSessionId, archived)}
+								onPinnedChange={(piboSessionId, pinned) => void onPinnedSessionChange(piboSessionId, pinned)}
+								onDelete={onDeleteSession}
+								onViewContext={onViewContext}
+								loadingPiboSessionId={loadingPiboSessionId}
+								autoRename={autoRenameSessionId === session.piboSessionId}
+								onAutoRenameConsumed={() => onAutoRenameConsumed()}
+								draggable={!selectedRoomArchived}
+								dropPosition={indicator}
+								onSessionDragStart={(event) => {
+									setDraggedSessionId(session.piboSessionId);
+									setDropIndicator(null);
+									event.dataTransfer.effectAllowed = "move";
+									event.dataTransfer.setData("text/pibo-session-id", session.piboSessionId);
+								}}
+								onSessionDragOver={(event) => {
+									const dragged = visibleActiveSessions.find((candidate) => candidate.piboSessionId === draggedSessionId);
+									if (!dragged || dragged.piboSessionId === session.piboSessionId || Boolean(dragged.pinned) !== Boolean(session.pinned)) return;
+									event.preventDefault();
+									event.dataTransfer.dropEffect = "move";
+									const bounds = event.currentTarget.getBoundingClientRect();
+									setDropIndicator({
+										targetPiboSessionId: session.piboSessionId,
+										position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
+									});
+								}}
+								onSessionDrop={(event) => {
+									event.preventDefault();
+									if (draggedSessionId && dropIndicator?.targetPiboSessionId === session.piboSessionId) {
+										void onReorderSession(draggedSessionId, session.piboSessionId, dropIndicator.position);
+									}
+									setDraggedSessionId(null);
+									setDropIndicator(null);
+								}}
+								onSessionDragEnd={() => {
+									setDraggedSessionId(null);
+									setDropIndicator(null);
+								}}
+								showDragHandle
+							/>
+						</div>
+					);
+				})}
 				{totalActiveSessionCount === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No active sessions</div> : null}
 				{hasMoreActiveSessions ? (
 					<SessionSidebarLoadMoreButton

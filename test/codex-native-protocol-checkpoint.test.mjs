@@ -19,9 +19,9 @@ function sha256(bytes) {
 	return createHash("sha256").update(bytes).digest("hex");
 }
 
-test("Codex native protocol checkpoint pins the exact Pibo2 App Server version", () => {
-	assert.equal(CODEX_APP_SERVER_VERSION, "0.147.0");
-	assert.equal(CODEX_APP_SERVER_SUPPORTED_RANGE, ">=0.147.0 <0.148.0");
+test("Codex native protocol checkpoint pins the exact validated App Server version", () => {
+	assert.equal(CODEX_APP_SERVER_VERSION, "0.153.2");
+	assert.equal(CODEX_APP_SERVER_SUPPORTED_RANGE, ">=0.153.2 <0.154.0");
 	assert.equal(CODEX_APP_SERVER_PROTOCOL_NAME, "codex-app-server-v2");
 	assert.match(CODEX_APP_SERVER_GENERATED_TYPES_INDEX_SHA256, /^[a-f0-9]{64}$/);
 	assert.match(CODEX_APP_SERVER_GENERATED_BUNDLE_SHA256, /^[a-f0-9]{64}$/);
@@ -36,8 +36,8 @@ test("Codex native protocol checkpoint stores unmodified stable generated schema
 	const v2 = JSON.parse(v2Bytes);
 	assert.equal(full.title, "CodexAppServerProtocol");
 	assert.equal(v2.title, "CodexAppServerProtocolV2");
-	assert.equal(Object.keys(full.definitions).length, 82);
-	assert.equal(Object.keys(v2.definitions).length, 557);
+	assert.equal(Object.keys(full.definitions).length, 83);
+	assert.equal(Object.keys(v2.definitions).length, 622);
 
 	for (const definition of [
 		"CommandExecutionRequestApprovalParams",

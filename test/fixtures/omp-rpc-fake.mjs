@@ -16,7 +16,7 @@ import readline from "node:readline";
 
 const args = process.argv.slice(2);
 if (args.includes("--version")) {
-	process.stdout.write("omp 17.3.5-fake\n");
+	process.stdout.write(`${process.env.OMP_FAKE_VERSION ?? "omp/18.1.10"}\n`);
 	process.exit(0);
 }
 

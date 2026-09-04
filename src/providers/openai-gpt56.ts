@@ -28,18 +28,25 @@ export type OpenAiGpt56ModelSpec = {
 	};
 };
 
-export type OpenAiGpt56RegistrationResult = {
+export type OpenAiSupplementalRegistrationResult = {
 	registered: boolean;
 	providers: number;
 	models: number;
 	added: number;
 };
 
-export type OpenAiGpt56ModelRegistryLike = Pick<ModelRegistry, "registerProvider" | "find">;
+export type OpenAiSupplementalModelRegistryLike = Pick<ModelRegistry, "registerProvider" | "find">;
+
+// Compatibility aliases for existing callers of the GPT-5.6-only registration surface.
+export type OpenAiGpt56RegistrationResult = OpenAiSupplementalRegistrationResult;
+export type OpenAiGpt56ModelRegistryLike = OpenAiSupplementalModelRegistryLike;
 
 const OPENAI_GPT_56_CONTEXT_WINDOW = 1_050_000;
 const OPENAI_CODEX_GPT_56_CONTEXT_WINDOW = 272_000;
 const GPT_56_MAX_TOKENS = 128_000;
+
+const OPENAI_CODEX_GPT_6_ASTRA_CONTEXT_WINDOW = 272_000;
+const GPT_6_ASTRA_MAX_TOKENS = 128_000;
 
 export const OPENAI_GPT_56_MODELS: readonly OpenAiGpt56ModelSpec[] = [
 	{
@@ -63,6 +70,12 @@ export const OPENAI_GPT_56_MODELS: readonly OpenAiGpt56ModelSpec[] = [
 		cost: { input: 1, output: 6, cacheRead: 0.1, cacheWrite: 1.25 },
 	},
 ];
+
+export const OPENAI_CODEX_GPT_6_ASTRA_MODEL = {
+	id: "gpt-6-astra",
+	name: "GPT-6-Astra",
+	cost: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
+} as const;
 
 const OPENAI_GPT_56_MODEL_IDS = new Set(OPENAI_GPT_56_MODELS.map((model) => model.id));
 
@@ -102,13 +115,21 @@ export function buildOpenAiCodexGpt56Models(
 	});
 }
 
-export function registerOpenAiGpt56Models(
-	modelRegistry: OpenAiGpt56ModelRegistryLike,
+export function buildOpenAiCodexSupplementalModels(
+	baseModels: readonly Model<any>[] = getBuiltInOpenAiCodexModels(),
+): Model<any>[] {
+	const models = buildOpenAiCodexGpt56Models(baseModels);
+	if (models.some((model) => model.id === OPENAI_CODEX_GPT_6_ASTRA_MODEL.id)) return models;
+	return [...models, openAiCodexAstraModelToRegistryModel()];
+}
+
+export function registerOpenAiSupplementalModels(
+	modelRegistry: OpenAiSupplementalModelRegistryLike,
 	options: {
 		baseOpenAiModels?: readonly Model<any>[];
 		baseOpenAiCodexModels?: readonly Model<any>[];
 	} = {},
-): OpenAiGpt56RegistrationResult {
+): OpenAiSupplementalRegistrationResult {
 	const baseOpenAiModels = options.baseOpenAiModels ?? getBuiltInOpenAiModels();
 	const openAiModels = buildOpenAiGpt56Models(baseOpenAiModels);
 	const openAiAdded = countMissingGpt56Models(baseOpenAiModels, OPENAI_PROVIDER_ID);
@@ -121,8 +142,12 @@ export function registerOpenAiGpt56Models(
 	});
 
 	const baseOpenAiCodexModels = options.baseOpenAiCodexModels ?? getBuiltInOpenAiCodexModels();
-	const openAiCodexModels = buildOpenAiCodexGpt56Models(baseOpenAiCodexModels);
-	const openAiCodexAdded = countMissingGpt56Models(baseOpenAiCodexModels, OPENAI_CODEX_PROVIDER_ID);
+	const openAiCodexModels = buildOpenAiCodexSupplementalModels(baseOpenAiCodexModels);
+	const hasBuiltInAstra = baseOpenAiCodexModels.some(
+		(model) => model.provider === OPENAI_CODEX_PROVIDER_ID && model.id === OPENAI_CODEX_GPT_6_ASTRA_MODEL.id,
+	);
+	const openAiCodexAdded = countMissingGpt56Models(baseOpenAiCodexModels, OPENAI_CODEX_PROVIDER_ID)
+		+ (hasBuiltInAstra ? 0 : 1);
 
 	modelRegistry.registerProvider(OPENAI_CODEX_PROVIDER_ID, {
 		baseUrl: OPENAI_CODEX_BASE_URL,
@@ -137,6 +162,8 @@ export function registerOpenAiGpt56Models(
 		added: openAiAdded + openAiCodexAdded,
 	};
 }
+
+export const registerOpenAiGpt56Models = registerOpenAiSupplementalModels;
 
 export function findOpenAiGpt56Model(
 	modelRegistry: Pick<ModelRegistry, "find">,
@@ -214,5 +241,28 @@ function openAiGpt56ModelToRegistryModel(
 		cost: options.modelCost(model),
 		contextWindow: options.contextWindow,
 		maxTokens: GPT_56_MAX_TOKENS,
+	};
+}
+
+function openAiCodexAstraModelToRegistryModel(): Model<any> {
+	return {
+		id: OPENAI_CODEX_GPT_6_ASTRA_MODEL.id,
+		name: OPENAI_CODEX_GPT_6_ASTRA_MODEL.name,
+		api: OPENAI_CODEX_RESPONSES_API as any,
+		provider: OPENAI_CODEX_PROVIDER_ID,
+		baseUrl: OPENAI_CODEX_BASE_URL,
+		reasoning: true,
+		// Codex also advertises "ultra", but Pibo's portable thinking-level contract ends at "max".
+		thinkingLevelMap: { off: null, minimal: null, xhigh: "xhigh", max: "max" },
+		input: ["text", "image"],
+		compat: {
+			supportsOpenAIGrammarTools: true,
+			supportsAdditionalTools: true,
+			supportsToolSearch: true,
+		},
+		cost: { ...OPENAI_CODEX_GPT_6_ASTRA_MODEL.cost, cacheWrite: 0 },
+		// Codex uses 272k by default and advertises 872k only as an optional maximum override.
+		contextWindow: OPENAI_CODEX_GPT_6_ASTRA_CONTEXT_WINDOW,
+		maxTokens: GPT_6_ASTRA_MAX_TOKENS,
 	};
 }

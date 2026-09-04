@@ -4,7 +4,7 @@ import { join } from "node:path";
 import readline from "node:readline";
 
 if (process.argv.includes("--version")) {
-	process.stdout.write("codex-cli 0.147.0\n");
+	process.stdout.write("codex-cli 0.153.2\n");
 	process.exit(0);
 }
 
@@ -74,7 +74,7 @@ async function handle(message) {
 			codexHome,
 			platformFamily: "unix",
 			platformOs: "linux",
-			userAgent: "fake-codex-auth/0.147.0",
+			userAgent: "fake-codex-auth/0.153.2",
 		});
 		return;
 	}

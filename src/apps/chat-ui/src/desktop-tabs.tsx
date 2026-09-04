@@ -236,19 +236,25 @@ export function DesktopTabSidebar({
 
 	const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
 		event.preventDefault();
+		const resizeHandle = event.currentTarget;
+		const pointerId = event.pointerId;
 		const startX = event.clientX;
-		const startWidth = event.currentTarget.parentElement?.getBoundingClientRect().width ?? state.width;
+		const startWidth = resizeHandle.parentElement?.getBoundingClientRect().width ?? state.width;
 		const move = (moveEvent: PointerEvent) => onStateChange(resizeDesktopTabs(state, startWidth + startX - moveEvent.clientX));
 		const stop = () => {
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", stop);
+			window.removeEventListener("pointercancel", stop);
+			if (resizeHandle.hasPointerCapture(pointerId)) resizeHandle.releasePointerCapture(pointerId);
 			document.body.style.removeProperty("cursor");
 			document.body.style.removeProperty("user-select");
 		};
+		resizeHandle.setPointerCapture(pointerId);
 		document.body.style.cursor = "col-resize";
 		document.body.style.userSelect = "none";
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", stop);
+		window.addEventListener("pointercancel", stop);
 	};
 
 	const shellStyle = {

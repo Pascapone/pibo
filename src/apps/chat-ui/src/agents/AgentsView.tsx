@@ -24,6 +24,7 @@ import {
 	agentDesignerUnavailableMessage,
 	agentDraftToSaveInput,
 	agentToDraft,
+	buildBuiltinToolReplacementMap,
 	buildContextFileGroups,
 	buildNativeToolGroups,
 	buildSkillGroups,
@@ -467,6 +468,10 @@ export function AgentsView({
 		() => buildNativeToolGroups(catalog?.nativeTools ?? [], draft.nativeTools),
 		[catalog?.nativeTools, draft.nativeTools],
 	);
+	const builtinToolReplacements = useMemo(
+		() => buildBuiltinToolReplacementMap(catalog?.nativeTools ?? [], draft.nativeTools),
+		[catalog?.nativeTools, draft.nativeTools],
+	);
 	const skillGroups = useMemo(
 		() => buildSkillGroups(catalog?.skills ?? [], draft.skills),
 		[catalog?.skills, draft.skills],
@@ -877,7 +882,7 @@ export function AgentsView({
 								onToggle={() => setDraft((current) => ({ ...current, autoContextFiles: !(current.autoContextFiles ?? true) }))}
 							/>
 						) : null}
-						<BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} />
+						<BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} replacements={builtinToolReplacements} />
 					</DesignerPanel>
 					<DesignerPanel title="Tools">
 						{piboToolsUnavailableReason ? <RuntimeCapabilityNotice reason={piboToolsUnavailableReason} /> : null}
@@ -921,7 +926,7 @@ export function AgentsView({
 							empty={catalog ? <EmptyCatalog message="No native tools registered" /> : <EmptyCatalog />}
 							renderItem={(tool) => {
 								const portabilityReason = piboToolsUseMcp && tool.portable === false
-									? "Legacy Pi-native definition; unavailable through the session-scoped MCP bridge."
+									? "Pi-runtime-only definition; unavailable through the session-scoped MCP bridge."
 									: null;
 								const unavailableReason = piboToolsUnavailableReason ?? portabilityReason;
 								return <CatalogToggle
@@ -1156,13 +1161,16 @@ function BuiltinToolsDesigner({
 	setDraft,
 	readOnly,
 	capabilityUnavailableReason,
+	replacements,
 }: {
 	draft: AgentDraft;
 	setDraft: Dispatch<SetStateAction<AgentDraft>>;
 	readOnly: boolean;
 	capabilityUnavailableReason: string | null;
+	replacements: Map<string, string[]>;
 }) {
-	const selectedTools = normalizeBuiltinToolNames(draft.builtinToolNames, draft.builtinTools);
+	const configuredTools = normalizeBuiltinToolNames(draft.builtinToolNames, draft.builtinTools);
+	const selectedTools = configuredTools.filter((name) => !replacements.has(name));
 	const [open, setOpen] = useState(selectedTools.length !== DEFAULT_BUILTIN_TOOL_NAMES.length);
 	const toggleBuiltinTool = (name: string) => {
 		setDraft((current) => {
@@ -1195,17 +1203,22 @@ function BuiltinToolsDesigner({
 				<div className="border-t border-slate-800 p-2 grid gap-2">
 					{capabilityUnavailableReason ? <RuntimeCapabilityNotice reason={capabilityUnavailableReason} /> : null}
 					<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 @max-[680px]:grid-cols-1 gap-2">
-						{DEFAULT_BUILTIN_TOOL_NAMES.map((toolName) => (
-							<CatalogToggle
+						{DEFAULT_BUILTIN_TOOL_NAMES.map((toolName) => {
+							const replacers = replacements.get(toolName);
+							const replacementReason = replacers?.length
+								? `Replaced by ${replacers.join(", ")} while selected.`
+								: null;
+							return <CatalogToggle
 								key={toolName}
-								disabled={readOnly || Boolean(capabilityUnavailableReason && !selectedTools.includes(toolName))}
+								disabled={readOnly || Boolean(replacementReason) || Boolean(capabilityUnavailableReason && !selectedTools.includes(toolName))}
 								checked={selectedTools.includes(toolName)}
 								title={toolName}
 								description={BUILTIN_TOOL_DESCRIPTIONS[toolName]}
-								meta={capabilityUnavailableReason ?? "built-in"}
+								meta={replacementReason ?? capabilityUnavailableReason ?? "built-in"}
+								metaClass={replacementReason ? "text-slate-500" : undefined}
 								onToggle={() => toggleBuiltinTool(toolName)}
-							/>
-						))}
+							/>;
+						})}
 					</div>
 				</div>
 			) : null}

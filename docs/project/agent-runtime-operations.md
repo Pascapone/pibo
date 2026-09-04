@@ -14,12 +14,12 @@ migration_lineage:
   source_sha256: "2f28143b5f39e8053f7f9ffa832248f17e935d0e72363d74bf11a9285366c0b5"
   source_body_sha256: "2f28143b5f39e8053f7f9ffa832248f17e935d0e72363d74bf11a9285366c0b5"
 generated:
-  by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-08-31T22:47:46Z"
+  by: "openai/codex"
+  at: "2026-09-04T14:26:38Z"
 ---
 # Agent Runtime Operations
 
-**Updated:** 2026-08-25
+**Updated:** 2026-09-04
 
 This guide covers runtime selection, diagnostics, migration boundaries, private state, and safe troubleshooting for the built-in `pi` and `codex-native` runtimes. Architecture details live in [`architecture/agent-runtime-adapters.md`](./architecture/agent-runtime-adapters.md); exact integrated evidence and the runtime-auth correction are recorded in [`../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`](../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md) and [`../reports/runtime-auth-control-plane-validation-2026-08-16.md`](../reports/runtime-auth-control-plane-validation-2026-08-16.md).
 
@@ -112,7 +112,7 @@ For `codex-native`, **Device code** starts official App Server `account/login/st
 
 After completion, refresh the page and verify safe metadata only: runtime instance, provider, state, account type, and optional plan type. Never inspect or print `auth.json` to prove success.
 
-A fresh Codex `0.147.0` thread may remain live but not durable until its first native turn. After a durable thread exists, a missing rollout is reported as `missing` with a safe conflict response; it is never replaced through `thread/start`.
+A fresh native Codex thread may remain live but not durable until its first native turn. After a durable thread exists, a missing rollout is reported as `missing` with a safe conflict response; it is never replaced through `thread/start`.
 
 After interruption or a protocol/process failure, the adapter may recycle the App Server before the next turn. The Pibo Session and native thread binding remain unchanged when resume succeeds.
 

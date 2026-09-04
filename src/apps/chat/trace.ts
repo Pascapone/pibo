@@ -26,7 +26,7 @@ import { buildTraceViewFromEvents, traceNodesFromHistoryEntries } from "../../sh
 import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { PiboSessionTraceView, PiboTraceNode } from "../../shared/trace-types.js";
 import type { ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "./read-model.js";
-import { isChatWebSessionArchived } from "./session-metadata.js";
+import { chatWebSessionSidebarOrder, isChatWebSessionArchived, isChatWebSessionPinned } from "./session-metadata.js";
 import { workflowSessionKindFromMetadata, type PiboWorkflowSessionKind } from "../../sessions/workflow-session-kind.js";
 
 export type PiboWebSessionStatus = "idle" | "running" | "error";
@@ -63,7 +63,10 @@ export type PiboWebSessionNode = {
 	workflowSessionKind?: PiboWorkflowSessionKind;
 	title: string;
 	subtitle?: string;
+	createdAt?: string;
 	archived?: boolean;
+	pinned?: boolean;
+	sidebarOrder?: number;
 	status: PiboWebSessionStatus;
 	lastActivityAt?: string;
 	unreadCount?: number;
@@ -163,7 +166,10 @@ export async function buildSessionNodes(
 			workflowSessionKind: workflowSessionKindFromMetadata(session.metadata),
 			title: createSessionTitle(session, historyMetadataFromInspection(inspection)),
 			subtitle: session.id,
+			createdAt: session.createdAt,
 			archived: isChatWebSessionArchived(session),
+			pinned: isChatWebSessionPinned(session),
+			sidebarOrder: chatWebSessionSidebarOrder(session),
 			status: sessionNodeStatus(indexed?.status),
 			lastActivityAt: indexed?.lastActivityAt ?? indexed?.createdAt ?? session.createdAt,
 			unreadCount: unreadCounts.get(session.id) || undefined,
@@ -198,7 +204,7 @@ export async function buildSessionNodes(
 	}
 
 	const sortNodes = (items: PiboWebSessionNode[]): void => {
-		items.sort((left, right) => (right.lastActivityAt ?? "").localeCompare(left.lastActivityAt ?? ""));
+		items.sort(compareSessionNodesBySidebarOrder);
 		for (const item of items) {
 			item.derivedSessions.sort((left, right) => (right.lastActivityAt ?? "").localeCompare(left.lastActivityAt ?? ""));
 			sortNodes(item.children);
@@ -206,6 +212,15 @@ export async function buildSessionNodes(
 	};
 	sortNodes(roots);
 	return roots;
+}
+
+function compareSessionNodesBySidebarOrder(left: PiboWebSessionNode, right: PiboWebSessionNode): number {
+	const pinnedDifference = Number(Boolean(right.pinned)) - Number(Boolean(left.pinned));
+	if (pinnedDifference !== 0) return pinnedDifference;
+	const leftOrder = left.sidebarOrder ?? (Date.parse(left.createdAt ?? "") || 0);
+	const rightOrder = right.sidebarOrder ?? (Date.parse(right.createdAt ?? "") || 0);
+	if (leftOrder !== rightOrder) return rightOrder - leftOrder;
+	return right.piboSessionId.localeCompare(left.piboSessionId);
 }
 
 function sessionNodeStatus(indexedStatus: PiboWebSessionStatus | undefined): PiboWebSessionStatus {

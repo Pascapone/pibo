@@ -148,6 +148,17 @@ test("debug delegated-agent inspection lists owned children and applies exact ob
 		assert.equal(result.observations[0].details.toolCallId, "tool_worker");
 		assert.equal(result.nextAfterSequence, result.observations[0].streamId);
 		assert.equal(inspectDebugAgentObservations("ps_parent", fixture.store, { afterSequence: result.nextAfterSequence }).observations.length, 1);
+		assert.equal(inspectDebugAgentObservations("ps_parent", fixture.store, {
+			textRegex: "^Confirmed the [a-z]+ query boundary$",
+		}).observations.length, 1);
+		assert.equal(inspectDebugAgentObservations("ps_parent", fixture.store, {
+			textContains: "SHARED",
+			textRegex: "^Confirmed",
+		}).observations.length, 1);
+		assert.throws(
+			() => inspectDebugAgentObservations("ps_parent", fixture.store, { textRegex: "(" }),
+			/Agent observation textRegex is invalid: unclosed group\./,
+		);
 
 		const firstPage = inspectDebugAgentObservations("ps_parent", fixture.store, { afterSequence: 0, order: "desc", limit: 1 });
 		const secondPage = inspectDebugAgentObservations("ps_parent", fixture.store, { afterSequence: firstPage.nextAfterSequence, order: "desc", limit: 1 });
@@ -193,6 +204,10 @@ test("debug delegated-agent CLI exposes and executes the shared observation filt
 		assert.match(help, /--include-tools/);
 		assert.match(help, /--tool-detail summary\|full/);
 		assert.match(help, /--role role/);
+		assert.match(help, /--regex pattern/);
+		assert.match(help, /case-sensitive bundled rg\/Rust-regex syntax/);
+		assert.match(help, /rejects NUL text and literal or escaped NUL patterns/);
+		assert.match(help, /requires the optional rg platform binary/);
 
 		output.length = 0;
 		await runDebugAgentsCli([
@@ -202,6 +217,8 @@ test("debug delegated-agent CLI exposes and executes the shared observation filt
 			"tool_worker",
 			"--role",
 			"tool",
+			"--regex",
+			"(?i)npm [a-z]+",
 			"--tool-detail",
 			"full",
 			"--order",

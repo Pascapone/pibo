@@ -11,6 +11,8 @@ import { OmpHostToolBridge } from "../dist/agent-runtimes/omp/host-tools.js";
 import { OmpRpcTurnController } from "../dist/agent-runtimes/omp/turn.js";
 import { OmpThreadController, readOmpAvailableCommands } from "../dist/agent-runtimes/omp/thread.js";
 import { parseOmpRuntimeConfig } from "../dist/agent-runtimes/omp/config.js";
+import { diagnoseOmpRuntime } from "../dist/agent-runtimes/omp/process.js";
+import { OMP_CLI_SUPPORTED_RANGE, OMP_CLI_VERSION } from "../dist/agent-runtimes/omp/protocol-version.js";
 import { setOmpModel, readOmpModelCatalog } from "../dist/agent-runtimes/omp/models.js";
 import { PiboLoopService } from "../dist/loops/service.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
@@ -383,6 +385,37 @@ test("OMP runtime config parses and validates provider defaults", async (t) => {
 	assert.equal(minimal.defaultModel, undefined);
 	assert.ok(minimal.environmentAllowlist.length > 0);
 	assert.ok(minimal.apiKeyEnvironment.includes("OPENAI_API_KEY"));
+});
+
+test("OMP diagnostics require the exact validated CLI version", async (t) => {
+	const root = await testRoot(t, "version");
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const config = parseOmpRuntimeConfig({
+		bunExecutable: process.execPath,
+		ompEntry: fixturePath,
+		homeRoot: root,
+		environmentAllowlist: ["OMP_FAKE_VERSION"],
+	});
+
+	const available = await diagnoseOmpRuntime(config, "omp-version", {
+		baseEnvironment: { OMP_FAKE_VERSION: `omp/${OMP_CLI_VERSION}` },
+	});
+	assert.equal(available.find((diagnostic) => diagnostic.code === "omp_version_ok")?.severity, "info");
+	assert.deepEqual(available.find((diagnostic) => diagnostic.code === "omp_version_ok")?.details, {
+		version: OMP_CLI_VERSION,
+		supportedRange: OMP_CLI_SUPPORTED_RANGE,
+		private: true,
+	});
+
+	const unsupported = await diagnoseOmpRuntime(config, "omp-version", {
+		baseEnvironment: { OMP_FAKE_VERSION: "omp/18.1.9" },
+	});
+	assert.equal(unsupported.find((diagnostic) => diagnostic.code === "omp_version_unsupported")?.severity, "error");
+
+	const unreadable = await diagnoseOmpRuntime(config, "omp-version", {
+		baseEnvironment: { OMP_FAKE_VERSION: "unknown" },
+	});
+	assert.equal(unreadable.find((diagnostic) => diagnostic.code === "omp_version_unreadable")?.severity, "error");
 });
 
 test("OMP turn controller resolves a stalled stream via the deadline", async (t) => {

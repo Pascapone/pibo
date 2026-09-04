@@ -59,7 +59,7 @@ import { DEFAULT_USER_TIMEZONE } from "../../core/user-settings.js";
 import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../../providers/minimax.js";
 import { registerGlmProvider, type GlmModelRegistryLike } from "../../providers/glm.js";
 import { registerQwenTokenPlanProvider, type QwenTokenPlanModelRegistryLike } from "../../providers/qwen-token-plan.js";
-import { registerOpenAiGpt56Models, type OpenAiGpt56ModelRegistryLike } from "../../providers/openai-gpt56.js";
+import { registerOpenAiSupplementalModels, type OpenAiSupplementalModelRegistryLike } from "../../providers/openai-gpt56.js";
 import { PIBO_APP_CONTEXT } from "../../app-context.js";
 import type { PiboRuntimeToolController } from "../../tools/runtime/tool.js";
 import { RuntimeSessionRegistry } from "../../tools/runtime/registry.js";
@@ -277,7 +277,14 @@ function getEnabledSkillPaths(cwd: string, profile: InitialSessionContext): stri
 function getBuiltinToolAllowlist(profile: InitialSessionContext, customTools: readonly PiboToolDefinition[]): string[] | undefined {
 	if (profile.builtinTools === "disabled") return undefined;
 	const defaultBuiltinTools = new Set<string>(DEFAULT_BUILTIN_TOOL_NAMES);
-	const selectedBuiltinTools = profile.builtinToolNames.filter((name) => defaultBuiltinTools.has(name));
+	const replacedBuiltinTools = new Set(
+		profile.tools
+			.filter((tool) => tool.enabled !== false)
+			.flatMap((tool) => tool.replacesBuiltinTools ?? []),
+	);
+	const selectedBuiltinTools = profile.builtinToolNames.filter(
+		(name) => defaultBuiltinTools.has(name) && !replacedBuiltinTools.has(name),
+	);
 	if (selectedBuiltinTools.length === DEFAULT_BUILTIN_TOOL_NAMES.length) return undefined;
 	return [...selectedBuiltinTools, ...customTools.map((tool) => tool.name)];
 }
@@ -436,7 +443,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		runtimeSettingsManager = services.settingsManager;
 		applyPiboRuntimeRetryDefaults(services.settingsManager, options.retryDefaults);
 		const modelRegistry = new ModelRegistry(services.modelRuntime);
-		registerOpenAiGpt56Models(modelRegistry as OpenAiGpt56ModelRegistryLike);
+		registerOpenAiSupplementalModels(modelRegistry as OpenAiSupplementalModelRegistryLike);
 		registerMiniMaxProvider(modelRegistry as MiniMaxModelRegistryLike);
 		registerGlmProvider(modelRegistry as GlmModelRegistryLike);
 		registerQwenTokenPlanProvider(modelRegistry as QwenTokenPlanModelRegistryLike);
