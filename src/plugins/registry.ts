@@ -690,6 +690,7 @@ export class PiboPluginRegistry {
 				yieldable: tool.yieldable !== false,
 				hasDefinition: tool.definition !== undefined || tool.createDefinition !== undefined,
 				portable: toolIsPortable(tool),
+				...(tool.replacesBuiltinTools?.length ? { replacesBuiltinTools: [...tool.replacesBuiltinTools] } : {}),
 				pluginId: tool.pluginId,
 				pluginName: tool.pluginId ? this.pluginNames.get(tool.pluginId) : undefined,
 				...(tool.providerTool ? { providerTool: tool.providerTool } : {}),
