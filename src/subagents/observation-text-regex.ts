@@ -114,7 +114,7 @@ export function matchPiboAgentObservationTextRegex(
 	const filenames = texts.map((_, index) => index.toString().padStart(6, "0"));
 	try {
 		for (let index = 0; index < texts.length; index += 1) {
-			writeFileSync(join(directory, filenames[index]!), texts[index]!, {
+			writeFileSync(join(directory, filenames[index]!), `${texts[index]!}\0`, {
 				encoding: "utf8",
 				flag: "wx",
 				mode: 0o600,

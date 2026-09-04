@@ -246,6 +246,21 @@ test("agent observation regex bounds dense and empty matches by the input batch"
 	}
 });
 
+test("agent observation regex treats empty text as one null-data record", () => {
+	const observations = [testAgentObservation(1, "")];
+	for (const pattern of ["", "^$", "x?", ".*?"]) {
+		const page = selectPiboAgentObservationPage(
+			observations,
+			preparePiboAgentObservationQuery({ textRegex: pattern }),
+		);
+		assert.deepEqual(page.observations.map((observation) => observation.sequence), [1], pattern);
+	}
+	assert.equal(selectPiboAgentObservationPage(
+		observations,
+		preparePiboAgentObservationQuery({ textRegex: "x" }),
+	).observations.length, 0);
+});
+
 test("agent observation regex streams sparse fixed batches with stable cursor pagination", () => {
 	const total = PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS * 2 + 10;
 	const hitSequences = new Set([
