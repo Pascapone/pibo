@@ -370,7 +370,7 @@ export function createAgentToolDefinitions(
 				since: Type.Optional(Type.String({ description: "Inclusive ISO-8601 lower timestamp bound" })),
 				until: Type.Optional(Type.String({ description: "Inclusive ISO-8601 upper timestamp bound" })),
 				textContains: Type.Optional(Type.String({ description: "Case-insensitive substring match against normalized observation text" })),
-				textRegex: Type.Optional(Type.String({ description: "Case-sensitive rg/Rust-regex match against normalized observation text. Use inline flags such as (?i) to change case behavior. Combines with textContains using AND semantics." })),
+				textRegex: Type.Optional(Type.String({ description: "Case-sensitive rg/Rust-regex match against normalized observation text. Use inline flags such as (?i) to change case behavior. Combines with textContains using AND semantics. NUL text and literal or escaped NUL patterns are rejected; regex use requires the optional rg platform binary." })),
 				afterSequence: Type.Optional(Type.Integer({ description: "Exclusive live observation cursor. Cursor pages consume the oldest unseen matches; desc reverses only the returned page.", minimum: 0 })),
 				order: Type.Optional(piboStringEnum(["asc", "desc"], { default: "desc", description: "Newest first by default when no cursor is supplied" })),
 				limit: Type.Optional(Type.Integer({ description: "Maximum completed messages or activity records to return. Use 50 explicitly when needed.", minimum: 1, maximum: 200, default: 20 })),

@@ -17,6 +17,8 @@ import {
 	type PiboAgentObservationToolDetail,
 } from "./observations.js";
 import {
+	PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS,
+	PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES,
 	matchPiboAgentObservationTextRegex,
 	preparePiboAgentObservationTextRegex,
 	type PreparedPiboAgentObservationTextRegex,
@@ -127,16 +129,45 @@ export function selectPiboAgentObservationPage(
 ): PiboAgentObserveResult {
 	const matches: PiboAgentObservation[] = [];
 	if (query.textRegex) {
-		const candidates = [...observations].filter((observation) => query.matches(observation));
-		const regexMatches = matchPiboAgentObservationTextRegex(
-			query.textRegex,
-			candidates.map((observation) => observation.text ?? ""),
-		);
-		for (let index = 0; index < candidates.length; index += 1) {
-			if (!regexMatches[index]) continue;
-			matches.push(candidates[index]!);
-			if (matches.length > query.limit) break;
+		let candidates: PiboAgentObservation[] = [];
+		let candidateBytes = 0;
+		const matchCandidates = (): boolean => {
+			const regexMatches = matchPiboAgentObservationTextRegex(
+				query.textRegex!,
+				candidates.map((observation) => observation.text ?? ""),
+			);
+			for (let index = 0; index < candidates.length; index += 1) {
+				if (!regexMatches[index]) continue;
+				matches.push(candidates[index]!);
+				if (matches.length > query.limit) {
+					candidates = [];
+					candidateBytes = 0;
+					return true;
+				}
+			}
+			candidates = [];
+			candidateBytes = 0;
+			return false;
+		};
+
+		for (const observation of observations) {
+			if (!query.matches(observation)) continue;
+			const textBytes = Buffer.byteLength(observation.text ?? "", "utf8");
+			if (
+				candidates.length > 0
+				&& candidateBytes + textBytes > PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES
+				&& matchCandidates()
+			) break;
+			candidates.push(observation);
+			candidateBytes += textBytes;
+			if (
+				candidates.length >= PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS
+				|| candidateBytes >= PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES
+			) {
+				if (matchCandidates()) break;
+			}
 		}
+		if (matches.length <= query.limit && candidates.length > 0) matchCandidates();
 	} else {
 		for (const observation of observations) {
 			if (!query.matches(observation)) continue;

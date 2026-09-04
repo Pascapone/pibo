@@ -15,6 +15,14 @@ import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { getDelegatedAgentContextFile } from "../dist/subagents/context.js";
 import {
+	preparePiboAgentObservationQuery,
+	selectPiboAgentObservationPage,
+} from "../dist/subagents/observation-query.js";
+import {
+	PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS,
+	PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES,
+} from "../dist/subagents/observation-text-regex.js";
+import {
 	createAgentToolDefinitions,
 	createSubagentToolDefinitions,
 	createSubagentToolName,
@@ -192,6 +200,8 @@ test("delegated agents expose four stable shared tools and reject duplicate exac
 	assert.match(observe.inputSchema.properties.kinds.items.description, /including progress events/);
 	assert.match(observe.inputSchema.properties.textRegex.description, /rg\/Rust-regex/);
 	assert.match(observe.inputSchema.properties.textRegex.description, /Combines with textContains using AND semantics/);
+	assert.match(observe.inputSchema.properties.textRegex.description, /NUL text and literal or escaped NUL patterns are rejected/);
+	assert.match(observe.inputSchema.properties.textRegex.description, /requires the optional rg platform binary/);
 	assert.throws(
 		() => createAgentToolDefinitions([
 			{ name: "same", targetProfile: "helper-profile" },
@@ -199,6 +209,170 @@ test("delegated agents expose four stable shared tools and reject duplicate exac
 		], noopAgentsController),
 		/Duplicate agent name "same"/,
 	);
+});
+
+function testAgentObservation(sequence, text, overrides = {}) {
+	return {
+		sequence,
+		createdAt: "2026-09-04T18:00:00.000Z",
+		agentId: "ps_regex_child",
+		name: "worker",
+		eventType: "assistant_message",
+		kind: "message",
+		role: "assistant",
+		text,
+		...overrides,
+	};
+}
+
+test("agent observation regex bounds dense and empty matches by the input batch", () => {
+	assert.equal(PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES % 4_096, 0);
+	const expectedYieldCount = PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES / 4_096;
+	for (const pattern of ["x", ".", "", "x?", ".*?"]) {
+		let yielded = 0;
+		function* observations() {
+			for (let sequence = 1; sequence <= expectedYieldCount * 4; sequence += 1) {
+				yielded += 1;
+				yield testAgentObservation(sequence, "x".repeat(4_096));
+			}
+		}
+		const page = selectPiboAgentObservationPage(
+			observations(),
+			preparePiboAgentObservationQuery({ textRegex: pattern, order: "asc", limit: 1 }),
+		);
+		assert.deepEqual(page.observations.map((observation) => observation.sequence), [1], pattern);
+		assert.equal(page.truncated, true, pattern);
+		assert.equal(yielded, expectedYieldCount, pattern);
+	}
+});
+
+test("agent observation regex streams sparse fixed batches with stable cursor pagination", () => {
+	const total = PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS * 2 + 10;
+	const hitSequences = new Set([
+		PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS,
+		PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS * 2,
+		PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS * 2 + 5,
+	]);
+	let yielded = 0;
+	function* observations() {
+		for (let sequence = 1; sequence <= total; sequence += 1) {
+			yielded += 1;
+			yield testAgentObservation(sequence, hitSequences.has(sequence) ? `hit-${sequence}` : "miss");
+		}
+	}
+
+	const first = selectPiboAgentObservationPage(
+		observations(),
+		preparePiboAgentObservationQuery({ textRegex: "^hit-", order: "asc", limit: 1 }),
+	);
+	assert.deepEqual(first.observations.map((observation) => observation.sequence), [PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS]);
+	assert.equal(first.nextAfterSequence, PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS);
+	assert.equal(first.truncated, true);
+	assert.equal(yielded, PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS * 2);
+
+	yielded = 0;
+	const second = selectPiboAgentObservationPage(
+		observations(),
+		preparePiboAgentObservationQuery({
+			textRegex: "^hit-",
+			afterSequence: first.nextAfterSequence,
+			order: "desc",
+			limit: 1,
+		}),
+	);
+	assert.deepEqual(second.observations.map((observation) => observation.sequence), [PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS * 2]);
+	assert.equal(second.truncated, true);
+	assert.equal(second.nextAfterSequence, PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS * 2);
+	assert.equal(yielded, total);
+
+	const third = selectPiboAgentObservationPage(
+		observations(),
+		preparePiboAgentObservationQuery({
+			textRegex: "^hit-",
+			afterSequence: second.nextAfterSequence,
+			order: "desc",
+			limit: 1,
+		}),
+	);
+	assert.deepEqual(third.observations.map((observation) => observation.sequence), [PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS * 2 + 5]);
+	assert.equal(third.truncated, false);
+});
+
+test("agent observation regex rejects NUL boundaries without leaking process errors", () => {
+	assert.throws(
+		() => preparePiboAgentObservationQuery({ textRegex: "literal\0nul" }),
+		/Agent observation textRegex is invalid: matching NUL bytes is not supported\./,
+	);
+	for (const pattern of [String.raw`\x00`, String.raw`\x{0}`, String.raw`\u{0000}`]) {
+		assert.throws(
+			() => preparePiboAgentObservationQuery({ textRegex: pattern }),
+			/Agent observation textRegex is invalid: matching NUL bytes is not supported\./,
+		);
+	}
+	assert.throws(
+		() => preparePiboAgentObservationQuery({ textRegex: String.raw`\0` }),
+		/Agent observation textRegex is invalid: backreferences are not supported\./,
+	);
+	const query = preparePiboAgentObservationQuery({ textRegex: "boundary", limit: 1 });
+	assert.throws(
+		() => selectPiboAgentObservationPage([testAgentObservation(1, "record\0boundary")], query),
+		/Agent observation textRegex cannot match observation text containing NUL bytes\./,
+	);
+	const escapedLiteral = selectPiboAgentObservationPage(
+		[testAgentObservation(1, String.raw`literal\x00text`)],
+		preparePiboAgentObservationQuery({ textRegex: String.raw`literal\\x00text` }),
+	);
+	assert.equal(escapedLiteral.observations.length, 1);
+});
+
+test("agent observation regex resolves the optional platform binary only for regex queries", () => {
+	const previousArch = process.env.npm_config_arch;
+	process.env.npm_config_arch = "pibo-missing-architecture";
+	try {
+		const observations = [testAgentObservation(1, "Alpha complete")];
+		assert.equal(selectPiboAgentObservationPage(observations, preparePiboAgentObservationQuery({})).observations.length, 1);
+		assert.equal(selectPiboAgentObservationPage(
+			observations,
+			preparePiboAgentObservationQuery({ textContains: "ALPHA" }),
+		).observations.length, 1);
+		let yielded = 0;
+		function* noRegexFastPath() {
+			for (let sequence = 1; sequence <= 10; sequence += 1) {
+				yielded += 1;
+				yield testAgentObservation(sequence, "alpha");
+			}
+		}
+		selectPiboAgentObservationPage(
+			noRegexFastPath(),
+			preparePiboAgentObservationQuery({ textContains: "ALPHA", order: "asc", limit: 1 }),
+		);
+		assert.equal(yielded, 2);
+		assert.throws(
+			() => preparePiboAgentObservationQuery({ textRegex: "Alpha" }),
+			/Agent observation textRegex is unavailable: @vscode\/ripgrep-.*pibo-missing-architecture is not installed for this platform\./,
+		);
+	} finally {
+		if (previousArch === undefined) delete process.env.npm_config_arch;
+		else process.env.npm_config_arch = previousArch;
+	}
+});
+
+test("agent observation regex preserves null-data anchors and inline multiline flags", () => {
+	const observations = [testAgentObservation(1, "alpha\nbeta")];
+	for (const pattern of [String.raw`^alpha\nbeta$`, String.raw`(?m)^beta$`, String.raw`(?s)^alpha.beta$`]) {
+		assert.equal(selectPiboAgentObservationPage(
+			observations,
+			preparePiboAgentObservationQuery({ textRegex: pattern }),
+		).observations.length, 1, pattern);
+	}
+	assert.equal(selectPiboAgentObservationPage(
+		observations,
+		preparePiboAgentObservationQuery({ textRegex: "^beta$" }),
+	).observations.length, 1);
+	assert.equal(selectPiboAgentObservationPage(
+		observations,
+		preparePiboAgentObservationQuery({ textRegex: "^gamma$" }),
+	).observations.length, 0);
 });
 
 test("agent observation tool summaries bound oversized and malformed values", () => {

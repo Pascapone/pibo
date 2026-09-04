@@ -348,7 +348,9 @@ Default: the newest 20 completed assistant messages, with streaming deltas and t
 Use --include-tools for compact tool calls and terminal results. Explicit --event-type or --kind
 filters retain access to progress events. Repeat plural filters for OR within that field.
 Different fields combine with AND. With --after-sequence, pages always consume the oldest unseen rows;
---order desc reverses only the returned page, so nextAfterSequence remains safe for polling.`);
+--order desc reverses only the returned page, so nextAfterSequence remains safe for polling.
+--regex uses case-sensitive bundled rg/Rust-regex syntax; inline flags change case or multiline behavior.
+Regex rejects NUL text and literal or escaped NUL patterns and requires the optional rg platform binary.`);
 }
 
 type ParsedAgentDebugOptions = {

@@ -205,6 +205,9 @@ test("debug delegated-agent CLI exposes and executes the shared observation filt
 		assert.match(help, /--tool-detail summary\|full/);
 		assert.match(help, /--role role/);
 		assert.match(help, /--regex pattern/);
+		assert.match(help, /case-sensitive bundled rg\/Rust-regex syntax/);
+		assert.match(help, /rejects NUL text and literal or escaped NUL patterns/);
+		assert.match(help, /requires the optional rg platform binary/);
 
 		output.length = 0;
 		await runDebugAgentsCli([

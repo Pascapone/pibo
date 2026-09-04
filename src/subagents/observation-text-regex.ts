@@ -1,37 +1,72 @@
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { rgPath } from "@vscode/ripgrep";
-
-const PIBO_AGENT_TEXT_REGEX_BATCH_BYTES = 512 * 1024;
-const PIBO_AGENT_TEXT_REGEX_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
+export const PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS = 128;
+export const PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES = 64 * 1024;
+const PIBO_AGENT_TEXT_REGEX_MAX_OUTPUT_BYTES = 64 * 1024;
+const requireFromHere = createRequire(import.meta.url);
 
 export type PreparedPiboAgentObservationTextRegex = {
 	pattern: string;
+	rgPath: string;
 };
 
-type RipgrepMatchEvent = {
-	type?: string;
-	data?: {
-		absolute_offset?: number;
-	};
-};
+function escapedNulIndex(pattern: string): number | undefined {
+	for (let index = 0; index < pattern.length; index += 1) {
+		if (pattern[index] !== "\\") continue;
+		let slashEnd = index;
+		while (pattern[slashEnd + 1] === "\\") slashEnd += 1;
+		const slashCount = slashEnd - index + 1;
+		if (slashCount % 2 === 1) {
+			const remainder = pattern.slice(slashEnd + 1);
+			if (/^(?:x00|x\{0+\}|u\{0+\})/i.test(remainder)) return index;
+		}
+		index = slashEnd;
+	}
+	return undefined;
+}
+
+function assertSupportedNulPattern(pattern: string): void {
+	if (pattern.includes("\0") || escapedNulIndex(pattern) !== undefined) {
+		throw new Error("Agent observation textRegex is invalid: matching NUL bytes is not supported.");
+	}
+}
+
+function resolvePiboAgentObservationRipgrepPath(): string {
+	const arch = process.env.npm_config_arch || process.arch;
+	const binaryName = process.platform === "win32" ? "rg.exe" : "rg";
+	const platformPackage = `@vscode/ripgrep-${process.platform}-${arch}`;
+	try {
+		const wrapperPath = requireFromHere.resolve("@vscode/ripgrep");
+		return createRequire(wrapperPath).resolve(`${platformPackage}/bin/${binaryName}`);
+	} catch {
+		throw new Error(
+			`Agent observation textRegex is unavailable: ${platformPackage} is not installed for this platform.`,
+		);
+	}
+}
 
 function ripgrepErrorReason(stderr: string): string | undefined {
+	if (stderr.includes("pattern contains \"\\0\"")) return "matching NUL bytes is not supported";
 	const reasons = [...stderr.matchAll(/^error:\s*(.+)$/gm)];
 	return reasons.at(-1)?.[1]?.trim().replace(/\.$/, "");
 }
 
-function runRipgrepTextRegex(pattern: string, input: Buffer) {
-	return spawnSync(rgPath, [
-		"--json",
-		"--null-data",
+function runRipgrepTextRegex(
+	prepared: PreparedPiboAgentObservationTextRegex,
+	args: string[],
+	options: { cwd?: string; input?: string } = {},
+) {
+	return spawnSync(prepared.rgPath, [
 		"--no-config",
 		"--color=never",
-		"--",
-		pattern,
-		"-",
+		"--null-data",
+		...args,
 	], {
-		input,
+		...options,
 		encoding: "utf8",
 		maxBuffer: PIBO_AGENT_TEXT_REGEX_MAX_OUTPUT_BYTES,
 	});
@@ -39,8 +74,11 @@ function runRipgrepTextRegex(pattern: string, input: Buffer) {
 
 function throwRipgrepExecutionError(action: "validation" | "matching", error?: Error): never {
 	const errorCode = error && "code" in error ? error.code : undefined;
+	if (errorCode === "ENOENT" || errorCode === "EACCES") {
+		throw new Error("Agent observation textRegex is unavailable: bundled rg could not be executed.");
+	}
 	const detail = errorCode === "ENOBUFS"
-		? "bundled rg output exceeded the observation query limit"
+		? "bundled rg output exceeded the bounded observation batch limit"
 		: "bundled rg could not run";
 	throw new Error(`Agent observation textRegex ${action} failed: ${detail}.`);
 }
@@ -49,83 +87,54 @@ export function preparePiboAgentObservationTextRegex(
 	pattern: string | undefined,
 ): PreparedPiboAgentObservationTextRegex | undefined {
 	if (pattern === undefined) return undefined;
-	const result = runRipgrepTextRegex(pattern, Buffer.alloc(0));
+	assertSupportedNulPattern(pattern);
+	const prepared = { pattern, rgPath: resolvePiboAgentObservationRipgrepPath() };
+	const result = runRipgrepTextRegex(prepared, ["--quiet", "--", pattern, "-"], { input: "" });
 	if (result.error) throwRipgrepExecutionError("validation", result.error);
-	if (result.status === 0 || result.status === 1) return { pattern };
+	if (result.status === 0 || result.status === 1) return prepared;
 	const reason = ripgrepErrorReason(result.stderr);
 	if (reason) throw new Error(`Agent observation textRegex is invalid: ${reason}.`);
 	throwRipgrepExecutionError("validation");
-}
-
-function observationIndexAtOffset(starts: readonly number[], offset: number): number | undefined {
-	let low = 0;
-	let high = starts.length - 1;
-	while (low <= high) {
-		const middle = Math.floor((low + high) / 2);
-		if (starts[middle]! <= offset) low = middle + 1;
-		else high = middle - 1;
-	}
-	return high >= 0 ? high : undefined;
 }
 
 export function matchPiboAgentObservationTextRegex(
 	prepared: PreparedPiboAgentObservationTextRegex,
 	texts: readonly string[],
 ): boolean[] {
-	const matches = texts.map(() => false);
-	let batchStartIndex = 0;
-	let batchTexts: string[] = [];
-	let batchBytes = 0;
-
-	function matchBatch(): void {
-		if (batchTexts.length === 0) return;
-		matchPiboAgentObservationTextRegexBatch(prepared, batchTexts, batchStartIndex, matches);
-		batchStartIndex += batchTexts.length;
-		batchTexts = [];
-		batchBytes = 0;
-	}
-
 	for (const text of texts) {
-		const textBytes = Buffer.byteLength(text) + 1;
-		if (batchTexts.length > 0 && batchBytes + textBytes > PIBO_AGENT_TEXT_REGEX_BATCH_BYTES) matchBatch();
-		batchTexts.push(text);
-		batchBytes += textBytes;
-	}
-	matchBatch();
-	return matches;
-}
-
-function matchPiboAgentObservationTextRegexBatch(
-	prepared: PreparedPiboAgentObservationTextRegex,
-	texts: readonly string[],
-	batchStartIndex: number,
-	matches: boolean[],
-): void {
-	const starts: number[] = [];
-	const chunks: Buffer[] = [];
-	let offset = 0;
-	for (const text of texts) {
-		starts.push(offset);
-		const chunk = Buffer.from(`${text}\0`);
-		chunks.push(chunk);
-		offset += chunk.length;
-	}
-
-	const result = runRipgrepTextRegex(prepared.pattern, Buffer.concat(chunks, offset));
-	if (result.error) throwRipgrepExecutionError("matching", result.error);
-	if (result.status === 1) return;
-	if (result.status !== 0) throwRipgrepExecutionError("matching");
-
-	for (const line of result.stdout.split("\n")) {
-		if (!line) continue;
-		let event: RipgrepMatchEvent;
-		try {
-			event = JSON.parse(line) as RipgrepMatchEvent;
-		} catch {
-			throw new Error("Agent observation textRegex matching failed: bundled rg returned invalid output.");
+		if (text.includes("\0")) {
+			throw new Error("Agent observation textRegex cannot match observation text containing NUL bytes.");
 		}
-		if (event.type !== "match" || typeof event.data?.absolute_offset !== "number") continue;
-		const index = observationIndexAtOffset(starts, event.data.absolute_offset);
-		if (index !== undefined) matches[batchStartIndex + index] = true;
+	}
+	if (texts.length === 0) return [];
+
+	// One private file per observation preserves record boundaries. --files-with-matches
+	// emits each fixed filename at most once, so output cannot grow with submatch count.
+	const directory = mkdtempSync(join(tmpdir(), "pibo-agent-observe-regex-"));
+	const filenames = texts.map((_, index) => index.toString().padStart(6, "0"));
+	try {
+		for (let index = 0; index < texts.length; index += 1) {
+			writeFileSync(join(directory, filenames[index]!), texts[index]!, {
+				encoding: "utf8",
+				flag: "wx",
+				mode: 0o600,
+			});
+		}
+		const result = runRipgrepTextRegex(
+			prepared,
+			["--files-with-matches", "--null", "--", prepared.pattern, ...filenames],
+			{ cwd: directory },
+		);
+		if (result.error) throwRipgrepExecutionError("matching", result.error);
+		if (result.status === 1) return texts.map(() => false);
+		if (result.status !== 0) {
+			const reason = ripgrepErrorReason(result.stderr);
+			if (reason) throw new Error(`Agent observation textRegex is invalid: ${reason}.`);
+			throwRipgrepExecutionError("matching");
+		}
+		const matched = new Set(result.stdout.split("\0").filter(Boolean));
+		return filenames.map((filename) => matched.has(filename));
+	} finally {
+		rmSync(directory, { recursive: true, force: true });
 	}
 }
