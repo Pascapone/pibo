@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-04T14:26:38Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "31e486b257207dc52b7e63388d9937a62f62f2c6"
   requirements:
     - id: "RUN-OMP-001"
       status: "implemented"
@@ -36,11 +36,15 @@ traceability:
           symbol: "parseOmpRuntimeConfig"
         - path: "src/agent-runtimes/omp/process.ts"
           symbol: "diagnoseOmpRuntime"
+        - path: "src/agent-runtimes/omp/protocol-version.ts"
+          symbol: "OMP_CLI_VERSION"
       tests:
         - path: "test/omp-runtime.test.mjs"
           name: "OMP runtime config parses and validates provider defaults"
         - path: "test/omp-resources.test.mjs"
           name: "OMP process environment isolates the agent dir and passes provider API keys"
+        - path: "test/omp-runtime.test.mjs"
+          name: "OMP diagnostics require the exact validated CLI version"
       failures:
         - "Missing operator CLI/home configuration diagnoses unavailable and refuses spawn; transport and history inconsistencies fail explicitly; diagnostics redact credentials."
         - "The process uses private instance/session directories, an environment allowlist, and explicit provider-key forwarding; unbound reset removes stale native transcripts/handoffs."
@@ -92,10 +96,10 @@ This specification describes implemented behavior at the traceability commit. Pl
 # Current behavior
 
 - Lifecycle: The client waits for ready then negotiates protocol; prompts stream to agent_end or a bounded deadline; abort interrupts; binding resumes persisted native identity after restart.
-- State: Exact names are plugin pibo.orp, profile/adapter orp, configured instance omp-native, protocol omp-rpc v2 with v1/v2 accepted, model provider omp.
+- State: Exact names are plugin pibo.orp, profile/adapter orp, configured instance omp-native, validated CLI 18.1.10, protocol omp-rpc v2 with v1/v2 accepted, model provider omp.
 - Failure: Missing operator CLI/home configuration diagnoses unavailable and refuses spawn; transport and history inconsistencies fail explicitly; diagnostics redact credentials.
 - Security: The process uses private instance/session directories, an environment allowlist, and explicit provider-key forwarding; unbound reset removes stale native transcripts/handoffs.
-- Compatibility: Modern fork commands fall back to legacy branch RPC names only when unsupported; external MCP and native yielding remain unsupported.
+- Compatibility: Startup accepts only the exactly validated OMP CLI 18.1.10; modern fork commands fall back to legacy branch RPC names only when unsupported; external MCP and native yielding remain unsupported.
 
 # Requirements and invariants
 
@@ -105,7 +109,7 @@ The OMP plugin SHALL register plugin pibo.orp, profile and adapter orp, configur
 
 ## Requirement: RUN-OMP-002
 
-OMP startup SHALL require an absolute operator-provided CLI or home configuration, use private runtime paths and an allowlisted environment, and refuse spawn when unavailable.
+OMP startup SHALL require an absolute operator-provided CLI or home configuration, use private runtime paths and an allowlisted environment, require the exactly validated CLI version 18.1.10, and refuse spawn when unavailable or unsupported.
 
 ## Requirement: RUN-OMP-003
 
@@ -150,7 +154,9 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `31e486b257207dc52b7e63388d9937a62f62f2c6`. Requirement confidence measures trace quality, not whether a command ran.
+
+A real `@oh-my-pi/pi-coding-agent@18.1.10` installation under Bun 1.4.1 passed the protocol-v2 handshake plus `get_state`, `set_host_tools`, and `get_available_commands`. The additive `advisor_cost_changed` event remains safely tolerated by the client's unknown-event handling.
 
 Package verification commands:
 
