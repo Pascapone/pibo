@@ -8,7 +8,7 @@ import { createCodexAppServerStateLock } from "./codex-app-server-state-lock.mjs
 
 const args = process.argv.slice(2);
 if (args[0] === "--version") {
-	process.stdout.write("codex-cli 0.147.0\n");
+	process.stdout.write("codex-cli 0.153.2\n");
 } else {
 	const statePath = join(process.env.CODEX_HOME, "fake-thread-state.json");
 	const { withStateLock } = createCodexAppServerStateLock(statePath);
@@ -62,7 +62,7 @@ if (args[0] === "--version") {
 			updatedAt: overrides.updatedAt ?? createdAt,
 			recencyAt: overrides.updatedAt ?? createdAt,
 			cwd,
-			cliVersion: "0.147.0",
+			cliVersion: "0.153.2",
 			source: overrides.source ?? "vscode",
 			threadSource: null,
 			status: { type: "idle" },
@@ -682,7 +682,7 @@ if (args[0] === "--version") {
 				codexHome: process.env.CODEX_HOME,
 				platformFamily: "unix",
 				platformOs: "linux",
-				userAgent: "fake-codex-app-server/0.147.0",
+				userAgent: "fake-codex-app-server/0.153.2",
 			} });
 			return;
 		}

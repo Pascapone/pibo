@@ -25,19 +25,19 @@ if (args[0] === "--version") {
 			}
 			process.exitCode = 9;
 		} else {
-			process.stdout.write("codex-cli 0.147.0\n");
+			process.stdout.write("codex-cli 0.153.2\n");
 		}
 	} else if (scenario === "version-timeout") {
 		setInterval(() => {}, 60_000);
 	} else if (scenario === "version-too-large") {
-		process.stdout.write(`codex-cli 0.147.0 ${"x".repeat(70 * 1024)}\n`);
+		process.stdout.write(`codex-cli 0.153.2 ${"x".repeat(70 * 1024)}\n`);
 	} else if (scenario === "version-failed") {
 		process.stderr.write("Bearer fixture-secret-token access_token=fixture-access-value\n");
 		process.exitCode = 7;
 	} else if (scenario === "version-unreadable") {
 		process.stdout.write("unknown runtime\n");
 	} else {
-		process.stdout.write(`codex-cli ${process.env.PIBO_CODEX_RUNTIME_FAKE_VERSION ?? "0.147.0"}\n`);
+		process.stdout.write(`codex-cli ${process.env.PIBO_CODEX_RUNTIME_FAKE_VERSION ?? "0.153.2"}\n`);
 	}
 } else {
 	const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -52,7 +52,7 @@ if (args[0] === "--version") {
 					codexHome: scenario === "home-mismatch" ? "/tmp/not-the-configured-codex-home" : process.env.CODEX_HOME,
 					platformFamily: "unix",
 					platformOs: "linux",
-					userAgent: "fake-codex-app-server/0.147.0",
+					userAgent: "fake-codex-app-server/0.153.2",
 				},
 			});
 			return;

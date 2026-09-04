@@ -59,7 +59,7 @@ async function handleRequest(message) {
 			codexHome: "/tmp/fake-codex-home",
 			platformFamily: "unix",
 			platformOs: "linux",
-			userAgent: "fake-codex-app-server/0.147.0",
+			userAgent: "fake-codex-app-server/0.153.2",
 		});
 		return;
 	}

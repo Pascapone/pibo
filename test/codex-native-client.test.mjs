@@ -66,7 +66,7 @@ test("Codex App Server client performs initialize/initialized before other reque
 		codexHome: "/tmp/fake-codex-home",
 		platformFamily: "unix",
 		platformOs: "linux",
-		userAgent: "fake-codex-app-server/0.147.0",
+		userAgent: "fake-codex-app-server/0.153.2",
 	});
 	assert.equal(client.snapshot.state, "ready");
 	assert.equal(Object.isFrozen(client.initializeResponse), true);

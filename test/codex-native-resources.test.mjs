@@ -338,7 +338,7 @@ test("Codex native delivers selected Pibo tools, HTTP MCP, skills, and context w
 		assert.deepEqual(session.capabilities.tools.nativeToolInspection, {
 			support: "degraded",
 			mode: "observed-runtime-items",
-			reason: "Stable Codex App Server 0.147.0 does not expose a complete pre-turn native-tool inventory; Pibo reports selected MCP tools immediately and harness-native tools after stable item notifications prove they are active.",
+			reason: "Stable Codex App Server 0.153.2 does not expose a complete pre-turn native-tool inventory; Pibo reports selected MCP tools immediately and harness-native tools after stable item notifications prove they are active.",
 		});
 		assert.deepEqual(session.getStatus().enabledTools, [
 			"external-stdio/stdio_lookup",

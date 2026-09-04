@@ -14,12 +14,12 @@ migration_lineage:
   source_sha256: "d9c54284fbcdd86f3b2b0185b1087fd5c62ec82e9ef439033a27f91d93362d6d"
   source_body_sha256: "d9c54284fbcdd86f3b2b0185b1087fd5c62ec82e9ef439033a27f91d93362d6d"
 generated:
-  by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-08-31T22:47:46Z"
+  by: "openai/codex"
+  at: "2026-09-04T14:26:38Z"
 ---
 # Agent Runtime Adapter Architecture
 
-**Updated:** 2026-08-25
+**Updated:** 2026-09-04
 
 Pibo supports multiple agent harnesses through a Pibo-owned runtime adapter boundary. Pibo remains the product and orchestration layer; Pi Coding Agent and Codex own their native model loops, prompts, tools, and resume state.
 
@@ -127,7 +127,7 @@ The adapter owns:
 - model catalog, reasoning effort, service tier, usage, and native history;
 - selected MCP, skills, and developer/project context through official Codex configuration fields.
 
-Codex's base prompt and standard tools remain native. Pibo adds only explicit product context and selected resources. Stable Codex `0.147.0` does not expose a complete pre-turn native-tool inventory, so inspection is truthfully degraded: selected MCP tools are known immediately, while native names are reported only after stable item notifications prove use. Native-tool yielding remains unsupported.
+Codex's base prompt and standard tools remain native. Pibo adds only explicit product context and selected resources. Stable Codex `0.153.2` does not expose a complete pre-turn native-tool inventory, so inspection is truthfully degraded: selected MCP tools are known immediately, while native names are reported only after stable item notifications prove use. Native-tool yielding remains unsupported.
 
 The existing Pi-backed `codex-compat-openai-web` profile and explicit `codex` alias keep their old meaning. `codex-native` is distinct and has no implicit `codex` alias.
 

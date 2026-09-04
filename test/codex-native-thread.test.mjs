@@ -221,7 +221,7 @@ function boundBinding(instanceId, piboSessionId, nativeSessionId) {
 		nativeSessionId,
 		state: "bound",
 		protocol: "codex-app-server-v2",
-		protocolVersion: "0.147.0",
+		protocolVersion: "0.153.2",
 		revision: 1,
 	};
 }
@@ -656,7 +656,7 @@ test("Codex native thread sessions bind and list a fresh thread, fail closed aft
 	assert.equal(firstBinding.state, "bound");
 	assert.match(firstBinding.nativeSessionId, /^thread-/);
 	assert.equal(firstBinding.protocol, "codex-app-server-v2");
-	assert.equal(firstBinding.protocolVersion, "0.147.0");
+	assert.equal(firstBinding.protocolVersion, "0.153.2");
 	assert.equal(firstBinding.locator.kind, "adapter-resolved");
 	assert.equal(firstBinding.locator.value, undefined);
 	assert.equal(firstBinding.revision, 1);
@@ -979,7 +979,7 @@ test("Codex native first-message branches bind only when their first message bec
 	assert.equal(branch.runtimeBinding.state, "unbound");
 	assert.equal(branch.runtimeBinding.nativeSessionId, undefined);
 	assert.equal(branch.runtimeBinding.protocol, "codex-app-server-v2");
-	assert.equal(branch.runtimeBinding.protocolVersion, "0.147.0");
+	assert.equal(branch.runtimeBinding.protocolVersion, "0.153.2");
 	assert.equal(store.getRuntimeBinding(sourcePiboSessionId).nativeSessionId, "thread-first-message-source");
 	const emptyHistory = await pluginRegistry.requireAgentRuntimeAdapter(instanceId).readHistory({
 		binding: branch.runtimeBinding,
@@ -1545,7 +1545,7 @@ test("Codex native recovers the exact first turn after a child crashes between n
 			adapterId: CODEX_NATIVE_ADAPTER_ID,
 			state: "unbound",
 			protocol: "codex-app-server-v2",
-			protocolVersion: "0.147.0",
+			protocolVersion: "0.153.2",
 		},
 	});
 	initialStore.close();
@@ -1861,7 +1861,7 @@ test("Codex native pending recovery proves exact SQLite message and prompt ident
 				nativeSessionId: threadId,
 				state: "unbound",
 				protocol: "codex-app-server-v2",
-				protocolVersion: "0.147.0",
+				protocolVersion: "0.153.2",
 				metadata: {
 					...(includeMarker ? { piboPendingNativeSession: true } : {}),
 					codexNativeFirstUse: pendingFirstUseMetadata({
@@ -2164,7 +2164,7 @@ test("Codex native reconciles pending first use across pre-turn failures, proces
 			adapterId: CODEX_NATIVE_ADAPTER_ID,
 			state: "unbound",
 			protocol: "codex-app-server-v2",
-			protocolVersion: "0.147.0",
+			protocolVersion: "0.153.2",
 		},
 	});
 	const openStored = async (id, messageId, failpoints, persistence = storeBindingPersistence(store, id)) => {

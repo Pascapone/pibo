@@ -108,7 +108,7 @@ export async function createBuiltInCodexHistory(t, input) {
 		nativeSessionId: input.thread.id,
 		state: "bound",
 		protocol: "codex-app-server-v2",
-		protocolVersion: "0.147.0",
+		protocolVersion: "0.153.2",
 		revision: 1,
 	};
 	return {
