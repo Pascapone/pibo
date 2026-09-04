@@ -31,6 +31,10 @@ test("desktop workspace tabs expose New Tab catalog, ARIA tabs, keyboard and poi
 	}
 	assert.doesNotMatch(source, /aria-haspopup="menu"|role="menu"|pointerdown.*closeFromOutside/);
 	assert.doesNotMatch(source, /event\.key === "Escape"/);
+	const resizeHandler = source.slice(source.indexOf("const startResize"), source.indexOf("const shellStyle"));
+	assert.match(resizeHandler, /resizeHandle\.setPointerCapture\(pointerId\)/, "resize keeps receiving pointer events over embedded iframes");
+	assert.match(resizeHandler, /window\.addEventListener\("pointercancel", stop\)/, "cancelled pointer drags clean up resize state");
+	assert.match(resizeHandler, /resizeHandle\.releasePointerCapture\(pointerId\)/, "resize releases pointer capture when dragging ends");
 	assert.match(styles, /@keyframes desktop-tab-drop-gap-enter/);
 	assert.match(styles, /prefers-reduced-motion: reduce[\s\S]*desktop-tab-drop-gap/);
 });
