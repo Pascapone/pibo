@@ -80,7 +80,14 @@ import {
 	traceRawEventsPageFromEvents,
 	traceTimelinePageFromView,
 } from "./trace-v2.js";
-import { isChatWebSessionArchived } from "./session-metadata.js";
+import {
+	chatWebSessionSidebarOrder,
+	compareChatWebSessionsBySidebarOrder,
+	isChatWebSessionArchived,
+	isChatWebSessionPinned,
+	withChatWebSessionPinned,
+	withChatWebSessionSidebarOrder,
+} from "./session-metadata.js";
 import { withWorkflowSessionKind } from "../../sessions/workflow-session-kind.js";
 import {
 	CustomAgentTargetReferenceError,
@@ -1407,7 +1414,7 @@ function listSharedSessions(context: PiboWebAppContext): PiboSession[] {
 	const profiles = context.channelContext.getProfiles?.();
 	return sessions
 		.map((session) => canonicalizeSessionProfile(context, session, profiles))
-		.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+		.sort(compareChatWebSessionsBySidebarOrder);
 }
 
 function canonicalizeSessionProfile(
@@ -1506,7 +1513,7 @@ function paginateSessionNodes(
 
 function sessionTreeVersion(nodes: PiboWebSessionNode[]): string {
 	return nodes
-		.map((node) => `${node.piboSessionId}:${node.lastActivityAt ?? ""}:${node.status}:${node.archived ? "1" : "0"}`)
+		.map((node) => `${node.piboSessionId}:${node.lastActivityAt ?? ""}:${node.status}:${node.archived ? "1" : "0"}:${node.pinned ? "1" : "0"}:${node.sidebarOrder ?? ""}`)
 		.join("|");
 }
 
@@ -1608,12 +1615,17 @@ function createSharedChatSession(
 	profile: string,
 	room: PiboRoom,
 ): PiboSession {
+	const normalSessions = sessionsInRoom(listSharedSessions(context), room.id)
+		.filter((session) => !session.parentId && !isChatWebSessionArchived(session) && !isChatWebSessionPinned(session));
 	return context.channelContext.createSession({
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile,
 		workspace: roomWorkspaceFromMetadata(room.metadata) ?? getDefaultPiboWorkspace(),
-		metadata: withChatRoomId(undefined, room.id),
+		metadata: withChatWebSessionSidebarOrder(
+			withChatRoomId(undefined, room.id),
+			nextChatWebSessionSidebarOrder(normalSessions),
+		),
 	});
 }
 
@@ -3674,6 +3686,56 @@ async function resolveContextBuildRuntime(context: PiboWebAppContext, runtimeIns
 
 function indexSharedSessions(sessionQuery: ChatSessionQuery, sessions: PiboSession[]): void {
 	sessionQuery.upsertSessionsIfChanged(sessions);
+}
+
+function nextChatWebSessionSidebarOrder(sessions: readonly PiboSession[]): number {
+	return sessions.reduce((maximum, session) => {
+		const createdOrder = Date.parse(session.createdAt) || 0;
+		return Math.max(maximum, chatWebSessionSidebarOrder(session) ?? createdOrder);
+	}, 0) + 1;
+}
+
+function reorderChatWebSession(input: {
+	state: ChatWebAppState;
+	context: PiboWebAppContext;
+	session: PiboSession;
+	targetSession: PiboSession;
+	position: "before" | "after";
+}): string[] {
+	if (input.session.parentId || input.targetSession.parentId) {
+		throw new PiboWebHttpError("Only top-level sessions can be reordered", 400);
+	}
+	if (isChatWebSessionArchived(input.session) || isChatWebSessionArchived(input.targetSession)) {
+		throw new PiboWebHttpError("Archived sessions cannot be reordered", 400);
+	}
+	const roomId = chatRoomIdFromMetadata(input.session.metadata);
+	const targetRoomId = chatRoomIdFromMetadata(input.targetSession.metadata);
+	if (!roomId || roomId !== targetRoomId) throw new PiboWebHttpError("Sessions must belong to the same room", 400);
+	const pinned = isChatWebSessionPinned(input.session);
+	if (pinned !== isChatWebSessionPinned(input.targetSession)) {
+		throw new PiboWebHttpError("Pinned and unpinned sessions cannot be reordered together", 400);
+	}
+	const updateSession = input.context.channelContext.updateSession;
+	if (!updateSession) throw new PiboWebHttpError("Session updates are not available", 501);
+	const ordered = sessionsInRoom(listSharedSessions(input.context), roomId)
+		.filter((session) => !session.parentId && !isChatWebSessionArchived(session) && isChatWebSessionPinned(session) === pinned)
+		.sort(compareChatWebSessionsBySidebarOrder);
+	const movedIndex = ordered.findIndex((session) => session.id === input.session.id);
+	const targetIndex = ordered.findIndex((session) => session.id === input.targetSession.id);
+	if (movedIndex < 0 || targetIndex < 0) throw new PiboWebHttpError("Session ordering target not found", 404);
+	if (movedIndex === targetIndex) return ordered.map((session) => session.id);
+	const [moved] = ordered.splice(movedIndex, 1);
+	const remainingTargetIndex = ordered.findIndex((session) => session.id === input.targetSession.id);
+	ordered.splice(input.position === "before" ? remainingTargetIndex : remainingTargetIndex + 1, 0, moved!);
+	const orderBase = nextChatWebSessionSidebarOrder(ordered) + ordered.length - 1;
+	for (const [index, session] of ordered.entries()) {
+		const updated = updateSession(session.id, {
+			metadata: withChatWebSessionSidebarOrder(session.metadata, orderBase - index),
+		});
+		if (!updated) throw new PiboWebHttpError("Session not found", 404);
+		input.state.sessionQuery.upsertSession(updated);
+	}
+	return ordered.map((session) => session.id);
 }
 
 function markSessionsRead(state: ChatWebAppState, sessions: PiboSession[]): void {
@@ -6292,12 +6354,35 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				}
 			}
 
+			if (sessionAction?.action === "order" && request.method === "PATCH") {
+				requireSameOriginJsonRequest(request);
+				const webSession = await requireSession(request, context);
+				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, sessionAction.piboSessionId);
+				const body = await readJsonBody<{ targetPiboSessionId?: unknown; position?: unknown }>(request);
+				if (typeof body.targetPiboSessionId !== "string" || !body.targetPiboSessionId) {
+					throw new PiboWebHttpError("targetPiboSessionId is required", 400);
+				}
+				if (body.position !== "before" && body.position !== "after") {
+					throw new PiboWebHttpError("position must be before or after", 400);
+				}
+				const targetSession = resolveRequestedSession(state, context, webSession, defaultProfile, body.targetPiboSessionId);
+				return responseJson({
+					orderedSessionIds: reorderChatWebSession({
+						state,
+						context,
+						session: selectedSession,
+						targetSession,
+						position: body.position,
+					}),
+				});
+			}
+
 			const patchSessionId = sessionResourceId(url.pathname);
 			if (patchSessionId && request.method === "PATCH") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, patchSessionId);
-				const body = await readJsonBody<{ title?: unknown; archived?: unknown; profile?: unknown; activeModel?: unknown }>(request);
+				const body = await readJsonBody<{ title?: unknown; archived?: unknown; pinned?: unknown; profile?: unknown; activeModel?: unknown }>(request);
 				const updateSession = context.channelContext.updateSession;
 				if (!updateSession) {
 					throw new PiboWebHttpError("Session updates are not available", 501);
@@ -6305,7 +6390,29 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (body.profile !== undefined && (state.activeTraceSessions.has(selectedSession.id) || state.sessionQuery.hasSessionActivity(selectedSession.id))) {
 					throw new PiboWebHttpError("Session profile can only be changed before the first message.", 400);
 				}
+				if (body.pinned !== undefined && selectedSession.parentId) {
+					throw new PiboWebHttpError("Only top-level sessions can be pinned", 400);
+				}
+				if (body.pinned === true && (body.archived === true || isChatWebSessionArchived(selectedSession))) {
+					throw new PiboWebHttpError("Archived sessions cannot be pinned", 400);
+				}
 				const update = createSessionUpdate(context, selectedSession, body);
+				if (typeof body.pinned === "boolean") {
+					const roomId = chatRoomIdFromMetadata(selectedSession.metadata);
+					const targetGroup = roomId
+						? sessionsInRoom(listSharedSessions(context), roomId).filter((session) =>
+							!session.parentId
+							&& !isChatWebSessionArchived(session)
+							&& session.id !== selectedSession.id
+							&& isChatWebSessionPinned(session) === body.pinned,
+						)
+						: [];
+					update.metadata = withChatWebSessionPinned(
+						update.metadata ?? selectedSession.metadata,
+						body.pinned,
+						nextChatWebSessionSidebarOrder(targetGroup),
+					);
+				}
 				if ("activeModel" in update) {
 					try {
 						await context.channelContext.setLiveSessionActiveModel?.(selectedSession.id, update.activeModel ?? undefined);
