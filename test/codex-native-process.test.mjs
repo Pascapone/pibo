@@ -107,9 +107,9 @@ test("Codex native diagnostics report exact, compatible, unsupported, missing, f
 	const available = exact.find((diagnostic) => diagnostic.code === "codex_native_available");
 	assert.equal(available.severity, "info");
 	assert.deepEqual(available.details, {
-		version: "0.147.0",
-		validatedVersion: "0.147.0",
-		supportedRange: ">=0.147.0 <0.148.0",
+		version: "0.153.2",
+		validatedVersion: "0.153.2",
+		supportedRange: ">=0.153.2 <0.154.0",
 		protocol: "codex-app-server-v2",
 	});
 
@@ -126,12 +126,12 @@ test("Codex native diagnostics report exact, compatible, unsupported, missing, f
 	assert.deepEqual(await readdir(isolatedPaths.sessions), []);
 
 	const compatible = await diagnoseCodexNativeRuntime(exactConfig, "codex-compatible", {
-		baseEnvironment: fakeEnvironment({ PIBO_CODEX_RUNTIME_FAKE_VERSION: "0.147.9" }),
+		baseEnvironment: fakeEnvironment({ PIBO_CODEX_RUNTIME_FAKE_VERSION: "0.153.3" }),
 	});
 	assert.equal(compatible.find((diagnostic) => diagnostic.code === "codex_native_compatible_version")?.severity, "warning");
 
 	const unsupported = await diagnoseCodexNativeRuntime(exactConfig, "codex-unsupported", {
-		baseEnvironment: fakeEnvironment({ PIBO_CODEX_RUNTIME_FAKE_VERSION: "0.148.0" }),
+		baseEnvironment: fakeEnvironment({ PIBO_CODEX_RUNTIME_FAKE_VERSION: "0.154.0" }),
 	});
 	assert.equal(unsupported.find((diagnostic) => diagnostic.code === "codex_native_version_unsupported")?.severity, "error");
 

@@ -222,7 +222,7 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 			nativeToolInspection: {
 				support: "degraded",
 				mode: "observed-runtime-items",
-				reason: "Stable Codex App Server 0.147.0 does not expose a complete pre-turn native-tool inventory; Pibo reports selected MCP tools immediately and harness-native tools after stable item notifications prove they are active.",
+				reason: "Stable Codex App Server 0.153.2 does not expose a complete pre-turn native-tool inventory; Pibo reports selected MCP tools immediately and harness-native tools after stable item notifications prove they are active.",
 			},
 			nativeToolYielding: unsupportedAgentRuntimeCapability(
 				"Codex native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
