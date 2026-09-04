@@ -46,7 +46,10 @@ export type PiboWebSessionNode = {
 	workflowSessionKind?: PiboWorkflowSessionKind;
 	title: string;
 	subtitle?: string;
+	createdAt?: string;
 	archived?: boolean;
+	pinned?: boolean;
+	sidebarOrder?: number;
 	status: "idle" | "running" | "error";
 	lastActivityAt?: string;
 	unreadCount?: number;
