@@ -190,6 +190,8 @@ test("delegated agents expose four stable shared tools and reject duplicate exac
 	assert.match(observe.inputSchema.properties.toolCallIds.items.description, /Exact existing toolCallId/);
 	assert.match(observe.inputSchema.properties.eventTypes.items.description, /Explicit filters can retrieve progress events/);
 	assert.match(observe.inputSchema.properties.kinds.items.description, /including progress events/);
+	assert.match(observe.inputSchema.properties.textRegex.description, /rg\/Rust-regex/);
+	assert.match(observe.inputSchema.properties.textRegex.description, /Combines with textContains using AND semantics/);
 	assert.throws(
 		() => createAgentToolDefinitions([
 			{ name: "same", targetProfile: "helper-profile" },
@@ -682,6 +684,8 @@ test("profiles can expose subagents as active router tools", async () => {
 	assert.match(delegatedContext.content, /at most 40 Unicode code points/);
 	assert.match(delegatedContext.content, /trims surrounding whitespace/);
 	assert.match(delegatedContext.content, /before creating a yielded run or child session/);
+	assert.match(delegatedContext.content, /textContains\?, textRegex\?/);
+	assert.match(delegatedContext.content, /both must match when supplied together/);
 
 	const store = new InMemoryPiboSessionStore();
 	store.create({
@@ -1336,6 +1340,25 @@ test("agents controller lists, filters observations, kills owned children, and d
 			controller.observe({ eventTypes: ["assistant_delta"], limit: 50 }).observations.map((observation) => observation.eventType),
 			["assistant_delta"],
 		);
+		assert.deepEqual(
+			controller.observe({ textRegex: "^[A-Z][a-z]+ complete$" }).observations.map((observation) => observation.text),
+			["Alpha complete"],
+		);
+		assert.equal(controller.observe({ textRegex: "^alpha complete$" }).observations.length, 0);
+		assert.equal(controller.observe({ textRegex: "(?i)^alpha complete$" }).observations.length, 1);
+		assert.equal(controller.observe({ textRegex: "^Beta" }).observations.length, 0);
+		assert.equal(controller.observe({ textContains: "ALPHA", textRegex: "complete$" }).observations.length, 1);
+		assert.equal(controller.observe({ textContains: "missing", textRegex: "complete$" }).observations.length, 0);
+		assert.equal(controller.observe({ names: ["explorer"], textRegex: "^Alpha" }).observations.length, 1);
+		assert.equal(controller.observe({ names: ["worker"], textRegex: "^Alpha" }).observations.length, 0);
+		assert.throws(
+			() => controller.observe({ textRegex: "(" }),
+			/Agent observation textRegex is invalid: unclosed group\./,
+		);
+		assert.throws(
+			() => controller.observe({ textRegex: String.raw`(Alpha)\1` }),
+			/Agent observation textRegex is invalid: backreferences are not supported\./,
+		);
 
 		const withToolSummaries = controller.observe({ includeTools: true, order: "asc", limit: 50 });
 		assert.deepEqual(withToolSummaries.filters.eventTypes, ["assistant_message", "tool_call", "tool_execution_finished"]);
@@ -1418,6 +1441,10 @@ test("agents controller lists, filters observations, kills owned children, and d
 		});
 		assert.equal(detailedModelResult.details.observations[0].details.type, "tool_execution_finished");
 		assert.equal(detailedModelResult.details.filters.includeDetails, true);
+		await assert.rejects(
+			observeTool.execute("observe-invalid-regex", { textRegex: "[z-a]" }),
+			/Agent observation textRegex is invalid: invalid character class range, the start must be <= the end\./,
+		);
 
 		const observed = controller.observe({
 			requestIds: ["run_worker"],

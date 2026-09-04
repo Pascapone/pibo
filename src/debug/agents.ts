@@ -102,6 +102,7 @@ export async function runDebugAgentsCli(args: string[]): Promise<void> {
 		since: parsed.since,
 		until: parsed.until,
 		textContains: parsed.textContains,
+		textRegex: parsed.textRegex,
 		afterSequence: parsed.afterSequence,
 		order: parsed.order,
 		limit: parsed.limit,
@@ -339,7 +340,7 @@ Filters use exact values. The command inspects only direct pibo.subagents childr
 Usage:
   pibo debug agents ${parentPiboSessionId} observe [--tool-call-id id] [--agent-id ps_...] [--name name]
     [--thread-key key] [--event-type type] [--kind message|thinking|tool|error|lifecycle|event]
-    [--role role] [--since iso] [--until iso] [--contains text] [--after-sequence n]
+    [--role role] [--since iso] [--until iso] [--contains text] [--regex pattern] [--after-sequence n]
     [--order asc|desc] [--limit 1..200] [--include-tools]
     [--tool-detail summary|full] [--details] [--json]
 
@@ -365,6 +366,7 @@ type ParsedAgentDebugOptions = {
 	since?: string;
 	until?: string;
 	textContains?: string;
+	textRegex?: string;
 	afterSequence?: number;
 	order?: "asc" | "desc";
 	limit?: number;
@@ -406,6 +408,7 @@ function parseAgentDebugOptions(args: string[]): ParsedAgentDebugOptions {
 		} else if (arg === "--since") parsed.since = value;
 		else if (arg === "--until") parsed.until = value;
 		else if (arg === "--contains") parsed.textContains = value;
+		else if (arg === "--regex") parsed.textRegex = value;
 		else if (arg === "--after-sequence") parsed.afterSequence = parseNonNegativeInteger(value, arg);
 		else if (arg === "--order") {
 			if (value !== "asc" && value !== "desc") throw new Error(`Invalid --order "${value}"`);
@@ -427,7 +430,8 @@ function validateAgentDebugOptions(command: "list" | "observe", parsed: ParsedAg
 			parsed.details || parsed.includeTools || parsed.toolCallIds.length > 0 || parsed.agentIds.length > 0
 			|| parsed.threadKeys.length > 0 || parsed.eventTypes.length > 0 || parsed.kinds.length > 0
 			|| parsed.roles.length > 0 || parsed.since !== undefined || parsed.until !== undefined
-			|| parsed.textContains !== undefined || parsed.afterSequence !== undefined || parsed.order !== undefined
+			|| parsed.textContains !== undefined || parsed.textRegex !== undefined
+			|| parsed.afterSequence !== undefined || parsed.order !== undefined
 			|| parsed.limit !== undefined || parsed.toolDetail !== undefined
 		) throw new Error("Unsupported option for pibo debug agents list. Run the list command with --help.");
 		return;
