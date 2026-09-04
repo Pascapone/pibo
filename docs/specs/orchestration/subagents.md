@@ -10,19 +10,19 @@ status: stable
 authority: normative
 generated:
   by: openai/codex
-  at: '2026-09-04T18:12:48Z'
+  at: '2026-09-04T18:45:00Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: Committed implementation and test evidence for SPC-ORCH-002
 implementation:
   state: current
-  baseline_commit: a6914aa70cb9c11efcc17526bff1489bfb478607
+  baseline_commit: 9fa9b446242dd7fbac7ce49e44434cfca51a209e
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: a6914aa70cb9c11efcc17526bff1489bfb478607
+  commit: 9fa9b446242dd7fbac7ce49e44434cfca51a209e
   requirements:
   - id: ORCH-SUB-001
     status: implemented
@@ -144,6 +144,8 @@ traceability:
     - path: test/subagents.test.mjs
       name: agent observation regex bounds dense and empty matches by the input batch
     - path: test/subagents.test.mjs
+      name: agent observation regex treats empty text as one null-data record
+    - path: test/subagents.test.mjs
       name: agent observation regex streams sparse fixed batches with stable cursor pagination
     - path: test/subagents.test.mjs
       name: agent observation regex rejects NUL boundaries without leaking process errors
@@ -176,7 +178,7 @@ The registered agent tools define yielded-only sends, bounded observation, indep
 
 - **Stable concept:** `SPC-ORCH-002`
 - **Target path:** `docs/specs/orchestration/subagents.md`
-- **Authority:** Current source and test evidence at `a6914aa70cb9c11efcc17526bff1489bfb478607`.
+- **Authority:** Current source and test evidence at `9fa9b446242dd7fbac7ce49e44434cfca51a209e`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
 - **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the committed implementation candidate. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
@@ -388,7 +390,7 @@ Inline Rust regex flags such as `(?i)`, `(?m)`, and `(?s)` change case, line-anc
 
 ## Verification boundary
 
-- Source/test baseline: `a6914aa70cb9c11efcc17526bff1489bfb478607`.
+- Source/test baseline: `9fa9b446242dd7fbac7ce49e44434cfca51a209e`.
 - Focused Docker execution covers the Observe schema, runtime context, live query, persisted query, regex validation, and debug CLI paths; exact commands and results belong in the candidate handoff.
 - Pibo2 acceptance of the exact committed candidate remains an independent pre-PR gate.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.

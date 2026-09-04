@@ -2,7 +2,7 @@
 
 ## 2026-09-04
 
-- **Observe regex filtering**: Added and review-hardened the optional `textRegex` contract for [delegated-agent observation](/specs/orchestration/subagents.md#requirement-orch-sub-005), preserving case-insensitive `textContains` and conjunctive behavior while bounding dense matching and streaming pagination, rejecting unsafe NUL boundaries, and resolving optional rg binaries only for regex use.
+- **Observe regex filtering**: Added and review-hardened the optional `textRegex` contract for [delegated-agent observation](/specs/orchestration/subagents.md#requirement-orch-sub-005), preserving case-insensitive `textContains` and conjunctive behavior while representing empty normalized text as one record, bounding dense matching and streaming pagination, rejecting unsafe NUL boundaries, and resolving optional rg binaries only for regex use.
 - **Runtime dependency refresh**: Updated the [Codex Native](/specs/runtime/codex-native-adapter.md), [OMP](/specs/runtime/omp-adapter.md), and [Pi](/specs/runtime/pi-adapter.md) contracts for validated Codex 0.153.2, OMP 18.1.10, and Pi 0.85.0 compatibility, including exact version diagnostics and the Pi server package required by the published 0.85.0 entrypoint.
 - **Operator and architecture guidance**: Refreshed the [runtime operations guide](/project/agent-runtime-operations.md) and [adapter architecture record](/project/architecture/agent-runtime-adapters.md) to remove stale Codex 0.147.0 operational wording and record the current stable native-tool inspection boundary.
 
