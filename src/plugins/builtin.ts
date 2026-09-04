@@ -17,6 +17,7 @@ import { parsePiboThinkingLevel } from "../core/thinking.js";
 import { createWebSearchToolProfile } from "../tools/web-search.js";
 import { CODEX_BROWSER_TOOL_NAMES, createCodexBrowserToolProfiles } from "../tools/codex-browser.js";
 import { createRuntimeToolProfile } from "../tools/runtime/tool.js";
+import { createHashlineToolProfile } from "../tools/hashline.js";
 import { loadModelCatalog } from "../apps/chat/model-catalog.js";
 import { piboCodexCompatPlugin } from "./codex-compat.js";
 import { piboCodexNativePlugin } from "./codex-native.js";
@@ -250,6 +251,7 @@ export const piboCorePlugin = definePiboPlugin({
 		});
 		api.registerTool(createWebSearchToolProfile());
 		api.registerTool(createRuntimeToolProfile());
+		api.registerTool(createHashlineToolProfile());
 		api.registerTools(createCodexBrowserToolProfiles());
 		api.registerCapabilityPackage({
 			name: "codex-browser-interface",

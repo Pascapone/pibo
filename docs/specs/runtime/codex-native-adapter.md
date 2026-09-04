@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-04T14:26:38Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "31e486b257207dc52b7e63388d9937a62f62f2c6"
   requirements:
     - id: "RUN-CNX-001"
       status: "implemented"
@@ -82,7 +82,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 # Current behavior
 
 - Lifecycle: Initialize/initialized completes before other RPC; portable history injects before first prompt; active turns support steer/interrupt; shutdown is bounded and idempotent.
-- State: Profile and instance are codex-native; the supported App Server line is 0.147.x with protocol codex-app-server-v2; native thread identity is persisted for resume.
+- State: Profile and instance are codex-native; the validated App Server is 0.153.2 and compatible stable 0.153.x releases from patch 2 are accepted with protocol codex-app-server-v2; native thread identity is persisted for resume.
 - Failure: Pending requests, retries, timeouts, frame sizes, backpressure, stderr, crashes, malformed JSON, and shutdown are bounded; one redacted terminal failure is emitted.
 - Security: The child uses a private Codex home and environment allowlist; credentials and sensitive diagnostics are redacted; tool leases are scoped and revoked on failure/disposal.
 - Compatibility: Generated protocol schemas are pinned to the supported App Server version; foreign and duplicate notifications do not duplicate terminal output.
@@ -129,14 +129,16 @@ Related ownership boundaries:
 
 # Known limits
 
-- Evidence gap: Generated App Server schema hashes were inspected against pinned constants, but no upstream schema-regeneration or live protocol compatibility command was run.
+- Validation boundary: Exact Codex 0.153.2 schema generation and live `initialize`, `account/read`, `model/list`, and `thread/start` calls passed; authenticated model-turn parity was not rerun as part of this dependency-only upgrade.
 - Non-current claim excluded: codex is an alias registered by the native plugin.
 - Non-current claim excluded: Codex Native uses Pi prompt injection or Pi tool compilation.
 - Non-current claim excluded: Protocol compatibility is unconstrained across App Server versions.
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `31e486b257207dc52b7e63388d9937a62f62f2c6`. Requirement confidence measures trace quality, not whether a command ran.
+
+The exact Codex 0.153.2 binary regenerated 83 full and 622 stable-v2 schema definitions. The committed SHA-256 values are `e8284c5cb8157554a3dd1e035aadbd4325aea501af56887e9c2e12eb1b9b9448` for the full schema and `d3eace08be5dca386bfd1f1e8df650058b4113f1e10870a284d775d75517576a` for stable v2. Schema comparison found no removed Pibo-required methods or definitions; the observed changes were additive.
 
 Package verification commands:
 

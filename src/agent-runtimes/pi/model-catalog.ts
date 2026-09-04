@@ -7,7 +7,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../../providers/minimax.js";
 import { registerGlmProvider, type GlmModelRegistryLike } from "../../providers/glm.js";
 import { registerQwenTokenPlanProvider, type QwenTokenPlanModelRegistryLike } from "../../providers/qwen-token-plan.js";
-import { registerOpenAiGpt56Models, type OpenAiGpt56ModelRegistryLike } from "../../providers/openai-gpt56.js";
+import { registerOpenAiSupplementalModels, type OpenAiSupplementalModelRegistryLike } from "../../providers/openai-gpt56.js";
 import type { AgentRuntimeAuthStatus, AgentRuntimeModelCatalog } from "../../agent-runtime/types.js";
 import { piAuthMethodsForProvider } from "./auth.js";
 
@@ -43,7 +43,7 @@ type ModelCatalogServices = {
 
 type ModelCatalogServicesFactory = (options: { cwd: string }) => Promise<ModelCatalogServices>;
 
-type ModelRegistryExtensionHook = (registry: MiniMaxModelRegistryLike & GlmModelRegistryLike & OpenAiGpt56ModelRegistryLike) => void;
+type ModelRegistryExtensionHook = (registry: MiniMaxModelRegistryLike & GlmModelRegistryLike & OpenAiSupplementalModelRegistryLike) => void;
 
 export function buildModelCatalogFromRegistry(registry: ModelCatalogRegistry): ModelCatalog {
 	const providers = new Map<string, ProviderCatalogEntry>();
@@ -93,7 +93,7 @@ export async function loadModelCatalogWithServices(
 		const registry = services.modelRegistry
 			?? (services.modelRuntime ? new ModelRegistry(services.modelRuntime) : undefined);
 		if (!registry) throw new Error("Pi model services did not provide a model runtime.");
-		extensionHook?.(registry as unknown as MiniMaxModelRegistryLike & GlmModelRegistryLike & OpenAiGpt56ModelRegistryLike);
+		extensionHook?.(registry as unknown as MiniMaxModelRegistryLike & GlmModelRegistryLike & OpenAiSupplementalModelRegistryLike);
 		return buildModelCatalogFromRegistry(registry);
 	} catch {
 		return { providers: [] };
@@ -102,7 +102,7 @@ export async function loadModelCatalogWithServices(
 
 export async function loadModelCatalog(cwd = process.cwd()): Promise<ModelCatalog> {
 	return loadModelCatalogWithServices(createAgentSessionServices, cwd, (registry) => {
-		registerOpenAiGpt56Models(registry);
+		registerOpenAiSupplementalModels(registry);
 		registerMiniMaxProvider(registry);
 		registerGlmProvider(registry);
 		registerQwenTokenPlanProvider(registry);

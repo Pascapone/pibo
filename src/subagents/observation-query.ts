@@ -16,6 +16,13 @@ import {
 	type PiboAgentObservationOrder,
 	type PiboAgentObservationToolDetail,
 } from "./observations.js";
+import {
+	PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS,
+	PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES,
+	matchPiboAgentObservationTextRegex,
+	preparePiboAgentObservationTextRegex,
+	type PreparedPiboAgentObservationTextRegex,
+} from "./observation-text-regex.js";
 
 export type PreparedPiboAgentObservationQuery = {
 	filters: PiboAgentObserveInput;
@@ -26,6 +33,7 @@ export type PreparedPiboAgentObservationQuery = {
 	includeTools: boolean;
 	toolDetail: PiboAgentObservationToolDetail;
 	scanEventTypes?: string[];
+	textRegex?: PreparedPiboAgentObservationTextRegex;
 	matches(observation: PiboAgentObservation): boolean;
 };
 
@@ -58,6 +66,7 @@ export function preparePiboAgentObservationQuery(
 	const kinds = input.kinds ? new Set(input.kinds) : undefined;
 	const roles = input.roles ? new Set(input.roles) : undefined;
 	const textContains = input.textContains?.toLowerCase();
+	const textRegex = preparePiboAgentObservationTextRegex(input.textRegex);
 	const defaultMessageView = eventTypes === undefined && kinds === undefined;
 	const explicitlySelectsTools = input.eventTypes?.some((eventType) => piboAgentObservationKind(eventType) === "tool") === true
 		|| input.kinds?.includes("tool") === true
@@ -91,6 +100,7 @@ export function preparePiboAgentObservationQuery(
 		includeTools,
 		toolDetail,
 		...(scanEventTypes ? { scanEventTypes } : {}),
+		...(textRegex ? { textRegex } : {}),
 		matches(observation) {
 			if (requestIds && (!observation.requestId || !requestIds.has(observation.requestId))) return false;
 			if (toolCallIds && (!observation.toolCallId || !toolCallIds.has(observation.toolCallId))) return false;
@@ -118,10 +128,52 @@ export function selectPiboAgentObservationPage(
 	options: PiboAgentObservationPageOptions = {},
 ): PiboAgentObserveResult {
 	const matches: PiboAgentObservation[] = [];
-	for (const observation of observations) {
-		if (!query.matches(observation)) continue;
-		matches.push(observation);
-		if (matches.length > query.limit) break;
+	if (query.textRegex) {
+		let candidates: PiboAgentObservation[] = [];
+		let candidateBytes = 0;
+		const matchCandidates = (): boolean => {
+			const regexMatches = matchPiboAgentObservationTextRegex(
+				query.textRegex!,
+				candidates.map((observation) => observation.text ?? ""),
+			);
+			for (let index = 0; index < candidates.length; index += 1) {
+				if (!regexMatches[index]) continue;
+				matches.push(candidates[index]!);
+				if (matches.length > query.limit) {
+					candidates = [];
+					candidateBytes = 0;
+					return true;
+				}
+			}
+			candidates = [];
+			candidateBytes = 0;
+			return false;
+		};
+
+		for (const observation of observations) {
+			if (!query.matches(observation)) continue;
+			const textBytes = Buffer.byteLength(observation.text ?? "", "utf8");
+			if (
+				candidates.length > 0
+				&& candidateBytes + textBytes > PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES
+				&& matchCandidates()
+			) break;
+			candidates.push(observation);
+			candidateBytes += textBytes;
+			if (
+				candidates.length >= PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS
+				|| candidateBytes >= PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES
+			) {
+				if (matchCandidates()) break;
+			}
+		}
+		if (matches.length <= query.limit && candidates.length > 0) matchCandidates();
+	} else {
+		for (const observation of observations) {
+			if (!query.matches(observation)) continue;
+			matches.push(observation);
+			if (matches.length > query.limit) break;
+		}
 	}
 	const pageLimited = matches.length > query.limit;
 	const selected = matches.slice(0, query.limit);

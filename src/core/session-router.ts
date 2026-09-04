@@ -2361,13 +2361,18 @@ export class PiboSessionRouter {
 	private observeManagedAgents(parentPiboSessionId: string, input: PiboAgentObserveInput) {
 		for (const agentId of input.agentIds ?? []) this.requireManagedAgent(parentPiboSessionId, agentId);
 		const query = preparePiboAgentObservationQuery(input);
-		const ordered = query.scanOrder === "asc"
-			? this.agentObservations
-			: [...this.agentObservations].reverse();
+		const observations = this.agentObservations;
+		function* ordered(): IterableIterator<PiboAgentObservation> {
+			const start = query.scanOrder === "asc" ? 0 : observations.length - 1;
+			const end = query.scanOrder === "asc" ? observations.length : -1;
+			const step = query.scanOrder === "asc" ? 1 : -1;
+			for (let index = start; index !== end; index += step) {
+				const { managingParentId, ...observation } = observations[index]!;
+				if (managingParentId === parentPiboSessionId) yield observation;
+			}
+		}
 		return selectPiboAgentObservationPage(
-			ordered
-				.filter((observation) => observation.managingParentId === parentPiboSessionId)
-				.map(({ managingParentId: _managingParentId, ...observation }) => observation),
+			ordered(),
 			query,
 			{ evictedThrough: this.agentObservationEvictedThroughByParent.get(parentPiboSessionId) ?? 0 },
 		);

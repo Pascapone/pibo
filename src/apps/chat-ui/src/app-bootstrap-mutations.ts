@@ -65,7 +65,49 @@ export function restoreBootstrapSelection(
 
 export function addSessionNodeToBootstrap(data: BootstrapData, node: PiboWebSessionNode): BootstrapData {
 	if (findSessionNode(data.sessions, node.piboSessionId)) return data;
-	return { ...data, sessions: [node, ...data.sessions] };
+	return { ...data, sessions: insertAtTopOfSessionGroup(data.sessions, node) };
+}
+
+export function setSessionPinnedInBootstrap(data: BootstrapData, piboSessionId: string, pinned: boolean): BootstrapData {
+	const index = data.sessions.findIndex((session) => session.piboSessionId === piboSessionId);
+	if (index < 0) return data;
+	const sessions = [...data.sessions];
+	const [current] = sessions.splice(index, 1);
+	const node = { ...current!, pinned, sidebarOrder: Date.now() };
+	return { ...data, sessions: insertAtTopOfSessionGroup(sessions, node) };
+}
+
+export function reorderSessionRootsInBootstrap(
+	data: BootstrapData,
+	piboSessionId: string,
+	targetPiboSessionId: string,
+	position: "before" | "after",
+): BootstrapData {
+	const movedIndex = data.sessions.findIndex((session) => session.piboSessionId === piboSessionId);
+	const targetIndex = data.sessions.findIndex((session) => session.piboSessionId === targetPiboSessionId);
+	if (movedIndex < 0 || targetIndex < 0 || movedIndex === targetIndex) return data;
+	const moved = data.sessions[movedIndex]!;
+	const target = data.sessions[targetIndex]!;
+	if (Boolean(moved.pinned) !== Boolean(target.pinned) || moved.archived || target.archived) return data;
+	const sessions = [...data.sessions];
+	sessions.splice(movedIndex, 1);
+	const remainingTargetIndex = sessions.findIndex((session) => session.piboSessionId === targetPiboSessionId);
+	sessions.splice(position === "before" ? remainingTargetIndex : remainingTargetIndex + 1, 0, moved);
+	return { ...data, sessions };
+}
+
+function insertAtTopOfSessionGroup(sessions: PiboWebSessionNode[], node: PiboWebSessionNode): PiboWebSessionNode[] {
+	const next = [...sessions];
+	let index: number;
+	if (node.pinned) {
+		index = next.findIndex((session) => !session.archived);
+	} else {
+		index = next.findIndex((session) => !session.pinned && !session.archived);
+	}
+	if (index < 0) index = next.findIndex((session) => Boolean(session.archived));
+	if (index < 0) index = next.length;
+	next.splice(index, 0, node);
+	return next;
 }
 
 export function removeSessionsFromBootstrap(data: BootstrapData, piboSessionIds: ReadonlySet<string>): BootstrapData {
@@ -120,7 +162,7 @@ export function replaceOptimisticSessionNode(
 		...data,
 		selectedPiboSessionId: data.selectedPiboSessionId === tempId ? node.piboSessionId : data.selectedPiboSessionId,
 		session: data.session.id === tempId ? piboSessionFromSessionNode(node, data.session) : data.session,
-		sessions: replaced ? sessions : [node, ...sessions],
+		sessions: replaced ? sessions : insertAtTopOfSessionGroup(sessions, node),
 	};
 }
 
@@ -141,6 +183,8 @@ export function rollbackOptimisticSessionNode(
 
 export function updateSessionFromPiboSession(data: BootstrapData, session: PiboSession): BootstrapData {
 	const archived = typeof session.metadata?.chatWebArchivedAt === "string";
+	const pinned = typeof session.metadata?.chatWebPinnedAt === "string";
+	const sidebarOrder = typeof session.metadata?.chatWebSidebarOrder === "number" ? session.metadata.chatWebSidebarOrder : undefined;
 	return {
 		...data,
 		session: data.session.id === session.id ? session : data.session,
@@ -149,7 +193,10 @@ export function updateSessionFromPiboSession(data: BootstrapData, session: PiboS
 			profile: session.profile,
 			activeModel: session.activeModel,
 			title: session.title || node.title || "Untitled Session",
+			createdAt: session.createdAt,
 			archived,
+			pinned,
+			sidebarOrder,
 		})),
 	};
 }
@@ -291,6 +338,7 @@ export function createOptimisticSessionNode(piboSessionId: string, profile: stri
 		piSessionId: "pending",
 		profile,
 		title: "New Session",
+		createdAt: new Date().toISOString(),
 		status: "idle",
 		lastActivityAt: new Date().toISOString(),
 		derivedSessions: [],
@@ -305,7 +353,10 @@ export function sessionNodeFromSession(session: PiboSession): PiboWebSessionNode
 		profile: session.profile,
 		activeModel: session.activeModel,
 		title: session.title || "Untitled Session",
+		createdAt: session.createdAt,
 		archived: typeof session.metadata?.chatWebArchivedAt === "string",
+		pinned: typeof session.metadata?.chatWebPinnedAt === "string",
+		sidebarOrder: typeof session.metadata?.chatWebSidebarOrder === "number" ? session.metadata.chatWebSidebarOrder : undefined,
 		status: "idle",
 		lastActivityAt: session.updatedAt,
 		derivedSessions: [],

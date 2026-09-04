@@ -378,7 +378,7 @@ function parseCodexVersion(output: string): ParsedVersion | undefined {
 }
 
 function versionSupported(version: ParsedVersion): boolean {
-	return !version.prerelease && version.major === 0 && version.minor === 147 && version.patch >= 0;
+	return !version.prerelease && version.major === 0 && version.minor === 153 && version.patch >= 2;
 }
 
 export async function diagnoseCodexNativeRuntime(

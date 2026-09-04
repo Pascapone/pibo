@@ -10,7 +10,7 @@ import type { PiboSession, UpdatePiboSessionInput } from "../../sessions/store.j
 import { PiboWebHttpError } from "../../web/http.js";
 import type { PiboWebAppContext } from "../../web/types.js";
 import { listPiPackages } from "../../pi-packages/store.js";
-import { withChatWebArchived } from "./session-metadata.js";
+import { withChatWebArchived, withChatWebSessionPinned } from "./session-metadata.js";
 import { isDefaultPiboRoom, withPiboRoomArchived, withPiboRoomWorkspace, type PiboRoom } from "./types/rooms.js";
 import { isValidCustomAgentName, type CustomAgentSubagent, type UpdateCustomAgentInput } from "./agent-store.js";
 
@@ -777,12 +777,16 @@ export function metadataWithArchiveState(session: PiboSession, archived: unknown
 export function createSessionUpdate(
 	context: PiboWebAppContext,
 	session: PiboSession,
-	body: { title?: unknown; archived?: unknown; profile?: unknown; activeModel?: unknown },
+	body: { title?: unknown; archived?: unknown; pinned?: unknown; profile?: unknown; activeModel?: unknown },
 ): UpdatePiboSessionInput {
 	const update: UpdatePiboSessionInput = {};
 	const title = normalizeSessionTitle(body.title);
 	if (title !== undefined) update.title = title;
-	const metadata = metadataWithArchiveState(session, body.archived);
+	let metadata = metadataWithArchiveState(session, body.archived);
+	if (body.pinned !== undefined) {
+		if (typeof body.pinned !== "boolean") throw new PiboWebHttpError("Session pinned flag must be boolean", 400);
+		metadata = withChatWebSessionPinned(metadata ?? session.metadata, body.pinned);
+	}
 	if (metadata) update.metadata = metadata;
 	if (body.profile !== undefined) {
 		update.profile = resolveCreateSessionProfile(context, session.profile, body.profile);

@@ -3,7 +3,7 @@ import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-q
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { RefreshCw, X } from "lucide-react";
-import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchSession, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
+import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
 import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";
 import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";
 import { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";
@@ -66,12 +66,14 @@ import {
 	createOptimisticRoom,
 	createOptimisticSessionNode,
 	replaceOptimisticSessionNode,
+	reorderSessionRootsInBootstrap,
 	replaceRoomInBootstrap,
 	resolveOptimisticSessionCreateOutcome,
 	rollbackOptimisticSessionNode,
 	restoreBootstrapSelection,
 	roomWithArchivedState,
 	sessionNodeFromSession,
+	setSessionPinnedInBootstrap,
 	updateRoomInBootstrap,
 	updateSessionFromPiboSession,
 	updateSessionNodeInBootstrap,
@@ -1197,6 +1199,30 @@ export function App({ route }: { route: ChatAppRoute }) {
 		onSuccess: ({ session }) => updateBootstrapCache((data) => updateSessionFromPiboSession(data, session)),
 	});
 
+	const pinSessionMutation = useMutation({
+		mutationFn: ({ piboSessionId, pinned }: { piboSessionId: string; pinned: boolean }) => patchSession(piboSessionId, { pinned }),
+		onMutate: async ({ piboSessionId, pinned }) => {
+			await prepareSessionNavigationMutation();
+			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
+			updateBootstrapCache((data) => setSessionPinnedInBootstrap(data, piboSessionId, pinned));
+			return { snapshot };
+		},
+		onError: (_error, _variables, context) => restoreBootstrapSnapshot(context?.snapshot),
+		onSuccess: ({ session }) => updateBootstrapCache((data) => updateSessionFromPiboSession(data, session)),
+	});
+
+	const reorderSessionMutation = useMutation({
+		mutationFn: ({ piboSessionId, targetPiboSessionId, position }: { piboSessionId: string; targetPiboSessionId: string; position: "before" | "after" }) =>
+			patchSessionOrder(piboSessionId, { targetPiboSessionId, position }),
+		onMutate: async ({ piboSessionId, targetPiboSessionId, position }) => {
+			await prepareSessionNavigationMutation();
+			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
+			updateBootstrapCache((data) => reorderSessionRootsInBootstrap(data, piboSessionId, targetPiboSessionId, position));
+			return { snapshot };
+		},
+		onError: (_error, _variables, context) => restoreBootstrapSnapshot(context?.snapshot),
+	});
+
 	const sendMessageMutation = useMutation({
 		mutationFn: ({ piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery }: { piboSessionId: string; text: string; clientTxnId: string; roomId?: string; webAnnotationIds?: readonly string[]; fileAttachmentPaths?: readonly string[]; delivery?: "queue" | "steer" }) =>
 			postMessage(piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery),
@@ -1352,6 +1378,24 @@ export function App({ route }: { route: ChatAppRoute }) {
 			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
 			if (area === "sessions") await refreshTrace(data.selectedPiboSessionId);
 			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		}
+	};
+
+	const setSessionPinned = async (piboSessionId: string, pinned: boolean) => {
+		try {
+			await pinSessionMutation.mutateAsync({ piboSessionId, pinned });
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		}
+	};
+
+	const reorderSession = async (piboSessionId: string, targetPiboSessionId: string, position: "before" | "after") => {
+		try {
+			await reorderSessionMutation.mutateAsync({ piboSessionId, targetPiboSessionId, position });
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
@@ -1913,6 +1957,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 							onSelectSession={selectSession}
 							onRenameSession={renameSession}
 							onArchiveSession={setSessionArchived}
+							onPinnedSessionChange={setSessionPinned}
+							onReorderSession={reorderSession}
 							onDeleteSession={requestSessionDelete}
 							onViewContext={viewSessionContext}
 							loadingPiboSessionId={loadingPiboSessionId}
@@ -2173,6 +2219,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 							onSelectSession={selectSession}
 							onRenameSession={renameSession}
 							onArchiveSession={setSessionArchived}
+							onPinnedSessionChange={setSessionPinned}
+							onReorderSession={reorderSession}
 							onDeleteSession={requestSessionDelete}
 							onViewContext={viewSessionContext}
 							loadingPiboSessionId={loadingPiboSessionId}

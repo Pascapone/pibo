@@ -561,3 +561,101 @@ test("Chat Web mutates and routes historical account sessions by resource existe
 		harness.cleanup();
 	}
 });
+
+test("Chat Web persists pinning and manual session order without activity-based movement", async () => {
+	const harness = createHarness();
+	try {
+		const initialResponse = await harness.request("/api/chat/bootstrap", { headers: { "x-test-user": "user-a" } });
+		assert.equal(initialResponse.status, 200);
+		const initial = await json(initialResponse);
+		const roomId = initial.selectedRoomId;
+		const sessionIds = [initial.selectedPiboSessionId];
+		for (const title of ["Second", "Third"]) {
+			const createdResponse = await harness.request("/api/chat/sessions", {
+				method: "POST",
+				headers: { "x-test-user": "user-a" },
+				body: JSON.stringify({ roomId }),
+			});
+			assert.equal(createdResponse.status, 201);
+			const created = await json(createdResponse);
+			sessionIds.push(created.session.id);
+			await harness.request(`/api/chat/sessions/${encodeURIComponent(created.session.id)}`, {
+				method: "PATCH",
+				headers: { "x-test-user": "user-a" },
+				body: JSON.stringify({ title }),
+			});
+		}
+
+		const bootstrap = async () => json(await harness.request(
+			`/api/chat/bootstrap?roomId=${encodeURIComponent(roomId)}&piboSessionId=${encodeURIComponent(sessionIds[0])}`,
+			{ headers: { "x-test-user": "user-a" } },
+		));
+		const rootIds = (payload) => payload.sessions.map((session) => session.piboSessionId);
+
+		const beforePin = await bootstrap();
+		const firstPinnedId = rootIds(beforePin).at(-1);
+		const secondPinnedId = rootIds(beforePin).at(-2);
+		const pinFirst = await harness.request(`/api/chat/sessions/${encodeURIComponent(firstPinnedId)}`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ pinned: true }),
+		});
+		assert.equal(pinFirst.status, 200);
+		assert.equal(rootIds(await bootstrap())[0], firstPinnedId);
+		await assert.rejects(
+			() => harness.request(`/api/chat/sessions/${encodeURIComponent(firstPinnedId)}/order`, {
+				method: "PATCH",
+				headers: { "x-test-user": "user-a" },
+				body: JSON.stringify({ targetPiboSessionId: secondPinnedId, position: "before" }),
+			}),
+			/Pinned and unpinned sessions cannot be reordered together/,
+		);
+
+		const pinSecond = await harness.request(`/api/chat/sessions/${encodeURIComponent(secondPinnedId)}`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ pinned: true }),
+		});
+		assert.equal(pinSecond.status, 200);
+		assert.deepEqual(rootIds(await bootstrap()).slice(0, 2), [secondPinnedId, firstPinnedId]);
+
+		const reorder = await harness.request(`/api/chat/sessions/${encodeURIComponent(secondPinnedId)}/order`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ targetPiboSessionId: firstPinnedId, position: "after" }),
+		});
+		assert.equal(reorder.status, 200);
+		assert.deepEqual(rootIds(await bootstrap()).slice(0, 2), [firstPinnedId, secondPinnedId]);
+
+		const unpin = await harness.request(`/api/chat/sessions/${encodeURIComponent(firstPinnedId)}`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ pinned: false }),
+		});
+		assert.equal(unpin.status, 200);
+		const afterUnpin = rootIds(await bootstrap());
+		assert.equal(afterUnpin[0], secondPinnedId);
+		assert.equal(afterUnpin[1], firstPinnedId);
+
+		const newestResponse = await harness.request("/api/chat/sessions", {
+			method: "POST",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ roomId }),
+		});
+		assert.equal(newestResponse.status, 201);
+		const newestId = (await json(newestResponse)).session.id;
+		assert.deepEqual(rootIds(await bootstrap()).slice(0, 3), [secondPinnedId, newestId, firstPinnedId]);
+
+		const beforeActivityUpdate = rootIds(await bootstrap());
+		const updatedNormalId = beforeActivityUpdate.at(-1);
+		const rename = await harness.request(`/api/chat/sessions/${encodeURIComponent(updatedNormalId)}`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ title: "Updated without moving" }),
+		});
+		assert.equal(rename.status, 200);
+		assert.deepEqual(rootIds(await bootstrap()), beforeActivityUpdate);
+	} finally {
+		harness.cleanup();
+	}
+});

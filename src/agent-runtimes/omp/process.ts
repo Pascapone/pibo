@@ -6,6 +6,7 @@ import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
 import { protectPrivateFileSync, protectPrivatePathsSync } from "../../core/private-path.js";
 import { OmpRpcClient } from "./client.js";
 import type { OmpRuntimeConfig } from "./config.js";
+import { OMP_CLI_SUPPORTED_RANGE, OMP_CLI_VERSION } from "./protocol-version.js";
 
 const MAX_VERSION_OUTPUT_BYTES = 256 * 1024;
 const PRIVATE_DIRECTORY_MODE = 0o700;
@@ -334,12 +335,31 @@ export async function diagnoseOmpRuntime(
 		});
 		return diagnostics;
 	}
-	const version = probe.output.trim().split("\n").slice(-1)[0] ?? "";
+	const versionOutput = probe.output.trim().split("\n").slice(-1)[0] ?? "";
+	const versionMatch = versionOutput.match(/\bomp(?:\/|\s+)v?(\d+\.\d+\.\d+)\b/i);
+	const version = versionMatch?.[1];
+	if (!version) {
+		diagnostics.push({
+			severity: "error",
+			code: "omp_version_unreadable",
+			message: `OMP CLI returned an unrecognized version for runtime instance "${runtimeInstanceId}".`,
+		});
+		return diagnostics;
+	}
+	if (version !== OMP_CLI_VERSION) {
+		diagnostics.push({
+			severity: "error",
+			code: "omp_version_unsupported",
+			message: `OMP CLI ${version} is outside the supported range for runtime instance "${runtimeInstanceId}".`,
+			details: { version, supportedRange: OMP_CLI_SUPPORTED_RANGE },
+		});
+		return diagnostics;
+	}
 	diagnostics.push({
 		severity: "info",
 		code: "omp_version_ok",
-		message: `OMP CLI is available for runtime instance "${runtimeInstanceId}".`,
-		details: { version: version || "unknown", private: true },
+		message: `OMP CLI ${version} is available for runtime instance "${runtimeInstanceId}".`,
+		details: { version, supportedRange: OMP_CLI_SUPPORTED_RANGE, private: true },
 	});
 	return diagnostics;
 }

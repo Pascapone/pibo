@@ -73,7 +73,7 @@ import { piIntentTracingEnabled } from "./intent-tracing.js";
 import { isWebSearchProviderTool } from "../../tools/web-search.js";
 
 const PI_ADAPTER_ID = "pi";
-export const PI_PROTOCOL_VERSION = "0.84.2";
+export const PI_PROTOCOL_VERSION = "0.85.0";
 
 const piCompleteHistoryProofs = new WeakMap<
 	AgentRuntimeHistoryReconciliationProof,

@@ -391,6 +391,24 @@ export type CatalogGroup<T> = {
 	defaultOpen: boolean;
 };
 
+export function buildBuiltinToolReplacementMap(
+	tools: NativeToolCatalogItem[],
+	selectedNames: string[],
+): Map<string, string[]> {
+	const selected = new Set(selectedNames);
+	const replacements = new Map<string, string[]>();
+	for (const tool of tools) {
+		if (!selected.has(tool.name)) continue;
+		for (const builtinToolName of tool.replacesBuiltinTools ?? []) {
+			const replacers = replacements.get(builtinToolName) ?? [];
+			replacers.push(tool.name);
+			replacements.set(builtinToolName, replacers);
+		}
+	}
+	for (const replacers of replacements.values()) replacers.sort((left, right) => left.localeCompare(right));
+	return replacements;
+}
+
 export function buildNativeToolGroups(tools: NativeToolCatalogItem[], selectedNames: string[]): CatalogGroup<NativeToolCatalogItem>[] {
 	const selected = new Set(selectedNames);
 	const groups = new Map<string, CatalogGroup<NativeToolCatalogItem>>();
