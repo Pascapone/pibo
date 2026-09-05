@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,7 +23,7 @@ async function runSessionViewToggleAccessibilityScenario() {
 		function render(overrides = {}) {
 			return renderToStaticMarkup(React.createElement(SessionTraceHeader, {
 				title: "Session",
-				contextKind: "project",
+				contextKind: "room",
 				contextLabel: "Pibo Core",
 				headerPiboSessionId: "ps-test",
 				piboSessionId: null,
@@ -61,8 +62,8 @@ async function runSessionViewToggleAccessibilityScenario() {
 		}
 
 		const normal = render();
-		assert.match(normal, /data-pibo-context-kind="project"/);
-		assert.match(normal, />Project</);
+		assert.match(normal, /data-pibo-context-kind="room"/);
+		assert.match(normal, />Room</);
 		assert.match(normal, />Pibo Core</);
 		assert.match(normal, /role="group" aria-label="Session views"/);
 		assert.match(normal, /aria-label="Tool display mode"/);
@@ -94,17 +95,17 @@ async function runSessionViewToggleAccessibilityScenario() {
 		assert.match(normal, /aria-label="Raw Events"/);
 
 		const routed = render({ allowedSessionViewIds: ["terminal"] });
-		const disabledWorkflow = buttonOpeningTag(routed, "Workflow view unavailable for this Project session kind");
+		const disabledWorkflow = buttonOpeningTag(routed, "Workflow view unavailable for this Session");
 		assert.match(disabledWorkflow, /disabled=""/);
 		assert.match(disabledWorkflow, /aria-pressed="false"/);
 		assert.match(buttonOpeningTag(routed, "Switch to Terminal view"), /aria-pressed="true"/);
 
 		const extra = render({
-			activeViewId: "project-run",
+			activeViewId: "workflow-run",
 			extraViewTabs: [
-				{ id: "project-overview", label: "Overview", active: true, onSelect() {} },
-				{ id: "project-run", label: "Run", active: false, onSelect() {} },
-				{ id: "project-disabled", label: "Disabled", disabled: true, onSelect() {} },
+				{ id: "workflow-overview", label: "Overview", active: true, onSelect() {} },
+				{ id: "workflow-run", label: "Run", active: false, onSelect() {} },
+				{ id: "workflow-disabled", label: "Disabled", disabled: true, onSelect() {} },
 			],
 		});
 		assert.match(buttonOpeningTag(extra, "Switch to Terminal view"), /aria-pressed="false"/);
@@ -119,4 +120,12 @@ async function runSessionViewToggleAccessibilityScenario() {
 
 test("session view buttons expose active, inactive, disabled, and extra-view toggle state", async () => {
 	await assert.doesNotReject(runSessionViewToggleAccessibilityScenario());
+});
+
+test("normal desktop and mobile Session surfaces retain Terminal and Workflow views", async () => {
+	const app = await readFile(new URL("../src/apps/chat-ui/src/App.tsx", import.meta.url), "utf8");
+	const pane = await readFile(new URL("../src/apps/chat-ui/src/session-trace-pane.tsx", import.meta.url), "utf8");
+	assert.doesNotMatch(app, /desktopTerminalOnly/);
+	assert.match(app, /sessionViewId=\{sessionViewId\}[\s\S]*currentSessionView=\{currentSessionView\}/);
+	assert.match(pane, /workflowSessionLinked \? \["terminal", "workflow"\] : \["terminal"\]/);
 });

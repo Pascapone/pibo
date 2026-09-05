@@ -18,6 +18,8 @@ type ComposerCommand = {
 	description: string;
 };
 
+type AudioRecordingCompletion = "transcribe" | "send" | "discard";
+
 const COMMAND_SUGGESTIONS_ID = "composer-command-suggestions";
 const SKILL_SUGGESTIONS_ID = "composer-skill-suggestions";
 
@@ -82,6 +84,7 @@ export function Composer({
 	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 	const mediaStreamRef = useRef<MediaStream | null>(null);
 	const audioChunksRef = useRef<Blob[]>([]);
+	const audioRecordingCompletionRef = useRef<AudioRecordingCompletion>("transcribe");
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 	const audioAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -417,7 +420,24 @@ export function Composer({
 		}
 	};
 
+	const dispatchText = async (candidate: string) => {
+		const text = candidate.trim();
+		if (!text) return;
+		historyNavRef.current = null;
+		appendStoredComposerHistory(text);
+		latestValueRef.current = "";
+		onValueChange("");
+		if (text.split(/\s+/)[0] === "/upload") {
+			openUploadDialog();
+			return;
+		}
+		if (text.startsWith("/") && (await onCommand(text))) return;
+		await onSend(text);
+	};
+
 	const finishAudioRecording = async (recorder: MediaRecorder) => {
+		const completion = audioRecordingCompletionRef.current;
+		audioRecordingCompletionRef.current = "transcribe";
 		const chunks = audioChunksRef.current;
 		audioChunksRef.current = [];
 		stopAudioVisualization();
@@ -426,6 +446,11 @@ export function Composer({
 		mediaRecorderRef.current = null;
 		if (!mountedRef.current) return;
 		setRecording(false);
+		if (completion === "discard") {
+			setTranscribing(false);
+			setTranscriptionStatus(null);
+			return;
+		}
 		setTranscribing(true);
 		setTranscriptionStatus({ message: "Transcribing recording…", error: false });
 		try {
@@ -437,8 +462,13 @@ export function Composer({
 			if (!mountedRef.current) return;
 			const nextValue = appendTranscribedText(latestValueRef.current, result.text);
 			latestValueRef.current = nextValue;
-			onValueChange(nextValue);
 			setTranscriptionStatus(null);
+			if (completion === "send") {
+				setTranscribing(false);
+				await dispatchText(nextValue);
+				return;
+			}
+			onValueChange(nextValue);
 			requestAnimationFrame(() => {
 				const input = inputRef.current;
 				if (!input) return;
@@ -453,15 +483,25 @@ export function Composer({
 		}
 	};
 
+	const stopAudioRecording = (completion: AudioRecordingCompletion) => {
+		const recorder = mediaRecorderRef.current;
+		if (!recorder || recorder.state === "inactive") return;
+		audioRecordingCompletionRef.current = completion;
+		stopAudioVisualization();
+		setRecording(false);
+		if (completion === "discard") {
+			recorder.ondataavailable = null;
+			audioChunksRef.current = [];
+			setTranscriptionStatus(null);
+		} else {
+			setTranscribing(true);
+		}
+		recorder.stop();
+	};
+
 	const toggleAudioRecording = async () => {
 		if (recording) {
-			const recorder = mediaRecorderRef.current;
-			if (recorder && recorder.state !== "inactive") {
-				stopAudioVisualization();
-				setRecording(false);
-				setTranscribing(true);
-				recorder.stop();
-			}
+			stopAudioRecording("transcribe");
 			return;
 		}
 		if (disabled || uploading || transcribing) return;
@@ -481,6 +521,7 @@ export function Composer({
 			mediaStreamRef.current = stream;
 			mediaRecorderRef.current = recorder;
 			audioChunksRef.current = [];
+			audioRecordingCompletionRef.current = "transcribe";
 			recorder.ondataavailable = (event) => {
 				if (event.data.size > 0) audioChunksRef.current.push(event.data);
 			};
@@ -512,7 +553,11 @@ export function Composer({
 	};
 
 	const submit = async () => {
-		if (disabled || recording || transcribing) return;
+		if (recording) {
+			stopAudioRecording("send");
+			return;
+		}
+		if (disabled || transcribing) return;
 		const text = value.trim();
 		if (!text) return;
 		if (filteredSkills.length) {
@@ -525,15 +570,7 @@ export function Composer({
 			dismissSuggestionKey(composerCommandSuggestionKey(selectedSlash));
 			return;
 		}
-		historyNavRef.current = null;
-		appendStoredComposerHistory(text);
-		onValueChange("");
-		if (text.split(/\s+/)[0] === "/upload") {
-			openUploadDialog();
-			return;
-		}
-		if (text.startsWith("/") && (await onCommand(text))) return;
-		await onSend(text);
+		await dispatchText(text);
 	};
 
 	return (
@@ -706,7 +743,19 @@ export function Composer({
 			) : null}
 			<div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{suggestionStatus}</div>
 			{recording ? <RecordingWaveform samples={waveformSamples} elapsedMs={recordingElapsedMs} /> : null}
-			<div className="grid grid-cols-[1fr_auto_auto] items-end gap-2">
+			<div className={`grid items-end gap-2 ${recording ? "grid-cols-[auto_1fr_auto_auto]" : "grid-cols-[1fr_auto_auto]"}`}>
+				{recording ? (
+					<button
+						type="button"
+						onClick={() => stopAudioRecording("discard")}
+						title="Cancel recording without transcription"
+						aria-label="Cancel recording without transcription"
+						data-pibo-debug="composer-audio-cancel"
+						className="h-10 w-10 self-end inline-flex items-center justify-center rounded-sm border border-slate-700 bg-[#0e1116] text-slate-400 hover:border-red-400 hover:bg-red-500/10 hover:text-red-300"
+					>
+						<X size={16} />
+					</button>
+				) : null}
 				<textarea
 					id="message-composer-input"
 					ref={inputRef}
@@ -778,10 +827,11 @@ export function Composer({
 				</button>
 				<button
 					type="button"
-					disabled={disabled || uploading || recording || transcribing}
+					disabled={uploading || transcribing || (!recording && disabled)}
 					onClick={() => void submit()}
-					title="Send message"
-					aria-label="Send message"
+					title={recording ? "Stop recording, transcribe, and send" : "Send message"}
+					aria-label={recording ? "Stop recording, transcribe, and send" : "Send message"}
+					data-pibo-debug="composer-send"
 					className="h-10 w-10 self-end inline-flex items-center justify-center bg-[#11a4d4] rounded-sm text-white disabled:opacity-50"
 				>
 					<SendHorizontal size={16} />

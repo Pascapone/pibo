@@ -13,10 +13,10 @@ test("Workflow Library renders source/status action metadata from catalog action
 	assert.match(source, /aria-label="Workflow Library source\/status actions"/);
 	assert.match(source, /hasWorkflowCatalogAction\(record, "create_next_draft"\)/);
 	assert.match(source, /hasWorkflowCatalogAction\(record, "duplicate"\)/);
-	assert.match(source, /hasWorkflowCatalogAction\(record, "create_project_session"\)/);
+	assert.match(source, /hasWorkflowCatalogAction\(record, "create_workflow_session"\)/);
 	assert.match(source, /hasWorkflowCatalogAction\(record, "archive"\)/);
 	assert.match(source, /hasWorkflowCatalogAction\(record, "delete"\)/);
-	assert.match(source, /Create Project session/);
+	assert.match(source, /Create Workflow Session/);
 	assert.match(source, /workflowCatalogActionLabel/);
 	assert.doesNotMatch(source, /record\.source === "ui"/);
 });

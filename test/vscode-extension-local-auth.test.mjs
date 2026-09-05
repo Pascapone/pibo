@@ -17,7 +17,7 @@ function startLoopbackChannel() {
 			agentStorePath: join(storageDir, "agents.sqlite"),
 			dataStorePath: join(storageDir, "pibo-chat-v2.sqlite"),
 			dataPayloadRootDir: join(storageDir, "payloads"),
-			projectStorePath: join(storageDir, "projects.sqlite"),
+			workflowStorePath: join(storageDir, "pibo-workflows.sqlite"),
 		}),
 	];
 	const listeners = new Set();

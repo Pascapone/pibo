@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { roomWorkspaceFromMetadata, type CreatePiboRoomInput, type PiboRoom, type PiboRoomNode, type UpdatePiboRoomInput } from "../types/rooms.js";
+import { comparePiboRoomsBySidebarOrder, roomWorkspaceFromMetadata, type CreatePiboRoomInput, type PiboRoom, type PiboRoomNode, type UpdatePiboRoomInput } from "../types/rooms.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import { roomFromRow, type RoomRow } from "./chat-data-mappers.js";
 
@@ -40,7 +40,7 @@ export class ChatRoomService {
 	}
 
 	getRoom(id: string): PiboRoom | undefined { const row = this.store.db.prepare("SELECT * FROM rooms WHERE id = ?").get(id) as RoomRow | undefined; return row ? roomFromRow(row) : undefined; }
-	listRooms(): PiboRoom[] { return (this.store.db.prepare("SELECT * FROM rooms ORDER BY updated_at DESC, id ASC").all() as RoomRow[]).map(roomFromRow); }
+	listRooms(): PiboRoom[] { return (this.store.db.prepare("SELECT * FROM rooms").all() as RoomRow[]).map(roomFromRow).sort(comparePiboRoomsBySidebarOrder); }
 	listRoomTree(): PiboRoomNode[] { const byId = new Map(this.listRooms().map((room) => [room.id, { ...room, children: [] as PiboRoomNode[] }])); const roots: PiboRoomNode[] = []; for (const node of byId.values()) { const parent = node.parentRoomId ? byId.get(node.parentRoomId) : undefined; if (parent) parent.children.push(node); else roots.push(node); } return roots; }
 	listRoomSubtree(roomId: string): PiboRoom[] { const root = this.getRoom(roomId); if (!root) return []; const rooms = this.listRooms(); const byParent = new Map<string, PiboRoom[]>(); for (const room of rooms) if (room.parentRoomId) byParent.set(room.parentRoomId, [...(byParent.get(room.parentRoomId) ?? []), room]); const result: PiboRoom[] = []; const visit = (room: PiboRoom): void => { result.push(room); for (const child of byParent.get(room.id) ?? []) visit(child); }; visit(root); return result; }
 	ensureDefaultRoom(input: { name?: string } = {}): PiboRoom { const existing = (this.store.db.prepare("SELECT * FROM rooms WHERE json_extract(metadata_json, '$.default') IS 1 ORDER BY updated_at DESC, id ASC LIMIT 1").get() as RoomRow | undefined); if (existing) return roomFromRow(existing); return this.createRoom({ name: input.name ?? "Shared Chat", type: "chat", metadata: { default: true } }); }

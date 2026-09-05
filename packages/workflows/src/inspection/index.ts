@@ -41,7 +41,6 @@ export type WorkflowRunInspectionSummary = {
   workflowVersion: string;
   status: WorkflowRun["status"];
   piboSessionId?: string;
-  projectId?: string;
   currentNodeId?: string;
   currentEdgeId?: string;
   createdAt: string;
@@ -122,7 +121,6 @@ export function formatWorkflowRunInspection(inspection: WorkflowRunInspection): 
     `status\t${summary.status}`,
   ];
   if (summary.piboSessionId) lines.push(`pibo_session\t${summary.piboSessionId}`);
-  if (summary.projectId) lines.push(`project\t${summary.projectId}`);
   if (summary.currentNodeId) lines.push(`current_node\t${summary.currentNodeId}`);
   if (summary.currentEdgeId) lines.push(`current_edge\t${summary.currentEdgeId}`);
   if (summary.latestCheckpointId) lines.push(`checkpoint\t${summary.latestCheckpointId}`);
@@ -158,7 +156,6 @@ function createInspectionSummary(
     workflowVersion: run.workflowVersion,
     status: run.status,
     ...(run.piboSessionId ? { piboSessionId: run.piboSessionId } : {}),
-    ...(run.projectId ? { projectId: run.projectId } : {}),
     ...(run.current.nodeId ? { currentNodeId: run.current.nodeId } : {}),
     ...(run.current.edgeId ? { currentEdgeId: run.current.edgeId } : {}),
     createdAt: run.createdAt,

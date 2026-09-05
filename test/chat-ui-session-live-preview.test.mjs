@@ -220,7 +220,7 @@ test("Preview fullscreen exits when the selected Preview disappears", async () =
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd(), env: reactDevelopmentEnv });
 });
 
-test("Session and Project trace panes scope lifecycle state and fullscreen to the selected Pibo Session", () => {
+test("Session trace panes scope lifecycle state and fullscreen to the selected Pibo Session", () => {
 	const pane = readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
 	const layout = readFileSync("src/apps/chat-ui/src/session-trace-layout.tsx", "utf8");
 	const preview = readFileSync("src/apps/chat-ui/src/session-live-preview.tsx", "utf8");
@@ -234,7 +234,7 @@ test("Session and Project trace panes scope lifecycle state and fullscreen to th
 	assert.match(layout, /fullscreenTopBar/);
 	assert.match(layout, /fullscreenContent/);
 	assert.match(pane, /hideComposer=\{livePreviewSelected\}/);
-	assert.match(layout, /shouldRenderSessionComposer\(\{ hideComposer, projectModulePanel \}\)/);
+	assert.match(layout, /shouldRenderSessionComposer\(\{ hideComposer, auxiliaryPanel \}\)/);
 	assert.match(preview, /window\.addEventListener\("keydown", handleKeyDown, true\)/);
 	assert.match(preview, /\[aria-label="Enter Preview fullscreen"\]/);
 	assert.match(preview, /window\.setTimeout\(restoreFocus, 0\)/);

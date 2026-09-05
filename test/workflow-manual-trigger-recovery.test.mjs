@@ -20,13 +20,14 @@ const definition = {
 	},
 };
 
-function createChannelContext(outputs = {}) {
+function createChannelContext(outputs = {}, createdSessions = []) {
 	const listeners = new Set();
 	const sessionNodes = new Map();
 	return {
 		createSession(input) {
 			const nodeId = input.metadata.workflowNodeId;
-			const session = { id: `ps_workflow_${nodeId}` };
+			const session = { ...input, id: `ps_workflow_${nodeId}` };
+			createdSessions.push(session);
 			sessionNodes.set(session.id, nodeId);
 			return session;
 		},
@@ -64,6 +65,36 @@ test("manual workflow agent nodes wait for message_finished and use the final as
 	assert.equal(result.ok, true);
 	assert.equal(result.output, "final workflow output");
 	assert.equal(result.nodeAttempts.at(-1).output, "final workflow output");
+});
+
+test("manual workflow agent nodes use normal Sessions with workspace and stable workflow linkage", async () => {
+	const createdSessions = [];
+	const linkedSessions = [];
+	const result = await runWorkflowManualTextTrigger({
+		definition,
+		triggerNodeId: "trigger",
+		input: "input",
+		channelContext: createChannelContext({}, createdSessions),
+		channel: "chat-web",
+		defaultWorkspace: "/workspace/repository",
+		onSessionCreated: (session) => linkedSessions.push(session),
+		resolveProfile: (profileId) => profileId === "base" ? "base" : undefined,
+	});
+
+	assert.equal(result.ok, true);
+	assert.equal(createdSessions.length, 1);
+	const session = createdSessions[0];
+	assert.equal(session.kind, "chat");
+	assert.equal(session.channel, "chat-web");
+	assert.equal(session.workspace, "/workspace/repository");
+	assert.equal(session.metadata.workflowId, definition.id);
+	assert.equal(session.metadata.workflowVersion, definition.version);
+	assert.equal(session.metadata.workflowSessionKind, "agent_node");
+	assert.equal(session.metadata.workflowRunId, result.run.id);
+	assert.equal(session.metadata.workflowNodeId, "agent");
+	assert.equal(result.nodeAttempts.at(-1).piboSessionId, session.id);
+	assert.equal(session.metadata.workflowNodeAttemptId, result.nodeAttempts.at(-1).id);
+	assert.deepEqual(linkedSessions, createdSessions);
 });
 
 test("manual workflow preserves deterministic Pibo-owned fan-out execution", async () => {

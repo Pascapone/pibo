@@ -94,7 +94,7 @@ export const PIBO_CONFIG_KEYS: PiboConfigKeyDefinition[] = [
 	{
 		key: "preview.baseURL",
 		type: "string",
-		description: "Public preview base URL. Preview ids become subdomains, for example https://preview.example.com.",
+		description: "Public Preview base URL. Run `pibo preview setup --base-url https://preview.example.com` before enabling it.",
 	},
 	{
 		key: "preview.databasePath",

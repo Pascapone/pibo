@@ -158,3 +158,7 @@ export function isSharedDefaultRoom(room: PiboRoom): boolean {
 export function isArchivedRoom(room: PiboRoom): boolean {
 	return typeof room.metadata.chatRoomArchivedAt === "string";
 }
+
+export function isPinnedRoom(room: PiboRoom): boolean {
+	return typeof room.metadata.chatRoomPinnedAt === "string";
+}

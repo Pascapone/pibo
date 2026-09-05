@@ -113,6 +113,7 @@ function ompCapabilities(): AgentRuntimeCapabilities {
 			attach: true,
 			listNativeSessions: true,
 			fork: true,
+			forkWhileRunning: false,
 			clone: false,
 			tree: false,
 		},

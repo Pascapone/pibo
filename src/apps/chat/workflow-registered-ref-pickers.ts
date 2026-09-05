@@ -1,6 +1,6 @@
 import type { PiboJsonObject } from "../../core/events.js";
 import type { PiboWebSession } from "../../web/types.js";
-import type { ProjectWorkflowHumanActionRegistryOption } from "./project-workflow-human-actions.js";
+import type { WorkflowHumanActionRegistryOption } from "./workflow-human-actions.js";
 import {
 	hashPromptAssetMarkdown,
 	workflowPromptAssetDocumentFromRecords,
@@ -86,7 +86,7 @@ export const WORKFLOW_PROMPT_ASSET_REF_OPTIONS: WorkflowRegisteredRefOption[] = 
 	},
 ];
 
-export const WORKFLOW_HUMAN_ACTION_REF_OPTIONS: ProjectWorkflowHumanActionRegistryOption[] = [
+export const WORKFLOW_HUMAN_ACTION_REF_OPTIONS: WorkflowHumanActionRegistryOption[] = [
 	{
 		id: "fixture.humanActions.approve",
 		kind: "approve",

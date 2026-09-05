@@ -1,5 +1,5 @@
 import { requestJson } from "./api-http";
-import type { BootstrapData, ChatSessionPage, CreateSessionData, ModelProfile, NavigationData, PiboProject, ProjectsBootstrapData, PiboRoom, PiboSession } from "./types";
+import type { BootstrapData, ChatSessionPage, CreateSessionData, ModelProfile, NavigationData, PiboRoom, PiboSession } from "./types";
 
 export type ChatMessageDelivery = "queue" | "steer";
 
@@ -25,66 +25,6 @@ export async function getNavigation(
 	const params = createNavigationParams(piboSessionId, includeArchived, roomId);
 	const suffix = params.size ? `?${params.toString()}` : "";
 	return requestJson<Partial<NavigationData>>(`/api/chat/navigation${suffix}`, init).then(normalizeNavigation);
-}
-
-export async function getProjectsBootstrap(
-	input: { projectId?: string; piboSessionId?: string; includeArchived?: boolean } = {},
-	init?: RequestInit,
-): Promise<ProjectsBootstrapData> {
-	const params = new URLSearchParams();
-	if (input.projectId) params.set("projectId", input.projectId);
-	if (input.piboSessionId) params.set("piboSessionId", input.piboSessionId);
-	if (input.includeArchived) params.set("includeArchived", "true");
-	const suffix = params.size ? `?${params.toString()}` : "";
-	return requestJson<Partial<ProjectsBootstrapData> | null>(`/api/chat/projects/bootstrap${suffix}`, init).then(normalizeProjectsBootstrap);
-}
-
-export async function postProject(input: { name: string; projectFolder: string; description?: string; createFolder?: boolean }): Promise<{ project: PiboProject }> {
-	return requestJson<{ project: PiboProject }>("/api/chat/projects", {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(input),
-	});
-}
-
-export async function patchProject(projectId: string, input: { name?: string; description?: string | null; archived?: boolean }): Promise<{ project: PiboProject }> {
-	return requestJson<{ project: PiboProject }>(`/api/chat/projects/${encodeURIComponent(projectId)}`, {
-		method: "PATCH",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(input),
-	});
-}
-
-export async function deleteProject(projectId: string, input: { confirmName: string; deleteFiles?: boolean }): Promise<{ deletedProjectId: string }> {
-	return requestJson<{ deletedProjectId: string }>(`/api/chat/projects/${encodeURIComponent(projectId)}`, {
-		method: "DELETE",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(input),
-	});
-}
-
-export async function postProjectSession(projectId: string, input: { profile?: string; workflowId?: string } = {}): Promise<CreateSessionData> {
-	return requestJson<CreateSessionData>(`/api/chat/projects/${encodeURIComponent(projectId)}/sessions`, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(input),
-	});
-}
-
-export async function patchProjectSession(piboSessionId: string, input: { title?: string | null; archived?: boolean }): Promise<{ session: PiboSession }> {
-	return requestJson<{ session: PiboSession }>(`/api/chat/project-sessions/${encodeURIComponent(piboSessionId)}`, {
-		method: "PATCH",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(input),
-	});
-}
-
-export async function postProjectMessage(piboSessionId: string, text: string, clientTxnId?: string, delivery: ChatMessageDelivery = "queue"): Promise<unknown> {
-	return requestJson<unknown>("/api/chat/projects/message", {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ piboSessionId, text, delivery, ...(clientTxnId ? { clientTxnId } : {}) }),
-	});
 }
 
 export async function getSessionPage(input: {
@@ -164,8 +104,19 @@ export async function postRoom(input: { name: string; topic?: string; workspace?
 	});
 }
 
-export async function patchRoom(roomId: string, input: { name?: string; topic?: string | null; workspace?: string | null; archived?: boolean }): Promise<{ room: PiboRoom }> {
+export async function patchRoom(roomId: string, input: { name?: string; topic?: string | null; workspace?: string | null; archived?: boolean; pinned?: boolean }): Promise<{ room: PiboRoom }> {
 	return requestJson<{ room: PiboRoom }>(`/api/chat/rooms/${encodeURIComponent(roomId)}`, {
+		method: "PATCH",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(input),
+	});
+}
+
+export async function patchRoomOrder(
+	roomId: string,
+	input: { targetRoomId: string; position: "before" | "after" },
+): Promise<{ orderedRoomIds: string[] }> {
+	return requestJson<{ orderedRoomIds: string[] }>(`/api/chat/rooms/${encodeURIComponent(roomId)}/order`, {
 		method: "PATCH",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(input),
@@ -273,52 +224,6 @@ function normalizeNavigation(payload: Partial<NavigationData>): NavigationData {
 		rooms: payload.rooms ?? [],
 		sessions,
 	};
-}
-
-function normalizeProjectsBootstrap(payload: Partial<ProjectsBootstrapData> | null | undefined): ProjectsBootstrapData {
-	if (!payload || typeof payload !== "object") {
-		throw new Error("Invalid Projects bootstrap response: missing bootstrap data.");
-	}
-	if (!isProjectLike(payload.sharedDefaultProject)) {
-		throw new Error("Invalid Projects bootstrap response: missing shared default project.");
-	}
-	const sharedDefaultProject = payload.sharedDefaultProject;
-	const selectedProjectId =
-		typeof payload.selectedProjectId === "string" && payload.selectedProjectId
-			? payload.selectedProjectId
-			: isProjectLike(payload.project)
-				? payload.project.id
-				: sharedDefaultProject.id;
-	return {
-		identity: isIdentityLike(payload.identity) ? payload.identity : { userId: "" },
-		sharedDefaultProject,
-		project: isProjectLike(payload.project) ? payload.project : sharedDefaultProject,
-		projects: Array.isArray(payload.projects) ? payload.projects : [],
-		projectSessions: Array.isArray(payload.projectSessions) ? payload.projectSessions : [],
-		workflowLifecycleEvents: Array.isArray(payload.workflowLifecycleEvents) ? payload.workflowLifecycleEvents : [],
-		session: payload.session,
-		selectedProjectId,
-		selectedPiboSessionId: typeof payload.selectedPiboSessionId === "string" ? payload.selectedPiboSessionId : undefined,
-		sessions: Array.isArray(payload.sessions) ? payload.sessions : [],
-		agents: Array.isArray(payload.agents) ? payload.agents : [],
-		customAgents: Array.isArray(payload.customAgents) ? payload.customAgents : [],
-		agentFolders: Array.isArray(payload.agentFolders) ? payload.agentFolders : [],
-		modelDefaults: payload.modelDefaults,
-		modelCatalog: payload.modelCatalog,
-		agentCatalog: payload.agentCatalog,
-		capabilities: {
-			actions: Array.isArray(payload.capabilities?.actions) ? payload.capabilities.actions : [],
-		},
-		integrations: payload.integrations,
-	};
-}
-
-function isIdentityLike(value: unknown): value is ProjectsBootstrapData["identity"] {
-	return Boolean(value && typeof value === "object" && typeof (value as { userId?: unknown }).userId === "string");
-}
-
-function isProjectLike(value: unknown): value is PiboProject {
-	return Boolean(value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string");
 }
 
 function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {

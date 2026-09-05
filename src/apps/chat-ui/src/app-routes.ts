@@ -4,7 +4,6 @@ import type { SettingsPanel } from "./settings/types";
 
 export type ChatAppRoute =
 	| { area: "sessions"; roomId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
-	| { area: "projects"; projectId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
 	| { area: "vscode" }
 	| { area: "workflows"; draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string }
 	| { area: "agents" }
@@ -25,9 +24,6 @@ type ContextSearch = { piboSessionId?: string };
 type SettingsNavigationTo = "/settings/concurrency" | "/settings/previews" | "/settings/transcription" | "/settings/speech" | "/settings/shortcuts" | "/settings/maintenance" | "/settings/pi-packages" | "/settings/skills" | "/settings/providers" | "/settings";
 
 type ChatRouteNavigationRequest =
-	| { to: "/projects/$projectId/sessions/$piboSessionId"; params: { projectId: string; piboSessionId: string }; search: SessionViewSearch; replace: boolean }
-	| { to: "/projects/$projectId"; params: { projectId: string }; search: SessionViewSearch; replace: boolean }
-	| { to: "/projects"; search: SessionViewSearch; replace: boolean }
 	| { to: "/vscode"; replace: boolean }
 	| { to: "/workflows/drafts/$draftId"; params: { draftId: string }; replace: boolean }
 	| { to: "/workflows/view/$workflowId/$workflowVersion"; params: { workflowId: string; workflowVersion: string }; replace: boolean }
@@ -68,11 +64,6 @@ export function chatRouteFromLocation(pathname: string, search: Record<string, u
 	if (parts[0] === "cron") return { area: "cron" };
 	if (parts[0] === "loops" || parts[0] === "ralph") return { area: "loops" };
 	if (parts[0] === "settings") return { area: "settings", panel: settingsPanelFromPathPart(parts[1]) };
-	if (parts[0] === "projects" && parts[1] && parts[2] === "sessions" && parts[3]) {
-		return { area: "projects", projectId: parts[1], piboSessionId: parts[3], sessionViewId };
-	}
-	if (parts[0] === "projects" && parts[1]) return { area: "projects", projectId: parts[1], sessionViewId };
-	if (parts[0] === "projects") return { area: "projects", sessionViewId };
 	if (parts[0] === "rooms" && parts[1] && parts[2] === "sessions" && parts[3]) {
 		return { area: "sessions", roomId: parts[1], piboSessionId: parts[3], sessionViewId };
 	}
@@ -83,18 +74,6 @@ export function chatRouteFromLocation(pathname: string, search: Record<string, u
 
 export function chatNavigationRequest(target: ChatAppRoute, replace: boolean, nextSessionViewId: ChatSessionViewId): ChatRouteNavigationRequest {
 	const sessionViewSearch = { view: nextSessionViewId };
-	if (target.area === "projects") {
-		if (target.projectId && target.piboSessionId) {
-			return {
-				to: "/projects/$projectId/sessions/$piboSessionId",
-				params: { projectId: target.projectId, piboSessionId: target.piboSessionId },
-				search: sessionViewSearch,
-				replace,
-			};
-		}
-		if (target.projectId) return { to: "/projects/$projectId", params: { projectId: target.projectId }, search: sessionViewSearch, replace };
-		return { to: "/projects", search: sessionViewSearch, replace };
-	}
 	if (target.area === "vscode") return { to: "/vscode", replace };
 	if (target.area === "workflows") {
 		if (target.draftId) return { to: "/workflows/drafts/$draftId", params: { draftId: target.draftId }, replace };

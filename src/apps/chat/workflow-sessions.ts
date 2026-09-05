@@ -5,7 +5,7 @@ import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking
 import type { PiboSession } from "../../sessions/store.js";
 import { PiboWebHttpError } from "../../web/http.js";
 import type { PiboWebSession } from "../../web/types.js";
-import type { PiboProject, PiboProjectWorkflowSessionConfiguration, PiboProjectWorkflowSessionSnapshot } from "./data/project-service.js";
+import type { PiboWorkflowSessionConfiguration, PiboWorkflowSessionSnapshot } from "./data/workflow-session-service.js";
 import {
 	hashWorkflowDefinitionJson,
 	sanitizeWorkflowDiagnostics,
@@ -16,7 +16,9 @@ import {
 	type WorkflowVersionPickerOption,
 } from "./workflow-catalog.js";
 
-export type ChatProjectSessionCreateBody = {
+export type ChatWorkflowSessionCreateBody = {
+	roomId?: unknown;
+	workspace?: unknown;
 	profile?: unknown;
 	workflowId?: unknown;
 	workflowVersion?: unknown;
@@ -28,7 +30,9 @@ export type ChatProjectSessionCreateBody = {
 	fastMode?: unknown;
 };
 
-const PROJECT_WORKFLOW_SESSION_CREATE_FIELDS = new Set([
+const WORKFLOW_SESSION_CREATE_FIELDS = new Set([
+	"roomId",
+	"workspace",
 	"profile",
 	"workflowId",
 	"workflowVersion",
@@ -40,7 +44,7 @@ const PROJECT_WORKFLOW_SESSION_CREATE_FIELDS = new Set([
 	"fastMode",
 ]);
 
-const PROJECT_WORKFLOW_SESSION_DISALLOWED_FIELDS = new Map<string, string>([
+const WORKFLOW_SESSION_DISALLOWED_FIELDS = new Map<string, string>([
 	["agentProfileOverrides", "Agent profile overrides are not supported for V2 workflow sessions"],
 	["profileOverrides", "Agent profile overrides are not supported for V2 workflow sessions"],
 	["profileOverride", "Agent profile overrides are not supported for V2 workflow sessions"],
@@ -61,11 +65,11 @@ const PROJECT_WORKFLOW_SESSION_DISALLOWED_FIELDS = new Map<string, string>([
 	["arbitraryOptions", "Arbitrary options are not supported for V2 workflow sessions"],
 ]);
 
-export function normalizeProjectWorkflowSessionConfiguration(body: ChatProjectSessionCreateBody, definition: PiboJsonObject): PiboProjectWorkflowSessionConfiguration {
-	assertProjectWorkflowSessionCreateFields(body);
-	const inputValues = normalizeProjectWorkflowInputValues(body.inputValues);
+export function normalizeWorkflowSessionConfiguration(body: ChatWorkflowSessionCreateBody, definition: PiboJsonObject): PiboWorkflowSessionConfiguration {
+	assertWorkflowSessionCreateFields(body);
+	const inputValues = normalizeWorkflowInputValues(body.inputValues);
 	const promptOverrideEligibleNodeIds = workflowPromptOverrideEligibleNodeIds(definition);
-	const promptOverrides = normalizeProjectWorkflowPromptOverrides(body.promptOverrides, promptOverrideEligibleNodeIds);
+	const promptOverrides = normalizeWorkflowPromptOverrides(body.promptOverrides, promptOverrideEligibleNodeIds);
 	const model = normalizeWorkflowSessionModel(body.model);
 	const thinkingLevel = normalizeThinkingLevel(body.thinkingLevel, "thinkingLevel");
 	const fastMode = normalizeOptionalBoolean(body.fastMode, "fastMode");
@@ -85,17 +89,16 @@ export function normalizeProjectWorkflowSessionConfiguration(body: ChatProjectSe
 	};
 }
 
-export function createProjectWorkflowSessionSnapshot(input: {
+export function createWorkflowSessionSnapshot(input: {
 	webSession: PiboWebSession;
-	project: PiboProject;
 	session: PiboSession;
 	workflow: WorkflowVersionPickerOption;
 	baseDefinition: PiboJsonObject;
-	configuration: PiboProjectWorkflowSessionConfiguration;
+	configuration: PiboWorkflowSessionConfiguration;
 	validation: WorkflowValidationResponse;
-}): PiboProjectWorkflowSessionSnapshot {
+}): PiboWorkflowSessionSnapshot {
 	const baseDefinition = cloneJsonObject(input.baseDefinition);
-	const effectiveDefinition = applyProjectWorkflowPromptOverrides(baseDefinition, input.configuration.promptOverrides);
+	const effectiveDefinition = applyWorkflowPromptOverrides(baseDefinition, input.configuration.promptOverrides);
 	const baseDefinitionHash = hashWorkflowDefinitionJson(baseDefinition);
 	const effectiveDefinitionHash = hashWorkflowDefinitionJson(effectiveDefinition);
 	const now = new Date().toISOString();
@@ -104,7 +107,6 @@ export function createProjectWorkflowSessionSnapshot(input: {
 		schemaVersion: 1,
 		createdAt: now,
 		createdBy: input.webSession.authSession.identity.userId,
-		projectId: input.project.id,
 		piboSessionId: input.session.id,
 		workflow: {
 			id: input.workflow.id,
@@ -141,7 +143,7 @@ export function createProjectWorkflowSessionSnapshot(input: {
 	};
 }
 
-export function workflowVersionFromSnapshot(snapshot: PiboProjectWorkflowSessionSnapshot): WorkflowVersionPickerOption {
+export function workflowVersionFromSnapshot(snapshot: PiboWorkflowSessionSnapshot): WorkflowVersionPickerOption {
 	return workflowVersionPickerOptionFromCatalogRecord({
 		id: snapshot.workflow.id,
 		version: snapshot.workflow.version,
@@ -153,33 +155,33 @@ export function workflowVersionFromSnapshot(snapshot: PiboProjectWorkflowSession
 	});
 }
 
-export function createProjectWorkflowRunCurrent(definition: PiboJsonObject): PiboJsonObject {
+export function createWorkflowRunCurrent(definition: PiboJsonObject): PiboJsonObject {
 	const initialNodeIds = workflowInitialNodeIds(definition);
 	return {
-		status: "running",
+		status: "pending",
 		initialNodeIds,
 		...(initialNodeIds.length === 1 ? { nodeId: initialNodeIds[0] } : {}),
 	};
 }
 
-function assertProjectWorkflowSessionCreateFields(body: ChatProjectSessionCreateBody): void {
+function assertWorkflowSessionCreateFields(body: ChatWorkflowSessionCreateBody): void {
 	if (!body || typeof body !== "object" || Array.isArray(body)) throw new PiboWebHttpError("Invalid JSON body", 400);
 	for (const key of Object.keys(body)) {
-		const disallowedMessage = PROJECT_WORKFLOW_SESSION_DISALLOWED_FIELDS.get(key);
+		const disallowedMessage = WORKFLOW_SESSION_DISALLOWED_FIELDS.get(key);
 		if (disallowedMessage) throw new PiboWebHttpError(disallowedMessage, 400);
-		if (!PROJECT_WORKFLOW_SESSION_CREATE_FIELDS.has(key)) {
+		if (!WORKFLOW_SESSION_CREATE_FIELDS.has(key)) {
 			throw new PiboWebHttpError(`Unsupported workflow session creation field: ${key}`, 400);
 		}
 	}
 }
 
-function normalizeProjectWorkflowInputValues(value: unknown): PiboJsonObject {
+function normalizeWorkflowInputValues(value: unknown): PiboJsonObject {
 	if (value === undefined || value === null) return {};
 	if (!isJsonObject(value)) throw new PiboWebHttpError("inputValues must be a JSON object", 400);
 	return value;
 }
 
-function normalizeProjectWorkflowPromptOverrides(value: unknown, eligibleNodeIds: string[]): Record<string, string> {
+function normalizeWorkflowPromptOverrides(value: unknown, eligibleNodeIds: string[]): Record<string, string> {
 	if (value === undefined || value === null) return {};
 	if (!isJsonObject(value)) throw new PiboWebHttpError("promptOverrides must be a JSON object keyed by eligible node id", 400);
 	const eligible = new Set(eligibleNodeIds);
@@ -256,7 +258,7 @@ function isWorkflowPromptOverrideEligibleNode(value: unknown): boolean {
 		&& sessionOverrides?.prompt === true;
 }
 
-function applyProjectWorkflowPromptOverrides(definition: PiboJsonObject, promptOverrides: Record<string, string>): PiboJsonObject {
+function applyWorkflowPromptOverrides(definition: PiboJsonObject, promptOverrides: Record<string, string>): PiboJsonObject {
 	const effectiveDefinition = cloneJsonObject(definition);
 	const nodes = isJsonObject(effectiveDefinition.nodes) ? effectiveDefinition.nodes : undefined;
 	if (!nodes) return effectiveDefinition;

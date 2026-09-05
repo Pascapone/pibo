@@ -8,23 +8,22 @@ tags:
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-05T10:32:00Z"
 sources:
-  - id: "foundation-source-and-tests"
-    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
-    title: "upstream/dev refresh source and named-test evidence"
+  - id: "integrated-source-and-tests"
+    resource: "scope:Integrated implementation and tests at traceability.commit"
+    title: "Integrated App Shell source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  baseline_commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   package: "WP-06+07-WEB"
-  package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
-  focused_test_execution: "performed in owned Docker after authoring; see implementation report"
-  build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
-  visual_provider_gateway_pibo2_execution: "unperformed"
+  test_execution: "20 focused routed-runtime/UI/manual/header tests passed at final integration; complete root-suite counts remain historical at 14cbaf0f"
+  build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
+  browser_execution: "headed Room, Workflow Session, manual Run Room dialog, and desktop/mobile viewport acceptance passed"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   requirements:
     - id: "WEB-SHELL-MOUNT-001"
       status: "implemented"
@@ -99,12 +98,6 @@ traceability:
           symbol: "roomRoute"
         - path: "src/apps/chat-ui/src/main.tsx"
           symbol: "roomSessionRoute"
-        - path: "src/apps/chat-ui/src/main.tsx"
-          symbol: "projectsRoute"
-        - path: "src/apps/chat-ui/src/main.tsx"
-          symbol: "projectRoute"
-        - path: "src/apps/chat-ui/src/main.tsx"
-          symbol: "projectSessionRoute"
         - path: "src/apps/chat-ui/src/main.tsx"
           symbol: "vscodeRoute"
         - path: "src/apps/chat-ui/src/main.tsx"
@@ -233,7 +226,7 @@ Chat API/static registration, bootstrap/navigation composition, route-addressabl
 
 ## Scope
 
-This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at integrated traceability commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`.
 
 ### In scope
 
@@ -250,7 +243,7 @@ This specification describes implemented behavior at upstream/dev refresh tracea
 
 ### Routes and state
 
-The plugin mounts /apps/chat and /api/chat. TanStack routes cover Sessions, Rooms, Projects, VS Code, Workflows, Agents, Cron, Loop/Ralph, Context, and Settings under /apps/chat; route parsing/canonicalization drives selection. Local storage holds only drafts, history, view preferences, and last selections.
+The plugin mounts /apps/chat and /api/chat. TanStack routes cover Sessions, Rooms, VS Code, Workflows, Agents, Cron, Loop/Ralph, Context, and Settings under /apps/chat; route parsing/canonicalization drives selection. Local storage holds only drafts, history, view preferences, and last selections.
 
 ### Cache, stream, files, and media
 
@@ -314,7 +307,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 ### Requirement: WEB-SHELL-ROUTING-003
 
-The client MUST canonicalize URL-derived area, Room, Project, Session, workflow, and settings selection, expose current navigation semantics, and isolate local drafts/history/view preferences from canonical product state.
+The client MUST canonicalize URL-derived area, Room, Session, Workflow, and settings selection, expose current navigation semantics, and isolate local drafts/history/view preferences from canonical product state.
 
 #### Current
 
@@ -322,7 +315,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 #### Acceptance and boundaries
 
-- Source: `src/apps/chat-ui/src/main.tsx` — `rootRoute`; `src/apps/chat-ui/src/main.tsx` — `sessionRoute`; `src/apps/chat-ui/src/main.tsx` — `roomRoute`; `src/apps/chat-ui/src/main.tsx` — `roomSessionRoute`; `src/apps/chat-ui/src/main.tsx` — `projectsRoute`; `src/apps/chat-ui/src/main.tsx` — `projectRoute`; `src/apps/chat-ui/src/main.tsx` — `projectSessionRoute`; `src/apps/chat-ui/src/main.tsx` — `vscodeRoute`; `src/apps/chat-ui/src/main.tsx` — `workflowsRoute`; `src/apps/chat-ui/src/main.tsx` — `settingsRoute`; `src/apps/chat-ui/src/app-routes.ts` — `chatRouteFromLocation`; `src/apps/chat-ui/src/app-routes.ts` — `chatNavigationRequest`; `src/apps/chat-ui/src/app-routes.ts` — `stringifyChatSearch`; `src/apps/chat-ui/src/app-routes.ts` — `navigateToChatRoute`; `src/apps/chat-ui/src/app-storage.ts` — `readStoredSelection`; `src/apps/chat-ui/src/app-storage.ts` — `writeStoredSelection`; `src/apps/chat-ui/src/app-storage.ts` — `readStoredComposerDraft`; `src/apps/chat-ui/src/app-storage.ts` — `writeStoredComposerDraft`
+- Source: `src/apps/chat-ui/src/main.tsx` — `rootRoute`; `src/apps/chat-ui/src/main.tsx` — `sessionRoute`; `src/apps/chat-ui/src/main.tsx` — `roomRoute`; `src/apps/chat-ui/src/main.tsx` — `roomSessionRoute`; `src/apps/chat-ui/src/main.tsx` — `vscodeRoute`; `src/apps/chat-ui/src/main.tsx` — `workflowsRoute`; `src/apps/chat-ui/src/main.tsx` — `settingsRoute`; `src/apps/chat-ui/src/app-routes.ts` — `chatRouteFromLocation`; `src/apps/chat-ui/src/app-routes.ts` — `chatNavigationRequest`; `src/apps/chat-ui/src/app-routes.ts` — `stringifyChatSearch`; `src/apps/chat-ui/src/app-routes.ts` — `navigateToChatRoute`; `src/apps/chat-ui/src/app-storage.ts` — `readStoredSelection`; `src/apps/chat-ui/src/app-storage.ts` — `writeStoredSelection`; `src/apps/chat-ui/src/app-storage.ts` — `readStoredComposerDraft`; `src/apps/chat-ui/src/app-storage.ts` — `writeStoredComposerDraft`
 - Tests: `test/chat-ui-sidebar-current-navigation.test.mjs` — “Room and Session navigation buttons expose and update aria-current”
 - Public surfaces: `/apps/chat`; `/api/chat/auth-check`; `/api/chat/bootstrap`; `/api/chat/navigation`; `manifest.webmanifest`; `sw.js`; `Chat browser routes`; `detached PWA session window`
 - Failure/security boundary: Invalid route/search values must fall back without mutating server state; local storage failures are non-authoritative.
@@ -410,12 +403,12 @@ Deep routes, service-worker controller changes, desktop PWA display modes, and o
 
 ## Known limits
 
-- Evidence gap: No headful evidence for mobile focus, desktop PWA detached windows, controller updates, or deep-link fallback.
-- Evidence gap: No executed build confirms current generated Chat assets match source.
+- Evidence gap: No headful evidence for desktop PWA detached windows, controller updates, or deep-link fallback.
+- Evidence gap: Raw-IR editing, publish, human-action submission, and job controls were not exercised headfully.
 
 ## Reconciled stale claims
 
-- Reject: Authenticated accounts receive separate Room/Project/read-state partitions.
+- Reject: Authenticated accounts receive separate Room or read-state partitions.
 - Reject: A reserved navigation-query service is current navigation authority.
 - Reject: Browser preference storage is durable product state.
 - Reject: The service worker caches API/auth traffic or cross-origin resources.
@@ -423,17 +416,10 @@ Deep routes, service-worker controller changes, desktop PWA display modes, and o
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
-- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
-- Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
-- Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
-- Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.
-- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
-- Confidence measures trace quality, not execution of an unclaimed evidence class.
-
-Package verification commands:
-
-- `cd /root/code/pibo-okf-docs && node --test test/chat-api-routes.test.mjs test/web-gateway.test.mjs test/static-assets.test.mjs test/chat-ui-app-navigation-merge.test.mjs test/chat-ui-sidebar-current-navigation.test.mjs test/chat-ui-mobile-main-navigation.test.mjs test/chat-ui-service-worker.test.mjs test/chat-ui-pwa-session-window.test.mjs`
+- Source and named-test locators resolve at final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. Source checks and all typechecks passed after integration; the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
+- The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0.
+- Headed desktop/mobile Room and Workflow Session views passed. At 1440x1000 and 390x844, document width equaled viewport width; the mobile Run Room dialog at x=38, y=208, width=299, height=317 fit its viewport. Room workspace editing/inheritance, supported manual execution, and real normal and manual `openai-codex` Sessions also succeeded.
+- Raw-IR editing, publish, human-action submission, job controls, desktop PWA, external gateway deployment, and Pibo2 acceptance are not claimed.
 
 ## Related concepts
 

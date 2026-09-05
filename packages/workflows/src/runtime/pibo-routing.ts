@@ -120,8 +120,7 @@ export type PiboWorkflowSessionRouting = {
   getSessionRuntimeStatus?(piboSessionId: string): PiboWorkflowSessionStatus | undefined;
 };
 
-export type PiboWorkflowProjectSessionLinkInput = {
-  projectId: string;
+export type PiboWorkflowSessionLinkInput = {
   piboSessionId: string;
   workflowSessionKind?: PiboWorkflowSessionKind;
   workflowRunId: WorkflowRunId;
@@ -130,11 +129,10 @@ export type PiboWorkflowProjectSessionLinkInput = {
   workflowNodeId: string;
   workflowNodeAttemptId?: NodeAttemptId;
   parentPiboSessionId?: string;
-  title?: string;
 };
 
-export type PiboWorkflowProjectSessionLinker = (
-  input: PiboWorkflowProjectSessionLinkInput,
+export type PiboWorkflowSessionLinker = (
+  input: PiboWorkflowSessionLinkInput,
 ) => Promise<unknown> | unknown;
 
 export type PiboSessionRoutingAgentExecutorOptions = {
@@ -146,7 +144,7 @@ export type PiboSessionRoutingAgentExecutorOptions = {
   kind?: string;
   title?: string | ((context: OneNodeAgentExecutorContext) => string | undefined);
   metadata?: PiboRoutingJsonObject | ((context: OneNodeAgentExecutorContext) => PiboRoutingJsonObject | undefined);
-  linkProjectSession?: PiboWorkflowProjectSessionLinker;
+  linkWorkflowSession?: PiboWorkflowSessionLinker;
 };
 
 export type OneNodeAgentExecutorResult = {
@@ -170,7 +168,7 @@ export function createPiboSessionRoutingAgentExecutor(
     const title = resolveExecutorTitle(options.title, context);
     const session = options.routing.createSession({
       channel: options.channel ?? context.routing?.channel ?? "pibo.workflows",
-      kind: options.kind ?? "workflow-agent",
+      kind: options.kind ?? "chat",
       profile: context.profileId,
       parentId: context.routing?.parentSessionId,
       workspace: options.workspace,
@@ -183,13 +181,11 @@ export function createPiboSessionRoutingAgentExecutor(
         workflowVersion: context.workflow.version,
         workflowNodeId: context.nodeId,
         ...(context.nodeAttemptId ? { workflowNodeAttemptId: context.nodeAttemptId } : {}),
-        ...(context.routing?.projectId ? { projectId: context.routing.projectId } : {}),
         ...(context.routing?.roomId ? { chatRoomId: context.routing.roomId } : {}),
       },
     });
-    if (context.routing?.projectId && options.linkProjectSession) {
-      await options.linkProjectSession({
-        projectId: context.routing.projectId,
+    if (options.linkWorkflowSession) {
+      await options.linkWorkflowSession({
         piboSessionId: session.id,
         workflowSessionKind: "agent_node",
         workflowRunId: context.run.id,
@@ -197,8 +193,7 @@ export function createPiboSessionRoutingAgentExecutor(
         workflowVersion: context.workflow.version,
         workflowNodeId: context.nodeId,
         ...(context.nodeAttemptId ? { workflowNodeAttemptId: context.nodeAttemptId } : {}),
-        ...(context.routing.parentSessionId ? { parentPiboSessionId: context.routing.parentSessionId } : {}),
-        ...(title ? { title } : {}),
+        ...(context.routing?.parentSessionId ? { parentPiboSessionId: context.routing.parentSessionId } : {}),
       });
     }
     const messageId = options.createMessageId?.() ?? createId("wfm");

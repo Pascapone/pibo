@@ -118,7 +118,6 @@ test("mobile sidebar helpers cover modal state, nested keyboard ownership, focus
 test("every responsive Chat Web drawer applies shared modal semantics and preserves an actionable backdrop", async () => {
 	const drawers = [
 		["src/apps/chat-ui/src/App.tsx", "Chat sidebar"],
-		["src/apps/chat-ui/src/projects/ProjectsSidebar.tsx", "Projects sidebar"],
 		["src/apps/chat-ui/src/agents/AgentsSidebar.tsx", "Agents sidebar"],
 		["src/apps/chat-ui/src/CronArea.tsx", "Cron jobs sidebar"],
 		["src/apps/chat-ui/src/LoopArea.tsx", "Loop jobs sidebar"],
@@ -133,7 +132,6 @@ test("every responsive Chat Web drawer applies shared modal semantics and preser
 	const backdropSources = await Promise.all([
 		"src/apps/chat-ui/src/App.tsx",
 		"src/apps/chat-ui/src/responsive-pane-sidebar.tsx",
-		"src/apps/chat-ui/src/projects/ProjectsArea.tsx",
 		"src/apps/chat-ui/src/agents/AgentsView.tsx",
 		"src/apps/chat-ui/src/CronArea.tsx",
 		"src/apps/chat-ui/src/LoopArea.tsx",

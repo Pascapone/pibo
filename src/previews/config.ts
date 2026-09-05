@@ -6,6 +6,7 @@ import { parsePreviewBaseURL } from "./base-url.js";
 export const DEFAULT_PREVIEW_TTL_MINUTES = 8 * 60;
 export const DEFAULT_PREVIEW_TICKET_TTL_SECONDS = 60;
 export const DEFAULT_PREVIEW_SESSION_TTL_MINUTES = 8 * 60;
+export const PREVIEW_TLS_AUTHORIZATION_PATH = "/api/previews/tls-authorize";
 
 export type PreviewConfig = {
 	baseURL?: string;
@@ -30,7 +31,7 @@ export function loadEffectivePreviewServerSettings(): PreviewServerSettings {
 }
 
 export function requirePreviewBaseURL(value = loadPreviewConfig().baseURL): URL {
-	if (!value) throw new Error("preview.baseURL is required. Set it with `pibo config set preview.baseURL https://preview.example.com`.");
+	if (!value) throw new Error("preview.baseURL is required. Run `pibo preview setup --base-url https://preview.example.com` for DNS, TLS, proxy, and restart instructions.");
 	return parsePreviewBaseURL(value);
 }
 

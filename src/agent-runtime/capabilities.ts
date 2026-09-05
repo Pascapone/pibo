@@ -48,6 +48,7 @@ export type AgentRuntimeCapabilities = {
 		attach: boolean;
 		listNativeSessions: boolean;
 		fork: boolean;
+		forkWhileRunning: boolean;
 		clone: boolean;
 		tree: boolean;
 	};
@@ -119,6 +120,7 @@ const BOOLEAN_CAPABILITY_PATHS = [
 	"lifecycle.attach",
 	"lifecycle.listNativeSessions",
 	"lifecycle.fork",
+	"lifecycle.forkWhileRunning",
 	"lifecycle.clone",
 	"lifecycle.tree",
 	"input.text",
@@ -223,6 +225,9 @@ export function validateAgentRuntimeCapabilities(value: unknown): string[] {
 	for (const path of DELIVERY_CAPABILITY_PATHS) validateDelivery(path, readPath(value, path), errors);
 
 	const persistent = readPath(value, "lifecycle.persistent");
+	if (readPath(value, "lifecycle.forkWhileRunning") === true && readPath(value, "lifecycle.fork") !== true) {
+		errors.push("lifecycle.forkWhileRunning requires lifecycle.fork");
+	}
 	for (const path of ["lifecycle.resume", "lifecycle.attach"] as const) {
 		if (readPath(value, path) === true && persistent !== true) errors.push(`${path} requires lifecycle.persistent`);
 	}
@@ -332,6 +337,7 @@ export function createMinimalAgentRuntimeCapabilities(): AgentRuntimeCapabilitie
 			attach: false,
 			listNativeSessions: false,
 			fork: false,
+			forkWhileRunning: false,
 			clone: false,
 			tree: false,
 		},

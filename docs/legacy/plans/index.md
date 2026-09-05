@@ -60,6 +60,7 @@
 * [Plan: Signals Reliability Fix](signals-reliability-fix-plan-2026-05-19.md) - Preserves the original body as a deprecated historical record without promoting historical claims&#46;
 * [Plan: owner und shared:app vollständig aus aktivem Pibo entfernen](app-context-vocabulary-purge-plan-2026-06-01.md) - Preserves the original body as a deprecated historical record without promoting historical claims&#46;
 * [Preemptive Compaction Patch](preemptive-compaction-patch.md) - Preserves the original body as a deprecated historical record without promoting historical claims&#46;
+* [Remove Projects and Make Workflows Session&#45;Native](remove-projects-and-make-workflows-session-native.md) - Archives the completed transition directive; current authority belongs to the Room, Session, and Workflow specifications&#46;
 * [Review&#45;Dokument: Gateway&#45;Restart CLI](gateway-restart-review.md) - Preserves the original body as a deprecated historical record without promoting historical claims&#46;
 * [Test Plan: Signals Reliability Post&#45;Fix](signals-reliability-post-fix-test-plan-2026-05-19.md) - Preserves the original body as a deprecated historical record without promoting historical claims&#46;
 * [Umbauplan: Chat Trace Streaming Performance](optimize-chat-trace-streaming-performance.md) - Preserves the original body as a deprecated historical record without promoting historical claims&#46;

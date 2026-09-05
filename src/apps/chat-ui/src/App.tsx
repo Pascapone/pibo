@@ -3,7 +3,7 @@ import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-q
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { RefreshCw, X } from "lucide-react";
-import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
+import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
 import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";
 import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";
 import { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";
@@ -66,6 +66,7 @@ import {
 	createOptimisticRoom,
 	createOptimisticSessionNode,
 	replaceOptimisticSessionNode,
+	reorderRoomRootsInBootstrap,
 	reorderSessionRootsInBootstrap,
 	replaceRoomInBootstrap,
 	resolveOptimisticSessionCreateOutcome,
@@ -73,6 +74,7 @@ import {
 	restoreBootstrapSelection,
 	roomWithArchivedState,
 	sessionNodeFromSession,
+	setRoomPinnedInBootstrap,
 	setSessionPinnedInBootstrap,
 	updateRoomInBootstrap,
 	updateSessionFromPiboSession,
@@ -131,8 +133,8 @@ import { SettingsSidebar } from "./settings/SettingsSidebar";
 import { ResponsiveTabSidebarPanel } from "./responsive-pane-sidebar";
 import { SettingsView } from "./settings/SettingsView";
 import type { SettingsPanel } from "./settings/types";
-import { ProjectsArea } from "./projects/ProjectsArea";
 import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
+import { CreateWorkflowSessionDialog, type WorkflowSessionSelection } from "./workflows/CreateWorkflowSessionDialog";
 import { RoutedWorkflowsPanel } from "./desktop-workflow-version-panel";
 import { VscodeArea } from "./VscodeArea";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
@@ -291,9 +293,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const desktopPanelRoute = desktopActiveTab?.target.kind === "route" ? desktopActiveTab.target.route : undefined;
 	const area: Area = desktopTabsEnabled ? "sessions" : route.area;
 	const routeRoomId = route.area === "sessions" ? route.roomId : undefined;
-	const routeProjectId = route.area === "projects" ? route.projectId : undefined;
-	const routePiboSessionId = route.area === "sessions" || route.area === "projects" || route.area === "context" ? route.piboSessionId : undefined;
-	const routeSessionViewId = route.area === "sessions" || (!desktopTabsEnabled && route.area === "projects") ? route.sessionViewId : undefined;
+	const routePiboSessionId = route.area === "sessions" || route.area === "context" ? route.piboSessionId : undefined;
+	const routeSessionViewId = route.area === "sessions" ? route.sessionViewId : undefined;
 	const routeWorkflowDraftId = route.area === "workflows" ? route.draftId : undefined;
 	const settingsPanel: SettingsPanel = route.area === "settings" ? route.panel ?? "general" : "general";
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
@@ -331,6 +332,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [composerText, setComposerText] = useState("");
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [creatingSession, setCreatingSession] = useState(false);
+	const [workflowSessionDialog, setWorkflowSessionDialog] = useState<{ selection?: WorkflowSessionSelection } | null>(null);
 	const creatingSessionRef = useRef(false);
 	const agentAutosaveHandlerRef = useRef<(() => Promise<void>) | null>(null);
 	const skipNextAgentNavigationGuardRef = useRef(false);
@@ -625,7 +627,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, []);
 
 	useEffect(() => {
-		if (area !== "sessions" && area !== "projects") return;
+		if (area !== "sessions") return;
 		const next = routeSessionViewId ?? readStoredSessionView();
 		setSessionViewId((current) => (current === next ? current : next));
 	}, [area, routeSessionViewId]);
@@ -696,17 +698,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 				return;
 			}
 			navigateToRoute({ area: "sessions", ...(roomId ? { roomId } : {}), piboSessionId }, replace, sessionViewId, options);
-		},
-		[navigateToRoute, sessionViewId],
-	);
-
-	const navigateToSelectedProjectSession = useCallback(
-		(projectId: string | undefined, piboSessionId: string | undefined, replace = false, options: NavigationOptions = {}) => {
-			if (!piboSessionId) {
-				navigateToRoute({ area: "projects", ...(projectId ? { projectId } : {}) }, replace, sessionViewId, options);
-				return;
-			}
-			navigateToRoute({ area: "projects", ...(projectId ? { projectId } : {}), piboSessionId }, replace, sessionViewId, options);
 		},
 		[navigateToRoute, sessionViewId],
 	);
@@ -940,7 +931,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	const sessionViews = useMemo(() => listChatSessionViews(), []);
 	const currentSessionView = useMemo(() => getChatSessionView(sessionViewId), [sessionViewId]);
-	const terminalSessionView = useMemo(() => getChatSessionView("terminal"), []);
 
 	useEffect(() => {
 		if (!bootstrap?.agents.length) return;
@@ -1223,6 +1213,30 @@ export function App({ route }: { route: ChatAppRoute }) {
 		onError: (_error, _variables, context) => restoreBootstrapSnapshot(context?.snapshot),
 	});
 
+	const pinRoomMutation = useMutation({
+		mutationFn: ({ roomId, pinned }: { roomId: string; pinned: boolean }) => patchRoom(roomId, { pinned }),
+		onMutate: async ({ roomId, pinned }) => {
+			await prepareSessionNavigationMutation();
+			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
+			updateBootstrapCache((data) => setRoomPinnedInBootstrap(data, roomId, pinned));
+			return { snapshot };
+		},
+		onError: (_error, _variables, context) => restoreBootstrapSnapshot(context?.snapshot),
+		onSuccess: ({ room }) => updateBootstrapCache((data) => updateRoomInBootstrap(data, room.id, (current) => ({ ...room, children: current.children }))),
+	});
+
+	const reorderRoomMutation = useMutation({
+		mutationFn: ({ roomId, targetRoomId, position }: { roomId: string; targetRoomId: string; position: "before" | "after" }) =>
+			patchRoomOrder(roomId, { targetRoomId, position }),
+		onMutate: async ({ roomId, targetRoomId, position }) => {
+			await prepareSessionNavigationMutation();
+			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
+			updateBootstrapCache((data) => reorderRoomRootsInBootstrap(data, roomId, targetRoomId, position));
+			return { snapshot };
+		},
+		onError: (_error, _variables, context) => restoreBootstrapSnapshot(context?.snapshot),
+	});
+
 	const sendMessageMutation = useMutation({
 		mutationFn: ({ piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery }: { piboSessionId: string; text: string; clientTxnId: string; roomId?: string; webAnnotationIds?: readonly string[]; fileAttachmentPaths?: readonly string[]; delivery?: "queue" | "steer" }) =>
 			postMessage(piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery),
@@ -1473,6 +1487,24 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 	};
 
+	const setRoomPinned = async (roomId: string, pinned: boolean) => {
+		try {
+			await pinRoomMutation.mutateAsync({ roomId, pinned });
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		}
+	};
+
+	const reorderRoom = async (roomId: string, targetRoomId: string, position: "before" | "after") => {
+		try {
+			await reorderRoomMutation.mutateAsync({ roomId, targetRoomId, position });
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		}
+	};
+
 	const readAllRoom = async (roomId: string) => {
 		try {
 			await markRoomRead(roomId);
@@ -1608,21 +1640,17 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [selectSession, selectedPiboSessionId, selectedRoomArchived]);
 
 	const openSession = useCallback((piboSessionId: string) => void selectSession(piboSessionId), [selectSession]);
+	const openWorkflowSessionDialog = useCallback((workflowId?: string, workflowVersion?: string) => {
+		setWorkflowSessionDialog({ ...(workflowId && workflowVersion ? { selection: { workflowId, workflowVersion } } : {}) });
+	}, []);
+	const acceptCreatedWorkflowSession = useCallback(async (result: { session: { id: string } }, roomId?: string) => {
+		const data = await loadBootstrap(result.session.id, showArchivedRef.current, roomId, { force: true });
+		setSessionViewId("workflow");
+		navigateToRoute({ area: "sessions", roomId: data.selectedRoomId, piboSessionId: result.session.id }, false, "workflow");
+	}, [loadBootstrap, navigateToRoute]);
 	const selectSessionView = useCallback(
 		(nextViewId: ChatSessionViewId) => {
 			setSessionViewId(nextViewId);
-			if (area === "projects") {
-				navigateToRoute(
-					{
-						area: "projects",
-						...(routeProjectId ? { projectId: routeProjectId } : {}),
-						...(routePiboSessionId ? { piboSessionId: routePiboSessionId } : {}),
-					},
-					false,
-					nextViewId,
-				);
-				return;
-			}
 			if (area !== "sessions") return;
 			navigateToRoute(
 				{
@@ -1634,7 +1662,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				nextViewId,
 			);
 		},
-		[area, navigateToRoute, routePiboSessionId, routeProjectId, selectedPiboSessionId, selectedRoomId],
+		[area, navigateToRoute, selectedPiboSessionId, selectedRoomId],
 	);
 
 	const sessionGroups = useMemo(() => bootstrap ? splitSessionNodesByArchive(bootstrap.sessions, showArchived) : { active: [], archived: [] }, [bootstrap?.sessions, showArchived]);
@@ -1697,15 +1725,15 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const contextAgentProfiles = [...new Set([...bootstrap.agents.map((agent) => agent.name), ...bootstrap.customAgents.map((agent) => agent.profileName)])];
 	const identity = identityFromBootstrap(bootstrap);
 	const isTerminalFullscreen = terminalFullscreen
-		&& (area === "sessions" || area === "projects")
-		&& (area === "projects" || sessionViewId === "terminal");
+		&& area === "sessions"
+		&& sessionViewId === "terminal";
 	const isDesktopPreviewFullscreen = desktopTabsEnabled
 		&& desktopPreviewFullscreen
 		&& desktopActiveTool === "preview";
 	const isAppFullscreen = isTerminalFullscreen || isDesktopPreviewFullscreen;
 	const routeShellClassName = isTerminalFullscreen
 		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
-		: (area === "vscode" || area === "workflows" || area === "cron" || area === "loops" || area === "agents" || area === "projects")
+		: (area === "vscode" || area === "workflows" || area === "cron" || area === "loops" || area === "agents")
 			? "h-full overflow-hidden"
 			: `grid ${area === "sessions" && showRawEvents
 				? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
@@ -1715,10 +1743,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setMobileAreaMenuOpen(false);
 		if (item === "sessions") {
 			navigateToSelectedSession(selectedRoomId ?? bootstrap.selectedRoomId, selectedPiboSessionId ?? bootstrap.selectedPiboSessionId);
-			return;
-		}
-		if (item === "projects") {
-			navigateToRoute({ area: "projects" });
 			return;
 		}
 		navigateToRoute({ area: item });
@@ -1811,38 +1835,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				<RoutedWorkflowsPanel
 					route={panelRoute}
 					surface="desktop"
-					fallback={<MinimalWorkflowsArea draftId={panelRoute.draftId} onNavigateDraft={(draftId) => { if (active) navigateToRoute({ area: "workflows", draftId }); }} />}
-				/>
-			);
-		}
-		if (panelRoute.area === "projects") {
-			return (
-				<ProjectsArea
-					baseBootstrap={bootstrap}
-					routeProjectId={panelRoute.projectId}
-					routePiboSessionId={panelRoute.piboSessionId}
-					sessionViews={sessionViews}
-					showRawEvents={showRawEvents}
-					showThinking={showThinking}
-					expandThinking={expandThinking}
-					toolDisplayMode={toolDisplayMode}
-					commands={slashCommands}
-					skills={skills}
-					mobileSidebarOpen={false}
-					onCloseMobileSidebar={() => undefined}
-					terminalFullscreen={false}
-					onEnterTerminalFullscreen={() => undefined}
-					onExitTerminalFullscreen={() => undefined}
-					onNavigate={active ? navigateToSelectedProjectSession : () => undefined}
-					onViewContext={viewSessionContext}
-					onSelectSessionView={(nextViewId) => navigateToRoute({ ...panelRoute, sessionViewId: nextViewId }, false, nextViewId)}
-					onToggleRawEvents={() => { const next = !showRawEvents; setShowRawEvents(next); writeStoredShowRawEvents(next); }}
-					onToggleThinking={() => { const next = !showThinking; setShowThinking(next); writeStoredShowThinking(next); }}
-					onToggleExpandThinking={() => { const next = !expandThinking; setExpandThinking(next); writeStoredExpandThinking(next); }}
-					onToolDisplayModeChange={(mode) => { setToolDisplayMode(mode); writeStoredToolDisplayMode(mode); }}
-					onThinkingLevelChange={(level) => void postAction(panelRoute.piboSessionId ?? "", "thinking", { level })}
-					onError={setError}
-					surface="tab"
+					fallback={<MinimalWorkflowsArea room={bootstrap.room} draftId={panelRoute.draftId} onNavigateDraft={(draftId) => { if (active) navigateToRoute({ area: "workflows", draftId }); }} onCreateWorkflowSession={openWorkflowSessionDialog} />}
 				/>
 			);
 		}
@@ -1870,6 +1863,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	return (
 		<>
+			<CreateWorkflowSessionDialog open={Boolean(workflowSessionDialog)} bootstrap={bootstrap} initialSelection={workflowSessionDialog?.selection} onClose={() => setWorkflowSessionDialog(null)} onCreated={acceptCreatedWorkflowSession} />
 			{gatewayMode === "fallback" && !isAppFullscreen ? <FallbackGatewayBanner /> : null}
 			<div
 				data-pibo-debug="chat-app"
@@ -1932,6 +1926,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 							roomSessionsLoading={loadingSelectedRoom}
 							onUpdateRoom={updateRoom}
 							onArchiveRoom={setRoomArchived}
+							onPinnedRoomChange={setRoomPinned}
+							onReorderRoom={reorderRoom}
 							onReadAllRoom={readAllRoom}
 							onDeleteRoom={requestRoomDelete}
 							newSessionProfile={newSessionProfile}
@@ -1940,6 +1936,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							selectedRoomArchived={selectedRoomArchived}
 							creatingSession={creatingSession}
 							onCreateSession={() => createSession()}
+							onCreateWorkflowSession={() => openWorkflowSessionDialog()}
 							showArchived={showArchived}
 							onToggleArchivedSessions={toggleArchivedSessions}
 							loadingArchivedSessions={loadingArchivedSessions}
@@ -1980,10 +1977,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 							selectedSessionStatus={signalLegacyStatus(selectedSessionSignal ?? selectedRootSignal) ?? selectedSessionNode?.status}
 							selectedSessionSignal={selectedSessionSignal}
 							signals={sessionSignals ?? undefined}
-							sessionViewId="terminal"
+							sessionViewId={sessionViewId}
 							sessionViews={sessionViews}
-							currentSessionView={terminalSessionView}
-							desktopTerminalOnly
+							currentSessionView={currentSessionView}
 							containerResponsive
 							creatingSession={creatingSession}
 							terminalFullscreen={isTerminalFullscreen}
@@ -2080,52 +2076,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 						surface="mobile"
 						fallback={(
 							<MinimalWorkflowsArea
+								room={bootstrap.room}
 								draftId={routeWorkflowDraftId}
 								onNavigateDraft={(nextDraftId) => navigateToRoute({ area: "workflows", draftId: nextDraftId })}
+								onCreateWorkflowSession={openWorkflowSessionDialog}
 							/>
 						)}
-					/>
-				) : area === "projects" ? (
-					<ProjectsArea
-						baseBootstrap={bootstrap}
-						routeProjectId={routeProjectId}
-						routePiboSessionId={routePiboSessionId}
-						sessionViews={sessionViews}
-						showRawEvents={showRawEvents}
-						showThinking={showThinking}
-						expandThinking={expandThinking}
-						toolDisplayMode={toolDisplayMode}
-						commands={slashCommands}
-						skills={skills}
-						mobileSidebarOpen={mobileSidebarOpen}
-						onCloseMobileSidebar={closeMobileSidebar}
-						terminalFullscreen={isTerminalFullscreen}
-						onEnterTerminalFullscreen={enterTerminalFullscreen}
-						onExitTerminalFullscreen={() => setTerminalFullscreen(false)}
-						onNavigate={navigateToSelectedProjectSession}
-						onViewContext={viewSessionContext}
-						onSelectSessionView={selectSessionView}
-						onToggleRawEvents={() => {
-							const next = !showRawEvents;
-							setShowRawEvents(next);
-							writeStoredShowRawEvents(next);
-						}}
-						onToggleThinking={() => {
-							const next = !showThinking;
-							setShowThinking(next);
-							writeStoredShowThinking(next);
-						}}
-						onToggleExpandThinking={() => {
-							const next = !expandThinking;
-							setExpandThinking(next);
-							writeStoredExpandThinking(next);
-						}}
-						onToolDisplayModeChange={(mode) => {
-							setToolDisplayMode(mode);
-							writeStoredToolDisplayMode(mode);
-						}}
-						onThinkingLevelChange={(level) => void postAction(routePiboSessionId ?? "", "thinking", { level })}
-						onError={setError}
 					/>
 				) : (
 				<>
@@ -2194,6 +2150,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 							roomSessionsLoading={loadingSelectedRoom}
 							onUpdateRoom={updateRoom}
 							onArchiveRoom={setRoomArchived}
+							onPinnedRoomChange={setRoomPinned}
+							onReorderRoom={reorderRoom}
 							onReadAllRoom={readAllRoom}
 							onDeleteRoom={requestRoomDelete}
 							newSessionProfile={newSessionProfile}
@@ -2202,6 +2160,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							selectedRoomArchived={selectedRoomArchived}
 							creatingSession={creatingSession}
 							onCreateSession={() => createSession()}
+							onCreateWorkflowSession={() => openWorkflowSessionDialog()}
 							showArchived={showArchived}
 							onToggleArchivedSessions={toggleArchivedSessions}
 							loadingArchivedSessions={loadingArchivedSessions}

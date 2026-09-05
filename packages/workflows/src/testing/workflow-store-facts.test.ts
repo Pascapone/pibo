@@ -34,7 +34,6 @@ function createRun(): WorkflowRun {
     workflowDefinitionHash: "hash_facts",
     definitionSnapshotId: "wds_facts",
     piboSessionId: "ps_facts",
-    projectId: "project_facts",
     environment: { kind: "docker", id: "pibo-dev-Workflows" },
     status: "running",
     current: { nodeId: "source", status: "running" },

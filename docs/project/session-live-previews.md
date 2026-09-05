@@ -1,10 +1,10 @@
 ---
-type: "Reference"
-title: "Session Live Previews"
-description: "Explains current session live-preview setup, lifecycle, limits, and access boundaries."
+type: "Runbook"
+title: "Session Live Preview operations"
+description: "Provides the supported production setup, validation, lifecycle, and rollback procedure for session live previews."
 tags: ["operations", "previews", "sessions"]
-status: "draft"
-authority: "informative"
+status: "stable"
+authority: "directive"
 migration_lineage:
   source_path: "docs/project/session-live-previews.md"
   source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
@@ -14,26 +14,135 @@ migration_lineage:
   source_sha256: "ac1eed234dc204a640d9295264aa5616f539bcea4216b0ba49fcf06e0a368ad5"
   source_body_sha256: "ac1eed234dc204a640d9295264aa5616f539bcea4216b0ba49fcf06e0a368ad5"
 generated:
-  by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-08-31T22:47:46Z"
+  by: "openai/codex"
+  at: "2026-09-05T11:20:00Z"
 ---
-# Session Live Previews
+# Purpose
 
-Session Live Previews expose an explicitly selected loopback development port through an isolated, authenticated browser origin and attach it to the Pibo Session doing the work.
+Session Live Previews expose an explicitly selected loopback development port through an isolated, authenticated browser origin. Each Preview belongs to a Pibo Session.
 
-## Dormant operator setup
+Production activation requires a dedicated base hostname, wildcard DNS, trusted TLS, reverse-proxy routing to the Pibo Web Gateway, and `preview.baseURL`. The feature stays dormant until the operator completes these steps.
 
-The feature remains inactive until an operator configures a dedicated preview base hostname:
+The current behavior and security contract are specified in [/specs/compute/session-live-previews.md](/specs/compute/session-live-previews.md).
 
-```bash
-pibo config set preview.baseURL https://preview.example.com
+# Before changing the host
+
+Choose a dedicated base hostname such as `preview.example.com`. Pibo turns Preview ids into one-label subdomains such as `pv-abcd.preview.example.com`.
+
+Ask the DNS operator to create and confirm this record before changing TLS or proxy configuration:
+
+```text
+Type: A or AAAA
+Name: *.preview.example.com
+Value: <public IP of the Pibo Web Gateway host>
 ```
 
-For a preview id such as `pv-abcd`, Pibo serves `https://pv-abcd.preview.example.com/`. A public deployment therefore requires wildcard DNS and TLS for `*.preview.example.com`, routing to the same Pibo Web Gateway as Chat Web, including HTTP upgrade forwarding. Do not route preview hosts directly to development ports: Pibo must remain in the path for authentication, expiration, exact-target validation, concurrency admission, and credential stripping.
+Use an `A` record for IPv4 and an `AAAA` record for IPv6. Create both when the host accepts both address families. Do not put `*` in `preview.baseURL`.
 
-This repository change does not configure wildcard DNS/TLS or activate preview infrastructure on production or controller gateways.
+Generate host-specific instructions:
 
-## Agent and operator workflow
+```bash
+pibo preview setup \
+  --base-url https://preview.example.com \
+  --public-ip 203.0.113.10
+```
+
+Omit `--public-ip` when the address is not yet known. The command prints the exact wildcard record, supported Caddy fragments, configuration command, safe gateway restart, and verification command. It does not mutate DNS, Caddy, or Pibo configuration.
+
+# Recommended Caddy setup
+
+Caddy can issue a normal certificate for each active Preview hostname through HTTP-01. Pibo provides an authorization endpoint so unknown wildcard names cannot trigger unbounded certificate issuance.
+
+Merge this stanza into the existing Caddy global options block:
+
+```caddyfile
+{
+	on_demand_tls {
+		ask http://127.0.0.1:4788/api/previews/tls-authorize
+	}
+}
+```
+
+A Caddyfile may contain only one global options block. Add `on_demand_tls` to the existing block instead of creating a second block.
+
+Add the Preview site:
+
+```caddyfile
+*.preview.example.com {
+	tls {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:4788
+}
+```
+
+Caddy forwards HTTP and WebSocket traffic through `reverse_proxy`. Do not proxy Preview hosts directly to development ports. Pibo must remain in the path for authentication, expiration, target validation, concurrency admission, and credential stripping.
+
+The authorization endpoint returns success only when the requested hostname maps to an active Preview definition. It returns no Preview metadata and denies malformed, unknown, closed, and expired Preview ids.
+
+# nginx alternative
+
+nginx does not provide Caddy-style on-demand certificate issuance. Supply a trusted wildcard certificate for `*.preview.example.com`, normally through DNS-01, or use another certificate manager that can provision dynamic Preview names safely.
+
+```nginx
+map $http_upgrade $preview_connection {
+    default upgrade;
+    '' close;
+}
+
+server {
+    listen 443 ssl;
+    server_name *.preview.example.com;
+
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:4788;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $preview_connection;
+    }
+}
+```
+
+Do not use a certificate that omits the wildcard Preview hostname. A certificate covering only the base hostname does not cover Preview subdomains.
+
+# Activation sequence
+
+1. Confirm wildcard DNS resolves to the public Pibo host.
+2. Set the base URL:
+
+   ```bash
+   pibo config set preview.baseURL https://preview.example.com
+   ```
+
+3. Install or merge the proxy configuration.
+4. Validate and reload the proxy:
+
+   ```bash
+   caddy validate --config /etc/caddy/Caddyfile
+   systemctl reload caddy
+   ```
+
+5. Inspect gateway restart safety:
+
+   ```bash
+   pibo gateway web status
+   ```
+
+6. Restart through the Pibo CLI:
+
+   ```bash
+   pibo gateway web restart
+   ```
+
+The gateway reads `preview.baseURL` when it starts. Do not use another restart mechanism. If the CLI reports active production work, ask the operator before interrupting those sessions.
+
+# Create and verify a Preview
 
 Let Preview own development-server processes instead of starting them as yielded runs:
 
@@ -45,15 +154,31 @@ pibo preview expose 5173 \
   --command 'npm run dev'
 ```
 
-The command is stored locally, launched under an exact generation-bound Preview owner, and separated from agent-turn delivery state. The CLI waits for the loopback listener and then exits. Pibo provider and authentication credentials are not deliberately forwarded to the command.
-
 An already-running external loopback server remains supported:
 
 ```bash
 pibo preview expose 5173 --session ps_... --name "External website"
 ```
 
-Discover and manage previews progressively:
+Run local diagnostics first, then verify the public route with the returned Preview id:
+
+```bash
+pibo preview doctor
+pibo preview doctor pv-... --public
+```
+
+The public check verifies:
+
+- the exact Preview hostname resolves through DNS;
+- the HTTPS certificate is trusted for that hostname;
+- the request reaches the Preview gateway rather than redirecting to Chat Web or another site;
+- anonymous access receives HTTP 401, which proves the Preview authentication boundary is active.
+
+A health check against the main Chat hostname does not prove Preview routing works.
+
+# Lifecycle and limits
+
+Discover and manage Previews progressively:
 
 ```bash
 pibo preview
@@ -65,29 +190,38 @@ pibo preview doctor pv-...
 pibo preview remove pv-...
 ```
 
-`close` remains an alias for `remove`. Stop preserves a managed Preview definition and saved command so it can be restarted; remove stops it, revokes browser access, and removes it from active lists.
+`close` remains an alias for `remove`. Stop preserves a managed Preview definition and saved command. Remove stops the process, revokes browser access, and removes it from active lists.
 
-Chat Web Session and Project session surfaces show a Preview tab while an authoritative session-specific response contains a Preview. Managed previews can be started, stopped, and removed there. Loading, error, unconfigured, empty, starting, stopping, online, offline, stopped, and error states never reuse another session's iframe or lifecycle state. Browser APIs omit commands, workspaces, ports, process identities, owner tokens, and internal diagnostics.
+Defaults are three concurrently starting or running managed servers and a fixed ten-minute runtime lease. Change both under **Settings > Previews**. HTTP, SSE, WebSocket, and HMR traffic do not extend the lease.
 
-## Managed server limits
+# Troubleshooting
 
-Managed starts use an instance-wide pool. Defaults are:
+## `preview.baseURL is required`
 
-- maximum **3** simultaneously starting or running Preview servers;
-- automatic stop **10 minutes** after each successful start attempt begins.
+Run `pibo preview setup --base-url https://preview.example.com`, complete the printed DNS and proxy steps, set the configuration, and restart the gateway.
 
-Change both under **Settings > Previews**. Automatic stop is a fixed runtime lease, not an inactivity timeout: HTTP, SSE, WebSocket, and HMR traffic do not extend it. Starting a stopped Preview grants a fresh lease. Gateway reconciliation handles every persisted lifecycle state and retries exact-owner cleanup when a stop fails.
+## DNS succeeds but HTTPS fails
 
-## Access and security model
+Check the wildcard proxy block and certificate issuance logs. For Caddy, confirm the global `ask` URL points to the active Pibo Web Gateway and that the Preview definition is still active.
 
-Any account accepted by the Pibo instance may open any active preview. Preview visibility is not partitioned by login identity.
+## Preview redirects to the main Chat hostname
 
-The canonical Pibo auth cookie is never forwarded to the development application. Chat Web creates a short-lived one-time ticket, the unique preview hostname exchanges it for a hashed preview-only browser session, and that session grants access only to the fixed Preview generation until the preview or browser session expires.
+The wildcard hostname is reaching a proxy or gateway process that did not load the Preview configuration. Confirm proxy routing and restart the Pibo gateway safely.
 
-- Targets are loopback-only, exact-listener pinned, and created only through the local CLI.
-- Privileged and known sensitive service ports are rejected.
-- Managed launch reserves capacity, generation, and exact owner before a process can start.
-- Linux owner tokens plus PID/start ticks prevent PID reuse, process-group substitution, and listener replacement from authorizing cleanup or proxying.
-- Preview JavaScript runs in a sandboxed iframe on a unique origin with no referrer.
-- Pibo, Better Auth, machine-session, preview-auth, authorization, and forwarding credentials are stripped before upstream proxying.
-- Redirects, cookies, framing policy, HTTP, streaming responses, SSE, and WebSockets are sanitized and bounded by per-preview and global connection admission.
+## `doctor --public` receives a status other than 401
+
+A redirect usually means the wildcard host reached the wrong virtual host. HTTP 404 or 503 usually means the wrong gateway process or stale Preview state. A TLS error means certificate provisioning or hostname coverage failed.
+
+# Rollback
+
+1. Stop and remove active Previews.
+2. Remove the wildcard Preview site from the reverse proxy and reload it.
+3. Remove the on-demand TLS authorization stanza when no other site uses it.
+4. Delete the Preview configuration:
+
+   ```bash
+   pibo config del preview.baseURL
+   ```
+
+5. Restart the gateway through `pibo gateway web restart` after checking restart safety.
+6. Remove the wildcard DNS record after public traffic has drained.

@@ -10,10 +10,10 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		import assert from "node:assert/strict";
 		const model = await import("./src/apps/chat-ui/src/desktop-tabs-model.ts");
 		let state = model.emptyDesktopTabState();
-		state = model.openDesktopTab(state, { kind: "route", route: { area: "projects" } }, { id: "projects", now: 1 });
+		state = model.openDesktopTab(state, { kind: "route", route: { area: "workflows" } }, { id: "workflows", now: 1 });
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "vscode" } }, { id: "vscode", now: 2 });
 		state = model.openDesktopTab(state, { kind: "session-tool", tool: "preview" }, { id: "preview", now: 3 });
-		assert.deepEqual(state.tabs.map((tab) => tab.id), ["projects", "vscode", "preview"]);
+		assert.deepEqual(state.tabs.map((tab) => tab.id), ["workflows", "vscode", "preview"]);
 		assert.equal(state.activeTabId, "preview");
 
 		let newTabs = model.openDesktopNewTab(model.emptyDesktopTabState(), { id: "new-one", now: 1 });
@@ -34,9 +34,9 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.equal(newTabs.activeTabId, "new-two");
 		assert.equal(model.activeDesktopTab(newTabs).target.route.panel, "providers");
 
-		state = model.openDesktopTab(state, { kind: "route", route: { area: "projects", projectId: "p-1" } }, { id: "project-1", now: 4 });
-		state = model.openDesktopTab(state, { kind: "route", route: { area: "projects", projectId: "p-2" } }, { id: "project-2", now: 5 });
-		assert.equal(state.tabs.filter((tab) => tab.target.kind === "route" && tab.target.route.area === "projects").length, 3);
+		state = model.openDesktopTab(state, { kind: "route", route: { area: "workflows", draftId: "draft-1" } }, { id: "workflow-1", now: 4 });
+		state = model.openDesktopTab(state, { kind: "route", route: { area: "workflows", draftId: "draft-2" } }, { id: "workflow-2", now: 5 });
+		assert.equal(state.tabs.filter((tab) => tab.target.kind === "route" && tab.target.route.area === "workflows").length, 3);
 
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "settings", panel: "general" } }, { id: "settings", now: 6 });
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "settings", panel: "providers" } }, { id: "duplicate-settings", now: 7 });
@@ -50,7 +50,7 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.equal(state.tabs.at(2).id, "preview");
 		state = model.reorderDesktopTab(state, "preview", 0);
 		assert.equal(state.tabs[0].id, "preview");
-		const withoutInactive = model.closeDesktopTab(state, "projects");
+		const withoutInactive = model.closeDesktopTab(state, "workflows");
 		assert.equal(withoutInactive.activeTabId, state.activeTabId, "closing an inactive tab keeps focus");
 		let one = model.openDesktopTab(model.emptyDesktopTabState(), { kind: "session-tool", tool: "preview" }, { id: "only", now: 1 });
 		one = model.closeDesktopTab(one, "only");
@@ -91,7 +91,7 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.equal(model.reconcileDesktopRoute(beforeSessions, { area: "sessions", piboSessionId: "ps_1" }), beforeSessions);
 		const routed = model.reconcileDesktopRoute(beforeSessions, { area: "agents" }, { id: "agents", now: 9 });
 		assert.equal(model.activeDesktopTab(routed).target.route.area, "agents");
-		for (const area of ["projects", "vscode", "workflows", "cron", "loops", "agents", "context", "settings"]) {
+		for (const area of ["vscode", "workflows", "cron", "loops", "agents", "context", "settings"]) {
 			const next = model.reconcileDesktopRoute(model.emptyDesktopTabState(), { area }, { id: area, now: 10 });
 			assert.equal(model.activeDesktopTab(next).target.route.area, area);
 		}
@@ -133,32 +133,32 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.equal(model.activeDesktopTab(reloadedTool).target.tool, "preview");
 		assert.equal(reloadedTool.tabs.some((tab) => tab.target.kind === "route" && tab.target.route.area === "agents"), false);
 
-		const duplicateProject = {
-			id: "project-one",
-			target: { kind: "route", route: { area: "projects", projectId: "p-1" } },
-			title: "Project one",
+		const duplicateRoute = {
+			id: "workflow-one",
+			target: { kind: "route", route: { area: "workflows", draftId: "draft-1" } },
+			title: "Workflow one",
 			createdAt: 1,
 			lastActivatedAt: 1,
 		};
 		const recovered = model.parseDesktopTabState(JSON.stringify({
 			version: 1,
 			tabs: [
-				duplicateProject,
-				{ ...duplicateProject, target: { kind: "route", route: { area: "settings" } } },
-				{ ...duplicateProject, id: "project-alias", lastActivatedAt: 2 },
-				{ ...duplicateProject, id: "vscode", target: { kind: "route", route: { area: "vscode" } } },
+				duplicateRoute,
+				{ ...duplicateRoute, target: { kind: "route", route: { area: "settings" } } },
+				{ ...duplicateRoute, id: "workflow-alias", lastActivatedAt: 2 },
+				{ ...duplicateRoute, id: "vscode", target: { kind: "route", route: { area: "vscode" } } },
 			],
-			activeTabId: "project-alias",
+			activeTabId: "workflow-alias",
 			width: 520,
 			collapsed: false,
 		}));
-		assert.deepEqual(recovered.tabs.map((tab) => tab.id), ["project-one", "vscode"]);
-		assert.equal(recovered.activeTabId, "project-one", "duplicate target active id aliases to the retained tab");
+		assert.deepEqual(recovered.tabs.map((tab) => tab.id), ["workflow-one", "vscode"]);
+		assert.equal(recovered.activeTabId, "workflow-one", "duplicate target active id aliases to the retained tab");
 
-		assert.equal(model.desktopTabKeepsMounted({ ...duplicateProject, id: "preview", target: { kind: "session-tool", tool: "preview" } }), true);
-		assert.equal(model.desktopTabKeepsMounted({ ...duplicateProject, id: "raw", target: { kind: "session-tool", tool: "raw-events" } }), false);
-		assert.equal(model.desktopTabKeepsMounted({ ...duplicateProject, id: "project" }), false);
-		assert.equal(model.desktopTabKeepsMounted({ ...duplicateProject, id: "agent", target: { kind: "route", route: { area: "agents" } } }), false);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "preview", target: { kind: "session-tool", tool: "preview" } }), true);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "raw", target: { kind: "session-tool", tool: "raw-events" } }), false);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "workflow" }), false);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "agent", target: { kind: "route", route: { area: "agents" } } }), false);
 
 		const saveOrder = [];
 		assert.deepEqual(await model.guardDesktopAgentTransition(true, async () => { saveOrder.push("saved"); }), { allowed: true });
