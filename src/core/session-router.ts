@@ -389,7 +389,6 @@ function derivedSessionMetadata(value: PiboJsonObject | undefined): PiboJsonObje
 	for (const key of [
 		DERIVED_SESSION_RECONCILIATION_METADATA_KEY,
 		"workflowSessionKind",
-		"projectSessionKind",
 		"subagentName",
 		"subagentToolName",
 		"agentStatus",
@@ -1960,9 +1959,12 @@ export class PiboSessionRouter {
 			} catch (error) {
 				transitionError = error;
 			}
-			// Always discard the source live handle after derivation. Bound native
-			// branches move that handle to the derived session; first-message Codex
-			// branches intentionally leave it on the source and persist unbound.
+			if (result.sourceSessionUnchanged) {
+				if (transitionError) throw transitionError;
+				return;
+			}
+			// Identity-moving forks and clones transfer the live native handle to the
+			// derived session, so the source must be reopened from its persisted binding.
 			try {
 				await this.resetCachedSession(event.piboSessionId);
 			} catch (resetError) {

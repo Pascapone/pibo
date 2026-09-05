@@ -92,8 +92,6 @@ traceability:
           name: "Ink session input reducer edits at grapheme cursor boundaries"
         - path: test/cli-ui-input-cursor.test.mjs
           name: "cursor movement treats a joined emoji as one grapheme"
-        - path: test/cli-ui-room-switch.test.mjs
-          name: "cross-room selection clears the stale session before Project Room can receive input"
       public:
         - "InkSessionApp"
         - "runCliSessionsUi"

@@ -1,4 +1,4 @@
-import { THINKING_LEVELS, type BootstrapData, type PiboLoopJob, type PiboProjectSession, type PiboSessionSignalSnapshot, type PiboSessionTraceView, type PiboSignalSnapshot, type PiboTraceNode, type PiboWebSessionNode, type PiboWebSessionStatus, type RuntimeSessionBinding, type ThinkingLevel, type WorkflowLifecycleEventRecord } from "./types";
+import { THINKING_LEVELS, type BootstrapData, type PiboLoopJob, type PiboSessionSignalSnapshot, type PiboSessionTraceView, type PiboSignalSnapshot, type PiboTraceNode, type PiboWebSessionNode, type PiboWebSessionStatus, type RuntimeSessionBinding, type ThinkingLevel } from "./types";
 import { findSessionNode, findSessionPath } from "./app-session-model";
 import type { ChatSessionViewProps } from "./session-views/types";
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "./tracing/TraceTimeline";
@@ -13,6 +13,14 @@ export function sessionSupportsFork(
 	profileName: string,
 ): boolean {
 	return sessionRuntime(bootstrap, piboSessionId, profileName)?.capabilities.lifecycle.fork === true;
+}
+
+export function sessionSupportsForkWhileRunning(
+	bootstrap: BootstrapData,
+	piboSessionId: string | null,
+	profileName: string,
+): boolean {
+	return sessionRuntime(bootstrap, piboSessionId, profileName)?.capabilities.lifecycle.forkWhileRunning === true;
 }
 
 export function traceUserMessageRevision(traceView: PiboSessionTraceView | null): string {
@@ -39,8 +47,14 @@ export function withSessionForkCandidates(
 	const assignments = new Map<string, string>();
 	const positionalIdentityIsConsistent = userNodes.length === usableCandidates.length
 		&& userNodes.every((node, index) => !currentEntryId(node) || currentEntryId(node) === usableCandidates[index]!.entryId);
-	if (positionalIdentityIsConsistent) {
-		for (let index = 0; index < userNodes.length; index += 1) {
+	const completedPrefixIsConsistent = usableCandidates.length < userNodes.length
+		&& usableCandidates.every((candidate, index) => {
+			const node = userNodes[index]!;
+			const entryId = currentEntryId(node);
+			return entryId ? entryId === candidate.entryId : traceUserMessageText(node) === candidate.text;
+		});
+	if (positionalIdentityIsConsistent || completedPrefixIsConsistent) {
+		for (let index = 0; index < usableCandidates.length; index += 1) {
 			assignments.set(userNodes[index]!.id, usableCandidates[index]!.entryId);
 		}
 	} else {
@@ -212,8 +226,8 @@ export function createSessionTraceViewProps(input: {
 	selectedSessionSignal?: PiboSessionSignalSnapshot;
 	signals?: PiboSignalSnapshot;
 	sessionGoal?: PiboLoopJob | null;
-	workflowProjectSession?: PiboProjectSession;
-	workflowLifecycleEvents?: readonly WorkflowLifecycleEventRecord[];
+	selectedPiboSessionId: string | null;
+	workflowSessionLinked: boolean;
 	sessionNodes: readonly PiboWebSessionNode[];
 	sessionLinks: SessionTraceViewLinks;
 	agentProfiles: ChatSessionViewProps["agentProfiles"];
@@ -245,8 +259,8 @@ export function createSessionTraceViewProps(input: {
 		selectedSessionSignal: input.selectedSessionSignal,
 		signals: input.signals,
 		sessionGoal: input.sessionGoal,
-		workflowProjectSession: input.workflowProjectSession,
-		workflowLifecycleEvents: input.workflowLifecycleEvents,
+		selectedPiboSessionId: input.selectedPiboSessionId,
+		workflowSessionLinked: input.workflowSessionLinked,
 		sessionNodes: input.sessionNodes,
 		sessionBreadcrumbs: input.sessionLinks.sessionBreadcrumbs,
 		originSession: input.sessionLinks.originSession,

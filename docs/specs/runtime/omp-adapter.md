@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-04T14:26:38Z"
+  at: "2026-09-05T12:20:39Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "31e486b257207dc52b7e63388d9937a62f62f2c6"
+  commit: "9ce53817fec5919c00e130dd794c391c497882a1"
   requirements:
     - id: "RUN-OMP-001"
       status: "implemented"
@@ -56,6 +56,8 @@ traceability:
           symbol: "OmpRpcClient"
         - path: "src/agent-runtimes/omp/turn.ts"
           symbol: "OmpRpcTurnController"
+        - path: "src/agent-runtimes/omp/adapter.ts"
+          symbol: "OMP_RUNTIME_CAPABILITIES"
       tests:
         - path: "test/omp-runtime.test.mjs"
           name: "OMP RPC client performs ready handshake then protocol negotiation"
@@ -63,6 +65,8 @@ traceability:
           name: "OMP turn controller resolves a stalled stream via the deadline"
         - path: "test/omp-runtime.test.mjs"
           name: "OMP RPC client redacts credential material from diagnostics"
+        - path: "test/omp-resources.test.mjs"
+          name: "OMP adapter driver descriptor declares truthful capabilities"
       failures:
         - "Missing operator CLI/home configuration diagnoses unavailable and refuses spawn; transport and history inconsistencies fail explicitly; diagnostics redact credentials."
         - "The process uses private instance/session directories, an environment allowlist, and explicit provider-key forwarding; unbound reset removes stale native transcripts/handoffs."
@@ -95,7 +99,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Lifecycle: The client waits for ready then negotiates protocol; prompts stream to agent_end or a bounded deadline; abort interrupts; binding resumes persisted native identity after restart.
+- Lifecycle: The client waits for ready then negotiates protocol; prompts stream to agent_end or a bounded deadline; abort interrupts; binding resumes persisted native identity after restart. OMP does not declare running-safe fork support because its fork RPC changes the process-owned current session, so candidate reads and forks remain idle-only.
 - State: Exact names are plugin pibo.orp, profile/adapter orp, configured instance omp-native, validated CLI 18.1.10, protocol omp-rpc v2 with v1/v2 accepted, model provider omp.
 - Failure: Missing operator CLI/home configuration diagnoses unavailable and refuses spawn; transport and history inconsistencies fail explicitly; diagnostics redact credentials.
 - Security: The process uses private instance/session directories, an environment allowlist, and explicit provider-key forwarding; unbound reset removes stale native transcripts/handoffs.
@@ -113,7 +117,7 @@ OMP startup SHALL require an absolute operator-provided CLI or home configuratio
 
 ## Requirement: RUN-OMP-003
 
-The OMP client SHALL perform ready and protocol negotiation, correlate RPC by id, stream turns to terminal state or deadline, support abort, and redact diagnostics.
+The OMP client SHALL perform ready and protocol negotiation, correlate RPC by id, stream turns to terminal state or deadline, support abort, and redact diagnostics. OMP SHALL keep `lifecycle.forkWhileRunning` disabled while its fork RPC mutates the process-owned current session.
 
 ## Requirement: RUN-OMP-004
 
@@ -154,7 +158,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `31e486b257207dc52b7e63388d9937a62f62f2c6`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `9ce53817fec5919c00e130dd794c391c497882a1`. Requirement confidence measures trace quality, not whether a command ran.
 
 A real `@oh-my-pi/pi-coding-agent@18.1.10` installation under Bun 1.4.1 passed the protocol-v2 handshake plus `get_state`, `set_host_tools`, and `get_available_commands`. The additive `advisor_cost_changed` event remains safely tolerated by the client's unknown-event handling.
 

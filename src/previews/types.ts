@@ -1,13 +1,13 @@
 export type PreviewExposureState = "active" | "expired" | "closed";
 export type PreviewHealthState = "online" | "offline" | "starting" | "stopping" | "stopped" | "error" | "expired" | "closed";
 export type PreviewManagementMode = "external" | "managed";
+export type PreviewProxyMode = "standard" | "pibo-compute-dev-auth";
 export type ManagedPreviewServerState = "stopped" | "starting" | "running" | "stopping" | "error";
 export type PreviewManagerKind = "systemd" | "process";
 
 export type PreviewExposure = {
 	id: string;
 	piboSessionId: string;
-	projectId?: string;
 	label: string;
 	targetHost: "127.0.0.1" | "::1";
 	targetPort: number;
@@ -15,6 +15,7 @@ export type PreviewExposure = {
 	targetProcessStartTicks?: string;
 	workspace: string;
 	managementMode: PreviewManagementMode;
+	proxyMode: PreviewProxyMode;
 	startCommand?: string;
 	serverState?: ManagedPreviewServerState;
 	serverGeneration?: string;
@@ -34,7 +35,6 @@ export type PreviewExposure = {
 export type CreatePreviewExposureInput = {
 	id: string;
 	piboSessionId: string;
-	projectId?: string;
 	label: string;
 	targetHost: PreviewExposure["targetHost"];
 	targetPort: number;
@@ -42,6 +42,7 @@ export type CreatePreviewExposureInput = {
 	targetProcessStartTicks?: string;
 	workspace: string;
 	managementMode?: PreviewManagementMode;
+	proxyMode?: PreviewProxyMode;
 	startCommand?: string;
 	serverState?: ManagedPreviewServerState;
 	createdAt: string;
@@ -73,6 +74,7 @@ export type PublicPreviewExposure = Omit<PreviewExposure,
 	| "targetHost"
 	| "targetPort"
 	| "managementMode"
+	| "proxyMode"
 	| "targetProcessId"
 	| "targetProcessStartTicks"
 	| "serverError"

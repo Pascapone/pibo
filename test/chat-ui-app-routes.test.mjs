@@ -16,7 +16,7 @@ async function runAppRoutesScenario() {
 		);
 		assert.deepEqual(
 			chatRouteFromLocation("/projects/project-a/sessions/ps_2", { view: "terminal" }),
-			{ area: "projects", projectId: "project-a", piboSessionId: "ps_2", sessionViewId: "terminal" },
+			{ area: "sessions", sessionViewId: "terminal" },
 		);
 		assert.deepEqual(
 			chatRouteFromLocation("/context", { piboSessionId: " ps_3 " }),
@@ -58,15 +58,6 @@ async function runAppRoutesScenario() {
 				params: { roomId: "room-1", piboSessionId: "ps_1" },
 				search: { view: "workflow" },
 				replace: false,
-			},
-		);
-		assert.deepEqual(
-			chatNavigationRequest({ area: "projects", projectId: "project-a" }, true, "terminal"),
-			{
-				to: "/projects/$projectId",
-				params: { projectId: "project-a" },
-				search: { view: "terminal" },
-				replace: true,
 			},
 		);
 		assert.deepEqual(

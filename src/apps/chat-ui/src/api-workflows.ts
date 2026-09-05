@@ -1,7 +1,9 @@
 import { requestJson } from "./api-http";
-import type { CreateSessionData, CustomAgent, ModelProfile, PiboProjectSession } from "./types";
+import type { CustomAgent, ModelProfile, PiboSession, PiboWorkflowEdgeTransfer, PiboWorkflowHumanActionRecord, PiboWorkflowNodeAttempt, PiboWorkflowRun, PiboWorkflowSession, PiboWorkflowSessionConfiguration, PiboWorkflowSessionSnapshot, PiboWorkflowWaitToken, WorkflowLifecycleEventRecord } from "./types";
 
-export type CreateProjectWorkflowSessionInput = {
+export type CreateWorkflowSessionInput = {
+	roomId?: string;
+	workspace?: string;
 	profile?: string;
 	workflowId: string;
 	workflowVersion: string;
@@ -13,12 +15,36 @@ export type CreateProjectWorkflowSessionInput = {
 	fastMode?: boolean;
 };
 
-export async function postProjectWorkflowSession(projectId: string, input: CreateProjectWorkflowSessionInput): Promise<CreateSessionData> {
-	return requestJson<CreateSessionData>(`/api/chat/projects/${encodeURIComponent(projectId)}/workflow-sessions`, {
+export type CreateWorkflowSessionResponse = WorkflowValidationResponse & {
+	session: PiboSession;
+	workflowSession: PiboWorkflowSession;
+	workflow: unknown;
+	configuration: PiboWorkflowSessionConfiguration;
+	snapshot: PiboWorkflowSessionSnapshot;
+};
+
+export async function postWorkflowSession(input: CreateWorkflowSessionInput): Promise<CreateWorkflowSessionResponse> {
+	return requestJson<CreateWorkflowSessionResponse>("/api/chat/workflow-sessions", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(input),
 	});
+}
+
+export type SessionWorkflowInspectionResponse = {
+	workflowSession: PiboWorkflowSession;
+	snapshot?: PiboWorkflowSessionSnapshot;
+	definitionSnapshot?: { id: string; workflowId: string; workflowVersion: string; hash: string; definition: Record<string, unknown>; createdAt: string };
+	run?: PiboWorkflowRun;
+	waitTokens: PiboWorkflowWaitToken[];
+	humanActions: PiboWorkflowHumanActionRecord[];
+	nodeAttempts: PiboWorkflowNodeAttempt[];
+	edgeTransfers: PiboWorkflowEdgeTransfer[];
+	lifecycleEvents: WorkflowLifecycleEventRecord[];
+};
+
+export async function getSessionWorkflow(piboSessionId: string): Promise<SessionWorkflowInspectionResponse> {
+	return requestJson<SessionWorkflowInspectionResponse>(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/workflow`, { cache: "no-store" });
 }
 
 export type WorkflowProfilePickerOption = {
@@ -189,7 +215,7 @@ export type WorkflowVersionHistoryResponse = {
 export type WorkflowCatalogAction =
 	| "view"
 	| "duplicate"
-	| "create_project_session"
+	| "create_workflow_session"
 	| "edit_draft"
 	| "validate"
 	| "publish"
@@ -207,7 +233,7 @@ export type WorkflowCatalogEditability = {
 	canPublish: boolean;
 	canArchive: boolean;
 	canDelete: boolean;
-	canCreateProjectSession: boolean;
+	canCreateWorkflowSession: boolean;
 };
 
 export type WorkflowCatalogVersionSummary = WorkflowCatalogVersionRecord & {
@@ -339,7 +365,7 @@ export type WorkflowValidationTrigger =
 	| "state_edit"
 	| "raw_ir_edit"
 	| "before_publish"
-	| "before_project_session_creation"
+	| "before_workflow_session_creation"
 	| "before_workflow_start";
 
 export type WorkflowValidationSummary = {
@@ -359,38 +385,41 @@ export type WorkflowValidationResponse = {
 	diagnostics: WorkflowDraftDiagnostic[];
 };
 
-export type ProjectWorkflowSessionStartResponse = WorkflowValidationResponse & {
-	projectSession: PiboProjectSession;
+export type WorkflowSessionStartResponse = WorkflowValidationResponse & {
+	workflowSession: PiboWorkflowSession;
+	run: PiboWorkflowRun;
+	snapshot?: PiboWorkflowSessionSnapshot;
 	workflow?: unknown;
-	message?: string;
+	alreadyStarted: boolean;
+	message: string;
 };
 
-export async function postProjectWorkflowSessionStart(projectId: string, piboSessionId: string): Promise<ProjectWorkflowSessionStartResponse> {
-	return requestJson<ProjectWorkflowSessionStartResponse>(`/api/chat/projects/${encodeURIComponent(projectId)}/workflow-sessions/${encodeURIComponent(piboSessionId)}/start`, {
+export async function postWorkflowSessionStart(piboSessionId: string): Promise<WorkflowSessionStartResponse> {
+	return requestJson<WorkflowSessionStartResponse>(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/workflow/start`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({}),
 	});
 }
 
-export type ProjectWorkflowHumanActionInput = {
+export type WorkflowHumanActionInput = {
 	waitTokenId: string;
 	actionId?: string;
 	kind?: string;
 	payload?: unknown;
 };
 
-export type ProjectWorkflowHumanActionResponse = {
+export type WorkflowHumanActionResponse = {
 	ok: true;
-	projectSession: PiboProjectSession;
-	waitToken: unknown;
-	action: unknown;
-	run: unknown;
+	workflowSession: PiboWorkflowSession;
+	waitToken: PiboWorkflowWaitToken;
+	action: PiboWorkflowHumanActionRecord;
+	run: PiboWorkflowRun;
 	diagnostics: WorkflowDraftDiagnostic[];
 };
 
-export async function postProjectWorkflowHumanAction(projectId: string, piboSessionId: string, input: ProjectWorkflowHumanActionInput): Promise<ProjectWorkflowHumanActionResponse> {
-	return requestJson<ProjectWorkflowHumanActionResponse>(`/api/chat/projects/${encodeURIComponent(projectId)}/workflow-sessions/${encodeURIComponent(piboSessionId)}/human-actions`, {
+export async function postWorkflowHumanAction(piboSessionId: string, input: WorkflowHumanActionInput): Promise<WorkflowHumanActionResponse> {
+	return requestJson<WorkflowHumanActionResponse>(`/api/chat/sessions/${encodeURIComponent(piboSessionId)}/workflow/human-actions`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(input),
@@ -513,7 +542,7 @@ export type WorkflowManualTriggerRunResponse = WorkflowValidationResponse & {
 	error?: { code: string; message: string };
 };
 
-export async function postWorkflowDraftManualTriggerRun(draftId: string, input: { triggerNodeId: string; input: string }): Promise<WorkflowManualTriggerRunResponse> {
+export async function postWorkflowDraftManualTriggerRun(draftId: string, input: { triggerNodeId: string; input: string; roomId?: string; workspace?: string }): Promise<WorkflowManualTriggerRunResponse> {
 	return requestJson<WorkflowManualTriggerRunResponse>(`/api/chat/workflows/drafts/${encodeURIComponent(draftId)}/manual-trigger-runs`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },

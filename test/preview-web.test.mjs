@@ -168,10 +168,21 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 	const databasePath = join(dir, "previews.sqlite");
 	let upstreamCookie;
 	let upstreamHeaders;
+	let upstreamUpgradeHeaders;
 	const upgradedSockets = new Set();
 	const upstream = createServer((req, res) => {
 		upstreamCookie = req.headers.cookie;
 		upstreamHeaders = req.headers;
+		if (req.url === "/api/auth/session") {
+			if (req.headers["x-forwarded-host"]) {
+				res.writeHead(403, { "content-type": "application/json" });
+				res.end(JSON.stringify({ error: "Dev auth only accepts loopback requests" }));
+				return;
+			}
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(JSON.stringify({ identity: { userId: "dev-user-001", email: "dev@pibo.local", provider: "dev" } }));
+			return;
+		}
 		if (req.url === "/redirect") {
 			res.writeHead(302, { location: `http://127.0.0.1:${upstream.address().port}/next` });
 			res.end();
@@ -205,7 +216,8 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 		});
 		res.end(`preview:${req.url}`);
 	});
-	upstream.on("upgrade", (_req, socket) => {
+	upstream.on("upgrade", (request, socket) => {
+		upstreamUpgradeHeaders = request.headers;
 		upgradedSockets.add(socket);
 		socket.once("close", () => upgradedSockets.delete(socket));
 		socket.write([
@@ -236,6 +248,19 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 		createdAt: new Date().toISOString(),
 		expiresAt: new Date(Date.now() + 60_000).toISOString(),
 	});
+	store.createExposure({
+		id: "pv-worker-auth",
+		piboSessionId: "ps_preview_worker",
+		label: "Worker auth fixture",
+		targetHost: "127.0.0.1",
+		targetPort: upstreamPort,
+		targetProcessId: targetProcess.pid,
+		targetProcessStartTicks: targetProcess.startTicks,
+		workspace: dir,
+		proxyMode: "pibo-compute-dev-auth",
+		createdAt: new Date().toISOString(),
+		expiresAt: new Date(Date.now() + 60_000).toISOString(),
+	});
 	const secretPortProbe = createServer();
 	const secretTargetPort = await listen(secretPortProbe);
 	await close(secretPortProbe);
@@ -251,6 +276,16 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 		serverState: "stopped",
 		createdAt: new Date().toISOString(),
 		expiresAt: new Date(Date.now() + 60_000).toISOString(),
+	});
+	store.createExposure({
+		id: "pv-expired-tls",
+		piboSessionId: "ps_preview_web",
+		label: "Expired TLS fixture",
+		targetHost: "127.0.0.1",
+		targetPort: secretTargetPort,
+		workspace: dir,
+		createdAt: new Date(Date.now() - 120_000).toISOString(),
+		expiresAt: new Date(Date.now() - 60_000).toISOString(),
 	});
 	store.close();
 
@@ -282,6 +317,26 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 
 	const unauthenticated = await request({ port: webPort, host: `pibo.localhost:${webPort}`, path: "/api/previews?piboSessionId=ps_preview_web" });
 	assert.equal(unauthenticated.status, 401);
+	assert.equal((await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/tls-authorize?domain=pv-webfixture.preview.localhost",
+	})).status, 200);
+	assert.equal((await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/tls-authorize?domain=pv-unknown.preview.localhost",
+	})).status, 403);
+	assert.equal((await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/tls-authorize?domain=pv-expired-tls.preview.localhost",
+	})).status, 403);
+	assert.equal((await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/tls-authorize?domain=nested.pv-webfixture.preview.localhost",
+	})).status, 403);
 	const previewHost = `pv-webfixture.preview.localhost:${webPort}`;
 	assert.equal((await request({ port: webPort, host: previewHost })).status, 401);
 
@@ -306,6 +361,14 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 	assert.equal("targetProcessId" in listedBody.previews[0], false);
 	assert.equal("targetHost" in listedBody.previews[0], false);
 	assert.equal("targetPort" in listedBody.previews[0], false);
+	assert.equal("proxyMode" in listedBody.previews[0], false);
+	const listedWorker = await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews?piboSessionId=ps_preview_worker",
+		headers: { "x-test-user": "account-a" },
+	});
+	assert.equal("proxyMode" in JSON.parse(listedWorker.body).previews[0], false);
 
 	const opened = await request({
 		port: webPort,
@@ -354,6 +417,41 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 	assert.equal(page.headers["x-pibo-secret"], undefined);
 	assert.match(page.headers["content-security-policy"], /frame-ancestors http:\/\/pibo\.localhost/);
 	assert.deepEqual(page.headers["set-cookie"], ["app_session=ok; Path=/"]);
+
+	const workerHost = `pv-worker-auth.preview.localhost:${webPort}`;
+	const workerOpened = await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/pv-worker-auth/open",
+		headers: { "x-test-user": "account-a" },
+	});
+	const workerExchange = await request({
+		port: webPort,
+		host: workerHost,
+		path: "/__pibo/session",
+		method: "POST",
+		headers: { "content-type": "application/x-www-form-urlencoded" },
+		body: new URLSearchParams({ ticket: ticketFromHtml(workerOpened.body) }).toString(),
+	});
+	assert.equal(workerExchange.status, 303);
+	const workerCookie = workerExchange.headers["set-cookie"][0].split(";")[0];
+	const workerSession = await request({
+		port: webPort,
+		host: workerHost,
+		path: "/api/auth/session",
+		headers: { cookie: workerCookie, origin: `http://${workerHost}` },
+	});
+	assert.equal(workerSession.status, 200);
+	assert.equal(JSON.parse(workerSession.body).identity.email, "dev@pibo.local");
+	assert.equal(upstreamHeaders.host, `127.0.0.1:${upstreamPort}`);
+	assert.equal(upstreamHeaders["x-forwarded-host"], undefined);
+	assert.equal(upstreamHeaders["x-forwarded-proto"], undefined);
+	assert.equal(upstreamHeaders.origin, `http://127.0.0.1:${upstreamPort}/`);
+	const workerUpgraded = await rawUpgrade({ port: webPort, host: workerHost, cookie: workerCookie });
+	assert.match(workerUpgraded, /preview-probe/);
+	assert.equal(upstreamUpgradeHeaders.host, `127.0.0.1:${upstreamPort}`);
+	assert.equal(upstreamUpgradeHeaders["x-forwarded-host"], undefined);
+	assert.equal(upstreamUpgradeHeaders["x-forwarded-proto"], undefined);
 
 	const malformedOrigin = await request({
 		port: webPort,

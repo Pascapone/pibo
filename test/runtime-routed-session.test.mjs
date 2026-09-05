@@ -198,6 +198,65 @@ test("generic routed session preserves output identities across successful compa
 	}
 });
 
+test("generic model switching preserves Pibo reasoning when a runtime reapplies its own default", async () => {
+	const originalModel = { provider: "openai-codex", id: "gpt-5.6-sol" };
+	const targetModel = { provider: "openai-codex", id: "gpt-6-astra" };
+	let activeModel = originalModel;
+	let reasoning = "high";
+	const reasoningChanges = [];
+	const runtimeSession = {
+		adapterId: "reasoning-reset-fake",
+		runtimeInstanceId: "reasoning-reset-fake",
+		cwd: process.cwd(),
+		capabilities: {
+			...createMinimalAgentRuntimeCapabilities(),
+			models: { catalog: true, switchInSession: true },
+			reasoning: { supported: true, values: ["low", "medium", "high", "max"] },
+		},
+		controls: {
+			getReasoning() {
+				return { value: reasoning, availableValues: ["low", "medium", "high", "max"], supported: true };
+			},
+			setReasoning(value) {
+				reasoning = value;
+				reasoningChanges.push(value);
+				return this.getReasoning();
+			},
+			async setModel(model) {
+				activeModel = { ...model };
+				reasoning = "max";
+				return { ...model };
+			},
+		},
+		getBinding: () => ({ piboSessionId: "ps_reasoning_reset", runtimeInstanceId: "reasoning-reset-fake", adapterId: "reasoning-reset-fake", state: "bound" }),
+		subscribe() { return () => {}; },
+		async prompt() {},
+		async abort() {},
+		async dispose() {},
+		getStatus: () => ({
+			streaming: false,
+			enabledTools: [],
+			cwd: process.cwd(),
+			activeModel: { ...activeModel },
+			reasoning: { value: reasoning, availableValues: ["low", "medium", "high", "max"], supported: true },
+		}),
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_reasoning_reset",
+		runtimeSession,
+		() => {},
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+	);
+	try {
+		assert.deepEqual(await routed.setModel(targetModel), targetModel);
+		assert.deepEqual(routed.getActiveModel(), targetModel);
+		assert.equal(routed.getStatus().thinkingLevel, "high");
+		assert.deepEqual(reasoningChanges, ["high"]);
+	} finally {
+		await routed.dispose();
+	}
+});
+
 test("generic routed orchestration tries ordered provider fallbacks and restores the primary model", async () => {
 	const primary = { provider: "openai", id: "gpt-primary" };
 	const fallbackOne = { provider: "anthropic", id: "claude-fallback" };
@@ -511,6 +570,104 @@ test("fork identity reads and transitions reject queued or active routed work", 
 		releasePrompt.resolve();
 		releaseFork.resolve();
 		releasePersistence.resolve();
+		await routed.dispose();
+	}
+});
+
+test("running-safe fork controls snapshot completed history without interrupting the source turn", async () => {
+	const releasePrompt = deferred();
+	let streaming = false;
+	let idleForks = 0;
+	let runningForks = 0;
+	const persistedOperations = [];
+	const binding = {
+		piboSessionId: "ps_running_fork",
+		runtimeInstanceId: "running-fork",
+		adapterId: "running-fork",
+		nativeSessionId: "native-source",
+		state: "bound",
+	};
+	const runtimeSession = {
+		adapterId: "running-fork",
+		runtimeInstanceId: "running-fork",
+		cwd: process.cwd(),
+		capabilities: {
+			...createMinimalAgentRuntimeCapabilities(),
+			lifecycle: { ...createMinimalAgentRuntimeCapabilities().lifecycle, fork: true, forkWhileRunning: true },
+		},
+		controls: {
+			getForkCandidates() {
+				throw new Error("idle candidate reader must not run");
+			},
+			getForkCandidatesWhileRunning() {
+				return [{ entryId: "completed-user", text: "completed prompt" }];
+			},
+			async forkSession() {
+				idleForks += 1;
+				throw new Error("idle fork must not run");
+			},
+			async forkSessionWhileRunning(entryId) {
+				runningForks += 1;
+				assert.equal(entryId, "completed-user");
+				return {
+					previous: { adapterId: "running-fork", runtimeInstanceId: "running-fork", nativeSessionId: "native-source", cwd: process.cwd() },
+					current: { adapterId: "running-fork", runtimeInstanceId: "running-fork", nativeSessionId: "native-fork", cwd: process.cwd() },
+					cancelled: false,
+					sourceSessionUnchanged: true,
+				};
+			},
+		},
+		getBinding: () => ({ ...binding }),
+		subscribe: () => () => {},
+		async prompt() {
+			streaming = true;
+			await releasePrompt.promise;
+			streaming = false;
+		},
+		async abort() {
+			releasePrompt.resolve();
+			streaming = false;
+		},
+		async dispose() {
+			releasePrompt.resolve();
+			streaming = false;
+		},
+		getStatus: () => ({ streaming, enabledTools: [], cwd: process.cwd() }),
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_running_fork",
+		runtimeSession,
+		() => {},
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		{ onSessionOperation: async (result) => persistedOperations.push(structuredClone(result)) },
+	);
+	try {
+		routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_running_fork",
+			id: "active-message",
+			text: "active prompt",
+			source: "user",
+		});
+		await waitFor(() => routed.getStatus().processing && routed.getStatus().streaming);
+
+		assert.deepEqual(await routed.getForkCandidates(), [{ entryId: "completed-user", text: "completed prompt" }]);
+		const forked = await routed.executeAction({
+			type: "execution",
+			piboSessionId: "ps_running_fork",
+			action: "session.fork",
+			params: { entryId: "completed-user" },
+		});
+		assert.equal(forked.result.current.piSessionId, "native-fork");
+		assert.equal(forked.result.sourceSessionUnchanged, true);
+		assert.equal(runningForks, 1);
+		assert.equal(idleForks, 0);
+		assert.equal(routed.getStatus().streaming, true, "source turn remains active after the snapshot fork");
+		assert.equal(routed.getRuntimeBinding().nativeSessionId, "native-source");
+		assert.equal(persistedOperations.length, 1);
+		assert.equal(persistedOperations[0].sourceSessionUnchanged, true);
+	} finally {
+		releasePrompt.resolve();
 		await routed.dispose();
 	}
 });

@@ -19,6 +19,8 @@ import {
 	type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import type { PiboRoom } from "../types";
+import { getNavigation } from "../api-chat-sessions";
 import { Activity, CheckCircle2, Crosshair, Layers, Link2, Loader2, MousePointer2, MoveRight, Play, Plus, RotateCcw, Save, ScanSearch, SlidersHorizontal, Trash2, Wrench, X } from "lucide-react";
 import {
 	getWorkflowAdapterPicker,
@@ -92,6 +94,7 @@ type WorkflowGraphContextMenuState = {
 
 type ManualTriggerDialogState = {
 	triggerNodeId: string;
+	roomId?: string;
 	input: string;
 	status: "idle" | "running" | "completed" | "error";
 	message?: string;
@@ -130,6 +133,7 @@ function clampInspectorWidth(width: number): number {
 
 export function WorkflowGraphCanvas({
 	draft,
+	room,
 	onDraftChange,
 	renderInspectors,
 	fullHeight = false,
@@ -139,6 +143,7 @@ export function WorkflowGraphCanvas({
 	onStatusMessage,
 }: {
 	draft: WorkflowDraftRecord;
+	room?: PiboRoom;
 	onDraftChange: (draft: WorkflowDraftRecord) => void;
 	renderInspectors: (props: WorkflowGraphInspectorSlotProps) => ReactNode;
 	fullHeight?: boolean;
@@ -167,6 +172,21 @@ export function WorkflowGraphCanvas({
 	const [inspectorTab, setInspectorTab] = useState<"build" | "inspect" | "status">("inspect");
 	const [contextMenu, setContextMenu] = useState<WorkflowGraphContextMenuState | undefined>();
 	const [manualTriggerDialog, setManualTriggerDialog] = useState<ManualTriggerDialogState | undefined>();
+	const [manualTriggerRooms, setManualTriggerRooms] = useState<PiboRoom[]>([]);
+	const manualTriggerRoom = manualTriggerRooms.find((candidate) => candidate.id === manualTriggerDialog?.roomId) ?? room;
+
+	useEffect(() => {
+		if (!manualTriggerDialog?.triggerNodeId) return;
+		let cancelled = false;
+		getNavigation().then((navigation) => {
+			if (cancelled) return;
+			setManualTriggerRooms(navigation.rooms);
+			setManualTriggerDialog((current) => current ? { ...current, roomId: current.roomId ?? navigation.room?.id ?? navigation.rooms[0]?.id } : current);
+		}).catch((error: unknown) => {
+			if (!cancelled) setManualTriggerDialog((current) => current ? { ...current, status: "error", message: error instanceof Error ? error.message : "Failed to load Rooms" } : current);
+		});
+		return () => { cancelled = true; };
+	}, [manualTriggerDialog?.triggerNodeId]);
 	const [runVisualState, setRunVisualState] = useState<WorkflowRunVisualState>(() => ({ runningNodeIds: new Set(), recentNodeIds: new Set(), recentEdgeIds: new Set() }));
 	const graphCanvasRef = useRef<HTMLDivElement | null>(null);
 	const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -490,8 +510,8 @@ export function WorkflowGraphCanvas({
 		setSelectedElement({ type: "node", id: triggerNodeId });
 		setInspectorTab("status");
 		setContextMenu(undefined);
-		setManualTriggerDialog({ triggerNodeId, input: "", status: "idle" });
-	}, []);
+		setManualTriggerDialog({ triggerNodeId, input: "", status: "idle", roomId: room?.id });
+	}, [room]);
 
 	const handleManualTriggerDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
 		if (event.key !== "Escape" || manualTriggerDialog?.status === "running") return;
@@ -685,7 +705,7 @@ export function WorkflowGraphCanvas({
 		setManualTriggerDialog((current) => current ? { ...current, status: "running", message: "Running manual trigger…", output: undefined } : current);
 		publishStatus(`Running manual trigger ${manualTriggerDialog.triggerNodeId}…`);
 		try {
-			const response = await postWorkflowDraftManualTriggerRun(draft.draftId, { triggerNodeId: manualTriggerDialog.triggerNodeId, input });
+			const response = await postWorkflowDraftManualTriggerRun(draft.draftId, { triggerNodeId: manualTriggerDialog.triggerNodeId, input, ...(manualTriggerDialog.roomId ? { roomId: manualTriggerDialog.roomId } : {}) });
 			onDraftChange(response.draft);
 			showRecentRunVisuals(response);
 			setManualTriggerDialog((current) => current ? {
@@ -819,12 +839,18 @@ export function WorkflowGraphCanvas({
 								</div>
 								<button type="button" className="rounded-sm border border-slate-700 px-2 py-1 text-slate-400 transition hover:border-slate-500 hover:text-slate-100" onClick={closeManualTriggerDialog} disabled={manualTriggerDialog.status === "running"} aria-label="Close manual trigger dialog"><X size={13} /></button>
 							</div>
+							<label className="mt-3 grid gap-1 font-semibold text-slate-300">Room
+								<select aria-label="Run Room" value={manualTriggerDialog.roomId ?? ""} disabled={manualTriggerDialog.status === "running"} className="min-w-0 rounded-sm border border-slate-700 bg-[#151f24] px-2 py-2 text-xs text-slate-100" onChange={(event) => setManualTriggerDialog((current) => current ? { ...current, roomId: event.target.value } : current)}>
+									{manualTriggerRooms.length ? manualTriggerRooms.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>) : <option value={room?.id ?? ""}>{room?.name ?? "Loading Rooms…"}</option>}
+								</select>
+							</label>
 							<label className="mt-3 grid gap-1 font-semibold text-slate-300">
 								<span>Prompt input</span>
+								<span className="text-[11px] text-slate-400">Workspace: {manualTriggerRoom?.workspace ?? "Default workspace"}</span>
 								<textarea ref={manualTriggerInputRef} className="min-h-24 resize-y rounded-sm border border-slate-700 bg-[#151f24] px-2 py-2 font-mono text-[11px] text-slate-100 outline-none transition focus:border-emerald-500" value={manualTriggerDialog.input} onChange={(event) => setManualTriggerDialog((current) => current ? { ...current, input: event.target.value } : current)} disabled={manualTriggerDialog.status === "running"} placeholder="Write the text prompt for the first agent…" />
 							</label>
 							<div className="mt-3 flex gap-2">
-								<button type="button" className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm border border-emerald-600/70 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-100 transition hover:border-emerald-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-50" onClick={runManualTrigger} disabled={manualTriggerDialog.status === "running"}>
+								<button type="button" className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm border border-emerald-600/70 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-100 transition hover:border-emerald-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-50" onClick={runManualTrigger} disabled={manualTriggerDialog.status === "running" || !manualTriggerDialog.roomId}>
 									{manualTriggerDialog.status === "running" ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
 									Run trigger
 								</button>

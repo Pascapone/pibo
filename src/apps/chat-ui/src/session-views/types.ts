@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { AgentProfile, PiboLoopJob, PiboProjectSession, PiboSessionSignalSnapshot, PiboSessionTraceView, PiboSignalSnapshot, PiboWebSessionNode, PiboWebSessionStatus, RuntimeSessionBinding, ThinkingLevel, Trace, WorkflowLifecycleEventRecord } from "../types";
+import type { AgentProfile, PiboLoopJob, PiboSessionSignalSnapshot, PiboSessionTraceView, PiboSignalSnapshot, PiboWebSessionNode, PiboWebSessionStatus, RuntimeSessionBinding, ThinkingLevel, Trace } from "../types";
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "../tracing/TraceTimeline";
 
 export const chatSessionViewIds = ["terminal", "workflow"] as const;
@@ -20,6 +20,8 @@ export function parseChatSessionViewId(value: unknown): ChatSessionViewId | unde
 
 export type ChatSessionViewProps = {
 	traceView: PiboSessionTraceView | null;
+	selectedPiboSessionId: string | null;
+	workflowSessionLinked: boolean;
 	selectedTrace: Trace | null;
 	isLoading: boolean;
 	terminalFullscreen?: boolean;
@@ -33,8 +35,6 @@ export type ChatSessionViewProps = {
 	selectedSessionSignal?: PiboSessionSignalSnapshot;
 	signals?: PiboSignalSnapshot;
 	sessionGoal?: PiboLoopJob | null;
-	workflowProjectSession?: PiboProjectSession;
-	workflowLifecycleEvents?: readonly WorkflowLifecycleEventRecord[];
 	sessionNodes: readonly PiboWebSessionNode[];
 	sessionBreadcrumbs: readonly SessionBreadcrumbItem[];
 	originSession?: SessionOriginLink;

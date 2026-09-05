@@ -182,7 +182,7 @@ export class SqliteWorkflowRunStore implements
   WorkflowCheckpointStore,
   WorkflowWakeupStore,
   WorkflowHumanActionStore {
-  private readonly db: DatabaseSync;
+  readonly db: DatabaseSync;
 
   constructor(path: string) {
     const resolvedPath = path === ":memory:" ? path : resolve(path);
@@ -192,6 +192,19 @@ export class SqliteWorkflowRunStore implements
 
     this.db = new DatabaseSync(resolvedPath);
     installWorkflowSqliteSchema(this.db, { enableWal: resolvedPath !== ":memory:" });
+  }
+
+  transaction<T>(action: () => T): T {
+    if (this.db.isTransaction) return action();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = action();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      if (this.db.isTransaction) this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   saveDefinitionSnapshot(snapshot: WorkflowDefinitionSnapshot): void {
@@ -295,16 +308,18 @@ export class SqliteWorkflowRunStore implements
         base_workflow_id,
         base_workflow_version,
         base_definition_hash,
+        target_workflow_version,
         version_intent,
         definition_json,
         diagnostics_json,
+        validation_json,
         validation_state,
         revision,
         created_by,
         created_at,
         updated_by,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(draft_id) DO UPDATE SET
         workflow_id = excluded.workflow_id,
         source = excluded.source,
@@ -312,9 +327,11 @@ export class SqliteWorkflowRunStore implements
         base_workflow_id = excluded.base_workflow_id,
         base_workflow_version = excluded.base_workflow_version,
         base_definition_hash = excluded.base_definition_hash,
+        target_workflow_version = excluded.target_workflow_version,
         version_intent = excluded.version_intent,
         definition_json = excluded.definition_json,
         diagnostics_json = excluded.diagnostics_json,
+        validation_json = excluded.validation_json,
         validation_state = excluded.validation_state,
         revision = excluded.revision,
         created_by = excluded.created_by,
@@ -479,7 +496,6 @@ export class SqliteWorkflowRunStore implements
         parent_run_id,
         parent_node_attempt_id,
         pibo_session_id,
-        project_id,
         environment_json,
         status,
         current_node_id,
@@ -491,6 +507,7 @@ export class SqliteWorkflowRunStore implements
         output_present,
         state_json,
         checkpoint_json,
+        validation_json,
         created_at,
         updated_at,
         completed_at,
@@ -505,7 +522,6 @@ export class SqliteWorkflowRunStore implements
         parent_run_id = excluded.parent_run_id,
         parent_node_attempt_id = excluded.parent_node_attempt_id,
         pibo_session_id = excluded.pibo_session_id,
-        project_id = excluded.project_id,
         environment_json = excluded.environment_json,
         status = excluded.status,
         current_node_id = excluded.current_node_id,
@@ -517,6 +533,7 @@ export class SqliteWorkflowRunStore implements
         output_present = excluded.output_present,
         state_json = excluded.state_json,
         checkpoint_json = excluded.checkpoint_json,
+        validation_json = excluded.validation_json,
         updated_at = excluded.updated_at,
         completed_at = excluded.completed_at,
         failed_at = excluded.failed_at,
@@ -532,6 +549,7 @@ export class SqliteWorkflowRunStore implements
   listRuns(filter: WorkflowRunListFilter = {}): WorkflowRun[] {
     const query = buildWorkflowStoreListQuery([
       { clause: "workflow_id = ?", value: filter.workflowId },
+      { clause: "pibo_session_id = ?", value: filter.piboSessionId },
       { clause: "status = ?", value: filter.status },
     ], filter.limit);
     const rows = this.db
@@ -831,14 +849,16 @@ export class SqliteWorkflowRunStore implements
         id,
         workflow_run_id,
         wait_token_id,
+        action_id,
         kind,
         actor_json,
         payload_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         workflow_run_id = excluded.workflow_run_id,
         wait_token_id = excluded.wait_token_id,
+        action_id = excluded.action_id,
         kind = excluded.kind,
         actor_json = excluded.actor_json,
         payload_json = excluded.payload_json,

@@ -1471,6 +1471,52 @@ export class RoutedSession {
 		return this.runtime.session.getUserMessagesForForking();
 	}
 
+	getForkCandidatesWhileRunning(): PiboForkCandidate[] {
+		const candidates = this.runtime.session.getUserMessagesForForking();
+		return this.getStatus().processing || this.getStatus().streaming
+			? candidates.slice(0, -1)
+			: candidates;
+	}
+
+	async forkSessionWhileRunning(entryId: string): Promise<PiboSessionOperationResult> {
+		this.assertActive();
+		const sourceManager = this.runtime.session.sessionManager;
+		const sourceFile = sourceManager.getSessionFile();
+		if (!sourceManager.isPersisted() || !sourceFile || !existsSync(sourceFile)) {
+			throw new Error("A running Pi session can only fork from persisted history.");
+		}
+		const selected = this.getForkCandidatesWhileRunning().find((candidate) => candidate.entryId === entryId);
+		if (!selected) throw new Error("Fork target is not a completed user message.");
+		const selectedEntry = sourceManager.getEntry(entryId);
+		if (!selectedEntry || selectedEntry.type !== "message" || selectedEntry.message.role !== "user") {
+			throw new Error("Invalid entry ID for forking");
+		}
+
+		const previous = this.createSessionSnapshot();
+		const targetLeafId = selectedEntry.parentId;
+		let forkedManager: SessionManager;
+		if (!targetLeafId) {
+			forkedManager = SessionManager.create(this.runtime.cwd, sourceManager.getSessionDir());
+			forkedManager.newSession({ parentSession: sourceFile });
+		} else {
+			forkedManager = SessionManager.open(sourceFile, sourceManager.getSessionDir(), this.runtime.cwd);
+			if (!forkedManager.getEntry(targetLeafId)) {
+				throw new Error("Fork target is not available in persisted history.");
+			}
+			const forkedSessionPath = forkedManager.createBranchedSession(targetLeafId);
+			if (!forkedSessionPath) throw new Error("Failed to create forked session");
+		}
+		materializeForkedSession(forkedManager);
+		return {
+			piboSessionId: this.piboSessionId,
+			previous,
+			current: this.createSessionManagerSnapshot(forkedManager),
+			cancelled: false,
+			sourceSessionUnchanged: true,
+			selectedText: selected.text,
+		};
+	}
+
 	async forkSession(entryId: string): Promise<PiboSessionOperationResult> {
 		this.assertActive();
 		this.assertSessionWorkIdle("fork");
@@ -2056,13 +2102,16 @@ export class RoutedSession {
 
 	private createSessionSnapshot(): PiboPiSessionSnapshot {
 		const session = this.runtime.session;
-		const manager = session.sessionManager;
+		return this.createSessionManagerSnapshot(session.sessionManager, session.sessionName);
+	}
+
+	private createSessionManagerSnapshot(manager: SessionManager, sessionName = manager.getSessionName()): PiboPiSessionSnapshot {
 		return {
-			piSessionId: session.sessionId,
-			sessionFile: session.sessionFile,
+			piSessionId: manager.getSessionId(),
+			sessionFile: manager.getSessionFile(),
 			leafId: manager.getLeafId(),
-			cwd: this.runtime.cwd,
-			sessionName: session.sessionName,
+			cwd: manager.getCwd(),
+			sessionName,
 			parentSessionFile: manager.getHeader()?.parentSession,
 		};
 	}

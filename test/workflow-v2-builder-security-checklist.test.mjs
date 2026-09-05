@@ -108,10 +108,10 @@ test("Workflow V2 builder/security checklist covers explicit security non-goals"
 	const webChannelTests = await readSource("test/web-channel.test.mjs");
 
 	assertAllMatch(securityTests, [
-		["security tests cover visible auth and Project/session visibility copy", /auth and Project\/session visibility boundary is named/],
-		["security tests cover profile tool skill context and compute boundaries", /tools, skills, context, native tools, and MCP are not granted by the UI[\s\S]*compute-worker access stays behind the selected runtime profile/],
-		["security tests cover inline executable, raw XState, hidden coercion, and Zod rejection", /inline executable IR fields are rejected[\s\S]*raw XState fields are rejected by validation[\s\S]*hidden LLM coercion is rejected[\s\S]*Zod is excluded by the JSON Schema subset validator/],
-		["security tests cover sensitive data redaction", /diagnostics are sanitized before storage or responses[\s\S]*diagnostic text redacts sensitive workflow values/],
+		["security tests cover visible Session visibility copy", /Workflow V2 UI surfaces authentication, capability, and data boundaries/],
+		["security tests cover profile tool skill context and compute boundaries", /does not grant extra tools, skills, context files, native tools, MCP servers, or compute-worker access/],
+		["security tests cover inline executable, raw XState, hidden coercion, and Zod rejection", /WorkflowSecurityError\\.inlineExecutableCode[\s\S]*WorkflowSecurityError\\.rawXStateAuthoring[\s\S]*WorkflowSecurityError\\.hiddenLlmCoercion[\s\S]*Zod schemas are not part of V2 authoring/],
+		["security tests cover sensitive data redaction", /function sanitizeWorkflowDiagnostics[\s\S]*function redactWorkflowDiagnosticText/],
 	]);
 
 	assertAllMatch(deferralTests, [
@@ -137,6 +137,5 @@ test("Workflow V2 builder/security checklist covers explicit security non-goals"
 
 	assertAllMatch(webChannelTests, [
 		["integration tests reject inline execution and raw XState payloads", /workflow security boundary validates registered refs and rejects inline execution paths[\s\S]*WorkflowSecurityError\.inlineExecutableCode[\s\S]*WorkflowSecurityError\.rawXStateAuthoring/],
-		["integration tests verify redaction and scoped Project visibility", /workflow diagnostics are redacted and scoped to owning Project sessions/],
 	]);
 });

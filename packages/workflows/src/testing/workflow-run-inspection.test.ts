@@ -20,7 +20,6 @@ function createRun(overrides: Partial<WorkflowRun> = {}): WorkflowRun {
     workflowId: "workflow.inspect",
     workflowVersion: "1.0.0",
     piboSessionId: "ps_inspect",
-    projectId: "project_inspect",
     status: "completed",
     current: { nodeId: "done", status: "completed" },
     input: "start",

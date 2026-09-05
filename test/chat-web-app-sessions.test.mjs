@@ -24,7 +24,7 @@ function createHarness(options = {}) {
 		dataStorePath,
 		dataPayloadRootDir: join(storageDir, "payloads"),
 		agentStorePath: join(storageDir, "agents.sqlite"),
-		projectStorePath: join(storageDir, "projects.sqlite"),
+		workflowStorePath: join(storageDir, "pibo-workflows.sqlite"),
 	});
 	const sessions = new InMemoryPiboSessionStore();
 	const emitted = [];
@@ -557,6 +557,88 @@ test("Chat Web mutates and routes historical account sessions by resource existe
 		assert.deepEqual(new Set((await json(deleted)).deletedSessionIds), new Set([session.id, child.id]));
 		assert.equal(harness.sessions.get(session.id), undefined);
 		assert.equal(harness.sessions.get(child.id), undefined);
+	} finally {
+		harness.cleanup();
+	}
+});
+
+test("Chat Web persists pinning and manual room order without update-based movement", async () => {
+	const harness = createHarness();
+	try {
+		await harness.request("/api/chat/bootstrap", { headers: { "x-test-user": "user-a" } });
+		const createdRoomIds = [];
+		for (const name of ["First", "Second", "Third"]) {
+			const createdResponse = await harness.request("/api/chat/rooms", {
+				method: "POST",
+				headers: { "x-test-user": "user-a" },
+				body: JSON.stringify({ name }),
+			});
+			assert.equal(createdResponse.status, 201);
+			createdRoomIds.push((await json(createdResponse)).room.id);
+		}
+
+		const rooms = async () => json(await harness.request("/api/chat/rooms", { headers: { "x-test-user": "user-a" } }));
+		const roomIds = async () => (await rooms()).rooms.filter((room) => room.metadata.default !== true).map((room) => room.id);
+		const [firstRoomId, secondRoomId, thirdRoomId] = createdRoomIds;
+		assert.deepEqual(await roomIds(), [thirdRoomId, secondRoomId, firstRoomId]);
+
+		const pinFirst = await harness.request(`/api/chat/rooms/${encodeURIComponent(firstRoomId)}`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ pinned: true }),
+		});
+		assert.equal(pinFirst.status, 200);
+		assert.deepEqual(await roomIds(), [firstRoomId, thirdRoomId, secondRoomId]);
+		await assert.rejects(
+			() => harness.request(`/api/chat/rooms/${encodeURIComponent(firstRoomId)}/order`, {
+				method: "PATCH",
+				headers: { "x-test-user": "user-a" },
+				body: JSON.stringify({ targetRoomId: secondRoomId, position: "before" }),
+			}),
+			/Pinned and unpinned rooms cannot be reordered together/,
+		);
+
+		const pinSecond = await harness.request(`/api/chat/rooms/${encodeURIComponent(secondRoomId)}`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ pinned: true }),
+		});
+		assert.equal(pinSecond.status, 200);
+		assert.deepEqual(await roomIds(), [secondRoomId, firstRoomId, thirdRoomId]);
+
+		const reorder = await harness.request(`/api/chat/rooms/${encodeURIComponent(secondRoomId)}/order`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ targetRoomId: firstRoomId, position: "after" }),
+		});
+		assert.equal(reorder.status, 200);
+		assert.deepEqual(await roomIds(), [firstRoomId, secondRoomId, thirdRoomId]);
+
+		const unpinFirst = await harness.request(`/api/chat/rooms/${encodeURIComponent(firstRoomId)}`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ pinned: false }),
+		});
+		assert.equal(unpinFirst.status, 200);
+		assert.deepEqual(await roomIds(), [secondRoomId, firstRoomId, thirdRoomId]);
+
+		const newestResponse = await harness.request("/api/chat/rooms", {
+			method: "POST",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ name: "Newest" }),
+		});
+		assert.equal(newestResponse.status, 201);
+		const newestRoomId = (await json(newestResponse)).room.id;
+		assert.deepEqual(await roomIds(), [secondRoomId, newestRoomId, firstRoomId, thirdRoomId]);
+
+		const beforeRename = await roomIds();
+		const rename = await harness.request(`/api/chat/rooms/${encodeURIComponent(thirdRoomId)}`, {
+			method: "PATCH",
+			headers: { "x-test-user": "user-a" },
+			body: JSON.stringify({ name: "Updated without moving" }),
+		});
+		assert.equal(rename.status, 200);
+		assert.deepEqual(await roomIds(), beforeRename);
 	} finally {
 		harness.cleanup();
 	}

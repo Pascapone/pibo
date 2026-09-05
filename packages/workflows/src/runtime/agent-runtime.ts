@@ -100,7 +100,6 @@ export function linkWorkflowRunToAgentSession(
 ): void {
   if (executorResult.piboSessionId)
     run.piboSessionId = executorResult.piboSessionId;
-  if (node.routing?.projectId) run.projectId = node.routing.projectId;
 }
 
 export function createAgentRuntimeSelectionMetadata(options: {
@@ -148,7 +147,6 @@ function createAgentRuntimeRoutingMetadata(
     ...(routing?.parentSessionId
       ? { parentSessionId: routing.parentSessionId }
       : {}),
-    ...(routing?.projectId ? { projectId: routing.projectId } : {}),
     ...(routing?.roomId ? { roomId: routing.roomId } : {}),
     ...(routing?.channel ? { channel: routing.channel } : {}),
   };

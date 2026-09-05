@@ -131,8 +131,6 @@ traceability:
         - path: "scripts/run-test-suite.mjs"
           symbol: "defaultTestFiles"
         - path: "test/workflow-v2-release-coverage.test.mjs"
-          symbol: "readProjectUiSourceBundle"
-        - path: "test/workflow-v2-release-coverage.test.mjs"
           symbol: "readWorkflowUiSourceBundle"
       tests:
         - path: "packages/workflows/src/testing/runtime-mixed-node-workflow.test.ts"
@@ -141,8 +139,6 @@ traceability:
           name: "recovers completed, failed, waiting, and resumed workflow run facts after SQLite restarts"
         - path: "test/workflow-v2-release-coverage.test.mjs"
           name: "Workflow V2 release unit coverage maps registry, diagnostics, versions, archive, and delete"
-        - path: "test/workflow-v2-release-coverage.test.mjs"
-          name: "Workflow V2 release integration coverage maps Project workflow snapshots and start gates"
         - path: "test/workflow-v2-release-coverage.test.mjs"
           name: "Workflow V2 release UI coverage maps Builder, routing, and human action surfaces"
       public:
@@ -347,8 +343,8 @@ Project validation MUST run the workflows package's independent TypeScript test 
 
 ### Acceptance and boundaries
 
-- Exact source evidence: `packages/workflows/package.json:18` — `scripts.test`; `scripts/run-test-suite.mjs:14` — `defaultTestFiles`; `test/workflow-v2-release-coverage.test.mjs:9` — `readProjectUiSourceBundle`; `test/workflow-v2-release-coverage.test.mjs:20` — `readWorkflowUiSourceBundle`
-- Exact named tests: `packages/workflows/src/testing/runtime-mixed-node-workflow.test.ts:38` — “dispatches a validated mixed workflow through code, agent, human, adapter, and nested workflow nodes”; `packages/workflows/src/testing/workflow-persistence-validation.test.ts:95` — “recovers completed, failed, waiting, and resumed workflow run facts after SQLite restarts”; `test/workflow-v2-release-coverage.test.mjs:43` — “Workflow V2 release unit coverage maps registry, diagnostics, versions, archive, and delete”; `test/workflow-v2-release-coverage.test.mjs:73` — “Workflow V2 release integration coverage maps Project workflow snapshots and start gates”; `test/workflow-v2-release-coverage.test.mjs:89` — “Workflow V2 release UI coverage maps Builder, routing, and human action surfaces”
+- Exact source evidence: `packages/workflows/package.json:18` — `scripts.test`; `scripts/run-test-suite.mjs:14` — `defaultTestFiles`; `test/workflow-v2-release-coverage.test.mjs:20` — `readWorkflowUiSourceBundle`
+- Exact named tests: `packages/workflows/src/testing/runtime-mixed-node-workflow.test.ts:38` — “dispatches a validated mixed workflow through code, agent, human, adapter, and nested workflow nodes”; `packages/workflows/src/testing/workflow-persistence-validation.test.ts:95` — “recovers completed, failed, waiting, and resumed workflow run facts after SQLite restarts”; `test/workflow-v2-release-coverage.test.mjs:43` — “Workflow V2 release unit coverage maps registry, diagnostics, versions, archive, and delete”; `test/workflow-v2-release-coverage.test.mjs:89` — “Workflow V2 release UI coverage maps Builder, routing, and human action surfaces”
 - Public surfaces: `npm test --workspace @pasko70/pibo-workflows`; `Root workflow-v2 product tests`
 - Failure boundary: A pass in one matrix does not mask or imply a pass in the other.
 - Security boundary: Deterministic workflow fixtures should remain isolated from host credentials/state; no extra privilege is implied.

@@ -159,8 +159,10 @@ function requestHeaders(
 	}
 	const targetHost = exposure.targetHost === "::1" ? `[::1]` : exposure.targetHost;
 	headers.host = `${targetHost}:${exposure.targetPort}`;
-	headers["x-forwarded-host"] = requestURL.host;
-	headers["x-forwarded-proto"] = requestURL.protocol.slice(0, -1);
+	if (exposure.proxyMode !== "pibo-compute-dev-auth") {
+		headers["x-forwarded-host"] = requestURL.host;
+		headers["x-forwarded-proto"] = requestURL.protocol.slice(0, -1);
+	}
 	if (websocket) {
 		headers.connection = "Upgrade";
 		headers.upgrade = incoming.upgrade ?? "websocket";

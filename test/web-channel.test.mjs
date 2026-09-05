@@ -28,7 +28,7 @@ const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Sc
 function fakeRuntimeCapabilities() {
 	const unsupported = { support: "unsupported", reason: "Not supported by this fixture runtime." };
 	return {
-		lifecycle: { persistent: true, lazyBinding: true, resume: true, attach: false, listNativeSessions: false, fork: false, clone: false, tree: false },
+		lifecycle: { persistent: true, lazyBinding: true, resume: true, attach: false, listNativeSessions: false, fork: false, forkWhileRunning: false, clone: false, tree: false },
 		input: { text: true, images: false, audio: false, steering: false, structuredOutput: false },
 		output: { assistantDeltas: true, reasoning: true, toolEvents: true, usage: true, plans: false, diffs: false, rawNativeEvents: false },
 		tools: {
@@ -198,13 +198,13 @@ async function startWebHostChannel(options = {}) {
 	const agentStorePath = join(storageDir, "agents.sqlite");
 	const dataStorePath = join(storageDir, "pibo-chat-v2.sqlite");
 	const dataPayloadRootDir = join(storageDir, "payloads");
-	const projectStorePath = join(storageDir, "projects.sqlite");
+	const workflowStorePath = join(storageDir, "pibo-workflows.sqlite");
 	const reliabilityStorePath = join(storageDir, "pibo-events.sqlite");
 	const webApps = [createChatWebApp({
 		agentStorePath,
 		dataStorePath,
 		dataPayloadRootDir,
-		projectStorePath,
+		workflowStorePath,
 		reliabilityStorePath,
 		...options.chat,
 	})];
@@ -372,7 +372,7 @@ async function startWebHostChannel(options = {}) {
 		dataStorePath,
 		dataPayloadRootDir,
 		reliabilityStorePath,
-		projectStorePath,
+		workflowStorePath,
 		baseURL: `http://${address.host}:${address.port}`, 
 	};
 }
@@ -1317,7 +1317,7 @@ test("chat web resumes a pending phased delivery after app restart", async () =>
 			dataStorePath: first.dataStorePath,
 			dataPayloadRootDir: first.dataPayloadRootDir,
 			reliabilityStorePath: first.reliabilityStorePath,
-			projectStorePath: first.projectStorePath,
+			workflowStorePath: first.workflowStorePath,
 		};
 		first.emitOutput({ type: "assistant_message", piboSessionId: session.id, eventId: "web-restart-pending", assistantIndex: 0, text: "survives process restart" });
 		const beforeRestart = new DatabaseSync(first.reliabilityStorePath, { readOnly: true });
@@ -1732,7 +1732,7 @@ for (const crashBoundary of [
 				dataStorePath: first.dataStorePath,
 				dataPayloadRootDir: first.dataPayloadRootDir,
 				reliabilityStorePath: first.reliabilityStorePath,
-				projectStorePath: first.projectStorePath,
+				workflowStorePath: first.workflowStorePath,
 			};
 			const firstData = new DatabaseSync(sharedPaths.dataStorePath, { readOnly: true });
 			let durableBeforeRestart;
@@ -3019,186 +3019,6 @@ test("chat web app keeps the default room locked", async () => {
 	}
 });
 
-test("chat web app keeps Project Manager locked without replacing its canonical session", async () => {
-	const { channel, baseURL, sessions, storageDir, projectStorePath } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-	});
-	const headers = {
-		"content-type": "application/json",
-		origin: baseURL,
-		"x-test-user": "user-1",
-	};
-
-	try {
-		const firstBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(firstBootstrapResponse.status, 200);
-		const firstBootstrap = await firstBootstrapResponse.json();
-		const defaultProject = firstBootstrap.sharedDefaultProject;
-		const canonicalSessionId = firstBootstrap.selectedPiboSessionId;
-
-		const archiveResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(defaultProject.id)}`, {
-			method: "PATCH",
-			headers,
-			body: JSON.stringify({ archived: true }),
-		});
-		const archivePayload = await archiveResponse.json();
-		const deleteResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(defaultProject.id)}`, {
-			method: "DELETE",
-			headers,
-			body: JSON.stringify({ confirmName: defaultProject.name, deleteFiles: false }),
-		});
-		const deletePayload = await deleteResponse.json();
-
-		const reloadedBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(reloadedBootstrapResponse.status, 200);
-		const reloadedBootstrap = await reloadedBootstrapResponse.json();
-
-		const ordinaryFolder = join(storageDir, "ordinary-project");
-		mkdirSync(ordinaryFolder, { recursive: true });
-		const createResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			method: "POST",
-			headers,
-			body: JSON.stringify({ name: "Ordinary Project", projectFolder: ordinaryFolder, createFolder: false }),
-		});
-		assert.equal(createResponse.status, 201);
-		const ordinaryProject = (await createResponse.json()).project;
-		const createSessionResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(ordinaryProject.id)}/sessions`, {
-			method: "POST",
-			headers,
-			body: JSON.stringify({}),
-		});
-		assert.equal(createSessionResponse.status, 201);
-		const ordinarySession = (await createSessionResponse.json()).session;
-		const ordinaryArchiveResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(ordinaryProject.id)}`, {
-			method: "PATCH",
-			headers,
-			body: JSON.stringify({ archived: true }),
-		});
-		assert.equal(ordinaryArchiveResponse.status, 200);
-		const ordinaryDeleteResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(ordinaryProject.id)}`, {
-			method: "DELETE",
-			headers,
-			body: JSON.stringify({ confirmName: ordinaryProject.name, deleteFiles: false }),
-		});
-		assert.equal(ordinaryDeleteResponse.status, 200);
-
-		assert.equal(archiveResponse.status, 400);
-		assert.deepEqual(archivePayload, { error: "Project Manager cannot be changed" });
-		assert.equal(deleteResponse.status, 400);
-		assert.deepEqual(deletePayload, { error: "Project Manager cannot be deleted" });
-		assert.equal(reloadedBootstrap.sharedDefaultProject.id, defaultProject.id);
-		assert.equal(reloadedBootstrap.selectedPiboSessionId, canonicalSessionId);
-		assert.deepEqual(reloadedBootstrap.projectSessions.map((session) => session.piboSessionId), [canonicalSessionId]);
-		assert.deepEqual(
-			sessions.list().filter((session) => session.metadata?.projectId === defaultProject.id).map((session) => session.id),
-			[canonicalSessionId],
-		);
-		assert.equal(sessions.get(ordinarySession.id)?.id, ordinarySession.id);
-
-		const projectDb = new DatabaseSync(projectStorePath, { readOnly: true });
-		try {
-			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM projects WHERE id = ?").get(defaultProject.id).count, 1);
-			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM project_sessions WHERE project_id = ? AND pibo_session_id = ?").get(defaultProject.id, canonicalSessionId).count, 1);
-			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM projects WHERE id = ?").get(ordinaryProject.id).count, 0);
-			assert.equal(projectDb.prepare("SELECT count(*) AS count FROM project_sessions WHERE pibo_session_id = ?").get(ordinarySession.id).count, 0);
-		} finally {
-			projectDb.close();
-		}
-	} finally {
-		await channel.stop?.();
-	}
-});
-
-test("chat web app rejects messages for archived Projects after restart", async () => {
-	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-archived-project-message-"));
-	let runtime = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		storageDir,
-		persistSessions: true,
-	});
-	const mutation = (path, body) => fetch(`${runtime.baseURL}${path}`, {
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			origin: runtime.baseURL,
-			"x-test-user": "user-1",
-		},
-		body: JSON.stringify(body),
-	});
-	try {
-		const projectResponse = await mutation("/api/chat/projects", {
-			name: "Archived Message Project",
-			projectFolder: join(storageDir, "archived-message-project"),
-			createFolder: true,
-		});
-		assert.equal(projectResponse.status, 201);
-		const project = (await projectResponse.json()).project;
-		const sessionResponse = await mutation(`/api/chat/projects/${encodeURIComponent(project.id)}/sessions`, {});
-		assert.equal(sessionResponse.status, 201);
-		const session = (await sessionResponse.json()).session;
-
-		const acceptedResponse = await mutation("/api/chat/projects/message", {
-			piboSessionId: session.id,
-			text: "active project control",
-			clientTxnId: "active-project-message",
-			delivery: "queue",
-		});
-		assert.equal(acceptedResponse.status, 200);
-		assert.equal(runtime.emitted.length, 1);
-
-		const archiveResponse = await fetch(`${runtime.baseURL}/api/chat/projects/${encodeURIComponent(project.id)}`, {
-			method: "PATCH",
-			headers: {
-				"content-type": "application/json",
-				origin: runtime.baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({ archived: true }),
-		});
-		assert.equal(archiveResponse.status, 200);
-
-		await runtime.channel.stop?.();
-		runtime.sessions.close();
-		runtime = await startWebHostChannel({
-			auth: createFakeAuthService(),
-			storageDir,
-			persistSessions: true,
-		});
-
-		const rejectedResponse = await mutation("/api/chat/projects/message", {
-			piboSessionId: session.id,
-			text: "must not be accepted after archive",
-			clientTxnId: "archived-project-message",
-			delivery: "queue",
-		});
-		assert.equal(rejectedResponse.status, 404);
-		assert.deepEqual(await rejectedResponse.json(), { error: "Project not found" });
-		assert.deepEqual(runtime.emitted, []);
-
-		const projectDb = new DatabaseSync(runtime.projectStorePath, { readOnly: true });
-		try {
-			assert.equal(typeof projectDb.prepare("SELECT archived_at FROM projects WHERE id = ?").get(project.id).archived_at, "string");
-			assert.equal(projectDb.prepare("SELECT archived FROM project_sessions WHERE pibo_session_id = ?").get(session.id).archived, 0);
-		} finally {
-			projectDb.close();
-		}
-		const dataDb = new DatabaseSync(runtime.dataStorePath, { readOnly: true });
-		try {
-			assert.equal(dataDb.prepare("SELECT count(*) AS count FROM event_log WHERE session_id = ? AND type = 'user.message.accepted'").get(session.id).count, 1);
-		} finally {
-			dataDb.close();
-		}
-	} finally {
-		await runtime.channel.stop?.();
-		runtime.sessions.close();
-		rmSync(storageDir, { recursive: true, force: true });
-	}
-});
-
 test("chat web app rejects cyclic room parents and preserves valid room lifecycles", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
@@ -3285,7 +3105,7 @@ test("chat web app archives and deletes rooms with contained session subtrees", 
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ name: "Project Room" }),
+			body: JSON.stringify({ name: "Workspace Room" }),
 		});
 		assert.equal(roomResponse.status, 201);
 		const roomPayload = await roomResponse.json();
@@ -5632,20 +5452,20 @@ test("workflow version picker lists published nested workflow refs and reports m
 		const pickerPayload = await picker.json();
 		assert.equal(pickerPayload.kind, "workflow-versions");
 		assert.deepEqual(pickerPayload.options.map((option) => `${option.id}@${option.version}`), [
-			"standard-project@1.0.0",
+			"standard-workflow@1.0.0",
 			"simple-chat@1.0.0",
 			"ui-review-workflow@2.0.0",
 		]);
-		assert.equal(pickerPayload.options[0].displayName, "Standard Project");
+		assert.equal(pickerPayload.options[0].displayName, "Standard Workflow");
 		assert.equal(pickerPayload.options[0].paramsSchema, null);
 		assert.equal(pickerPayload.options.some((option) => option.status !== "published"), false);
 
-		const selectedWorkflow = await fetch(`${baseURL}/api/chat/workflows/pickers/workflow-versions?selectedWorkflowId=standard-project&selectedWorkflowVersion=1.0.0`, {
+		const selectedWorkflow = await fetch(`${baseURL}/api/chat/workflows/pickers/workflow-versions?selectedWorkflowId=standard-workflow&selectedWorkflowVersion=1.0.0`, {
 			headers: { "x-test-user": "user-1" },
 		});
 		assert.equal(selectedWorkflow.status, 200);
 		const selectedPayload = await selectedWorkflow.json();
-		assert.equal(selectedPayload.selectedWorkflowId, "standard-project");
+		assert.equal(selectedPayload.selectedWorkflowId, "standard-workflow");
 		assert.equal(selectedPayload.selectedWorkflowVersion, "1.0.0");
 		assert.deepEqual(selectedPayload.diagnostics, []);
 
@@ -5669,21 +5489,21 @@ test("workflow version picker lists published nested workflow refs and reports m
 		assert.deepEqual(historyPayload.options.map((option) => `${option.id}@${option.version}:${option.status}`), [
 			"archived-review-workflow@1.0.0:archived",
 			"simple-chat@1.0.0:published",
-			"standard-project@1.0.0:published",
+			"standard-workflow@1.0.0:published",
 			"ui-draft-workflow@0.1.0-draft:draft",
 			"ui-review-workflow@2.0.0:published",
 		]);
 		const historyByKey = new Map(historyPayload.options.map((option) => [`${option.id}@${option.version}`, option]));
-		const codeHistoryRow = historyByKey.get("standard-project@1.0.0");
+		const codeHistoryRow = historyByKey.get("standard-workflow@1.0.0");
 		assert.ok(codeHistoryRow);
-		assert.deepEqual(codeHistoryRow.actions, ["view", "duplicate", "create_project_session", "version_history"]);
+		assert.deepEqual(codeHistoryRow.actions, ["view", "duplicate", "create_workflow_session", "version_history"]);
 		assert.equal(codeHistoryRow.editability.canPublish, false);
 		const draftHistoryRow = historyByKey.get("ui-draft-workflow@0.1.0-draft");
 		assert.ok(draftHistoryRow);
 		assert.deepEqual(draftHistoryRow.actions, ["view", "edit_draft", "validate", "publish", "archive", "delete"]);
 		const uiPublishedHistoryRow = historyByKey.get("ui-review-workflow@2.0.0");
 		assert.ok(uiPublishedHistoryRow);
-		assert.deepEqual(uiPublishedHistoryRow.actions, ["view", "duplicate", "create_project_session", "version_history", "create_next_draft", "archive", "delete"]);
+		assert.deepEqual(uiPublishedHistoryRow.actions, ["view", "duplicate", "create_workflow_session", "version_history", "create_next_draft", "archive", "delete"]);
 
 		const archivedHistory = await fetch(`${baseURL}/api/chat/workflows/pickers/version-history?selectedWorkflowId=archived-review-workflow&selectedWorkflowVersion=1.0.0`, {
 			headers: { "x-test-user": "user-1" },
@@ -5819,10 +5639,10 @@ test("workflow catalog authentication and permission baseline treats UI workflow
 		const unauthenticatedInspect = await fetch(`${baseURL}/api/chat/workflows/ui-global-permission-draft?version=0.1.1`);
 		assert.equal(unauthenticatedInspect.status, 401);
 
-		const codeDeleteResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project`, {
+		const codeDeleteResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow`, {
 			method: "DELETE",
 			headers: userTwoHeaders,
-			body: JSON.stringify({ confirmWorkflowId: "standard-project" }),
+			body: JSON.stringify({ confirmWorkflowId: "standard-workflow" }),
 		});
 		assert.equal(codeDeleteResponse.status, 409);
 		assert.match((await codeDeleteResponse.json()).error, /Code workflow projections are read-only/);
@@ -5853,14 +5673,14 @@ test("workflow catalog list and inspect APIs expose source/status, diagnostics, 
 		assert.equal(catalogPayload.includeArchived, false);
 		assert.deepEqual(catalogPayload.workflows.map((workflow) => `${workflow.id}:${workflow.source}:${workflow.status}`), [
 			"simple-chat:code:published",
-			"standard-project:code:published",
+			"standard-workflow:code:published",
 			"ui-review-workflow:ui:published",
 		]);
 
-		const standardWorkflow = catalogPayload.workflows.find((workflow) => workflow.id === "standard-project");
+		const standardWorkflow = catalogPayload.workflows.find((workflow) => workflow.id === "standard-workflow");
 		assert.ok(standardWorkflow);
-		assert.equal(standardWorkflow.title, "Standard Project");
-		assert.deepEqual(standardWorkflow.tags, ["project", "workflow"]);
+		assert.equal(standardWorkflow.title, "Standard Workflow");
+		assert.deepEqual(standardWorkflow.tags, ["session", "workflow"]);
 		assert.equal(standardWorkflow.versions[0].version, "1.0.0");
 		assert.equal(standardWorkflow.versions[0].definitionHash.startsWith("sha256:"), true);
 		assert.equal(standardWorkflow.validationState, "valid");
@@ -5869,7 +5689,7 @@ test("workflow catalog list and inspect APIs expose source/status, diagnostics, 
 		assert.equal(standardWorkflow.editability.canEditDraft, false);
 		assert.ok(standardWorkflow.actions.includes("view"));
 		assert.ok(standardWorkflow.actions.includes("duplicate"));
-		assert.ok(standardWorkflow.actions.includes("create_project_session"));
+		assert.ok(standardWorkflow.actions.includes("create_workflow_session"));
 		assert.ok(standardWorkflow.actions.includes("version_history"));
 		assert.equal(standardWorkflow.actions.includes("edit_draft"), false);
 		assert.equal(standardWorkflow.actions.includes("publish"), false);
@@ -5879,7 +5699,7 @@ test("workflow catalog list and inspect APIs expose source/status, diagnostics, 
 		assert.ok(uiPublishedWorkflow);
 		assert.equal(uiPublishedWorkflow.source, "ui");
 		assert.equal(uiPublishedWorkflow.status, "published");
-		for (const action of ["view", "duplicate", "version_history", "create_next_draft", "create_project_session", "archive", "delete"]) {
+		for (const action of ["view", "duplicate", "version_history", "create_next_draft", "create_workflow_session", "archive", "delete"]) {
 			assert.ok(uiPublishedWorkflow.actions.includes(action));
 		}
 		assert.equal(uiPublishedWorkflow.actions.includes("edit_draft"), false);
@@ -5896,7 +5716,7 @@ test("workflow catalog list and inspect APIs expose source/status, diagnostics, 
 		assert.equal(archivedWorkflow.status, "archived");
 		assert.equal(archivedWorkflow.editability.canDuplicate, false);
 
-		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
+		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/duplicate`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({ version: "1.0.0" }),
@@ -5917,7 +5737,7 @@ test("workflow catalog list and inspect APIs expose source/status, diagnostics, 
 		});
 		assert.equal(catalogAfterDraftResponse.status, 200);
 		const catalogAfterDraftPayload = await catalogAfterDraftResponse.json();
-		const copiedWorkflow = catalogAfterDraftPayload.workflows.find((workflow) => workflow.id === "ui-standard-project-copy");
+		const copiedWorkflow = catalogAfterDraftPayload.workflows.find((workflow) => workflow.id === "ui-standard-workflow-copy");
 		assert.ok(copiedWorkflow);
 		assert.equal(copiedWorkflow.source, "ui");
 		assert.equal(copiedWorkflow.status, "draft");
@@ -5929,9 +5749,9 @@ test("workflow catalog list and inspect APIs expose source/status, diagnostics, 
 			assert.ok(copiedWorkflow.actions.includes(action));
 		}
 		assert.equal(copiedWorkflow.actions.includes("duplicate"), false);
-		assert.equal(copiedWorkflow.actions.includes("create_project_session"), false);
+		assert.equal(copiedWorkflow.actions.includes("create_workflow_session"), false);
 
-		const inspectDraftResponse = await fetch(`${baseURL}/api/chat/workflows/ui-standard-project-copy`, {
+		const inspectDraftResponse = await fetch(`${baseURL}/api/chat/workflows/ui-standard-workflow-copy`, {
 			headers: { "x-test-user": "user-1" },
 		});
 		assert.equal(inspectDraftResponse.status, 200);
@@ -5941,17 +5761,17 @@ test("workflow catalog list and inspect APIs expose source/status, diagnostics, 
 		assert.equal(inspectDraftPayload.selected.draft.draftId, duplicatePayload.draft.draftId);
 		assert.ok(inspectDraftPayload.diagnostics.some((diagnostic) => diagnostic.registryRef === "missing-catalog-profile"));
 
-		const inspectPublishedResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project?version=1.0.0`, {
+		const inspectPublishedResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow?version=1.0.0`, {
 			headers: { "x-test-user": "user-1" },
 		});
 		assert.equal(inspectPublishedResponse.status, 200);
 		const inspectPublishedPayload = await inspectPublishedResponse.json();
 		assert.equal(inspectPublishedPayload.selected.kind, "publishedVersion");
-		assert.equal(inspectPublishedPayload.selected.version.id, "standard-project");
+		assert.equal(inspectPublishedPayload.selected.version.id, "standard-workflow");
 		assert.equal(inspectPublishedPayload.selected.version.version, "1.0.0");
 		assert.equal(inspectPublishedPayload.selected.version.source, "code");
 		assert.equal(inspectPublishedPayload.selected.validation.validationState, "valid");
-		assert.equal(inspectPublishedPayload.selected.definition.id, "standard-project");
+		assert.equal(inspectPublishedPayload.selected.definition.id, "standard-workflow");
 
 		const archivedInspectDefaultResponse = await fetch(`${baseURL}/api/chat/workflows/archived-review-workflow?version=1.0.0`, {
 			headers: { "x-test-user": "user-1" },
@@ -6121,7 +5941,7 @@ test("workflow catalog lifecycle APIs create, validate, publish, and expose vers
 		assert.deepEqual(versionInspectPayload.missingRefs, []);
 		assert.equal(versionInspectPayload.definition.id, "ui-lifecycle-api-draft");
 
-		const codeNextDraftResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/drafts`, {
+		const codeNextDraftResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/drafts`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({ version: "1.0.0" }),
@@ -6189,23 +6009,23 @@ test("workflow duplicate-to-draft catalog operation handles code and UI publishe
 	};
 
 	try {
-		const codeDuplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
+		const codeDuplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/duplicate`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({ version: "1.0.0" }),
 		});
 		assert.equal(codeDuplicateResponse.status, 201);
 		const codeDuplicatePayload = await codeDuplicateResponse.json();
-		assert.equal(codeDuplicatePayload.draft.workflowId, "ui-standard-project-copy");
-		assert.equal(codeDuplicatePayload.draft.baseWorkflowId, "standard-project");
+		assert.equal(codeDuplicatePayload.draft.workflowId, "ui-standard-workflow-copy");
+		assert.equal(codeDuplicatePayload.draft.baseWorkflowId, "standard-workflow");
 		assert.equal(codeDuplicatePayload.draft.baseWorkflowVersion, "1.0.0");
 		assert.match(codeDuplicatePayload.draft.baseDefinitionHash, /^sha256:[a-f0-9]{64}$/);
-		assert.equal(codeDuplicatePayload.draft.definition.id, "ui-standard-project-copy");
+		assert.equal(codeDuplicatePayload.draft.definition.id, "ui-standard-workflow-copy");
 		assert.equal(codeDuplicatePayload.draft.definition.version, "1.0.0-draft");
 		assert.equal(codeDuplicatePayload.draft.definition.ui.layout, "auto");
 		assert.equal(codeDuplicatePayload.draft.definition.xstate, undefined);
 
-		const codeDuplicateAgainResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
+		const codeDuplicateAgainResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/duplicate`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({ version: "1.0.0" }),
@@ -6214,7 +6034,7 @@ test("workflow duplicate-to-draft catalog operation handles code and UI publishe
 		const codeDuplicateAgainPayload = await codeDuplicateAgainResponse.json();
 		assert.equal(codeDuplicateAgainPayload.draft.draftId, codeDuplicatePayload.draft.draftId);
 
-		const sourceCodeInspectResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project?version=1.0.0`, {
+		const sourceCodeInspectResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow?version=1.0.0`, {
 			headers: { "x-test-user": "user-1" },
 		});
 		assert.equal(sourceCodeInspectResponse.status, 200);
@@ -6222,7 +6042,7 @@ test("workflow duplicate-to-draft catalog operation handles code and UI publishe
 		assert.equal(sourceCodeInspectPayload.selected.kind, "publishedVersion");
 		assert.equal(sourceCodeInspectPayload.selected.version.source, "code");
 		assert.equal(sourceCodeInspectPayload.selected.version.status, "published");
-		assert.equal(sourceCodeInspectPayload.selected.definition.id, "standard-project");
+		assert.equal(sourceCodeInspectPayload.selected.definition.id, "standard-workflow");
 
 		const sourceDefinition = structuredClone(codeDuplicatePayload.draft.definition);
 		sourceDefinition.nodes.agent.promptTemplate = "Preserved UI published prompt.\\n\\n{{input}}";
@@ -6241,30 +6061,30 @@ test("workflow duplicate-to-draft catalog operation handles code and UI publishe
 		});
 		assert.equal(publishSourceDraftResponse.status, 201);
 		const publishSourceDraftPayload = await publishSourceDraftResponse.json();
-		assert.equal(publishSourceDraftPayload.publishedVersion.workflowId, "ui-standard-project-copy");
+		assert.equal(publishSourceDraftPayload.publishedVersion.workflowId, "ui-standard-workflow-copy");
 		assert.equal(publishSourceDraftPayload.publishedVersion.version, "1.1.0");
 		assert.match(publishSourceDraftPayload.publishedVersion.definitionHash, /^sha256:[a-f0-9]{64}$/);
 
-		const uiDuplicateResponse = await fetch(`${baseURL}/api/chat/workflows/ui-standard-project-copy/duplicate`, {
+		const uiDuplicateResponse = await fetch(`${baseURL}/api/chat/workflows/ui-standard-workflow-copy/duplicate`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({ version: "1.1.0" }),
 		});
 		assert.equal(uiDuplicateResponse.status, 201);
 		const uiDuplicatePayload = await uiDuplicateResponse.json();
-		assert.equal(uiDuplicatePayload.draft.workflowId, "ui-ui-standard-project-copy-copy");
-		assert.equal(uiDuplicatePayload.draft.baseWorkflowId, "ui-standard-project-copy");
+		assert.equal(uiDuplicatePayload.draft.workflowId, "ui-ui-standard-workflow-copy-copy");
+		assert.equal(uiDuplicatePayload.draft.baseWorkflowId, "ui-standard-workflow-copy");
 		assert.equal(uiDuplicatePayload.draft.baseWorkflowVersion, "1.1.0");
 		assert.equal(uiDuplicatePayload.draft.baseDefinitionHash, publishSourceDraftPayload.publishedVersion.definitionHash);
-		assert.equal(uiDuplicatePayload.draft.definition.id, "ui-ui-standard-project-copy-copy");
+		assert.equal(uiDuplicatePayload.draft.definition.id, "ui-ui-standard-workflow-copy-copy");
 		assert.equal(uiDuplicatePayload.draft.definition.version, "1.1.0-draft");
 		assert.equal(uiDuplicatePayload.draft.definition.nodes.agent.promptTemplate, "Preserved UI published prompt.\\n\\n{{input}}");
 		assert.deepEqual(uiDuplicatePayload.draft.definition.ui.positions.agent, { x: 321, y: 654 });
-		assert.equal(uiDuplicatePayload.draft.definition.metadata.migration.fromWorkflowId, "ui-standard-project-copy");
+		assert.equal(uiDuplicatePayload.draft.definition.metadata.migration.fromWorkflowId, "ui-standard-workflow-copy");
 		assert.equal(uiDuplicatePayload.draft.definition.metadata.migration.fromDefinitionHash, publishSourceDraftPayload.publishedVersion.definitionHash);
 		assert.equal(uiDuplicatePayload.draft.definition.xstate, undefined);
 
-		const uiDuplicateAgainResponse = await fetch(`${baseURL}/api/chat/workflows/ui-standard-project-copy/duplicate`, {
+		const uiDuplicateAgainResponse = await fetch(`${baseURL}/api/chat/workflows/ui-standard-workflow-copy/duplicate`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({ version: "1.1.0" }),
@@ -6273,7 +6093,7 @@ test("workflow duplicate-to-draft catalog operation handles code and UI publishe
 		const uiDuplicateAgainPayload = await uiDuplicateAgainResponse.json();
 		assert.equal(uiDuplicateAgainPayload.draft.draftId, uiDuplicatePayload.draft.draftId);
 
-		const sourceUiInspectResponse = await fetch(`${baseURL}/api/chat/workflows/ui-standard-project-copy?version=1.1.0`, {
+		const sourceUiInspectResponse = await fetch(`${baseURL}/api/chat/workflows/ui-standard-workflow-copy?version=1.1.0`, {
 			headers: { "x-test-user": "user-1" },
 		});
 		assert.equal(sourceUiInspectResponse.status, 200);
@@ -6282,7 +6102,7 @@ test("workflow duplicate-to-draft catalog operation handles code and UI publishe
 		assert.equal(sourceUiInspectPayload.selected.version.source, "ui");
 		assert.equal(sourceUiInspectPayload.selected.version.status, "published");
 		assert.equal(sourceUiInspectPayload.selected.version.definitionHash, publishSourceDraftPayload.publishedVersion.definitionHash);
-		assert.equal(sourceUiInspectPayload.selected.definition.id, "ui-standard-project-copy");
+		assert.equal(sourceUiInspectPayload.selected.definition.id, "ui-standard-workflow-copy");
 		assert.equal(sourceUiInspectPayload.selected.definition.nodes.agent.promptTemplate, "Preserved UI published prompt.\\n\\n{{input}}");
 
 		const archivedDuplicateResponse = await fetch(`${baseURL}/api/chat/workflows/archived-review-workflow/duplicate`, {
@@ -6338,7 +6158,7 @@ test("workflow archive API applies at workflow identity scope and hides archived
 		const archivedWorkflow = archivedCatalogPayload.workflows.find((workflow) => workflow.id === "ui-review-workflow");
 		assert.ok(archivedWorkflow);
 		assert.equal(archivedWorkflow.status, "archived");
-		assert.equal(archivedWorkflow.editability.canCreateProjectSession, false);
+		assert.equal(archivedWorkflow.editability.canCreateWorkflowSession, false);
 		assert.equal(archivedWorkflow.editability.canArchive, false);
 
 		const pickerResponse = await fetch(`${baseURL}/api/chat/workflows/pickers/workflow-versions`, {
@@ -6369,175 +6189,13 @@ test("workflow archive API applies at workflow identity scope and hides archived
 		const archivedInspectPayload = await archivedInspectResponse.json();
 		assert.equal(archivedInspectPayload.selected.version.status, "archived");
 
-		const codeArchiveResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/archive`, {
+		const codeArchiveResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/archive`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({}),
 		});
 		assert.equal(codeArchiveResponse.status, 409);
 		assert.match((await codeArchiveResponse.json()).error, /Code workflow projections are read-only/);
-	} finally {
-		await channel.stop?.();
-	}
-});
-
-test("workflow delete API tombstones UI workflows while preserving Project snapshots", async () => {
-	const { channel, baseURL, storageDir } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }],
-	});
-
-	const jsonHeaders = {
-		"content-type": "application/json",
-		origin: baseURL,
-		"x-test-user": "user-1",
-	};
-
-	try {
-		const projectResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				name: "Deleted Workflow History Project",
-				projectFolder: join(storageDir, "deleted-workflow-history-project"),
-				createFolder: true,
-			}),
-		});
-		assert.equal(projectResponse.status, 201);
-		const projectPayload = await projectResponse.json();
-
-		const sessionResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				profile: "base",
-				workflowId: "ui-review-workflow",
-				workflowVersion: "2.0.0",
-				title: "Review run before delete",
-			}),
-		});
-		assert.equal(sessionResponse.status, 201);
-		const sessionPayload = await sessionResponse.json();
-
-		const startResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(sessionPayload.session.id)}/start`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({}),
-		});
-		assert.equal(startResponse.status, 202);
-		const startPayload = await startResponse.json();
-		assert.equal(startPayload.run.snapshotId, sessionPayload.snapshot.id);
-
-		const unauthenticatedDelete = await fetch(`${baseURL}/api/chat/workflows/ui-review-workflow`, {
-			method: "DELETE",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-			},
-			body: JSON.stringify({ confirmWorkflowId: "ui-review-workflow" }),
-		});
-		assert.equal(unauthenticatedDelete.status, 401);
-
-		const badConfirmation = await fetch(`${baseURL}/api/chat/workflows/ui-review-workflow`, {
-			method: "DELETE",
-			headers: jsonHeaders,
-			body: JSON.stringify({ confirmWorkflowId: "wrong-workflow" }),
-		});
-		assert.equal(badConfirmation.status, 400);
-		assert.match((await badConfirmation.json()).error, /Type "ui-review-workflow"/);
-
-		const deleteResponse = await fetch(`${baseURL}/api/chat/workflows/ui-review-workflow`, {
-			method: "DELETE",
-			headers: jsonHeaders,
-			body: JSON.stringify({ confirmWorkflowId: "ui-review-workflow" }),
-		});
-		assert.equal(deleteResponse.status, 200);
-		const deletePayload = await deleteResponse.json();
-		assert.equal(deletePayload.workflowId, "ui-review-workflow");
-		assert.equal(deletePayload.deleted, true);
-		assert.equal(deletePayload.tombstone.workflowId, "ui-review-workflow");
-		assert.equal(deletePayload.tombstone.deletedBy, "user-1");
-		assert.equal(deletePayload.tombstone.lastKnownTitle, "UI Review Workflow");
-		assert.equal(deletePayload.tombstone.lastKnownVersion, "2.0.0");
-		assert.match(deletePayload.tombstone.lastDefinitionHash, /^sha256:[a-f0-9]{64}$/);
-
-		const defaultCatalogResponse = await fetch(`${baseURL}/api/chat/workflows`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(defaultCatalogResponse.status, 200);
-		const defaultCatalogPayload = await defaultCatalogResponse.json();
-		assert.equal(defaultCatalogPayload.workflows.some((workflow) => workflow.id === "ui-review-workflow"), false);
-
-		const archivedCatalogResponse = await fetch(`${baseURL}/api/chat/workflows?includeArchived=true`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(archivedCatalogResponse.status, 200);
-		const archivedCatalogPayload = await archivedCatalogResponse.json();
-		assert.equal(archivedCatalogPayload.workflows.some((workflow) => workflow.id === "ui-review-workflow"), false);
-
-		const pickerResponse = await fetch(`${baseURL}/api/chat/workflows/pickers/workflow-versions`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(pickerResponse.status, 200);
-		const pickerPayload = await pickerResponse.json();
-		assert.equal(pickerPayload.options.some((option) => option.id === "ui-review-workflow"), false);
-
-		const historyResponse = await fetch(`${baseURL}/api/chat/workflows/pickers/version-history`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(historyResponse.status, 200);
-		const historyPayload = await historyResponse.json();
-		assert.equal(historyPayload.options.some((option) => option.id === "ui-review-workflow"), false);
-
-		const inspectDeletedResponse = await fetch(`${baseURL}/api/chat/workflows/ui-review-workflow?version=2.0.0&includeArchived=true`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(inspectDeletedResponse.status, 404);
-
-		const duplicateDeletedResponse = await fetch(`${baseURL}/api/chat/workflows/ui-review-workflow/duplicate`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({ version: "2.0.0" }),
-		});
-		assert.equal(duplicateDeletedResponse.status, 404);
-
-		const bootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap?projectId=${encodeURIComponent(projectPayload.project.id)}&piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(bootstrapResponse.status, 200);
-		const bootstrapPayload = await bootstrapResponse.json();
-		assert.deepEqual(bootstrapPayload.projectSessions, []);
-		assert.deepEqual(bootstrapPayload.sessions, []);
-
-		const historicalRunResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(sessionPayload.session.id)}/start`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({}),
-		});
-		assert.equal(historicalRunResponse.status, 200);
-		const historicalRunPayload = await historicalRunResponse.json();
-		assert.equal(historicalRunPayload.alreadyStarted, true);
-		assert.equal(historicalRunPayload.workflow.id, "ui-review-workflow");
-		assert.equal(historicalRunPayload.workflow.version, "2.0.0");
-		assert.equal(historicalRunPayload.workflow.source, "ui");
-		assert.equal(historicalRunPayload.workflow.title, "UI Review Workflow");
-		assert.equal(historicalRunPayload.projectSession.workflowRunId, startPayload.run.id);
-		assert.equal(historicalRunPayload.snapshot.id, sessionPayload.snapshot.id);
-		assert.equal(historicalRunPayload.snapshot.deletedDefinitionFallback.workflowId, "ui-review-workflow");
-		assert.equal(historicalRunPayload.snapshot.deletedDefinitionFallback.workflowVersion, "2.0.0");
-		assert.equal(historicalRunPayload.snapshot.workflow.effectiveDefinitionHash, sessionPayload.snapshot.workflow.effectiveDefinitionHash);
-		assert.deepEqual(historicalRunPayload.snapshot.effectiveDefinition, sessionPayload.snapshot.effectiveDefinition);
-		assert.equal(historicalRunPayload.run.id, startPayload.run.id);
-		assert.equal(historicalRunPayload.run.snapshotId, sessionPayload.snapshot.id);
-		assert.equal(historicalRunPayload.run.effectiveDefinitionHash, sessionPayload.snapshot.workflow.effectiveDefinitionHash);
-
-		const lifecycleResponse = await fetch(`${baseURL}/api/chat/workflows/lifecycle-events?type=workflow.delete.tombstoned&workflowId=ui-review-workflow`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(lifecycleResponse.status, 200);
-		const lifecyclePayload = await lifecycleResponse.json();
-		assert.equal(lifecyclePayload.events.length, 1);
-		assert.equal(lifecyclePayload.events[0].payload.lastKnownVersion, "2.0.0");
 	} finally {
 		await channel.stop?.();
 	}
@@ -6556,7 +6214,7 @@ test("workflow security boundary validates registered refs and rejects inline ex
 	};
 
 	try {
-		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
+		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/duplicate`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({ version: "1.0.0" }),
@@ -6840,7 +6498,7 @@ test("workflow prompt asset revisions create managed assets and draft prompt ref
 	};
 
 	try {
-		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
+		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/duplicate`, {
 			method: "POST",
 			headers: jsonHeaders,
 			body: JSON.stringify({ version: "1.0.0" }),
@@ -7017,7 +6675,7 @@ test("workflow builder draft loader opens starter and duplicated UI draft wrappe
 		assert.ok(starterPublishPayload.diagnostics.some((diagnostic) => diagnostic.code === "WorkflowValidationError.missingPort" && diagnostic.path === "$.input"));
 		assert.ok(starterPublishPayload.diagnostics.some((diagnostic) => diagnostic.code === "WorkflowValidationError.missingPort" && diagnostic.path === "$.output"));
 
-		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
+		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/duplicate`, {
 			method: "POST",
 			headers: {
 				"content-type": "application/json",
@@ -7028,13 +6686,13 @@ test("workflow builder draft loader opens starter and duplicated UI draft wrappe
 		});
 		assert.equal(duplicateResponse.status, 201);
 		const duplicatePayload = await duplicateResponse.json();
-		assert.equal(duplicatePayload.draft.baseWorkflowId, "standard-project");
+		assert.equal(duplicatePayload.draft.baseWorkflowId, "standard-workflow");
 		assert.equal(duplicatePayload.draft.baseWorkflowVersion, "1.0.0");
-		assert.equal(duplicatePayload.draft.definition.id, "ui-standard-project-copy");
+		assert.equal(duplicatePayload.draft.definition.id, "ui-standard-workflow-copy");
 		assert.equal(duplicatePayload.draft.definition.ui.layout, "auto");
-		assert.match(duplicatePayload.builderPath, /^\/apps\/chat\/workflows\/drafts\/draft_standard-project_1-0-0_/);
+		assert.match(duplicatePayload.builderPath, /^\/apps\/chat\/workflows\/drafts\/draft_standard-workflow_1-0-0_/);
 
-		const duplicateAgainResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
+		const duplicateAgainResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/duplicate`, {
 			method: "POST",
 			headers: {
 				"content-type": "application/json",
@@ -7046,7 +6704,7 @@ test("workflow builder draft loader opens starter and duplicated UI draft wrappe
 		assert.equal(duplicateAgainResponse.status, 201);
 		const duplicateAgainPayload = await duplicateAgainResponse.json();
 		assert.equal(duplicateAgainPayload.draft.draftId, duplicatePayload.draft.draftId);
-		assert.equal(duplicateAgainPayload.draft.workflowId, "ui-standard-project-copy");
+		assert.equal(duplicateAgainPayload.draft.workflowId, "ui-standard-workflow-copy");
 
 		const loadedDuplicateResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(duplicatePayload.draft.draftId)}`, {
 			headers: { "x-test-user": "user-1" },
@@ -7078,7 +6736,7 @@ test("workflow validation pipeline runs on draft load, edit, validate, and publi
 	});
 
 	try {
-		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
+		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/duplicate`, {
 			method: "POST",
 			headers: {
 				"content-type": "application/json",
@@ -7298,132 +6956,8 @@ test("workflow validation pipeline runs on draft load, edit, validate, and publi
 	}
 });
 
-test("workflow Project session creation validates persisted UI-published definitions", async () => {
-	const { channel, baseURL, setProfiles, storageDir } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }, { name: "temporary-workflow-agent" }],
-	});
-
-	const jsonHeaders = {
-		"content-type": "application/json",
-		origin: baseURL,
-		"x-test-user": "user-1",
-	};
-
-	try {
-		const definition = {
-			id: "ui-validation-boundary",
-			version: "0.1.0",
-			title: "UI Validation Boundary",
-			description: "UI-published workflow used to verify Project creation validation.",
-			metadata: { tags: ["validation", "project"] },
-			input: { kind: "text", description: "Topic" },
-			output: { kind: "text", description: "Answer" },
-			initial: "agent",
-			nodes: {
-				agent: {
-					kind: "agent",
-					runtime: "pibo",
-					profile: { kind: "fixed", id: "temporary-workflow-agent" },
-					promptTemplate: "Answer the workflow input.",
-					metadata: { sessionOverrides: { prompt: true } },
-				},
-			},
-			edges: {},
-			ui: { layout: "auto", positions: { agent: { x: 80, y: 80 } } },
-		};
-
-		const createDraftResponse = await fetch(`${baseURL}/api/chat/workflows`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({ workflowId: definition.id, title: definition.title, description: definition.description, definition }),
-		});
-		assert.equal(createDraftResponse.status, 201);
-		const createDraftPayload = await createDraftResponse.json();
-		assert.equal(createDraftPayload.draft.validation.trigger, "draft_load");
-		assert.equal(createDraftPayload.draft.validation.ok, true);
-
-		const publishResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(createDraftPayload.draft.draftId)}/publish`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({ versionIntent: "patch" }),
-		});
-		assert.equal(publishResponse.status, 201);
-		const publishPayload = await publishResponse.json();
-		const workflowVersion = publishPayload.publishedVersion.version;
-		assert.equal(publishPayload.publishedVersion.definition.nodes.agent.profile.id, "temporary-workflow-agent");
-
-		const projectResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				name: "Workflow Validation Boundary Project",
-				projectFolder: join(storageDir, "workflow-validation-boundary-project"),
-				createFolder: true,
-			}),
-		});
-		assert.equal(projectResponse.status, 201);
-		const projectPayload = await projectResponse.json();
-
-		setProfiles([{ name: "base", aliases: ["default"] }]);
-		const blockedCreateResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				profile: "base",
-				workflowId: definition.id,
-				workflowVersion,
-				title: "Blocked persisted UI definition",
-			}),
-		});
-		assert.equal(blockedCreateResponse.status, 422);
-		const blockedCreatePayload = await blockedCreateResponse.json();
-		assert.equal(blockedCreatePayload.validation.trigger, "before_project_session_creation");
-		assert.equal(blockedCreatePayload.validation.blocksRun, true);
-		const missingProfileDiagnostic = blockedCreatePayload.diagnostics.find((diagnostic) => diagnostic.code === "WorkflowGraphError.unknownAgentProfileRef");
-		assert.ok(missingProfileDiagnostic);
-		assert.equal(missingProfileDiagnostic.severity, "error");
-		assert.equal(missingProfileDiagnostic.nodeId, "agent");
-		assert.equal(missingProfileDiagnostic.path, "$.nodes.agent.profile.id");
-		assert.equal(missingProfileDiagnostic.registryRef, "temporary-workflow-agent");
-		assert.equal(typeof missingProfileDiagnostic.message, "string");
-		assert.equal(typeof missingProfileDiagnostic.hint, "string");
-
-		setProfiles([{ name: "base", aliases: ["default"] }, { name: "temporary-workflow-agent" }]);
-		const acceptedCreateResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				profile: "base",
-				workflowId: definition.id,
-				workflowVersion,
-				title: "Accepted persisted UI definition",
-			}),
-		});
-		assert.equal(acceptedCreateResponse.status, 201);
-		const acceptedCreatePayload = await acceptedCreateResponse.json();
-		assert.equal(acceptedCreatePayload.validation.trigger, "before_project_session_creation");
-		assert.equal(acceptedCreatePayload.validation.ok, true);
-		assert.equal(acceptedCreatePayload.snapshot.baseDefinition.nodes.agent.profile.id, "temporary-workflow-agent");
-		assert.equal(acceptedCreatePayload.snapshot.effectiveDefinition.nodes.agent.profile.id, "temporary-workflow-agent");
-
-		const startResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(acceptedCreatePayload.session.id)}/start`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({}),
-		});
-		assert.equal(startResponse.status, 202);
-		const startPayload = await startResponse.json();
-		assert.equal(startPayload.validation.trigger, "before_workflow_start");
-		assert.equal(startPayload.validation.ok, true);
-		assert.equal(startPayload.snapshot.effectiveDefinition.nodes.agent.profile.id, "temporary-workflow-agent");
-	} finally {
-		await channel.stop?.();
-	}
-});
-
 test("workflow draft publish allocates patch, minor, and major versions", async () => {
-	const { channel, baseURL, dataStorePath } = await startWebHostChannel({
+	const { channel, baseURL, workflowStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "base", aliases: ["default"] }],
 	});
@@ -7476,12 +7010,12 @@ test("workflow draft publish allocates patch, minor, and major versions", async 
 		assert.equal(repeatedPatchPublish.payload.alreadyPublished, true);
 		assert.equal(repeatedPatchPublish.payload.publishedVersion.version, "2.0.1");
 
-		const minorDraft = await duplicateDraft("standard-project", "1.0.0");
+		const minorDraft = await duplicateDraft("standard-workflow", "1.0.0");
 		const minorPublish = await publishDraft(minorDraft.draft.draftId, { versionIntent: "minor" });
 		assert.equal(minorPublish.response.status, 201);
-		assert.equal(minorPublish.payload.publishedVersion.workflowId, "ui-standard-project-copy");
+		assert.equal(minorPublish.payload.publishedVersion.workflowId, "ui-standard-workflow-copy");
 		assert.equal(minorPublish.payload.publishedVersion.version, "1.1.0");
-		assert.equal(minorPublish.payload.publishedVersion.definition.id, "ui-standard-project-copy");
+		assert.equal(minorPublish.payload.publishedVersion.definition.id, "ui-standard-workflow-copy");
 
 		const majorDraft = await duplicateDraft("simple-chat", "1.0.0");
 		const majorPublish = await publishDraft(majorDraft.draft.draftId, { versionIntent: "major" });
@@ -7496,7 +7030,7 @@ test("workflow draft publish allocates patch, minor, and major versions", async 
 		const pickerPayload = await pickerResponse.json();
 		const pickerKeys = pickerPayload.options.map((option) => `${option.id}@${option.version}`);
 		assert.ok(pickerKeys.includes("ui-review-workflow@2.0.1"));
-		assert.ok(pickerKeys.includes("ui-standard-project-copy@1.1.0"));
+		assert.ok(pickerKeys.includes("ui-standard-workflow-copy@1.1.0"));
 		assert.ok(pickerKeys.includes("ui-simple-chat-copy@2.0.0"));
 
 		const historyResponse = await fetch(`${baseURL}/api/chat/workflows/pickers/version-history`, {
@@ -7510,11 +7044,11 @@ test("workflow draft publish allocates patch, minor, and major versions", async 
 		assert.ok(historyKeys.indexOf("ui-review-workflow@2.0.0:published") < historyKeys.indexOf("ui-review-workflow@2.0.1:published"));
 		assert.ok(historyKeys.includes("archived-review-workflow@1.0.0:archived"));
 
-		const db = new DatabaseSync(dataStorePath, { readOnly: true });
+		const db = new DatabaseSync(workflowStorePath, { readOnly: true });
 		try {
 			const rows = db.prepare("SELECT workflow_id, version FROM workflow_published_versions ORDER BY workflow_id, version").all();
 			assert.ok(rows.some((row) => row.workflow_id === "ui-review-workflow" && row.version === "2.0.1"));
-			assert.ok(rows.some((row) => row.workflow_id === "ui-standard-project-copy" && row.version === "1.1.0"));
+			assert.ok(rows.some((row) => row.workflow_id === "ui-standard-workflow-copy" && row.version === "1.1.0"));
 			assert.ok(rows.some((row) => row.workflow_id === "ui-simple-chat-copy" && row.version === "2.0.0"));
 		} finally {
 			db.close();
@@ -7575,7 +7109,7 @@ test("workflow published edit creates or reuses one next-version draft", async (
 		assert.equal(loadedPayload.draft.draftId, createPayload.draft.draftId);
 		assert.equal(loadedPayload.draft.definition.xstate, undefined);
 
-		const codeEditResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/drafts`, {
+		const codeEditResponse = await fetch(`${baseURL}/api/chat/workflows/standard-workflow/drafts`, {
 			method: "POST",
 			headers: {
 				"content-type": "application/json",
@@ -7585,870 +7119,6 @@ test("workflow published edit creates or reuses one next-version draft", async (
 			body: JSON.stringify({ version: "1.0.0" }),
 		});
 		assert.equal(codeEditResponse.status, 409);
-	} finally {
-		await channel.stop?.();
-	}
-});
-
-test("chat web app creates configured Project workflow sessions and starts one workflow run explicitly", async () => {
-	const { channel, baseURL, emitted, storageDir, projectStorePath } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }],
-	});
-
-	try {
-		const projectResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({
-				name: "Workflow Project",
-				projectFolder: join(storageDir, "workflow-project"),
-				createFolder: true,
-			}),
-		});
-		assert.equal(projectResponse.status, 201);
-		const projectPayload = await projectResponse.json();
-
-		const pickerResponse = await fetch(`${baseURL}/api/chat/workflows/pickers/workflow-versions`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(pickerResponse.status, 200);
-		const pickerPayload = await pickerResponse.json();
-		assert.equal(pickerPayload.kind, "workflow-versions");
-		assert.ok(pickerPayload.options.some((option) => option.id === "standard-project" && option.version === "1.0.0"));
-
-		const workflowConfiguration = {
-			inputValues: { topic: "Workflow API creation", priority: 2 },
-			promptOverrides: { agent: "Use the provided topic and produce a concise implementation plan." },
-			model: { provider: "openai", id: "gpt-5.1" },
-			thinkingLevel: "medium",
-			fastMode: true,
-		};
-		const createdResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({
-				profile: "base",
-				workflowId: "standard-project",
-				workflowVersion: "1.0.0",
-				title: "Configured Standard Project",
-				...workflowConfiguration,
-			}),
-		});
-		assert.equal(createdResponse.status, 201);
-		const createdPayload = await createdResponse.json();
-		assert.equal(createdPayload.session.title, "Configured Standard Project");
-		assert.equal(createdPayload.session.metadata.projectWorkflowId, "standard-project");
-		assert.equal(createdPayload.session.metadata.projectWorkflowVersion, "1.0.0");
-		assert.equal(createdPayload.session.metadata.workflowSessionKind, "main_workflow");
-		assert.deepEqual(createdPayload.session.activeModel, workflowConfiguration.model);
-		assert.deepEqual(createdPayload.configuration.inputValues, workflowConfiguration.inputValues);
-		assert.deepEqual(createdPayload.configuration.promptOverrides, workflowConfiguration.promptOverrides);
-		assert.deepEqual(createdPayload.configuration.promptOverrideEligibleNodeIds, ["agent"]);
-		assert.deepEqual(createdPayload.configuration.model, workflowConfiguration.model);
-		assert.equal(createdPayload.configuration.thinkingLevel, "medium");
-		assert.equal(createdPayload.configuration.fastMode, true);
-		assert.deepEqual(createdPayload.configuration.overrideScopes, {
-			promptOverrides: "eligible_agent_node",
-			model: "workflow",
-			thinkingLevel: "workflow",
-			fastMode: "workflow",
-		});
-		assert.deepEqual(createdPayload.projectSession.configuration, createdPayload.configuration);
-		assert.deepEqual(createdPayload.session.metadata.projectWorkflowConfiguration, createdPayload.configuration);
-		assert.equal(createdPayload.projectSession.workflowId, "standard-project");
-		assert.equal(createdPayload.projectSession.workflowVersion, "1.0.0");
-		assert.equal(createdPayload.projectSession.state, "configured");
-		assert.equal(createdPayload.projectSession.workflowRunId, undefined);
-		assert.equal(createdPayload.validation.trigger, "before_project_session_creation");
-		assert.equal(createdPayload.validation.ok, true);
-		assert.match(createdPayload.snapshot.id, /^wfs_/);
-		assert.equal(createdPayload.snapshot.schemaVersion, 1);
-		assert.match(createdPayload.snapshot.createdAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-		assert.equal(createdPayload.snapshot.createdBy, "user-1");
-		assert.equal(retiredPartitionField in createdPayload.snapshot, false);
-		assert.equal(createdPayload.snapshot.projectId, projectPayload.project.id);
-		assert.equal(createdPayload.snapshot.piboSessionId, createdPayload.session.id);
-		assert.equal(createdPayload.snapshot.workflow.id, "standard-project");
-		assert.equal(createdPayload.snapshot.workflow.version, "1.0.0");
-		assert.equal(createdPayload.snapshot.workflow.source, "code");
-		assert.equal(createdPayload.snapshot.workflow.title, "Standard Project");
-		assert.deepEqual(createdPayload.snapshot.workflow.tags, ["project", "workflow"]);
-		assert.match(createdPayload.snapshot.workflow.baseDefinitionHash, /^sha256:[a-f0-9]{64}$/);
-		assert.match(createdPayload.snapshot.workflow.effectiveDefinitionHash, /^sha256:[a-f0-9]{64}$/);
-		assert.notEqual(createdPayload.snapshot.workflow.baseDefinitionHash, createdPayload.snapshot.workflow.effectiveDefinitionHash);
-		assert.deepEqual(createdPayload.snapshot.inputValues, workflowConfiguration.inputValues);
-		assert.deepEqual(createdPayload.snapshot.promptOverrides, workflowConfiguration.promptOverrides);
-		assert.deepEqual(createdPayload.snapshot.overridePolicy, {
-			promptEligibility: "metadata.sessionOverrides.prompt===true-and-direct-promptTemplate",
-			eligiblePromptNodeIds: ["agent"],
-			modelScope: "workflow",
-			thinkingLevelScope: "workflow",
-			fastModeScope: "workflow",
-		});
-		assert.deepEqual(createdPayload.snapshot.model, workflowConfiguration.model);
-		assert.equal(createdPayload.snapshot.thinkingLevel, "medium");
-		assert.equal(createdPayload.snapshot.fastMode, true);
-		assert.deepEqual(createdPayload.snapshot.promptAssetPins, []);
-		assert.equal(createdPayload.snapshot.baseDefinition.nodes.agent.promptTemplate, "Use the workflow input to produce a concise answer.\n\n{{input}}");
-		assert.equal(createdPayload.snapshot.effectiveDefinition.nodes.agent.promptTemplate, workflowConfiguration.promptOverrides.agent);
-		assert.equal(createdPayload.snapshot.validation.trigger, "before_project_session_creation");
-		assert.equal(createdPayload.snapshot.validation.ok, true);
-		assert.match(createdPayload.snapshot.validation.validatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-		assert.equal(emitted.length, 0);
-
-		const immutablePatchResponse = await fetch(`${baseURL}/api/chat/project-sessions/${encodeURIComponent(createdPayload.session.id)}`, {
-			method: "PATCH",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({
-				workflowId: "other-workflow",
-				workflowVersion: "9.9.9",
-				inputValues: { topic: "mutated" },
-				promptOverrides: { agent: "mutated" },
-				model: { provider: "openai", id: "gpt-5.2" },
-				thinkingLevel: "high",
-				fastMode: false,
-			}),
-		});
-		assert.equal(immutablePatchResponse.status, 400);
-		const immutablePatchPayload = await immutablePatchResponse.json();
-		assert.match(immutablePatchPayload.error, /Project workflow selection and configuration are immutable/);
-
-		const titlePatchResponse = await fetch(`${baseURL}/api/chat/project-sessions/${encodeURIComponent(createdPayload.session.id)}`, {
-			method: "PATCH",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({ title: "Renamed Configured Standard Project" }),
-		});
-		assert.equal(titlePatchResponse.status, 200);
-		const titlePatchPayload = await titlePatchResponse.json();
-		assert.equal(titlePatchPayload.session.title, "Renamed Configured Standard Project");
-		assert.equal(titlePatchPayload.projectSession.workflowId, "standard-project");
-		assert.equal(titlePatchPayload.projectSession.workflowVersion, "1.0.0");
-		assert.deepEqual(titlePatchPayload.projectSession.configuration, createdPayload.configuration);
-
-		const inspectAfterOverrideResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project?version=1.0.0`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(inspectAfterOverrideResponse.status, 200);
-		const inspectAfterOverridePayload = await inspectAfterOverrideResponse.json();
-		assert.equal(inspectAfterOverridePayload.selected.definition.nodes.agent.promptTemplate, "Use the workflow input to produce a concise answer.\n\n{{input}}");
-
-		const startValidationResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(createdPayload.session.id)}/start`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({}),
-		});
-		assert.equal(startValidationResponse.status, 202);
-		const startValidationPayload = await startValidationResponse.json();
-		assert.equal(startValidationPayload.validation.trigger, "before_workflow_start");
-		assert.equal(startValidationPayload.validation.ok, true);
-		assert.equal(startValidationPayload.projectSession.state, "running");
-		assert.deepEqual(startValidationPayload.projectSession.configuration, createdPayload.configuration);
-		assert.match(startValidationPayload.projectSession.workflowRunId, /^wfr_/);
-		assert.equal(startValidationPayload.snapshot.id, createdPayload.snapshot.id);
-		assert.deepEqual(startValidationPayload.snapshot.effectiveDefinition, createdPayload.snapshot.effectiveDefinition);
-		assert.equal(startValidationPayload.alreadyStarted, false);
-		assert.equal(startValidationPayload.run.id, startValidationPayload.projectSession.workflowRunId);
-		assert.equal(startValidationPayload.run.status, "running");
-		assert.equal(startValidationPayload.run.snapshotId, createdPayload.snapshot.id);
-		assert.equal(startValidationPayload.run.effectiveDefinitionHash, createdPayload.snapshot.workflow.effectiveDefinitionHash);
-		assert.deepEqual(startValidationPayload.run.inputValues, workflowConfiguration.inputValues);
-		assert.deepEqual(startValidationPayload.run.current.initialNodeIds, ["agent"]);
-		assert.equal(startValidationPayload.run.current.nodeId, "agent");
-		assert.equal(emitted.length, 0);
-
-		const secondStartResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(createdPayload.session.id)}/start`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({}),
-		});
-		assert.equal(secondStartResponse.status, 200);
-		const secondStartPayload = await secondStartResponse.json();
-		assert.equal(secondStartPayload.alreadyStarted, true);
-		assert.equal(secondStartPayload.projectSession.workflowRunId, startValidationPayload.projectSession.workflowRunId);
-		assert.equal(secondStartPayload.run.id, startValidationPayload.run.id);
-
-		const projectDb = new DatabaseSync(projectStorePath, { readOnly: true });
-		try {
-			const rows = projectDb.prepare("SELECT id, pibo_session_id FROM project_workflow_runs WHERE pibo_session_id = ?").all(createdPayload.session.id);
-			assert.equal(rows.length, 1);
-			assert.equal(rows[0].id, startValidationPayload.run.id);
-		} finally {
-			projectDb.close();
-		}
-
-		const legacyRejected = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/sessions`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({ workflowId: "standard-project" }),
-		});
-		assert.equal(legacyRejected.status, 400);
-	} finally {
-		await channel.stop?.();
-	}
-});
-
-test("chat web app resolves Project workflow human wait tokens through preserved workflow APIs", async () => {
-	const { channel, baseURL, storageDir, projectStorePath } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }],
-	});
-	const jsonHeaders = {
-		"content-type": "application/json",
-		origin: baseURL,
-		"x-test-user": "user-1",
-	};
-	const postHumanAction = (piboSessionId, body) => fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectId)}/workflow-sessions/${encodeURIComponent(piboSessionId)}/human-actions`, {
-		method: "POST",
-		headers: jsonHeaders,
-		body: JSON.stringify(body),
-	});
-	let projectId;
-
-	try {
-		const projectResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				name: "Workflow Human Actions Project",
-				projectFolder: join(storageDir, "workflow-human-actions-project"),
-				createFolder: true,
-			}),
-		});
-		assert.equal(projectResponse.status, 201);
-		const projectPayload = await projectResponse.json();
-		projectId = projectPayload.project.id;
-
-		const createdResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectId)}/workflow-sessions`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				profile: "base",
-				workflowId: "standard-project",
-				workflowVersion: "1.0.0",
-				title: "Human Review Workflow",
-			}),
-		});
-		assert.equal(createdResponse.status, 201);
-		const createdPayload = await createdResponse.json();
-
-		const startResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectId)}/workflow-sessions/${encodeURIComponent(createdPayload.session.id)}/start`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({}),
-		});
-		assert.equal(startResponse.status, 202);
-		const startPayload = await startResponse.json();
-		const runId = startPayload.run.id;
-
-		const otherCreatedResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectId)}/workflow-sessions`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				profile: "base",
-				workflowId: "standard-project",
-				workflowVersion: "1.0.0",
-				title: "Other Human Review Workflow",
-			}),
-		});
-		assert.equal(otherCreatedResponse.status, 201);
-		const otherCreatedPayload = await otherCreatedResponse.json();
-		const otherStartResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectId)}/workflow-sessions/${encodeURIComponent(otherCreatedPayload.session.id)}/start`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({}),
-		});
-		assert.equal(otherStartResponse.status, 202);
-
-		const db = new DatabaseSync(projectStorePath);
-		try {
-			const now = new Date().toISOString();
-			const insertWaitToken = ({ id, actions, schema, expiresAt }) => {
-				db.prepare(`INSERT INTO project_workflow_wait_tokens (
-					id,
-					project_id,
-					pibo_session_id,
-					workflow_run_id,
-					node_attempt_id,
-					human_node_id,
-					actions_json,
-					prompt,
-					schema_json,
-					status,
-					resume_payload_json,
-					resume_payload_present,
-					expires_at,
-					created_at,
-					resolved_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, 0, ?, ?, NULL)`)
-					.run(
-						id,
-						projectId,
-						createdPayload.session.id,
-						runId,
-						`wna_${id}`,
-						"review",
-						JSON.stringify(actions),
-						`Review prompt for ${id}`,
-						schema ? JSON.stringify(schema) : null,
-						expiresAt ?? null,
-						now,
-					);
-			};
-			insertWaitToken({ id: "wwt_approve", actions: [{ id: "fixture.humanActions.approve", kind: "approve" }] });
-			insertWaitToken({ id: "wwt_reject", actions: [{ id: "fixture.humanActions.reject", kind: "reject" }] });
-			insertWaitToken({
-				id: "wwt_resume",
-				actions: [{ id: "fixture.humanActions.resume", kind: "resume" }],
-				schema: {
-					type: "object",
-					properties: { comment: { type: "string" } },
-					required: ["comment"],
-					additionalProperties: false,
-				},
-			});
-			insertWaitToken({ id: "wwt_cancel", actions: [{ id: "fixture.humanActions.cancel", kind: "cancel" }] });
-			insertWaitToken({
-				id: "wwt_expired",
-				actions: [{ id: "fixture.humanActions.approve", kind: "approve" }],
-				expiresAt: "2000-01-01T00:00:00.000Z",
-			});
-			insertWaitToken({ id: "wwt_missing_action_ref", actions: [{ id: "missing.humanActions.inline", kind: "approve" }] });
-			db.prepare("UPDATE project_workflow_runs SET status = 'waiting' WHERE id = ?").run(runId);
-			db.prepare("UPDATE project_sessions SET state = 'waiting' WHERE pibo_session_id = ?").run(createdPayload.session.id);
-		} finally {
-			db.close();
-		}
-
-		const bootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap?projectId=${encodeURIComponent(projectId)}&piboSessionId=${encodeURIComponent(createdPayload.session.id)}`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(bootstrapResponse.status, 200);
-		const bootstrapPayload = await bootstrapResponse.json();
-		assert.equal(bootstrapPayload.projectSessions.some((session) => session.piboSessionId === createdPayload.session.id), false);
-		assert.equal(bootstrapPayload.projectSessions.some((session) => session.piboSessionId === otherCreatedPayload.session.id), false);
-
-		const missingTokenResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_missing", actionId: "fixture.humanActions.approve" });
-		assert.equal(missingTokenResponse.status, 404);
-		const missingTokenPayload = await missingTokenResponse.json();
-		assert.equal(missingTokenPayload.diagnostics[0].code, "WorkflowRuntimeError.unknownWaitToken");
-
-		const mismatchResponse = await postHumanAction(otherCreatedPayload.session.id, { waitTokenId: "wwt_resume", actionId: "fixture.humanActions.resume" });
-		assert.equal(mismatchResponse.status, 403);
-		const mismatchPayload = await mismatchResponse.json();
-		assert.equal(mismatchPayload.diagnostics[0].code, "WorkflowRuntimeError.waitTokenSessionMismatch");
-
-		const unavailableResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_resume", actionId: "fixture.humanActions.approve" });
-		assert.equal(unavailableResponse.status, 422);
-		const unavailablePayload = await unavailableResponse.json();
-		assert.equal(unavailablePayload.diagnostics[0].code, "WorkflowRuntimeError.humanActionUnavailable");
-
-		const invalidResumeResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_resume", actionId: "fixture.humanActions.resume", payload: {} });
-		assert.equal(invalidResumeResponse.status, 422);
-		const invalidResumePayload = await invalidResumeResponse.json();
-		assert.equal(invalidResumePayload.diagnostics[0].code, "WorkflowRuntimeError.invalidHumanActionPayload");
-
-		const missingActionRefResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_missing_action_ref", actionId: "missing.humanActions.inline" });
-		assert.equal(missingActionRefResponse.status, 422);
-		const missingActionRefPayload = await missingActionRefResponse.json();
-		assert.equal(missingActionRefPayload.diagnostics[0].code, "WorkflowGraphError.unknownHumanActionRef");
-		assert.equal(missingActionRefPayload.diagnostics[0].registryRef, "missing.humanActions.inline");
-
-		const approveResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_approve", actionId: "fixture.humanActions.approve" });
-		assert.equal(approveResponse.status, 202);
-		const approvePayload = await approveResponse.json();
-		assert.equal(approvePayload.action.kind, "approve");
-		assert.equal(approvePayload.waitToken.status, "resumed");
-
-		const rejectResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_reject", actionId: "fixture.humanActions.reject" });
-		assert.equal(rejectResponse.status, 202);
-		const rejectPayload = await rejectResponse.json();
-		assert.equal(rejectPayload.action.kind, "reject");
-
-		const resumeResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_resume", actionId: "fixture.humanActions.resume", payload: { comment: "Looks good" } });
-		assert.equal(resumeResponse.status, 202);
-		const resumePayload = await resumeResponse.json();
-		assert.equal(resumePayload.action.kind, "resume");
-		assert.deepEqual(resumePayload.action.payload, { comment: "Looks good" });
-
-		const replayResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_approve", actionId: "fixture.humanActions.approve" });
-		assert.equal(replayResponse.status, 409);
-		const replayPayload = await replayResponse.json();
-		assert.equal(replayPayload.diagnostics[0].code, "WorkflowRuntimeError.waitTokenNotPending");
-
-		const cancelResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_cancel", actionId: "fixture.humanActions.cancel" });
-		assert.equal(cancelResponse.status, 200);
-		const cancelPayload = await cancelResponse.json();
-		assert.equal(cancelPayload.action.kind, "cancel");
-		assert.equal(cancelPayload.run.status, "cancelled");
-		assert.equal(cancelPayload.projectSession.state, "cancelled");
-
-		const expiredResponse = await postHumanAction(createdPayload.session.id, { waitTokenId: "wwt_expired", actionId: "fixture.humanActions.approve" });
-		assert.equal(expiredResponse.status, 409);
-		const expiredPayload = await expiredResponse.json();
-		assert.equal(expiredPayload.diagnostics[0].code, "WorkflowRuntimeError.waitTokenExpired");
-		assert.equal(expiredPayload.waitToken, undefined);
-		const expiredDb = new DatabaseSync(projectStorePath, { readOnly: true });
-		try {
-			const expiredToken = expiredDb.prepare("SELECT status, resolved_at FROM project_workflow_wait_tokens WHERE id = ?").get("wwt_expired");
-			assert.equal(expiredToken.status, "expired");
-			assert.ok(expiredToken.resolved_at);
-		} finally {
-			expiredDb.close();
-		}
-
-		const lifecycleResponse = await fetch(`${baseURL}/api/chat/workflows/lifecycle-events?projectId=${encodeURIComponent(projectId)}&limit=200`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(lifecycleResponse.status, 200);
-		const lifecyclePayload = await lifecycleResponse.json();
-		assert.ok(lifecyclePayload.events.some((event) => event.type === "workflow.human_action.submitted" && event.status === "submitted" && event.workflowRunId === runId));
-		assert.ok(lifecyclePayload.events.some((event) => event.type === "workflow.human_action.submitted" && event.status === "blocked" && event.workflowRunId === runId));
-	} finally {
-		await channel.stop?.();
-	}
-});
-
-test("workflow lifecycle observability records draft, publish, Project start, and blocked diagnostics", async () => {
-	const { channel, baseURL, setProfiles, dataStorePath, storageDir } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }, { name: "unstable-agent" }],
-	});
-
-	const jsonHeaders = {
-		"content-type": "application/json",
-		origin: baseURL,
-		"x-test-user": "user-1",
-	};
-
-	try {
-		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({ version: "1.0.0" }),
-		});
-		assert.equal(duplicateResponse.status, 201);
-		const duplicatePayload = await duplicateResponse.json();
-
-		const loadDraftResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(duplicatePayload.draft.draftId)}`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(loadDraftResponse.status, 200);
-
-		const publishResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(duplicatePayload.draft.draftId)}/publish`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({ versionIntent: "patch" }),
-		});
-		assert.equal(publishResponse.status, 201);
-
-		const projectResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				name: "Workflow Observability Project",
-				projectFolder: join(storageDir, "workflow-observability-project"),
-				createFolder: true,
-			}),
-		});
-		assert.equal(projectResponse.status, 201);
-		const projectPayload = await projectResponse.json();
-
-		const acceptedSessionResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				profile: "base",
-				workflowId: "standard-project",
-				workflowVersion: "1.0.0",
-				title: "Observable accepted start",
-			}),
-		});
-		assert.equal(acceptedSessionResponse.status, 201);
-		const acceptedSessionPayload = await acceptedSessionResponse.json();
-
-		const acceptedStartResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(acceptedSessionPayload.session.id)}/start`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({}),
-		});
-		assert.equal(acceptedStartResponse.status, 202);
-
-		const blockedSessionResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				profile: "unstable-agent",
-				workflowId: "standard-project",
-				workflowVersion: "1.0.0",
-				title: "Observable blocked start",
-			}),
-		});
-		assert.equal(blockedSessionResponse.status, 201);
-		const blockedSessionPayload = await blockedSessionResponse.json();
-
-		setProfiles([{ name: "base", aliases: ["default"] }]);
-		const blockedStartResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions/${encodeURIComponent(blockedSessionPayload.session.id)}/start`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({}),
-		});
-		assert.equal(blockedStartResponse.status, 422);
-		const blockedStartPayload = await blockedStartResponse.json();
-		assert.equal(blockedStartPayload.validation.trigger, "before_workflow_start");
-		assert.ok(blockedStartPayload.diagnostics.some((diagnostic) => diagnostic.code === "WorkflowGraphError.unknownAgentProfileRef"));
-
-		const lifecycleResponse = await fetch(`${baseURL}/api/chat/workflows/lifecycle-events?projectId=${encodeURIComponent(projectPayload.project.id)}&limit=200`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(lifecycleResponse.status, 200);
-		const lifecyclePayload = await lifecycleResponse.json();
-		const eventTypes = new Set(lifecyclePayload.events.map((event) => event.type));
-		assert.ok(eventTypes.has("project.workflow_session.created"));
-		assert.ok(eventTypes.has("project.workflow_start.accepted"));
-		assert.ok(eventTypes.has("project.workflow_start.blocked"));
-		assert.ok(eventTypes.has("workflow.validation.completed"));
-		const blockedEvent = lifecyclePayload.events.find((event) => event.type === "project.workflow_start.blocked" && event.piboSessionId === blockedSessionPayload.session.id);
-		assert.ok(blockedEvent);
-		assert.equal(blockedEvent.validation.trigger, "before_workflow_start");
-		assert.ok(blockedEvent.diagnostics.some((diagnostic) => diagnostic.code === "WorkflowGraphError.unknownAgentProfileRef"));
-
-		const draftLifecycleResponse = await fetch(`${baseURL}/api/chat/workflows/lifecycle-events?draftId=${encodeURIComponent(duplicatePayload.draft.draftId)}&limit=200`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(draftLifecycleResponse.status, 200);
-		const draftLifecyclePayload = await draftLifecycleResponse.json();
-		const draftEventTypes = new Set(draftLifecyclePayload.events.map((event) => event.type));
-		assert.ok(draftEventTypes.has("workflow.draft.saved"));
-		assert.ok(draftEventTypes.has("workflow.validation.completed"));
-		assert.ok(draftEventTypes.has("workflow.publish.accepted"));
-
-		const bootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap?projectId=${encodeURIComponent(projectPayload.project.id)}&piboSessionId=${encodeURIComponent(blockedSessionPayload.session.id)}`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(bootstrapResponse.status, 200);
-		const bootstrapPayload = await bootstrapResponse.json();
-		assert.deepEqual(bootstrapPayload.workflowLifecycleEvents, []);
-		assert.equal(bootstrapPayload.projectSessions.some((session) => session.piboSessionId === blockedSessionPayload.session.id), false);
-
-		const db = new DatabaseSync(dataStorePath, { readOnly: true });
-		try {
-			const rows = db.prepare("SELECT type, pibo_session_id FROM workflow_lifecycle_events ORDER BY created_at").all();
-			assert.ok(rows.some((row) => row.type === "project.workflow_start.accepted" && row.pibo_session_id === acceptedSessionPayload.session.id));
-			assert.ok(rows.some((row) => row.type === "project.workflow_start.blocked" && row.pibo_session_id === blockedSessionPayload.session.id));
-		} finally {
-			db.close();
-		}
-	} finally {
-		await channel.stop?.();
-	}
-});
-
-test("workflow diagnostics are redacted and scoped to owning Project sessions", async () => {
-	const { channel, baseURL, dataStorePath, storageDir } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }],
-	});
-
-	const jsonHeaders = {
-		"content-type": "application/json",
-		origin: baseURL,
-		"x-test-user": "user-1",
-	};
-
-	try {
-		const projectResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({
-				name: "Workflow Diagnostic Redaction Project",
-				projectFolder: join(storageDir, "workflow-diagnostic-redaction-project"),
-				createFolder: true,
-			}),
-		});
-		assert.equal(projectResponse.status, 201);
-		const projectPayload = await projectResponse.json();
-
-		const otherUserProjectsResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			headers: { "x-test-user": "user-2" },
-		});
-		assert.equal(otherUserProjectsResponse.status, 200);
-		const otherUserProjectsPayload = await otherUserProjectsResponse.json();
-		assert.equal(otherUserProjectsPayload.projects.some((project) => project.id === projectPayload.project.id), true);
-
-		const otherUserBootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap?projectId=${encodeURIComponent(projectPayload.project.id)}`, {
-			headers: { "x-test-user": "user-2" },
-		});
-		assert.equal(otherUserBootstrapResponse.status, 200);
-
-		const duplicateResponse = await fetch(`${baseURL}/api/chat/workflows/standard-project/duplicate`, {
-			method: "POST",
-			headers: jsonHeaders,
-			body: JSON.stringify({ version: "1.0.0" }),
-		});
-		assert.equal(duplicateResponse.status, 201);
-		const duplicatePayload = await duplicateResponse.json();
-		const draftId = duplicatePayload.draft.draftId;
-
-		const poisonedDiagnostic = {
-			code: "WorkflowBuilderWarning.poisonedDiagnostic",
-			message: "inputValues: {\"secret\":\"s3cr3t\"} output: \"top-secret-output\"",
-			severity: "warning",
-			path: "$.nodes.agent.promptTemplate",
-			nodeId: "agent",
-			edgeId: "agent-to-review",
-			registryRef: "missing-ref",
-			hint: "promptTemplate=\"secret prompt\" state: {\"token\":\"secret-state\"}",
-			inputValues: { secret: "s3cr3t" },
-			output: { secret: "top-secret-output" },
-			state: { token: "secret-state" },
-			payload: { secret: "secret-payload" },
-			humanActionPayload: { secret: "secret-human" },
-		};
-		const db = new DatabaseSync(dataStorePath);
-		try {
-			db.prepare("UPDATE workflow_ui_drafts SET diagnostics_json = ? WHERE draft_id = ?").run(JSON.stringify([poisonedDiagnostic]), draftId);
-		} finally {
-			db.close();
-		}
-
-		const draftResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(draftId)}`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(draftResponse.status, 200);
-		const draftPayload = await draftResponse.json();
-		const redactedDiagnostic = draftPayload.draft.diagnostics.find((diagnostic) => diagnostic.code === poisonedDiagnostic.code);
-		assert.ok(redactedDiagnostic);
-		assert.equal(redactedDiagnostic.path, "$.nodes.agent.promptTemplate");
-		assert.equal(redactedDiagnostic.nodeId, "agent");
-		assert.equal(redactedDiagnostic.edgeId, "agent-to-review");
-		assert.equal(redactedDiagnostic.registryRef, "missing-ref");
-		assert.equal(Object.hasOwn(redactedDiagnostic, "inputValues"), false);
-		assert.equal(Object.hasOwn(redactedDiagnostic, "output"), false);
-		assert.equal(Object.hasOwn(redactedDiagnostic, "payload"), false);
-		assert.match(redactedDiagnostic.message, /inputValues: \[redacted\]/);
-		assert.match(redactedDiagnostic.message, /output: \[redacted\]/);
-		assert.match(redactedDiagnostic.hint, /promptTemplate: \[redacted\]/);
-		assert.match(redactedDiagnostic.hint, /state: \[redacted\]/);
-		assert.doesNotMatch(JSON.stringify(draftPayload.draft.diagnostics), /s3cr3t|top-secret-output|secret prompt|secret-state|secret-payload|secret-human/);
-
-		const otherUserDraftResponse = await fetch(`${baseURL}/api/chat/workflows/drafts/${encodeURIComponent(draftId)}`, {
-			headers: { "x-test-user": "user-2" },
-		});
-		assert.equal(otherUserDraftResponse.status, 200);
-		const otherUserDraftPayload = await otherUserDraftResponse.json();
-		assert.equal(otherUserDraftPayload.draft.workflowId, "ui-standard-project-copy");
-		assert.doesNotMatch(JSON.stringify(otherUserDraftPayload.draft.diagnostics), /s3cr3t|top-secret-output|secret prompt|secret-state|secret-payload|secret-human/);
-
-		const lifecycleResponse = await fetch(`${baseURL}/api/chat/workflows/lifecycle-events?draftId=${encodeURIComponent(draftId)}&limit=20`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(lifecycleResponse.status, 200);
-		const lifecyclePayload = await lifecycleResponse.json();
-		assert.ok(lifecyclePayload.events.some((event) => event.diagnostics.some((diagnostic) => diagnostic.code === poisonedDiagnostic.code)));
-		assert.doesNotMatch(JSON.stringify(lifecyclePayload.events), /s3cr3t|top-secret-output|secret prompt|secret-state|secret-payload|secret-human/);
-
-		const otherUserLifecycleResponse = await fetch(`${baseURL}/api/chat/workflows/lifecycle-events?draftId=${encodeURIComponent(draftId)}&limit=20`, {
-			headers: { "x-test-user": "user-2" },
-		});
-		assert.equal(otherUserLifecycleResponse.status, 200);
-		const otherUserLifecyclePayload = await otherUserLifecycleResponse.json();
-		assert.ok(otherUserLifecyclePayload.events.some((event) => event.draftId === draftId));
-		assert.doesNotMatch(JSON.stringify(otherUserLifecyclePayload.events), /s3cr3t|top-secret-output|secret prompt|secret-state|secret-payload|secret-human/);
-	} finally {
-		await channel.stop?.();
-	}
-});
-
-test("chat web app rejects unsupported Project workflow session creation inputs", async () => {
-	const { channel, baseURL, emitted, storageDir } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }],
-	});
-
-	try {
-		const projectResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({
-				name: "Workflow Rejection Project",
-				projectFolder: join(storageDir, "workflow-rejection-project"),
-				createFolder: true,
-			}),
-		});
-		assert.equal(projectResponse.status, 201);
-		const projectPayload = await projectResponse.json();
-		const workflowSessionUrl = `${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`;
-		const postWorkflowSession = (body) => fetch(workflowSessionUrl, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify(body),
-		});
-		const validSelection = {
-			profile: "base",
-			workflowId: "standard-project",
-			workflowVersion: "1.0.0",
-		};
-
-		for (const { body, message } of [
-			{ body: { workflowVersion: "1.0.0" }, message: /Workflow id is required/ },
-			{ body: { workflowId: "standard-project" }, message: /Workflow version is required/ },
-			{ body: { workflowId: "missing-workflow", workflowVersion: "9.9.9" }, message: /Unknown workflow version/ },
-			{ body: { workflowId: "standard-project", workflowVersion: 7 }, message: /Workflow version must be a string/ },
-			{ body: { workflowId: "ui-draft-workflow", workflowVersion: "0.1.0-draft" }, message: /not published/ },
-			{ body: { workflowId: "archived-review-workflow", workflowVersion: "1.0.0" }, message: /archived/ },
-			{ body: { ...validSelection, agentProfileOverrides: { agent: "reviewer-agent" } }, message: /Agent profile overrides/ },
-			{ body: { ...validSelection, maxRetries: 3 }, message: /Retry limit overrides/ },
-			{ body: { ...validSelection, handlerOverrides: { code: "fixture.handlers.makePlan" } }, message: /Handler overrides/ },
-			{ body: { ...validSelection, adapterOverrides: { edge: "fixture.adapters.trim" } }, message: /Adapter overrides/ },
-			{ body: { ...validSelection, guardOverrides: { edge: "fixture.guards.ready" } }, message: /Guard overrides/ },
-			{ body: { ...validSelection, options: { temperature: 0.2 } }, message: /Arbitrary options/ },
-			{ body: { ...validSelection, customOption: true }, message: /Unsupported workflow session creation field/ },
-			{ body: { ...validSelection, inputValues: ["not", "object"] }, message: /inputValues must be a JSON object/ },
-			{ body: { ...validSelection, promptOverrides: "agent prompt" }, message: /promptOverrides must be a JSON object/ },
-			{ body: { ...validSelection, promptOverrides: { missing: "No eligible node." } }, message: /not eligible for prompt overrides/ },
-			{ body: { ...validSelection, model: { provider: "openai", id: "gpt-5.1", temperature: 0.2 } }, message: /model contains unsupported field/ },
-			{ body: { ...validSelection, thinkingLevel: "turbo" }, message: /thinkingLevel must be one of/ },
-			{ body: { ...validSelection, fastMode: "yes" }, message: /fastMode must be a boolean/ },
-		]) {
-			const response = await postWorkflowSession(body);
-			assert.equal(response.status, 400);
-			const payload = await response.json();
-			assert.match(payload.error, message);
-		}
-		assert.equal(emitted.length, 0);
-	} finally {
-		await channel.stop?.();
-	}
-});
-
-test("chat web app project bootstrap excludes quarantined workflow session trees", async () => {
-	const { channel, baseURL, sessions, storageDir } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }, { name: "reviewer-agent" }],
-	});
-
-	try {
-		const projectResponse = await fetch(`${baseURL}/api/chat/projects`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({
-				name: "Workflow Tree Project",
-				projectFolder: join(storageDir, "workflow-tree-project"),
-				createFolder: true,
-			}),
-		});
-		assert.equal(projectResponse.status, 201);
-		const projectPayload = await projectResponse.json();
-
-		const createdResponse = await fetch(`${baseURL}/api/chat/projects/${encodeURIComponent(projectPayload.project.id)}/workflow-sessions`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({
-				profile: "base",
-				workflowId: "standard-project",
-				workflowVersion: "1.0.0",
-				title: "Workflow Root",
-			}),
-		});
-		assert.equal(createdResponse.status, 201);
-		const createdPayload = await createdResponse.json();
-		const root = createdPayload.session;
-		assert.equal(retiredPartitionField in root, false);
-
-		const nested = sessions.create({
-			channel: "pibo.workflow",
-			kind: "workflow",
-			profile: "base",
-			parentId: root.id,
-			workspace: projectPayload.project.projectFolder,
-			title: "Nested Review Workflow",
-			metadata: { workflowSessionKind: "nested_workflow", workflowNodeId: "review-subflow" },
-		});
-		const agent = sessions.create({
-			channel: "pibo.workflow",
-			kind: "agent-node",
-			profile: "base",
-			parentId: nested.id,
-			workspace: projectPayload.project.projectFolder,
-			title: "Drafting Agent Node",
-			metadata: { workflowSessionKind: "agent_node", workflowNodeId: "draft" },
-		});
-		const subagent = sessions.create({
-			channel: "pibo.subagents",
-			kind: "subagent",
-			profile: "reviewer-agent",
-			parentId: agent.id,
-			workspace: projectPayload.project.projectFolder,
-			title: "Reviewer Subagent",
-			metadata: { workflowSessionKind: "subagent", subagentName: "reviewer" },
-		});
-		const unrelated = sessions.create({
-			channel: "pibo.workflow",
-			kind: "agent-node",
-			profile: "base",
-			workspace: projectPayload.project.projectFolder,
-			title: "Unrelated Workflow Node",
-			metadata: { workflowSessionKind: "agent_node", workflowNodeId: "unrelated" },
-		});
-
-		const bootstrapResponse = await fetch(`${baseURL}/api/chat/projects/bootstrap?projectId=${encodeURIComponent(projectPayload.project.id)}&piboSessionId=${encodeURIComponent(subagent.id)}`, {
-			headers: { "x-test-user": "user-1" },
-		});
-		assert.equal(bootstrapResponse.status, 200);
-		const bootstrapPayload = await bootstrapResponse.json();
-		assert.equal(bootstrapPayload.selectedPiboSessionId, undefined);
-		assert.deepEqual(bootstrapPayload.sessions, []);
-		assert.deepEqual(bootstrapPayload.projectSessions, []);
-		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === root.id), false);
-		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === nested.id), false);
-		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === agent.id), false);
-		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === subagent.id), false);
-		assert.equal(bootstrapPayload.sessions.some((node) => node.piboSessionId === unrelated.id), false);
 	} finally {
 		await channel.stop?.();
 	}
@@ -9304,234 +7974,6 @@ test("chat web app archives and permanently deletes custom agents with their ses
 		assert.equal(sessions.get(childSession.id), undefined);
 	} finally {
 		await channel.stop?.();
-	}
-});
-
-test("chat web app removes Project Session links when deleting agents or ordinary sessions and stays consistent after restart", async () => {
-	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-project-session-lifecycle-"));
-	let runtime = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }],
-		storageDir,
-		persistSessions: true,
-	});
-	const request = async (path, options = {}) => {
-		const response = await fetch(`${runtime.baseURL}${path}`, {
-			method: options.method,
-			headers: {
-				"x-test-user": "user-1",
-				...(options.body ? { "content-type": "application/json", origin: runtime.baseURL } : {}),
-			},
-			...(options.body ? { body: JSON.stringify(options.body) } : {}),
-		});
-		const payload = await response.json();
-		assert.ok(response.ok, `${options.method ?? "GET"} ${path}: ${response.status} ${JSON.stringify(payload)}`);
-		return payload;
-	};
-	const createProject = async (name) => (await request("/api/chat/projects", {
-		method: "POST",
-		body: { name, projectFolder: join(storageDir, name.toLowerCase().replaceAll(" ", "-")), createFolder: true },
-	})).project;
-	const createProjectSession = async (projectId, profile) => (await request(`/api/chat/projects/${projectId}/sessions`, {
-		method: "POST",
-		body: { profile },
-	})).session;
-	try {
-		const agent = (await request("/api/chat/agents", { method: "POST", body: { displayName: "linked-agent" } })).agent;
-		const firstProject = await createProject("First Lifecycle Project");
-		const secondProject = await createProject("Second Lifecycle Project");
-		const ordinaryProject = await createProject("Ordinary Lifecycle Project");
-		const firstControl = await createProjectSession(firstProject.id, "base");
-		const firstLinked = await createProjectSession(firstProject.id, agent.profileName);
-		const secondLinked = await createProjectSession(secondProject.id, agent.profileName);
-		const unlinked = (await request("/api/chat/sessions", { method: "POST", body: { profile: agent.profileName } })).session;
-		const ordinary = await createProjectSession(ordinaryProject.id, "base");
-
-		await request(`/api/chat/sessions/${ordinary.id}`, { method: "PATCH", body: { archived: true } });
-		const ordinaryDeleted = await request(`/api/chat/sessions/${ordinary.id}`, {
-			method: "DELETE",
-			body: { confirmText: "Delete this session" },
-		});
-		assert.deepEqual(ordinaryDeleted.deletedSessionIds, [ordinary.id]);
-
-		const projectsFixture = new DatabaseSync(runtime.projectStorePath);
-		projectsFixture.prepare("DELETE FROM project_sessions WHERE pibo_session_id = ?").run(secondLinked.id);
-		projectsFixture.close();
-
-		await request(`/api/chat/agents/${agent.id}`, { method: "PATCH", body: { archived: true } });
-		const deleted = await request(`/api/chat/agents/${agent.id}`, {
-			method: "DELETE",
-			body: { confirmName: agent.profileName },
-		});
-		assert.deepEqual(new Set(deleted.deletedSessionIds), new Set([firstLinked.id, secondLinked.id, unlinked.id]));
-
-		const unlinkedAgent = (await request("/api/chat/agents", { method: "POST", body: { displayName: "unlinked-agent" } })).agent;
-		await request(`/api/chat/agents/${unlinkedAgent.id}`, { method: "PATCH", body: { archived: true } });
-		const unlinkedDeleted = await request(`/api/chat/agents/${unlinkedAgent.id}`, {
-			method: "DELETE",
-			body: { confirmName: unlinkedAgent.profileName },
-		});
-		assert.deepEqual(unlinkedDeleted.deletedSessionIds, []);
-
-		const projectsDb = new DatabaseSync(runtime.projectStorePath, { readOnly: true });
-		assert.deepEqual(
-			projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ? ORDER BY created_at").all(firstProject.id)
-				.map((row) => row.pibo_session_id),
-			[firstControl.id],
-		);
-		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(firstProject.id).current_main_session_id, firstControl.id);
-		assert.deepEqual(projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ?").all(secondProject.id), []);
-		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(secondProject.id).current_main_session_id, null);
-		assert.deepEqual(projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ?").all(ordinaryProject.id), []);
-		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(ordinaryProject.id).current_main_session_id, null);
-		projectsDb.close();
-
-		const sessionsDb = new DatabaseSync(runtime.sessionStorePath, { readOnly: true });
-		assert.deepEqual(sessionsDb.prepare("SELECT id FROM sessions WHERE id IN (?, ?, ?, ?)").all(firstLinked.id, secondLinked.id, unlinked.id, ordinary.id), []);
-		sessionsDb.close();
-		const agentsDb = new DatabaseSync(runtime.agentStorePath, { readOnly: true });
-		assert.deepEqual(agentsDb.prepare("SELECT id FROM chat_agents WHERE id IN (?, ?)").all(agent.id, unlinkedAgent.id), []);
-		agentsDb.close();
-
-		await runtime.channel.stop?.();
-		runtime.sessions.close();
-		runtime = await startWebHostChannel({
-			auth: createFakeAuthService(),
-			profiles: [{ name: "base", aliases: ["default"] }],
-			storageDir,
-			persistSessions: true,
-		});
-		const firstBootstrap = await request(`/api/chat/projects/bootstrap?projectId=${encodeURIComponent(firstProject.id)}`);
-		assert.equal(firstBootstrap.project.currentMainSessionId, firstControl.id);
-		assert.deepEqual(firstBootstrap.projectSessions.map((session) => session.piboSessionId), [firstControl.id]);
-		assert.equal(firstBootstrap.selectedPiboSessionId, firstControl.id);
-		const secondBootstrap = await request(`/api/chat/projects/bootstrap?projectId=${encodeURIComponent(secondProject.id)}`);
-		assert.equal(secondBootstrap.project.currentMainSessionId, undefined);
-		assert.deepEqual(secondBootstrap.projectSessions, []);
-		assert.equal(secondBootstrap.selectedPiboSessionId, undefined);
-	} finally {
-		await runtime.channel.stop?.();
-		runtime.sessions.close();
-		rmSync(storageDir, { recursive: true, force: true });
-	}
-});
-
-test("chat web app leaves agent, canonical session, and Project link intact when Project cleanup fails", async () => {
-	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-project-session-rollback-"));
-	const runtime = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }],
-		storageDir,
-		persistSessions: true,
-	});
-	const mutation = (path, method, body) => fetch(`${runtime.baseURL}${path}`, {
-		method,
-		headers: { "x-test-user": "user-1", "content-type": "application/json", origin: runtime.baseURL },
-		body: JSON.stringify(body),
-	});
-	try {
-		const agent = (await (await mutation("/api/chat/agents", "POST", { displayName: "rollback-agent" })).json()).agent;
-		const project = (await (await mutation("/api/chat/projects", "POST", {
-			name: "Rollback Lifecycle Project",
-			projectFolder: join(storageDir, "rollback-project"),
-			createFolder: true,
-		})).json()).project;
-		const session = (await (await mutation(`/api/chat/projects/${project.id}/sessions`, "POST", { profile: agent.profileName })).json()).session;
-		await mutation(`/api/chat/agents/${agent.id}`, "PATCH", { archived: true });
-
-		const fixture = new DatabaseSync(runtime.projectStorePath);
-		fixture.exec(`CREATE TRIGGER fail_project_session_delete
-			BEFORE DELETE ON project_sessions
-			BEGIN
-				SELECT RAISE(ABORT, 'synthetic project cleanup failure');
-			END;`);
-		fixture.close();
-		const rejected = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
-		assert.equal(rejected.status, 500);
-
-		const projectsDb = new DatabaseSync(runtime.projectStorePath);
-		assert.equal(projectsDb.prepare("SELECT count(*) AS count FROM project_sessions WHERE pibo_session_id = ?").get(session.id).count, 1);
-		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(project.id).current_main_session_id, session.id);
-		projectsDb.exec("DROP TRIGGER fail_project_session_delete");
-		projectsDb.close();
-		const sessionsDb = new DatabaseSync(runtime.sessionStorePath, { readOnly: true });
-		assert.equal(sessionsDb.prepare("SELECT count(*) AS count FROM sessions WHERE id = ?").get(session.id).count, 1);
-		sessionsDb.close();
-		const agentsDb = new DatabaseSync(runtime.agentStorePath, { readOnly: true });
-		assert.equal(agentsDb.prepare("SELECT count(*) AS count FROM chat_agents WHERE id = ?").get(agent.id).count, 1);
-		agentsDb.close();
-
-		const retried = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
-		assert.equal(retried.status, 200);
-		assert.deepEqual((await retried.json()).deletedSessionIds, [session.id]);
-	} finally {
-		await runtime.channel.stop?.();
-		runtime.sessions.close();
-		rmSync(storageDir, { recursive: true, force: true });
-	}
-});
-
-test("chat web app preserves links for canonical sessions that survive a partial agent deletion failure", async () => {
-	const storageDir = mkdtempSync(join(tmpdir(), "pibo-web-project-session-partial-delete-"));
-	let deletionAttempt = 0;
-	let failSecondDeletion = true;
-	const runtime = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "base", aliases: ["default"] }],
-		storageDir,
-		persistSessions: true,
-		async deleteSession(id, store) {
-			deletionAttempt += 1;
-			if (failSecondDeletion && deletionAttempt === 2) throw new Error("synthetic canonical deletion failure");
-			return store.delete(id);
-		},
-	});
-	const mutation = (path, method, body) => fetch(`${runtime.baseURL}${path}`, {
-		method,
-		headers: { "x-test-user": "user-1", "content-type": "application/json", origin: runtime.baseURL },
-		body: JSON.stringify(body),
-	});
-	try {
-		const agent = (await (await mutation("/api/chat/agents", "POST", { displayName: "partial-delete-agent" })).json()).agent;
-		const project = (await (await mutation("/api/chat/projects", "POST", {
-			name: "Partial Delete Lifecycle Project",
-			projectFolder: join(storageDir, "partial-delete-project"),
-			createFolder: true,
-		})).json()).project;
-		const first = (await (await mutation(`/api/chat/projects/${project.id}/sessions`, "POST", { profile: agent.profileName })).json()).session;
-		const second = (await (await mutation(`/api/chat/projects/${project.id}/sessions`, "POST", { profile: agent.profileName })).json()).session;
-		await mutation(`/api/chat/agents/${agent.id}`, "PATCH", { archived: true });
-
-		const rejected = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
-		assert.equal(rejected.status, 500);
-
-		const projectsDb = new DatabaseSync(runtime.projectStorePath, { readOnly: true });
-		const remainingProjectSessionIds = projectsDb.prepare("SELECT pibo_session_id FROM project_sessions WHERE project_id = ? ORDER BY created_at")
-			.all(project.id)
-			.map((row) => row.pibo_session_id);
-		assert.equal(remainingProjectSessionIds.length, 1);
-		const remainingSessionId = remainingProjectSessionIds[0];
-		const deletedSessionId = remainingSessionId === first.id ? second.id : first.id;
-		assert.ok(remainingSessionId === first.id || remainingSessionId === second.id);
-		assert.equal(projectsDb.prepare("SELECT current_main_session_id FROM projects WHERE id = ?").get(project.id).current_main_session_id, remainingSessionId);
-		projectsDb.close();
-		const sessionsDb = new DatabaseSync(runtime.sessionStorePath, { readOnly: true });
-		assert.equal(sessionsDb.prepare("SELECT count(*) AS count FROM sessions WHERE id = ?").get(deletedSessionId).count, 0);
-		assert.equal(sessionsDb.prepare("SELECT count(*) AS count FROM sessions WHERE id = ?").get(remainingSessionId).count, 1);
-		sessionsDb.close();
-		const agentsDb = new DatabaseSync(runtime.agentStorePath, { readOnly: true });
-		assert.equal(agentsDb.prepare("SELECT count(*) AS count FROM chat_agents WHERE id = ?").get(agent.id).count, 1);
-		agentsDb.close();
-
-		deletionAttempt = 0;
-		failSecondDeletion = false;
-		const retried = await mutation(`/api/chat/agents/${agent.id}`, "DELETE", { confirmName: agent.profileName });
-		assert.equal(retried.status, 200);
-		assert.deepEqual((await retried.json()).deletedSessionIds, [remainingSessionId]);
-	} finally {
-		await runtime.channel.stop?.();
-		runtime.sessions.close();
-		rmSync(storageDir, { recursive: true, force: true });
 	}
 });
 
@@ -10490,4 +8932,204 @@ test("web host rejects oversized request bodies", async () => {
 	} finally {
 		await channel.stop?.();
 	}
+});
+
+test("chat web exposes only session-native workflow routes", async () => {
+	const { channel, baseURL } = await startWebHostChannel({ auth: createFakeAuthService() });
+	try {
+		for (const path of [
+			"/api/chat/projects",
+			"/api/chat/projects/bootstrap",
+			"/api/chat/projects/legacy/workflow-sessions",
+			"/api/chat/project-sessions/ps_legacy",
+		]) {
+			const response = await fetch(`${baseURL}${path}`, { headers: { "x-test-user": "user-1" } });
+			assert.equal(response.status, 404, path);
+		}
+	} finally {
+		await channel.stop?.();
+	}
+});
+
+test("session-native workflow Sessions share definitions, start idempotently, inspect facts, message, archive, and delete", async () => {
+	const storageDir = mkdtempSync(join(tmpdir(), "pibo-native-workflow-api-"));
+	let runtime = await startWebHostChannel({
+		auth: createFakeAuthService(),
+		profiles: [{ name: "base", aliases: ["default"] }],
+		storageDir,
+		persistSessions: true,
+	});
+	const headers = () => ({ "content-type": "application/json", origin: runtime.baseURL, "x-test-user": "user-1" });
+	const post = (path, body) => fetch(`${runtime.baseURL}${path}`, { method: "POST", headers: headers(), body: JSON.stringify(body) });
+	try {
+		const roomResponse = await post("/api/chat/rooms", { name: "Workflow Room", workspace: storageDir });
+		assert.equal(roomResponse.status, 201);
+		const room = (await roomResponse.json()).room;
+		const create = async (title) => {
+			const response = await post("/api/chat/workflow-sessions", {
+				roomId: room.id,
+				profile: "base",
+				workflowId: "standard-workflow",
+				workflowVersion: "1.0.0",
+				title,
+				inputValues: { request: title },
+				promptOverrides: { agent: "Handle the configured request" },
+			});
+			assert.equal(response.status, 201);
+			return response.json();
+		};
+		const first = await create("First native workflow");
+		const second = await create("Second native workflow");
+		for (const created of [first, second]) {
+			assert.equal(created.session.kind, "chat");
+			assert.equal(created.session.workspace, storageDir);
+			assert.equal(created.session.metadata.chatRoomId, room.id);
+			assert.equal(created.session.metadata.workflowSessionKind, "main_workflow");
+			assert.equal(created.session.metadata.workflowId, "standard-workflow");
+			assert.equal(created.workflowSession.piboSessionId, created.session.id);
+			assert.equal(created.workflowSession.state, "configured");
+			assert.equal(created.validation.trigger, "before_workflow_session_creation");
+			assert.equal(created.snapshot.piboSessionId, created.session.id);
+			assert.equal("projectId" in created.snapshot, false);
+		}
+
+		const firstStartResponse = await post(`/api/chat/sessions/${encodeURIComponent(first.session.id)}/workflow/start`, {});
+		assert.equal(firstStartResponse.status, 202);
+		const firstStart = await firstStartResponse.json();
+		const secondStartResponse = await post(`/api/chat/sessions/${encodeURIComponent(second.session.id)}/workflow/start`, {});
+		assert.equal(secondStartResponse.status, 202);
+		const secondStart = await secondStartResponse.json();
+		assert.notEqual(firstStart.run.id, secondStart.run.id);
+		assert.equal(firstStart.workflowSession.workflowRunId, firstStart.run.id);
+		assert.equal(secondStart.workflowSession.workflowRunId, secondStart.run.id);
+		const repeatedStartResponse = await post(`/api/chat/sessions/${encodeURIComponent(first.session.id)}/workflow/start`, {});
+		assert.equal(repeatedStartResponse.status, 200);
+		const repeatedStart = await repeatedStartResponse.json();
+		assert.equal(repeatedStart.alreadyStarted, true);
+		assert.equal(repeatedStart.run.id, firstStart.run.id);
+
+		const inspectionResponse = await fetch(`${runtime.baseURL}/api/chat/sessions/${encodeURIComponent(first.session.id)}/workflow`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(inspectionResponse.status, 200);
+		const inspection = await inspectionResponse.json();
+		assert.equal(inspection.snapshot.id, first.snapshot.id);
+		assert.equal(inspection.run.id, firstStart.run.id);
+		assert.deepEqual(inspection.waitTokens, []);
+		assert.deepEqual(inspection.humanActions, []);
+		assert.deepEqual(inspection.nodeAttempts, []);
+		assert.deepEqual(inspection.edgeTransfers, []);
+		assert.ok(inspection.lifecycleEvents.some((event) => event.type === "workflow.session.created"));
+		assert.ok(inspection.lifecycleEvents.some((event) => event.type === "workflow.start.accepted"));
+
+		const messageResponse = await post("/api/chat/message", { piboSessionId: first.session.id, roomId: room.id, text: "Continue this workflow conversation", clientTxnId: "native-workflow-message" });
+		assert.equal(messageResponse.status, 200);
+		assert.equal(runtime.emitted.at(-1).piboSessionId, first.session.id);
+
+		const workflowDb = new DatabaseSync(runtime.workflowStorePath, { readOnly: true });
+		assert.equal(workflowDb.prepare("SELECT count(*) AS count FROM workflow_session_links").get().count, 2);
+		assert.equal(workflowDb.prepare("SELECT count(*) AS count FROM workflow_runs").get().count, 2);
+		assert.equal(workflowDb.prepare("SELECT count(*) AS count FROM workflow_definition_snapshots WHERE workflow_id = ? AND workflow_version = ?").get("standard-workflow", "1.0.0").count, 1);
+		assert.equal(workflowDb.prepare("SELECT count(*) AS count FROM workflow_session_snapshots").get().count, 2);
+		workflowDb.close();
+
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		runtime = await startWebHostChannel({ auth: createFakeAuthService(), profiles: [{ name: "base", aliases: ["default"] }], storageDir, persistSessions: true });
+		const restartedInspection = await fetch(`${runtime.baseURL}/api/chat/sessions/${encodeURIComponent(first.session.id)}/workflow`, { headers: { "x-test-user": "user-1" } });
+		assert.equal(restartedInspection.status, 200);
+		assert.equal((await restartedInspection.json()).run.id, firstStart.run.id);
+
+		const archiveResponse = await fetch(`${runtime.baseURL}/api/chat/sessions/${encodeURIComponent(first.session.id)}`, { method: "PATCH", headers: headers(), body: JSON.stringify({ archived: true }) });
+		assert.equal(archiveResponse.status, 200);
+		const deleteResponse = await fetch(`${runtime.baseURL}/api/chat/sessions/${encodeURIComponent(first.session.id)}`, { method: "DELETE", headers: headers(), body: JSON.stringify({ confirmText: "Delete this session" }) });
+		assert.equal(deleteResponse.status, 200);
+		assert.deepEqual((await deleteResponse.json()).deletedSessionIds, [first.session.id]);
+	} finally {
+		await runtime.channel.stop?.();
+		runtime.sessions.close();
+		rmSync(storageDir, { recursive: true, force: true });
+	}
+});
+
+test("session-native workflow human actions are validated, persisted, and inspectable", async () => {
+	const runtime = await startWebHostChannel({ auth: createFakeAuthService(), profiles: [{ name: "base", aliases: ["default"] }] });
+	const headers = { "content-type": "application/json", origin: runtime.baseURL, "x-test-user": "user-1" };
+	const post = (path, body) => fetch(`${runtime.baseURL}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+	try {
+		const createdResponse = await post("/api/chat/workflow-sessions", { profile: "base", workflowId: "standard-workflow", workflowVersion: "1.0.0" });
+		assert.equal(createdResponse.status, 201);
+		const created = await createdResponse.json();
+		const started = await (await post(`/api/chat/sessions/${created.session.id}/workflow/start`, {})).json();
+		const now = new Date().toISOString();
+		const db = new DatabaseSync(runtime.workflowStorePath);
+		db.prepare(`INSERT INTO workflow_wait_tokens (id, workflow_run_id, node_attempt_id, human_node_id, kind, available_actions_json, prompt, schema_json, status, resume_payload_json, resume_payload_present, expires_at, created_at, resolved_at) VALUES (?, ?, NULL, ?, ?, ?, ?, NULL, 'pending', NULL, 0, NULL, ?, NULL)`).run(
+			"wwt_native_approve", started.run.id, "review", "human", JSON.stringify([{ id: "fixture.humanActions.approve", kind: "approve" }]), "Approve this run", now,
+		);
+		db.close();
+		const actionResponse = await post(`/api/chat/sessions/${created.session.id}/workflow/human-actions`, { waitTokenId: "wwt_native_approve", actionId: "fixture.humanActions.approve" });
+		assert.equal(actionResponse.status, 202);
+		const action = await actionResponse.json();
+		assert.equal(action.workflowSession.piboSessionId, created.session.id);
+		assert.equal(action.waitToken.status, "resumed");
+		assert.equal(action.action.kind, "approve");
+		const inspection = await (await fetch(`${runtime.baseURL}/api/chat/sessions/${created.session.id}/workflow`, { headers: { "x-test-user": "user-1" } })).json();
+		assert.equal(inspection.waitTokens[0].status, "resumed");
+		assert.equal(inspection.humanActions[0].waitTokenId, "wwt_native_approve");
+	} finally {
+		await runtime.channel.stop?.();
+	}
+});
+
+test("manual editor runs target normal Rooms and persist canonical inspection facts", async () => {
+	let host;
+	host = await startWebHostChannel({
+		auth: createFakeAuthService(), profiles: [{ name: "base", aliases: ["default"] }],
+		emit(event) {
+			if (event.type === "message") queueMicrotask(() => {
+				host.emitOutput({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: "native manual output" });
+				host.emitOutput({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
+			});
+			return Promise.resolve({ type: "message_queued", piboSessionId: event.piboSessionId });
+		},
+	});
+	const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" };
+	const post = (path, body) => fetch(`${host.baseURL}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+	try {
+		const workspace = mkdtempSync(join(tmpdir(), "pibo-manual-room-"));
+		const roomResponse = await post("/api/chat/rooms", { name: "Manual Room", workspace });
+		assert.equal(roomResponse.status, 201);
+		const { room } = await roomResponse.json();
+		const definition = {
+			id: "workflow.manual-room", version: "1.0.0", initial: "trigger", input: { kind: "text" }, output: { kind: "text" },
+			nodes: {
+				trigger: { kind: "trigger", trigger: { kind: "manual" }, output: { kind: "text" } },
+				agent: { kind: "agent", runtime: "pibo", profile: { kind: "fixed", id: "base" }, input: { kind: "text" }, output: { kind: "text" }, promptTemplate: "{{input}}" },
+			},
+			edges: { toAgent: { from: { nodeId: "trigger" }, to: { nodeId: "agent" } } },
+		};
+		const created = await post("/api/chat/workflows", { title: "Manual Room Workflow", workflowId: definition.id, definition });
+		assert.equal(created.status, 201);
+		const { draft } = await created.json();
+		const runPath = `/api/chat/workflows/drafts/${draft.draftId}/manual-trigger-runs`;
+		assert.equal((await post(runPath, { triggerNodeId: "trigger", input: "test", roomId: "room_missing" })).status, 404);
+		assert.equal((await post(runPath, { triggerNodeId: "trigger", input: "test", roomId: room.id, workspace: "relative" })).status, 400);
+		const result = await post(runPath, { triggerNodeId: "trigger", input: "test", roomId: room.id });
+		assert.equal(result.status, 202);
+		const payload = await result.json();
+		assert.equal(payload.ok, true);
+		assert.equal(payload.output, "native manual output");
+		const attempt = payload.nodeAttempts.find((entry) => entry.kind === "agent");
+		const session = host.sessions.get(attempt.piboSessionId);
+		assert.equal(session.kind, "chat");
+		assert.equal(session.workspace, workspace);
+		assert.equal(session.metadata.chatRoomId, room.id);
+		assert.equal(session.metadata.workflowSessionKind, "agent_node");
+		const inspected = await (await fetch(`${host.baseURL}/api/chat/sessions/${session.id}/workflow`, { headers })).json();
+		assert.equal(inspected.run.status, "completed");
+		assert.equal(inspected.run.output, "native manual output");
+		assert.equal(inspected.nodeAttempts.length, 2);
+		assert.equal(inspected.edgeTransfers.length, 1);
+		assert.equal(inspected.definitionSnapshot.definition.nodes.trigger.kind, "trigger");
+		assert.equal(inspected.snapshot, undefined);
+		assert.ok(inspected.lifecycleEvents.some((event) => event.type === "workflow.editor_test_run.completed"));
+	} finally { await host.channel.stop?.(); }
 });

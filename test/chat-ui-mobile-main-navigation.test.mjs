@@ -141,7 +141,7 @@ async function runScenarios() {
 				desktopMenuItems: desktopNav.findAllByProps({ role: "menuitem" }).length,
 				sidebarTriggerWired: app.mobileSidebarTriggerRef.current === app.sidebarTriggerNode,
 			};
-			await act(async () => desktopNav.findAllByType("button").find((button) => textOf(button.props.children) === "projects").props.onClick());
+			await act(async () => desktopNav.findAllByType("button").find((button) => textOf(button.props.children) === "workflows").props.onClick());
 			results.desktopSelection = app.selected;
 		}
 
@@ -195,8 +195,8 @@ async function runScenarios() {
 			const app = await mount();
 			app.triggerNode.focus();
 			await act(async () => app.trigger().props.onClick());
-			const projects = app.items().find((item) => textOf(item.props.children) === "projects");
-			await act(async () => projects.props.onClick());
+			const workflows = app.items().find((item) => textOf(item.props.children) === "workflows");
+			await act(async () => workflows.props.onClick());
 			results.pointerSelection = { open: app.isOpen(), selected: app.selected, order: app.actionOrder };
 		}
 
@@ -217,23 +217,23 @@ test("mobile main-navigation menu has complete keyboard, focus, pointer, and des
 		hasPopup: "menu",
 		controls: "main-navigation-menu",
 		expanded: false,
-		desktopItems: 9,
+		desktopItems: 8,
 		desktopMenuItems: 0,
 		sidebarTriggerWired: true,
 	});
-	assert.deepEqual(result.desktopSelection, ["projects"]);
+	assert.deepEqual(result.desktopSelection, ["workflows"]);
 
 	for (const scenario of ["open-Enter", "open-Space", "open-ArrowDown"]) {
 		assert.deepEqual(result[scenario], { open: true, focus: "sessions", prevented: true });
 	}
 	assert.deepEqual(result["open-ArrowUp"], { open: true, focus: "settings", prevented: true });
-	assert.deepEqual(result.pointerOpen, { open: true, focus: "trigger", items: 9 });
+	assert.deepEqual(result.pointerOpen, { open: true, focus: "trigger", items: 8 });
 	assert.deepEqual(result.outsideClose, { open: false, focus: "trigger" });
 	assert.deepEqual(result.navigation, ["sessions", "settings", "sessions", "settings", "sessions"]);
 	assert.deepEqual(result.escape, { open: false, focus: "trigger", prevented: true });
 	assert.deepEqual(result.tab, { open: false, prevented: false, focus: "sessions" });
 	assert.deepEqual(result.shiftTab, { open: false, prevented: false, focus: "sessions" });
-	assert.deepEqual(result.pointerSelection, { open: false, selected: ["projects"], order: ["close", "select:projects"] });
+	assert.deepEqual(result.pointerSelection, { open: false, selected: ["workflows"], order: ["close", "select:workflows"] });
 });
 
 test("App delegates mobile navigation focus ownership while preserving bootstrap recovery and the sidebar trigger ref", () => {

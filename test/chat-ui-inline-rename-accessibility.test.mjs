@@ -12,16 +12,11 @@ function inputWithValue(source, valueExpression) {
 
 test("sidebar inline rename inputs have stable contextual accessible names", () => {
 	const sessionSource = readFileSync(resolve("src/apps/chat-ui/src/session-node.tsx"), "utf8");
-	const projectSource = readFileSync(resolve("src/apps/chat-ui/src/projects/ProjectsSidebar.tsx"), "utf8");
 	const roomSource = readFileSync(resolve("src/apps/chat-ui/src/session-sidebar.tsx"), "utf8");
 
 	assert.match(
 		inputWithValue(sessionSource, "draftTitle"),
 		/aria-label=\{`Session title for \$\{safeTitle\}`\}/,
-	);
-	assert.match(
-		inputWithValue(projectSource, "draftName"),
-		/aria-label=\{`Project name for \$\{project\.name\}`\}/,
 	);
 	assert.match(
 		inputWithValue(roomSource, "draftName"),

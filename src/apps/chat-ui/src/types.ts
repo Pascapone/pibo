@@ -86,24 +86,9 @@ export type PiboRoom = {
 	children?: PiboRoom[];
 };
 
-export type PiboProject = {
-	id: string;
-	name: string;
-	description?: string;
-	projectFolder: string;
-	configurationStatus: "configured";
-	currentMainSessionId?: string;
-	archivedAt?: string;
-	metadata: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-};
+export type PiboWorkflowSessionState = "configured" | "pending" | "running" | "waiting" | "completed" | "failed" | "cancelled";
 
-export type PiboProjectWorkflowSessionState = "configured" | "running" | "waiting" | "completed" | "failed" | "cancelled";
-export type PiboProjectLegacySessionState = "simple_chat" | "workflow";
-export type PiboProjectSessionState = PiboProjectWorkflowSessionState | PiboProjectLegacySessionState;
-
-export type PiboProjectWorkflowSessionConfiguration = {
+export type PiboWorkflowSessionConfiguration = {
 	inputValues: Record<string, unknown>;
 	promptOverrides: Record<string, string>;
 	promptOverrideEligibleNodeIds: string[];
@@ -118,9 +103,9 @@ export type PiboProjectWorkflowSessionConfiguration = {
 	fastMode?: boolean;
 };
 
-export type PiboProjectWorkflowDefinitionLink = {
+export type PiboWorkflowDefinitionLink = {
 	status: "live" | "snapshot_only_definition_deleted";
-	workflowId: "simple-chat" | "standard-project" | string;
+	workflowId: string;
 	workflowVersion?: string;
 	title?: string;
 	definitionHash?: string;
@@ -128,7 +113,7 @@ export type PiboProjectWorkflowDefinitionLink = {
 	tombstoneLabel?: string;
 };
 
-export type PiboProjectWorkflowPendingHumanActionRef = {
+export type PiboWorkflowPendingHumanActionRef = {
 	id: string;
 	kind?: string;
 	displayName: string;
@@ -137,7 +122,7 @@ export type PiboProjectWorkflowPendingHumanActionRef = {
 	registered: boolean;
 };
 
-export type PiboProjectWorkflowPendingHumanAction = {
+export type PiboWorkflowPendingHumanAction = {
 	waitTokenId: string;
 	workflowRunId: string;
 	nodeAttemptId?: string;
@@ -150,7 +135,7 @@ export type PiboProjectWorkflowPendingHumanAction = {
 		schema?: Record<string, unknown>;
 		description: string;
 	};
-	availableActions: PiboProjectWorkflowPendingHumanActionRef[];
+	availableActions: PiboWorkflowPendingHumanActionRef[];
 	diagnostics: Array<{
 		code: string;
 		message: string;
@@ -163,24 +148,85 @@ export type PiboProjectWorkflowPendingHumanAction = {
 	expiresAt?: string;
 };
 
-export type PiboProjectSession = {
-	projectId: string;
+export type PiboWorkflowSession = {
 	piboSessionId: string;
-	kind: "main" | "sub";
-	workflowId: "simple-chat" | "standard-project" | string;
+	workflowId: string;
 	workflowVersion?: string;
 	workflowRunId?: string;
-	parentMainSessionId?: string;
-	title?: string;
-	state?: PiboProjectSessionState;
-	configuration?: PiboProjectWorkflowSessionConfiguration;
-	workflowDefinitionLink?: PiboProjectWorkflowDefinitionLink;
-	pendingHumanActions?: PiboProjectWorkflowPendingHumanAction[];
-	retryCount?: number;
-	maxRetries?: number;
-	archived?: boolean;
+	state: PiboWorkflowSessionState;
+	configuration?: PiboWorkflowSessionConfiguration;
+	workflowDefinitionLink?: PiboWorkflowDefinitionLink;
+	pendingHumanActions?: PiboWorkflowPendingHumanAction[];
 	createdAt: string;
 	updatedAt: string;
+};
+
+export type PiboWorkflowSessionSnapshot = Record<string, unknown> & {
+	id?: string;
+	workflowId?: string;
+	workflowVersion?: string;
+	definitionHash?: string;
+	effectiveDefinition?: Record<string, unknown>;
+	inputValues?: Record<string, unknown>;
+	promptOverrides?: Record<string, string>;
+	validation?: Record<string, unknown>;
+	createdAt?: string;
+};
+
+export type PiboWorkflowRun = Record<string, unknown> & {
+	id: string;
+	piboSessionId?: string;
+	workflowId?: string;
+	workflowVersion?: string;
+	status: string;
+	currentNodeId?: string;
+	output?: unknown;
+	error?: unknown;
+	createdAt?: string;
+	updatedAt?: string;
+	startedAt?: string;
+	completedAt?: string;
+};
+
+export type PiboWorkflowWaitToken = Record<string, unknown> & {
+	id: string;
+	workflowRunId?: string;
+	status?: string;
+	kind?: string;
+	prompt?: string;
+	createdAt?: string;
+	expiresAt?: string;
+};
+
+export type PiboWorkflowHumanActionRecord = Record<string, unknown> & {
+	id: string;
+	workflowRunId?: string;
+	waitTokenId?: string;
+	kind?: string;
+	status?: string;
+	createdAt?: string;
+};
+
+export type PiboWorkflowNodeAttempt = Record<string, unknown> & {
+	id: string;
+	workflowRunId?: string;
+	nodeId?: string;
+	kind?: string;
+	status?: string;
+	attempt?: number;
+	piboSessionId?: string;
+	startedAt?: string;
+	completedAt?: string;
+};
+
+export type PiboWorkflowEdgeTransfer = Record<string, unknown> & {
+	id: string;
+	workflowRunId?: string;
+	edgeId?: string;
+	sourceNodeId?: string;
+	targetNodeId?: string;
+	status?: string;
+	createdAt?: string;
 };
 
 export type WorkflowLifecycleEventRecord = {
@@ -190,7 +236,6 @@ export type WorkflowLifecycleEventRecord = {
 	workflowId?: string;
 	workflowVersion?: string;
 	draftId?: string;
-	projectId?: string;
 	piboSessionId?: string;
 	workflowRunId?: string;
 	status?: string;
@@ -445,27 +490,6 @@ export type BootstrapData = NavigationData & {
 	integrations?: WebIntegrations;
 };
 
-export type ProjectsBootstrapData = {
-	identity: { userId: string; email?: string; name?: string };
-	sharedDefaultProject: PiboProject;
-	project?: PiboProject;
-	projects: PiboProject[];
-	projectSessions: PiboProjectSession[];
-	workflowLifecycleEvents: WorkflowLifecycleEventRecord[];
-	session?: PiboSession;
-	selectedProjectId: string;
-	selectedPiboSessionId?: string;
-	sessions: PiboWebSessionNode[];
-	agents: AgentProfile[];
-	customAgents: CustomAgent[];
-	agentFolders: CustomAgentFolder[];
-	modelDefaults?: ModelDefaults;
-	modelCatalog?: ModelCatalog;
-	agentCatalog?: AgentCatalog;
-	capabilities: { actions: Array<{ name: string; description?: string; slashCommands: string[] }> };
-	integrations?: WebIntegrations;
-};
-
 
 export type PiboCronTarget =
 	| { kind: "room"; roomId: string }
@@ -629,7 +653,7 @@ export type AgentRuntimeCapabilityDelivery =
 	| { support: "degraded"; mode: string; reason: string };
 
 export type AgentRuntimeCapabilities = {
-	lifecycle: { persistent: boolean; lazyBinding: boolean; resume: boolean; attach: boolean; listNativeSessions: boolean; fork: boolean; clone: boolean; tree: boolean };
+	lifecycle: { persistent: boolean; lazyBinding: boolean; resume: boolean; attach: boolean; listNativeSessions: boolean; fork: boolean; forkWhileRunning: boolean; clone: boolean; tree: boolean };
 	input: { text: boolean; images: boolean; audio: boolean; steering: boolean; structuredOutput: boolean };
 	output: { assistantDeltas: boolean; reasoning: boolean; toolEvents: boolean; usage: boolean; plans: boolean; diffs: boolean; rawNativeEvents: boolean };
 	tools: {

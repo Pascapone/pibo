@@ -11,6 +11,7 @@ import {
   type WorkflowCatalogVersionSummary,
   type WorkflowDraftRecord,
 } from "./api-workflows";
+import type { PiboRoom } from "./types";
 import { WorkflowGraphCanvas, type WorkflowGraphInspectorSlotProps, type WorkflowGraphStatusTone } from "./workflows/WorkflowGraphCanvas";
 import { WorkflowInspectorsPanel } from "./workflows/WorkflowInspectorsPanel";
 import { CreateWorkflowDialog } from "./workflows/CreateWorkflowDialog";
@@ -21,10 +22,14 @@ const workflowPickerOptionId = (index: number) => `workflow-picker-option-${inde
 
 export function MinimalWorkflowsArea({
   draftId,
+  room,
   onNavigateDraft,
+  onCreateWorkflowSession,
 }: {
   draftId?: string;
+  room?: PiboRoom;
   onNavigateDraft: (draftId: string) => void;
+  onCreateWorkflowSession?: (workflowId: string, workflowVersion: string) => void;
 }) {
   const [workflows, setWorkflows] = useState<WorkflowCatalogRecord[]>([]);
   const [draft, setDraft] = useState<WorkflowDraftRecord | undefined>();
@@ -340,6 +345,7 @@ export function MinimalWorkflowsArea({
           ) : null}
         </div>
 
+        {readOnlyView && onCreateWorkflowSession ? <button type="button" className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-sm border border-emerald-700/70 px-3 text-xs font-semibold uppercase tracking-wide text-emerald-200 transition hover:border-emerald-400" onClick={() => onCreateWorkflowSession(readOnlyView.workflowId, readOnlyView.workflowVersion)}><Plus size={14} />New Workflow Session</button> : null}
         <button
           type="button"
           className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-sm border border-emerald-700/70 px-3 text-xs font-semibold uppercase tracking-wide text-emerald-200 transition hover:border-emerald-400 hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -373,6 +379,7 @@ export function MinimalWorkflowsArea({
         {graphDraft ? (
           <WorkflowGraphCanvas
             draft={graphDraft}
+            room={room}
             onDraftChange={readOnlyView ? () => undefined : handlePersistedDraftChange}
             fullHeight
             compactHeader

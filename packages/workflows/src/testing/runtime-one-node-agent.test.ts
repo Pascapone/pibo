@@ -83,7 +83,7 @@ describe("one-node agent workflow runtime path", () => {
     assert.deepEqual(createdSessions, [
       {
         channel: "chat",
-        kind: "workflow-agent",
+        kind: "chat",
         profile: "pibo-agent",
         parentId: "ps_parent",
         workspace: undefined,
@@ -113,25 +113,24 @@ describe("one-node agent workflow runtime path", () => {
     assert.deepEqual(result.nodeAttempt.metadata?.runtime?.tools, ["read", "bash"]);
   });
 
-  it("links routed workflow agent sessions to project sessions before sending the prompt", async () => {
+  it("links routed workflow agent sessions to normal Sessions before sending the prompt", async () => {
     const lifecycle: string[] = [];
-    const projectSessionLinks: unknown[] = [];
+    const workflowSessionLinks: unknown[] = [];
     const listeners = new Set<(event: { type: string; piboSessionId: string; eventId?: string; text?: string }) => void>();
     const definition = cloneMinimalWorkflow();
     (definition.nodes.answer as AgentNodeDefinition).routing = {
-      parentSessionId: "ps_project_main",
-      projectId: "project_workflow_link",
+      parentSessionId: "ps_workflow_main",
     };
 
     const result = await runOneNodeAgentWorkflow(definition, "Link the workflow session.", {
       now: () => "2026-05-11T02:30:00.000Z",
-      createRunId: () => "wfr_project_link",
-      createNodeAttemptId: () => "wna_project_link",
+      createRunId: () => "wfr_link_link",
+      createNodeAttemptId: () => "wna_link_link",
       agentExecutor: createPiboSessionRoutingAgentExecutor({
         routing: {
           createSession(input) {
             lifecycle.push("createSession");
-            return { id: "ps_project_workflow_agent", profile: input.profile };
+            return { id: "ps_workflow_workflow_agent", profile: input.profile };
           },
           emit(event) {
             lifecycle.push("emitPrompt");
@@ -141,7 +140,7 @@ describe("one-node agent workflow runtime path", () => {
                   type: "assistant_message",
                   piboSessionId: event.piboSessionId,
                   eventId: event.id,
-                  text: "Linked project workflow response.",
+                  text: "Linked workflow response.",
                 });
               }
             });
@@ -151,31 +150,27 @@ describe("one-node agent workflow runtime path", () => {
             return () => listeners.delete(listener);
           },
         },
-        createMessageId: () => "msg_project_link",
-        title: "Project workflow agent",
-        linkProjectSession(input) {
-          lifecycle.push("linkProjectSession");
-          projectSessionLinks.push(input);
+        createMessageId: () => "msg_link_link",
+        linkWorkflowSession(input) {
+          lifecycle.push("linkWorkflowSession");
+          workflowSessionLinks.push(input);
         },
       }),
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.run.piboSessionId, "ps_project_workflow_agent");
-    assert.equal(result.run.projectId, "project_workflow_link");
-    assert.deepEqual(lifecycle, ["createSession", "linkProjectSession", "emitPrompt"]);
-    assert.deepEqual(projectSessionLinks, [
+    assert.equal(result.run.piboSessionId, "ps_workflow_workflow_agent");
+    assert.deepEqual(lifecycle, ["createSession", "linkWorkflowSession", "emitPrompt"]);
+    assert.deepEqual(workflowSessionLinks, [
       {
-        projectId: "project_workflow_link",
-        piboSessionId: "ps_project_workflow_agent",
+        piboSessionId: "ps_workflow_workflow_agent",
         workflowSessionKind: "agent_node",
-        workflowRunId: "wfr_project_link",
+        workflowRunId: "wfr_link_link",
         workflowId: definition.id,
         workflowVersion: definition.version,
         workflowNodeId: "answer",
-        workflowNodeAttemptId: "wna_project_link",
-        parentPiboSessionId: "ps_project_main",
-        title: "Project workflow agent",
+        workflowNodeAttemptId: "wna_link_link",
+        parentPiboSessionId: "ps_workflow_main",
       },
     ]);
   });
@@ -315,7 +310,7 @@ describe("one-node agent workflow runtime path", () => {
     assert.deepEqual(createdSessions, [
       {
         channel: "pibo.workflows",
-        kind: "workflow-agent",
+        kind: "chat",
         profile: "pibo-agent",
         parentId: undefined,
         workspace: undefined,
@@ -367,7 +362,6 @@ describe("one-node agent workflow runtime path", () => {
     const definition = cloneMinimalWorkflow();
     (definition.nodes.answer as AgentNodeDefinition).routing = {
       parentSessionId: "ps_parent_single_prompt",
-      projectId: "project_single_prompt",
       roomId: "room_single_prompt",
       channel: "chat",
     };
@@ -426,7 +420,6 @@ describe("one-node agent workflow runtime path", () => {
       assert.equal(result.run.output, "Single-prompt workflow completed through routed Pibo Runtime.");
       assert.deepEqual(result.run.current, { nodeId: "answer", status: "completed" });
       assert.equal(result.run.piboSessionId, "ps_single_prompt");
-      assert.equal(result.run.projectId, "project_single_prompt");
       assert.equal(result.nodeAttempt.metadata?.piboSessionId, "ps_single_prompt");
       assert.equal(result.nodeAttempt.metadata?.piSessionId, "pi_single_prompt");
       assert.deepEqual(result.nodeAttempt.metadata?.finalPrompt, {
@@ -447,7 +440,7 @@ describe("one-node agent workflow runtime path", () => {
       assert.deepEqual(createdSessions, [
         {
           channel: "chat",
-          kind: "workflow-agent",
+          kind: "chat",
           profile: "pibo-agent",
           parentId: "ps_parent_single_prompt",
           workspace: undefined,
@@ -459,7 +452,6 @@ describe("one-node agent workflow runtime path", () => {
             workflowVersion: definition.version,
             workflowNodeId: "answer",
             workflowNodeAttemptId: "wna_single_prompt",
-            projectId: "project_single_prompt",
             chatRoomId: "room_single_prompt",
           },
         },
@@ -486,7 +478,6 @@ describe("one-node agent workflow runtime path", () => {
       assert.equal(persisted.output, "Single-prompt workflow completed through routed Pibo Runtime.");
       assert.deepEqual(persisted.current, { nodeId: "answer", status: "completed" });
       assert.equal(persisted.piboSessionId, "ps_single_prompt");
-      assert.equal(persisted.projectId, "project_single_prompt");
       assert.deepEqual(persistedNodeAttempt?.metadata?.finalPrompt, result.nodeAttempt.metadata?.finalPrompt);
     } finally {
       try {

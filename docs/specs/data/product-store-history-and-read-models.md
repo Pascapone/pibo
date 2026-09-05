@@ -6,12 +6,18 @@ tags: ["data", "product-store", "history"]
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-03T15:55:41Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-05T10:32:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
+implementation:
+  state: "current"
+  baseline_commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  source_evidence: "performed"
+  test_execution: "complete isolated root suite passed: 2744 tests, 2739 passed, 0 failed, 5 skipped"
+  build_and_typecheck_execution: "clean full build and all typechecks passed"
 traceability:
-  commit: "cd13474b2b2fd4cd388e6229db7ec75418f496e9"
+  commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
   requirements:
     - id: "WP02-DATA-STORE-001"
       status: "implemented"
@@ -202,12 +208,13 @@ This specification describes implemented behavior at the traceability commit. Pl
 - Failure and security: Bounded payload reads verify size and SHA-256. Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow. Missing or corrupt external payload content falls back to the durable preview where the history service supports it.
 - Compatibility: Legacy Pi binding columns are backfilled and old-writer Pi updates are synchronized by migration triggers. Live deltas are excluded from durable timeline facts by default. Projections are rebuildable and do not replace event_log facts.
 - Product-data boundary: App Context identifies one authenticated product data space; it is not a tenant or per-user datastore boundary.
+- Workflow-store boundary: Fresh product storage does not create retired container storage. Upgrade migration removes old catalog tables from `pibo.sqlite` after transferring catalog facts to `pibo-workflows.sqlite`; catalog-only upgrades do not require retired container storage. Canonical Sessions and history remain in `pibo.sqlite`.
 
 # Requirements and invariants
 
 ## Requirement: WP02-DATA-STORE-001
 
-The specification SHALL define schema version 8, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-session, non-telemetry product tables to this owner.
+The specification SHALL define schema version 8, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-Session, non-telemetry, non-Workflow product tables to this owner.
 
 ## Requirement: WP02-DATA-STORE-002
 
@@ -260,7 +267,7 @@ Related ownership boundaries:
 - SPC-DATA-003 owns telemetry tables in the same database.
 - SPC-RUN-007 owns native runtime transcript compatibility; product history is primary.
 - SPC-WEB-004 and SPC-WEB-005 own browser overlays and trace rendering, not durable facts.
-- ChatProjectService uses web-projects.sqlite and is outside this owner.
+- Workflow catalog and execution facts use `pibo-workflows.sqlite` and belong to SPC-ORCH-005/SPC-ORCH-006.
 
 # Failure and security behavior
 
@@ -271,21 +278,15 @@ Related ownership boundaries:
 
 # Known limits
 
-- Non-current claim excluded: assign sessions, runtime bindings, telemetry, or web-projects.sqlite to this owner merely because composition code is nearby.
+- Non-current claim excluded: assign Sessions, runtime bindings, telemetry, or Workflow-store facts to this owner merely because composition code is nearby.
 - Non-current claim excluded: describe ChatNavigationQueryService as a complete native navigation implementation; its source marks it reserved and current call sites compose navigation elsewhere.
 - Non-current claim excluded: claim product store code authenticates payload reads; route authentication belongs to Web/security owners.
 - Current limit or evidence gap: No focused corruption test was found for bounded payload SHA/length validation and durable-preview fallback.
-- Current limit or evidence gap: The canonical inventory names src/data/sqlite-schema.ts, but schema authority is src/data/schema.ts; retain the former only if a concrete symbol remains relevant during drafting.
+- Current evidence boundary: Completed scoped manual editor acceptance used ordinary Session history and Workflow-owned execution facts; it does not move either authority into this store.
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `cd13474b2b2fd4cd388e6229db7ec75418f496e9`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
-
-Package verification commands:
-
-- `npm run build`
-- `npm run typecheck`
-- `node scripts/run-test-suite.mjs test/data-v2-store.test.mjs test/trace-v2-fast-path.test.mjs test/pibo-tool-mcp-bridge.test.mjs test/stream-render-final-review.test.mjs test/app-context-fresh-schema.test.mjs test/data-v2-ingest-service.test.mjs test/chat-v2-native-services.test.mjs`
+Source symbols and named tests remain bound to commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`, where the clean full build, all typechecks, and complete isolated root suite passed with 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. At final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks and all typechecks passed; its complete root suite also passed, as recorded in the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md). Headed Room workspace inheritance and actual normal and manual `openai-codex` Sessions succeeded. This specification does not claim Pibo2 or deployment evidence.
 
 # Related concepts
 
@@ -293,4 +294,4 @@ Package verification commands:
 - SPC-DATA-003 owns telemetry tables in the same database.
 - SPC-RUN-007 owns native runtime transcript compatibility; product history is primary.
 - SPC-WEB-004 and SPC-WEB-005 own browser overlays and trace rendering, not durable facts.
-- ChatProjectService uses web-projects.sqlite and is outside this owner.
+- Workflow catalog and execution facts use `pibo-workflows.sqlite` and belong to SPC-ORCH-005/SPC-ORCH-006.
