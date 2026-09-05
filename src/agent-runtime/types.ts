@@ -310,6 +310,7 @@ export type AgentRuntimeSessionOperationResult = {
 	previous: AgentRuntimeNativeSessionSnapshot;
 	current: AgentRuntimeNativeSessionSnapshot;
 	cancelled: boolean;
+	sourceSessionUnchanged?: boolean;
 	selectedText?: string;
 	editorText?: string;
 	summaryEntryId?: string;
@@ -343,7 +344,9 @@ export type AgentRuntimeControls = {
 	getCurrentSession?(): AgentRuntimeNativeSessionSnapshot;
 	listSessions?(): Promise<AgentRuntimeNativeSessionInfo[]>;
 	getForkCandidates?(): AgentRuntimeForkCandidate[] | Promise<AgentRuntimeForkCandidate[]>;
+	getForkCandidatesWhileRunning?(): AgentRuntimeForkCandidate[] | Promise<AgentRuntimeForkCandidate[]>;
 	forkSession?(entryId: string): Promise<AgentRuntimeSessionOperationResult>;
+	forkSessionWhileRunning?(entryId: string): Promise<AgentRuntimeSessionOperationResult>;
 	cloneSession?(): Promise<AgentRuntimeSessionOperationResult>;
 	getSessionTree?(): AgentRuntimeSessionTree;
 	navigateSessionTree?(params: PiboJsonObject): Promise<AgentRuntimeSessionOperationResult>;

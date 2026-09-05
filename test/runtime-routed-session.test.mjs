@@ -574,6 +574,104 @@ test("fork identity reads and transitions reject queued or active routed work", 
 	}
 });
 
+test("running-safe fork controls snapshot completed history without interrupting the source turn", async () => {
+	const releasePrompt = deferred();
+	let streaming = false;
+	let idleForks = 0;
+	let runningForks = 0;
+	const persistedOperations = [];
+	const binding = {
+		piboSessionId: "ps_running_fork",
+		runtimeInstanceId: "running-fork",
+		adapterId: "running-fork",
+		nativeSessionId: "native-source",
+		state: "bound",
+	};
+	const runtimeSession = {
+		adapterId: "running-fork",
+		runtimeInstanceId: "running-fork",
+		cwd: process.cwd(),
+		capabilities: {
+			...createMinimalAgentRuntimeCapabilities(),
+			lifecycle: { ...createMinimalAgentRuntimeCapabilities().lifecycle, fork: true, forkWhileRunning: true },
+		},
+		controls: {
+			getForkCandidates() {
+				throw new Error("idle candidate reader must not run");
+			},
+			getForkCandidatesWhileRunning() {
+				return [{ entryId: "completed-user", text: "completed prompt" }];
+			},
+			async forkSession() {
+				idleForks += 1;
+				throw new Error("idle fork must not run");
+			},
+			async forkSessionWhileRunning(entryId) {
+				runningForks += 1;
+				assert.equal(entryId, "completed-user");
+				return {
+					previous: { adapterId: "running-fork", runtimeInstanceId: "running-fork", nativeSessionId: "native-source", cwd: process.cwd() },
+					current: { adapterId: "running-fork", runtimeInstanceId: "running-fork", nativeSessionId: "native-fork", cwd: process.cwd() },
+					cancelled: false,
+					sourceSessionUnchanged: true,
+				};
+			},
+		},
+		getBinding: () => ({ ...binding }),
+		subscribe: () => () => {},
+		async prompt() {
+			streaming = true;
+			await releasePrompt.promise;
+			streaming = false;
+		},
+		async abort() {
+			releasePrompt.resolve();
+			streaming = false;
+		},
+		async dispose() {
+			releasePrompt.resolve();
+			streaming = false;
+		},
+		getStatus: () => ({ streaming, enabledTools: [], cwd: process.cwd() }),
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_running_fork",
+		runtimeSession,
+		() => {},
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		{ onSessionOperation: async (result) => persistedOperations.push(structuredClone(result)) },
+	);
+	try {
+		routed.enqueueMessage({
+			type: "message",
+			piboSessionId: "ps_running_fork",
+			id: "active-message",
+			text: "active prompt",
+			source: "user",
+		});
+		await waitFor(() => routed.getStatus().processing && routed.getStatus().streaming);
+
+		assert.deepEqual(await routed.getForkCandidates(), [{ entryId: "completed-user", text: "completed prompt" }]);
+		const forked = await routed.executeAction({
+			type: "execution",
+			piboSessionId: "ps_running_fork",
+			action: "session.fork",
+			params: { entryId: "completed-user" },
+		});
+		assert.equal(forked.result.current.piSessionId, "native-fork");
+		assert.equal(forked.result.sourceSessionUnchanged, true);
+		assert.equal(runningForks, 1);
+		assert.equal(idleForks, 0);
+		assert.equal(routed.getStatus().streaming, true, "source turn remains active after the snapshot fork");
+		assert.equal(routed.getRuntimeBinding().nativeSessionId, "native-source");
+		assert.equal(persistedOperations.length, 1);
+		assert.equal(persistedOperations[0].sourceSessionUnchanged, true);
+	} finally {
+		releasePrompt.resolve();
+		await routed.dispose();
+	}
+});
+
 test("fork-candidate page reads serialize accepted message drain behind OMP-style idle work", async () => {
 	const releaseCandidates = deferred();
 	let operationInFlight = false;

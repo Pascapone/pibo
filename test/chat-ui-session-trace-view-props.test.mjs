@@ -16,6 +16,7 @@ async function runSessionTraceViewPropsScenario() {
 			resolveSessionTraceTitle,
 			sessionCanSteer,
 			sessionSupportsFork,
+			sessionSupportsForkWhileRunning,
 			sessionSupportsToolIntent,
 			traceUserMessageRevision,
 			withSessionForkCandidates,
@@ -149,7 +150,7 @@ async function runSessionTraceViewPropsScenario() {
 					available: true,
 					capabilities: {
 						input: { steering: true },
-						lifecycle: { fork: true },
+						lifecycle: { fork: true, forkWhileRunning: true },
 						tools: { intentTracing: { supported: true, configurable: true, enabledByDefault: false } },
 					},
 				}],
@@ -158,9 +159,10 @@ async function runSessionTraceViewPropsScenario() {
 		};
 
 		assert.equal(sessionSupportsFork(bootstrap, "ps-child", "worker-profile"), true);
+		assert.equal(sessionSupportsForkWhileRunning(bootstrap, "ps-child", "worker-profile"), true);
 		assert.equal(sessionSupportsFork({
 			...bootstrap,
-			agentCatalog: { agentRuntimes: [{ ...bootstrap.agentCatalog.agentRuntimes[0], capabilities: { lifecycle: { fork: false } } }] },
+			agentCatalog: { agentRuntimes: [{ ...bootstrap.agentCatalog.agentRuntimes[0], capabilities: { lifecycle: { fork: false, forkWhileRunning: false } } }] },
 		}, "ps-child", "worker-profile"), false);
 		assert.equal(sessionSupportsToolIntent(bootstrap, "ps-child", "worker-profile"), true);
 		assert.equal(sessionSupportsToolIntent({ ...bootstrap, customAgents: [{ ...bootstrap.customAgents[0], runtimeOptions: {} }] }, "ps-child", "worker-profile"), false);
@@ -260,6 +262,21 @@ async function runSessionTraceViewPropsScenario() {
 		assert.equal(forkableTrace.nodes[0].entryId, "native-user-a");
 		assert.equal(forkableTrace.nodes[2].entryId, "native-user-b");
 		assert.equal(forkableTrace.nodes[1].entryId, undefined);
+		const runningTrace = {
+			...productTrace,
+			nodes: [
+				traceNode({ id: "completed-user-a", type: "user.message", title: "User", output: "repeat" }),
+				traceNode({ id: "completed-user-b", type: "user.message", title: "User", output: "repeat" }),
+				traceNode({ id: "active-user", type: "user.message", title: "User", output: "currently running" }),
+			],
+		};
+		const runningForkableTrace = withSessionForkCandidates(runningTrace, [
+			{ entryId: "native-user-a", text: "repeat" },
+			{ entryId: "native-user-b", text: "repeat" },
+		]);
+		assert.equal(runningForkableTrace.nodes[0].entryId, "native-user-a");
+		assert.equal(runningForkableTrace.nodes[1].entryId, "native-user-b");
+		assert.equal(runningForkableTrace.nodes[2].entryId, undefined, "the active user message stays non-forkable until completed");
 		const partialTrace = {
 			...productTrace,
 			nodes: [
@@ -346,6 +363,9 @@ test("composer delivery choices use explicit steering eligibility instead of pre
 	assert.match(source, /const canSteer = sessionCanSteer\(/);
 	assert.match(source, /if \(canSteer\) \{/);
 	assert.doesNotMatch(source, /if \(selectedSessionStatus === "running"\)/);
+	assert.match(source, /selectedSessionStatus !== "running" \|\| forkWhileRunningSupported/);
+	assert.match(source, /const forkCandidateStatusRevision = selectedSessionStatus \?\? "unknown"/);
+	assert.match(source, /\["chat", "fork-candidates", selectedBackendPiboSessionId, forkCandidateRevision, forkCandidateStatusRevision\]/);
 	assert.match(source, /forkCandidatesEnabled && forkCandidatesQuery\.data[\s\S]*withSessionForkCandidates\(currentTraceView, forkCandidatesQuery\.data\.messages\)[\s\S]*: currentTraceView/);
 	assert.doesNotMatch(source, /forkCandidatesQuery\.data\?\.messages \?\? \[\]/, "loading and failed reads must not masquerade as an authoritative empty result");
 });

@@ -272,6 +272,38 @@ test("session fork replaces the active Pi session and can switch back", async ()
 	}
 });
 
+test("Pi running-safe fork snapshots completed history without replacing the source manager", async () => {
+	const harness = await createSessionHarness();
+	try {
+		const ids = seedConversation(harness.routed.runtime);
+		const manager = harness.routed.runtime.session.sessionManager;
+		manager.appendMessage(userMessage("active user turn"));
+		harness.routed.processing = true;
+		const before = harness.routed.getCurrentSession();
+		assert.deepEqual(
+			harness.routed.getForkCandidatesWhileRunning().map((candidate) => candidate.entryId),
+			[ids.firstUserId, ids.secondUserId],
+			"the active user message is not exposed until its turn completes",
+		);
+		const forked = await harness.routed.forkSessionWhileRunning(ids.secondUserId);
+
+		assert.equal(forked.sourceSessionUnchanged, true);
+		assert.equal(forked.previous.sessionFile, before.sessionFile);
+		assert.equal(harness.routed.getCurrentSession().sessionFile, before.sessionFile);
+		assert.notEqual(forked.current.sessionFile, before.sessionFile);
+		assert.equal(forked.current.parentSessionFile, before.sessionFile);
+		assert.equal(forked.selectedText, "second user turn");
+		await access(forked.current.sessionFile);
+		const persisted = await readFile(forked.current.sessionFile, "utf8");
+		assert.match(persisted, /first user turn/);
+		assert.match(persisted, /first assistant turn/);
+		assert.doesNotMatch(persisted, /second user turn/);
+	} finally {
+		harness.routed.processing = false;
+		await harness.dispose();
+	}
+});
+
 test("Pi fork before the first user message materializes the empty branch transcript", async () => {
 	const harness = await createSessionHarness();
 	try {

@@ -263,6 +263,7 @@ export type PiboSessionOperationResult = {
 	previous: PiboPiSessionSnapshot;
 	current: PiboPiSessionSnapshot;
 	cancelled: boolean;
+	sourceSessionUnchanged?: boolean;
 	selectedText?: string;
 	editorText?: string;
 	summaryEntryId?: string;

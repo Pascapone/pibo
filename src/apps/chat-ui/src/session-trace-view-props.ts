@@ -15,6 +15,14 @@ export function sessionSupportsFork(
 	return sessionRuntime(bootstrap, piboSessionId, profileName)?.capabilities.lifecycle.fork === true;
 }
 
+export function sessionSupportsForkWhileRunning(
+	bootstrap: BootstrapData,
+	piboSessionId: string | null,
+	profileName: string,
+): boolean {
+	return sessionRuntime(bootstrap, piboSessionId, profileName)?.capabilities.lifecycle.forkWhileRunning === true;
+}
+
 export function traceUserMessageRevision(traceView: PiboSessionTraceView | null): string {
 	if (!traceView) return "none";
 	const users = flattenTraceNodes(traceView.nodes).filter((node) => node.type === "user.message");
@@ -39,8 +47,14 @@ export function withSessionForkCandidates(
 	const assignments = new Map<string, string>();
 	const positionalIdentityIsConsistent = userNodes.length === usableCandidates.length
 		&& userNodes.every((node, index) => !currentEntryId(node) || currentEntryId(node) === usableCandidates[index]!.entryId);
-	if (positionalIdentityIsConsistent) {
-		for (let index = 0; index < userNodes.length; index += 1) {
+	const completedPrefixIsConsistent = usableCandidates.length < userNodes.length
+		&& usableCandidates.every((candidate, index) => {
+			const node = userNodes[index]!;
+			const entryId = currentEntryId(node);
+			return entryId ? entryId === candidate.entryId : traceUserMessageText(node) === candidate.text;
+		});
+	if (positionalIdentityIsConsistent || completedPrefixIsConsistent) {
+		for (let index = 0; index < usableCandidates.length; index += 1) {
 			assignments.set(userNodes[index]!.id, usableCandidates[index]!.entryId);
 		}
 	} else {

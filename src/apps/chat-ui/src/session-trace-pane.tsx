@@ -47,6 +47,7 @@ import {
   resolveSessionTraceTitle,
   sessionCanSteer,
   sessionSupportsFork,
+  sessionSupportsForkWhileRunning,
   sessionSupportsToolIntent,
   traceUserMessageRevision,
   withSessionForkCandidates,
@@ -403,15 +404,17 @@ export function SessionTracePane({
     selectedSessionStatus,
   });
   const forkSupported = sessionSupportsFork(bootstrap, selectedPiboSessionId, selectedSessionProfile);
+  const forkWhileRunningSupported = sessionSupportsForkWhileRunning(bootstrap, selectedPiboSessionId, selectedSessionProfile);
   const forkCandidateRevision = traceUserMessageRevision(currentTraceView);
+  const forkCandidateStatusRevision = selectedSessionStatus ?? "unknown";
   const forkCandidatesEnabled = Boolean(selectedBackendPiboSessionId)
     && forkSupported
     && !selectedRoomArchived
-    && selectedSessionStatus !== "running";
+    && (selectedSessionStatus !== "running" || forkWhileRunningSupported);
   const forkCandidatesQuery = useQuery({
     queryKey: selectedBackendPiboSessionId
-      ? ["chat", "fork-candidates", selectedBackendPiboSessionId, forkCandidateRevision]
-      : ["chat", "fork-candidates", "idle", "none"],
+      ? ["chat", "fork-candidates", selectedBackendPiboSessionId, forkCandidateRevision, forkCandidateStatusRevision]
+      : ["chat", "fork-candidates", "idle", "none", forkCandidateStatusRevision],
     queryFn: ({ signal }) => getSessionForkCandidates(selectedBackendPiboSessionId!, { signal }),
     enabled: forkCandidatesEnabled,
     staleTime: 0,
