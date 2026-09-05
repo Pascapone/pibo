@@ -35,7 +35,7 @@ export type WorkflowValidationTrigger =
 	| "state_edit"
 	| "raw_ir_edit"
 	| "before_publish"
-	| "before_project_session_creation"
+	| "before_workflow_session_creation"
 	| "before_workflow_start";
 
 export type WorkflowValidationSummary = {
@@ -140,9 +140,9 @@ export type WorkflowLifecycleEventType =
 	| "workflow.editor_test_run.blocked"
 	| "workflow.archive.updated"
 	| "workflow.delete.tombstoned"
-	| "project.workflow_session.created"
-	| "project.workflow_start.accepted"
-	| "project.workflow_start.blocked"
+	| "workflow.session.created"
+	| "workflow.start.accepted"
+	| "workflow.start.blocked"
 	| "workflow.run.status_changed"
 	| "workflow.human_action.submitted";
 
@@ -153,7 +153,6 @@ export type WorkflowLifecycleEventRecord = {
 	workflowId?: string;
 	workflowVersion?: string;
 	draftId?: string;
-	projectId?: string;
 	piboSessionId?: string;
 	workflowRunId?: string;
 	status?: "saved" | "accepted" | "blocked" | "changed" | "submitted";

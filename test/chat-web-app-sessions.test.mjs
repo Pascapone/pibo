@@ -24,7 +24,7 @@ function createHarness(options = {}) {
 		dataStorePath,
 		dataPayloadRootDir: join(storageDir, "payloads"),
 		agentStorePath: join(storageDir, "agents.sqlite"),
-		projectStorePath: join(storageDir, "projects.sqlite"),
+		workflowStorePath: join(storageDir, "pibo-workflows.sqlite"),
 	});
 	const sessions = new InMemoryPiboSessionStore();
 	const emitted = [];

@@ -39,7 +39,7 @@ function createSourceHome(root) {
 	writeFileSync(resolve(home, "payloads", "large.txt"), "payload");
 	mkdirSync(resolve(home, "secrets"));
 	writeFileSync(resolve(home, "secrets", "must-not-copy"), "secret");
-	for (const name of ["pibo.sqlite", "pibo-events.sqlite", "pibo-cron.sqlite", "auth.sqlite", "previews.sqlite"]) {
+	for (const name of ["pibo.sqlite", "pibo-events.sqlite", "pibo-cron.sqlite", "pibo-workflows.sqlite", "auth.sqlite", "previews.sqlite"]) {
 		const db = new DatabaseSync(resolve(home, name));
 		db.exec("CREATE TABLE fixture (value TEXT); INSERT INTO fixture VALUES ('ok')");
 		db.close();
@@ -126,13 +126,14 @@ test("seed modes provide full, medium, and fresh state with slot auth URL", asyn
 				assert.equal(existsSync(resolve(prepared.homePath, "secrets")), false);
 				assert.equal(existsSync(resolve(prepared.homePath, "auth.sqlite")), false);
 				assert.equal(existsSync(resolve(prepared.homePath, "previews.sqlite")), false);
-				assert.deepEqual(prepared.copiedDatabases, ["pibo-cron.sqlite", "pibo-events.sqlite", "pibo.sqlite"]);
+				assert.deepEqual(prepared.copiedDatabases, ["pibo-cron.sqlite", "pibo-events.sqlite", "pibo-workflows.sqlite", "pibo.sqlite"]);
 			} else if (mode === "medium") {
 				assert.equal(existsSync(resolve(prepared.homePath, "payload.txt")), false);
 				assert.equal(existsSync(resolve(prepared.homePath, "payloads")), false);
-				assert.deepEqual(prepared.copiedDatabases, ["pibo-events.sqlite", "pibo.sqlite"]);
+				assert.deepEqual(prepared.copiedDatabases, ["pibo-events.sqlite", "pibo-workflows.sqlite", "pibo.sqlite"]);
 			} else {
 				assert.equal(existsSync(resolve(prepared.homePath, "pibo.sqlite")), false);
+				assert.equal(existsSync(resolve(prepared.homePath, "pibo-workflows.sqlite")), false);
 				assert.deepEqual(prepared.copiedDatabases, []);
 			}
 		}

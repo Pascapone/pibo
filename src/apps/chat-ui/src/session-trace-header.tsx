@@ -11,7 +11,7 @@ import { TerminalHeaderUsage } from "./session-header-usage";
 import {
   WorkflowHeaderMeta,
   type WorkflowHeaderSummary,
-} from "./projects/project-session-workflow";
+} from "./workflows/workflow-session-model";
 
 export type SessionTraceHeaderExtraViewTab = {
   id: string;
@@ -58,7 +58,7 @@ export function SessionTraceHeader({
   onError,
 }: {
   title: string | null | undefined;
-  contextKind: "room" | "project";
+  contextKind: "room";
   contextLabel: string;
   headerPiboSessionId: string;
   piboSessionId: string | null;
@@ -99,7 +99,7 @@ export function SessionTraceHeader({
     copiedHeaderPiboSessionId === headerPiboSessionId;
   const selectedViewId = activeViewId ?? sessionViewId;
   const showTerminalUsage = currentSessionView.id === "terminal" && selectedViewId === "terminal";
-  const contextKindLabel = contextKind === "project" ? "Project" : "Room";
+  const contextKindLabel = "Room";
   const allowedSessionViewIdSet = useMemo(
     () => (allowedSessionViewIds ? new Set(allowedSessionViewIds) : null),
     [allowedSessionViewIds],
@@ -223,12 +223,12 @@ export function SessionTraceHeader({
                 disabled={disabledByRouting}
                 title={
                   disabledByRouting
-                    ? `Project session routing uses the ${currentSessionView.label} view for this session kind.`
+                    ? `${currentSessionView.label} is the available view for this Session.`
                     : (view.description ?? view.label)
                 }
                 aria-label={
                   disabledByRouting
-                    ? `${view.label} view unavailable for this Project session kind`
+                    ? `${view.label} view unavailable for this Session`
                     : `Switch to ${view.label} view`
                 }
                 aria-pressed={selectedViewId === view.id}

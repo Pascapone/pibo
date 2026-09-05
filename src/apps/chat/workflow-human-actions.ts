@@ -1,35 +1,35 @@
 import type { PiboJsonObject, PiboJsonValue } from "../../core/events.js";
 import { responseJson } from "../../web/http.js";
-import type { PiboProjectSession, PiboProjectWorkflowHumanActionKind, PiboProjectWorkflowPendingHumanAction, PiboProjectWorkflowWaitToken } from "./data/project-service.js";
+import type { PiboWorkflowSessionLink, PiboWorkflowHumanActionKind, PiboWorkflowPendingHumanAction, PiboWorkflowWaitToken } from "./data/workflow-session-service.js";
 import { sanitizeWorkflowDiagnostics, type WorkflowDraftDiagnostic } from "./workflow-persistence.js";
 
-export type ChatProjectWorkflowHumanActionBody = {
+export type ChatWorkflowHumanActionBody = {
 	waitTokenId?: unknown;
 	actionId?: unknown;
 	kind?: unknown;
 	payload?: unknown;
 };
 
-export type ProjectWorkflowHumanActionRegistryOption = {
+export type WorkflowHumanActionRegistryOption = {
 	id: string;
-	kind: PiboProjectWorkflowHumanActionKind;
+	kind: PiboWorkflowHumanActionKind;
 	displayName: string;
 	description?: string;
 	paramsSchema: PiboJsonObject | null;
 };
 
-export type NormalizedProjectWorkflowHumanActionRequest = {
+export type NormalizedWorkflowHumanActionRequest = {
 	waitTokenId: string;
 	actionId?: string;
-	kind?: PiboProjectWorkflowHumanActionKind;
+	kind?: PiboWorkflowHumanActionKind;
 	payload?: PiboJsonValue;
 };
 
-export function projectWorkflowPendingHumanActionFromToken(
-	token: PiboProjectWorkflowWaitToken,
-	humanActionOptions: readonly ProjectWorkflowHumanActionRegistryOption[],
-): PiboProjectWorkflowPendingHumanAction {
-	const diagnostics: PiboProjectWorkflowPendingHumanAction["diagnostics"] = [];
+export function workflowPendingHumanActionFromToken(
+	token: PiboWorkflowWaitToken,
+	humanActionOptions: readonly WorkflowHumanActionRegistryOption[],
+): PiboWorkflowPendingHumanAction {
+	const diagnostics: PiboWorkflowPendingHumanAction["diagnostics"] = [];
 	const availableActions = token.actions.map((action, index) => {
 		const registered = humanActionOptions.find((option) => option.id === action.id);
 		if (!registered) {
@@ -83,14 +83,14 @@ export function projectWorkflowPendingHumanActionFromToken(
 	};
 }
 
-export function projectWorkflowHumanActionLifecyclePayload(request: NormalizedProjectWorkflowHumanActionRequest): PiboJsonObject {
+export function workflowHumanActionLifecyclePayload(request: NormalizedWorkflowHumanActionRequest): PiboJsonObject {
 	const payload: PiboJsonObject = { waitTokenId: request.waitTokenId };
 	if (request.actionId) payload.actionId = request.actionId;
 	if (request.kind) payload.kind = request.kind;
 	return payload;
 }
 
-export function projectWorkflowHumanActionSubmittedLifecyclePayload(waitTokenId: string, action: { actionId?: string; kind: PiboProjectWorkflowHumanActionKind }): PiboJsonObject {
+export function workflowHumanActionSubmittedLifecyclePayload(waitTokenId: string, action: { actionId?: string; kind: PiboWorkflowHumanActionKind }): PiboJsonObject {
 	const payload: PiboJsonObject = {
 		waitTokenId,
 		kind: action.kind,
@@ -100,21 +100,21 @@ export function projectWorkflowHumanActionSubmittedLifecyclePayload(waitTokenId:
 	return payload;
 }
 
-export function normalizeProjectWorkflowHumanActionBody(body: ChatProjectWorkflowHumanActionBody): {
-	request?: NormalizedProjectWorkflowHumanActionRequest;
+export function normalizeWorkflowHumanActionBody(body: ChatWorkflowHumanActionBody): {
+	request?: NormalizedWorkflowHumanActionRequest;
 	diagnostics: WorkflowDraftDiagnostic[];
 } {
 	const diagnostics: WorkflowDraftDiagnostic[] = [];
 	const waitTokenId = typeof body.waitTokenId === "string" && body.waitTokenId.trim() ? body.waitTokenId.trim() : undefined;
 	const actionId = typeof body.actionId === "string" && body.actionId.trim() ? body.actionId.trim() : undefined;
-	const kind = typeof body.kind === "string" && body.kind.trim() ? body.kind.trim() as PiboProjectWorkflowHumanActionKind : undefined;
+	const kind = typeof body.kind === "string" && body.kind.trim() ? body.kind.trim() as PiboWorkflowHumanActionKind : undefined;
 	if (!waitTokenId) {
 		diagnostics.push({
 			code: "WorkflowRuntimeError.waitTokenIdRequired",
 			message: "Human action requests must include a waitTokenId.",
 			severity: "error",
 			path: "$.waitTokenId",
-			hint: "Submit a pending wait token returned by Project workflow inspection.",
+			hint: "Submit a pending wait token returned by Workflow session inspection.",
 		});
 	}
 	if (!actionId && !kind) {
@@ -147,18 +147,18 @@ export function normalizeProjectWorkflowHumanActionBody(body: ChatProjectWorkflo
 	};
 }
 
-export function validateProjectWorkflowHumanActionRequest(input: {
-	projectSession: PiboProjectSession;
-	waitToken?: PiboProjectWorkflowWaitToken;
-	request: NormalizedProjectWorkflowHumanActionRequest;
-	humanActionOptions: readonly ProjectWorkflowHumanActionRegistryOption[];
+export function validateWorkflowHumanActionRequest(input: {
+	workflowSession: PiboWorkflowSessionLink;
+	waitToken?: PiboWorkflowWaitToken;
+	request: NormalizedWorkflowHumanActionRequest;
+	humanActionOptions: readonly WorkflowHumanActionRegistryOption[];
 }): {
 	diagnostics: WorkflowDraftDiagnostic[];
 	httpStatus: number;
 	checkedAt: string;
 	expiredAt?: string;
-	actionRef?: PiboProjectWorkflowWaitToken["actions"][number];
-	actionKind?: PiboProjectWorkflowHumanActionKind;
+	actionRef?: PiboWorkflowWaitToken["actions"][number];
+	actionKind?: PiboWorkflowHumanActionKind;
 } {
 	const checkedAt = new Date().toISOString();
 	const diagnostics: WorkflowDraftDiagnostic[] = [];
@@ -168,18 +168,18 @@ export function validateProjectWorkflowHumanActionRequest(input: {
 			message: `Workflow wait token '${input.request.waitTokenId}' does not exist.`,
 			severity: "error",
 			path: "$.waitTokenId",
-			hint: "Refresh the Project run view and submit one of its pending wait tokens.",
+			hint: "Refresh the Workflow run view and submit one of its pending wait tokens.",
 		});
 		return { diagnostics, httpStatus: 404, checkedAt };
 	}
-	if (input.waitToken.projectId !== input.projectSession.projectId || input.waitToken.piboSessionId !== input.projectSession.piboSessionId || input.waitToken.workflowRunId !== input.projectSession.workflowRunId) {
+	if (input.waitToken.piboSessionId !== input.workflowSession.piboSessionId || input.waitToken.workflowRunId !== input.workflowSession.workflowRunId) {
 		diagnostics.push({
 			code: "WorkflowRuntimeError.waitTokenSessionMismatch",
-			message: `Workflow wait token '${input.waitToken.id}' does not belong to this Project workflow session.`,
+			message: `Workflow wait token '${input.waitToken.id}' does not belong to this Workflow session.`,
 			severity: "error",
 			path: "$.waitTokenId",
 			registryRef: input.waitToken.id,
-			hint: "Use only wait tokens shown in the selected Project run view.",
+			hint: "Use only wait tokens shown in the selected Workflow run view.",
 		});
 		return { diagnostics, httpStatus: 403, checkedAt };
 	}
@@ -268,7 +268,7 @@ export function validateProjectWorkflowHumanActionRequest(input: {
 	};
 }
 
-export function projectWorkflowHumanActionRuntimeDiagnostic(error: unknown, waitTokenId: string): WorkflowDraftDiagnostic {
+export function workflowHumanActionRuntimeDiagnostic(error: unknown, waitTokenId: string): WorkflowDraftDiagnostic {
 	const message = error instanceof Error ? error.message : String(error);
 	let code = "WorkflowRuntimeError.humanActionRejected";
 	if (/not found/i.test(message)) code = "WorkflowRuntimeError.unknownWaitToken";
@@ -282,21 +282,21 @@ export function projectWorkflowHumanActionRuntimeDiagnostic(error: unknown, wait
 		severity: "error",
 		path: "$.waitTokenId",
 		registryRef: waitTokenId,
-		hint: "Refresh the Project run view and retry with a currently pending wait token/action ref.",
+		hint: "Refresh the Workflow run view and retry with a currently pending wait token/action ref.",
 	};
 }
 
-export function projectWorkflowHumanActionDiagnosticResponse(
+export function workflowHumanActionDiagnosticResponse(
 	message: string,
 	diagnostics: WorkflowDraftDiagnostic[],
 	status: number,
-	waitToken: PiboProjectWorkflowWaitToken | undefined,
-	humanActionOptions: readonly ProjectWorkflowHumanActionRegistryOption[],
+	waitToken: PiboWorkflowWaitToken | undefined,
+	humanActionOptions: readonly WorkflowHumanActionRegistryOption[],
 ): Response {
 	return responseJson({
 		error: message,
 		diagnostics: sanitizeWorkflowDiagnostics(diagnostics),
-		...(waitToken?.status === "pending" ? { waitToken: projectWorkflowPendingHumanActionFromToken(waitToken, humanActionOptions) } : {}),
+		...(waitToken?.status === "pending" ? { waitToken: workflowPendingHumanActionFromToken(waitToken, humanActionOptions) } : {}),
 	}, { status });
 }
 

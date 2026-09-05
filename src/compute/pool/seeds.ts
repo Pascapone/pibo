@@ -38,11 +38,10 @@ const MEDIUM_ALLOWED_TOP_LEVEL = new Set([
 	"chat-agents.sqlite",
 	"pibo.sqlite",
 	"pibo-events.sqlite",
-	"web-projects.sqlite",
+	"pibo-workflows.sqlite",
 	"web-annotations.sqlite",
 	"context-files",
 	"user-skills",
-	"projects",
 ]);
 const FRESH_ALLOWED_TOP_LEVEL = new Set([
 	"config.json",
@@ -146,7 +145,7 @@ function shouldCopyTopLevel(name: string, mode: DeploymentSeedMode): boolean {
 async function backupSeedDatabases(sourceHome: string, destinationHome: string, mode: DeploymentSeedMode): Promise<string[]> {
 	if (mode === "fresh") return [];
 	const allowed = mode === "medium"
-		? new Set(["chat-agents.sqlite", "pibo.sqlite", "pibo-events.sqlite", "web-projects.sqlite", "web-annotations.sqlite"])
+		? new Set(["chat-agents.sqlite", "pibo.sqlite", "pibo-events.sqlite", "pibo-workflows.sqlite", "web-annotations.sqlite"])
 		: undefined;
 	const copied: string[] = [];
 	for (const entry of await readdir(sourceHome, { withFileTypes: true })) {

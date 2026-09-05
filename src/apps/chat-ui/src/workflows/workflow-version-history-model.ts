@@ -34,10 +34,10 @@ export function groupWorkflowVersionHistory(rows: WorkflowVersionHistoryOption[]
 }
 
 export function workflowHistoryStatusDescription(record: WorkflowCatalogVersionRecord): string {
-	if (record.status === "published") return "Published workflow version — selectable for Project sessions and safe to duplicate into UI drafts.";
-	if (record.status === "archived") return "Archived workflow version — shown for lifecycle history but hidden from default Project session creation choices.";
+	if (record.status === "published") return "Published workflow version — available for new Workflow Sessions and safe to duplicate into UI drafts.";
+	if (record.status === "archived") return "Archived workflow version — shown for lifecycle history but unavailable for new Workflow Sessions.";
 	if (record.status === "deleted") return "Deleted workflow definition — historical runs must render from immutable snapshots instead of live catalog links.";
-	return "Draft workflow version — not published and unavailable for Project session creation.";
+	return "Draft workflow version — not published and unavailable for Workflow Session creation.";
 }
 
 export function hasWorkflowCatalogAction(record: { actions: WorkflowCatalogAction[] }, action: WorkflowCatalogAction): boolean {
@@ -48,7 +48,7 @@ export function workflowCatalogActionLabel(action: WorkflowCatalogAction): strin
 	switch (action) {
 		case "view": return "View";
 		case "duplicate": return "Duplicate";
-		case "create_project_session": return "Create Project session";
+		case "create_workflow_session": return "Create Workflow Session";
 		case "edit_draft": return "Edit draft";
 		case "validate": return "Validate";
 		case "publish": return "Publish";

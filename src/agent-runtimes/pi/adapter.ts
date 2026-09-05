@@ -111,6 +111,7 @@ export const PI_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
 		attach: true,
 		listNativeSessions: true,
 		fork: true,
+		forkWhileRunning: true,
 		clone: true,
 		tree: true,
 	},
@@ -269,6 +270,7 @@ function nativeOperationFromPi(
 		previous: nativeSnapshotFromPi(runtimeInstanceId, result.previous),
 		current: nativeSnapshotFromPi(runtimeInstanceId, result.current),
 		cancelled: result.cancelled,
+		sourceSessionUnchanged: result.sourceSessionUnchanged,
 		selectedText: result.selectedText,
 		editorText: result.editorText,
 		summaryEntryId: result.summaryEntryId,
@@ -557,7 +559,9 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 			getCurrentSession: () => nativeSnapshotFromPi(this.runtimeInstanceId, this.routed.getCurrentSession()),
 			listSessions: async () => (await this.routed.listSessions()).map((info) => nativeSessionInfoFromPi(this.runtimeInstanceId, info)),
 			getForkCandidates: () => this.routed.getForkCandidates(),
+			getForkCandidatesWhileRunning: () => this.routed.getForkCandidatesWhileRunning(),
 			forkSession: async (entryId) => nativeOperationFromPi(this.runtimeInstanceId, await this.routed.forkSession(entryId)),
+			forkSessionWhileRunning: async (entryId) => nativeOperationFromPi(this.runtimeInstanceId, await this.routed.forkSessionWhileRunning(entryId)),
 			cloneSession: async () => nativeOperationFromPi(this.runtimeInstanceId, await this.routed.cloneSession()),
 			getSessionTree: () => {
 				const result: PiboSessionTreeResult = this.routed.getSessionTree();

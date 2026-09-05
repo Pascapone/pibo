@@ -197,6 +197,7 @@ function nativeOperationToPiCompatibility(
 		selectedText: result.selectedText,
 		editorText: result.editorText,
 		summaryEntryId: result.summaryEntryId,
+		sourceSessionUnchanged: result.sourceSessionUnchanged,
 	};
 }
 
@@ -246,6 +247,7 @@ export class RuntimeRoutedSession {
 	private activeThinkingIndex?: number;
 	private nextThinkingIndex = 0;
 	private sessionIdentityOperationInFlight = false;
+	private forkWhileRunningOperationInFlight = false;
 	private forkCandidatesRequest?: Promise<PiboForkCandidate[]>;
 	private primaryModel?: ModelProfile;
 	private readonly modelFallbacks: readonly ModelProfile[];
@@ -330,10 +332,22 @@ export class RuntimeRoutedSession {
 				: event.action === "session.switch"
 					? "switch"
 					: undefined;
+		const status = this.getStatus();
+		const sourceHasWork = status.processing || status.streaming || status.queuedMessages > 0;
+		const forkWhileRunning = event.action === "session.fork"
+			&& sourceHasWork
+			&& Boolean(this.runtimeSession.controls?.forkSessionWhileRunning);
 		if (sessionIdentityOperation) {
-			this.assertSessionIdentityOperationIdle(sessionIdentityOperation);
-			this.sessionIdentityOperationInFlight = true;
-			this.notifyState();
+			if (forkWhileRunning) {
+				if (this.forkWhileRunningOperationInFlight) {
+					throw new Error("Pibo session already has a running-safe fork in progress.");
+				}
+				this.forkWhileRunningOperationInFlight = true;
+			} else {
+				this.assertSessionIdentityOperationIdle(sessionIdentityOperation);
+				this.sessionIdentityOperationInFlight = true;
+				this.notifyState();
+			}
 		}
 		try {
 			if (sessionIdentityOperation) await this.options.onBeforeSessionIdentityOperation?.(event);
@@ -349,7 +363,9 @@ export class RuntimeRoutedSession {
 			this.emit(output);
 			return output;
 		} finally {
-			if (sessionIdentityOperation) {
+			if (forkWhileRunning) {
+				this.forkWhileRunningOperationInFlight = false;
+			} else if (sessionIdentityOperation) {
 				this.sessionIdentityOperationInFlight = false;
 				this.notifyState();
 				this.startDrain();
@@ -488,7 +504,23 @@ export class RuntimeRoutedSession {
 
 	async getForkCandidates(): Promise<PiboForkCandidate[]> {
 		if (this.forkCandidatesRequest) return await this.forkCandidatesRequest;
-		this.assertSessionIdentityOperationIdle("inspect fork candidates");
+		if (this.sessionIdentityOperationInFlight) {
+			throw new Error("Pibo session already has a session identity operation in progress; cannot inspect fork candidates.");
+		}
+		const status = this.getStatus();
+		const sourceHasWork = status.processing || status.streaming || status.queuedMessages > 0;
+		if (sourceHasWork) {
+			const getForkCandidatesWhileRunning = this.runtimeSession.controls?.getForkCandidatesWhileRunning;
+			if (!getForkCandidatesWhileRunning) this.assertSessionWorkIdle("inspect fork candidates");
+			const request = Promise.resolve().then(async () => await getForkCandidatesWhileRunning!());
+			this.forkCandidatesRequest = request;
+			try {
+				return await request;
+			} finally {
+				if (this.forkCandidatesRequest === request) this.forkCandidatesRequest = undefined;
+			}
+		}
+
 		const getForkCandidates = this.runtimeSession.controls?.getForkCandidates;
 		if (!getForkCandidates) throw runtimeCapabilityError(this.runtimeSession, "native session fork candidates");
 		this.sessionIdentityOperationInFlight = true;
@@ -506,6 +538,15 @@ export class RuntimeRoutedSession {
 	}
 
 	async forkSession(entryId: string): Promise<PiboSessionOperationResult> {
+		if (this.forkWhileRunningOperationInFlight) {
+			const forkSessionWhileRunning = this.runtimeSession.controls?.forkSessionWhileRunning;
+			if (!forkSessionWhileRunning) throw runtimeCapabilityError(this.runtimeSession, "forking completed history while running");
+			return nativeOperationToPiCompatibility(
+				this.runtimeSession,
+				this.piboSessionId,
+				await forkSessionWhileRunning(entryId),
+			);
+		}
 		this.assertSessionWorkIdle("fork");
 		const forkSession = this.runtimeSession.controls?.forkSession;
 		if (!forkSession) throw runtimeCapabilityError(this.runtimeSession, "native session fork");
@@ -564,10 +605,25 @@ export class RuntimeRoutedSession {
 	}
 
 	async setModel(model: ModelProfile): Promise<ModelProfile> {
-		const setModel = this.runtimeSession.controls?.setModel;
-		if (!setModel) throw runtimeCapabilityError(this.runtimeSession, "in-session model switching");
-		const selected = await setModel(model);
+		const selected = await this.setRuntimeModelPreservingReasoning(model);
 		this.primaryModel = { ...selected };
+		return selected;
+	}
+
+	private async setRuntimeModelPreservingReasoning(model: ModelProfile): Promise<ModelProfile> {
+		const controls = this.runtimeSession.controls;
+		const setModel = controls?.setModel;
+		if (!setModel) throw runtimeCapabilityError(this.runtimeSession, "in-session model switching");
+		const priorReasoning = controls.getReasoning?.() ?? this.runtimeSession.getStatus().reasoning;
+		const selected = await setModel(model);
+		if (!priorReasoning?.supported || !priorReasoning.value || !controls.setReasoning) return selected;
+
+		const currentReasoning = controls.getReasoning?.() ?? this.runtimeSession.getStatus().reasoning;
+		if (!currentReasoning?.supported || currentReasoning.value === priorReasoning.value) return selected;
+		if (currentReasoning.availableValues?.length && !currentReasoning.availableValues.includes(priorReasoning.value)) {
+			return selected;
+		}
+		controls.setReasoning(priorReasoning.value);
 		return selected;
 	}
 
@@ -880,9 +936,9 @@ export class RuntimeRoutedSession {
 		event: PiboMessageEvent,
 		inFlight: RuntimeInFlightMessage,
 	): Promise<void> {
-		const setModel = this.runtimeSession.controls?.setModel;
+		const canSetModel = Boolean(this.runtimeSession.controls?.setModel);
 		const fallbackModels = this.modelFallbacks.filter((model) => !sameModel(model, this.primaryModel));
-		if (!setModel || fallbackModels.length === 0) {
+		if (!canSetModel || fallbackModels.length === 0) {
 			await this.runtimeSession.prompt({
 				text: event.text,
 				source: promptSource(event.source),
@@ -899,7 +955,7 @@ export class RuntimeRoutedSession {
 				if (this.disposed || inFlight.cancelled) return;
 				if (attempt > 0) {
 					try {
-						await setModel(fallbackModels[attempt - 1]!);
+						await this.setRuntimeModelPreservingReasoning(fallbackModels[attempt - 1]!);
 						switchedModel = true;
 					} catch {
 						continue;
@@ -933,7 +989,7 @@ export class RuntimeRoutedSession {
 			this.pendingProviderFailure = undefined;
 			if (switchedModel && this.primaryModel && !this.disposed) {
 				try {
-					await setModel(this.primaryModel);
+					await this.setRuntimeModelPreservingReasoning(this.primaryModel);
 				} catch (error) {
 					console.warn(`Failed to restore primary model for Pibo session "${this.piboSessionId}": ${errorMessage(error)}`);
 				}

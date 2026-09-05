@@ -9,7 +9,7 @@ export function webOutboxPaths(directory) {
 		agentStorePath: join(directory, "agents.sqlite"),
 		dataStorePath: join(directory, "pibo-chat-v2.sqlite"),
 		dataPayloadRootDir: join(directory, "payloads"),
-		projectStorePath: join(directory, "projects.sqlite"),
+		workflowStorePath: join(directory, "pibo-workflows.sqlite"),
 		reliabilityStorePath: join(directory, "pibo-events.sqlite"),
 	};
 }

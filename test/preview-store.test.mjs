@@ -27,13 +27,13 @@ function createExposure(store, overrides = {}) {
 	return store.createExposure({
 		id: overrides.id ?? "pv-abcdef123456",
 		piboSessionId: overrides.piboSessionId ?? "ps_preview",
-		projectId: overrides.projectId,
 		label: overrides.label ?? "Website",
 		targetHost: overrides.targetHost ?? "127.0.0.1",
 		targetPort: overrides.targetPort ?? 5173,
 		targetProcessId: overrides.targetProcessId,
 		targetProcessStartTicks: overrides.targetProcessStartTicks,
 		workspace: overrides.workspace ?? "/workspace/site",
+		proxyMode: overrides.proxyMode,
 		createdAt: overrides.createdAt ?? now.toISOString(),
 		expiresAt: overrides.expiresAt ?? "2030-08-22T12:01:00.000Z",
 	});
@@ -42,9 +42,14 @@ function createExposure(store, overrides = {}) {
 test("preview store persists exposures and filters inactive records", () => {
 	const { dir, store } = fixture();
 	try {
-		const active = createExposure(store, { targetProcessId: 321, targetProcessStartTicks: "987654" });
+		const active = createExposure(store, {
+			targetProcessId: 321,
+			targetProcessStartTicks: "987654",
+			proxyMode: "pibo-compute-dev-auth",
+		});
 		assert.equal(active.targetProcessId, 321);
 		assert.equal(active.targetProcessStartTicks, "987654");
+		assert.equal(active.proxyMode, "pibo-compute-dev-auth");
 		const expired = createExposure(store, {
 			id: "pv-expired123",
 			createdAt: "2026-08-22T10:00:00.000Z",
@@ -113,12 +118,15 @@ test("preview store migrates an existing exposure database before creating manag
 	try {
 		const migrated = store.requireExposure("pv-legacy");
 		assert.equal(migrated.managementMode, "external");
+		assert.equal(migrated.proxyMode, "standard");
 		assert.equal(migrated.serverState, undefined);
 		assert.equal(store.listManagedServerCandidates().length, 0);
 		const reopened = new PreviewStore(path);
 		reopened.close();
 		const inspection = new DatabaseSync(path, { readOnly: true });
 		assert.equal(inspection.prepare("PRAGMA user_version").get().user_version, PREVIEW_SCHEMA_VERSION);
+		assert.equal(inspection.prepare("PRAGMA table_info(preview_exposures)").all().some((column) => column.name === "project_id"), false);
+		assert.equal(inspection.prepare("PRAGMA table_info(preview_exposures)").all().some((column) => column.name === "proxy_mode"), true);
 		assert.match(
 			inspection.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'preview_exposures'").get().sql,
 			/'stopping'/,

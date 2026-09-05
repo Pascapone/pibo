@@ -68,6 +68,7 @@
 * [Runtime&#45;Aware Agent Designer Validation — 2026&#45;08&#45;15](runtime-aware-agent-designer-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Runtime&#45;Neutral History, Trace, and Debug Validation — 2026&#45;08&#45;15](runtime-neutral-history-trace-debug-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Session CLI steering validation — 2026&#45;08&#45;24](session-cli-steering-validation-2026-08-24.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Session&#45;native Workflow transition validation — 2026&#45;09&#45;05](session-native-workflow-transition-validation-2026-09-05.md) - Records isolated migration, runtime, browser, packaging, and regression evidence for the completed Room and Session ownership transition&#46;
 * [Shared Agent Management Tools Validation](agent-management-tools-validation.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Sidebar browser tabs validation](sidebar-browser-tabs-validation-2026-08-30.md) - Records implementation, automated, and headful browser validation for the desktop browser&#45;tab workspace&#46;
 * [Sidebar browser tabs: maintainer screenshot follow&#45;up](sidebar-browser-tabs-maintainer-followup-2026-08-31.md) - Records maintainer&#45;requested sidebar browser&#45;tab corrections and their automated and headful validation&#46;

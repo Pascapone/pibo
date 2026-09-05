@@ -130,7 +130,7 @@ export function appendStoredComposerHistory(text: string): void {
 export function readStoredSessionView(): ChatSessionViewId {
 	try {
 		const stored = localStorage.getItem(SESSION_VIEW_STORAGE_KEY);
-		return stored === "terminal" ? "terminal" : DEFAULT_CHAT_SESSION_VIEW_ID;
+		return stored === "terminal" || stored === "workflow" ? stored : DEFAULT_CHAT_SESSION_VIEW_ID;
 	} catch {
 		return DEFAULT_CHAT_SESSION_VIEW_ID;
 	}

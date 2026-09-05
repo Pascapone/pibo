@@ -8,23 +8,22 @@ tags:
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-05T10:32:00Z"
 sources:
-  - id: "foundation-source-and-tests"
-    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
-    title: "upstream/dev refresh source and named-test evidence"
+  - id: "integrated-source-and-tests"
+    resource: "scope:Integrated implementation and tests at traceability.commit"
+    title: "Integrated trace and Workflow projection source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  baseline_commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   package: "WP-06+07-WEB"
-  package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
-  focused_test_execution: "performed in owned Docker after authoring; see implementation report"
-  build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
-  visual_provider_gateway_pibo2_execution: "unperformed"
+  test_execution: "one added API test and 20 focused routed-runtime/UI/manual/header tests passed at final integration; historical root-suite counts remain at 14cbaf0f"
+  build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
+  browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   requirements:
     - id: "WEB-TRACE-PROJECTION-001"
       status: "implemented"
@@ -178,12 +177,14 @@ traceability:
         - path: "packages/workflows/src/xstate/index.ts"
           symbol: "WORKFLOW_XSTATE_UI_MODEL_KIND"
       tests:
-        - path: "test/workflow-session-kind.test.mjs"
-          name: "project sidebar session nodes expose workflow session kind for real Pibo Sessions only"
         - path: "packages/workflows/src/testing/xstate-ui-model.test.ts"
           name: "exposes a compact Web UI model from the XState machine projection"
         - path: "packages/workflows/src/testing/xstate-ui-model.test.ts"
           name: "marks current wait, terminal, and retry-delay states from kernel snapshots or explicit active state ids"
+        - path: "test/workflow-session-header.test.mjs"
+          name: "Workflow headers report canonical run state independently of ordinary Session activity"
+        - path: "test/workflow-v2-session-run-checklist.test.mjs"
+          name: "Workflow view renders canonical run inspection facts and immutable links"
       public:
         - "/api/chat/trace*"
         - "SessionTracePane"
@@ -205,7 +206,7 @@ Bounded trace projection, opt-in payload/raw detail, deterministic historical/li
 
 ## Scope
 
-This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at integrated traceability commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`.
 
 ### In scope
 
@@ -231,7 +232,7 @@ Historical pages and SPC-WEB-004 live overlays merge by stable identities and a 
 
 ### Lifecycle and failure
 
-Pagination preserves reading anchors, uses one bottom target, and avoids blind scroll-height compensation; refresh replaces stale tails without losing older loaded windows. Raw Events remains a labelled inspector at narrow widths. Malformed identity/payload refs fail closed. Workflow views show current projections without becoming execution truth.
+Pagination preserves reading anchors, uses one bottom target, and avoids blind scroll-height compensation; refresh replaces stale tails without losing older loaded windows. Raw Events remains a labelled inspector at narrow widths. Malformed identity/payload refs fail closed. Workflow views use stored Session-linked snapshots and Runs without fabricating progress or becoming execution truth. A persisted `pending` configured start continues to show its general-execution boundary after reload. A completed manual editor Run projects canonical attempts, transfers, immutable executable definition snapshot, and output independently of ordinary Session activity.
 
 ### Security
 
@@ -325,22 +326,22 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 ### Requirement: WEB-TRACE-WORKFLOW-005
 
-The read-only Session view registry MAY expose workflow XState projections, but MUST identify workflow Session kinds and MUST keep workflow IR, private payloads, execution, and durable state under their orchestration owners.
+The normal Session view registry MAY expose Workflow inspection and XState projections, but MUST identify Workflow-linked Session kinds and MUST keep workflow IR, private payloads, execution, and durable state under their orchestration owners. A pending configured Run MUST retain its explicit execution-boundary explanation after reload, and completed state MUST derive from canonical Workflow inspection rather than ordinary Session activity.
 
 #### Current
 
-upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+Integrated source, focused tests, and scoped headful acceptance verify pending and completed inspection projections without making the browser execution authority.
 
 #### Acceptance and boundaries
 
 - Source: `src/apps/chat-ui/src/session-views/registry.tsx` — `inactiveChatSessionViews`; `src/apps/chat-ui/src/session-views/registry.tsx` — `listChatSessionViews`; `src/apps/chat-ui/src/session-views/registry.tsx` — `getChatSessionView`; `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx` — `WorkflowXStateSessionView`; `packages/workflows/src/xstate/index.ts` — `createWorkflowXStateUiModel`; `packages/workflows/src/xstate/index.ts` — `WORKFLOW_XSTATE_UI_MODEL_KIND`
-- Tests: `test/workflow-session-kind.test.mjs` — “project sidebar session nodes expose workflow session kind for real Pibo Sessions only”; `packages/workflows/src/testing/xstate-ui-model.test.ts` — “exposes a compact Web UI model from the XState machine projection”; `packages/workflows/src/testing/xstate-ui-model.test.ts` — “marks current wait, terminal, and retry-delay states from kernel snapshots or explicit active state ids”
+- Tests: `packages/workflows/src/testing/xstate-ui-model.test.ts` — “exposes a compact Web UI model from the XState machine projection”; `packages/workflows/src/testing/xstate-ui-model.test.ts` — “marks current wait, terminal, and retry-delay states from kernel snapshots or explicit active state ids”; `test/workflow-session-header.test.mjs` — “Workflow headers report canonical run state independently of ordinary Session activity”; `test/workflow-v2-session-run-checklist.test.mjs` — “Workflow view renders canonical run inspection facts and immutable links”
 - Public surfaces: `/api/chat/trace*`; `SessionTracePane`; `CompactTerminalSessionView`; `TraceTimeline`; `WorkflowXStateSessionView`; `listChatSessionViews`
 - Failure/security boundary: Unknown view IDs or malformed snapshots fall back without granting edits or exposing private payloads.
 - Accessibility/responsive boundary: Workflow states need textual names/status, not color-only meaning.
 - Compatibility boundary: Kernel remains durable truth; registry additions are read-only Web compatibility extensions.
 - Confidence: **high**
-- Verification follow-up: Run workflow kind/UI-model tests and headfully inspect idle, waiting, retry, terminal, and malformed snapshots.
+- Verification follow-up: Headfully inspect waiting, retry, failed, malformed, and human-action states.
 
 ## Interfaces and ownership
 
@@ -365,7 +366,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 ## Failure and security behavior
 
-- Pagination preserves reading anchors; refresh replaces stale tails without losing older loaded windows; malformed identity/payload refs fail closed. Workflow views show current projections without becoming execution truth.
+- Pagination preserves reading anchors; refresh replaces stale tails without losing older loaded windows; malformed identity/payload refs fail closed. Workflow views use stored Session-linked snapshots and Runs without fabricating progress or becoming execution truth; pending-state explanations and completed status survive reload because they derive from canonical inspection.
 - Private payloads/raw events are not default UI data. Diagnostic reports omit content fingerprints/operator identifiers; image/payload access uses exact refs.
 
 Web browser state, caches, projections, overlays, annotations, and iframe presence do not grant authorization or become durable product authority.
@@ -383,7 +384,7 @@ Legacy/current runtime turns use stable product identity; workflow UI models acc
 ## Known limits
 
 - Evidence gap: No headful virtual-scroll, prepend-anchor, raw-sidebar, fullscreen, or large-payload validation.
-- Evidence gap: No executed trace suite or real event replay.
+- Evidence gap: No general arbitrary-graph restart acceptance is claimed. Headful raw-IR editing, publish, human-action submission, and job controls remain unperformed.
 
 ## Reconciled stale claims
 
@@ -395,18 +396,11 @@ Legacy/current runtime turns use stable product identity; workflow UI models acc
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
-- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
-- Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
-- Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
-- Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.
-- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
-- Confidence measures trace quality, not execution of an unclaimed evidence class.
-
-Package verification commands:
-
-- `cd /root/code/pibo-okf-docs && node --test test/chat-trace-materialization.test.mjs test/chat-ui-render-order-tooling.test.mjs test/trace-page-merge.test.mjs test/sticky-virtuoso-state.test.mjs test/workflow-session-kind.test.mjs test/workflow-v2-state-mapping-ui.test.mjs`
-- `cd /root/code/pibo-okf-docs && npm test --workspace @pasko70/pibo-workflows`
+- Changed current source contracts and named test locators resolve at final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`.
+- After final integration, source checks and all typechecks passed; the added manual editor API test passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
+- The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. All 144 Workflow package tests passed previously, and package source is unchanged.
+- Headful acceptance reopened Run `wfr_ac3db39f-229f-4082-9485-4f6e6663a8b5` and ordinary agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` with completed canonical inspection showing two node attempts, one edge transfer, immutable executable snapshot, and actual output. The Session Workflow view remained completed independently of ordinary Session activity. The pending-start explanation also persisted after reload.
+- Desktop 1440x1000 and mobile 390x844 document widths matched their viewports. External gateway deployment, Pibo2, raw-IR editing, publish, human-action submission, and job-control acceptance are not claimed.
 
 ## Related concepts
 

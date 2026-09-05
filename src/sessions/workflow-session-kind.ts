@@ -13,8 +13,6 @@ export function workflowSessionKindFromMetadata(metadata: PiboJsonObject | undef
 	const value = metadata?.[PIBO_WORKFLOW_SESSION_KIND_METADATA_KEY];
 	if (isPiboWorkflowSessionKind(value)) return value;
 
-	// Backfill the initial Project workflow metadata shape used before the stable enum.
-	if (metadata?.projectSessionKind === "main") return "main_workflow";
 	return undefined;
 }
 

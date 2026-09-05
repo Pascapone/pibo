@@ -13,7 +13,7 @@ export type BootstrapRouteSelection = {
 
 export function routeSelectionRequest(route: ChatAppRoute, stored: StoredSelection): RouteSelectionRequest {
 	const routeRoomId = route.area === "sessions" ? route.roomId : undefined;
-	const routePiboSessionId = route.area === "sessions" || route.area === "projects" || route.area === "context" ? route.piboSessionId : undefined;
+	const routePiboSessionId = route.area === "sessions" || route.area === "context" ? route.piboSessionId : undefined;
 	const storedPiboSessionId = routeRoomId ? stored.sessionsByRoom?.[routeRoomId] : stored.piboSessionId;
 	const requestedRoomId = route.area === "sessions"
 		? (routeRoomId ?? (!routePiboSessionId ? stored.roomId : undefined))
@@ -35,7 +35,7 @@ export function shouldSkipRouteSelectionLoad(input: {
 	route: ChatAppRoute;
 }): boolean {
 	const { bootstrap, creatingSession, route } = input;
-	const routePiboSessionId = route.area === "sessions" || route.area === "projects" || route.area === "context" ? route.piboSessionId : undefined;
+	const routePiboSessionId = route.area === "sessions" || route.area === "context" ? route.piboSessionId : undefined;
 	if (bootstrap && route.area !== "sessions") {
 		if (route.area !== "context" || !routePiboSessionId || bootstrap.selectedPiboSessionId === routePiboSessionId) return true;
 	}

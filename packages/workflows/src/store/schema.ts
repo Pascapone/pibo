@@ -2,15 +2,21 @@ import { resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
 export const WORKFLOW_SQLITE_FILENAME = "pibo-workflows.sqlite";
-export const WORKFLOW_SQLITE_SCHEMA_VERSION = 3;
+export const WORKFLOW_SQLITE_SCHEMA_VERSION = 4;
 
 export const WORKFLOW_SQLITE_TABLES = [
   "workflow_definition_snapshots",
+  "workflow_migration_receipts",
+  "workflow_session_links",
+  "workflow_session_snapshots",
   "workflow_identities",
   "workflow_drafts",
   "workflow_published_versions",
   "workflow_archive_states",
   "workflow_delete_tombstones",
+  "workflow_prompt_assets",
+  "workflow_prompt_asset_revisions",
+  "workflow_lifecycle_events",
   "workflow_runs",
   "workflow_events",
   "workflow_node_attempts",
@@ -23,7 +29,7 @@ export const WORKFLOW_SQLITE_TABLES = [
 
 export type WorkflowSqliteTableName = (typeof WORKFLOW_SQLITE_TABLES)[number];
 
-export const WORKFLOW_SQLITE_SESSION_LINK_COLUMNS = ["pibo_session_id", "project_id"] as const;
+export const WORKFLOW_SQLITE_SESSION_LINK_COLUMNS = ["pibo_session_id"] as const;
 
 export const WORKFLOW_SQLITE_NORMAL_SESSION_FACT_KEYWORDS = [
   "session_record",
@@ -46,6 +52,45 @@ const WORKFLOW_SQLITE_SCHEMA_SQL = `
 
   CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_definition_snapshots_hash
     ON workflow_definition_snapshots(workflow_id, workflow_version, definition_hash);
+
+  CREATE TABLE IF NOT EXISTS workflow_migration_receipts (
+    migration_id TEXT PRIMARY KEY,
+    source_digest TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    archive_path TEXT NOT NULL,
+    completed_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS workflow_session_links (
+    pibo_session_id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL,
+    workflow_version TEXT,
+    workflow_run_id TEXT,
+    state TEXT NOT NULL,
+    configuration_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_workflow_session_links_run
+    ON workflow_session_links(workflow_run_id)
+    WHERE workflow_run_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_workflow_session_links_workflow
+    ON workflow_session_links(workflow_id, workflow_version, updated_at);
+
+  CREATE TABLE IF NOT EXISTS workflow_session_snapshots (
+    id TEXT PRIMARY KEY,
+    pibo_session_id TEXT NOT NULL UNIQUE,
+    workflow_id TEXT NOT NULL,
+    workflow_version TEXT NOT NULL,
+    base_definition_hash TEXT NOT NULL,
+    effective_definition_hash TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_workflow_session_snapshots_workflow
+    ON workflow_session_snapshots(workflow_id, workflow_version, created_at);
 
   CREATE TABLE IF NOT EXISTS workflow_identities (
     workflow_id TEXT PRIMARY KEY,
@@ -72,9 +117,11 @@ const WORKFLOW_SQLITE_SCHEMA_SQL = `
     base_workflow_id TEXT,
     base_workflow_version TEXT,
     base_definition_hash TEXT,
+    target_workflow_version TEXT,
     version_intent TEXT NOT NULL,
     definition_json TEXT NOT NULL,
     diagnostics_json TEXT NOT NULL,
+    validation_json TEXT,
     validation_state TEXT NOT NULL,
     revision INTEGER NOT NULL,
     created_by TEXT,
@@ -135,6 +182,52 @@ const WORKFLOW_SQLITE_SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_workflow_delete_tombstones_created
     ON workflow_delete_tombstones(created_at);
 
+  CREATE TABLE IF NOT EXISTS workflow_prompt_assets (
+    asset_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    description TEXT,
+    active_revision_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS workflow_prompt_asset_revisions (
+    revision_id TEXT PRIMARY KEY,
+    asset_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    markdown TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    created_by TEXT,
+    based_on_revision_id TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_workflow_prompt_asset_revisions_asset
+    ON workflow_prompt_asset_revisions(asset_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS workflow_lifecycle_events (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    actor_id TEXT,
+    workflow_id TEXT,
+    workflow_version TEXT,
+    draft_id TEXT,
+    pibo_session_id TEXT,
+    workflow_run_id TEXT,
+    status TEXT,
+    validation_json TEXT,
+    diagnostics_json TEXT NOT NULL,
+    payload_json TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_workflow_lifecycle_events_type
+    ON workflow_lifecycle_events(type, created_at);
+  CREATE INDEX IF NOT EXISTS idx_workflow_lifecycle_events_workflow
+    ON workflow_lifecycle_events(workflow_id, workflow_version, created_at);
+  CREATE INDEX IF NOT EXISTS idx_workflow_lifecycle_events_session
+    ON workflow_lifecycle_events(pibo_session_id, created_at);
+
   CREATE TABLE IF NOT EXISTS workflow_runs (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL,
@@ -144,7 +237,6 @@ const WORKFLOW_SQLITE_SCHEMA_SQL = `
     parent_run_id TEXT,
     parent_node_attempt_id TEXT,
     pibo_session_id TEXT,
-    project_id TEXT,
     environment_json TEXT,
     status TEXT NOT NULL,
     current_node_id TEXT,
@@ -156,6 +248,7 @@ const WORKFLOW_SQLITE_SCHEMA_SQL = `
     output_present INTEGER NOT NULL DEFAULT 0,
     state_json TEXT NOT NULL,
     checkpoint_json TEXT,
+    validation_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     completed_at TEXT,
@@ -171,8 +264,6 @@ const WORKFLOW_SQLITE_SCHEMA_SQL = `
     ON workflow_runs(current_node_id, updated_at);
   CREATE INDEX IF NOT EXISTS idx_workflow_runs_pibo_session
     ON workflow_runs(pibo_session_id, updated_at);
-  CREATE INDEX IF NOT EXISTS idx_workflow_runs_project
-    ON workflow_runs(project_id, updated_at);
 
   CREATE TABLE IF NOT EXISTS workflow_events (
     id TEXT PRIMARY KEY,
@@ -301,6 +392,7 @@ const WORKFLOW_SQLITE_SCHEMA_SQL = `
     id TEXT PRIMARY KEY,
     workflow_run_id TEXT NOT NULL,
     wait_token_id TEXT NOT NULL,
+    action_id TEXT,
     kind TEXT NOT NULL,
     actor_json TEXT,
     payload_json TEXT,
@@ -327,16 +419,45 @@ export function createWorkflowSqlitePath(baseDirectory: string): string {
 
 export function installWorkflowSqliteSchema(db: DatabaseSync, options: { enableWal?: boolean } = {}): void {
   db.exec("PRAGMA busy_timeout = 5000");
+  if (db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'sessions'").get()) {
+    throw new Error("Refusing to install the Workflow schema in the Pibo data database");
+  }
   if (options.enableWal === true) db.exec("PRAGMA journal_mode = WAL");
+  removeRetiredWorkflowRunContainerColumn(db);
   db.exec(WORKFLOW_SQLITE_SCHEMA_SQL);
 
+  ensureWorkflowSqliteColumn(db, "workflow_drafts", "target_workflow_version", "TEXT");
+  ensureWorkflowSqliteColumn(db, "workflow_drafts", "validation_json", "TEXT");
   ensureWorkflowSqliteColumn(db, "workflow_runs", "workflow_definition_hash", "TEXT");
   ensureWorkflowSqliteColumn(db, "workflow_runs", "definition_snapshot_id", "TEXT");
   ensureWorkflowSqliteColumn(db, "workflow_node_attempts", "attempt_number", "INTEGER");
   ensureWorkflowSqliteColumn(db, "workflow_node_attempts", "environment_json", "TEXT");
+  ensureWorkflowSqliteColumn(db, "workflow_runs", "validation_json", "TEXT");
   ensureWorkflowSqliteColumn(db, "workflow_wait_tokens", "kind", "TEXT");
   ensureWorkflowSqliteColumn(db, "workflow_wait_tokens", "available_actions_json", "TEXT");
   ensureWorkflowSqliteColumn(db, "workflow_wait_tokens", "resolved_at", "TEXT");
+  ensureWorkflowSqliteColumn(db, "workflow_human_actions", "action_id", "TEXT");
+  db.exec(`PRAGMA user_version = ${WORKFLOW_SQLITE_SCHEMA_VERSION}`);
+}
+
+function removeRetiredWorkflowRunContainerColumn(db: DatabaseSync): void {
+  const exists = db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'workflow_runs'").get();
+  if (!exists) return;
+  const columns = db.prepare("PRAGMA table_info(workflow_runs)").all() as WorkflowSqliteColumnRow[];
+  const retiredColumn = ["project", "id"].join("_");
+  if (!columns.some((row) => row.name === retiredColumn)) return;
+  const ownsTransaction = !db.isTransaction;
+  if (ownsTransaction) db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(`
+      DROP INDEX IF EXISTS idx_workflow_runs_project;
+      ALTER TABLE workflow_runs DROP COLUMN ${retiredColumn};
+    `);
+    if (ownsTransaction) db.exec("COMMIT");
+  } catch (error) {
+    if (ownsTransaction && db.isTransaction) db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 function ensureWorkflowSqliteColumn(

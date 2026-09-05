@@ -10,7 +10,7 @@ const uiSourceFiles = [
 	"src/apps/chat-ui/src/workflows/WorkflowLibraryPanel.tsx",
 	"src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx",
 	"src/apps/chat-ui/src/App.tsx",
-	"src/apps/chat-ui/src/projects/ProjectWorkflowPanels.tsx",
+	"src/apps/chat-ui/src/workflows/CreateWorkflowSessionDialog.tsx",
 	"src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx",
 ];
 
@@ -19,17 +19,6 @@ const workflowBoundaryPhrases = [
 	/No raw XState editing, workflow templates, workflow slash commands, or workflow tools for agents/i,
 	/No YAML\/JSON product import\/export or TypeScript export path/i,
 	/No Zod schema authoring/i,
-];
-
-const projectBoundaryPhrases = [
-	/workflow templates/i,
-	/workflow slash commands/i,
-	/workflow tools for agents/i,
-	/inline TypeScript\/JavaScript\/shell\/eval code/i,
-	/raw XState editing/i,
-	/TypeScript export/i,
-	/YAML\/JSON product import\/export/i,
-	/Zod schema authoring/i,
 ];
 
 const forbiddenInteractivePatterns = [
@@ -101,17 +90,15 @@ function collectInteractiveFragments(source, filePath) {
 
 test("workflow V2 UI names every explicit deferral in scope-boundary copy", async () => {
 	const workflowsSource = await readSource("src/apps/chat-ui/src/WorkflowsArea.tsx");
-	const appSource = await readSource("src/apps/chat-ui/src/projects/ProjectWorkflowPanels.tsx");
+	const sessionDialogSource = await readSource("src/apps/chat-ui/src/workflows/CreateWorkflowSessionDialog.tsx");
 
 	assert.match(workflowsSource, /aria-label=\"Workflow V2 explicit non-goals\"/);
 	for (const phrase of workflowBoundaryPhrases) {
 		assert.match(workflowsSource, phrase);
 	}
 
-	assert.match(appSource, /aria-label=\"Project workflow V2 explicit non-goals\"/);
-	for (const phrase of projectBoundaryPhrases) {
-		assert.match(appSource, phrase);
-	}
+	assert.match(sessionDialogSource, /Only workflow inputs, explicitly eligible prompts/);
+	assert.match(sessionDialogSource, /registered profiles, handlers, adapters, guards, assets, and executable boundaries remain unchanged/i);
 });
 
 test("workflow V2 UI controls do not expose deferred authoring actions", async () => {

@@ -318,7 +318,7 @@ node scripts/run-test-suite.mjs test/chat-vscode/room-resolver.test.mjs test/cha
 ### Linked owners
 
 - [SPC-VSC-002](/specs/vscode/sidecar-webview-and-delivery.md) — linked owner; this specification does not duplicate its contract.
-- [SPC-WEB-002](/specs/web/rooms-projects-and-session-trees.md) — linked owner; this specification does not duplicate its contract.
+- [SPC-WEB-002](/specs/web/rooms-and-session-trees.md) — linked owner; this specification does not duplicate its contract.
 - [SPC-SEC-001](/specs/security/web-machine-and-dev-auth.md) — linked owner; this specification does not duplicate its contract.
 ## Evidence accounting
 
@@ -363,5 +363,5 @@ These gaps do not define intended behavior. Any implementation change requires a
 ## Related concepts
 
 - [SPC-VSC-002](/specs/vscode/sidecar-webview-and-delivery.md) — linked owner; this specification does not duplicate its contract.
-- [SPC-WEB-002](/specs/web/rooms-projects-and-session-trees.md) — linked owner; this specification does not duplicate its contract.
+- [SPC-WEB-002](/specs/web/rooms-and-session-trees.md) — linked owner; this specification does not duplicate its contract.
 - [SPC-SEC-001](/specs/security/web-machine-and-dev-auth.md) — linked owner; this specification does not duplicate its contract.

@@ -6,8 +6,7 @@ export type RoomResourcePath = { roomId: string; child?: "events" | "messages" |
 export type WorkflowDraftActionResource = { draftId: string; action: "validate" | "publish" };
 export type WorkflowDraftManualTriggerRunResource = { draftId: string };
 export type WorkflowVersionResource = { workflowId: string; version?: string };
-export type ProjectResourcePath = { projectId: string; child?: string };
-export type ProjectWorkflowSessionResource = { projectId: string; piboSessionId: string };
+export type SessionWorkflowResource = { piboSessionId: string; action?: "start" | "human-actions" };
 export type SessionActionResource = { piboSessionId: string; action: "read" | "kill" | "kill-all" | "runtime-binding" | "fork-candidates" | "order" };
 export type SignalResource = { kind: "session" | "tree"; piboSessionId: string };
 
@@ -221,44 +220,21 @@ export function userSkillResourceId(pathname: string): string | undefined {
 	}
 }
 
-export function projectResourcePath(pathname: string): ProjectResourcePath | undefined {
-	const prefix = `${CHAT_WEB_API_PREFIX}/projects/`;
-	if (!pathname.startsWith(prefix)) return undefined;
-	const parts = pathname.slice(prefix.length).split("/").filter(Boolean).map((part) => decodeURIComponent(part));
-	if (!parts[0]) return undefined;
-	return { projectId: parts[0], ...(parts[1] ? { child: parts[1] } : {}) };
-}
-
-export function projectWorkflowSessionStartResource(pathname: string): ProjectWorkflowSessionResource | undefined {
-	const prefix = `${CHAT_WEB_API_PREFIX}/projects/`;
+export function sessionWorkflowResource(pathname: string): SessionWorkflowResource | undefined {
+	const prefix = `${CHAT_WEB_API_PREFIX}/sessions/`;
 	if (!pathname.startsWith(prefix)) return undefined;
 	const parts = pathname.slice(prefix.length).split("/");
-	if (parts.length !== 4 || !parts[0] || parts[1] !== "workflow-sessions" || !parts[2] || parts[3] !== "start") return undefined;
+	if (parts.length < 2 || parts.length > 3 || !parts[0] || parts[1] !== "workflow") return undefined;
+	const action = parts[2];
+	if (action !== undefined && action !== "start" && action !== "human-actions") return undefined;
 	try {
-		return { projectId: decodeURIComponent(parts[0]), piboSessionId: decodeURIComponent(parts[2]) };
+		return {
+			piboSessionId: decodeURIComponent(parts[0]),
+			...(action ? { action } : {}),
+		};
 	} catch {
-		throw new PiboWebHttpError("Invalid Project workflow session start path", 400);
+		throw new PiboWebHttpError("Invalid Workflow session path", 400);
 	}
-}
-
-export function projectWorkflowHumanActionsResource(pathname: string): ProjectWorkflowSessionResource | undefined {
-	const prefix = `${CHAT_WEB_API_PREFIX}/projects/`;
-	if (!pathname.startsWith(prefix)) return undefined;
-	const parts = pathname.slice(prefix.length).split("/");
-	if (parts.length !== 4 || !parts[0] || parts[1] !== "workflow-sessions" || !parts[2] || parts[3] !== "human-actions") return undefined;
-	try {
-		return { projectId: decodeURIComponent(parts[0]), piboSessionId: decodeURIComponent(parts[2]) };
-	} catch {
-		throw new PiboWebHttpError("Invalid Project workflow human-action path", 400);
-	}
-}
-
-export function projectSessionResourceId(pathname: string): string | undefined {
-	const prefix = `${CHAT_WEB_API_PREFIX}/project-sessions/`;
-	if (!pathname.startsWith(prefix)) return undefined;
-	const encodedId = pathname.slice(prefix.length);
-	if (!encodedId || encodedId.includes("/")) return undefined;
-	return decodeURIComponent(encodedId);
 }
 
 export function sessionResourceId(pathname: string): string | undefined {

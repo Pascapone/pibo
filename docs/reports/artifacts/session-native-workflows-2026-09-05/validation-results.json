@@ -1,0 +1,42 @@
+{
+  "checked_code_commit": "7ec71c2cca2108423002be0e7330d2a20c4c5b67",
+  "final_root_suite": {
+    "command": "NODE_OPTIONS=--max-old-space-size=1024 node scripts/run-test-suite.mjs --test-concurrency=1 test/*.test.mjs test/chat-vscode/*.test.mjs",
+    "tests": 2747,
+    "passed": 2742,
+    "failed": 0,
+    "skipped": 5,
+    "suites": 13,
+    "exit_code": 0,
+    "duration_ms": 1066399.617349,
+    "log_sha256": "7a80876130ad41401580b1b8dc8b810b3667e56ea6c9b4082a07a83eb67cc8a9",
+    "worker_memory_limit_bytes": 2147483648,
+    "timeout_seconds": 1800,
+    "wrapper_note": "Host I/O full PSI 10.24 terminated the yielded Docker-exec wrapper; the bounded worker process subsequently wrote exit 0. These totals are from the complete worker log, not the wrapper result."
+  },
+  "workflow_package": {
+    "passed": 144,
+    "note": "Package implementation unchanged after the earlier passing checkpoint."
+  },
+  "final_focused_tests": {
+    "manual_api": 1,
+    "routed_runtime_manual_ui_header": 20
+  },
+  "packaged_install": {
+    "result": "passed",
+    "cli_version": "1.7.2",
+    "workspace_symlink": false,
+    "persistent_workflow_store_reopen": true,
+    "retired_storage_created": false,
+    "package_shasum": "d432b5eaea9432a737ec886a031c0f300c33dc34",
+    "log_sha256": "10466de5607265992983c84509a09efed02c491a4a87f658ca7f088b99c68424"
+  },
+  "earlier_final_concurrent_suite": {
+    "tests": 2747,
+    "passed": 2741,
+    "failed": 1,
+    "skipped": 5,
+    "failure": "Compatibility compiler process was killed; isolated retry and complete serial rerun passed.",
+    "log_sha256": "100257e135706bee6748ca8431e7db1009fdd12242afe93e7885e2ad30776425"
+  }
+}

@@ -35,6 +35,53 @@ test("preview cookie parsing fails closed and production uses a host-prefixed co
 	assert.equal(cookieValue("other=ok; pibo_preview_session=token", PREVIEW_INSECURE_SESSION_COOKIE), "token");
 });
 
+test("compute-worker dev-auth mode preserves credential stripping but omits public forwarding metadata", async (t) => {
+	const observed = [];
+	const upstream = createServer((request, response) => {
+		observed.push(request.headers);
+		response.end("ok");
+	});
+	const targetPort = await listen(upstream);
+	t.after(() => close(upstream));
+
+	async function proxy(proxyMode) {
+		const request = Readable.from([]);
+		request.headers = {
+			authorization: "Bearer should-not-escape",
+			cookie: "app_session=ok; pibo_dev_session=should-not-escape",
+			origin: "https://pv-worker.preview.example",
+			"x-forwarded-host": "attacker.example",
+		};
+		request.method = "GET";
+		const response = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+		response.headersSent = false;
+		response.writeHead = () => {
+			response.headersSent = true;
+			return response;
+		};
+		await proxyPreviewHttp({
+			request,
+			response,
+			requestURL: new URL("https://pv-worker.preview.example/api/auth/session"),
+			exposure: { targetHost: "127.0.0.1", targetPort, proxyMode },
+		});
+	}
+
+	await proxy("standard");
+	await proxy("pibo-compute-dev-auth");
+	assert.equal(observed.length, 2);
+	assert.equal(observed[0]["x-forwarded-host"], "pv-worker.preview.example");
+	assert.equal(observed[0]["x-forwarded-proto"], "https");
+	assert.equal(observed[1]["x-forwarded-host"], undefined);
+	assert.equal(observed[1]["x-forwarded-proto"], undefined);
+	for (const headers of observed) {
+		assert.equal(headers.host, `127.0.0.1:${targetPort}`);
+		assert.equal(headers.origin, `http://127.0.0.1:${targetPort}/`);
+		assert.equal(headers.authorization, undefined);
+		assert.equal(headers.cookie, "app_session=ok");
+	}
+});
+
 test("preview proxy connection admission is bounded per preview and globally", () => {
 	const limiter = new PreviewProxyLimiter(3, 2);
 	const releaseA1 = limiter.tryAcquire("pv-a");
