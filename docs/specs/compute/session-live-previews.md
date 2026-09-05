@@ -9,20 +9,23 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T10:45:00Z"
+  at: "2026-09-05T11:26:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
     title: "Foundation source and named-test evidence"
+  - id: "preview-production-setup"
+    resource: "scope:Implementation 6df1b0d75453db86e667ddf52fb47088c1a2dc61"
+    title: "Production setup, TLS authorization, and public diagnostics implementation"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "6df1b0d75453db86e667ddf52fb47088c1a2dc61"
   package: "WP-05+09-COMPUTE-OPERATOR"
   source_evidence: "performed"
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "6df1b0d75453db86e667ddf52fb47088c1a2dc61"
   requirements:
     - id: "CMP-PREVIEW-001"
       status: "implemented"
@@ -113,6 +116,31 @@ traceability:
       failures:
         - "Public controls omit commands, workspace paths, target ports, owner tokens, and ticket material; authenticated controls remain separate from proxy data."
       confidence: medium
+    - id: "CMP-PREVIEW-005"
+      status: "implemented"
+      sources:
+        - path: src/previews/public-setup.ts
+          symbol: createPreviewProductionSetupPlan
+        - path: src/previews/public-setup.ts
+          symbol: inspectPreviewPublicRoute
+        - path: src/previews/web-app.ts
+          symbol: createPreviewWebApp
+        - path: src/previews/cli.ts
+          symbol: runPreviewCli
+      tests:
+        - path: test/preview-cli.test.mjs
+          name: "preview setup prints exact DNS, Caddy, config, restart, and verification instructions"
+        - path: test/preview-public-setup.test.mjs
+          name: "public Preview inspection accepts only the anonymous Preview gateway response"
+        - path: test/preview-web.test.mjs
+          name: "authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSocket previews"
+      public:
+        - "pibo preview setup"
+        - "pibo preview doctor <preview-id> --public"
+        - "GET /api/previews/tls-authorize?domain=<preview-host>"
+      failures:
+        - "TLS authorization denies malformed, unknown, expired, and closed Preview hostnames; public diagnostics fail on missing DNS, untrusted TLS, redirects, and non-Preview responses."
+      confidence: high
 ---
 # Session Live Previews and Safe Proxy
 
@@ -138,11 +166,14 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### Commands
 
-- pibo preview expose|list|show|start|stop|doctor|remove|close; close aliases remove. expose requires an owning session and either a reachable loopback port or a validated --command.
+- `pibo preview setup` prints exact wildcard DNS, Caddy, configuration, restart, and verification instructions without mutating the host.
+- `pibo preview expose|list|show|start|stop|doctor|remove|close`; `close` aliases `remove`. `expose` requires an owning session and either a reachable loopback port or a validated `--command`.
+- `pibo preview doctor <preview-id> --public` checks the exact public hostname, trusted TLS, and Preview gateway routing.
 
-### Apis
+### APIs
 
-- /apps/previews, /api/previews, and /apps/previews/:id/__pibo/session exchange; API list/open/start/stop/remove routes never expose command, target, or workspace in the public exposure shape.
+- `/apps/previews`, `/api/previews`, and `/apps/previews/:id/__pibo/session` exchange; API list/open/start/stop/remove routes never expose command, target, or workspace in the public exposure shape.
+- `GET /api/previews/tls-authorize?domain=<preview-host>` is an unauthenticated, metadata-free certificate admission endpoint. It returns success only for an active exact Preview hostname.
 
 ### State
 
@@ -159,6 +190,7 @@ This specification describes implemented behavior at the traceability commit. It
 ### Security
 
 - One-time hashed tickets exchange for preview/generation-bound browser sessions; same-origin authenticated control API; loopback-only upstream; host/origin/referer/cookie/auth/redirect/CSP sanitization; bounded global/per-preview connections.
+- On-demand TLS admission accepts only active exact Preview ids and denies malformed, unknown, expired, and closed hostnames.
 
 ### Compatibility
 
@@ -226,6 +258,21 @@ The Foundation implementation and named tests provide the current source-grounde
 - Failure/security boundary: Public controls omit commands, workspace paths, target ports, owner tokens, and ticket material; authenticated controls remain separate from proxy data.
 - Confidence: **medium**
 
+### Requirement: CMP-PREVIEW-005
+
+Provide a discoverable production-setup plan, bounded on-demand TLS admission, and an opt-in public diagnostic that distinguishes DNS, TLS, and routing failures.
+
+#### Current
+
+`pibo preview setup` emits the exact wildcard hostname, optional address record, Caddy authorization and site fragments, configuration command, safe gateway restart, and public verification command. The TLS authorization endpoint returns no metadata and succeeds only for active exact Preview hostnames. `doctor --public` expects anonymous HTTP 401 from the Preview origin; redirects and other responses fail the routing check.
+
+#### Acceptance
+
+- Source: `src/previews/public-setup.ts` — `createPreviewProductionSetupPlan`; `src/previews/public-setup.ts` — `inspectPreviewPublicRoute`; `src/previews/web-app.ts` — `createPreviewWebApp`; `src/previews/cli.ts` — `runPreviewCli`
+- Tests: `test/preview-cli.test.mjs` — “preview setup prints exact DNS, Caddy, config, restart, and verification instructions”; `test/preview-public-setup.test.mjs` — “public Preview inspection accepts only the anonymous Preview gateway response”; `test/preview-web.test.mjs` — “authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSocket previews”
+- Failure/security boundary: Unknown or inactive hostnames cannot trigger certificate issuance; public diagnostics report DNS, certificate, redirect, and gateway-response failures separately.
+- Confidence: **high**
+
 ## Interfaces and ownership
 
 **Capability IDs:** pibo.compute.previews
@@ -240,7 +287,9 @@ The Foundation implementation and named tests provide the current source-grounde
 - POST /api/previews/:id/start|stop
 - /apps/previews/:id/*
 - preview WebSocket upgrade
-- pibo preview expose|list|show|start|stop|doctor|remove|close
+- pibo preview setup|expose|list|show|start|stop|doctor|remove|close
+- pibo preview doctor <preview-id> --public
+- GET /api/previews/tls-authorize?domain=<preview-host>
 - /api/previews
 - Preview server settings
 
@@ -257,11 +306,13 @@ Related concepts:
 
 - Capacity reservation is atomic; listener/process identity mismatch fails closed; ambiguous ownership remains durable; stale writers cannot overwrite newer generations; failed exact termination retains ownership for retry.
 - One-time hashed tickets exchange for preview/generation-bound browser sessions; same-origin authenticated control API; loopback-only upstream; host/origin/referer/cookie/auth/redirect/CSP sanitization; bounded global/per-preview connections.
+- Certificate admission denies malformed, unknown, expired, and closed Preview hostnames without returning Preview metadata.
+- Public diagnostics treat missing DNS, TLS failures, redirects, and any anonymous response other than HTTP 401 as failures.
 
 ## Known limits
 
 - The synthesis claims Chat cards/settings, but its source/test list does not identify the consuming Chat UI adapter; requirement confidence is medium until traced.
-- No headed browser or real managed-server proxy path was performed in this turn.
+- Repository tests do not provision public DNS or trusted certificates. Host acceptance requires an active Preview and `pibo preview doctor <preview-id> --public`.
 
 ## Reconciled stale claims
 
@@ -272,11 +323,11 @@ Related concepts:
 
 ## Verification and traceability
 
-All source and named-test references are bound to Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
+The source and named-test references are bound to traceability commit `6df1b0d75453db86e667ddf52fb47088c1a2dc61`. The earlier Foundation evidence remains identified in `sources`. The traceability commit does not imply deployment, browser, gateway-restart, real-host/provider, Windows, or Pibo2 validation.
 
-Later validation commands:
+Validation commands:
 
-- node --test test/preview-manager.test.mjs test/preview-proxy-security.test.mjs test/preview-web.test.mjs
-- npm run build
-- pibo preview --help
-- pibo debug web scenario --help
+- `node --test test/preview-cli.test.mjs test/preview-public-setup.test.mjs test/preview-web.test.mjs`
+- `npm run build`
+- `pibo preview setup --help`
+- `pibo preview doctor --help`
