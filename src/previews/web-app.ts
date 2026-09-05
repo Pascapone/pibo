@@ -102,6 +102,7 @@ async function publicExposure(exposure: PreviewExposure, baseURL: URL): Promise<
 		targetHost: _targetHost,
 		targetPort: _targetPort,
 		managementMode: _managementMode,
+		proxyMode: _proxyMode,
 		targetProcessId: _targetProcessId,
 		targetProcessStartTicks: _targetProcessStartTicks,
 		serverError: _serverError,

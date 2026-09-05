@@ -13,6 +13,7 @@ import type {
 	PreviewExposure,
 	PreviewExposureState,
 	PreviewManagerIdentity,
+	PreviewProxyMode,
 	PreviewTicket,
 } from "./types.js";
 
@@ -26,6 +27,7 @@ type ExposureRow = {
 	target_process_start_ticks: string | null;
 	workspace: string;
 	management_mode: "external" | "managed";
+	proxy_mode: PreviewProxyMode;
 	start_command: string | null;
 	server_state: ManagedPreviewServerState | "external";
 	server_generation: string | null;
@@ -55,7 +57,7 @@ type BrowserAuthorizationRow = ExposureRow & {
 	browser_expires_at: string;
 };
 
-export const PREVIEW_SCHEMA_VERSION = 5;
+export const PREVIEW_SCHEMA_VERSION = 6;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES = 256;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES_PER_SESSION = 16;
 export const MAX_OUTSTANDING_PREVIEW_TICKETS = 32;
@@ -110,6 +112,9 @@ function validateExposureInput(input: CreatePreviewExposureInput): void {
 	if ((input.managementMode ?? "external") === "managed" && !input.startCommand) {
 		throw new Error("Managed Preview definitions require a start command");
 	}
+	if (input.proxyMode !== undefined && input.proxyMode !== "standard" && input.proxyMode !== "pibo-compute-dev-auth") {
+		throw new Error("Preview proxy mode is invalid");
+	}
 }
 
 function exposureFromRow(row: ExposureRow): PreviewExposure {
@@ -124,6 +129,7 @@ function exposureFromRow(row: ExposureRow): PreviewExposure {
 		targetProcessStartTicks: row.target_process_start_ticks ?? undefined,
 		workspace: row.workspace,
 		managementMode,
+		proxyMode: row.proxy_mode === "pibo-compute-dev-auth" ? "pibo-compute-dev-auth" : "standard",
 		startCommand: row.start_command ?? undefined,
 		serverState: managementMode === "managed" && row.server_state !== "external" ? row.server_state : undefined,
 		serverGeneration: row.server_generation ?? undefined,
@@ -151,6 +157,7 @@ function sameAuthorizationExposure(first: PreviewExposure, second: PreviewExposu
 	return first.id === second.id &&
 		first.createdAt === second.createdAt &&
 		first.managementMode === second.managementMode &&
+		first.proxyMode === second.proxyMode &&
 		first.serverGeneration === second.serverGeneration &&
 		first.targetHost === second.targetHost &&
 		first.targetPort === second.targetPort &&
@@ -219,6 +226,7 @@ export class PreviewStore {
 				target_process_start_ticks TEXT,
 				workspace TEXT NOT NULL,
 				management_mode TEXT NOT NULL DEFAULT 'external' CHECK (management_mode IN ('external', 'managed')),
+				proxy_mode TEXT NOT NULL DEFAULT 'standard' CHECK (proxy_mode IN ('standard', 'pibo-compute-dev-auth')),
 				start_command TEXT,
 				server_state TEXT NOT NULL DEFAULT 'external' CHECK (server_state IN ('external', 'stopped', 'starting', 'running', 'stopping', 'error')),
 				server_generation TEXT,
@@ -263,6 +271,7 @@ export class PreviewStore {
 			["target_process_id", "INTEGER"],
 			["target_process_start_ticks", "TEXT"],
 			["management_mode", "TEXT NOT NULL DEFAULT 'external'"],
+			["proxy_mode", "TEXT NOT NULL DEFAULT 'standard' CHECK (proxy_mode IN ('standard', 'pibo-compute-dev-auth'))"],
 			["start_command", "TEXT"],
 			["server_state", "TEXT NOT NULL DEFAULT 'external'"],
 			["server_generation", "TEXT"],
@@ -295,6 +304,7 @@ export class PreviewStore {
 						target_process_start_ticks TEXT,
 						workspace TEXT NOT NULL,
 						management_mode TEXT NOT NULL DEFAULT 'external' CHECK (management_mode IN ('external', 'managed')),
+						proxy_mode TEXT NOT NULL DEFAULT 'standard' CHECK (proxy_mode IN ('standard', 'pibo-compute-dev-auth')),
 						start_command TEXT,
 						server_state TEXT NOT NULL DEFAULT 'external' CHECK (server_state IN ('external', 'stopped', 'starting', 'running', 'stopping', 'error')),
 						server_generation TEXT,
@@ -313,7 +323,7 @@ export class PreviewStore {
 					INSERT INTO preview_exposures (
 						id, pibo_session_id, label, target_host, target_port,
 						target_process_id, target_process_start_ticks, workspace,
-						management_mode, start_command, server_state, server_generation,
+						management_mode, proxy_mode, start_command, server_state, server_generation,
 						server_started_at, server_stop_at, server_stopped_at, server_error,
 						manager_kind, manager_id, manager_pid, manager_process_start_ticks,
 						created_at, expires_at, closed_at
@@ -321,7 +331,7 @@ export class PreviewStore {
 					SELECT
 						id, pibo_session_id, label, target_host, target_port,
 						target_process_id, target_process_start_ticks, workspace,
-						management_mode, start_command, server_state, server_generation,
+						management_mode, proxy_mode, start_command, server_state, server_generation,
 						server_started_at, server_stop_at, server_stopped_at, server_error,
 						manager_kind, manager_id, manager_pid, manager_process_start_ticks,
 						created_at, expires_at, closed_at
@@ -356,6 +366,7 @@ export class PreviewStore {
 	createExposure(input: CreatePreviewExposureInput): PreviewExposure {
 		validateExposureInput(input);
 		const managementMode = input.managementMode ?? "external";
+		const proxyMode = input.proxyMode ?? "standard";
 		const serverState = managementMode === "managed" ? input.serverState ?? "stopped" : "external";
 		this.db.exec("BEGIN IMMEDIATE");
 		try {
@@ -375,9 +386,9 @@ export class PreviewStore {
 			INSERT INTO preview_exposures (
 				id, pibo_session_id, label, target_host, target_port,
 				target_process_id, target_process_start_ticks, workspace,
-				management_mode, start_command, server_state,
+				management_mode, proxy_mode, start_command, server_state,
 				created_at, expires_at, closed_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
 			`).run(
 			input.id,
 			input.piboSessionId,
@@ -388,6 +399,7 @@ export class PreviewStore {
 			input.targetProcessStartTicks ?? null,
 			input.workspace,
 			managementMode,
+			proxyMode,
 			input.startCommand ?? null,
 			serverState,
 			input.createdAt,
