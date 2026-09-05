@@ -10,7 +10,7 @@ status: stable
 authority: normative
 generated:
   by: openai/codex
-  at: '2026-09-04T18:45:00Z'
+  at: '2026-09-05T09:32:09Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: Committed implementation and test evidence for SPC-ORCH-002
@@ -202,6 +202,12 @@ Children are direct owned subagent sessions with independent bindings. Default m
 ### Observation
 
 Observe defaults to the newest 20 completed assistant messages with tools hidden, caps the requested limit at 200, filters at most 50 exact IDs/keys, and bounds text/tool/details to 4 KiB/768 B/32 KiB with cursor and retention-loss reporting. Live router observation and persisted `pibo debug agents ... observe` share one query policy for role, identity, event, kind, time, text, tool-call, tool-visibility/detail, ordering, limits, and cursor-safe page selection. Persisted cursors are durable `streamId` values; live cursors remain router-lifetime `sequence` values, and yielded request IDs remain live-only until event-log provenance exists.
+
+#### Shared observation core
+
+The normalized observation contract and query policy own source-independent filtering, matching, bounding, visibility, ordering, pagination, and truncation semantics. Live and persisted adapters supply normalized observations and translate only source-specific identity, cursor, and lifetime differences instead of reimplementing those semantics.
+
+When shared observation behavior grows, every adapter MUST inherit the new semantics through the common policy wherever its source can represent the required data. Any adapter-specific divergence requires an explicit documented source-lifetime or durability constraint and corresponding acceptance coverage.
 
 The complete optional Observe filter surface is:
 

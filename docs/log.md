@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-05
+
+- **Shared observation ownership**: Clarified that live agent observation and persisted debug inspection are adapters over one normalized observation/query core, so source-independent improvements apply to both unless a documented lifetime or durability constraint prevents parity.
+
 ## 2026-09-04
 
 - **Observe regex filtering**: Added and review-hardened the optional `textRegex` contract for [delegated-agent observation](/specs/orchestration/subagents.md#requirement-orch-sub-005), preserving case-insensitive `textContains` and conjunctive behavior while representing empty normalized text as one record, bounding dense matching and streaming pagination, rejecting unsafe NUL boundaries, and resolving optional rg binaries only for regex use.
