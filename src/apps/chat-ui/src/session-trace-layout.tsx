@@ -33,9 +33,7 @@ type SessionTraceLayoutProps = {
   onOpenSessionWindow?: () => void;
   onExitTerminalFullscreen: () => void;
   headerProps: ComponentProps<typeof SessionTraceHeader>;
-  projectSessionCreatePanel?: ReactNode;
-  workflowStartPanel?: ReactNode;
-  projectModulePanel?: ReactNode;
+  auxiliaryPanel?: ReactNode;
   currentSessionView: ReturnType<typeof getChatSessionView>;
   sessionViewProps: ChatSessionViewProps;
   webAnnotationsPanelRendered: boolean;
@@ -47,9 +45,9 @@ type SessionTraceLayoutProps = {
 
 export function shouldRenderSessionComposer({
   hideComposer = false,
-  projectModulePanel,
-}: Pick<SessionTraceLayoutProps, "hideComposer" | "projectModulePanel">): boolean {
-  return !hideComposer && !projectModulePanel;
+  auxiliaryPanel,
+}: Pick<SessionTraceLayoutProps, "hideComposer" | "auxiliaryPanel">): boolean {
+  return !hideComposer && !auxiliaryPanel;
 }
 
 export function SessionTraceLayout({
@@ -75,9 +73,7 @@ export function SessionTraceLayout({
   onOpenSessionWindow,
   onExitTerminalFullscreen,
   headerProps,
-  projectSessionCreatePanel,
-  workflowStartPanel,
-  projectModulePanel,
+  auxiliaryPanel,
   currentSessionView,
   sessionViewProps,
   webAnnotationsPanelRendered,
@@ -125,20 +121,10 @@ export function SessionTraceLayout({
         ) : (
           <SessionTraceHeader {...headerProps} />
         )}
-        {!terminalFullscreen && projectSessionCreatePanel ? (
-          <div className="border-b border-slate-800 bg-[#101d22] px-4 py-3">
-            {projectSessionCreatePanel}
-          </div>
-        ) : null}
-        {!terminalFullscreen && workflowStartPanel ? (
-          <div className="border-b border-slate-800 bg-[#101d22] px-4 py-3">
-            {workflowStartPanel}
-          </div>
-        ) : null}
         {terminalFullscreen && fullscreenContent ? (
           fullscreenContent
-        ) : !terminalFullscreen && projectModulePanel ? (
-          projectModulePanel
+        ) : !terminalFullscreen && auxiliaryPanel ? (
+          auxiliaryPanel
         ) : terminalLoading ? (
           <TerminalLoadingSkeleton label={roomNavigationPending ? "Loading room" : "Loading session"} />
         ) : traceError && !currentTraceView ? (
@@ -152,7 +138,7 @@ export function SessionTraceLayout({
           <WebAnnotationsSessionPanel {...webAnnotationsPanelProps} />
         ) : null}
         {runtimeRequestPanel}
-        {shouldRenderSessionComposer({ hideComposer, projectModulePanel }) ? (
+        {shouldRenderSessionComposer({ hideComposer, auxiliaryPanel }) ? (
           <Composer {...composerProps} />
         ) : null}
       </TerminalFileDropTarget>

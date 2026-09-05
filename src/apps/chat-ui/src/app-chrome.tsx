@@ -4,12 +4,11 @@ import { AlertTriangle, LogOut, List, Menu, RefreshCw, UserRound } from "lucide-
 import { signInWithGoogle, signOut } from "./api-auth";
 import type { BootstrapData } from "./types";
 
-export type AppArea = "sessions" | "projects" | "vscode" | "workflows" | "cron" | "loops" | "agents" | "context" | "settings";
+export type AppArea = "sessions" | "vscode" | "workflows" | "cron" | "loops" | "agents" | "context" | "settings";
 
-const BASE_MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "projects", "workflows", "cron", "loops", "agents", "context", "settings"];
+const BASE_MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "workflows", "cron", "loops", "agents", "context", "settings"];
 const APP_AREA_LABELS: Record<AppArea, string> = {
 	sessions: "sessions",
-	projects: "projects",
 	vscode: "VS Code",
 	workflows: "workflows",
 	cron: "cron",
@@ -21,7 +20,7 @@ const APP_AREA_LABELS: Record<AppArea, string> = {
 
 export function mainNavAreas(vscodeEnabled: boolean): readonly AppArea[] {
 	return vscodeEnabled
-		? ["sessions", "projects", "vscode", "workflows", "cron", "loops", "agents", "context", "settings"]
+		? ["sessions", "vscode", "workflows", "cron", "loops", "agents", "context", "settings"]
 		: BASE_MAIN_NAV_AREAS;
 }
 const MAIN_NAV_MENU_ID = "main-navigation-menu";

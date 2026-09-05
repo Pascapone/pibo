@@ -45,18 +45,6 @@ const roomSessionRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "rooms/$roomId/sessions/$piboSessionId",
 });
-const projectsRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "projects",
-});
-const projectRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "projects/$projectId",
-});
-const projectSessionRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "projects/$projectId/sessions/$piboSessionId",
-});
 const vscodeRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "vscode",
@@ -134,7 +122,7 @@ const settingsProvidersRoute = createRoute({
 	path: "settings/providers",
 });
 const router = createRouter({
-	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, projectsRoute, projectRoute, projectSessionRoute, vscodeRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsConcurrencyRoute, settingsPreviewsRoute, settingsTranscriptionRoute, settingsSpeechRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
+	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, vscodeRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsConcurrencyRoute, settingsPreviewsRoute, settingsTranscriptionRoute, settingsSpeechRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
 	basepath: "/apps/chat",
 	stringifySearch: stringifyChatSearch,
 });

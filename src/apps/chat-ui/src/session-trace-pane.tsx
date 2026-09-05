@@ -13,13 +13,11 @@ import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   BootstrapData,
-  PiboProjectSession,
   PiboRuntimeApprovalRequest,
   PiboRuntimeUserInputRequest,
   PiboSignalSnapshot,
   PiboWebSessionStatus,
   ThinkingLevel,
-  WorkflowLifecycleEventRecord,
 } from "./types";
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
@@ -61,13 +59,11 @@ import {
 } from "./composer-send";
 import {
   createClientTxnId,
+  findSessionNode,
   isSessionComposerDisabled,
 } from "./app-session-model";
 import { selectedSessionBackendId } from "./selected-session-backend";
-import {
-  createWorkflowHeaderSummary,
-  isWorkflowBackedProjectSession,
-} from "./projects/project-session-workflow";
+import { createWorkflowHeaderSummary, isWorkflowLinkedSession, workflowSessionFromMetadata } from "./workflows/workflow-session-model";
 import { errorMessage } from "./error-message";
 import {
   canOpenDesktopPwaSessionWindow,
@@ -121,11 +117,7 @@ export function SessionTracePane({
   selectedSessionStatus,
   selectedSessionSignal,
   signals,
-  workflowProjectSession,
-  workflowLifecycleEvents,
-  projectSessionCreatePanel,
-  workflowStartPanel,
-  projectModulePanel,
+
   extraViewTabs,
   activeViewId,
   sessionViewId,
@@ -172,7 +164,7 @@ export function SessionTracePane({
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
   selectedRoomId: string | null;
-  contextKind?: "room" | "project";
+  contextKind?: "room";
   contextLabel?: string;
   selectedRoomArchived: boolean;
   roomNavigationPending?: boolean;
@@ -182,11 +174,6 @@ export function SessionTracePane({
   selectedSessionStatus?: PiboWebSessionStatus;
   selectedSessionSignal?: PiboSignalSnapshot["sessions"][string];
   signals?: PiboSignalSnapshot;
-  workflowProjectSession?: PiboProjectSession;
-  workflowLifecycleEvents?: readonly WorkflowLifecycleEventRecord[];
-  projectSessionCreatePanel?: ReactNode;
-  workflowStartPanel?: ReactNode;
-  projectModulePanel?: ReactNode;
   extraViewTabs?: readonly SessionTraceHeaderExtraViewTab[];
   activeViewId?: string;
   sessionViewId: ChatSessionViewId;
@@ -492,14 +479,11 @@ export function SessionTracePane({
 
   const headerPiboSessionId =
     currentTraceView?.piboSessionId ?? selectedPiboSessionId ?? "";
-  const workflowHeader =
-    workflowProjectSession &&
-    isWorkflowBackedProjectSession(workflowProjectSession)
-      ? createWorkflowHeaderSummary(
-          workflowProjectSession,
-          selectedSessionStatus,
-        )
-      : null;
+  const selectedWorkflowNode = selectedPiboSessionId ? findSessionNode(bootstrap.sessions, selectedPiboSessionId) : undefined;
+  const selectedWorkflowSession = bootstrap.session?.id === selectedPiboSessionId ? bootstrap.session : undefined;
+  const workflowSessionLinked = isWorkflowLinkedSession(selectedWorkflowNode, selectedWorkflowSession);
+  const workflowLink = workflowSessionFromMetadata(selectedWorkflowNode, selectedWorkflowSession);
+  const workflowHeader = workflowLink ? createWorkflowHeaderSummary(workflowLink, selectedSessionStatus) : null;
 
   const schedulePostSendTraceRefresh = (piboSessionId: string) => {
     for (const delayMs of [750, 2000, 5000, 10000]) {
@@ -633,8 +617,8 @@ export function SessionTracePane({
     selectedSessionSignal,
     signals,
     sessionGoal: sessionGoalQuery.data?.goal,
-    workflowProjectSession,
-    workflowLifecycleEvents,
+    selectedPiboSessionId,
+    workflowSessionLinked,
     sessionNodes: bootstrap.sessions,
     sessionLinks,
     agentProfiles: bootstrap.agents,
@@ -770,7 +754,7 @@ export function SessionTracePane({
         )
       : previewAuthorityMessage
     : undefined;
-  const livePreviewPanel = livePreviewSelected ? previewPanelContent : projectModulePanel;
+  const livePreviewPanel = livePreviewSelected ? previewPanelContent : undefined;
   const previewFullscreenContent = livePreviewSelected
     ? livePreviewAuthority.kind === "ready" && selectedLivePreviewRecord
       ? (
@@ -945,7 +929,7 @@ export function SessionTracePane({
         sessionViewId,
         sessionViews,
         currentSessionView,
-        allowedSessionViewIds,
+        allowedSessionViewIds: allowedSessionViewIds ?? (workflowSessionLinked ? ["terminal", "workflow"] : ["terminal"]),
         extraViewTabs: combinedExtraViewTabs,
         activeViewId: livePreviewSelected ? "preview" : activeViewId,
         desktopTerminalOnly,
@@ -969,9 +953,7 @@ export function SessionTracePane({
         onToggleExpandThinking,
         onError,
       }}
-      projectSessionCreatePanel={projectSessionCreatePanel}
-      workflowStartPanel={workflowStartPanel}
-      projectModulePanel={livePreviewPanel}
+      auxiliaryPanel={livePreviewPanel}
       currentSessionView={currentSessionView}
       sessionViewProps={sessionViewProps}
       webAnnotationsPanelRendered={webAnnotationsPanelRendered && !livePreviewSelected && desktopActiveTool !== "web-annotations"}

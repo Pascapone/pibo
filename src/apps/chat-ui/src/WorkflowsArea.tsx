@@ -15,7 +15,7 @@ import { WorkflowRawIrEditor } from "./workflows/WorkflowRawIrEditor";
 import { WorkflowVersionViewer } from "./workflows/WorkflowVersionViewer";
 import { WorkflowPill } from "./workflows/workflow-shared-ui";
 
-export function WorkflowsArea({ draftId, viewWorkflowId, viewWorkflowVersion }: { draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string }) {
+export function WorkflowsArea({ draftId, viewWorkflowId, viewWorkflowVersion, onCreateWorkflowSession }: { draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string; onCreateWorkflowSession?: (workflowId: string, workflowVersion: string) => void }) {
 	return (
 		<main className="h-full min-h-0 overflow-auto bg-[#101d22]">
 			<section className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6 max-[720px]:p-4" aria-labelledby="workflows-title">
@@ -34,7 +34,7 @@ export function WorkflowsArea({ draftId, viewWorkflowId, viewWorkflowVersion }: 
 						title="Workflow Library"
 						description="Open UI drafts or duplicate published workflow versions into a draft before editing."
 					>
-						<WorkflowLibraryPanel activeDraftId={draftId} />
+						<WorkflowLibraryPanel activeDraftId={draftId} onCreateWorkflowSession={onCreateWorkflowSession} />
 					</WorkflowSurfaceCard>
 
 					<WorkflowSurfaceCard
@@ -157,7 +157,7 @@ function WorkflowSecurityBoundaryPanel() {
 				V2 authoring composes registered refs only: non-archived Agent profiles, code handlers, adapters, guards, nested workflows, human actions, and prompt assets.
 			</p>
 			<ul className="mt-3 grid gap-1 text-[11px] text-emerald-100/75">
-				<li>Existing Chat Web auth plus Project and Pibo Session visibility rules still gate workflow catalog, Project workflow sessions, snapshots, lifecycle events, prompt assets, and human actions.</li>
+				<li>Existing Chat Web authentication and Pibo Session visibility rules gate the workflow catalog, Workflow Sessions, snapshots, lifecycle events, prompt assets, and human actions.</li>
 				<li>Agent nodes select profile refs only; the UI does not grant extra tools, skills, context files, native tools, MCP servers, or compute-worker access beyond the selected runtime profile.</li>
 				<li>No inline JavaScript, TypeScript, shell, eval, arbitrary executable nodes, or raw handler bodies are created by the UI.</li>
 				<li>Incompatible schemas must use a visible registered adapter node or edge adapter; hidden LLM coercion is not used.</li>

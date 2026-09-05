@@ -23,7 +23,7 @@ const builtinChatSessionViews = [
 	{
 		id: "workflow",
 		label: "Workflow",
-		description: "Workflow/XState visualization for workflow-backed project sessions.",
+		description: "Workflow configuration, graph, run facts, waits, and human actions for linked Sessions.",
 		render: (props) => <WorkflowXStateSessionView {...props} />,
 	},
 ] satisfies readonly (ChatSessionView & { id: ChatSessionViewId })[];

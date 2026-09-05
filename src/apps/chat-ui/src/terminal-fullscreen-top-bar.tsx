@@ -8,12 +8,12 @@ export function TerminalFullscreenTopBar({
 	onExit,
 }: {
 	title: string | null | undefined;
-	contextKind: "room" | "project";
+	contextKind: "room";
 	contextLabel: string;
 	onOpenSessionWindow?: () => void;
 	onExit: () => void;
 }) {
-	const contextKindLabel = contextKind === "project" ? "Project" : "Room";
+	const contextKindLabel = "Room";
 	return (
 		<div
 			data-pibo-debug="terminal-fullscreen-top-bar"
