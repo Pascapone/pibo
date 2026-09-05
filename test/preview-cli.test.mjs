@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,9 +22,9 @@ function close(server) {
 	return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }
 
-function run(home, args) {
+function run(home, args, extraEnv = {}) {
 	return execFileAsync(process.execPath, [cli, ...args], {
-		env: { ...process.env, PIBO_HOME: home, NODE_ENV: "test" },
+		env: { ...process.env, PIBO_HOME: home, NODE_ENV: "test", ...extraEnv },
 	});
 }
 
@@ -124,6 +124,73 @@ test("preview CLI discovers and manages a session-linked exposure", async (t) =>
 	assert.equal(JSON.parse((await run(home, ["preview", "doctor", preview.id, "--json"])).stdout).health, "online");
 	assert.equal(JSON.parse((await run(home, ["preview", "close", preview.id, "--json"])).stdout).removed, true);
 	assert.deepEqual(JSON.parse((await run(home, ["preview", "list", "--session", "ps_cli_preview", "--json"])).stdout), []);
+});
+
+test("preview CLI exposes only a running labeled Pibo compute worker in dev-auth mode", async (t) => {
+	const home = mkdtempSync(join(tmpdir(), "pibo-preview-worker-cli-"));
+	const fakeBin = join(home, "bin");
+	const workerWorkspace = join(home, "worker-worktree");
+	const inspectPath = join(home, "docker-inspect.json");
+	mkdirSync(fakeBin);
+	mkdirSync(workerWorkspace);
+	const upstream = createServer((_req, res) => res.end("worker"));
+	const port = await listen(upstream);
+	t.after(async () => {
+		await close(upstream);
+		rmSync(home, { recursive: true, force: true });
+	});
+	const sessionStore = new PiboDataSessionStore(join(home, "pibo.sqlite"));
+	sessionStore.create({ id: "ps_cli_worker", channel: "web", kind: "chat", profile: "base", workspace: home });
+	sessionStore.close();
+	await run(home, ["config", "set", "preview.baseURL", "https://preview.example.test"]);
+
+	writeFileSync(inspectPath, JSON.stringify([{
+		Id: "worker-id",
+		Name: "/pibo-dev-cli-worker",
+		Config: { Labels: {
+			"pibo.compute.role": "dev",
+			"pibo.compute.port.web": String(port),
+			"pibo.compute.worktreePath": workerWorkspace,
+		} },
+		State: { Status: "running", Running: true },
+		NetworkSettings: { Ports: { "4788/tcp": [{ HostIp: "127.0.0.1", HostPort: String(port) }] } },
+	}]));
+	const dockerPath = join(fakeBin, "docker");
+	writeFileSync(dockerPath, `#!/bin/sh
+case "$1" in
+  ps)
+    case "$*" in
+      *pibo.compute.role=dev*) printf 'worker-id\\tpibo-dev-cli-worker\\trunning\\tUp\\t127.0.0.1:${port}->4788/tcp\\tpibo.compute.role=dev,pibo.compute.port.web=${port},pibo.compute.worktreePath=${workerWorkspace}\\n' ;;
+    esac
+    ;;
+  inspect) cat "$PIBO_FAKE_DOCKER_INSPECT" ;;
+  *) exit 1 ;;
+esac
+`);
+	chmodSync(dockerPath, 0o755);
+	const dockerEnv = {
+		PATH: `${fakeBin}:${process.env.PATH}`,
+		PIBO_FAKE_DOCKER_INSPECT: inspectPath,
+	};
+
+	const discovery = await run(home, ["preview"], dockerEnv);
+	assert.match(discovery.stdout, /expose-worker <id>/);
+	const exposed = JSON.parse((await run(home, [
+		"preview", "expose-worker", "pibo-dev-cli-worker",
+		"--session", "ps_cli_worker",
+		"--name", "Worker fixture",
+		"--json",
+	], dockerEnv)).stdout);
+	assert.equal(exposed.proxyMode, "pibo-compute-dev-auth");
+	assert.equal(exposed.targetPort, port);
+	assert.equal(exposed.workspace, workerWorkspace);
+	assert.equal(exposed.health, "online");
+	assert.equal(JSON.parse((await run(home, ["preview", "show", exposed.id, "--json"], dockerEnv)).stdout).proxyMode, "pibo-compute-dev-auth");
+	await assert.rejects(
+		run(home, ["preview", "expose-worker", "missing-worker", "--session", "ps_cli_worker"], dockerEnv),
+		/was not found/,
+	);
+	assert.equal(JSON.parse((await run(home, ["preview", "remove", exposed.id, "--json"], dockerEnv)).stdout).removed, true);
 });
 
 test("preview CLI starts, stops, restarts, and removes a detached managed server", async (t) => {
