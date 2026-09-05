@@ -808,8 +808,10 @@ test("router gives tools and resources one generation and disposes isolated stat
 	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-resource-router-"));
 	t.after(async () => rm(root, { recursive: true, force: true }));
 	const skillDir = join(root, "skill");
+	const contextPath = join(root, "STATUS-CONTEXT.md");
 	await mkdir(skillDir, { recursive: true });
 	await writeFile(join(skillDir, "SKILL.md"), "# Router skill\n");
+	await writeFile(contextPath, "# Router context\n");
 	const capabilities = materializedCapabilities();
 	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
 	const driver = createFakeAgentRuntimeDriver({ adapterId: "resource-router", capabilities });
@@ -827,6 +829,7 @@ test("router gives tools and resources one generation and disposes isolated stat
 							.withAutoContextFiles(false)
 							.withToolPackages({ goalControl: false })
 							.addSkill({ name: "router-skill", path: join(skillDir, "SKILL.md") })
+							.addContextFile({ key: "status-context", path: contextPath })
 							.createSession();
 					},
 				});
@@ -850,6 +853,9 @@ test("router gives tools and resources one generation and disposes isolated stat
 		runtimeResourceService: resourceService,
 	});
 	await router.emit({ type: "execution", piboSessionId: "ps_resource_router", action: "status" });
+	const status = await router.getSessionStatusSnapshot("ps_resource_router");
+	assert.deepEqual(status.enabledSkills, ["router-skill"]);
+	assert.ok(status.contextFiles.includes(contextPath));
 	const adapter = registry.requireAgentRuntimeAdapter("resource-router");
 	const openInput = adapter.openInputs[0];
 	assert.ok(openInput.services.resources);

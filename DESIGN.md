@@ -322,6 +322,17 @@ Badges are tiny, uppercase, and functional.
 
 Use translucent backgrounds around 10% to 20% opacity so badges remain integrated with the surface.
 
+### Compact Usage Meters
+
+Session headers may show slim, stacked usage meters when the values need constant operational visibility.
+
+- Keep the widget right-aligned and secondary to session identity and controls.
+- Use short labels, tabular monospaced percentages, thin tracks, and no decorative chrome.
+- Show remaining quotas as health: full is Matrix Success Green, and lower remaining capacity moves continuously through warning yellow toward Error Red.
+- Show consumed capacity in the opposite direction: low usage is green, and higher usage moves toward red.
+- Match each percentage color to its bar color. Preserve the label and an unavailable value when telemetry is missing.
+- Prefer two compact rows over stat cards so the header remains slim and scan-friendly.
+
 ### Empty States
 
 Empty states should be quiet and centered:

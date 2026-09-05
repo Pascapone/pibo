@@ -117,6 +117,7 @@ export type RuntimeRoutedSessionOptions = {
 	completeRuntimeAuth?: (input: CompleteAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
 	cancelRuntimeAuth?: (input: CancelAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
 	logoutRuntimeAuth?: (input: LogoutAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
+	statusResources?: Pick<PiboSessionStatus, "enabledSkills" | "contextFiles">;
 };
 
 function errorMessage(error: unknown): string {
@@ -392,6 +393,8 @@ export class RuntimeRoutedSession {
 			streaming: this.disposed ? false : status.streaming,
 			activeTools: [...status.enabledTools],
 			enabledTools: [...status.enabledTools],
+			enabledSkills: [...(this.options.statusResources?.enabledSkills ?? [])],
+			contextFiles: [...(this.options.statusResources?.contextFiles ?? [])],
 			cwd: status.cwd,
 			disposed: this.disposed,
 			thinkingLevel,

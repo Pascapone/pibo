@@ -11,6 +11,8 @@ type StatusData = {
 	streaming?: boolean;
 	enabledTools?: string[];
 	activeTools?: string[];
+	enabledSkills?: string[];
+	contextFiles?: string[];
 	cwd?: string;
 	disposed?: boolean;
 	contextUsage?: {
@@ -92,6 +94,12 @@ function parseStatusData(output: unknown): StatusData | undefined {
 				: undefined,
 		activeTools: Array.isArray(obj.activeTools)
 			? obj.activeTools.filter((t): t is string => typeof t === "string")
+			: undefined,
+		enabledSkills: Array.isArray(obj.enabledSkills)
+			? obj.enabledSkills.filter((skill): skill is string => typeof skill === "string")
+			: undefined,
+		contextFiles: Array.isArray(obj.contextFiles)
+			? obj.contextFiles.filter((file): file is string => typeof file === "string")
 			: undefined,
 		cwd: typeof obj.cwd === "string" ? obj.cwd : undefined,
 		disposed:
@@ -185,12 +193,43 @@ function formatResetTime(value?: string): string | undefined {
 	});
 }
 
+function CollapsibleStatusList({ label, items }: { label: string; items: readonly string[] }) {
+	const [expanded, setExpanded] = useState(false);
+	const empty = items.length === 0;
+	return (
+		<div>
+			<button
+				type="button"
+				disabled={empty}
+				onClick={() => setExpanded((value) => !value)}
+				className="flex items-center gap-1.5 text-[11px] text-[#737373] hover:text-[#d4d4d4] disabled:cursor-default disabled:text-[#525252]"
+				aria-expanded={expanded}
+			>
+				<span className={empty ? "text-[#525252]" : "text-[#d4d4d4]"}>{expanded ? "▾" : "▸"}</span>
+				<span>{label} ({items.length})</span>
+			</button>
+			{expanded ? (
+				<div className="mt-1.5 flex flex-wrap gap-1">
+					{items.map((item) => (
+						<span
+							key={item}
+							title={item}
+							className="inline-block max-w-full truncate rounded-sm border border-[#2a2a2a] bg-[#0b0b0b] px-1.5 py-0.5 font-mono text-[11px] text-[#a3a3a3]"
+						>
+							{item}
+						</span>
+					))}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
 export function TerminalStatusCard({ row, piboSessionId }: { row: CompactTerminalRow; piboSessionId?: string }) {
 	const [refreshedOutput, setRefreshedOutput] = useState<{ rowId: string; sourceOutput: unknown; output: unknown } | null>(null);
 	const output = refreshedOutput?.rowId === row.id && Object.is(refreshedOutput.sourceOutput, row.output)
 		? refreshedOutput.output
 		: row.output;
-	const [toolsExpanded, setToolsExpanded] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
 	const [refreshError, setRefreshError] = useState<string | null>(null);
 	const data = parseStatusData(output);
@@ -249,6 +288,8 @@ export function TerminalStatusCard({ row, piboSessionId }: { row: CompactTermina
 	const providerProgress = statusView.progress.filter((progress) => progress.id.startsWith("provider"));
 	const providerLimitProgress = data.providerUsage?.limits.length ? data.providerUsage.limits : undefined;
 	const enabledTools = data.enabledTools ?? data.activeTools ?? [];
+	const enabledSkills = data.enabledSkills ?? [];
+	const contextFiles = data.contextFiles ?? [];
 	const secondaryFields = statusView.fields.filter((field) => !new Set(["session", "cwd"]).has(field.id));
 	const providerLabel = data.providerUsage?.provider ? `${data.providerUsage.provider} quota` : "Provider quota";
 
@@ -340,33 +381,12 @@ export function TerminalStatusCard({ row, piboSessionId }: { row: CompactTermina
 				</div>
 			) : null}
 
-			{/* Foldable Tools */}
-			{enabledTools.length > 0 ? (
-				<div className="mt-3">
-					<button
-						type="button"
-						onClick={() => setToolsExpanded((v) => !v)}
-						className="flex items-center gap-1.5 text-[11px] text-[#737373] hover:text-[#d4d4d4]"
-					>
-						<span className="text-[#d4d4d4]">
-							{toolsExpanded ? "▾" : "▸"}
-						</span>
-						<span>Enabled tools ({enabledTools.length})</span>
-					</button>
-					{toolsExpanded ? (
-						<div className="mt-1.5 flex flex-wrap gap-1">
-							{enabledTools.map((tool) => (
-								<span
-									key={tool}
-									className="inline-block rounded-sm border border-[#2a2a2a] bg-[#0b0b0b] px-1.5 py-0.5 font-mono text-[11px] text-[#a3a3a3]"
-								>
-									{tool}
-								</span>
-							))}
-						</div>
-					) : null}
-				</div>
-			) : null}
+			{/* Foldable runtime resources */}
+			<div className="mt-3 space-y-1.5">
+				<CollapsibleStatusList label="Enabled tools" items={enabledTools} />
+				<CollapsibleStatusList label="Enabled skills" items={enabledSkills} />
+				<CollapsibleStatusList label="Context files" items={contextFiles} />
+			</div>
 		</div>
 	);
 }
