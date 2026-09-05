@@ -2,6 +2,8 @@
 
 ## 2026-09-05
 
+- **Terminal initial visibility**: Removed redundant initial-index settlement while retaining sticky-scroll positioning; published [exact-candidate headful Pibo2 evidence](/reports/terminal-initial-visibility-validation-2026-09-05.md) for large-history switching, reload anchors, real Spark streaming and Queue. The separate pre-existing mobile viewport-shrink gap is tracked in issue 928, not claimed fixed.
+
 - **Tool-call Debug mode**: Added a persisted Debug toggle beside Thinking, replaced duplicate topbar Raw Events and view controls with workspace-tab navigation, and documented per-invocation duration and explicitly estimated payload-token counts in the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006). Metrics survive live/replay paths without browser tokenization; legacy and unmeasurable values remain unavailable.
 
 - **Session Preview auto-open**: Extended [Session Live Previews](/specs/compute/session-live-previews.md#requirement-cmp-preview-006) with an authenticated Session-scoped creation stream so a newly created Preview opens the deduplicated Desktop Preview tab only for the still-selected Pibo Session; background Sessions, mobile layouts, and pre-existing Previews remain non-opening.

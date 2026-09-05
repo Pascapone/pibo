@@ -8,8 +8,8 @@ tags:
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T20:24:05Z"
+  by: "openai/codex"
+  at: "2026-09-05T23:01:41Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,8 +23,23 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "ba92dedd5453908c01732494b64dbcc4c53b0f20"
+  commit: "48f3f2ac39ba11c65112208034790fb63fb32fe2"
   requirements:
+    - id: "WEB-TRACE-VISIBILITY-008"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"
+          symbol: "CompactTerminalSessionView"
+        - path: "src/apps/chat-ui/src/components/useStickyVirtuoso.ts"
+          symbol: "useStickyVirtuoso"
+      tests:
+        - path: "test/chat-ui-terminal-initial-visibility.test.mjs"
+          name: "Terminal reveals correctly positioned histories without a fixed hidden interval"
+        - path: "test/use-sticky-virtuoso.test.mjs"
+          name: "useStickyVirtuoso uses one bottom target without a competing last-index scroll"
+      public: ["CompactTerminalSessionView"]
+      failures: ["Missing data still loads normally; mounted hidden text is not visible readiness. Separate late viewport shrink remains tracked in issue 928."]
+      confidence: "high"
     - id: "WEB-TRACE-DEBUG-006"
       status: "implemented"
       sources:
@@ -379,6 +394,12 @@ Integrated source, focused tests, and scoped headful acceptance verify pending a
 - Compatibility boundary: Kernel remains durable truth; registry additions are read-only Web compatibility extensions.
 - Confidence: **high**
 - Verification follow-up: Headfully inspect waiting, retry, failed, malformed, and human-action states.
+
+### Requirement: WEB-TRACE-VISIBILITY-008: Single initial positioning owner
+
+Terminal initialization uses the sticky-scroll controller's bottom or saved reading position without an independent initial-index scroll-settlement delay. It does not force CSS visibility or replace settlement with an arbitrary timer. Missing history still waits for its data.
+
+Acceptance measures the correct Session's viewport-intersecting visible rows, not merely route selection, mounted DOM, or textContent. The opt-in headful worker regression covers short and long completed histories at desktop/mobile widths; [exact-candidate Pibo2 evidence](/reports/terminal-initial-visibility-validation-2026-09-05.md) also covers the 16,005-event history, wheel detachment and reload anchors, actual Spark streaming, and Queue contention. This is scoped initial-visibility evidence, not a new execution claim for every historical requirement in this specification. A pre-existing mobile viewport-shrink gap remains tracked separately in issue 928.
 
 ## Interfaces and ownership
 
