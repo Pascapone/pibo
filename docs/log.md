@@ -2,6 +2,7 @@
 
 ## 2026-09-05
 
+- **Compute worker Preview authentication**: Added `pibo preview expose-worker` and an internal proxy mode that preserves Preview credential isolation while allowing a validated local-auth Pibo compute worker to accept HTTP and WebSocket traffic without a second Google login; updated the [Session Live Previews and Safe Proxy specification](/specs/compute/session-live-previews.md).
 - **Preview production setup**: Added a supported production activation flow with exact wildcard-DNS guidance, bounded Caddy on-demand TLS authorization, public DNS/TLS/routing diagnostics, and the stable [Session Live Preview operations runbook](/project/session-live-previews.md).
 - **Transition closure**: Published the [Session-native validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md) with final-code root results (2,747 total; 2,742 passed; 0 failed; 5 skipped), standalone package installation, and headed real-execution evidence; archived the original directive body without changing the main checkout. No production deployment.
 
