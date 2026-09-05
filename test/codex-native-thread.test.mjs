@@ -849,6 +849,15 @@ test("Codex native thread controls list and fork through stable App Server metho
 	assert.equal(firstMessageState.resourceRequests.some((request) => request.method === "thread/start"), false);
 	assert.equal(firstMessageSession.getBinding().nativeSessionId, "thread-source");
 
+	const runningCandidates = session.controls.getForkCandidatesWhileRunning();
+	assert.deepEqual(runningCandidates.map((candidate) => candidate.entryId), ["user-a", "user-b", "user-c"]);
+	const runningFork = await session.controls.forkSessionWhileRunning("user-c");
+	assert.equal(runningFork.previous.nativeSessionId, "thread-source");
+	assert.notEqual(runningFork.current.nativeSessionId, "thread-source");
+	assert.equal(runningFork.current.leafId, "turn-b");
+	assert.equal(runningFork.sourceSessionUnchanged, true);
+	assert.equal(session.getBinding().nativeSessionId, "thread-source", "snapshot fork must not adopt the derived thread");
+
 	const result = await session.controls.forkSession("user-c");
 	assert.equal(result.previous.nativeSessionId, "thread-source");
 	assert.notEqual(result.current.nativeSessionId, "thread-source");
@@ -865,7 +874,7 @@ test("Codex native thread controls list and fork through stable App Server metho
 	const cloneBinding = session.getBinding();
 	assert.equal(cloneBinding.nativeSessionId, cloned.current.nativeSessionId);
 	const lifecycleState = await getCodexNativeClient(session).request("test/getState", {});
-	assert.equal(lifecycleState.resourceRequests.filter((request) => request.method === "thread/fork").length, 2);
+	assert.equal(lifecycleState.resourceRequests.filter((request) => request.method === "thread/fork").length, 3);
 	const forkHistory = await adapter.readHistory({ binding: cloneBinding, workspace: root, limit: 2 });
 	assert.equal(forkHistory.entries.some((entry) => entry.type === "message" && entry.nativeTurnId === "turn-c"), false);
 	assert.equal(forkHistory.entries.some((entry) => entry.type === "message" && entry.nativeTurnId === "turn-b"), true);

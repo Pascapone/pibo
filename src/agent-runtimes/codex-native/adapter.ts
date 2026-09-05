@@ -198,6 +198,7 @@ function codexNativeCapabilities(structuredUserInput: boolean): AgentRuntimeCapa
 			attach: true,
 			listNativeSessions: true,
 			fork: true,
+			forkWhileRunning: true,
 			clone: true,
 			tree: false,
 		},
@@ -456,6 +457,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 			getCurrentSession: () => this.threads.getSnapshot(this.runtimeInstanceId),
 			listSessions: () => this.threads.list(this.runtimeInstanceId, this.cwd),
 			getForkCandidates: () => this.threads.getForkCandidates(),
+			getForkCandidatesWhileRunning: () => this.threads.getForkCandidatesWhileRunning(),
 			forkSession: async (entryId) => await this.runIdleOperation(async () => {
 				const result = await this.threads.fork(
 					this.runtimeInstanceId,
@@ -469,6 +471,12 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 				}
 				return result;
 			}),
+			forkSessionWhileRunning: async (entryId) => await this.threads.forkWhileRunning(
+				this.runtimeInstanceId,
+				this.cwd,
+				entryId,
+				async (threadId) => await this.resourceDelivery.verifyThread(this.process.client, threadId),
+			),
 			cloneSession: async () => await this.runIdleOperation(async () => {
 				const result = await this.threads.clone(
 					this.runtimeInstanceId,

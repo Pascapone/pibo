@@ -653,7 +653,7 @@ export type AgentRuntimeCapabilityDelivery =
 	| { support: "degraded"; mode: string; reason: string };
 
 export type AgentRuntimeCapabilities = {
-	lifecycle: { persistent: boolean; lazyBinding: boolean; resume: boolean; attach: boolean; listNativeSessions: boolean; fork: boolean; clone: boolean; tree: boolean };
+	lifecycle: { persistent: boolean; lazyBinding: boolean; resume: boolean; attach: boolean; listNativeSessions: boolean; fork: boolean; forkWhileRunning: boolean; clone: boolean; tree: boolean };
 	input: { text: boolean; images: boolean; audio: boolean; steering: boolean; structuredOutput: boolean };
 	output: { assistantDeltas: boolean; reasoning: boolean; toolEvents: boolean; usage: boolean; plans: boolean; diffs: boolean; rawNativeEvents: boolean };
 	tools: {

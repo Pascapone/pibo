@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-04T14:26:38Z"
+  at: "2026-09-05T12:20:39Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "31e486b257207dc52b7e63388d9937a62f62f2c6"
+  commit: "9ce53817fec5919c00e130dd794c391c497882a1"
   requirements:
     - id: "RUN-PI-001"
       status: "implemented"
@@ -20,9 +20,13 @@ traceability:
           symbol: "piboCorePlugin"
         - path: "src/agent-runtimes/pi/adapter.ts"
           symbol: "PI_AGENT_RUNTIME_DRIVER"
+        - path: "src/agent-runtimes/pi/routed-session.ts"
+          symbol: "forkSessionWhileRunning"
       tests:
         - path: "test/agent-runtime-registry.test.mjs"
           name: "Pi adapter opens the existing Pi runtime without rewriting the requested session id"
+        - path: "test/session-actions.test.mjs"
+          name: "Pi running-safe fork snapshots completed history without replacing the source manager"
       failures:
         - "Unsupported controls fail explicitly; external harness-native tools without an explicit host-tool capability cannot be wrapped, while Pi direct/native tools remain supported; transcript repair fails closed rather than rerunning durable tool effects."
         - "Pi Bash inherits only router-owned adapter environment without process-global mutation."
@@ -89,7 +93,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Lifecycle: The built-in Pi instance opens the existing Pi runtime, preserves the requested session id, normalizes output, and disposes idempotently.
+- Lifecycle: The built-in Pi instance opens the existing Pi runtime, preserves the requested session id, normalizes output, and disposes idempotently. While a turn is active, it exposes only completed user-message fork candidates and creates the selected branch from a separate persisted SessionManager snapshot without replacing the active source manager.
 - State: Built-in adapter, driver, and instance identity is pi; the direct Pi runtime package set and adapter protocol version are exactly 0.85.0; intent tracing is off unless a boolean runtime option enables it.
 - Failure: Unsupported controls fail explicitly; external harness-native tools without an explicit host-tool capability cannot be wrapped, while Pi direct/native tools remain supported; transcript repair fails closed rather than rerunning durable tool effects.
 - Security: Pi Bash inherits only router-owned adapter environment without process-global mutation.
@@ -99,7 +103,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 ## Requirement: RUN-PI-001
 
-The core plugin SHALL register the Pi driver and configured instance with adapter, driver, and instance identity pi.
+The core plugin SHALL register the Pi driver and configured instance with adapter, driver, and instance identity pi. Pi SHALL declare running-safe fork support and SHALL create such forks from persisted completed history without replacing the active source manager.
 
 ## Requirement: RUN-PI-002
 
@@ -145,7 +149,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `31e486b257207dc52b7e63388d9937a62f62f2c6`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `9ce53817fec5919c00e130dd794c391c497882a1`. Requirement confidence measures trace quality, not whether a command ran.
 
 The 0.85.0 upgrade passed the complete TypeScript build and focused Pi/runtime routing tests. The explicit `@earendil-works/pi-server@0.85.0` pin closes the package entrypoint's published runtime import and is covered by the exact-version lockfile test.
 

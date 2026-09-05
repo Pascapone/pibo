@@ -360,6 +360,53 @@ test("session router creates a visible branch Pibo session for clone operations"
 	}
 });
 
+test("snapshot fork persistence keeps the active source runtime attached", async () => {
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store);
+	const registry = createTestRegistry("session.fork", (context, event) => ({
+		piboSessionId: context.piboSessionId,
+		previous: {
+			piSessionId: "11111111-1111-4111-8111-111111111111",
+			leafId: "source-leaf",
+			cwd: process.cwd(),
+		},
+		current: {
+			piSessionId: "22222222-2222-4222-8222-222222222222",
+			leafId: "fork-leaf",
+			cwd: process.cwd(),
+		},
+		cancelled: false,
+		sourceSessionUnchanged: true,
+		selectedText: "completed prompt",
+		summaryEntryId: event.params.entryId,
+	}));
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		sessionStore: store,
+		pluginRegistry: registry,
+		profile: registry.createProfile("test-profile"),
+	});
+
+	try {
+		await router.getSessionStatusSnapshot("ps_source");
+		const sourceRuntime = router.sessions.get("ps_source");
+		assert.ok(sourceRuntime);
+		const output = await router.emit({
+			type: "execution",
+			piboSessionId: "ps_source",
+			action: "session.fork",
+			params: { entryId: "completed-user" },
+		});
+		assert.strictEqual(router.sessions.get("ps_source"), sourceRuntime, "snapshot fork must not reset the active source runtime");
+		const branch = store.get(output.result.piboSessionId);
+		assert.equal(branch.originId, "ps_source");
+		assert.equal(branch.piSessionId, "22222222-2222-4222-8222-222222222222");
+		assert.equal(store.get("ps_source").piSessionId, "11111111-1111-4111-8111-111111111111");
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("forking a named delegated session preserves lineage and title without copying managed-agent identity", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({

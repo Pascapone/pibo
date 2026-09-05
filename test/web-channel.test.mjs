@@ -28,7 +28,7 @@ const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Sc
 function fakeRuntimeCapabilities() {
 	const unsupported = { support: "unsupported", reason: "Not supported by this fixture runtime." };
 	return {
-		lifecycle: { persistent: true, lazyBinding: true, resume: true, attach: false, listNativeSessions: false, fork: false, clone: false, tree: false },
+		lifecycle: { persistent: true, lazyBinding: true, resume: true, attach: false, listNativeSessions: false, fork: false, forkWhileRunning: false, clone: false, tree: false },
 		input: { text: true, images: false, audio: false, steering: false, structuredOutput: false },
 		output: { assistantDeltas: true, reasoning: true, toolEvents: true, usage: true, plans: false, diffs: false, rawNativeEvents: false },
 		tools: {

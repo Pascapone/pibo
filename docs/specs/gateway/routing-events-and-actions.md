@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-05T12:20:39Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "9ce53817fec5919c00e130dd794c391c497882a1"
   requirements:
     - id: "WP02-GW-ROUTE-001"
       status: "implemented"
@@ -88,11 +88,19 @@ traceability:
           symbol: "forkSession"
         - path: "src/agent-runtime/routed-session.ts"
           symbol: "cloneSession"
+        - path: "src/agent-runtime/capabilities.ts"
+          symbol: "AgentRuntimeCapabilities"
+        - path: "src/core/session-router.ts"
+          symbol: "handleSessionOperation"
       tests:
         - path: "test/runtime-routed-session.test.mjs"
           name: "generic routed controls reject unadvertised adapter capabilities explicitly"
         - path: "test/runtime-routed-session.test.mjs"
           name: "fork identity reads and transitions reject queued or active routed work"
+        - path: "test/runtime-routed-session.test.mjs"
+          name: "running-safe fork controls snapshot completed history without interrupting the source turn"
+        - path: "test/session-router-store.test.mjs"
+          name: "snapshot fork persistence keeps the active source runtime attached"
       failures:
         - "Profile/runtime capability checks and preflight occur before unsupported work executes."
         - "Approval and structured-input responses are correlated by request ID and resolved/cleared/aborted/expired."
@@ -172,7 +180,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 - Persistence and models: PiboMessageEvent with queue/steer delivery; PiboExecutionEvent including custom string actions; PiboOutputEvent normalized lifecycle union; PiboSessionStatus; in-memory routed session cache backed by session/binding/history stores.
 - Routes and protocols: No transport framing or HTTP route is owned.
 - Registered actions: `status`, `compact`, `runtime.approval.respond`, `runtime.user_input.respond`, `session_id`, `clear_queue`, `abort`, `kill`, `kill_all`, `dispose`, `thinking`, `fast_mode`, `session.current`, `session.list`, `session.fork_candidates`, `session.fork`, `session.clone`, `session.tree`, `session.tree_navigate`, `session.switch`, `login`, `model`, `login.start`, `login.complete`, `login.apikey`, `login.cancel`, `login.status`, `logout`.
-- State transitions: Accepted queued messages enter one serialized drain; steer is distinct and rejects idle sessions. compact serializes with queued messages; non-compact actions may execute while a turn is active. `session.switch` refuses active or queued routed work so one logical turn cannot split across native bindings. Provider fallbacks are tried in order only for eligible provider failures and the primary model is restored. Restart reconstruction resolves each nested Session root independently of store iteration order. abort targets active turn; kill recursively disposes child sessions but not yielded runs; kill_all also cancels yielded runs. Teardown rejects new work and awaits disposal.
+- State transitions: Accepted queued messages enter one serialized drain; steer is distinct and rejects idle sessions. compact serializes with queued messages; non-compact actions may execute while a turn is active. `session.switch` refuses active or queued routed work so one logical turn cannot split across native bindings. A runtime that declares `lifecycle.forkWhileRunning` may list completed fork candidates and create a detached snapshot fork during an active turn; the active candidate is excluded, the source binding stays attached, and runtimes without the capability retain the idle requirement. Provider fallbacks are tried in order only for eligible provider failures and the primary model is restored. Restart reconstruction resolves each nested Session root independently of store iteration order. abort targets active turn; kill recursively disposes child sessions but not yielded runs; kill_all also cancels yielded runs. Teardown rejects new work and awaits disposal.
 - Failure and security: Profile/runtime capability checks and preflight occur before unsupported work executes. Approval and structured-input responses are correlated by request ID and resolved/cleared/aborted/expired. Context/runtime failures are not retried as provider fallback. Bounded reminder guards stop repeated identical tool loops.
 - Compatibility: Runtime action registration, not the narrower BuiltinPiboExecutionAction type alias, is exhaustive authority. Model defaults apply to new sessions and do not mutate frozen existing bindings.
 
@@ -188,7 +196,7 @@ Each routed session SHALL maintain one serialized message drain, keep queue and 
 
 ## Requirement: WP02-GW-ROUTE-003
 
-The runtime action registry SHALL be the exhaustive current action list; adapter capabilities and idle-state constraints SHALL gate action execution.
+The runtime action registry SHALL be the exhaustive current action list. Adapter capabilities and idle-state constraints SHALL gate action execution, except that `lifecycle.forkWhileRunning` SHALL permit completed-history candidate reads and detached snapshot forks without replacing, aborting, or rebinding the active source runtime.
 
 ## Requirement: WP02-GW-ROUTE-004
 
@@ -254,7 +262,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
+Source symbols and named tests are bound to commit `9ce53817fec5919c00e130dd794c391c497882a1`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
 
 Package verification commands:
 
