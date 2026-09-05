@@ -226,6 +226,8 @@ export type PiboSessionStatus = {
 	/** @deprecated Use enabledTools. This lists configured/available tools, not currently executing tool calls. */
 	activeTools: string[];
 	enabledTools: string[];
+	enabledSkills?: string[];
+	contextFiles?: string[];
 	cwd: string;
 	disposed: boolean;
 	thinkingLevel?: PiboThinkingLevel;

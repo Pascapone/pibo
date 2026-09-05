@@ -21,7 +21,7 @@ import type {
 } from "./types";
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
-import { getSessionForkCandidates, type ChatMessageDelivery } from "./api-chat-sessions";
+import { getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } from "./api-chat-sessions";
 import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
@@ -312,6 +312,23 @@ export function SessionTracePane({
     onExitDesktopPreviewFullscreen,
   );
   const livePreviewSelected = Boolean(selectedBackendPiboSessionId && livePreviewViewSessionId === selectedBackendPiboSessionId);
+  const terminalUsageEnabled = Boolean(
+    selectedBackendPiboSessionId
+    && !terminalFullscreen
+    && !livePreviewSelected
+    && currentSessionView.id === "terminal"
+    && (activeViewId ?? sessionViewId) === "terminal",
+  );
+  const terminalUsageQuery = useQuery({
+    queryKey: selectedBackendPiboSessionId
+      ? ["chat", "terminal-header-usage", selectedBackendPiboSessionId]
+      : ["chat", "terminal-header-usage", "idle"],
+    queryFn: () => getSessionStatus(selectedBackendPiboSessionId!),
+    enabled: terminalUsageEnabled,
+    refetchInterval: terminalUsageEnabled ? 30_000 : false,
+    staleTime: 15_000,
+    retry: false,
+  });
   const livePreviewReloadKey = livePreviewReload?.piboSessionId === selectedBackendPiboSessionId ? livePreviewReload.value : 0;
 
   useEffect(() => {
@@ -934,6 +951,7 @@ export function SessionTracePane({
         headerPiboSessionId,
         piboSessionId: selectedPiboSessionId,
         piboRoomId: selectedRoomId ?? bootstrap.selectedRoomId ?? undefined,
+        terminalUsageStatus: terminalUsageQuery.data,
         webAnnotationsDisabled: !selectedPiboSessionId || selectedRoomArchived,
         webAnnotationsPanelRendered,
         workflowHeader,

@@ -1695,6 +1695,13 @@ export class PiboSessionRouter {
 			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
 			throw error;
 		}
+		const resourceInspection = resources.getInspection();
+		const statusResources = {
+			enabledSkills: [...new Set(resourceInspection.skills.map((skill) => skill.name))],
+			contextFiles: [...new Set(resourceInspection.context.map((contribution) => (
+				contribution.sourcePath ?? contribution.path ?? contribution.label
+			)).filter((value): value is string => Boolean(value)))],
+		};
 		session = new RoutedSession(
 			piboSession.id,
 			runtimeSession,
@@ -1752,6 +1759,7 @@ export class PiboSessionRouter {
 					const { runtimeInstanceId: _runtimeInstanceId, ...result } = await runtimeRegistry.logoutAgentRuntimeAuth(binding.runtimeInstanceId, input);
 					return result;
 				},
+				statusResources,
 			},
 		);
 		this.sessions.set(piboSession.id, session);

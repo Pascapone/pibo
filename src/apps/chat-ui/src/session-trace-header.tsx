@@ -7,6 +7,7 @@ import type {
 } from "./session-views/registry";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
 import { WebAnnotationsEntryPoints } from "./web-annotations";
+import { TerminalHeaderUsage } from "./session-header-usage";
 import {
   WorkflowHeaderMeta,
   type WorkflowHeaderSummary,
@@ -28,6 +29,7 @@ export function SessionTraceHeader({
   headerPiboSessionId,
   piboSessionId,
   piboRoomId,
+  terminalUsageStatus,
   webAnnotationsDisabled,
   webAnnotationsPanelRendered,
   workflowHeader,
@@ -61,6 +63,7 @@ export function SessionTraceHeader({
   headerPiboSessionId: string;
   piboSessionId: string | null;
   piboRoomId?: string;
+  terminalUsageStatus?: unknown;
   webAnnotationsDisabled: boolean;
   webAnnotationsPanelRendered: boolean;
   workflowHeader: WorkflowHeaderSummary | null;
@@ -95,6 +98,7 @@ export function SessionTraceHeader({
   const headerPiboSessionCopied =
     copiedHeaderPiboSessionId === headerPiboSessionId;
   const selectedViewId = activeViewId ?? sessionViewId;
+  const showTerminalUsage = currentSessionView.id === "terminal" && selectedViewId === "terminal";
   const contextKindLabel = "Room";
   const allowedSessionViewIdSet = useMemo(
     () => (allowedSessionViewIds ? new Set(allowedSessionViewIds) : null),
@@ -122,7 +126,7 @@ export function SessionTraceHeader({
 
   return (
     <div className="h-14 px-4 bg-[#151f24] border-b border-slate-800 flex items-center justify-between max-[980px]:h-auto max-[980px]:flex-wrap max-[980px]:py-2 max-[980px]:gap-2 @max-[680px]:h-auto @max-[680px]:flex-wrap @max-[680px]:gap-2 @max-[680px]:py-2">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 max-[980px]:order-1 @max-[680px]:order-1">
         <h1 className="text-base font-semibold truncate">{title}</h1>
         <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-slate-500">
           <span
@@ -163,7 +167,7 @@ export function SessionTraceHeader({
           ) : null}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 max-[980px]:w-full max-[980px]:flex-wrap max-[980px]:gap-1 @max-[680px]:w-full @max-[680px]:flex-wrap @max-[680px]:gap-1">
+      <div className="flex shrink-0 items-center gap-2 max-[980px]:order-3 max-[980px]:w-full max-[980px]:flex-wrap max-[980px]:gap-1 @max-[680px]:order-3 @max-[680px]:w-full @max-[680px]:flex-wrap @max-[680px]:gap-1">
         {desktopTerminalOnly ? null : (
           <WebAnnotationsEntryPoints
             piboSessionId={piboSessionId}
@@ -312,6 +316,11 @@ export function SessionTraceHeader({
           </HeaderIconButton>
         ) : null}
       </div>
+      {showTerminalUsage ? (
+        <div className="shrink-0 max-[980px]:order-2 @max-[680px]:order-2">
+          <TerminalHeaderUsage status={terminalUsageStatus} />
+        </div>
+      ) : null}
     </div>
   );
 }
