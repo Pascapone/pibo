@@ -38,6 +38,32 @@ test("Preview authority rejects stale session data, errors, and configured empti
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd(), env: reactDevelopmentEnv });
 });
 
+test("live preview event subscriptions stay scoped to the selected Pibo Session", async () => {
+	const script = `
+		import assert from "node:assert/strict";
+		const instances = [];
+		class MockEventSource {
+			constructor(url) { this.url = url; this.listeners = new Map(); this.closed = false; instances.push(this); }
+			addEventListener(type, listener) { this.listeners.set(type, listener); }
+			emit(type, data) { this.listeners.get(type)?.({ data }); }
+			close() { this.closed = true; }
+		}
+		globalThis.EventSource = MockEventSource;
+		const { subscribeSessionLivePreviewEvents } = await import("./src/apps/chat-ui/src/api-previews.ts");
+		const received = [];
+		const unsubscribe = subscribeSessionLivePreviewEvents("ps_selected", (event) => received.push(event.preview.id));
+		assert.equal(instances.length, 1);
+		assert.equal(instances[0].url, "/api/previews/events?piboSessionId=ps_selected");
+		instances[0].emit("preview-created", "not-json");
+		instances[0].emit("preview-created", JSON.stringify({ type: "preview-created", preview: { id: "pv-other", piboSessionId: "ps_other" } }));
+		instances[0].emit("preview-created", JSON.stringify({ type: "preview-created", preview: { id: "pv-selected", piboSessionId: "ps_selected" } }));
+		assert.deepEqual(received, ["pv-selected"]);
+		unsubscribe();
+		assert.equal(instances[0].closed, true);
+	`;
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd(), env: reactDevelopmentEnv });
+});
+
 test("live preview panel keeps the iframe isolated and exposes trusted lifecycle controls", async () => {
 	const script = `
 		import assert from "node:assert/strict";
@@ -228,6 +254,8 @@ test("Session trace panes scope lifecycle state and fullscreen to the selected P
 	assert.match(pane, /resolveSessionLivePreviewAuthority/);
 	assert.match(pane, /requirePreviewActionAuthority/);
 	assert.match(pane, /queryClient\.setQueryData<SessionLivePreviewQueryEnvelope>/);
+	assert.match(pane, /subscribeSessionLivePreviewEvents/);
+	assert.match(pane, /openDesktopToolRef\.current\?\.\("preview"\)/);
 	assert.match(pane, /id: "preview"/);
 	assert.match(pane, /<SessionLivePreviewPanel/);
 	assert.match(pane, /<PreviewFullscreenTopBar/);

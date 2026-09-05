@@ -76,6 +76,7 @@ import {
   removeSessionLivePreview,
   startSessionLivePreview,
   stopSessionLivePreview,
+  subscribeSessionLivePreviewEvents,
   type SessionLivePreview,
 } from "./api-previews";
 import {
@@ -279,6 +280,9 @@ export function SessionTracePane({
   });
   const selectedPreviewSessionRef = useRef<string | undefined>(selectedBackendPiboSessionId);
   selectedPreviewSessionRef.current = selectedBackendPiboSessionId;
+  const openDesktopToolRef = useRef(onOpenDesktopTool);
+  openDesktopToolRef.current = onOpenDesktopTool;
+  const desktopPreviewAutoOpenEnabled = Boolean(onOpenDesktopTool);
   const [livePreviewViewSessionId, setLivePreviewViewSessionId] = useState<string | null>(null);
   const [selectedLivePreview, setSelectedLivePreview] = useState<SessionLivePreviewSelection | undefined>();
   const [livePreviewReload, setLivePreviewReload] = useState<{ piboSessionId: string; value: number } | undefined>();
@@ -330,6 +334,21 @@ export function SessionTracePane({
       previewId: livePreviewAuthority.previews[0]!.id,
     });
   }, [livePreviewAuthority, selectedLivePreview]);
+
+  useEffect(() => {
+    if (!desktopPreviewAutoOpenEnabled || !selectedBackendPiboSessionId) return;
+    const piboSessionId = selectedBackendPiboSessionId;
+    return subscribeSessionLivePreviewEvents(piboSessionId, ({ preview }) => {
+      if (selectedPreviewSessionRef.current !== piboSessionId || preview.piboSessionId !== piboSessionId) return;
+      queryClient.setQueryData<SessionLivePreviewQueryEnvelope>(livePreviewQueryKey(piboSessionId), (current) => ({
+        piboSessionId,
+        configured: true,
+        previews: [preview, ...(current?.piboSessionId === piboSessionId ? current.previews.filter((candidate) => candidate.id !== preview.id) : [])],
+      }));
+      setSelectedLivePreview({ piboSessionId, previewId: preview.id });
+      openDesktopToolRef.current?.("preview");
+    });
+  }, [desktopPreviewAutoOpenEnabled, queryClient, selectedBackendPiboSessionId]);
   const openSessionWindowAvailable = Boolean(selectedBackendPiboSessionId) && canOpenDesktopPwaSessionWindow();
   const openSelectedSessionWindow = useCallback(() => {
     if (openCurrentPwaSessionWindow()) return;
