@@ -83,7 +83,7 @@ describe("one-node agent workflow runtime path", () => {
     assert.deepEqual(createdSessions, [
       {
         channel: "chat",
-        kind: "workflow-agent",
+        kind: "chat",
         profile: "pibo-agent",
         parentId: "ps_parent",
         workspace: undefined,
@@ -310,7 +310,7 @@ describe("one-node agent workflow runtime path", () => {
     assert.deepEqual(createdSessions, [
       {
         channel: "pibo.workflows",
-        kind: "workflow-agent",
+        kind: "chat",
         profile: "pibo-agent",
         parentId: undefined,
         workspace: undefined,
@@ -440,7 +440,7 @@ describe("one-node agent workflow runtime path", () => {
       assert.deepEqual(createdSessions, [
         {
           channel: "chat",
-          kind: "workflow-agent",
+          kind: "chat",
           profile: "pibo-agent",
           parentId: "ps_parent_single_prompt",
           workspace: undefined,

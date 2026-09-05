@@ -63,7 +63,8 @@ import {
   isSessionComposerDisabled,
 } from "./app-session-model";
 import { selectedSessionBackendId } from "./selected-session-backend";
-import { createWorkflowHeaderSummary, isWorkflowLinkedSession, workflowSessionFromMetadata } from "./workflows/workflow-session-model";
+import { createWorkflowHeaderSummary, isWorkflowLinkedSession } from "./workflows/workflow-session-model";
+import { getSessionWorkflow } from "./api-workflows";
 import { errorMessage } from "./error-message";
 import {
   canOpenDesktopPwaSessionWindow,
@@ -482,8 +483,15 @@ export function SessionTracePane({
   const selectedWorkflowNode = selectedPiboSessionId ? findSessionNode(bootstrap.sessions, selectedPiboSessionId) : undefined;
   const selectedWorkflowSession = bootstrap.session?.id === selectedPiboSessionId ? bootstrap.session : undefined;
   const workflowSessionLinked = isWorkflowLinkedSession(selectedWorkflowNode, selectedWorkflowSession);
-  const workflowLink = workflowSessionFromMetadata(selectedWorkflowNode, selectedWorkflowSession);
-  const workflowHeader = workflowLink ? createWorkflowHeaderSummary(workflowLink, selectedSessionStatus) : null;
+  const workflowInspection = useQuery({
+    queryKey: ["chat", "session-workflow", selectedPiboSessionId],
+    queryFn: () => getSessionWorkflow(selectedPiboSessionId!),
+    enabled: Boolean(selectedPiboSessionId && workflowSessionLinked),
+    refetchInterval: 5000,
+    retry: false,
+  });
+  const workflowLink = workflowInspection.data?.workflowSession;
+  const workflowHeader = workflowLink ? createWorkflowHeaderSummary(workflowLink) : null;
 
   const schedulePostSendTraceRefresh = (piboSessionId: string) => {
     for (const delayMs of [750, 2000, 5000, 10000]) {

@@ -366,7 +366,6 @@ export type ChatWebAppOptions = {
 	dataStorePath?: string;
 	dataPayloadRootDir?: string;
 	workflowStorePath?: string;
-	/** Optional one-time migration source. Omit to probe web-projects.sqlite beside the data store. */
 	cronStorePath?: string;
 	ralphStorePath?: string;
 	vscodeWeb?: ChatVscodeWebIntegrationOptions;
@@ -5008,7 +5007,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				updateWorkflowRunSessionMetadata({ state, context, session, workflowRunId: started.run.id });
 				recordWorkflowLifecycleEvent(state, webSession, { type: "workflow.start.accepted", workflowId: workflow.id, workflowVersion: workflow.version, piboSessionId: session.id, workflowRunId: started.run.id, status: "accepted", validation: validation.validation, diagnostics: validation.diagnostics, payload: { snapshotId: snapshot.id, profile: session.profile, alreadyStarted: started.alreadyStarted } });
 				if (!started.alreadyStarted) recordWorkflowLifecycleEvent(state, webSession, { type: "workflow.run.status_changed", workflowId: workflow.id, workflowVersion: workflow.version, piboSessionId: session.id, workflowRunId: started.run.id, status: "changed", validation: validation.validation, diagnostics: validation.diagnostics, payload: { snapshotId: snapshot.id, state: started.run.status, current: started.run.current } });
-				return responseJson({ workflowSession: enrichWorkflowSession(state, started.workflowSession), run: started.run, snapshot, workflow, alreadyStarted: started.alreadyStarted, validation: validation.validation, diagnostics: validation.diagnostics, message: started.alreadyStarted ? "Workflow run already exists for this Workflow Session." : "Workflow run started." }, { status: started.alreadyStarted ? 200 : 202 });
+				return responseJson({ workflowSession: enrichWorkflowSession(state, started.workflowSession), run: started.run, snapshot, workflow, alreadyStarted: started.alreadyStarted, validation: validation.validation, diagnostics: validation.diagnostics, message: started.alreadyStarted ? "Workflow run already exists for this Workflow Session." : "Workflow run recorded. General graph execution is not connected to this surface; supported manual triggers run from the editor." }, { status: started.alreadyStarted ? 200 : 202 });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/signals/statuses` && request.method === "GET") {
@@ -5210,7 +5209,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						const hash = hashWorkflowDefinitionJson(record.definition);
 						const existing = store.listDefinitionSnapshots({ workflowId: run.workflowId, workflowVersion: run.workflowVersion, hash, limit: 1 })[0];
 						const definitionSnapshotId = existing?.id ?? `wfds_${run.id}`;
-						if (!existing) store.saveDefinitionSnapshot({ id: definitionSnapshotId, workflowId: run.workflowId, workflowVersion: run.workflowVersion, hash, definition: record.definition as unknown as import("@pasko70/pibo-workflows").WorkflowDefinition, createdAt: run.createdAt });
+						if (!existing) store.saveDefinitionSnapshot({ id: definitionSnapshotId, workflowId: run.workflowId, workflowVersion: run.workflowVersion, hash, definition: record.definition as unknown as import("../../../packages/workflows/dist/index.js").WorkflowDefinition, createdAt: run.createdAt });
 						store.saveRun({ ...run, piboSessionId: result.nodeAttempts.find((attempt) => attempt.piboSessionId)?.piboSessionId, definitionSnapshotId, workflowDefinitionHash: hash, current: { status: run.status, nodeId: result.nodeAttempts.at(-1)?.nodeId }, state: { global: {} } });
 						for (const attempt of result.nodeAttempts) {
 							store.saveNodeAttempt({ ...attempt, attempt: 1 });

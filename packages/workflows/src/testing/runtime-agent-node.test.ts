@@ -138,7 +138,7 @@ describe("workflow agent node dispatch", () => {
     assert.deepEqual(createdSessions, [
       {
         channel: "chat",
-        kind: "workflow-agent",
+        kind: "chat",
         profile: "pibo-agent",
         parentId: "ps_parent_agent",
         workspace: undefined,
@@ -421,7 +421,7 @@ describe("workflow agent node dispatch", () => {
     assert.deepEqual(createdSessions, [
       {
         channel: "chat",
-        kind: "workflow-agent",
+        kind: "chat",
         profile: "writer-profile",
         parentId: "ps_parent_agent",
         workspace: undefined,

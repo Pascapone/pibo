@@ -376,7 +376,6 @@ test("forking a named delegated session preserves lineage and title without copy
 		title: "Named delegated session",
 		metadata: {
 			workflowSessionKind: "subagent",
-			projectSessionKind: "main",
 			subagentName: "researcher",
 			subagentToolName: "pibo_agents_send_message",
 			agentStatus: "active",
@@ -427,7 +426,7 @@ test("forking a named delegated session preserves lineage and title without copy
 		assert.equal(branch.originId, "ps_source");
 		assert.equal(branch.title, "Named delegated session");
 		assert.equal(branch.metadata.chatRoomId, "room_1");
-		for (const key of ["workflowSessionKind", "projectSessionKind", "subagentName", "subagentToolName", "agentStatus", "threadKey"]) {
+		for (const key of ["workflowSessionKind", "subagentName", "subagentToolName", "agentStatus", "threadKey"]) {
 			assert.equal(branch.metadata[key], undefined);
 		}
 		assert.deepEqual(

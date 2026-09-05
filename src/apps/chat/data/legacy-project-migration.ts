@@ -60,6 +60,7 @@ export function migrateLegacyProjects(input: {
 
 	const db = input.dataStore.db;
 	const dataUserVersion = pragmaUserVersion(db);
+	const dataSynchronous = Number((db.prepare("PRAGMA main.synchronous").get() as { synchronous: number }).synchronous);
 	let sourceAttached = false;
 	let workflowAttached = false;
 	try {
@@ -70,6 +71,9 @@ export function migrateLegacyProjects(input: {
 		db.prepare("ATTACH DATABASE ? AS workflow_target").run(input.workflowService.path);
 		workflowAttached = true;
 		if (hasSource) validateLegacySchema(db);
+		// FULL makes each WAL commit durable before retiring recoverable sources.
+		// Matching receipts still detect a crash between the two database commits.
+		db.exec("PRAGMA main.synchronous = FULL; PRAGMA workflow_target.synchronous = FULL");
 		db.exec("BEGIN IMMEDIATE");
 		const digest = legacySourceDigest(db, hasSource);
 		if (dataReceipt && dataReceipt.source_digest !== digest) throw new Error("Pibo migration receipt does not match the recoverable legacy source");
@@ -112,6 +116,7 @@ export function migrateLegacyProjects(input: {
 		};
 	} finally {
 		if (db.isTransaction) db.exec("ROLLBACK");
+		db.exec(`PRAGMA main.synchronous = ${dataSynchronous}`);
 		if (workflowAttached) try { db.exec("DETACH DATABASE workflow_target"); } catch { /* preserve primary error */ }
 		if (sourceAttached) try { db.exec("DETACH DATABASE legacy_source"); } catch { /* preserve primary error */ }
 	}
@@ -443,11 +448,19 @@ function requireObjectOrEmpty(value: unknown): Record<string, unknown> { return 
 function sqliteValuesEqual(left: unknown, right: unknown): boolean { return (left ?? null) === (right ?? null); }
 function pragmaUserVersion(db: DatabaseSync): number { return Number((db.prepare("PRAGMA main.user_version").get() as { user_version: number }).user_version); }
 function completeSourceArchiveWithoutOpening(sourcePath: string, archivePath: string): void {
-	if (!existsSync(sourcePath)) return;
+	const sourceExists = existsSync(sourcePath);
+	const archiveExists = existsSync(archivePath);
+	const sidecars = ["-wal", "-shm"].filter((suffix) => existsSync(`${sourcePath}${suffix}`));
+	if (!sourceExists && !archiveExists) {
+		if (sidecars.length) throw new Error("Legacy archive has orphaned sidecars; preserve them for recovery");
+		return;
+	}
+	if (sourceExists && archiveExists) throw new Error(`Cannot archive legacy source because '${archivePath}' already exists`);
+	for (const suffix of sidecars) if (existsSync(`${archivePath}${suffix}`)) throw new Error(`Legacy archive sidecar conflicts at '${archivePath}${suffix}'`);
 	mkdirSync(dirname(archivePath), { recursive: true });
-	if (existsSync(archivePath)) throw new Error(`Cannot archive legacy source because '${archivePath}' already exists`);
-	renameSync(sourcePath, archivePath);
-	for (const suffix of ["-wal", "-shm"]) if (existsSync(`${sourcePath}${suffix}`)) renameSync(`${sourcePath}${suffix}`, `${archivePath}${suffix}`);
+	if (sourceExists) renameSync(sourcePath, archivePath);
+	// A restart can arrive after the base rename but before its WAL/SHM rename.
+	for (const suffix of sidecars) renameSync(`${sourcePath}${suffix}`, `${archivePath}${suffix}`);
 }
 function emptyResult(status: "not-needed" | "already-migrated", archivePath?: string): LegacyProjectMigrationResult { return { status, roomsMigrated: 0, sessionsMigrated: 0, workflowSessionsMigrated: 0, workflowRunsMigrated: 0, ...(archivePath ? { archivePath } : {}) }; }
 

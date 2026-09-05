@@ -244,3 +244,65 @@ test("disagreeing target receipts fail without consuming the recoverable source"
 		assert.equal(existsSync(fixture.legacyPath), true);
 	} finally { fixture.cleanup(); }
 });
+
+test("migration durably commits both WAL targets before retiring sources and restores normal settings", () => {
+	const fixture = createLegacyProjectMigrationFixture();
+	try {
+		fixture.dataStore.db.exec("PRAGMA synchronous = NORMAL");
+		migrate(fixture, { hooks: { beforeReceipts() {
+			assert.equal(fixture.dataStore.db.prepare("PRAGMA main.synchronous").get().synchronous, 2);
+			assert.equal(fixture.dataStore.db.prepare("PRAGMA workflow_target.synchronous").get().synchronous, 2);
+			assert.equal(existsSync(fixture.legacyPath), true);
+		} } });
+		assert.equal(fixture.dataStore.db.prepare("PRAGMA synchronous").get().synchronous, 1);
+	} finally { fixture.cleanup(); }
+});
+
+test("partial migration reconstructs an entirely missing Workflow target from the retained source", () => {
+	const fixture = createLegacyProjectMigrationFixture();
+	const recovered = new ChatWorkflowSessionService(join(fixture.root, "recovered-workflows.sqlite"));
+	try {
+		const first = migrate(fixture);
+		renameSync(first.archivePath, fixture.legacyPath);
+		assert.equal(migrate(fixture, { workflowService: recovered }).status, "migrated");
+		assert.equal(recovered.getWorkflowSession(fixture.parentId).workflowRunId, "wfr_legacy");
+		assert.equal(recovered.listWorkflowWaitTokens({ workflowRunId: "wfr_legacy" }).length, 2);
+		assert.equal(recovered.listWorkflowHumanActions({ workflowRunId: "wfr_legacy" }).length, 1);
+		assert.equal(fixture.sessions.get(fixture.childId).parentId, fixture.parentId);
+	} finally { recovered.close(); fixture.cleanup(); }
+});
+
+test("partial migration replays Pibo target changes when only the Workflow target committed", () => {
+	const fixture = createLegacyProjectMigrationFixture();
+	const recoveryPath = join(fixture.root, "pibo-before-migration.sqlite");
+	let recovered;
+	try {
+		fixture.dataStore.db.prepare("VACUUM INTO ?").run(recoveryPath);
+		const first = migrate(fixture);
+		renameSync(first.archivePath, fixture.legacyPath);
+		recovered = new PiboDataStore(recoveryPath, { payloadRootDir: join(fixture.root, "payloads") });
+		assert.equal(migrate(fixture, { dataStore: recovered }).status, "migrated");
+		const sessions = new PiboDataSessionStore(recovered);
+		assert.equal(sessions.get(fixture.parentId).metadata.chatRoomId, fixture.sessions.get(fixture.parentId).metadata.chatRoomId);
+		assert.equal(sessions.get(fixture.parentId).runtimeBinding.nativeSessionId, "thread-parent");
+		assert.equal(recovered.messages.listMessages(fixture.parentId).length, 1);
+	} finally { recovered?.close(); fixture.cleanup(); }
+});
+
+test("archive recovery completes a WAL rename interrupted after the base database moved", () => {
+	const fixture = createLegacyProjectMigrationFixture();
+	const writer = new DatabaseSync(fixture.legacyPath);
+	let writerClosed = false;
+	try {
+		writer.exec("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0; UPDATE projects SET name = 'Preserved WAL name'");
+		const result = migrate(fixture);
+		assert.equal(existsSync(`${result.archivePath}-wal`), true);
+		renameSync(`${result.archivePath}-wal`, `${fixture.legacyPath}-wal`);
+		assert.equal(migrate(fixture).status, "already-migrated");
+		assert.equal(existsSync(`${fixture.legacyPath}-wal`), false);
+		writer.close(); writerClosed = true;
+		const archive = new DatabaseSync(result.archivePath, { readOnly: true });
+		try { assert.equal(archive.prepare("SELECT name FROM projects").get().name, "Preserved WAL name"); }
+		finally { archive.close(); }
+	} finally { if (!writerClosed) writer.close(); fixture.cleanup(); }
+});

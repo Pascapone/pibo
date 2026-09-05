@@ -27,7 +27,7 @@ function configure(service, id = "ps_root") {
 }
 function start(service, id = "ps_root", runId = `wfr_${id}`) {
 	const snapshot = service.getWorkflowSessionSnapshotForSession(id);
-	return service.startWorkflowSessionRun({ piboSessionId: id, runId, workflowId: definition.id, workflowVersion: definition.version, snapshotId: snapshot.id, effectiveDefinitionHash: snapshot.workflow.effectiveDefinitionHash, current: { status: "running", initialNodeIds: ["agent"] }, inputValues: configuration.inputValues });
+	return service.startWorkflowSessionRun({ piboSessionId: id, runId, workflowId: definition.id, workflowVersion: definition.version, snapshotId: snapshot.id, effectiveDefinitionHash: snapshot.workflow.effectiveDefinitionHash, current: { status: "pending", initialNodeIds: ["agent"] }, inputValues: configuration.inputValues });
 }
 function wait(service, id, expiresAt, piboSessionId = "ps_root") {
 	return service.saveWorkflowWaitToken({ id, piboSessionId, workflowRunId: "wfr_ps_root", actions: [{ id: "approve", kind: "approve" }, { id: "cancel", kind: "cancel" }], prompt: `Review ${id}`, status: "pending", createdAt: "2026-01-01T00:00:00.000Z", ...(expiresAt ? { expiresAt } : {}) });
@@ -78,7 +78,8 @@ test("start is transactional and idempotent across service instances", () => wit
 	configure(service);
 	const first = start(service);
 	assert.equal(first.alreadyStarted, false);
-	assert.equal(first.workflowSession.state, "running");
+	assert.equal(first.workflowSession.state, "pending");
+	assert.equal(first.run.status, "pending", "recording a run does not pretend an executor started");
 	assert.deepEqual(first.run.current.initialNodeIds, ["agent"]);
 	const reopened = new ChatWorkflowSessionService(path);
 	try {

@@ -158,7 +158,7 @@ export function workflowVersionFromSnapshot(snapshot: PiboWorkflowSessionSnapsho
 export function createWorkflowRunCurrent(definition: PiboJsonObject): PiboJsonObject {
 	const initialNodeIds = workflowInitialNodeIds(definition);
 	return {
-		status: "running",
+		status: "pending",
 		initialNodeIds,
 		...(initialNodeIds.length === 1 ? { nodeId: initialNodeIds[0] } : {}),
 	};

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import type { WorkflowDefinition, WorkflowHumanActionRecord, WorkflowRun, WorkflowWaitToken } from "@pasko70/pibo-workflows";
-import { SqliteWorkflowRunStore } from "@pasko70/pibo-workflows";
+import type { WorkflowDefinition, WorkflowHumanActionRecord, WorkflowRun, WorkflowWaitToken } from "../../../../packages/workflows/dist/index.js";
+import { SqliteWorkflowRunStore } from "../../../../packages/workflows/dist/index.js";
 import { piboHomePath } from "../../../core/pibo-home.js";
 import type { PiboJsonObject, PiboJsonValue } from "../../../core/events.js";
 import type {
@@ -170,7 +170,7 @@ export class ChatWorkflowSessionService {
 				workflowDefinitionHash: input.effectiveDefinitionHash,
 				definitionSnapshotId: definitionSnapshot.id,
 				piboSessionId: input.piboSessionId,
-				status: "running",
+				status: "pending",
 				current: input.current,
 				input: input.inputValues,
 				state: { global: {} },
@@ -179,7 +179,7 @@ export class ChatWorkflowSessionService {
 				updatedAt: now,
 			};
 			this.runtimeStore.saveRun(run);
-			this.runtimeStore.db.prepare("UPDATE workflow_session_links SET workflow_run_id = ?, state = 'running', updated_at = ? WHERE pibo_session_id = ? AND workflow_run_id IS NULL")
+			this.runtimeStore.db.prepare("UPDATE workflow_session_links SET workflow_run_id = ?, state = 'pending', updated_at = ? WHERE pibo_session_id = ? AND workflow_run_id IS NULL")
 				.run(run.id, now, input.piboSessionId);
 			return { workflowSession: this.getWorkflowSession(input.piboSessionId)!, run: workflowRunToPublic(run, snapshot.id), alreadyStarted: false };
 		});
