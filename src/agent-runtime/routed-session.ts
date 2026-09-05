@@ -561,10 +561,25 @@ export class RuntimeRoutedSession {
 	}
 
 	async setModel(model: ModelProfile): Promise<ModelProfile> {
-		const setModel = this.runtimeSession.controls?.setModel;
-		if (!setModel) throw runtimeCapabilityError(this.runtimeSession, "in-session model switching");
-		const selected = await setModel(model);
+		const selected = await this.setRuntimeModelPreservingReasoning(model);
 		this.primaryModel = { ...selected };
+		return selected;
+	}
+
+	private async setRuntimeModelPreservingReasoning(model: ModelProfile): Promise<ModelProfile> {
+		const controls = this.runtimeSession.controls;
+		const setModel = controls?.setModel;
+		if (!setModel) throw runtimeCapabilityError(this.runtimeSession, "in-session model switching");
+		const priorReasoning = controls.getReasoning?.() ?? this.runtimeSession.getStatus().reasoning;
+		const selected = await setModel(model);
+		if (!priorReasoning?.supported || !priorReasoning.value || !controls.setReasoning) return selected;
+
+		const currentReasoning = controls.getReasoning?.() ?? this.runtimeSession.getStatus().reasoning;
+		if (!currentReasoning?.supported || currentReasoning.value === priorReasoning.value) return selected;
+		if (currentReasoning.availableValues?.length && !currentReasoning.availableValues.includes(priorReasoning.value)) {
+			return selected;
+		}
+		controls.setReasoning(priorReasoning.value);
 		return selected;
 	}
 
@@ -877,9 +892,9 @@ export class RuntimeRoutedSession {
 		event: PiboMessageEvent,
 		inFlight: RuntimeInFlightMessage,
 	): Promise<void> {
-		const setModel = this.runtimeSession.controls?.setModel;
+		const canSetModel = Boolean(this.runtimeSession.controls?.setModel);
 		const fallbackModels = this.modelFallbacks.filter((model) => !sameModel(model, this.primaryModel));
-		if (!setModel || fallbackModels.length === 0) {
+		if (!canSetModel || fallbackModels.length === 0) {
 			await this.runtimeSession.prompt({
 				text: event.text,
 				source: promptSource(event.source),
@@ -896,7 +911,7 @@ export class RuntimeRoutedSession {
 				if (this.disposed || inFlight.cancelled) return;
 				if (attempt > 0) {
 					try {
-						await setModel(fallbackModels[attempt - 1]!);
+						await this.setRuntimeModelPreservingReasoning(fallbackModels[attempt - 1]!);
 						switchedModel = true;
 					} catch {
 						continue;
@@ -930,7 +945,7 @@ export class RuntimeRoutedSession {
 			this.pendingProviderFailure = undefined;
 			if (switchedModel && this.primaryModel && !this.disposed) {
 				try {
-					await setModel(this.primaryModel);
+					await this.setRuntimeModelPreservingReasoning(this.primaryModel);
 				} catch (error) {
 					console.warn(`Failed to restore primary model for Pibo session "${this.piboSessionId}": ${errorMessage(error)}`);
 				}
