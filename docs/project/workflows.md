@@ -15,7 +15,7 @@ migration_lineage:
   source_body_sha256: "677643fdf4d73d50d4cf63159add7604ffe88954994dad5ae47f0ea47f2ef4a0"
 generated:
   by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-09-05T07:15:00Z"
+  at: "2026-09-05T10:02:49Z"
 ---
 # Pibo Workflows
 
@@ -32,7 +32,7 @@ Pibo currently has two workflow layers:
 
 Rooms group Sessions and may supply workspace defaults. Workflow definitions, immutable configuration snapshots and execution facts belong to the Workflow store; conversation history and runtime bindings belong to Pibo Sessions.
 
-The remaining gap is general executor integration. The editor supports bounded manual trigger-to-agent traversal, including fan-out, through ordinary chat Sessions and persists canonical snapshots, Runs, attempts, and transfers; it rejects unsupported joins and graph shapes. Starting a configured Session Workflow persists one canonical `pending` Run and explicitly does not activate general graph execution.
+The remaining gap is general executor integration. The editor supports bounded manual trigger-to-agent traversal, including fan-out, through ordinary chat Sessions and persists canonical snapshots, Runs, attempts, and transfers; it rejects unsupported joins and graph shapes. Its Run Room selector defaults to the selected Room, shows that Room's workspace, and routes created agent Sessions there. The API accepts optional `roomId` and `workspace`, validates explicit Room write permission and workspace shape, and otherwise inherits the resolved Room workspace. Starting a configured Session Workflow persists one canonical `pending` Run and explicitly does not activate general graph execution; the explanatory state remains visible after reload.
 
 ## Near-term direction
 
@@ -71,7 +71,10 @@ A trigger is a workflow node that produces the first payload for a run. The firs
 
 - the trigger is visually distinct from normal nodes;
 - the user clicks Play on the trigger in the Workflows editor;
+- the user chooses a Run Room, defaulted to the selected Room, and sees its workspace;
 - the user enters text input in the current manual test slice;
+- the API validates Room write permission and any explicit workspace before execution;
+- ordinary agent Sessions inherit the chosen Room workspace unless a valid workspace override is supplied;
 - validation runs before execution;
 - the trigger output moves over outgoing edges like any other node output.
 
@@ -134,7 +137,15 @@ Workflow execution facts support editor runs and the Workflow view of normal Pib
 - output and diagnostics;
 - status changes and lifecycle events.
 
-XState remains a deterministic projection for visualization and inspection. It is not the durable execution source of truth.
+XState remains a deterministic projection for visualization and inspection. It is not the durable execution source of truth. Session Workflow header and view state derive from canonical inspection, independently of ordinary Session activity.
+
+## Acceptance baseline
+
+At integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks and all typechecks passed. The added manual editor API test passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code whole-root rerun remains underway and has no recorded result here. The prior complete root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` remains historical evidence: 2,744 total, 2,739 passed, 0 failed, 5 skipped. All 144 Workflow package tests passed previously; package source did not change.
+
+Headful acceptance created a draft, authored and connected manual-trigger and agent nodes, saved text input/output settings, selected Room `Session-native QA`, and ran actual `openai-codex` in `/tmp/pibo-session-native-workspace`. Run `wfr_ac3db39f-229f-4082-9485-4f6e6663a8b5` and ordinary agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` completed with `MANUAL_NATIVE_ROOM_OK`, two node attempts, one edge transfer, immutable executable snapshot, and actual output. Reopening the Workflow view preserved completed state independently of ordinary Session activity. The persisted pending-start explanation survived reload. Desktop and mobile layouts fit their tested viewports.
+
+A clean `npm install --omit=dev` into an empty directory also passed CLI version/help, canonical persistent Workflow-service reopen, no-workspace-symlink, and no-retired-storage checks. No completed headful raw-IR editing, publish, human-action submission, or job-control acceptance is claimed.
 
 ## Security and privacy rules
 

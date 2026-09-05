@@ -7,19 +7,19 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T08:51:15Z"
+  at: "2026-09-05T10:02:49Z"
 sources:
   - resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Rooms and normal Pibo Sessions implementation"
 implementation:
   state: "current"
-  baseline_commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  baseline_commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   source_evidence: "performed"
-  test_execution: "complete isolated root suite passed: 2744 tests, 2739 passed, 0 failed, 5 skipped"
-  build_typecheck_execution: "clean full build and all typechecks passed"
-  browser_execution: "headed Room workspace editing/inheritance and desktop/mobile views passed"
+  test_execution: "one added manual editor API test and 20 focused tests passed at final integration; complete root-suite counts remain historical at 14cbaf0f"
+  build_typecheck_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
+  browser_execution: "headed Room workspace editing/inheritance, manual Run Room selection, actual provider workspace, and desktop/mobile fit passed"
 traceability:
-  commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   requirements:
     - id: "WEB-TOPOLOGY-CONTAINERS-001"
       status: "implemented"
@@ -30,9 +30,15 @@ traceability:
           symbol: "migrateLegacyProjects"
         - path: "src/apps/chat/web-app.ts"
           symbol: "createChatWebApp"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "requireRoom"
+        - path: "src/apps/chat/chat-request-normalizers.ts"
+          symbol: "normalizeRoomWorkspace"
       tests:
         - path: "test/web-channel.test.mjs"
           name: "chat web app starts new room sessions in the room workspace"
+        - path: "test/web-channel.test.mjs"
+          name: "manual editor runs target normal Rooms and persist canonical inspection facts"
         - path: "test/legacy-project-migration.test.mjs"
           name: "fresh storage does not create or open the retired database"
         - path: "test/legacy-project-migration.test.mjs"
@@ -126,7 +132,7 @@ A Room groups Sessions and may define a default workspace. A Pibo Session remain
 # Current behavior
 
 - The authenticated App Context exposes one Room and Session topology. Login identity does not create a tenant partition.
-- Session creation resolves an explicit workspace or the selected Room's workspace through the normal Session path.
+- Session creation resolves an explicit workspace or the selected Room's workspace through the normal Session path. Manual editor Runs expose the selected Room and route their ordinary agent Sessions in that Room's inherited workspace unless the API supplies a valid explicit workspace.
 - Session IDs, hierarchy, history, runtime bindings, profile, model, title, status, archive state, and timestamps remain Session-owned.
 - Room and Session trees expose deterministic hierarchy, selection, status, unread, pinned, archived, and Workflow-kind projections.
 - Rename, archive, delete, read-state, message, trace, preview, and runtime actions operate on normal Room or Session resources.
@@ -136,7 +142,7 @@ A Room groups Sessions and may define a default workspace. A Pibo Session remain
 
 ## Requirement: WEB-TOPOLOGY-CONTAINERS-001: Rooms own grouping and workspace defaults
 
-Rooms MUST be the only Chat Web grouping container. A Room MAY define a workspace used as the default for new Sessions, and Room hierarchy MUST reject cycles. Fresh storage MUST NOT create or open retired container storage.
+Rooms MUST be the only Chat Web grouping container. A Room MAY define a workspace used as the default for new Sessions, including ordinary agent Sessions created by a manual Workflow Run. Explicit manual-run Room selection MUST require write permission, and its workspace MUST be inherited unless the API supplies a valid explicit workspace. Room hierarchy MUST reject cycles. Fresh storage MUST NOT create or open retired container storage.
 
 ## Requirement: WEB-TOPOLOGY-SESSIONS-002: All conversations remain normal Pibo Sessions
 
@@ -162,11 +168,13 @@ Browser state, caches, projections, overlays, and iframe presence do not grant a
 
 # Known limits
 
-Headed Room workspace editing and inheritance and relevant desktop/mobile views passed. Screen-reader, zoom, desktop PWA, and separately provisioned migration-upgrade browser acceptance remain unperformed.
+Headed Room workspace editing/inheritance and manual Run Room selection passed, including an actual `openai-codex` agent Session in `/tmp/pibo-session-native-workspace`. Relevant desktop/mobile layouts fit their viewports. Screen-reader, zoom, desktop PWA, and separately provisioned migration-upgrade browser acceptance remain unperformed.
 
 # Verification and traceability
 
-Source and named tests are bound to integrated commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`. The clean full build, all typechecks, and complete isolated root suite passed. The suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0. Headed Room workspace editing and inheritance, desktop/mobile views, and a real normal Session `pwd` through `openai-codex` succeeded. This document does not claim manual editor QA, gateway deployment, or Pibo2 validation.
+Changed current source contracts and named test locators are bound to final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. After final integration, source checks and all typechecks passed; the added manual editor Room/API test passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code whole-root rerun remains underway and is not claimed. The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0.
+
+Headful acceptance selected Room `Session-native QA` and proved that actual manual agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` ran through `openai-codex` in the Room workspace `/tmp/pibo-session-native-workspace`. Existing Room workspace editing/inheritance, Workflow Session creation/start/inspection, desktop/mobile views, and a real normal Session `pwd` remained passed. Gateway deployment and Pibo2 validation are not claimed.
 
 # Related concepts
 

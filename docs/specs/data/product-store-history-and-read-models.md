@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T08:51:15Z"
+  at: "2026-09-05T10:02:49Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 implementation:
@@ -282,11 +282,11 @@ Related ownership boundaries:
 - Non-current claim excluded: describe ChatNavigationQueryService as a complete native navigation implementation; its source marks it reserved and current call sites compose navigation elsewhere.
 - Non-current claim excluded: claim product store code authenticates payload reads; route authentication belongs to Web/security owners.
 - Current limit or evidence gap: No focused corruption test was found for bounded payload SHA/length validation and durable-preview fallback.
-- Current evidence limit: Manual editor headful QA remains underway; it does not alter this store's ownership contract.
+- Current evidence boundary: Completed scoped manual editor acceptance used ordinary Session history and Workflow-owned execution facts; it does not move either authority into this store.
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`. The clean full build, all typechecks, and complete isolated root suite passed. The suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0. Headed Room workspace editing and inheritance and a real normal Session `pwd` through `openai-codex` also succeeded. This specification does not claim manual editor QA, Pibo2, or deployment evidence.
+Source symbols and named tests remain bound to commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`, where the clean full build, all typechecks, and complete isolated root suite passed with 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. At final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks and all typechecks passed; its whole-root rerun remains underway and is not claimed. Headed Room workspace inheritance and actual normal and manual `openai-codex` Sessions succeeded. This specification does not claim Pibo2 or deployment evidence.
 
 # Related concepts
 

@@ -10,7 +10,7 @@ status: stable
 authority: normative
 generated:
   by: openai-codex/gpt-5.6-sol
-  at: '2026-09-05T08:51:15Z'
+  at: '2026-09-05T10:02:49Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: Integrated Workflow framework source and test evidence
@@ -21,7 +21,7 @@ implementation:
   source_evidence: performed
   focused_test_execution: 144 Workflow package tests and the complete isolated root suite passed
   build_and_typecheck_execution: clean full build and all typechecks passed
-  browser_execution: headed integrated Room and Workflow Session acceptance passed; manual editor QA remains pending
+  browser_execution: headed supported manual editor authoring, real provider execution, canonical inspection, and desktop/mobile fit passed
 traceability:
   commit: 14cbaf0fd04cfa321674b570baeb40e543d957cb
   requirements:
@@ -187,7 +187,7 @@ The workflow package defines the current IR, registry, validation, schema-v4 sto
 - **Target path:** `docs/specs/orchestration/workflow-framework-runtime-store.md`
 - **Authority:** integrated source and test evidence at `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
-- **Evidence rule:** Source and named-test locators resolve at the integrated commit. The complete isolated root suite, Workflow package suite, build, typechecks, and stated headed acceptance are completed evidence; manual editor QA and broader general executor acceptance remain pending.
+- **Evidence rule:** Package source and named-test locators resolve at `14cbaf0fd04cfa321674b570baeb40e543d957cb`; package source is unchanged through final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. The package suite, prior complete root suite, build, final source/typechecks, focused final tests, and scoped headed acceptance are separate evidence classes. Broader general executor acceptance remains pending.
 
 ## Public surfaces
 
@@ -398,4 +398,6 @@ Projection state cannot mutate execution truth and declares exposesPrivatePayloa
 - Source/test baseline: `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
 - The clean full build, all typechecks, all 144 Workflow package tests, and the complete isolated root suite passed. The root suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0.
 - Headed Room workspace editing and inheritance, Workflow Session creation/start/inspection, desktop/mobile views, and a real normal Session `pwd` through `openai-codex` succeeded.
-- Manual editor QA remains underway and is not claimed. General graph restart execution, joins, webhooks, and scheduled triggers remain known gaps.
+- Final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67` passed source checks, all typechecks, one added manual editor API test, and a 20-test routed-runtime/UI/manual/header matrix. Its whole-root rerun remains underway and is not claimed.
+- Scoped headful acceptance proved UI authoring of a manual-trigger-to-agent graph, actual `openai-codex` execution in the selected Room workspace, completed canonical inspection with two attempts and one transfer, and desktop/mobile fit.
+- General graph restart execution, joins, webhooks, and scheduled triggers remain known gaps. Raw-IR editing, publish, human-action submission, and job controls were not accepted headfully.

@@ -9,21 +9,21 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T08:51:15Z"
+  at: "2026-09-05T10:02:49Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Integrated App Shell source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  baseline_commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   package: "WP-06+07-WEB"
   source_evidence: "performed"
-  test_execution: "complete isolated root suite passed: 2744 tests, 2739 passed, 0 failed, 5 skipped"
-  build_typecheck_package_execution: "clean full build and all typechecks passed"
-  browser_execution: "headed desktop/mobile Room and Workflow Session acceptance passed"
+  test_execution: "20 focused routed-runtime/UI/manual/header tests passed at final integration; complete root-suite counts remain historical at 14cbaf0f"
+  build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
+  browser_execution: "headed Room, Workflow Session, manual Run Room dialog, and desktop/mobile viewport acceptance passed"
 traceability:
-  commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   requirements:
     - id: "WEB-SHELL-MOUNT-001"
       status: "implemented"
@@ -226,7 +226,7 @@ Chat API/static registration, bootstrap/navigation composition, route-addressabl
 
 ## Scope
 
-This specification describes implemented behavior at integrated traceability commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
+This specification describes implemented behavior at integrated traceability commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`.
 
 ### In scope
 
@@ -404,7 +404,7 @@ Deep routes, service-worker controller changes, desktop PWA display modes, and o
 ## Known limits
 
 - Evidence gap: No headful evidence for desktop PWA detached windows, controller updates, or deep-link fallback.
-- Evidence gap: Manual editor headful QA remains underway.
+- Evidence gap: Raw-IR editing, publish, human-action submission, and job controls were not exercised headfully.
 
 ## Reconciled stale claims
 
@@ -416,10 +416,10 @@ Deep routes, service-worker controller changes, desktop PWA display modes, and o
 
 ## Verification and traceability
 
-- Source and named-test locators resolve at integrated commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
-- The clean full build, all typechecks, and complete isolated root suite passed. The suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0.
-- Headed desktop/mobile Room and Workflow Session views passed. Room workspace editing and inheritance and a real normal Session `pwd` through `openai-codex` also succeeded.
-- Manual editor QA remains underway. Desktop PWA, external gateway deployment, and Pibo2 acceptance are not claimed.
+- Source and named-test locators resolve at final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. Source checks and all typechecks passed after integration; the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code whole-root rerun remains underway and is not claimed.
+- The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0.
+- Headed desktop/mobile Room and Workflow Session views passed. At 1440x1000 and 390x844, document width equaled viewport width; the mobile Run Room dialog at x=38, y=208, width=299, height=317 fit its viewport. Room workspace editing/inheritance, supported manual execution, and real normal and manual `openai-codex` Sessions also succeeded.
+- Raw-IR editing, publish, human-action submission, job controls, desktop PWA, external gateway deployment, and Pibo2 acceptance are not claimed.
 
 ## Related concepts
 

@@ -7,19 +7,19 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T08:51:15Z"
+  at: "2026-09-05T10:02:49Z"
 sources:
   - resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Workflow catalog and Session-native integration"
 implementation:
   state: "current"
-  baseline_commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  baseline_commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   source_evidence: "performed"
-  test_execution: "144 Workflow package tests and complete isolated root suite passed"
-  build_typecheck_execution: "clean full build and all typechecks passed"
-  browser_execution: "headed Workflow Session creation/start/inspection and desktop/mobile views passed; manual editor QA remains pending"
+  test_execution: "one added manual editor API test and 20 focused routed-runtime/UI/manual/header tests passed at the final integration; the complete root-suite count remains historical at 14cbaf0f"
+  build_typecheck_execution: "source checks and all typechecks passed after final integration"
+  browser_execution: "headed manual editor Room selection, real provider run, canonical inspection, pending explanation reload, Workflow Session, Room, and desktop/mobile acceptance passed"
 traceability:
-  commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
   requirements:
     - id: "ORCH-WFP-001"
       status: "implemented"
@@ -54,6 +54,12 @@ traceability:
           symbol: "normalizeWorkflowSessionConfiguration"
         - path: "src/apps/chat/workflow-manual-trigger-runtime.ts"
           symbol: "runWorkflowManualTextTrigger"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "normalizeWorkflowDraftManualTriggerRunBody"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "requireRoom"
+        - path: "src/apps/chat/chat-request-normalizers.ts"
+          symbol: "normalizeRoomWorkspace"
       tests:
         - path: "test/web-channel.test.mjs"
           name: "chat web exposes only session-native workflow routes"
@@ -61,9 +67,11 @@ traceability:
           name: "session-native workflow Sessions share definitions, start idempotently, inspect facts, message, archive, and delete"
         - path: "test/workflow-manual-trigger-recovery.test.mjs"
           name: "manual workflow agent nodes use normal Sessions with workspace and stable workflow linkage"
-      public: ["POST /api/chat/workflow-sessions", "GET /api/chat/sessions/:piboSessionId/workflow", "POST /api/chat/sessions/:piboSessionId/workflow/start"]
+        - path: "test/web-channel.test.mjs"
+          name: "manual editor runs target normal Rooms and persist canonical inspection facts"
+      public: ["POST /api/chat/workflow-sessions", "GET /api/chat/sessions/:piboSessionId/workflow", "POST /api/chat/sessions/:piboSessionId/workflow/start", "POST /api/chat/workflows/drafts/:draftId/manual-trigger-runs"]
       failures:
-        - "Invalid Workflow selection, input, overrides, or unsupported manual graph shapes fail without fabricated execution state."
+        - "Invalid Workflow selection, input, overrides, Room permission, workspace, or unsupported manual graph shapes fail without fabricated execution state."
       confidence: "high"
     - id: "ORCH-WFP-003"
       status: "implemented"
@@ -118,7 +126,7 @@ A Workflow-backed conversation is a normal Pibo Session with a Workflow link. Ro
 # Current behavior
 
 - The Workflow library supports drafts, graph and raw IR editing, validation, immutable published versions, version history, prompt assets, duplication, archive, deletion tombstones, and historical inspection.
-- Bounded manual editor execution routes ordinary chat Sessions, waits for final assistant messages, supports deterministic fan-out, and persists canonical definition snapshots, Runs, node attempts, and edge transfers.
+- Bounded manual editor execution accepts an optional `roomId` and `workspace`, validates write permission for an explicit Room, otherwise uses the default Room, routes ordinary chat Sessions, inherits the selected Room workspace unless an explicit valid workspace is supplied, waits for final assistant messages, supports deterministic fan-out, and persists canonical definition snapshots, Runs, node attempts, and edge transfers.
 - A published Workflow can create a normal Session in a selected or default Room and workspace. Creation freezes its Workflow version, effective definition, eligible overrides, and input configuration.
 - Starting a configured Workflow Session is idempotent and records one canonical `pending` Run. It does not start general graph execution. The API returns HTTP 202 for a new record and states: `Workflow run recorded. General graph execution is not connected to this surface; supported manual triggers run from the editor.`
 - Session inspection returns the stored link and available definition snapshot, configuration snapshot, Run, waits, human actions, node attempts, edge transfers, and lifecycle events. It does not fabricate progress from a definition.
@@ -127,6 +135,7 @@ A Workflow-backed conversation is a normal Pibo Session with a Workflow link. Ro
 # Public HTTP contract
 
 - `POST /api/chat/workflow-sessions` accepts `roomId`, `workspace`, `profile`, required `workflowId` and `workflowVersion`, and optional title, inputs, eligible prompt overrides, model, thinking level, and fast mode.
+- `POST /api/chat/workflows/drafts/:draftId/manual-trigger-runs` accepts required `triggerNodeId` and text `input` plus optional `roomId` and `workspace`. An explicit Room requires write permission; without a Room the API uses the default Room. Runtime Sessions inherit the resolved Room workspace unless a valid explicit workspace overrides it.
 - `GET /api/chat/sessions/:piboSessionId/workflow` returns `workflowSession`, available snapshots and Run, and arrays for waits, human actions, node attempts, edge transfers, and lifecycle events. A Session without Workflow linkage returns 404.
 - `POST /api/chat/sessions/:piboSessionId/workflow/start` records or returns the one pending Run and reports whether it already existed.
 - `POST /api/chat/sessions/:piboSessionId/workflow/human-actions` validates and resolves one action against the linked Session and Run.
@@ -141,7 +150,7 @@ The product MUST persist one active draft per editable Workflow, revisioned prom
 
 Workflow creation and start APIs MUST create or address normal Pibo Sessions by `piboSessionId`. They MUST validate Workflow version, input, eligible overrides, registry references, and no-inline-code boundaries before changing durable state.
 
-Manual editor execution MUST preserve the working text-trigger-to-agent and fan-out slice, use ordinary chat Sessions, and persist canonical Workflow facts. It MUST reject unsupported joins and MUST NOT be described as a general restart-resuming executor.
+Manual editor execution MUST preserve the working text-trigger-to-agent and fan-out slice, use ordinary chat Sessions in a write-authorized selected or default Room, inherit that Room's workspace unless a valid explicit workspace is supplied, and persist canonical Workflow facts. It MUST reject invalid Room/workspace input and unsupported joins, and MUST NOT be described as a general restart-resuming executor.
 
 ## Requirement: ORCH-WFP-003: Session links and Runs use one canonical store
 
@@ -165,11 +174,13 @@ Workflow mutations require authentication and same-origin JSON. Stored and retur
 
 # Known limits
 
-General arbitrary-graph execution, full restart resumption, joins, webhooks, and scheduled Workflow triggers remain gaps in the [runtime follow-up plan](/plans/workflow-trigger-and-runtime-follow-ups.md). Headed Workflow Session creation, pending start, inspection, desktop/mobile views, and a real normal Session provider turn passed. Manual editor headful QA remains underway.
+General arbitrary-graph execution, full restart resumption, joins, webhooks, and scheduled Workflow triggers remain gaps in the [runtime follow-up plan](/plans/workflow-trigger-and-runtime-follow-ups.md). Completed headed acceptance covered Workflow Session creation, pending start and reload explanation, inspection, desktop/mobile views, Room workspace editing/inheritance, and real `openai-codex` runs from both a normal Session and the supported manual editor slice. It did not cover headful raw-IR editing, publish, human-action submission, or job controls.
 
 # Verification and traceability
 
-Source and named tests are bound to integrated commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`. The clean full build, all typechecks, 144 Workflow package tests, 56 focused migration/storage/router/header tests, 62 focused UI source tests, and complete isolated root suite passed. The root suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0. Headed Workflow Session creation/start/inspection and desktop/mobile views and a real normal Session `pwd` through `openai-codex` succeeded. Manual editor QA, gateway deployment, and Pibo2 validation are not claimed.
+Changed current source contracts and named test locators are bound to final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. After final integration, source checks and all typechecks passed; the added API test “manual editor runs target normal Rooms and persist canonical inspection facts” passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code whole-root rerun remains underway and is not claimed. The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. All 144 Workflow package tests passed previously, and package source is unchanged.
+
+Headful acceptance created a draft in the UI, added and connected manual-trigger and agent nodes, saved text input/output settings, and selected ordinary Room `Session-native QA` with workspace `/tmp/pibo-session-native-workspace`. Actual `openai-codex` execution returned `MANUAL_NATIVE_ROOM_OK` and `/tmp/pibo-session-native-workspace`. Run `wfr_ac3db39f-229f-4082-9485-4f6e6663a8b5` and ordinary agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` reopened with completed canonical inspection: two node attempts, one edge transfer, immutable executable definition snapshot, and actual output. An empty-directory package install with `npm install --omit=dev` also created and reopened the canonical persistent Workflow service without a workspace-package symlink or retired storage. Gateway deployment and Pibo2 validation are not claimed.
 
 # Related concepts
 
