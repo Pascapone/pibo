@@ -60,7 +60,7 @@ export type WorkflowVersionHistoryResponse = {
 export type WorkflowCatalogAction =
 	| "view"
 	| "duplicate"
-	| "create_project_session"
+	| "create_workflow_session"
 	| "edit_draft"
 	| "validate"
 	| "publish"
@@ -78,7 +78,7 @@ export type WorkflowCatalogEditability = {
 	canPublish: boolean;
 	canArchive: boolean;
 	canDelete: boolean;
-	canCreateProjectSession: boolean;
+	canCreateWorkflowSession: boolean;
 };
 
 export type WorkflowCatalogVersionSummary = WorkflowCatalogVersionRecord & {
@@ -169,22 +169,22 @@ export type WorkflowCatalogServices<TState extends WorkflowCatalogState> = {
 
 export const STATIC_WORKFLOW_VERSION_CATALOG: WorkflowCatalogVersionRecord[] = [
 	{
-		id: "standard-project",
+		id: "standard-workflow",
 		version: "1.0.0",
-		title: "Standard Project",
-		description: "Configured workflow-backed Project session for feature, bugfix, and review work. Creation saves the configuration without starting a run.",
+		title: "Standard Workflow",
+		description: "Configured workflow-backed Workflow Session for feature, bugfix, and review work. Creation saves the configuration without starting a run.",
 		source: "code",
 		status: "published",
-		tags: ["project", "workflow"],
+		tags: ["session", "workflow"],
 	},
 	{
 		id: "simple-chat",
 		version: "1.0.0",
 		title: "Simple Chat",
-		description: "Baseline Project chat workflow that preserves the existing one-session chat behavior.",
+		description: "Baseline normal Session chat workflow that preserves the existing one-session chat behavior.",
 		source: "code",
 		status: "published",
-		tags: ["project", "chat"],
+		tags: ["session", "chat"],
 	},
 	{
 		id: "ui-review-workflow",
@@ -199,7 +199,7 @@ export const STATIC_WORKFLOW_VERSION_CATALOG: WorkflowCatalogVersionRecord[] = [
 		id: "ui-draft-workflow",
 		version: "0.1.0-draft",
 		title: "UI Draft Workflow",
-		description: "Unpublished fixture used to enforce Project session creation boundaries.",
+		description: "Unpublished fixture used to enforce Workflow Session creation boundaries.",
 		source: "ui",
 		status: "draft",
 		tags: ["workflow-ui", "draft"],
@@ -208,7 +208,7 @@ export const STATIC_WORKFLOW_VERSION_CATALOG: WorkflowCatalogVersionRecord[] = [
 		id: "archived-review-workflow",
 		version: "1.0.0",
 		title: "Archived Review Workflow",
-		description: "Archived fixture omitted from default Project session creation choices.",
+		description: "Archived fixture omitted from default Workflow Session creation choices.",
 		source: "ui",
 		status: "archived",
 		tags: ["workflow-ui", "archived"],
@@ -216,7 +216,7 @@ export const STATIC_WORKFLOW_VERSION_CATALOG: WorkflowCatalogVersionRecord[] = [
 ];
 
 export function buildWorkflowVersionPicker(state: WorkflowCatalogState, selectedWorkflowId?: string, selectedWorkflowVersion?: string): WorkflowVersionPickerResponse {
-	const options = buildProjectWorkflowVersionOptions(state);
+	const options = buildWorkflowVersionOptions(state);
 	const normalizedWorkflowId = selectedWorkflowId?.trim() || undefined;
 	const normalizedWorkflowVersion = selectedWorkflowVersion?.trim() || undefined;
 	const selected = normalizedWorkflowId
@@ -226,7 +226,7 @@ export function buildWorkflowVersionPicker(state: WorkflowCatalogState, selected
 	if (normalizedWorkflowId && !selected) {
 		diagnostics.push({
 			code: "WorkflowCatalogError.unknownWorkflowVersion",
-			message: `Workflow version '${normalizedWorkflowId}${normalizedWorkflowVersion ? `@${normalizedWorkflowVersion}` : ""}' is not available for Project session creation.`,
+			message: `Workflow version '${normalizedWorkflowId}${normalizedWorkflowVersion ? `@${normalizedWorkflowVersion}` : ""}' is not available for Workflow Session creation.`,
 			severity: "error",
 			path: "$.workflow",
 			registryRef: normalizedWorkflowVersion ? `${normalizedWorkflowId}@${normalizedWorkflowVersion}` : normalizedWorkflowId,
@@ -242,7 +242,7 @@ export function buildWorkflowVersionPicker(state: WorkflowCatalogState, selected
 }
 
 export function buildWorkflowVersionHistory(state: WorkflowCatalogState, selectedWorkflowId?: string, selectedWorkflowVersion?: string): WorkflowVersionHistoryResponse {
-	const options = [...buildProjectWorkflowVersionCatalog(state)]
+	const options = [...buildWorkflowVersionCatalog(state)]
 		.filter((option) => option.status !== "deleted")
 		.sort(compareWorkflowCatalogVersionRecords)
 		.map(workflowVersionHistoryOptionFromCatalogRecord);
@@ -270,8 +270,8 @@ export function buildWorkflowVersionHistory(state: WorkflowCatalogState, selecte
 	};
 }
 
-export function buildProjectWorkflowVersionOptions(state?: WorkflowCatalogState): WorkflowVersionPickerOption[] {
-	return buildProjectWorkflowVersionCatalog(state)
+export function buildWorkflowVersionOptions(state?: WorkflowCatalogState): WorkflowVersionPickerOption[] {
+	return buildWorkflowVersionCatalog(state)
 		.filter((option): option is WorkflowCatalogVersionRecord & { status: "published" } => option.status === "published")
 		.map(workflowVersionPickerOptionFromCatalogRecord);
 }
@@ -293,7 +293,7 @@ function workflowVersionHistoryOptionFromCatalogRecord(record: WorkflowCatalogVe
 	};
 }
 
-export function buildProjectWorkflowVersionCatalog(state?: WorkflowCatalogState): WorkflowCatalogVersionRecord[] {
+export function buildWorkflowVersionCatalog(state?: WorkflowCatalogState): WorkflowCatalogVersionRecord[] {
 	const recordsByKey = new Map<string, WorkflowCatalogVersionRecord>();
 	for (const record of STATIC_WORKFLOW_VERSION_CATALOG) {
 		const projected = workflowCatalogRecordWithArchiveState(record, state);
@@ -543,7 +543,7 @@ export function workflowCatalogActionsFor(record: Pick<WorkflowCatalogVersionRec
 	if (record.status === "draft") return ["view", "edit_draft", "validate", "publish", "archive", "delete"];
 	if (record.status === "archived") return ["view", "version_history"];
 	if (record.status === "deleted") return ["view"];
-	const actions: WorkflowCatalogAction[] = ["view", "duplicate", "create_project_session", "version_history"];
+	const actions: WorkflowCatalogAction[] = ["view", "duplicate", "create_workflow_session", "version_history"];
 	if (record.source === "ui") actions.push("create_next_draft", "archive", "delete");
 	return actions;
 }
@@ -558,7 +558,7 @@ export function workflowCatalogEditability(actions: WorkflowCatalogAction[]): Wo
 		canPublish: actions.includes("publish"),
 		canArchive: actions.includes("archive"),
 		canDelete: actions.includes("delete"),
-		canCreateProjectSession: actions.includes("create_project_session"),
+		canCreateWorkflowSession: actions.includes("create_workflow_session"),
 	};
 }
 
@@ -778,11 +778,11 @@ function createRunnableWorkflowDefinition(input: {
 		description: input.description,
 		input: {
 			kind: "text",
-			description: "Workflow input provided when a Project session starts.",
+			description: "Workflow input provided when a Workflow Session starts.",
 		},
 		output: {
 			kind: "text",
-			description: "Workflow output returned to the Project session.",
+			description: "Workflow output returned to the Workflow Session.",
 		},
 		initial: "agent",
 		nodes: {

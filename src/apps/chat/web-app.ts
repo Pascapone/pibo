@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
+import { dirname, join } from "node:path";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
 import { OutputRenderSequencer, validRenderSequence } from "../../core/output-render-sequence.js";
@@ -126,7 +127,12 @@ import { ChatRoomService, PiboRoomHierarchyCycleError } from "./data/room-servic
 import { ChatSessionQueryService } from "./data/session-query-service.js";
 import { ChatTimelineQueryService } from "./data/timeline-query-service.js";
 import { ChatHistoryQueryService, type ChatProductHistoryCoverage } from "./data/history-query-service.js";
-import { ChatProjectService, type PiboProject, type PiboProjectSession, type PiboProjectWorkflowSessionConfiguration, type PiboProjectWorkflowSessionSnapshot } from "./data/project-service.js";
+import {
+	ChatWorkflowSessionService,
+	type PiboWorkflowSessionLink,
+	type PiboWorkflowSessionSnapshot,
+} from "./data/workflow-session-service.js";
+import { migrateLegacyProjects } from "./data/legacy-project-migration.js";
 import { PiboDataStore } from "../../data/pibo-store.js";
 import { createDefaultPiboCronStore, type PiboCronStore } from "../../cron/store.js";
 import { createDefaultPiboLoopStore, type PiboLoopStore } from "../../loops/store.js";
@@ -171,13 +177,10 @@ import {
 	CHAT_WEB_API_PREFIX,
 	agentFolderResourceId,
 	agentResourceId,
-	projectResourcePath,
-	projectSessionResourceId,
-	projectWorkflowHumanActionsResource,
-	projectWorkflowSessionStartResource,
 	roomResourcePath,
 	sessionActionResource,
 	sessionResourceId,
+	sessionWorkflowResource,
 	signalResource,
 	workflowArchiveResourceId,
 	workflowCatalogResourceId,
@@ -191,7 +194,6 @@ import {
 	workflowVersionResource,
 } from "./chat-api-routes.js";
 import {
-	assertProjectSessionPatchFields,
 	buildStreamingFixtureSchedule,
 	createAgentInput,
 	createAgentUpdate,
@@ -203,10 +205,6 @@ import {
 	normalizeMessageDelivery,
 	normalizeMessageText,
 	normalizeParentRoomId,
-	normalizeProjectArchived,
-	normalizeProjectDescription,
-	normalizeProjectPath,
-	normalizeProjectSessionArchived,
 	normalizeRoomDeleteConfirmation,
 	normalizeRoomName,
 	normalizeRoomTopic,
@@ -227,10 +225,6 @@ import {
 	type ChatAgentBody,
 	type ChatAgentFolderBody,
 	type ChatMessageBody,
-	type ChatProjectCreateBody,
-	type ChatProjectDeleteBody,
-	type ChatProjectPatchBody,
-	type ChatProjectSessionPatchBody,
 	type ChatRoomCreateBody,
 	type ChatRoomDeleteBody,
 	type ChatRoomPatchBody,
@@ -263,26 +257,26 @@ import {
 	type WorkflowValidationTrigger,
 } from "./workflow-persistence.js";
 import {
-	normalizeProjectWorkflowHumanActionBody,
-	projectWorkflowHumanActionDiagnosticResponse,
-	projectWorkflowHumanActionLifecyclePayload,
-	projectWorkflowHumanActionRuntimeDiagnostic,
-	projectWorkflowHumanActionSubmittedLifecyclePayload,
-	projectWorkflowPendingHumanActionFromToken,
-	validateProjectWorkflowHumanActionRequest,
-	type ChatProjectWorkflowHumanActionBody,
-} from "./project-workflow-human-actions.js";
+	normalizeWorkflowHumanActionBody,
+	workflowHumanActionDiagnosticResponse,
+	workflowHumanActionLifecyclePayload,
+	workflowHumanActionRuntimeDiagnostic,
+	workflowHumanActionSubmittedLifecyclePayload,
+	workflowPendingHumanActionFromToken,
+	validateWorkflowHumanActionRequest,
+	type ChatWorkflowHumanActionBody,
+} from "./workflow-human-actions.js";
 import {
-	createProjectWorkflowRunCurrent,
-	createProjectWorkflowSessionSnapshot,
-	normalizeProjectWorkflowSessionConfiguration,
+	createWorkflowRunCurrent,
+	createWorkflowSessionSnapshot,
+	normalizeWorkflowSessionConfiguration,
 	workflowVersionFromSnapshot,
-	type ChatProjectSessionCreateBody,
-} from "./project-workflow-sessions.js";
+	type ChatWorkflowSessionCreateBody,
+} from "./workflow-sessions.js";
 import {
 	STATIC_WORKFLOW_VERSION_CATALOG,
-	buildProjectWorkflowVersionCatalog,
-	buildProjectWorkflowVersionOptions,
+	buildWorkflowVersionCatalog,
+	buildWorkflowVersionOptions,
 	buildWorkflowCatalogInspect as buildWorkflowCatalogInspectWithServices,
 	buildWorkflowCatalogList as buildWorkflowCatalogListWithServices,
 	buildWorkflowVersionHistory,
@@ -371,7 +365,9 @@ export type ChatWebAppOptions = {
 	reliabilityStorePath?: string;
 	dataStorePath?: string;
 	dataPayloadRootDir?: string;
-	projectStorePath?: string;
+	workflowStorePath?: string;
+	/** Optional one-time migration source. Omit to probe web-projects.sqlite beside the data store. */
+	legacyProjectStorePath?: string;
 	cronStorePath?: string;
 	ralphStorePath?: string;
 	vscodeWeb?: ChatVscodeWebIntegrationOptions;
@@ -450,7 +446,7 @@ type ChatWebAppState = {
 	eventCommands: ChatEventCommands;
 	readState: ChatReadState;
 	roomService: ChatRoomActions;
-	projectService: ChatProjectService;
+	workflowService: ChatWorkflowSessionService;
 	agentStore: CustomAgentStore;
 	reliabilityStore: PiboReliabilityStore;
 	cronStore: PiboCronStore;
@@ -650,19 +646,6 @@ type WorkflowPromptAssetSaveBody = {
 };
 
 
-
-type ChatProjectsBootstrap = ChatBootstrapCatalog & {
-	identity: PiboWebSession["authSession"]["identity"];
-	sharedDefaultProject: PiboProject;
-	project?: PiboProject;
-	projects: PiboProject[];
-	projectSessions: PiboProjectSession[];
-	workflowLifecycleEvents: WorkflowLifecycleEventRecord[];
-	session?: PiboSession;
-	selectedProjectId: string;
-	selectedPiboSessionId?: string;
-	sessions: PiboWebSessionNode[];
-};
 
 type ChatEventCursor = {
 	streamId: number;
@@ -870,6 +853,12 @@ function createReliabilityStore(path?: string): PiboReliabilityStore {
 
 function createDataStore(options: ChatWebAppOptions): PiboDataStore {
 	return new PiboDataStore(options.dataStorePath, { payloadRootDir: options.dataPayloadRootDir });
+}
+
+function workflowStorePath(options: ChatWebAppOptions, dataStore: PiboDataStore): string | undefined {
+	if (options.workflowStorePath) return options.workflowStorePath;
+	if (dataStore.path === ":memory:") return ":memory:";
+	return join(dirname(dataStore.path), "pibo-workflows.sqlite");
 }
 
 function resolveVscodeWebUrl(value: string | undefined): string | undefined {
@@ -1597,23 +1586,6 @@ function requireRoom(
 	return room;
 }
 
-function listSharedProjects(state: ChatWebAppState, _webSession: PiboWebSession, options: { includeArchived?: boolean } = {}): PiboProject[] {
-	return state.projectService.listProjects(options);
-}
-
-function requireSharedProject(
-	state: ChatWebAppState,
-	_webSession: PiboWebSession,
-	projectId: string,
-	options: { includeArchived?: boolean } = {},
-): PiboProject {
-	try {
-		return state.projectService.requireProject(projectId, options);
-	} catch {
-		throw new PiboWebHttpError("Project not found", 404);
-	}
-}
-
 function createSharedChatSession(
 	context: PiboWebAppContext,
 	webSession: PiboWebSession,
@@ -1634,49 +1606,43 @@ function createSharedChatSession(
 	});
 }
 
-function createProjectChatSession(input: {
+function createWorkflowSession(input: {
 	state: ChatWebAppState;
 	context: PiboWebAppContext;
-	webSession: PiboWebSession;
-	project: PiboProject;
+	room: PiboRoom;
+	workspace?: string;
 	profile: string;
-	workflowId?: string;
-	workflowVersion?: string;
+	workflow: WorkflowVersionPickerOption;
 	title?: string;
-	configuredWorkflow?: boolean;
-	configuration?: PiboProjectWorkflowSessionConfiguration;
-}): PiboSession {
-	const workflowSelection = resolveProjectWorkflowSelection(input.state, input.workflowId, input.workflowVersion);
+	configuration: import("./data/workflow-session-service.js").PiboWorkflowSessionConfiguration;
+}): { session: PiboSession; workflowSession: PiboWorkflowSessionLink } {
+	const normalSessions = sessionsInRoom(listSharedSessions(input.context), input.room.id)
+		.filter((session) => !session.parentId && !isChatWebSessionArchived(session) && !isChatWebSessionPinned(session));
 	const session = input.context.channelContext.createSession({
 		channel: CHAT_WEB_CHANNEL,
 		kind: "chat",
 		profile: input.profile,
-		workspace: input.project.projectFolder,
+		workspace: input.workspace ?? roomWorkspaceFromMetadata(input.room.metadata) ?? getDefaultPiboWorkspace(),
 		...(input.title ? { title: input.title } : {}),
-		...(input.configuration?.model ? { activeModel: input.configuration.model } : {}),
-		metadata: withWorkflowSessionKind({
-			projectId: input.project.id,
-			projectSessionKind: "main",
-			projectWorkflowId: workflowSelection.id,
-			projectWorkflowVersion: workflowSelection.version,
-			...(input.configuration ? { projectWorkflowConfiguration: input.configuration } : {}),
-		}, "main_workflow"),
+		...(input.configuration.model ? { activeModel: input.configuration.model } : {}),
+		metadata: withWorkflowSessionKind(withChatWebSessionSidebarOrder({
+			...withChatRoomId(undefined, input.room.id),
+			workflowId: input.workflow.id,
+			workflowVersion: input.workflow.version,
+		}, nextChatWebSessionSidebarOrder(normalSessions)), "main_workflow"),
 	});
-	input.state.projectService.addProjectSession({
-		projectId: input.project.id,
+	const workflowSession = input.state.workflowService.addWorkflowSession({
 		piboSessionId: session.id,
-		kind: "main",
-		workflowId: workflowSelection.id,
-		workflowVersion: workflowSelection.version,
-		title: session.title,
-		state: input.configuredWorkflow ? "configured" : undefined,
+		workflowId: input.workflow.id,
+		workflowVersion: input.workflow.version,
+		state: "configured",
 		configuration: input.configuration,
 	});
 	input.state.sessionQuery.upsertSession(session);
-	return session;
+	return { session, workflowSession };
 }
 
-function resolveProjectWorkflowSelection(
+function resolveWorkflowSelection(
 	state: ChatWebAppState,
 	workflowIdValue: unknown,
 	workflowVersionValue?: unknown,
@@ -1685,38 +1651,23 @@ function resolveProjectWorkflowSelection(
 	if (options.requireExplicitWorkflowId && (workflowIdValue === undefined || workflowIdValue === null || workflowIdValue === "")) {
 		throw new PiboWebHttpError("Workflow id is required", 400);
 	}
-	const workflowId = normalizeProjectWorkflowId(workflowIdValue);
-	const workflowVersion = normalizeProjectWorkflowVersion(workflowVersionValue);
-	if (options.requireExplicitVersion && !workflowVersion) {
-		throw new PiboWebHttpError("Workflow version is required", 400);
-	}
-	const candidates = buildProjectWorkflowVersionCatalog(state).filter((option) => option.id === workflowId);
+	const workflowId = normalizeWorkflowId(workflowIdValue);
+	const workflowVersion = normalizeWorkflowVersion(workflowVersionValue);
+	if (options.requireExplicitVersion && !workflowVersion) throw new PiboWebHttpError("Workflow version is required", 400);
+	const candidates = buildWorkflowVersionCatalog(state).filter((option) => option.id === workflowId);
 	const selected = candidates.find((option) => workflowVersion === undefined || option.version === workflowVersion);
-	if (!selected) {
-		throw new PiboWebHttpError(`Unknown workflow version: ${workflowId}${workflowVersion ? `@${workflowVersion}` : ""}`, 400);
-	}
-	if (selected.status === "archived") {
-		throw new PiboWebHttpError(`Workflow version '${selected.id}@${selected.version}' is archived and cannot create a Project session by default`, 400);
-	}
-	if (selected.status !== "published") {
-		throw new PiboWebHttpError(`Workflow version '${selected.id}@${selected.version}' is not published`, 400);
-	}
+	if (!selected) throw new PiboWebHttpError(`Unknown workflow version: ${workflowId}${workflowVersion ? `@${workflowVersion}` : ""}`, 400);
+	if (selected.status === "archived") throw new PiboWebHttpError(`Workflow version '${selected.id}@${selected.version}' is archived and cannot create a Workflow Session`, 400);
+	if (selected.status !== "published") throw new PiboWebHttpError(`Workflow version '${selected.id}@${selected.version}' is not published`, 400);
 	return workflowVersionPickerOptionFromCatalogRecord({ ...selected, status: "published" });
 }
 
-function normalizeLegacyProjectWorkflowId(value: unknown): string {
-	const workflowId = normalizeProjectWorkflowId(value);
-	if (workflowId !== "simple-chat") throw new PiboWebHttpError("Only the simple-chat workflow is available in V1", 400);
-	return workflowId;
-}
-
-function normalizeProjectWorkflowId(value: unknown): string {
-	if (value === undefined || value === null || value === "") return "simple-chat";
-	if (typeof value !== "string" || !value.trim()) throw new PiboWebHttpError("Workflow id must be a string", 400);
+function normalizeWorkflowId(value: unknown): string {
+	if (typeof value !== "string" || !value.trim()) throw new PiboWebHttpError("Workflow id is required", 400);
 	return value.trim();
 }
 
-function normalizeProjectWorkflowVersion(value: unknown): string | undefined {
+function normalizeWorkflowVersion(value: unknown): string | undefined {
 	if (value === undefined || value === null || value === "") return undefined;
 	if (typeof value !== "string" || !value.trim()) throw new PiboWebHttpError("Workflow version must be a string", 400);
 	return value.trim();
@@ -1781,13 +1732,8 @@ function requireWorkflowDeleteConfirmation(value: unknown, workflowId: string): 
 	}
 }
 
-const PROJECT_SESSION_PATCH_FIELDS = new Set([
-	"title",
-	"archived",
-]);
-
-function validateProjectWorkflowSnapshotForStart(
-	snapshot: PiboProjectWorkflowSessionSnapshot,
+function validateWorkflowSnapshotForStart(
+	snapshot: PiboWorkflowSessionSnapshot,
 	input: { state: ChatWebAppState; context: PiboWebAppContext; webSession: PiboWebSession },
 ): WorkflowValidationResponse {
 	const diagnostics = sanitizeWorkflowDiagnostics(validateWorkflowDefinitionForV2(snapshot.effectiveDefinition, input));
@@ -1797,7 +1743,7 @@ function validateProjectWorkflowSnapshotForStart(
 	};
 }
 
-function updateProjectWorkflowRunSessionMetadata(input: {
+function updateWorkflowRunSessionMetadata(input: {
 	state: ChatWebAppState;
 	context: PiboWebAppContext;
 	session: PiboSession;
@@ -2420,8 +2366,8 @@ function duplicateWorkflowIntoDraft(
 	workflowIdValue: unknown,
 	workflowVersionValue: unknown,
 ): WorkflowDraftRecord {
-	const workflowId = normalizeProjectWorkflowId(workflowIdValue);
-	const workflowVersion = normalizeProjectWorkflowVersion(workflowVersionValue);
+	const workflowId = normalizeWorkflowId(workflowIdValue);
+	const workflowVersion = normalizeWorkflowVersion(workflowVersionValue);
 	const published = selectPublishedWorkflowVersion(state, workflowId, workflowVersion);
 	if (!published) throw new PiboWebHttpError("Published workflow version not found", 404);
 
@@ -2478,8 +2424,8 @@ function createNextVersionDraftFromPublishedWorkflow(
 	workflowIdValue: unknown,
 	workflowVersionValue: unknown,
 ): { draft: WorkflowDraftRecord; reused: boolean } {
-	const workflowId = normalizeProjectWorkflowId(workflowIdValue);
-	const workflowVersion = normalizeProjectWorkflowVersion(workflowVersionValue);
+	const workflowId = normalizeWorkflowId(workflowIdValue);
+	const workflowVersion = normalizeWorkflowVersion(workflowVersionValue);
 	const published = selectPublishedWorkflowVersion(state, workflowId, workflowVersion);
 	if (!published) throw new PiboWebHttpError("Published workflow version not found", 404);
 	if (published.source !== "ui") {
@@ -2544,7 +2490,7 @@ function archiveWorkflowIdentity(
 	workflowIdValue: unknown,
 	reasonValue: unknown,
 ): { workflow: WorkflowCatalogRecord; archiveState: WorkflowArchiveStateRecord } {
-	const workflowId = normalizeProjectWorkflowId(workflowIdValue);
+	const workflowId = normalizeWorkflowId(workflowIdValue);
 	const catalog = buildWorkflowCatalogList(state, context, webSession, { includeArchived: true });
 	const workflow = catalog.workflows.find((record) => record.id === workflowId);
 	if (!workflow) throw new PiboWebHttpError("Workflow not found", 404);
@@ -2579,7 +2525,7 @@ function deleteWorkflowIdentity(
 	workflowIdValue: unknown,
 	body: WorkflowDeleteBody,
 ): { workflowId: string; deleted: true; tombstone: WorkflowTombstoneRecord } {
-	const workflowId = normalizeProjectWorkflowId(workflowIdValue);
+	const workflowId = normalizeWorkflowId(workflowIdValue);
 	const catalog = buildWorkflowCatalogList(state, context, webSession, { includeArchived: true });
 	const workflow = catalog.workflows.find((record) => record.id === workflowId);
 	if (!workflow) throw new PiboWebHttpError("Workflow not found", 404);
@@ -2612,7 +2558,7 @@ function deleteWorkflowIdentity(
 }
 
 function selectPublishedWorkflowVersion(state: ChatWebAppState, workflowId: string, version?: string): WorkflowPublishedVersionSelection | undefined {
-	const options = buildProjectWorkflowVersionOptions(state).filter((option) => option.id === workflowId);
+	const options = buildWorkflowVersionOptions(state).filter((option) => option.id === workflowId);
 	const selected = version ? options.find((option) => option.version === version) : options[0];
 	if (!selected) return undefined;
 	return resolvePublishedWorkflowDefinitionForProfile(state, selected, "base");
@@ -2833,7 +2779,7 @@ function validatePublishedWorkflowBoundary(input: {
 	context: PiboWebAppContext;
 	webSession: PiboWebSession;
 	definition: PiboJsonObject;
-	trigger: "before_project_session_creation" | "before_workflow_start";
+	trigger: "before_workflow_session_creation" | "before_workflow_start";
 }): WorkflowValidationResponse {
 	const diagnostics = sanitizeWorkflowDiagnostics(validateWorkflowDefinitionForV2(input.definition, input));
 	return {
@@ -3130,7 +3076,7 @@ function validateWorkflowNestedNodeLike(
 	const workflowId = typeof node.workflowId === "string" ? node.workflowId.trim() : undefined;
 	const workflowVersion = typeof node.workflowVersion === "string" ? node.workflowVersion.trim() : undefined;
 	const selected = workflowId
-		? buildProjectWorkflowVersionOptions(input.state).find((option) => option.id === workflowId && (!workflowVersion || option.version === workflowVersion))
+		? buildWorkflowVersionOptions(input.state).find((option) => option.id === workflowId && (!workflowVersion || option.version === workflowVersion))
 		: undefined;
 	if (!selected) {
 		const registryRef = workflowId ? `${workflowId}${workflowVersion ? `@${workflowVersion}` : ""}` : undefined;
@@ -3385,7 +3331,7 @@ async function deleteSessionsForAgentProfile(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
 	for (const id of orderedIds) {
-		await state.projectService.deleteProjectSessionWithCanonicalDelete(id, () => deleteSession(id));
+		await deleteSession(id);
 		state.sessionQuery.deleteSessions([id]);
 		state.eventCommands.deleteSessions([id]);
 	}
@@ -3418,7 +3364,7 @@ async function deleteSessionSubtree(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
 	for (const id of orderedIds) {
-		await state.projectService.deleteProjectSessionWithCanonicalDelete(id, () => deleteSession(id));
+		await deleteSession(id);
 		state.sessionQuery.deleteSessions([id]);
 		state.eventCommands.deleteSessions([id]);
 	}
@@ -3465,7 +3411,7 @@ async function deleteRoomTree(
 		(left, right) => sessionDepth(sessionsById.get(right), sessionsById) - sessionDepth(sessionsById.get(left), sessionsById),
 	);
 	for (const id of orderedSessionIds) {
-		await state.projectService.deleteProjectSessionWithCanonicalDelete(id, () => deleteSession(id));
+		await deleteSession(id);
 		state.sessionQuery.deleteSessions([id]);
 		state.eventCommands.deleteSessions([id]);
 	}
@@ -4323,304 +4269,67 @@ function createEventStream(input: {
 	});
 }
 
-async function buildProjectsBootstrap(input: {
-	state: ChatWebAppState;
-	context: PiboWebAppContext;
-	webSession: PiboWebSession;
-	defaultProfile: string;
-	projectId?: string;
-	piboSessionId?: string;
-	includeArchived?: boolean;
-}): Promise<ChatProjectsBootstrap> {
-	const sharedDefaultProject = input.state.projectService.ensureSharedDefaultProject();
-	const selectedProject = input.projectId ? requireSharedProject(input.state, input.webSession, input.projectId, { includeArchived: true }) : sharedDefaultProject;
-	let storedProjectSessions = input.state.projectService
-		.listProjectSessions(selectedProject.id, { includeArchived: input.includeArchived })
-		.filter((projectSession) => projectSession.workflowId === "simple-chat");
-	if (selectedProject.id === sharedDefaultProject.id && storedProjectSessions.length === 0) {
-		const session = createProjectChatSession({
-			state: input.state,
-			context: input.context,
-			webSession: input.webSession,
-			project: sharedDefaultProject,
-			profile: input.defaultProfile,
-			workflowId: "simple-chat",
-		});
-		storedProjectSessions = [input.state.projectService.getProjectSession(session.id)!];
-	}
-	const projectSessions = storedProjectSessions;
-	const rootSessions = projectSessions
-		.map((projectSession) => input.context.channelContext.getSession(projectSession.piboSessionId))
-		.filter((session): session is PiboSession => Boolean(session));
-	const sessions = collectProjectSessionTreeSessions(
-		rootSessions,
-		listSharedSessions(input.context),
-	);
-	const requestedSession = input.piboSessionId ? sessions.find((session) => session.id === input.piboSessionId) : undefined;
-	const selectedSession = requestedSession ?? sessions.find((session) => session.id === selectedProject.currentMainSessionId) ?? sessions[0];
-	indexSharedSessions(input.state.sessionQuery, sessions);
-	const nodes = await buildSessionNodes(sessions, input.state.sessionQuery.listSessions(), selectedProject.projectFolder, new Map(), { skipPiMetadataFallback: true });
-	applyProjectSessionArchiveState(nodes, new Map(projectSessions.map((projectSession) => [projectSession.piboSessionId, Boolean(projectSession.archived)])));
-	return {
-		identity: input.webSession.authSession.identity,
-		sharedDefaultProject,
-		project: selectedProject,
-		projects: listSharedProjects(input.state, input.webSession, { includeArchived: input.includeArchived }),
-		projectSessions,
-		workflowLifecycleEvents: [],
-		...(selectedSession ? { session: selectedSession, selectedPiboSessionId: selectedSession.id } : {}),
-		selectedProjectId: selectedProject.id,
-		sessions: nodes,
-		...(await loadBootstrapCatalog(input.state, input.context, input.webSession)),
-	};
-}
-
-function collectProjectSessionTreeSessions(rootSessions: PiboSession[], candidateSessions: PiboSession[]): PiboSession[] {
-	const sessionsById = new Map(rootSessions.map((session) => [session.id, session]));
-	let changed = true;
-	while (changed) {
-		changed = false;
-		for (const session of candidateSessions) {
-			if (sessionsById.has(session.id)) continue;
-			if (!session.parentId || !sessionsById.has(session.parentId)) continue;
-			sessionsById.set(session.id, session);
-			changed = true;
-		}
-	}
-	return [...sessionsById.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-}
-
-function enrichProjectSessionWorkflowDefinitionLink(state: ChatWebAppState, projectSession: PiboProjectSession): PiboProjectSession {
-	if (!isProjectWorkflowBackedSession(projectSession)) return projectSession;
-	const snapshot = state.projectService.getWorkflowSessionSnapshotForSession(projectSession.piboSessionId);
-	const workflowId = projectSession.workflowId;
-	const workflowVersion = projectSession.workflowVersion ?? snapshot?.workflow.version;
+function enrichWorkflowSession(state: ChatWebAppState, workflowSession: PiboWorkflowSessionLink): PiboWorkflowSessionLink {
+	const snapshot = state.workflowService.getWorkflowSessionSnapshotForSession(workflowSession.piboSessionId);
+	const workflowVersion = workflowSession.workflowVersion ?? snapshot?.workflow.version;
 	const catalogRecord = workflowVersion
-		? buildProjectWorkflowVersionCatalog(state).find((record) => record.id === workflowId && record.version === workflowVersion)
+		? buildWorkflowVersionCatalog(state).find((record) => record.id === workflowSession.workflowId && record.version === workflowVersion)
 		: undefined;
 	const snapshotHash = snapshot?.workflow.effectiveDefinitionHash ?? snapshot?.deletedDefinitionFallback.effectiveDefinitionHash;
-	if (catalogRecord && catalogRecord.status !== "deleted") {
-		return {
-			...projectSession,
-			workflowDefinitionLink: {
-				status: "live",
-				workflowId,
-				workflowVersion: catalogRecord.version,
-				title: catalogRecord.title,
-				...(snapshotHash ? { definitionHash: snapshotHash } : {}),
-				href: workflowDefinitionViewerPath(catalogRecord.id, catalogRecord.version),
-			},
-		};
-	}
-	const fallback = snapshot?.deletedDefinitionFallback;
-	const definitionHash = fallback?.effectiveDefinitionHash ?? snapshotHash;
+	const workflowDefinitionLink = catalogRecord && catalogRecord.status !== "deleted"
+		? { status: "live" as const, workflowId: workflowSession.workflowId, workflowVersion: catalogRecord.version, title: catalogRecord.title, ...(snapshotHash ? { definitionHash: snapshotHash } : {}), href: workflowDefinitionViewerPath(catalogRecord.id, catalogRecord.version) }
+		: { status: "snapshot_only_definition_deleted" as const, workflowId: workflowSession.workflowId, ...(workflowVersion ? { workflowVersion } : {}), title: snapshot?.deletedDefinitionFallback.title ?? snapshot?.workflow.title ?? workflowSession.workflowId, ...(snapshotHash ? { definitionHash: snapshotHash } : {}), tombstoneLabel: snapshot?.deletedDefinitionFallback.tombstoneLabel ?? "Definition deleted or no longer available in the live Workflow catalog." };
+	const waitTokens = workflowSession.workflowRunId ? state.workflowService.listWorkflowWaitTokens({ piboSessionId: workflowSession.piboSessionId, workflowRunId: workflowSession.workflowRunId, status: "pending", limit: 20 }) : [];
+	return { ...workflowSession, workflowDefinitionLink, ...(waitTokens.length ? { pendingHumanActions: waitTokens.map((token) => workflowPendingHumanActionFromToken(token, WORKFLOW_HUMAN_ACTION_REF_OPTIONS)) } : {}) };
+}
+
+function inspectWorkflowSession(state: ChatWebAppState, context: PiboWebAppContext, piboSessionId: string) {
+	requireSharedSession(context, piboSessionId);
+	const link = state.workflowService.getWorkflowSession(piboSessionId);
+	if (!link) throw new PiboWebHttpError("Workflow session not found", 404);
+	const workflowSession = enrichWorkflowSession(state, link);
+	const snapshot = state.workflowService.getWorkflowSessionSnapshotForSession(piboSessionId);
+	const run = state.workflowService.getWorkflowRunForSession(piboSessionId);
+	const workflowRunId = run?.id ?? workflowSession.workflowRunId;
 	return {
-		...projectSession,
-		workflowDefinitionLink: {
-			status: "snapshot_only_definition_deleted",
-			workflowId,
-			...(workflowVersion ? { workflowVersion } : {}),
-			title: fallback?.title ?? snapshot?.workflow.title ?? projectSession.title ?? workflowId,
-			...(definitionHash ? { definitionHash } : {}),
-			tombstoneLabel: fallback?.tombstoneLabel ?? "Definition deleted or no longer available in the live Workflow catalog.",
-		},
+		workflowSession,
+		...(snapshot ? { snapshot } : {}),
+		...(run ? { run } : {}),
+		waitTokens: state.workflowService.listWorkflowWaitTokens({ piboSessionId, ...(workflowRunId ? { workflowRunId } : {}), limit: 200 }),
+		humanActions: state.workflowService.listWorkflowHumanActions({ piboSessionId, ...(workflowRunId ? { workflowRunId } : {}), limit: 200 }),
+		nodeAttempts: workflowRunId ? state.workflowService.runtimeStore.listNodeAttempts({ workflowRunId, limit: 200 }) : [],
+		edgeTransfers: workflowRunId ? state.workflowService.runtimeStore.listEdgeTransfers({ workflowRunId, limit: 200 }) : [],
+		lifecycleEvents: state.workflowLifecycleEventStore.listEvents({ piboSessionId, ...(workflowRunId ? { workflowRunId } : {}), limit: 200 }),
 	};
 }
 
-function enrichProjectSessionWorkflowWaitTokens(state: ChatWebAppState, projectSession: PiboProjectSession): PiboProjectSession {
-	if (!projectSession.workflowRunId) return projectSession;
-	const waitTokens = state.projectService.listProjectWorkflowWaitTokens({
-		projectId: projectSession.projectId,
-		piboSessionId: projectSession.piboSessionId,
-		workflowRunId: projectSession.workflowRunId,
-		status: "pending",
-		limit: 20,
-	});
-	if (!waitTokens.length) return projectSession;
-	return {
-		...projectSession,
-		pendingHumanActions: waitTokens.map((token) => projectWorkflowPendingHumanActionFromToken(token, WORKFLOW_HUMAN_ACTION_REF_OPTIONS)),
-	};
-}
-
-function submitProjectWorkflowHumanAction(input: {
-	state: ChatWebAppState;
-	context: PiboWebAppContext;
-	webSession: PiboWebSession;
-	projectId: string;
-	piboSessionId: string;
-	body: ChatProjectWorkflowHumanActionBody;
-}): Response {
-	const project = requireSharedProject(input.state, input.webSession, input.projectId);
-	const session = requireSharedSession(input.context, input.piboSessionId);
-	const projectSession = input.state.projectService.getProjectSession(session.id);
-	if (!projectSession || projectSession.projectId !== project.id) throw new PiboWebHttpError("Project workflow session not found", 404);
-	if (!projectSession.workflowRunId) {
-		return projectWorkflowHumanActionDiagnosticResponse("Project workflow session has no workflow run to resolve", [{
-			code: "WorkflowRuntimeError.workflowRunMissing",
-			message: "This Project workflow session has not started a workflow run, so no human wait token can be resolved.",
-			severity: "error",
-			path: "$.workflowRunId",
-			hint: "Start the configured workflow session before submitting human actions.",
-		}], 409, undefined, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
-	}
-
-	const normalized = normalizeProjectWorkflowHumanActionBody(input.body);
-	if (normalized.diagnostics.length) {
-		return projectWorkflowHumanActionDiagnosticResponse("Human action request is invalid", normalized.diagnostics, 400, undefined, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
-	}
+function submitWorkflowHumanAction(input: { state: ChatWebAppState; context: PiboWebAppContext; webSession: PiboWebSession; piboSessionId: string; body: ChatWorkflowHumanActionBody }): Response {
+	requireSharedSession(input.context, input.piboSessionId);
+	const workflowSession = input.state.workflowService.getWorkflowSession(input.piboSessionId);
+	if (!workflowSession) throw new PiboWebHttpError("Workflow session not found", 404);
+	if (!workflowSession.workflowRunId) return workflowHumanActionDiagnosticResponse("Workflow session has no workflow run to resolve", [{ code: "WorkflowRuntimeError.workflowRunMissing", message: "This Workflow session has not started a run.", severity: "error", path: "$.workflowRunId", hint: "Start the configured Workflow session before submitting human actions." }], 409, undefined, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
+	const normalized = normalizeWorkflowHumanActionBody(input.body);
+	if (normalized.diagnostics.length) return workflowHumanActionDiagnosticResponse("Human action request is invalid", normalized.diagnostics, 400, undefined, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
 	const request = normalized.request!;
-	const waitToken = input.state.projectService.getProjectWorkflowWaitToken(request.waitTokenId);
-	const validation = validateProjectWorkflowHumanActionRequest({
-		projectSession,
-		waitToken,
-		request,
-		humanActionOptions: WORKFLOW_HUMAN_ACTION_REF_OPTIONS,
-	});
+	const waitToken = input.state.workflowService.getWorkflowWaitToken(request.waitTokenId);
+	const validation = validateWorkflowHumanActionRequest({ workflowSession, waitToken, request, humanActionOptions: WORKFLOW_HUMAN_ACTION_REF_OPTIONS });
 	if (validation.diagnostics.length) {
-		const responseWaitToken = waitToken && validation.expiredAt
-			? input.state.projectService.expireProjectWorkflowWaitToken({
-				projectId: project.id,
-				piboSessionId: session.id,
-				workflowRunId: projectSession.workflowRunId,
-				waitTokenId: waitToken.id,
-				resolvedAt: validation.checkedAt,
-			}).waitToken
-			: waitToken;
-		recordWorkflowLifecycleEvent(input.state, input.webSession, {
-			type: "workflow.human_action.submitted",
-			workflowId: projectSession.workflowId,
-			...(projectSession.workflowVersion ? { workflowVersion: projectSession.workflowVersion } : {}),
-			projectId: project.id,
-			piboSessionId: session.id,
-			workflowRunId: projectSession.workflowRunId,
-			status: "blocked",
-			diagnostics: validation.diagnostics,
-			payload: projectWorkflowHumanActionLifecyclePayload(request),
-		});
-		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", validation.diagnostics, validation.httpStatus, responseWaitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
+		const responseWaitToken = waitToken && validation.expiredAt ? input.state.workflowService.expireWorkflowWaitToken({ piboSessionId: input.piboSessionId, workflowRunId: workflowSession.workflowRunId, waitTokenId: waitToken.id, resolvedAt: validation.checkedAt }).waitToken : waitToken;
+		recordWorkflowLifecycleEvent(input.state, input.webSession, { type: "workflow.human_action.submitted", workflowId: workflowSession.workflowId, workflowVersion: workflowSession.workflowVersion, piboSessionId: input.piboSessionId, workflowRunId: workflowSession.workflowRunId, status: "blocked", diagnostics: validation.diagnostics, payload: workflowHumanActionLifecyclePayload(request) });
+		return workflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", validation.diagnostics, validation.httpStatus, responseWaitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
 	}
-
 	try {
-		const result = input.state.projectService.resolveProjectWorkflowHumanAction({
-			projectId: project.id,
-			piboSessionId: session.id,
-			workflowRunId: projectSession.workflowRunId,
-			waitTokenId: request.waitTokenId,
-			...(validation.actionRef?.id ? { actionId: validation.actionRef.id } : {}),
-			kind: validation.actionKind!,
-			actor: {
-				userId: input.webSession.authSession.identity.userId,
-				...(input.webSession.authSession.identity.email ? { email: input.webSession.authSession.identity.email } : {}),
-			},
-			...(request.payload !== undefined ? { payload: request.payload } : {}),
-		});
-		const enrichedProjectSession = enrichProjectSessionWorkflowWaitTokens(input.state, enrichProjectSessionWorkflowDefinitionLink(input.state, result.projectSession));
-		recordWorkflowLifecycleEvent(input.state, input.webSession, {
-			type: "workflow.human_action.submitted",
-			workflowId: result.projectSession.workflowId,
-			...(result.projectSession.workflowVersion ? { workflowVersion: result.projectSession.workflowVersion } : {}),
-			projectId: project.id,
-			piboSessionId: session.id,
-			workflowRunId: result.run.id,
-			status: "submitted",
-			diagnostics: [],
-			payload: projectWorkflowHumanActionSubmittedLifecyclePayload(result.waitToken.id, result.action),
-		});
-		return responseJson({
-			ok: true,
-			projectSession: enrichedProjectSession,
-			waitToken: result.waitToken,
-			action: result.action,
-			run: result.run,
-			diagnostics: [],
-		}, { status: result.action.kind === "cancel" ? 200 : 202 });
+		const result = input.state.workflowService.resolveWorkflowHumanAction({ piboSessionId: input.piboSessionId, workflowRunId: workflowSession.workflowRunId, waitTokenId: request.waitTokenId, ...(validation.actionRef?.id ? { actionId: validation.actionRef.id } : {}), kind: validation.actionKind!, actor: { userId: input.webSession.authSession.identity.userId, ...(input.webSession.authSession.identity.email ? { email: input.webSession.authSession.identity.email } : {}) }, ...(request.payload !== undefined ? { payload: request.payload } : {}) });
+		recordWorkflowLifecycleEvent(input.state, input.webSession, { type: "workflow.human_action.submitted", workflowId: result.workflowSession.workflowId, workflowVersion: result.workflowSession.workflowVersion, piboSessionId: input.piboSessionId, workflowRunId: result.run.id, status: "submitted", diagnostics: [], payload: workflowHumanActionSubmittedLifecyclePayload(result.waitToken.id, result.action) });
+		return responseJson({ ok: true, workflowSession: enrichWorkflowSession(input.state, result.workflowSession), waitToken: result.waitToken, action: result.action, run: result.run, diagnostics: [] }, { status: result.action.kind === "cancel" ? 200 : 202 });
 	} catch (error) {
-		const diagnostics = [projectWorkflowHumanActionRuntimeDiagnostic(error, request.waitTokenId)];
-		recordWorkflowLifecycleEvent(input.state, input.webSession, {
-			type: "workflow.human_action.submitted",
-			workflowId: projectSession.workflowId,
-			...(projectSession.workflowVersion ? { workflowVersion: projectSession.workflowVersion } : {}),
-			projectId: project.id,
-			piboSessionId: session.id,
-			workflowRunId: projectSession.workflowRunId,
-			status: "blocked",
-			diagnostics,
-			payload: projectWorkflowHumanActionLifecyclePayload(request),
-		});
-		const responseWaitToken = input.state.projectService.getProjectWorkflowWaitToken(request.waitTokenId) ?? waitToken;
-		return projectWorkflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", diagnostics, 409, responseWaitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
+		const diagnostics = [workflowHumanActionRuntimeDiagnostic(error, request.waitTokenId)];
+		return workflowHumanActionDiagnosticResponse("Human action was rejected by wait-token validation", diagnostics, 409, input.state.workflowService.getWorkflowWaitToken(request.waitTokenId) ?? waitToken, WORKFLOW_HUMAN_ACTION_REF_OPTIONS);
 	}
-}
-
-function isProjectWorkflowBackedSession(projectSession: PiboProjectSession): boolean {
-	return Boolean(projectSession.workflowRunId) || projectSession.state === "workflow" || projectSession.workflowId !== "simple-chat";
 }
 
 function workflowDefinitionViewerPath(workflowId: string, workflowVersion: string): string {
 	return `${CHAT_WEB_MOUNT_PATH}/workflows/view/${encodeURIComponent(workflowId)}/${encodeURIComponent(workflowVersion)}`;
-}
-
-function applyProjectSessionArchiveState(nodes: PiboWebSessionNode[], archivedBySessionId: ReadonlyMap<string, boolean>): void {
-	for (const node of nodes) {
-		const archived = archivedBySessionId.get(node.piboSessionId);
-		if (archived !== undefined) node.archived = archived;
-		applyProjectSessionArchiveState(node.children, archivedBySessionId);
-	}
-}
-
-async function sendProjectMessage(input: {
-	state: ChatWebAppState;
-	context: PiboWebAppContext;
-	webSession: PiboWebSession;
-	defaultProfile: string;
-	body: ChatMessageBody;
-}): Promise<Response> {
-	const text = normalizeMessageText(input.body.text);
-	const delivery = normalizeMessageDelivery(input.body.delivery);
-	const clientTxnId = normalizeClientTxnId(input.body.clientTxnId);
-	if (typeof input.body.piboSessionId !== "string") throw new PiboWebHttpError("Project session is required", 400);
-	const selectedSession = requireSharedSession(input.context, input.body.piboSessionId);
-	const projectSession = input.state.projectService.getProjectSession(selectedSession.id);
-	if (!projectSession) throw new PiboWebHttpError("Project session not found", 404);
-	requireSharedProject(input.state, input.webSession, projectSession.projectId);
-	const actorId = auditActorIdFor(input.webSession);
-	const duplicate = clientTxnId ? input.state.eventCommands.findByClientTxn(undefined, actorId, clientTxnId) : undefined;
-	if (duplicate) return responseJson({ duplicate: true, event: duplicate });
-	const accepted = input.state.eventCommands.appendEvent({
-		piboSessionId: selectedSession.id,
-		eventType: "user.message.accepted",
-		actorType: "user",
-		actorId,
-		clientTxnId,
-		retentionClass: "chat_message",
-		payload: {
-			type: "user.message.accepted",
-			piboSessionId: selectedSession.id,
-			projectId: projectSession.projectId,
-			text,
-			delivery,
-			...(clientTxnId ? { clientTxnId } : {}),
-		},
-	});
-	for (const listener of input.state.liveListeners) listener(accepted);
-	const messageId = clientTxnId ?? randomUUID();
-	try {
-		const output = await input.context.channelContext.emit({
-			type: "message",
-			piboSessionId: selectedSession.id,
-			id: messageId,
-			text,
-			delivery,
-			source: "user",
-		});
-		return responseJson({ accepted, output });
-	} catch (error) {
-		if (error instanceof PiboSteeringUnavailableError || error instanceof AgentRuntimeBindingMissingError) {
-			throw new PiboWebHttpError(error.message, 409);
-		}
-		throw error;
-	}
 }
 
 function startChatStreamingFixture(input: {
@@ -4875,6 +4584,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
 	const reliabilityStore = createReliabilityStore(options.reliabilityStorePath);
+	const workflowService = new ChatWorkflowSessionService(workflowStorePath(options, dataStore));
+	if (dataStore.path !== ":memory:" && workflowService.path !== ":memory:") {
+		migrateLegacyProjects({ dataStore, workflowService, legacyProjectPath: options.legacyProjectStorePath });
+	}
+	const workflowCatalogStore = workflowService.catalogDataStore as unknown as PiboDataStore;
 	const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 	eventLoopDelay.enable();
 	const state: ChatWebAppState = {
@@ -4884,7 +4598,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		eventCommands: new ChatEventCommandService(dataStore),
 		readState: new ChatReadStateService(dataStore),
 		roomService: new ChatRoomService(dataStore),
-		projectService: new ChatProjectService(options.projectStorePath),
+		workflowService,
 		agentStore: createAgentStore(options.agentStorePath),
 		reliabilityStore,
 		cronStore: createDefaultPiboCronStore({ path: options.cronStorePath }),
@@ -4910,12 +4624,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			globalRoot: options.userSkillGlobalRoot ?? os.homedir(),
 			workspaceRoot: options.userSkillWorkspaceRoot ?? process.cwd(),
 		}),
-		workflowDraftStore: new ChatWorkflowDraftStore(dataStore),
-		workflowPublishedVersionStore: new ChatWorkflowPublishedVersionStore(dataStore),
-		workflowArchiveStore: new ChatWorkflowArchiveStore(dataStore),
-		workflowTombstoneStore: new ChatWorkflowTombstoneStore(dataStore),
-		workflowLifecycleEventStore: new ChatWorkflowLifecycleEventStore(dataStore),
-		workflowPromptAssetStore: new ChatWorkflowPromptAssetStore(dataStore),
+		workflowDraftStore: new ChatWorkflowDraftStore(workflowCatalogStore),
+		workflowPublishedVersionStore: new ChatWorkflowPublishedVersionStore(workflowCatalogStore),
+		workflowArchiveStore: new ChatWorkflowArchiveStore(workflowCatalogStore),
+		workflowTombstoneStore: new ChatWorkflowTombstoneStore(workflowCatalogStore),
+		workflowLifecycleEventStore: new ChatWorkflowLifecycleEventStore(workflowCatalogStore),
+		workflowPromptAssetStore: new ChatWorkflowPromptAssetStore(workflowCatalogStore),
 		telemetryRetentionMaintenance: {},
 		integrations,
 	};
@@ -4938,7 +4652,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			state.subscribedContext = undefined;
 			state.eventLoopDelay.disable();
 			state.outputPersistenceRetries.dispose();
-			state.projectService.close();
+			state.workflowService.close();
 			state.agentStore.close();
 			state.reliabilityStore.close();
 			state.cronStore.close();
@@ -5240,304 +4954,57 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			}
 
 
-			if (url.pathname === `${CHAT_WEB_API_PREFIX}/projects/bootstrap` && request.method === "GET") {
-				const webSession = await requireSession(request, context);
-				return responseJson(await buildProjectsBootstrap({
-					state,
-					context,
-					webSession,
-					defaultProfile,
-					projectId: url.searchParams.get("projectId") || undefined,
-					piboSessionId: url.searchParams.get("piboSessionId") || undefined,
-					includeArchived: parseBooleanSearchParam(url, "includeArchived"),
-				}));
-			}
-
-			if (url.pathname === `${CHAT_WEB_API_PREFIX}/projects/message` && request.method === "POST") {
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/workflow-sessions` && request.method === "POST") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
-				const body = await readJsonBody<ChatMessageBody>(request);
-				return sendProjectMessage({ state, context, webSession, defaultProfile, body });
-			}
-
-			if (url.pathname === `${CHAT_WEB_API_PREFIX}/projects` && request.method === "GET") {
-				const webSession = await requireSession(request, context);
-				return responseJson({ projects: listSharedProjects(state, webSession, { includeArchived: parseBooleanSearchParam(url, "includeArchived") }) });
-			}
-
-			if (url.pathname === `${CHAT_WEB_API_PREFIX}/projects` && request.method === "POST") {
-				requireSameOriginJsonRequest(request);
-				const webSession = await requireSession(request, context);
-				const body = await readJsonBody<ChatProjectCreateBody>(request);
-				try {
-					const project = state.projectService.createProject({
-						name: normalizeRoomName(body.name),
-						description: normalizeProjectDescription(body.description),
-						projectFolder: normalizeProjectPath(body.projectFolder),
-						createFolder: body.createFolder === true,
-					});
-					return responseJson({ project }, { status: 201 });
-				} catch (error) {
-					throw new PiboWebHttpError(error instanceof Error ? error.message : String(error), 400);
-				}
-			}
-
-			const projectResource = projectResourcePath(url.pathname);
-			if (projectResource && projectResource.child === undefined && request.method === "PATCH") {
-				requireSameOriginJsonRequest(request);
-				const webSession = await requireSession(request, context);
-				const body = await readJsonBody<ChatProjectPatchBody>(request);
-				try {
-					const existingProject = requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
-					if (existingProject.metadata.default === true) throw new PiboWebHttpError("Project Manager cannot be changed", 400);
-					const project = state.projectService.updateProject(projectResource.projectId, {
-						...(body.name !== undefined ? { name: normalizeRoomName(body.name) } : {}),
-						...(body.description !== undefined ? { description: normalizeProjectDescription(body.description) ?? null } : {}),
-						...(body.archived !== undefined ? { archived: normalizeProjectArchived(body.archived) } : {}),
-					});
-					if (!project) throw new PiboWebHttpError("Project not found", 404);
-					return responseJson({ project });
-				} catch (error) {
-					if (error instanceof PiboWebHttpError) throw error;
-					throw new PiboWebHttpError(error instanceof Error ? error.message : String(error), 400);
-				}
-			}
-
-			if (projectResource && projectResource.child === undefined && request.method === "DELETE") {
-				requireSameOriginJsonRequest(request);
-				const webSession = await requireSession(request, context);
-				const body = await readJsonBody<ChatProjectDeleteBody>(request);
-				try {
-					const project = requireSharedProject(state, webSession, projectResource.projectId, { includeArchived: true });
-					if (project.metadata.default === true) throw new PiboWebHttpError("Project Manager cannot be deleted", 400);
-					return responseJson(state.projectService.deleteProject(projectResource.projectId, {
-						confirmName: normalizeRoomDeleteConfirmation(body.confirmName),
-						deleteFiles: body.deleteFiles === true,
-					}));
-				} catch (error) {
-					if (error instanceof PiboWebHttpError) throw error;
-					throw new PiboWebHttpError(error instanceof Error ? error.message : String(error), 400);
-				}
-			}
-
-			const workflowHumanActionResource = projectWorkflowHumanActionsResource(url.pathname);
-			if (workflowHumanActionResource && request.method === "POST") {
-				requireSameOriginJsonRequest(request);
-				const webSession = await requireSession(request, context);
-				const body = await readJsonBody<ChatProjectWorkflowHumanActionBody>(request);
-				return submitProjectWorkflowHumanAction({
-					state,
-					context,
-					webSession,
-					projectId: workflowHumanActionResource.projectId,
-					piboSessionId: workflowHumanActionResource.piboSessionId,
-					body,
-				});
-			}
-
-			if (projectResource && projectResource.child === "workflow-sessions" && request.method === "POST" && !projectWorkflowSessionStartResource(url.pathname) && !workflowHumanActionResource) {
-				requireSameOriginJsonRequest(request);
-				const webSession = await requireSession(request, context);
-				const body = await readJsonBody<ChatProjectSessionCreateBody>(request);
-				const project = requireSharedProject(state, webSession, projectResource.projectId);
+				const body = await readJsonBody<ChatWorkflowSessionCreateBody>(request);
+				const room = typeof body.roomId === "string" && body.roomId.trim() ? requireRoom(state, body.roomId.trim(), webSession, "write") : state.roomService.ensureDefaultRoom();
+				const workspace = body.workspace === undefined ? undefined : normalizeRoomWorkspace(body.workspace);
 				const profile = resolveCreateSessionProfile(context, defaultProfile, body.profile);
-				const workflowSelection = resolveProjectWorkflowSelection(state, body.workflowId, body.workflowVersion, { requireExplicitWorkflowId: true, requireExplicitVersion: true });
-				const publishedWorkflow = resolvePublishedWorkflowDefinitionForProfile(state, workflowSelection, profile);
-				const baseDefinition = cloneJsonObject(publishedWorkflow.definition);
-				const configuration = normalizeProjectWorkflowSessionConfiguration(body, baseDefinition);
-				const validation = validatePublishedWorkflowBoundary({
-					state,
-					context,
-					webSession,
-					definition: baseDefinition,
-					trigger: "before_project_session_creation",
-				});
-				recordWorkflowLifecycleEvent(state, webSession, {
-					type: "workflow.validation.completed",
-					workflowId: workflowSelection.id,
-					workflowVersion: workflowSelection.version,
-					projectId: project.id,
-					status: validation.validation.ok ? "accepted" : "blocked",
-					validation: validation.validation,
-					diagnostics: validation.diagnostics,
-					payload: { trigger: validation.validation.trigger, boundary: "project_session_creation" },
-				});
-				if (!validation.validation.ok) {
-					return workflowValidationBlockedResponse("Workflow version has validation errors and cannot be used to create a Project session", validation, { workflow: workflowSelection });
-				}
-				const session = createProjectChatSession({
-					state,
-					context,
-					webSession,
-					project,
-					profile,
-					workflowId: workflowSelection.id,
-					workflowVersion: workflowSelection.version,
-					title: normalizeSessionTitle(body.title) ?? undefined,
-					configuredWorkflow: true,
-					configuration,
-				});
-				const snapshot = state.projectService.saveWorkflowSessionSnapshot(createProjectWorkflowSessionSnapshot({
-					webSession,
-					project,
-					session,
-					workflow: publishedWorkflow,
-					baseDefinition,
-					configuration,
-					validation,
-				}));
-				const projectSession = state.projectService.getProjectSession(session.id);
-				recordWorkflowLifecycleEvent(state, webSession, {
-					type: "project.workflow_session.created",
-					workflowId: workflowSelection.id,
-					workflowVersion: workflowSelection.version,
-					projectId: project.id,
-					piboSessionId: session.id,
-					status: "accepted",
-					validation: validation.validation,
-					diagnostics: validation.diagnostics,
-					payload: { snapshotId: snapshot.id, profile },
-				});
-				return responseJson({ session, projectSession, workflow: workflowSelection, configuration, snapshot, validation: validation.validation, diagnostics: validation.diagnostics }, { status: 201 });
+				const workflow = resolveWorkflowSelection(state, body.workflowId, body.workflowVersion, { requireExplicitWorkflowId: true, requireExplicitVersion: true });
+				const published = resolvePublishedWorkflowDefinitionForProfile(state, workflow, profile);
+				const baseDefinition = cloneJsonObject(published.definition);
+				const configuration = normalizeWorkflowSessionConfiguration(body, baseDefinition);
+				const validation = validatePublishedWorkflowBoundary({ state, context, webSession, definition: baseDefinition, trigger: "before_workflow_session_creation" });
+				recordWorkflowLifecycleEvent(state, webSession, { type: "workflow.validation.completed", workflowId: workflow.id, workflowVersion: workflow.version, status: validation.validation.ok ? "accepted" : "blocked", validation: validation.validation, diagnostics: validation.diagnostics, payload: { trigger: validation.validation.trigger, boundary: "workflow_session_creation" } });
+				if (!validation.validation.ok) return workflowValidationBlockedResponse("Workflow version has validation errors and cannot create a Workflow Session", validation, { workflow });
+				const created = createWorkflowSession({ state, context, room, workspace, profile, workflow, title: normalizeSessionTitle(body.title) ?? undefined, configuration });
+				const snapshot = state.workflowService.saveWorkflowSessionSnapshot(createWorkflowSessionSnapshot({ webSession, session: created.session, workflow: published, baseDefinition, configuration, validation }));
+				recordWorkflowLifecycleEvent(state, webSession, { type: "workflow.session.created", workflowId: workflow.id, workflowVersion: workflow.version, piboSessionId: created.session.id, status: "accepted", validation: validation.validation, diagnostics: validation.diagnostics, payload: { snapshotId: snapshot.id, profile, roomId: room.id } });
+				return responseJson({ session: created.session, workflowSession: enrichWorkflowSession(state, created.workflowSession), workflow, configuration, snapshot, validation: validation.validation, diagnostics: validation.diagnostics }, { status: 201 });
 			}
 
-			const workflowSessionStart = projectWorkflowSessionStartResource(url.pathname);
-			if (workflowSessionStart && request.method === "POST") {
-				requireSameOriginJsonRequest(request);
-				const webSession = await requireSession(request, context);
-				const session = requireSharedSession(context, workflowSessionStart.piboSessionId);
-				const project = requireSharedProject(state, webSession, workflowSessionStart.projectId);
-				const projectSession = state.projectService.getProjectSession(session.id);
-				if (!projectSession || projectSession.projectId !== project.id) throw new PiboWebHttpError("Project workflow session not found", 404);
-				const snapshot = state.projectService.getWorkflowSessionSnapshotForSession(session.id);
-				if (!snapshot) throw new PiboWebHttpError("Project workflow session snapshot not found", 409);
-				const workflowSelection = workflowVersionFromSnapshot(snapshot);
-				if (projectSession.workflowRunId) {
-					const existingRun = state.projectService.getProjectWorkflowRun(projectSession.workflowRunId);
-					if (existingRun) {
-						updateProjectWorkflowRunSessionMetadata({ state, context, session, workflowRunId: existingRun.id });
-						return responseJson({
-							projectSession,
-							workflow: workflowSelection,
-							snapshot,
-							run: existingRun,
-							alreadyStarted: true,
-							validation: existingRun.validation ?? summarizeWorkflowDiagnostics([], "before_workflow_start"),
-							diagnostics: [],
-							message: "Workflow run already exists for this Project session.",
-						}, { status: 200 });
-					}
-				}
-				const validation = validateProjectWorkflowSnapshotForStart(snapshot, { state, context, webSession });
-				recordWorkflowLifecycleEvent(state, webSession, {
-					type: "workflow.validation.completed",
-					workflowId: workflowSelection.id,
-					workflowVersion: workflowSelection.version,
-					projectId: project.id,
-					piboSessionId: session.id,
-					workflowRunId: projectSession.workflowRunId,
-					status: validation.validation.ok ? "accepted" : "blocked",
-					validation: validation.validation,
-					diagnostics: validation.diagnostics,
-					payload: { trigger: validation.validation.trigger, boundary: "workflow_start", snapshotId: snapshot.id },
-				});
-				if (!validation.validation.ok) {
-					recordWorkflowLifecycleEvent(state, webSession, {
-						type: "project.workflow_start.blocked",
-						workflowId: workflowSelection.id,
-						workflowVersion: workflowSelection.version,
-						projectId: project.id,
-						piboSessionId: session.id,
-						workflowRunId: projectSession.workflowRunId,
-						status: "blocked",
-						validation: validation.validation,
-						diagnostics: validation.diagnostics,
-						payload: { snapshotId: snapshot.id, profile: session.profile },
-					});
-					return workflowValidationBlockedResponse("Workflow session has validation errors and cannot be started", validation, { projectSession, workflow: workflowSelection });
-				}
-				const startResult = state.projectService.startWorkflowSessionRun({
-					projectId: project.id,
-					piboSessionId: session.id,
-					runId: `wfr_${randomUUID()}`,
-					workflowId: snapshot.workflow.id,
-					workflowVersion: snapshot.workflow.version,
-					snapshotId: snapshot.id,
-					effectiveDefinitionHash: snapshot.workflow.effectiveDefinitionHash,
-					current: createProjectWorkflowRunCurrent(snapshot.effectiveDefinition),
-					inputValues: snapshot.inputValues,
-					validation: validation.validation as unknown as PiboJsonObject,
-				});
-				updateProjectWorkflowRunSessionMetadata({ state, context, session, workflowRunId: startResult.run.id });
-				recordWorkflowLifecycleEvent(state, webSession, {
-					type: "project.workflow_start.accepted",
-					workflowId: workflowSelection.id,
-					workflowVersion: workflowSelection.version,
-					projectId: project.id,
-					piboSessionId: session.id,
-					workflowRunId: startResult.run.id,
-					status: "accepted",
-					validation: validation.validation,
-					diagnostics: validation.diagnostics,
-					payload: { snapshotId: snapshot.id, profile: session.profile, alreadyStarted: startResult.alreadyStarted },
-				});
-				if (!startResult.alreadyStarted) {
-					recordWorkflowLifecycleEvent(state, webSession, {
-						type: "workflow.run.status_changed",
-						workflowId: workflowSelection.id,
-						workflowVersion: workflowSelection.version,
-						projectId: project.id,
-						piboSessionId: session.id,
-						workflowRunId: startResult.run.id,
-						status: "changed",
-						validation: validation.validation,
-						diagnostics: validation.diagnostics,
-						payload: { snapshotId: snapshot.id, state: startResult.run.status, current: startResult.run.current },
-					});
-				}
-				return responseJson({
-					projectSession: startResult.projectSession,
-					workflow: workflowSelection,
-					snapshot,
-					run: startResult.run,
-					alreadyStarted: startResult.alreadyStarted,
-					validation: validation.validation,
-					diagnostics: validation.diagnostics,
-					message: startResult.alreadyStarted ? "Workflow run already exists for this Project session." : "Workflow run started.",
-				}, { status: startResult.alreadyStarted ? 200 : 202 });
+			const workflowResource = sessionWorkflowResource(url.pathname);
+			if (workflowResource && workflowResource.action === undefined && request.method === "GET") {
+				await requireSession(request, context);
+				return responseJson(inspectWorkflowSession(state, context, workflowResource.piboSessionId));
 			}
-
-			if (projectResource && projectResource.child === "sessions" && request.method === "POST") {
+			if (workflowResource?.action === "human-actions" && request.method === "POST") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
-				const body = await readJsonBody<ChatProjectSessionCreateBody>(request);
-				const project = requireSharedProject(state, webSession, projectResource.projectId);
-				const profile = resolveCreateSessionProfile(context, defaultProfile, body.profile);
-				const workflowId = normalizeLegacyProjectWorkflowId(body.workflowId);
-				const session = createProjectChatSession({ state, context, webSession, project, profile, workflowId });
-				return responseJson({ session, projectSession: state.projectService.getProjectSession(session.id) }, { status: 201 });
+				return submitWorkflowHumanAction({ state, context, webSession, piboSessionId: workflowResource.piboSessionId, body: await readJsonBody<ChatWorkflowHumanActionBody>(request) });
 			}
-
-			const projectSessionId = projectSessionResourceId(url.pathname);
-			if (projectSessionId && request.method === "PATCH") {
+			if (workflowResource?.action === "start" && request.method === "POST") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
-				const selectedSession = resolveRequestedSession(state, context, webSession, defaultProfile, projectSessionId);
-				const body = await readJsonBody<ChatProjectSessionPatchBody>(request);
-				assertProjectSessionPatchFields(body);
-				const updateSession = context.channelContext.updateSession;
-				if (!updateSession) throw new PiboWebHttpError("Session updates are not available", 501);
-				const title = normalizeSessionTitle(body.title);
-				let updated = selectedSession;
-				if (title !== undefined) {
-					const next = updateSession(selectedSession.id, { title });
-					if (!next) throw new PiboWebHttpError("Session not found", 404);
-					updated = next;
-					state.sessionQuery.upsertSession(updated);
+				const session = requireSharedSession(context, workflowResource.piboSessionId);
+				const workflowSession = state.workflowService.getWorkflowSession(session.id);
+				if (!workflowSession) throw new PiboWebHttpError("Workflow session not found", 404);
+				const snapshot = state.workflowService.getWorkflowSessionSnapshotForSession(session.id);
+				if (!snapshot) throw new PiboWebHttpError("Workflow session snapshot not found", 409);
+				const workflow = workflowVersionFromSnapshot(snapshot);
+				if (workflowSession.workflowRunId) {
+					const run = state.workflowService.getWorkflowRun(workflowSession.workflowRunId);
+					if (run) { updateWorkflowRunSessionMetadata({ state, context, session, workflowRunId: run.id }); return responseJson({ workflowSession: enrichWorkflowSession(state, workflowSession), run, snapshot, workflow, alreadyStarted: true, validation: run.validation ?? summarizeWorkflowDiagnostics([], "before_workflow_start"), diagnostics: [], message: "Workflow run already exists for this Workflow Session." }); }
 				}
-				const archived = normalizeProjectSessionArchived(body.archived);
-				const projectSession = archived === undefined ? state.projectService.getProjectSession(selectedSession.id) : state.projectService.setProjectSessionArchived(selectedSession.id, archived);
-				return responseJson({ session: updated, projectSession });
+				const validation = validateWorkflowSnapshotForStart(snapshot, { state, context, webSession });
+				recordWorkflowLifecycleEvent(state, webSession, { type: "workflow.validation.completed", workflowId: workflow.id, workflowVersion: workflow.version, piboSessionId: session.id, workflowRunId: workflowSession.workflowRunId, status: validation.validation.ok ? "accepted" : "blocked", validation: validation.validation, diagnostics: validation.diagnostics, payload: { trigger: validation.validation.trigger, boundary: "workflow_start", snapshotId: snapshot.id } });
+				if (!validation.validation.ok) { recordWorkflowLifecycleEvent(state, webSession, { type: "workflow.start.blocked", workflowId: workflow.id, workflowVersion: workflow.version, piboSessionId: session.id, status: "blocked", validation: validation.validation, diagnostics: validation.diagnostics, payload: { snapshotId: snapshot.id, profile: session.profile } }); return workflowValidationBlockedResponse("Workflow Session has validation errors and cannot be started", validation, { workflowSession, workflow }); }
+				const started = state.workflowService.startWorkflowSessionRun({ piboSessionId: session.id, runId: `wfr_${randomUUID()}`, workflowId: snapshot.workflow.id, workflowVersion: snapshot.workflow.version, snapshotId: snapshot.id, effectiveDefinitionHash: snapshot.workflow.effectiveDefinitionHash, current: createWorkflowRunCurrent(snapshot.effectiveDefinition), inputValues: snapshot.inputValues, validation: validation.validation as unknown as PiboJsonObject });
+				updateWorkflowRunSessionMetadata({ state, context, session, workflowRunId: started.run.id });
+				recordWorkflowLifecycleEvent(state, webSession, { type: "workflow.start.accepted", workflowId: workflow.id, workflowVersion: workflow.version, piboSessionId: session.id, workflowRunId: started.run.id, status: "accepted", validation: validation.validation, diagnostics: validation.diagnostics, payload: { snapshotId: snapshot.id, profile: session.profile, alreadyStarted: started.alreadyStarted } });
+				if (!started.alreadyStarted) recordWorkflowLifecycleEvent(state, webSession, { type: "workflow.run.status_changed", workflowId: workflow.id, workflowVersion: workflow.version, piboSessionId: session.id, workflowRunId: started.run.id, status: "changed", validation: validation.validation, diagnostics: validation.diagnostics, payload: { snapshotId: snapshot.id, state: started.run.status, current: started.run.current } });
+				return responseJson({ workflowSession: enrichWorkflowSession(state, started.workflowSession), run: started.run, snapshot, workflow, alreadyStarted: started.alreadyStarted, validation: validation.validation, diagnostics: validation.diagnostics, message: started.alreadyStarted ? "Workflow run already exists for this Workflow Session." : "Workflow run started." }, { status: started.alreadyStarted ? 200 : 202 });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/signals/statuses` && request.method === "GET") {
@@ -5730,6 +5197,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					resolveProfile: (profileId) => resolveWorkflowRuntimeProfile({ context, requestedId: profileId }),
 				});
 				const diagnostics = result.ok ? validation.diagnostics : sanitizeWorkflowDiagnostics([...validation.diagnostics, ...result.diagnostics]);
+				if (result.run) {
+					state.workflowService.runtimeStore.saveRun(result.run);
+					for (const attempt of result.nodeAttempts) state.workflowService.runtimeStore.saveNodeAttempt(attempt);
+					for (const transfer of result.edgeTransfers) state.workflowService.runtimeStore.saveEdgeTransfer(transfer);
+				}
 				recordWorkflowLifecycleEvent(state, webSession, {
 					type: result.ok ? "workflow.editor_test_run.completed" : "workflow.editor_test_run.failed",
 					workflowId: record.workflowId,
@@ -5872,13 +5344,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/workflows/lifecycle-events` && request.method === "GET") {
-				const webSession = await requireSession(request, context);
+				await requireSession(request, context);
 				return responseJson({
 					events: state.workflowLifecycleEventStore.listEvents({
 						type: url.searchParams.get("type") ?? undefined,
 						workflowId: url.searchParams.get("workflowId") ?? undefined,
 						draftId: url.searchParams.get("draftId") ?? undefined,
-						projectId: url.searchParams.get("projectId") ?? undefined,
 						piboSessionId: url.searchParams.get("piboSessionId") ?? undefined,
 						workflowRunId: url.searchParams.get("workflowRunId") ?? undefined,
 						limit: parsePositiveIntSearchParam(url, "limit", 100, 500),
@@ -7175,17 +6646,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				);
 				const cursor = parseSseCursor(url.searchParams.get("since")) ?? parseSseCursor(request.headers.get("last-event-id"));
 				const transientReplayCursor = parseTransientReplayCursor(url.searchParams.get("liveSince"));
-				if (!requestedRoomId && state.projectService.getProjectSession(selectedSession.id)) {
-					return createEventStream({
-						piboSessionId: selectedSession.id,
-						activePiboSessionId: selectedSession.id,
-						mode: streamMode,
-						context,
-						state,
-						cursor,
-						transientReplayCursor,
-					});
-				}
 				const roomId = requestedRoomId ?? selectedRoomIdForSession(state, context, selectedSession);
 				requireRoom(state, roomId, webSession, "read");
 				const streamPiboSessionId = requestedPiboSessionId || !requestedRoomId ? selectedSession.id : undefined;
