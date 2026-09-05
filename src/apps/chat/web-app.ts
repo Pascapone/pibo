@@ -36,10 +36,15 @@ import type { ChatEventAppendInput, ChatEventListInput, StoredChatEvent } from "
 import type { ChatWebSessionBootstrapIndexResult, ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "./types/read-model.js";
 import {
 	chatRoomIdFromMetadata,
+	comparePiboRoomsBySidebarOrder,
 	isDefaultPiboRoom,
 	isPiboRoomArchived,
+	isPiboRoomPinned,
+	piboRoomSidebarOrder,
 	roomWorkspaceFromMetadata,
 	withChatRoomId,
+	withPiboRoomPinned,
+	withPiboRoomSidebarOrder,
 	withPiboRoomWorkspace,
 	type CreatePiboRoomInput,
 	type PiboRoom,
@@ -3688,6 +3693,52 @@ function indexSharedSessions(sessionQuery: ChatSessionQuery, sessions: PiboSessi
 	sessionQuery.upsertSessionsIfChanged(sessions);
 }
 
+function nextChatWebRoomSidebarOrder(rooms: readonly PiboRoom[]): number {
+	return rooms.reduce((maximum, room) => {
+		const createdOrder = Date.parse(room.createdAt) || 0;
+		return Math.max(maximum, piboRoomSidebarOrder(room) ?? createdOrder);
+	}, 0) + 1;
+}
+
+function reorderChatWebRoom(input: {
+	state: ChatWebAppState;
+	room: PiboRoom;
+	targetRoom: PiboRoom;
+	position: "before" | "after";
+}): string[] {
+	if (input.room.parentRoomId || input.targetRoom.parentRoomId) {
+		throw new PiboWebHttpError("Only top-level rooms can be reordered", 400);
+	}
+	if (isDefaultPiboRoom(input.room) || isDefaultPiboRoom(input.targetRoom)) {
+		throw new PiboWebHttpError("Shared Chat cannot be reordered", 400);
+	}
+	if (isPiboRoomArchived(input.room) || isPiboRoomArchived(input.targetRoom)) {
+		throw new PiboWebHttpError("Archived rooms cannot be reordered", 400);
+	}
+	const pinned = isPiboRoomPinned(input.room);
+	if (pinned !== isPiboRoomPinned(input.targetRoom)) {
+		throw new PiboWebHttpError("Pinned and unpinned rooms cannot be reordered together", 400);
+	}
+	const ordered = input.state.roomService.listRooms()
+		.filter((room) => !room.parentRoomId && !isDefaultPiboRoom(room) && !isPiboRoomArchived(room) && isPiboRoomPinned(room) === pinned)
+		.sort(comparePiboRoomsBySidebarOrder);
+	const movedIndex = ordered.findIndex((room) => room.id === input.room.id);
+	const targetIndex = ordered.findIndex((room) => room.id === input.targetRoom.id);
+	if (movedIndex < 0 || targetIndex < 0) throw new PiboWebHttpError("Room ordering target not found", 404);
+	if (movedIndex === targetIndex) return ordered.map((room) => room.id);
+	const [moved] = ordered.splice(movedIndex, 1);
+	const remainingTargetIndex = ordered.findIndex((room) => room.id === input.targetRoom.id);
+	ordered.splice(input.position === "before" ? remainingTargetIndex : remainingTargetIndex + 1, 0, moved!);
+	const orderBase = nextChatWebRoomSidebarOrder(ordered) + ordered.length - 1;
+	for (const [index, room] of ordered.entries()) {
+		const updated = input.state.roomService.updateRoom(room.id, {
+			metadata: withPiboRoomSidebarOrder(room.metadata, orderBase - index),
+		});
+		if (!updated) throw new PiboWebHttpError("Room not found", 404);
+	}
+	return ordered.map((room) => room.id);
+}
+
 function nextChatWebSessionSidebarOrder(sessions: readonly PiboSession[]): number {
 	return sessions.reduce((maximum, session) => {
 		const createdOrder = Date.parse(session.createdAt) || 0;
@@ -6201,12 +6252,49 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				});
 			}
 
+			if (roomResource?.child === "order" && request.method === "PATCH") {
+				requireSameOriginJsonRequest(request);
+				const webSession = await requireSession(request, context);
+				const room = requireRoom(state, roomResource.roomId, webSession, "admin");
+				const body = await readJsonBody<{ targetRoomId?: unknown; position?: unknown }>(request);
+				if (typeof body.targetRoomId !== "string" || !body.targetRoomId) {
+					throw new PiboWebHttpError("targetRoomId is required", 400);
+				}
+				if (body.position !== "before" && body.position !== "after") {
+					throw new PiboWebHttpError("position must be before or after", 400);
+				}
+				const targetRoom = requireRoom(state, body.targetRoomId, webSession, "admin");
+				return responseJson({
+					orderedRoomIds: reorderChatWebRoom({ state, room, targetRoom, position: body.position }),
+				});
+			}
+
 			if (roomResource && roomResource.child === undefined && request.method === "PATCH") {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const existingRoom = requireRoom(state, roomResource.roomId, webSession, "admin");
 				const body = await readJsonBody<ChatRoomPatchBody>(request);
+				if (body.pinned !== undefined && existingRoom.parentRoomId) {
+					throw new PiboWebHttpError("Only top-level rooms can be pinned", 400);
+				}
+				if (body.pinned === true && (body.archived === true || isPiboRoomArchived(existingRoom))) {
+					throw new PiboWebHttpError("Archived rooms cannot be pinned", 400);
+				}
 				const update = createRoomUpdate(existingRoom, body);
+				if (typeof body.pinned === "boolean") {
+					const targetGroup = state.roomService.listRooms().filter((room) =>
+						!room.parentRoomId
+						&& !isDefaultPiboRoom(room)
+						&& !isPiboRoomArchived(room)
+						&& room.id !== existingRoom.id
+						&& isPiboRoomPinned(room) === body.pinned,
+					);
+					update.metadata = withPiboRoomPinned(
+						update.metadata ?? existingRoom.metadata,
+						body.pinned,
+						nextChatWebRoomSidebarOrder(targetGroup),
+					);
+				}
 				if (update.parentRoomId) requireRoom(state, update.parentRoomId, webSession, "admin");
 				let room: PiboRoom | undefined;
 				try {

@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { BootstrapData, PiboRoom, PiboSession, PiboWebSessionNode } from "./types";
-import { findRoomById, sessionNodeTitle } from "./session-sidebar-helpers";
+import { findRoomById, isArchivedRoom, isPinnedRoom, isSharedDefaultRoom, sessionNodeTitle } from "./session-sidebar-helpers";
 
 export type BootstrapMutationSnapshot = {
 	localBootstrap: BootstrapData | null;
@@ -236,6 +236,57 @@ export function updateRoomInBootstrap(data: BootstrapData, roomId: string, updat
 		room: data.room?.id === roomId ? updater(data.room) : data.room,
 		rooms: replaceRoomNode(data.rooms, roomId, updater),
 	};
+}
+
+export function setRoomPinnedInBootstrap(data: BootstrapData, roomId: string, pinned: boolean): BootstrapData {
+	const index = data.rooms.findIndex((room) => room.id === roomId);
+	if (index < 0) return data;
+	const rooms = [...data.rooms];
+	const [current] = rooms.splice(index, 1);
+	if (!current || isSharedDefaultRoom(current) || isArchivedRoom(current)) return data;
+	const metadata: Record<string, unknown> = { ...current.metadata, chatRoomSidebarOrder: Date.now() };
+	if (pinned) metadata.chatRoomPinnedAt = new Date().toISOString();
+	else delete metadata.chatRoomPinnedAt;
+	return { ...data, rooms: insertAtTopOfRoomGroup(rooms, { ...current, metadata }) };
+}
+
+export function reorderRoomRootsInBootstrap(
+	data: BootstrapData,
+	roomId: string,
+	targetRoomId: string,
+	position: "before" | "after",
+): BootstrapData {
+	const movedIndex = data.rooms.findIndex((room) => room.id === roomId);
+	const targetIndex = data.rooms.findIndex((room) => room.id === targetRoomId);
+	if (movedIndex < 0 || targetIndex < 0 || movedIndex === targetIndex) return data;
+	const moved = data.rooms[movedIndex]!;
+	const target = data.rooms[targetIndex]!;
+	if (
+		isSharedDefaultRoom(moved)
+		|| isSharedDefaultRoom(target)
+		|| isArchivedRoom(moved)
+		|| isArchivedRoom(target)
+		|| isPinnedRoom(moved) !== isPinnedRoom(target)
+	) return data;
+	const rooms = [...data.rooms];
+	rooms.splice(movedIndex, 1);
+	const remainingTargetIndex = rooms.findIndex((room) => room.id === targetRoomId);
+	rooms.splice(position === "before" ? remainingTargetIndex : remainingTargetIndex + 1, 0, moved);
+	return { ...data, rooms };
+}
+
+function insertAtTopOfRoomGroup(rooms: PiboRoom[], room: PiboRoom): PiboRoom[] {
+	const next = [...rooms];
+	let index: number;
+	if (isPinnedRoom(room)) {
+		index = next.findIndex((candidate) => !isSharedDefaultRoom(candidate) && !isArchivedRoom(candidate));
+	} else {
+		index = next.findIndex((candidate) => !isSharedDefaultRoom(candidate) && !isArchivedRoom(candidate) && !isPinnedRoom(candidate));
+	}
+	if (index < 0) index = next.findIndex((candidate) => !isSharedDefaultRoom(candidate) && isArchivedRoom(candidate));
+	if (index < 0) index = next.length;
+	next.splice(index, 0, room);
+	return next;
 }
 
 export function removeRoomsFromBootstrap(data: BootstrapData, roomIds: ReadonlySet<string>): BootstrapData {

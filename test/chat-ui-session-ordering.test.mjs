@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import test from "node:test";
 
@@ -114,6 +115,8 @@ async function runSourceAssertions() {
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
-test("Session sidebar keeps pinned and normal ordering user-controlled", async () => {
+test("Session sidebar keeps pinned and normal ordering user-controlled without a drag handle", async () => {
 	await runSourceAssertions();
+	const sessionNodeSource = await readFile("src/apps/chat-ui/src/session-node.tsx", "utf8");
+	assert.doesNotMatch(sessionNodeSource, /GripVertical|showDragHandle/);
 });
