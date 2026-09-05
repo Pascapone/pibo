@@ -4300,7 +4300,10 @@ function inspectWorkflowSession(state: ChatWebAppState, context: PiboWebAppConte
 		humanActions: state.workflowService.listWorkflowHumanActions({ piboSessionId, ...(workflowRunId ? { workflowRunId } : {}), limit: 200 }),
 		nodeAttempts: workflowRunId ? state.workflowService.runtimeStore.listNodeAttempts({ workflowRunId, limit: 200 }) : [],
 		edgeTransfers: workflowRunId ? state.workflowService.runtimeStore.listEdgeTransfers({ workflowRunId, limit: 200 }) : [],
-		lifecycleEvents: state.workflowLifecycleEventStore.listEvents({ ...(workflowRunId ? { workflowRunId } : { piboSessionId }), limit: 200 }),
+		lifecycleEvents: [...new Map([
+			...state.workflowLifecycleEventStore.listEvents({ piboSessionId, limit: 200 }),
+			...(workflowRunId ? state.workflowLifecycleEventStore.listEvents({ workflowRunId, limit: 200 }) : []),
+		].map((event) => [event.id, event])).values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)),
 	};
 }
 
