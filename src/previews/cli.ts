@@ -48,12 +48,6 @@ function createPreviewId(): string {
 	return `pv-${randomBytes(9).toString("hex")}`;
 }
 
-function inferredProjectId(metadata: unknown): string | undefined {
-	if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined;
-	const projectId = (metadata as Record<string, unknown>).projectId;
-	return typeof projectId === "string" && projectId.trim() ? projectId.trim() : undefined;
-}
-
 async function previewHealth(exposure: PreviewExposure): Promise<PreviewHealthState> {
 	const state = previewExposureState(exposure);
 	if (state !== "active") return state;
@@ -112,13 +106,12 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 		.command("expose")
 		.argument("<port>", "Reachable loopback development port", parsePort)
 		.requiredOption("--session <pibo-session-id>", "Pibo Session that owns the preview")
-		.option("--project <project-id>", "Optional Project association")
 		.option("--name <label>", "Preview label")
 		.option("--workspace <path>", "Workspace used by the managed command and recorded for diagnostics")
 		.option("--command <shell-command>", "Save and start this command as a Preview-managed server")
 		.option("--ttl-minutes <minutes>", "Automatic preview-definition lifetime", parsePreviewTtlMinutes, DEFAULT_PREVIEW_TTL_MINUTES)
 		.option("--json", "Print JSON")
-		.action(async (port: number, options: { session: string; project?: string; name?: string; workspace?: string; command?: string; ttlMinutes: number; json?: boolean }) => {
+		.action(async (port: number, options: { session: string; name?: string; workspace?: string; command?: string; ttlMinutes: number; json?: boolean }) => {
 			const baseURL = requirePreviewBaseURL();
 			const piboSessionId = options.session.trim();
 			if (!piboSessionId) throw new Error("--session must contain a Pibo Session ID");
@@ -155,7 +148,6 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 				exposure = store.createExposure({
 					id,
 					piboSessionId,
-					projectId: options.project?.trim() || inferredProjectId(session.metadata),
 					label: options.name?.trim() || `Preview ${port}`,
 					targetHost: target?.host ?? "127.0.0.1",
 					targetPort: port,

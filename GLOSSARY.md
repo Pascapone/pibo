@@ -4,7 +4,7 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 ## Core architecture
 
-**Pibo** — The product and orchestration layer around agent harnesses. Pibo owns Pibo Sessions, rooms, projects, profiles, Agent Designer, plugins, routing, channels, jobs, workflows, goals, subagents, signals, reliability, product data, authentication, web apps, and operator tooling.
+**Pibo** — The product and orchestration layer around agent harnesses. Pibo owns Pibo Sessions, rooms, profiles, Agent Designer, plugins, routing, channels, jobs, workflows, goals, subagents, signals, reliability, product data, authentication, web apps, and operator tooling.
 
 **Agent Harness** — An engine such as Pi Coding Agent or Codex that owns its native model loop, base system prompt, standard tools, native session/transcript, and harness-specific behavior.
 
@@ -48,8 +48,6 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Pibo Room** — A Chat Web container that groups Pibo Sessions and may define a workspace. A room is not a runtime conversation.
 
-**Pibo Project** — A workspace-oriented Chat Web container tied to a project folder and associated Pibo Sessions. A project does not replace session identity.
-
 **Workspace** — The filesystem directory in which a session runtime operates. Product-wide state belongs under Pibo Home, not inside the workspace unless explicitly workspace-scoped.
 
 ## Capabilities and execution
@@ -88,7 +86,7 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Loop Job / Loop Run** — A Loop Job is a durable continuous-work definition. A Loop Run is one execution attempt. Goal mode continues turns in one Pibo Session; legacy Ralph mode creates a fresh Pibo Session for each run.
 
-**Workflow Definition / Workflow Run** — A Workflow Definition is a versioned graph of nodes, edges, inputs, outputs, and policies. A Workflow Run is one execution of a definition or immutable snapshot.
+**Workflow Definition / Workflow Run** — A Workflow Definition is a versioned graph of nodes, edges, inputs, outputs, and policies. A Workflow Run is one execution of a definition or immutable snapshot. Workflow linkage connects a Run to normal Pibo Sessions; it does not create a separate Session class. Workflow facts belong to the Workflow store, conversation history to Pibo Sessions, and grouping and workspace defaults to Rooms.
 
 **Active Model / Model Defaults** — The Active Model is persisted for an existing Pibo Session. Model Defaults select models for new sessions and must not silently change existing sessions.
 
