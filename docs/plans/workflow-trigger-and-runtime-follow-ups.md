@@ -56,7 +56,7 @@ links:
 
 ## Current framework and product boundary
 
-The canonical specifications own current workflow behavior. Pibo already has workflow IR, validation and registry helpers, versioned catalog/draft/publish/archive surfaces, an editor, runtime/store components, a bounded manual text-trigger slice with deterministic fan-out, and immutable Session configuration plus initial run records. The current manual slice explicitly rejects unsupported joins, Session workflow start does not prove full graph advancement, and no general restart-resumption or external webhook/Cron trigger is evidenced.
+The canonical specifications own current Workflow behavior. Pibo already has Workflow IR, validation and registry helpers, versioned catalog/draft/publish/archive surfaces, an editor, runtime/store components, a bounded manual text-trigger slice with deterministic fan-out through ordinary chat Sessions and canonical runtime facts, and immutable Session configuration plus one pending canonical Run on start. The current manual slice explicitly rejects unsupported joins. Configured Session start explicitly reports that general graph execution is not connected, and no general restart resumption or external webhook/Cron trigger is evidenced.
 
 This plan builds on the shipped kernel and product surfaces. It does not describe them as pending or treat Web state as execution authority.
 

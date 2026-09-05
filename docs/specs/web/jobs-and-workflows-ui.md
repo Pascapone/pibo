@@ -1,30 +1,25 @@
 ---
 type: "Specification"
 title: "Chat Web Jobs and Workflows UI"
-description: "Defines the implemented Chat Web Jobs and Workflows UI contract, including its ownership, source/test/public/failure/accessibility/compatibility boundaries, and explicit evidence limits."
-tags:
-- web
-- chat-web
-status: "draft"
+description: "Defines the implemented Chat Web jobs, Workflow authoring, manual runs, and Session-native Workflow UI."
+tags: ["web", "chat-web", "jobs", "workflows"]
+status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T07:15:00Z"
+  at: "2026-09-05T08:51:15Z"
 sources:
-  - id: "foundation-source-and-tests"
-    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
-    title: "upstream/dev refresh source and named-test evidence"
+  - resource: "scope:Integrated implementation and tests at traceability.commit"
+    title: "Chat Web jobs and Workflow UI implementation"
 implementation:
-  state: "integration-reconciliation-required"
-  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
-  package: "WP-06+07-WEB"
-  package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
-  source_evidence: "previous baseline inspected; changed integration paths require final reconciliation"
-  focused_test_execution: "unperformed for this change"
-  build_typecheck_package_execution: "unperformed for this change"
-  visual_provider_gateway_pibo2_execution: "unperformed"
+  state: "current"
+  baseline_commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  source_evidence: "performed"
+  test_execution: "62 focused UI source tests and complete isolated root suite passed"
+  build_typecheck_execution: "clean full build and all typechecks passed"
+  browser_execution: "headed Workflow Session creation/start/inspection and desktop/mobile views passed; manual editor QA remains pending"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
   requirements:
     - id: "WEB-WORKFLOW-JOBS-001"
       status: "implemented"
@@ -32,149 +27,65 @@ traceability:
         - path: "src/apps/chat-ui/src/CronArea.tsx"
           symbol: "CronArea"
         - path: "src/apps/chat-ui/src/LoopArea.tsx"
-          symbol: "writableLoopRooms"
-        - path: "src/apps/chat-ui/src/LoopArea.tsx"
           symbol: "LoopArea"
-        - path: "src/apps/chat-ui/src/LoopArea.tsx"
-          symbol: "LoopIdButton"
-        - path: "src/apps/chat-ui/src/LoopArea.tsx"
-          symbol: "LoopUsageSummary"
-        - path: "src/apps/chat-ui/src/LoopArea.tsx"
-          symbol: "GoalTokenAccountingNotice"
         - path: "src/apps/chat-ui/src/RalphArea.tsx"
           symbol: "RalphArea"
       tests:
         - path: "test/chat-ui-loop-area.test.mjs"
           name: "Loop UI displays active Goal time without wall-clock or paused-time totals"
-        - path: "test/chat-ui-loop-area.test.mjs"
-          name: "new Loop UI defaults to same-session goal mode and exposes legacy Ralph mode"
-        - path: "test/chat-ui-loop-area.test.mjs"
-          name: "Loop UI renders recursive model usage and reported cost"
-        - path: "test/chat-ui-loop-area.test.mjs"
-          name: "Loop UI draft shows uncached after Ralph-to-Goal switch while legacy Goals remain total"
         - path: "test/chat-ui-cron-area-copy.test.mjs"
           name: "Cron Schedule Builder uses consistent English preset and weekday labels"
-      public:
-        - "/api/chat/cron*"
-        - "/api/chat/loop*"
-        - "/api/chat/ralph*"
-        - "/api/chat/workflows*"
-        - "CronArea"
-        - "LoopArea"
-        - "RalphArea"
-        - "WorkflowsArea"
-        - "MinimalWorkflowsArea"
-      failures:
-        - "Failed/invalid job mutations remain visible and do not fabricate state; runtime stop/recovery belongs to orchestration."
-        - "Accessibility/responsive boundary: Controls/status/accounting must be labeled and usable without color or pointer-only interaction."
-        - "Compatibility boundary: Existing Ralph route is retained as a legacy-compatible surface."
+      public: ["/api/chat/cron*", "/api/chat/loop*", "/api/chat/ralph*"]
+      failures: ["Failed or invalid job mutations remain visible and do not fabricate state."]
       confidence: "high"
     - id: "WEB-WORKFLOW-AUTHORING-002"
       status: "implemented"
       sources:
         - path: "src/apps/chat-ui/src/WorkflowsArea.tsx"
           symbol: "WorkflowsArea"
-        - path: "src/apps/chat-ui/src/MinimalWorkflowsArea.tsx"
-          symbol: "MinimalWorkflowsArea"
         - path: "src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx"
           symbol: "WorkflowGraphCanvas"
         - path: "src/apps/chat-ui/src/workflows/WorkflowRawIrEditor.tsx"
           symbol: "WorkflowRawIrEditor"
-        - path: "src/apps/chat-ui/src/workflows/workflow-context-menu-keyboard.ts"
-          symbol: "workflowContextMenuKeyAction"
       tests:
         - path: "test/chat-ui-workflow-graph-model.test.mjs"
           name: "workflow graph model projects nodes, edges, positions, and diagnostics"
         - path: "test/workflow-v2-state-mapping-ui.test.mjs"
-          name: "Workflow Builder exposes simple state mapping dropdown controls"
-        - path: "test/workflow-v2-state-mapping-ui.test.mjs"
           name: "Workflow Builder state edits stay in Pibo Workflow IR and run state validation"
-        - path: "test/chat-ui-workflow-context-menu-accessibility.test.mjs"
-          name: "workflow graph context menu owns focus and keyboard events"
-        - path: "test/chat-ui-workflow-context-menu-accessibility.test.mjs"
-          name: "workflow graph context menu key model covers navigation, dismissal, and invocation"
-        - path: "test/chat-ui-workflow-edge-adapter-dialog.test.mjs"
-          name: "workflow edge adapter chooser uses the shared accessible dialog lifecycle"
-      public:
-        - "/api/chat/cron*"
-        - "/api/chat/loop*"
-        - "/api/chat/ralph*"
-        - "/api/chat/workflows*"
-        - "CronArea"
-        - "LoopArea"
-        - "RalphArea"
-        - "WorkflowsArea"
-        - "MinimalWorkflowsArea"
-      failures:
-        - "Invalid raw/form/graph edits retain diagnostics and cannot silently publish or become runtime truth."
-        - "Accessibility/responsive boundary: Graph relationships need nonvisual text/forms and focus order; visual acceptance is pending."
-        - "Compatibility boundary: Pibo Workflow IR remains SPC-ORCH-005 authority."
+      public: ["/workflows", "Workflow editor"]
+      failures: ["Invalid raw, form, or graph edits retain diagnostics and cannot silently publish."]
       confidence: "high"
     - id: "WEB-WORKFLOW-LIFECYCLE-003"
       status: "implemented"
       sources:
-        - path: "src/apps/chat-ui/src/WorkflowsArea.tsx"
-          symbol: "WorkflowBuilderLanding"
-        - path: "src/apps/chat-ui/src/WorkflowsArea.tsx"
-          symbol: "WorkflowsArea"
-        - path: "src/apps/chat-ui/src/api-workflows.ts"
-          symbol: "postWorkflowCreateDraft"
         - path: "src/apps/chat-ui/src/api-workflows.ts"
           symbol: "postWorkflowDraftPublish"
-        - path: "src/apps/chat-ui/src/api-workflows.ts"
-          symbol: "postWorkflowArchive"
         - path: "src/apps/chat-ui/src/api-workflows.ts"
           symbol: "deleteWorkflow"
       tests:
         - path: "test/workflow-v2-library-actions-ui.test.mjs"
           name: "Workflow Library renders source/status action metadata from catalog actions"
-        - path: "test/workflow-v2-publish-gating-ui.test.mjs"
-          name: "Workflow Builder publish panel gates publish on error diagnostics"
-      public:
-        - "/api/chat/cron*"
-        - "/api/chat/loop*"
-        - "/api/chat/ralph*"
-        - "/api/chat/workflows*"
-        - "CronArea"
-        - "LoopArea"
-        - "RalphArea"
-        - "WorkflowsArea"
-        - "MinimalWorkflowsArea"
-      failures:
-        - "Errors block publish; failed lifecycle mutations leave authoritative version state unchanged and visible."
-        - "Accessibility/responsive boundary: Action/status names, confirmation, errors, and focus must be accessible."
-        - "Compatibility boundary: Version/archive semantics remain SPC-ORCH-005/SPC-ORCH-006."
+        - path: "test/workflow-v2-lifecycle-confirmation-ui.test.mjs"
+          name: "Workflow Library renders deliberate archive and delete confirmation copy"
+      public: ["/api/chat/workflows*", "Workflow library"]
+      failures: ["Errors block publish; failed lifecycle mutations leave authoritative version state unchanged and visible."]
       confidence: "high"
     - id: "WEB-WORKFLOW-MANUAL-004"
       status: "implemented"
       sources:
         - path: "src/apps/chat/workflow-manual-trigger-runtime.ts"
           symbol: "runWorkflowManualTextTrigger"
-        - path: "src/apps/chat/workflow-manual-trigger-runtime.ts"
-          symbol: "validateWorkflowManualTextTrigger"
-        - path: "src/apps/chat/workflow-manual-trigger-runtime.ts"
-          symbol: "emitMessageAndWaitForAssistant"
+        - path: "src/apps/chat-ui/src/api-workflows.ts"
+          symbol: "postWorkflowDraftManualTriggerRun"
       tests:
         - path: "test/workflow-manual-trigger-recovery.test.mjs"
           name: "manual workflow agent nodes wait for message_finished and use the final assistant message"
         - path: "test/workflow-manual-trigger-recovery.test.mjs"
-          name: "manual workflow preserves deterministic Pibo-owned fan-out execution"
+          name: "manual workflow agent nodes use normal Sessions with workspace and stable workflow linkage"
         - path: "test/workflow-manual-trigger-recovery.test.mjs"
-          name: "manual workflow keeps the explicit unsupported-join failure"
-      public:
-        - "/api/chat/cron*"
-        - "/api/chat/loop*"
-        - "/api/chat/ralph*"
-        - "/api/chat/workflows*"
-        - "CronArea"
-        - "LoopArea"
-        - "RalphArea"
-        - "WorkflowsArea"
-        - "MinimalWorkflowsArea"
-      failures:
-        - "Timeout/error/unsupported join must fail explicitly without inventing downstream outputs."
-        - "Accessibility/responsive boundary: Waiting/failure/final-output UI needs stable textual status and later headful checks."
-        - "Compatibility boundary: This is a bounded supported slice; workflow kernel owns execution/recovery."
+          name: "manual workflow preserves deterministic Pibo-owned fan-out execution"
+      public: ["POST /api/chat/workflows/:workflowId/draft/run", "manual Workflow run"]
+      failures: ["Timeout, error, unsupported shape, or unsupported join fails without inventing downstream output."]
       confidence: "high"
     - id: "WEB-WORKFLOW-SESSION-005"
       status: "implemented"
@@ -182,16 +93,21 @@ traceability:
         - path: "src/apps/chat-ui/src/workflows/CreateWorkflowSessionDialog.tsx"
           symbol: "CreateWorkflowSessionDialog"
         - path: "src/apps/chat-ui/src/workflows/workflow-session-model.tsx"
-          symbol: "isWorkflowLinkedSession"
+          symbol: "createWorkflowHeaderSummary"
+        - path: "src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx"
+          symbol: "WorkflowXStateSessionView"
         - path: "src/apps/chat-ui/src/api-workflows.ts"
           symbol: "getSessionWorkflow"
-      source_inspected: true
-      follow_up: "Bind final create, inspect, start, human-action, responsive, and headful tests at the integrated code commit."
-      public: ["/api/chat/workflow-sessions", "/api/chat/sessions/:piboSessionId/workflow*", "Workflow Session view"]
-      failures:
-        - "Failed create, inspect, start, or human action remains visible and cannot fabricate Workflow progress."
-        - "Workflow status and actions must be labeled and responsive."
-      confidence: "medium"
+      tests:
+        - path: "test/workflow-v2-session-configured-ui.test.mjs"
+          name: "Workflow Session dialog preserves supported configuration boundaries"
+        - path: "test/workflow-session-header.test.mjs"
+          name: "Workflow headers report canonical run state independently of ordinary Session activity"
+        - path: "test/workflow-v2-session-run-checklist.test.mjs"
+          name: "human action UI submits only actions offered by the inspection response"
+      public: ["POST /api/chat/workflow-sessions", "GET /api/chat/sessions/:piboSessionId/workflow", "normal Session Workflow view"]
+      failures: ["Invalid configuration, failed start, missing inspection, or rejected action stays visible and cannot imply execution progress."]
+      confidence: "high"
 ---
 # Chat Web Jobs and Workflows UI
 
@@ -201,7 +117,7 @@ Cron/Loop/Ralph controls, Workflow draft authoring, graph/forms/raw IR/assets/pi
 
 ## Scope
 
-This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at integrated traceability commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
 
 ### In scope
 
@@ -222,7 +138,7 @@ Method-specific job and workflow routes list/create/update/start/stop/remove dra
 
 ### Cache, stream, files, and media
 
-Catalog and action metadata refresh the Workflow library and normal Session Workflow views. Workflow media and provider internals are outside this UI owner.
+Catalog and action metadata refresh the Workflow library and normal Session Workflow views. Configured start records a canonical `pending` Run but does not activate general graph execution. Header Workflow state comes from the Session's Workflow inspection response; ordinary Session activity never supplies or overrides that state. Workflow media and provider internals are outside this UI owner.
 
 ### Lifecycle and failure
 
@@ -301,7 +217,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 ### Requirement: WEB-WORKFLOW-MANUAL-004
 
-The currently supported manual text trigger MUST wait for message_finished and use the final assistant message, preserve deterministic Pibo-owned fan-out, and reject unsupported joins explicitly; it MUST NOT be described as proven restart recovery.
+The currently supported manual text trigger MUST wait for `message_finished` and use the final assistant message, preserve deterministic Pibo-owned fan-out, route ordinary chat Sessions, persist canonical definition snapshots, Runs, attempts, and transfers, and reject unsupported joins explicitly. This bounded slice MUST NOT be described as the general restart-resuming graph executor.
 
 #### Current
 
@@ -320,22 +236,22 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 ### Requirement: WEB-WORKFLOW-SESSION-005
 
-The Web UI MUST create a Workflow-backed normal Session in a selected Room and workspace, preserve chosen Workflow version, input, and eligible overrides, and expose true stored snapshot, Run, wait, action, attempt, and transfer facts in that Session's Workflow view. Start and human actions MUST use Session-scoped Workflow APIs without claiming Web-owned execution.
+The Web UI MUST create a Workflow-backed normal Session in a selected Room and workspace, preserve the chosen Workflow version, inputs, and eligible overrides, and expose stored snapshot, Run, wait, action, attempt, and transfer facts in that Session's Workflow view. Start MUST record or return one canonical `pending` Run and MUST present the API's explicit general-execution boundary. Header state MUST derive from Workflow inspection, independently of ordinary Session activity. Human actions MUST use the Session-scoped Workflow API.
 
 #### Current
 
-The in-progress UI source defines this integration shape. Final source names, tests, and integrated code traceability still require reconciliation.
+Integrated source and focused tests verify normal Session creation, explicit pending start, canonical inspection, inspection-derived headers, and offered human-action submission. Headful acceptance remains pending.
 
 #### Acceptance and boundaries
 
-- Source: `src/apps/chat-ui/src/workflows/CreateWorkflowSessionDialog.tsx` — `CreateWorkflowSessionDialog`; `src/apps/chat-ui/src/workflows/workflow-session-model.tsx` — `isWorkflowLinkedSession`; `src/apps/chat-ui/src/api-workflows.ts` — `getSessionWorkflow`
-- Tests: final integrated test names require reconciliation.
-- Public surfaces: `/api/chat/workflow-sessions`; `/api/chat/sessions/:piboSessionId/workflow*`; `CreateWorkflowSessionDialog`; normal Session Workflow view
-- Failure/security boundary: Immutable configuration and failed start/link/action must remain visible; Web cannot claim full graph execution.
+- Source: `src/apps/chat-ui/src/workflows/CreateWorkflowSessionDialog.tsx` — `CreateWorkflowSessionDialog`; `src/apps/chat-ui/src/workflows/workflow-session-model.tsx` — `createWorkflowHeaderSummary`; `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx` — `WorkflowXStateSessionView`; `src/apps/chat-ui/src/api-workflows.ts` — `getSessionWorkflow`, `postWorkflowSessionStart`, `postWorkflowHumanAction`
+- Tests: `test/workflow-v2-session-configured-ui.test.mjs` — “Workflow Session dialog preserves supported configuration boundaries”; `test/workflow-v2-session-configured-ui.test.mjs` — “configured Workflow Session starts explicitly from its normal Session view”; `test/workflow-session-header.test.mjs` — “Workflow headers report canonical run state independently of ordinary Session activity”; `test/workflow-v2-session-run-checklist.test.mjs` — “Workflow view renders canonical run inspection facts and immutable links”; `test/workflow-v2-session-run-checklist.test.mjs` — “human action UI submits only actions offered by the inspection response”
+- Public surfaces: `POST /api/chat/workflow-sessions`; `GET /api/chat/sessions/:piboSessionId/workflow`; `POST /api/chat/sessions/:piboSessionId/workflow/start`; `POST /api/chat/sessions/:piboSessionId/workflow/human-actions`; normal Session Workflow view
+- Failure/security boundary: Invalid immutable configuration, failed start/link/action, and unavailable inspection remain visible; the Web UI cannot claim full graph execution.
 - Accessibility/responsive boundary: Workflow Session status and actions must be labeled and responsive.
-- Compatibility boundary: Catalog/persistence/runtime/human-action semantics remain SPC-ORCH-005/SPC-ORCH-006.
-- Confidence: **medium**
-- Verification follow-up: Bind final tests and add headful Workflow Session create, start, wait-token action, error, refresh, and responsive scenarios.
+- Compatibility boundary: Catalog, persistence, runtime, and human-action semantics remain SPC-ORCH-005/SPC-ORCH-006.
+- Confidence: **high**
+- Verification follow-up: Add headful Workflow Session create, start, wait-token action, error, refresh, and responsive scenarios.
 
 ## Interfaces and ownership
 
@@ -379,8 +295,8 @@ Loop includes Goal-mode accounting notices; Ralph remains a legacy route/area. F
 
 ## Known limits
 
-- Evidence gap: No headful authoring, graph pointer/keyboard, raw editor, mobile sidebar, publish, job-control, or human-action path.
-- Evidence gap: No end-to-end workflow recovery or external trigger evidence.
+- Evidence gap: No completed headful authoring, graph pointer/keyboard, raw editor, publish, job-control, or human-action path; manual editor QA remains underway.
+- Evidence gap: No general arbitrary-graph restart recovery, join, webhook, or scheduled-trigger evidence.
 
 ## Reconciled stale claims
 
@@ -392,17 +308,10 @@ Loop includes Goal-mode accounting notices; Ralph remains a legacy route/area. F
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
-- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
-- Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
-- Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
-- Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.
-- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
-- Confidence measures trace quality, not execution of an unclaimed evidence class.
-
-Package verification commands:
-
-- `cd /root/code/pibo-okf-docs && node --test test/chat-ui-loop-area.test.mjs test/chat-ui-cron-area-copy.test.mjs test/chat-ui-workflow-graph-model.test.mjs test/workflow-v2-library-actions-ui.test.mjs test/workflow-v2-publish-gating-ui.test.mjs test/workflow-manual-trigger-recovery.test.mjs`
+- Source and named tests are bound to integrated commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
+- The clean full build, all typechecks, the UI delegate's 62 focused source tests, and complete isolated root suite passed. The root suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0.
+- Headed Workflow Session creation/start/inspection and desktop/mobile views passed. A real normal Session `pwd` through `openai-codex` also succeeded.
+- Manual editor QA remains underway. Desktop PWA, gateway deployment, and Pibo2 acceptance are not claimed.
 
 ## Related concepts
 

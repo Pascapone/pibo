@@ -5,26 +5,25 @@ description: "Defines the implemented Chat Web Trace, Terminal, Scrolling, and W
 tags:
 - web
 - chat-web
-status: "draft"
+status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T07:15:00Z"
+  at: "2026-09-05T08:51:15Z"
 sources:
-  - id: "foundation-source-and-tests"
-    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
-    title: "upstream/dev refresh source and named-test evidence"
+  - id: "integrated-source-and-tests"
+    resource: "scope:Integrated implementation and tests at traceability.commit"
+    title: "Integrated trace and Workflow projection source and named-test evidence"
 implementation:
-  state: "integration-reconciliation-required"
-  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  state: "current"
+  baseline_commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
   package: "WP-06+07-WEB"
-  package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
-  source_evidence: "previous baseline inspected; changed integration paths require final reconciliation"
-  focused_test_execution: "unperformed for this change"
-  build_typecheck_package_execution: "unperformed for this change"
-  visual_provider_gateway_pibo2_execution: "unperformed"
+  source_evidence: "performed"
+  test_execution: "complete isolated root suite and 144 Workflow package tests passed"
+  build_typecheck_package_execution: "clean full build and all typechecks passed"
+  browser_execution: "headed desktop/mobile Workflow Session views passed; manual editor QA remains pending"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
   requirements:
     - id: "WEB-TRACE-PROJECTION-001"
       status: "implemented"
@@ -203,7 +202,7 @@ Bounded trace projection, opt-in payload/raw detail, deterministic historical/li
 
 ## Scope
 
-This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at integrated traceability commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
 
 ### In scope
 
@@ -381,7 +380,7 @@ Legacy/current runtime turns use stable product identity; workflow UI models acc
 ## Known limits
 
 - Evidence gap: No headful virtual-scroll, prepend-anchor, raw-sidebar, fullscreen, or large-payload validation.
-- Evidence gap: No executed trace suite or real event replay.
+- Evidence gap: Manual editor headful QA remains underway; no general arbitrary-graph restart acceptance is claimed.
 
 ## Reconciled stale claims
 
@@ -393,18 +392,10 @@ Legacy/current runtime turns use stable product identity; workflow UI models acc
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
-- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
-- Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
-- Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
-- Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.
-- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
-- Confidence measures trace quality, not execution of an unclaimed evidence class.
-
-Package verification commands:
-
-- `cd /root/code/pibo-okf-docs && node --test test/chat-trace-materialization.test.mjs test/chat-ui-render-order-tooling.test.mjs test/trace-page-merge.test.mjs test/sticky-virtuoso-state.test.mjs test/workflow-session-kind.test.mjs test/workflow-v2-state-mapping-ui.test.mjs`
-- `cd /root/code/pibo-okf-docs && npm test --workspace @pasko70/pibo-workflows`
+- Source and named-test locators resolve at integrated commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
+- The clean full build, all typechecks, 144 Workflow package tests, and complete isolated root suite passed. The root suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0.
+- Headed Workflow Session start/inspection and desktop/mobile views passed. Manual editor QA remains underway.
+- External gateway deployment, Pibo2, and unclaimed broader visual paths are not claimed.
 
 ## Related concepts
 

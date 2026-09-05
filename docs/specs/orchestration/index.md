@@ -7,6 +7,6 @@
 * [Delegated Agents and Reusable Child Sessions](subagents.md) - Defines the implemented delegated agents and reusable child sessions contract and its current ownership, security, compatibility, and verification boundaries&#46;
 * [Loop Jobs, Goals, and Ralph Compatibility](loops-goals-and-ralph.md) - Defines the implemented loop jobs, goals, and ralph compatibility contract and its current ownership, security, compatibility, and verification boundaries&#46;
 * [Scheduled Pibo Jobs](scheduled-jobs.md) - Defines the implemented scheduled pibo jobs contract and its current ownership, security, compatibility, and verification boundaries&#46;
-* [Workflow Catalog, Publishing, and Session Execution](workflow-catalog-and-session-execution.md) - Defines the implemented Workflow catalog, publishing, Session linkage, run inspection, wait, and human&#45;action contract&#46;
+* [Workflow Catalog, Publishing, and Session Execution](workflow-catalog-and-session-execution.md) - Defines the implemented Workflow catalog, publishing, Session linkage, pending starts, inspection, waits, and human actions&#46;
 * [Workflow Framework, Runtime, and Store](workflow-framework-runtime-store.md) - Defines the implemented workflow framework, runtime, and store contract and its current ownership, security, compatibility, and verification boundaries&#46;
 * [Yielded Run Control and Isolation](yielded-runs.md) - Defines the implemented yielded run control and isolation contract and its current ownership, security, compatibility, and verification boundaries&#46;

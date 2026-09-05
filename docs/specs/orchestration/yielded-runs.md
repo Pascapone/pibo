@@ -6,23 +6,23 @@ description: Defines the implemented yielded run control and isolation contract 
 tags:
 - orchestration
 - workflows
-status: draft
+status: stable
 authority: normative
 generated:
-  by: openai/codex
-  at: '2026-09-01T20:42:35Z'
+  by: openai-codex/gpt-5.6-sol
+  at: '2026-09-05T08:51:15Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
-  title: upstream/dev refresh source and test evidence for SPC-ORCH-001
+  title: Integrated source and test evidence for SPC-ORCH-001
 implementation:
   state: current
-  baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
+  baseline_commit: 14cbaf0fd04cfa321674b570baeb40e543d957cb
   package: WP-04-ORCHESTRATION
   source_evidence: performed
-  focused_test_execution: performed in Docker after authoring; see implementation report
-  build_and_typecheck_execution: performed in Docker after authoring; see implementation report
+  test_execution: complete isolated root suite and 144 Workflow package tests passed
+  build_and_typecheck_execution: clean full build and all typechecks passed
 traceability:
-  commit: 39090b8850758293e69380a52bb7498d7c955bc2
+  commit: 14cbaf0fd04cfa321674b570baeb40e543d957cb
   requirements:
   - id: ORCH-RUN-001
     status: implemented
@@ -171,7 +171,7 @@ The registered yielded-run tools provide session-owned admission, observation, c
 
 - **Stable concept:** `SPC-ORCH-001`
 - **Target path:** `docs/specs/orchestration/yielded-runs.md`
-- **Authority:** Current upstream source and test evidence at `39090b8850758293e69380a52bb7498d7c955bc2`.
+- **Authority:** Current integrated source and test evidence at `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
 - **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the upstream/dev refresh commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
@@ -345,10 +345,9 @@ Recovery skips runs protected by an unexpired foreign job claim; terminal effect
 
 ## Verification boundary
 
-- Source/test baseline: `39090b8850758293e69380a52bb7498d7c955bc2`.
-- Focused inventory: 24 files / 245 top-level declarations; `test/web-channel.test.mjs` is separate cross-boundary evidence with 113 declarations.
-- Requirement traceability: 25 unique requirements across six targets, 15 high confidence and 10 medium confidence, 138 source references, 75 named-test references / 74 unique names.
-- This document is stable normative documentation of current behavior, not acceptance of future implementation work.
+- Source/test baseline: `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
+- The clean full build, all typechecks, all 144 Workflow package tests, and complete isolated root suite passed. The root suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0.
+- Manual editor headful QA remains underway. General graph restart execution, joins, webhooks, and scheduled triggers remain known gaps.
 
 ## Package-wide reconciliation appendix
 
@@ -359,7 +358,7 @@ This appendix applies to all six WP-04 specifications. It records the correction
 #### CORR-001 — blocking
 
 - **Finding:** All package briefs and synthesis reports were generated against 2aef244301f5d181624662fdad53e18e83e80bd9, not upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2.
-- **Reconciliation:** Rebind every target, source/test trace, and evidence statement to upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2; retain WP-03 candidate only as a non-authoritative cross-owner reference.
+- **Reconciliation:** Current traceability is rebound to integrated commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`; the older refresh commit remains historical audit context only.
 
 #### CORR-002 — blocking
 
@@ -438,8 +437,8 @@ This appendix applies to all six WP-04 specifications. It records the correction
 8. Cron timeout aborts the created Pibo Session. Current code times out only the waiter and records an error.
 9. Workflow XState is execution truth. It is a derived inspection projection; the kernel/store facts are authoritative.
 10. The workflow package has one integrated executor that durably resumes arbitrary graphs after restart. Current evidence shows a bounded manual agent traversal plus separate node dispatch primitives and durable records.
-11. workflow-manual-trigger-recovery.test.mjs proves process-restart recovery. It proves message_finished/final-message behavior and deterministic traversal.
-12. Configured Workflow Session start executes the Workflow. The current start slice creates one persisted initial running record; full graph advancement is not evidenced.
+11. workflow-manual-trigger-recovery.test.mjs proves general process-restart graph recovery. It verifies bounded manual traversal, ordinary Session routing, final-message behavior, and canonical runtime persistence, not a universal restart-resuming executor.
+12. Configured Workflow Session start executes the Workflow. The current start slice creates one canonical `pending` Run and explicitly reports that general graph execution is not connected to this surface.
 13. The storage service alone proves complete human-action payload validation. Session-scoped API validation must enforce the wait-token schema before the canonical store resolves an action.
 14. Future workflow webhook or Cron triggers are current. No registered runtime slices exist; they belong in plans.
 
@@ -452,8 +451,8 @@ This appendix applies to all six WP-04 specifications. It records the correction
 - **GAP-ORCH-005 — Cron:** Current run timeout does not abort the Pibo Session, and failed at jobs remain enabled without nextRunAt; decide whether to preserve or change these contracts in a plan.
 - **GAP-ORCH-006 — Workflow runtime:** No general integrated graph executor/restart resumption is evidenced across persisted checkpoints, wakeups, waits, retries, joins, and all node kinds.
 - **GAP-ORCH-007 — Workflow registry:** Implicit latest published version uses localeCompare rather than semantic-version ordering; the intended compatibility contract is not explicit.
-- **GAP-ORCH-008 — Workflow product:** The designated lifecycle/security tests are predominantly static coverage checklists, so store/API claims need executed focused tests and build/package checks.
-- **GAP-ORCH-009 — Session execution:** configured Session start persists initial state but does not yet prove full graph execution; general execution remains planned.
+- **GAP-ORCH-008 — Workflow product:** Focused store/API tests, all 144 Workflow package tests, the complete isolated root suite, build, and typechecks passed at `14cbaf0fd04cfa321674b570baeb40e543d957cb`; manual editor headful QA remains underway.
+- **GAP-ORCH-009 — Session execution:** configured Session start persists one pending canonical Run but does not execute the graph; general execution remains planned.
 - **GAP-ORCH-010 — Future triggers:** No registered webhook/Cron workflow trigger slices exist; do not include them in current specifications.
 
 ### F-028 scope control

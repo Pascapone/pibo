@@ -3,15 +3,21 @@ type: "Specification"
 title: "Product Store, History, Payloads, and Read Models"
 description: "Defines the implemented product store, history, payloads, and read models contract and its current ownership boundaries."
 tags: ["data", "product-store", "history"]
-status: "draft"
+status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T07:15:00Z"
+  at: "2026-09-05T08:51:15Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
+implementation:
+  state: "current"
+  baseline_commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  source_evidence: "performed"
+  test_execution: "complete isolated root suite passed: 2744 tests, 2739 passed, 0 failed, 5 skipped"
+  build_and_typecheck_execution: "clean full build and all typechecks passed"
 traceability:
-  commit: "cd13474b2b2fd4cd388e6229db7ec75418f496e9"
+  commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
   requirements:
     - id: "WP02-DATA-STORE-001"
       status: "implemented"
@@ -202,6 +208,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 - Failure and security: Bounded payload reads verify size and SHA-256. Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow. Missing or corrupt external payload content falls back to the durable preview where the history service supports it.
 - Compatibility: Legacy Pi binding columns are backfilled and old-writer Pi updates are synchronized by migration triggers. Live deltas are excluded from durable timeline facts by default. Projections are rebuildable and do not replace event_log facts.
 - Product-data boundary: App Context identifies one authenticated product data space; it is not a tenant or per-user datastore boundary.
+- Workflow-store boundary: Fresh product storage does not create retired container storage. Upgrade migration removes old catalog tables from `pibo.sqlite` after transferring catalog facts to `pibo-workflows.sqlite`; catalog-only upgrades do not require retired container storage. Canonical Sessions and history remain in `pibo.sqlite`.
 
 # Requirements and invariants
 
@@ -275,17 +282,11 @@ Related ownership boundaries:
 - Non-current claim excluded: describe ChatNavigationQueryService as a complete native navigation implementation; its source marks it reserved and current call sites compose navigation elsewhere.
 - Non-current claim excluded: claim product store code authenticates payload reads; route authentication belongs to Web/security owners.
 - Current limit or evidence gap: No focused corruption test was found for bounded payload SHA/length validation and durable-preview fallback.
-- Current limit or evidence gap: The canonical inventory names src/data/sqlite-schema.ts, but schema authority is src/data/schema.ts; retain the former only if a concrete symbol remains relevant during drafting.
+- Current evidence limit: Manual editor headful QA remains underway; it does not alter this store's ownership contract.
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `cd13474b2b2fd4cd388e6229db7ec75418f496e9`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
-
-Package verification commands:
-
-- `npm run build`
-- `npm run typecheck`
-- `node scripts/run-test-suite.mjs test/data-v2-store.test.mjs test/trace-v2-fast-path.test.mjs test/pibo-tool-mcp-bridge.test.mjs test/stream-render-final-review.test.mjs test/app-context-fresh-schema.test.mjs test/data-v2-ingest-service.test.mjs test/chat-v2-native-services.test.mjs`
+Source symbols and named tests are bound to commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`. The clean full build, all typechecks, and complete isolated root suite passed. The suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0. Headed Room workspace editing and inheritance and a real normal Session `pwd` through `openai-codex` also succeeded. This specification does not claim manual editor QA, Pibo2, or deployment evidence.
 
 # Related concepts
 

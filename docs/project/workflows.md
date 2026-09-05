@@ -32,7 +32,7 @@ Pibo currently has two workflow layers:
 
 Rooms group Sessions and may supply workspace defaults. Workflow definitions, immutable configuration snapshots and execution facts belong to the Workflow store; conversation history and runtime bindings belong to Pibo Sessions.
 
-The remaining gap is general executor integration. The editor supports bounded manual trigger-to-agent traversal, including fan-out, but rejects unsupported joins and graph shapes. Starting a configured Session workflow persists an initial run; it does not by itself prove full graph advancement or restart recovery.
+The remaining gap is general executor integration. The editor supports bounded manual trigger-to-agent traversal, including fan-out, through ordinary chat Sessions and persists canonical snapshots, Runs, attempts, and transfers; it rejects unsupported joins and graph shapes. Starting a configured Session Workflow persists one canonical `pending` Run and explicitly does not activate general graph execution.
 
 ## Near-term direction
 

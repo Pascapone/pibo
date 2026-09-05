@@ -5,26 +5,25 @@ description: "Defines the implemented Chat Web App Shell, Bootstrap, Navigation,
 tags:
 - web
 - chat-web
-status: "draft"
+status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T07:15:00Z"
+  at: "2026-09-05T08:51:15Z"
 sources:
-  - id: "foundation-source-and-tests"
-    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
-    title: "upstream/dev refresh source and named-test evidence"
+  - id: "integrated-source-and-tests"
+    resource: "scope:Integrated implementation and tests at traceability.commit"
+    title: "Integrated App Shell source and named-test evidence"
 implementation:
-  state: "integration-reconciliation-required"
-  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  state: "current"
+  baseline_commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
   package: "WP-06+07-WEB"
-  package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
-  source_evidence: "previous baseline inspected; changed integration paths require final reconciliation"
-  focused_test_execution: "unperformed for this change"
-  build_typecheck_package_execution: "unperformed for this change"
-  visual_provider_gateway_pibo2_execution: "unperformed"
+  source_evidence: "performed"
+  test_execution: "complete isolated root suite passed: 2744 tests, 2739 passed, 0 failed, 5 skipped"
+  build_typecheck_package_execution: "clean full build and all typechecks passed"
+  browser_execution: "headed desktop/mobile Room and Workflow Session acceptance passed"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
   requirements:
     - id: "WEB-SHELL-MOUNT-001"
       status: "implemented"
@@ -227,7 +226,7 @@ Chat API/static registration, bootstrap/navigation composition, route-addressabl
 
 ## Scope
 
-This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at integrated traceability commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
 
 ### In scope
 
@@ -404,8 +403,8 @@ Deep routes, service-worker controller changes, desktop PWA display modes, and o
 
 ## Known limits
 
-- Evidence gap: No headful evidence for mobile focus, desktop PWA detached windows, controller updates, or deep-link fallback.
-- Evidence gap: No executed build confirms current generated Chat assets match source.
+- Evidence gap: No headful evidence for desktop PWA detached windows, controller updates, or deep-link fallback.
+- Evidence gap: Manual editor headful QA remains underway.
 
 ## Reconciled stale claims
 
@@ -417,17 +416,10 @@ Deep routes, service-worker controller changes, desktop PWA display modes, and o
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
-- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
-- Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
-- Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
-- Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.
-- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
-- Confidence measures trace quality, not execution of an unclaimed evidence class.
-
-Package verification commands:
-
-- `cd /root/code/pibo-okf-docs && node --test test/chat-api-routes.test.mjs test/web-gateway.test.mjs test/static-assets.test.mjs test/chat-ui-app-navigation-merge.test.mjs test/chat-ui-sidebar-current-navigation.test.mjs test/chat-ui-mobile-main-navigation.test.mjs test/chat-ui-service-worker.test.mjs test/chat-ui-pwa-session-window.test.mjs`
+- Source and named-test locators resolve at integrated commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
+- The clean full build, all typechecks, and complete isolated root suite passed. The suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0.
+- Headed desktop/mobile Room and Workflow Session views passed. Room workspace editing and inheritance and a real normal Session `pwd` through `openai-codex` also succeeded.
+- Manual editor QA remains underway. Desktop PWA, external gateway deployment, and Pibo2 acceptance are not claimed.
 
 ## Related concepts
 

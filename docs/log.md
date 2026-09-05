@@ -5,6 +5,8 @@
 - **Session-native product model**: Replaced the current Projects product contract with [Rooms and normal Session trees](/specs/web/rooms-and-session-trees.md), including Room workspace defaults and canonical Session continuity.
 - **Workflow ownership**: Recast [Workflow catalog and execution](/specs/orchestration/workflow-catalog-and-session-execution.md) around normal Pibo Sessions and one Workflow store, and aligned the Web UI, runtime, product-store, shell, projection, validation, and follow-up documents.
 - **Navigation cleanup**: Removed the empty Projects parity change directory and regenerated its owning indexes.
+- **Integrated traceability**: Rebound affected specifications to checked code commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`, exact current symbols, and renamed tests; documented pending configured starts, canonical manual-run facts, inspection-derived headers, and recoverable two-target migration durability.
+- **Validation evidence**: Recorded the passing clean build, all typechecks, 144 Workflow package tests, 56 focused migration/storage/router/header tests, 62 focused UI source tests, complete isolated root suite (2,744 total; 2,739 passed; 0 failed; 5 skipped), and completed headed Room, Workflow Session, desktop/mobile, and normal provider-backed Session checks while leaving manual editor QA explicit as pending.
 
 ## 2026-09-04
 
