@@ -542,7 +542,7 @@ export type WorkflowManualTriggerRunResponse = WorkflowValidationResponse & {
 	error?: { code: string; message: string };
 };
 
-export async function postWorkflowDraftManualTriggerRun(draftId: string, input: { triggerNodeId: string; input: string }): Promise<WorkflowManualTriggerRunResponse> {
+export async function postWorkflowDraftManualTriggerRun(draftId: string, input: { triggerNodeId: string; input: string; roomId?: string; workspace?: string }): Promise<WorkflowManualTriggerRunResponse> {
 	return requestJson<WorkflowManualTriggerRunResponse>(`/api/chat/workflows/drafts/${encodeURIComponent(draftId)}/manual-trigger-runs`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },

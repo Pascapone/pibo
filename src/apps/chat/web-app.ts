@@ -633,6 +633,8 @@ type WorkflowDraftPublishBody = {
 type WorkflowDraftManualTriggerRunBody = {
 	triggerNodeId?: unknown;
 	input?: unknown;
+	roomId?: unknown;
+	workspace?: unknown;
 };
 
 type WorkflowPromptAssetSaveBody = {
@@ -2746,11 +2748,12 @@ function runWorkflowDraftValidation(
 	return { validation, diagnostics };
 }
 
-function normalizeWorkflowDraftManualTriggerRunBody(body: WorkflowDraftManualTriggerRunBody): { triggerNodeId: string; input: string } {
+function normalizeWorkflowDraftManualTriggerRunBody(body: WorkflowDraftManualTriggerRunBody): { triggerNodeId: string; input: string; roomId?: string; workspace?: string } {
 	const triggerNodeId = typeof body.triggerNodeId === "string" ? body.triggerNodeId.trim() : "";
 	if (!triggerNodeId) throw new PiboWebHttpError("Manual trigger node id is required", 400);
 	if (typeof body.input !== "string") throw new PiboWebHttpError("Manual trigger input must be text", 400);
-	return { triggerNodeId, input: body.input };
+	if (body.roomId !== undefined && typeof body.roomId !== "string") throw new PiboWebHttpError("Room id must be a string", 400);
+	return { triggerNodeId, input: body.input, roomId: typeof body.roomId === "string" ? body.roomId.trim() || undefined : undefined, workspace: body.workspace === undefined ? undefined : normalizeRoomWorkspace(body.workspace) };
 }
 
 function resolveWorkflowRuntimeProfile(input: { context: PiboWebAppContext; requestedId: string }): string | undefined {
@@ -5187,7 +5190,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					});
 					return workflowValidationBlockedResponse("Workflow draft has validation errors and cannot be test-run", validation, { draft: serializeWorkflowDraft(record) });
 				}
-				const room = state.roomService.ensureDefaultRoom();
+				const room = body.roomId ? requireRoom(state, body.roomId, webSession, "write") : state.roomService.ensureDefaultRoom();
 				const result = await runWorkflowManualTextTrigger({
 					definition: record.definition,
 					triggerNodeId: body.triggerNodeId,
@@ -5197,7 +5200,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					channelContext: context.channelContext,
 					channel: CHAT_WEB_CHANNEL,
 					roomId: room.id,
-					defaultWorkspace: room.workspace ?? getDefaultPiboWorkspace(),
+					defaultWorkspace: body.workspace ?? room.workspace ?? getDefaultPiboWorkspace(),
 					onSessionCreated: (session) => state.sessionQuery.upsertSession(session),
 					resolveProfile: (profileId) => resolveWorkflowRuntimeProfile({ context, requestedId: profileId }),
 				});

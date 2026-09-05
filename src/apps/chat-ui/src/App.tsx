@@ -1835,7 +1835,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				<RoutedWorkflowsPanel
 					route={panelRoute}
 					surface="desktop"
-					fallback={<MinimalWorkflowsArea draftId={panelRoute.draftId} onNavigateDraft={(draftId) => { if (active) navigateToRoute({ area: "workflows", draftId }); }} onCreateWorkflowSession={openWorkflowSessionDialog} />}
+					fallback={<MinimalWorkflowsArea room={bootstrap.room} draftId={panelRoute.draftId} onNavigateDraft={(draftId) => { if (active) navigateToRoute({ area: "workflows", draftId }); }} onCreateWorkflowSession={openWorkflowSessionDialog} />}
 				/>
 			);
 		}
@@ -2076,6 +2076,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						surface="mobile"
 						fallback={(
 							<MinimalWorkflowsArea
+								room={bootstrap.room}
 								draftId={routeWorkflowDraftId}
 								onNavigateDraft={(nextDraftId) => navigateToRoute({ area: "workflows", draftId: nextDraftId })}
 								onCreateWorkflowSession={openWorkflowSessionDialog}

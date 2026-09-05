@@ -93,7 +93,7 @@ export function CreateWorkflowSessionDialog({ open, bootstrap, initialSelection,
   };
 
   if (!open) return null;
-  return <DialogShell title="New Workflow Session" description="Configure a published workflow as a normal Session. The run starts only when you choose Start in its Workflow view." onClose={onClose} initialFocusRef={firstRef} closeDisabled={submitting}>
+  return <DialogShell title="New Workflow Session" description="Configure a published workflow as a normal Session. Creation does not execute it." onClose={onClose} initialFocusRef={firstRef} closeDisabled={submitting}>
     <form className="grid max-h-[80dvh] gap-4 overflow-auto p-4" onSubmit={submit}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Workflow version"><select ref={firstRef} aria-label="Workflow version" value={selection} onChange={(e) => setSelection(e.target.value)} disabled={loading || submitting} className={controlClass}><option value="">Select a published workflow</option>{options.map((option) => <option key={optionKey(option)} value={optionKey(option)}>{option.title} ({option.id}@{option.version})</option>)}</select></Field>

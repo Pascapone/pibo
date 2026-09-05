@@ -9078,3 +9078,58 @@ test("session-native workflow human actions are validated, persisted, and inspec
 		await runtime.channel.stop?.();
 	}
 });
+
+test("manual editor runs target normal Rooms and persist canonical inspection facts", async () => {
+	let host;
+	host = await startWebHostChannel({
+		auth: createFakeAuthService(), profiles: [{ name: "base", aliases: ["default"] }],
+		emit(event) {
+			if (event.type === "message") queueMicrotask(() => {
+				host.emitOutput({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: event.id, text: "native manual output" });
+				host.emitOutput({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: event.id });
+			});
+			return Promise.resolve({ type: "message_queued", piboSessionId: event.piboSessionId });
+		},
+	});
+	const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" };
+	const post = (path, body) => fetch(`${host.baseURL}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+	try {
+		const workspace = mkdtempSync(join(tmpdir(), "pibo-manual-room-"));
+		const roomResponse = await post("/api/chat/rooms", { name: "Manual Room", workspace });
+		assert.equal(roomResponse.status, 201);
+		const { room } = await roomResponse.json();
+		const definition = {
+			id: "workflow.manual-room", version: "1.0.0", initial: "trigger", input: { kind: "text" }, output: { kind: "text" },
+			nodes: {
+				trigger: { kind: "trigger", trigger: { kind: "manual" }, output: { kind: "text" } },
+				agent: { kind: "agent", runtime: "pibo", profile: { kind: "fixed", id: "base" }, input: { kind: "text" }, output: { kind: "text" }, promptTemplate: "{{input}}" },
+			},
+			edges: { toAgent: { from: { nodeId: "trigger" }, to: { nodeId: "agent" } } },
+		};
+		const created = await post("/api/chat/workflows", { title: "Manual Room Workflow", workflowId: definition.id, definition });
+		assert.equal(created.status, 201);
+		const { draft } = await created.json();
+		const runPath = `/api/chat/workflows/drafts/${draft.draftId}/manual-trigger-runs`;
+		assert.equal((await post(runPath, { triggerNodeId: "trigger", input: "test", roomId: "room_missing" })).status, 404);
+		assert.equal((await post(runPath, { triggerNodeId: "trigger", input: "test", roomId: room.id, workspace: "relative" })).status, 400);
+		const result = await post(runPath, { triggerNodeId: "trigger", input: "test", roomId: room.id });
+		assert.equal(result.status, 202);
+		const payload = await result.json();
+		assert.equal(payload.ok, true);
+		assert.equal(payload.output, "native manual output");
+		const attempt = payload.nodeAttempts.find((entry) => entry.kind === "agent");
+		const session = host.sessions.get(attempt.piboSessionId);
+		assert.equal(session.kind, "chat");
+		assert.equal(session.workspace, workspace);
+		assert.equal(session.metadata.chatRoomId, room.id);
+		assert.equal(session.metadata.workflowSessionKind, "agent_node");
+		const inspected = await (await fetch(`${host.baseURL}/api/chat/sessions/${session.id}/workflow`, { headers })).json();
+		assert.equal(inspected.run.status, "completed");
+		assert.equal(inspected.run.output, "native manual output");
+		assert.equal(inspected.nodeAttempts.length, 2);
+		assert.equal(inspected.edgeTransfers.length, 1);
+		assert.equal(inspected.definitionSnapshot.definition.nodes.trigger.kind, "trigger");
+		assert.equal(inspected.snapshot, undefined);
+		assert.ok(inspected.lifecycleEvents.some((event) => event.type === "workflow.editor_test_run.completed"));
+	} finally { await host.channel.stop?.(); }
+});

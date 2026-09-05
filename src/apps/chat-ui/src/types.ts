@@ -86,7 +86,7 @@ export type PiboRoom = {
 	children?: PiboRoom[];
 };
 
-export type PiboWorkflowSessionState = "configured" | "running" | "waiting" | "completed" | "failed" | "cancelled";
+export type PiboWorkflowSessionState = "configured" | "pending" | "running" | "waiting" | "completed" | "failed" | "cancelled";
 
 export type PiboWorkflowSessionConfiguration = {
 	inputValues: Record<string, unknown>;

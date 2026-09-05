@@ -11,6 +11,7 @@ import {
   type WorkflowCatalogVersionSummary,
   type WorkflowDraftRecord,
 } from "./api-workflows";
+import type { PiboRoom } from "./types";
 import { WorkflowGraphCanvas, type WorkflowGraphInspectorSlotProps, type WorkflowGraphStatusTone } from "./workflows/WorkflowGraphCanvas";
 import { WorkflowInspectorsPanel } from "./workflows/WorkflowInspectorsPanel";
 import { CreateWorkflowDialog } from "./workflows/CreateWorkflowDialog";
@@ -21,10 +22,12 @@ const workflowPickerOptionId = (index: number) => `workflow-picker-option-${inde
 
 export function MinimalWorkflowsArea({
   draftId,
+  room,
   onNavigateDraft,
   onCreateWorkflowSession,
 }: {
   draftId?: string;
+  room?: PiboRoom;
   onNavigateDraft: (draftId: string) => void;
   onCreateWorkflowSession?: (workflowId: string, workflowVersion: string) => void;
 }) {
@@ -376,6 +379,7 @@ export function MinimalWorkflowsArea({
         {graphDraft ? (
           <WorkflowGraphCanvas
             draft={graphDraft}
+            room={room}
             onDraftChange={readOnlyView ? () => undefined : handlePersistedDraftChange}
             fullHeight
             compactHeader
