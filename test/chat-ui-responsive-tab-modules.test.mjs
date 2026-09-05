@@ -7,13 +7,12 @@ async function sources(paths) {
 }
 
 test("desktop module tabs use pane-width sidebars and container-responsive content flows", async () => {
-	const [app, responsivePane, loops, cron, agents, projects, settings, designerUi, workflowGraph] = await sources([
+	const [app, responsivePane, loops, cron, agents, settings, designerUi, workflowGraph] = await sources([
 		"src/apps/chat-ui/src/App.tsx",
 		"src/apps/chat-ui/src/responsive-pane-sidebar.tsx",
 		"src/apps/chat-ui/src/LoopArea.tsx",
 		"src/apps/chat-ui/src/CronArea.tsx",
 		"src/apps/chat-ui/src/agents/AgentsView.tsx",
-		"src/apps/chat-ui/src/projects/ProjectsArea.tsx",
 		"src/apps/chat-ui/src/settings/SettingsView.tsx",
 		"src/apps/chat-ui/src/agents/designer-ui.tsx",
 		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
@@ -22,7 +21,6 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 	assert.match(app, /<CronArea[\s\S]*?surface="tab"/);
 	assert.match(app, /<LoopArea[\s\S]*?surface="tab"/);
 	assert.match(app, /<AgentsView[\s\S]*surface="tab"/);
-	assert.match(app, /<ProjectsArea[\s\S]*surface="tab"/);
 	assert.match(app, /ResponsiveTabSidebarPanel[\s\S]*label="Context"/);
 	assert.match(app, /ResponsiveTabSidebarPanel[\s\S]*label="Settings"/);
 
@@ -43,9 +41,6 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 	assert.match(loops, /@max-\[720px\]:grid-cols-1/);
 	assert.match(cron, /@max-\[720px\]:grid-cols-1/);
 	assert.match(agents, /grid-cols-\[300px_minmax\(0,1fr\)\]/);
-	assert.match(projects, /effectiveShowRawEvents/);
-	assert.match(projects, /projectGridColumns/);
-	assert.match(projects, /containerResponsive=\{surface === "tab"\}/);
 	assert.match(settings, /@max-\[520px\]:grid-cols-1/);
 	assert.match(designerUi, /@max-\[680px\]:grid-cols-1/);
 	assert.match(workflowGraph, /@max-\[760px\]:grid-cols-1/);

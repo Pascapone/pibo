@@ -24,7 +24,7 @@ async function runWorkflowVersionHistoryModelScenario() {
 			canPublish: false,
 			canArchive: true,
 			canDelete: true,
-			canCreateProjectSession: true,
+			canCreateWorkflowSession: true,
 		};
 
 		function historyRecord(overrides) {
@@ -54,10 +54,10 @@ async function runWorkflowVersionHistoryModelScenario() {
 
 		assert.equal(hasWorkflowCatalogAction({ actions: ["view", "archive"] }, "archive"), true);
 		assert.equal(hasWorkflowCatalogAction({ actions: ["view"] }, "delete"), false);
-		assert.equal(workflowCatalogActionLabel("create_project_session"), "Create Project session");
+		assert.equal(workflowCatalogActionLabel("create_workflow_session"), "Create Workflow Session");
 		assert.equal(workflowCatalogActionLabel("create_next_draft"), "Create next draft");
-		assert.match(workflowHistoryStatusDescription(historyRecord({ status: "published" })), /selectable for Project sessions/);
-		assert.match(workflowHistoryStatusDescription(historyRecord({ status: "archived" })), /hidden from default Project session creation/);
+		assert.match(workflowHistoryStatusDescription(historyRecord({ status: "published" })), /available for new Workflow Sessions/);
+		assert.match(workflowHistoryStatusDescription(historyRecord({ status: "archived" })), /unavailable for new Workflow Sessions/);
 		assert.match(workflowHistoryStatusDescription(historyRecord({ status: "deleted" })), /immutable snapshots/);
 		assert.match(workflowHistoryStatusDescription(historyRecord({ status: "draft" })), /not published/);
 	`;

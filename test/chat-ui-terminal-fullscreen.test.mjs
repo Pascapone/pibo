@@ -18,15 +18,15 @@ async function renderTerminalFullscreenScenario() {
 
 		const topBar = renderToStaticMarkup(React.createElement(TerminalFullscreenTopBar, {
 			title: "Readable session name",
-			contextKind: "project",
+			contextKind: "room",
 			contextLabel: "Pibo Core",
 			onOpenSessionWindow: noop,
 			onExit: noop,
 		}));
 		assert.match(topBar, /data-pibo-debug="terminal-fullscreen-top-bar"/);
 		assert.match(topBar, /data-pibo-debug="session-context"/);
-		assert.match(topBar, /data-pibo-context-kind="project"/);
-		assert.match(topBar, />Project</);
+		assert.match(topBar, /data-pibo-context-kind="room"/);
+		assert.match(topBar, />Room</);
 		assert.match(topBar, />Pibo Core</);
 		assert.match(topBar, />Readable session name</);
 		assert.match(topBar, /h-7 min-h-7/);
@@ -44,7 +44,7 @@ async function renderTerminalFullscreenScenario() {
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
-test("Terminal fullscreen keeps the project or room context beside the session name", async () => {
+test("Terminal fullscreen keeps the room context beside the session name", async () => {
 	await assert.doesNotReject(renderTerminalFullscreenScenario());
 });
 
@@ -53,7 +53,6 @@ test("app chrome, sidebars, raw events, and terminal metadata are gated by Termi
 	const desktopSidebarSource = fs.readFileSync("src/apps/chat-ui/src/desktop-session-sidebar.tsx", "utf8");
 	const layoutSource = fs.readFileSync("src/apps/chat-ui/src/session-trace-layout.tsx", "utf8");
 	const paneSource = fs.readFileSync("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
-	const projectsSource = fs.readFileSync("src/apps/chat-ui/src/projects/ProjectsArea.tsx", "utf8");
 	const terminalSource = fs.readFileSync("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx", "utf8");
 
 	assert.match(appSource, /data-pibo-terminal-fullscreen=\{isTerminalFullscreen \? "true" : "false"\}/);
@@ -71,10 +70,6 @@ test("app chrome, sidebars, raw events, and terminal metadata are gated by Termi
 	assert.match(paneSource, /contextKind = "room"/);
 	assert.match(paneSource, /fallback: "No session selected"/);
 	assert.match(paneSource, /bootstrap\.room\?\.id === selectedRoomId/);
-	assert.match(projectsSource, /\{terminalFullscreen \? null : \(\s*<>\s*<div\s*data-pibo-mobile-sidebar-backdrop/);
-	assert.match(projectsSource, /contextKind="project"/);
-	assert.match(projectsSource, /contextLabel=\{selectedProjectDisplayName\}/);
-	assert.match(projectsSource, /sessionNavigationPending=\{traceSelection\.navigationPending\}/);
 	assert.match(terminalSource, /\{terminalFullscreen \? null : \(\s*<TerminalHeader/);
 	assert.match(terminalSource, /data-pibo-terminal-fullscreen=\{terminalFullscreen \? "true" : "false"\}/);
 });

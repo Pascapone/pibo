@@ -139,7 +139,7 @@ test("failed Chat navigation falls back to the canonical cached shell", async ()
 		throw new Error("offline");
 	}, caches);
 
-	const response = await worker.fetch(navigationRequest("/apps/chat/projects/project-1"));
+	const response = await worker.fetch(navigationRequest("/apps/chat/removed-area"));
 
 	assert.equal(await response.text(), "offline shell");
 });

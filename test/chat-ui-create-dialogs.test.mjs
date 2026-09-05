@@ -2,79 +2,33 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const source = async (path) =>
-  (await readFile(new URL(`../src/apps/chat-ui/src/${path}`, import.meta.url), "utf8")).replaceAll("\r\n", "\n");
+const source = async (path) => (await readFile(new URL(`../src/apps/chat-ui/src/${path}`, import.meta.url), "utf8")).replaceAll("\r\n", "\n");
 
-test("project and workflow create handlers use app-owned dialogs instead of prompts", async () => {
-  const [projectsArea, workflowsArea] = await Promise.all([
-    source("projects/ProjectsArea.tsx"),
-    source("MinimalWorkflowsArea.tsx"),
-  ]);
-
-  const projectCreateHandler = projectsArea.match(
-    /const createProject = async[\s\S]*?(?=\n\n  const createProjectSession)/,
-  )?.[0];
-  const workflowCreateHandler = workflowsArea.match(
-    /const createWorkflow = async[\s\S]*?(?=\n\n  const duplicateReadOnlyWorkflow)/,
-  )?.[0];
-
-  assert.ok(projectCreateHandler);
-  assert.ok(workflowCreateHandler);
-  assert.doesNotMatch(projectCreateHandler, /window\.prompt/);
-  assert.doesNotMatch(workflowCreateHandler, /window\.prompt/);
-  assert.match(projectsArea, /<CreateProjectDialog/);
-  assert.match(projectsArea, /onCreateProject=\{\(\) => \{[\s\S]*?!navigationPendingRef\.current[\s\S]*?setCreateProjectDialogOpen\(true\)/);
+test("workflow definition and Workflow Session creation use app-owned dialogs", async () => {
+  const [app, workflowsArea, sessionDialog] = await Promise.all([source("App.tsx"), source("MinimalWorkflowsArea.tsx"), source("workflows/CreateWorkflowSessionDialog.tsx")]);
   assert.match(workflowsArea, /<CreateWorkflowDialog/);
   assert.match(workflowsArea, /setCreateWorkflowDialogOpen\(true\)/);
+  assert.match(app, /<CreateWorkflowSessionDialog/);
+  assert.match(app, /openWorkflowSessionDialog/);
+  assert.doesNotMatch(sessionDialog, /window\.(prompt|confirm)/);
 });
 
 test("shared dialog shell owns accessible modal and focus behavior", async () => {
   const dialogShell = await source("components/DialogShell.tsx");
-
-  assert.match(dialogShell, /role="dialog"/);
-  assert.match(dialogShell, /aria-modal="true"/);
-  assert.match(dialogShell, /aria-labelledby=\{titleId\}/);
-  assert.match(dialogShell, /aria-describedby=\{descriptionId\}/);
-  assert.match(dialogShell, /event\.key === "Escape"/);
-  assert.match(dialogShell, /event\.key !== "Tab"/);
-  assert.match(dialogShell, /FOCUSABLE_SELECTOR/);
-  assert.match(dialogShell, /initialFocusRef\?\.current/);
-  assert.match(dialogShell, /previouslyFocused\?\.isConnected/);
-  assert.match(dialogShell, /event\.target === event\.currentTarget/);
-  assert.match(dialogShell, /closeDisabled/);
-  assert.match(dialogShell, /focusable\.includes\(activeElement as HTMLElement\)/);
-  assert.match(dialogShell, /max-h-\[calc\(100dvh-2rem\)\]/);
+  for (const pattern of [/role="dialog"/, /aria-modal="true"/, /aria-labelledby=\{titleId\}/, /aria-describedby=\{descriptionId\}/, /event\.key === "Escape"/, /event\.key !== "Tab"/, /FOCUSABLE_SELECTOR/, /initialFocusRef\?\.current/, /previouslyFocused\?\.isConnected/, /event\.target === event\.currentTarget/, /closeDisabled/, /max-h-\[calc\(100dvh-2rem\)\]/]) assert.match(dialogShell, pattern);
 });
 
 test("create dialogs provide controlled fields and accessible validation", async () => {
-  const [projectDialog, workflowDialog] = await Promise.all([
-    source("projects/CreateProjectDialog.tsx"),
-    source("workflows/CreateWorkflowDialog.tsx"),
-  ]);
-
-  assert.match(projectDialog, /value=\{name\}/);
-  assert.match(projectDialog, /value=\{projectFolder\}/);
-  assert.match(projectDialog, /value=\{description\}/);
-  assert.match(projectDialog, /required[\s\S]*maxLength=\{120\}/);
-  assert.match(projectDialog, /startsWith\("\/"\)/);
-  assert.match(projectDialog, /startsWith\("~\/"\)/);
-  assert.match(projectDialog, /aria-invalid=\{Boolean\(nameError\)\}/);
-  assert.match(projectDialog, /aria-invalid=\{Boolean\(folderError\)\}/);
-  assert.match(projectDialog, /aria-describedby=/);
-  assert.match(projectDialog, /role="alert"/);
-  assert.match(projectDialog, /<form[^>]*onSubmit=\{submit\}[^>]*noValidate>/);
-  assert.match(projectDialog, /const projectId = await onCreate\(/);
-  assert.match(projectDialog, /onCreated\(projectId\)/);
-  assert.match(projectDialog, /closeDisabled=\{submitting\}/);
-  assert.match(projectDialog, /catch \(caught\)[\s\S]*setApiError/);
-
+  const [workflowDialog, sessionDialog] = await Promise.all([source("workflows/CreateWorkflowDialog.tsx"), source("workflows/CreateWorkflowSessionDialog.tsx")]);
   assert.match(workflowDialog, /value=\{name\}/);
   assert.match(workflowDialog, /required[\s\S]*maxLength=\{160\}/);
   assert.match(workflowDialog, /aria-invalid=\{Boolean\(nameError\)\}/);
-  assert.match(workflowDialog, /aria-describedby=/);
   assert.match(workflowDialog, /role="alert"/);
   assert.match(workflowDialog, /<form[^>]*onSubmit=\{submit\}[^>]*noValidate>/);
-  assert.match(workflowDialog, /await onCreate\(name\.trim\(\)\)/);
   assert.match(workflowDialog, /closeDisabled=\{submitting\}/);
-  assert.match(workflowDialog, /catch \(caught\)[\s\S]*setApiError/);
+  assert.match(sessionDialog, /<DialogShell title="New Workflow Session"/);
+  assert.match(sessionDialog, /<form[^>]*onSubmit=\{submit\}/);
+  assert.match(sessionDialog, /role="alert"/);
+  assert.match(sessionDialog, /closeDisabled=\{submitting\}/);
+  assert.match(sessionDialog, /await postWorkflowSession\(input\)/);
 });

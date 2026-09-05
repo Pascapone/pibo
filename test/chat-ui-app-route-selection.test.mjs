@@ -114,13 +114,6 @@ async function runAppRouteSelectionScenario() {
 			),
 			{ selectedRoomId: "room-a", selectedPiboSessionId: "session-a" },
 		);
-		assert.deepEqual(
-			sessionsRouteCanonicalSelection(
-				{ area: "projects", projectId: "project-a", piboSessionId: "session-a" },
-				{ selectedRoomId: "room-a", selectedPiboSessionId: "session-a" },
-			),
-			undefined,
-		);
 
 		assert.equal(hasExplicitSessionsRouteSelection({ area: "sessions", roomId: "room-a" }), true);
 		assert.equal(hasExplicitSessionsRouteSelection({ area: "sessions" }), false);

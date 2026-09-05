@@ -88,16 +88,16 @@ test("trace header toggle names stay stable across false and true states", async
 });
 
 test("long context names keep their full accessible name and wrap controls on narrow viewports", async () => {
-	const longProjectName = "Project with a deliberately long workspace name that must not widen the viewport";
+	const longRoomName = "Room with a deliberately long workspace name that must not widen the viewport";
 	const markup = await renderSessionTraceHeader({
 		showRawEvents: false,
 		showThinking: true,
 		expandThinking: false,
-		contextKind: "project",
-		contextLabel: longProjectName,
+		contextKind: "room",
+		contextLabel: longRoomName,
 		title: "Long-running implementation session",
 	});
-	assert.match(markup, new RegExp(`aria-label="Project: ${longProjectName}"`));
+	assert.match(markup, new RegExp(`aria-label="Room: ${longRoomName}"`));
 	assert.match(markup, /inline-flex min-w-0 max-w-full/);
 	assert.match(markup, /max-\[980px\]:w-full max-\[980px\]:flex-wrap/);
 	assert.match(markup, /class="truncate text-slate-400"/);
