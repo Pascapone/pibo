@@ -5,23 +5,23 @@ description: "Defines the implemented Chat Web Jobs and Workflows UI contract, i
 tags:
 - web
 - chat-web
-status: "stable"
+status: "draft"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-05T07:15:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
     title: "upstream/dev refresh source and named-test evidence"
 implementation:
-  state: "current"
+  state: "integration-reconciliation-required"
   baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
-  source_evidence: "performed"
-  focused_test_execution: "performed in owned Docker after authoring; see implementation report"
-  build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
+  source_evidence: "previous baseline inspected; changed integration paths require final reconciliation"
+  focused_test_execution: "unperformed for this change"
+  build_typecheck_package_execution: "unperformed for this change"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
   commit: "39090b8850758293e69380a52bb7498d7c955bc2"
@@ -176,43 +176,28 @@ traceability:
         - "Accessibility/responsive boundary: Waiting/failure/final-output UI needs stable textual status and later headful checks."
         - "Compatibility boundary: This is a bounded supported slice; workflow kernel owns execution/recovery."
       confidence: "high"
-    - id: "WEB-WORKFLOW-PROJECT-005"
+    - id: "WEB-WORKFLOW-SESSION-005"
       status: "implemented"
       sources:
-        - path: "src/apps/chat-ui/src/projects/ProjectWorkflowPanels.tsx"
-          symbol: "ProjectWorkflowSessionCreatePanel"
-        - path: "src/apps/chat/data/project-service.ts"
-          symbol: "saveWorkflowSessionSnapshot"
-        - path: "src/apps/chat/data/project-service.ts"
-          symbol: "startWorkflowSessionRun"
-        - path: "src/apps/chat/data/project-service.ts"
-          symbol: "linkWorkflowRunSession"
-      tests:
-        - path: "test/project-service-workflow-link.test.mjs"
-          name: "project workflow start creates one run per configured session"
-        - path: "test/project-service-workflow-link.test.mjs"
-          name: "project sessions can link back to workflow run ids"
-      public:
-        - "/api/chat/cron*"
-        - "/api/chat/loop*"
-        - "/api/chat/ralph*"
-        - "/api/chat/workflows*"
-        - "CronArea"
-        - "LoopArea"
-        - "RalphArea"
-        - "WorkflowsArea"
-        - "MinimalWorkflowsArea"
+        - path: "src/apps/chat-ui/src/workflows/CreateWorkflowSessionDialog.tsx"
+          symbol: "CreateWorkflowSessionDialog"
+        - path: "src/apps/chat-ui/src/workflows/workflow-session-model.tsx"
+          symbol: "isWorkflowLinkedSession"
+        - path: "src/apps/chat-ui/src/api-workflows.ts"
+          symbol: "getSessionWorkflow"
+      source_inspected: true
+      follow_up: "Bind final create, inspect, start, human-action, responsive, and headful tests at the integrated code commit."
+      public: ["/api/chat/workflow-sessions", "/api/chat/sessions/:piboSessionId/workflow*", "Workflow Session view"]
       failures:
-        - "Immutable configuration and failed start/link/action must remain visible; Web cannot claim full graph execution."
-        - "Accessibility/responsive boundary: Project workflow status/actions must be labeled and responsive."
-        - "Compatibility boundary: Catalog/persistence/runtime/human-action semantics remain SPC-ORCH-005/SPC-ORCH-006."
+        - "Failed create, inspect, start, or human action remains visible and cannot fabricate Workflow progress."
+        - "Workflow status and actions must be labeled and responsive."
       confidence: "medium"
 ---
 # Chat Web Jobs and Workflows UI
 
 ## Why
 
-Cron/Loop/Ralph controls, workflow draft authoring, graph/forms/raw IR/assets/pickers, publish lifecycle, supported manual run slice, and Project run/human-action integration.
+Cron/Loop/Ralph controls, Workflow draft authoring, graph/forms/raw IR/assets/pickers, publish lifecycle, supported manual runs, and normal Session integration.
 
 ## Scope
 
@@ -220,13 +205,13 @@ This specification describes implemented behavior at upstream/dev refresh tracea
 
 ### In scope
 
-- Owns browser job/workflow controls, authoring/projection UI, publish gating, supported manual-trigger UI, and Project run/human-action interaction.
+- Owns browser job and Workflow controls, authoring and projection UI, publish gating, supported manual-trigger UI, and Workflow-backed Session interaction.
 
 ### Out of scope
 
 - SPC-ORCH-002/003/004 own Cron/Loop/Ralph runtime lifecycle.
 - SPC-ORCH-005 owns workflow IR, validation, execution, waits, recovery, and version lifecycle.
-- SPC-ORCH-006 owns workflow catalog and Project persistence/start semantics.
+- SPC-ORCH-006 owns the Workflow catalog and Session-linked persistence/start semantics.
 - SPC-WEB-005 owns read-only workflow Session projection.
 
 ## Current behavior
@@ -237,7 +222,7 @@ Method-specific job and workflow routes list/create/update/start/stop/remove dra
 
 ### Cache, stream, files, and media
 
-Catalog/action metadata refreshes workflow library and Project panels. Workflow media/provider internals are outside this UI owner.
+Catalog and action metadata refresh the Workflow library and normal Session Workflow views. Workflow media and provider internals are outside this UI owner.
 
 ### Lifecycle and failure
 
@@ -333,24 +318,24 @@ upstream/dev refresh source and named-test inspection define the current contrac
 - Confidence: **high**
 - Verification follow-up: Execute manual-trigger tests and add separate process-restart recovery evidence under SPC-ORCH-005 before making recovery claims.
 
-### Requirement: WEB-WORKFLOW-PROJECT-005
+### Requirement: WEB-WORKFLOW-SESSION-005
 
-Project workflow UI MUST preserve chosen workflow/version/input/session configuration, create the current persisted run slice through Project services, link resulting run IDs, and resolve human actions through workflow APIs without claiming Web-owned execution.
+The Web UI MUST create a Workflow-backed normal Session in a selected Room and workspace, preserve chosen Workflow version, input, and eligible overrides, and expose true stored snapshot, Run, wait, action, attempt, and transfer facts in that Session's Workflow view. Start and human actions MUST use Session-scoped Workflow APIs without claiming Web-owned execution.
 
 #### Current
 
-upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
+The in-progress UI source defines this integration shape. Final source names, tests, and integrated code traceability still require reconciliation.
 
 #### Acceptance and boundaries
 
-- Source: `src/apps/chat-ui/src/projects/ProjectWorkflowPanels.tsx` — `ProjectWorkflowSessionCreatePanel`; `src/apps/chat/data/project-service.ts` — `saveWorkflowSessionSnapshot`; `src/apps/chat/data/project-service.ts` — `startWorkflowSessionRun`; `src/apps/chat/data/project-service.ts` — `linkWorkflowRunSession`
-- Tests: `test/project-service-workflow-link.test.mjs` — “project workflow start creates one run per configured session”; `test/project-service-workflow-link.test.mjs` — “project sessions can link back to workflow run ids”
-- Public surfaces: `/api/chat/cron*`; `/api/chat/loop*`; `/api/chat/ralph*`; `/api/chat/workflows*`; `CronArea`; `LoopArea`; `RalphArea`; `WorkflowsArea`; `MinimalWorkflowsArea`
+- Source: `src/apps/chat-ui/src/workflows/CreateWorkflowSessionDialog.tsx` — `CreateWorkflowSessionDialog`; `src/apps/chat-ui/src/workflows/workflow-session-model.tsx` — `isWorkflowLinkedSession`; `src/apps/chat-ui/src/api-workflows.ts` — `getSessionWorkflow`
+- Tests: final integrated test names require reconciliation.
+- Public surfaces: `/api/chat/workflow-sessions`; `/api/chat/sessions/:piboSessionId/workflow*`; `CreateWorkflowSessionDialog`; normal Session Workflow view
 - Failure/security boundary: Immutable configuration and failed start/link/action must remain visible; Web cannot claim full graph execution.
-- Accessibility/responsive boundary: Project workflow status/actions must be labeled and responsive.
+- Accessibility/responsive boundary: Workflow Session status and actions must be labeled and responsive.
 - Compatibility boundary: Catalog/persistence/runtime/human-action semantics remain SPC-ORCH-005/SPC-ORCH-006.
 - Confidence: **medium**
-- Verification follow-up: Run Project workflow service/API tests and add headful Project start, active run, wait-token action, error, and refresh scenarios.
+- Verification follow-up: Bind final tests and add headful Workflow Session create, start, wait-token action, error, refresh, and responsive scenarios.
 
 ## Interfaces and ownership
 
@@ -372,7 +357,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 - SPC-ORCH-002/003/004 own Cron/Loop/Ralph runtime lifecycle.
 - SPC-ORCH-005 owns workflow IR, validation, execution, waits, recovery, and version lifecycle.
-- SPC-ORCH-006 owns workflow catalog and Project persistence/start semantics.
+- SPC-ORCH-006 owns the Workflow catalog and Session-linked persistence/start semantics.
 - SPC-WEB-005 owns read-only workflow Session projection.
 
 ## Failure and security behavior
@@ -399,9 +384,9 @@ Loop includes Goal-mode accounting notices; Ralph remains a legacy route/area. F
 
 ## Reconciled stale claims
 
-- Reject: Workflows are hidden or disconnected from Projects.
+- Reject: Workflow-backed work requires a separate container or Session class.
 - Reject: The manual-trigger test proves restart recovery.
-- Reject: Project start executes the full workflow graph in the Web layer.
+- Reject: Configured Session start executes the full Workflow graph in the Web layer.
 - Reject: Raw editor state is independent execution truth.
 - Reject: Webhook/Cron workflow triggers are already implemented.
 

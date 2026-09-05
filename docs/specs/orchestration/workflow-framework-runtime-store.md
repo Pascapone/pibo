@@ -6,21 +6,21 @@ description: Defines the implemented workflow framework, runtime, and store cont
 tags:
 - orchestration
 - workflows
-status: stable
+status: draft
 authority: normative
 generated:
-  by: openai/codex
-  at: '2026-08-30T09:44:54Z'
+  by: openai-codex/gpt-5.6-sol
+  at: '2026-09-05T07:15:00Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: upstream/dev refresh source and test evidence for SPC-ORCH-005
 implementation:
-  state: current
+  state: integration-reconciliation-required
   baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
   package: WP-04-ORCHESTRATION
-  source_evidence: performed
-  focused_test_execution: performed in Docker after authoring; see implementation report
-  build_and_typecheck_execution: performed in Docker after authoring; see implementation report
+  source_evidence: in-progress storage source inspected; final integrated commit reconciliation required
+  focused_test_execution: unperformed for this change
+  build_and_typecheck_execution: unperformed for this change
 traceability:
   commit: 39090b8850758293e69380a52bb7498d7c955bc2
   requirements:
@@ -106,7 +106,7 @@ traceability:
     - path: packages/workflows/src/testing/runtime-manual-trigger.test.ts
       name: fans the same last source output out to parallel downstream agents
     failures:
-    - Store records are JSON-serialized facts; list filters are bounded. No test in the designated six directly performs process-restart
+    - Store records are JSON-serialized facts; Run lists can filter by `piboSessionId`, and all list filters are bounded. No test in the designated six directly performs process-restart
       replay across all record classes.
     confidence: medium
   - id: ORCH-WF-004
@@ -174,7 +174,7 @@ Workflow data and execution primitives need a stable boundary between serializab
 
 ## Goal
 
-The workflow package defines the current IR, registry, validation, schema-v3 store, manual traversal, dispatch primitives, retries, waits, and deterministic XState/UI projections.
+The workflow package defines the current IR, registry, validation, schema-v4 store, manual traversal, dispatch primitives, retries, waits, and deterministic XState/UI projections.
 
 ## Authority and ownership
 
@@ -187,9 +187,9 @@ The workflow package defines the current IR, registry, validation, schema-v3 sto
 ## Public surfaces
 
 - `@pasko70/pibo-workflows`
-- `WORKFLOW_SQLITE_SCHEMA_VERSION=3`
+- `WORKFLOW_SQLITE_SCHEMA_VERSION=4`
 - `pibo-workflows.sqlite`
-- `14 workflow_* tables`
+- `Workflow-owned tables`
 - `WorkflowDefinition`
 - `WorkflowRun`
 - `WorkflowEventRecord`
@@ -210,7 +210,7 @@ Returns structured diagnostics for strict JSON ports/schemas, graph node/edge/po
 
 ### Store
 
-Schema v3 installs definition/catalog records and durable run/event/attempt/transfer/checkpoint/wakeup/wait/action records. Store save/get/list methods are the durable interface.
+Schema v4 installs definition/catalog records and durable run/event/attempt/transfer/checkpoint/wakeup/wait/action records. Store save/get/list methods are the durable interface.
 
 ### Runtime
 
@@ -225,9 +225,9 @@ Human dispatch creates durable pending wait tokens; action apply checks ownershi
 ### In scope
 
 - @pasko70/pibo-workflows
-- WORKFLOW_SQLITE_SCHEMA_VERSION=3
+- WORKFLOW_SQLITE_SCHEMA_VERSION=4
 - pibo-workflows.sqlite
-- 14 workflow_* tables
+- Workflow-owned tables
 - WorkflowDefinition
 - WorkflowRun
 - WorkflowEventRecord
@@ -300,13 +300,13 @@ Validation is diagnostic and non-executing; hidden LLM coercion and undeclared w
 
 ### Requirement: ORCH-WF-003
 
-Schema v3 and its store contracts MUST durably save and retrieve definition snapshots, identities, drafts, published versions, archive/tombstone state, runs, events, node attempts, edge transfers, checkpoints, wakeups, wait tokens, and human actions.
+Schema v4 and its store contracts MUST durably save and retrieve definition snapshots, identities, drafts, published versions, archive/tombstone state, Session links and snapshots, Runs, events, node attempts, edge transfers, checkpoints, wakeups, wait tokens, human actions, prompt assets, and lifecycle events in `pibo-workflows.sqlite`. Workflow Runs MUST link by `piboSessionId` and MUST NOT require another container identity.
 
 **Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
-Store records are JSON-serialized facts; list filters are bounded. No test in the designated six directly performs process-restart replay across all record classes.
+Store records are JSON-serialized facts; Run lists can filter by `piboSessionId`, and all list filters are bounded. No test in the designated six directly performs process-restart replay across all record classes.
 
 #### Acceptance evidence
 

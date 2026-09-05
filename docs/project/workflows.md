@@ -15,35 +15,36 @@ migration_lineage:
   source_body_sha256: "677643fdf4d73d50d4cf63159add7604ffe88954994dad5ae47f0ea47f2ef4a0"
 generated:
   by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-08-31T22:47:46Z"
+  at: "2026-09-05T07:15:00Z"
 ---
 # Pibo Workflows
 
 Pibo Workflows are the product path for repeatable, inspectable multi-step agent work. A workflow is a versioned graph with explicit inputs, outputs, nodes, edges, adapters, guards, state, and runtime facts.
 
-This document describes the current baseline and the next planned execution step. Historical V1/V2 specs remain under `docs/legacy/specs/changes/`; the current manual-trigger/runtime-foundation plan lives at `docs/specs/changes/workflow-runtime-foundation-manual-trigger/`.
+Current contracts live in the [Workflow framework specification](/specs/orchestration/workflow-framework-runtime-store.md) and [catalog and Session integration specification](/specs/orchestration/workflow-catalog-and-session-execution.md). Remaining executor and trigger work lives in the [runtime follow-up plan](/plans/workflow-trigger-and-runtime-follow-ups.md). Historical V1/V2 packets are not current authority.
 
 ## Current baseline
 
 Pibo currently has two workflow layers:
 
 1. **Workflow framework package** — `packages/workflows` defines TypeScript IR types, ports, registry refs, validation helpers, runtime dispatch helpers, edge transfer helpers, persistence contracts, inspection helpers, fixtures, and XState projection helpers.
-2. **Chat Web workflow product UI** — the Workflows tab provides workflow catalog/draft/publish UI, graph editing, node/edge inspectors, registered pickers, layout persistence, and Project workflow session configuration/start records.
+2. **Chat Web workflow product UI** — the Workflows area provides catalog/draft/publish UI, graph and raw IR editing, node/edge inspectors, registered pickers, prompt assets, layout persistence, manual text-trigger test runs, and workflow configuration/start records linked to normal Pibo Sessions.
 
-The important current product gap is execution integration: the Workflows editor does not yet run a draft graph, and Project workflow start currently creates/returns workflow run metadata without driving every graph node through the workflow runtime executor.
+Rooms group Sessions and may supply workspace defaults. Workflow definitions, immutable configuration snapshots and execution facts belong to the Workflow store; conversation history and runtime bindings belong to Pibo Sessions.
+
+The remaining gap is general executor integration. The editor supports bounded manual trigger-to-agent traversal, including fan-out, but rejects unsupported joins and graph shapes. Starting a configured Session workflow persists an initial run; it does not by itself prove full graph advancement or restart recovery.
 
 ## Near-term direction
 
-The next workflow phase starts with a small manual trigger and a reusable runtime foundation:
+The next phase connects existing editor tests and Session starts to one orchestration-owned executor. It preserves:
 
-- a manual/test trigger node in the Workflows editor;
-- a Play action that accepts text first, then JSON when a schema is declared;
-- draft test runs without publishing;
+- manual trigger input and draft tests without publication;
 - explicit trigger → edge payload → node execution;
-- direct compatible edge transfer for simple graphs;
+- direct compatible edge transfer for supported graphs;
 - agent-node execution through normal Pibo Session routing;
-- runtime facts for node attempts, edge transfers, output, and diagnostics;
-- interfaces that later support webhooks, cron, deterministic adapters, guards, judge agents, human waits, and Project workflow execution.
+- runtime facts for node attempts, edge transfers, output, and diagnostics.
+
+Schema-aware JSON triggers, broader graph advancement, restart recovery, webhooks, and scheduled starts remain follow-up work. Registered adapters, guards, human waits and nested-workflow runtime foundations remain available; the plan describes their remaining end-to-end integration.
 
 Do not rebuild the previous overfull UI. Add only the controls needed to test a workflow from the editor: trigger node, Play, input dialog, status, and output/error.
 
@@ -62,7 +63,7 @@ Current and intended node kinds include:
 | `adapter` | Runs a deterministic registered adapter as a visible graph node. |
 | `human` | Creates a durable wait token with registered human actions. |
 
-Current UI authoring already supports several of these graph elements. Trigger-node authoring and product execution are planned in `docs/specs/changes/workflow-runtime-foundation-manual-trigger/`.
+Current UI authoring supports these graph elements, including manual triggers. Authoring support is not a claim that every combination executes through the current manual test path.
 
 ## Trigger model
 
@@ -70,7 +71,7 @@ A trigger is a workflow node that produces the first payload for a run. The firs
 
 - the trigger is visually distinct from normal nodes;
 - the user clicks Play on the trigger in the Workflows editor;
-- the user enters text or JSON input;
+- the user enters text input in the current manual test slice;
 - validation runs before execution;
 - the trigger output moves over outgoing edges like any other node output.
 
@@ -80,7 +81,7 @@ Future trigger kinds should reuse the same runtime start contract:
 - cron/schedule;
 - API event;
 - message/event bus;
-- Project workflow session start.
+- workflow-backed Session start.
 
 ## Data flow and handoff defaults
 
@@ -122,7 +123,7 @@ Abort, cancel, revise, and retry paths should be explicit graph behavior: guarde
 
 Pibo owns workflow graph execution. The runtime validates Pibo Workflow IR, schedules ready nodes deterministically, transfers explicit edge payloads, and records each transition in Pibo-managed facts. External graph frameworks such as LangGraph may inform graph composition and orchestration design, but they are reference material rather than runtime dependencies or sources of truth.
 
-Workflow execution should record facts that can drive both editor runs and Project workflow views:
+Workflow execution facts support editor runs and the Workflow view of normal Pibo Sessions:
 
 - workflow run id and source;
 - trigger input summary;
@@ -142,13 +143,13 @@ XState remains a deterministic projection for visualization and inspection. It i
 - Agentic transforms must be explicit agent nodes.
 - Full upstream chat history is not passed downstream by default.
 - Inputs, outputs, state, prompts, edge payloads, and human action payloads are sensitive and should follow existing trace/privacy rules.
-- Workflow execution must use normal Pibo auth, app context, Project/session routing, profile, tool, skill, context, and compute-worker policies.
+- Workflow execution must use normal Pibo auth, App Context, Room/Session routing, workspace, profile, tool, skill, context, and compute-worker policies.
 
 ## Related documentation
 
-- Current runtime-foundation plan: `docs/specs/changes/workflow-runtime-foundation-manual-trigger/`
-- Package capability: `docs/specs/capabilities/pibo-workflow-framework-package.md`
-- Adapter guidance: `docs/project/workflow-interface-adapters.md`
-- Registry/debug guidance: `docs/project/workflow-registry-and-debug-serialization.md`
-- XState projection: `docs/project/workflow-xstate-projection.md`
-- Workflow definition examples: `docs/project/workflow-definition-examples.md`
+- [Runtime follow-up plan](/plans/workflow-trigger-and-runtime-follow-ups.md)
+- [Framework contract](/specs/orchestration/workflow-framework-runtime-store.md)
+- [Adapter guidance](/project/workflow-interface-adapters.md)
+- [Registry and debug guidance](/project/workflow-registry-and-debug-serialization.md)
+- [XState projection](/project/workflow-xstate-projection.md)
+- [Workflow definition examples](/project/workflow-definition-examples.md)

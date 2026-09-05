@@ -5,23 +5,23 @@ description: "Defines the implemented Chat Web App Shell, Bootstrap, Navigation,
 tags:
 - web
 - chat-web
-status: "stable"
+status: "draft"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-05T07:15:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
     title: "upstream/dev refresh source and named-test evidence"
 implementation:
-  state: "current"
+  state: "integration-reconciliation-required"
   baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
-  source_evidence: "performed"
-  focused_test_execution: "performed in owned Docker after authoring; see implementation report"
-  build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
+  source_evidence: "previous baseline inspected; changed integration paths require final reconciliation"
+  focused_test_execution: "unperformed for this change"
+  build_typecheck_package_execution: "unperformed for this change"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
   commit: "39090b8850758293e69380a52bb7498d7c955bc2"
@@ -99,12 +99,6 @@ traceability:
           symbol: "roomRoute"
         - path: "src/apps/chat-ui/src/main.tsx"
           symbol: "roomSessionRoute"
-        - path: "src/apps/chat-ui/src/main.tsx"
-          symbol: "projectsRoute"
-        - path: "src/apps/chat-ui/src/main.tsx"
-          symbol: "projectRoute"
-        - path: "src/apps/chat-ui/src/main.tsx"
-          symbol: "projectSessionRoute"
         - path: "src/apps/chat-ui/src/main.tsx"
           symbol: "vscodeRoute"
         - path: "src/apps/chat-ui/src/main.tsx"
@@ -250,7 +244,7 @@ This specification describes implemented behavior at upstream/dev refresh tracea
 
 ### Routes and state
 
-The plugin mounts /apps/chat and /api/chat. TanStack routes cover Sessions, Rooms, Projects, VS Code, Workflows, Agents, Cron, Loop/Ralph, Context, and Settings under /apps/chat; route parsing/canonicalization drives selection. Local storage holds only drafts, history, view preferences, and last selections.
+The plugin mounts /apps/chat and /api/chat. TanStack routes cover Sessions, Rooms, VS Code, Workflows, Agents, Cron, Loop/Ralph, Context, and Settings under /apps/chat; route parsing/canonicalization drives selection. Local storage holds only drafts, history, view preferences, and last selections.
 
 ### Cache, stream, files, and media
 
@@ -314,7 +308,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 ### Requirement: WEB-SHELL-ROUTING-003
 
-The client MUST canonicalize URL-derived area, Room, Project, Session, workflow, and settings selection, expose current navigation semantics, and isolate local drafts/history/view preferences from canonical product state.
+The client MUST canonicalize URL-derived area, Room, Session, Workflow, and settings selection, expose current navigation semantics, and isolate local drafts/history/view preferences from canonical product state.
 
 #### Current
 
@@ -322,7 +316,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 #### Acceptance and boundaries
 
-- Source: `src/apps/chat-ui/src/main.tsx` — `rootRoute`; `src/apps/chat-ui/src/main.tsx` — `sessionRoute`; `src/apps/chat-ui/src/main.tsx` — `roomRoute`; `src/apps/chat-ui/src/main.tsx` — `roomSessionRoute`; `src/apps/chat-ui/src/main.tsx` — `projectsRoute`; `src/apps/chat-ui/src/main.tsx` — `projectRoute`; `src/apps/chat-ui/src/main.tsx` — `projectSessionRoute`; `src/apps/chat-ui/src/main.tsx` — `vscodeRoute`; `src/apps/chat-ui/src/main.tsx` — `workflowsRoute`; `src/apps/chat-ui/src/main.tsx` — `settingsRoute`; `src/apps/chat-ui/src/app-routes.ts` — `chatRouteFromLocation`; `src/apps/chat-ui/src/app-routes.ts` — `chatNavigationRequest`; `src/apps/chat-ui/src/app-routes.ts` — `stringifyChatSearch`; `src/apps/chat-ui/src/app-routes.ts` — `navigateToChatRoute`; `src/apps/chat-ui/src/app-storage.ts` — `readStoredSelection`; `src/apps/chat-ui/src/app-storage.ts` — `writeStoredSelection`; `src/apps/chat-ui/src/app-storage.ts` — `readStoredComposerDraft`; `src/apps/chat-ui/src/app-storage.ts` — `writeStoredComposerDraft`
+- Source: `src/apps/chat-ui/src/main.tsx` — `rootRoute`; `src/apps/chat-ui/src/main.tsx` — `sessionRoute`; `src/apps/chat-ui/src/main.tsx` — `roomRoute`; `src/apps/chat-ui/src/main.tsx` — `roomSessionRoute`; `src/apps/chat-ui/src/main.tsx` — `vscodeRoute`; `src/apps/chat-ui/src/main.tsx` — `workflowsRoute`; `src/apps/chat-ui/src/main.tsx` — `settingsRoute`; `src/apps/chat-ui/src/app-routes.ts` — `chatRouteFromLocation`; `src/apps/chat-ui/src/app-routes.ts` — `chatNavigationRequest`; `src/apps/chat-ui/src/app-routes.ts` — `stringifyChatSearch`; `src/apps/chat-ui/src/app-routes.ts` — `navigateToChatRoute`; `src/apps/chat-ui/src/app-storage.ts` — `readStoredSelection`; `src/apps/chat-ui/src/app-storage.ts` — `writeStoredSelection`; `src/apps/chat-ui/src/app-storage.ts` — `readStoredComposerDraft`; `src/apps/chat-ui/src/app-storage.ts` — `writeStoredComposerDraft`
 - Tests: `test/chat-ui-sidebar-current-navigation.test.mjs` — “Room and Session navigation buttons expose and update aria-current”
 - Public surfaces: `/apps/chat`; `/api/chat/auth-check`; `/api/chat/bootstrap`; `/api/chat/navigation`; `manifest.webmanifest`; `sw.js`; `Chat browser routes`; `detached PWA session window`
 - Failure/security boundary: Invalid route/search values must fall back without mutating server state; local storage failures are non-authoritative.
@@ -415,7 +409,7 @@ Deep routes, service-worker controller changes, desktop PWA display modes, and o
 
 ## Reconciled stale claims
 
-- Reject: Authenticated accounts receive separate Room/Project/read-state partitions.
+- Reject: Authenticated accounts receive separate Room or read-state partitions.
 - Reject: A reserved navigation-query service is current navigation authority.
 - Reject: Browser preference storage is durable product state.
 - Reject: The service worker caches API/auth traffic or cross-origin resources.

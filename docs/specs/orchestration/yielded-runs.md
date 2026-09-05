@@ -6,7 +6,7 @@ description: Defines the implemented yielded run control and isolation contract 
 tags:
 - orchestration
 - workflows
-status: stable
+status: draft
 authority: normative
 generated:
   by: openai/codex
@@ -439,8 +439,8 @@ This appendix applies to all six WP-04 specifications. It records the correction
 9. Workflow XState is execution truth. It is a derived inspection projection; the kernel/store facts are authoritative.
 10. The workflow package has one integrated executor that durably resumes arbitrary graphs after restart. Current evidence shows a bounded manual agent traversal plus separate node dispatch primitives and durable records.
 11. workflow-manual-trigger-recovery.test.mjs proves process-restart recovery. It proves message_finished/final-message behavior and deterministic traversal.
-12. Project workflow start executes the workflow. Current code creates one persisted initial running record; graph advancement is not evidenced.
-13. Project human-action payloads are schema-validated by ChatProjectService.resolveProjectWorkflowHumanAction. That method validates ownership/state/expiry/offered action, not token.schema.
+12. Configured Workflow Session start executes the Workflow. The current start slice creates one persisted initial running record; full graph advancement is not evidenced.
+13. The storage service alone proves complete human-action payload validation. Session-scoped API validation must enforce the wait-token schema before the canonical store resolves an action.
 14. Future workflow webhook or Cron triggers are current. No registered runtime slices exist; they belong in plans.
 
 ### Open evidence gaps
@@ -453,7 +453,7 @@ This appendix applies to all six WP-04 specifications. It records the correction
 - **GAP-ORCH-006 — Workflow runtime:** No general integrated graph executor/restart resumption is evidenced across persisted checkpoints, wakeups, waits, retries, joins, and all node kinds.
 - **GAP-ORCH-007 — Workflow registry:** Implicit latest published version uses localeCompare rather than semantic-version ordering; the intended compatibility contract is not explicit.
 - **GAP-ORCH-008 — Workflow product:** The designated lifecycle/security tests are predominantly static coverage checklists, so store/API claims need executed focused tests and build/package checks.
-- **GAP-ORCH-009 — Project execution:** startWorkflowSessionRun persists initial state but no graph execution; Project human-action store resolution does not validate token.schema payloads.
+- **GAP-ORCH-009 — Session execution:** configured Session start persists initial state but does not yet prove full graph execution; general execution remains planned.
 - **GAP-ORCH-010 — Future triggers:** No registered webhook/Cron workflow trigger slices exist; do not include them in current specifications.
 
 ### F-028 scope control

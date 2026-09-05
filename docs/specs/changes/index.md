@@ -12,7 +12,6 @@
 * [Machine key web auth](machine-key-web-auth/) - Documentation under `machine&#45;key&#45;web&#45;auth/`.
 * [Multi agent runtime adapters](multi-agent-runtime-adapters/) - Documentation under `multi&#45;agent&#45;runtime&#45;adapters/`.
 * [Pibo observability debug telemetry](pibo-observability-debug-telemetry/) - Documentation under `pibo&#45;observability&#45;debug&#45;telemetry/`.
-* [Projects room parity modular clean start](projects-room-parity-modular-clean-start/) - Documentation under `projects&#45;room&#45;parity&#45;modular&#45;clean&#45;start/`.
 * [Pty debug e2e tooling](pty-debug-e2e-tooling/) - Documentation under `pty&#45;debug&#45;e2e&#45;tooling/`.
 * [Reconcile rejected message signals](reconcile-rejected-message-signals/) - Documentation under `reconcile&#45;rejected&#45;message&#45;signals/`.
 * [Runtime auth control plane](runtime-auth-control-plane/) - Documentation under `runtime&#45;auth&#45;control&#45;plane/`.

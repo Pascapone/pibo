@@ -1,5 +1,11 @@
 # Pibo documentation update log
 
+## 2026-09-05
+
+- **Session-native product model**: Replaced the current Projects product contract with [Rooms and normal Session trees](/specs/web/rooms-and-session-trees.md), including Room workspace defaults and canonical Session continuity.
+- **Workflow ownership**: Recast [Workflow catalog and execution](/specs/orchestration/workflow-catalog-and-session-execution.md) around normal Pibo Sessions and one Workflow store, and aligned the Web UI, runtime, product-store, shell, projection, validation, and follow-up documents.
+- **Navigation cleanup**: Removed the empty Projects parity change directory and regenerated its owning indexes.
+
 ## 2026-09-04
 
 - **Observe regex filtering**: Added and review-hardened the optional `textRegex` contract for [delegated-agent observation](/specs/orchestration/subagents.md#requirement-orch-sub-005), preserving case-insensitive `textContains` and conjunctive behavior while representing empty normalized text as one record, bounding dense matching and streaming pagination, rejecting unsafe NUL boundaries, and resolving optional rg binaries only for regex use.

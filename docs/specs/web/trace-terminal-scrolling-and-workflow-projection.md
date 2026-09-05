@@ -5,23 +5,23 @@ description: "Defines the implemented Chat Web Trace, Terminal, Scrolling, and W
 tags:
 - web
 - chat-web
-status: "stable"
+status: "draft"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-05T07:15:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
     title: "upstream/dev refresh source and named-test evidence"
 implementation:
-  state: "current"
+  state: "integration-reconciliation-required"
   baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
-  source_evidence: "performed"
-  focused_test_execution: "performed in owned Docker after authoring; see implementation report"
-  build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
+  source_evidence: "previous baseline inspected; changed integration paths require final reconciliation"
+  focused_test_execution: "unperformed for this change"
+  build_typecheck_package_execution: "unperformed for this change"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
   commit: "39090b8850758293e69380a52bb7498d7c955bc2"
@@ -178,8 +178,6 @@ traceability:
         - path: "packages/workflows/src/xstate/index.ts"
           symbol: "WORKFLOW_XSTATE_UI_MODEL_KIND"
       tests:
-        - path: "test/workflow-session-kind.test.mjs"
-          name: "project sidebar session nodes expose workflow session kind for real Pibo Sessions only"
         - path: "packages/workflows/src/testing/xstate-ui-model.test.ts"
           name: "exposes a compact Web UI model from the XState machine projection"
         - path: "packages/workflows/src/testing/xstate-ui-model.test.ts"
@@ -231,7 +229,7 @@ Historical pages and SPC-WEB-004 live overlays merge by stable identities and a 
 
 ### Lifecycle and failure
 
-Pagination preserves reading anchors, uses one bottom target, and avoids blind scroll-height compensation; refresh replaces stale tails without losing older loaded windows. Raw Events remains a labelled inspector at narrow widths. Malformed identity/payload refs fail closed. Workflow views show current projections without becoming execution truth.
+Pagination preserves reading anchors, uses one bottom target, and avoids blind scroll-height compensation; refresh replaces stale tails without losing older loaded windows. Raw Events remains a labelled inspector at narrow widths. Malformed identity/payload refs fail closed. Workflow views use stored Session-linked snapshots and Runs without fabricating progress or becoming execution truth.
 
 ### Security
 
@@ -325,7 +323,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 ### Requirement: WEB-TRACE-WORKFLOW-005
 
-The read-only Session view registry MAY expose workflow XState projections, but MUST identify workflow Session kinds and MUST keep workflow IR, private payloads, execution, and durable state under their orchestration owners.
+The normal Session view registry MAY expose Workflow inspection and XState projections, but MUST identify Workflow-linked Session kinds and MUST keep workflow IR, private payloads, execution, and durable state under their orchestration owners.
 
 #### Current
 
@@ -334,7 +332,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 #### Acceptance and boundaries
 
 - Source: `src/apps/chat-ui/src/session-views/registry.tsx` — `inactiveChatSessionViews`; `src/apps/chat-ui/src/session-views/registry.tsx` — `listChatSessionViews`; `src/apps/chat-ui/src/session-views/registry.tsx` — `getChatSessionView`; `src/apps/chat-ui/src/session-views/WorkflowXStateSessionView.tsx` — `WorkflowXStateSessionView`; `packages/workflows/src/xstate/index.ts` — `createWorkflowXStateUiModel`; `packages/workflows/src/xstate/index.ts` — `WORKFLOW_XSTATE_UI_MODEL_KIND`
-- Tests: `test/workflow-session-kind.test.mjs` — “project sidebar session nodes expose workflow session kind for real Pibo Sessions only”; `packages/workflows/src/testing/xstate-ui-model.test.ts` — “exposes a compact Web UI model from the XState machine projection”; `packages/workflows/src/testing/xstate-ui-model.test.ts` — “marks current wait, terminal, and retry-delay states from kernel snapshots or explicit active state ids”
+- Tests: `packages/workflows/src/testing/xstate-ui-model.test.ts` — “exposes a compact Web UI model from the XState machine projection”; `packages/workflows/src/testing/xstate-ui-model.test.ts` — “marks current wait, terminal, and retry-delay states from kernel snapshots or explicit active state ids”
 - Public surfaces: `/api/chat/trace*`; `SessionTracePane`; `CompactTerminalSessionView`; `TraceTimeline`; `WorkflowXStateSessionView`; `listChatSessionViews`
 - Failure/security boundary: Unknown view IDs or malformed snapshots fall back without granting edits or exposing private payloads.
 - Accessibility/responsive boundary: Workflow states need textual names/status, not color-only meaning.
@@ -365,7 +363,7 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 ## Failure and security behavior
 
-- Pagination preserves reading anchors; refresh replaces stale tails without losing older loaded windows; malformed identity/payload refs fail closed. Workflow views show current projections without becoming execution truth.
+- Pagination preserves reading anchors; refresh replaces stale tails without losing older loaded windows; malformed identity/payload refs fail closed. Workflow views use stored Session-linked snapshots and Runs without fabricating progress or becoming execution truth.
 - Private payloads/raw events are not default UI data. Diagnostic reports omit content fingerprints/operator identifiers; image/payload access uses exact refs.
 
 Web browser state, caches, projections, overlays, annotations, and iframe presence do not grant authorization or become durable product authority.

@@ -15,7 +15,7 @@ migration_lineage:
   source_body_sha256: "1e8438664a3018b6784a77a5d5f5a6bedce971e854597169c942692774686703"
 generated:
   by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-08-31T22:47:46Z"
+  at: "2026-09-05T07:15:00Z"
 ---
 # Workflow Registry, Plugin Registration, and Debug Serialization
 
@@ -194,9 +194,9 @@ Agent nodes must select a fixed Agent Designer profile in V1:
 profile: fixedProfile("pibo-agent")
 ```
 
-Runtime profile resolution records selected profile metadata plus effective tools, skills, context files, and session routing on the node attempt. Use node-level `routing` for concrete routing fields such as legacy `appContext` compatibility, `projectId`, `roomId`, `parentSessionId`, and `channel`. Use `workflow.metadata.routingHints` for non-authoritative hints that help plugin/UI selection but do not affect execution by themselves.
+Runtime profile resolution records selected profile metadata plus effective tools, skills, context files, and session routing on the node attempt. Use node-level `routing` for concrete routing fields such as legacy `appContext` compatibility, `roomId`, `parentSessionId`, and `channel`. Use `workflow.metadata.routingHints` for non-authoritative hints that help plugin/UI selection but do not affect execution by themselves.
 
-Simple chat sessions should remain unbadged unless they are linked to workflow metadata. Workflow-backed sessions should persist workflow run ids through the normal project/session linkage rather than duplicating Pibo/Pi traces in the workflow store.
+Simple chat sessions should remain unbadged unless they are linked to workflow metadata. Workflow-backed sessions should persist workflow run ids through the normal Pibo Session linkage rather than duplicating Pibo/Pi traces in the workflow store.
 
 ## Human actions
 

@@ -3,11 +3,11 @@ type: "Specification"
 title: "Product Store, History, Payloads, and Read Models"
 description: "Defines the implemented product store, history, payloads, and read models contract and its current ownership boundaries."
 tags: ["data", "product-store", "history"]
-status: "stable"
+status: "draft"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-03T15:55:41Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-05T07:15:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
@@ -207,7 +207,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 ## Requirement: WP02-DATA-STORE-001
 
-The specification SHALL define schema version 8, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-session, non-telemetry product tables to this owner.
+The specification SHALL define schema version 8, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-Session, non-telemetry, non-Workflow product tables to this owner.
 
 ## Requirement: WP02-DATA-STORE-002
 
@@ -260,7 +260,7 @@ Related ownership boundaries:
 - SPC-DATA-003 owns telemetry tables in the same database.
 - SPC-RUN-007 owns native runtime transcript compatibility; product history is primary.
 - SPC-WEB-004 and SPC-WEB-005 own browser overlays and trace rendering, not durable facts.
-- ChatProjectService uses web-projects.sqlite and is outside this owner.
+- Workflow catalog and execution facts use `pibo-workflows.sqlite` and belong to SPC-ORCH-005/SPC-ORCH-006.
 
 # Failure and security behavior
 
@@ -271,7 +271,7 @@ Related ownership boundaries:
 
 # Known limits
 
-- Non-current claim excluded: assign sessions, runtime bindings, telemetry, or web-projects.sqlite to this owner merely because composition code is nearby.
+- Non-current claim excluded: assign Sessions, runtime bindings, telemetry, or Workflow-store facts to this owner merely because composition code is nearby.
 - Non-current claim excluded: describe ChatNavigationQueryService as a complete native navigation implementation; its source marks it reserved and current call sites compose navigation elsewhere.
 - Non-current claim excluded: claim product store code authenticates payload reads; route authentication belongs to Web/security owners.
 - Current limit or evidence gap: No focused corruption test was found for bounded payload SHA/length validation and durable-preview fallback.
@@ -293,4 +293,4 @@ Package verification commands:
 - SPC-DATA-003 owns telemetry tables in the same database.
 - SPC-RUN-007 owns native runtime transcript compatibility; product history is primary.
 - SPC-WEB-004 and SPC-WEB-005 own browser overlays and trace rendering, not durable facts.
-- ChatProjectService uses web-projects.sqlite and is outside this owner.
+- Workflow catalog and execution facts use `pibo-workflows.sqlite` and belong to SPC-ORCH-005/SPC-ORCH-006.
