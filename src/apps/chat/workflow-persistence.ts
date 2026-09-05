@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject } from "../../core/events.js";
-import type { PiboDataStore } from "../../data/pibo-store.js";
+type PiboDataStore = {
+	db: DatabaseSync;
+	transaction<T>(action: () => T): T;
+};
 import { PiboWebHttpError } from "../../web/http.js";
 import {
 	allocateWorkflowPublishedVersion,
@@ -122,7 +125,7 @@ type WorkflowTombstoneStoreRow = {
 	last_known_title: string;
 	last_known_version: string | null;
 	last_definition_hash: string | null;
-	updated_at: string;
+	created_at: string;
 };
 
 type WorkflowLifecycleEventStoreRow = {
@@ -132,7 +135,6 @@ type WorkflowLifecycleEventStoreRow = {
 	workflow_id: string | null;
 	workflow_version: string | null;
 	draft_id: string | null;
-	project_id: string | null;
 	pibo_session_id: string | null;
 	workflow_run_id: string | null;
 	status: WorkflowLifecycleEventRecord["status"] | null;
@@ -145,7 +147,7 @@ type WorkflowLifecycleEventStoreRow = {
 export class ChatWorkflowDraftStore {
 	constructor(private readonly dataStore: PiboDataStore) {
 		this.dataStore.db.exec(`
-			CREATE TABLE IF NOT EXISTS workflow_ui_drafts (
+			CREATE TABLE IF NOT EXISTS workflow_drafts (
 				draft_id TEXT PRIMARY KEY,
 				workflow_id TEXT NOT NULL,
 				source TEXT NOT NULL,
@@ -164,22 +166,22 @@ export class ChatWorkflowDraftStore {
 				updated_at TEXT NOT NULL
 			);
 
-			CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_ui_drafts_one_active
-				ON workflow_ui_drafts(workflow_id)
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_drafts_one_active
+				ON workflow_drafts(workflow_id)
 				WHERE status = 'draft';
-			CREATE INDEX IF NOT EXISTS idx_workflow_ui_drafts_updated
-				ON workflow_ui_drafts(updated_at, draft_id);
+			CREATE INDEX IF NOT EXISTS idx_workflow_drafts_updated
+				ON workflow_drafts(updated_at, draft_id);
 		`);
 	}
 
 	getDraft(draftId: string): WorkflowDraftRecord | undefined {
-		const row = this.dataStore.db.prepare("SELECT * FROM workflow_ui_drafts WHERE draft_id = ?").get(draftId) as WorkflowDraftStoreRow | undefined;
+		const row = this.dataStore.db.prepare("SELECT * FROM workflow_drafts WHERE draft_id = ?").get(draftId) as WorkflowDraftStoreRow | undefined;
 		return row ? workflowDraftFromStoreRow(row) : undefined;
 	}
 
 	findActiveDraftByWorkflowId(workflowId: string): WorkflowDraftRecord | undefined {
 		const row = this.dataStore.db
-			.prepare("SELECT * FROM workflow_ui_drafts WHERE workflow_id = ? AND status = 'draft' ORDER BY updated_at DESC, draft_id ASC LIMIT 1")
+			.prepare("SELECT * FROM workflow_drafts WHERE workflow_id = ? AND status = 'draft' ORDER BY updated_at DESC, draft_id ASC LIMIT 1")
 			.get(workflowId) as WorkflowDraftStoreRow | undefined;
 		return row ? workflowDraftFromStoreRow(row) : undefined;
 	}
@@ -187,10 +189,10 @@ export class ChatWorkflowDraftStore {
 	listDrafts(filter: { workflowId?: string } = {}): WorkflowDraftRecord[] {
 		const rows = filter.workflowId
 			? this.dataStore.db
-				.prepare("SELECT * FROM workflow_ui_drafts WHERE workflow_id = ? ORDER BY updated_at DESC, draft_id ASC")
+				.prepare("SELECT * FROM workflow_drafts WHERE workflow_id = ? ORDER BY updated_at DESC, draft_id ASC")
 				.all(filter.workflowId) as WorkflowDraftStoreRow[]
 			: this.dataStore.db
-				.prepare("SELECT * FROM workflow_ui_drafts ORDER BY workflow_id ASC, updated_at DESC, draft_id ASC")
+				.prepare("SELECT * FROM workflow_drafts ORDER BY workflow_id ASC, updated_at DESC, draft_id ASC")
 				.all() as WorkflowDraftStoreRow[];
 		return rows.map(workflowDraftFromStoreRow);
 	}
@@ -198,14 +200,14 @@ export class ChatWorkflowDraftStore {
 	saveDraft(record: WorkflowDraftRecord): void {
 		this.dataStore.transaction(() => {
 			const conflict = this.dataStore.db
-				.prepare("SELECT draft_id FROM workflow_ui_drafts WHERE workflow_id = ? AND status = 'draft' AND draft_id <> ? LIMIT 1")
+				.prepare("SELECT draft_id FROM workflow_drafts WHERE workflow_id = ? AND status = 'draft' AND draft_id <> ? LIMIT 1")
 				.get(record.workflowId, record.draftId) as { draft_id: string } | undefined;
 			if (conflict) {
 				throw new PiboWebHttpError(`Workflow '${record.workflowId}' already has an active draft '${conflict.draft_id}'`, 409);
 			}
 
 			this.dataStore.db.prepare(`
-				INSERT INTO workflow_ui_drafts (
+				INSERT INTO workflow_drafts (
 					draft_id,
 					workflow_id,
 					source,
@@ -658,11 +660,11 @@ export class ChatWorkflowTombstoneStore {
 				last_known_title TEXT NOT NULL,
 				last_known_version TEXT,
 				last_definition_hash TEXT,
-				updated_at TEXT NOT NULL
+				created_at TEXT NOT NULL
 			);
 
 			CREATE INDEX IF NOT EXISTS idx_workflow_delete_tombstones_deleted
-				ON workflow_delete_tombstones(deleted, updated_at);
+				ON workflow_delete_tombstones(deleted, created_at);
 		`);
 	}
 
@@ -706,7 +708,7 @@ export class ChatWorkflowTombstoneStore {
 				last_known_title,
 				last_known_version,
 				last_definition_hash,
-				updated_at
+				created_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(workflow_id) DO UPDATE SET
 				source = excluded.source,
@@ -716,7 +718,7 @@ export class ChatWorkflowTombstoneStore {
 				last_known_title = excluded.last_known_title,
 				last_known_version = excluded.last_known_version,
 				last_definition_hash = excluded.last_definition_hash,
-				updated_at = excluded.updated_at
+				created_at = excluded.created_at
 		`).run(
 			record.workflowId,
 			record.source,
@@ -741,7 +743,7 @@ function workflowTombstoneFromStoreRow(row: WorkflowTombstoneStoreRow): Workflow
 		lastKnownTitle: row.last_known_title,
 		...(row.last_known_version ? { lastKnownVersion: row.last_known_version } : {}),
 		...(row.last_definition_hash ? { lastDefinitionHash: row.last_definition_hash } : {}),
-		updatedAt: row.updated_at,
+		updatedAt: row.created_at,
 	};
 }
 
@@ -755,7 +757,6 @@ export class ChatWorkflowLifecycleEventStore {
 				workflow_id TEXT,
 				workflow_version TEXT,
 				draft_id TEXT,
-				project_id TEXT,
 				pibo_session_id TEXT,
 				workflow_run_id TEXT,
 				status TEXT,
@@ -769,8 +770,8 @@ export class ChatWorkflowLifecycleEventStore {
 				ON workflow_lifecycle_events(type, created_at);
 			CREATE INDEX IF NOT EXISTS idx_workflow_lifecycle_events_workflow
 				ON workflow_lifecycle_events(workflow_id, workflow_version, created_at);
-			CREATE INDEX IF NOT EXISTS idx_workflow_lifecycle_events_project_session
-				ON workflow_lifecycle_events(project_id, pibo_session_id, created_at);
+			CREATE INDEX IF NOT EXISTS idx_workflow_lifecycle_events_session
+				ON workflow_lifecycle_events(pibo_session_id, created_at);
 		`);
 	}
 
@@ -782,7 +783,6 @@ export class ChatWorkflowLifecycleEventStore {
 			...(input.workflowId ? { workflowId: input.workflowId } : {}),
 			...(input.workflowVersion ? { workflowVersion: input.workflowVersion } : {}),
 			...(input.draftId ? { draftId: input.draftId } : {}),
-			...(input.projectId ? { projectId: input.projectId } : {}),
 			...(input.piboSessionId ? { piboSessionId: input.piboSessionId } : {}),
 			...(input.workflowRunId ? { workflowRunId: input.workflowRunId } : {}),
 			...(input.status ? { status: input.status } : {}),
@@ -799,7 +799,6 @@ export class ChatWorkflowLifecycleEventStore {
 				workflow_id,
 				workflow_version,
 				draft_id,
-				project_id,
 				pibo_session_id,
 				workflow_run_id,
 				status,
@@ -807,7 +806,7 @@ export class ChatWorkflowLifecycleEventStore {
 				diagnostics_json,
 				payload_json,
 				created_at
-			) VALUES (${Array.from({ length: 14 }, () => "?").join(", ")})
+			) VALUES (${Array.from({ length: 13 }, () => "?").join(", ")})
 		`).run(
 			event.id,
 			event.type,
@@ -815,7 +814,6 @@ export class ChatWorkflowLifecycleEventStore {
 			event.workflowId ?? null,
 			event.workflowVersion ?? null,
 			event.draftId ?? null,
-			event.projectId ?? null,
 			event.piboSessionId ?? null,
 			event.workflowRunId ?? null,
 			event.status ?? null,
@@ -831,7 +829,6 @@ export class ChatWorkflowLifecycleEventStore {
 		type?: string;
 		workflowId?: string;
 		draftId?: string;
-		projectId?: string;
 		piboSessionId?: string;
 		workflowRunId?: string;
 		limit?: number;
@@ -849,10 +846,6 @@ export class ChatWorkflowLifecycleEventStore {
 		if (filter.draftId) {
 			clauses.push("draft_id = ?");
 			values.push(filter.draftId);
-		}
-		if (filter.projectId) {
-			clauses.push("project_id = ?");
-			values.push(filter.projectId);
 		}
 		if (filter.piboSessionId) {
 			clauses.push("pibo_session_id = ?");
@@ -881,7 +874,6 @@ function workflowLifecycleEventFromStoreRow(row: WorkflowLifecycleEventStoreRow)
 		...(row.workflow_id ? { workflowId: row.workflow_id } : {}),
 		...(row.workflow_version ? { workflowVersion: row.workflow_version } : {}),
 		...(row.draft_id ? { draftId: row.draft_id } : {}),
-		...(row.project_id ? { projectId: row.project_id } : {}),
 		...(row.pibo_session_id ? { piboSessionId: row.pibo_session_id } : {}),
 		...(row.workflow_run_id ? { workflowRunId: row.workflow_run_id } : {}),
 		...(row.status ? { status: row.status } : {}),

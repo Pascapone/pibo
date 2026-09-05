@@ -26,7 +26,7 @@ test("desktop workspace tabs expose New Tab catalog, ARIA tabs, keyboard and poi
 		'aria-label="Collapse workspace tabs"',
 		'aria-label="Reopen workspace tabs"',
 	]) assert.match(source, new RegExp(contract.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-	for (const label of ["Sessions", "Projects", "VS Code", "Workflows", "Cron", "Loops", "Agent Designer", "Context", "Settings", "Preview", "Raw Events", "Web Annotations", "Runtime Requests", "Session Inspector"]) {
+	for (const label of ["Sessions", "VS Code", "Workflows", "Cron", "Loops", "Agent Designer", "Context", "Settings", "Preview", "Raw Events", "Web Annotations", "Runtime Requests", "Session Inspector"]) {
 		assert.match(source, new RegExp(`label: "${label}"`));
 	}
 	assert.doesNotMatch(source, /aria-haspopup="menu"|role="menu"|pointerdown.*closeFromOutside/);
@@ -55,7 +55,7 @@ test("App gates the new three-region shell to Desktop and keeps the route shell 
 	assert.match(desktopSidebar, /aria-label="Reopen Sessions sidebar"/);
 	assert.match(app, /data-pibo-debug="desktop-session-center"/);
 	assert.match(app, /className="min-h-0 min-w-\[250px\] flex-1 overflow-hidden"/);
-	assert.match(app, /desktopTerminalOnly[\s\S]*containerResponsive/);
+	assert.match(app, /sessionViewId=\{sessionViewId\}[\s\S]*currentSessionView=\{currentSessionView\}[\s\S]*containerResponsive/);
 	assert.match(app, /data-pibo-debug="route-shell"/);
 	assert.match(app, /isAppFullscreen \|\| desktopTabsEnabled \? null : \(/);
 	assert.match(app, /desktopTabsEnabled \? "grid-rows-\[auto_1fr\]"/);
@@ -78,5 +78,5 @@ test("App gates the new three-region shell to Desktop and keeps the route shell 
 	assert.doesNotMatch(chrome, /desktopTabMode/);
 	assert.match(pane, /createPortal\(desktopToolPanels\[tool\]/);
 	assert.match(pane, /forcePanelVisible: Boolean\(desktopToolHosts\?\.\["web-annotations"\]\)/);
-	assert.match(app, /sessionViewId="terminal"[\s\S]*currentSessionView=\{terminalSessionView\}[\s\S]*desktopTerminalOnly/);
+	assert.doesNotMatch(app, /sessionViewId="terminal"[\s\S]*desktopTerminalOnly/);
 });

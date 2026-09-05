@@ -13,6 +13,7 @@ import {
 	PinOff,
 	Plus,
 	Trash2,
+	Workflow,
 	X,
 } from "lucide-react";
 import type { BootstrapData, PiboRoom, PiboWebSessionNode } from "./types";
@@ -72,6 +73,7 @@ export type SessionSidebarProps = {
 	selectedRoomArchived: boolean;
 	creatingSession: boolean;
 	onCreateSession: () => void | Promise<void>;
+	onCreateWorkflowSession: () => void;
 	showArchived: boolean;
 	onToggleArchivedSessions: () => void | Promise<void>;
 	loadingArchivedSessions: boolean;
@@ -121,6 +123,7 @@ export function SessionSidebar({
 	selectedRoomArchived,
 	creatingSession,
 	onCreateSession,
+	onCreateWorkflowSession,
 	showArchived,
 	onToggleArchivedSessions,
 	loadingArchivedSessions,
@@ -312,6 +315,7 @@ export function SessionSidebar({
 								</option>
 							))}
 						</select>
+						<button type="button" onClick={onCreateWorkflowSession} disabled={creatingSession || creatingRoom || selectedRoomArchived || roomSessionsLoading} title="New Workflow Session" aria-label="New Workflow Session" className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"><Workflow size={14} /></button>
 						<button
 							data-pibo-debug="new-session-button"
 							data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}

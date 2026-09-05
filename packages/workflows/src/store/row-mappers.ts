@@ -34,7 +34,6 @@ export type WorkflowRunRow = {
   parent_run_id: string | null;
   parent_node_attempt_id: string | null;
   pibo_session_id: string | null;
-  project_id: string | null;
   environment_json: string | null;
   status: WorkflowRunStatus;
   current_node_id: string | null;
@@ -46,6 +45,7 @@ export type WorkflowRunRow = {
   output_present: number;
   state_json: string;
   checkpoint_json: string | null;
+  validation_json: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -84,9 +84,11 @@ export type WorkflowDraftRow = {
   base_workflow_id: string | null;
   base_workflow_version: string | null;
   base_definition_hash: string | null;
+  target_workflow_version: string | null;
   version_intent: "patch" | "minor" | "major";
   definition_json: string;
   diagnostics_json: string;
+  validation_json: string | null;
   validation_state: WorkflowDraftValidationState;
   revision: number;
   created_by: string | null;
@@ -220,6 +222,7 @@ export type WorkflowHumanActionRow = {
   id: string;
   workflow_run_id: string;
   wait_token_id: string;
+  action_id: string | null;
   kind: WorkflowHumanActionKind;
   actor_json: string | null;
   payload_json: string | null;
@@ -272,6 +275,9 @@ export function workflowDraftFromRow(
     ...(row.base_definition_hash
       ? { baseDefinitionHash: row.base_definition_hash }
       : {}),
+    ...(row.target_workflow_version
+      ? { targetWorkflowVersion: row.target_workflow_version }
+      : {}),
     versionIntent: row.version_intent,
     definition: parseJson<WorkflowDraftRecord["definition"]>(
       row.definition_json,
@@ -280,6 +286,7 @@ export function workflowDraftFromRow(
       row.diagnostics_json,
     ),
     validationState: row.validation_state,
+    ...(row.validation_json ? { validation: parseJson(row.validation_json) } : {}),
     revision: row.revision,
     ...(row.created_by ? { createdBy: row.created_by } : {}),
     createdAt: row.created_at,
@@ -357,7 +364,6 @@ export function workflowRunFromRow(row: WorkflowRunRow): WorkflowRun {
       ? { parentNodeAttemptId: row.parent_node_attempt_id }
       : {}),
     ...(row.pibo_session_id ? { piboSessionId: row.pibo_session_id } : {}),
-    ...(row.project_id ? { projectId: row.project_id } : {}),
     ...(row.environment_json
       ? {
           environment: parseJson<WorkflowExecutionEnvironment>(
@@ -375,6 +381,7 @@ export function workflowRunFromRow(row: WorkflowRunRow): WorkflowRun {
     ...(row.checkpoint_json
       ? { checkpoint: parseJson(row.checkpoint_json) }
       : {}),
+    ...(row.validation_json ? { validation: parseJson(row.validation_json) } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(row.completed_at ? { completedAt: row.completed_at } : {}),
@@ -525,6 +532,7 @@ export function workflowHumanActionFromRow(
     id: row.id,
     workflowRunId: row.workflow_run_id,
     waitTokenId: row.wait_token_id,
+    ...(row.action_id ? { actionId: row.action_id } : {}),
     kind: row.kind,
     ...(row.actor_json ? { actor: parseJson(row.actor_json) } : {}),
     ...(row.payload_json

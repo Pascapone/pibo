@@ -9,20 +9,21 @@ tags:
 status: stable
 authority: normative
 generated:
-  by: openai/codex
-  at: '2026-08-30T09:44:54Z'
+  by: openai-codex/gpt-5.6-sol
+  at: '2026-09-05T10:32:00Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
-  title: upstream/dev refresh source and test evidence for SPC-ORCH-005
+  title: Integrated Workflow framework source and test evidence
 implementation:
   state: current
-  baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
+  baseline_commit: 14cbaf0fd04cfa321674b570baeb40e543d957cb
   package: WP-04-ORCHESTRATION
   source_evidence: performed
-  focused_test_execution: performed in Docker after authoring; see implementation report
-  build_and_typecheck_execution: performed in Docker after authoring; see implementation report
+  focused_test_execution: 144 Workflow package tests and the complete isolated root suite passed
+  build_and_typecheck_execution: clean full build and all typechecks passed
+  browser_execution: headed supported manual editor authoring, real provider execution, canonical inspection, and desktop/mobile fit passed
 traceability:
-  commit: 39090b8850758293e69380a52bb7498d7c955bc2
+  commit: 14cbaf0fd04cfa321674b570baeb40e543d957cb
   requirements:
   - id: ORCH-WF-001
     status: implemented
@@ -101,14 +102,17 @@ traceability:
     - path: packages/workflows/src/store/index.ts
       symbol: SqliteWorkflowRunStore
     tests:
-    - path: packages/workflows/src/testing/runtime-manual-trigger.test.ts
-      name: passes editor text input into one agent node as the complete prompt input
-    - path: packages/workflows/src/testing/runtime-manual-trigger.test.ts
-      name: fans the same last source output out to parallel downstream agents
+    - path: packages/workflows/src/testing/workflow-sqlite-schema.test.ts
+      name: creates the workflow-specific pibo-workflows.sqlite schema
+    - path: packages/workflows/src/testing/workflow-sqlite-schema.test.ts
+      name: keeps normal session trace, transcript, tool-call, and span storage out of the workflow database
+    - path: packages/workflows/src/testing/workflow-store-facts.test.ts
+      name: persists workflow events, edge transfers, checkpoints, wakeups, waits, and state snapshots
+    - path: packages/workflows/src/testing/workflow-run-inspection.test.ts
+      name: builds an inspectable completed run summary after SQLite restart
     failures:
-    - Store records are JSON-serialized facts; list filters are bounded. No test in the designated six directly performs process-restart
-      replay across all record classes.
-    confidence: medium
+    - Store records are JSON-serialized canonical facts; Run lists can filter by `piboSessionId`, and all list filters are bounded.
+    confidence: high
   - id: ORCH-WF-004
     status: implemented
     sources:
@@ -141,10 +145,11 @@ traceability:
       name: dispatches a validated mixed workflow through code, agent, human, adapter, and nested workflow nodes
     - path: test/workflow-manual-trigger-recovery.test.mjs
       name: manual workflow agent nodes wait for message_finished and use the final assistant message
+    - path: test/workflow-manual-trigger-recovery.test.mjs
+      name: manual workflow agent nodes use normal Sessions with workspace and stable workflow linkage
     failures:
-    - The recovery-named test verifies message completion/final-output handling, not crash restart resumption. Joins fail
-      explicitly in manual traversal.
-    confidence: medium
+    - Manual traversal persists canonical snapshots, Runs, attempts, and transfers, but it is not the general restart-resuming graph executor. Joins fail explicitly.
+    confidence: high
   - id: ORCH-WF-005
     status: implemented
     sources:
@@ -174,22 +179,22 @@ Workflow data and execution primitives need a stable boundary between serializab
 
 ## Goal
 
-The workflow package defines the current IR, registry, validation, schema-v3 store, manual traversal, dispatch primitives, retries, waits, and deterministic XState/UI projections.
+The workflow package defines the current IR, registry, validation, schema-v4 store, manual traversal, dispatch primitives, retries, waits, and deterministic XState/UI projections.
 
 ## Authority and ownership
 
 - **Stable concept:** `SPC-ORCH-005`
 - **Target path:** `docs/specs/orchestration/workflow-framework-runtime-store.md`
-- **Authority:** upstream/dev refresh source and test evidence at `39090b8850758293e69380a52bb7498d7c955bc2`.
+- **Authority:** integrated source and test evidence at `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
-- **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the upstream/dev refresh commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
+- **Evidence rule:** Package source and named-test locators resolve at `14cbaf0fd04cfa321674b570baeb40e543d957cb`; package source is unchanged through final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. The package suite, prior complete root suite, build, final source/typechecks, focused final tests, and scoped headed acceptance are separate evidence classes. Broader general executor acceptance remains pending.
 
 ## Public surfaces
 
 - `@pasko70/pibo-workflows`
-- `WORKFLOW_SQLITE_SCHEMA_VERSION=3`
+- `WORKFLOW_SQLITE_SCHEMA_VERSION=4`
 - `pibo-workflows.sqlite`
-- `14 workflow_* tables`
+- `Workflow-owned tables`
 - `WorkflowDefinition`
 - `WorkflowRun`
 - `WorkflowEventRecord`
@@ -210,7 +215,7 @@ Returns structured diagnostics for strict JSON ports/schemas, graph node/edge/po
 
 ### Store
 
-Schema v3 installs definition/catalog records and durable run/event/attempt/transfer/checkpoint/wakeup/wait/action records. Store save/get/list methods are the durable interface.
+Schema v4 installs definition/catalog records and durable run/event/attempt/transfer/checkpoint/wakeup/wait/action records. Store save/get/list methods are the durable interface.
 
 ### Runtime
 
@@ -225,9 +230,9 @@ Human dispatch creates durable pending wait tokens; action apply checks ownershi
 ### In scope
 
 - @pasko70/pibo-workflows
-- WORKFLOW_SQLITE_SCHEMA_VERSION=3
+- WORKFLOW_SQLITE_SCHEMA_VERSION=4
 - pibo-workflows.sqlite
-- 14 workflow_* tables
+- Workflow-owned tables
 - WorkflowDefinition
 - WorkflowRun
 - WorkflowEventRecord
@@ -300,13 +305,13 @@ Validation is diagnostic and non-executing; hidden LLM coercion and undeclared w
 
 ### Requirement: ORCH-WF-003
 
-Schema v3 and its store contracts MUST durably save and retrieve definition snapshots, identities, drafts, published versions, archive/tombstone state, runs, events, node attempts, edge transfers, checkpoints, wakeups, wait tokens, and human actions.
+Schema v4 and its store contracts MUST durably save and retrieve definition snapshots, identities, drafts, published versions, archive/tombstone state, Session links and snapshots, Runs, events, node attempts, edge transfers, checkpoints, wakeups, wait tokens, human actions, prompt assets, and lifecycle events in `pibo-workflows.sqlite`. Workflow Runs MUST link by `piboSessionId` and MUST NOT require another container identity.
 
 **Confidence:** `medium`. **Current evidence:** source inspection and named-test source inspection at upstream/dev refresh; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
-Store records are JSON-serialized facts; list filters are bounded. No test in the designated six directly performs process-restart replay across all record classes.
+Store records are JSON-serialized facts; Run lists can filter by `piboSessionId`, and all list filters are bounded. No test in the designated six directly performs process-restart replay across all record classes.
 
 #### Acceptance evidence
 
@@ -390,7 +395,9 @@ Projection state cannot mutate execution truth and declares exposesPrivatePayloa
 
 ## Verification boundary
 
-- Source/test baseline: `39090b8850758293e69380a52bb7498d7c955bc2`.
-- Focused inventory: 24 files / 245 top-level declarations; `test/web-channel.test.mjs` is separate cross-boundary evidence with 113 declarations.
-- Requirement traceability: 25 unique requirements across six targets, 15 high confidence and 10 medium confidence, 138 source references, 75 named-test references / 74 unique names.
-- This document is stable normative documentation of current behavior, not acceptance of future implementation work.
+- Source/test baseline: `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
+- The clean full build, all typechecks, all 144 Workflow package tests, and the complete isolated root suite passed. The root suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0.
+- Headed Room workspace editing and inheritance, Workflow Session creation/start/inspection, desktop/mobile views, and a real normal Session `pwd` through `openai-codex` succeeded.
+- Final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67` passed source checks, all typechecks, one added manual editor API test, and a 20-test routed-runtime/UI/manual/header matrix. Its complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
+- Scoped headful acceptance proved UI authoring of a manual-trigger-to-agent graph, actual `openai-codex` execution in the selected Room workspace, completed canonical inspection with two attempts and one transfer, and desktop/mobile fit.
+- General graph restart execution, joins, webhooks, and scheduled triggers remain known gaps. Raw-IR editing, publish, human-action submission, and job controls were not accepted headfully.

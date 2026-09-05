@@ -23,6 +23,7 @@ WORKDIR /app
 
 # Package-Dateien zuerst kopieren (Layer-Caching)
 COPY package.json package-lock.json tsconfig.json ./
+COPY packages/workflows/package.json ./packages/workflows/package.json
 RUN npm install
 
 # Quellcode kopieren und bauen

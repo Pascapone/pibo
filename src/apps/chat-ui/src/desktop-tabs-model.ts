@@ -46,7 +46,6 @@ export function desktopTabTargetKey(target: DesktopTabTarget): string {
 	if (target.kind === "new-tab") return `new-tab:${target.instanceId}`;
 	if (target.kind === "session-tool") return `tool:${target.tool}`;
 	const route = target.route;
-	if (route.area === "projects") return route.projectId ? `projects:${route.projectId}` : "projects";
 	if (route.area === "workflows") {
 		if (route.draftId) return `workflows:draft:${route.draftId}`;
 		if (route.viewWorkflowId && route.viewWorkflowVersion) return `workflows:view:${route.viewWorkflowId}:${route.viewWorkflowVersion}`;
@@ -71,7 +70,6 @@ export function desktopTabTitle(target: DesktopTabTarget): string {
 	if (route.area === "agents") return "Agent Designer";
 	if (route.area === "context") return "Context";
 	if (route.area === "settings") return "Settings";
-	if (route.area === "projects") return route.projectId ? `Project · ${route.projectId}` : "Projects";
 	if (route.draftId) return `Workflow · ${route.draftId}`;
 	if (route.viewWorkflowId) return `Workflow · ${route.viewWorkflowId}`;
 	return "Workflows";
@@ -352,7 +350,7 @@ function isDesktopSessionTool(value: unknown): value is DesktopSessionTool {
 
 function isDesktopRoute(value: Record<string, unknown>): value is Exclude<ChatAppRoute, { area: "sessions" }> {
 	if (value.area === "vscode" || value.area === "agents" || value.area === "cron" || value.area === "loops") return true;
-	if (value.area === "projects" || value.area === "workflows" || value.area === "context" || value.area === "settings") return true;
+	if (value.area === "workflows" || value.area === "context" || value.area === "settings") return true;
 	return false;
 }
 

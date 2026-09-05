@@ -389,7 +389,6 @@ function derivedSessionMetadata(value: PiboJsonObject | undefined): PiboJsonObje
 	for (const key of [
 		DERIVED_SESSION_RECONCILIATION_METADATA_KEY,
 		"workflowSessionKind",
-		"projectSessionKind",
 		"subagentName",
 		"subagentToolName",
 		"agentStatus",

@@ -154,7 +154,7 @@ Provide exactly one source:
 	program.command("seed")
 		.action(() => console.log(`Deployment seed modes:
   full    Nearly complete Pibo home plus configured workspace; excludes active runtime, lock, browser, debug, and pool state.
-  medium  Operational config, selected product databases, projects, contexts, agents, and user skills; excludes heavy payload/tool/browser/debug state.
+  medium  Operational config, selected product and workflow databases, contexts, agents, and user skills; excludes heavy payload/tool/browser/debug state.
   fresh   Operational config, Google/Machine auth configuration, model defaults, contexts, and user skills; no existing product databases.
 `));
 

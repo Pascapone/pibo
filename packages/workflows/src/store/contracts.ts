@@ -114,6 +114,7 @@ export type WorkflowHumanActionStore = {
 
 export type WorkflowRunListFilter = {
   workflowId?: string;
+  piboSessionId?: string;
   status?: WorkflowRunStatus;
   limit?: number;
 };

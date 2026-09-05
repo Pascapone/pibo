@@ -10,7 +10,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T21:32:28Z"
+  at: "2026-09-05T10:02:49Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -22,7 +22,7 @@ implementation:
   package_parent: "ca8de98aaf1a536006b9e5f0e3a070da1d5070bd"
   source_evidence: "performed"
   focused_test_execution: "performed in Docker: package/release tests passed within the affected and full suites"
-  build_typecheck_package_execution: "performed in Docker: build, typecheck, npm pack, and extracted-archive inspection passed"
+  build_typecheck_package_execution: "performed: build, typecheck, npm pack, extracted-archive inspection, and clean npm install --omit=dev passed"
   live_external_execution: "unperformed"
 traceability:
   commit: "39090b8850758293e69380a52bb7498d7c955bc2"
@@ -405,7 +405,7 @@ The delivery system MUST pack only the root manifest allowlist, exclude dist/app
 - Security boundary: Allowlisting limits published files; lock/shrinkwrap fixes the resolved graph even though manifest ranges remain.
 - Platform and compatibility boundary: npm package lifecycle on Node >=24; tarball consumers receive pibo and rg bins, not declared main/types/exports.
 - Confidence: **high**
-- Evidence gap and follow-up: The package tests, actual `npm pack`, extracted membership, and packaged-document link closure passed. Installing the tarball into a clean temporary project and smoking `pibo`/`rg` remain unperformed; package-root library imports remain intentionally undeclared pending an explicit API decision.
+- Evidence and follow-up: The package tests, actual `npm pack`, extracted membership, packaged-document link closure, and installation into an empty directory with `npm install --omit=dev` passed. The installed CLI reported its version and help, the canonical persistent Workflow service created and reopened, no workspace-package symlink was present, and no retired storage was created. Package-root library imports remain intentionally undeclared pending an explicit API decision.
 
 #### Later validation commands
 
@@ -515,7 +515,7 @@ node scripts/release.mjs --version 1.7.2 --dry-run
 | --- | --- | --- |
 | source inspection | performed | Package/build/config, setup, gateway, Docker, deploy, release, VSIX, and named test files were inspected. |
 | focused tests | performed | Package, release-preflight, setup, gateway, and affected tests passed in the isolated worker; the clean full suite passed 2,638 tests with 0 failures and 5 skips. |
-| build package checks | performed-partial | Build, typecheck, actual npm pack, extracted archive membership, and packaged Markdown link closure passed. VSIX packaging, Docker image build, and clean-project tarball installation were not run. |
+| build package checks | performed-partial | Build, typecheck, actual npm pack, extracted archive membership, packaged Markdown link closure, and empty-directory `npm install --omit=dev` passed. Installed CLI version/help, canonical persistent Workflow service reopen, absence of workspace-package symlinks, and absence of retired storage were checked. VSIX packaging and Docker image build were not run. |
 | local real path pty headful browser validation | not-applicable | The canonical target does not require this evidence class; UI acceptance belongs to dependent targets. |
 | external provider pibo2 acceptance | unperformed | No npm, GitHub Release, Marketplace, external host, or Pibo2 acceptance was run. |
 
@@ -547,7 +547,7 @@ These gaps do not define intended behavior. Any implementation change requires a
 - Every requirement traces to exact regular files at upstream/dev refresh `39090b8850758293e69380a52bb7498d7c955bc2`.
 - Named tests are identified by exact test names. Source-only requirements set `source_inspected: true` and carry a concrete follow-up.
 - Deterministic wrappers, source guards, archive checks, and accelerated fixtures are bounded evidence. They are not substitutes for headful VS Code, real workspace activation, real PTY, live browser/CDP, provider, controller gateway, Docker runtime, release publication, deployment, or Pibo2 acceptance.
-- Package execution results belong to the implementation audit, not to the normative current-behavior claim.
+- Package execution results belong to the implementation audit, not to the normative current-behavior claim. Final acceptance at `7ec71c2cca2108423002be0e7330d2a20c4c5b67` added a passing empty-directory `npm install --omit=dev` smoke without rebinding unchanged package source traceability.
 
 ## Related concepts
 

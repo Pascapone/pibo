@@ -7,7 +7,6 @@ export type PreviewManagerKind = "systemd" | "process";
 export type PreviewExposure = {
 	id: string;
 	piboSessionId: string;
-	projectId?: string;
 	label: string;
 	targetHost: "127.0.0.1" | "::1";
 	targetPort: number;
@@ -34,7 +33,6 @@ export type PreviewExposure = {
 export type CreatePreviewExposureInput = {
 	id: string;
 	piboSessionId: string;
-	projectId?: string;
 	label: string;
 	targetHost: PreviewExposure["targetHost"];
 	targetPort: number;

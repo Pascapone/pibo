@@ -119,7 +119,6 @@ export type ContextSelectionPolicy = SelectionPolicy;
 
 export type SessionRoutingPolicy = {
   parentSessionId?: string;
-  projectId?: string;
   roomId?: string;
   channel?: string;
 };
@@ -409,10 +408,12 @@ export type WorkflowDraftRecord = {
   baseWorkflowId?: WorkflowId;
   baseWorkflowVersion?: WorkflowVersion;
   baseDefinitionHash?: string;
+  targetWorkflowVersion?: WorkflowVersion;
   versionIntent: WorkflowVersionIntent;
   definition: PartialWorkflowDefinition;
   diagnostics: WorkflowDiagnostic[];
   validationState: WorkflowDraftValidationState;
+  validation?: JsonObject;
   revision: number;
   createdBy?: string;
   createdAt: string;
@@ -685,7 +686,6 @@ export type WorkflowRun = {
   parentRunId?: WorkflowRunId;
   parentNodeAttemptId?: NodeAttemptId;
   piboSessionId?: string;
-  projectId?: string;
   environment?: WorkflowExecutionEnvironment;
   status: WorkflowRunStatus;
   current: WorkflowRunCursor;
@@ -693,6 +693,7 @@ export type WorkflowRun = {
   output?: WorkflowValue;
   state: WorkflowRunState;
   checkpoint?: WorkflowCheckpointRef;
+  validation?: JsonObject;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -827,6 +828,7 @@ export type WorkflowHumanActionRecord = {
   id: WorkflowHumanActionId;
   workflowRunId: WorkflowRunId;
   waitTokenId: WorkflowWaitTokenId;
+  actionId?: string;
   kind: WorkflowHumanActionKind;
   actor?: JsonObject;
   payload?: WorkflowValue;

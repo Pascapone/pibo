@@ -29,13 +29,13 @@ test("workflow session kind metadata accepts only the stable V2 enum", () => {
 	assert.equal(workflowSessionKindFromMetadata({ workflowSessionKind: "main_workflow" }), "main_workflow");
 	assert.equal(workflowSessionKindFromMetadata({ workflowSessionKind: "agent_node" }), "agent_node");
 	assert.equal(workflowSessionKindFromMetadata({ workflowSessionKind: "workflow_node" }), undefined);
-	assert.deepEqual(withWorkflowSessionKind({ projectId: "prj_1" }, "nested_workflow"), {
-		projectId: "prj_1",
+	assert.deepEqual(withWorkflowSessionKind({ workflowRunId: "wfr_1" }, "nested_workflow"), {
+		workflowRunId: "wfr_1",
 		workflowSessionKind: "nested_workflow",
 	});
 });
 
-test("project sidebar session nodes expose workflow session kind for real Pibo Sessions only", async () => {
+test("normal sidebar session nodes expose workflow session kind for real Pibo Sessions only", async () => {
 	const sessions = [
 		session("ps_main", { workflowSessionKind: "main_workflow" }),
 		session("ps_nested", { workflowSessionKind: "nested_workflow" }, "ps_main"),

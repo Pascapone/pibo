@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { ensurePrivatePiboHomeForPath, piboHomePath } from "../core/pibo-home.js";
 import { protectPrivateFileSync } from "../core/private-path.js";
 import { loadPreviewConfig } from "./config.js";
+import { migratePreviewSessionOwnership } from "./migrations/session-ownership.js";
 import type {
 	CreatePreviewExposureInput,
 	ManagedPreviewServerState,
@@ -18,7 +19,6 @@ import type {
 type ExposureRow = {
 	id: string;
 	pibo_session_id: string;
-	project_id: string | null;
 	label: string;
 	target_host: "127.0.0.1" | "::1";
 	target_port: number;
@@ -55,7 +55,7 @@ type BrowserAuthorizationRow = ExposureRow & {
 	browser_expires_at: string;
 };
 
-export const PREVIEW_SCHEMA_VERSION = 4;
+export const PREVIEW_SCHEMA_VERSION = 5;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES = 256;
 export const MAX_ACTIVE_PREVIEW_EXPOSURES_PER_SESSION = 16;
 export const MAX_OUTSTANDING_PREVIEW_TICKETS = 32;
@@ -100,7 +100,6 @@ function validateExposureInput(input: CreatePreviewExposureInput): void {
 	}
 	if (!input.piboSessionId.trim() || input.piboSessionId.length > 256) throw new Error("Pibo Session id is invalid");
 	if (!input.label.trim() || input.label.length > 120) throw new Error("Preview label must contain 1 to 120 characters");
-	if (input.projectId && input.projectId.length > 256) throw new Error("Preview Project id is too long");
 	if (!input.workspace || input.workspace.length > 4_096) throw new Error("Preview workspace is invalid");
 	if (!Number.isInteger(input.targetPort) || input.targetPort < 1024 || input.targetPort > 65535) {
 		throw new Error("Preview target port is invalid");
@@ -118,7 +117,6 @@ function exposureFromRow(row: ExposureRow): PreviewExposure {
 	return {
 		id: row.id,
 		piboSessionId: row.pibo_session_id,
-		projectId: row.project_id ?? undefined,
 		label: row.label,
 		targetHost: row.target_host,
 		targetPort: row.target_port,
@@ -214,7 +212,6 @@ export class PreviewStore {
 			CREATE TABLE IF NOT EXISTS preview_exposures (
 				id TEXT PRIMARY KEY,
 				pibo_session_id TEXT NOT NULL,
-				project_id TEXT,
 				label TEXT NOT NULL,
 				target_host TEXT NOT NULL CHECK (target_host IN ('127.0.0.1', '::1')),
 				target_port INTEGER NOT NULL CHECK (target_port BETWEEN 1024 AND 65535),
@@ -291,7 +288,6 @@ export class PreviewStore {
 					CREATE TABLE preview_exposures (
 						id TEXT PRIMARY KEY,
 						pibo_session_id TEXT NOT NULL,
-						project_id TEXT,
 						label TEXT NOT NULL,
 						target_host TEXT NOT NULL CHECK (target_host IN ('127.0.0.1', '::1')),
 						target_port INTEGER NOT NULL CHECK (target_port BETWEEN 1024 AND 65535),
@@ -315,7 +311,7 @@ export class PreviewStore {
 						closed_at TEXT
 					);
 					INSERT INTO preview_exposures (
-						id, pibo_session_id, project_id, label, target_host, target_port,
+						id, pibo_session_id, label, target_host, target_port,
 						target_process_id, target_process_start_ticks, workspace,
 						management_mode, start_command, server_state, server_generation,
 						server_started_at, server_stop_at, server_stopped_at, server_error,
@@ -323,7 +319,7 @@ export class PreviewStore {
 						created_at, expires_at, closed_at
 					)
 					SELECT
-						id, pibo_session_id, project_id, label, target_host, target_port,
+						id, pibo_session_id, label, target_host, target_port,
 						target_process_id, target_process_start_ticks, workspace,
 						management_mode, start_command, server_state, server_generation,
 						server_started_at, server_stop_at, server_stopped_at, server_error,
@@ -339,6 +335,7 @@ export class PreviewStore {
 			CREATE INDEX IF NOT EXISTS preview_exposures_managed_state_idx
 				ON preview_exposures (management_mode, server_state, expires_at)
 		`);
+			if (currentVersion < 5) migratePreviewSessionOwnership(this.db);
 			this.db.exec(`PRAGMA user_version = ${PREVIEW_SCHEMA_VERSION}`);
 			this.db.exec("COMMIT");
 		} catch (error) {
@@ -376,15 +373,14 @@ export class PreviewStore {
 			}
 			this.db.prepare(`
 			INSERT INTO preview_exposures (
-				id, pibo_session_id, project_id, label, target_host, target_port,
+				id, pibo_session_id, label, target_host, target_port,
 				target_process_id, target_process_start_ticks, workspace,
 				management_mode, start_command, server_state,
 				created_at, expires_at, closed_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
 			`).run(
 			input.id,
 			input.piboSessionId,
-			input.projectId ?? null,
 			input.label,
 			input.targetHost,
 			input.targetPort,

@@ -92,7 +92,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 
 		let initial = model.emptyDesktopTabState();
 		initial = model.openDesktopTab(initial, { kind: "session-tool", tool: "preview" }, { id: "preview", now: 1 });
-		initial = model.openDesktopTab(initial, { kind: "route", route: { area: "projects", projectId: "project-1" } }, { id: "project", now: 2 });
+		initial = model.openDesktopTab(initial, { kind: "route", route: { area: "workflows", viewWorkflowId: "workflow-1", viewWorkflowVersion: "1.0.0" } }, { id: "workflow", now: 2 });
 		initial = model.openDesktopTab(initial, { kind: "route", route: { area: "settings" } }, { id: "settings", now: 3 });
 		initial = model.activateDesktopTab(initial, "preview", 4);
 
@@ -140,15 +140,15 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 			mounted = create(React.createElement(Harness), { createNodeMock });
 		});
 		const previewFrameBefore = mounted.root.findByType("iframe");
-		const projectTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Project ·"))[0];
-		await act(async () => projectTab.props.onClick());
+		const workflowTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Workflow ·"))[0];
+		await act(async () => workflowTab.props.onClick());
 		const previewFrameAfter = mounted.root.findByType("iframe");
 		assert.equal(previewFrameAfter, previewFrameBefore, "Preview iframe remains the same React instance when another tab activates");
-		assert.ok(lifecycle.includes("mount:Project · project-1"));
+		assert.ok(lifecycle.includes("mount:Workflow · workflow-1"));
 
 		const settingsTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Settings."))[0];
 		await act(async () => settingsTab.props.onClick());
-		assert.ok(lifecycle.includes("unmount:Project · project-1"), "inactive Project content unmounts and stops its resources");
+		assert.ok(lifecycle.includes("unmount:Workflow · workflow-1"), "inactive Workflow content unmounts and stops its resources");
 		assert.equal(mounted.root.findByType("iframe"), previewFrameBefore);
 
 		assert.equal(desktopTabInsertionIndex(observedState.tabs, "preview", "settings", "after"), 2);
@@ -170,12 +170,12 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 			currentTarget: { getBoundingClientRect: () => ({ left: 0, width: 100 }) },
 		}));
 		await act(async () => settingsDropTab.props.onDrop({ preventDefault() {} }));
-		assert.deepEqual(observedState.tabs.map((tab) => tab.id), ["project", "settings", "preview"], "drop uses the visible insertion location");
+		assert.deepEqual(observedState.tabs.map((tab) => tab.id), ["workflow", "settings", "preview"], "drop uses the visible insertion location");
 		assert.equal(mounted.root.findAllByProps({ "data-pibo-debug": "desktop-tab-drop-gap" }).length, 0, "drop clears the insertion gap");
 
-		const projectAgain = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Project ·"))[0];
-		await act(async () => projectAgain.props.onClick());
-		await act(async () => projectAgain.props.onKeyDown({ key: "Delete", preventDefault() {} }));
+		const workflowAgain = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Workflow ·"))[0];
+		await act(async () => workflowAgain.props.onClick());
+		await act(async () => workflowAgain.props.onKeyDown({ key: "Delete", preventDefault() {} }));
 		assert.equal(observedState.activeTabId, "settings");
 		assert.match(focusedTitle, /^Settings\./, "Delete moves DOM focus to the deterministic right neighbor");
 

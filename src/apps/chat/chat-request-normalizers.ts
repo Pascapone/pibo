@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute } from "node:path";
 import type { PiboJsonObject, PiboJsonValue } from "../../core/events.js";
 import type { PiboBasePromptMode } from "../../core/base-prompt.js";
 import type { PiboCompactionPromptMode } from "../../core/compaction-prompt.js";
@@ -17,29 +17,6 @@ import { isValidCustomAgentName, type CustomAgentSubagent, type UpdateCustomAgen
 export type ChatSessionCreateBody = {
 	profile?: unknown;
 	roomId?: unknown;
-};
-
-export type ChatProjectCreateBody = {
-	name?: unknown;
-	description?: unknown;
-	projectFolder?: unknown;
-	createFolder?: unknown;
-};
-
-export type ChatProjectPatchBody = {
-	name?: unknown;
-	description?: unknown;
-	archived?: unknown;
-};
-
-export type ChatProjectDeleteBody = {
-	confirmName?: unknown;
-	deleteFiles?: unknown;
-};
-
-export type ChatProjectSessionPatchBody = {
-	title?: unknown;
-	archived?: unknown;
 };
 
 export type ChatSessionDeleteBody = {
@@ -710,47 +687,6 @@ export function updateChatModelDefaults(body: ChatModelDefaultsBody, cwd = proce
 		mainFast: normalizeOptionalBoolean(body.mainFast, "mainFast"),
 		subagentFast: normalizeOptionalBoolean(body.subagentFast, "subagentFast"),
 	}, cwd);
-}
-
-const PROJECT_SESSION_PATCH_FIELDS = new Set([
-	"title",
-	"archived",
-]);
-
-export function assertProjectSessionPatchFields(body: ChatProjectSessionPatchBody): void {
-	if (!body || typeof body !== "object" || Array.isArray(body)) throw new PiboWebHttpError("Invalid JSON body", 400);
-	for (const key of Object.keys(body)) {
-		if (!PROJECT_SESSION_PATCH_FIELDS.has(key)) {
-			throw new PiboWebHttpError(`Unsupported project session update field: ${key}. Project workflow selection and configuration are immutable; create a new configured session to change workflow, input, prompt, model, thinking, or fast-mode values.`, 400);
-		}
-	}
-}
-
-export function normalizeProjectPath(value: unknown): string {
-	if (typeof value !== "string" || !value.trim()) throw new PiboWebHttpError("Project folder is required", 400);
-	let projectPath = value.trim();
-	if (projectPath === "~") projectPath = process.env.HOME ?? projectPath;
-	else if (projectPath.startsWith("~/")) projectPath = `${process.env.HOME ?? ""}${projectPath.slice(1)}`;
-	if (!isAbsolute(projectPath)) throw new PiboWebHttpError("Project folder must be an absolute path, e.g. ~/code/my-project or /home/me/code/my-project", 400);
-	return resolve(projectPath);
-}
-
-export function normalizeProjectDescription(value: unknown): string | undefined {
-	if (value === undefined || value === null) return undefined;
-	if (typeof value !== "string") throw new PiboWebHttpError("Project description must be a string", 400);
-	return value.trim() || undefined;
-}
-
-export function normalizeProjectArchived(value: unknown): boolean | undefined {
-	if (value === undefined) return undefined;
-	if (typeof value !== "boolean") throw new PiboWebHttpError("Project archived flag must be boolean", 400);
-	return value;
-}
-
-export function normalizeProjectSessionArchived(value: unknown): boolean | undefined {
-	if (value === undefined) return undefined;
-	if (typeof value !== "boolean") throw new PiboWebHttpError("Project session archived flag must be boolean", 400);
-	return value;
 }
 
 export function normalizeSessionTitle(value: unknown): string | null | undefined {

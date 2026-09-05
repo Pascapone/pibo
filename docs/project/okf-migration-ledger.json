@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-02T09:42:16Z",
+  "generated_at": "2026-09-05T10:32:00Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -17,6 +17,30 @@
     "operational": "directive"
   },
   "records": [
+    {
+      "path": "docs/legacy/plans/remove-projects-and-make-workflows-session-native.md",
+      "state": "conformant",
+      "classification": "historical material",
+      "type": "Historical Record",
+      "authority": "historical",
+      "status": "deprecated",
+      "file_bytes": 15110,
+      "file_sha256": "3b19ab66097ae066294680dbed920e9d93d4019c8d585a37194fbfab004d6673",
+      "body_sha256": "747508fd324e56145a0b36406c11fdb952b021e8496bdab84e8b4796ac50766f",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/session-native-workflow-transition-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 13387,
+      "file_sha256": "abd9434de7dc55d49e8dea421cfde2be3442a240b07deb6e57fd579ee9d3225c",
+      "body_sha256": "323960aecb196753ac02b5d2e1b293c3eb5d9797affda1f2df4a75ef1dfeb98d",
+      "lineage": null
+    },
     {
       "path": ".agents/skills/design-md/examples/DESIGN.md",
       "state": "host-exception",
@@ -12131,20 +12155,6 @@
       "body_sha256": "c30e874df72dab4ed3a21dac3523d727ca7d4b49834ec9770a0ce603ecbe3669"
     },
     {
-      "path": "docs/specs/changes/projects-room-parity-modular-clean-start/index.md",
-      "state": "reserved",
-      "classification": "reserved index/log",
-      "authority": null,
-      "status": null,
-      "lineage": null,
-      "reason": "Required OKF index in the exact I-CENTRAL closure.",
-      "current_present": false,
-      "synthetic": true,
-      "file_bytes": 108,
-      "file_sha256": "a1082b3809828b601a561fa091d9e539f991e4131c77a9044bbfd5549742e930",
-      "body_sha256": "a1082b3809828b601a561fa091d9e539f991e4131c77a9044bbfd5549742e930"
-    },
-    {
       "path": "docs/specs/changes/pty-debug-e2e-tooling/index.md",
       "state": "reserved",
       "classification": "reserved index/log",
@@ -12609,7 +12619,7 @@
       "lineage": null
     },
     {
-      "path": "docs/specs/orchestration/workflow-catalog-and-project-execution.md",
+      "path": "docs/specs/orchestration/workflow-catalog-and-session-execution.md",
       "state": "conformant",
       "classification": "canonical specification",
       "type": "Specification",
@@ -13067,7 +13077,7 @@
       "lineage": null
     },
     {
-      "path": "docs/specs/web/rooms-projects-and-session-trees.md",
+      "path": "docs/specs/web/rooms-and-session-trees.md",
       "state": "conformant",
       "classification": "canonical specification",
       "type": "Specification",

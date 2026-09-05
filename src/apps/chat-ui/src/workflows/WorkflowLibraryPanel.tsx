@@ -31,7 +31,7 @@ type WorkflowLifecycleConfirmationTarget = {
 	title: string;
 };
 
-export function WorkflowLibraryPanel({ activeDraftId }: { activeDraftId?: string }) {
+export function WorkflowLibraryPanel({ activeDraftId, onCreateWorkflowSession }: { activeDraftId?: string; onCreateWorkflowSession?: (workflowId: string, workflowVersion: string) => void }) {
 	const [historyRows, setHistoryRows] = useState<WorkflowVersionHistoryOption[]>([]);
 	const [historyLoadState, setHistoryLoadState] = useState<"loading" | "loaded" | "error">("loading");
 	const [historyErrorMessage, setHistoryErrorMessage] = useState<string | undefined>();
@@ -176,7 +176,7 @@ export function WorkflowLibraryPanel({ activeDraftId }: { activeDraftId?: string
 							Version history
 						</div>
 						<p className="mt-1 text-[11px] leading-5 text-slate-500">
-							Published versions are listed in deterministic workflow/version order. Only published rows are selectable for Project sessions; archived rows stay visible as history while deleted workflows render from Project snapshots.
+							Published versions are listed in deterministic workflow/version order. Published rows can create normal Workflow Sessions; archived rows stay visible as history while deleted workflows render from immutable snapshots.
 						</p>
 					</div>
 					<button
@@ -216,6 +216,7 @@ export function WorkflowLibraryPanel({ activeDraftId }: { activeDraftId?: string
 						onEditPublished={editPublishedWorkflow}
 						onArchive={requestArchiveWorkflow}
 						onDelete={requestDeleteWorkflow}
+						onCreateWorkflowSession={onCreateWorkflowSession}
 					/>
 				)) : null}
 			</div>
@@ -240,6 +241,7 @@ function WorkflowVersionHistoryGroupCard({
 	onEditPublished,
 	onArchive,
 	onDelete,
+	onCreateWorkflowSession,
 }: {
 	group: WorkflowVersionHistoryGroup;
 	busy: boolean;
@@ -251,6 +253,7 @@ function WorkflowVersionHistoryGroupCard({
 	onEditPublished: (workflowId: string, version: string) => Promise<void>;
 	onArchive: (workflowId: string, title: string) => void;
 	onDelete: (workflowId: string, title: string) => void;
+	onCreateWorkflowSession?: (workflowId: string, workflowVersion: string) => void;
 }) {
 	return (
 		<div className="rounded-sm border border-slate-800 bg-[#101d22]/70 p-4" aria-label={`Version history for ${group.workflowId}`}>
@@ -278,6 +281,7 @@ function WorkflowVersionHistoryGroupCard({
 						onEditPublished={onEditPublished}
 						onArchive={onArchive}
 						onDelete={onDelete}
+						onCreateWorkflowSession={onCreateWorkflowSession}
 					/>
 				))}
 			</div>
@@ -296,6 +300,7 @@ function WorkflowVersionHistoryRow({
 	onEditPublished,
 	onArchive,
 	onDelete,
+	onCreateWorkflowSession,
 }: {
 	record: WorkflowVersionHistoryOption;
 	busy: boolean;
@@ -307,12 +312,13 @@ function WorkflowVersionHistoryRow({
 	onEditPublished: (workflowId: string, version: string) => Promise<void>;
 	onArchive: (workflowId: string, title: string) => void;
 	onDelete: (workflowId: string, title: string) => void;
+	onCreateWorkflowSession?: (workflowId: string, workflowVersion: string) => void;
 }) {
 	const key = workflowVersionSelectionKey(record.id, record.version);
 	const published = record.status === "published";
 	const canCreateNextDraft = hasWorkflowCatalogAction(record, "create_next_draft");
 	const canDuplicate = hasWorkflowCatalogAction(record, "duplicate");
-	const canCreateProjectSession = hasWorkflowCatalogAction(record, "create_project_session");
+	const canCreateWorkflowSession = hasWorkflowCatalogAction(record, "create_workflow_session");
 	const canView = hasWorkflowCatalogAction(record, "view");
 	const canArchive = published && hasWorkflowCatalogAction(record, "archive");
 	const canDelete = published && hasWorkflowCatalogAction(record, "delete");
@@ -353,19 +359,11 @@ function WorkflowVersionHistoryRow({
 							Duplicate to draft
 						</button>
 					) : null}
-					{canCreateProjectSession ? (
-						<a
-							className="inline-flex items-center justify-center gap-1 rounded-sm border border-emerald-700/70 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:border-emerald-500 hover:text-emerald-50"
-							href="/apps/chat/projects"
-						>
-							<MoveRight size={13} />
-							Create Project session
-						</a>
-					) : (
-						<div className="max-w-44 rounded-sm border border-amber-800/70 bg-amber-950/20 p-2 text-[11px] text-amber-100">
-							Unavailable for Project session selection.
-						</div>
-					)}
+					{canCreateWorkflowSession && onCreateWorkflowSession ? (
+						<button type="button" className="inline-flex items-center justify-center gap-1 rounded-sm border border-emerald-700/70 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:border-emerald-500 hover:text-emerald-50" onClick={() => onCreateWorkflowSession(record.id, record.version)}>
+							<MoveRight size={13} />Create Workflow Session
+						</button>
+					) : <div className="max-w-44 rounded-sm border border-amber-800/70 bg-amber-950/20 p-2 text-[11px] text-amber-100">Unavailable for new Workflow Sessions.</div>}
 					{canView ? (
 						<a
 							className="inline-flex items-center justify-center gap-1 rounded-sm border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-[#11a4d4]/60 hover:text-slate-100"
@@ -444,10 +442,10 @@ function WorkflowLifecycleConfirmationPanel({
 					{isDelete ? (
 						<>
 							<p className="mt-3">
-								Deleting tombstones the live workflow identity. It removes this workflow from the default catalog, workflow pickers, duplicate/edit/publish/archive actions, and new Project session creation.
+								Deleting tombstones the live workflow identity. It removes this workflow from the default catalog, workflow pickers, duplicate/edit/publish/archive actions, and new Workflow Session creation.
 							</p>
 							<p className="mt-2">
-								Historical Project runs remain inspectable from immutable snapshots and show a definition-deleted state instead of a broken live catalog link.
+								Historical Workflow Runs remain inspectable from immutable snapshots and show a definition-deleted state instead of a broken live catalog link.
 							</p>
 							<label className="mt-3 block text-[11px] font-semibold text-red-100">
 								Type the workflow id to confirm delete
@@ -463,10 +461,10 @@ function WorkflowLifecycleConfirmationPanel({
 					) : (
 						<>
 							<p className="mt-3">
-								Archiving applies to the whole workflow identity. It hides this workflow from the default catalog and Project workflow selection lists.
+								Archiving applies to the whole workflow identity. It hides this workflow from the default catalog and new Workflow Session choices.
 							</p>
 							<p className="mt-2">
-								Published versions stay available only through archive filters and historical run links, and historical Project runs continue to render from their snapshots.
+								Published versions stay available only through archive filters and historical run links, and historical Workflow Runs continue to render from their snapshots.
 							</p>
 						</>
 					)}

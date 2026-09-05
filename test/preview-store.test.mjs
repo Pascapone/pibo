@@ -27,7 +27,6 @@ function createExposure(store, overrides = {}) {
 	return store.createExposure({
 		id: overrides.id ?? "pv-abcdef123456",
 		piboSessionId: overrides.piboSessionId ?? "ps_preview",
-		projectId: overrides.projectId,
 		label: overrides.label ?? "Website",
 		targetHost: overrides.targetHost ?? "127.0.0.1",
 		targetPort: overrides.targetPort ?? 5173,
@@ -119,6 +118,7 @@ test("preview store migrates an existing exposure database before creating manag
 		reopened.close();
 		const inspection = new DatabaseSync(path, { readOnly: true });
 		assert.equal(inspection.prepare("PRAGMA user_version").get().user_version, PREVIEW_SCHEMA_VERSION);
+		assert.equal(inspection.prepare("PRAGMA table_info(preview_exposures)").all().some((column) => column.name === "project_id"), false);
 		assert.match(
 			inspection.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'preview_exposures'").get().sql,
 			/'stopping'/,

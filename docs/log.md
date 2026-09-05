@@ -2,6 +2,14 @@
 
 ## 2026-09-05
 
+- **Transition closure**: Published the [Session-native validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md) with final-code root results (2,747 total; 2,742 passed; 0 failed; 5 skipped), standalone package installation, and headed real-execution evidence; archived the original directive body without changing the main checkout. No production deployment.
+
+- **Session-native product model**: Replaced the current Projects product contract with [Rooms and normal Session trees](/specs/web/rooms-and-session-trees.md), including Room workspace defaults and canonical Session continuity.
+- **Workflow ownership**: Recast [Workflow catalog and execution](/specs/orchestration/workflow-catalog-and-session-execution.md) around normal Pibo Sessions and one Workflow store, and aligned the Web UI, runtime, product-store, shell, projection, validation, and follow-up documents.
+- **Navigation cleanup**: Removed the empty Projects parity change directory and regenerated its owning indexes.
+- **Integrated traceability**: Rebound affected specifications to checked code commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`, exact current symbols, and renamed tests; documented pending configured starts, canonical manual-run facts, inspection-derived headers, and recoverable two-target migration durability.
+- **Validation evidence**: Recorded the passing clean build, all typechecks, 144 Workflow package tests, 56 focused migration/storage/router/header tests, 62 focused UI source tests, complete isolated root suite at `14cbaf0f` (2,744 total; 2,739 passed; 0 failed; 5 skipped), and completed headed Room, Workflow Session, desktop/mobile, and normal provider-backed Session checks.
+- **Final manual Workflow acceptance**: Rebound changed contracts to `7ec71c2cca2108423002be0e7330d2a20c4c5b67` after upstream #911/#912 integration; documented the defaulted Run Room selector, optional API Room/workspace, write-permission and workspace-inheritance behavior, persistent pending explanation, actual `openai-codex` manual execution, canonical completed inspection, viewport fit, and clean `npm install --omit=dev` smoke. The final-code whole-root rerun remains underway and unclaimed.
 - **Shared observation ownership**: Clarified that live agent observation and persisted debug inspection are adapters over one normalized observation/query core, so source-independent improvements apply to both unless a documented lifetime or durability constraint prevents parity.
 
 ## 2026-09-04

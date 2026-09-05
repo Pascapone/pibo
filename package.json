@@ -10,6 +10,9 @@
   "description": "Minimal TypeScript wrapper around Pi Coding Agent.",
   "files": [
     "dist",
+    "packages/workflows/dist",
+    "!packages/workflows/dist/testing/**",
+    "packages/workflows/package.json",
     "!dist/apps/vscode-artifacts/**",
     "context",
     "skills/builtin/**",
@@ -106,7 +109,8 @@
     "react-virtuoso": "^4.18.6",
     "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.2.4",
-    "typebox": "1.1.38"
+    "typebox": "1.1.38",
+    "xstate": "5.31.1"
   },
   "overrides": {
     "esbuild": "$esbuild",

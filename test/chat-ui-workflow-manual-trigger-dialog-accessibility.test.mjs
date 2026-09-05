@@ -14,3 +14,11 @@ test("Workflow manual-trigger dialog manages keyboard focus and dismissal", () =
 	assert.match(source, /onClick=\{closeManualTriggerDialog\}/);
 	assert.match(source, /requestAnimationFrame\(\(\) => invoker\?\.focus\(\)\)/);
 });
+
+test("manual triggers expose their Room and send its identity through the ordinary run API", () => {
+	assert.match(source, /aria-label="Run Room"/);
+	assert.match(source, /Workspace: \{manualTriggerRoom\?\.workspace/);
+	assert.match(source, /roomId: manualTriggerDialog\.roomId/);
+	const app = readFileSync(join(process.cwd(), "src/apps/chat-ui/src/App.tsx"), "utf8");
+	assert.match(app, /MinimalWorkflowsArea room=\{bootstrap\.room\}/);
+});
