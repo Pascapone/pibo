@@ -198,6 +198,65 @@ test("generic routed session preserves output identities across successful compa
 	}
 });
 
+test("generic model switching preserves Pibo reasoning when a runtime reapplies its own default", async () => {
+	const originalModel = { provider: "openai-codex", id: "gpt-5.6-sol" };
+	const targetModel = { provider: "openai-codex", id: "gpt-6-astra" };
+	let activeModel = originalModel;
+	let reasoning = "high";
+	const reasoningChanges = [];
+	const runtimeSession = {
+		adapterId: "reasoning-reset-fake",
+		runtimeInstanceId: "reasoning-reset-fake",
+		cwd: process.cwd(),
+		capabilities: {
+			...createMinimalAgentRuntimeCapabilities(),
+			models: { catalog: true, switchInSession: true },
+			reasoning: { supported: true, values: ["low", "medium", "high", "max"] },
+		},
+		controls: {
+			getReasoning() {
+				return { value: reasoning, availableValues: ["low", "medium", "high", "max"], supported: true };
+			},
+			setReasoning(value) {
+				reasoning = value;
+				reasoningChanges.push(value);
+				return this.getReasoning();
+			},
+			async setModel(model) {
+				activeModel = { ...model };
+				reasoning = "max";
+				return { ...model };
+			},
+		},
+		getBinding: () => ({ piboSessionId: "ps_reasoning_reset", runtimeInstanceId: "reasoning-reset-fake", adapterId: "reasoning-reset-fake", state: "bound" }),
+		subscribe() { return () => {}; },
+		async prompt() {},
+		async abort() {},
+		async dispose() {},
+		getStatus: () => ({
+			streaming: false,
+			enabledTools: [],
+			cwd: process.cwd(),
+			activeModel: { ...activeModel },
+			reasoning: { value: reasoning, availableValues: ["low", "medium", "high", "max"], supported: true },
+		}),
+	};
+	const routed = new RuntimeRoutedSession(
+		"ps_reasoning_reset",
+		runtimeSession,
+		() => {},
+		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+	);
+	try {
+		assert.deepEqual(await routed.setModel(targetModel), targetModel);
+		assert.deepEqual(routed.getActiveModel(), targetModel);
+		assert.equal(routed.getStatus().thinkingLevel, "high");
+		assert.deepEqual(reasoningChanges, ["high"]);
+	} finally {
+		await routed.dispose();
+	}
+});
+
 test("generic routed orchestration tries ordered provider fallbacks and restores the primary model", async () => {
 	const primary = { provider: "openai", id: "gpt-primary" };
 	const fallbackOne = { provider: "anthropic", id: "claude-fallback" };
