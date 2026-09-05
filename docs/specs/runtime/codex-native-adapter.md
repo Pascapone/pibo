@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-04T14:26:38Z"
+  at: "2026-09-05T12:20:39Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "31e486b257207dc52b7e63388d9937a62f62f2c6"
+  commit: "9ce53817fec5919c00e130dd794c391c497882a1"
   requirements:
     - id: "RUN-CNX-001"
       status: "implemented"
@@ -48,11 +48,15 @@ traceability:
           symbol: "injectPortableHistoryIntoCodex"
         - path: "src/agent-runtimes/codex-native/adapter.ts"
           symbol: "CodexNativeThreadSession"
+        - path: "src/agent-runtimes/codex-native/thread.ts"
+          symbol: "forkWhileRunning"
       tests:
         - path: "test/codex-native-turn.test.mjs"
           name: "Codex native imports portable history with thread/inject_items before the first prompt"
         - path: "test/codex-native-turn.test.mjs"
           name: "Codex native normalizes assistant, reasoning, usage, terminal ordering, and durable restart resume"
+        - path: "test/codex-native-thread.test.mjs"
+          name: "Codex native thread controls list and fork through stable App Server methods"
       failures:
         - "Pending requests, retries, timeouts, frame sizes, backpressure, stderr, crashes, malformed JSON, and shutdown are bounded; one redacted terminal failure is emitted."
         - "The child uses a private Codex home and environment allowlist; credentials and sensitive diagnostics are redacted; tool leases are scoped and revoked on failure/disposal."
@@ -81,7 +85,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Lifecycle: Initialize/initialized completes before other RPC; portable history injects before first prompt; active turns support steer/interrupt; shutdown is bounded and idempotent.
+- Lifecycle: Initialize/initialized completes before other RPC; portable history injects before first prompt; active turns support steer/interrupt and detached forks from completed turns; a running-safe fork does not adopt the derived thread or change the source binding; shutdown is bounded and idempotent.
 - State: Profile and instance are codex-native; the validated App Server is 0.153.2 and compatible stable 0.153.x releases from patch 2 are accepted with protocol codex-app-server-v2; native thread identity is persisted for resume.
 - Failure: Pending requests, retries, timeouts, frame sizes, backpressure, stderr, crashes, malformed JSON, and shutdown are bounded; one redacted terminal failure is emitted.
 - Security: The child uses a private Codex home and environment allowlist; credentials and sensitive diagnostics are redacted; tool leases are scoped and revoked on failure/disposal.
@@ -99,7 +103,7 @@ The App Server client SHALL complete initialize/initialized before other request
 
 ## Requirement: RUN-CNX-003
 
-Codex Native SHALL import portable history with thread/inject_items before the first prompt and preserve restart-resumable native thread identity.
+Codex Native SHALL import portable history with thread/inject_items before the first prompt, preserve restart-resumable native thread identity, and support detached forks from completed turns without adopting the derived thread while the source turn is active.
 
 ## Requirement: RUN-CNX-004
 
@@ -136,7 +140,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `31e486b257207dc52b7e63388d9937a62f62f2c6`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `9ce53817fec5919c00e130dd794c391c497882a1`. Requirement confidence measures trace quality, not whether a command ran.
 
 The exact Codex 0.153.2 binary regenerated 83 full and 622 stable-v2 schema definitions. The committed SHA-256 values are `e8284c5cb8157554a3dd1e035aadbd4325aea501af56887e9c2e12eb1b9b9448` for the full schema and `d3eace08be5dca386bfd1f1e8df650058b4113f1e10870a284d775d75517576a` for stable v2. Schema comparison found no removed Pibo-required methods or definitions; the observed changes were additive.
 
