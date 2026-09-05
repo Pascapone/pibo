@@ -15,7 +15,7 @@ migration_lineage:
   source_body_sha256: "677643fdf4d73d50d4cf63159add7604ffe88954994dad5ae47f0ea47f2ef4a0"
 generated:
   by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-09-05T10:02:49Z"
+  at: "2026-09-05T10:32:00Z"
 ---
 # Pibo Workflows
 
@@ -141,7 +141,7 @@ XState remains a deterministic projection for visualization and inspection. It i
 
 ## Acceptance baseline
 
-At integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks and all typechecks passed. The added manual editor API test passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code whole-root rerun remains underway and has no recorded result here. The prior complete root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` remains historical evidence: 2,744 total, 2,739 passed, 0 failed, 5 skipped. All 144 Workflow package tests passed previously; package source did not change.
+At integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks and all typechecks passed. The added manual editor API test passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; exact results and execution scope are recorded in the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md). The prior complete root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` remains historical evidence: 2,744 total, 2,739 passed, 0 failed, 5 skipped. All 144 Workflow package tests passed previously; package source did not change.
 
 Headful acceptance created a draft, authored and connected manual-trigger and agent nodes, saved text input/output settings, selected Room `Session-native QA`, and ran actual `openai-codex` in `/tmp/pibo-session-native-workspace`. Run `wfr_ac3db39f-229f-4082-9485-4f6e6663a8b5` and ordinary agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` completed with `MANUAL_NATIVE_ROOM_OK`, two node attempts, one edge transfer, immutable executable snapshot, and actual output. Reopening the Workflow view preserved completed state independently of ordinary Session activity. The persisted pending-start explanation survived reload. Desktop and mobile layouts fit their tested viewports.
 

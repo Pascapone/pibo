@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:02:49Z"
+  at: "2026-09-05T10:32:00Z"
 sources:
   - resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Chat Web jobs and Workflow UI implementation"
@@ -321,7 +321,7 @@ Loop includes Goal-mode accounting notices; Ralph remains a legacy route/area. F
 ## Verification and traceability
 
 - Changed current source contracts and named test locators are bound to final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`.
-- After upstream #911/#912 integration, source checks and all typechecks passed. The added `test/web-channel.test.mjs` API test “manual editor runs target normal Rooms and persist canonical inspection facts” passed alone. A focused matrix of `test/runtime-routed-session.test.mjs`, `test/chat-ui-workflow-manual-trigger-dialog-accessibility.test.mjs`, `test/workflow-manual-trigger-recovery.test.mjs`, and `test/workflow-session-header.test.mjs` passed 20 tests. The final-code whole-root rerun remains underway and is not claimed.
+- After upstream #911/#912 integration, source checks and all typechecks passed. The added `test/web-channel.test.mjs` API test “manual editor runs target normal Rooms and persist canonical inspection facts” passed alone. A focused matrix of `test/runtime-routed-session.test.mjs`, `test/chat-ui-workflow-manual-trigger-dialog-accessibility.test.mjs`, `test/workflow-manual-trigger-recovery.test.mjs`, and `test/workflow-session-header.test.mjs` passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
 - The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. All 144 Workflow package tests passed previously, and package source is unchanged.
 - Headful acceptance created a draft, added manual-trigger and agent nodes plus their edge, saved text input/output settings, chose Room `Session-native QA`, and ran actual `openai-codex` in `/tmp/pibo-session-native-workspace`. It returned `MANUAL_NATIVE_ROOM_OK` and that workspace. Run `wfr_ac3db39f-229f-4082-9485-4f6e6663a8b5` and ordinary agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` reopened as completed with two node attempts, one edge transfer, immutable executable snapshot, and actual output.
 - At 1440x1000 and 390x844, document width equaled viewport width. The mobile Run Room dialog at x=38, y=208, width=299, height=317 fit its viewport. The pending-start explanation persisted after reload, and completed Workflow state remained independent of ordinary Session activity.

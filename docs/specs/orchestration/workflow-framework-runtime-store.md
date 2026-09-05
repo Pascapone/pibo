@@ -10,7 +10,7 @@ status: stable
 authority: normative
 generated:
   by: openai-codex/gpt-5.6-sol
-  at: '2026-09-05T10:02:49Z'
+  at: '2026-09-05T10:32:00Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: Integrated Workflow framework source and test evidence
@@ -398,6 +398,6 @@ Projection state cannot mutate execution truth and declares exposesPrivatePayloa
 - Source/test baseline: `14cbaf0fd04cfa321674b570baeb40e543d957cb`.
 - The clean full build, all typechecks, all 144 Workflow package tests, and the complete isolated root suite passed. The root suite reported 2,744 tests: 2,739 passed, 0 failed, and 5 skipped; exit 0.
 - Headed Room workspace editing and inheritance, Workflow Session creation/start/inspection, desktop/mobile views, and a real normal Session `pwd` through `openai-codex` succeeded.
-- Final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67` passed source checks, all typechecks, one added manual editor API test, and a 20-test routed-runtime/UI/manual/header matrix. Its whole-root rerun remains underway and is not claimed.
+- Final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67` passed source checks, all typechecks, one added manual editor API test, and a 20-test routed-runtime/UI/manual/header matrix. Its complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
 - Scoped headful acceptance proved UI authoring of a manual-trigger-to-agent graph, actual `openai-codex` execution in the selected Room workspace, completed canonical inspection with two attempts and one transfer, and desktop/mobile fit.
 - General graph restart execution, joins, webhooks, and scheduled triggers remain known gaps. Raw-IR editing, publish, human-action submission, and job controls were not accepted headfully.

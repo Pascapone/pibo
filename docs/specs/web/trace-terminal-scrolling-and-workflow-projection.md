@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:02:49Z"
+  at: "2026-09-05T10:32:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -397,7 +397,7 @@ Legacy/current runtime turns use stable product identity; workflow UI models acc
 ## Verification and traceability
 
 - Changed current source contracts and named test locators resolve at final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`.
-- After final integration, source checks and all typechecks passed; the added manual editor API test passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code whole-root rerun remains underway and is not claimed.
+- After final integration, source checks and all typechecks passed; the added manual editor API test passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
 - The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. All 144 Workflow package tests passed previously, and package source is unchanged.
 - Headful acceptance reopened Run `wfr_ac3db39f-229f-4082-9485-4f6e6663a8b5` and ordinary agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` with completed canonical inspection showing two node attempts, one edge transfer, immutable executable snapshot, and actual output. The Session Workflow view remained completed independently of ordinary Session activity. The pending-start explanation also persisted after reload.
 - Desktop 1440x1000 and mobile 390x844 document widths matched their viewports. External gateway deployment, Pibo2, raw-IR editing, publish, human-action submission, and job-control acceptance are not claimed.

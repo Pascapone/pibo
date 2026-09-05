@@ -2,6 +2,8 @@
 
 ## 2026-09-05
 
+- **Transition closure**: Published the [Session-native validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md) with final-code root results (2,747 total; 2,742 passed; 0 failed; 5 skipped), standalone package installation, and headed real-execution evidence; archived the original directive body without changing the main checkout. No production deployment.
+
 - **Session-native product model**: Replaced the current Projects product contract with [Rooms and normal Session trees](/specs/web/rooms-and-session-trees.md), including Room workspace defaults and canonical Session continuity.
 - **Workflow ownership**: Recast [Workflow catalog and execution](/specs/orchestration/workflow-catalog-and-session-execution.md) around normal Pibo Sessions and one Workflow store, and aligned the Web UI, runtime, product-store, shell, projection, validation, and follow-up documents.
 - **Navigation cleanup**: Removed the empty Projects parity change directory and regenerated its owning indexes.

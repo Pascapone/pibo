@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:02:49Z"
+  at: "2026-09-05T10:32:00Z"
 sources:
   - resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Rooms and normal Pibo Sessions implementation"
@@ -172,7 +172,7 @@ Headed Room workspace editing/inheritance and manual Run Room selection passed, 
 
 # Verification and traceability
 
-Changed current source contracts and named test locators are bound to final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. After final integration, source checks and all typechecks passed; the added manual editor Room/API test passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code whole-root rerun remains underway and is not claimed. The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0.
+Changed current source contracts and named test locators are bound to final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. After final integration, source checks and all typechecks passed; the added manual editor Room/API test passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md). The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0.
 
 Headful acceptance selected Room `Session-native QA` and proved that actual manual agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` ran through `openai-codex` in the Room workspace `/tmp/pibo-session-native-workspace`. Existing Room workspace editing/inheritance, Workflow Session creation/start/inspection, desktop/mobile views, and a real normal Session `pwd` remained passed. Gateway deployment and Pibo2 validation are not claimed.
 

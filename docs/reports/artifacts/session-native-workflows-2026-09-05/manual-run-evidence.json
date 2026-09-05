@@ -1,0 +1,31 @@
+{
+  "checked_code_commit": "7ec71c2cca2108423002be0e7330d2a20c4c5b67",
+  "execution_code_commit": "dd79509703a2507884857134008c0b9b69d46b4d",
+  "execution_started_at": "2026-09-05T09:49:37.952Z",
+  "execution_completed_at": "2026-09-05T09:49:42.365Z",
+  "note": "Final inspection was reopened after a copy-only UI correction; execution code was otherwise unchanged.",
+  "piboSessionId": "ps_04559a0b-fac4-4636-979a-addb1ff91fb0",
+  "workflowRunId": "wfr_ac3db39f-229f-4082-9485-4f6e6663a8b5",
+  "workflowId": "ui-native-manual-qa-7664d056",
+  "workflowVersion": "0.1.0-draft",
+  "definitionSnapshotId": "wfds_wfr_7a597734-2216-4f0e-9bfa-ce74b8c21925",
+  "status": "completed",
+  "output": "MANUAL_NATIVE_ROOM_OK /tmp/pibo-session-native-workspace",
+  "nodeAttemptCount": 2,
+  "edgeTransferCount": 1,
+  "desktopViewport": {
+    "width": 1440,
+    "document": 1440
+  },
+  "failedResourceRequests": [],
+  "mobile": {
+    "width": 390,
+    "document": 390,
+    "dialog": {
+      "x": 38,
+      "y": 208.359375,
+      "width": 299,
+      "height": 316.640625
+    }
+  }
+}

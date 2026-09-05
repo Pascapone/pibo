@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:02:49Z"
+  at: "2026-09-05T10:32:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 implementation:
@@ -286,7 +286,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests remain bound to commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`, where the clean full build, all typechecks, and complete isolated root suite passed with 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. At final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks and all typechecks passed; its whole-root rerun remains underway and is not claimed. Headed Room workspace inheritance and actual normal and manual `openai-codex` Sessions succeeded. This specification does not claim Pibo2 or deployment evidence.
+Source symbols and named tests remain bound to commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`, where the clean full build, all typechecks, and complete isolated root suite passed with 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. At final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks and all typechecks passed; its complete root suite also passed, as recorded in the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md). Headed Room workspace inheritance and actual normal and manual `openai-codex` Sessions succeeded. This specification does not claim Pibo2 or deployment evidence.
 
 # Related concepts
 

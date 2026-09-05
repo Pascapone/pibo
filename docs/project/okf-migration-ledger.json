@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-05T07:15:00Z",
+  "generated_at": "2026-09-05T10:32:00Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -17,6 +17,30 @@
     "operational": "directive"
   },
   "records": [
+    {
+      "path": "docs/legacy/plans/remove-projects-and-make-workflows-session-native.md",
+      "state": "conformant",
+      "classification": "historical material",
+      "type": "Historical Record",
+      "authority": "historical",
+      "status": "deprecated",
+      "file_bytes": 15110,
+      "file_sha256": "3b19ab66097ae066294680dbed920e9d93d4019c8d585a37194fbfab004d6673",
+      "body_sha256": "747508fd324e56145a0b36406c11fdb952b021e8496bdab84e8b4796ac50766f",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/session-native-workflow-transition-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 13387,
+      "file_sha256": "abd9434de7dc55d49e8dea421cfde2be3442a240b07deb6e57fd579ee9d3225c",
+      "body_sha256": "323960aecb196753ac02b5d2e1b293c3eb5d9797affda1f2df4a75ef1dfeb98d",
+      "lineage": null
+    },
     {
       "path": ".agents/skills/design-md/examples/DESIGN.md",
       "state": "host-exception",

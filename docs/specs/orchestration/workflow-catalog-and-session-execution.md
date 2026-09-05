@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:02:49Z"
+  at: "2026-09-05T10:32:00Z"
 sources:
   - resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Workflow catalog and Session-native integration"
@@ -178,7 +178,7 @@ General arbitrary-graph execution, full restart resumption, joins, webhooks, and
 
 # Verification and traceability
 
-Changed current source contracts and named test locators are bound to final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. After final integration, source checks and all typechecks passed; the added API test “manual editor runs target normal Rooms and persist canonical inspection facts” passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code whole-root rerun remains underway and is not claimed. The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. All 144 Workflow package tests passed previously, and package source is unchanged.
+Changed current source contracts and named test locators are bound to final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. After final integration, source checks and all typechecks passed; the added API test “manual editor runs target normal Rooms and persist canonical inspection facts” passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md). The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. All 144 Workflow package tests passed previously, and package source is unchanged.
 
 Headful acceptance created a draft in the UI, added and connected manual-trigger and agent nodes, saved text input/output settings, and selected ordinary Room `Session-native QA` with workspace `/tmp/pibo-session-native-workspace`. Actual `openai-codex` execution returned `MANUAL_NATIVE_ROOM_OK` and `/tmp/pibo-session-native-workspace`. Run `wfr_ac3db39f-229f-4082-9485-4f6e6663a8b5` and ordinary agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` reopened with completed canonical inspection: two node attempts, one edge transfer, immutable executable definition snapshot, and actual output. An empty-directory package install with `npm install --omit=dev` also created and reopened the canonical persistent Workflow service without a workspace-package symlink or retired storage. Gateway deployment and Pibo2 validation are not claimed.
 

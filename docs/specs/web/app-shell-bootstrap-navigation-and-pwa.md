@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:02:49Z"
+  at: "2026-09-05T10:32:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -416,7 +416,7 @@ Deep routes, service-worker controller changes, desktop PWA display modes, and o
 
 ## Verification and traceability
 
-- Source and named-test locators resolve at final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. Source checks and all typechecks passed after integration; the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code whole-root rerun remains underway and is not claimed.
+- Source and named-test locators resolve at final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. Source checks and all typechecks passed after integration; the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
 - The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0.
 - Headed desktop/mobile Room and Workflow Session views passed. At 1440x1000 and 390x844, document width equaled viewport width; the mobile Run Room dialog at x=38, y=208, width=299, height=317 fit its viewport. Room workspace editing/inheritance, supported manual execution, and real normal and manual `openai-codex` Sessions also succeeded.
 - Raw-IR editing, publish, human-action submission, job controls, desktop PWA, external gateway deployment, and Pibo2 acceptance are not claimed.

@@ -10,7 +10,7 @@ status: stable
 authority: normative
 generated:
   by: openai-codex/gpt-5.6-sol
-  at: '2026-09-05T10:02:49Z'
+  at: '2026-09-05T10:32:00Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: Integrated source and test evidence for SPC-ORCH-001
@@ -451,7 +451,7 @@ This appendix applies to all six WP-04 specifications. It records the correction
 - **GAP-ORCH-005 — Cron:** Current run timeout does not abort the Pibo Session, and failed at jobs remain enabled without nextRunAt; decide whether to preserve or change these contracts in a plan.
 - **GAP-ORCH-006 — Workflow runtime:** No general integrated graph executor/restart resumption is evidenced across persisted checkpoints, wakeups, waits, retries, joins, and all node kinds.
 - **GAP-ORCH-007 — Workflow registry:** Implicit latest published version uses localeCompare rather than semantic-version ordering; the intended compatibility contract is not explicit.
-- **GAP-ORCH-008 — Workflow product:** The earlier complete root suite and all 144 Workflow package tests passed at `14cbaf0fd04cfa321674b570baeb40e543d957cb`. At final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks, all typechecks, the added manual API test, the 20-test focused matrix, and scoped manual headful acceptance passed; the final-code whole-root rerun remains underway and is not claimed.
+- **GAP-ORCH-008 — Workflow product:** The earlier complete root suite and all 144 Workflow package tests passed at `14cbaf0fd04cfa321674b570baeb40e543d957cb`. At final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks, all typechecks, the added manual API test, the 20-test focused matrix, and scoped manual headful acceptance passed; the final-code complete root suite also passed, as recorded in the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
 - **GAP-ORCH-009 — Session execution:** configured Session start persists one pending canonical Run but does not execute the graph; general execution remains planned.
 - **GAP-ORCH-010 — Future triggers:** No registered webhook/Cron workflow trigger slices exist; do not include them in current specifications.
 
