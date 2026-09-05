@@ -377,6 +377,13 @@ export class CodexNativeThreadController {
 		return codexThreadForkCandidates(this.currentThread);
 	}
 
+	getForkCandidatesWhileRunning(): AgentRuntimeForkCandidate[] {
+		return codexThreadForkCandidates({
+			...this.currentThread,
+			turns: this.currentThread.turns.filter((turn) => turn.status !== "inProgress"),
+		});
+	}
+
 	setStatus(status: CodexAppServerThreadStatus): void {
 		this.currentThread = { ...this.currentThread, status: structuredClone(status) };
 		this.knownThreads.set(this.currentThread.id, structuredClone(this.currentThread));
@@ -454,6 +461,24 @@ export class CodexNativeThreadController {
 		});
 	}
 
+	async forkWhileRunning(
+		runtimeInstanceId: string,
+		workspace: string,
+		entryId: string,
+		validateThread?: (threadId: string) => Promise<void>,
+	): Promise<AgentRuntimeSessionOperationResult> {
+		if (!entryId.trim()) throw new Error("Codex thread fork requires a native user-message id.");
+		const target = codexThreadForkTargets({
+			...this.currentThread,
+			turns: this.currentThread.turns.filter((turn) => turn.status !== "inProgress"),
+		}).find((candidate) => candidate.entryId === entryId);
+		if (!target) throw new Error("Fork target is not a completed user message.");
+		const result = !target.previousTurnId
+			? this.branchBeforeFirstTurn(runtimeInstanceId, workspace, target)
+			: await this.forkAt(runtimeInstanceId, workspace, target.previousTurnId, validateThread, target, false);
+		return { ...result, sourceSessionUnchanged: true };
+	}
+
 	async clone(
 		runtimeInstanceId: string,
 		workspace: string,
@@ -468,6 +493,7 @@ export class CodexNativeThreadController {
 		lastTurnId?: string,
 		validateThread?: (threadId: string) => Promise<void>,
 		selectedTarget?: AgentRuntimeForkCandidate,
+		adoptFork = true,
 	): Promise<AgentRuntimeSessionOperationResult> {
 		const previousThread = this.currentThread;
 		const previous = codexThreadSnapshot(runtimeInstanceId, previousThread);
@@ -491,10 +517,12 @@ export class CodexNativeThreadController {
 				throw new CodexNativeThreadProtocolError("Codex thread/fork returned the source thread id.");
 			}
 			await validateThread?.(forked.id);
-			this.knownThreads.set(previousThread.id, structuredClone(previousThread));
+			if (adoptFork) {
+				this.knownThreads.set(previousThread.id, structuredClone(previousThread));
+				this.currentThread = forked;
+				this.currentConfiguration = selected.configuration;
+			}
 			this.knownThreads.set(forked.id, structuredClone(forked));
-			this.currentThread = forked;
-			this.currentConfiguration = selected.configuration;
 			return {
 				previous,
 				current: codexThreadSnapshot(runtimeInstanceId, forked),

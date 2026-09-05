@@ -45,6 +45,8 @@ export function validateAgentRuntimeSessionContract(session: unknown): string[] 
 	if (capabilities) {
 		requireMethod(capabilities.lifecycle.listNativeSessions, "lifecycle.listNativeSessions", "listSessions");
 		requireMethod(capabilities.lifecycle.fork, "lifecycle.fork", "forkSession");
+		requireMethod(capabilities.lifecycle.forkWhileRunning, "lifecycle.forkWhileRunning", "getForkCandidatesWhileRunning");
+		requireMethod(capabilities.lifecycle.forkWhileRunning, "lifecycle.forkWhileRunning", "forkSessionWhileRunning");
 		requireMethod(capabilities.lifecycle.clone, "lifecycle.clone", "cloneSession");
 		requireMethod(capabilities.lifecycle.tree, "lifecycle.tree", "getSessionTree");
 		requireMethod(capabilities.lifecycle.tree, "lifecycle.tree", "navigateSessionTree");
