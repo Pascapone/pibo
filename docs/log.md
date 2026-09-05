@@ -2,6 +2,7 @@
 
 ## 2026-09-05
 
+- **Session Preview auto-open**: Extended [Session Live Previews](/specs/compute/session-live-previews.md#requirement-cmp-preview-006) with an authenticated Session-scoped creation stream so a newly created Preview opens the deduplicated Desktop Preview tab only for the still-selected Pibo Session; background Sessions, mobile layouts, and pre-existing Previews remain non-opening.
 - **Compute worker Preview authentication**: Added `pibo preview expose-worker` and an internal proxy mode that preserves Preview credential isolation while allowing a validated local-auth Pibo compute worker to accept HTTP and WebSocket traffic without a second Google login; updated the [Session Live Previews and Safe Proxy specification](/specs/compute/session-live-previews.md).
 - **Running-session forks**: Added capability-gated snapshot forks for completed user messages while Pi or Codex Native continues an active turn; the active message remains excluded, the source binding stays attached, and OMP retains idle-only fork semantics. Updated the [routing contract](/specs/gateway/routing-events-and-actions.md), [Pi adapter](/specs/runtime/pi-adapter.md), [Codex Native adapter](/specs/runtime/codex-native-adapter.md), and [OMP adapter](/specs/runtime/omp-adapter.md).
 - **Preview production setup**: Added a supported production activation flow with exact wildcard-DNS guidance, bounded Caddy on-demand TLS authorization, public DNS/TLS/routing diagnostics, and the stable [Session Live Preview operations runbook](/project/session-live-previews.md).

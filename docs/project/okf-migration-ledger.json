@@ -8424,9 +8424,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 11522,
-      "file_sha256": "d383468516aff2b6fbe29e83121db5b14e767a3aeb5299a516707310183be634",
-      "body_sha256": "d383468516aff2b6fbe29e83121db5b14e767a3aeb5299a516707310183be634"
+      "file_bytes": 12785,
+      "file_sha256": "2ece66cd85f44ea61631632b4888a6b511f6b4545d32196c370ae4ccbcacf716",
+      "body_sha256": "2ece66cd85f44ea61631632b4888a6b511f6b4545d32196c370ae4ccbcacf716"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -9089,9 +9089,9 @@
       "type": "Runbook",
       "authority": "directive",
       "status": "stable",
-      "file_bytes": 8095,
-      "file_sha256": "fd60b3cfc2226c27a66fab949d5c1883d63d5a132ca70a5a70932ad7f101c542",
-      "body_sha256": "169ffa539892a42b2c208fb968482c700f1fac8b632595992147baebefe5fd54",
+      "file_bytes": 8481,
+      "file_sha256": "550725e70fee6e32f041be4f821c8fd1f614f88ded68ea9d54f12a0d6e484dcb",
+      "body_sha256": "a024f4f283317a6614996879db3789892a5f197863360ce29e64d85d912b0c64",
       "lineage": {
         "source_path": "docs/project/session-live-previews.md",
         "source_commit": "debba32a68137205df6351da9f3ae461004ca0c0",
@@ -12325,9 +12325,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 18955,
-      "file_sha256": "c1b4832d4859e3a7182c895ac593d5fcf66a264b3a5cfe218c3f13fa1d7cd7d7",
-      "body_sha256": "298c129b92c9b19ffe1c1faaaf74c25b242508a9a83add8a1c5bea9c8f6253db",
+      "file_bytes": 28308,
+      "file_sha256": "a72519a6a818ec5d6c4b9789350ed27bd985e8e0537b3d727ad00fab6324c3e7",
+      "body_sha256": "1119c8e272c91430d52170c7f0351d99233bcfdbe6902e37bd762f445abb2e82",
       "lineage": null
     },
     {

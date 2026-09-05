@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-05T13:08:36Z"
+  at: "2026-09-05T18:02:56Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
@@ -17,18 +17,21 @@ sources:
   - id: "preview-production-setup"
     resource: "scope:Implementation 6df1b0d75453db86e667ddf52fb47088c1a2dc61"
     title: "Production setup, TLS authorization, and public diagnostics implementation"
+  - id: "preview-desktop-auto-open"
+    resource: "scope:Integrated implementation 165cae998cdb64e6bdbf8b2fb3d89be46faaa5eb"
+    title: "Session-scoped creation events and Desktop Preview auto-open implementation"
   - id: "compute-worker-dev-auth-preview"
     resource: "scope:Implementation 0f2f0b107759592e360ad5ab8724cf56eca21560"
     title: "Compute worker Preview dev-auth bridge implementation and focused validation"
 implementation:
   state: "current"
-  baseline_commit: "0f2f0b107759592e360ad5ab8724cf56eca21560"
+  baseline_commit: "af47292937cacdb294e71939ebf87701d22e383c"
   package: "WP-05+09-COMPUTE-OPERATOR"
   source_evidence: "performed"
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "0f2f0b107759592e360ad5ab8724cf56eca21560"
+  commit: "af47292937cacdb294e71939ebf87701d22e383c"
   requirements:
     - id: "CMP-PREVIEW-001"
       status: "implemented"
@@ -144,6 +147,26 @@ traceability:
       failures:
         - "TLS authorization denies malformed, unknown, expired, and closed Preview hostnames; public diagnostics fail on missing DNS, untrusted TLS, redirects, and non-Preview responses."
       confidence: high
+    - id: "CMP-PREVIEW-006"
+      status: "implemented"
+      sources:
+        - path: src/previews/web-app.ts
+          symbol: createPreviewEventStream
+        - path: src/apps/chat-ui/src/api-previews.ts
+          symbol: subscribeSessionLivePreviewEvents
+        - path: src/apps/chat-ui/src/session-trace-pane.tsx
+          symbol: SessionTracePane
+      tests:
+        - path: test/preview-web.test.mjs
+          name: "Preview event stream emits only previews created after subscription for its Pibo Session"
+        - path: test/chat-ui-session-live-preview.test.mjs
+          name: "live preview event subscriptions stay scoped to the selected Pibo Session"
+      public:
+        - "GET /api/previews/events?piboSessionId=ps_..."
+        - "Desktop Preview workspace tab"
+      failures:
+        - "The authenticated event stream emits only newly created previews for its requested Session; Chat ignores mismatched Session events and subscribes only while the Desktop workspace is active."
+      confidence: high
     - id: "CMP-PREVIEW-007"
       status: "implemented"
       sources:
@@ -203,7 +226,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### APIs
 
-- `/apps/previews`, `/api/previews`, and `/apps/previews/:id/__pibo/session` exchange; API list/open/start/stop/remove routes never expose command, target, or workspace in the public exposure shape.
+- `/apps/previews`, `/api/previews`, the authenticated Session-scoped `/api/previews/events` stream, and `/apps/previews/:id/__pibo/session` exchange; API list/open/start/stop/remove routes never expose command, target, or workspace in the public exposure shape.
 - `GET /api/previews/tls-authorize?domain=<preview-host>` is an unauthenticated, metadata-free certificate admission endpoint. It returns success only for an active exact Preview hostname.
 
 ### State
@@ -212,7 +235,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### Lifecycle
 
-- Register external loopback target or reserve/start managed command; publish exact owner and generation; reconcile crashes/stale starts; stop and restart by stop/start operations; auto-stop managed server at fixed lease; expire/remove definition and dependent tickets/sessions.
+- Register external loopback target or reserve/start managed command; publish exact owner and generation; emit newly created Preview records to the matching authenticated Session event stream; reconcile crashes/stale starts; stop and restart by stop/start operations; auto-stop managed server at fixed lease; expire/remove definition and dependent tickets/sessions.
 
 ### Failure
 
@@ -227,6 +250,7 @@ This specification describes implemented behavior at the traceability commit. It
 ### Compatibility
 
 - Definition TTL defaults to eight hours and is capped at seven days; managed auto-stop defaults to ten minutes and max three running servers. There are no preview restart or open CLI commands; restart is stop then start and open is a Web/API flow.
+- Chat auto-opens a newly created Preview only for the currently selected Pibo Session while the Desktop workspace is active; mobile and background Sessions do not open a workspace tab.
 - Existing `expose` registrations remain in standard proxy mode. The dev-auth mode is selected only by `expose-worker` after Pibo compute labels, running state, labeled Web port, host-loopback publication, target reachability, and process identity all validate.
 
 ## Requirements and invariants
@@ -306,6 +330,21 @@ Provide a discoverable production-setup plan, bounded on-demand TLS admission, a
 - Failure/security boundary: Unknown or inactive hostnames cannot trigger certificate issuance; public diagnostics report DNS, certificate, redirect, and gateway-response failures separately.
 - Confidence: **high**
 
+### Requirement: CMP-PREVIEW-006
+
+Notify Chat about newly created Previews for one requested Pibo Session and automatically select and open the deduplicated Preview workspace tab only when that Session is still selected in the Desktop workspace.
+
+#### Current
+
+The authenticated SSE route snapshots existing Preview ids when a client subscribes, then emits only later creations for the requested Pibo Session. Chat subscribes only when its Desktop tab opener is available, closes the subscription on Session or layout changes, rejects mismatched Session payloads, updates the Session-scoped Preview cache, selects the new Preview, and opens the existing deduplicating Preview tab.
+
+#### Acceptance
+
+- Source: `src/previews/web-app.ts` — `createPreviewEventStream`; `src/apps/chat-ui/src/api-previews.ts` — `subscribeSessionLivePreviewEvents`; `src/apps/chat-ui/src/session-trace-pane.tsx` — `SessionTracePane`
+- Tests: `test/preview-web.test.mjs` — “Preview event stream emits only previews created after subscription for its Pibo Session”; `test/chat-ui-session-live-preview.test.mjs` — “live preview event subscriptions stay scoped to the selected Pibo Session”
+- Failure/security boundary: Existing Previews are not replayed as new, events from another Pibo Session cannot open a tab, and mobile or otherwise non-Desktop layouts do not subscribe.
+- Confidence: **high**
+
 ### Requirement: CMP-PREVIEW-007
 
 Expose a running Pibo compute worker through Preview without weakening local dev-auth or forwarding production authentication material to the worker.
@@ -340,6 +379,8 @@ Expose a running Pibo compute worker through Preview without weakening local dev
 - pibo preview doctor <preview-id> --public
 - GET /api/previews/tls-authorize?domain=<preview-host>
 - /api/previews
+- GET /api/previews/events?piboSessionId=ps_...
+- Desktop Preview workspace tab
 - Preview server settings
 
 Preview control uses authenticated product sessions and session identity but does not own generic gateway authentication, Chat rendering, or yielded processes.
@@ -361,8 +402,9 @@ Related concepts:
 
 ## Known limits
 
-- The synthesis claims Chat cards/settings, but its source/test list does not identify the consuming Chat UI adapter; requirement confidence is medium until traced.
+- The creation stream intentionally does not replay Previews that existed before subscription and does not treat a later start of an existing managed Preview as a new creation.
 - Repository tests do not provision public DNS or trusted certificates. Host acceptance requires an active Preview and `pibo preview doctor <preview-id> --public`.
+- Headed browser validation covered active-Session auto-open, background-Session isolation, Desktop restoration after a mobile-only creation, tab deduplication, and CDP exception/network checks. The local validation hostname did not share the Chat authentication cookie, so the isolated iframe displayed its unauthenticated fallback instead of the fixture body.
 
 ## Reconciled stale claims
 
@@ -373,9 +415,19 @@ Related concepts:
 
 ## Verification and traceability
 
-The source and named-test references are bound to traceability commit `0f2f0b107759592e360ad5ab8724cf56eca21560`. The earlier Foundation evidence remains identified in `sources`. Focused implementation tests, a real compute-worker CLI resolution, an HTTP ticket/session exchange against a local-auth Pibo gateway, and headed browser/CDP validation were performed in the owned Docker worker. The traceability commit does not imply production deployment, gateway restart, real public-host TLS, external-provider, Windows, or Pibo2 validation.
+The source and named-test references are bound to integrated traceability commit `af47292937cacdb294e71939ebf87701d22e383c`. The earlier Foundation, production-setup, Desktop auto-open, and compute-worker evidence remains identified in `sources`. Focused implementation tests, a real compute-worker CLI resolution, an HTTP ticket/session exchange against a local-auth Pibo gateway, and headed Desktop auto-open browser/CDP validation were performed in owned Docker workers. The traceability commit does not imply production deployment, gateway restart, real public-host TLS, external-provider, Windows, or Pibo2 validation.
 
-Validation commands:
+Validation performed for Desktop auto-open in the isolated Docker worker:
+
+- `npm run workflows:build`
+- `npm run chat-ui:typecheck`
+- root TypeScript typecheck
+- `npm run build`
+- `node --test test/preview-web.test.mjs test/chat-ui-session-live-preview.test.mjs test/chat-ui-desktop-tabs-model.test.mjs test/chat-ui-desktop-tabs-behavior.test.mjs`
+- Headed Browser Use at 1440×723 with two Pibo Sessions plus an 800×900 mobile viewport
+- CDP monitoring during auto-open found no browser exceptions or non-cancelled network failures; it reported the existing sandbox warning for Preview iframes that combine `allow-scripts` and `allow-same-origin`.
+
+Compute worker and production-setup validation commands remain:
 
 - `node --test test/preview-store.test.mjs test/preview-compute-worker.test.mjs test/preview-proxy-security.test.mjs test/preview-cli.test.mjs test/preview-public-setup.test.mjs test/preview-web.test.mjs test/dev-auth.test.mjs`
 - `env -u PIBO_COMPUTE_WORKER node --test test/local-auth.test.mjs`

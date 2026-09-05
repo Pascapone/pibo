@@ -15,7 +15,7 @@ migration_lineage:
   source_body_sha256: "ac1eed234dc204a640d9295264aa5616f539bcea4216b0ba49fcf06e0a368ad5"
 generated:
   by: "openai/codex"
-  at: "2026-09-05T11:20:00Z"
+  at: "2026-09-05T12:06:19Z"
 ---
 # Purpose
 
@@ -193,6 +193,10 @@ pibo preview remove pv-...
 `close` remains an alias for `remove`. Stop preserves a managed Preview definition and saved command. Remove stops the process, revokes browser access, and removes it from active lists.
 
 Defaults are three concurrently starting or running managed servers and a fixed ten-minute runtime lease. Change both under **Settings > Previews**. HTTP, SSE, WebSocket, and HMR traffic do not extend the lease.
+
+# Chat behavior
+
+When a Preview is created after subscription, Chat Web automatically selects it and opens the deduplicated Preview workspace tab only if its owning Pibo Session is still selected and the Desktop workspace is active. Background Sessions and mobile layouts do not open a tab. Switching to a Session does not replay Previews that already existed before its subscription.
 
 # Troubleshooting
 

@@ -46,7 +46,7 @@ test("message delivery dialog wires arrow focus movement while preserving modal 
 	assert.match(pane, /ref=\{queueButtonRef\}[\s\S]*onClick=\{\(\) => void chooseDelivery\("queue"\)\}[\s\S]*onKeyDown=\{\(event\) => moveDeliveryChoiceFocus\("queue", event\)\}/);
 	assert.match(pane, /ref=\{steerButtonRef\}[\s\S]*onClick=\{\(\) => void chooseDelivery\("steer"\)\}[\s\S]*onKeyDown=\{\(event\) => moveDeliveryChoiceFocus\("steer", event\)\}/);
 	assert.match(pane, /adjacentMessageDeliveryChoice\(currentDelivery, event\)[\s\S]*event\.preventDefault\(\);[\s\S]*nextDelivery === "queue" \? queueButtonRef : steerButtonRef/);
-	assert.match(pane, /import \{ getSessionForkCandidates, type ChatMessageDelivery \} from "\.\/api-chat-sessions";/);
+	assert.match(pane, /import \{ getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery \} from "\.\/api-chat-sessions";/);
 	assert.match(pane, /queryFn: \(\{ signal \}\) => getSessionForkCandidates\(selectedBackendPiboSessionId!, \{ signal \}\)/);
 	assert.match(pane, /message-delivery-queue[\s\S]*message-delivery-steer/);
 	assert.match(pane, /focus-visible:ring-2 focus-visible:ring-\[#11a4d4\]\/50/);
