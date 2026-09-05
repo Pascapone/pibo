@@ -45,5 +45,5 @@ test("recording waveform is a full-radius component above the composer input row
 	assert.match(waveformSource, /data-pibo-debug="composer-audio-waveform"/);
 	assert.match(waveformSource, /rounded-full/);
 	assert.match(waveformSource, /data-window-ms=\{RECORDING_WAVEFORM_WINDOW_MS\}/);
-	assert.ok(composerSource.indexOf("<RecordingWaveform") < composerSource.indexOf('className="grid grid-cols-[1fr_auto_auto]'));
+	assert.ok(composerSource.indexOf("<RecordingWaveform") < composerSource.indexOf('data-pibo-debug="composer-input"'));
 });
