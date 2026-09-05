@@ -8424,9 +8424,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 6781,
-      "file_sha256": "38a80fcf6ab4866ea91f3c790735d96e980919d944ca266c60a060fb64e89124",
-      "body_sha256": "38a80fcf6ab4866ea91f3c790735d96e980919d944ca266c60a060fb64e89124"
+      "file_bytes": 11522,
+      "file_sha256": "d383468516aff2b6fbe29e83121db5b14e767a3aeb5299a516707310183be634",
+      "body_sha256": "d383468516aff2b6fbe29e83121db5b14e767a3aeb5299a516707310183be634"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -8901,9 +8901,9 @@
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
       "synthetic": false,
-      "file_bytes": 4105,
-      "file_sha256": "534b52fdb3cd95980972c5fa043a324d1c6e86492cbcbd26cffde55602bb1315",
-      "body_sha256": "534b52fdb3cd95980972c5fa043a324d1c6e86492cbcbd26cffde55602bb1315"
+      "file_bytes": 4138,
+      "file_sha256": "07c1cf4f91aa6cf5b6fe3bd8f39800e4fb319200ecbda98108f900c1d66db47d",
+      "body_sha256": "07c1cf4f91aa6cf5b6fe3bd8f39800e4fb319200ecbda98108f900c1d66db47d"
     },
     {
       "path": "docs/project/installation-profiles.md",
@@ -9086,12 +9086,12 @@
       "path": "docs/project/session-live-previews.md",
       "state": "conformant",
       "classification": "OKF concept to migrate",
-      "type": "Reference",
-      "authority": "informative",
-      "status": "draft",
-      "file_bytes": 5164,
-      "file_sha256": "fb912fb8a99be911b7cab476ad25d423dcbd87c1d30df17f96dbfae86fe3488b",
-      "body_sha256": "ac1eed234dc204a640d9295264aa5616f539bcea4216b0ba49fcf06e0a368ad5",
+      "type": "Runbook",
+      "authority": "directive",
+      "status": "stable",
+      "file_bytes": 8095,
+      "file_sha256": "fd60b3cfc2226c27a66fab949d5c1883d63d5a132ca70a5a70932ad7f101c542",
+      "body_sha256": "169ffa539892a42b2c208fb968482c700f1fac8b632595992147baebefe5fd54",
       "lineage": {
         "source_path": "docs/project/session-live-previews.md",
         "source_commit": "debba32a68137205df6351da9f3ae461004ca0c0",
@@ -12325,9 +12325,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 15100,
-      "file_sha256": "76f5106b4f29341aa560372fe9a13f45ba2ff1d3b6a399ed34c43ed777c601f1",
-      "body_sha256": "ffb96c457b52ac0e3d8c8c3a4ad9d1d21a97067943356f5d9b0b361399a5f179",
+      "file_bytes": 18955,
+      "file_sha256": "c1b4832d4859e3a7182c895ac593d5fcf66a264b3a5cfe218c3f13fa1d7cd7d7",
+      "body_sha256": "298c129b92c9b19ffe1c1faaaf74c25b242508a9a83add8a1c5bea9c8f6253db",
       "lineage": null
     },
     {
