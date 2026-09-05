@@ -6,7 +6,6 @@ import {
 	Check,
 	Copy,
 	Edit3,
-	GripVertical,
 	Layers,
 	Loader2,
 	Pin,
@@ -41,7 +40,6 @@ export function SessionNode({
 	onSessionDragOver,
 	onSessionDrop,
 	onSessionDragEnd,
-	showDragHandle = false,
 	showWorkflowSessionKindMarkers = false,
 	mutationsDisabled = false,
 }: {
@@ -65,7 +63,6 @@ export function SessionNode({
 	onSessionDragOver?: DragEventHandler<HTMLDivElement>;
 	onSessionDrop?: DragEventHandler<HTMLDivElement>;
 	onSessionDragEnd?: DragEventHandler<HTMLDivElement>;
-	showDragHandle?: boolean;
 	showWorkflowSessionKindMarkers?: boolean;
 	mutationsDisabled?: boolean;
 }) {
@@ -208,7 +205,6 @@ export function SessionNode({
 							aria-current={node.piboSessionId === selectedPiboSessionId ? "page" : undefined}
 							className="h-7 max-[980px]:h-8 min-w-0 text-left px-1 flex items-center gap-1.5"
 						>
-							{showDragHandle ? <GripVertical size={12} className="shrink-0 text-slate-600" aria-hidden="true" /> : null}
 							{workflowKind && WorkflowKindIcon ? (
 								<span className={`h-4 w-4 shrink-0 inline-flex items-center justify-center rounded-sm border ${workflowKind.className}`} title={workflowKind.ariaLabel} aria-label={workflowKind.ariaLabel}>
 									<WorkflowKindIcon size={11} aria-hidden="true" />

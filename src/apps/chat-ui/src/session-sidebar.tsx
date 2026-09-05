@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEventHandler, type ReactNode, type RefObject } from "react";
 import {
 	Archive,
 	ArchiveRestore,
@@ -9,6 +9,8 @@ import {
 	FolderPlus,
 	Loader2,
 	Lock,
+	Pin,
+	PinOff,
 	Plus,
 	Trash2,
 	X,
@@ -20,6 +22,7 @@ import { SessionNode } from "./session-node";
 import {
 	findSharedDefaultRoom,
 	isArchivedRoom,
+	isPinnedRoom,
 	isSharedDefaultRoom,
 	roomNodeTooltip,
 	splitRoomNodes,
@@ -59,6 +62,8 @@ export type SessionSidebarProps = {
 	roomSessionsLoading?: boolean;
 	onUpdateRoom: (roomId: string, input: RoomUpdateInput) => void | Promise<void>;
 	onArchiveRoom: (roomId: string, archived: boolean) => void | Promise<void>;
+	onPinnedRoomChange?: (roomId: string, pinned: boolean) => void | Promise<void>;
+	onReorderRoom?: (roomId: string, targetRoomId: string, position: "before" | "after") => void | Promise<void>;
 	onReadAllRoom: (roomId: string) => void | Promise<void>;
 	onDeleteRoom: (room: PiboRoom) => void;
 	newSessionProfile: string;
@@ -106,6 +111,8 @@ export function SessionSidebar({
 	roomSessionsLoading = false,
 	onUpdateRoom,
 	onArchiveRoom,
+	onPinnedRoomChange,
+	onReorderRoom,
 	onReadAllRoom,
 	onDeleteRoom,
 	newSessionProfile,
@@ -144,8 +151,11 @@ export function SessionSidebar({
 	const sharedDefaultRoom = findSharedDefaultRoom(bootstrap.rooms);
 	const roomGroups = splitRoomNodes(bootstrap.rooms);
 	const archivedSessionsToggleRef = useRef<HTMLButtonElement>(null);
+	const [draggedRoomId, setDraggedRoomId] = useState<string | null>(null);
+	const [roomDropIndicator, setRoomDropIndicator] = useState<{ targetRoomId: string; position: "before" | "after" } | null>(null);
 	const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
 	const [dropIndicator, setDropIndicator] = useState<{ targetPiboSessionId: string; position: "before" | "after" } | null>(null);
+	const firstUnpinnedRoomIndex = roomGroups.active.findIndex((room) => !isPinnedRoom(room));
 	const firstUnpinnedSessionIndex = visibleActiveSessions.findIndex((session) => !session.pinned);
 	const handleToggleArchivedSessions = async () => {
 		const restoreFocus = archivedSessionsToggleRef.current === document.activeElement;
@@ -210,19 +220,57 @@ export function SessionSidebar({
 							</div>
 						</div>
 						<div className="min-h-0 flex-1 overflow-y-auto pr-1">
-						{roomGroups.active.map((room) => (
-							<RoomNode
-								key={room.id}
-								room={room}
-								selectedRoomId={selectedRoomId}
-								loadingRoomId={loadingRoomId}
-								onSelect={(roomId) => void onSelectRoom(roomId)}
-								onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
-								onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
-								onReadAll={(roomId) => void onReadAllRoom(roomId)}
-								onDelete={onDeleteRoom}
-							/>
-						))}
+						{roomGroups.active.map((room, index) => {
+							const showPinnedDivider = firstUnpinnedRoomIndex > 0 && index === firstUnpinnedRoomIndex;
+							const indicator = roomDropIndicator?.targetRoomId === room.id ? roomDropIndicator.position : null;
+							return (
+								<div key={room.id}>
+									{showPinnedDivider ? <div data-pibo-debug="pinned-room-divider" className="mx-2 my-1 border-t border-slate-700/80" aria-hidden="true" /> : null}
+									<RoomNode
+										room={room}
+										selectedRoomId={selectedRoomId}
+										loadingRoomId={loadingRoomId}
+										onSelect={(roomId) => void onSelectRoom(roomId)}
+										onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
+										onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
+										onPinnedChange={onPinnedRoomChange ? (roomId, pinned) => void onPinnedRoomChange(roomId, pinned) : undefined}
+										onReadAll={(roomId) => void onReadAllRoom(roomId)}
+										onDelete={onDeleteRoom}
+										draggable={Boolean(onReorderRoom)}
+										dropPosition={indicator}
+										onRoomDragStart={(event) => {
+											setDraggedRoomId(room.id);
+											setRoomDropIndicator(null);
+											event.dataTransfer.effectAllowed = "move";
+											event.dataTransfer.setData("text/pibo-room-id", room.id);
+										}}
+										onRoomDragOver={(event) => {
+											const dragged = roomGroups.active.find((candidate) => candidate.id === draggedRoomId);
+											if (!dragged || dragged.id === room.id || isPinnedRoom(dragged) !== isPinnedRoom(room)) return;
+											event.preventDefault();
+											event.dataTransfer.dropEffect = "move";
+											const bounds = event.currentTarget.getBoundingClientRect();
+											setRoomDropIndicator({
+												targetRoomId: room.id,
+												position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
+											});
+										}}
+										onRoomDrop={(event) => {
+											event.preventDefault();
+											if (draggedRoomId && roomDropIndicator?.targetRoomId === room.id) {
+												void onReorderRoom?.(draggedRoomId, room.id, roomDropIndicator.position);
+											}
+											setDraggedRoomId(null);
+											setRoomDropIndicator(null);
+										}}
+										onRoomDragEnd={() => {
+											setDraggedRoomId(null);
+											setRoomDropIndicator(null);
+										}}
+									/>
+								</div>
+							);
+						})}
 						{roomGroups.active.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No rooms</div> : null}
 						{showArchivedRooms ? (
 							<div className="mt-3">
@@ -349,7 +397,6 @@ export function SessionSidebar({
 									setDraggedSessionId(null);
 									setDropIndicator(null);
 								}}
-								showDragHandle
 							/>
 						</div>
 					);
@@ -600,9 +647,16 @@ function RoomNode({
 	onSelect,
 	onUpdate,
 	onArchive,
+	onPinnedChange,
 	onReadAll,
 	onDelete,
 	depth = 0,
+	draggable = false,
+	dropPosition = null,
+	onRoomDragStart,
+	onRoomDragOver,
+	onRoomDrop,
+	onRoomDragEnd,
 }: {
 	room: PiboRoom;
 	selectedRoomId: string | null;
@@ -610,9 +664,16 @@ function RoomNode({
 	onSelect: (roomId: string) => void;
 	onUpdate: (roomId: string, input: { name?: string; topic?: string | null; workspace?: string | null }) => void;
 	onArchive: (roomId: string, archived: boolean) => void;
+	onPinnedChange?: (roomId: string, pinned: boolean) => void;
 	onReadAll: (roomId: string) => void;
 	onDelete: (room: PiboRoom) => void;
 	depth?: number;
+	draggable?: boolean;
+	dropPosition?: "before" | "after" | null;
+	onRoomDragStart?: DragEventHandler<HTMLDivElement>;
+	onRoomDragOver?: DragEventHandler<HTMLDivElement>;
+	onRoomDrop?: DragEventHandler<HTMLDivElement>;
+	onRoomDragEnd?: DragEventHandler<HTMLDivElement>;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [draftName, setDraftName] = useState(room.name);
@@ -620,8 +681,10 @@ function RoomNode({
 	const [draftWorkspace, setDraftWorkspace] = useState(room.workspace ?? "");
 	const personal = isSharedDefaultRoom(room);
 	const archived = isArchivedRoom(room);
+	const pinned = isPinnedRoom(room);
 	const loading = room.id === loadingRoomId;
 	const roomTooltip = roomNodeTooltip(room);
+	const pinActionAvailable = depth === 0 && !personal && !archived && Boolean(onPinnedChange);
 
 	const copyRoomId = () => {
 		void copyTextToClipboard(room.id).catch(() => undefined);
@@ -648,7 +711,13 @@ function RoomNode({
 				data-pibo-debug="room-node"
 				data-pibo-room-id={room.id}
 				data-pibo-state={loading ? "loading" : room.id === selectedRoomId ? "selected" : archived ? "archived" : "idle"}
-				className={`group mb-0.5 border rounded-sm ${
+				data-pibo-pinned={pinned ? "true" : "false"}
+				draggable={draggable}
+				onDragStart={onRoomDragStart}
+				onDragOver={onRoomDragOver}
+				onDrop={onRoomDrop}
+				onDragEnd={onRoomDragEnd}
+				className={`group relative mb-0.5 border rounded-sm ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${
 					personal
 						? room.id === selectedRoomId
 							? "border-[#0bda57] bg-[#0bda57]/10"
@@ -662,6 +731,7 @@ function RoomNode({
 				style={{ marginLeft: depth * 12 }}
 				title={roomTooltip}
 			>
+				{dropPosition === "before" ? <span className="pointer-events-none absolute inset-x-1 -top-px z-10 h-px bg-[#11a4d4]" /> : null}
 				{editing && !personal ? (
 					<form
 						className="grid gap-1 p-1"
@@ -710,13 +780,18 @@ function RoomNode({
 							type="button"
 							onClick={() => onSelect(room.id)}
 							aria-current={room.id === selectedRoomId ? "page" : undefined}
-							className="h-7 max-[980px]:h-8 min-w-0 text-left px-1.5 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-1.5 items-center"
+							className="h-7 max-[980px]:h-8 min-w-0 text-left px-1.5 flex gap-1.5 items-center"
 						>
-							<span className={`h-5 w-5 inline-flex items-center justify-center rounded-sm ${personal ? "bg-[#0bda57]/15 text-[#0bda57]" : archived ? "bg-[#f59e0b]/15 text-[#f59e0b]" : "bg-[#151f24] text-slate-500"}`}>
+							<span className={`h-5 w-5 shrink-0 inline-flex items-center justify-center rounded-sm ${personal ? "bg-[#0bda57]/15 text-[#0bda57]" : archived ? "bg-[#f59e0b]/15 text-[#f59e0b]" : "bg-[#151f24] text-slate-500"}`}>
 								{personal ? <Lock size={12} /> : archived ? <Archive size={12} /> : <FolderPlus size={12} />}
 							</span>
-							<span className={`min-w-0 truncate text-[13px] leading-none ${archived ? "text-slate-500" : "text-slate-200"}`}>{room.name}</span>
-							<span className="inline-flex items-center justify-end gap-1">
+							{pinned && !archived ? (
+								<span className="shrink-0 text-[#11a4d4]" title="Pinned room" aria-label="Pinned room">
+									<Pin size={11} fill="currentColor" aria-hidden="true" />
+								</span>
+							) : null}
+							<span className={`min-w-0 flex-1 truncate text-[13px] leading-none ${archived ? "text-slate-500" : "text-slate-200"}`}>{room.name}</span>
+							<span className="ml-auto inline-flex items-center justify-end gap-1">
 								{loading ? <Loader2 size={12} className="animate-spin text-[#11a4d4]" aria-label="Loading room" /> : null}
 								<UnreadBadge count={room.unreadCount} />
 							</span>
@@ -729,7 +804,7 @@ function RoomNode({
 									</ActionMenuItem>
 								</ActionMenu>
 							) : (
-								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={archived ? 144 : 192}>
+								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={archived ? 144 : pinActionAvailable ? 240 : 192}>
 									{archived ? (
 										<>
 											<ActionMenuItem onSelect={copyRoomId}>
@@ -744,6 +819,11 @@ function RoomNode({
 										</>
 									) : (
 										<>
+											{pinActionAvailable ? (
+												<ActionMenuItem onSelect={() => onPinnedChange?.(room.id, !pinned)}>
+													{pinned ? <PinOff size={16} /> : <Pin size={16} />} {pinned ? "Unpin Room" : "Pin Room"}
+												</ActionMenuItem>
+											) : null}
 											<ActionMenuItem onSelect={copyRoomId}>
 												<Copy size={16} /> Copy Room ID
 											</ActionMenuItem>
@@ -763,6 +843,7 @@ function RoomNode({
 						</div>
 					</div>
 				)}
+				{dropPosition === "after" ? <span className="pointer-events-none absolute inset-x-1 -bottom-px z-10 h-px bg-[#11a4d4]" /> : null}
 			</div>
 			{(room.children ?? []).map((child) => (
 				<RoomNode

@@ -3,7 +3,7 @@ import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-q
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { RefreshCw, X } from "lucide-react";
-import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
+import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
 import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";
 import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";
 import { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";
@@ -66,6 +66,7 @@ import {
 	createOptimisticRoom,
 	createOptimisticSessionNode,
 	replaceOptimisticSessionNode,
+	reorderRoomRootsInBootstrap,
 	reorderSessionRootsInBootstrap,
 	replaceRoomInBootstrap,
 	resolveOptimisticSessionCreateOutcome,
@@ -73,6 +74,7 @@ import {
 	restoreBootstrapSelection,
 	roomWithArchivedState,
 	sessionNodeFromSession,
+	setRoomPinnedInBootstrap,
 	setSessionPinnedInBootstrap,
 	updateRoomInBootstrap,
 	updateSessionFromPiboSession,
@@ -1223,6 +1225,30 @@ export function App({ route }: { route: ChatAppRoute }) {
 		onError: (_error, _variables, context) => restoreBootstrapSnapshot(context?.snapshot),
 	});
 
+	const pinRoomMutation = useMutation({
+		mutationFn: ({ roomId, pinned }: { roomId: string; pinned: boolean }) => patchRoom(roomId, { pinned }),
+		onMutate: async ({ roomId, pinned }) => {
+			await prepareSessionNavigationMutation();
+			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
+			updateBootstrapCache((data) => setRoomPinnedInBootstrap(data, roomId, pinned));
+			return { snapshot };
+		},
+		onError: (_error, _variables, context) => restoreBootstrapSnapshot(context?.snapshot),
+		onSuccess: ({ room }) => updateBootstrapCache((data) => updateRoomInBootstrap(data, room.id, (current) => ({ ...room, children: current.children }))),
+	});
+
+	const reorderRoomMutation = useMutation({
+		mutationFn: ({ roomId, targetRoomId, position }: { roomId: string; targetRoomId: string; position: "before" | "after" }) =>
+			patchRoomOrder(roomId, { targetRoomId, position }),
+		onMutate: async ({ roomId, targetRoomId, position }) => {
+			await prepareSessionNavigationMutation();
+			const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
+			updateBootstrapCache((data) => reorderRoomRootsInBootstrap(data, roomId, targetRoomId, position));
+			return { snapshot };
+		},
+		onError: (_error, _variables, context) => restoreBootstrapSnapshot(context?.snapshot),
+	});
+
 	const sendMessageMutation = useMutation({
 		mutationFn: ({ piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery }: { piboSessionId: string; text: string; clientTxnId: string; roomId?: string; webAnnotationIds?: readonly string[]; fileAttachmentPaths?: readonly string[]; delivery?: "queue" | "steer" }) =>
 			postMessage(piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery),
@@ -1469,6 +1495,24 @@ export function App({ route }: { route: ChatAppRoute }) {
 			setError(null);
 		} catch (caught) {
 			restoreBootstrapSnapshot(snapshot);
+			setError(caught instanceof Error ? caught.message : String(caught));
+		}
+	};
+
+	const setRoomPinned = async (roomId: string, pinned: boolean) => {
+		try {
+			await pinRoomMutation.mutateAsync({ roomId, pinned });
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		}
+	};
+
+	const reorderRoom = async (roomId: string, targetRoomId: string, position: "before" | "after") => {
+		try {
+			await reorderRoomMutation.mutateAsync({ roomId, targetRoomId, position });
+			setError(null);
+		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
 		}
 	};
@@ -1932,6 +1976,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 							roomSessionsLoading={loadingSelectedRoom}
 							onUpdateRoom={updateRoom}
 							onArchiveRoom={setRoomArchived}
+							onPinnedRoomChange={setRoomPinned}
+							onReorderRoom={reorderRoom}
 							onReadAllRoom={readAllRoom}
 							onDeleteRoom={requestRoomDelete}
 							newSessionProfile={newSessionProfile}
@@ -2194,6 +2240,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 							roomSessionsLoading={loadingSelectedRoom}
 							onUpdateRoom={updateRoom}
 							onArchiveRoom={setRoomArchived}
+							onPinnedRoomChange={setRoomPinned}
+							onReorderRoom={reorderRoom}
 							onReadAllRoom={readAllRoom}
 							onDeleteRoom={requestRoomDelete}
 							newSessionProfile={newSessionProfile}

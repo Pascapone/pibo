@@ -11,7 +11,7 @@ import { PiboWebHttpError } from "../../web/http.js";
 import type { PiboWebAppContext } from "../../web/types.js";
 import { listPiPackages } from "../../pi-packages/store.js";
 import { withChatWebArchived, withChatWebSessionPinned } from "./session-metadata.js";
-import { isDefaultPiboRoom, withPiboRoomArchived, withPiboRoomWorkspace, type PiboRoom } from "./types/rooms.js";
+import { isDefaultPiboRoom, withPiboRoomArchived, withPiboRoomPinned, withPiboRoomWorkspace, type PiboRoom } from "./types/rooms.js";
 import { isValidCustomAgentName, type CustomAgentSubagent, type UpdateCustomAgentInput } from "./agent-store.js";
 
 export type ChatSessionCreateBody = {
@@ -60,6 +60,7 @@ export type ChatRoomPatchBody = {
 	workspace?: unknown;
 	parentRoomId?: unknown;
 	archived?: unknown;
+	pinned?: unknown;
 };
 
 export type ChatRoomDeleteBody = {
@@ -828,6 +829,11 @@ export function createRoomUpdate(room: PiboRoom, body: ChatRoomPatchBody): {
 	}
 	if (workspace !== undefined) {
 		metadata = withPiboRoomWorkspace(metadata, workspace ?? undefined);
+		metadataChanged = true;
+	}
+	if (body.pinned !== undefined) {
+		if (typeof body.pinned !== "boolean") throw new PiboWebHttpError("Room pinned flag must be boolean", 400);
+		metadata = withPiboRoomPinned(metadata, body.pinned);
 		metadataChanged = true;
 	}
 	if (metadataChanged) update.metadata = metadata;

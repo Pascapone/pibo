@@ -2,7 +2,7 @@ import { PiboWebHttpError } from "../../web/http.js";
 
 export const CHAT_WEB_API_PREFIX = "/api/chat";
 
-export type RoomResourcePath = { roomId: string; child?: "events" | "messages" | "read" };
+export type RoomResourcePath = { roomId: string; child?: "events" | "messages" | "read" | "order" };
 export type WorkflowDraftActionResource = { draftId: string; action: "validate" | "publish" };
 export type WorkflowDraftManualTriggerRunResource = { draftId: string };
 export type WorkflowVersionResource = { workflowId: string; version?: string };
@@ -21,8 +21,8 @@ export function roomResourcePath(pathname: string): RoomResourcePath | undefined
 	if (parts.length < 1 || parts.length > 2) return undefined;
 	try {
 		const roomId = decodeURIComponent(parts[0]);
-		const child = parts[1] ? (decodeURIComponent(parts[1]) as "events" | "messages" | "read") : undefined;
-		if (child && child !== "events" && child !== "messages" && child !== "read") return undefined;
+		const child = parts[1] ? (decodeURIComponent(parts[1]) as "events" | "messages" | "read" | "order") : undefined;
+		if (child && child !== "events" && child !== "messages" && child !== "read" && child !== "order") return undefined;
 		return { roomId, child };
 	} catch {
 		throw new PiboWebHttpError("Invalid room id", 400);
