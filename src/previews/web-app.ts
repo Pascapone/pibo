@@ -34,7 +34,10 @@ import type { PreviewExposure, PreviewHealthState, PublicPreviewExposure } from 
 export const PREVIEW_WEB_APP_NAME = "pibo.session-live-previews";
 export const PREVIEW_WEB_MOUNT_PATH = "/apps/previews";
 export const PREVIEW_WEB_API_PREFIX = "/api/previews";
+export const PREVIEW_EVENTS_PATH = `${PREVIEW_WEB_API_PREFIX}/events`;
 export const PREVIEW_SESSION_EXCHANGE_PATH = "/__pibo/session";
+const DEFAULT_PREVIEW_EVENT_POLL_INTERVAL_MS = 1_000;
+const PREVIEW_EVENT_HEARTBEAT_INTERVAL_MS = 25_000;
 
 export type PreviewWebAppOptions = {
 	baseURL?: string;
@@ -44,6 +47,7 @@ export type PreviewWebAppOptions = {
 	browserSessionTtlMinutes?: number;
 	managerOptions?: PreviewManagerOptions;
 	reaperIntervalMs?: number | false;
+	eventPollIntervalMs?: number;
 	maxProxyConnections?: number;
 	maxProxyConnectionsPerPreview?: number;
 };
@@ -121,6 +125,77 @@ async function publicExposure(exposure: PreviewExposure, baseURL: URL): Promise<
 		publicUrl: previewPublicURL(exposure.id, baseURL).toString(),
 		openUrl: `${PREVIEW_WEB_API_PREFIX}/${encodeURIComponent(exposure.id)}/open`,
 	};
+}
+
+function writePreviewEvent(controller: ReadableStreamDefaultController<Uint8Array>, preview: PublicPreviewExposure): void {
+	controller.enqueue(new TextEncoder().encode([
+		"event: preview-created",
+		`data: ${JSON.stringify({ type: "preview-created", preview })}`,
+		"",
+		"",
+	].join("\n")));
+}
+
+function createPreviewEventStream(input: {
+	baseURL: URL;
+	databasePath?: string;
+	piboSessionId: string;
+	pollIntervalMs: number;
+}): Response {
+	const store = input.databasePath ? new PreviewStore(input.databasePath) : createDefaultPreviewStore();
+	const knownPreviewIds = new Set(store.listExposures({ piboSessionId: input.piboSessionId }).map((preview) => preview.id));
+	let closed = false;
+	let polling = false;
+	let pollTimer: ReturnType<typeof setInterval> | undefined;
+	let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+	const close = () => {
+		if (closed) return;
+		closed = true;
+		if (pollTimer) clearInterval(pollTimer);
+		if (heartbeatTimer) clearInterval(heartbeatTimer);
+		store.close();
+	};
+	const stream = new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(new TextEncoder().encode(": ready\n\n"));
+			const poll = async () => {
+				if (closed || polling) return;
+				polling = true;
+				try {
+					const created = store.listExposures({ piboSessionId: input.piboSessionId })
+						.filter((preview) => !knownPreviewIds.has(preview.id))
+						.reverse();
+					for (const exposure of created) {
+						knownPreviewIds.add(exposure.id);
+						const preview = await publicExposure(exposure, input.baseURL);
+						if (closed) return;
+						writePreviewEvent(controller, preview);
+					}
+				} catch (error) {
+					if (!closed) controller.error(error);
+					close();
+				} finally {
+					polling = false;
+				}
+			};
+			pollTimer = setInterval(() => void poll(), input.pollIntervalMs);
+			heartbeatTimer = setInterval(() => {
+				if (!closed) controller.enqueue(new TextEncoder().encode(": heartbeat\n\n"));
+			}, PREVIEW_EVENT_HEARTBEAT_INTERVAL_MS);
+		},
+		cancel() {
+			close();
+		},
+	});
+	return new Response(stream, {
+		headers: {
+			"content-type": "text/event-stream; charset=utf-8",
+			"cache-control": "no-cache, no-transform",
+			"content-encoding": "identity",
+			"x-accel-buffering": "no",
+			connection: "keep-alive",
+		},
+	});
 }
 
 function readBody(request: IncomingMessage, maxBytes: number): Promise<Buffer> {
@@ -271,6 +346,7 @@ export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWeb
 	if (!Number.isInteger(browserSessionTtlMinutes) || browserSessionTtlMinutes < 1 || browserSessionTtlMinutes > 24 * 60) {
 		throw new Error("Preview browser session lifetime must be between 1 minute and 24 hours");
 	}
+	const eventPollIntervalMs = Math.max(50, options.eventPollIntervalMs ?? DEFAULT_PREVIEW_EVENT_POLL_INTERVAL_MS);
 	const maxProxyConnections = options.maxProxyConnections ??
 		configured.preview?.maxProxyConnections ??
 		DEFAULT_MAX_PREVIEW_PROXY_CONNECTIONS;
@@ -327,6 +403,13 @@ export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWeb
 			}
 
 			await context.requireSession({ request });
+
+			if (url.pathname === PREVIEW_EVENTS_PATH && request.method === "GET") {
+				const piboSessionId = url.searchParams.get("piboSessionId")?.trim();
+				if (!piboSessionId) return responseJson({ error: "piboSessionId is required" }, { status: 400 });
+				if (!baseURL) return responseJson({ error: "Live previews are not configured. Set preview.baseURL." }, { status: 503 });
+				return createPreviewEventStream({ baseURL, databasePath, piboSessionId, pollIntervalMs: eventPollIntervalMs });
+			}
 
 			if (url.pathname === PREVIEW_WEB_API_PREFIX && request.method === "GET") {
 				const piboSessionId = url.searchParams.get("piboSessionId")?.trim();

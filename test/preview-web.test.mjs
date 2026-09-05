@@ -54,6 +54,42 @@ function openStreamingRequest({ port, host, path, headers = {} }) {
 	});
 }
 
+function waitForSseEvent(response, eventName, timeoutMs = 2_000) {
+	return new Promise((resolve, reject) => {
+		let buffer = "";
+		const timeout = setTimeout(() => {
+			cleanup();
+			reject(new Error(`Timed out waiting for SSE event ${eventName}`));
+		}, timeoutMs);
+		const onData = (chunk) => {
+			buffer += chunk.toString("utf8");
+			let boundary;
+			while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+				const frame = buffer.slice(0, boundary);
+				buffer = buffer.slice(boundary + 2);
+				const event = frame.match(/^event: (.+)$/m)?.[1];
+				const data = frame.match(/^data: (.+)$/m)?.[1];
+				if (event === eventName && data) {
+					cleanup();
+					resolve(JSON.parse(data));
+					return;
+				}
+			}
+		};
+		const onError = (error) => {
+			cleanup();
+			reject(error);
+		};
+		const cleanup = () => {
+			clearTimeout(timeout);
+			response.off("data", onData);
+			response.off("error", onError);
+		};
+		response.on("data", onData);
+		response.on("error", onError);
+	});
+}
+
 function openUpgradeSocket({ port, host, cookie }) {
 	return new Promise((resolve, reject) => {
 		const socket = connect({ host: "127.0.0.1", port });
@@ -162,6 +198,76 @@ function fakeAuth() {
 		},
 	};
 }
+
+test("Preview event stream emits only previews created after subscription for its Pibo Session", async (t) => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-preview-events-"));
+	const databasePath = join(dir, "previews.sqlite");
+	const upstream = createServer((_req, res) => res.end("preview"));
+	const upstreamPort = await listen(upstream);
+	const targetProcess = findPreviewTargetProcess("127.0.0.1", upstreamPort);
+	assert.ok(targetProcess);
+	const createExposure = (id, piboSessionId) => {
+		const store = new PreviewStore(databasePath);
+		try {
+			store.createExposure({
+				id,
+				piboSessionId,
+				label: id,
+				targetHost: "127.0.0.1",
+				targetPort: upstreamPort,
+				targetProcessId: targetProcess.pid,
+				targetProcessStartTicks: targetProcess.startTicks,
+				workspace: dir,
+				createdAt: new Date().toISOString(),
+				expiresAt: new Date(Date.now() + 60_000).toISOString(),
+			});
+		} finally {
+			store.close();
+		}
+	};
+	createExposure("pv-existing", "ps_selected");
+	const app = createPreviewWebApp({
+		baseURL: "http://preview.localhost",
+		piboBaseURL: "http://pibo.localhost",
+		databasePath,
+		eventPollIntervalMs: 20,
+		reaperIntervalMs: false,
+	});
+	const channel = createWebHostChannel({ host: "127.0.0.1", port: 0, announce: false });
+	await channel.start({
+		auth: fakeAuth(),
+		getWebApps: () => [app],
+		emit() { throw new Error("not used"); },
+		subscribe() { return () => undefined; },
+		getSession() { return undefined; },
+		createSession() { throw new Error("not used"); },
+		findSessions() { return []; },
+		getGatewayActions() { return []; },
+	});
+	const webPort = channel.getAddress().port;
+	t.after(async () => {
+		await channel.stop();
+		await close(upstream);
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	const stream = await openStreamingRequest({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/events?piboSessionId=ps_selected",
+		headers: { "x-test-user": "account-a" },
+	});
+	const createdEvent = waitForSseEvent(stream.response, "preview-created");
+	createExposure("pv-other-session", "ps_other");
+	createExposure("pv-created", "ps_selected");
+	const event = await createdEvent;
+	assert.equal(event.type, "preview-created");
+	assert.equal(event.preview.id, "pv-created");
+	assert.equal(event.preview.piboSessionId, "ps_selected");
+	assert.equal(event.preview.openUrl, "/api/previews/pv-created/open");
+	stream.response.destroy();
+	stream.req.destroy();
+});
 
 test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSocket previews", async (t) => {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-preview-web-"));

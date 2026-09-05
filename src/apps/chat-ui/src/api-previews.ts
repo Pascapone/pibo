@@ -23,11 +23,34 @@ export type SessionLivePreviewList = {
 	previews: SessionLivePreview[];
 };
 
+export type SessionLivePreviewCreatedEvent = {
+	type: "preview-created";
+	preview: SessionLivePreview;
+};
+
 export async function getSessionLivePreviews(
 	piboSessionId: string,
 	options: { signal?: AbortSignal } = {},
 ): Promise<SessionLivePreviewList> {
 	return requestJson(`/api/previews?piboSessionId=${encodeURIComponent(piboSessionId)}`, { signal: options.signal });
+}
+
+export function subscribeSessionLivePreviewEvents(
+	piboSessionId: string,
+	onCreated: (event: SessionLivePreviewCreatedEvent) => void,
+): () => void {
+	const params = new URLSearchParams({ piboSessionId });
+	const events = new EventSource(`/api/previews/events?${params.toString()}`);
+	const handleCreated = (message: Event) => {
+		try {
+			const event = JSON.parse((message as MessageEvent<string>).data) as SessionLivePreviewCreatedEvent;
+			if (event.type === "preview-created" && event.preview?.piboSessionId === piboSessionId) onCreated(event);
+		} catch {
+			// Ignore malformed frames and let EventSource continue with later events.
+		}
+	};
+	events.addEventListener("preview-created", handleCreated);
+	return () => events.close();
 }
 
 export async function startSessionLivePreview(previewId: string): Promise<SessionLivePreview> {
