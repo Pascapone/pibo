@@ -181,7 +181,7 @@ export function WorkflowGraphCanvas({
 		getNavigation().then((navigation) => {
 			if (cancelled) return;
 			setManualTriggerRooms(navigation.rooms);
-			setManualTriggerDialog((current) => current ? { ...current, roomId: current.roomId ?? navigation.room.id } : current);
+			setManualTriggerDialog((current) => current ? { ...current, roomId: current.roomId ?? navigation.room?.id ?? navigation.rooms[0]?.id } : current);
 		}).catch((error: unknown) => {
 			if (!cancelled) setManualTriggerDialog((current) => current ? { ...current, status: "error", message: error instanceof Error ? error.message : "Failed to load Rooms" } : current);
 		});
