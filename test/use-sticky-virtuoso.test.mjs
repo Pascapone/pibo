@@ -78,6 +78,9 @@ test("useStickyVirtuoso uses one bottom target without a competing last-index sc
 	assert.match(source, /virtuosoRef\.current\?\.autoscrollToBottom\(\);/);
 	assert.match(source, /if \(scroller\) scrollToBottom\(scroller\);/);
 	assert.doesNotMatch(source, /scrollToIndex\(\{ index: lastIndex, align: "end"/);
+	const terminal = fs.readFileSync("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx", "utf8");
+	assert.match(terminal, /const stickyView = useStickyVirtuoso\(/);
+	assert.doesNotMatch(terminal, /initialTopMostItemIndex=/, "initial positioning must not add Virtuoso's fixed hidden settlement interval");
 });
 
 test("useStickyVirtuoso tracks descendant middle autoscroll and deferrable scrollbar drags", () => {
