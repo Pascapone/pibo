@@ -28,6 +28,38 @@ function run(home, args) {
 	});
 }
 
+test("preview setup prints exact DNS, Caddy, config, restart, and verification instructions", async (t) => {
+	const home = mkdtempSync(join(tmpdir(), "pibo-preview-setup-cli-"));
+	t.after(() => rmSync(home, { recursive: true, force: true }));
+	const result = JSON.parse((await run(home, [
+		"preview",
+		"setup",
+		"--base-url",
+		"https://pool.pibo.example",
+		"--public-ip",
+		"192.0.2.10",
+		"--json",
+	])).stdout);
+	assert.equal(result.baseURL, "https://pool.pibo.example/");
+	assert.deepEqual(result.dnsRecord, {
+		type: "A",
+		name: "*.pool.pibo.example",
+		value: "192.0.2.10",
+	});
+	assert.match(result.caddy.globalOptions, /ask http:\/\/127\.0\.0\.1:4788\/api\/previews\/tls-authorize/);
+	assert.match(result.caddy.siteBlock, /\*\.pool\.pibo\.example \{/);
+	assert.match(result.caddy.siteBlock, /on_demand/);
+	assert.match(result.caddy.siteBlock, /reverse_proxy 127\.0\.0\.1:4788/);
+	assert.match(result.commands.configure, /preview\.baseURL/);
+	assert.equal(result.commands.restartGateway, "pibo gateway web restart");
+	assert.match(result.commands.verify, /doctor <preview-id> --public/);
+
+	await assert.rejects(
+		run(home, ["preview", "setup", "--base-url", "https://pool.pibo.example", "--public-ip", "not-an-ip", "--json"]),
+		/Public IP must be a valid IPv4 or IPv6 address/,
+	);
+});
+
 test("preview base URL config rejects values that Preview commands cannot consume", async (t) => {
 	const home = mkdtempSync(join(tmpdir(), "pibo-preview-config-cli-"));
 	t.after(() => rmSync(home, { recursive: true, force: true }));

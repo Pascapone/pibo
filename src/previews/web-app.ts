@@ -6,6 +6,7 @@ import type { PiboWebApp, PiboWebAppContext } from "../web/types.js";
 import {
 	DEFAULT_PREVIEW_SESSION_TTL_MINUTES,
 	DEFAULT_PREVIEW_TICKET_TTL_SECONDS,
+	PREVIEW_TLS_AUTHORIZATION_PATH,
 	previewIdFromHostname,
 	previewPublicURL,
 	requirePreviewBaseURL,
@@ -389,6 +390,17 @@ export function createPreviewWebApp(options: PreviewWebAppOptions = {}): PiboWeb
 		async handleRequest(request, context) {
 			const url = new URL(request.url);
 			if (!url.pathname.startsWith(PREVIEW_WEB_API_PREFIX)) return undefined;
+
+			if (url.pathname === PREVIEW_TLS_AUTHORIZATION_PATH) {
+				if (request.method !== "GET") return new Response(null, { status: 405, headers: { allow: "GET", "cache-control": "no-store" } });
+				const previewId = baseURL ? previewIdFromHostname(url.searchParams.get("domain") ?? "", baseURL) : undefined;
+				const allowed = previewId ? withStore(databasePath, (store) => {
+					const exposure = store.getExposure(previewId);
+					return Boolean(exposure && previewExposureState(exposure) === "active");
+				}) : false;
+				return new Response(null, { status: allowed ? 200 : 403, headers: { "cache-control": "no-store" } });
+			}
+
 			await context.requireSession({ request });
 
 			if (url.pathname === PREVIEW_EVENTS_PATH && request.method === "GET") {

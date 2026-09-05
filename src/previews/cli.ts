@@ -22,6 +22,7 @@ import {
 	DEFAULT_MAX_PREVIEW_PROXY_CONNECTIONS,
 	DEFAULT_MAX_PREVIEW_PROXY_CONNECTIONS_PER_PREVIEW,
 } from "./proxy.js";
+import { createPreviewProductionSetupPlan, inspectPreviewPublicRoute, type PreviewProductionSetupPlan } from "./public-setup.js";
 import type { PreviewExposure, PreviewHealthState } from "./types.js";
 
 function printJson(value: unknown): void {
@@ -35,6 +36,12 @@ function parsePort(value: string): number {
 function parsePositiveInteger(value: string): number {
 	const parsed = Number(value);
 	if (!Number.isInteger(parsed) || parsed < 1) throw new Error("Value must be a positive integer");
+	return parsed;
+}
+
+function parseGatewayPort(value: string): number {
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) throw new Error("Gateway port must be an integer between 1 and 65535");
 	return parsed;
 }
 
@@ -79,18 +86,36 @@ function printPreviewDiscovery(): void {
 	console.log(`pibo preview - Session-linked live development previews
 
 Commands:
+  setup               Print production DNS, TLS, proxy, and restart instructions
   expose <port>       Register an external port or start a managed server with --command
   list                List preview registrations
   show <preview-id>   Inspect one preview
   start <preview-id>  Start a saved managed Preview server
   stop <preview-id>   Stop a managed Preview server without removing it
-  doctor [preview-id] Check preview configuration and reachability
+  doctor [preview-id] Check local state; add --public to verify DNS, TLS, and routing
   remove <preview-id> Stop and remove a preview definition
   close <preview-id>  Alias for remove
 
 Next:
+  pibo preview setup --help
   pibo preview expose --help
 `);
+}
+
+function printProductionSetupPlan(plan: PreviewProductionSetupPlan): void {
+	console.log("Preview production setup");
+	console.log(`baseURL\t${plan.baseURL}`);
+	console.log(`DNS\t${plan.dnsRecord.type} ${plan.dnsRecord.name} -> ${plan.dnsRecord.value}`);
+	console.log("\nCaddy global options (merge into an existing global block):");
+	console.log(plan.caddy.globalOptions);
+	console.log("\nCaddy site block:");
+	console.log(plan.caddy.siteBlock);
+	console.log("\nCommands:");
+	console.log(`configure\t${plan.commands.configure}`);
+	console.log(`validate proxy\t${plan.commands.validateCaddy}`);
+	console.log(`restart gateway\t${plan.commands.restartGateway}`);
+	console.log(`verify\t${plan.commands.verify}`);
+	for (const warning of plan.warnings) console.log(`warning\t${warning}`);
 }
 
 export async function runPreviewCli(argv = process.argv): Promise<void> {
@@ -101,6 +126,22 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 
 	const program = new Command();
 	program.name("pibo preview").description("Manage session-linked live development previews");
+
+	program
+		.command("setup")
+		.requiredOption("--base-url <url>", "Dedicated HTTPS base URL whose subdomains host Previews")
+		.option("--gateway-port <port>", "Loopback Pibo Web Gateway port", parseGatewayPort, 4788)
+		.option("--public-ip <address>", "Public IPv4 or IPv6 address for the exact DNS record")
+		.option("--json", "Print JSON")
+		.action((options: { baseUrl: string; gatewayPort: number; publicIp?: string; json?: boolean }) => {
+			const plan = createPreviewProductionSetupPlan({
+				baseURL: options.baseUrl,
+				gatewayPort: options.gatewayPort,
+				publicIp: options.publicIp,
+			});
+			if (options.json) printJson(plan);
+			else printProductionSetupPlan(plan);
+		});
 
 	program
 		.command("expose")
@@ -254,9 +295,11 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 	program
 		.command("doctor")
 		.argument("[preview-id]")
+		.option("--public", "Verify public DNS, trusted TLS, and Preview-host routing")
 		.option("--json", "Print JSON")
-		.action(async (id: string | undefined, options: { json?: boolean }) => {
+		.action(async (id: string | undefined, options: { public?: boolean; json?: boolean }) => {
 			const baseURL = requirePreviewBaseURL();
+			if (options.public && !id) throw new Error("--public requires a preview id. Create an active Preview, then run `pibo preview doctor <preview-id> --public`.");
 			if (!id) {
 				const config = loadPreviewConfig();
 				const serverLimits = loadEffectivePreviewServerSettings();
@@ -272,6 +315,7 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 				const result = {
 					configured: true,
 					baseURL: baseURL.toString(),
+					productionSetup: createPreviewProductionSetupPlan({ baseURL: baseURL.toString() }),
 					limits: {
 						...serverLimits,
 						maxProxyConnections: config.maxProxyConnections ?? DEFAULT_MAX_PREVIEW_PROXY_CONNECTIONS,
@@ -286,6 +330,8 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 					console.log(`baseURL\t${result.baseURL}`);
 					console.log(`active\t${diagnostics.activeExposures}`);
 					console.log(`managed\t${diagnostics.managedStartingOrRunning}`);
+					console.log(`DNS required\t${result.productionSetup.dnsRecord.name}`);
+					console.log(`production guide\tpibo preview setup --base-url ${baseURL.origin}`);
 				}
 				return;
 			}
@@ -297,14 +343,24 @@ export async function runPreviewCli(argv = process.argv): Promise<void> {
 			} finally {
 				store.close();
 			}
-			const result = await exposureView(exposure);
+			const publicChecks = options.public ? await inspectPreviewPublicRoute(baseURL, id) : undefined;
+			const result = {
+				...await exposureView(exposure),
+				...(publicChecks ? { publicChecks } : {}),
+			};
 			if (options.json) printJson(result);
 			else {
 				console.log(`${result.id}\t${result.health}`);
 				console.log(`target\t${result.targetHost}:${result.targetPort}`);
 				console.log(`url\t${result.publicUrl}`);
+				if (publicChecks) {
+					console.log(`DNS\t${publicChecks.dns.status}\t${publicChecks.dns.detail}`);
+					console.log(`TLS and routing\t${publicChecks.tlsAndRouting.status}\t${publicChecks.tlsAndRouting.detail}`);
+				}
 			}
-			if (result.health !== "online") process.exitCode = 1;
+			if (result.health !== "online" || publicChecks && (
+				publicChecks.dns.status !== "ok" || publicChecks.tlsAndRouting.status !== "ok"
+			)) process.exitCode = 1;
 		});
 
 	const removeAction = async (id: string, options: { json?: boolean }) => {

@@ -18,7 +18,7 @@
 * [Observability Telemetry Rollout Verification](observability-telemetry-rollout-verification.md) - Summarizes the required verification and safety checks for observability telemetry rollout&#46;
 * [Pibo OKF documentation profile](documentation-profile.md) - Defines Pibo's taxonomy, authority, lifecycle, provenance, migration, and validation rules for the docs bundle&#46;
 * [Pibo Workflows](workflows.md) - Explains the current Pibo Workflows baseline, authoring model, execution direction, and security boundaries&#46;
-* [Session Live Previews](session-live-previews.md) - Explains current session live&#45;preview setup, lifecycle, limits, and access boundaries&#46;
+* [Session Live Preview operations](session-live-previews.md) - Provides the supported production setup, validation, lifecycle, and rollback procedure for session live previews&#46;
 * [Web Annotations Rollout Checklist](web-annotations-rollout-checklist.md) - Guides worker, browser, security, privacy, and deployment validation for Web Annotations&#46;
 * [Web Annotations V1](web-annotations.md) - Explains the Web Annotations V1 user flow, lifecycle, tools, recovery, privacy, and known limits&#46;
 * [Workflow Interface Adapters](workflow-interface-adapters.md) - Explains when and how Pibo workflows use deterministic interface adapters and explicit agentic transformations&#46;

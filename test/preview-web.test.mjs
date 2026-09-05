@@ -358,6 +358,16 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 		createdAt: new Date().toISOString(),
 		expiresAt: new Date(Date.now() + 60_000).toISOString(),
 	});
+	store.createExposure({
+		id: "pv-expired-tls",
+		piboSessionId: "ps_preview_web",
+		label: "Expired TLS fixture",
+		targetHost: "127.0.0.1",
+		targetPort: secretTargetPort,
+		workspace: dir,
+		createdAt: new Date(Date.now() - 120_000).toISOString(),
+		expiresAt: new Date(Date.now() - 60_000).toISOString(),
+	});
 	store.close();
 
 	const app = createPreviewWebApp({
@@ -388,6 +398,26 @@ test("authenticated accounts bootstrap isolated HTTP, SSE, redirect, and WebSock
 
 	const unauthenticated = await request({ port: webPort, host: `pibo.localhost:${webPort}`, path: "/api/previews?piboSessionId=ps_preview_web" });
 	assert.equal(unauthenticated.status, 401);
+	assert.equal((await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/tls-authorize?domain=pv-webfixture.preview.localhost",
+	})).status, 200);
+	assert.equal((await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/tls-authorize?domain=pv-unknown.preview.localhost",
+	})).status, 403);
+	assert.equal((await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/tls-authorize?domain=pv-expired-tls.preview.localhost",
+	})).status, 403);
+	assert.equal((await request({
+		port: webPort,
+		host: `pibo.localhost:${webPort}`,
+		path: "/api/previews/tls-authorize?domain=nested.pv-webfixture.preview.localhost",
+	})).status, 403);
 	const previewHost = `pv-webfixture.preview.localhost:${webPort}`;
 	assert.equal((await request({ port: webPort, host: previewHost })).status, 401);
 
