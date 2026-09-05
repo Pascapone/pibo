@@ -14,8 +14,8 @@ migration_lineage:
   source_sha256: "ac1eed234dc204a640d9295264aa5616f539bcea4216b0ba49fcf06e0a368ad5"
   source_body_sha256: "ac1eed234dc204a640d9295264aa5616f539bcea4216b0ba49fcf06e0a368ad5"
 generated:
-  by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-09-05T07:15:00Z"
+  by: "openai/codex"
+  at: "2026-09-05T11:54:39Z"
 ---
 # Session Live Previews
 
@@ -67,7 +67,7 @@ pibo preview remove pv-...
 
 `close` remains an alias for `remove`. Stop preserves a managed Preview definition and saved command so it can be restarted; remove stops it, revokes browser access, and removes it from active lists.
 
-Chat Web Session surfaces show a Preview tab while an authoritative session-specific response contains a Preview. Managed previews can be started, stopped, and removed there. Loading, error, unconfigured, empty, starting, stopping, online, offline, stopped, and error states never reuse another session's iframe or lifecycle state. Browser APIs omit commands, workspaces, ports, process identities, owner tokens, and internal diagnostics.
+Chat Web Session surfaces show a Preview tab while an authoritative session-specific response contains a Preview. When a Preview is created after subscription, Chat Web automatically selects it and opens the deduplicated Preview workspace tab only if its owning Pibo Session is still selected and the Desktop workspace is active. Background Sessions and mobile layouts do not open a tab, and switching to a Session does not replay Previews that already existed before its subscription. Managed previews can be started, stopped, and removed there. Loading, error, unconfigured, empty, starting, stopping, online, offline, stopped, and error states never reuse another session's iframe or lifecycle state. Browser APIs omit commands, workspaces, ports, process identities, owner tokens, and internal diagnostics.
 
 ## Managed server limits
 
