@@ -36,12 +36,16 @@ test("useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts", ()
 	assert.match(source, /virtuosoPrependPendingRef\.current = false;\n\t\t\t\trestoreVisibleAnchor\(\);/);
 	assert.match(source, /anchorFrameRef\.current = requestAnimationFrame/);
 	assert.match(source, /const mutationObserver = new MutationObserver/);
-	assert.match(source, /new ResizeObserver\(preserveReadingTarget\)/);
+	assert.match(source, /new ResizeObserver\(\(entries\) =>/);
+	assert.match(source, /stickyRef\.current \|\| entries\.some\(\(entry\) => entry\.target !== target\)/, "viewport-only resize does not replay detached anchors over active wheel input");
+	assert.match(source, /resizeObserver\?\.observe\(target\)/, "external headers can resize the scroll viewport without resizing its item list");
+	assert.match(source, /resizeObserver\?\.disconnect\(\)/, "viewport and list observations are released together");
 	assert.match(source, /\[data-testid="virtuoso-item-list"\]/);
 	assert.match(source, /if \(stickyRef\.current\) \{\s*scrollToBottom\(scroller\)/);
 	assert.match(source, /characterData: true/);
 	assert.match(source, /virtuosoPrependPendingRef\.current && !allowDuringPrepend/);
 	assert.match(source, /restoreVisibleAnchor\(true\)/);
+	assert.match(source, /captureVisibleAnchors\(\);\n\t\tif \(isPrependingRef\.current \|\| pendingAnchorsRef\.current !== undefined\) stageVisibleAnchors\(\);/, "coarse wheel input advances pending anchors instead of allowing a later observer to undo the user's movement");
 	assert.match(source, /!restoredInDom && !virtuosoPrependPendingRef\.current/);
 	assert.match(source, /pointerScrollModeRef\.current !== undefined/);
 	assert.match(source, /USER_ANCHOR_FINAL_CAPTURE_MS/);
