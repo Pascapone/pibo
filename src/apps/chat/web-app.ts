@@ -4277,7 +4277,7 @@ function enrichWorkflowSession(state: ChatWebAppState, workflowSession: PiboWork
 	const snapshotHash = snapshot?.workflow.effectiveDefinitionHash ?? snapshot?.deletedDefinitionFallback.effectiveDefinitionHash;
 	const workflowDefinitionLink = catalogRecord && catalogRecord.status !== "deleted"
 		? { status: "live" as const, workflowId: workflowSession.workflowId, workflowVersion: catalogRecord.version, title: catalogRecord.title, ...(snapshotHash ? { definitionHash: snapshotHash } : {}), href: workflowDefinitionViewerPath(catalogRecord.id, catalogRecord.version) }
-		: { status: "snapshot_only_definition_deleted" as const, workflowId: workflowSession.workflowId, ...(workflowVersion ? { workflowVersion } : {}), title: snapshot?.deletedDefinitionFallback.title ?? snapshot?.workflow.title ?? workflowSession.workflowId, ...(snapshotHash ? { definitionHash: snapshotHash } : {}), tombstoneLabel: snapshot?.deletedDefinitionFallback.tombstoneLabel ?? "Definition deleted or no longer available in the live Workflow catalog." };
+		: { status: "snapshot_only_definition_deleted" as const, workflowId: workflowSession.workflowId, ...(workflowVersion ? { workflowVersion } : {}), title: snapshot?.deletedDefinitionFallback.title ?? snapshot?.workflow.title ?? workflowSession.workflowId, ...(snapshotHash ? { definitionHash: snapshotHash } : {}), tombstoneLabel: snapshot?.deletedDefinitionFallback.tombstoneLabel ?? "No published catalog version is available. Inspection uses the immutable Workflow snapshot." };
 	const waitTokens = workflowSession.workflowRunId ? state.workflowService.listWorkflowWaitTokens({ piboSessionId: workflowSession.piboSessionId, workflowRunId: workflowSession.workflowRunId, status: "pending", limit: 20 }) : [];
 	return { ...workflowSession, workflowDefinitionLink, ...(waitTokens.length ? { pendingHumanActions: waitTokens.map((token) => workflowPendingHumanActionFromToken(token, WORKFLOW_HUMAN_ACTION_REF_OPTIONS)) } : {}) };
 }
@@ -4290,15 +4290,17 @@ function inspectWorkflowSession(state: ChatWebAppState, context: PiboWebAppConte
 	const snapshot = state.workflowService.getWorkflowSessionSnapshotForSession(piboSessionId);
 	const run = state.workflowService.getWorkflowRunForSession(piboSessionId);
 	const workflowRunId = run?.id ?? workflowSession.workflowRunId;
+	const definitionSnapshot = run?.definitionSnapshotId ? state.workflowService.runtimeStore.getDefinitionSnapshot(run.definitionSnapshotId) : undefined;
 	return {
 		workflowSession,
+		...(definitionSnapshot ? { definitionSnapshot } : {}),
 		...(snapshot ? { snapshot } : {}),
 		...(run ? { run } : {}),
 		waitTokens: state.workflowService.listWorkflowWaitTokens({ piboSessionId, ...(workflowRunId ? { workflowRunId } : {}), limit: 200 }),
 		humanActions: state.workflowService.listWorkflowHumanActions({ piboSessionId, ...(workflowRunId ? { workflowRunId } : {}), limit: 200 }),
 		nodeAttempts: workflowRunId ? state.workflowService.runtimeStore.listNodeAttempts({ workflowRunId, limit: 200 }) : [],
 		edgeTransfers: workflowRunId ? state.workflowService.runtimeStore.listEdgeTransfers({ workflowRunId, limit: 200 }) : [],
-		lifecycleEvents: state.workflowLifecycleEventStore.listEvents({ piboSessionId, ...(workflowRunId ? { workflowRunId } : {}), limit: 200 }),
+		lifecycleEvents: state.workflowLifecycleEventStore.listEvents({ ...(workflowRunId ? { workflowRunId } : { piboSessionId }), limit: 200 }),
 	};
 }
 

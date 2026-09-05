@@ -4,7 +4,7 @@ export type WorkflowHeaderSummary = { workflowId: string; state: string; workflo
 
 export function isWorkflowLinkedSession(node: PiboWebSessionNode | undefined, session?: PiboSession): boolean {
   const kind = node?.workflowSessionKind ?? metadataString(session?.metadata, "workflowSessionKind");
-  return kind === "main_workflow" || kind === "nested_workflow";
+  return kind === "main_workflow" || kind === "nested_workflow" || kind === "agent_node";
 }
 
 export function workflowSessionFromMetadata(node: PiboWebSessionNode | undefined, session?: PiboSession): PiboWorkflowSession | undefined {

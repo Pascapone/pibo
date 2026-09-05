@@ -34,6 +34,7 @@ export async function postWorkflowSession(input: CreateWorkflowSessionInput): Pr
 export type SessionWorkflowInspectionResponse = {
 	workflowSession: PiboWorkflowSession;
 	snapshot?: PiboWorkflowSessionSnapshot;
+	definitionSnapshot?: { id: string; workflowId: string; workflowVersion: string; hash: string; definition: Record<string, unknown>; createdAt: string };
 	run?: PiboWorkflowRun;
 	waitTokens: PiboWorkflowWaitToken[];
 	humanActions: PiboWorkflowHumanActionRecord[];

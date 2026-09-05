@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+import { pathToFileURL } from "node:url";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import type { ChatWorkflowSessionService } from "./workflow-session-service.js";
 
 const MIGRATION_ID = "remove-legacy-containers-v1";
+const CATALOG_TABLES = ["workflow_ui_drafts", "workflow_published_versions", "workflow_archive_states", "workflow_delete_tombstones", "workflow_prompt_assets", "workflow_prompt_asset_revisions", "workflow_lifecycle_events"] as const;
 const LEGACY_TABLES = [
 	"projects", "project_sessions", "project_workflow_session_snapshots", "project_workflow_runs",
 	"project_workflow_wait_tokens", "project_workflow_human_actions",
@@ -43,11 +45,16 @@ export function migrateLegacyProjects(input: {
 
 	if (dataReceipt && workflowReceipt) {
 		assertReceiptsEqual(dataReceipt, workflowReceipt);
-		completeSourceArchiveWithoutOpening(sourcePath, dataReceipt.archive_path);
-		return emptyResult("already-migrated", dataReceipt.archive_path);
+		if (dataReceipt.source_path) completeSourceArchiveWithoutOpening(dataReceipt.source_path, dataReceipt.archive_path);
+		else if (existsSync(sourcePath)) throw new Error("A legacy source appeared after a catalog-only migration; preserve it for explicit recovery");
+		removeMigratedCatalogTables(input.dataStore);
+		return emptyResult("already-migrated", dataReceipt.archive_path || undefined);
 	}
-	if (!existsSync(sourcePath)) {
-		if (dataReceipt || workflowReceipt) throw new Error("Legacy migration is partially committed but its recoverable source database is missing");
+	const hasSource = existsSync(sourcePath);
+	const hasCatalog = CATALOG_TABLES.some((table) => input.dataStore.db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?").get(table));
+	if (!hasSource && (dataReceipt?.source_path || workflowReceipt?.source_path)) throw new Error("Legacy migration is partially committed but its recoverable source database is missing");
+	if (!hasSource && !hasCatalog) {
+		if (dataReceipt || workflowReceipt) throw new Error("Catalog migration is partially committed but its recoverable source tables are missing");
 		return emptyResult("not-needed");
 	}
 
@@ -56,27 +63,31 @@ export function migrateLegacyProjects(input: {
 	let sourceAttached = false;
 	let workflowAttached = false;
 	try {
-		db.prepare("ATTACH DATABASE ? AS legacy_source").run(sourcePath);
-		sourceAttached = true;
+		if (hasSource) {
+			db.prepare("ATTACH DATABASE ? AS legacy_source").run(`${pathToFileURL(sourcePath).href}?mode=ro`);
+			sourceAttached = true;
+		}
 		db.prepare("ATTACH DATABASE ? AS workflow_target").run(input.workflowService.path);
 		workflowAttached = true;
-		validateLegacySchema(db);
-		const digest = legacySourceDigest(db);
+		if (hasSource) validateLegacySchema(db);
+		db.exec("BEGIN IMMEDIATE");
+		const digest = legacySourceDigest(db, hasSource);
 		if (dataReceipt && dataReceipt.source_digest !== digest) throw new Error("Pibo migration receipt does not match the recoverable legacy source");
 		if (workflowReceipt && workflowReceipt.source_digest !== digest) throw new Error("Workflow migration receipt does not match the recoverable legacy source");
-		const archivePath = join(archiveDirectory, `${basename(sourcePath)}.migrated-${digest.slice(0, 16)}`);
-		const counts = legacyCounts(db);
+		const archivePath = hasSource ? join(archiveDirectory, `${basename(sourcePath)}.migrated-${digest.slice(0, 16)}`) : "";
+		const counts = hasSource ? legacyCounts(db) : { rooms: 0, sessions: 0, workflowSessions: 0, runs: 0 };
 
-		db.exec("BEGIN IMMEDIATE");
 		try {
-			validateLegacyFacts(db);
-			migrateRoomsAndSessions(db);
-			migrateWorkflowFacts(db);
+			if (hasSource) {
+				validateLegacyFacts(db);
+				migrateRoomsAndSessions(db);
+				migrateWorkflowFacts(db);
+			}
 			migrateCatalogFacts(db);
 			input.hooks?.beforeReceipts?.();
-			writeReceipt(db, "main", "feature_migration_receipts", digest, sourcePath, archivePath);
+			writeReceipt(db, "main", "feature_migration_receipts", digest, hasSource ? sourcePath : "", archivePath);
 			input.hooks?.afterDataReceipt?.();
-			writeReceipt(db, "workflow_target", "workflow_migration_receipts", digest, sourcePath, archivePath);
+			writeReceipt(db, "workflow_target", "workflow_migration_receipts", digest, hasSource ? sourcePath : "", archivePath);
 			if (pragmaUserVersion(db) !== dataUserVersion) throw new Error("Legacy migration attempted to change the Pibo data schema version");
 			db.exec("COMMIT");
 		} catch (error) {
@@ -85,16 +96,19 @@ export function migrateLegacyProjects(input: {
 		}
 		db.exec("DETACH DATABASE workflow_target");
 		workflowAttached = false;
-		db.exec("DETACH DATABASE legacy_source");
+		if (sourceAttached) db.exec("DETACH DATABASE legacy_source");
 		sourceAttached = false;
-		completeSourceArchiveWithoutOpening(sourcePath, archivePath);
+		// Both WAL commits returned successfully before removing any recoverable
+		// catalog source. Partial commits retain those source tables for replay.
+		removeMigratedCatalogTables(input.dataStore);
+		if (hasSource) completeSourceArchiveWithoutOpening(sourcePath, archivePath);
 		return {
 			status: "migrated",
 			roomsMigrated: counts.rooms,
 			sessionsMigrated: counts.sessions,
 			workflowSessionsMigrated: counts.workflowSessions,
 			workflowRunsMigrated: counts.runs,
-			archivePath,
+			...(archivePath ? { archivePath } : {}),
 		};
 	} finally {
 		if (db.isTransaction) db.exec("ROLLBACK");
@@ -149,19 +163,26 @@ function validateLegacyFacts(db: DatabaseSync): void {
 	const hierarchyConflict = db.prepare(`SELECT ps.pibo_session_id AS id FROM legacy_source.project_sessions ps JOIN main.sessions s ON s.id = ps.pibo_session_id
 		WHERE ps.parent_main_session_id IS NOT NULL AND s.parent_id IS NOT NULL AND s.parent_id <> ps.parent_main_session_id LIMIT 1`).get() as { id: string } | undefined;
 	if (hierarchyConflict) throw new Error(`Legacy hierarchy conflicts with canonical Session '${hierarchyConflict.id}'`);
-	const orphanSnapshots = db.prepare(`SELECT x.id FROM legacy_source.project_workflow_session_snapshots x LEFT JOIN legacy_source.project_sessions ps ON ps.pibo_session_id = x.pibo_session_id WHERE ps.pibo_session_id IS NULL LIMIT 1`).get() as { id: string } | undefined;
+	const missingRun = db.prepare(`SELECT ps.pibo_session_id AS id FROM legacy_source.project_sessions ps
+		LEFT JOIN legacy_source.project_workflow_runs r ON r.id = ps.workflow_run_id
+		LEFT JOIN workflow_target.workflow_runs current ON current.id = ps.workflow_run_id
+		WHERE ps.workflow_run_id IS NOT NULL AND r.id IS NULL AND current.id IS NULL LIMIT 1`).get() as { id: string } | undefined;
+	if (missingRun) throw new Error(`Legacy Workflow Session '${missingRun.id}' references a missing run`);
+	const orphanSnapshots = db.prepare(`SELECT x.id FROM legacy_source.project_workflow_session_snapshots x LEFT JOIN legacy_source.project_sessions ps ON ps.pibo_session_id = x.pibo_session_id
+		WHERE ps.pibo_session_id IS NULL OR x.project_id <> ps.project_id OR x.workflow_id <> ps.workflow_id OR x.workflow_version <> ps.workflow_version LIMIT 1`).get() as { id: string } | undefined;
 	if (orphanSnapshots) throw new Error(`Legacy Workflow snapshot '${orphanSnapshots.id}' references a missing Session link`);
 	const orphanRuns = db.prepare(`SELECT r.id FROM legacy_source.project_workflow_runs r
 		LEFT JOIN legacy_source.project_sessions ps ON ps.pibo_session_id = r.pibo_session_id
 		LEFT JOIN legacy_source.project_workflow_session_snapshots x ON x.id = r.snapshot_id
-		WHERE ps.pibo_session_id IS NULL OR x.id IS NULL LIMIT 1`).get() as { id: string } | undefined;
+		WHERE ps.pibo_session_id IS NULL OR x.id IS NULL OR r.project_id <> ps.project_id
+		OR x.pibo_session_id <> r.pibo_session_id OR x.workflow_id <> r.workflow_id OR x.workflow_version <> r.workflow_version OR x.effective_definition_hash <> r.effective_definition_hash LIMIT 1`).get() as { id: string } | undefined;
 	if (orphanRuns) throw new Error(`Legacy Workflow run '${orphanRuns.id}' has a missing Session or snapshot reference`);
-	const orphanWait = db.prepare(`SELECT w.id FROM legacy_source.project_workflow_wait_tokens w LEFT JOIN legacy_source.project_workflow_runs r ON r.id = w.workflow_run_id WHERE r.id IS NULL LIMIT 1`).get() as { id: string } | undefined;
+	const orphanWait = db.prepare(`SELECT w.id FROM legacy_source.project_workflow_wait_tokens w LEFT JOIN legacy_source.project_workflow_runs r ON r.id = w.workflow_run_id WHERE r.id IS NULL OR w.project_id <> r.project_id OR w.pibo_session_id <> r.pibo_session_id LIMIT 1`).get() as { id: string } | undefined;
 	if (orphanWait) throw new Error(`Legacy Workflow wait '${orphanWait.id}' references a missing run`);
 	const orphanAction = db.prepare(`SELECT a.id FROM legacy_source.project_workflow_human_actions a
 		LEFT JOIN legacy_source.project_workflow_runs r ON r.id = a.workflow_run_id
 		LEFT JOIN legacy_source.project_workflow_wait_tokens w ON w.id = a.wait_token_id
-		WHERE r.id IS NULL OR w.id IS NULL LIMIT 1`).get() as { id: string } | undefined;
+		WHERE r.id IS NULL OR w.id IS NULL OR w.workflow_run_id <> a.workflow_run_id OR a.project_id <> r.project_id OR a.pibo_session_id <> r.pibo_session_id LIMIT 1`).get() as { id: string } | undefined;
 	if (orphanAction) throw new Error(`Legacy Workflow human action '${orphanAction.id}' has a missing run or wait reference`);
 	for (const [table, columns] of [
 		["projects", ["metadata_json"]], ["project_sessions", ["configuration_json"]],
@@ -170,6 +191,14 @@ function validateLegacyFacts(db: DatabaseSync): void {
 		["project_workflow_wait_tokens", ["actions_json", "schema_json", "resume_payload_json"]],
 		["project_workflow_human_actions", ["actor_json", "payload_json"]],
 	] as Array<[string, string[]]>) validateJsonColumns(db, `legacy_source.${table}`, columns);
+	for (const [table, columns] of [
+		["projects", ["metadata_json"]], ["project_sessions", ["configuration_json"]],
+		["project_workflow_session_snapshots", ["snapshot_json"]], ["project_workflow_runs", ["current_json", "input_json", "validation_json"]],
+		["project_workflow_wait_tokens", ["schema_json"]], ["project_workflow_human_actions", ["actor_json"]],
+	] as Array<[string, string[]]>) {
+		for (const column of columns) if (db.prepare(`SELECT 1 FROM legacy_source.${table} WHERE ${column} IS NOT NULL AND json_type(${column}) <> 'object' LIMIT 1`).get()) throw new Error(`Legacy ${table}.${column} must contain JSON objects`);
+	}
+	if (db.prepare("SELECT 1 FROM legacy_source.project_workflow_wait_tokens WHERE json_type(actions_json) <> 'array' LIMIT 1").get()) throw new Error("Legacy wait actions must contain a JSON array");
 }
 
 function validateJsonColumns(db: DatabaseSync, table: string, columns: string[]): void {
@@ -374,10 +403,16 @@ function insertOrUpdateNavigation(db: DatabaseSync, session: CanonicalSessionRow
 	);
 }
 
-function legacySourceDigest(db: DatabaseSync): string {
+function removeMigratedCatalogTables(dataStore: PiboDataStore): void {
+	dataStore.transaction(() => {
+		for (const table of CATALOG_TABLES) dataStore.db.exec(`DROP TABLE IF EXISTS ${table}`);
+	});
+}
+
+function legacySourceDigest(db: DatabaseSync, hasSource: boolean): string {
 	const facts: Record<string, unknown> = {};
-	for (const table of LEGACY_TABLES) facts[table] = db.prepare(`SELECT * FROM legacy_source.${table} ORDER BY rowid`).all();
-	for (const table of ["workflow_ui_drafts", "workflow_published_versions", "workflow_archive_states", "workflow_delete_tombstones", "workflow_prompt_assets", "workflow_prompt_asset_revisions", "workflow_lifecycle_events"]) {
+	if (hasSource) for (const table of LEGACY_TABLES) facts[table] = db.prepare(`SELECT * FROM legacy_source.${table} ORDER BY rowid`).all();
+	for (const table of CATALOG_TABLES) {
 		if (db.prepare("SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name=?").get(table)) facts[`catalog:${table}`] = db.prepare(`SELECT * FROM main.${table} ORDER BY rowid`).all();
 	}
 	return createHash("sha256").update(JSON.stringify(facts)).digest("hex");

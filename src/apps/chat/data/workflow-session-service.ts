@@ -36,7 +36,10 @@ export class ChatWorkflowSessionService {
 
 	getWorkflowSession(piboSessionId: string): PiboWorkflowSessionLink | undefined {
 		const row = this.runtimeStore.db.prepare("SELECT * FROM workflow_session_links WHERE pibo_session_id = ?").get(piboSessionId) as WorkflowSessionLinkRow | undefined;
-		if (!row) return undefined;
+		if (!row) {
+			const run = this.runtimeStore.listRuns({ piboSessionId, limit: 1 })[0];
+			return run ? { piboSessionId, workflowId: run.workflowId, workflowVersion: run.workflowVersion, workflowRunId: run.id, state: run.status, createdAt: run.createdAt, updatedAt: run.updatedAt } : undefined;
+		}
 		const run = row.workflow_run_id ? this.runtimeStore.getRun(row.workflow_run_id) : undefined;
 		return workflowSessionFromRow(row, run?.status);
 	}
