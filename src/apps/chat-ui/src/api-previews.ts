@@ -3,7 +3,6 @@ import { requestJson } from "./api-http";
 export type SessionLivePreview = {
 	id: string;
 	piboSessionId: string;
-	projectId?: string;
 	label: string;
 	managed: boolean;
 	serverState?: "stopped" | "starting" | "running" | "stopping" | "error";

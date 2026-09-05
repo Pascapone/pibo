@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
-import { ChatProjectService } from "../dist/apps/chat/data/project-service.js";
+import { ChatWorkflowSessionService } from "../dist/apps/chat/data/workflow-session-service.js";
 import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { PiboCronStore } from "../dist/cron/store.js";
@@ -52,9 +52,11 @@ test("fresh app-context stores create current resources without compatibility co
 		assertNoRetiredPartitionKeys(agents.create({ displayName: "Fresh Agent" }), "agent");
 		agents.close();
 
-		const projects = new ChatProjectService(join(root, "web-projects.sqlite"));
-		assertNoRetiredPartitionKeys(projects.ensureSharedDefaultProject({ projectFolder: join(root, "project-default") }), "project");
-		projects.close();
+		const workflowSessions = new ChatWorkflowSessionService(join(root, "pibo-workflows.sqlite"));
+		assertNoRetiredPartitionKeys(workflowSessions.addWorkflowSession({ piboSessionId: piboSession.id, workflowId: "workflow.fresh", workflowVersion: "1.0.0", state: "configured" }), "workflowSession");
+		workflowSessions.close();
+		assert.equal(existsSync(join(root, "web-projects.sqlite")), false);
+		assert.equal(existsSync(join(root, "projects")), false);
 
 		const annotations = new WebAnnotationStore({ path: join(root, "web-annotations.sqlite") });
 		assertNoRetiredPartitionKeys(annotations.createAnnotation({

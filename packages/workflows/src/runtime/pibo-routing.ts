@@ -168,7 +168,7 @@ export function createPiboSessionRoutingAgentExecutor(
     const title = resolveExecutorTitle(options.title, context);
     const session = options.routing.createSession({
       channel: options.channel ?? context.routing?.channel ?? "pibo.workflows",
-      kind: options.kind ?? "workflow-agent",
+      kind: options.kind ?? "chat",
       profile: context.profileId,
       parentId: context.routing?.parentSessionId,
       workspace: options.workspace,

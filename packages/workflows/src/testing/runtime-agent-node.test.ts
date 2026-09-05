@@ -36,7 +36,6 @@ function createAgentWorkflow(): WorkflowDefinition {
         output: text(),
         routing: {
           parentSessionId: "ps_parent_agent",
-          projectId: "project_agent_node",
           roomId: "room_agent_node",
           channel: "chat",
         },
@@ -128,9 +127,7 @@ describe("workflow agent node dispatch", () => {
     assert.deepEqual(result.nodeAttempt.metadata?.runtime?.tools, ["read", "bash"]);
     assert.deepEqual(store.getNodeAttempt("wna_agent"), result.nodeAttempt);
     assert.equal(result.run.piboSessionId, "ps_agent_node");
-    assert.equal(result.run.projectId, "project_agent_node");
     assert.equal(store.getRun("wfr_agent")?.piboSessionId, "ps_agent_node");
-    assert.equal(store.getRun("wfr_agent")?.projectId, "project_agent_node");
     store.close();
     assert.deepEqual(result.run.current, { nodeId: "draft", status: "running" });
     assert.deepEqual(externalEvents, result.events);
@@ -153,7 +150,6 @@ describe("workflow agent node dispatch", () => {
           workflowVersion: definition.version,
           workflowNodeId: "draft",
           workflowNodeAttemptId: "wna_agent",
-          projectId: "project_agent_node",
           chatRoomId: "room_agent_node",
         },
       },
@@ -413,7 +409,6 @@ describe("workflow agent node dispatch", () => {
       contextFiles: ["AGENTS.md"],
       routing: {
         parentSessionId: "ps_parent_agent",
-        projectId: "project_agent_node",
         roomId: "room_agent_node",
         channel: "chat",
       },
@@ -438,7 +433,6 @@ describe("workflow agent node dispatch", () => {
           workflowVersion: definition.version,
           workflowNodeId: "draft",
           workflowNodeAttemptId: "wna_agent_resolved_profile",
-          projectId: "project_agent_node",
           chatRoomId: "room_agent_node",
         },
       },

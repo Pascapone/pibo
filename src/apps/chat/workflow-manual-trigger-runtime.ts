@@ -62,6 +62,7 @@ export type WorkflowManualTriggerRuntimeOptions = {
 	draftId?: string;
 	channelContext: PiboChannelContext;
 	channel: string;
+	roomId?: string;
 	defaultWorkspace: string;
 	onSessionCreated?: (session: PiboSession) => void;
 	resolveProfile: (profileId: string) => string | undefined;
@@ -222,6 +223,7 @@ async function runAgentNode(options: WorkflowManualTriggerRuntimeOptions & { run
 			workspace: options.defaultWorkspace,
 			title: `${stringValue(options.definition.id) || "Workflow"} · ${stringValue(node.label) || options.nodeId}`,
 			metadata: {
+				...(options.roomId ? { chatRoomId: options.roomId } : {}),
 				workflowId: stringValue(options.definition.id) || "workflow",
 				workflowVersion: stringValue(options.definition.version) || "draft",
 				workflowSessionKind: "agent_node",

@@ -9,7 +9,7 @@ import type {
 export const V2_WORKFLOW_DIAGNOSTIC_CONSUMERS = [
   "workflow-library",
   "workflow-builder",
-  "project-session-creation",
+  "workflow-session-creation",
   "run-start",
   "runtime-failure",
 ] as const;

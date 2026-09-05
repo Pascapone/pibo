@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import type { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import type { ChatWorkflowSessionService } from "./workflow-session-service.js";
 
@@ -183,10 +183,12 @@ function migrateRoomsAndSessions(db: DatabaseSync): void {
 	const projects = db.prepare("SELECT * FROM legacy_source.projects ORDER BY id").all() as LegacyProjectRow[];
 	for (const source of projects) {
 		const roomId = migratedRoomId(source.id);
-		const metadata = { workspace: source.project_folder, migration: { kind: "legacy-container", sourceId: source.id }, ...(source.archived_at ? { chatRoomArchivedAt: source.archived_at } : {}) };
+		const sourceMetadata = parseObject(source.metadata_json, `Legacy container '${source.id}' metadata`);
+		delete sourceMetadata.default;
+		const metadata = { ...sourceMetadata, workspace: source.project_folder, migration: { kind: "legacy-container", sourceId: source.id }, ...(source.archived_at ? { chatRoomArchivedAt: source.archived_at } : {}) };
 		insertOrAssert(db, "main.rooms", "id", {
 			id: roomId, name: source.name, topic: source.description, type: "chat", parent_room_id: null,
-			workspace: source.project_folder, archived_at: source.archived_at, retention_policy_id: null,
+			workspace: source.project_folder, retention_policy_id: null,
 			metadata_json: JSON.stringify(metadata), created_at: source.created_at, updated_at: source.updated_at,
 		});
 	}
@@ -198,17 +200,24 @@ function migrateRoomsAndSessions(db: DatabaseSync): void {
 		const metadata = parseObject(session.metadata_json, `Session '${session.id}' metadata`);
 		delete metadata.projectId;
 		delete metadata.projectSessionKind;
+		metadata.chatRoomId = migratedRoomId(link.project_id);
 		const workflowBacked = isWorkflowBacked(link);
 		if (workflowBacked) {
-			metadata.workflowSessionKind = link.kind === "main" ? "main_workflow" : "agent_node";
+			if (!["main_workflow", "nested_workflow", "agent_node"].includes(String(metadata.workflowSessionKind))) metadata.workflowSessionKind = link.kind === "main" ? "main_workflow" : "agent_node";
 			metadata.workflowId = link.workflow_id;
 			if (link.workflow_version) metadata.workflowVersion = link.workflow_version;
 			if (link.workflow_run_id) metadata.workflowRunId = link.workflow_run_id;
+		} else {
+			delete metadata.workflowId;
+			delete metadata.workflowVersion;
+			delete metadata.workflowSessionKind;
 		}
 		const parentId = session.parent_id ?? link.parent_main_session_id;
-		const rootId = session.root_session_id || (parentId ? canonicalRootId(db, parentId) : session.id);
-		const archivedAt = session.archived_at ?? (link.archived ? link.updated_at : null);
-		db.prepare(`UPDATE main.sessions SET room_id = ?, root_session_id = ?, parent_id = ?, workspace = COALESCE(NULLIF(workspace, ''), ?),
+		const rootId = parentId ? canonicalRootId(db, parentId) : session.id;
+		if (parentId) metadata.rootSessionId = rootId;
+		const archivedAt = session.archived_at ?? (typeof metadata.chatWebArchivedAt === "string" ? metadata.chatWebArchivedAt : link.archived ? link.updated_at : null);
+		if (archivedAt) metadata.chatWebArchivedAt = archivedAt;
+		db.prepare(`UPDATE main.sessions SET kind = 'chat', room_id = ?, root_session_id = ?, parent_id = ?, workspace = COALESCE(NULLIF(workspace, ''), ?),
 			archived_at = ?, metadata_json = ? WHERE id = ?`).run(migratedRoomId(link.project_id), rootId, parentId, sourceProject.project_folder, archivedAt, JSON.stringify(metadata), session.id);
 		const updated = db.prepare("SELECT * FROM main.sessions WHERE id = ?").get(session.id) as CanonicalSessionRow;
 		const childCount = Number((db.prepare("SELECT COUNT(*) AS count FROM main.sessions WHERE parent_id = ? AND deleted_at IS NULL").get(session.id) as { count: number }).count);
@@ -238,16 +247,21 @@ function migrateWorkflowFacts(db: DatabaseSync): void {
 			snapshot_json: JSON.stringify(snapshot), created_at: row.created_at,
 		});
 		const effectiveDefinition = requireObject(snapshot.effectiveDefinition, `Workflow snapshot '${row.id}' effective definition`);
-		insertOrAssert(db, "workflow_target.workflow_definition_snapshots", "id", {
+		const existingDefinition = db.prepare("SELECT compiled_definition_json FROM workflow_target.workflow_definition_snapshots WHERE workflow_id = ? AND workflow_version = ? AND definition_hash = ?").get(row.workflow_id, row.workflow_version, row.effective_definition_hash) as { compiled_definition_json: string } | undefined;
+		if (existingDefinition) {
+			if (JSON.stringify(JSON.parse(existingDefinition.compiled_definition_json)) !== JSON.stringify(effectiveDefinition)) throw new Error(`Migration conflict in executable Workflow snapshot '${row.id}'`);
+		} else insertOrAssert(db, "workflow_target.workflow_definition_snapshots", "id", {
 			id: row.id, workflow_id: row.workflow_id, workflow_version: row.workflow_version,
 			definition_hash: row.effective_definition_hash, compiled_definition_json: JSON.stringify(effectiveDefinition), created_at: row.created_at,
 		});
 	}
 	const runs = db.prepare("SELECT * FROM legacy_source.project_workflow_runs ORDER BY id").all() as LegacyRunRow[];
 	for (const run of runs) {
+		const executable = db.prepare("SELECT id FROM workflow_target.workflow_definition_snapshots WHERE workflow_id = ? AND workflow_version = ? AND definition_hash = ?").get(run.workflow_id, run.workflow_version, run.effective_definition_hash) as { id: string } | undefined;
+		if (!executable) throw new Error(`Legacy Workflow run '${run.id}' is missing its executable snapshot`);
 		insertOrAssert(db, "workflow_target.workflow_runs", "id", {
 			id: run.id, workflow_id: run.workflow_id, workflow_version: run.workflow_version,
-			workflow_definition_hash: run.effective_definition_hash, definition_snapshot_id: run.snapshot_id,
+			workflow_definition_hash: run.effective_definition_hash, definition_snapshot_id: executable.id,
 			parent_run_id: null, parent_node_attempt_id: null, pibo_session_id: run.pibo_session_id, environment_json: null,
 			status: run.status, current_node_id: null, current_edge_id: null, current_status: run.status,
 			current_json: run.current_json, input_json: run.input_json, output_json: null, output_present: 0,
@@ -334,7 +348,7 @@ function copySameShape(db: DatabaseSync, tables: Set<string>, table: string, key
 function insertOrAssert(db: DatabaseSync, table: string, key: string | string[], values: Record<string, unknown>): void {
 	const keys = Array.isArray(key) ? key : [key];
 	const where = keys.map((column) => `${column} = ?`).join(" AND ");
-	const existing = db.prepare(`SELECT * FROM ${table} WHERE ${where}`).get(...keys.map((column) => values[column])) as Record<string, unknown> | undefined;
+	const existing = db.prepare(`SELECT * FROM ${table} WHERE ${where}`).get(...keys.map((column) => values[column] as SQLInputValue)) as Record<string, unknown> | undefined;
 	if (existing) {
 		for (const [column, value] of Object.entries(values)) {
 			if (!sqliteValuesEqual(existing[column], value)) throw new Error(`Migration conflict in ${table} for ${keys.map((column) => `${column}=${String(values[column])}`).join(", ")} at ${column}`);
@@ -342,7 +356,7 @@ function insertOrAssert(db: DatabaseSync, table: string, key: string | string[],
 		return;
 	}
 	const columns = Object.keys(values);
-	db.prepare(`INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).run(...columns.map((column) => values[column] ?? null));
+	db.prepare(`INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).run(...columns.map((column) => (values[column] ?? null) as SQLInputValue));
 }
 
 function insertOrUpdateNavigation(db: DatabaseSync, session: CanonicalSessionRow, childCount: number): void {
@@ -373,7 +387,18 @@ function legacyCounts(db: DatabaseSync): { rooms: number; sessions: number; work
 	return { rooms: count("projects"), sessions: count("project_sessions"), workflowSessions: count("project_sessions", "WHERE workflow_id <> 'simple-chat' OR state NOT IN ('simple_chat', '')"), runs: count("project_workflow_runs") };
 }
 function migratedRoomId(sourceId: string): string { return `room_migrated_${createHash("sha256").update(sourceId).digest("hex").slice(0, 24)}`; }
-function canonicalRootId(db: DatabaseSync, parentId: string): string { const row = db.prepare("SELECT root_session_id FROM main.sessions WHERE id = ?").get(parentId) as { root_session_id: string | null } | undefined; if (!row) throw new Error(`Missing canonical parent Session '${parentId}'`); return row.root_session_id || parentId; }
+function canonicalRootId(db: DatabaseSync, parentId: string): string {
+	const visited = new Set<string>();
+	let id = parentId;
+	while (true) {
+		if (visited.has(id)) throw new Error(`Canonical Session hierarchy contains a cycle at '${id}'`);
+		visited.add(id);
+		const row = db.prepare("SELECT parent_id FROM main.sessions WHERE id = ?").get(id) as { parent_id: string | null } | undefined;
+		if (!row) throw new Error(`Missing canonical parent Session '${id}'`);
+		if (!row.parent_id) return id;
+		id = row.parent_id;
+	}
+}
 function isWorkflowBacked(row: LegacySessionRow): boolean { return row.workflow_id !== "simple-chat" || (row.state !== null && row.state !== "simple_chat"); }
 function normalizeLinkState(value: string | null): string { if (value === "running" || value === "waiting" || value === "completed" || value === "failed" || value === "cancelled" || value === "configured") return value; if (value === "workflow") return "configured"; throw new Error(`Unsupported legacy Workflow Session state '${String(value)}'`); }
 function normalizeLifecycleType(value: string): string { return value.replace(/^project\.workflow_session\.created$/, "workflow.session.created").replace(/^project\.workflow_start\./, "workflow.start."); }
@@ -391,7 +416,7 @@ function completeSourceArchiveWithoutOpening(sourcePath: string, archivePath: st
 }
 function emptyResult(status: "not-needed" | "already-migrated", archivePath?: string): LegacyProjectMigrationResult { return { status, roomsMigrated: 0, sessionsMigrated: 0, workflowSessionsMigrated: 0, workflowRunsMigrated: 0, ...(archivePath ? { archivePath } : {}) }; }
 
-type LegacyProjectRow = { id: string; name: string; description: string | null; project_folder: string; archived_at: string | null; created_at: string; updated_at: string };
+type LegacyProjectRow = { id: string; name: string; description: string | null; project_folder: string; archived_at: string | null; metadata_json: string; created_at: string; updated_at: string };
 type LegacySessionRow = { project_id: string; pibo_session_id: string; kind: "main" | "sub"; workflow_id: string; workflow_version: string | null; workflow_run_id: string | null; parent_main_session_id: string | null; state: string | null; configuration_json: string | null; archived: number; created_at: string; updated_at: string };
 type LegacySnapshotRow = { id: string; pibo_session_id: string; workflow_id: string; workflow_version: string; base_definition_hash: string; effective_definition_hash: string; snapshot_json: string; created_at: string };
 type LegacyRunRow = { id: string; pibo_session_id: string; workflow_id: string; workflow_version: string; snapshot_id: string; effective_definition_hash: string; status: string; current_json: string; input_json: string; validation_json: string | null; created_at: string; updated_at: string; completed_at: string | null; failed_at: string | null; cancelled_at: string | null };

@@ -49,6 +49,7 @@ export class ChatWorkflowSessionService {
 		state?: PiboWorkflowSessionState;
 		configuration?: PiboWorkflowSessionConfiguration;
 	}): PiboWorkflowSessionLink {
+		if (input.state && !["configured", "pending", "running", "waiting", "completed", "failed", "cancelled"].includes(input.state)) throw new Error(`Unsupported Workflow session state '${input.state}'`);
 		const existing = this.getWorkflowSession(input.piboSessionId);
 		const workflowVersion = input.workflowVersion ?? existing?.workflowVersion;
 		const workflowRunId = input.workflowRunId ?? existing?.workflowRunId;
@@ -56,7 +57,7 @@ export class ChatWorkflowSessionService {
 		if (existing) assertImmutableWorkflowSelection(existing, { ...input, workflowVersion, workflowRunId, configuration });
 		if (workflowRunId) {
 			const run = this.runtimeStore.getRun(workflowRunId);
-			if (run && (run.piboSessionId !== input.piboSessionId || run.workflowId !== input.workflowId || run.workflowVersion !== workflowVersion)) {
+			if (run && (run.workflowId !== input.workflowId || run.workflowVersion !== workflowVersion)) {
 				throw new Error("Workflow run linkage conflicts with the workflow session");
 			}
 		}
@@ -97,11 +98,11 @@ export class ChatWorkflowSessionService {
 			}
 			const existingForSession = this.getWorkflowSessionSnapshotForSession(snapshot.piboSessionId);
 			if (existingForSession) throw new Error(`Workflow session '${snapshot.piboSessionId}' already has a configuration snapshot`);
-			const definitionSnapshot = this.runtimeStore.getDefinitionSnapshot(snapshot.id);
-			if (definitionSnapshot && (definitionSnapshot.hash !== snapshot.workflow.effectiveDefinitionHash || canonicalJson(definitionSnapshot.definition) !== canonicalJson(snapshot.effectiveDefinition))) {
+			const definitionSnapshot = this.runtimeStore.listDefinitionSnapshots({ workflowId: snapshot.workflow.id, workflowVersion: snapshot.workflow.version, hash: snapshot.workflow.effectiveDefinitionHash, limit: 1 })[0];
+			if (definitionSnapshot && canonicalJson(definitionSnapshot.definition) !== canonicalJson(snapshot.effectiveDefinition)) {
 				throw new Error("Executable Workflow definition snapshot conflicts with the session snapshot");
 			}
-			this.runtimeStore.saveDefinitionSnapshot({
+			if (!definitionSnapshot) this.runtimeStore.saveDefinitionSnapshot({
 				id: snapshot.id,
 				workflowId: snapshot.workflow.id,
 				workflowVersion: snapshot.workflow.version,
@@ -156,13 +157,15 @@ export class ChatWorkflowSessionService {
 				return { workflowSession: this.getWorkflowSession(input.piboSessionId)!, run: existingRun, alreadyStarted: true };
 			}
 			if (this.runtimeStore.getRun(input.runId)) throw new Error(`Workflow run '${input.runId}' already exists`);
+			const definitionSnapshot = this.runtimeStore.listDefinitionSnapshots({ workflowId: input.workflowId, workflowVersion: input.workflowVersion, hash: input.effectiveDefinitionHash, limit: 1 })[0];
+			if (!definitionSnapshot) throw new Error("Executable Workflow definition snapshot not found");
 			const now = new Date().toISOString();
 			const run: WorkflowRun = {
 				id: input.runId,
 				workflowId: input.workflowId,
 				workflowVersion: input.workflowVersion,
 				workflowDefinitionHash: input.effectiveDefinitionHash,
-				definitionSnapshotId: input.snapshotId,
+				definitionSnapshotId: definitionSnapshot.id,
 				piboSessionId: input.piboSessionId,
 				status: "running",
 				current: input.current,
@@ -175,13 +178,13 @@ export class ChatWorkflowSessionService {
 			this.runtimeStore.saveRun(run);
 			this.runtimeStore.db.prepare("UPDATE workflow_session_links SET workflow_run_id = ?, state = 'running', updated_at = ? WHERE pibo_session_id = ? AND workflow_run_id IS NULL")
 				.run(run.id, now, input.piboSessionId);
-			return { workflowSession: this.getWorkflowSession(input.piboSessionId)!, run: workflowRunToPublic(run), alreadyStarted: false };
+			return { workflowSession: this.getWorkflowSession(input.piboSessionId)!, run: workflowRunToPublic(run, snapshot.id), alreadyStarted: false };
 		});
 	}
 
 	getWorkflowRun(runId: string): PiboWorkflowRun | undefined {
 		const run = this.runtimeStore.getRun(runId);
-		return run ? workflowRunToPublic(run) : undefined;
+		return run ? workflowRunToPublic(run, run.piboSessionId ? this.getWorkflowSessionSnapshotForSession(run.piboSessionId)?.id : undefined) : undefined;
 	}
 
 	getWorkflowRunForSession(piboSessionId: string): PiboWorkflowRun | undefined {
@@ -189,11 +192,15 @@ export class ChatWorkflowSessionService {
 		if (link?.workflowRunId) return this.getWorkflowRun(link.workflowRunId);
 		const runs = this.runtimeStore.listRuns({ piboSessionId, limit: 2 });
 		if (runs.length > 1) throw new Error(`Workflow session '${piboSessionId}' has multiple root runs`);
-		return runs[0] ? workflowRunToPublic(runs[0]) : undefined;
+		return runs[0] ? this.getWorkflowRun(runs[0].id) : undefined;
 	}
 
 	listWorkflowRuns(filter: { piboSessionId?: string; workflowId?: string; status?: PiboWorkflowRunStatus; limit?: number } = {}): PiboWorkflowRun[] {
-		return this.runtimeStore.listRuns(filter).map(workflowRunToPublic);
+		if (filter.piboSessionId) {
+			const run = this.getWorkflowRunForSession(filter.piboSessionId);
+			return run && (!filter.workflowId || run.workflowId === filter.workflowId) && (!filter.status || run.status === filter.status) ? [run] : [];
+		}
+		return this.runtimeStore.listRuns(filter).map((run) => this.getWorkflowRun(run.id)!);
 	}
 
 	saveWorkflowWaitToken(token: PiboWorkflowWaitToken): PiboWorkflowWaitToken {
@@ -229,6 +236,7 @@ export class ChatWorkflowSessionService {
 			if (!token || token.workflowRunId !== input.workflowRunId) throw new Error("Workflow wait token not found for this Workflow session");
 			if (token.status !== "pending") throw new Error(`Workflow wait token is ${token.status} and cannot be expired again`);
 			const resolvedAt = input.resolvedAt ?? new Date().toISOString();
+			if (!Number.isFinite(Date.parse(resolvedAt))) throw new Error("Workflow wait token expiry resolution time is invalid");
 			if (!token.expiresAt || Date.parse(token.expiresAt) > Date.parse(resolvedAt)) throw new Error("Workflow wait token has not expired");
 			for (const pending of this.runtimeStore.listWaitTokens({ workflowRunId: input.workflowRunId, status: "pending", limit: 500 })) {
 				if (pending.expiresAt && Date.parse(pending.expiresAt) <= Date.parse(resolvedAt)) this.runtimeStore.saveWaitToken({ ...pending, status: "expired", resumedAt: resolvedAt });
@@ -274,6 +282,7 @@ export class ChatWorkflowSessionService {
 				...(input.payload !== undefined ? { payload: input.payload } : {}),
 				createdAt: actedAt,
 			};
+			if (this.runtimeStore.getHumanAction(action.id)) throw new Error(`Workflow human action '${action.id}' already exists`);
 			this.runtimeStore.saveHumanAction(action);
 			const cancelled = input.kind === "cancel";
 			this.runtimeStore.saveWaitToken({ ...token, status: cancelled ? "cancelled" : "resumed", ...(input.payload !== undefined ? { resumePayload: input.payload } : {}), resumedAt: actedAt });
@@ -300,7 +309,7 @@ export class ChatWorkflowSessionService {
 
 	private assertRunSession(workflowRunId: string, piboSessionId: string): WorkflowRun {
 		const run = this.runtimeStore.getRun(workflowRunId);
-		if (!run || run.piboSessionId !== piboSessionId) throw new Error("Workflow run does not belong to this Workflow session");
+		if (!run || (run.piboSessionId !== piboSessionId && this.getWorkflowSession(piboSessionId)?.workflowRunId !== workflowRunId)) throw new Error("Workflow run does not belong to this Workflow session");
 		return run;
 	}
 
@@ -361,14 +370,11 @@ function workflowSessionSnapshotFromRow(row: WorkflowSessionSnapshotRow): PiboWo
 	return parsed;
 }
 
-function workflowRunToPublic(run: WorkflowRun): PiboWorkflowRun {
-	if (!run.piboSessionId || !run.definitionSnapshotId || !run.workflowDefinitionHash) throw new Error(`Workflow run '${run.id}' is missing required session integration links`);
-	const status = normalizePublicRunStatus(run.status);
-	if (!status) throw new Error(`Workflow run '${run.id}' has unsupported root status '${run.status}'`);
-	if (!run.input || typeof run.input !== "object" || Array.isArray(run.input)) throw new Error(`Workflow run '${run.id}' has malformed input values`);
-	return { id: run.id, piboSessionId: run.piboSessionId, workflowId: run.workflowId, workflowVersion: run.workflowVersion,
-		snapshotId: run.definitionSnapshotId, effectiveDefinitionHash: run.workflowDefinitionHash, status,
-		current: run.current as PiboJsonObject, inputValues: run.input as PiboJsonObject,
+function workflowRunToPublic(run: WorkflowRun, sessionSnapshotId?: string): PiboWorkflowRun {
+	return { ...run, id: run.id, piboSessionId: run.piboSessionId, workflowId: run.workflowId, workflowVersion: run.workflowVersion,
+		snapshotId: sessionSnapshotId, definitionSnapshotId: run.definitionSnapshotId, effectiveDefinitionHash: run.workflowDefinitionHash, status: run.status,
+		current: run.current as PiboJsonObject, input: run.input as PiboJsonValue, ...(run.output !== undefined ? { output: run.output as PiboJsonValue } : {}),
+		inputValues: run.input && typeof run.input === "object" && !Array.isArray(run.input) ? run.input as PiboJsonObject : {},
 		...(run.validation ? { validation: run.validation as PiboJsonObject } : {}), createdAt: run.createdAt, updatedAt: run.updatedAt,
 		...(run.completedAt ? { completedAt: run.completedAt } : {}), ...(run.failedAt ? { failedAt: run.failedAt } : {}), ...(run.cancelledAt ? { cancelledAt: run.cancelledAt } : {}) };
 }
@@ -388,7 +394,7 @@ function assertImmutableWorkflowSelection(existing: PiboWorkflowSessionLink, nex
 }
 
 function normalizePublicRunStatus(status: WorkflowRun["status"] | undefined): PiboWorkflowRunStatus | undefined {
-	return status === "running" || status === "waiting" || status === "completed" || status === "failed" || status === "cancelled" ? status : undefined;
+	return status === "pending" || status === "running" || status === "waiting" || status === "completed" || status === "failed" || status === "cancelled" ? status : undefined;
 }
 function canonicalJson(value: unknown): string { return JSON.stringify(value ?? null); }
 function parseJsonObject(value: string): PiboJsonObject { const parsed = JSON.parse(value) as unknown; if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Malformed Workflow JSON object"); return parsed as PiboJsonObject; }

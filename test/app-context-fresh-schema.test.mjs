@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
-import { ChatProjectService } from "../dist/apps/chat/data/project-service.js";
+import { ChatWorkflowSessionService } from "../dist/apps/chat/data/workflow-session-service.js";
 import { ChatWorkflowDraftStore, ChatWorkflowLifecycleEventStore, ChatWorkflowPromptAssetStore } from "../dist/apps/chat/workflow-persistence.js";
 import { PiboCronStore } from "../dist/cron/store.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
@@ -40,11 +40,17 @@ function assertNoTable(db, table) {
 test("fresh app-context schemas omit retired access-control structures", () => {
 	const dir = tempDir("app-context-fresh-schema-");
 	const pibo = new PiboDataStore(join(dir, "pibo.sqlite"), { payloadRootDir: join(dir, "payloads") });
-	new ChatWorkflowDraftStore(pibo);
-	new ChatWorkflowPromptAssetStore(pibo);
-	new ChatWorkflowLifecycleEventStore(pibo);
+	const workflowSessions = new ChatWorkflowSessionService(join(dir, "pibo-workflows.sqlite"));
+	new ChatWorkflowDraftStore(workflowSessions.catalogDataStore);
+	new ChatWorkflowPromptAssetStore(workflowSessions.catalogDataStore);
+	new ChatWorkflowLifecycleEventStore(workflowSessions.catalogDataStore);
+	for (const table of ["workflow_drafts", "workflow_prompt_assets", "workflow_prompt_asset_revisions", "workflow_lifecycle_events"]) {
+		assertNoColumns(workflowSessions.catalogDataStore.db, table, [...retiredColumns, "project_id"]);
+		assertNoTable(pibo.db, table);
+	}
+	workflowSessions.close();
 
-	for (const table of ["sessions", "rooms", "session_navigation", "workflow_ui_drafts", "workflow_prompt_assets", "workflow_prompt_asset_revisions", "workflow_lifecycle_events"]) {
+	for (const table of ["sessions", "rooms", "session_navigation"]) {
 		assertNoColumns(pibo.db, table, retiredColumns);
 	}
 	for (const table of ["app_session_read_state", "app_room_read_state"]) assertNoColumns(pibo.db, table, [retiredPrincipalColumn, retiredStorageColumn]);
@@ -75,15 +81,14 @@ test("fresh app-context schemas omit retired access-control structures", () => {
 	annotationDb.close();
 	annotations.close();
 
-	const projects = new ChatProjectService(join(dir, "web-projects.sqlite"));
-	const projectDb = new DatabaseSync(join(dir, "web-projects.sqlite"), { readOnly: true });
-	assertNoColumns(projectDb, "projects", retiredColumns);
-	projectDb.close();
-	projects.close();
+	assert.equal(existsSync(join(dir, "web-projects.sqlite")), false);
+	assert.equal(existsSync(join(dir, "projects")), false);
 
 	const workflows = new SqliteWorkflowRunStore(join(dir, "pibo-workflows.sqlite"));
 	const workflowsDb = new DatabaseSync(join(dir, "pibo-workflows.sqlite"), { readOnly: true });
-	assertNoColumns(workflowsDb, "workflow_runs", retiredColumns);
+	assertNoColumns(workflowsDb, "workflow_runs", [...retiredColumns, "project_id"]);
+	assertNoTable(workflowsDb, "projects");
+	assertNoTable(workflowsDb, "project_sessions");
 	workflowsDb.close();
 	workflows.close();
 });

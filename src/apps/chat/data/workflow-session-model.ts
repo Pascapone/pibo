@@ -3,7 +3,7 @@ import type { ModelProfile } from "../../../core/profiles.js";
 import type { PiboThinkingLevel } from "../../../core/thinking.js";
 
 export type PiboWorkflowId = string;
-export type PiboWorkflowSessionState = "configured" | "running" | "waiting" | "completed" | "failed" | "cancelled";
+export type PiboWorkflowSessionState = "configured" | "pending" | "running" | "waiting" | "completed" | "failed" | "cancelled";
 
 export type PiboWorkflowSessionConfiguration = {
 	inputValues: PiboJsonObject;
@@ -133,16 +133,19 @@ export type PiboWorkflowSessionLink = {
 	updatedAt: string;
 };
 
-export type PiboWorkflowRunStatus = "running" | "waiting" | "completed" | "failed" | "cancelled";
+export type PiboWorkflowRunStatus = "pending" | "running" | "waiting" | "completed" | "failed" | "cancelled";
 export type PiboWorkflowRun = {
 	id: string;
-	piboSessionId: string;
+	piboSessionId?: string;
 	workflowId: PiboWorkflowId;
 	workflowVersion: string;
-	snapshotId: string;
-	effectiveDefinitionHash: string;
+	snapshotId?: string;
+	definitionSnapshotId?: string;
+	effectiveDefinitionHash?: string;
 	status: PiboWorkflowRunStatus;
 	current: PiboJsonObject;
+	input?: PiboJsonValue;
+	output?: PiboJsonValue;
 	inputValues: PiboJsonObject;
 	validation?: PiboJsonObject;
 	createdAt: string;

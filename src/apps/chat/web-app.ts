@@ -367,7 +367,6 @@ export type ChatWebAppOptions = {
 	dataPayloadRootDir?: string;
 	workflowStorePath?: string;
 	/** Optional one-time migration source. Omit to probe web-projects.sqlite beside the data store. */
-	legacyProjectStorePath?: string;
 	cronStorePath?: string;
 	ralphStorePath?: string;
 	vscodeWeb?: ChatVscodeWebIntegrationOptions;
@@ -4586,9 +4585,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 	const reliabilityStore = createReliabilityStore(options.reliabilityStorePath);
 	const workflowService = new ChatWorkflowSessionService(workflowStorePath(options, dataStore));
 	if (dataStore.path !== ":memory:" && workflowService.path !== ":memory:") {
-		migrateLegacyProjects({ dataStore, workflowService, legacyProjectPath: options.legacyProjectStorePath });
+		migrateLegacyProjects({ dataStore, workflowService });
 	}
-	const workflowCatalogStore = workflowService.catalogDataStore as unknown as PiboDataStore;
+	const workflowCatalogStore = workflowService.catalogDataStore;
 	const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 	eventLoopDelay.enable();
 	const state: ChatWebAppState = {
@@ -5184,6 +5183,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					});
 					return workflowValidationBlockedResponse("Workflow draft has validation errors and cannot be test-run", validation, { draft: serializeWorkflowDraft(record) });
 				}
+				const room = state.roomService.ensureDefaultRoom();
 				const result = await runWorkflowManualTextTrigger({
 					definition: record.definition,
 					triggerNodeId: body.triggerNodeId,
@@ -5192,15 +5192,27 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					draftId: record.draftId,
 					channelContext: context.channelContext,
 					channel: CHAT_WEB_CHANNEL,
-					defaultWorkspace: getDefaultPiboWorkspace(),
+					roomId: room.id,
+					defaultWorkspace: room.workspace ?? getDefaultPiboWorkspace(),
 					onSessionCreated: (session) => state.sessionQuery.upsertSession(session),
 					resolveProfile: (profileId) => resolveWorkflowRuntimeProfile({ context, requestedId: profileId }),
 				});
 				const diagnostics = result.ok ? validation.diagnostics : sanitizeWorkflowDiagnostics([...validation.diagnostics, ...result.diagnostics]);
 				if (result.run) {
-					state.workflowService.runtimeStore.saveRun(result.run);
-					for (const attempt of result.nodeAttempts) state.workflowService.runtimeStore.saveNodeAttempt(attempt);
-					for (const transfer of result.edgeTransfers) state.workflowService.runtimeStore.saveEdgeTransfer(transfer);
+					const run = result.run;
+					const store = state.workflowService.runtimeStore;
+					store.transaction(() => {
+						const hash = hashWorkflowDefinitionJson(record.definition);
+						const existing = store.listDefinitionSnapshots({ workflowId: run.workflowId, workflowVersion: run.workflowVersion, hash, limit: 1 })[0];
+						const definitionSnapshotId = existing?.id ?? `wfds_${run.id}`;
+						if (!existing) store.saveDefinitionSnapshot({ id: definitionSnapshotId, workflowId: run.workflowId, workflowVersion: run.workflowVersion, hash, definition: record.definition as unknown as import("@pasko70/pibo-workflows").WorkflowDefinition, createdAt: run.createdAt });
+						store.saveRun({ ...run, piboSessionId: result.nodeAttempts.find((attempt) => attempt.piboSessionId)?.piboSessionId, definitionSnapshotId, workflowDefinitionHash: hash, current: { status: run.status, nodeId: result.nodeAttempts.at(-1)?.nodeId }, state: { global: {} } });
+						for (const attempt of result.nodeAttempts) {
+							store.saveNodeAttempt({ ...attempt, attempt: 1 });
+							if (attempt.piboSessionId) state.workflowService.addWorkflowSession({ piboSessionId: attempt.piboSessionId, workflowId: run.workflowId, workflowVersion: run.workflowVersion, workflowRunId: run.id, state: run.status });
+						}
+						for (const transfer of result.edgeTransfers) store.saveEdgeTransfer(transfer);
+					});
 				}
 				recordWorkflowLifecycleEvent(state, webSession, {
 					type: result.ok ? "workflow.editor_test_run.completed" : "workflow.editor_test_run.failed",
