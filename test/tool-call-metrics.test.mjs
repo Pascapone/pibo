@@ -4,11 +4,13 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { storedPiboEventFromV2Row } from "../dist/apps/chat/data/chat-data-mappers.js";
 import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
 import { estimateToolPayloadTokens, ToolCallMetricsCollector } from "../dist/shared/tool-call-metrics.js";
+import { TIKTOKEN_ENCODINGS } from "../dist/shared/tool-call-token-settings.js";
 import { RuntimeRoutedSession } from "../dist/agent-runtime/routed-session.js";
 import { buildTraceViewFromEvents, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
 import { applyTraceLiveEvents } from "../dist/shared/trace-live-reducer.js";
@@ -16,10 +18,15 @@ import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
 import { chatStreamFramesFromOutputEvent, createChatStreamState } from "../dist/apps/chat/stream.js";
 
 const metrics = { durationMs: 1234, inputTokens: 12, outputTokens: 23456, tokenBasis: "chars/4" };
+const require = createRequire(import.meta.url);
 
-test("estimates are cheap, bounded and honest about unavailable payloads", () => {
+test("character and Tiktoken calculations are selectable, lazy, bounded and honest about unavailable payloads", () => {
+	const tiktokenPath = require.resolve("tiktoken");
+	assert.equal(require.cache[tiktokenPath], undefined);
 	assert.equal(estimateToolPayloadTokens(""), 0);
+	assert.equal(require.cache[tiktokenPath], undefined);
 	assert.equal(estimateToolPayloadTokens("x".repeat(4_000_000)), 1_000_000);
+	assert.equal(estimateToolPayloadTokens("x".repeat(4_000_001), { method: "tiktoken", encoding: "o200k_base" }), undefined);
 	assert.equal(estimateToolPayloadTokens(undefined), undefined);
 	assert.equal(estimateToolPayloadTokens([{ type: "image", data: "base64" }]), undefined);
 	assert.equal(estimateToolPayloadTokens(Array(20_000).fill(1)), undefined);
@@ -27,6 +34,13 @@ test("estimates are cheap, bounded and honest about unavailable payloads", () =>
 	assert.equal(estimateToolPayloadTokens(cycle), undefined);
 	let deep = {}; for (let i = 0; i < 100; i++) deep = { deep };
 	assert.equal(estimateToolPayloadTokens(deep), undefined);
+	assert.equal(estimateToolPayloadTokens("abcdefgh", { method: "characters", factor: 2 }), 4);
+	assert.equal(estimateToolPayloadTokens('hello {"x":"😊"}', { method: "tiktoken", encoding: "cl100k_base" }), 7);
+	assert.equal(estimateToolPayloadTokens('hello {"x":"😊"}', { method: "tiktoken", encoding: "o200k_base" }), 6);
+	for (const encoding of TIKTOKEN_ENCODINGS) {
+		assert.ok(estimateToolPayloadTokens("supported encoding", { method: "tiktoken", encoding }) > 0, encoding);
+	}
+	assert.ok(require.cache[tiktokenPath]);
 });
 
 test("collector separates parallel calls, releases state, and excludes result metadata", () => {
@@ -35,13 +49,23 @@ test("collector separates parallel calls, releases state, and excludes result me
 	collector.start("a", "ignored", 100);
 	collector.start("b", "abcdefgh", 20);
 	assert.deepEqual(collector.finish("a", { content: "abcdefgh", details: "x".repeat(10000) }, 1010), {
-		durationMs: 1000, inputTokens: 1, outputTokens: 2, tokenBasis: "chars/4",
+		durationMs: 1000, inputTokens: 1, outputTokens: 2, tokenBasis: "characters/4",
 	});
 	assert.equal(collector.finish("a", "", 2000).durationMs, undefined);
 	assert.equal(collector.finish("b", "", 220).durationMs, 200);
 	collector.start("c", "abcd", 0);
 	collector.clear();
 	assert.equal(collector.finish("c", "", 30).inputTokens, undefined);
+	let calculation = { method: "tiktoken", encoding: "o200k_base" };
+	const configured = new ToolCallMetricsCollector(() => calculation);
+	configured.start("configured", 'hello {"x":"😊"}', 0);
+	calculation = { method: "characters", factor: 2 };
+	assert.deepEqual(configured.finish("configured", 'hello {"x":"😊"}', 10), {
+		durationMs: 10,
+		inputTokens: 6,
+		outputTokens: 6,
+		tokenBasis: "tiktoken/o200k_base",
+	});
 });
 
 test("generic runtime emits per-call diagnostics without using assistant usage", () => {
@@ -149,10 +173,17 @@ test("status strip renders estimated tokens, zero, missing values and subsecond 
 		assert.match(markup, />≈0</);
 		assert.match(markup, /Out/);
 		assert.match(markup, /≈23,456 tokens/);
+		assert.match(markup, /data-token-method="characters" data-token-factor="4"/);
+		assert.match(markup, />chars ÷ 4</);
 		assert.match(markup, /data-metric-kind="duration" data-metric-level="normal"/);
 		assert.match(markup, /data-metric-kind="input" data-metric-level="normal"/);
 		assert.match(markup, /data-metric-kind="output" data-metric-level="high"/);
 		assert.ok(markup.includes('border-[#ff6b00]'));
+		const tiktoken = render({ durationMs: 42, inputTokens: 6, outputTokens: 7, tokenBasis: 'tiktoken/o200k_base' });
+		assert.match(tiktoken, />6</);
+		assert.doesNotMatch(tiktoken, />≈6</);
+		assert.match(tiktoken, /data-token-method="tiktoken" data-token-encoding="o200k_base"/);
+		assert.match(tiktoken, />tiktoken · o200k_base</);
 		const critical = render({ durationMs: 16_000, inputTokens: 50_000, outputTokens: 50_000, tokenBasis: 'chars/4' });
 		assert.match(critical, /data-metric-kind="duration" data-metric-level="critical"/);
 		assert.match(critical, /data-metric-kind="input" data-metric-level="critical"/);
@@ -162,6 +193,7 @@ test("status strip renders estimated tokens, zero, missing values and subsecond 
 		assert.match(unavailable, />—</);
 		assert.match(unavailable, />Out</);
 		assert.match(unavailable, />— tokens</);
+		assert.match(unavailable, /data-token-method="unavailable"/);
 		const elevatedDuration = render({ durationMs: 1234 });
 		assert.match(elevatedDuration, /data-metric-kind="duration" data-metric-level="elevated"/);
 		assert.match(elevatedDuration, />1.2 s</);

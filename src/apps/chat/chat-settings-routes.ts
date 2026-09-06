@@ -8,6 +8,7 @@ import {
 import { sanitizePreviewServerSettings } from "../../core/preview-server-settings.js";
 import { sanitizeTelemetryRetentionDays, sanitizeTelemetryRetentionSettings } from "../../core/telemetry-retention-settings.js";
 import { loadPiboUserSettings, sanitizeShortcutSettings, sanitizeTimezone, sanitizeTranscriptionProviderId, updatePiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
+import { parseToolMetricTokenCalculation } from "../../shared/tool-call-token-settings.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
 import { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 import {
@@ -162,6 +163,14 @@ function userSettingsPatch(
 			throw new PiboWebHttpError(`Unknown speech provider "${providerId}"`, 400);
 		}
 		patch.speech = { providerId };
+	}
+	if (body.toolMetrics !== undefined) {
+		const raw = body.toolMetrics && typeof body.toolMetrics === "object" && !Array.isArray(body.toolMetrics)
+			? body.toolMetrics as Record<string, unknown>
+			: {};
+		const tokenCalculation = parseToolMetricTokenCalculation(raw.tokenCalculation);
+		if (!tokenCalculation) throw new PiboWebHttpError("Invalid Tool metric token calculation", 400);
+		patch.toolMetrics = { tokenCalculation };
 	}
 	if (body.previewServers !== undefined) {
 		const sanitized = sanitizePreviewServerSettings(body.previewServers);

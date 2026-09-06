@@ -1,5 +1,6 @@
 import type { ToolCallMetrics } from "../../../../../shared/tool-call-metrics.js";
 import { DEFAULT_TOOL_METRIC_THRESHOLDS, type ToolMetricThresholds } from "../../tool-metric-settings";
+import { toolMetricTokenBasisLabel, type ToolMetricTokenBasis } from "../../../../../shared/tool-call-token-settings.js";
 
 const tokenFormatter = new Intl.NumberFormat("en-US");
 
@@ -30,8 +31,10 @@ const metricClasses: Record<MetricKind, Record<MetricLevel, string>> = {
 	},
 };
 
-function tokens(value: number | undefined): string {
-	return value === undefined || !Number.isFinite(value) || value < 0 ? "—" : `≈${tokenFormatter.format(Math.round(value))}`;
+function tokens(value: number | undefined, basis: ToolMetricTokenBasis | undefined): string {
+	if (value === undefined || !Number.isFinite(value) || value < 0) return "—";
+	const prefix = basis?.startsWith("tiktoken/") ? "" : "≈";
+	return `${prefix}${tokenFormatter.format(Math.round(value))}`;
 }
 
 function duration(value: number | undefined): string {
@@ -83,6 +86,23 @@ function ColoredMetricSignal({
 	);
 }
 
+function TokenBasisSignal({ basis }: { basis: ToolMetricTokenBasis | undefined }) {
+	const method = basis?.startsWith("tiktoken/") ? "tiktoken" : basis ? "characters" : "unavailable";
+	return (
+		<span
+			data-metric-kind="basis"
+			data-token-method={method}
+			data-token-factor={basis === "chars/4" ? "4" : basis?.startsWith("characters/") ? basis.slice("characters/".length) : undefined}
+			data-token-encoding={basis?.startsWith("tiktoken/") ? basis.slice("tiktoken/".length) : undefined}
+			title="Payload token calculation used for this Tool call; this is not provider usage or billing attribution"
+			className="inline-flex min-w-0 items-baseline gap-1.5 border-l-2 border-[#38bdf8] bg-[#38bdf8]/10 px-2 py-0.5 font-bold text-[#bae6fd]"
+		>
+			<span className="text-[9px] font-black uppercase tracking-[0.14em] opacity-80">Calc</span>
+			<span className="whitespace-nowrap text-[11px]">{toolMetricTokenBasisLabel(basis)}</span>
+		</span>
+	);
+}
+
 export function TerminalToolMetrics({
 	metrics,
 	thresholds = DEFAULT_TOOL_METRIC_THRESHOLDS,
@@ -108,18 +128,19 @@ export function TerminalToolMetrics({
 				kind="input"
 				label="In"
 				value={metrics?.inputTokens}
-				formatted={tokens(metrics?.inputTokens)}
-				description="Estimated tool-argument tokens (characters ÷ 4), not model input usage; color bands use the configured Debug thresholds; — means unavailable"
+				formatted={tokens(metrics?.inputTokens, metrics?.tokenBasis)}
+				description="Tool-argument payload tokens using the recorded calculation method, not model input usage; color bands use the configured Debug thresholds; — means unavailable"
 				thresholds={thresholds}
 			/>
 			<ColoredMetricSignal
 				kind="output"
 				label="Out"
 				value={metrics?.outputTokens}
-				formatted={`${tokens(metrics?.outputTokens)} tokens`}
-				description="Estimated tool-result tokens (characters ÷ 4), not model output usage or billing; color bands use the configured Debug thresholds. Media and unmeasurable payloads show —."
+				formatted={`${tokens(metrics?.outputTokens, metrics?.tokenBasis)} tokens`}
+				description="Tool-result payload tokens using the recorded calculation method, not model output usage or billing; color bands use the configured Debug thresholds. Media and unmeasurable payloads show —."
 				thresholds={thresholds}
 			/>
+			<TokenBasisSignal basis={metrics?.tokenBasis} />
 		</div>
 	);
 }

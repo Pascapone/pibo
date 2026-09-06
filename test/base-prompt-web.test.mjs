@@ -92,6 +92,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(current.response.status, 200);
 		assert.equal(current.data.userSettings.timezone, "UTC");
 		assert.deepEqual(current.data.userSettings.transcription, { providerId: "openai-chatgpt" });
+		assert.deepEqual(current.data.userSettings.toolMetrics, { tokenCalculation: { method: "characters", factor: 4 } });
 		assert.deepEqual(current.data.userSettings.previewServers, { maxRunningServers: 3, autoStopMinutes: 10 });
 		assert.deepEqual(current.data.userSettings.telemetryRetention, { enabled: true, days: 30, lastPrunedAt });
 
@@ -110,6 +111,14 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(invalidTimezone.response.status, 400);
 		assert.match(invalidTimezone.data.error, /Invalid timezone/);
 
+		const invalidToolMetrics = await fetchJson(`${baseURL}/api/chat/user-settings`, {
+			method: "PATCH",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ toolMetrics: { tokenCalculation: { method: "tiktoken", encoding: "unknown" } } }),
+		});
+		assert.equal(invalidToolMetrics.response.status, 400);
+		assert.match(invalidToolMetrics.data.error, /Invalid Tool metric token calculation/);
+
 		const invalidPreviewSettings = await fetchJson(`${baseURL}/api/chat/user-settings`, {
 			method: "PATCH",
 			headers: authHeaders(baseURL),
@@ -124,6 +133,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 			body: JSON.stringify({
 				timezone: "Europe/Berlin",
 				shortcuts: { webAnnotationsToggle: " Ctrl+Shift+P\u0000" },
+				toolMetrics: { tokenCalculation: { method: "tiktoken", encoding: "cl100k_base" } },
 				previewServers: { maxRunningServers: 5, autoStopMinutes: 30 },
 				telemetryRetention: { enabled: true, days: 10 },
 			}),
@@ -131,6 +141,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(saved.response.status, 200);
 		assert.equal(saved.data.userSettings.timezone, "Europe/Berlin");
 		assert.equal(saved.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+		assert.deepEqual(saved.data.userSettings.toolMetrics, { tokenCalculation: { method: "tiktoken", encoding: "cl100k_base" } });
 		assert.deepEqual(saved.data.userSettings.previewServers, { maxRunningServers: 5, autoStopMinutes: 30 });
 		assert.deepEqual(saved.data.userSettings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 
@@ -140,6 +151,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(reloaded.response.status, 200);
 		assert.equal(reloaded.data.userSettings.timezone, "Europe/Berlin");
 		assert.equal(reloaded.data.userSettings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
+		assert.deepEqual(reloaded.data.userSettings.toolMetrics, { tokenCalculation: { method: "tiktoken", encoding: "cl100k_base" } });
 		assert.deepEqual(reloaded.data.userSettings.previewServers, { maxRunningServers: 5, autoStopMinutes: 30 });
 		assert.deepEqual(reloaded.data.userSettings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 
@@ -152,6 +164,7 @@ test("chat user-settings API validates same-origin mutations and persists saniti
 		assert.equal(persisted.settings.timezone, "Europe/Berlin");
 		assert.equal(persisted.settings.shortcuts.webAnnotationsToggle, "Ctrl+Shift+P");
 		assert.deepEqual(persisted.settings.transcription, { providerId: "openai-chatgpt" });
+		assert.deepEqual(persisted.settings.toolMetrics, { tokenCalculation: { method: "tiktoken", encoding: "cl100k_base" } });
 		assert.deepEqual(persisted.settings.previewServers, { maxRunningServers: 5, autoStopMinutes: 30 });
 		assert.deepEqual(persisted.settings.telemetryRetention, { enabled: true, days: 10, lastPrunedAt });
 		assert.equal("users" in persisted, false);
