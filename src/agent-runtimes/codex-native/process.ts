@@ -21,6 +21,8 @@ import {
 } from "./protocol-version.js";
 
 const MAX_VERSION_OUTPUT_BYTES = 64 * 1024;
+const SESSION_PATH_CLEANUP_MAX_RETRIES = 10;
+const SESSION_PATH_CLEANUP_RETRY_DELAY_MS = 50;
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
 const INSTANCE_CONFIG = [
@@ -237,7 +239,12 @@ export async function prepareCodexNativeSessionPaths(
 }
 
 export async function disposeCodexNativeSessionPaths(paths: CodexNativeSessionPaths): Promise<void> {
-	await rm(paths.generationRoot, { recursive: true, force: true });
+	await rm(paths.generationRoot, {
+		recursive: true,
+		force: true,
+		maxRetries: SESSION_PATH_CLEANUP_MAX_RETRIES,
+		retryDelay: SESSION_PATH_CLEANUP_RETRY_DELAY_MS,
+	});
 	await rmdir(paths.sessionRoot).catch((error: NodeJS.ErrnoException) => {
 		if (error.code !== "ENOTEMPTY" && error.code !== "ENOENT") throw error;
 	});
@@ -502,24 +509,32 @@ export async function diagnoseCodexNativeRuntime(
 }
 
 export class CodexNativeAppServerProcess {
-	private closePromise?: Promise<void>;
+	private stopPromise?: Promise<void>;
+	private cleanupPromise?: Promise<void>;
+	private pathsDisposed = false;
 
 	constructor(
 		readonly client: CodexAppServerClient,
 		readonly paths: CodexNativeSessionPaths,
+		private readonly disposePaths: (paths: CodexNativeSessionPaths) => Promise<void> = disposeCodexNativeSessionPaths,
 	) {}
 
+	async stop(): Promise<void> {
+		if (!this.stopPromise) this.stopPromise = this.client.close();
+		await this.stopPromise;
+	}
+
 	async close(): Promise<void> {
-		if (!this.closePromise) {
-			this.closePromise = (async () => {
-				try {
-					await this.client.close();
-				} finally {
-					await disposeCodexNativeSessionPaths(this.paths);
-				}
-			})();
+		await this.stop();
+		if (this.pathsDisposed) return;
+		if (!this.cleanupPromise) this.cleanupPromise = this.disposePaths(this.paths);
+		const cleanup = this.cleanupPromise;
+		try {
+			await cleanup;
+			this.pathsDisposed = true;
+		} finally {
+			if (this.cleanupPromise === cleanup) this.cleanupPromise = undefined;
 		}
-		await this.closePromise;
 	}
 }
 

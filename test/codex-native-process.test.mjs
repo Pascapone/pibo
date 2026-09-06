@@ -12,6 +12,7 @@ import {
 } from "../dist/agent-runtimes/codex-native/config.js";
 import {
 	buildCodexNativeProcessEnvironment,
+	CodexNativeAppServerProcess,
 	CodexNativeProcessError,
 	diagnoseCodexNativeRuntime,
 	disposeCodexNativeSessionPaths,
@@ -249,6 +250,31 @@ test("Codex native process environment is allowlisted, resource scoped, and cann
 		}),
 		(error) => error instanceof CodexNativeProcessError && error.code === "environment_invalid",
 	);
+});
+
+test("Codex native process shutdown stays complete when generation cleanup needs a retry", async () => {
+	let processCloseCalls = 0;
+	let cleanupCalls = 0;
+	const runtime = new CodexNativeAppServerProcess(
+		{
+			async close() {
+				processCloseCalls += 1;
+			},
+		},
+		{},
+		async () => {
+			cleanupCalls += 1;
+			if (cleanupCalls === 1) throw new Error("transient generation cleanup race");
+		},
+	);
+
+	await Promise.all([runtime.stop(), runtime.stop()]);
+	assert.equal(processCloseCalls, 1);
+	await assert.rejects(runtime.close(), /transient generation cleanup race/);
+	await runtime.close();
+	await runtime.close();
+	assert.equal(processCloseCalls, 1);
+	assert.equal(cleanupCalls, 2);
 });
 
 test("Codex native process starts the stable stdio server in isolated state and cleans only its generation", async (t) => {
