@@ -25,7 +25,7 @@
 * [Idle Session history latency validation — 2026&#45;09&#45;05](idle-session-history-latency-validation-2026-09-05.md) - Records runtime&#45;free history inspection, passive Terminal status, bounded fork caching, and Docker plus headful Pibo2 performance evidence&#46;
 * [Immediate top trace pagination validation — 2026&#45;08&#45;07](immediate-top-trace-pagination-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Incident 2026&#45;05&#45;16: Chat Web session stuck in partial tool call](incident-2026-05-16-stuck-toolcall-stream.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
-* [Indexed chat admission: P0 validation](performance-scalability-p0-2026-09-06.md) - Records the isolated indexed&#45;admission implementation, measurements and remaining acceptance gates&#46;
+* [Indexed chat admission: P0 validation](performance-scalability-p0-2026-09-06.md) - Records the isolated indexed&#45;admission implementation, measurements and completed Pibo2 acceptance&#46;
 * [Ink CLI V2 PTY Smoke Scenarios](ink-cli-v2-pty-smoke-scenarios.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Isolated Deployment Pool Validation Report](isolated-deployment-pool-validation-2026-08-23.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [LangGraphJS&#45;Analyse für Pibo Workflow System V1](2026-05-10-workflow-research-langgraphjs.md) - Preserves the original report body as stable research without promoting historical claims&#46;
