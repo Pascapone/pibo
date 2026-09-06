@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-06T06:59:44Z"
+  at: "2026-09-06T07:02:37Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -24,7 +24,7 @@ implementation:
   browser_execution: "headed Room, Workflow Session, manual Run Room dialog, and desktop/mobile viewport acceptance passed"
   room_edit_acceptance: "At da91ca26, full Docker build/typechecks, 19 focused tests and 12 headed scenarios passed; exact-candidate Pibo2 passed 30 desktop/mobile cases, real Spark work, and reload checks."
 traceability:
-  commit: "da91ca265c6baa16a4f19f29d2036c3c6ddc56a0"
+  commit: "2a59bf5e812df3c1b6d28bc8560741fb6428fa7c"
   requirements:
     - id: "WEB-SHELL-MOUNT-001"
       status: "implemented"

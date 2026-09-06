@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-06T06:59:44Z",
+  "generated_at": "2026-09-06T07:02:37Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -13021,9 +13021,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 31322,
-      "file_sha256": "d106b88120dab9fcc18956e421b0c4dc73eea41ccda31e3fd239bc379b468931",
-      "body_sha256": "87c0b609bf6b93724c5b2abd7b86fd0555b914b463af853015431e0e7a6b7da5",
+      "file_bytes": 37848,
+      "file_sha256": "e72c5084717a6d42a9b05bc0b81ddc84f23f2cac510ea43cc800133c994f81e1",
+      "body_sha256": "510a0725cbc80e41bdb3f1512cd9cd302c4ea2eb21fbe7a7bb2bc5067481b4f6",
       "lineage": null
     },
     {
