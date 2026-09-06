@@ -1,0 +1,335 @@
+{
+  "piboSessionId": "ps_f29f1c3d-8b5f-4ec1-98f7-d0ff55702fa9",
+  "events": [
+    {
+      "created_at": "2026-09-05T20:26:18.337Z",
+      "type": "message_finished",
+      "event_id": "web-mtou23kz-37c820e1-2f58-44e0-baef-075a88c51d48",
+      "stream_id": 987972,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T20:26:18.321Z",
+      "type": "assistant_message",
+      "event_id": "web-mtou23kz-37c820e1-2f58-44e0-baef-075a88c51d48",
+      "stream_id": 987971,
+      "preview_text": "DONE-D"
+    },
+    {
+      "created_at": "2026-09-05T20:26:18.310Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtou23kz-37c820e1-2f58-44e0-baef-075a88c51d48",
+      "stream_id": 987970,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T20:26:17.072Z",
+      "type": "message_started",
+      "event_id": "web-mtou23kz-37c820e1-2f58-44e0-baef-075a88c51d48",
+      "stream_id": 987969,
+      "preview_text": "Reply exactly DONE-D without tools."
+    },
+    {
+      "created_at": "2026-09-05T20:26:17.057Z",
+      "type": "message_finished",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987968,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T20:26:17.041Z",
+      "type": "assistant_message",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987967,
+      "preview_text": "DONE-C"
+    },
+    {
+      "created_at": "2026-09-05T20:26:17.026Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987966,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T20:26:16.251Z",
+      "type": "tool_execution_finished",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987965,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:26:12.664Z",
+      "type": "message_queued",
+      "event_id": "web-mtou23kz-37c820e1-2f58-44e0-baef-075a88c51d48",
+      "stream_id": 987964,
+      "preview_text": "Reply exactly DONE-D without tools."
+    },
+    {
+      "created_at": "2026-09-05T20:26:12.647Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_00423921-4e18-437f-9e65-f925d6210fb1",
+      "stream_id": 987963,
+      "preview_text": "Reply exactly DONE-D without tools.",
+      "text": "Reply exactly DONE-D without tools."
+    },
+    {
+      "created_at": "2026-09-05T20:26:12.190Z",
+      "type": "tool_execution_started",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987962,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:26:12.180Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987961,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T20:26:12.159Z",
+      "type": "tool_call",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987960,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:26:12.134Z",
+      "type": "tool_call",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987959,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:26:12.055Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987958
+    },
+    {
+      "created_at": "2026-09-05T20:26:11.953Z",
+      "type": "thinking_started",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987957,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-05T20:26:10.934Z",
+      "type": "message_started",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987956,
+      "preview_text": "Performance validation only. Run bash: sleep 4; printf QUEUE-C. Then reply exactly DONE-C. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-05T20:26:10.917Z",
+      "type": "message_queued",
+      "event_id": "web-mtou22bf-ad3f2baa-c33b-4103-be11-e6715a9d86ab",
+      "stream_id": 987955,
+      "preview_text": "Performance validation only. Run bash: sleep 4; printf QUEUE-C. Then reply exactly DONE-C. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-05T20:26:10.904Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_d11e98e7-78b8-4861-ab01-97770a477c96",
+      "stream_id": 987954,
+      "preview_text": "Performance validation only. Run bash: sleep 4; printf QUEUE-C. Then reply exactly DONE-C. Do not read or modify files.",
+      "text": "Performance validation only. Run bash: sleep 4; printf QUEUE-C. Then reply exactly DONE-C. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-05T20:24:15.871Z",
+      "type": "message_finished",
+      "event_id": "web-mtoturw7-3d83ac39-b83f-4516-b1bc-28a25a2856b0",
+      "stream_id": 987953,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T20:24:15.855Z",
+      "type": "assistant_message",
+      "event_id": "web-mtoturw7-3d83ac39-b83f-4516-b1bc-28a25a2856b0",
+      "stream_id": 987952,
+      "preview_text": "DONE-B"
+    },
+    {
+      "created_at": "2026-09-05T20:24:15.843Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtoturw7-3d83ac39-b83f-4516-b1bc-28a25a2856b0",
+      "stream_id": 987951,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T20:24:15.754Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtoturw7-3d83ac39-b83f-4516-b1bc-28a25a2856b0",
+      "stream_id": 987950
+    },
+    {
+      "created_at": "2026-09-05T20:24:15.739Z",
+      "type": "thinking_started",
+      "event_id": "web-mtoturw7-3d83ac39-b83f-4516-b1bc-28a25a2856b0",
+      "stream_id": 987949,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-05T20:24:14.159Z",
+      "type": "message_started",
+      "event_id": "web-mtoturw7-3d83ac39-b83f-4516-b1bc-28a25a2856b0",
+      "stream_id": 987948,
+      "preview_text": "Reply exactly DONE-B. Do not use tools."
+    },
+    {
+      "created_at": "2026-09-05T20:24:14.145Z",
+      "type": "message_queued",
+      "event_id": "web-mtoturw7-3d83ac39-b83f-4516-b1bc-28a25a2856b0",
+      "stream_id": 987947,
+      "preview_text": "Reply exactly DONE-B. Do not use tools."
+    },
+    {
+      "created_at": "2026-09-05T20:24:14.138Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_a938b0a0-3306-40b0-a11e-053467a5cc63",
+      "stream_id": 987946,
+      "preview_text": "Reply exactly DONE-B. Do not use tools.",
+      "text": "Reply exactly DONE-B. Do not use tools."
+    },
+    {
+      "created_at": "2026-09-05T20:20:37.274Z",
+      "type": "message_finished",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987945,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T20:20:37.256Z",
+      "type": "assistant_message",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987944,
+      "preview_text": "DONE-A"
+    },
+    {
+      "created_at": "2026-09-05T20:20:37.243Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987943,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T20:20:35.140Z",
+      "type": "tool_execution_finished",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987942,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:20:31.037Z",
+      "type": "tool_execution_started",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987941,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:20:31.013Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987940,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T20:20:30.986Z",
+      "type": "tool_call",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987939,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:20:30.950Z",
+      "type": "tool_call",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987938,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:20:30.925Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987937
+    },
+    {
+      "created_at": "2026-09-05T20:20:30.773Z",
+      "type": "thinking_started",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987936,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-05T20:20:29.290Z",
+      "type": "message_started",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987935,
+      "preview_text": "Performance validation only. Use bash to run: sleep 4; printf QUEUE-TURN-A. Then reply exactly DONE-A. Do not read or modify any files."
+    },
+    {
+      "created_at": "2026-09-05T20:20:29.265Z",
+      "type": "message_queued",
+      "event_id": "web-mtotuqou-f7121fc0-d18f-4e0a-a806-e0f7dca8865d",
+      "stream_id": 987934,
+      "preview_text": "Performance validation only. Use bash to run: sleep 4; printf QUEUE-TURN-A. Then reply exactly DONE-A. Do not read or modify any files."
+    },
+    {
+      "created_at": "2026-09-05T20:20:29.250Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_5aaf9a8d-3770-4c29-8d7b-06eebcd7dcc8",
+      "stream_id": 987933,
+      "preview_text": "Performance validation only. Use bash to run: sleep 4; printf QUEUE-TURN-A. Then reply exactly DONE-A. Do not read or modify any files.",
+      "text": "Performance validation only. Use bash to run: sleep 4; printf QUEUE-TURN-A. Then reply exactly DONE-A. Do not read or modify any files."
+    },
+    {
+      "created_at": "2026-09-05T20:17:16.577Z",
+      "type": "execution_result",
+      "event_id": "6f084d82-01a8-4a26-91ba-3fec22612734",
+      "stream_id": 987932,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:17:16.107Z",
+      "type": "execution_result",
+      "event_id": "a8461d92-5526-44f3-b145-1237d8d747b4",
+      "stream_id": 987931,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:17:15.184Z",
+      "type": "execution_result",
+      "event_id": "fab1921c-7f18-4ecc-952f-64505fec5038",
+      "stream_id": 987930,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:17:14.622Z",
+      "type": "execution_result",
+      "event_id": "d01600d9-e37e-42ee-9e7d-ebdbd7e29174",
+      "stream_id": 987929,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:17:14.169Z",
+      "type": "execution_result",
+      "event_id": "012249e9-4c76-44bb-b0e0-da9bf841a037",
+      "stream_id": 987928,
+      "preview_text": "status"
+    }
+  ],
+  "limited": true,
+  "nextCommands": [
+    "pibo debug events ps_f29f1c3d-8b5f-4ec1-98f7-d0ff55702fa9 show 987972",
+    "pibo debug messages ps_f29f1c3d-8b5f-4ec1-98f7-d0ff55702fa9 show stream:987971 --full",
+    "pibo debug messages ps_f29f1c3d-8b5f-4ec1-98f7-d0ff55702fa9 list"
+  ]
+}

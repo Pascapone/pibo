@@ -1,0 +1,340 @@
+{
+  "at": "2026-09-05T21:20:46.563Z",
+  "active": {
+    "processing": true,
+    "activeModel": {
+      "provider": "openai-codex",
+      "id": "gpt-5.3-codex-spark"
+    },
+    "queuedMessages": 0
+  },
+  "dialogQueued": true,
+  "switches": [
+    {
+      "id": "ps_16510943-6252-43e4-926f-b644506fa69c",
+      "ms": 44.30000019073486,
+      "ready": true,
+      "queuedVisible": false
+    },
+    {
+      "id": "ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b",
+      "ms": 23.5,
+      "ready": true,
+      "queuedVisible": false
+    },
+    {
+      "id": "ps_16510943-6252-43e4-926f-b644506fa69c",
+      "ms": 35.40000009536743,
+      "ready": true,
+      "queuedVisible": false
+    },
+    {
+      "id": "ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b",
+      "ms": 31.59999990463257,
+      "ready": true,
+      "queuedVisible": false
+    },
+    {
+      "id": "ps_16510943-6252-43e4-926f-b644506fa69c",
+      "ms": 32.19999980926514,
+      "ready": true,
+      "queuedVisible": false
+    },
+    {
+      "id": "ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b",
+      "ms": 39.30000019073486,
+      "ready": true,
+      "queuedVisible": false
+    }
+  ],
+  "network": [
+    {
+      "path": "/api/chat/signals/events",
+      "query": "?rootPiboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&includeStatuses=true",
+      "ms": 188061.90000009537,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&mode=live",
+      "ms": 187788.60000038147,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&mode=summary&since=987993%3A999999",
+      "ms": 122006.2999997139,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/sessions/ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b/fork-candidates",
+      "query": "",
+      "ms": 13.099999904632568,
+      "bytes": 281
+    },
+    {
+      "path": "/api/chat/message",
+      "query": "",
+      "ms": 55.5,
+      "bytes": 1112
+    },
+    {
+      "path": "/api/chat/bootstrap",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&markRead=true",
+      "ms": 817,
+      "bytes": 562207
+    },
+    {
+      "path": "/api/chat/status",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&activate=false",
+      "ms": 1116.8000001907349,
+      "bytes": 1510
+    },
+    {
+      "path": "/api/chat/sessions/ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b/fork-candidates",
+      "query": "",
+      "ms": 358.90000009536743,
+      "bytes": 281
+    },
+    {
+      "path": "/api/chat/navigation",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d",
+      "ms": 558.5,
+      "bytes": 26310
+    },
+    {
+      "path": "/api/chat/loops/session-goal",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b",
+      "ms": 322.5,
+      "bytes": 13
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&mode=summary&since=987996%3A999999",
+      "ms": 2281.9000000953674,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/trace/timeline",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&limit=100",
+      "ms": 35.09999990463257,
+      "bytes": 8509
+    },
+    {
+      "path": "/api/chat/trace/timeline",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&limit=100",
+      "ms": 22.700000286102295,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/trace/timeline",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&limit=100",
+      "ms": 20.300000190734863,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/status",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&activate=false",
+      "ms": 610,
+      "bytes": 1510
+    },
+    {
+      "path": "/api/chat/sessions/ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b/fork-candidates",
+      "query": "",
+      "ms": 10.300000190734863,
+      "bytes": 281
+    },
+    {
+      "path": "/api/chat/message",
+      "query": "",
+      "ms": 48.90000009536743,
+      "bytes": 966
+    },
+    {
+      "path": "/api/chat/bootstrap",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&markRead=true",
+      "ms": 157.40000009536743,
+      "bytes": 562207
+    },
+    {
+      "path": "/api/chat/loops/session-goal",
+      "query": "?piboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c",
+      "ms": 72,
+      "bytes": 13
+    },
+    {
+      "path": "/api/chat/status",
+      "query": "?piboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c&activate=false",
+      "ms": 121.2999997138977,
+      "bytes": 81
+    },
+    {
+      "path": "/api/chat/trace/timeline",
+      "query": "?piboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c&limit=100",
+      "ms": 115.90000009536743,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/status",
+      "query": "?piboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c&activate=false",
+      "ms": 141.2999997138977,
+      "bytes": 81
+    },
+    {
+      "path": "/api/chat/sessions/ps_16510943-6252-43e4-926f-b644506fa69c/read",
+      "query": "",
+      "ms": 127.5,
+      "bytes": 69
+    },
+    {
+      "path": "/api/chat/signals/events",
+      "query": "?rootPiboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c&includeStatuses=true",
+      "ms": 85.2000002861023,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&mode=summary&since=987996%3A999999",
+      "ms": 85.2999997138977,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/loops/session-goal",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b",
+      "ms": 300.5,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/sessions/ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b/fork-candidates",
+      "query": "",
+      "ms": 302.6000003814697,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/navigation",
+      "query": "?piboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c&roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d",
+      "ms": 426.80000019073486,
+      "bytes": 25297
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&mode=live&since=988004%3A0&liveSince=5",
+      "ms": 280.30000019073486,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/signals/events",
+      "query": "?rootPiboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&includeStatuses=true",
+      "ms": 280.2999997138977,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&mode=summary&since=988004%3A999999",
+      "ms": 280.2999997138977,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/sessions/ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b/read",
+      "query": "",
+      "ms": 574.6000003814697,
+      "bytes": 69
+    },
+    {
+      "path": "/api/chat/loops/session-goal",
+      "query": "?piboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c",
+      "ms": 207.2000002861023,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/trace/timeline",
+      "query": "?piboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c&limit=100",
+      "ms": 206.7999997138977,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/sessions/ps_16510943-6252-43e4-926f-b644506fa69c/read",
+      "query": "",
+      "ms": 451.90000009536743,
+      "bytes": 69
+    },
+    {
+      "path": "/api/chat/signals/events",
+      "query": "?rootPiboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c&includeStatuses=true",
+      "ms": 177.7999997138977,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&mode=summary&since=988004%3A999999",
+      "ms": 177.60000038146973,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/loops/session-goal",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b",
+      "ms": 197.7999997138977,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/sessions/ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b/fork-candidates",
+      "query": "",
+      "ms": 197.30000019073486,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/sessions/ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b/read",
+      "query": "",
+      "ms": 506.5,
+      "bytes": 69
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?piboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&mode=live&since=988004%3A0&liveSince=5",
+      "ms": 180,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/signals/events",
+      "query": "?rootPiboSessionId=ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b&includeStatuses=true",
+      "ms": 179.7999997138977,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&mode=summary&since=988004%3A999999",
+      "ms": 179.59999990463257,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/loops/session-goal",
+      "query": "?piboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c",
+      "ms": 209.2000002861023,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/trace/timeline",
+      "query": "?piboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c&limit=100",
+      "ms": 208.7999997138977,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/signals/events",
+      "query": "?rootPiboSessionId=ps_16510943-6252-43e4-926f-b644506fa69c&includeStatuses=true",
+      "ms": 193.80000019073486,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&mode=summary&since=988004%3A999999",
+      "ms": 193.59999990463257,
+      "bytes": 0
+    },
+    {
+      "path": "/api/chat/events",
+      "query": "?roomId=room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d&mode=summary&since=988004%3A999999",
+      "ms": 21.5,
+      "bytes": 0
+    }
+  ]
+}

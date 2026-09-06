@@ -223,6 +223,8 @@ export interface AgentRuntimeAdapter {
 	disposeAuth?(): Promise<void>;
 	inspectHistory?(input: InspectAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryInspection>;
 	readHistory?(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage>;
+	/** Read persisted fork candidates without opening a runtime; undefined retains the live fallback. */
+	readForkCandidates?(input: ResolveAgentRuntimeBindingInput): Promise<AgentRuntimeForkCandidate[] | undefined>;
 	resolveBinding?(input: ResolveAgentRuntimeBindingInput): Promise<RuntimeSessionBinding>;
 }
 

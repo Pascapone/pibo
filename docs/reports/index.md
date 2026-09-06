@@ -20,7 +20,9 @@
 * [Expert Report: Chat Web Trace Performance and Gateway Responsiveness](chat-web-trace-performance-expert-report-2026-07-04.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Failed message signal reconciliation validation — 2026&#45;08&#45;07](failed-message-signal-status-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Full Test Suite Hermeticity Triage — 2026&#45;08&#45;10](full-test-hermeticity-triage-2026-08-10.md) - Preserves the original report body as stable research without promoting historical claims&#46;
+* [Gateway status scaling validation — September 6, 2026](gateway-status-scaling-validation-2026-09-06.md) - Records removal of redundant ancestor reads and exact&#45;candidate Pibo2 status, safety, streaming, and Queue acceptance&#46;
 * [Graphlib&#45;Analyse für Pibo Workflow System V1](2026-05-10-workflow-research-graphlib.md) - Preserves the original report body as stable research without promoting historical claims&#46;
+* [Idle Session history latency validation — 2026&#45;09&#45;05](idle-session-history-latency-validation-2026-09-05.md) - Records runtime&#45;free history inspection, passive Terminal status, bounded fork caching, and Docker plus headful Pibo2 performance evidence&#46;
 * [Immediate top trace pagination validation — 2026&#45;08&#45;07](immediate-top-trace-pagination-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Incident 2026&#45;05&#45;16: Chat Web session stuck in partial tool call](incident-2026-05-16-stuck-toolcall-stream.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Ink CLI V2 PTY Smoke Scenarios](ink-cli-v2-pty-smoke-scenarios.md) - Preserves the original report body as stable research without promoting historical claims&#46;
@@ -68,6 +70,7 @@
 * [Runtime&#45;Aware Agent Designer Validation — 2026&#45;08&#45;15](runtime-aware-agent-designer-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Runtime&#45;Neutral History, Trace, and Debug Validation — 2026&#45;08&#45;15](runtime-neutral-history-trace-debug-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Session CLI steering validation — 2026&#45;08&#45;24](session-cli-steering-validation-2026-08-24.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Session status latency validation — 2026&#45;09&#45;05](session-status-latency-validation-2026-09-05.md) - Records the external quota bottleneck, bounded status&#45;cache correction, Docker regressions, and headful Pibo2 status and queue measurements&#46;
 * [Session&#45;native Workflow transition validation — 2026&#45;09&#45;05](session-native-workflow-transition-validation-2026-09-05.md) - Records isolated migration, runtime, browser, packaging, and regression evidence for the completed Room and Session ownership transition&#46;
 * [Shared Agent Management Tools Validation](agent-management-tools-validation.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Sidebar browser tabs validation](sidebar-browser-tabs-validation-2026-08-30.md) - Records implementation, automated, and headful browser validation for the desktop browser&#45;tab workspace&#46;

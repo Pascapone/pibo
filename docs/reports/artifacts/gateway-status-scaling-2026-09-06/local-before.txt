@@ -1,0 +1,31 @@
+✖ signal snapshots order known parents without rereading each stored Session (37.644154ms)
+✔ listed Session depth matches store traversal for roots, missing parents, and cycles (3.954403ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2686.510807
+
+✖ failing tests:
+
+test at test/session-router-store.test.mjs:1476:1
+✖ signal snapshots order known parents without rereading each stored Session (37.644154ms)
+  AssertionError [ERR_ASSERTION]: the complete list already contains each ancestor record
+
+  514 !== 0
+
+      at TestContext.<anonymous> (file:///workspace/test/session-router-store.test.mjs:1494:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.start (node:internal/test_runner/test:1096:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 514,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
