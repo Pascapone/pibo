@@ -1,0 +1,479 @@
+{
+  "utc": "2026-09-06T19:14:22.724141+00:00",
+  "sqlite_version": "3.45.1",
+  "read_only": true,
+  "queries": [
+    {
+      "name": "indexes",
+      "sql": "SELECT name,sql FROM sqlite_master WHERE type='index' AND tbl_name IN ('event_log','observations','chat_messages','session_navigation')",
+      "parameters": [],
+      "plan": [
+        {
+          "id": 2,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SCAN sqlite_master"
+        }
+      ],
+      "rows": [
+        {
+          "name": "sqlite_autoindex_chat_messages_1",
+          "sql": null
+        },
+        {
+          "name": "sqlite_autoindex_chat_messages_2",
+          "sql": null
+        },
+        {
+          "name": "sqlite_autoindex_observations_1",
+          "sql": null
+        },
+        {
+          "name": "sqlite_autoindex_observations_2",
+          "sql": null
+        },
+        {
+          "name": "sqlite_autoindex_session_navigation_1",
+          "sql": null
+        },
+        {
+          "name": "idx_event_log_session_stream",
+          "sql": "CREATE INDEX idx_event_log_session_stream\n\t\t\tON event_log(session_id, stream_id)"
+        },
+        {
+          "name": "idx_event_log_room_stream",
+          "sql": "CREATE INDEX idx_event_log_room_stream\n\t\t\tON event_log(room_id, stream_id)"
+        },
+        {
+          "name": "idx_event_log_topic_stream",
+          "sql": "CREATE INDEX idx_event_log_topic_stream\n\t\t\tON event_log(topic, stream_id)"
+        },
+        {
+          "name": "idx_event_log_idempotency",
+          "sql": "CREATE UNIQUE INDEX idx_event_log_idempotency\n\t\t\tON event_log(idempotency_key)\n\t\t\tWHERE idempotency_key IS NOT NULL"
+        },
+        {
+          "name": "idx_chat_messages_session_sequence",
+          "sql": "CREATE INDEX idx_chat_messages_session_sequence\n\t\t\tON chat_messages(session_id, sequence)"
+        },
+        {
+          "name": "idx_observations_session_sequence",
+          "sql": "CREATE INDEX idx_observations_session_sequence\n\t\t\tON observations(session_id, sequence)"
+        },
+        {
+          "name": "idx_session_navigation_room_sort",
+          "sql": "CREATE INDEX idx_session_navigation_room_sort\n\t\t\tON session_navigation(room_id, archived_at, sort_key DESC)"
+        },
+        {
+          "name": "idx_session_navigation_root",
+          "sql": "CREATE INDEX idx_session_navigation_root\n\t\t\tON session_navigation(root_session_id, parent_id)"
+        },
+        {
+          "name": "idx_event_log_session_sequence_stream",
+          "sql": "CREATE INDEX idx_event_log_session_sequence_stream\n\t\t\tON event_log(session_id, session_sequence DESC, stream_id DESC)"
+        },
+        {
+          "name": "idx_event_log_session_type_sequence_stream",
+          "sql": "CREATE INDEX idx_event_log_session_type_sequence_stream\n\t\t\tON event_log(session_id, type, session_sequence ASC, stream_id ASC)"
+        },
+        {
+          "name": "idx_event_log_unread_session_stream",
+          "sql": "CREATE INDEX idx_event_log_unread_session_stream\n\t\t\tON event_log(session_id, stream_id)\n\t\t\tWHERE (retention_class = 'chat_message' AND type IN ('user.message.accepted', 'assistant_message'))\n\t\t\t\tOR type = 'session_error'"
+        },
+        {
+          "name": "idx_event_log_session_tool_event_sequence_stream",
+          "sql": "CREATE INDEX idx_event_log_session_tool_event_sequence_stream\n\t\t\tON event_log(session_id, tool_call_id, event_id, session_sequence ASC, stream_id ASC)\n\t\t\tWHERE tool_call_id IS NOT NULL\n\t\t\t\tAND type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished')"
+        },
+        {
+          "name": "idx_event_log_session_tool_sequence_stream",
+          "sql": "CREATE INDEX idx_event_log_session_tool_sequence_stream\n\t\t\tON event_log(session_id, tool_call_id, session_sequence ASC, stream_id ASC)\n\t\t\tWHERE tool_call_id IS NOT NULL\n\t\t\t\tAND type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished')"
+        },
+        {
+          "name": "idx_event_log_session_attribute_tool_event_sequence_stream",
+          "sql": "CREATE INDEX idx_event_log_session_attribute_tool_event_sequence_stream\n\t\t\tON event_log(\n\t\t\t\tsession_id,\n\t\t\t\tjson_extract(attributes_json, '$.toolCallId'),\n\t\t\t\tevent_id,\n\t\t\t\tsession_sequence ASC,\n\t\t\t\tstream_id ASC\n\t\t\t)\n\t\t\tWHERE type IN ('tool_execution_started', 'tool_execution_updated', 'tool_execution_finished')"
+        }
+      ],
+      "ms": 0.189,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "room_count",
+      "sql": "SELECT COUNT(*) n FROM event_log WHERE room_id=?",
+      "parameters": [
+        "room_209cf2ff-6b46-4705-a216-a6d2138604bd"
+      ],
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING COVERING INDEX idx_event_log_room_stream (room_id=?)"
+        }
+      ],
+      "rows": [
+        {
+          "n": 1075464
+        }
+      ],
+      "ms": 101.13,
+      "vm_steps_approx": 3226000
+    },
+    {
+      "name": "accepted_recent",
+      "sql": "SELECT stream_id,session_id,actor_id,idempotency_key,created_at,json_extract(attributes_json,'$.clientTxnId') clientTxnId FROM event_log WHERE session_id=? AND type='user.message.accepted' ORDER BY session_sequence DESC LIMIT 5",
+      "parameters": [
+        "ps_5568beb9-fbf4-447f-b732-7affbff84043"
+      ],
+      "plan": [
+        {
+          "id": 5,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING INDEX idx_event_log_session_type_sequence_stream (session_id=? AND type=?)"
+        }
+      ],
+      "rows": [
+        {
+          "stream_id": 1899213,
+          "session_id": "ps_5568beb9-fbf4-447f-b732-7affbff84043",
+          "actor_id": "<audit-actor>",
+          "idempotency_key": "chat:user.accepted:room_209cf2ff-6b46-4705-a216-a6d2138604bd:<audit-actor>:web-mtq6v8gj-e7d5b293-3255-4232-ac42-fe919f0f4fb7",
+          "created_at": "2026-09-06T19:12:34.696Z",
+          "clientTxnId": "web-mtq6v8gj-e7d5b293-3255-4232-ac42-fe919f0f4fb7"
+        }
+      ],
+      "ms": 0.153,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "key_present",
+      "sql": "SELECT * FROM event_log WHERE idempotency_key=? LIMIT 1",
+      "parameters": [
+        "chat:user.accepted:room_209cf2ff-6b46-4705-a216-a6d2138604bd:<audit-actor>:web-mtq6v8gj-e7d5b293-3255-4232-ac42-fe919f0f4fb7"
+      ],
+      "plan": [
+        {
+          "id": 4,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING INDEX idx_event_log_idempotency (idempotency_key=?)"
+        }
+      ],
+      "rows": [
+        {
+          "stream_id": 1899213,
+          "type": "user.message.accepted",
+          "idempotency_key": "chat:user.accepted:room_209cf2ff-6b46-4705-a216-a6d2138604bd:<audit-actor>:web-mtq6v8gj-e7d5b293-3255-4232-ac42-fe919f0f4fb7",
+          "created_at": "2026-09-06T19:12:34.696Z"
+        }
+      ],
+      "ms": 0.143,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "key_missing",
+      "sql": "SELECT stream_id FROM event_log WHERE idempotency_key=? LIMIT 1",
+      "parameters": [
+        "chat:user.accepted:room_209cf2ff-6b46-4705-a216-a6d2138604bd:<audit-actor>:PERF-NONEXISTENT"
+      ],
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING COVERING INDEX idx_event_log_idempotency (idempotency_key=?)"
+        }
+      ],
+      "rows": [],
+      "ms": 0.53,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "json_missing",
+      "sql": "SELECT stream_id FROM event_log WHERE room_id=? AND actor_id=? AND json_extract(attributes_json,'$.clientTxnId')=? ORDER BY stream_id ASC LIMIT 1",
+      "parameters": [
+        "room_209cf2ff-6b46-4705-a216-a6d2138604bd",
+        "<audit-actor>",
+        "PERF-NONEXISTENT"
+      ],
+      "plan": [
+        {
+          "id": 5,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING INDEX idx_event_log_room_stream (room_id=?)"
+        }
+      ],
+      "rows": [],
+      "ms": 1126.533,
+      "vm_steps_approx": 5381000
+    },
+    {
+      "name": "json_present",
+      "sql": "SELECT stream_id FROM event_log WHERE room_id=? AND actor_id=? AND json_extract(attributes_json,'$.clientTxnId')=? ORDER BY stream_id ASC LIMIT 1",
+      "parameters": [
+        "room_209cf2ff-6b46-4705-a216-a6d2138604bd",
+        "<audit-actor>",
+        "web-mtq6v8gj-e7d5b293-3255-4232-ac42-fe919f0f4fb7"
+      ],
+      "plan": [
+        {
+          "id": 5,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING INDEX idx_event_log_room_stream (room_id=?)"
+        }
+      ],
+      "rows": [
+        {
+          "stream_id": 1899213
+        }
+      ],
+      "ms": 1159.42,
+      "vm_steps_approx": 5381000
+    },
+    {
+      "name": "accepted_coverage",
+      "sql": "SELECT COUNT(*) n,SUM(idempotency_key IS NULL) null_keys,SUM(json_extract(attributes_json,'$.clientTxnId') IS NOT NULL) has_txn,SUM(CASE WHEN json_extract(attributes_json,'$.clientTxnId') IS NOT NULL AND (idempotency_key IS NULL OR idempotency_key != 'chat:user.accepted:'||coalesce(room_id,'')||':'||coalesce(actor_id,'')||':'||json_extract(attributes_json,'$.clientTxnId')) THEN 1 ELSE 0 END) noncanonical_txn_keys FROM event_log WHERE room_id=? AND type='user.message.accepted'",
+      "parameters": [
+        "room_209cf2ff-6b46-4705-a216-a6d2138604bd"
+      ],
+      "plan": [
+        {
+          "id": 4,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING INDEX idx_event_log_room_stream (room_id=?)"
+        }
+      ],
+      "rows": [
+        {
+          "n": 1437,
+          "null_keys": 1,
+          "has_txn": 1435,
+          "noncanonical_txn_keys": 0
+        }
+      ],
+      "ms": 1096.635,
+      "vm_steps_approx": 5421000
+    },
+    {
+      "name": "sequence_current",
+      "sql": "SELECT COALESCE(MAX(session_sequence),0)+1 AS next_sequence FROM event_log WHERE session_id=?",
+      "parameters": [
+        "ps_5568beb9-fbf4-447f-b732-7affbff84043"
+      ],
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING COVERING INDEX idx_event_log_session_sequence_stream (session_id=?)"
+        }
+      ],
+      "rows": [
+        {
+          "next_sequence": 1525
+        }
+      ],
+      "ms": 0.073,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "large_session",
+      "sql": "SELECT session_id,COUNT(*) n FROM event_log WHERE room_id=? GROUP BY session_id ORDER BY n DESC LIMIT 3",
+      "parameters": [
+        "room_209cf2ff-6b46-4705-a216-a6d2138604bd"
+      ],
+      "plan": [
+        {
+          "id": 9,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING INDEX idx_event_log_room_stream (room_id=?)"
+        },
+        {
+          "id": 16,
+          "parent": 0,
+          "notused": 0,
+          "detail": "USE TEMP B-TREE FOR GROUP BY"
+        },
+        {
+          "id": 56,
+          "parent": 0,
+          "notused": 0,
+          "detail": "USE TEMP B-TREE FOR ORDER BY"
+        }
+      ],
+      "rows": [
+        {
+          "session_id": "ps_9fce2456-1a4e-4ec9-ad08-b3ef2c1584c5",
+          "n": 179173
+        },
+        {
+          "session_id": "ps_e42769fa-80b7-499e-862a-2b3eaedfba89",
+          "n": 51576
+        },
+        {
+          "session_id": "ps_7a5a3f8c-60fc-43dd-819c-01419594eaf7",
+          "n": 30428
+        }
+      ],
+      "ms": 1503.877,
+      "vm_steps_approx": 15070000
+    },
+    {
+      "name": "sequence_large",
+      "sql": "SELECT COALESCE(MAX(session_sequence),0)+1 AS next_sequence FROM event_log WHERE session_id=?",
+      "parameters": [
+        "ps_9fce2456-1a4e-4ec9-ad08-b3ef2c1584c5"
+      ],
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SEARCH event_log USING COVERING INDEX idx_event_log_session_sequence_stream (session_id=?)"
+        }
+      ],
+      "rows": [
+        {
+          "next_sequence": 179174
+        }
+      ],
+      "ms": 0.497,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "count_by_retention",
+      "sql": "SELECT retention_class,COUNT(*) n FROM event_log GROUP BY retention_class",
+      "parameters": [],
+      "plan": [
+        {
+          "id": 6,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SCAN event_log"
+        },
+        {
+          "id": 8,
+          "parent": 0,
+          "notused": 0,
+          "detail": "USE TEMP B-TREE FOR GROUP BY"
+        }
+      ],
+      "rows": [
+        {
+          "retention_class": "audit_event",
+          "n": 2642
+        },
+        {
+          "retention_class": "chat_message",
+          "n": 32123
+        },
+        {
+          "retention_class": "live_delta",
+          "n": 15
+        },
+        {
+          "retention_class": "trace_event",
+          "n": 1542294
+        }
+      ],
+      "ms": 5351.422,
+      "vm_steps_approx": 18924000
+    },
+    {
+      "name": "sessions",
+      "sql": "SELECT COUNT(*) n FROM sessions",
+      "parameters": [],
+      "plan": [
+        {
+          "id": 4,
+          "parent": 0,
+          "notused": 0,
+          "detail": "SCAN sessions USING COVERING INDEX sqlite_autoindex_sessions_1"
+        }
+      ],
+      "rows": [
+        {
+          "n": 3213
+        }
+      ],
+      "ms": 0.138,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "pragmas",
+      "sql": "PRAGMA journal_mode",
+      "parameters": [],
+      "rows": [
+        {
+          "journal_mode": "wal"
+        }
+      ],
+      "ms": 0.012,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "page_count",
+      "sql": "PRAGMA page_count",
+      "parameters": [],
+      "rows": [
+        {
+          "page_count": 1632158
+        }
+      ],
+      "ms": 0.011,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "page_size",
+      "sql": "PRAGMA page_size",
+      "parameters": [],
+      "rows": [
+        {
+          "page_size": 4096
+        }
+      ],
+      "ms": 0.006,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "freelist_count",
+      "sql": "PRAGMA freelist_count",
+      "parameters": [],
+      "rows": [
+        {
+          "freelist_count": 0
+        }
+      ],
+      "ms": 0.01,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "connection_synchronous",
+      "sql": "PRAGMA synchronous",
+      "parameters": [],
+      "rows": [
+        {
+          "synchronous": 2
+        }
+      ],
+      "ms": 0.006,
+      "vm_steps_approx": 0
+    },
+    {
+      "name": "connection_autocheckpoint",
+      "sql": "PRAGMA wal_autocheckpoint",
+      "parameters": [],
+      "rows": [
+        {
+          "wal_autocheckpoint": 1000
+        }
+      ],
+      "ms": 0.006,
+      "vm_steps_approx": 0
+    }
+  ]
+}

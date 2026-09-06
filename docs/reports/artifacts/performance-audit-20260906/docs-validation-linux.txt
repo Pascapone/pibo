@@ -1,0 +1,25 @@
+
+> @pasko70/pibo@1.7.2 docs:indexes:write
+> node scripts/generate-okf-indexes.mjs
+
+OKF index generation: PASS
+Managed indexes: 106; drift: 2
+  stale: docs/plans/index.md
+  stale: docs/reports/index.md
+
+> @pasko70/pibo@1.7.2 docs:validate
+> npm run docs:validate:strict
+
+
+> @pasko70/pibo@1.7.2 docs:validate:strict
+> node scripts/validate-okf-docs.mjs --mode strict
+
+OKF strict validation: FAIL
+Markdown paths: 780 (git)
+Ledger records: 780
+States: conformant=626 reserved=107 pending=0 host-exception=47
+Errors: 3; warnings: 0
+  PIBO_LINK_MISSING: 3
+ERROR [pibo-profile:PIBO_LINK_MISSING] docs/reports/session-native-workflow-transition-validation-2026-09-05.md: Internal link target does not exist: /reports/artifacts/session-native-workflows-2026-09-05/desktop-inspection.png
+ERROR [pibo-profile:PIBO_LINK_MISSING] docs/reports/session-native-workflow-transition-validation-2026-09-05.md: Internal link target does not exist: /reports/artifacts/session-native-workflows-2026-09-05/desktop-manual-result.png
+ERROR [pibo-profile:PIBO_LINK_MISSING] docs/reports/session-native-workflow-transition-validation-2026-09-05.md: Internal link target does not exist: /reports/artifacts/session-native-workflows-2026-09-05/mobile-manual-dialog.png
