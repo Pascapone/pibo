@@ -222,11 +222,14 @@ export function addRoomToBootstrap(data: BootstrapData, room: PiboRoom): Bootstr
 }
 
 export function replaceRoomInBootstrap(data: BootstrapData, roomId: string, room: PiboRoom): BootstrapData {
+	const rooms = roomId !== room.id && findRoomById(data.rooms, room.id)
+		? removeRoomNodes(data.rooms, new Set([roomId]))
+		: replaceRoomNode(data.rooms, roomId, () => room);
 	return {
 		...data,
 		room: data.room?.id === roomId ? room : data.room,
 		selectedRoomId: data.selectedRoomId === roomId ? room.id : data.selectedRoomId,
-		rooms: replaceRoomNode(data.rooms, roomId, () => room),
+		rooms: findRoomById(rooms, room.id) ? rooms : [room, ...rooms],
 	};
 }
 
