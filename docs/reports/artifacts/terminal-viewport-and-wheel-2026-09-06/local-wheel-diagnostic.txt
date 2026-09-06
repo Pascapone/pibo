@@ -1,0 +1,39 @@
+▶ Terminal preserves follow and reading positions when its viewport shrinks
+  ✔ 1431px retains bottom and detached anchor through external header growth (4659.706672ms)
+  ✖ 390px retains bottom and detached anchor through external header growth (4663.215231ms)
+✖ Terminal preserves follow and reading positions when its viewport shrinks (9418.893254ms)
+ℹ 1431px initial geometry: {"height":595,"scrollHeight":2337,"gap":0,"top":1742,"row":"terminal:assistant:streaming-fixture-f56ce254-043e-4b7e-8761-3ff8104ed8fe:assistant:0","offset":-1053.3125,"rowHeight":1648.6875,"detached":false}
+ℹ CONTROL ONLY: baseline bottom gap 30px
+ℹ [{"kind":"set","value":1172,"stack":"Error\n    at HTMLDivElement.set (<anonymous>:6:190)\n    at D2 (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:274516)\n    at http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:267027\n    at HTMLDivElement.s (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:270497)"}]
+ℹ 1431px concurrent wheel scrollTop samples: [1292,1292,1292,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172]; events: [{"phase":"capture","deltaY":-120,"top":1292,"target":"P"},{"phase":"bubble","top":1172,"prevented":true}]
+ℹ 1431px: viewport-only shrink 595→565, bottom gap 30px; detached anchor preserved
+ℹ 390px initial geometry: {"height":525,"scrollHeight":3724,"gap":0,"top":3199,"row":"terminal:assistant:streaming-fixture-cd2ae82b-a00f-4f4b-b03d-d2f48afd278b:assistant:0","offset":-2515,"rowHeight":3039.9375,"detached":false}
+ℹ CONTROL ONLY: baseline bottom gap 30px
+ℹ [{"kind":"set","value":2631,"stack":"Error\n    at HTMLDivElement.set (<anonymous>:6:190)\n    at D2 (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:274516)\n    at http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:267027\n    at HTMLDivElement.s (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:270497)"},{"kind":"set","value":2751.78125,"stack":"Error\n    at HTMLDivElement.set (<anonymous>:6:190)\n    at D2 (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:274516)\n    at E2 (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:274413)\n    at c (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:263429)\n    at http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:263499\n    at t (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:268873)\n    at MutationObserver.<anonymous> (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:269055)"},{"kind":"set","value":2751,"stack":"Error\n    at HTMLDivElement.set (<anonymous>:6:190)\n    at D2 (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:274516)\n    at E2 (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:274413)\n    at c (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:263429)\n    at http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:263499\n    at t (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:268873)\n    at MutationObserver.<anonymous> (http://127.0.0.1:4788/apps/chat/assets/index-BAGgETHB.js:211:269055)"}]
+ℹ 390px concurrent wheel scrollTop samples: [2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751]; events: [{"phase":"capture","deltaY":-120,"top":2751,"target":"STRONG"},{"phase":"bubble","top":2631,"prevented":true}]
+ℹ tests 3
+ℹ suites 0
+ℹ pass 1
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9506.758681
+
+✖ failing tests:
+
+test at ../tmp/terminal-viewport-write-probe.test.mjs:24:12
+✖ 390px retains bottom and detached anchor through external header growth (4663.215231ms)
+  AssertionError [ERR_ASSERTION]: Concurrent header growth must not swallow upward wheel input
+      at TestContext.<anonymous> (file:///tmp/terminal-viewport-write-probe.test.mjs:114:12)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///tmp/terminal-viewport-write-probe.test.mjs:24:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

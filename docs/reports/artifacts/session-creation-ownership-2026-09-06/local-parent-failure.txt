@@ -1,0 +1,83 @@
+▶ post-create hydration preserves newer Session and Room navigation
+  ✔ untouched (1879.36547ms)
+  ✖ session-before-refresh (1752.000164ms)
+  ✖ session-after-refresh (2703.183529ms)
+  ✖ other-room (1852.986909ms)
+✖ post-create hydration preserves newer Session and Room navigation (8382.793629ms)
+ℹ untouched: {"session":"ps_500376c7-b568-4338-a565-4bb71575e55a","path":"/apps/chat/rooms/room_9e40aeb6-b977-48bb-821d-858c0c52e198/sessions/ps_500376c7-b568-4338-a565-4bb71575e55a","visible":false}
+ℹ session-before-refresh: {"session":"ps_4a49993e-5e2d-47a0-b400-04d1f52427ea","path":"/apps/chat/rooms/room_9e40aeb6-b977-48bb-821d-858c0c52e198/sessions/ps_4a49993e-5e2d-47a0-b400-04d1f52427ea","visible":false}
+ℹ session-after-refresh: {"session":"ps_7f9cc92b-ecc3-4a98-9ea3-954c8733f274","path":"/apps/chat/rooms/room_9e40aeb6-b977-48bb-821d-858c0c52e198/sessions/ps_7f9cc92b-ecc3-4a98-9ea3-954c8733f274","visible":false}
+ℹ other-room: {"session":"ps_a82eb7d9-8e7c-4091-a47e-069d2241be44","path":"/apps/chat/rooms/room_9e40aeb6-b977-48bb-821d-858c0c52e198/sessions/ps_a82eb7d9-8e7c-4091-a47e-069d2241be44","visible":false}
+ℹ tests 5
+ℹ suites 0
+ℹ pass 1
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8471.682399
+
+✖ failing tests:
+
+test at test/chat-ui-session-create-navigation-race.test.mjs:46:12
+✖ session-before-refresh (1752.000164ms)
+  AssertionError [ERR_ASSERTION]: Late creation must not steal the newer Session selection
+  + actual - expected
+
+  + 'ps_4a49993e-5e2d-47a0-b400-04d1f52427ea'
+  - 'ps_d906d397-86ba-43c2-9f49-9ed77015420a'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-session-create-navigation-race.test.mjs:78:13)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-session-create-navigation-race.test.mjs:46:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'ps_4a49993e-5e2d-47a0-b400-04d1f52427ea',
+    expected: 'ps_d906d397-86ba-43c2-9f49-9ed77015420a',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-session-create-navigation-race.test.mjs:46:12
+✖ session-after-refresh (2703.183529ms)
+  AssertionError [ERR_ASSERTION]: Late creation must not steal the newer Session selection
+  + actual - expected
+
+  + 'ps_7f9cc92b-ecc3-4a98-9ea3-954c8733f274'
+  - 'ps_d906d397-86ba-43c2-9f49-9ed77015420a'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-session-create-navigation-race.test.mjs:78:13)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-session-create-navigation-race.test.mjs:46:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'ps_7f9cc92b-ecc3-4a98-9ea3-954c8733f274',
+    expected: 'ps_d906d397-86ba-43c2-9f49-9ed77015420a',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-session-create-navigation-race.test.mjs:46:12
+✖ other-room (1852.986909ms)
+  AssertionError [ERR_ASSERTION]: Late creation must not steal the newer Session selection
+  + actual - expected
+
+  + 'ps_a82eb7d9-8e7c-4091-a47e-069d2241be44'
+  - 'ps_81fe6504-1c91-487f-97e6-b4ad3430a46c'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-session-create-navigation-race.test.mjs:78:13)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-session-create-navigation-race.test.mjs:46:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'ps_a82eb7d9-8e7c-4091-a47e-069d2241be44',
+    expected: 'ps_81fe6504-1c91-487f-97e6-b4ad3430a46c',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

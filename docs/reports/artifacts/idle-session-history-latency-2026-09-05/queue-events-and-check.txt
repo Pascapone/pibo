@@ -1,0 +1,330 @@
+piboSessionId: ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b
+piSessionId: cb33a90b-1dfa-4226-8e80-d44cb22b5add
+runtimeInstanceId: pi
+runtimeAdapterId: pi
+nativeSessionId: cb33a90b-1dfa-4226-8e80-d44cb22b5add
+runtimeBindingState: bound
+historySource: product
+title: Untitled Session
+status: done
+statusSource: event-log
+nodeErrors: 0
+
+status	type	title	id	runId	linkedPiboSessionId
+done	user.message	User Message	event:message_queued:web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2		
+done	agent.turn	Agent Turn	event:message:web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2		
+done	tool.call	  bash	tool-invocation:%5B%22call_d840PRYi4rcnNabegYsjPM0q%7Cfc_065496d0b151643f016a9c871b274487d2a16ac472112a4a4a%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2%5C%22%2C0%5D%22%5D		
+done	assistant.message	  Agent Message	event:assistant:web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2:assistant:0		
+done	user.message	User Message	event:message_queued:web-mtovxjid-3fbdaee9-3b4e-4f55-8bf5-f3568fceab19		
+done	agent.turn	Agent Turn	event:message:web-mtovxjid-3fbdaee9-3b4e-4f55-8bf5-f3568fceab19		
+done	assistant.message	  Agent Message	event:assistant:web-mtovxjid-3fbdaee9-3b4e-4f55-8bf5-f3568fceab19:assistant:0		
+done	user.message	User Message	event:message_queued:web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898		
+done	agent.turn	Agent Turn	event:message:web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898		
+done	tool.call	  bash	tool-invocation:%5B%22call_435st4gexicWowTgJPCD6D0V%7Cfc_065496d0b151643f016a9c87ac946c87d2a96632df1c124d3d%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898%5C%22%2C0%5D%22%5D		
+done	assistant.message	  Agent Message	event:assistant:web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898:assistant:0		
+done	user.message	User Message	event:message_queued:web-mtow08tj-e00a426c-26b0-4f46-84d7-f54fcda0087e		
+done	agent.turn	Agent Turn	event:message:web-mtow08tj-e00a426c-26b0-4f46-84d7-f54fcda0087e		
+done	assistant.message	  Agent Message	event:assistant:web-mtow08tj-e00a426c-26b0-4f46-84d7-f54fcda0087e:assistant:0		
+nodes: 14
+
+checks: ok
+issues: 0
+
+Next:
+  pibo debug trace ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b show event:message_queued:web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2
+  pibo debug messages ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b list
+{
+  "piboSessionId": "ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b",
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "nativeSessionId": "cb33a90b-1dfa-4226-8e80-d44cb22b5add",
+  "runtimeBindingState": "bound",
+  "events": [
+    {
+      "created_at": "2026-09-05T21:21:16.916Z",
+      "type": "message_finished",
+      "event_id": "web-mtow08tj-e00a426c-26b0-4f46-84d7-f54fcda0087e",
+      "stream_id": 988012,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T21:21:16.904Z",
+      "type": "assistant_message",
+      "event_id": "web-mtow08tj-e00a426c-26b0-4f46-84d7-f54fcda0087e",
+      "stream_id": 988011,
+      "preview_text": "PB_SWITCH_QUEUED_OK"
+    },
+    {
+      "created_at": "2026-09-05T21:21:16.894Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtow08tj-e00a426c-26b0-4f46-84d7-f54fcda0087e",
+      "stream_id": 988010,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T21:21:15.734Z",
+      "type": "message_started",
+      "event_id": "web-mtow08tj-e00a426c-26b0-4f46-84d7-f54fcda0087e",
+      "stream_id": 988009,
+      "preview_text": "Reply exactly PB_SWITCH_QUEUED_OK. No tools."
+    },
+    {
+      "created_at": "2026-09-05T21:21:15.723Z",
+      "type": "message_finished",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 988008,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T21:21:15.709Z",
+      "type": "assistant_message",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 988007,
+      "preview_text": "PB_SWITCH_FIRST_OK"
+    },
+    {
+      "created_at": "2026-09-05T21:21:15.697Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 988006,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T21:21:14.875Z",
+      "type": "tool_execution_finished",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 988005,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T21:20:45.327Z",
+      "type": "message_queued",
+      "event_id": "web-mtow08tj-e00a426c-26b0-4f46-84d7-f54fcda0087e",
+      "stream_id": 988004,
+      "preview_text": "Reply exactly PB_SWITCH_QUEUED_OK. No tools."
+    },
+    {
+      "created_at": "2026-09-05T21:20:45.317Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_79cb356a-6481-4be8-b3c4-b430214bf76a",
+      "stream_id": 988003,
+      "preview_text": "Reply exactly PB_SWITCH_QUEUED_OK. No tools."
+    },
+    {
+      "created_at": "2026-09-05T21:20:44.823Z",
+      "type": "tool_execution_started",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 988002,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T21:20:44.805Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 988001,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T21:20:44.782Z",
+      "type": "tool_call",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 988000,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T21:20:44.612Z",
+      "type": "tool_call",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 987999,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T21:20:44.598Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 987998,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-05T21:20:44.387Z",
+      "type": "thinking_started",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 987997,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-05T21:20:42.569Z",
+      "type": "message_started",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 987996,
+      "preview_text": "Latency probe: run bash sleep 30; echo PB_SWITCH_TOOL_OK. Then reply PB_SWITCH_FIRST_OK. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-05T21:20:42.553Z",
+      "type": "message_queued",
+      "event_id": "web-mtow06qd-9dfd181d-030c-402d-aaa5-2d07c2142898",
+      "stream_id": 987995,
+      "preview_text": "Latency probe: run bash sleep 30; echo PB_SWITCH_TOOL_OK. Then reply PB_SWITCH_FIRST_OK. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-05T21:20:42.545Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_953c9810-8c77-4a96-9a99-08f8f6b5523c",
+      "stream_id": 987994,
+      "preview_text": "Latency probe: run bash sleep 30; echo PB_SWITCH_TOOL_OK. Then reply PB_SWITCH_FIRST_OK. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-05T21:18:40.148Z",
+      "type": "message_finished",
+      "event_id": "web-mtovxjid-3fbdaee9-3b4e-4f55-8bf5-f3568fceab19",
+      "stream_id": 987993,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T21:18:40.135Z",
+      "type": "assistant_message",
+      "event_id": "web-mtovxjid-3fbdaee9-3b4e-4f55-8bf5-f3568fceab19",
+      "stream_id": 987992,
+      "preview_text": "PB_LARGE_QUEUED_OK"
+    },
+    {
+      "created_at": "2026-09-05T21:18:40.123Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtovxjid-3fbdaee9-3b4e-4f55-8bf5-f3568fceab19",
+      "stream_id": 987991,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T21:18:39.154Z",
+      "type": "message_started",
+      "event_id": "web-mtovxjid-3fbdaee9-3b4e-4f55-8bf5-f3568fceab19",
+      "stream_id": 987990,
+      "preview_text": "Reply exactly PB_LARGE_QUEUED_OK. No tools."
+    },
+    {
+      "created_at": "2026-09-05T21:18:39.141Z",
+      "type": "message_queued",
+      "event_id": "web-mtovxjid-3fbdaee9-3b4e-4f55-8bf5-f3568fceab19",
+      "stream_id": 987989,
+      "preview_text": "Reply exactly PB_LARGE_QUEUED_OK. No tools."
+    },
+    {
+      "created_at": "2026-09-05T21:18:39.134Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_21dad970-fac4-44dd-8a9c-968091630ed7",
+      "stream_id": 987988,
+      "preview_text": "Reply exactly PB_LARGE_QUEUED_OK. No tools."
+    },
+    {
+      "created_at": "2026-09-05T21:18:32.380Z",
+      "type": "message_finished",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987987,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T21:18:32.365Z",
+      "type": "assistant_message",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987986,
+      "preview_text": "PB_LARGE_FIRST_OK"
+    },
+    {
+      "created_at": "2026-09-05T21:18:32.355Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987985,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T21:18:32.287Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987984,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-05T21:18:32.256Z",
+      "type": "thinking_started",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987983,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-05T21:18:31.386Z",
+      "type": "tool_execution_finished",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987982,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T21:18:19.330Z",
+      "type": "tool_execution_started",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987981,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T21:18:19.315Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987980,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T21:18:19.237Z",
+      "type": "tool_call",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987979,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T21:18:19.187Z",
+      "type": "tool_call",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987978,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T21:18:19.169Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987977,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-05T21:18:18.954Z",
+      "type": "thinking_started",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987976,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-05T21:18:16.787Z",
+      "type": "message_started",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987975,
+      "preview_text": "This is a latency acceptance probe. Run bash with sleep 12, then print PB_LARGE_TOOL_OK; finally reply PB_LARGE_FIRST_OK. Do not read or modify project files."
+    },
+    {
+      "created_at": "2026-09-05T21:18:16.768Z",
+      "type": "message_queued",
+      "event_id": "web-mtovx275-80753645-44ca-4c6d-b487-5d29b21a3ad2",
+      "stream_id": 987974,
+      "preview_text": "This is a latency acceptance probe. Run bash with sleep 12, then print PB_LARGE_TOOL_OK; finally reply PB_LARGE_FIRST_OK. Do not read or modify project files."
+    },
+    {
+      "created_at": "2026-09-05T21:18:16.722Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_648264ba-5283-42b8-afd9-4984aced5b91",
+      "stream_id": 987973,
+      "preview_text": "This is a latency acceptance probe. Run bash with sleep 12, then print PB_LARGE_TOOL_OK; finally reply PB_LARGE_FIRST_OK. Do not read or modify project files."
+    }
+  ],
+  "limited": false,
+  "nextCommands": [
+    "pibo debug events ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b show 988012",
+    "pibo debug messages ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b show stream:988011 --full",
+    "pibo debug messages ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b list"
+  ]
+}

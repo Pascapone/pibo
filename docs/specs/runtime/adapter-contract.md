@@ -7,12 +7,29 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-05T21:26:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "bfb31e40143ea149cf77917d787adaf477539f51"
   requirements:
+    - id: "RUN-SPI-005"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtime/types.ts"
+          symbol: "AgentRuntimeAdapter"
+        - path: "src/core/session-router.ts"
+          symbol: "getSessionForkCandidates"
+      tests:
+        - path: "test/cold-fork-candidates.test.mjs"
+          name: "cold persisted fork inspection does not open a runtime or change the binding"
+        - path: "test/cold-fork-candidates.test.mjs"
+          name: "unsupported persisted reads retain the live runtime fallback"
+        - path: "test/cold-fork-candidates.test.mjs"
+          name: "a runtime opened during persisted inspection wins over the stale candidate result"
+      public: ["AgentRuntimeAdapter.readForkCandidates"]
+      failures: ["Unsupported persisted reads retain the existing live-runtime path; concurrent runtime activation or binding/workspace changes invalidate the inspected result."]
+      confidence: "high"
     - id: "RUN-SPI-001"
       status: "implemented"
       sources:
@@ -105,6 +122,10 @@ Runtime output SHALL cross the generic boundary as AgentRuntimeSemanticEvent val
 
 Adapter-neutral runtime and router modules SHALL not import concrete runtime implementations.
 
+## Requirement: RUN-SPI-005
+
+An adapter MAY provide read-only persisted fork candidates without opening a Runtime Session. The router SHALL use this optional operation only for a matching, bound, fork-capable adapter without a live, pending, disposing, or quiescing runtime and outside router shutdown. It SHALL recheck runtime absence, workspace, and binding after inspection. A concurrent live runtime SHALL take precedence; `undefined` SHALL retain the existing runtime fallback. Concrete transcript parsing remains adapter-owned.
+
 # Interfaces and ownership
 
 Implemented public contracts:
@@ -138,7 +159,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Runtime admission validates the complete live-session contract before use; a partial session is rejected, cleanup still runs, and cleanup errors cannot mask the contract failure. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `bfb31e40143ea149cf77917d787adaf477539f51`. Cold fork inspection has [Docker and Pibo2 evidence](/reports/idle-session-history-latency-validation-2026-09-05.md); earlier lifecycle evidence retains its original execution scope. Runtime admission validates the complete live-session contract before use; a partial session is rejected, cleanup still runs, and cleanup errors cannot mask the contract failure. Requirement confidence measures trace quality, not whether a command ran.
 
 Package verification commands:
 

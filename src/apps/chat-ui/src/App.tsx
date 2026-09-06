@@ -69,6 +69,7 @@ import {
 	reorderRoomRootsInBootstrap,
 	reorderSessionRootsInBootstrap,
 	replaceRoomInBootstrap,
+	removeRoomsFromBootstrap,
 	resolveOptimisticSessionCreateOutcome,
 	rollbackOptimisticSessionNode,
 	restoreBootstrapSelection,
@@ -352,6 +353,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [selectedContextFileKey, setSelectedContextFileKey] = useState<string | null>(null);
 	const [selectedMcpServerName, setSelectedMcpServerName] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
+	const roomCreationOwnerRef = useRef<string | null>(null);
+	useEffect(() => {
+		roomCreationOwnerRef.current = null;
+	}, [routeRoomId, routePiboSessionId]);
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 	const [desktopToolHosts, setDesktopToolHosts] = useState<Partial<Record<DesktopSessionTool, Element | null>>>({});
 	const desktopToolHostCallbacks = useMemo(() => {
@@ -848,6 +853,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		let inFlight = false;
 		const refreshVisibleNavigation = () => {
 			if (stopped || inFlight || document.hidden || !bootstrapRef.current) return;
+			if (activeRoomId?.startsWith("optimistic-room-")) return;
 			if (selectedPiboSessionId && !selectedBackendPiboSessionId) return;
 			inFlight = true;
 			loadNavigation(selectedBackendPiboSessionId ?? undefined, showArchivedRef.current, activeRoomId ?? undefined, { force: true })
@@ -1282,7 +1288,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const skills = useMemo(() => availableSkillsForSession(bootstrap, selectedPiboSessionId), [bootstrap, selectedPiboSessionId]);
 
 	const selectSession = useCallback(async (piboSessionId: string) => {
+		roomCreationOwnerRef.current = null;
 		const targetRoomId = selectedRoomId ?? bootstrap?.selectedRoomId;
+		// User selection owns the view immediately, not after the deferred navigation refresh.
+		if (selectedPiboSessionIdRef.current !== piboSessionId) bootstrapRequestId.current += 1;
 		flushSync(() => {
 			setSelectedPiboSessionId(piboSessionId);
 			setLoadingPiboSessionId(piboSessionId);
@@ -1308,6 +1317,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [bootstrap?.selectedRoomId, closeMobileSidebar, loadNavigation, navigateToSelectedSession, selectedRoomId, updateBootstrapCache]);
 
 	const selectRoom = useCallback(async (roomId: string, options: NavigationOptions = {}) => {
+		if (roomId.startsWith("optimistic-room-")) return;
+		roomCreationOwnerRef.current = null;
 		const navigationOptions = { ...options, closeMobileSidebar: false };
 		const storedPiboSessionId = readStoredSelection().sessionsByRoom?.[roomId];
 		const generation = roomSwitchGenerationRef.current + 1;
@@ -1323,16 +1334,20 @@ export function App({ route }: { route: ChatAppRoute }) {
 			closeMobileSidebar();
 		});
 		try {
-			const data = await loadNavigation(storedPiboSessionId, showArchivedRef.current, roomId, { signal: controller.signal });
-			if (roomSwitchGenerationRef.current !== generation || controller.signal.aborted) return;
+			const navigation = loadNavigation(storedPiboSessionId, showArchivedRef.current, roomId, { signal: controller.signal });
+			const requestId = bootstrapRequestId.current;
+			const data = await navigation;
+			if (roomSwitchGenerationRef.current !== generation || controller.signal.aborted || bootstrapRequestId.current !== requestId) return;
 			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, navigationOptions);
 		} catch (caught) {
 			if (isAbortError(caught)) return;
 			if (!storedPiboSessionId) throw caught;
 			removeStoredRoomSelection(roomId);
 			setSelectedPiboSessionId(null);
-			const data = await loadNavigation(undefined, showArchivedRef.current, roomId, { signal: controller.signal });
-			if (roomSwitchGenerationRef.current !== generation || controller.signal.aborted) return;
+			const navigation = loadNavigation(undefined, showArchivedRef.current, roomId, { signal: controller.signal });
+			const requestId = bootstrapRequestId.current;
+			const data = await navigation;
+			if (roomSwitchGenerationRef.current !== generation || controller.signal.aborted || bootstrapRequestId.current !== requestId) return;
 			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, navigationOptions);
 		} finally {
 			if (roomSwitchGenerationRef.current === generation) {
@@ -1366,8 +1381,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (outcome?.autoRenameCreatedSession) setAutoRenameSessionId(created.session.id);
 			if (outcome?.navigateToCreatedSession) {
 				navigateToSelectedSession(originRoomId || undefined, created.session.id, false, { closeMobileSidebar: false });
-				const data = await loadBootstrap(created.session.id, showArchivedRef.current, originRoomId || undefined, { force: true });
-				navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
+				// POST completes creation. Background hydration must not lock creation or browser navigation.
+				const hydration = loadBootstrap(created.session.id, showArchivedRef.current, originRoomId || undefined, { force: true });
+				const hydrationRequestId = bootstrapRequestId.current;
+				void hydration.catch((caught) => {
+					if (hydrationRequestId === bootstrapRequestId.current) setError(errorMessage(caught));
+				});
 			}
 			setError(null);
 		} catch (caught) {
@@ -1452,30 +1471,45 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const createRoom = async () => {
 		if (creatingRoom) return;
 		setCreatingRoom(true);
-		await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
-		const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
 		const tempId = `optimistic-room-${createClientTxnId()}`;
+		roomCreationOwnerRef.current = tempId;
+		roomSwitchControllerRef.current?.abort();
+		roomSwitchGenerationRef.current += 1;
+		await prepareSessionNavigationMutation();
 		const optimisticRoom = createOptimisticRoom(tempId, "New Chat");
-		setSelectedRoomId(tempId);
-		setSelectedPiboSessionId(null);
-		setNewSessionProfileRoomId(null);
-		setLoadingRoomId(tempId);
-		updateBootstrapCache((data) => addRoomToBootstrap(data, optimisticRoom));
+		if (roomCreationOwnerRef.current === tempId) {
+			setSelectedRoomId(tempId);
+			setSelectedPiboSessionId(null);
+			setNewSessionProfileRoomId(null);
+			setLoadingRoomId(tempId);
+		}
+		// Local UI owns the temporary selection. Cached bootstrap selection must
+		// remain persisted, or route reconciliation reloads the previous Room.
+		updateBootstrapCache((data) => ({ ...data, rooms: addRoomToBootstrap(data, optimisticRoom).rooms }));
 		try {
 			const created = await postRoom({ name: "New Chat" });
 			removeStoredRoomSelection(tempId);
 			removeStoredNewSessionProfile(tempId);
 			updateBootstrapCache((data) => replaceRoomInBootstrap(data, tempId, created.room));
-			await selectRoom(created.room.id, { closeMobileSidebar: false });
-			setError(null);
+			if (roomCreationOwnerRef.current === tempId) {
+				const hydration = selectRoom(created.room.id, { closeMobileSidebar: false });
+				const requestId = bootstrapRequestId.current;
+				void hydration.catch((caught) => {
+					if (bootstrapRequestId.current === requestId) setError(errorMessage(caught));
+				});
+				setError(null);
+			}
 		} catch (caught) {
 			removeStoredRoomSelection(tempId);
 			removeStoredNewSessionProfile(tempId);
-			restoreBootstrapSnapshot(snapshot);
-			setSelectedRoomId(selectedRoomId);
-			setSelectedPiboSessionId(selectedPiboSessionId);
-			setError(caught instanceof Error ? caught.message : String(caught));
+			updateBootstrapCache((data) => removeRoomsFromBootstrap(data, new Set([tempId])));
+			if (roomCreationOwnerRef.current === tempId) {
+				setSelectedRoomId(selectedRoomId);
+				setSelectedPiboSessionId(selectedPiboSessionId);
+				setError(errorMessage(caught));
+			}
 		} finally {
+			if (roomCreationOwnerRef.current === tempId) roomCreationOwnerRef.current = null;
 			setLoadingRoomId((current) => current === tempId ? null : current);
 			setCreatingRoom(false);
 		}

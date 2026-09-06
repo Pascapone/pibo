@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T20:24:05Z"
+  at: "2026-09-06T06:50:16Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,8 +23,57 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "ba92dedd5453908c01732494b64dbcc4c53b0f20"
+  commit: "50ae78c633274ba569a40d7699bcf6672b58e898"
   requirements:
+    - id: "WEB-TRACE-VIEWPORT-009"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/components/useStickyVirtuoso.ts"
+          symbol: "useStickyVirtuoso"
+      tests:
+        - path: "test/use-sticky-virtuoso.test.mjs"
+          name: "useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts"
+        - path: "test/chat-ui-terminal-viewport-resize.test.mjs"
+          name: "Terminal preserves follow and reading positions when its viewport shrinks"
+      public: ["CompactTerminalSessionView", "useStickyVirtuoso"]
+      failures: ["Viewport-only changes must not replay detached anchors; pending restoration must not undo new coarse wheel input."]
+      confidence: "high"
+    - id: "WEB-TRACE-VISIBILITY-008"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"
+          symbol: "CompactTerminalSessionView"
+        - path: "src/apps/chat-ui/src/components/useStickyVirtuoso.ts"
+          symbol: "useStickyVirtuoso"
+      tests:
+        - path: "test/chat-ui-terminal-initial-visibility.test.mjs"
+          name: "Terminal reveals correctly positioned histories without a fixed hidden interval"
+        - path: "test/use-sticky-virtuoso.test.mjs"
+          name: "useStickyVirtuoso uses one bottom target without a competing last-index scroll"
+      public: ["CompactTerminalSessionView"]
+      failures: ["Missing data still loads normally; mounted hidden text is not visible readiness. Separate late viewport shrink remains tracked in issue 928."]
+      confidence: "high"
+    - id: "WEB-TRACE-PASSIVE-007"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/session-trace-pane.tsx"
+          symbol: "SessionTracePane"
+        - path: "src/apps/chat-ui/src/api-chat-sessions.ts"
+          symbol: "getSessionStatus"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "createChatWebApp"
+        - path: "src/core/session-router.ts"
+          symbol: "getSessionStatusSnapshot"
+      tests:
+        - path: "test/cold-fork-candidates.test.mjs"
+          name: "passive header status does not activate or retain idle runtimes"
+        - path: "test/chat-ui-terminal-header-usage.test.mjs"
+          name: "Terminal header status is passive and refreshes on session state transitions"
+        - path: "test/web-channel.test.mjs"
+          name: "chat web status refresh returns a snapshot without emitting a new execution result"
+      public: ["GET /api/chat/status?activate=false", "Terminal header usage", "Terminal fork affordances"]
+      failures: ["Inactive runtime usage remains unknown rather than synthesized; authentication and session access checks are unchanged."]
+      confidence: "high"
     - id: "WEB-TRACE-DEBUG-006"
       status: "implemented"
       sources:
@@ -229,7 +278,7 @@ Bounded trace projection, opt-in payload/raw detail, deterministic historical/li
 
 ## Scope
 
-This specification describes implemented behavior at traceability commit `ba92dedd5453908c01732494b64dbcc4c53b0f20`. Earlier Workflow evidence remains scoped to its recorded integration baseline.
+This specification describes implemented behavior at traceability commit `bfb31e40143ea149cf77917d787adaf477539f51`. Earlier Workflow evidence remains scoped to its recorded integration baseline.
 
 ### In scope
 
@@ -270,6 +319,14 @@ Trace cards expose stable IDs/order metadata; sticky scrolling tracks user inten
 Legacy/current runtime turns use stable product identity; workflow UI models accept kernel/XState/UI snapshots while durable truth remains kernel.
 
 ## Requirements and invariants
+
+### Requirement: WEB-TRACE-VIEWPORT-009
+
+The element-backed Terminal viewport and its rendered item list share resize observation. While following the bottom, an external header or composer geometry change must retain bottom-follow after layout settlement even when item-list height is unchanged. While detached, viewport-only resize must not replay a stored anchor over native wheel movement; list changes retain the existing content-anchor restoration path.
+
+Coarse wheel input owns the resulting reading position. After its direct scroll, the hook captures the new visible target and refreshes pending prepend/restoration anchors when present. A later mutation or prepend must not restore an obsolete pre-wheel target. The observer disconnects with its owning effect; no CSS visibility override, vendor patch, polling timer, or history-format change is introduced.
+
+The [viewport and wheel validation report](/reports/terminal-viewport-and-wheel-validation-2026-09-06.md) records Docker before/after and exact-candidate public Pibo2 evidence: natural header shrink, real Spark streaming, detached desktop/mobile input, reload, and in-flight older-page restoration. Resize settlement is not guaranteed in the same RAF sample. These focused checks do not replace full-suite or integrated-release acceptance; existing historical validation counts below retain their original scope.
 
 ### Requirement: WEB-TRACE-DEBUG-006
 
@@ -379,6 +436,20 @@ Integrated source, focused tests, and scoped headful acceptance verify pending a
 - Compatibility boundary: Kernel remains durable truth; registry additions are read-only Web compatibility extensions.
 - Confidence: **high**
 - Verification follow-up: Headfully inspect waiting, retry, failed, malformed, and human-action states.
+
+### Requirement: WEB-TRACE-VISIBILITY-008: Single initial positioning owner
+
+Terminal initialization uses the sticky-scroll controller's bottom or saved reading position without an independent initial-index scroll-settlement delay. It does not force CSS visibility or replace settlement with an arbitrary timer. Missing history still waits for its data.
+
+Acceptance measures the correct Session's viewport-intersecting visible rows, not merely route selection, mounted DOM, or textContent. The opt-in headful worker regression covers short and long completed histories at desktop/mobile widths; [exact-candidate Pibo2 evidence](/reports/terminal-initial-visibility-validation-2026-09-05.md) also covers the 16,005-event history, wheel detachment and reload anchors, actual Spark streaming, and Queue contention. This is scoped initial-visibility evidence, not a new execution claim for every historical requirement in this specification. A pre-existing mobile viewport-shrink gap remains tracked separately in issue 928.
+
+### Requirement: WEB-TRACE-PASSIVE-007
+
+Terminal background usage reads SHALL request passive status. `GET /api/chat/status?activate=false` SHALL retain authentication and session access checks, but SHALL neither activate an absent runtime nor extend an idle runtime's eviction timer. When no runtime is present, it SHALL return `{ piboSessionId, runtimeActive: false }`; usage values SHALL remain unavailable. A present runtime SHALL supply its live snapshot. Explicit status requests without this option, including `/status`, SHALL retain their activation behavior.
+
+The header query SHALL refresh on selected Session status transitions as well as its normal polling cadence. The Terminal SHALL defer fork-candidate requests until the loaded trace contains user messages, so opening an empty Session does not start a runtime merely to discover that no fork is available. Persisted fork inspection belongs to [the adapter contract](/specs/runtime/adapter-contract.md).
+
+[Docker tests and headful Pibo2 validation](/reports/idle-session-history-latency-validation-2026-09-05.md) cover passive navigation, exact candidate parity, and real queued turns. This evidence does not claim that all streaming or optimistic-update problems are resolved.
 
 ## Interfaces and ownership
 
