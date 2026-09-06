@@ -15,7 +15,7 @@ migration_lineage:
   source_body_sha256: "0faf4abf4a48f79b23f9a9cad421c97fa09519a3d356fc9dafb6be78ff62773b"
 generated:
   by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-09-06T10:18:00Z"
+  at: "2026-09-06T10:50:00Z"
 ---
 # Design System: Pibo Compact Terminal
 **Project ID:** local-reference-pibo-compact-terminal
@@ -233,7 +233,7 @@ When Debug is enabled, each tool invocation may expose one flat signal rail imme
 - Segments wrap as complete units on narrow screens. Never truncate the metric value.
 - Color is supplementary. The visible duration/count and the unavailable marker `—` remain authoritative.
 
-Current display thresholds are intentionally simple and local to presentation: duration escalates at 1, 5, and 15 seconds; estimated input at 8k, 20k, and 50k tokens; estimated output at 2k, 10k, and 50k tokens. They do not alter collection, persistence, billing, or provider usage semantics.
+Default display thresholds are intentionally simple and local to presentation: duration escalates at 1, 5, and 15 seconds; estimated input at 8k, 20k, and 50k tokens; estimated output at 2k, 10k, and 50k tokens. `Settings > Debug` lets users replace each increasing three-value band or restore these defaults. The control must identify token values as payload estimates, explain likely JSON/Unicode/tokenizer variance, and persist only in the current browser. Threshold changes do not alter collection, persistence, billing, or provider usage semantics.
 
 ### Row Action Buttons
 

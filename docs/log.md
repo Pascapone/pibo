@@ -2,6 +2,7 @@
 
 ## 2026-09-06
 
+- **Configurable Tool Debug thresholds**: Added a dedicated `Settings > Debug` panel with the persisted Debug toggle, validated Time/Input/Output severity thresholds, default restoration, and explicit estimated-token caveats. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006) and [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rail).
 - **High-contrast Tool Debug signals**: Replaced quiet gray Tool metrics with a neon signal rail for rapid scanning: violet Time, cyan Input, lime Output, then yellow, orange, and hot-pink severity escalation. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006) and [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rail); collection and token-estimation behavior are unchanged.
 
 - **Room edit ownership**: Added [field-scoped Room edit and navigation guarantees](/specs/web/app-shell-bootstrap-navigation-and-pwa.md#requirement-web-shell-room-update-008-room-edits-preserve-navigation-and-unrelated-state) and the [exact-candidate validation report](/reports/room-edit-ownership-validation-2026-09-06.md) for issue #938. Records the local 29.9-second stale-name reproduction, 30 public desktop/mobile cases, 15–22 ms bounded feedback, real Spark Queue/streaming/workspace checks, and remaining tail Long Tasks. No merge, release, or controller deployment.

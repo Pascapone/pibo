@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-06T10:18:00Z"
+  at: "2026-09-06T10:50:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,7 +23,7 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "b4ca04bebf2ce81d82c1df0ed155b3f4451b4c9a"
+  commit: "75f450d7530b13100b9c41be270a760e83afb481"
   requirements:
     - id: "WEB-TRACE-VIEWPORT-009"
       status: "implemented"
@@ -87,6 +87,10 @@ traceability:
           symbol: "SessionTraceHeader"
         - path: "src/apps/chat-ui/src/session-views/compact-terminal/TerminalToolMetrics.tsx"
           symbol: "TerminalToolMetrics"
+        - path: "src/apps/chat-ui/src/tool-metric-settings.ts"
+          symbol: "readStoredToolMetricThresholds"
+        - path: "src/apps/chat-ui/src/settings/DebugSettingsView.tsx"
+          symbol: "DebugSettingsView"
       tests:
         - path: "test/tool-call-metrics.test.mjs"
           name: "durable ingestion retains metrics outside large payloads through restart and timeline compaction"
@@ -96,8 +100,10 @@ traceability:
           name: "topbar exposes Debug without duplicate view navigation or Raw Events"
         - path: "test/tool-call-metrics.test.mjs"
           name: "status strip renders estimated tokens, zero, missing values and subsecond duration"
-      public: ["SessionTraceHeader", "CompactTerminalSessionView", "PiboToolExecutionFinishedEvent.toolMetrics"]
-      failures: ["Missing or unmeasurable payload metrics remain unavailable; estimates are never presented as provider usage or billing."]
+        - path: "test/chat-ui-debug-settings.test.mjs"
+          name: "Debug settings persist validated thresholds and expose the Debug route"
+      public: ["SessionTraceHeader", "CompactTerminalSessionView", "/settings/debug", "pibo.chat.toolMetricThresholds", "PiboToolExecutionFinishedEvent.toolMetrics"]
+      failures: ["Missing or unmeasurable payload metrics remain unavailable; estimates are never presented as provider usage or billing; Debug preferences are browser-local and invalid threshold sets fall back to defaults."]
       confidence: "high"
     - id: "WEB-TRACE-PROJECTION-001"
       status: "implemented"
@@ -342,7 +348,9 @@ Token values MUST carry `≈`: they estimate tool payload size at four character
 
 The status line follows the [Compact Terminal design](/project/design/compact-terminal.md): square geometry, 9px black-weight labels, 11px bold tabular values, no cards, shadows, polling, animation, or per-row timers. It wraps whole metric segments at narrow widths instead of truncating the values. Debug in the embedded VS Code Terminal is session-local.
 
-The Debug line is a high-contrast signal rail. Normal time uses neon violet, normal input uses electric cyan, and normal output uses acid lime so the three columns remain distinguishable from ordinary Terminal prose. Severity is derived only from the already-recorded value: duration escalates at 1, 5, and 15 seconds; input estimates at 8k, 20k, and 50k tokens; output estimates at 2k, 10k, and 50k tokens. Elevated values use neon yellow/amber, high values use fluorescent orange, critical values use hot pink, and unavailable values remain neutral gray. Color supplements the visible number and `—` state; it is not the sole information channel.
+The Debug line is a high-contrast signal rail. Normal time uses neon violet, normal input uses electric cyan, and normal output uses acid lime so the three columns remain distinguishable from ordinary Terminal prose. Elevated values use neon yellow/amber, high values use fluorescent orange, critical values use hot pink, and unavailable values remain neutral gray. Color supplements the visible number and `—` state; it is not the sole information channel.
+
+`Settings > Debug` exposes the persisted Debug toggle and three strictly increasing visual thresholds for each metric. Defaults are 1/5/15 seconds for duration, 8k/20k/50k estimated input tokens, and 2k/10k/50k estimated output tokens. Values are validated as positive numbers, stored in browser-local storage, and applied immediately to Terminal rendering. Restoring defaults does not change collected metrics. The settings panel states that token counts are bounded `characters ÷ 4` payload estimates rather than provider usage or billing tokens, including the expected tokenizer variance for JSON punctuation, escaping, and Unicode.
 
 Verification for this addition: isolated build and all typechecks passed; 192 focused runtime/trace tests and a separate 296-test UI/metrics run passed (the selections overlap). Browser Use with headful Chromium and CDP passed Default/Slim at 1440×1000 and 390×844, toggle/reload/Hide checks, legacy/media placeholders, Raw Events workspace-tab access, keyboard Space activation, and absence of horizontal overflow or JavaScript exceptions. Enabling Debug caused no raw-event or payload fetch. The browser used deterministic persisted tool-event fixtures; a provider-backed Worker turn failed at authentication, so provider end-to-end and production deployment are not claimed.
 
