@@ -64,7 +64,7 @@ test("app chrome, sidebars, raw events, and terminal metadata are gated by Termi
 	assert.match(appSource, /className="min-h-0 min-w-\[250px\] flex-1 overflow-hidden"/);
 	assert.match(appSource, /isTerminalFullscreen \? "hidden" : mobileSidebarOpen/);
 	assert.match(layoutSource, /visible=\{showRawEvents && !terminalFullscreen\}/);
-	assert.match(layoutSource, /!terminalFullscreen && webAnnotationsPanelRendered/);
+	assert.match(layoutSource, /!terminalFullscreen && auxiliaryPanel \? \(/);
 	assert.match(layoutSource, /contextKind=\{headerProps\.contextKind\}/);
 	assert.match(layoutSource, /contextLabel=\{headerProps\.contextLabel\}/);
 	assert.match(paneSource, /contextKind = "room"/);
