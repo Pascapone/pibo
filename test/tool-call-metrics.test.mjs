@@ -141,7 +141,7 @@ test("status strip renders estimated tokens, zero, missing values and subsecond 
 		import { TerminalToolMetrics } from './src/apps/chat-ui/src/session-views/compact-terminal/TerminalToolMetrics.tsx';
 		import { traceViewFromTimelinePage } from './src/apps/chat-ui/src/tracing/trace-v2-adapter.ts';
 		globalThis.React = React;
-		const render = (metrics) => renderToStaticMarkup(React.createElement(TerminalToolMetrics, { metrics }));
+		const render = (metrics, thresholds) => renderToStaticMarkup(React.createElement(TerminalToolMetrics, { metrics, thresholds }));
 		const markup = render({ durationMs: 42, inputTokens: 0, outputTokens: 23456, tokenBasis: 'chars/4' });
 		assert.match(markup, />Time</);
 		assert.match(markup, />42 ms</);
@@ -165,6 +165,15 @@ test("status strip renders estimated tokens, zero, missing values and subsecond 
 		const elevatedDuration = render({ durationMs: 1234 });
 		assert.match(elevatedDuration, /data-metric-kind="duration" data-metric-level="elevated"/);
 		assert.match(elevatedDuration, />1.2 s</);
+		const configured = render(
+			{ durationMs: 4_000, inputTokens: 4_000, outputTokens: 4_000 },
+			{
+				durationMs: { elevated: 500, high: 1_000, critical: 2_000 },
+				inputTokens: { elevated: 500, high: 1_000, critical: 2_000 },
+				outputTokens: { elevated: 500, high: 1_000, critical: 2_000 },
+			},
+		);
+		assert.equal((configured.match(/data-metric-level="critical"/g) ?? []).length, 3);
 		const metrics = ${JSON.stringify(metrics)};
 		const view = traceViewFromTimelinePage({ nodes: [{ nodeId: 'tool', type: 'tool.call', toolMetrics: metrics }], cursor: {} });
 		assert.deepEqual(view.nodes[0].toolMetrics, metrics);

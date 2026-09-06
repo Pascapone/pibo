@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { AgentProfile, PiboLoopJob, PiboSessionSignalSnapshot, PiboSessionTraceView, PiboSignalSnapshot, PiboWebSessionNode, PiboWebSessionStatus, RuntimeSessionBinding, ThinkingLevel, Trace } from "../types";
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "../tracing/TraceTimeline";
+import type { ToolMetricThresholds } from "../tool-metric-settings";
 
 export const chatSessionViewIds = ["terminal", "workflow"] as const;
 export const toolDisplayModes = ["default", "hide", "slim", "intent"] as const;
@@ -27,6 +28,7 @@ export type ChatSessionViewProps = {
 	terminalFullscreen?: boolean;
 	showThinking: boolean;
 	debugMode?: boolean;
+	toolMetricThresholds?: ToolMetricThresholds;
 	expandThinking: boolean;
 	toolDisplayMode: ToolDisplayMode;
 	sessionAgentProfile?: string;

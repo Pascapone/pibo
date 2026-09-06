@@ -1,4 +1,4 @@
-import { Database, Gauge, Key, Keyboard, Layers, Mic, MonitorPlay, Settings, Volume2, Wrench } from "lucide-react";
+import { Bug, Database, Gauge, Key, Keyboard, Layers, Mic, MonitorPlay, Settings, Volume2, Wrench } from "lucide-react";
 import type { SettingsPanel } from "./types";
 
 export function SettingsSidebar({
@@ -29,6 +29,21 @@ export function SettingsSidebar({
 					<div className="min-w-0">
 						<span className="block truncate text-sm text-slate-200">General</span>
 						<span className="block truncate font-mono text-[10px] text-slate-500">browser + runtime</span>
+					</div>
+				</button>
+				<button
+					type="button"
+					onClick={() => onSelect("debug")}
+					className={`mb-1 flex w-full items-center gap-2 border p-2 text-left ${
+						activePanel === "debug"
+							? "border-[#11a4d4] bg-[#11a4d4]/10"
+							: "border-slate-800 bg-[#151f24] hover:border-slate-700"
+					}`}
+				>
+					<Bug size={13} className="text-[#11a4d4]" />
+					<div className="min-w-0">
+						<span className="block truncate text-sm text-slate-200">Debug</span>
+						<span className="block truncate font-mono text-[10px] text-slate-500">tool metric signals</span>
 					</div>
 				</button>
 				<button

@@ -87,6 +87,7 @@ import { PreviewFullscreenTopBar, PreviewMessage, SessionLivePreviewPanel } from
 import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
 import { JsonRenderer } from "./tracing/JsonRenderer";
 import type { DesktopSessionTool } from "./desktop-tabs-model";
+import { DEFAULT_TOOL_METRIC_THRESHOLDS, type ToolMetricThresholds } from "./tool-metric-settings";
 
 const livePreviewQueryKey = (piboSessionId: string) => ["chat", "session-live-previews", piboSessionId] as const;
 
@@ -129,6 +130,7 @@ export function SessionTracePane({
   showRawEvents,
   showThinking,
   debugMode,
+  toolMetricThresholds = DEFAULT_TOOL_METRIC_THRESHOLDS,
   expandThinking,
   toolDisplayMode,
   commands,
@@ -182,6 +184,7 @@ export function SessionTracePane({
   showRawEvents: boolean;
   showThinking: boolean;
   debugMode: boolean;
+  toolMetricThresholds?: ToolMetricThresholds;
   expandThinking: boolean;
   toolDisplayMode: ToolDisplayMode;
   commands: SlashCommand[];
@@ -648,6 +651,7 @@ export function SessionTracePane({
     isLoading: loadingTrace,
     showThinking,
     debugMode,
+    toolMetricThresholds,
     expandThinking,
     toolDisplayMode: effectiveToolDisplayMode,
     selectedSessionProfile,

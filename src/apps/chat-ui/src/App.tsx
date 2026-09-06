@@ -34,6 +34,11 @@ import { DESKTOP_COLLAPSED_SIDEBAR_WIDTH } from "./desktop-session-sidebar-model
 import { getChatSessionView } from "./session-views/registry";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
 import {
+	readStoredToolMetricThresholds,
+	writeStoredToolMetricThresholds,
+	type ToolMetricThresholds,
+} from "./tool-metric-settings";
+import {
 	clearStoredSelection,
 	readStoredComposerDraft,
 	readStoredExpandThinking,
@@ -322,11 +327,17 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
 	const [expandThinking, setExpandThinking] = useState(readStoredExpandThinking);
 	const [debugMode, setDebugMode] = useState(readStoredDebugMode);
+	const [toolMetricThresholds, setToolMetricThresholds] = useState(readStoredToolMetricThresholds);
 	const showRawEvents = false;
-	const toggleDebugMode = () => setDebugMode((current) => {
-		writeStoredDebugMode(!current);
-		return !current;
-	});
+	const updateDebugMode = (value: boolean) => {
+		setDebugMode(value);
+		writeStoredDebugMode(value);
+	};
+	const toggleDebugMode = () => updateDebugMode(!debugMode);
+	const updateToolMetricThresholds = (value: ToolMetricThresholds) => {
+		setToolMetricThresholds(value);
+		writeStoredToolMetricThresholds(value);
+	};
 	const [toolDisplayMode, setToolDisplayMode] = useState<ToolDisplayMode>(readStoredToolDisplayMode);
 	const [showArchived, setShowArchived] = useState(readStoredShowArchivedSessions);
 	const [showArchivedRooms, setShowArchivedRooms] = useState(readStoredShowArchivedRooms);
@@ -1879,7 +1890,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				label="Settings"
 				sidebar={<SettingsSidebar activePanel={panel} onSelect={(nextPanel) => navigateToRoute({ area: "settings", panel: nextPanel })} piPackageCount={bootstrap.agentCatalog?.piPackages.length ?? 0} userSkillCount={bootstrap.agentCatalog?.userSkills.length ?? 0} />}
 			>
-				<SettingsView activePanel={panel} showThinking={showThinking} setShowThinking={setShowThinking} expandThinking={expandThinking} setExpandThinking={setExpandThinking} modelDefaults={bootstrap.modelDefaults} modelCatalog={bootstrap.modelCatalog} onModelDefaultsChanged={(modelDefaults) => setBootstrap((current) => current ? { ...current, modelDefaults } : current)} piPackages={bootstrap.agentCatalog?.piPackages} onPiPackageChanged={upsertPiPackageInBootstrap} onPiPackageRemoved={removePiPackageFromBootstrap} userSkills={bootstrap.agentCatalog?.userSkills} onUserSkillChanged={upsertUserSkillInBootstrap} onUserSkillRemoved={removeUserSkillFromBootstrap} piboSessionId={selectedPiboSessionId} onProviderAuthChanged={refreshAfterProviderAuthChanged} />
+				<SettingsView activePanel={panel} showThinking={showThinking} setShowThinking={setShowThinking} expandThinking={expandThinking} setExpandThinking={setExpandThinking} debugMode={debugMode} onDebugModeChange={updateDebugMode} toolMetricThresholds={toolMetricThresholds} onToolMetricThresholdsChange={updateToolMetricThresholds} modelDefaults={bootstrap.modelDefaults} modelCatalog={bootstrap.modelCatalog} onModelDefaultsChanged={(modelDefaults) => setBootstrap((current) => current ? { ...current, modelDefaults } : current)} piPackages={bootstrap.agentCatalog?.piPackages} onPiPackageChanged={upsertPiPackageInBootstrap} onPiPackageRemoved={removePiPackageFromBootstrap} userSkills={bootstrap.agentCatalog?.userSkills} onUserSkillChanged={upsertUserSkillInBootstrap} onUserSkillRemoved={removeUserSkillFromBootstrap} piboSessionId={selectedPiboSessionId} onProviderAuthChanged={refreshAfterProviderAuthChanged} />
 			</ResponsiveTabSidebarPanel>
 		);
 	};
@@ -2017,6 +2028,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							composerFocusSignal={composerFocusSignal}
 							onComposerTextChange={updateComposerText}
 							debugMode={debugMode}
+							toolMetricThresholds={toolMetricThresholds}
 							onToggleDebugMode={toggleDebugMode}
 							onToggleThinking={() => { const next = !showThinking; setShowThinking(next); writeStoredShowThinking(next); }}
 							onToggleExpandThinking={() => { const next = !expandThinking; setExpandThinking(next); writeStoredExpandThinking(next); }}
@@ -2255,6 +2267,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						composerFocusSignal={composerFocusSignal}
 						onComposerTextChange={updateComposerText}
 						debugMode={debugMode}
+						toolMetricThresholds={toolMetricThresholds}
 						onToggleDebugMode={toggleDebugMode}
 						onToggleThinking={() => {
 							const next = !showThinking;
@@ -2325,6 +2338,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 									setShowThinking={setShowThinking}
 									expandThinking={expandThinking}
 									setExpandThinking={setExpandThinking}
+									debugMode={debugMode}
+									onDebugModeChange={updateDebugMode}
+									toolMetricThresholds={toolMetricThresholds}
+									onToolMetricThresholdsChange={updateToolMetricThresholds}
 									modelDefaults={bootstrap.modelDefaults}
 									modelCatalog={bootstrap.modelCatalog}
 									onModelDefaultsChanged={(modelDefaults) => {

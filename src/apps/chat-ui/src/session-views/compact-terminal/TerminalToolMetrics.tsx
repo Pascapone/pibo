@@ -1,4 +1,5 @@
 import type { ToolCallMetrics } from "../../../../../shared/tool-call-metrics.js";
+import { DEFAULT_TOOL_METRIC_THRESHOLDS, type ToolMetricThresholds } from "../../tool-metric-settings";
 
 const tokenFormatter = new Intl.NumberFormat("en-US");
 
@@ -40,23 +41,16 @@ function duration(value: number | undefined): string {
 	return `${Math.floor(value / 60_000)}m ${Math.floor(value % 60_000 / 1000)}s`;
 }
 
-function metricLevel(kind: MetricKind, value: number | undefined): MetricLevel {
+function metricLevel(kind: MetricKind, value: number | undefined, thresholds: ToolMetricThresholds): MetricLevel {
 	if (value === undefined || !Number.isFinite(value) || value < 0) return "unavailable";
-	if (kind === "duration") {
-		if (value >= 15_000) return "critical";
-		if (value >= 5_000) return "high";
-		if (value >= 1_000) return "elevated";
-		return "normal";
-	}
-	if (kind === "input") {
-		if (value >= 50_000) return "critical";
-		if (value >= 20_000) return "high";
-		if (value >= 8_000) return "elevated";
-		return "normal";
-	}
-	if (value >= 50_000) return "critical";
-	if (value >= 10_000) return "high";
-	if (value >= 2_000) return "elevated";
+	const band = kind === "duration"
+		? thresholds.durationMs
+		: kind === "input"
+			? thresholds.inputTokens
+			: thresholds.outputTokens;
+	if (value >= band.critical) return "critical";
+	if (value >= band.high) return "high";
+	if (value >= band.elevated) return "elevated";
 	return "normal";
 }
 
@@ -66,14 +60,16 @@ function ColoredMetricSignal({
 	value,
 	formatted,
 	description,
+	thresholds,
 }: {
 	kind: MetricKind;
 	label: string;
 	value: number | undefined;
 	formatted: string;
 	description: string;
+	thresholds: ToolMetricThresholds;
 }) {
-	const level = metricLevel(kind, value);
+	const level = metricLevel(kind, value, thresholds);
 	return (
 		<span
 			data-metric-kind={kind}
@@ -87,7 +83,13 @@ function ColoredMetricSignal({
 	);
 }
 
-export function TerminalToolMetrics({ metrics }: { metrics?: ToolCallMetrics }) {
+export function TerminalToolMetrics({
+	metrics,
+	thresholds = DEFAULT_TOOL_METRIC_THRESHOLDS,
+}: {
+	metrics?: ToolCallMetrics;
+	thresholds?: ToolMetricThresholds;
+}) {
 	return (
 		<div
 			data-pibo-debug="tool-metrics"
@@ -99,21 +101,24 @@ export function TerminalToolMetrics({ metrics }: { metrics?: ToolCallMetrics }) 
 				label="Time"
 				value={metrics?.durationMs}
 				formatted={duration(metrics?.durationMs)}
-				description="Execution time from tool start to finish; color escalates at 1, 5, and 15 seconds; — means unavailable"
+				description="Execution time from tool start to finish; color bands use the configured Debug thresholds; — means unavailable"
+				thresholds={thresholds}
 			/>
 			<ColoredMetricSignal
 				kind="input"
 				label="In"
 				value={metrics?.inputTokens}
 				formatted={tokens(metrics?.inputTokens)}
-				description="Estimated tool-argument tokens (characters ÷ 4), not model input usage; color escalates at 8k, 20k, and 50k; — means unavailable"
+				description="Estimated tool-argument tokens (characters ÷ 4), not model input usage; color bands use the configured Debug thresholds; — means unavailable"
+				thresholds={thresholds}
 			/>
 			<ColoredMetricSignal
 				kind="output"
 				label="Out"
 				value={metrics?.outputTokens}
 				formatted={`${tokens(metrics?.outputTokens)} tokens`}
-				description="Estimated tool-result tokens (characters ÷ 4), not model output usage or billing; color escalates at 2k, 10k, and 50k. Media and unmeasurable payloads show —."
+				description="Estimated tool-result tokens (characters ÷ 4), not model output usage or billing; color bands use the configured Debug thresholds. Media and unmeasurable payloads show —."
+				thresholds={thresholds}
 			/>
 		</div>
 	);
