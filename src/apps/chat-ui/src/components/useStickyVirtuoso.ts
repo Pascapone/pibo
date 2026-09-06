@@ -520,7 +520,8 @@ export function useStickyVirtuoso({
 		event.preventDefault();
 		setScrollTop(scroller, getScrollTop(scroller) + stickyWheelPixelDelta(scrollIntentInput(event), getClientHeight(scroller)));
 		captureVisibleAnchors();
-	}, [captureVisibleAnchors, scroller]);
+		if (isPrependingRef.current || pendingAnchorsRef.current !== undefined) stageVisibleAnchors();
+	}, [captureVisibleAnchors, scroller, stageVisibleAnchors]);
 
 	const clearPointerScrollMode = useCallback((expectedMode?: StickyPointerScrollMode) => {
 		const currentMode = pointerScrollModeRef.current;
@@ -632,7 +633,11 @@ export function useStickyVirtuoso({
 		};
 		const resizeObserver = typeof ResizeObserver === "undefined"
 			? undefined
-			: new ResizeObserver(preserveReadingTarget);
+			: new ResizeObserver((entries) => {
+				// A viewport-only resize needs bottom following, not a detached-anchor
+				// restore that could overwrite an in-flight native wheel movement.
+				if (stickyRef.current || entries.some((entry) => entry.target !== target)) preserveReadingTarget();
+			});
 		const observeItemList = () => {
 			const itemList = target.querySelector<HTMLElement>('[data-testid="virtuoso-item-list"]');
 			if (itemList) resizeObserver?.observe(itemList);
@@ -641,6 +646,8 @@ export function useStickyVirtuoso({
 			observeItemList();
 			preserveReadingTarget();
 		});
+		// Headers can resize the viewport without changing the item list itself.
+		resizeObserver?.observe(target);
 		observeItemList();
 		mutationObserver.observe(target, {
 			subtree: true,
