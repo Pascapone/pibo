@@ -42,7 +42,7 @@ test("post-create hydration preserves newer Session and Room navigation", { skip
 				return (await response.json()).session.id;
 			})()`));
 		}
-		for (const scenario of ["untouched", "session-before-refresh", "session-after-refresh", "other-room"]) {
+		for (const scenario of ["untouched", "session-before-refresh", "session-after-refresh", "other-room", "browser-back", "next-create"]) {
 			await t.test(scenario, async () => {
 				await client.send("Page.navigate", { url: `${origin}/apps/chat/rooms/${rooms[0]}/sessions/${sessions[0]}?view=terminal` });
 				await waitFor(`document.querySelector('[data-pibo-debug="compact-terminal-session-view"]')?.dataset.piboSessionId===${JSON.stringify(sessions[0])} && !!document.querySelector('button[aria-label="New Session"]:not(:disabled)')`);
@@ -57,14 +57,27 @@ test("post-create hydration preserves newer Session and Room navigation", { skip
 					await waitFor(`(() => {const id=document.querySelector('[data-pibo-debug="compact-terminal-session-view"]')?.dataset.piboSessionId;return id?.startsWith('ps_')&&!${JSON.stringify(sessions)}.includes(id)})()`);
 					const created = await client.evaluate("document.querySelector('[data-pibo-debug=\"compact-terminal-session-view\"]')?.dataset.piboSessionId");
 					assert.ok(created?.startsWith("ps_") && !sessions.includes(created), "POST has resolved to a real new Session");
-					const expected = scenario === "untouched" ? created : scenario === "other-room" ? sessions[2] : sessions[1];
+					let expected = scenario === "untouched" ? created : scenario === "other-room" ? sessions[2] : scenario === "browser-back" ? sessions[0] : sessions[1];
+					if (scenario === "untouched" || scenario === "next-create") {
+						await waitFor("!!document.querySelector('button[aria-label=\"New Session\"]:not(:disabled)')");
+					}
+					if (scenario === "next-create") {
+						await client.evaluate("document.querySelector('button[aria-label=\"New Session\"]').click()");
+						await waitFor(`(() => {const id=document.querySelector('[data-pibo-debug="compact-terminal-session-view"]')?.dataset.piboSessionId;return id?.startsWith('ps_')&&id!==${JSON.stringify(created)}&&!${JSON.stringify(sessions)}.includes(id)})()`);
+						expected = await client.evaluate("document.querySelector('[data-pibo-debug=\"compact-terminal-session-view\"]').dataset.piboSessionId");
+					}
 					const roomId = scenario === "other-room" ? rooms[1] : rooms[0];
 					if (scenario === "other-room") {
 						await client.evaluate(`document.querySelector('[data-pibo-debug="room-node"][data-pibo-room-id="${rooms[1]}"] button').click()`);
 						await waitFor(`!!document.querySelector('[data-pibo-debug="session-row"][data-pibo-session-id="${expected}"]')`);
 					}
-					if (scenario !== "untouched") {
-						await client.evaluate(`document.querySelector('[data-pibo-debug="session-row"][data-pibo-session-id="${expected}"] button[aria-label^="Open session"]').click()`);
+					if (scenario !== "untouched" && scenario !== "next-create") {
+						if (scenario === "browser-back") {
+							const history = await client.send("Page.getNavigationHistory");
+							await client.send("Page.navigateToHistoryEntry", { entryId: history.entries[history.currentIndex - 1].id });
+						} else {
+							await client.evaluate(`document.querySelector('[data-pibo-debug="session-row"][data-pibo-session-id="${expected}"] button[aria-label^="Open session"]').click()`);
+						}
 						await waitFor(`document.querySelector('[data-pibo-debug="compact-terminal-session-view"]')?.dataset.piboSessionId===${JSON.stringify(expected)}`);
 						// Seed after selection: transient debug streams are not persisted reload fixtures.
 						await new Promise((resolve) => setTimeout(resolve, 100));
@@ -77,7 +90,7 @@ test("post-create hydration preserves newer Session and Room navigation", { skip
 					t.diagnostic(`${scenario}: ${JSON.stringify(result)}`);
 					assert.equal(result.session, expected, "Late creation must not steal the newer Session selection");
 					assert.ok(result.path.includes(`/rooms/${roomId}/sessions/${expected}`), "Route and selected content agree");
-					if (scenario !== "untouched") assert.ok(result.visible, "Correct target content is viewport-visible");
+					if (scenario !== "untouched" && scenario !== "next-create") assert.ok(result.visible, "Correct target content is viewport-visible");
 				} finally { await release(); }
 			});
 		}

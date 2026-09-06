@@ -66,13 +66,16 @@ async function resolveRouteSelection(input) {
 	`);
 }
 
-test("post-create hydration defers to immediate user selection and rechecks ownership before navigation", () => {
+test("post-create hydration is nonblocking and cannot navigate or report stale errors", () => {
 	const app = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
 	const select = app.slice(app.indexOf("const selectSession = useCallback"), app.indexOf("const selectRoom = useCallback"));
 	assert.match(select, /if \(selectedPiboSessionIdRef.current !== piboSessionId\) bootstrapRequestId.current \+= 1;/);
 	assert.ok(select.indexOf("bootstrapRequestId.current += 1") < select.indexOf("flushSync"));
 	const create = app.slice(app.indexOf("const createSession = async"), app.indexOf("const toggleArchivedSessions = async"));
-	assert.match(create, /await loadBootstrap\(created.session.id[\s\S]*?if \(selectedPiboSessionIdRef.current !== created.session.id \|\| bootstrapRef.current\?\.selectedRoomId !== originRoomId\) return;\s*navigateToSelectedSession/);
+	assert.doesNotMatch(create, /await loadBootstrap/);
+	assert.equal((create.match(/navigateToSelectedSession\(/g) ?? []).length, 1, "Only POST completion may navigate");
+	assert.match(create, /const hydrationRequestId = bootstrapRequestId.current;\s*void hydration.catch/);
+	assert.match(create, /if \(hydrationRequestId === bootstrapRequestId.current\) setError\(errorMessage\(caught\)\)/);
 });
 
 test("optimistic session create keeps selecting the created session when untouched", async () => {
