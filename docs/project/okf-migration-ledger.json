@@ -18,6 +18,18 @@
   },
   "records": [
     {
+      "path": "docs/reports/performance-scalability-p0-2026-09-06.md",
+      "state": "conformant",
+      "classification": "performance validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 4010,
+      "file_sha256": "9225273e1b72d1dacf836af42702b9cd8614bee119ed2bd0d18c4a91fb4db29a",
+      "body_sha256": "3781dc1a3932de3439fe5bd2f5508be3511c40bc05afcd92a8997cc297c2d475",
+      "lineage": null
+    },
+    {
       "path": "docs/plans/pibo-performance-and-scalability.md",
       "state": "conformant",
       "classification": "performance implementation plan",

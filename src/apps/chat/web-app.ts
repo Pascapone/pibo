@@ -4469,6 +4469,11 @@ async function sendChatMessage(input: {
 	body: ChatMessageBody;
 	forcedRoomId?: string;
 }): Promise<Response> {
+	const startedAt = performance.now();
+	const timings: string[] = [];
+	const timedResponse = (value: Parameters<typeof responseJson>[0]) => responseJson(value, {
+		headers: { "server-timing": [...timings, `chat_ack;dur=${(performance.now() - startedAt).toFixed(2)}`].join(", ") },
+	});
 	const text = normalizeMessageText(input.body.text);
 	const delivery = normalizeMessageDelivery(input.body.delivery);
 	const clientTxnId = normalizeClientTxnId(input.body.clientTxnId);
@@ -4490,8 +4495,10 @@ async function sendChatMessage(input: {
 	}
 	input.state.sessionQuery.upsertSession(selectedSession);
 	const actorId = auditActorIdFor(input.webSession);
+	const lookupStartedAt = performance.now();
 	const duplicate = clientTxnId ? input.state.eventCommands.findByClientTxn(room.id, actorId, clientTxnId) : undefined;
-	if (duplicate) return responseJson({ duplicate: true, event: duplicate });
+	timings.push(`chat_lookup;dur=${(performance.now() - lookupStartedAt).toFixed(2)}`);
+	if (duplicate) return timedResponse({ duplicate: true, event: duplicate });
 	const webAnnotationContext = prepareWebAnnotationAttachments({
 		piboSessionId: selectedSession.id,
 		messageText: text,
@@ -4501,6 +4508,7 @@ async function sendChatMessage(input: {
 		messageText: webAnnotationContext.messageText,
 		attachmentPaths: input.body.fileAttachmentPaths,
 	});
+	const appendStartedAt = performance.now();
 	const accepted = input.state.eventCommands.appendEvent({
 		roomId: room.id,
 		piboSessionId: selectedSession.id,
@@ -4528,6 +4536,8 @@ async function sendChatMessage(input: {
 			...(clientTxnId ? { clientTxnId } : {}),
 		},
 	});
+	timings.push(`chat_append;dur=${(performance.now() - appendStartedAt).toFixed(2)}`);
+	const ingestStartedAt = performance.now();
 	try {
 		input.state.ingestService?.ingestUserMessageAccepted({
 			session: selectedSession,
@@ -4540,8 +4550,10 @@ async function sendChatMessage(input: {
 	} catch (error) {
 		console.warn("V2 chat data shadow ingest failed", error);
 	}
+	timings.push(`chat_ingest;dur=${(performance.now() - ingestStartedAt).toFixed(2)}`);
 	for (const listener of input.state.liveListeners) listener(accepted);
 	const messageId = clientTxnId ?? randomUUID();
+	const emitStartedAt = performance.now();
 	let output: PiboOutputEvent;
 	try {
 		output = await input.context.channelContext.emit({
@@ -4578,8 +4590,9 @@ async function sendChatMessage(input: {
 		}
 		throw error;
 	}
+	timings.push(`chat_emit;dur=${(performance.now() - emitStartedAt).toFixed(2)}`);
 	markWebAnnotationsAttached(webAnnotationContext);
-	return responseJson({ output, event: accepted });
+	return timedResponse({ output, event: accepted });
 }
 
 

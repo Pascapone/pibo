@@ -2,6 +2,8 @@
 
 ## 2026-09-06
 
+- **Indexed admission implementation**: Recorded the [P0 implementation and isolated validation](/reports/performance-scalability-p0-2026-09-06.md), including synthetic million-event lookups, concurrency regressions and remaining acceptance gates.
+
 - **Production admission and concurrency audit**: Added the [read-only production investigation](/reports/production-performance-audit-2026-09-06.md) and [performance/scalability plan](/plans/pibo-performance-and-scalability.md). Confirmed the synchronous room scan, cross-session blocking, and a separate cold-runtime admission delay; defined staged fixes, durable admission, resource budgets, load tests, and release gates. No product-code change, database/session deletion, gateway restart, or production deployment.
 
 - **Selectable Tool payload calculation**: Added `Settings > Debug` controls for bounded character-count factors or opt-in Tiktoken encodings. Each Tool signal rail now records and displays its calculation basis, while legacy metrics remain readable and provider usage/billing stays distinct. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006) and [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rail).
