@@ -169,7 +169,7 @@ test("Codex native advertises and validates its stable model, reasoning, service
 	assert.equal(adapter.validateProfile({ profile: invalidProvider })[0].code, "codex_native_model_provider_invalid");
 });
 
-test("Codex native applies profile options and exposes cumulative context usage", async (t) => {
+test("Codex native applies profile options and exposes current context usage", async (t) => {
 	const root = await testRoot();
 	const instanceId = "codex-native-model-options";
 	const { registry } = createAdapter(root, instanceId);
@@ -340,9 +340,9 @@ test("Codex native model, reasoning, and Fast Mode controls are model-aware and 
 
 	await resumed.prompt({ text: "resumed model", source: "rpc" });
 	assert.deepEqual(resumed.getStatus().contextUsage, {
-		tokens: 40,
+		tokens: 20,
 		contextWindow: 200_000,
-		percent: 0.02,
+		percent: 0.01,
 	});
 });
 
@@ -431,6 +431,16 @@ test("Codex native model catalog and controls flow through routed status and gat
 	assert.deepEqual(status.activeModel, { provider: "openai-codex", id: "gpt-5.2" });
 	assert.equal(status.thinkingLevel, "low");
 	assert.deepEqual(status.contextUsage, { tokens: 20, contextWindow: 200_000, percent: 0.01 });
+	assert.deepEqual(status.providerUsage, {
+		provider: "openai-codex",
+		planType: "pro",
+		limits: [
+			{ label: "1w limit", usedPercent: 75, remainingPercent: 25, resetsAt: "2026-09-12T05:32:23.000Z" },
+			{ label: "GPT-5.3-Codex-Spark 5h limit", usedPercent: 0, remainingPercent: 100, resetsAt: "2026-09-07T02:50:01.000Z" },
+			{ label: "GPT-5.3-Codex-Spark 1w limit", usedPercent: 6, remainingPercent: 94, resetsAt: "2026-09-12T20:20:31.000Z" },
+			{ label: "gpt-reserve 1w limit", usedPercent: 0, remainingPercent: 100, resetsAt: "2026-09-13T21:50:01.000Z" },
+		],
+	});
 });
 
 test("Codex native model catalog pagination applies stable protocol defaults and rejects unbounded responses", async () => {
@@ -540,12 +550,17 @@ test("Codex native session settings keep model and context notifications thread-
 			threadId: "thread-a",
 			turnId: "turn-a",
 			tokenUsage: {
-				last: { cachedInputTokens: 0, inputTokens: 1, outputTokens: 1, reasoningOutputTokens: 0, totalTokens: 2 },
-				total: { cachedInputTokens: 0, inputTokens: 25, outputTokens: 5, reasoningOutputTokens: 0, totalTokens: 30 },
+				last: { cachedInputTokens: 91_776, inputTokens: 94_173, outputTokens: 300, reasoningOutputTokens: 100, totalTokens: 94_473 },
+				total: { cachedInputTokens: 1_300_000, inputTokens: 1_410_000, outputTokens: 10_750, reasoningOutputTokens: 5_000, totalTokens: 1_420_750 },
+				modelContextWindow: 258_400,
 			},
 		},
 	});
-	assert.deepEqual(settings.currentContextUsage, { tokens: 30 });
+	assert.deepEqual(settings.currentContextUsage, {
+		tokens: 94_473,
+		contextWindow: 258_400,
+		percent: (94_473 / 258_400) * 100,
+	});
 
 	listener({
 		method: "model/rerouted",
