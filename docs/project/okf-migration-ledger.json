@@ -13119,9 +13119,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 26028,
-      "file_sha256": "0035f5241785f86dfeed60c8471acf3dd110f08ea5aec33a764231b123add05f",
-      "body_sha256": "941fed9b01358116735f155d65070d1188f1776369d101c73581abc6d11b86cc",
+      "file_bytes": 33833,
+      "file_sha256": "7c5bd9c9c0d6db06814a8fe8298ce4437a6ecfb3963ce7901640933fe7ff21d0",
+      "body_sha256": "8476c7b05cb426d086b798ce940b6b5f53c9168bae8f938506e8b3110bf71c5c",
       "lineage": null
     },
     {
@@ -13605,6 +13605,18 @@
       "file_bytes": 560,
       "file_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25",
       "body_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25"
+    },
+    {
+      "path": "docs/reports/terminal-viewport-and-wheel-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 11022,
+      "file_sha256": "037de3a9cc10a968087e53dbeb39826d76ff78095dd5d178720009b96194c56e",
+      "body_sha256": "f78f9ca04c8273eaca23c75ab3f827f15b5831d7f61efc605a1fd2fd91a2f700"
     }
   ]
 }

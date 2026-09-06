@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-06
+
+- **Terminal viewport and wheel ownership**: Added the [implemented scroll-owner contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-viewport-009) and [exact-candidate validation](/reports/terminal-viewport-and-wheel-validation-2026-09-06.md) for external viewport shrink, coarse wheel pending anchors, historical prepends/reload, and genuine Spark streaming/Queue. Reports preserve the 11 ms observed queue drain and the limits of the broader performance investigation.
+
 ## 2026-09-05
 
 - **Tool-call Debug mode**: Added a persisted Debug toggle beside Thinking, replaced duplicate topbar Raw Events and view controls with workspace-tab navigation, and documented per-invocation duration and explicitly estimated payload-token counts in the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006). Metrics survive live/replay paths without browser tokenization; legacy and unmeasurable values remain unavailable.

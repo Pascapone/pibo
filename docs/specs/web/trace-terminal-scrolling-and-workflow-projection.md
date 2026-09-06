@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T20:24:05Z"
+  at: "2026-09-06T00:20:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,8 +23,21 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "ba92dedd5453908c01732494b64dbcc4c53b0f20"
+  commit: "f54d19061486f4db60da27b8f82f9629a0295157"
   requirements:
+    - id: "WEB-TRACE-VIEWPORT-009"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/components/useStickyVirtuoso.ts"
+          symbol: "useStickyVirtuoso"
+      tests:
+        - path: "test/use-sticky-virtuoso.test.mjs"
+          name: "useStickyVirtuoso uses explicit anchor and Virtuoso prepend contracts"
+        - path: "test/chat-ui-terminal-viewport-resize.test.mjs"
+          name: "Terminal preserves follow and reading positions when its viewport shrinks"
+      public: ["CompactTerminalSessionView", "useStickyVirtuoso"]
+      failures: ["Viewport-only changes must not replay detached anchors; pending restoration must not undo new coarse wheel input."]
+      confidence: "high"
     - id: "WEB-TRACE-DEBUG-006"
       status: "implemented"
       sources:
@@ -270,6 +283,14 @@ Trace cards expose stable IDs/order metadata; sticky scrolling tracks user inten
 Legacy/current runtime turns use stable product identity; workflow UI models accept kernel/XState/UI snapshots while durable truth remains kernel.
 
 ## Requirements and invariants
+
+### Requirement: WEB-TRACE-VIEWPORT-009
+
+The element-backed Terminal viewport and its rendered item list share resize observation. While following the bottom, an external header or composer geometry change must retain bottom-follow after layout settlement even when item-list height is unchanged. While detached, viewport-only resize must not replay a stored anchor over native wheel movement; list changes retain the existing content-anchor restoration path.
+
+Coarse wheel input owns the resulting reading position. After its direct scroll, the hook captures the new visible target and refreshes pending prepend/restoration anchors when present. A later mutation or prepend must not restore an obsolete pre-wheel target. The observer disconnects with its owning effect; no CSS visibility override, vendor patch, polling timer, or history-format change is introduced.
+
+The [viewport and wheel validation report](/reports/terminal-viewport-and-wheel-validation-2026-09-06.md) records Docker before/after and exact-candidate public Pibo2 evidence: natural header shrink, real Spark streaming, detached desktop/mobile input, reload, and in-flight older-page restoration. Resize settlement is not guaranteed in the same RAF sample. These focused checks do not replace full-suite or integrated-release acceptance; existing historical validation counts below retain their original scope.
 
 ### Requirement: WEB-TRACE-DEBUG-006
 

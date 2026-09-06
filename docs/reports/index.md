@@ -75,6 +75,7 @@
 * [Sidebar browser tabs: upstream integration validation](sidebar-browser-tabs-upstream-integration-2026-08-31.md) - Records upstream rebasing, regression coverage, and headful browser validation for the desktop browser&#45;tab workspace&#46;
 * [Signal status reconciliation validation](signal-status-reconcile-load-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Signals Reliability Fix Validation](signals-reliability-fix-validation-2026-05-19.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Terminal viewport and wheel ownership validation — September 6, 2026](terminal-viewport-and-wheel-validation-2026-09-06.md) - Records local regression and exact&#45;candidate Pibo2 evidence for viewport shrink, coarse wheel input, history restoration, streaming, and queued delivery&#46;
 * [Terminal working animation restoration validation](terminal-working-animation-restoration-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Terminal working indicator validation](terminal-working-indicator-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Unread count index validation — 2026&#45;08&#45;07](unread-count-index-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
