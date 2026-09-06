@@ -10,10 +10,8 @@ import {
 	parseWebAnnotationOverlayState,
 	readStoredSelectedWebAnnotationIds,
 	readStoredWebAnnotationOverlayState,
-	readStoredWebAnnotationsPanelCollapsed,
 	storedWebAnnotationOverlayStateKey,
 	writeStoredSelectedWebAnnotationIds,
-	writeStoredWebAnnotationsPanelCollapsed,
 	type WebAnnotationOverlayPanelState,
 } from "./web-annotation-storage";
 
@@ -31,7 +29,6 @@ export function useSessionWebAnnotations({
 	const [selectedWebAnnotationIds, setSelectedWebAnnotationIds] = useState<string[]>([]);
 	const [webAnnotationsPanelVisible, setWebAnnotationsPanelVisible] = useState(false);
 	const [webAnnotationOverlayState, setWebAnnotationOverlayState] = useState<WebAnnotationOverlayPanelState | null>(() => selectedPiboSessionId ? readStoredWebAnnotationOverlayState(selectedPiboSessionId) : null);
-	const [webAnnotationsPanelCollapsed, setWebAnnotationsPanelCollapsed] = useState(() => readStoredWebAnnotationsPanelCollapsed());
 	const [clearingWebAnnotations, setClearingWebAnnotations] = useState(false);
 
 	const webAnnotationOverlayInstalled = Boolean(
@@ -150,14 +147,6 @@ export function useSessionWebAnnotations({
 		updateSelectedWebAnnotationIds((current) => current.filter((candidate) => candidate !== annotationId));
 	}, [updateSelectedWebAnnotationIds]);
 
-	const toggleWebAnnotationsPanelCollapsed = useCallback(() => {
-		setWebAnnotationsPanelCollapsed((current) => {
-			const next = !current;
-			writeStoredWebAnnotationsPanelCollapsed(next);
-			return next;
-		});
-	}, []);
-
 	const clearVisibleWebAnnotations = useCallback(async () => {
 		if (!visibleWebAnnotations.length || clearingWebAnnotations) return;
 		if (!window.confirm(`Dismiss ${visibleWebAnnotations.length} visible web annotations? This keeps sent messages but clears the annotation list.`)) return;
@@ -177,7 +166,6 @@ export function useSessionWebAnnotations({
 		selectedWebAnnotationIds,
 		selectedWebAnnotations,
 		visibleWebAnnotations,
-		webAnnotationsPanelCollapsed,
 		webAnnotationsPanelRendered,
 		webAnnotationsPanelVisible,
 		webAnnotationsQuery,
@@ -186,7 +174,6 @@ export function useSessionWebAnnotations({
 		toggleWebAnnotationAttachment,
 		detachWebAnnotationAttachment,
 		clearSelectedWebAnnotationAttachments,
-		toggleWebAnnotationsPanelCollapsed,
 		clearVisibleWebAnnotations,
 	};
 }
