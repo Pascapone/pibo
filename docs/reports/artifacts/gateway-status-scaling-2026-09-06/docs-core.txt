@@ -1,0 +1,7 @@
+
+> @pasko70/pibo@1.7.2 docs:validate:okf
+> node scripts/validate-okf-docs.mjs --mode core
+
+OKF core validation: PASS
+Markdown paths: 724 (git)
+Errors: 0; warnings: 0

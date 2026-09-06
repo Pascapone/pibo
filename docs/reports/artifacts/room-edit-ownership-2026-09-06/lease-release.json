@@ -1,0 +1,16 @@
+{
+  "id": "lease_6a0c7e6b33fa05a693",
+  "slotId": "slot-01",
+  "holder": "ps_1f203c85-5c7c-46b3-bb1e-0aedc730c3c7",
+  "seedMode": "full",
+  "artifactSha256": "937920907ce9460c3dc901487bb81fc22b060a6534b4407b91edced50577f11b",
+  "artifactRuntimePath": "/opt/pibo-candidates/room-edit-ownership/da91ca26/runtime",
+  "packageVersion": "1.7.2",
+  "commit": "da91ca265c6baa16a4f19f29d2036c3c6ddc56a0",
+  "containerName": "pibo-pool-slot-01",
+  "publicUrl": "https://slot-01.pool.pibo2.neuralnexus.me/",
+  "status": "released",
+  "createdAt": "2026-09-06T05:16:14.692Z",
+  "expiresAt": "2026-09-06T06:16:14.692Z",
+  "releasedAt": "2026-09-06T05:47:04.935Z"
+}

@@ -1,0 +1,1 @@
+{"statuses":[{"path":"/gateway/status","ms":248.92695399999997,"status":200,"runtimes":29},{"path":"/gateway/status","ms":403.512038,"status":200,"runtimes":29},{"path":"/gateway/status","ms":710.079285,"status":200,"runtimes":29}],"health":{"path":"/health","ms":608.2377290000001,"status":200}}

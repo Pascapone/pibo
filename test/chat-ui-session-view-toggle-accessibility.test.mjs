@@ -33,7 +33,7 @@ async function runSessionViewToggleAccessibilityScenario() {
 				sessionViewId: "terminal",
 				sessionViews,
 				currentSessionView: sessionViews[0],
-				showRawEvents: false,
+				debugMode: false,
 				showThinking: false,
 				expandThinking: false,
 				toolDisplayMode: "default",
@@ -41,7 +41,7 @@ async function runSessionViewToggleAccessibilityScenario() {
 				onShowWebAnnotationsPanel() {},
 				onHideWebAnnotationsPanel() {},
 				onSelectSessionView() {},
-				onToggleRawEvents() {},
+				onToggleDebugMode() {},
 				onToggleThinking() {},
 				onToggleExpandThinking() {},
 				onToolDisplayModeChange() {},
@@ -65,11 +65,10 @@ async function runSessionViewToggleAccessibilityScenario() {
 		assert.match(normal, /data-pibo-context-kind="room"/);
 		assert.match(normal, />Room</);
 		assert.match(normal, />Pibo Core</);
-		assert.match(normal, /role="group" aria-label="Session views"/);
+		assert.doesNotMatch(normal, /aria-label="Session views"|Switch to .* view|aria-label="Raw Events"/);
 		assert.match(normal, /aria-label="Tool display mode"/);
 		assert.match(normal, /<option value="intent" disabled="">Tools: Intent/);
-		assert.match(buttonOpeningTag(normal, "Switch to Terminal view"), /aria-pressed="true"/);
-		assert.match(buttonOpeningTag(normal, "Switch to Workflow view"), /aria-pressed="false"/);
+		assert.match(buttonOpeningTag(normal, "Debug"), /aria-pressed="false"/);
 		assert.equal(normal.includes('aria-label="Enter Terminal fullscreen"'), false);
 		assert.equal(normal.includes('aria-label="Open selected session in new window"'), false);
 
@@ -91,34 +90,23 @@ async function runSessionViewToggleAccessibilityScenario() {
 		assert.match(desktopTerminal, /aria-label="Tool display mode"/);
 		assert.match(desktopTerminal, /aria-label="Thinking"/);
 		assert.match(desktopTerminal, /aria-label="Enter Terminal fullscreen"/);
-		assert.match(normal, /aria-label="Session views"/);
-		assert.match(normal, /aria-label="Raw Events"/);
-
-		const routed = render({ allowedSessionViewIds: ["terminal"] });
-		const disabledWorkflow = buttonOpeningTag(routed, "Workflow view unavailable for this Session");
-		assert.match(disabledWorkflow, /disabled=""/);
-		assert.match(disabledWorkflow, /aria-pressed="false"/);
-		assert.match(buttonOpeningTag(routed, "Switch to Terminal view"), /aria-pressed="true"/);
+		assert.match(buttonOpeningTag(desktopTerminal, "Debug"), /aria-pressed="false"/);
+		assert.match(buttonOpeningTag(render({ debugMode: true }), "Debug"), /aria-pressed="true"/);
 
 		const extra = render({
 			activeViewId: "workflow-run",
 			extraViewTabs: [
 				{ id: "workflow-overview", label: "Overview", active: true, onSelect() {} },
 				{ id: "workflow-run", label: "Run", active: false, onSelect() {} },
-				{ id: "workflow-disabled", label: "Disabled", disabled: true, onSelect() {} },
+				{ id: "preview", label: "Preview", onSelect() {} },
 			],
 		});
-		assert.match(buttonOpeningTag(extra, "Switch to Terminal view"), /aria-pressed="false"/);
-		assert.match(buttonOpeningTag(extra, "Switch to Overview view"), /aria-pressed="true"/);
-		assert.match(buttonOpeningTag(extra, "Switch to Run view"), /aria-pressed="false"/);
-		const disabledExtra = buttonOpeningTag(extra, "Disabled view unavailable");
-		assert.match(disabledExtra, /disabled=""/);
-		assert.match(disabledExtra, /aria-pressed="false"/);
+		assert.doesNotMatch(extra, /aria-label="Session views"|Switch to .* view/);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
-test("session view buttons expose active, inactive, disabled, and extra-view toggle state", async () => {
+test("topbar exposes Debug without duplicate view navigation or Raw Events", async () => {
 	await assert.doesNotReject(runSessionViewToggleAccessibilityScenario());
 });
 
@@ -127,5 +115,6 @@ test("normal desktop and mobile Session surfaces retain Terminal and Workflow vi
 	const pane = await readFile(new URL("../src/apps/chat-ui/src/session-trace-pane.tsx", import.meta.url), "utf8");
 	assert.doesNotMatch(app, /desktopTerminalOnly/);
 	assert.match(app, /sessionViewId=\{sessionViewId\}[\s\S]*currentSessionView=\{currentSessionView\}/);
-	assert.match(pane, /workflowSessionLinked \? \["terminal", "workflow"\] : \["terminal"\]/);
+	assert.match(pane, /workflowSessionLinked,/);
+	assert.doesNotMatch(pane, /combinedExtraViewTabs|onSelectSessionView/);
 });

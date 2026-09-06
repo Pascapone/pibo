@@ -86,6 +86,63 @@ test("delegated observation cursors remain monotonic across router restart", asy
 	}
 });
 
+test("delegated observation auto cursors persist across router restart", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-subagent-observe-auto-restart-"));
+	const dbPath = join(root, "pibo.sqlite");
+	const parentId = "ps_observe_auto_parent";
+	const childId = "ps_observe_auto_child";
+	let firstStore = new PiboDataSessionStore(dbPath);
+	firstStore.create({ id: parentId, channel: "pibo.test", kind: "chat", profile: "base" });
+	firstStore.create({
+		id: childId,
+		channel: "pibo.subagents",
+		kind: "subagent",
+		profile: "base",
+		parentId,
+		metadata: { subagentName: "observer", threadKey: "auto-restart" },
+	});
+	let firstRouter = new PiboSessionRouter({ persistSession: false, sessionStore: firstStore });
+	try {
+		firstRouter.emitOutput({
+			type: "assistant_message",
+			piboSessionId: childId,
+			eventId: "auto-before",
+			text: "before automatic restart",
+		});
+		const first = firstRouter.createAgentsController(parentId).observe({});
+		assert.deepEqual(first.observations.map((item) => item.text), ["before automatic restart"]);
+		assert.deepEqual(firstRouter.createAgentsController(parentId).observe({}).observations, []);
+
+		await firstRouter.disposeAll();
+		firstStore.close();
+
+		const reopenedStore = new PiboDataSessionStore(dbPath);
+		const restartedRouter = new PiboSessionRouter({ persistSession: false, sessionStore: reopenedStore });
+		try {
+			restartedRouter.emitOutput({
+				type: "assistant_message",
+				piboSessionId: childId,
+				eventId: "auto-after",
+				text: "after automatic restart",
+			});
+			const observed = restartedRouter.createAgentsController(parentId).observe({});
+			assert.deepEqual(observed.observations.map((item) => item.text), ["after automatic restart"]);
+			assert.deepEqual(restartedRouter.createAgentsController(parentId).observe({}).observations, []);
+			assert.deepEqual(
+				restartedRouter.createAgentsController(parentId).observe({ cursorMode: "history" }).observations.map((item) => item.text),
+				["after automatic restart"],
+			);
+		} finally {
+			await restartedRouter.disposeAll();
+			reopenedStore.close();
+		}
+	} finally {
+		try { await firstRouter.disposeAll(); } catch { /* already disposed */ }
+		try { firstStore.close(); } catch { /* already closed */ }
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("the first durable observation sequence advances beyond pre-counter cursors", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-subagent-observe-migration-"));
 	const store = new PiboDataSessionStore(join(root, "pibo.sqlite"));

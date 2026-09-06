@@ -1,10 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Brain, Bug, ChevronsDown, ChevronsUp, EyeOff, Maximize2, Plus } from "lucide-react";
 import { copyTextToClipboard } from "./clipboard";
-import type {
-  getChatSessionView,
-  listChatSessionViews,
-} from "./session-views/registry";
+import type { getChatSessionView } from "./session-views/registry";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
 import { WebAnnotationsEntryPoints } from "./web-annotations";
 import { TerminalHeaderUsage } from "./session-header-usage";
@@ -12,15 +9,6 @@ import {
   WorkflowHeaderMeta,
   type WorkflowHeaderSummary,
 } from "./workflows/workflow-session-model";
-
-export type SessionTraceHeaderExtraViewTab = {
-  id: string;
-  label: string;
-  description?: string;
-  active?: boolean;
-  disabled?: boolean;
-  onSelect: () => void;
-};
 
 export function SessionTraceHeader({
   title,
@@ -34,16 +22,13 @@ export function SessionTraceHeader({
   webAnnotationsPanelRendered,
   workflowHeader,
   sessionViewId,
-  sessionViews,
   currentSessionView,
-  allowedSessionViewIds,
-  extraViewTabs,
   activeViewId,
   desktopTerminalOnly = false,
   terminalFullscreenAvailable,
   onEnterTerminalFullscreen,
   onOpenSessionWindow,
-  showRawEvents,
+  debugMode,
   showThinking,
   expandThinking,
   toolDisplayMode,
@@ -51,8 +36,7 @@ export function SessionTraceHeader({
   onToolDisplayModeChange,
   onShowWebAnnotationsPanel,
   onHideWebAnnotationsPanel,
-  onSelectSessionView,
-  onToggleRawEvents,
+  onToggleDebugMode,
   onToggleThinking,
   onToggleExpandThinking,
   onError,
@@ -68,16 +52,13 @@ export function SessionTraceHeader({
   webAnnotationsPanelRendered: boolean;
   workflowHeader: WorkflowHeaderSummary | null;
   sessionViewId: ChatSessionViewId;
-  sessionViews: ReturnType<typeof listChatSessionViews>;
   currentSessionView: ReturnType<typeof getChatSessionView>;
-  allowedSessionViewIds?: readonly ChatSessionViewId[];
-  extraViewTabs?: readonly SessionTraceHeaderExtraViewTab[];
   activeViewId?: string;
   desktopTerminalOnly?: boolean;
   terminalFullscreenAvailable?: boolean;
   onEnterTerminalFullscreen?: () => void;
   onOpenSessionWindow?: () => void;
-  showRawEvents: boolean;
+  debugMode: boolean;
   showThinking: boolean;
   expandThinking: boolean;
   toolDisplayMode: ToolDisplayMode;
@@ -85,8 +66,7 @@ export function SessionTraceHeader({
   onToolDisplayModeChange: (mode: ToolDisplayMode) => void;
   onShowWebAnnotationsPanel: () => void;
   onHideWebAnnotationsPanel: () => void;
-  onSelectSessionView: (viewId: ChatSessionViewId) => void;
-  onToggleRawEvents: () => void;
+  onToggleDebugMode: () => void;
   onToggleThinking: () => void;
   onToggleExpandThinking: () => void;
   onError: (message: string | null) => void;
@@ -100,10 +80,6 @@ export function SessionTraceHeader({
   const selectedViewId = activeViewId ?? sessionViewId;
   const showTerminalUsage = currentSessionView.id === "terminal" && selectedViewId === "terminal";
   const contextKindLabel = "Room";
-  const allowedSessionViewIdSet = useMemo(
-    () => (allowedSessionViewIds ? new Set(allowedSessionViewIds) : null),
-    [allowedSessionViewIds],
-  );
 
   useEffect(() => {
     return () => {
@@ -204,72 +180,6 @@ export function SessionTraceHeader({
           <option value="slim">Tools: Slim</option>
           <option value="intent" disabled={!toolIntentSupported}>Tools: Intent</option>
         </select>
-        {desktopTerminalOnly ? null : <div
-          role="group"
-          aria-label="Session views"
-          className="flex items-center rounded-sm border border-slate-700 bg-[#0e1116] p-0.5"
-        >
-          {sessionViews.map((view) => {
-            const disabledByRouting = Boolean(
-              allowedSessionViewIdSet && !allowedSessionViewIdSet.has(view.id),
-            );
-            return (
-              <button
-                key={view.id}
-                type="button"
-                onClick={() => {
-                  if (!disabledByRouting) onSelectSessionView(view.id);
-                }}
-                disabled={disabledByRouting}
-                title={
-                  disabledByRouting
-                    ? `${currentSessionView.label} is the available view for this Session.`
-                    : (view.description ?? view.label)
-                }
-                aria-label={
-                  disabledByRouting
-                    ? `${view.label} view unavailable for this Session`
-                    : `Switch to ${view.label} view`
-                }
-                aria-pressed={selectedViewId === view.id}
-                className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide max-[980px]:min-w-0 max-[980px]:px-1.5 @max-[680px]:min-w-0 @max-[680px]:px-1.5 disabled:cursor-not-allowed disabled:text-slate-600 ${
-                  selectedViewId === view.id
-                    ? "bg-[#11a4d4]/10 text-[#11a4d4]"
-                    : "text-slate-400 hover:text-[#11a4d4] disabled:hover:text-slate-600"
-                }`}
-              >
-                {view.label}
-              </button>
-            );
-          })}
-          {extraViewTabs?.map((view) => {
-            const active = view.active ?? selectedViewId === view.id;
-            return (
-              <button
-                key={view.id}
-                type="button"
-                onClick={() => {
-                  if (!view.disabled) view.onSelect();
-                }}
-                disabled={view.disabled}
-                title={view.description ?? view.label}
-                aria-label={
-                  view.disabled
-                    ? `${view.label} view unavailable`
-                    : `Switch to ${view.label} view`
-                }
-                aria-pressed={active}
-                className={`min-w-20 px-2.5 py-1 text-[11px] font-bold tracking-wide max-[980px]:min-w-0 max-[980px]:px-1.5 @max-[680px]:min-w-0 @max-[680px]:px-1.5 disabled:cursor-not-allowed disabled:text-slate-600 ${
-                  active
-                    ? "bg-[#11a4d4]/10 text-[#11a4d4]"
-                    : "text-slate-400 hover:text-[#11a4d4] disabled:hover:text-slate-600"
-                }`}
-              >
-                {view.label}
-              </button>
-            );
-          })}
-        </div>}
         {terminalFullscreenAvailable && onEnterTerminalFullscreen ? (
           <button
             type="button"
@@ -282,17 +192,14 @@ export function SessionTraceHeader({
             <Maximize2 size={14} />
           </button>
         ) : null}
-        {desktopTerminalOnly ? null : (
-          <HeaderIconButton
-            onClick={onToggleRawEvents}
-            title={showRawEvents ? "Hide Raw Events" : "Show Raw Events"}
-            ariaLabel="Raw Events"
-            ariaControls="raw-events-inspector"
-            active={showRawEvents}
-          >
-            <Bug size={14} />
-          </HeaderIconButton>
-        )}
+        <HeaderIconButton
+          onClick={onToggleDebugMode}
+          title={debugMode ? "Disable Debug" : "Enable Debug"}
+          ariaLabel="Debug"
+          active={debugMode}
+        >
+          <Bug size={14} />
+        </HeaderIconButton>
         <HeaderIconButton
           onClick={onToggleThinking}
           title={showThinking ? "Hide Thinking" : "Show Thinking"}

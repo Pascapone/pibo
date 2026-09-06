@@ -217,6 +217,7 @@ export function createSessionTraceViewProps(input: {
 	currentTraceView: PiboSessionTraceView | null;
 	isLoading: boolean;
 	showThinking: boolean;
+	debugMode?: boolean;
 	expandThinking: boolean;
 	toolDisplayMode: ChatSessionViewProps["toolDisplayMode"];
 	selectedSessionProfile: string;
@@ -250,6 +251,7 @@ export function createSessionTraceViewProps(input: {
 			: null,
 		isLoading: input.isLoading,
 		showThinking: input.showThinking,
+		debugMode: input.debugMode,
 		expandThinking: input.expandThinking,
 		toolDisplayMode: input.toolDisplayMode,
 		sessionAgentProfile: input.selectedSessionProfile,

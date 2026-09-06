@@ -1,0 +1,303 @@
+
+> @pasko70/pibo@1.7.2 build
+> npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run web-ui:build && npm run vscode:webview:build && node scripts/ensure-bin-executable.mjs
+
+
+> @pasko70/pibo@1.7.2 workflows:build
+> npm run build --workspace @pasko70/pibo-workflows
+
+
+> @pasko70/pibo-workflows@0.0.0 build
+> tsc -p tsconfig.json
+
+
+> @pasko70/pibo@1.7.2 web-ui:build
+> npm run chat-ui:build && npm run context-files-ui:build
+
+
+> @pasko70/pibo@1.7.2 chat-ui:build
+> vite build --config src/apps/chat-ui/vite.config.ts
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 2949 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/apps/chat-ui/index.html                           1.16 kB │ gzip:   0.47 kB
+dist/apps/chat-ui/assets/index-BMJGoyM8.css          179.59 kB │ gzip:  32.10 kB
+dist/apps/chat-ui/assets/diff-ChtP43wD.js              0.30 kB │ gzip:   0.23 kB
+dist/apps/chat-ui/assets/brainfuck-D5EjA2JK.js         0.59 kB │ gzip:   0.32 kB
+dist/apps/chat-ui/assets/properties-C357ku5U.js        0.66 kB │ gzip:   0.34 kB
+dist/apps/chat-ui/assets/cmake-84nbDH0I.js             0.75 kB │ gzip:   0.45 kB
+dist/apps/chat-ui/assets/asciiarmor-C_eisQCp.js        0.77 kB │ gzip:   0.40 kB
+dist/apps/chat-ui/assets/protobuf-D1ij_kNL.js          0.80 kB │ gzip:   0.51 kB
+dist/apps/chat-ui/assets/http-CLVgA2GD.js              0.84 kB │ gzip:   0.42 kB
+dist/apps/chat-ui/assets/solr-BBopId9w.js              0.86 kB │ gzip:   0.45 kB
+dist/apps/chat-ui/assets/troff-C2dAgh7P.js             0.95 kB │ gzip:   0.43 kB
+dist/apps/chat-ui/assets/toml-BPTmHmyx.js              1.04 kB │ gzip:   0.53 kB
+dist/apps/chat-ui/assets/spreadsheet-CTIncYxj.js       1.13 kB │ gzip:   0.53 kB
+dist/apps/chat-ui/assets/mbox-BEMVcqjs.js              1.38 kB │ gzip:   0.65 kB
+dist/apps/chat-ui/assets/rpm-gpDK5sbt.js               1.59 kB │ gzip:   0.81 kB
+dist/apps/chat-ui/assets/sieve-BAxa3IjF.js             1.61 kB │ gzip:   0.77 kB
+dist/apps/chat-ui/assets/factor-LKH5gN8L.js            1.66 kB │ gzip:   0.60 kB
+dist/apps/chat-ui/assets/eiffel-BEjRio4Q.js            1.69 kB │ gzip:   0.90 kB
+dist/apps/chat-ui/assets/z80-Co3PbHdE.js               1.75 kB │ gzip:   0.79 kB
+dist/apps/chat-ui/assets/mumps-BSzj6Xyz.js             1.82 kB │ gzip:   0.95 kB
+dist/apps/chat-ui/assets/elm-Cshzl8qu.js               1.86 kB │ gzip:   0.81 kB
+dist/apps/chat-ui/assets/mathematica-u8YMmbU0.js       1.89 kB │ gzip:   0.80 kB
+dist/apps/chat-ui/assets/dockerfile-DJkHQgkl.js        1.90 kB │ gzip:   0.65 kB
+dist/apps/chat-ui/assets/turtle-Cx3rYX2g.js            1.95 kB │ gzip:   0.89 kB
+dist/apps/chat-ui/assets/dist-RKTRnzGb.js              1.95 kB │ gzip:   1.25 kB
+dist/apps/chat-ui/assets/ebnf-D4c0_ac3.js              1.97 kB │ gzip:   0.80 kB
+dist/apps/chat-ui/assets/smalltalk-BLp5-jwC.js         1.99 kB │ gzip:   0.85 kB
+dist/apps/chat-ui/assets/fcl-ClOhbFR7.js               2.02 kB │ gzip:   0.95 kB
+dist/apps/chat-ui/assets/ntriples-B9h1VB_g.js          2.06 kB │ gzip:   0.72 kB
+dist/apps/chat-ui/assets/dtd-DTF72YNO.js               2.09 kB │ gzip:   0.87 kB
+dist/apps/chat-ui/assets/octave-D2Q8cUp1.js            2.10 kB │ gzip:   1.07 kB
+dist/apps/chat-ui/assets/yacas-CXXgtw0p.js             2.14 kB │ gzip:   1.08 kB
+dist/apps/chat-ui/assets/pascal-Dp_KdFgX.js            2.25 kB │ gzip:   1.17 kB
+dist/apps/chat-ui/assets/simple-mode-DXiLM1-G.js       2.27 kB │ gzip:   1.09 kB
+dist/apps/chat-ui/assets/apl-gfMMiTNf.js               2.29 kB │ gzip:   1.22 kB
+dist/apps/chat-ui/assets/commonlisp-DgAKBe0r.js        2.31 kB │ gzip:   1.09 kB
+dist/apps/chat-ui/assets/tcl-BGfruO1u.js               2.35 kB │ gzip:   1.22 kB
+dist/apps/chat-ui/assets/shell-DwuoZtxw.js             2.43 kB │ gzip:   1.20 kB
+dist/apps/chat-ui/assets/webidl-D5jiJvOU.js            2.44 kB │ gzip:   1.24 kB
+dist/apps/chat-ui/assets/pig-AF4Hwhju.js               2.51 kB │ gzip:   1.37 kB
+dist/apps/chat-ui/assets/puppet-BZyAS7I4.js            2.51 kB │ gzip:   1.19 kB
+dist/apps/chat-ui/assets/forth-Cezjo90N.js             2.54 kB │ gzip:   1.32 kB
+dist/apps/chat-ui/assets/dist-DMiglryg.js              2.57 kB │ gzip:   1.48 kB
+dist/apps/chat-ui/assets/velocity-CqftRsjg.js          2.70 kB │ gzip:   1.11 kB
+dist/apps/chat-ui/assets/tiddlywiki-VlUiK86J.js        2.76 kB │ gzip:   1.07 kB
+dist/apps/chat-ui/assets/modelica-CqHI_q-D.js          2.79 kB │ gzip:   1.28 kB
+dist/apps/chat-ui/assets/oz-BwTct_5T.js                2.88 kB │ gzip:   1.27 kB
+dist/apps/chat-ui/assets/r-CxDmU1I4.js                 2.92 kB │ gzip:   1.33 kB
+dist/apps/chat-ui/assets/stex-DNzd62Q_.js              3.09 kB │ gzip:   1.17 kB
+dist/apps/chat-ui/assets/lua-CiA1ziua.js               3.13 kB │ gzip:   1.40 kB
+dist/apps/chat-ui/assets/cypher-p9eYesGn.js            3.18 kB │ gzip:   1.49 kB
+dist/apps/chat-ui/assets/tiki-AK6FwT8q.js              3.22 kB │ gzip:   1.25 kB
+dist/apps/chat-ui/assets/dist-DomBlpYM.js              3.26 kB │ gzip:   1.67 kB
+dist/apps/chat-ui/assets/vhdl-kS471soi.js              3.31 kB │ gzip:   1.49 kB
+dist/apps/chat-ui/assets/sparql-Dz-mlCAC.js            3.33 kB │ gzip:   1.59 kB
+dist/apps/chat-ui/assets/mscgen-qgSLujhx.js            3.49 kB │ gzip:   0.97 kB
+dist/apps/chat-ui/assets/vb-BthdM_4N.js                3.65 kB │ gzip:   1.81 kB
+dist/apps/chat-ui/assets/d-DWkQyNnU.js                 3.69 kB │ gzip:   1.67 kB
+dist/apps/chat-ui/assets/q-B9NhS7L_.js                 3.69 kB │ gzip:   1.69 kB
+dist/apps/chat-ui/assets/swift-DKB6_1j6.js             3.76 kB │ gzip:   1.81 kB
+dist/apps/chat-ui/assets/coffeescript-De_zI4J0.js      3.84 kB │ gzip:   1.69 kB
+dist/apps/chat-ui/assets/fortran-Bt6PBEDR.js           3.86 kB │ gzip:   1.93 kB
+dist/apps/chat-ui/assets/asn1-DCl_8MCW.js              3.97 kB │ gzip:   1.95 kB
+dist/apps/chat-ui/assets/dylan-BCDoL_-p.js             4.04 kB │ gzip:   1.63 kB
+dist/apps/chat-ui/assets/asterisk-BEn0Cwpx.js          4.05 kB │ gzip:   1.73 kB
+dist/apps/chat-ui/assets/livescript-BXxG0Yva.js        4.08 kB │ gzip:   1.62 kB
+dist/apps/chat-ui/assets/ttcn-cfg-2b4Gb5sE.js          4.09 kB │ gzip:   1.72 kB
+dist/apps/chat-ui/assets/groovy-CUpZ7dEl.js            4.12 kB │ gzip:   1.74 kB
+dist/apps/chat-ui/assets/haskell-BRsoo5mP.js           4.15 kB │ gzip:   1.91 kB
+dist/apps/chat-ui/assets/gas-BHEdbvp9.js               4.55 kB │ gzip:   1.27 kB
+dist/apps/chat-ui/assets/mllike-B45xgp2S.js            4.82 kB │ gzip:   1.57 kB
+dist/apps/chat-ui/assets/ttcn-PPSTk1ow.js              4.84 kB │ gzip:   2.14 kB
+dist/apps/chat-ui/assets/dist-sNPNnhAG.js              4.86 kB │ gzip:   2.32 kB
+dist/apps/chat-ui/assets/crystal-Bsdphhtm.js           5.01 kB │ gzip:   2.10 kB
+dist/apps/chat-ui/assets/ruby-BjXV7-Qa.js              5.02 kB │ gzip:   2.14 kB
+dist/apps/chat-ui/assets/ecl-BVIeWmwY.js               5.11 kB │ gzip:   2.30 kB
+dist/apps/chat-ui/assets/julia-CQfgDRfP.js             5.26 kB │ gzip:   2.16 kB
+dist/apps/chat-ui/assets/vbscript-D9f6rSsU.js          5.43 kB │ gzip:   2.56 kB
+dist/apps/chat-ui/assets/mirc-C9zpzAZU.js              5.91 kB │ gzip:   2.70 kB
+dist/apps/chat-ui/assets/xquery-BKJx4mf9.js            6.15 kB │ gzip:   2.57 kB
+dist/apps/chat-ui/assets/cobol-DHLQUbN7.js             6.19 kB │ gzip:   2.98 kB
+dist/apps/chat-ui/assets/python-B_1Jd8HM.js            6.27 kB │ gzip:   2.67 kB
+dist/apps/chat-ui/assets/scheme-D9qYN0V5.js            6.35 kB │ gzip:   2.37 kB
+dist/apps/chat-ui/assets/pug-Gsm0M45u.js               6.64 kB │ gzip:   1.99 kB
+dist/apps/chat-ui/assets/textile-C4jVoHG1.js           6.74 kB │ gzip:   2.44 kB
+dist/apps/chat-ui/assets/nsis-CfSuhXs5.js              6.80 kB │ gzip:   2.99 kB
+dist/apps/chat-ui/assets/nginx-BMaDbqW3.js             7.40 kB │ gzip:   2.73 kB
+dist/apps/chat-ui/assets/powershell-BcIto6Sf.js        7.69 kB │ gzip:   3.29 kB
+dist/apps/chat-ui/assets/erlang-BV0c4Hdn.js            7.84 kB │ gzip:   2.90 kB
+dist/apps/chat-ui/assets/haxe-DjVOVvNP.js              7.86 kB │ gzip:   2.94 kB
+dist/apps/chat-ui/assets/verilog-7LoJAqYT.js           8.18 kB │ gzip:   3.46 kB
+dist/apps/chat-ui/assets/sas-C2OyD2Y6.js               9.33 kB │ gzip:   4.11 kB
+dist/apps/chat-ui/assets/clojure-BflJGmDX.js           9.40 kB │ gzip:   4.02 kB
+dist/apps/chat-ui/assets/perl-BkSkiI9m.js              9.73 kB │ gzip:   3.50 kB
+dist/apps/chat-ui/assets/idl-BUZw3wgd.js               9.82 kB │ gzip:   4.40 kB
+dist/apps/chat-ui/assets/gherkin-oBAE_ms0.js          10.15 kB │ gzip:   5.09 kB
+dist/apps/chat-ui/assets/dist-CswnpKik.js             11.52 kB │ gzip:   5.17 kB
+dist/apps/chat-ui/assets/dist-XVYGiB-c.js             14.27 kB │ gzip:   5.76 kB
+dist/apps/chat-ui/assets/dist-fPhZsAUX.js             16.20 kB │ gzip:   7.46 kB
+dist/apps/chat-ui/assets/javascript-DoL9Wb-Q.js       16.96 kB │ gzip:   5.72 kB
+dist/apps/chat-ui/assets/dist-DLAoZF7J.js             20.65 kB │ gzip:   9.32 kB
+dist/apps/chat-ui/assets/dist-Bpo160Xx.js             20.91 kB │ gzip:   9.66 kB
+dist/apps/chat-ui/assets/clike-D_6L3tnO.js            22.05 kB │ gzip:   7.75 kB
+dist/apps/chat-ui/assets/dist-BJ-TIk3N.js             22.92 kB │ gzip:  10.41 kB
+dist/apps/chat-ui/assets/stylus-BOVgKnng.js           23.51 kB │ gzip:   8.55 kB
+dist/apps/chat-ui/assets/css-CnaYoQib.js              24.66 kB │ gzip:   8.25 kB
+dist/apps/chat-ui/assets/dist-DLJCGrGQ.js             27.47 kB │ gzip:  13.02 kB
+dist/apps/chat-ui/assets/dist-LCx98fA_.js             30.68 kB │ gzip:  12.72 kB
+dist/apps/chat-ui/assets/dist-mpRGeo_R.js             32.12 kB │ gzip:  13.01 kB
+dist/apps/chat-ui/assets/dist-S3zJGntM.js             35.03 kB │ gzip:  12.34 kB
+dist/apps/chat-ui/assets/sql-DuQMFDvy.js              36.83 kB │ gzip:  10.90 kB
+dist/apps/chat-ui/assets/dist-DpF08Yd7.js             40.67 kB │ gzip:  16.92 kB
+dist/apps/chat-ui/assets/dist-DTeLDijr.js             44.54 kB │ gzip:  19.31 kB
+dist/apps/chat-ui/assets/dist-eddbbGyw.js             70.75 kB │ gzip:  26.08 kB
+dist/apps/chat-ui/assets/dist-zfRw3eo1.js             97.71 kB │ gzip:  28.63 kB
+dist/apps/chat-ui/assets/dist-DHvUPfrF.js            103.86 kB │ gzip:  34.74 kB
+dist/apps/chat-ui/assets/dist-CqM4On9D.js            339.76 kB │ gzip: 109.69 kB
+dist/apps/chat-ui/assets/index-B7xqYtH-.js         2,662.74 kB │ gzip: 785.74 kB
+
+✓ built in 2.75s
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+> @pasko70/pibo@1.7.2 context-files-ui:build
+> vite build --config src/apps/context-files-ui/vite.config.ts
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 2331 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/apps/context-files-ui/index.html                           0.70 kB │ gzip:   0.33 kB
+dist/apps/context-files-ui/assets/index-D8TsUizd.css           66.62 kB │ gzip:  14.40 kB
+dist/apps/context-files-ui/assets/diff-ChtP43wD.js              0.30 kB │ gzip:   0.23 kB
+dist/apps/context-files-ui/assets/brainfuck-D5EjA2JK.js         0.59 kB │ gzip:   0.32 kB
+dist/apps/context-files-ui/assets/properties-C357ku5U.js        0.66 kB │ gzip:   0.34 kB
+dist/apps/context-files-ui/assets/cmake-84nbDH0I.js             0.75 kB │ gzip:   0.45 kB
+dist/apps/context-files-ui/assets/asciiarmor-C_eisQCp.js        0.77 kB │ gzip:   0.40 kB
+dist/apps/context-files-ui/assets/protobuf-D1ij_kNL.js          0.80 kB │ gzip:   0.51 kB
+dist/apps/context-files-ui/assets/http-CLVgA2GD.js              0.84 kB │ gzip:   0.42 kB
+dist/apps/context-files-ui/assets/solr-BBopId9w.js              0.86 kB │ gzip:   0.45 kB
+dist/apps/context-files-ui/assets/troff-C2dAgh7P.js             0.95 kB │ gzip:   0.43 kB
+dist/apps/context-files-ui/assets/toml-BPTmHmyx.js              1.04 kB │ gzip:   0.53 kB
+dist/apps/context-files-ui/assets/spreadsheet-CTIncYxj.js       1.13 kB │ gzip:   0.53 kB
+dist/apps/context-files-ui/assets/mbox-BEMVcqjs.js              1.38 kB │ gzip:   0.65 kB
+dist/apps/context-files-ui/assets/rpm-gpDK5sbt.js               1.59 kB │ gzip:   0.81 kB
+dist/apps/context-files-ui/assets/sieve-BAxa3IjF.js             1.61 kB │ gzip:   0.77 kB
+dist/apps/context-files-ui/assets/factor-LKH5gN8L.js            1.66 kB │ gzip:   0.60 kB
+dist/apps/context-files-ui/assets/eiffel-BEjRio4Q.js            1.69 kB │ gzip:   0.90 kB
+dist/apps/context-files-ui/assets/z80-Co3PbHdE.js               1.75 kB │ gzip:   0.79 kB
+dist/apps/context-files-ui/assets/mumps-BSzj6Xyz.js             1.82 kB │ gzip:   0.95 kB
+dist/apps/context-files-ui/assets/elm-Cshzl8qu.js               1.86 kB │ gzip:   0.81 kB
+dist/apps/context-files-ui/assets/mathematica-u8YMmbU0.js       1.89 kB │ gzip:   0.80 kB
+dist/apps/context-files-ui/assets/dockerfile-DJkHQgkl.js        1.90 kB │ gzip:   0.65 kB
+dist/apps/context-files-ui/assets/turtle-Cx3rYX2g.js            1.95 kB │ gzip:   0.89 kB
+dist/apps/context-files-ui/assets/dist-RKTRnzGb.js              1.95 kB │ gzip:   1.25 kB
+dist/apps/context-files-ui/assets/ebnf-D4c0_ac3.js              1.97 kB │ gzip:   0.80 kB
+dist/apps/context-files-ui/assets/smalltalk-BLp5-jwC.js         1.99 kB │ gzip:   0.85 kB
+dist/apps/context-files-ui/assets/fcl-ClOhbFR7.js               2.02 kB │ gzip:   0.95 kB
+dist/apps/context-files-ui/assets/ntriples-B9h1VB_g.js          2.06 kB │ gzip:   0.72 kB
+dist/apps/context-files-ui/assets/dtd-DTF72YNO.js               2.09 kB │ gzip:   0.87 kB
+dist/apps/context-files-ui/assets/octave-D2Q8cUp1.js            2.10 kB │ gzip:   1.07 kB
+dist/apps/context-files-ui/assets/yacas-CXXgtw0p.js             2.14 kB │ gzip:   1.08 kB
+dist/apps/context-files-ui/assets/pascal-Dp_KdFgX.js            2.25 kB │ gzip:   1.17 kB
+dist/apps/context-files-ui/assets/simple-mode-DXiLM1-G.js       2.27 kB │ gzip:   1.09 kB
+dist/apps/context-files-ui/assets/apl-gfMMiTNf.js               2.29 kB │ gzip:   1.22 kB
+dist/apps/context-files-ui/assets/commonlisp-DgAKBe0r.js        2.31 kB │ gzip:   1.09 kB
+dist/apps/context-files-ui/assets/tcl-BGfruO1u.js               2.35 kB │ gzip:   1.22 kB
+dist/apps/context-files-ui/assets/shell-DwuoZtxw.js             2.43 kB │ gzip:   1.20 kB
+dist/apps/context-files-ui/assets/webidl-D5jiJvOU.js            2.44 kB │ gzip:   1.24 kB
+dist/apps/context-files-ui/assets/pig-AF4Hwhju.js               2.51 kB │ gzip:   1.37 kB
+dist/apps/context-files-ui/assets/puppet-BZyAS7I4.js            2.51 kB │ gzip:   1.19 kB
+dist/apps/context-files-ui/assets/forth-Cezjo90N.js             2.54 kB │ gzip:   1.32 kB
+dist/apps/context-files-ui/assets/dist-DMiglryg.js              2.57 kB │ gzip:   1.48 kB
+dist/apps/context-files-ui/assets/velocity-CqftRsjg.js          2.70 kB │ gzip:   1.11 kB
+dist/apps/context-files-ui/assets/tiddlywiki-VlUiK86J.js        2.76 kB │ gzip:   1.07 kB
+dist/apps/context-files-ui/assets/modelica-CqHI_q-D.js          2.79 kB │ gzip:   1.28 kB
+dist/apps/context-files-ui/assets/oz-BwTct_5T.js                2.88 kB │ gzip:   1.27 kB
+dist/apps/context-files-ui/assets/r-CxDmU1I4.js                 2.92 kB │ gzip:   1.33 kB
+dist/apps/context-files-ui/assets/stex-DNzd62Q_.js              3.09 kB │ gzip:   1.17 kB
+dist/apps/context-files-ui/assets/lua-CiA1ziua.js               3.13 kB │ gzip:   1.40 kB
+dist/apps/context-files-ui/assets/cypher-p9eYesGn.js            3.18 kB │ gzip:   1.49 kB
+dist/apps/context-files-ui/assets/tiki-AK6FwT8q.js              3.22 kB │ gzip:   1.25 kB
+dist/apps/context-files-ui/assets/dist-Ci2NSlf1.js              3.26 kB │ gzip:   1.67 kB
+dist/apps/context-files-ui/assets/vhdl-kS471soi.js              3.31 kB │ gzip:   1.49 kB
+dist/apps/context-files-ui/assets/sparql-Dz-mlCAC.js            3.33 kB │ gzip:   1.59 kB
+dist/apps/context-files-ui/assets/mscgen-qgSLujhx.js            3.49 kB │ gzip:   0.97 kB
+dist/apps/context-files-ui/assets/vb-BthdM_4N.js                3.65 kB │ gzip:   1.81 kB
+dist/apps/context-files-ui/assets/d-DWkQyNnU.js                 3.69 kB │ gzip:   1.67 kB
+dist/apps/context-files-ui/assets/q-B9NhS7L_.js                 3.69 kB │ gzip:   1.69 kB
+dist/apps/context-files-ui/assets/swift-DKB6_1j6.js             3.76 kB │ gzip:   1.81 kB
+dist/apps/context-files-ui/assets/coffeescript-De_zI4J0.js      3.84 kB │ gzip:   1.69 kB
+dist/apps/context-files-ui/assets/fortran-Bt6PBEDR.js           3.86 kB │ gzip:   1.93 kB
+dist/apps/context-files-ui/assets/asn1-DCl_8MCW.js              3.97 kB │ gzip:   1.95 kB
+dist/apps/context-files-ui/assets/dylan-BCDoL_-p.js             4.04 kB │ gzip:   1.63 kB
+dist/apps/context-files-ui/assets/asterisk-BEn0Cwpx.js          4.05 kB │ gzip:   1.73 kB
+dist/apps/context-files-ui/assets/livescript-BXxG0Yva.js        4.08 kB │ gzip:   1.62 kB
+dist/apps/context-files-ui/assets/ttcn-cfg-2b4Gb5sE.js          4.09 kB │ gzip:   1.72 kB
+dist/apps/context-files-ui/assets/groovy-CUpZ7dEl.js            4.12 kB │ gzip:   1.74 kB
+dist/apps/context-files-ui/assets/haskell-BRsoo5mP.js           4.15 kB │ gzip:   1.91 kB
+dist/apps/context-files-ui/assets/gas-BHEdbvp9.js               4.55 kB │ gzip:   1.27 kB
+dist/apps/context-files-ui/assets/mllike-B45xgp2S.js            4.82 kB │ gzip:   1.57 kB
+dist/apps/context-files-ui/assets/ttcn-PPSTk1ow.js              4.84 kB │ gzip:   2.14 kB
+dist/apps/context-files-ui/assets/dist-BecMXs79.js              4.86 kB │ gzip:   2.32 kB
+dist/apps/context-files-ui/assets/crystal-Bsdphhtm.js           5.01 kB │ gzip:   2.10 kB
+dist/apps/context-files-ui/assets/ruby-BjXV7-Qa.js              5.02 kB │ gzip:   2.14 kB
+dist/apps/context-files-ui/assets/ecl-BVIeWmwY.js               5.11 kB │ gzip:   2.30 kB
+dist/apps/context-files-ui/assets/julia-CQfgDRfP.js             5.26 kB │ gzip:   2.16 kB
+dist/apps/context-files-ui/assets/vbscript-D9f6rSsU.js          5.43 kB │ gzip:   2.56 kB
+dist/apps/context-files-ui/assets/mirc-C9zpzAZU.js              5.91 kB │ gzip:   2.70 kB
+dist/apps/context-files-ui/assets/xquery-BKJx4mf9.js            6.15 kB │ gzip:   2.57 kB
+dist/apps/context-files-ui/assets/cobol-DHLQUbN7.js             6.19 kB │ gzip:   2.98 kB
+dist/apps/context-files-ui/assets/python-B_1Jd8HM.js            6.27 kB │ gzip:   2.67 kB
+dist/apps/context-files-ui/assets/scheme-D9qYN0V5.js            6.35 kB │ gzip:   2.37 kB
+dist/apps/context-files-ui/assets/pug-Gsm0M45u.js               6.64 kB │ gzip:   1.99 kB
+dist/apps/context-files-ui/assets/textile-C4jVoHG1.js           6.74 kB │ gzip:   2.44 kB
+dist/apps/context-files-ui/assets/nsis-CfSuhXs5.js              6.80 kB │ gzip:   2.99 kB
+dist/apps/context-files-ui/assets/nginx-BMaDbqW3.js             7.40 kB │ gzip:   2.73 kB
+dist/apps/context-files-ui/assets/powershell-BcIto6Sf.js        7.69 kB │ gzip:   3.29 kB
+dist/apps/context-files-ui/assets/erlang-BV0c4Hdn.js            7.84 kB │ gzip:   2.90 kB
+dist/apps/context-files-ui/assets/haxe-DjVOVvNP.js              7.86 kB │ gzip:   2.94 kB
+dist/apps/context-files-ui/assets/verilog-7LoJAqYT.js           8.18 kB │ gzip:   3.46 kB
+dist/apps/context-files-ui/assets/sas-C2OyD2Y6.js               9.33 kB │ gzip:   4.11 kB
+dist/apps/context-files-ui/assets/clojure-BflJGmDX.js           9.40 kB │ gzip:   4.02 kB
+dist/apps/context-files-ui/assets/perl-BkSkiI9m.js              9.73 kB │ gzip:   3.50 kB
+dist/apps/context-files-ui/assets/idl-BUZw3wgd.js               9.82 kB │ gzip:   4.40 kB
+dist/apps/context-files-ui/assets/gherkin-oBAE_ms0.js          10.15 kB │ gzip:   5.09 kB
+dist/apps/context-files-ui/assets/dist-CswnpKik.js             11.52 kB │ gzip:   5.17 kB
+dist/apps/context-files-ui/assets/dist-XVYGiB-c.js             14.27 kB │ gzip:   5.76 kB
+dist/apps/context-files-ui/assets/dist-fPhZsAUX.js             16.20 kB │ gzip:   7.46 kB
+dist/apps/context-files-ui/assets/javascript-DoL9Wb-Q.js       16.96 kB │ gzip:   5.72 kB
+dist/apps/context-files-ui/assets/dist-BcauuFwf.js             20.65 kB │ gzip:   9.32 kB
+dist/apps/context-files-ui/assets/dist-D-xpsbZI.js             20.91 kB │ gzip:   9.66 kB
+dist/apps/context-files-ui/assets/clike-D_6L3tnO.js            22.05 kB │ gzip:   7.75 kB
+dist/apps/context-files-ui/assets/dist-BJ-TIk3N.js             22.92 kB │ gzip:  10.41 kB
+dist/apps/context-files-ui/assets/stylus-BOVgKnng.js           23.51 kB │ gzip:   8.55 kB
+dist/apps/context-files-ui/assets/css-CnaYoQib.js              24.66 kB │ gzip:   8.25 kB
+dist/apps/context-files-ui/assets/dist-DLJCGrGQ.js             27.47 kB │ gzip:  13.02 kB
+dist/apps/context-files-ui/assets/dist-LCx98fA_.js             30.68 kB │ gzip:  12.72 kB
+dist/apps/context-files-ui/assets/dist-mpRGeo_R.js             32.12 kB │ gzip:  13.01 kB
+dist/apps/context-files-ui/assets/dist-S3zJGntM.js             35.03 kB │ gzip:  12.34 kB
+dist/apps/context-files-ui/assets/sql-DuQMFDvy.js              36.83 kB │ gzip:  10.90 kB
+dist/apps/context-files-ui/assets/dist-DpF08Yd7.js             40.67 kB │ gzip:  16.92 kB
+dist/apps/context-files-ui/assets/dist-DTeLDijr.js             44.54 kB │ gzip:  19.31 kB
+dist/apps/context-files-ui/assets/dist-eddbbGyw.js             70.75 kB │ gzip:  26.08 kB
+dist/apps/context-files-ui/assets/dist-BAqbgxUS.js             97.71 kB │ gzip:  28.63 kB
+dist/apps/context-files-ui/assets/dist-DHvUPfrF.js            103.86 kB │ gzip:  34.74 kB
+dist/apps/context-files-ui/assets/dist-CqM4On9D.js            339.76 kB │ gzip: 109.69 kB
+dist/apps/context-files-ui/assets/index-CkWXlBNn.js         1,244.08 kB │ gzip: 405.40 kB
+
+✓ built in 1.43s
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+> @pasko70/pibo@1.7.2 vscode:webview:build
+> vite build --config src/apps/chat-vscode/extension/webview/vite.config.ts
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 2133 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/apps/chat-vscode-web/index.html                   0.46 kB │ gzip:   0.30 kB
+dist/apps/chat-vscode-web/assets/index-b18ZkEo0.css   21.65 kB │ gzip:   5.32 kB
+dist/apps/chat-vscode-web/assets/index-BFy3iWFm.js   908.87 kB │ gzip: 263.24 kB
+
+✓ built in 777ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

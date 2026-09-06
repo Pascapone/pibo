@@ -189,7 +189,10 @@ test("delegated agents expose four stable shared tools and reject duplicate exac
 	assert.match(definitions[0].description, /worker: Implement focused changes/);
 	const observe = definitions.find((definition) => definition.name === "pibo_agents_observe");
 	assert.match(observe.description, /newest 20 completed assistant messages/);
-	assert.match(observe.promptSnippet, /no streaming deltas, no duplicate tool progress events, no tools/);
+	assert.match(observe.promptSnippet, /cursorMode=auto is the default/);
+	assert.match(observe.promptSnippet, /Streaming deltas, duplicate tool progress events, and tools are hidden by default/);
+	assert.match(observe.promptSnippet, /cursorMode=history to reread earlier observations/);
+	assert.equal(observe.inputSchema.properties.cursorMode.default, "auto");
 	assert.equal(observe.inputSchema.properties.order.default, "desc");
 	assert.equal(observe.inputSchema.properties.limit.default, 20);
 	assert.equal(observe.inputSchema.properties.includeTools.default, false);
@@ -1613,7 +1616,7 @@ test("agents controller lists, filters observations, kills owned children, and d
 			{ name: "explorer", targetProfile: "base" },
 			{ name: "worker", targetProfile: "base" },
 		], controller).find((definition) => definition.name === "pibo_agents_observe");
-		const modelResult = await observeTool.execute("observe-default", {});
+		const modelResult = await observeTool.execute("observe-default", { cursorMode: "history" });
 		assert.match(modelResult.content[0].text, /Alpha complete/);
 		assert.doesNotMatch(modelResult.content[0].text, /assistant_delta|npm test|"observations"/);
 		const summarizedToolModelResult = await observeTool.execute("observe-tool-summary", {
@@ -1677,6 +1680,124 @@ test("agents controller lists, filters observations, kills owned children, and d
 	}
 });
 
+test("agent observation auto cursors return messages once and history rereads without advancing them", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_auto_parent", channel: "pibo.test", kind: "chat", profile: "base" });
+	store.create({
+		id: "ps_auto_child",
+		channel: "pibo.subagents",
+		kind: "subagent",
+		profile: "base",
+		parentId: "ps_auto_parent",
+		metadata: { subagentName: "worker", threadKey: "auto" },
+	});
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		router.emitOutput({
+			type: "assistant_message",
+			piboSessionId: "ps_auto_child",
+			eventId: "auto-message-1",
+			text: "first result",
+		});
+		router.emitOutput({
+			type: "tool_call",
+			piboSessionId: "ps_auto_child",
+			eventId: "auto-tool",
+			toolCallId: "auto-tool-call",
+			toolName: "bash",
+			args: { command: "npm test" },
+			argsComplete: true,
+		});
+		const controller = router.createAgentsController("ps_auto_parent");
+
+		const first = controller.observe({ limit: 1 });
+		assert.equal(first.filters.cursorMode, "auto");
+		assert.deepEqual(first.observations.map((observation) => observation.text), ["first result"]);
+		assert.equal(first.nextAfterSequence, 1);
+		assert.equal(first.autoCursorSequence, 2);
+		assert.deepEqual(controller.observe({ limit: 20, order: "asc" }).observations, []);
+
+		router.emitOutput({
+			type: "tool_execution_finished",
+			piboSessionId: "ps_auto_child",
+			eventId: "auto-tool",
+			toolCallId: "auto-tool-call",
+			toolName: "bash",
+			result: { status: "completed", exitCode: 0 },
+			isError: false,
+		});
+		const toolsHidden = controller.observe({});
+		assert.deepEqual(toolsHidden.observations, []);
+		assert.equal(toolsHidden.nextAfterSequence, 2);
+		assert.equal(toolsHidden.autoCursorSequence, 3);
+
+		router.emitOutput({
+			type: "assistant_message",
+			piboSessionId: "ps_auto_child",
+			eventId: "auto-message-2",
+			text: "second result",
+		});
+		assert.deepEqual(controller.observe({}).observations.map((observation) => observation.text), ["second result"]);
+		assert.deepEqual(controller.observe({}).observations, []);
+
+		const history = controller.observe({ cursorMode: "history", order: "asc" });
+		assert.equal(history.filters.cursorMode, "history");
+		assert.deepEqual(history.observations.map((observation) => observation.text), ["first result", "second result"]);
+		assert.deepEqual(
+			controller.observe({ cursorMode: "history", order: "asc" }).observations.map((observation) => observation.text),
+			["first result", "second result"],
+		);
+		assert.deepEqual(controller.observe({}).observations, []);
+
+		const diagnosticTools = controller.observe({ includeTools: true, order: "asc" });
+		assert.deepEqual(diagnosticTools.observations.map((observation) => observation.eventType), [
+			"assistant_message",
+			"tool_call",
+			"tool_execution_finished",
+			"assistant_message",
+		]);
+		assert.deepEqual(controller.observe({ includeTools: true, order: "asc" }).observations, []);
+		assert.throws(
+			() => controller.observe({ cursorMode: "manual" }),
+			/cursorMode must be "auto" or "history"/,
+		);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("agent observation fallback cursors remain bounded for compatibility stores", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_parent_fallback_cursor", channel: "pibo.test", kind: "chat", profile: "base" });
+	store.create({
+		id: "ps_agent_fallback_cursor",
+		channel: "pibo.subagents",
+		kind: "subagent",
+		profile: "base",
+		parentId: "ps_parent_fallback_cursor",
+		metadata: { subagentName: "worker", threadKey: "fallback" },
+	});
+	store.getAgentObservationAutoCursor = undefined;
+	store.advanceAgentObservationAutoCursor = undefined;
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		router.recordAgentObservation({
+			type: "assistant_message",
+			piboSessionId: "ps_agent_fallback_cursor",
+			eventId: "evt_fallback_cursor",
+			text: "hello fallback",
+		}, store.get("ps_agent_fallback_cursor"));
+		const controller = router.createAgentsController("ps_parent_fallback_cursor");
+		assert.equal(controller.observe({ textContains: "hello" }).observations.length, 1);
+		for (let index = 0; index < 128; index += 1) {
+			assert.deepEqual(controller.observe({ textContains: `missing-${index}` }).observations, []);
+		}
+		assert.equal(controller.observe({ textContains: "hello" }).observations.length, 1);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
 test("agent observation polling is cursor-safe in descending order and reports retention loss", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
@@ -1709,7 +1830,7 @@ test("agent observation polling is cursor-safe in descending order and reports r
 		assert.equal(second.nextAfterSequence, 6);
 		assert.equal(second.truncated, true);
 
-		const newest = controller.observe({ order: "desc", limit: 2 });
+		const newest = controller.observe({ cursorMode: "history", order: "desc", limit: 2 });
 		assert.deepEqual(newest.observations.map((observation) => observation.sequence), [5_002, 5_001]);
 		assert.equal(newest.truncated, true);
 

@@ -6,6 +6,7 @@ import { PiboDataStore } from "../data/pibo-store.js";
 import type { StoredTelemetryTurn, TelemetryInterruptedTurnOutcome } from "../data/telemetry.js";
 import type { PiboRunSnapshot } from "../runs/registry.js";
 import {
+	PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES,
 	createPiboSession,
 	matchesFindInput,
 	type CreatePiboSessionInput,
@@ -239,6 +240,51 @@ export class PiboDataSessionStore implements PiboSessionStore {
 					updated_at = excluded.updated_at
 			`).run(parentPiboSessionId, sequence + 1, new Date().toISOString());
 			return sequence;
+		});
+	}
+
+	getAgentObservationAutoCursor(parentPiboSessionId: string, cursorScope: string): number | undefined {
+		const row = this.db.prepare(`
+			SELECT sequence
+			FROM session_agent_observation_auto_cursors
+			WHERE parent_pibo_session_id = ? AND cursor_scope = ?
+		`).get(parentPiboSessionId, cursorScope) as { sequence: number } | undefined;
+		return row?.sequence;
+	}
+
+	advanceAgentObservationAutoCursor(parentPiboSessionId: string, cursorScope: string, sequence: number): number {
+		return this.dataStore.transaction(() => {
+			this.db.prepare(`
+				INSERT INTO session_agent_observation_auto_cursors (
+					parent_pibo_session_id, cursor_scope, sequence, updated_at
+				)
+				SELECT id, ?, ?, ? FROM sessions WHERE id = ? AND deleted_at IS NULL
+				ON CONFLICT(parent_pibo_session_id, cursor_scope) DO UPDATE SET
+					sequence = MAX(session_agent_observation_auto_cursors.sequence, excluded.sequence),
+					updated_at = CASE
+						WHEN excluded.sequence > session_agent_observation_auto_cursors.sequence THEN excluded.updated_at
+						ELSE session_agent_observation_auto_cursors.updated_at
+					END
+			`).run(cursorScope, sequence, new Date().toISOString(), parentPiboSessionId);
+			this.db.prepare(`
+				DELETE FROM session_agent_observation_auto_cursors
+				WHERE parent_pibo_session_id = ?
+					AND cursor_scope <> ?
+					AND cursor_scope NOT IN (
+						SELECT cursor_scope
+						FROM session_agent_observation_auto_cursors
+						WHERE parent_pibo_session_id = ? AND cursor_scope <> ?
+						ORDER BY updated_at DESC, cursor_scope DESC
+						LIMIT ?
+					)
+			`).run(
+				parentPiboSessionId,
+				cursorScope,
+				parentPiboSessionId,
+				cursorScope,
+				PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES - 1,
+			);
+			return this.getAgentObservationAutoCursor(parentPiboSessionId, cursorScope) ?? sequence;
 		});
 	}
 

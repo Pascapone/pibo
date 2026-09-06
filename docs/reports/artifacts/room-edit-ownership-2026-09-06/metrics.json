@@ -1,0 +1,55 @@
+{
+  "cases": 30,
+  "passed": 30,
+  "postReleaseFrames": 3512,
+  "ordinary": [
+    {
+      "width": 1431,
+      "scenario": "ordinary-background",
+      "firstVisibleAfterSubmitMs": 22.200000286102295,
+      "patchMs": [
+        63.19999980926514
+      ],
+      "reversions": 0
+    },
+    {
+      "width": 1431,
+      "scenario": "ordinary-current",
+      "firstVisibleAfterSubmitMs": 20.800000190734863,
+      "patchMs": [
+        22.59999990463257
+      ],
+      "reversions": 0
+    },
+    {
+      "width": 390,
+      "scenario": "ordinary-background",
+      "firstVisibleAfterSubmitMs": 19.600000381469727,
+      "patchMs": [
+        22.40000009536743
+      ],
+      "reversions": 0
+    },
+    {
+      "width": 390,
+      "scenario": "ordinary-current",
+      "firstVisibleAfterSubmitMs": 15.400000095367432,
+      "patchMs": [
+        17.899999618530273
+      ],
+      "reversions": 0
+    }
+  ],
+  "longTasks": [
+    {
+      "width": 1431,
+      "scenario": "archive-session",
+      "tasks": [
+        {
+          "start": 110.19999980926514,
+          "duration": 53
+        }
+      ]
+    }
+  ]
+}

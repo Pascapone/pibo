@@ -1,0 +1,222 @@
+[
+  {
+    "suite": "dom-scenarios.json",
+    "width": 1431,
+    "scenario": "ordinary",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 80.40000009536743,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 1431,
+    "scenario": "untouched",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 62.5,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 1431,
+    "scenario": "session-before-refresh",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 65,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 1431,
+    "scenario": "session-after-refresh",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 66.7999997138977,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 1431,
+    "scenario": "other-room",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 63.69999980926514,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 1431,
+    "scenario": "browser-back",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 56.90000009536743,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 1431,
+    "scenario": "next-create",
+    "correct": true,
+    "postReleaseSamples": 105,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 52.30000019073486,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 390,
+    "scenario": "ordinary",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 51.60000038146973,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 390,
+    "scenario": "untouched",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 58.90000009536743,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 390,
+    "scenario": "session-before-refresh",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 52.90000009536743,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 390,
+    "scenario": "session-after-refresh",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 55.200000286102295,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 390,
+    "scenario": "other-room",
+    "correct": true,
+    "postReleaseSamples": 107,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 59.19999980926514,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 390,
+    "scenario": "browser-back",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 51.69999980926514,
+    "longTasks": null
+  },
+  {
+    "suite": "dom-scenarios.json",
+    "width": 390,
+    "scenario": "next-create",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 55.40000009536743,
+    "longTasks": null
+  },
+  {
+    "suite": "pointer-scenarios.json",
+    "width": 1431,
+    "scenario": "session-before-refresh",
+    "correct": true,
+    "postReleaseSamples": 105,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 104.59999990463257,
+    "longTasks": 0
+  },
+  {
+    "suite": "pointer-scenarios.json",
+    "width": 1431,
+    "scenario": "other-room",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 74.7999997138977,
+    "longTasks": 0
+  },
+  {
+    "suite": "pointer-scenarios.json",
+    "width": 1431,
+    "scenario": "browser-back",
+    "correct": true,
+    "postReleaseSamples": 107,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 76.59999990463257,
+    "longTasks": 0
+  },
+  {
+    "suite": "pointer-scenarios.json",
+    "width": 1431,
+    "scenario": "next-create",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 88.2000002861023,
+    "longTasks": 0
+  },
+  {
+    "suite": "pointer-scenarios.json",
+    "width": 390,
+    "scenario": "session-before-refresh",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 78.7000002861023,
+    "longTasks": 0
+  },
+  {
+    "suite": "pointer-scenarios.json",
+    "width": 390,
+    "scenario": "other-room",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 63.10000038146973,
+    "longTasks": 0
+  },
+  {
+    "suite": "pointer-scenarios.json",
+    "width": 390,
+    "scenario": "browser-back",
+    "correct": true,
+    "postReleaseSamples": 106,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 85.30000019073486,
+    "longTasks": 0
+  },
+  {
+    "suite": "pointer-scenarios.json",
+    "width": 390,
+    "scenario": "next-create",
+    "correct": true,
+    "postReleaseSamples": 107,
+    "wrongSessionSamples": 0,
+    "controlReadyFromProbeStartMs": 74.80000019073486,
+    "longTasks": 0
+  }
+]

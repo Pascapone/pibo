@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
+import { PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES } from "../dist/sessions/store.js";
 import { runDataCli } from "../dist/data/cli.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
@@ -89,6 +90,36 @@ test("pibo data session store persists structured session fields", () => {
 		assert.equal(store.get(created.id), undefined);
 		store.close();
 		assertAppContextSessionsSchema(dbPath);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("pibo data session store persists monotonic agent observation auto cursors", () => {
+	const dir = tempDir();
+	try {
+		const dbPath = join(dir, "pibo.sqlite");
+		let store = new PiboDataSessionStore(dbPath);
+		store.create({ id: "ps_cursor_parent", channel: "pibo.test", kind: "chat", profile: "default" });
+		assert.equal(store.getAgentObservationAutoCursor("ps_cursor_parent", "scope-a"), undefined);
+		assert.equal(store.advanceAgentObservationAutoCursor("ps_cursor_parent", "scope-a", 12), 12);
+		assert.equal(store.advanceAgentObservationAutoCursor("ps_cursor_parent", "scope-a", 7), 12);
+		store.close();
+
+		store = new PiboDataSessionStore(dbPath);
+		assert.equal(store.getAgentObservationAutoCursor("ps_cursor_parent", "scope-a"), 12);
+		assert.equal(store.advanceAgentObservationAutoCursor("ps_cursor_parent", "scope-b", 4), 4);
+		for (let index = 0; index < PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES + 5; index += 1) {
+			store.advanceAgentObservationAutoCursor("ps_cursor_parent", `bounded-${index}`, index);
+		}
+		assert.equal(
+			store.db.prepare("SELECT COUNT(*) AS count FROM session_agent_observation_auto_cursors WHERE parent_pibo_session_id = ?").get("ps_cursor_parent").count,
+			PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES,
+		);
+		assert.equal(store.getAgentObservationAutoCursor("ps_cursor_parent", `bounded-${PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES + 4}`), PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES + 4);
+		assert.equal(store.delete("ps_cursor_parent"), true);
+		assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM session_agent_observation_auto_cursors").get().count, 0);
+		store.close();
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

@@ -10,6 +10,8 @@ import {
 	type RuntimeSessionBindingUpdateOptions,
 } from "./runtime-binding.js";
 
+export const PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES = 128;
+
 export type PiboSession = {
 	id: string;
 	/** @deprecated Use runtimeBinding.nativeSessionId for runtime routing. Empty for non-Pi sessions. */
@@ -82,6 +84,8 @@ export type PiboSessionStore = {
 	claimOutputRenderSequence?(piboSessionId: string, minimum: number): number;
 	observeOutputRenderSequence?(piboSessionId: string, sequence: number): void;
 	claimAgentObservationSequence?(parentPiboSessionId: string, minimum: number): number;
+	getAgentObservationAutoCursor?(parentPiboSessionId: string, cursorScope: string): number | undefined;
+	advanceAgentObservationAutoCursor?(parentPiboSessionId: string, cursorScope: string, sequence: number): number;
 	claimOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string): number;
 	observeOutputToolInvocationOrdinal?(piboSessionId: string, eventId: string, toolCallId: string, ordinal: number): void;
 	claimOrAttachOutputToolInvocation?(input: import("../core/output-render-sequence.js").OutputToolInvocationTransition): number;
@@ -143,6 +147,7 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 	private readonly byNativeSession = new Map<string, PiboSession>();
 	private readonly outputRenderHighWater = new Map<string, number>();
 	private readonly agentObservationNextSequence = new Map<string, number>();
+	private readonly agentObservationAutoCursors = new Map<string, number>();
 	private readonly outputToolInvocationNextOrdinal = new Map<string, number>();
 
 	get(id: string): PiboSession | undefined {
@@ -228,6 +233,31 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		return sequence;
 	}
 
+	getAgentObservationAutoCursor(parentPiboSessionId: string, cursorScope: string): number | undefined {
+		if (!this.byId.has(parentPiboSessionId)) return undefined;
+		return this.agentObservationAutoCursors.get(agentObservationAutoCursorKey(parentPiboSessionId, cursorScope));
+	}
+
+	advanceAgentObservationAutoCursor(parentPiboSessionId: string, cursorScope: string, sequence: number): number {
+		if (!this.byId.has(parentPiboSessionId)) return sequence;
+		const key = agentObservationAutoCursorKey(parentPiboSessionId, cursorScope);
+		const advanced = Math.max(this.agentObservationAutoCursors.get(key) ?? 0, sequence);
+		this.agentObservationAutoCursors.delete(key);
+		this.agentObservationAutoCursors.set(key, advanced);
+		const prefix = `${JSON.stringify([parentPiboSessionId]).slice(0, -1)},`;
+		let scopeCount = 0;
+		for (const existingKey of this.agentObservationAutoCursors.keys()) {
+			if (existingKey.startsWith(prefix)) scopeCount += 1;
+		}
+		for (const existingKey of this.agentObservationAutoCursors.keys()) {
+			if (scopeCount <= PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES) break;
+			if (!existingKey.startsWith(prefix)) continue;
+			this.agentObservationAutoCursors.delete(existingKey);
+			scopeCount -= 1;
+		}
+		return advanced;
+	}
+
 	claimOutputToolInvocationOrdinal(piboSessionId: string, eventId: string, toolCallId: string): number {
 		const key = outputToolInvocationCounterKey(piboSessionId, eventId, toolCallId);
 		const ordinal = this.outputToolInvocationNextOrdinal.get(key) ?? 0;
@@ -275,6 +305,10 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		if (nativeKey) this.byNativeSession.delete(nativeKey);
 		this.outputRenderHighWater.delete(id);
 		this.agentObservationNextSequence.delete(id);
+		const observationCursorPrefix = `${JSON.stringify([id]).slice(0, -1)},`;
+		for (const key of this.agentObservationAutoCursors.keys()) {
+			if (key.startsWith(observationCursorPrefix)) this.agentObservationAutoCursors.delete(key);
+		}
 		const counterPrefix = `${JSON.stringify([id]).slice(0, -1)},`;
 		for (const key of this.outputToolInvocationNextOrdinal.keys()) {
 			if (key.startsWith(counterPrefix)) this.outputToolInvocationNextOrdinal.delete(key);
@@ -321,6 +355,10 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 function outputRenderSequenceHighWater(metadata: PiboJsonObject | undefined): number {
 	const value = metadata?.outputRenderSequenceHighWater;
 	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function agentObservationAutoCursorKey(parentPiboSessionId: string, cursorScope: string): string {
+	return JSON.stringify([parentPiboSessionId, cursorScope]);
 }
 
 function outputToolInvocationCounterKey(piboSessionId: string, eventId: string, toolCallId: string): string {

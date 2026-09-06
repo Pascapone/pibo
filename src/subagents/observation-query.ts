@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
 	PiboAgentObservation,
 	PiboAgentObserveInput,
@@ -7,12 +8,14 @@ import {
 	PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES,
 	PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES,
 	normalizePiboAgentObservationCursor,
+	normalizePiboAgentObservationCursorMode,
 	normalizePiboAgentObservationLimit,
 	normalizePiboAgentObservationOrder,
 	normalizePiboAgentObservationToolDetail,
 	parsePiboAgentObservationTimestamp,
 	piboAgentObservationKind,
 	piboAgentObservationToolSummary,
+	type PiboAgentObservationCursorMode,
 	type PiboAgentObservationOrder,
 	type PiboAgentObservationToolDetail,
 } from "./observations.js";
@@ -27,6 +30,7 @@ import {
 export type PreparedPiboAgentObservationQuery = {
 	filters: PiboAgentObserveInput;
 	afterSequence?: number;
+	cursorMode: PiboAgentObservationCursorMode;
 	order: PiboAgentObservationOrder;
 	scanOrder: PiboAgentObservationOrder;
 	limit: number;
@@ -41,9 +45,35 @@ export type PiboAgentObservationPageOptions = {
 	evictedThrough?: number;
 };
 
+function sortedUnique(values: string[] | undefined): string[] | undefined {
+	return values ? [...new Set(values)].sort() : undefined;
+}
+
+export function piboAgentObservationCursorScopeKey(input: PiboAgentObserveInput): string {
+	const scope = {
+		requestIds: sortedUnique(input.requestIds),
+		toolCallIds: sortedUnique(input.toolCallIds),
+		agentIds: sortedUnique(input.agentIds),
+		names: sortedUnique(input.names),
+		threadKeys: sortedUnique(input.threadKeys),
+		eventTypes: sortedUnique(input.eventTypes),
+		kinds: input.kinds ? [...new Set(input.kinds)].sort() : undefined,
+		roles: sortedUnique(input.roles),
+		since: input.since,
+		until: input.until,
+		textContains: input.textContains?.toLowerCase(),
+		textRegex: input.textRegex,
+		includeTools: input.includeTools === true,
+		toolDetail: input.toolDetail ?? "summary",
+		includeDetails: input.includeDetails === true,
+	};
+	return `v1:${createHash("sha256").update(JSON.stringify(scope)).digest("hex")}`;
+}
+
 export function preparePiboAgentObservationQuery(
 	input: PiboAgentObserveInput = {},
 ): PreparedPiboAgentObservationQuery {
+	const cursorMode = normalizePiboAgentObservationCursorMode(input.cursorMode);
 	const order = normalizePiboAgentObservationOrder(input.order);
 	const limit = normalizePiboAgentObservationLimit(input.limit);
 	const toolDetail = normalizePiboAgentObservationToolDetail(input.toolDetail);
@@ -85,6 +115,7 @@ export function preparePiboAgentObservationQuery(
 	return {
 		filters: {
 			...input,
+			cursorMode,
 			...(defaultMessageView ? { eventTypes: defaultEventTypes } : {}),
 			...(afterSequence !== undefined ? { afterSequence } : {}),
 			order,
@@ -94,6 +125,7 @@ export function preparePiboAgentObservationQuery(
 			includeDetails: input.includeDetails === true,
 		},
 		...(afterSequence !== undefined ? { afterSequence } : {}),
+		cursorMode,
 		order,
 		scanOrder: afterSequence !== undefined ? "asc" : order,
 		limit,

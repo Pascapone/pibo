@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-05T10:32:00Z",
+  "generated_at": "2026-09-06T07:02:37Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -17,6 +17,18 @@
     "operational": "directive"
   },
   "records": [
+    {
+      "path": "docs/reports/idle-session-history-latency-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 10936,
+      "file_sha256": "53b87e4bcd179172c6e1a0aa97c33f271569d2ee8da58d3f9a828387f1e6a97b",
+      "body_sha256": "d0d91dfe339a98efa1cd4c70a5d72b85c62ac53b617d7ea3c426f3d38b9d0abb",
+      "lineage": null
+    },
     {
       "path": "docs/legacy/plans/remove-projects-and-make-workflows-session-native.md",
       "state": "conformant",
@@ -8424,9 +8436,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 12785,
-      "file_sha256": "2ece66cd85f44ea61631632b4888a6b511f6b4545d32196c370ae4ccbcacf716",
-      "body_sha256": "2ece66cd85f44ea61631632b4888a6b511f6b4545d32196c370ae4ccbcacf716"
+      "file_bytes": 14241,
+      "file_sha256": "ab5068a7decc92aecc65a649d2b01323a776cb068eb431d06ec1271e31c2454b",
+      "body_sha256": "ab5068a7decc92aecc65a649d2b01323a776cb068eb431d06ec1271e31c2454b"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -10940,9 +10952,9 @@
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
       "synthetic": false,
-      "file_bytes": 16819,
-      "file_sha256": "cb18f0663007b8098516406d18d4afd0ae72a9a70312a7d0fcd5b20dea2ee854",
-      "body_sha256": "cb18f0663007b8098516406d18d4afd0ae72a9a70312a7d0fcd5b20dea2ee854"
+      "file_bytes": 18016,
+      "file_sha256": "53f97c018876a0d09beabe293e862e4a0d767f54df31a6c48832714f5461aaf0",
+      "body_sha256": "53f97c018876a0d09beabe293e862e4a0d767f54df31a6c48832714f5461aaf0"
     },
     {
       "path": "docs/reports/ink-cli-v2-pty-smoke-scenarios.md",
@@ -12499,9 +12511,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 14249,
-      "file_sha256": "fe4cf4c52cf47f5e31b8544c05511acee753dab975e15768320ad4f8ad58d5c3",
-      "body_sha256": "8646f1bc6bdd9453ba236c4e37d17b33c2dc027cdf84ce840fbe2e5ae69dc8d9",
+      "file_bytes": 17069,
+      "file_sha256": "667eca4421ede5ade6f7b81899f41125b3a9eead6ae295389a1182bc02212ed7",
+      "body_sha256": "4186dbc367134a469318d0ade10ac1606a75451c0105ea9bd2919dae5af2e0b2",
       "lineage": null
     },
     {
@@ -13009,9 +13021,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 28362,
-      "file_sha256": "0edddcffd38ee8495e37b97df705f183d627f3884d465334034363e81aec7bd6",
-      "body_sha256": "d81b9004e19528e10b3c8f13e6914203b41dbca84352af415cc8ac7ec348202b",
+      "file_bytes": 37848,
+      "file_sha256": "e72c5084717a6d42a9b05bc0b81ddc84f23f2cac510ea43cc800133c994f81e1",
+      "body_sha256": "510a0725cbc80e41bdb3f1512cd9cd302c4ea2eb21fbe7a7bb2bc5067481b4f6",
       "lineage": null
     },
     {
@@ -13119,9 +13131,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 26028,
-      "file_sha256": "0035f5241785f86dfeed60c8471acf3dd110f08ea5aec33a764231b123add05f",
-      "body_sha256": "941fed9b01358116735f155d65070d1188f1776369d101c73581abc6d11b86cc",
+      "file_bytes": 33833,
+      "file_sha256": "7c5bd9c9c0d6db06814a8fe8298ce4437a6ecfb3963ce7901640933fe7ff21d0",
+      "body_sha256": "8476c7b05cb426d086b798ce940b6b5f53c9168bae8f938506e8b3110bf71c5c",
       "lineage": null
     },
     {
@@ -13593,6 +13605,15 @@
       "lineage": null
     },
     {
+      "path": "docs/reports/session-status-latency-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
       "path": "docs/legacy/specs/changes/sidebar-browser-tabs/index.md",
       "state": "reserved",
       "classification": "reserved index/log",
@@ -13605,6 +13626,78 @@
       "file_bytes": 560,
       "file_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25",
       "body_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25"
+    },
+    {
+      "path": "docs/reports/gateway-status-scaling-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 12620,
+      "file_sha256": "77cba43bae901c31af0e132d4d107fc564c02932bb078831f93dff6ce07dbf42",
+      "body_sha256": "b2a37c35ae26171de04553aa367712a50d31c49ba4c988347bddce4b92c71c0d",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/room-creation-ownership-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 12442,
+      "file_sha256": "cb28f9f611d60fc96d68508fe9af4cd06d614809404885c38f2fd1ec74f60b69",
+      "body_sha256": "fd5f1a785abb139c3ca8fbc08e675160bd69318154a18eed7310679912b9b4d8",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/room-edit-ownership-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 16577,
+      "file_sha256": "50a7c8809cf3080307651a8c7a7001d8cfcab9992305e16a6d69345e1ff90ad7",
+      "body_sha256": "f63d069c35cac3e8c4a127c0c72741f41ced57a2afe717e94fa7a8a5b42f7a8d"
+    },
+    {
+      "path": "docs/reports/session-creation-ownership-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 11523,
+      "file_sha256": "1d7c964aef491dc2612cfe55d6692ef7fe6171f4f5dbd0104affb0240346345d",
+      "body_sha256": "941c46af97a0982f936434aaccdb0d063ea910532105cea059fc75d158b6cc7e",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/terminal-initial-visibility-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 10398,
+      "file_sha256": "75650eb22a5adf36d6cc8e870148d8e348650241d093f90d76e16a419e1e2ce9",
+      "body_sha256": "689aaf29b5d24590f53648ef5984e9178b8107a19913ae348cabe0edf510f939",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/terminal-viewport-and-wheel-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 11022,
+      "file_sha256": "037de3a9cc10a968087e53dbeb39826d76ff78095dd5d178720009b96194c56e",
+      "body_sha256": "f78f9ca04c8273eaca23c75ab3f827f15b5831d7f61efc605a1fd2fd91a2f700"
     }
   ]
 }

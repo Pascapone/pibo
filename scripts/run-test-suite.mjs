@@ -65,7 +65,7 @@ delete childEnv.NODE_TEST_WORKER_ID;
 delete childEnv.PIBO_COMPUTE_WORKER;
 delete childEnv.PIBO_COMPUTE_WORKER_ROLE;
 
-const platformArgs = process.platform === "win32" ? ["--test-concurrency=4"] : [];
+const platformArgs = ["--test-concurrency=2"];
 const child = spawn(process.execPath, ["--test", ...platformArgs, ...(args.length > 0 ? args : defaultTestFiles())], {
 	cwd: process.cwd(),
 	env: childEnv,

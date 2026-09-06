@@ -18,7 +18,7 @@ test("Workflow Session release surface uses canonical APIs and normal Session na
   assert.match(api, /\/sessions\/\$\{encodeURIComponent\(piboSessionId\)\}\/workflow/);
   assert.match(api, /workflowSession: PiboWorkflowSession/);
   assert.match(app, /area: "sessions"[\s\S]*false, "workflow"/);
-  assert.match(pane, /\["terminal", "workflow"\]/);
+  assert.match(pane, /workflowSessionLinked,/);
   assert.match(view, /Start Workflow/);
   assert.match(view, /Immutable effective snapshot/);
 });

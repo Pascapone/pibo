@@ -36,7 +36,7 @@ export type DebugAgentObservation = Omit<PiboAgentObservation, "sequence"> & {
 	streamId: number;
 };
 
-export type DebugAgentObserveOptions = Omit<PiboAgentObserveInput, "requestIds">;
+export type DebugAgentObserveOptions = Omit<PiboAgentObserveInput, "requestIds" | "cursorMode">;
 
 export type DebugAgentObserveResult = {
 	parentPiboSessionId: string;
@@ -140,7 +140,7 @@ export function inspectDebugAgentObservations(
 	if (!store.exists) throw new Error(`Debug store "pibo-data" not found at ${store.path}`);
 	const db = openReadOnlyDebugDatabase(store);
 	try {
-		const query = preparePiboAgentObservationQuery(input);
+		const query = preparePiboAgentObservationQuery({ ...input, cursorMode: "history" });
 		const owned = readOwnedAgents(db, parentPiboSessionId);
 		const ownedById = new Map(owned.map((agent) => [agent.agentId, agent]));
 		for (const agentId of input.agentIds ?? []) {
@@ -344,8 +344,10 @@ Usage:
     [--order asc|desc] [--limit 1..200] [--include-tools]
     [--tool-detail summary|full] [--details] [--json]
 
-Default: the newest 20 completed assistant messages, with streaming deltas and tools hidden.
-Use --include-tools for compact tool calls and terminal results. Explicit --event-type or --kind
+Default: the newest 20 completed assistant messages; streaming deltas and tools are hidden.
+The CLI is stateless history inspection. Use --after-sequence for explicit incremental polling.
+Use --include-tools only for stalls, errors, or targeted diagnosis; prefer --tool-call-id when known.
+Explicit --event-type or --kind
 filters retain access to progress events. Repeat plural filters for OR within that field.
 Different fields combine with AND. With --after-sequence, pages always consume the oldest unseen rows;
 --order desc reverses only the returned page, so nextAfterSequence remains safe for polling.

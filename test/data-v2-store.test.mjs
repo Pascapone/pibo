@@ -43,6 +43,7 @@ test("v2 schema migration is idempotent", () => {
 	for (const table of [
 		"sessions",
 		"session_runtime_bindings",
+		"session_agent_observation_auto_cursors",
 		"rooms",
 		"payloads",
 		"event_log",

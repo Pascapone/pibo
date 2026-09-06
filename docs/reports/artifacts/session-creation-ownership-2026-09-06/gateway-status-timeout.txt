@@ -1,0 +1,9 @@
+Production gateway status
+  reachable: yes
+  mode: unknown
+  status error: The operation was aborted due to timeout
+  runtime sessions: 0
+  active yielded runs: 0
+  restart safety: blocked
+    - status unavailable: The operation was aborted due to timeout
+    - gateway mode is unknown

@@ -25,13 +25,9 @@ import { getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } 
 import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
-import {
-  getChatSessionView,
-  listChatSessionViews,
-} from "./session-views/registry";
+import { getChatSessionView } from "./session-views/registry";
 import { SessionTraceLayout } from "./session-trace-layout";
 import { DialogShell } from "./components/DialogShell";
-import type { SessionTraceHeaderExtraViewTab } from "./session-trace-header";
 import type { LiveTraceOverlay } from "./tracing/live-overlay";
 import { useCurrentSessionTrace } from "./tracing/use-current-session-trace";
 import { useSessionTracePage } from "./tracing/use-session-trace-page";
@@ -121,20 +117,18 @@ export function SessionTracePane({
   selectedSessionSignal,
   signals,
 
-  extraViewTabs,
   activeViewId,
   sessionViewId,
-  sessionViews,
   currentSessionView,
   desktopTerminalOnly = false,
   containerResponsive = false,
-  allowedSessionViewIds,
   creatingSession,
   terminalFullscreen = false,
   onEnterTerminalFullscreen,
   onExitTerminalFullscreen,
   showRawEvents,
   showThinking,
+  debugMode,
   expandThinking,
   toolDisplayMode,
   commands,
@@ -142,14 +136,13 @@ export function SessionTracePane({
   composerText,
   composerFocusSignal,
   onComposerTextChange,
-  onToggleRawEvents,
+  onToggleDebugMode,
   onToggleThinking,
   onToggleExpandThinking,
   onToolDisplayModeChange,
   onSessionAgentProfileChange,
   onFork,
   onOpenSession,
-  onSelectSessionView,
   onCommand,
   onThinkingLevelChange,
   onRefreshTrace,
@@ -177,20 +170,18 @@ export function SessionTracePane({
   selectedSessionStatus?: PiboWebSessionStatus;
   selectedSessionSignal?: PiboSignalSnapshot["sessions"][string];
   signals?: PiboSignalSnapshot;
-  extraViewTabs?: readonly SessionTraceHeaderExtraViewTab[];
   activeViewId?: string;
   sessionViewId: ChatSessionViewId;
-  sessionViews: ReturnType<typeof listChatSessionViews>;
   currentSessionView: ReturnType<typeof getChatSessionView>;
   desktopTerminalOnly?: boolean;
   containerResponsive?: boolean;
-  allowedSessionViewIds?: readonly ChatSessionViewId[];
   creatingSession: boolean;
   terminalFullscreen?: boolean;
   onEnterTerminalFullscreen?: () => void;
   onExitTerminalFullscreen?: () => void;
   showRawEvents: boolean;
   showThinking: boolean;
+  debugMode: boolean;
   expandThinking: boolean;
   toolDisplayMode: ToolDisplayMode;
   commands: SlashCommand[];
@@ -198,14 +189,13 @@ export function SessionTracePane({
   composerText: string;
   composerFocusSignal: number;
   onComposerTextChange: Dispatch<SetStateAction<string>>;
-  onToggleRawEvents: () => void;
+  onToggleDebugMode: () => void;
   onToggleThinking: () => void;
   onToggleExpandThinking: () => void;
   onToolDisplayModeChange: (mode: ToolDisplayMode) => void;
   onSessionAgentProfileChange: (profile: string) => void;
   onFork: (entryId: string) => void;
   onOpenSession: (piboSessionId: string) => void;
-  onSelectSessionView: (viewId: ChatSessionViewId) => void;
   onCommand: (text: string) => Promise<boolean>;
   onThinkingLevelChange: (level: ThinkingLevel) => void;
   onRefreshTrace: () => Promise<void>;
@@ -325,9 +315,9 @@ export function SessionTracePane({
   );
   const terminalUsageQuery = useQuery({
     queryKey: selectedBackendPiboSessionId
-      ? ["chat", "terminal-header-usage", selectedBackendPiboSessionId]
+      ? ["chat", "terminal-header-usage", selectedBackendPiboSessionId, selectedSessionStatus]
       : ["chat", "terminal-header-usage", "idle"],
-    queryFn: () => getSessionStatus(selectedBackendPiboSessionId!),
+    queryFn: () => getSessionStatus(selectedBackendPiboSessionId!, { activate: false }),
     enabled: terminalUsageEnabled,
     refetchInterval: terminalUsageEnabled ? 30_000 : false,
     staleTime: 15_000,
@@ -444,6 +434,8 @@ export function SessionTracePane({
   const forkCandidateRevision = traceUserMessageRevision(currentTraceView);
   const forkCandidateStatusRevision = selectedSessionStatus ?? "unknown";
   const forkCandidatesEnabled = Boolean(selectedBackendPiboSessionId)
+    && forkCandidateRevision !== "none"
+    && forkCandidateRevision !== "0:"
     && forkSupported
     && !selectedRoomArchived
     && (selectedSessionStatus !== "running" || forkWhileRunningSupported);
@@ -655,6 +647,7 @@ export function SessionTracePane({
     currentTraceView: forkableTraceView,
     isLoading: loadingTrace,
     showThinking,
+    debugMode,
     expandThinking,
     toolDisplayMode: effectiveToolDisplayMode,
     selectedSessionProfile,
@@ -748,29 +741,6 @@ export function SessionTracePane({
   const selectedLivePreviewActionPending = selectedLivePreviewRecord
     ? pendingLivePreviewActions.has(`${selectedLivePreviewRecord.piboSessionId}:${selectedLivePreviewRecord.id}`)
     : false;
-  const parentExtraViewTabs = extraViewTabs?.map((tab) => ({
-    ...tab,
-    onSelect: () => {
-      setLivePreviewViewSessionId(null);
-      tab.onSelect();
-    },
-  })) ?? [];
-  const previewTabVisible = livePreviewAuthority.kind === "ready" || livePreviewSelected;
-  const combinedExtraViewTabs: SessionTraceHeaderExtraViewTab[] = previewTabVisible
-    ? [
-        ...parentExtraViewTabs,
-        {
-          id: "preview",
-          label: "Preview",
-          description: "Open the live development preview attached to this Pibo Session.",
-          active: livePreviewSelected,
-          onSelect: () => {
-            if (onOpenDesktopTool) onOpenDesktopTool("preview");
-            else if (selectedBackendPiboSessionId) setLivePreviewViewSessionId(selectedBackendPiboSessionId);
-          },
-        },
-      ]
-    : parentExtraViewTabs;
   const previewAuthorityMessage = livePreviewAuthority.kind === "loading"
     ? <PreviewMessage label="Loading live previews…" />
     : livePreviewAuthority.kind === "error"
@@ -975,16 +945,13 @@ export function SessionTracePane({
         webAnnotationsPanelRendered,
         workflowHeader,
         sessionViewId,
-        sessionViews,
         currentSessionView,
-        allowedSessionViewIds: allowedSessionViewIds ?? (workflowSessionLinked ? ["terminal", "workflow"] : ["terminal"]),
-        extraViewTabs: combinedExtraViewTabs,
         activeViewId: livePreviewSelected ? "preview" : activeViewId,
         desktopTerminalOnly,
         terminalFullscreenAvailable: !livePreviewSelected && currentSessionView.id === "terminal" && (activeViewId ?? sessionViewId) === "terminal",
         onEnterTerminalFullscreen,
         onOpenSessionWindow,
-        showRawEvents: showRawEvents || desktopActiveTool === "raw-events",
+        debugMode,
         showThinking,
         expandThinking,
         toolDisplayMode: effectiveToolDisplayMode,
@@ -992,11 +959,7 @@ export function SessionTracePane({
         onToolDisplayModeChange,
         onShowWebAnnotationsPanel: () => onOpenDesktopTool ? onOpenDesktopTool("web-annotations") : setWebAnnotationsPanelVisible(true),
         onHideWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(false),
-        onSelectSessionView: (viewId) => {
-          setLivePreviewViewSessionId(null);
-          onSelectSessionView(viewId);
-        },
-        onToggleRawEvents,
+        onToggleDebugMode,
         onToggleThinking,
         onToggleExpandThinking,
         onError,

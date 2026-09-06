@@ -5,12 +5,14 @@ import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
 import type { PiboAssistantMessageEvent, PiboJsonValue, PiboMessageProvenance } from "../core/events.js";
 import type { ModelProfile, SubagentProfile } from "../core/profiles.js";
 import type {
+	PiboAgentObservationCursorMode,
 	PiboAgentObservationKind,
 	PiboAgentObservationOrder,
 	PiboAgentObservationToolDetail,
 } from "./observations.js";
 
 export type {
+	PiboAgentObservationCursorMode,
 	PiboAgentObservationKind,
 	PiboAgentObservationOrder,
 	PiboAgentObservationToolDetail,
@@ -101,6 +103,7 @@ export type PiboAgentObserveInput = {
 	until?: string;
 	textContains?: string;
 	textRegex?: string;
+	cursorMode?: PiboAgentObservationCursorMode;
 	afterSequence?: number;
 	order?: PiboAgentObservationOrder;
 	limit?: number;
@@ -113,6 +116,7 @@ export type PiboAgentObserveResult = {
 	filters: PiboAgentObserveInput;
 	observations: PiboAgentObservation[];
 	nextAfterSequence: number;
+	autoCursorSequence?: number;
 	truncated: boolean;
 };
 
@@ -217,12 +221,15 @@ function preparePiboDeprecatedSubagentToolInput(input: unknown): PiboDeprecatedS
 export function formatAgentObservationsForModel(result: PiboAgentObserveResult): string {
 	const includeTools = result.filters.includeTools === true;
 	const toolDetail = result.filters.toolDetail ?? "summary";
+	const cursorMode = result.filters.cursorMode ?? "auto";
 	const lines = [
-		`Agent observations (${result.observations.length}; tools=${includeTools ? toolDetail : "hidden"}; order=${result.filters.order ?? "desc"}; limit=${result.filters.limit ?? 20})`,
-		`nextAfterSequence=${result.nextAfterSequence}; truncated=${result.truncated}`,
+		`Agent observations (${result.observations.length}; cursor=${cursorMode}; tools=${includeTools ? toolDetail : "hidden"}; order=${result.filters.order ?? "desc"}; limit=${result.filters.limit ?? 20})`,
+		`afterSequence=${result.filters.afterSequence ?? "initial"}; nextAfterSequence=${result.nextAfterSequence}${result.autoCursorSequence === undefined ? "" : `; autoCursorSequence=${result.autoCursorSequence}`}; truncated=${result.truncated}`,
 	];
 	if (result.observations.length === 0) {
-		lines.push("", "No delegated-agent observations matched the filters.");
+		lines.push("", cursorMode === "auto"
+			? "No new delegated-agent messages matched since the automatic cursor. Use cursorMode=\"history\" only when you need to reread earlier observations."
+			: "No historical delegated-agent observations matched the filters.");
 		return lines.join("\n");
 	}
 	for (const observation of result.observations) {
@@ -352,10 +359,10 @@ export function createAgentToolDefinitions(
 			title: "Pibo Agents Observe",
 			description: [
 				"Read completed delegated-agent messages with bounded cursor, identity, event, time, substring, regex, order, and limit filters.",
-				"Default: the newest 20 completed assistant messages, with streaming deltas and tools hidden.",
-				"Set includeTools=true to add compact tool calls and terminal results, or pass toolCallIds to retrieve only those exact tool observations. Set toolDetail=full only for bounded diagnostic inspection.",
+				"Default cursorMode=auto: the first equivalent query returns the newest 20 completed assistant messages; later calls return only unread messages. Streaming deltas, duplicate tool progress events, and tools stay hidden.",
+				"Use cursorMode=history only to reread earlier observations. Inspect tools only when an agent appears stuck, reports a problem, or needs targeted diagnosis; prefer exact toolCallIds, then includeTools=true, and use toolDetail=full only when compact summaries are insufficient.",
 			].join("\n"),
-			promptSnippet: "Observe child-agent progress through completed assistant messages. Defaults: newest 20 messages, no streaming deltas, no duplicate tool progress events, no tools. Use textContains for case-insensitive substring matching or textRegex for case-sensitive rg/Rust-regex matching; when both are present, both must match. Set includeTools=true for compact tool call/result summaries, pass up to 50 exact toolCallIds to retrieve only those tool observations, use toolDetail=full for bounded raw tool text, or eventTypes/kinds for explicit progress diagnostics. Compact tool entries expose their toolCallId for follow-up queries. Pass afterSequence from the previous result for cursor polling; cursor pages consume the oldest unseen matches even when order is desc.",
+			promptSnippet: "Observe child progress through completed assistant messages. cursorMode=auto is the default and remembers each equivalent query, so repeated calls return only unread messages; use cursorMode=history to reread earlier observations. Streaming deltas, duplicate tool progress events, and tools are hidden by default. Inspect tools only for stalls, errors, or targeted diagnosis: prefer exact toolCallIds, use includeTools=true only when broader context is needed, and use toolDetail=full only when summaries are insufficient. Use textContains or textRegex for focused matching; different filters use separate automatic cursors. An explicit afterSequence overrides the stored cursor and advances that automatic query cursor.",
 			executionMode: "parallel",
 			annotations: { readOnly: true },
 			inputSchema: Type.Object({
@@ -371,10 +378,11 @@ export function createAgentToolDefinitions(
 				until: Type.Optional(Type.String({ description: "Inclusive ISO-8601 upper timestamp bound" })),
 				textContains: Type.Optional(Type.String({ description: "Case-insensitive substring match against normalized observation text" })),
 				textRegex: Type.Optional(Type.String({ description: "Case-sensitive rg/Rust-regex match against normalized observation text. Use inline flags such as (?i) to change case behavior. Combines with textContains using AND semantics. NUL text and literal or escaped NUL patterns are rejected; regex use requires the optional rg platform binary." })),
-				afterSequence: Type.Optional(Type.Integer({ description: "Exclusive live observation cursor. Cursor pages consume the oldest unseen matches; desc reverses only the returned page.", minimum: 0 })),
+				cursorMode: Type.Optional(piboStringEnum(["auto", "history"], { default: "auto", description: "auto remembers this normalized query and returns only unread observations after its first newest-message snapshot. history ignores and does not change the saved cursor, allowing deliberate rereads." })),
+				afterSequence: Type.Optional(Type.Integer({ description: "Explicit exclusive cursor override. In auto mode it replaces and advances the saved cursor for this normalized query; cursor pages consume the oldest unseen matches and desc reverses only the returned page.", minimum: 0 })),
 				order: Type.Optional(piboStringEnum(["asc", "desc"], { default: "desc", description: "Newest first by default when no cursor is supplied" })),
 				limit: Type.Optional(Type.Integer({ description: "Maximum completed messages or activity records to return. Use 50 explicitly when needed.", minimum: 1, maximum: 200, default: 20 })),
-				includeTools: Type.Optional(Type.Boolean({ description: "Include tools. Default false. With the default message view, true adds tool_call and tool_execution_finished records.", default: false })),
+				includeTools: Type.Optional(Type.Boolean({ description: "Include compact tool calls and terminal results. Default false; enable only for stalls, errors, or targeted diagnosis. Prefer exact toolCallIds when known.", default: false })),
 				toolDetail: Type.Optional(piboStringEnum(["summary", "full"], { default: "summary", description: "Tool text detail when tools are included. summary is compact; full remains bounded to the observation text limit." })),
 				includeDetails: Type.Optional(Type.Boolean({ description: "Include the normalized source event in structured details. Default false; use only for diagnostics.", default: false })),
 			}),
