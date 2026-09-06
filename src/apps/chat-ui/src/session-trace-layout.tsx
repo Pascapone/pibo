@@ -5,7 +5,6 @@ import { SessionTraceHeader } from "./session-trace-header";
 import type { getChatSessionView } from "./session-views/registry";
 import type { ChatSessionViewProps } from "./session-views/types";
 import type { PiboSessionTraceView } from "./types";
-import { WebAnnotationsSessionPanel } from "./web-annotations";
 import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
 import { TerminalFullscreenTopBar } from "./terminal-fullscreen-top-bar";
 import { TerminalFileDropTarget } from "./terminal-file-drop-target";
@@ -36,8 +35,6 @@ type SessionTraceLayoutProps = {
   auxiliaryPanel?: ReactNode;
   currentSessionView: ReturnType<typeof getChatSessionView>;
   sessionViewProps: ChatSessionViewProps;
-  webAnnotationsPanelRendered: boolean;
-  webAnnotationsPanelProps: ComponentProps<typeof WebAnnotationsSessionPanel>;
   runtimeRequestPanel?: ReactNode;
   composerProps: ComponentProps<typeof Composer>;
   containerResponsive?: boolean;
@@ -76,8 +73,6 @@ export function SessionTraceLayout({
   auxiliaryPanel,
   currentSessionView,
   sessionViewProps,
-  webAnnotationsPanelRendered,
-  webAnnotationsPanelProps,
   runtimeRequestPanel,
   composerProps,
   containerResponsive = false,
@@ -134,9 +129,6 @@ export function SessionTraceLayout({
         ) : (
           currentSessionView.render({ ...sessionViewProps, terminalFullscreen })
         )}
-        {!terminalFullscreen && webAnnotationsPanelRendered ? (
-          <WebAnnotationsSessionPanel {...webAnnotationsPanelProps} />
-        ) : null}
         {runtimeRequestPanel}
         {shouldRenderSessionComposer({ hideComposer, auxiliaryPanel }) ? (
           <Composer {...composerProps} />
