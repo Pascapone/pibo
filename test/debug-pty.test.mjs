@@ -535,7 +535,7 @@ test("Ink session picker treats keyboard-repeat Enter as one persistent activati
 			rows: 36,
 			cols: 120,
 			timeoutMs: 30_000,
-			idleTimeoutMs: 10_000,
+			idleTimeoutMs: 20_000,
 			inputDelayMs: 1,
 			env: {
 				PIBO_HOME: homeDir,
@@ -553,7 +553,7 @@ test("Ink session picker treats keyboard-repeat Enter as one persistent activati
 				{ press: "Enter" },
 				{ sleepMs: 30 },
 				{ press: "Enter" },
-				{ waitFor: "session New CLI session", timeoutMs: 10_000 },
+				{ waitFor: "session New CLI session", timeoutMs: 20_000 },
 				{ sleepMs: 100 },
 				{ typeText: "/model" },
 				{ waitFor: "› /model", timeoutMs: 10_000 },

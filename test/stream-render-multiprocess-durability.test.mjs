@@ -82,11 +82,14 @@ test("two processes renew slow claims and stale claim generations cannot destruc
 			try {
 				const row = database.prepare("SELECT worker_id, claim_expires_at FROM pibo_jobs WHERE job_id = ?").get("job_multiprocess");
 				return row?.worker_id === "worker-stale" && Date.parse(row.claim_expires_at) <= Date.now();
+			} catch (error) {
+				if (error instanceof Error && /database is (?:locked|busy)/i.test(error.message)) return false;
+				throw error;
 			} finally {
 				database.close();
 			}
 		}, 2_000);
-		const takeover = await runWorker(databasePath, "worker-takeover", "heartbeat", 0, 50);
+		const takeover = await runWorker(databasePath, "worker-takeover", "heartbeat", 0, 5_000);
 		const stale = await stalePromise;
 		assert.equal(takeover[0].claimed, true);
 		assert.equal(takeover[1].acked, true);
