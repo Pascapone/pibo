@@ -86,9 +86,11 @@ export class BoundedWorkerClient {
 		};
 		for (const limit of Object.values(this.maximum)) if (!Number.isFinite(limit) || limit <= 0) throw new Error("Storage budgets must be positive finite numbers.");
 		this.worker = new Worker(url, { resourceLimits: { maxOldGenerationSizeMb: 256 }, ...options.workerOptions });
+		this.worker.unref();
 		this.startupTimer = setTimeout(() => this.fail(new StorageUnavailableError("storage_worker_failed", "Storage worker startup timed out.")), this.maximum.startupTimeoutMs);
 		this.worker.on("message", (message: { ready?: boolean; worker?: Record<string, unknown>; id?: number; value?: unknown; error?: { code?: string; message?: string } }) => {
 			this.lastResponseAt = performance.now();
+			if (message.worker) this.workerIdentity = message.worker;
 			if (message.ready) { clearTimeout(this.startupTimer); this.ready = true; this.workerIdentity = message.worker; this.pump(); return; }
 			const pending = this.inFlight;
 			if (!pending || message.id !== pending.id) return;

@@ -88,6 +88,10 @@ export class PayloadStore {
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		const bytes = payloadToBytes(input.value, contentType);
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
+		const existing = this.findByIdentity(sha256, contentType, input.retentionClass);
+		if (existing) {
+			return { ...existing, refCount: 1, status: "staged" };
+		}
 		const shouldCompress = bytes.byteLength <= MAX_SYNC_PAYLOAD_GZIP_BYTES;
 		const encoding = shouldCompress ? "gzip" : "identity";
 		const bytesToStore = shouldCompress ? gzipSync(bytes) : bytes;

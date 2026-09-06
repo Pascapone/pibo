@@ -64,6 +64,7 @@ export async function startWebOutboxProcessHost({ directory, piboSessionId }) {
 	const address = channel.getAddress();
 	if (!address) throw new Error("web outbox fixture channel has no address");
 	return {
+		app,
 		channel,
 		baseURL: `http://${address.host}:${address.port}`,
 		paths,

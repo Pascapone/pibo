@@ -354,6 +354,11 @@ async function startWebHostChannel(options = {}) {
 
 	const address = channel.getAddress();
 	assert.ok(address);
+	const stopChannel = channel.stop.bind(channel);
+	channel.stop = async () => {
+		await stopChannel();
+		await Promise.all(webApps.map((app) => app.dispose?.()));
+	};
 	return {
 		channel,
 		emitted,

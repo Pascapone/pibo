@@ -81,8 +81,11 @@ function execute(command: ChatStorageCommand): unknown {
 	}
 }
 function respond(request: Request, response: { value?: unknown; error?: { code: string; message: string } }) {
-	port!.postMessage({ id: request.id, ...response });
+	port!.postMessage({ id: request.id, ...response, worker: workerStatus() });
 	active = false;
+}
+function workerStatus() {
+	return { pid: process.pid, operations, busyRetries, lastOperationMs, busyTimeoutMs: 10 };
 }
 function attempt(request: Request) {
 	if (performance.now() >= request.deadline) { respond(request, { error: { code: "storage_deadline", message: "Storage execution deadline elapsed before commit." } }); return; }
@@ -116,9 +119,8 @@ port.on("message", (request: Request) => {
 port.postMessage({
 	ready: true,
 	worker: {
-		pid: process.pid,
+		...workerStatus(),
 		journalMode: store.db.prepare("PRAGMA journal_mode").get(),
 		synchronous: store.db.prepare("PRAGMA synchronous").get(),
-		busyTimeoutMs: 10,
 	},
 });
