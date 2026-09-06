@@ -7,12 +7,25 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-05T12:20:39Z"
+  at: "2026-09-05T21:26:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "9ce53817fec5919c00e130dd794c391c497882a1"
+  commit: "bfb31e40143ea149cf77917d787adaf477539f51"
   requirements:
+    - id: "RUN-PI-005"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtimes/pi/history.ts"
+          symbol: "readPiAgentRuntimeForkCandidates"
+        - path: "src/agent-runtimes/pi/adapter.ts"
+          symbol: "PiAgentRuntimeAdapter"
+      tests:
+        - path: "test/cold-fork-candidates.test.mjs"
+          name: "Pi persisted fork candidates preserve all user entries and text without rewriting native history"
+      public: ["Pi persisted fork candidate inspection"]
+      failures: ["Legacy or mismatched native headers return undefined for runtime fallback; cached results are invalidated by file identity or stat changes."]
+      confidence: "high"
     - id: "RUN-PI-001"
       status: "implemented"
       sources:
@@ -117,6 +130,12 @@ Pi SHALL receive portable Pibo tools through direct compilation, SHALL declare n
 
 Pi intent tracing SHALL be disabled by default and, when enabled, SHALL inject then strip only its collision-safe intent field while preserving tool arguments and semantic events.
 
+## Requirement: RUN-PI-005
+
+Pi SHALL inspect supported version-3 native histories for user-message fork candidates without initializing or rewriting the native session. It SHALL preserve native entry order and IDs, duplicate prompts, branch entries, and SDK text extraction semantics; image-only messages SHALL not become text candidates. Legacy or mismatched session headers SHALL use the generic runtime fallback.
+
+Repeated reads MAY reuse one cache entry with at most 2 MiB of candidate text and ID payload. Cache reuse SHALL require unchanged native identity, path, device, inode, size, modification time, and change time. Returned candidates SHALL not expose shared mutable cached objects. The reader SHALL verify the file fingerprint again before caching a completed scan.
+
 # Interfaces and ownership
 
 Implemented public contracts:
@@ -149,7 +168,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `9ce53817fec5919c00e130dd794c391c497882a1`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `bfb31e40143ea149cf77917d787adaf477539f51`. The persisted fork reader has [Docker and Pibo2 evidence](/reports/idle-session-history-latency-validation-2026-09-05.md); earlier package-upgrade verification remains scoped to that upgrade. Requirement confidence measures trace quality, not whether a command ran.
 
 The 0.85.0 upgrade passed the complete TypeScript build and focused Pi/runtime routing tests. The explicit `@earendil-works/pi-server@0.85.0` pin closes the package entrypoint's published runtime import and is covered by the exact-version lockfile test.
 

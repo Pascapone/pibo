@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-05T10:32:00Z",
+  "generated_at": "2026-09-05T21:29:00Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -17,6 +17,18 @@
     "operational": "directive"
   },
   "records": [
+    {
+      "path": "docs/reports/idle-session-history-latency-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 10936,
+      "file_sha256": "53b87e4bcd179172c6e1a0aa97c33f271569d2ee8da58d3f9a828387f1e6a97b",
+      "body_sha256": "d0d91dfe339a98efa1cd4c70a5d72b85c62ac53b617d7ea3c426f3d38b9d0abb",
+      "lineage": null
+    },
     {
       "path": "docs/legacy/plans/remove-projects-and-make-workflows-session-native.md",
       "state": "conformant",
@@ -12499,9 +12511,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 14249,
-      "file_sha256": "fe4cf4c52cf47f5e31b8544c05511acee753dab975e15768320ad4f8ad58d5c3",
-      "body_sha256": "8646f1bc6bdd9453ba236c4e37d17b33c2dc027cdf84ce840fbe2e5ae69dc8d9",
+      "file_bytes": 17069,
+      "file_sha256": "667eca4421ede5ade6f7b81899f41125b3a9eead6ae295389a1182bc02212ed7",
+      "body_sha256": "4186dbc367134a469318d0ade10ac1606a75451c0105ea9bd2919dae5af2e0b2",
       "lineage": null
     },
     {
@@ -13593,6 +13605,15 @@
       "lineage": null
     },
     {
+      "path": "docs/reports/session-status-latency-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
       "path": "docs/legacy/specs/changes/sidebar-browser-tabs/index.md",
       "state": "reserved",
       "classification": "reserved index/log",
@@ -13605,6 +13626,30 @@
       "file_bytes": 560,
       "file_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25",
       "body_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25"
+    },
+    {
+      "path": "docs/reports/gateway-status-scaling-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 12620,
+      "file_sha256": "77cba43bae901c31af0e132d4d107fc564c02932bb078831f93dff6ce07dbf42",
+      "body_sha256": "b2a37c35ae26171de04553aa367712a50d31c49ba4c988347bddce4b92c71c0d",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/terminal-initial-visibility-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 10398,
+      "file_sha256": "75650eb22a5adf36d6cc8e870148d8e348650241d093f90d76e16a419e1e2ce9",
+      "body_sha256": "689aaf29b5d24590f53648ef5984e9178b8107a19913ae348cabe0edf510f939",
+      "lineage": null
     },
     {
       "path": "docs/reports/terminal-viewport-and-wheel-validation-2026-09-06.md",

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
 	readPiCredential,
 	resolvePiProviderAuth,
@@ -25,6 +26,18 @@ export type PiboProviderUsageStatus = {
 	};
 	fetchedAt: string;
 };
+
+const USAGE_REFRESH_MS = 30_000;
+const USAGE_MAX_STALE_MS = 5 * 60_000;
+const USAGE_REQUEST_TIMEOUT_MS = 2_000;
+
+// One bounded, credential-scoped snapshot shared by sessions. Never retain raw credentials.
+let usageCache: {
+	key: string;
+	value?: PiboProviderUsageStatus;
+	refreshAfter: number;
+	pending?: Promise<PiboProviderUsageStatus | undefined>;
+} | undefined;
 
 type RawObject = Record<string, unknown>;
 
@@ -149,8 +162,31 @@ export async function getOpenAiCodexProviderUsageForActiveModel(activeModel: { p
 	if (activeModel?.provider !== OPENAI_CODEX_PROVIDER) return undefined;
 
 	const credential = await readPiCredential(OPENAI_CODEX_PROVIDER);
-	if (credential?.type !== "oauth") return undefined;
+	if (credential?.type !== "oauth") {
+		usageCache = undefined;
+		return undefined;
+	}
 
+	const key = createHash("sha256").update(JSON.stringify(credential)).digest("hex");
+	if (usageCache?.key !== key) usageCache = { key, refreshAfter: 0 };
+	const cache = usageCache;
+	const now = Date.now();
+	const usable = () => cache.value && Date.now() - Date.parse(cache.value.fetchedAt) < USAGE_MAX_STALE_MS
+		? cache.value
+		: undefined;
+	if (now < cache.refreshAfter) return usable();
+	cache.pending ??= fetchOpenAiCodexProviderUsage(credential.accountId)
+		.then((value) => { cache.value = value; return value; })
+		.catch(() => usable())
+		.finally(() => {
+			cache.refreshAfter = Date.now() + USAGE_REFRESH_MS;
+			cache.pending = undefined;
+		});
+	// Quota is advisory: stale-while-revalidate keeps repeat status commands local.
+	return usable() ?? await cache.pending;
+}
+
+async function fetchOpenAiCodexProviderUsage(storedAccountId: unknown): Promise<PiboProviderUsageStatus | undefined> {
 	const resolvedAuth = await resolvePiProviderAuth(OPENAI_CODEX_PROVIDER);
 	const accessToken = resolvedAuth?.auth.apiKey;
 	if (!accessToken) return undefined;
@@ -159,13 +195,13 @@ export async function getOpenAiCodexProviderUsageForActiveModel(activeModel: { p
 		Authorization: `Bearer ${accessToken}`,
 		"User-Agent": "codex-cli",
 	};
-	const accountId = getOpenAiAccountId(accessToken, credential.accountId);
+	const accountId = getOpenAiAccountId(accessToken, storedAccountId);
 	if (accountId) headers["ChatGPT-Account-Id"] = accountId;
 
-	const response = await fetch(OPENAI_CODEX_USAGE_URL, { headers });
+	const response = await fetch(OPENAI_CODEX_USAGE_URL, { headers, signal: AbortSignal.timeout(USAGE_REQUEST_TIMEOUT_MS) });
 	if (!response.ok) {
-		const text = await response.text().catch(() => "");
-		throw new Error(`OpenAI Codex usage request failed: ${response.status}${text ? ` ${text}` : ""}`);
+		await response.body?.cancel();
+		throw new Error(`OpenAI Codex usage request failed: ${response.status}`);
 	}
 	return normalizeUsagePayload(await response.json());
 }

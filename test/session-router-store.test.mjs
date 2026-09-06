@@ -1471,3 +1471,62 @@ test("session router marks a missing bound Pi transcript instead of creating a r
 		await rm(cwd, { recursive: true, force: true });
 	}
 });
+
+test("signal snapshots order known parents without rereading each stored Session", async () => {
+	const store = new InMemoryPiboSessionStore();
+	createStoredSession(store, { piSessionId: undefined, id: "ps_child", parentId: "ps_parent" });
+	createStoredSession(store, { piSessionId: undefined, id: "ps_parent", parentId: "ps_root" });
+	createStoredSession(store, { piSessionId: undefined, id: "ps_root" });
+	for (let index = 0; index < 508; index += 1) createStoredSession(store, { piSessionId: undefined, id: `ps_other_${index}` });
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const get = store.get.bind(store);
+	const list = store.list.bind(store);
+	let reads = 0;
+	let lists = 0;
+	store.get = (id) => { reads += 1; return get(id); };
+	store.list = () => { lists += 1; return list(); };
+	try {
+		const snapshot = router.snapshotSignalSession("ps_child");
+		assert.equal(snapshot.rootPiboSessionId, "ps_root");
+		assert.equal(snapshot.sessions.ps_child.parentPiboSessionId, "ps_parent");
+		assert.equal(lists, 1);
+		assert.equal(reads, 0, "the complete list already contains each ancestor record");
+		createStoredSession(store, { piSessionId: undefined, id: "ps_new_child", parentId: "ps_parent" });
+		reads = lists = 0;
+		const next = router.snapshotSignalTree("ps_root");
+		assert.equal(next.rootPiboSessionId, "ps_root");
+		assert.equal(next.sessions.ps_new_child.parentPiboSessionId, "ps_parent");
+		assert.equal(lists, 1);
+		assert.equal(reads, 0, "each snapshot uses a fresh listed view, not per-record queries or a stale cache");
+		const registry = router.getSignalRegistry();
+		registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "ps_child", eventId: "active" } });
+		registry.project({ type: "pibo_output", event: { type: "tool_call", piboSessionId: "ps_child", eventId: "active", toolCallId: "tool", toolName: "bash", args: {}, argsComplete: false } });
+		registry.project({ type: "queue_changed", piboSessionId: "ps_child", queuedMessages: 2 });
+		const expected = registry.snapshotSession("ps_child").sessions.ps_child;
+		assert.equal(expected.activeTelemetry.activePhase, "tool_args");
+		assert.equal(expected.queuedMessages, 2);
+		reads = lists = 0;
+		assert.deepEqual(router.snapshotSignalSession("ps_child").sessions.ps_child, expected);
+		assert.equal(lists, 1);
+		assert.equal(reads, 0);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("listed Session depth matches store traversal for roots, missing parents, and cycles", async () => {
+	const store = new InMemoryPiboSessionStore();
+	for (const [id, parentId] of [["root"], ["child", "root"], ["orphan", "missing"], ["self", "self"], ["cycle_a", "cycle_b"], ["cycle_b", "cycle_a"]]) {
+		createStoredSession(store, { piSessionId: undefined, id, parentId });
+	}
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		const sessions = new Map(store.list().map((session) => [session.id, session]));
+		for (const [id, depth] of [["root", 0], ["child", 1], ["orphan", 1], ["missing", 0], ["self", 1], ["cycle_a", 2], ["cycle_b", 2]]) {
+			assert.equal(router.getSubagentDepth(id), depth);
+			assert.equal(router.getSubagentDepth(id, sessions), depth);
+		}
+	} finally {
+		await router.disposeAll();
+	}
+});

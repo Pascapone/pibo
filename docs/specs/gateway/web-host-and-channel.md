@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-06T03:00:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "7e68cb0fdc69d0f91e469ea86123d273dbf0613c"
   requirements:
     - id: "WP02-GW-WEB-001"
       status: "implemented"
@@ -148,6 +148,27 @@ traceability:
         - "Local auth requires loopback except compute workers, where Docker networking is explicitly the security boundary."
         - "Host catch responses expose error.message; generic secret-safe redaction is not implemented."
       confidence: "high"
+    - id: "WP02-GW-STATUS-006"
+      status: "implemented"
+      sources:
+        - path: "src/core/session-router.ts"
+          symbol: "projectKnownSessionSignals"
+        - path: "src/core/session-router.ts"
+          symbol: "getSubagentDepth"
+        - path: "src/web/channel.ts"
+          symbol: "createGatewayRuntimeStatuses"
+      tests:
+        - path: "test/session-router-store.test.mjs"
+          name: "signal snapshots order known parents without rereading each stored Session"
+        - path: "test/session-router-store.test.mjs"
+          name: "listed Session depth matches store traversal for roots, missing parents, and cycles"
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "blocks with processing sessions"
+      public: ["/gateway/status", "pibo gateway web status", "PiboSessionRouter.snapshotSignalSession"]
+      failures:
+        - "Depth optimization does not omit active telemetry, queue state, or runtime activity and does not change restart-safety decisions."
+        - "Missing-parent and cycle traversal retains the existing bounded depth behavior."
+      confidence: "high"
 ---
 
 # Scope
@@ -185,6 +206,17 @@ Web response handling SHALL preserve streaming cancellation and bounded gzip beh
 ## Requirement: WP02-GW-WEB-005
 
 Gateway auth-mode selection SHALL default to Better Auth, reject legacy PIBO_DEV_AUTH, and permit local auth only on loopback or an explicitly warned compute-worker network boundary.
+
+## Requirement: WP02-GW-STATUS-006: Signal projection reuses its complete listed view
+
+When known-session signal projection has listed the stored Sessions, it SHALL derive ancestor depths from that same per-call view without rereading each Session or ancestor from storage. Parent-first projection, current queue/activity signals, and available active telemetry SHALL remain unchanged. A subsequent projection SHALL use a fresh listed view rather than a cross-request cache.
+
+- GIVEN a reverse-ordered parent chain among 511 stored Sessions, WHEN the router snapshots a child, THEN the correct root/parent relationship remains visible with one list operation and no per-record ancestor reads.
+- GIVEN a new stored child, WHEN another snapshot is requested, THEN the new child appears without a cache-expiry wait.
+- GIVEN active tool execution and queued input, WHEN the gateway status is queried, THEN processing, queue depth, and available telemetry remain visible and the CLI's existing active-work restart guard remains blocking.
+- Missing parents and cycles retain the existing depth behavior. Runtime-status enumeration still performs per-runtime projection; this requirement does not promise constant-time scaling or a universal latency deadline.
+
+Exact-code Docker regression and Pibo2 status/load/safety/streaming evidence are in the [status scaling report](/reports/gateway-status-scaling-validation-2026-09-06.md). No timeout extension or restart attempt was used to satisfy acceptance.
 
 # Interfaces and ownership
 
@@ -237,7 +269,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
+Source symbols and named tests are bound to commit `7e68cb0fdc69d0f91e469ea86123d273dbf0613c`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
 
 Package verification commands:
 

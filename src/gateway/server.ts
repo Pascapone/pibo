@@ -518,7 +518,7 @@ export class PiboGatewayServer {
 			},
 			rebindSessionRuntime: (piboSessionId, input) => this.requireRouter().rebindSessionRuntime(piboSessionId, input),
 			getSessionRuntimeStatus: (piboSessionId) => this.requireRouter().getSessionRuntimeStatus(piboSessionId),
-			getSessionStatusSnapshot: (piboSessionId) => this.requireRouter().getSessionStatusSnapshot(piboSessionId),
+			getSessionStatusSnapshot: (piboSessionId, options) => this.requireRouter().getSessionStatusSnapshot(piboSessionId, options),
 			getSessionForkCandidates: (piboSessionId) => this.requireRouter().getSessionForkCandidates(piboSessionId),
 			listSessionRuntimeStatuses: () => this.requireRouter().listSessionRuntimeStatuses(),
 			listRuns: (options) => this.requireRouter().listRuns(options),
