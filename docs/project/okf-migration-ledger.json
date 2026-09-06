@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-06T07:02:37Z",
+  "generated_at": "2026-09-06T19:38:08Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -17,6 +17,30 @@
     "operational": "directive"
   },
   "records": [
+    {
+      "path": "docs/plans/pibo-performance-and-scalability.md",
+      "state": "conformant",
+      "classification": "performance implementation plan",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "file_bytes": 42554,
+      "file_sha256": "1413badc0ecb22d27805f0be649e028095483fe2980e027b2db23c82d16465f7",
+      "body_sha256": "86ca3f679b89ab66c27a54a823eb74f0a570f8a99878e4e972f4c304b9e0169d",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/production-performance-audit-2026-09-06.md",
+      "state": "conformant",
+      "classification": "production investigation evidence",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 20314,
+      "file_sha256": "aafbc05d3941229632b47708c6946a9c82e7c81864ba9b8e37d5aee438cd6cdc",
+      "body_sha256": "16099ecbf317a6acebcba76a6a0f39cc008c6a07db38dda3098ac5b4ef2ba739",
+      "lineage": null
+    },
     {
       "path": "docs/reports/idle-session-history-latency-validation-2026-09-05.md",
       "state": "conformant",

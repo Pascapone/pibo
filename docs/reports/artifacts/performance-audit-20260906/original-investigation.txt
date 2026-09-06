@@ -1,0 +1,368 @@
+# Untersuchung der Nachrichtenlatenz im Produktions-Chat — 2026-09-06
+
+## Zusammenfassung
+
+Die wahrgenommene Verzögerung entstand nicht in der Runtime-Queue. Eine synchrone SQLite-Abfrage blockierte das Node.js-Gateway, bevor es die Nachricht annahm.
+
+Bei einer kontrollierten Nachricht dauerte der HTTP-Aufruf 18,34 Sekunden. Die tatsächliche Runtime-Queue-Zeit betrug jedoch nur 18 Millisekunden. Anschließend erzeugte das Modell die Antwort in etwa 1,8 Sekunden. Fast die gesamte sichtbare Wartezeit entstand somit vor `user.message.accepted`.
+
+Die verantwortliche Idempotenzprüfung durchsucht einen Raum mit 1.075.221 Events und extrahiert `clientTxnId` aus einem JSON-Feld. Der normale Nachrichtenpfad führt diese teure Abfrage zweimal aus. Ein bereits vorhandener eindeutiger Index auf `idempotency_key` ermöglicht dieselbe Prüfung praktisch ohne messbare Verzögerung und ohne Datenbankmigration.
+
+Während der Untersuchung wurden keine Produktionskonfigurationen verändert, keine Daten gelöscht und das Gateway nicht neu gestartet.
+
+## Umfang
+
+Die Untersuchung umfasste:
+
+- einen bestehenden authentifizierten Headful-Chrome-Tab;
+- Interaktions- und Netzwerkmessungen mit Chrome DevTools;
+- Chat-Telemetrie und Event-Rekonstruktion;
+- Gateway-Ressourcendiagnostik;
+- Betriebssystemressourcen;
+- Caddy- und Service-Logs;
+- ausschließlich lesende SQLite- und Query-Plan-Analysen;
+- die betroffenen Quellcodepfade im Deployment und Repository.
+
+Sessionwechsel waren ausdrücklich ausgeschlossen.
+
+## Ergebnis
+
+**Primäre Ursache:** `findByClientTxn()` führt einen nicht ausreichend indizierten, raumweiten SQLite-Scan im JavaScript-Hauptthread des Gateways aus. Der Nachrichtenpfad ruft diese Prüfung vor der Runtime-Annahme zweimal auf.
+
+**Nicht ursächlich:** Browser-Eingabelatenz, Runtime-Queue, Modellgenerierung, allgemeine Serverüberlastung, Persistenzfehler oder veraltete Yielded Runs.
+
+**Empfohlene Korrektur:** Den bereits erzeugten `idempotency_key` verwenden und über die indizierte Spalte `event_log.idempotency_key` suchen. Die redundante JSON-Prüfung in `ChatEventCommandService.appendEvent()` entfernen.
+
+## Gemessener Ablauf
+
+Eine kontrollierte normale Nachricht ergab folgende Zeiten:
+
+| Phase | Dauer |
+|---|---:|
+| Browser-Interaktionslatenz (INP) | 46 ms |
+| `POST /api/chat/message` | 18,34 s |
+| Verzögerung vor der serverseitigen Annahme | etwa 18 s |
+| `message_queued` bis `message_started` | 18 ms |
+| Runtime-/Modellantwort | etwa 1,8 s |
+
+Die relevanten persistierten Events waren:
+
+| Event | Zeitstempel (UTC) |
+|---|---|
+| `user.message.accepted` | `2026-09-06T18:15:47.269Z` |
+| `message_queued` | `2026-09-06T18:15:48.306Z` |
+| `message_started` | `2026-09-06T18:15:48.324Z` |
+| `assistant_message` | `2026-09-06T18:15:50.121Z` |
+| `message_finished` | `2026-09-06T18:15:50.142Z` |
+
+Die Oberfläche zeigte bereits `QUEUED FOR NEXT TURN`, während der HTTP-Aufruf noch auf die serverseitige Annahme wartete. Diese Anzeige entsprach weder dem persistierten noch dem tatsächlichen Runtime-Queue-Zustand.
+
+Eine separate `/status`-Interaktion zeigte eine Browser-INP von 30 ms bei einer HTTP-Dauer von 12,71 Sekunden. Dies bestätigte zunächst die Serverseite als Ort der Verzögerung. Der anschließende normale Nachrichtentest isolierte den Annahmepfad als dominanten, reproduzierbaren Engpass. Eine mögliche Kaltstartzeit der Runtime beim `/status`-Aufruf lag außerhalb des Untersuchungsumfangs.
+
+## Hauptursache
+
+### Nachrichtenpfad
+
+`sendChatMessage()` prüft vor dem Speichern auf eine doppelte Client-Transaktion:
+
+- `src/apps/chat/web-app.ts:4218`
+
+```ts
+const duplicate = clientTxnId ? input.state.eventCommands.findByClientTxn(room.id, actorId, clientTxnId) : undefined;
+```
+
+`ChatEventCommandService.appendEvent()` wiederholt dieselbe Prüfung:
+
+- `src/apps/chat/data/event-command-service.ts:15`
+
+```ts
+const existing = input.clientTxnId ? this.findByClientTxn(input.roomId, input.actorId, input.clientTxnId) : undefined;
+```
+
+Beide Aufrufe verwenden die Implementierung aus `src/apps/chat/data/event-command-service.ts:57-60`:
+
+```sql
+SELECT *
+FROM event_log
+WHERE room_id = ?
+  AND actor_id = ?
+  AND json_extract(attributes_json, '$.clientTxnId') = ?
+ORDER BY stream_id ASC
+LIMIT 1
+```
+
+### Query-Plan
+
+SQLite wählte folgenden Plan:
+
+```text
+SEARCH event_log USING INDEX idx_event_log_room_stream (room_id=?)
+```
+
+Es existiert kein Index, der `actor_id` und den JSON-Ausdruck abdeckt. SQLite muss daher den Eventbereich des Raums durchlaufen und Tabellenzeilen prüfen, bis es die gesuchte Transaktion findet oder das Ende erreicht.
+
+Der betroffene Raum enthielt:
+
+```text
+Events im Raum:                      1.075.221
+Zeilen mit clientTxnId:                  1.431
+user.message.accepted-Zeilen:            1.433
+Annahmezeilen mit Idempotenzschlüssel:    1.432
+```
+
+Die Raumhistorie reicht von `2026-05-29T15:55:31.217Z` bis `2026-09-06T18:15:50.142Z`.
+
+### Direkte SQL-Messungen
+
+Lesende Messungen gegen die Produktionsdatenbank ergaben:
+
+| Suche | Dauer |
+|---|---:|
+| Vorhandene Client-Transaktion über Raum-/JSON-Scan | 4,62 s |
+| Fehlende Client-Transaktion über Raum-/JSON-Scan | 1,84 s |
+| Entsprechende Suche über `idempotency_key` | praktisch 0 ms |
+
+Die direkten Messungen liefen in einem separaten SQLite-Prozess mit bereits teilweise erwärmtem Betriebssystemcache. Die beiden Gateway-Scans trafen auf kältere Daten und konkurrierende Zugriffe, wodurch die größere HTTP-Dauer von 18 Sekunden plausibel erklärt wird.
+
+### Blockierter Event-Loop
+
+Pibo führt diese Abfrage über die synchrone `node:sqlite`-API aus. Während SQLite den Eventbereich durchsucht, kann das Gateway keine andere JavaScript-Arbeit bearbeiten.
+
+Beobachtete Auswirkungen:
+
+- ungefähr 2,68 GB vom Gateway-Prozess gelesene Daten während einer verzögerten Nachricht;
+- Health-Requests, die ihr Drei-Sekunden-Limit überschritten;
+- maximale gemessene Gateway-Event-Loop-Verzögerung von 50.532,97 ms seit Prozessstart;
+- von Caddy abgebrochene unvollständige Antworten mit `context canceled`;
+- 1.172 entsprechende Caddy-Einträge am 6. September 2026.
+
+Nach dem Test lag der aktuelle Event-Loop-p95 wieder bei etwa 21 ms. Dies spricht für kurze, starke synchrone Blockaden statt einer dauerhaft hohen CPU-Auslastung.
+
+## Bereits vorhandener schneller Pfad
+
+`ChatEventCommandService.appendEvent()` erzeugt bereits folgenden Schlüssel:
+
+```text
+chat:user.accepted:<roomId>:<actorId>:<clientTxnId>
+```
+
+Das Schema enthält den passenden eindeutigen partiellen Index:
+
+- `src/data/schema.ts:433-435`
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_event_log_idempotency
+  ON event_log(idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+```
+
+`PiboEventLogStore` stellt bereits eine indizierte Suche bereit:
+
+- `src/data/event-log.ts:177-179`
+
+```sql
+SELECT * FROM event_log WHERE idempotency_key = ? LIMIT 1
+```
+
+Der Query-Plan dafür lautet:
+
+```text
+SEARCH event_log USING INDEX idx_event_log_idempotency (idempotency_key=?)
+```
+
+`PiboEventLogStore.appendEvent()` verwendet diesen Schlüssel bereits vor und nach `INSERT OR IGNORE`. Die zusätzlichen JSON-Scans sind deshalb für die Idempotenz auf Speicherebene redundant.
+
+## Empfohlene Codekorrektur
+
+### Minimale sichere Änderung
+
+1. `ChatEventCommandService.findByClientTxn()` soll den kanonischen Schlüssel bilden und über `idempotency_key` suchen.
+2. Die zusätzliche `findByClientTxn()`-Prüfung in `ChatEventCommandService.appendEvent()` soll entfallen.
+3. Die Vorprüfung im Web-Layer bleibt erhalten, sofern die API weiterhin `{ duplicate: true }` zurückgeben muss.
+4. Der eindeutige Index und `INSERT OR IGNORE` bleiben als nebenläufigkeitssichere Speichergrenze erhalten.
+
+Dieser Ansatz benötigt keinen Indexaufbau in Produktion und vermeidet die zusätzliche Last eines großen Expression-Index während des laufenden Betriebs.
+
+### Erforderliche Regressionstests
+
+Die Tests sollten bestätigen, dass:
+
+- dieselbe Kombination aus Raum, Akteur und `clientTxnId` das vorhandene Event liefert;
+- verschiedene Räume oder Akteure nicht kollidieren;
+- parallele oder wiederholte Inserts nur ein Event speichern;
+- die bisherige Duplicate-Antwort des Nachrichtenendpunkts erhalten bleibt;
+- die Suche `idempotency_key` nutzt und kein `json_extract(attributes_json, '$.clientTxnId')` mehr enthält;
+- die Suchzeit in einem großen synthetischen Raum nicht mit der Anzahl der Raum-Events wächst.
+
+## Datenbankwachstum
+
+Die ineffiziente Suche wurde durch die stark gewachsene Eventhistorie zu einem akuten Problem.
+
+### Hauptdatenspeicher
+
+Die Hauptdatenbank war ungefähr 6,7 GB groß und enthielt:
+
+```text
+event_log-Zeilen:    etwa 1,58 Millionen
+observations-Zeilen: etwa 1,57 Millionen
+```
+
+Die größten Datenbankobjekte waren:
+
+| Objekt | Ungefähre Größe |
+|---|---:|
+| `event_log` | 2,97 GB |
+| `observations` | 979 MB |
+| `telemetry_phases` | 465 MB |
+| `idx_event_log_idempotency` | 327 MB |
+
+Die `event_log`-Verteilung wurde von ungefähr 1,54 Millionen `trace_event`-Zeilen dominiert.
+
+### Reliability-Event-Speicher
+
+Die Reliability-Datenbank war ungefähr 5,1 GB groß und enthielt etwa 1,74 Millionen Stream-Events.
+
+Größtes Objekt:
+
+| Objekt | Ungefähre Größe |
+|---|---:|
+| `pibo_event_stream` | 4,59 GB |
+
+Der Stream wurde von ungefähr 1,71 Millionen `pibo.output`-Events dominiert.
+
+### Zeilen älter als 30 Tage
+
+Zum Untersuchungszeitpunkt waren älter als 30 Tage:
+
+| Datenbestand | Zeilen |
+|---|---:|
+| `event_log`, alle Klassen | 631.504 |
+| `event_log`, `trace_event` | 614.893 |
+| `observations` | 628.739 |
+| Reliability-Event-Stream | 663.024 |
+| Reliability `pibo.output`/`trace_event` | 622.063 |
+| Telemetrie-Provider-Requests | 13.366 |
+
+Die älteren Provider-Requests entsprachen etwa 561 MB erfasster Upstream-Antwortdaten. Alle 79.307 Provider-Requests entsprachen etwa 4,0 GB erfasster Upstream-Antwortdaten. Diese Werte beschreiben die logische Übertragungsmenge, nicht die physische Größe der Provider-Request-Tabelle.
+
+## Retention-Lücke
+
+Die Produktionskonfiguration enthielt:
+
+```json
+{
+  "enabled": false,
+  "days": 30,
+  "lastPrunedAt": "2026-07-04T18:30:23.476Z"
+}
+```
+
+Die automatische Retention in `src/data/telemetry-retention.ts` löscht ausschließlich aus:
+
+- `telemetry_provider_events`;
+- `telemetry_tool_calls`;
+- `telemetry_provider_requests`;
+- `telemetry_phases`;
+- `telemetry_turns`.
+
+Sie bereinigt nicht:
+
+- `event_log`;
+- `observations`;
+- `pibo_event_stream`.
+
+Das Aktivieren der vorhandenen Telemetrie-Retention würde die Telemetriehistorie reduzieren, aber die primären Event-Speicher und damit das Wachstum der problematischen Raum-Scans nicht begrenzen.
+
+Für Trace-Events, Observations und Reliability-Events ist eine separate Retention erforderlich. Beim Reliability-Stream müssen alle Consumer-Checkpoints berücksichtigt werden. Löschungen sollten gebündelt erfolgen. Falls physischer Speicher freigegeben werden soll, muss anschließend ein explizit geplantes Checkpoint-/Kompaktierungsverfahren folgen.
+
+## Ausgeschlossene Ursachen
+
+### Browser
+
+Der Browser verarbeitete Eingaben innerhalb weniger Dutzend Millisekunden. Die Wartezeit entstand im Netzwerk beziehungsweise auf dem Server. Es lagen keine relevanten Browser-Konsolenfehler vor.
+
+### Allgemeine Serverüberlastung
+
+Load, CPU-Verfügbarkeit, verfügbarer Arbeitsspeicher und Pressure-Stall-Indikatoren waren außerhalb der synchronen Query-Fenster unauffällig. Der erhöhte Speicherverbrauch der Service-Cgroup bestand überwiegend aus Dateicache infolge der großen Datenbanklesevorgänge, nicht aus erschöpftem anonymem Speicher.
+
+### Runtime-Queue
+
+Das persistierte Queue-Intervall betrug 18 ms. Queue-Tiefe und veraltete Runtime-Arbeit erklärten die Verzögerung nicht.
+
+### Modell-Provider
+
+Das Modell erzeugte die kontrollierte Antwort nach Runtime-Start in ungefähr 1,8 Sekunden.
+
+### Persistenzfehler
+
+Der Debug-Persistenzendpunkt meldete:
+
+```text
+indizierte Events:      10.318
+Persistenzfehler:            0
+wiederholbare Fehler:        0
+permanente Fehler:           0
+isolierte Events:            0
+durchschnittliche Indizierung: 6,34 ms
+maximale Indizierung:          51,47 ms
+```
+
+### Beschädigte Trace-Daten
+
+`pibo debug trace ... --check` ergab:
+
+```text
+checks: ok
+issues: 0
+nodeErrors: 0
+```
+
+### Veraltete Jobs
+
+Drei alte Jobs mit Status `running` wurden gefunden. Sie verursachten jedoch weder die reproduzierte Verzögerung vor der Nachrichtenannahme noch den dabei beobachteten Datenbank-Lesezugriff.
+
+## UI- und Observability-Nacharbeit
+
+Die Oberfläche sollte folgende Zustände unterscheiden:
+
+1. Request wird gesendet oder wartet auf serverseitige Annahme;
+2. Server hat die Nachricht angenommen;
+3. Runtime hat die Nachricht eingereiht;
+4. Runtime verarbeitet die Nachricht.
+
+`QUEUED FOR NEXT TURN` sollte erst nach einem echten `message_queued`-Signal oder einem autoritativen Queue-Status erscheinen.
+
+Der Nachrichtenendpunkt sollte außerdem die Dauer einzelner Serverphasen über `Server-Timing` oder strukturierte Telemetrie ausgeben:
+
+- Session- und Raumauflösung;
+- Idempotenzprüfung;
+- Speicherung des Annahme-Events;
+- Runtime-Annahme;
+- Serialisierung der Antwort.
+
+Damit ließe sich eine zukünftige Verzögerung vor der Annahme direkt von Runtime-Queueing unterscheiden.
+
+## Empfohlene Reihenfolge
+
+1. **P0 — JSON-Transaktionssuche durch die indizierte Idempotenzschlüsselsuche ersetzen.**
+2. **P0 — Redundante Prüfung in `appendEvent()` entfernen.**
+3. **P1 — Änderung gegen eine Datenbankkopie in Produktionsgröße und in einem authentifizierten Headful-Browser validieren.**
+4. **P1 — Auf dem Development-Gateway deployen und Annahme-, Queue- und Gesamtlatenz vergleichen.**
+5. **P1 — Erst nach erfolgreicher Dev-Validierung und ausdrücklicher Freigabe in Produktion deployen.**
+6. **P2 — Retention für `event_log`, `observations` und `pibo_event_stream` entwerfen.**
+7. **P2 — Optimistische Queue-Anzeige korrigieren und Serverphasen instrumentieren.**
+
+## Erwartetes Ergebnis
+
+Die Umstellung auf die vorhandene indizierte Suche sollte nahezu die gesamte gemessene Verzögerung vor der Annahme beseitigen. Den direkten Produktionsmessungen zufolge sollte die Transaktionssuche von mehreren Sekunden auf unterhalb der verfügbaren Messauflösung fallen. Danach dürfte die normale Nachrichtenlatenz überwiegend durch Runtime und Modell bestimmt werden.
+
+Retention bleibt für Speicherverbrauch, Wartungskosten und den Schutz vor zukünftigen nicht indizierten Abfragen erforderlich. Für die unmittelbare Verbesserung des Nachrichtenpfads ist sie jedoch nicht notwendig.
+
+## Untersuchungsstatus
+
+- Vertrauen in die Hauptursache: hoch.
+- Produktionsänderungen: keine.
+- Gateway-Neustart: nein.
+- Destruktive Datenbankoperationen: keine.
+- Sessionwechsel untersucht: nein.
+- Empfohlene Implementierung durchgeführt: nein; dieser Bericht dokumentiert ausschließlich die Diagnose.
