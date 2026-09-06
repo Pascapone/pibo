@@ -3,7 +3,6 @@ import { Brain, Bug, ChevronsDown, ChevronsUp, EyeOff, Maximize2, Plus } from "l
 import { copyTextToClipboard } from "./clipboard";
 import type { getChatSessionView } from "./session-views/registry";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
-import { WebAnnotationsEntryPoints } from "./web-annotations";
 import { TerminalHeaderUsage } from "./session-header-usage";
 import {
   WorkflowHeaderMeta,
@@ -15,11 +14,7 @@ export function SessionTraceHeader({
   contextKind,
   contextLabel,
   headerPiboSessionId,
-  piboSessionId,
-  piboRoomId,
   terminalUsageStatus,
-  webAnnotationsDisabled,
-  webAnnotationsPanelRendered,
   workflowHeader,
   sessionViewId,
   currentSessionView,
@@ -34,22 +29,15 @@ export function SessionTraceHeader({
   toolDisplayMode,
   toolIntentSupported,
   onToolDisplayModeChange,
-  onShowWebAnnotationsPanel,
-  onHideWebAnnotationsPanel,
   onToggleDebugMode,
   onToggleThinking,
   onToggleExpandThinking,
-  onError,
 }: {
   title: string | null | undefined;
   contextKind: "room";
   contextLabel: string;
   headerPiboSessionId: string;
-  piboSessionId: string | null;
-  piboRoomId?: string;
   terminalUsageStatus?: unknown;
-  webAnnotationsDisabled: boolean;
-  webAnnotationsPanelRendered: boolean;
   workflowHeader: WorkflowHeaderSummary | null;
   sessionViewId: ChatSessionViewId;
   currentSessionView: ReturnType<typeof getChatSessionView>;
@@ -64,12 +52,9 @@ export function SessionTraceHeader({
   toolDisplayMode: ToolDisplayMode;
   toolIntentSupported: boolean;
   onToolDisplayModeChange: (mode: ToolDisplayMode) => void;
-  onShowWebAnnotationsPanel: () => void;
-  onHideWebAnnotationsPanel: () => void;
   onToggleDebugMode: () => void;
   onToggleThinking: () => void;
   onToggleExpandThinking: () => void;
-  onError: (message: string | null) => void;
 }) {
   const [copiedHeaderPiboSessionId, setCopiedHeaderPiboSessionId] = useState<
     string | null
@@ -144,17 +129,6 @@ export function SessionTraceHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2 max-[980px]:order-3 max-[980px]:w-full max-[980px]:flex-wrap max-[980px]:gap-1 @max-[680px]:order-3 @max-[680px]:w-full @max-[680px]:flex-wrap @max-[680px]:gap-1">
-        {desktopTerminalOnly ? null : (
-          <WebAnnotationsEntryPoints
-            piboSessionId={piboSessionId}
-            piboRoomId={piboRoomId}
-            disabled={webAnnotationsDisabled}
-            panelVisible={webAnnotationsPanelRendered}
-            onShowPanel={onShowWebAnnotationsPanel}
-            onHidePanel={onHideWebAnnotationsPanel}
-            onError={onError}
-          />
-        )}
         {onOpenSessionWindow ? (
           <button
             type="button"

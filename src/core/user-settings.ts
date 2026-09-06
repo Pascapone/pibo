@@ -4,6 +4,11 @@ import { piboHomePath } from "./pibo-home.js";
 import { sanitizePreviewServerSettings, type PreviewServerSettings } from "./preview-server-settings.js";
 import { sanitizeTelemetryRetentionSettings, type TelemetryRetentionSettings } from "./telemetry-retention-settings.js";
 import { sanitizeTelemetryStaleThresholdSettings, type TelemetryStaleThresholdSettings } from "./telemetry-staleness.js";
+import {
+	DEFAULT_TOOL_METRIC_TOKEN_CALCULATION,
+	parseToolMetricTokenCalculation,
+	type ToolMetricTokenCalculation,
+} from "../shared/tool-call-token-settings.js";
 
 export const DEFAULT_USER_TIMEZONE = "UTC";
 export const DEFAULT_WEB_ANNOTATIONS_TOGGLE_SHORTCUT = "Alt+Shift+A";
@@ -24,11 +29,16 @@ export type PiboSpeechSettings = {
 	providerId: string;
 };
 
+export type PiboToolMetricSettings = {
+	tokenCalculation: ToolMetricTokenCalculation;
+};
+
 export type PiboUserSettings = {
 	timezone: string;
 	shortcuts: PiboShortcutSettings;
 	transcription: PiboTranscriptionSettings;
 	speech: PiboSpeechSettings;
+	toolMetrics: PiboToolMetricSettings;
 	previewServers: PreviewServerSettings;
 	telemetryStaleThresholds: TelemetryStaleThresholdSettings;
 	telemetryRetention: TelemetryRetentionSettings;
@@ -98,6 +108,16 @@ export function sanitizeSpeechSettings(value: unknown): PiboSpeechSettings {
 	return { providerId: sanitizeTranscriptionProviderId(raw.providerId) ?? DEFAULT_SPEECH_PROVIDER_ID };
 }
 
+export function sanitizeToolMetricSettings(value: unknown): PiboToolMetricSettings {
+	const raw = value && typeof value === "object" && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: {};
+	return {
+		tokenCalculation: parseToolMetricTokenCalculation(raw.tokenCalculation)
+			?? DEFAULT_TOOL_METRIC_TOKEN_CALCULATION,
+	};
+}
+
 export function sanitizeTimezone(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const timezone = value.trim();
@@ -119,6 +139,7 @@ function sanitizeUserSettings(value: unknown): PiboUserSettings {
 		shortcuts: sanitizeShortcutSettings(raw.shortcuts),
 		transcription: sanitizeTranscriptionSettings(raw.transcription),
 		speech: sanitizeSpeechSettings(raw.speech),
+		toolMetrics: sanitizeToolMetricSettings(raw.toolMetrics),
 		previewServers: sanitizePreviewServerSettings(raw.previewServers),
 		telemetryStaleThresholds: sanitizeTelemetryStaleThresholdSettings(raw.telemetryStaleThresholds),
 		telemetryRetention: sanitizeTelemetryRetentionSettings(raw.telemetryRetention),

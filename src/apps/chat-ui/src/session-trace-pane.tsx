@@ -35,7 +35,7 @@ import { useSessionTraceLiveStream } from "./tracing/use-session-trace-live-stre
 import type { RuntimeRequestStreamEvent } from "./tracing/chat-stream-events";
 import { assertChatUploadCapacity, useSessionUploadAttachments } from "./chat-upload-attachments";
 import { useSessionWebAnnotations } from "./use-session-web-annotations";
-import { compactWebAnnotationError, WebAnnotationsSessionPanel } from "./web-annotations";
+import { compactWebAnnotationError, WebAnnotationsControls, WebAnnotationsSessionPanel } from "./web-annotations";
 import {
   createSessionTraceViewLinks,
   createSessionTraceViewProps,
@@ -87,6 +87,7 @@ import { PreviewFullscreenTopBar, PreviewMessage, SessionLivePreviewPanel } from
 import { RawEventsSidebar } from "./tracing/RawEventsSidebar";
 import { JsonRenderer } from "./tracing/JsonRenderer";
 import type { DesktopSessionTool } from "./desktop-tabs-model";
+import { DEFAULT_TOOL_METRIC_THRESHOLDS, type ToolMetricThresholds } from "./tool-metric-settings";
 
 const livePreviewQueryKey = (piboSessionId: string) => ["chat", "session-live-previews", piboSessionId] as const;
 
@@ -129,6 +130,7 @@ export function SessionTracePane({
   showRawEvents,
   showThinking,
   debugMode,
+  toolMetricThresholds = DEFAULT_TOOL_METRIC_THRESHOLDS,
   expandThinking,
   toolDisplayMode,
   commands,
@@ -182,6 +184,7 @@ export function SessionTracePane({
   showRawEvents: boolean;
   showThinking: boolean;
   debugMode: boolean;
+  toolMetricThresholds?: ToolMetricThresholds;
   expandThinking: boolean;
   toolDisplayMode: ToolDisplayMode;
   commands: SlashCommand[];
@@ -385,16 +388,11 @@ export function SessionTracePane({
     selectedWebAnnotationIds,
     selectedWebAnnotations,
     visibleWebAnnotations,
-    webAnnotationsPanelCollapsed,
-    webAnnotationsPanelRendered,
-    webAnnotationsPanelVisible,
     webAnnotationsQuery,
     clearingWebAnnotations,
-    setWebAnnotationsPanelVisible,
     toggleWebAnnotationAttachment,
     detachWebAnnotationAttachment,
     clearSelectedWebAnnotationAttachments,
-    toggleWebAnnotationsPanelCollapsed,
     clearVisibleWebAnnotations,
   } = useSessionWebAnnotations({
     selectedPiboSessionId: selectedBackendPiboSessionId,
@@ -402,13 +400,6 @@ export function SessionTracePane({
     formatError: compactWebAnnotationError,
     forcePanelVisible: Boolean(desktopToolHosts?.["web-annotations"]),
   });
-  const closeWebAnnotationsPanel = useCallback(() => {
-    closeHostedWebAnnotations(
-      Boolean(desktopToolHosts?.["web-annotations"]),
-      onCloseDesktopTool,
-      setWebAnnotationsPanelVisible,
-    );
-  }, [desktopToolHosts, onCloseDesktopTool, setWebAnnotationsPanelVisible]);
   const createUploadAttachmentId = useCallback(
     () => `upload-${createClientTxnId()}`,
     [],
@@ -648,6 +639,7 @@ export function SessionTracePane({
     isLoading: loadingTrace,
     showThinking,
     debugMode,
+    toolMetricThresholds,
     expandThinking,
     toolDisplayMode: effectiveToolDisplayMode,
     selectedSessionProfile,
@@ -804,19 +796,22 @@ export function SessionTracePane({
   ) : undefined;
 
   const desktopAnnotationsPanel = (
-    <div className="h-full overflow-auto bg-[#101d22]">
+    <div className="@container h-full min-h-0 overflow-y-auto bg-[#101d22]" data-pibo-debug="web-annotations-tab-panel">
+      <WebAnnotationsControls
+        piboSessionId={selectedPiboSessionId}
+        piboRoomId={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
+        disabled={!selectedPiboSessionId || selectedRoomArchived}
+        onError={onError}
+      />
       <WebAnnotationsSessionPanel
         piboSessionId={selectedPiboSessionId}
         annotations={visibleWebAnnotations}
         selectedIds={selectedWebAnnotationIds}
         loading={webAnnotationsQuery.isLoading || webAnnotationsQuery.isFetching || clearingWebAnnotations}
         error={webAnnotationsQuery.error ? errorMessage(webAnnotationsQuery.error) : null}
-        collapsed={webAnnotationsPanelCollapsed}
         onRefresh={() => void webAnnotationsQuery.refetch()}
         onToggle={toggleWebAnnotationAttachment}
         onClear={() => void clearVisibleWebAnnotations()}
-        onCollapse={toggleWebAnnotationsPanelCollapsed}
-        onClose={closeWebAnnotationsPanel}
       />
     </div>
   );
@@ -938,11 +933,7 @@ export function SessionTracePane({
           selectedRoomId ??
           "Unknown room",
         headerPiboSessionId,
-        piboSessionId: selectedPiboSessionId,
-        piboRoomId: selectedRoomId ?? bootstrap.selectedRoomId ?? undefined,
         terminalUsageStatus: terminalUsageQuery.data,
-        webAnnotationsDisabled: !selectedPiboSessionId || selectedRoomArchived,
-        webAnnotationsPanelRendered,
         workflowHeader,
         sessionViewId,
         currentSessionView,
@@ -957,35 +948,13 @@ export function SessionTracePane({
         toolDisplayMode: effectiveToolDisplayMode,
         toolIntentSupported,
         onToolDisplayModeChange,
-        onShowWebAnnotationsPanel: () => onOpenDesktopTool ? onOpenDesktopTool("web-annotations") : setWebAnnotationsPanelVisible(true),
-        onHideWebAnnotationsPanel: () => setWebAnnotationsPanelVisible(false),
         onToggleDebugMode,
         onToggleThinking,
         onToggleExpandThinking,
-        onError,
       }}
       auxiliaryPanel={livePreviewPanel}
       currentSessionView={currentSessionView}
       sessionViewProps={sessionViewProps}
-      webAnnotationsPanelRendered={webAnnotationsPanelRendered && !livePreviewSelected && desktopActiveTool !== "web-annotations"}
-      webAnnotationsPanelProps={{
-        piboSessionId: selectedPiboSessionId,
-        annotations: visibleWebAnnotations,
-        selectedIds: selectedWebAnnotationIds,
-        loading:
-          webAnnotationsQuery.isLoading ||
-          webAnnotationsQuery.isFetching ||
-          clearingWebAnnotations,
-        error: webAnnotationsQuery.error
-          ? errorMessage(webAnnotationsQuery.error)
-          : null,
-        collapsed: webAnnotationsPanelCollapsed,
-        onRefresh: () => void webAnnotationsQuery.refetch(),
-        onToggle: toggleWebAnnotationAttachment,
-        onClear: () => void clearVisibleWebAnnotations(),
-        onCollapse: toggleWebAnnotationsPanelCollapsed,
-        onClose: () => setWebAnnotationsPanelVisible(false),
-      }}
       runtimeRequestPanel={selectedBackendPiboSessionId && !livePreviewSelected && desktopActiveTool !== "runtime-requests" ? (
         <RuntimeRequestPanel
           piboSessionId={selectedBackendPiboSessionId}
@@ -1024,13 +993,4 @@ export function SessionTracePane({
 
 function DesktopSessionToolEmpty({ label }: { label: string }) {
   return <div className="grid h-full place-items-center bg-[#0e1116] p-6 text-center text-sm text-slate-500">{label}</div>;
-}
-
-export function closeHostedWebAnnotations(
-  hosted: boolean,
-  onCloseDesktopTool: ((tool: DesktopSessionTool) => void) | undefined,
-  setPanelVisible: (visible: boolean) => void,
-): void {
-  if (hosted && onCloseDesktopTool) onCloseDesktopTool("web-annotations");
-  else setPanelVisible(false);
 }

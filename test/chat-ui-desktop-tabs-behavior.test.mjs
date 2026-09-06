@@ -12,7 +12,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		import React, { act, useEffect, useState } from "react";
 		import TestRenderer from "react-test-renderer";
 		import { DesktopTabSidebar, desktopTabInsertionIndex, useDesktopTabWorkspace } from "./src/apps/chat-ui/src/desktop-tabs.tsx";
-		import { closeHostedWebAnnotations, useHostedPreviewFullscreenRecovery } from "./src/apps/chat-ui/src/session-trace-pane.tsx";
+		import { useHostedPreviewFullscreenRecovery } from "./src/apps/chat-ui/src/session-trace-pane.tsx";
 		import { SessionLivePreviewPanel } from "./src/apps/chat-ui/src/session-live-preview.tsx";
 		import * as model from "./src/apps/chat-ui/src/desktop-tabs-model.ts";
 		const { create } = TestRenderer;
@@ -219,13 +219,6 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		assert.equal(mounted.root.findByType("aside").props.hidden, true);
 		assert.equal(mounted.root.findAllByType("iframe").length, 0, "removed Preview stays absent while the sidebar hides");
 
-		let closedTool = null;
-		let visible = true;
-		closeHostedWebAnnotations(true, (tool) => { closedTool = tool; }, (next) => { visible = next; });
-		assert.equal(closedTool, "web-annotations");
-		assert.equal(visible, true);
-		closeHostedWebAnnotations(false, undefined, (next) => { visible = next; });
-		assert.equal(visible, false);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
 		cwd: process.cwd(),
