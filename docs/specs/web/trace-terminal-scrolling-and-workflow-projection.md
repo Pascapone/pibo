@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-08T06:56:18Z"
+  at: "2026-09-08T08:12:30Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,7 +23,7 @@ implementation:
   build_typecheck_package_execution: "full build and all package typechecks passed in the isolated Docker worker"
   browser_execution: "headful local Debug settings and Terminal model-usage rail passed at 800x457; CDP reload reported no console exceptions, log errors, or network failures"
 traceability:
-  commit: "14403bcb91edc685ecb2f2255475f6229008691d"
+  commit: "6080be5c64205342091733bedde9596a6f9f6465"
   requirements:
     - id: "WEB-TRACE-PAYLOAD-010"
       status: "implemented"
@@ -56,6 +56,27 @@ traceability:
           name: "Terminal preserves follow and reading positions when its viewport shrinks"
       public: ["CompactTerminalSessionView", "useStickyVirtuoso"]
       failures: ["Viewport-only changes must not replay detached anchors; pending restoration must not undo new coarse wheel input."]
+      confidence: "high"
+    - id: "WEB-TRACE-COMPACTION-010"
+      status: "implemented"
+      sources:
+        - path: "src/data/ingest-service.ts"
+          symbol: "ChatDataIngestService"
+        - path: "src/apps/chat-ui/src/session-views/compact-terminal/TerminalCompactionCard.tsx"
+          symbol: "TerminalCompactionCard"
+        - path: "src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"
+          symbol: "CompactTerminalSessionView"
+      tests:
+        - path: "test/data-v2-ingest-service.test.mjs"
+          name: "chat data ingest snapshots tool metrics for each successful compaction segment"
+        - path: "test/session-ui-terminal-rows.test.mjs"
+          name: "completed compaction rows expose persisted segment statistics and Markdown"
+        - path: "test/chat-ui-compaction-card.test.mjs"
+          name: "completed compaction card renders segment metrics and Markdown disclosure"
+        - path: "test/chat-ui-compaction-card.test.mjs"
+          name: "Terminal topbar exposes compaction count navigation"
+      public: ["PiboCompactionEndEvent.compactionStats", "TerminalCompactionCard", "CompactTerminalSessionView"]
+      failures: ["Failed or aborted compactions do not reset the statistics boundary; unavailable token metrics render as an explicit dash rather than zero."]
       confidence: "high"
     - id: "WEB-TRACE-VISIBILITY-008"
       status: "implemented"
@@ -327,7 +348,7 @@ Bounded trace projection, opt-in payload/raw detail, deterministic historical/li
 
 ## Scope
 
-This specification describes implemented behavior at traceability commit `14403bcb91edc685ecb2f2255475f6229008691d`. Earlier Workflow evidence remains scoped to its recorded integration baseline.
+This specification describes implemented behavior at traceability commit `6080be5c64205342091733bedde9596a6f9f6465`. Earlier Workflow evidence remains scoped to its recorded integration baseline.
 
 ### In scope
 
@@ -376,6 +397,18 @@ The element-backed Terminal viewport and its rendered item list share resize obs
 Coarse wheel input owns the resulting reading position. After its direct scroll, the hook captures the new visible target and refreshes pending prepend/restoration anchors when present. A later mutation or prepend must not restore an obsolete pre-wheel target. The observer disconnects with its owning effect; no CSS visibility override, vendor patch, polling timer, or history-format change is introduced.
 
 The [viewport and wheel validation report](/reports/terminal-viewport-and-wheel-validation-2026-09-06.md) records Docker before/after and exact-candidate public Pibo2 evidence: natural header shrink, real Spark streaming, detached desktop/mobile input, reload, and in-flight older-page restoration. Resize settlement is not guaranteed in the same RAF sample. These focused checks do not replace full-suite or integrated-release acceptance; existing historical validation counts below retain their original scope.
+
+### Requirement: WEB-TRACE-COMPACTION-010
+
+Each successful Compaction Terminal row MUST replace the minimal completed line with a compact structured component. The component shows the number of completed Tool calls since Session creation or the previous successful compaction, the highest recorded Tool-result payload token count in that segment, and the compaction token count reported by the runtime result. Character-derived Tool counts retain `≈`; exact Tiktoken counts do not. Missing metrics render `—`, not zero.
+
+The durable ingest boundary computes the segment snapshot from persisted `tool_execution_finished` events before writing `compaction_end`. A successful prior `compaction_end` starts the next segment. Failed or aborted compactions neither receive a completed snapshot nor reset that boundary. The Compaction's `tokensBefore` value is projected as the compaction token count when the runtime provides it; adapters that do not report this value remain explicitly unavailable.
+
+The component includes an accessible `details` disclosure named `Compaction text`. It renders the runtime's summary as Markdown. Inline summaries render immediately; externalized output payloads load only when the disclosure opens. Missing or unreadable summaries show a bounded unavailable state without exposing unrelated payloads.
+
+The Compact Terminal status bar shows a cyan Compaction count and icon whenever Compaction rows are present. Activating it uses the same previous-item cycling, scroll, focus, and `aria-current` behavior as User Message and error navigation.
+
+Focused verification passed the durable ingest, event validation, trace-row projection, component-rendering, and topbar-navigation tests. Headful Docker browser validation passed at 1440×900 and 390×844: the three metric segments wrapped without horizontal overflow, the Markdown disclosure opened, and Compaction navigation focused the row. These local deterministic fixtures do not claim provider parity for adapters that omit summary or token fields.
 
 ### Requirement: WEB-TRACE-DEBUG-006
 

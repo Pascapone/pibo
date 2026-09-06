@@ -15,7 +15,7 @@ migration_lineage:
   source_body_sha256: "0faf4abf4a48f79b23f9a9cad421c97fa09519a3d356fc9dafb6be78ff62773b"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-08T06:32:09Z"
+  at: "2026-09-08T08:12:30Z"
 ---
 # Design System: Pibo Compact Terminal
 **Project ID:** local-reference-pibo-compact-terminal
@@ -27,6 +27,7 @@ Primary reference files:
 - `src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx`
 - `src/apps/chat-ui/src/session-views/compact-terminal/TerminalLine.tsx`
 - `src/apps/chat-ui/src/session-views/compact-terminal/TerminalDetails.tsx`
+- `src/apps/chat-ui/src/session-views/compact-terminal/TerminalCompactionCard.tsx`
 - `src/apps/chat-ui/src/session-views/compact-terminal/TerminalInlineJson.tsx`
 - `src/apps/chat-ui/src/session-views/compact-terminal/terminalRows.ts`
 - `src/apps/chat-ui/src/styles.css` (`.compact-terminal-*` rules)
@@ -166,7 +167,7 @@ The status bar is **external to the transcript surface**. It sits above the scro
 - Bottom border: **Panel Border (`#2a2a2a`)**
 - Padding: `px-4 py-2`
 - Text: 11px monospaced
-- Content: running/error counters, agent profile label, origin/derived session pills, breadcrumbs.
+- Content: User Message, Compaction, and error navigation counters; agent profile label; origin/derived session pills; breadcrumbs.
 - Breadcrumbs use `ChevronRight` at 12px in **Muted Text (`#525252`)** with clickable text in **Dim Text (`#737373`)** that hovers to **Cyan Signal (`#38bdf8`)**.
 
 ### Badges
@@ -247,6 +248,20 @@ When model-inference metrics are enabled, the related Tool, reasoning, assistant
 Default Tool display thresholds are intentionally simple and local to presentation: duration escalates at 1, 5, and 15 seconds; estimated input at 8k, 20k, and 50k tokens; estimated output at 2k, 10k, and 50k tokens. `Settings > Debug` lets users replace each increasing three-value band or restore these defaults. Thresholds and diagnostic feature selections persist only in the current browser.
 
 The same panel selects Tool payload calculation independently. Character mode keeps the bounded structural count and divides it by a factor, default `4`. Tiktoken mode offers `o200k_base`, `cl100k_base`, `p50k_base`, `r50k_base`, `p50k_edit`, and `gpt2`; it loads the WASM tokenizer only when selected and accepts higher CPU and memory cost. The selected calculation persists in app user settings and applies only to future Tool calls. Threshold and calculation controls must distinguish Tool diagnostics from provider usage and billing.
+
+### Completed Compaction Summary
+
+A completed Compaction is the structured exception to the default terse Compaction row. Keep its first line aligned to the normal `1.9rem` prefix grid, use green completion text, and place one flat three-segment rail below it:
+
+- `TOOL CALLS`: completed Tool invocations since Session creation or the previous successful Compaction.
+- `PEAK TOOL OUTPUT`: the highest recorded Tool-result payload token count in that segment, including `≈` for character-derived estimates.
+- `COMPACTION TOKENS`: the runtime-reported Compaction token count; unavailable values use `—`.
+
+The rail uses square cyan signal edges, near-black surfaces, 9px uppercase labels, 11px bold tabular values, and whole-segment wrapping on narrow screens. It has no radius, shadow, glow, or animation.
+
+Below the rail, render one bordered `Compaction text` disclosure. The collapsed summary stays one compact line. Expanded content uses the normal safe Markdown renderer and bounded payload loading. The disclosure owns its interaction; the parent row does not masquerade as a second expand control.
+
+The status bar uses the same compact cyan badge geometry for the Compaction counter and navigation icon as it uses for User Message navigation. Activating the badge scrolls to and focuses the previous Compaction row.
 
 ### Row Action Buttons
 

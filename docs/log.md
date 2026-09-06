@@ -33,6 +33,8 @@
 
 ## 2026-09-06
 
+- **Compaction details and navigation**: Replaced the completed Compaction line with durable per-segment Tool-call statistics, runtime-reported Compaction tokens, and an expandable Markdown summary. Added a Compaction counter that cycles and focuses matching Terminal rows. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-compaction-010) and [Compact Terminal design](/project/design/compact-terminal.md#completed-compaction-summary).
+
 - **Indexed admission implementation**: Recorded the [P0 implementation and isolated validation](/reports/performance-scalability-p0-2026-09-06.md), including synthetic million-event lookups, concurrency regressions and remaining acceptance gates.
 
 - **Production admission and concurrency audit**: Added the [read-only production investigation](/reports/production-performance-audit-2026-09-06.md) and [performance/scalability plan](/plans/pibo-performance-and-scalability.md). Confirmed the synchronous room scan, cross-session blocking, and a separate cold-runtime admission delay; defined staged fixes, durable admission, resource budgets, load tests, and release gates. No product-code change, database/session deletion, gateway restart, or production deployment.
