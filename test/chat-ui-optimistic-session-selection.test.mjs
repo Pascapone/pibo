@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { promisify } from "node:util";
 
@@ -64,6 +65,18 @@ async function resolveRouteSelection(input) {
 		}));
 	`);
 }
+
+test("post-create hydration is nonblocking and cannot navigate or report stale errors", () => {
+	const app = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
+	const select = app.slice(app.indexOf("const selectSession = useCallback"), app.indexOf("const selectRoom = useCallback"));
+	assert.match(select, /if \(selectedPiboSessionIdRef.current !== piboSessionId\) bootstrapRequestId.current \+= 1;/);
+	assert.ok(select.indexOf("bootstrapRequestId.current += 1") < select.indexOf("flushSync"));
+	const create = app.slice(app.indexOf("const createSession = async"), app.indexOf("const toggleArchivedSessions = async"));
+	assert.doesNotMatch(create, /await loadBootstrap/);
+	assert.equal((create.match(/navigateToSelectedSession\(/g) ?? []).length, 1, "Only POST completion may navigate");
+	assert.match(create, /const hydrationRequestId = bootstrapRequestId.current;\s*void hydration.catch/);
+	assert.match(create, /if \(hydrationRequestId === bootstrapRequestId.current\) setError\(errorMessage\(caught\)\)/);
+});
 
 test("optimistic session create keeps selecting the created session when untouched", async () => {
 	assert.deepEqual(await resolveScenario({

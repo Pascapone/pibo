@@ -2,6 +2,7 @@
 
 ## 2026-09-06
 
+- **Post-create navigation ownership**: Made Session hydration nonblocking after POST and invalidated superseded bootstrap selection immediately. Added the [shell creation contract](/specs/web/app-shell-bootstrap-navigation-and-pwa.md#requirement-web-shell-create-006-post-create-hydration-does-not-own-later-navigation) and [exact-candidate validation](/reports/session-creation-ownership-validation-2026-09-06.md): local regression, 22 public-path desktop/mobile cases, real Spark tool/Queue, and separate unresolved gateway-status scaling evidence.
 - **Terminal viewport and wheel ownership**: Added the [implemented scroll-owner contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-viewport-009) and [exact-candidate validation](/reports/terminal-viewport-and-wheel-validation-2026-09-06.md) for external viewport shrink, coarse wheel pending anchors, historical prepends/reload, and genuine Spark streaming/Queue. Reports preserve the 11 ms observed queue drain and the limits of the broader performance investigation.
 - **Signal projection cost**: Reused already-listed Session records for ancestor depth instead of preparing per-record SQLite queries. Added the [status projection contract](/specs/gateway/web-host-and-channel.md#requirement-wp02-gw-status-006-signal-projection-reuses-its-complete-listed-view) and [local/Pibo2 validation](/reports/gateway-status-scaling-validation-2026-09-06.md), including preserved active-work safety, real streaming, and Queue under status load.
 

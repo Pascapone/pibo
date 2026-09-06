@@ -1,0 +1,30 @@
+✔ app bootstrap mutation helpers preserve optimistic session and room updates (219.743464ms)
+✔ app navigation merge helpers preserve unread and append semantics (128.576371ms)
+✔ session mutations reject delayed pre-mutation navigation cache writes (211.366392ms)
+✔ create, rename, archive, and restore all cross the navigation mutation barrier (5.154621ms)
+✔ optimistic session IDs stay local until success or rollback selects a persisted session (151.89492ms)
+✔ selected-session backend effects use only persisted session IDs (2.578218ms)
+✔ composer blocks only absent, synthetic, or archived selections (136.302657ms)
+✔ composer integration keeps backend guards and persisted-session concurrency (4.947902ms)
+✔ post-create hydration is nonblocking and cannot navigate or report stale errors (3.523648ms)
+✔ optimistic session create keeps selecting the created session when untouched (144.791028ms)
+✔ optimistic session create preserves navigation before success (131.411331ms)
+✔ optimistic session create restores the pre-create selection when untouched failure occurs (140.774752ms)
+✔ optimistic session create preserves navigation before failure (117.963386ms)
+✔ route selection stays dormant while optimistic session creation is pending (137.403571ms)
+✔ route selection stays dormant after the explicit route and selection agree (123.921201ms)
+✔ optimistic user-message helpers preserve fork-entry order and drop only confirmed duplicates (127.497499ms)
+﹣ post-create hydration preserves newer Session and Room navigation (1.005314ms) # SKIP
+✔ cross-room success updates only cached origin-room bootstrap data (221.536102ms)
+✔ same-room success selects and auto-renames only while the optimistic selection is untouched (205.431131ms)
+✔ same-room failure removes only the pending node and preserves a newer selection (186.159855ms)
+✔ cross-room failure rolls back only cached origin-room data (185.970369ms)
+✔ App scopes pending insertion, replacement, and rollback to the origin room (3.261024ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 1845.892017
