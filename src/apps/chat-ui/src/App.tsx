@@ -1271,6 +1271,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	const selectSession = useCallback(async (piboSessionId: string) => {
 		const targetRoomId = selectedRoomId ?? bootstrap?.selectedRoomId;
+		// User selection owns the view immediately, not after the deferred navigation refresh.
+		if (selectedPiboSessionIdRef.current !== piboSessionId) bootstrapRequestId.current += 1;
 		flushSync(() => {
 			setSelectedPiboSessionId(piboSessionId);
 			setLoadingPiboSessionId(piboSessionId);
@@ -1355,6 +1357,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			if (outcome?.navigateToCreatedSession) {
 				navigateToSelectedSession(originRoomId || undefined, created.session.id, false, { closeMobileSidebar: false });
 				const data = await loadBootstrap(created.session.id, showArchivedRef.current, originRoomId || undefined, { force: true });
+				if (selectedPiboSessionIdRef.current !== created.session.id || bootstrapRef.current?.selectedRoomId !== originRoomId) return;
 				navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
 			}
 			setError(null);
