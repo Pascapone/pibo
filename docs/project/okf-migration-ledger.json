@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-05T21:29:00Z",
+  "generated_at": "2026-09-06T07:02:37Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -8436,9 +8436,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 12785,
-      "file_sha256": "2ece66cd85f44ea61631632b4888a6b511f6b4545d32196c370ae4ccbcacf716",
-      "body_sha256": "2ece66cd85f44ea61631632b4888a6b511f6b4545d32196c370ae4ccbcacf716"
+      "file_bytes": 14241,
+      "file_sha256": "ab5068a7decc92aecc65a649d2b01323a776cb068eb431d06ec1271e31c2454b",
+      "body_sha256": "ab5068a7decc92aecc65a649d2b01323a776cb068eb431d06ec1271e31c2454b"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -10952,9 +10952,9 @@
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
       "synthetic": false,
-      "file_bytes": 16819,
-      "file_sha256": "cb18f0663007b8098516406d18d4afd0ae72a9a70312a7d0fcd5b20dea2ee854",
-      "body_sha256": "cb18f0663007b8098516406d18d4afd0ae72a9a70312a7d0fcd5b20dea2ee854"
+      "file_bytes": 18016,
+      "file_sha256": "53f97c018876a0d09beabe293e862e4a0d767f54df31a6c48832714f5461aaf0",
+      "body_sha256": "53f97c018876a0d09beabe293e862e4a0d767f54df31a6c48832714f5461aaf0"
     },
     {
       "path": "docs/reports/ink-cli-v2-pty-smoke-scenarios.md",
@@ -13021,9 +13021,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 34349,
-      "file_sha256": "3b1a4065cd004799835870e9bd2510da8562408739224545955c041cc5465caf",
-      "body_sha256": "b6e3ad37afccd81d5c7060f3e3d38e286024470176dd6153cc488411e6fb3b81",
+      "file_bytes": 37848,
+      "file_sha256": "e72c5084717a6d42a9b05bc0b81ddc84f23f2cac510ea43cc800133c994f81e1",
+      "body_sha256": "510a0725cbc80e41bdb3f1512cd9cd302c4ea2eb21fbe7a7bb2bc5067481b4f6",
       "lineage": null
     },
     {
@@ -13650,6 +13650,18 @@
       "file_sha256": "cb28f9f611d60fc96d68508fe9af4cd06d614809404885c38f2fd1ec74f60b69",
       "body_sha256": "fd5f1a785abb139c3ca8fbc08e675160bd69318154a18eed7310679912b9b4d8",
       "lineage": null
+    },
+    {
+      "path": "docs/reports/room-edit-ownership-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 16577,
+      "file_sha256": "50a7c8809cf3080307651a8c7a7001d8cfcab9992305e16a6d69345e1ff90ad7",
+      "body_sha256": "f63d069c35cac3e8c4a127c0c72741f41ced57a2afe717e94fa7a8a5b42f7a8d"
     },
     {
       "path": "docs/reports/session-creation-ownership-validation-2026-09-06.md",

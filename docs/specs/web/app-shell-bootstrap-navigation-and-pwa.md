@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-06T06:57:07Z"
+  at: "2026-09-06T07:02:37Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -22,8 +22,9 @@ implementation:
   test_execution: "20 focused routed-runtime/UI/manual/header tests passed at final integration; complete root-suite counts remain historical at 14cbaf0f"
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed Room, Workflow Session, manual Run Room dialog, and desktop/mobile viewport acceptance passed"
+  room_edit_acceptance: "At da91ca26, full Docker build/typechecks, 19 focused tests and 12 headed scenarios passed; exact-candidate Pibo2 passed 30 desktop/mobile cases, real Spark work, and reload checks."
 traceability:
-  commit: "04b93983eb0f853f9d6e704ccbbe2f5bf4d235e1"
+  commit: "2a59bf5e812df3c1b6d28bc8560741fb6428fa7c"
   requirements:
     - id: "WEB-SHELL-MOUNT-001"
       status: "implemented"
@@ -217,6 +218,29 @@ traceability:
         - "Accessibility/responsive boundary: Source defines focus ownership and responsive sidebars; headful keyboard, pointer, zoom, and reduced-motion validation is mandatory."
         - "Compatibility boundary: Detached-window support is conditional and must degrade to in-shell navigation."
       confidence: "medium"
+    - id: "WEB-SHELL-ROOM-UPDATE-008"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/App.tsx"
+          symbol: "updateRoom"
+        - path: "src/apps/chat-ui/src/App.tsx"
+          symbol: "fetchNavigation"
+        - path: "src/apps/chat-ui/src/app-room-mutations.ts"
+          symbol: "RoomMutationTracker"
+      tests:
+        - path: "test/chat-ui-room-mutations.test.mjs"
+          name: "Overlapping Room edits settle correctly in both response orders and all success/failure combinations"
+        - path: "test/chat-ui-room-mutation-navigation-race.test.mjs"
+          name: "Room edits and archives preserve navigation and newer fields"
+      public:
+        - "PATCH /api/chat/rooms/:roomId"
+        - "Room edit, archive, and restore actions"
+        - "Chat Room/Session navigation and Browser Back"
+      failures:
+        - "A failed tracked edit removes only its field layers, not unrelated Room, Session, or selection state."
+        - "The server remains authoritative; multi-client conflicts and ambiguous post-commit transport failures are outside this client settlement contract."
+        - "Accessibility boundary: desktop/mobile trusted pointer and keyboard form input were exercised; a complete accessibility audit was not performed."
+      confidence: "high"
     - id: "WEB-SHELL-ROOM-CREATE-007"
       status: "implemented"
       sources:
@@ -263,7 +287,7 @@ Chat API/static registration, bootstrap/navigation composition, route-addressabl
 
 ## Scope
 
-This specification describes the integrated Session- and Room-creation behavior at the traceability commit below. Earlier validation in `implementation` retains its original baseline; the scoped evidence below applies specifically to WEB-SHELL-CREATE-006 and WEB-SHELL-ROOM-CREATE-007.
+This specification describes integrated Session creation, Room creation, and Room update behavior at the traceability commit below. Earlier validation retains its original baseline; scoped runtime evidence applies specifically to WEB-SHELL-CREATE-006, WEB-SHELL-ROOM-CREATE-007, and WEB-SHELL-ROOM-UPDATE-008.
 
 ### In scope
 
@@ -398,6 +422,18 @@ upstream/dev refresh source and named-test inspection define the current contrac
 - Compatibility boundary: Detached-window support is conditional and must degrade to in-shell navigation.
 - Confidence: **medium**
 - Verification follow-up: Run the named tests, then use a headful authenticated browser at mobile/desktop widths and installed/standalone display modes.
+
+### Requirement: WEB-SHELL-ROOM-UPDATE-008: Room edits preserve navigation and unrelated state
+
+For the App's name, topic, workspace, archive, and restore actions, metadata mutation completion MUST NOT navigate to a captured Room or Session. A successful Room PATCH MUST apply the edited fields without requiring a full app-bootstrap request. Later explicit selection or Browser Back retains navigation ownership.
+
+Pending tracked fields MUST survive navigation refreshes. Failure MUST remove only that edit's layers, preserving unrelated Room fields, other Rooms, Session content, hierarchy, summary metadata, and selection. Overlapping tracked edits MUST settle in either response order, including double failure, without retaining a failed optimistic value. Once a field has no pending edit, it MUST stop overriding subsequently loaded data.
+
+Warm Session navigation MUST NOT reinstate pre-mutation Room metadata. A navigation read crossing a Room mutation MUST obtain fresh metadata while retaining its navigation intent. Workspace clearing MUST clear the projected workspace and its metadata representation; existing Session workspace ownership remains governed by the Room/Session topology contract.
+
+Scenarios: edit a background Room; select another Session or Room, or use Back before a response; overlap success and failure for the same fields; warm navigation before editing; complete a write while a navigation response waits; archive/restore during live work. Server request-delivery order, multi-client same-field writes, and ambiguous transport failures after server commit are not new guarantees.
+
+The [Room edit validation report](/reports/room-edit-ownership-validation-2026-09-06.md) records exact-code Docker checks, thirty public-path desktop/mobile cases, real Spark streaming/Queue/workspace execution, and reload evidence. No broad latency percentile, full accessibility, or integrated-release claim follows from those checks.
 
 ### Requirement: WEB-SHELL-ROOM-CREATE-007: Room creation preserves later navigation
 

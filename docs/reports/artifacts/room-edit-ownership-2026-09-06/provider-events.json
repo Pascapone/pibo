@@ -1,0 +1,27 @@
+{
+  "available": true,
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "nativeSessionId": "c1cd3fa0-fd79-43d0-9482-be21dd67a5bc",
+  "runtimeBindingState": "bound",
+  "command": "provider events",
+  "providerRequestId": "pr_c24c9790-fe6e-4a51-a01f-bd53e9105c6f",
+  "limit": 30,
+  "afterSequence": -1,
+  "requestedFields": [],
+  "page": {
+    "providerRequestId": "pr_c24c9790-fe6e-4a51-a01f-bd53e9105c6f",
+    "rows": [],
+    "limit": 30,
+    "afterSequence": -1,
+    "hasMore": false,
+    "truncated": false,
+    "storageMode": "per_event"
+  },
+  "rows": [],
+  "nextCommands": [
+    "pibo debug telemetry turn turn_web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4",
+    "pibo debug telemetry provider pr_c24c9790-fe6e-4a51-a01f-bd53e9105c6f events --limit 20",
+    "pibo debug telemetry session ps_dd42a330-f05c-4ac7-8744-0cb7d5377767"
+  ]
+}
