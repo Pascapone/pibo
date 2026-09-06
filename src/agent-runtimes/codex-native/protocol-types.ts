@@ -50,6 +50,32 @@ export type CodexAppServerAccountReadResponse = {
 	requiresOpenaiAuth: boolean;
 };
 
+export type CodexAppServerRateLimitWindow = {
+	usedPercent: number;
+	windowDurationMins?: number | null;
+	resetsAt?: number | null;
+};
+
+export type CodexAppServerCreditsSnapshot = {
+	hasCredits: boolean;
+	unlimited: boolean;
+	balance?: string | null;
+};
+
+export type CodexAppServerRateLimitSnapshot = {
+	limitId?: string | null;
+	limitName?: string | null;
+	planType?: string | null;
+	primary?: CodexAppServerRateLimitWindow | null;
+	secondary?: CodexAppServerRateLimitWindow | null;
+	credits?: CodexAppServerCreditsSnapshot | null;
+};
+
+export type CodexAppServerAccountRateLimitsResponse = {
+	rateLimits: CodexAppServerRateLimitSnapshot;
+	rateLimitsByLimitId?: Record<string, CodexAppServerRateLimitSnapshot> | null;
+};
+
 /** Only the stable managed login modes Pibo supports. */
 export type CodexAppServerAccountLoginStartParams =
 	| { type: "apiKey"; apiKey: string }
