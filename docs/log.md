@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-06
+
+- **Signal projection cost**: Reused already-listed Session records for ancestor depth instead of preparing per-record SQLite queries. Added the [status projection contract](/specs/gateway/web-host-and-channel.md#requirement-wp02-gw-status-006-signal-projection-reuses-its-complete-listed-view) and [local/Pibo2 validation](/reports/gateway-status-scaling-validation-2026-09-06.md), including preserved active-work safety, real streaming, and Queue under status load.
+
 ## 2026-09-05
 
 - **Tool-call Debug mode**: Added a persisted Debug toggle beside Thinking, replaced duplicate topbar Raw Events and view controls with workspace-tab navigation, and documented per-invocation duration and explicitly estimated payload-token counts in the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006). Metrics survive live/replay paths without browser tokenization; legacy and unmeasurable values remain unavailable.

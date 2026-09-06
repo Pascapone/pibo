@@ -12499,9 +12499,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 14249,
-      "file_sha256": "fe4cf4c52cf47f5e31b8544c05511acee753dab975e15768320ad4f8ad58d5c3",
-      "body_sha256": "8646f1bc6bdd9453ba236c4e37d17b33c2dc027cdf84ce840fbe2e5ae69dc8d9",
+      "file_bytes": 17069,
+      "file_sha256": "667eca4421ede5ade6f7b81899f41125b3a9eead6ae295389a1182bc02212ed7",
+      "body_sha256": "4186dbc367134a469318d0ade10ac1606a75451c0105ea9bd2919dae5af2e0b2",
       "lineage": null
     },
     {
@@ -13605,6 +13605,18 @@
       "file_bytes": 560,
       "file_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25",
       "body_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25"
+    },
+    {
+      "path": "docs/reports/gateway-status-scaling-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 12620,
+      "file_sha256": "77cba43bae901c31af0e132d4d107fc564c02932bb078831f93dff6ce07dbf42",
+      "body_sha256": "b2a37c35ae26171de04553aa367712a50d31c49ba4c988347bddce4b92c71c0d",
+      "lineage": null
     }
   ]
 }
