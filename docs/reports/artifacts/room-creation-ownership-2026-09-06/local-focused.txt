@@ -1,0 +1,21 @@
+✔ app bootstrap mutation helpers preserve optimistic session and room updates (240.13093ms)
+✔ app route-selection helpers preserve stored, explicit, skip, and canonicalization rules (130.371276ms)
+﹣ Room creation retains optimistic state and newer navigation (0.895597ms) # SKIP
+✔ Room sidebar mirrors session pinning and drag ordering without a drag handle (552.968422ms)
+✔ Sessions new-agent preference is restored and persisted by room (1.321791ms)
+✔ room summary stream waits for the selected room's latest stream id (162.610169ms)
+✔ room summary status cannot override an available global or selected signal snapshot (2.1026ms)
+✔ long-lived Chat streams release HTTP/1.1 connections during page transitions (4.237242ms)
+✔ cross-room success updates only cached origin-room bootstrap data (267.381558ms)
+✔ same-room success selects and auto-renames only while the optimistic selection is untouched (232.037032ms)
+✔ same-room failure removes only the pending node and preserves a newer selection (204.17358ms)
+✔ cross-room failure rolls back only cached origin-room data (196.995809ms)
+✔ App scopes pending insertion, replacement, and rollback to the origin room (4.194922ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 1078.446272
