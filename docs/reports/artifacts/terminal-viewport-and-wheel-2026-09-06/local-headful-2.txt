@@ -1,0 +1,18 @@
+▶ Terminal preserves follow and reading positions when its viewport shrinks
+  ✔ 1431px retains bottom and detached anchor through external header growth (4653.547223ms)
+  ✔ 390px retains bottom and detached anchor through external header growth (4672.259478ms)
+✔ Terminal preserves follow and reading positions when its viewport shrinks (9417.067379ms)
+ℹ 1431px initial geometry: {"height":595,"scrollHeight":2337,"gap":0,"top":1742,"row":"terminal:assistant:streaming-fixture-732b194c-d09b-4001-9087-00418782458d:assistant:0","offset":-1053.3125,"rowHeight":1648.6875,"detached":false}
+ℹ 1431px concurrent wheel scrollTop samples: [1292,1292,1292,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172]; events: [{"phase":"capture","deltaY":-120,"top":1292,"target":"P"},{"phase":"bubble","top":1172,"prevented":true}]
+ℹ 1431px: viewport-only shrink 595→565, bottom gap 0px; detached anchor preserved
+ℹ 390px initial geometry: {"height":525,"scrollHeight":3724,"gap":0,"top":3199,"row":"terminal:assistant:streaming-fixture-171e29cb-da8f-4038-b029-c8f53cad6d90:assistant:0","offset":-2515,"rowHeight":3039.9375,"detached":false}
+ℹ 390px concurrent wheel scrollTop samples: [2751,2751,2751,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632,2632]; events: [{"phase":"capture","deltaY":-120,"top":2751,"target":"STRONG"},{"phase":"bubble","top":2631,"prevented":true}]
+ℹ 390px: viewport-only shrink 525→495, bottom gap 0px; detached anchor preserved
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9511.149406

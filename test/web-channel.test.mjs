@@ -8514,8 +8514,9 @@ test("chat web status refresh returns a snapshot without emitting a new executio
 	const snapshotCalls = [];
 	const { channel, baseURL, emitted, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
-		async getSessionStatusSnapshot(piboSessionId) {
-			snapshotCalls.push(piboSessionId);
+		async getSessionStatusSnapshot(piboSessionId, options) {
+			snapshotCalls.push({ piboSessionId, options });
+			if (options?.activate === false) return undefined;
 			return {
 				piboSessionId,
 				activeModel: { provider: "openai", id: "gpt-test" },
@@ -8558,7 +8559,13 @@ test("chat web status refresh returns a snapshot without emitting a new executio
 		assert.equal(payload.contextUsage.percent, 25);
 		assert.deepEqual(payload.pendingApprovals.map((request) => request.requestId), ["approval-product-id"]);
 		assert.deepEqual(payload.pendingUserInputs.map((request) => request.requestId), ["input-product-id"]);
-		assert.deepEqual(snapshotCalls, [session.id]);
+		assert.deepEqual(snapshotCalls, [{ piboSessionId: session.id, options: undefined }]);
+		const passive = await fetch(`${baseURL}/api/chat/status?piboSessionId=${encodeURIComponent(session.id)}&activate=false`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(passive.status, 200);
+		assert.deepEqual(await passive.json(), { piboSessionId: session.id, runtimeActive: false });
+		assert.deepEqual(snapshotCalls.at(-1), { piboSessionId: session.id, options: { activate: false } });
 		assert.equal(emitted.length, 0, "refreshing status must not append a trace event");
 	} finally {
 		await channel.stop?.();

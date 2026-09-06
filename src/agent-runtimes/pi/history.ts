@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import { closeSync, createReadStream, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import { createInterface } from "node:readline";
+import { contentText } from "@earendil-works/pi-ai";
+import type { AgentRuntimeForkCandidate, ResolveAgentRuntimeBindingInput } from "../../agent-runtime/types.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseSessionEntries, SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
@@ -44,6 +47,9 @@ const PI_SESSION_LIST_CACHE_TTL_MS = 5_000;
 const PI_SESSION_DIRECT_CACHE_TTL_MS = 5_000;
 const PI_SESSION_FAST_HEAD_BYTES = 64 * 1024;
 const PI_HISTORY_CURSOR_PREFIX = "pi-history:";
+// One bounded entry: repeated sidebar/trace refreshes must not repeatedly scan a large transcript.
+let piForkCandidatesCache: { key: string; candidates: AgentRuntimeForkCandidate[] } | undefined;
+const PI_FORK_CANDIDATE_CACHE_MAX_BYTES = 2 * 1024 * 1024;
 const piSessionListCache = new Map<string, { expiresAt: number; promise: Promise<PiboSessionListItem[]> }>();
 const piSessionDirectCache = new Map<string, {
 	expiresAt: number;
@@ -68,6 +74,51 @@ type PiMessagePart = {
 	name?: unknown;
 	arguments?: unknown;
 };
+
+export async function readPiAgentRuntimeForkCandidates(
+	input: ResolveAgentRuntimeBindingInput,
+): Promise<AgentRuntimeForkCandidate[] | undefined> {
+	const nativeSessionId = input.binding.nativeSessionId;
+	if (!nativeSessionId || input.binding.state !== "bound") return undefined;
+	const item = await findPiSessionForHistory(nativeSessionId, input.workspace,
+		input.binding.locator?.kind === "local-file" ? input.binding.locator.value : undefined, { fast: true });
+	if (!item?.path) return undefined;
+	const fileKey = () => {
+		const stats = statSync(item.path);
+		return `${nativeSessionId}:${item.path}:${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
+	};
+	const key = fileKey();
+	if (piForkCandidatesCache?.key === key) return piForkCandidatesCache.candidates.map((candidate) => ({ ...candidate }));
+	const stream = createReadStream(item.path, { encoding: "utf8" });
+	const lines = createInterface({ input: stream, crlfDelay: Infinity });
+	const candidates: AgentRuntimeForkCandidate[] = [];
+	let headerSeen = false;
+	try {
+		// Stream native history in bounded chunks, retaining only user text rather than tool payloads.
+		for await (const line of lines) {
+			for (const entry of parseSessionEntries(`${line}\n`)) {
+				if (!headerSeen) {
+					// Older formats require the runtime's migration/identity handling.
+					if (entry.type !== "session" || entry.version !== 3 || entry.id !== nativeSessionId) return undefined;
+					headerSeen = true;
+					continue;
+				}
+				if (entry.type !== "message" || entry.message.role !== "user") continue;
+				const text = contentText(entry.message.content, "");
+				if (text) candidates.push({ entryId: entry.id, text });
+			}
+		}
+		if (!headerSeen) return undefined;
+		const candidateBytes = candidates.reduce((bytes, candidate) => bytes + Buffer.byteLength(candidate.text) + Buffer.byteLength(candidate.entryId), 0);
+		if (candidateBytes <= PI_FORK_CANDIDATE_CACHE_MAX_BYTES && key === fileKey()) {
+			piForkCandidatesCache = { key, candidates: candidates.map((candidate) => ({ ...candidate })) };
+		}
+		return candidates;
+	} finally {
+		lines.close();
+		stream.destroy();
+	}
+}
 
 export async function inspectPiAgentRuntimeHistory(
 	runtimeInstanceId: string,

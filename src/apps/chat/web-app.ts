@@ -6584,7 +6584,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					throw new PiboWebHttpError("Session status snapshots are not available", 501);
 				}
 				state.sessionQuery.upsertSession(selectedSession);
-				return responseJson(await context.channelContext.getSessionStatusSnapshot(selectedSession.id), {
+				const snapshot = await context.channelContext.getSessionStatusSnapshot(selectedSession.id,
+					url.searchParams.get("activate") === "false" ? { activate: false } : undefined);
+				return responseJson(snapshot ?? { piboSessionId: selectedSession.id, runtimeActive: false }, {
 					headers: { "cache-control": "no-store" },
 				});
 			}
