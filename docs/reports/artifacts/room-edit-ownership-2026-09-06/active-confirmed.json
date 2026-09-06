@@ -1,0 +1,396 @@
+{
+  "at": "2026-09-06T05:29:05.079Z",
+  "turns": [
+    {
+      "text": "Run bash with exactly: sleep 20; echo ROOM_EDIT_TOOL_COMPLETE. Then reply ROOM_EDIT_TURN_COMPLETE. Do not read or modify files.",
+      "queued": false,
+      "at": "2026-09-06T05:29:06.930Z",
+      "model": {
+        "provider": "openai-codex",
+        "id": "gpt-5.3-codex-spark"
+      }
+    },
+    {
+      "text": "Reply exactly ROOM_EDIT_QUEUE_COMPLETE. Use no tools.",
+      "queued": true,
+      "at": "2026-09-06T05:29:08.703Z",
+      "model": {
+        "provider": "openai-codex",
+        "id": "gpt-5.3-codex-spark"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "phase": "queued",
+      "at": "2026-09-06T05:29:09.415Z",
+      "status": {
+        "piboSessionId": "ps_dd42a330-f05c-4ac7-8744-0cb7d5377767",
+        "runtimeBinding": {
+          "runtimeInstanceId": "pi",
+          "adapterId": "pi",
+          "nativeSessionId": "c1cd3fa0-fd79-43d0-9482-be21dd67a5bc",
+          "state": "bound",
+          "protocol": "pi-sdk",
+          "protocolVersion": "0.85.0",
+          "revision": 3
+        },
+        "queuedMessages": 1,
+        "processing": true,
+        "streaming": true,
+        "activeTools": [
+          "read",
+          "bash",
+          "edit",
+          "write"
+        ],
+        "enabledTools": [
+          "read",
+          "bash",
+          "edit",
+          "write"
+        ],
+        "enabledSkills": [],
+        "contextFiles": [
+          "Automatic AGENTS.md / CLAUDE.md discovery",
+          "pibo://runtime/session-context.md",
+          ".pibo/context/installed-pibo-tools.md"
+        ],
+        "cwd": "/root",
+        "disposed": false,
+        "thinkingLevel": "high",
+        "fastMode": false,
+        "retry": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "provider": {
+            "maxRetryDelayMs": 60000
+          }
+        },
+        "activeModel": {
+          "provider": "openai-codex",
+          "id": "gpt-5.3-codex-spark"
+        },
+        "contextUsage": {
+          "tokens": 1927,
+          "contextWindow": 128000,
+          "percent": 1.5054687500000001
+        },
+        "providerUsage": {
+          "provider": "openai-codex",
+          "planType": "pro",
+          "limits": [
+            {
+              "label": "1w limit",
+              "usedPercent": 50,
+              "remainingPercent": 50,
+              "windowMinutes": 10080,
+              "resetsAt": "2026-09-12T05:32:23.000Z"
+            },
+            {
+              "label": "GPT-5.3-Codex-Spark 5h limit",
+              "usedPercent": 3,
+              "remainingPercent": 97,
+              "windowMinutes": 300,
+              "resetsAt": "2026-09-06T06:39:23.000Z"
+            },
+            {
+              "label": "GPT-5.3-Codex-Spark 1w limit",
+              "usedPercent": 3,
+              "remainingPercent": 97,
+              "windowMinutes": 10080,
+              "resetsAt": "2026-09-12T20:20:31.000Z"
+            },
+            {
+              "label": "gpt-reserve 1w limit",
+              "usedPercent": 0,
+              "remainingPercent": 100,
+              "windowMinutes": 10080,
+              "resetsAt": "2026-09-13T05:29:09.000Z"
+            }
+          ],
+          "fetchedAt": "2026-09-06T05:29:09.842Z"
+        }
+      }
+    },
+    {
+      "phase": "after-edit-and-switch",
+      "at": "2026-09-06T05:29:10.458Z",
+      "status": {
+        "piboSessionId": "ps_dd42a330-f05c-4ac7-8744-0cb7d5377767",
+        "runtimeBinding": {
+          "runtimeInstanceId": "pi",
+          "adapterId": "pi",
+          "nativeSessionId": "c1cd3fa0-fd79-43d0-9482-be21dd67a5bc",
+          "state": "bound",
+          "protocol": "pi-sdk",
+          "protocolVersion": "0.85.0",
+          "revision": 3
+        },
+        "queuedMessages": 1,
+        "processing": true,
+        "streaming": true,
+        "activeTools": [
+          "read",
+          "bash",
+          "edit",
+          "write"
+        ],
+        "enabledTools": [
+          "read",
+          "bash",
+          "edit",
+          "write"
+        ],
+        "enabledSkills": [],
+        "contextFiles": [
+          "Automatic AGENTS.md / CLAUDE.md discovery",
+          "pibo://runtime/session-context.md",
+          ".pibo/context/installed-pibo-tools.md"
+        ],
+        "cwd": "/root",
+        "disposed": false,
+        "thinkingLevel": "high",
+        "fastMode": false,
+        "retry": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "provider": {
+            "maxRetryDelayMs": 60000
+          }
+        },
+        "activeModel": {
+          "provider": "openai-codex",
+          "id": "gpt-5.3-codex-spark"
+        },
+        "contextUsage": {
+          "tokens": 1927,
+          "contextWindow": 128000,
+          "percent": 1.5054687500000001
+        },
+        "providerUsage": {
+          "provider": "openai-codex",
+          "planType": "pro",
+          "limits": [
+            {
+              "label": "1w limit",
+              "usedPercent": 50,
+              "remainingPercent": 50,
+              "windowMinutes": 10080,
+              "resetsAt": "2026-09-12T05:32:23.000Z"
+            },
+            {
+              "label": "GPT-5.3-Codex-Spark 5h limit",
+              "usedPercent": 3,
+              "remainingPercent": 97,
+              "windowMinutes": 300,
+              "resetsAt": "2026-09-06T06:39:23.000Z"
+            },
+            {
+              "label": "GPT-5.3-Codex-Spark 1w limit",
+              "usedPercent": 3,
+              "remainingPercent": 97,
+              "windowMinutes": 10080,
+              "resetsAt": "2026-09-12T20:20:31.000Z"
+            },
+            {
+              "label": "gpt-reserve 1w limit",
+              "usedPercent": 0,
+              "remainingPercent": 100,
+              "windowMinutes": 10080,
+              "resetsAt": "2026-09-13T05:29:11.000Z"
+            }
+          ],
+          "fetchedAt": "2026-09-06T05:29:11.243Z"
+        }
+      }
+    },
+    {
+      "phase": "after-archive-restore",
+      "at": "2026-09-06T05:29:12.070Z",
+      "status": {
+        "piboSessionId": "ps_dd42a330-f05c-4ac7-8744-0cb7d5377767",
+        "runtimeBinding": {
+          "runtimeInstanceId": "pi",
+          "adapterId": "pi",
+          "nativeSessionId": "c1cd3fa0-fd79-43d0-9482-be21dd67a5bc",
+          "state": "bound",
+          "protocol": "pi-sdk",
+          "protocolVersion": "0.85.0",
+          "revision": 3
+        },
+        "queuedMessages": 1,
+        "processing": true,
+        "streaming": true,
+        "activeTools": [
+          "read",
+          "bash",
+          "edit",
+          "write"
+        ],
+        "enabledTools": [
+          "read",
+          "bash",
+          "edit",
+          "write"
+        ],
+        "enabledSkills": [],
+        "contextFiles": [
+          "Automatic AGENTS.md / CLAUDE.md discovery",
+          "pibo://runtime/session-context.md",
+          ".pibo/context/installed-pibo-tools.md"
+        ],
+        "cwd": "/root",
+        "disposed": false,
+        "thinkingLevel": "high",
+        "fastMode": false,
+        "retry": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "provider": {
+            "maxRetryDelayMs": 60000
+          }
+        },
+        "activeModel": {
+          "provider": "openai-codex",
+          "id": "gpt-5.3-codex-spark"
+        },
+        "contextUsage": {
+          "tokens": 1927,
+          "contextWindow": 128000,
+          "percent": 1.5054687500000001
+        },
+        "providerUsage": {
+          "provider": "openai-codex",
+          "planType": "pro",
+          "limits": [
+            {
+              "label": "1w limit",
+              "usedPercent": 50,
+              "remainingPercent": 50,
+              "windowMinutes": 10080,
+              "resetsAt": "2026-09-12T05:32:23.000Z"
+            },
+            {
+              "label": "GPT-5.3-Codex-Spark 5h limit",
+              "usedPercent": 3,
+              "remainingPercent": 97,
+              "windowMinutes": 300,
+              "resetsAt": "2026-09-06T06:39:23.000Z"
+            },
+            {
+              "label": "GPT-5.3-Codex-Spark 1w limit",
+              "usedPercent": 3,
+              "remainingPercent": 97,
+              "windowMinutes": 10080,
+              "resetsAt": "2026-09-12T20:20:31.000Z"
+            },
+            {
+              "label": "gpt-reserve 1w limit",
+              "usedPercent": 0,
+              "remainingPercent": 100,
+              "windowMinutes": 10080,
+              "resetsAt": "2026-09-13T05:29:12.000Z"
+            }
+          ],
+          "fetchedAt": "2026-09-06T05:29:12.748Z"
+        }
+      }
+    }
+  ],
+  "observationError": "Error: Unmet [...document.querySelectorAll('[data-row-kind=\"message.assistant\"]')].some(e=>e.textContent.includes('ROOM_EDIT_QUEUE_COMPLETE'))",
+  "final": {
+    "piboSessionId": "ps_dd42a330-f05c-4ac7-8744-0cb7d5377767",
+    "runtimeBinding": {
+      "runtimeInstanceId": "pi",
+      "adapterId": "pi",
+      "nativeSessionId": "c1cd3fa0-fd79-43d0-9482-be21dd67a5bc",
+      "state": "bound",
+      "protocol": "pi-sdk",
+      "protocolVersion": "0.85.0",
+      "revision": 3
+    },
+    "queuedMessages": 0,
+    "processing": false,
+    "streaming": false,
+    "activeTools": [
+      "read",
+      "bash",
+      "edit",
+      "write"
+    ],
+    "enabledTools": [
+      "read",
+      "bash",
+      "edit",
+      "write"
+    ],
+    "enabledSkills": [],
+    "contextFiles": [
+      "Automatic AGENTS.md / CLAUDE.md discovery",
+      "pibo://runtime/session-context.md",
+      ".pibo/context/installed-pibo-tools.md"
+    ],
+    "cwd": "/root",
+    "disposed": false,
+    "thinkingLevel": "high",
+    "fastMode": false,
+    "retry": {
+      "enabled": true,
+      "maxRetries": 3,
+      "baseDelayMs": 2000,
+      "provider": {
+        "maxRetryDelayMs": 60000
+      }
+    },
+    "activeModel": {
+      "provider": "openai-codex",
+      "id": "gpt-5.3-codex-spark"
+    },
+    "contextUsage": {
+      "tokens": 1875,
+      "contextWindow": 128000,
+      "percent": 1.46484375
+    },
+    "providerUsage": {
+      "provider": "openai-codex",
+      "planType": "pro",
+      "limits": [
+        {
+          "label": "1w limit",
+          "usedPercent": 50,
+          "remainingPercent": 50,
+          "windowMinutes": 10080,
+          "resetsAt": "2026-09-12T05:32:23.000Z"
+        },
+        {
+          "label": "GPT-5.3-Codex-Spark 5h limit",
+          "usedPercent": 3,
+          "remainingPercent": 97,
+          "windowMinutes": 300,
+          "resetsAt": "2026-09-06T06:39:23.000Z"
+        },
+        {
+          "label": "GPT-5.3-Codex-Spark 1w limit",
+          "usedPercent": 3,
+          "remainingPercent": 97,
+          "windowMinutes": 10080,
+          "resetsAt": "2026-09-12T20:20:31.000Z"
+        },
+        {
+          "label": "gpt-reserve 1w limit",
+          "usedPercent": 0,
+          "remainingPercent": 100,
+          "windowMinutes": 10080,
+          "resetsAt": "2026-09-13T05:31:38.000Z"
+        }
+      ],
+      "fetchedAt": "2026-09-06T05:31:38.550Z"
+    }
+  },
+  "pass": true,
+  "confirmedAt": "2026-09-06T05:31:38.554Z"
+}

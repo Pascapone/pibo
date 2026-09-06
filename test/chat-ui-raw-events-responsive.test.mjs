@@ -27,7 +27,7 @@ test("Raw Events stays reachable as a labelled inspector at narrow widths", asyn
 			sessionViewId: "terminal",
 			sessionViews: [],
 			currentSessionView: { label: "Terminal" },
-			showRawEvents: true,
+			debugMode: true,
 			showThinking: true,
 			expandThinking: false,
 			toolDisplayMode: "default",
@@ -36,7 +36,7 @@ test("Raw Events stays reachable as a labelled inspector at narrow widths", asyn
 			onShowWebAnnotationsPanel: noop,
 			onHideWebAnnotationsPanel: noop,
 			onSelectSessionView: noop,
-			onToggleRawEvents: noop,
+			onToggleDebugMode: noop,
 			onToggleThinking: noop,
 			onToggleExpandThinking: noop,
 			onError: noop,
@@ -49,10 +49,8 @@ test("Raw Events stays reachable as a labelled inspector at narrow widths", asyn
 			onLoadOlder: noop,
 		}));
 
-		const rawToggle = header.match(/<button[^>]*aria-label="Raw Events"[^>]*>/)?.[0];
-		assert.ok(rawToggle, "Raw Events toggle must remain present");
-		assert.match(rawToggle, /aria-pressed="true"/);
-		assert.match(rawToggle, /aria-controls="raw-events-inspector"/);
+		assert.doesNotMatch(header, /<button[^>]*aria-label="Raw Events"/);
+		assert.match(header, /<button[^>]*aria-label="Debug"[^>]*aria-pressed="true"/);
 		assert.match(inspector, /<aside[^>]*id="raw-events-inspector"/);
 		assert.match(inspector, /aria-label="Raw Events"/);
 		assert.equal(inspector.includes("max-[980px]:fixed"), true);

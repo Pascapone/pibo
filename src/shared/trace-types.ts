@@ -21,6 +21,7 @@ export type PiboTraceSource = TraceSource;
 export type PiboTraceOrderKey = TraceOrderKey;
 
 export type PiboTraceNode = {
+	toolMetrics?: import("./tool-call-metrics.js").ToolCallMetrics;
 	id: string;
 	parentId?: string;
 	entryId?: string;
@@ -62,6 +63,7 @@ export type TracePayloadRef = {
 };
 
 export type TraceTimelineNode = {
+	toolMetrics?: import("./tool-call-metrics.js").ToolCallMetrics;
 	nodeId: string;
 	parentId?: string;
 	piboSessionId: string;

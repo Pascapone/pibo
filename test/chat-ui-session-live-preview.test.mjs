@@ -256,7 +256,7 @@ test("Session trace panes scope lifecycle state and fullscreen to the selected P
 	assert.match(pane, /queryClient\.setQueryData<SessionLivePreviewQueryEnvelope>/);
 	assert.match(pane, /subscribeSessionLivePreviewEvents/);
 	assert.match(pane, /openDesktopToolRef\.current\?\.\("preview"\)/);
-	assert.match(pane, /id: "preview"/);
+	assert.doesNotMatch(pane, /id: "preview"/, "Preview is opened through workspace tabs, not a duplicate topbar tab");
 	assert.match(pane, /<SessionLivePreviewPanel/);
 	assert.match(pane, /<PreviewFullscreenTopBar/);
 	assert.match(layout, /fullscreenTopBar/);

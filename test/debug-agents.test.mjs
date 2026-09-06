@@ -103,6 +103,7 @@ test("debug delegated-agent inspection lists owned children and applies exact ob
 			"Found the routing boundary",
 		]);
 		assert.deepEqual(defaults.filters.eventTypes, ["assistant_message"]);
+		assert.equal(defaults.filters.cursorMode, "history");
 		assert.equal(defaults.filters.order, "desc");
 		assert.equal(defaults.filters.limit, 20);
 		assert.equal(defaults.filters.includeTools, false);
@@ -199,6 +200,8 @@ test("debug delegated-agent CLI exposes and executes the shared observation filt
 		await runDebugAgentsCli(["ps_parent", "observe", "--help"]);
 		const help = output.join("\n");
 		assert.match(help, /Default: the newest 20 completed assistant messages/);
+		assert.match(help, /CLI is stateless history inspection/);
+		assert.match(help, /include-tools only for stalls, errors, or targeted diagnosis/);
 		assert.match(help, /pages always consume the oldest unseen rows/);
 		assert.match(help, /--tool-call-id/);
 		assert.match(help, /--include-tools/);
@@ -227,6 +230,7 @@ test("debug delegated-agent CLI exposes and executes the shared observation filt
 		]);
 		const result = JSON.parse(output.join("\n"));
 		assert.deepEqual(result.observations.map((observation) => observation.eventType), ["tool_call", "tool_execution_finished"]);
+		assert.equal(result.filters.cursorMode, "history");
 		assert.equal(result.filters.includeTools, true);
 		assert.equal(result.filters.toolDetail, "full");
 		await assert.rejects(

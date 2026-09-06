@@ -1,0 +1,191 @@
+▶ Room creation retains optimistic state and newer navigation
+  ✖ post-untouched-success (2500.531921ms)
+  ✖ post-untouched-failure (2156.425592ms)
+  ✖ post-other-room-success (2416.806683ms)
+  ✖ post-other-room-failure (2335.028691ms)
+  ✖ post-browser-back-success (2417.91106ms)
+  ✖ post-browser-back-failure (2349.083622ms)
+  ✖ navigation-untouched-success (2050.000313ms)
+  ✖ navigation-other-room-success (2367.133036ms)
+  ✖ navigation-browser-back-success (2483.994537ms)
+  ✖ navigation-next-room-success (6948.327569ms)
+✖ Room creation retains optimistic state and newer navigation (28411.653544ms)
+ℹ {"scenario":{"stage":"post","action":"untouched","failure":false},"pending":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":false},"expected":{"room":"room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","session":null},"after":{"path":"/apps/chat/rooms/room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1/sessions/ps_e20fd906-49ec-4713-a9ea-630a8967b8f1","session":"ps_e20fd906-49ec-4713-a9ea-630a8967b8f1","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":true}}
+ℹ {"scenario":{"stage":"post","action":"untouched","failure":true},"pending":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":false},"expected":{"room":"room_459e68ad-0054-4afc-8d65-3528d07e72f0","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3"},"after":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":true}}
+ℹ {"scenario":{"stage":"post","action":"other-room","failure":false},"pending":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":false},"expected":{"room":"room_eae39853-1c37-4c84-9cc1-877957189e45","session":"ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77"},"after":{"path":"/apps/chat/rooms/room_212e2b01-c13b-42d6-91ea-a9ff1669c64e/sessions/ps_f3390b85-27d9-487b-84c2-418398b119e9","session":"ps_f3390b85-27d9-487b-84c2-418398b119e9","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":true}}
+ℹ {"scenario":{"stage":"post","action":"other-room","failure":true},"pending":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":false},"expected":{"room":"room_eae39853-1c37-4c84-9cc1-877957189e45","session":"ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77"},"after":{"path":"/apps/chat/rooms/room_eae39853-1c37-4c84-9cc1-877957189e45/sessions/ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77","session":"ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":true}}
+ℹ {"scenario":{"stage":"post","action":"browser-back","failure":false},"pending":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":false},"expected":{"room":"room_eae39853-1c37-4c84-9cc1-877957189e45","session":"ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77"},"after":{"path":"/apps/chat/rooms/room_d5d460c7-5d01-402e-a332-c1a0d9a39c33/sessions/ps_36e96ea8-5934-479a-9695-b55133f912ee","session":"ps_36e96ea8-5934-479a-9695-b55133f912ee","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_d5d460c7-5d01-402e-a332-c1a0d9a39c33","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":true}}
+ℹ {"scenario":{"stage":"post","action":"browser-back","failure":true},"pending":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_d5d460c7-5d01-402e-a332-c1a0d9a39c33","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":false},"expected":{"room":"room_eae39853-1c37-4c84-9cc1-877957189e45","session":"ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77"},"after":{"path":"/apps/chat/rooms/room_eae39853-1c37-4c84-9cc1-877957189e45/sessions/ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77","session":"ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_d5d460c7-5d01-402e-a332-c1a0d9a39c33","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":true}}
+ℹ {"scenario":{"stage":"navigation","action":"untouched","failure":false},"pending":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_372d5bbd-db9e-4fb5-aaf5-b06b8898f60c","room_d5d460c7-5d01-402e-a332-c1a0d9a39c33","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":false},"expected":{"room":"room_372d5bbd-db9e-4fb5-aaf5-b06b8898f60c","session":null},"after":{"path":"/apps/chat/rooms/room_372d5bbd-db9e-4fb5-aaf5-b06b8898f60c/sessions/ps_df56dd3d-fa9c-430e-9cf8-bdc21050f1b0","session":"ps_df56dd3d-fa9c-430e-9cf8-bdc21050f1b0","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_372d5bbd-db9e-4fb5-aaf5-b06b8898f60c","room_d5d460c7-5d01-402e-a332-c1a0d9a39c33","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":true}}
+ℹ {"scenario":{"stage":"navigation","action":"other-room","failure":false},"pending":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","session":"ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_4a47b789-c9e9-4f42-8329-cf4ccadd6fa8","room_372d5bbd-db9e-4fb5-aaf5-b06b8898f60c","room_d5d460c7-5d01-402e-a332-c1a0d9a39c33","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":false},"expected":{"room":"room_eae39853-1c37-4c84-9cc1-877957189e45","session":"ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77"},"after":{"path":"/apps/chat/rooms/room_eae39853-1c37-4c84-9cc1-877957189e45/sessions/ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77","session":"ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_4a47b789-c9e9-4f42-8329-cf4ccadd6fa8","room_372d5bbd-db9e-4fb5-aaf5-b06b8898f60c","room_d5d460c7-5d01-402e-a332-c1a0d9a39c33","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":true}}
+ℹ {"scenario":{"stage":"navigation","action":"browser-back","failure":false},"pending":{"path":"/apps/chat/rooms/room_459e68ad-0054-4afc-8d65-3528d07e72f0/sessions/ps_6e4c9c60-2cc0-4e9f-b699-e01ec723efe3","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_4a47b789-c9e9-4f42-8329-cf4ccadd6fa8","room_372d5bbd-db9e-4fb5-aaf5-b06b8898f60c","room_d5d460c7-5d01-402e-a332-c1a0d9a39c33","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":false},"expected":{"room":"room_eae39853-1c37-4c84-9cc1-877957189e45","session":"ps_fcbb42d8-876f-4eba-ad71-8ce009e93b77"},"after":{"path":"/apps/chat/rooms/room_f29c1e30-2cf9-42e2-b327-9b80b35e102c/sessions/ps_af40ae64-7698-46fa-bf2d-7ae465e9312e","session":"ps_af40ae64-7698-46fa-bf2d-7ae465e9312e","roomIds":["room_95c6c4c3-4f91-4024-8b0c-012719da277c","room_f29c1e30-2cf9-42e2-b327-9b80b35e102c","room_4a47b789-c9e9-4f42-8329-cf4ccadd6fa8","room_372d5bbd-db9e-4fb5-aaf5-b06b8898f60c","room_d5d460c7-5d01-402e-a332-c1a0d9a39c33","room_212e2b01-c13b-42d6-91ea-a9ff1669c64e","room_8ef8307c-a5d4-4cae-82e8-d5702acf13e1","room_eae39853-1c37-4c84-9cc1-877957189e45","room_459e68ad-0054-4afc-8d65-3528d07e72f0"],"newRoomEnabled":true}}
+ℹ tests 11
+ℹ suites 0
+ℹ pass 0
+ℹ fail 11
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28491.888935
+
+✖ failing tests:
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ post-untouched-success (2500.531921ms)
+  AssertionError [ERR_ASSERTION]: Untouched optimistic Room remains until POST settles
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:159:14)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ post-untouched-failure (2156.425592ms)
+  AssertionError [ERR_ASSERTION]: Untouched optimistic Room remains until POST settles
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:159:14)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ post-other-room-success (2416.806683ms)
+  AssertionError [ERR_ASSERTION]: Late creation must not overwrite a newer Room choice
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:162:13)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ post-other-room-failure (2335.028691ms)
+  AssertionError [ERR_ASSERTION]: No old Session remount under a newer route
+
+  1 !== 0
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:165:14)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ post-browser-back-success (2417.91106ms)
+  AssertionError [ERR_ASSERTION]: Late creation must not overwrite a newer Room choice
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:162:13)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ post-browser-back-failure (2349.083622ms)
+  AssertionError [ERR_ASSERTION]: No old Session remount under a newer route
+
+  1 !== 0
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:165:14)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ navigation-untouched-success (2050.000313ms)
+  AssertionError [ERR_ASSERTION]: POST completion releases creation controls before hydration
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:161:50)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ navigation-other-room-success (2367.133036ms)
+  AssertionError [ERR_ASSERTION]: POST completion releases creation controls before hydration
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:161:50)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ navigation-browser-back-success (2483.994537ms)
+  AssertionError [ERR_ASSERTION]: POST completion releases creation controls before hydration
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:161:50)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-create-navigation-race.test.mjs:76:12
+✖ navigation-next-room-success (6948.327569ms)
+  Error: Browser condition did not settle: !!document.querySelector('button[aria-label="New Room"]:not(:disabled)')
+      at waitFor (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:25:9)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:126:7)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-create-navigation-race.test.mjs:76:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)

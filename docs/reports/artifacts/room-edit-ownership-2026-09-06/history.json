@@ -1,0 +1,416 @@
+{
+  "at": "2026-09-06T05:38:35.794Z",
+  "before": {
+    "id": "terminal:tool-invocation:%5B%22call_hjfwD4HOp1V8jF7I0OcyaMQM%7Cfc_0e803fe1a0b7621f016a73a981f1a4819191a1f3fbf79b4da4%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22native-history-group%3Api-byte%3A20626434%3A0%5C%22%2C0%5D%22%5D",
+    "dataset": {
+      "piboComponent": "TerminalRow",
+      "piboDebug": "terminal-row",
+      "piboTerminalRow": "true",
+      "rowId": "terminal:tool-invocation:%5B%22call_hjfwD4HOp1V8jF7I0OcyaMQM%7Cfc_0e803fe1a0b7621f016a73a981f1a4819191a1f3fbf79b4da4%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22native-history-group%3Api-byte%3A20626434%3A0%5C%22%2C0%5D%22%5D",
+      "rowKind": "execution.command",
+      "rowStatus": "done",
+      "traceNodeId": "tool-invocation:%5B%22call_hjfwD4HOp1V8jF7I0OcyaMQM%7Cfc_0e803fe1a0b7621f016a73a981f1a4819191a1f3fbf79b4da4%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22native-history-group%3Api-byte%3A20626434%3A0%5C%22%2C0%5D%22%5D",
+      "eventId": "native-history-group:pi-byte:20626434:0",
+      "orderSource": "transcript"
+    },
+    "top": 214.0625,
+    "scrollTop": 120,
+    "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+  },
+  "after": {
+    "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1",
+    "top": 214.0625,
+    "visible": true,
+    "scrollTop": 120
+  },
+  "evidence": {
+    "requests": [
+      {
+        "url": "/api/chat/rooms/room_8cb88cd6-bb73-40cf-9c29-44f85417f2c3",
+        "method": "PATCH",
+        "at": 2501.2999997138977,
+        "response": 2571,
+        "status": 200
+      }
+    ],
+    "frames": [
+      {
+        "at": 2240.199999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2255.199999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2272.7999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2289,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2306,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2322.699999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2338.7999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2356.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2373.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2389.199999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2405.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2422.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2439.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2455.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2472.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2491.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2542.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2557.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2572.199999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2606,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2609.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2622.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2639.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2655.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2672.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2689.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2705.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2722.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2739.8999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2755.8999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2772.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2788.8999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2805.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2821.8999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2839.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2855.7999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2872.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2889,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2905.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2922.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2938.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2956,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2972.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 2989,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3005.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3022.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3038.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3056,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3072.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3088.699999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3105.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3122.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3138.8999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3155.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3171.7999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3189.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3205.7999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3222.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3239.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3255.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3272.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3289,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3305.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3322,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3338.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3355.8999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3372.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3388.8999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3405.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3422.699999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3439.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3455.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3472.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3488.5999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3505.3999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3521.8999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3539.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3555.699999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3572.199999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3589.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3605.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3622.699999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3639,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3655.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3671.7999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3689.0999999046326,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3705.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3722,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3739.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3755.699999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3772.199999809265,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3788.5,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3805.8999996185303,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      },
+      {
+        "at": 3822.2999997138977,
+        "session": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1"
+      }
+    ]
+  },
+  "pass": true
+}

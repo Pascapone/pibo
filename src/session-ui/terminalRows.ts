@@ -78,6 +78,8 @@ export type CompactTerminalDetailItem = {
 };
 
 export type CompactTerminalRow = {
+	toolMetrics?: import("../shared/tool-call-metrics.js").ToolCallMetrics;
+	isToolCall?: boolean;
 	id: string;
 	kind: CompactTerminalRowKind;
 	status: CompactTerminalRowStatus;
@@ -114,6 +116,7 @@ export type ToolDisplayMode = "default" | "hide" | "slim" | "intent";
 
 export type BuildTerminalRowsOptions = {
 	showThinking: boolean;
+	debugMode?: boolean;
 	toolDisplayMode?: ToolDisplayMode;
 };
 
@@ -154,7 +157,7 @@ export function buildCompactTerminalRows(
 	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
 	applyCompletedTurnTiming(candidates, turnById);
 	const reconciled = reconcileConceptualRowCandidates(candidates);
-	const rows = (options.toolDisplayMode ?? "default") === "default"
+	const rows = !options.debugMode && (options.toolDisplayMode ?? "default") === "default"
 		? groupRelatedToolCandidates(reconciled).map((candidate) => candidate.row)
 		: reconciled.map((candidate) => candidate.row);
 	return applyToolDisplayMode(rows, options.toolDisplayMode ?? "default");
@@ -297,6 +300,8 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 			...candidate.row,
 			id: compactTerminalRowIdentity(node),
 			intent: node.intent,
+			isToolCall: node.type === "tool.call" || node.type === "tool.result" || (node.type === "agent.delegation" && Boolean(node.toolCallId)),
+			toolMetrics: node.toolMetrics,
 			...debugFields(node),
 		},
 	};

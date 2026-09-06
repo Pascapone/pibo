@@ -1,0 +1,24 @@
+
+> @pasko70/pibo@1.7.2 typecheck
+> npm run workflows:typecheck && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && npm run chat-ui:typecheck && npm run context-files-ui:typecheck && npm run vscode:typecheck
+
+
+> @pasko70/pibo@1.7.2 workflows:typecheck
+> npm run typecheck --workspace @pasko70/pibo-workflows
+
+
+> @pasko70/pibo-workflows@0.0.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+
+> @pasko70/pibo@1.7.2 chat-ui:typecheck
+> tsc -p src/apps/chat-ui/tsconfig.json --noEmit
+
+
+> @pasko70/pibo@1.7.2 context-files-ui:typecheck
+> tsc -p src/apps/context-files-ui/tsconfig.json --noEmit
+
+
+> @pasko70/pibo@1.7.2 vscode:typecheck
+> tsc -p src/apps/chat-vscode/extension/tsconfig.json --noEmit && tsc -p src/apps/chat-vscode/extension/webview/tsconfig.json --noEmit
+

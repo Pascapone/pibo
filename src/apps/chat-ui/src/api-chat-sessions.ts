@@ -188,8 +188,9 @@ export async function postMessage(
 	});
 }
 
-export async function getSessionStatus(piboSessionId: string): Promise<unknown> {
+export async function getSessionStatus(piboSessionId: string, options?: { activate?: boolean }): Promise<unknown> {
 	const params = new URLSearchParams({ piboSessionId });
+	if (options?.activate === false) params.set("activate", "false");
 	return requestJson(`/api/chat/status?${params.toString()}`, { cache: "no-store" });
 }
 

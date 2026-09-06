@@ -2,6 +2,7 @@ import type { PiboJsonValue, PiboOutputEvent } from "../core/events.js";
 
 export type PiboAgentObservationKind = "message" | "thinking" | "tool" | "error" | "lifecycle" | "event";
 export type PiboAgentObservationOrder = "asc" | "desc";
+export type PiboAgentObservationCursorMode = "auto" | "history";
 export type PiboAgentObservationToolDetail = "summary" | "full";
 
 export const PIBO_AGENT_OBSERVATION_TEXT_MAX_BYTES = 4 * 1024;
@@ -203,6 +204,16 @@ export function parsePiboAgentObservationTimestamp(value: string | undefined, la
 export function normalizePiboAgentObservationOrder(value: PiboAgentObservationOrder | undefined): PiboAgentObservationOrder {
 	if (value === undefined) return "desc";
 	if (value !== "asc" && value !== "desc") throw new Error(`Agent observation order must be "asc" or "desc".`);
+	return value;
+}
+
+export function normalizePiboAgentObservationCursorMode(
+	value: PiboAgentObservationCursorMode | undefined,
+): PiboAgentObservationCursorMode {
+	if (value === undefined) return "auto";
+	if (value !== "auto" && value !== "history") {
+		throw new Error(`Agent observation cursorMode must be "auto" or "history".`);
+	}
 	return value;
 }
 

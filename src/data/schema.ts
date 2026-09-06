@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 8;
+export const PIBO_DATA_SCHEMA_VERSION = 9;
 
 const NATIVE_HISTORY_FALLBACK_SCHEMA_VERSION = 5;
 const retiredScopeColumn = ["owner", "scope"].join("_");
@@ -276,6 +276,15 @@ function applyPiboDataSchemaInTransaction(
 			parent_pibo_session_id TEXT PRIMARY KEY,
 			next_sequence INTEGER NOT NULL CHECK(next_sequence >= 1),
 			updated_at TEXT NOT NULL,
+			FOREIGN KEY (parent_pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS session_agent_observation_auto_cursors (
+			parent_pibo_session_id TEXT NOT NULL,
+			cursor_scope TEXT NOT NULL,
+			sequence INTEGER NOT NULL CHECK(sequence >= 0),
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (parent_pibo_session_id, cursor_scope),
 			FOREIGN KEY (parent_pibo_session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
 

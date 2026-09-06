@@ -7,17 +7,17 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:32:00Z"
+  at: "2026-09-05T19:25:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 implementation:
   state: "current"
-  baseline_commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  baseline_commit: "d30e0250fdce4017920c7f9c41c1e2067124d23b"
   source_evidence: "performed"
-  test_execution: "complete isolated root suite passed: 2744 tests, 2739 passed, 0 failed, 5 skipped"
-  build_and_typecheck_execution: "clean full build and all typechecks passed"
+  test_execution: "focused schema, session-store, and delegated-observation tests passed in isolated Docker; broader 66-test selection passed 65 and hit one environment-only systemd isolation failure"
+  build_and_typecheck_execution: "clean full typecheck passed"
 traceability:
-  commit: "14cbaf0fd04cfa321674b570baeb40e543d957cb"
+  commit: "d30e0250fdce4017920c7f9c41c1e2067124d23b"
   requirements:
     - id: "WP02-DATA-STORE-001"
       status: "implemented"
@@ -202,7 +202,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Persistence and models: `PIBO_DATA_SCHEMA_VERSION=8`; rooms; payloads; event log; chat messages; observations; session stats; app read state; navigation; indexer offsets; migration import map; durable render high-water, output-part, and tool-invocation counters; external payload root with SHA-256 metadata, refcounting, and gzip/identity encoding. Payload deduplication uses SHA-256, content type, and retention class as one indexed semantic identity, while different metadata variants retain isolated rows and files. Opening a supported legacy schema transactionally repairs retired required partition columns and migrates the former SHA-only payload uniqueness without rewriting existing payload files; future schemas fail before mutation.
+- Persistence and models: `PIBO_DATA_SCHEMA_VERSION=9`; rooms; payloads; event log; chat messages; observations; session stats; app read state; navigation; indexer offsets; migration import map; durable render high-water, output-part, and tool-invocation counters; external payload root with SHA-256 metadata, refcounting, and gzip/identity encoding. Schema version 9 also installs the Session-owned `session_agent_observation_auto_cursors` table defined by SPC-DATA-002; that shared physical migration does not transfer semantic ownership to this specification. Payload deduplication uses SHA-256, content type, and retention class as one indexed semantic identity, while different metadata variants retain isolated rows and files. Opening a supported legacy schema transactionally repairs retired required partition columns and migrates the former SHA-only payload uniqueness without rewriting existing payload files; future schemas fail before mutation.
 - Routes and protocols: No HTTP route is owned; Chat query services are consumed by Web routes.
 - State transitions: User acceptance and output ingestion append idempotent event facts, then project normalized messages and observations. Client transaction IDs deduplicate retries; repeated text without a transaction ID remains distinct. Output identity collisions fail visibly. Canonical render sequence, output-part index, and tool-invocation ordinal survive restart and clock rollback. Read cursors advance monotonically, and an idle started turn without a terminal projects an explicit bounded incomplete-integrity marker rather than a false running state.
 - Failure and security: Bounded payload reads verify size and SHA-256. Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow. Missing or corrupt external payload content falls back to the durable preview where the history service supports it.
@@ -214,7 +214,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 ## Requirement: WP02-DATA-STORE-001
 
-The specification SHALL define schema version 8, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-Session, non-telemetry, non-Workflow product tables to this owner.
+The specification SHALL define schema version 9, install the Session-owned automatic observation cursor table without claiming its semantics, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-Session, non-telemetry, non-Workflow product tables to this owner.
 
 ## Requirement: WP02-DATA-STORE-002
 
@@ -286,7 +286,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests remain bound to commit `14cbaf0fd04cfa321674b570baeb40e543d957cb`, where the clean full build, all typechecks, and complete isolated root suite passed with 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. At final integration `7ec71c2cca2108423002be0e7330d2a20c4c5b67`, source checks and all typechecks passed; its complete root suite also passed, as recorded in the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md). Headed Room workspace inheritance and actual normal and manual `openai-codex` Sessions succeeded. This specification does not claim Pibo2 or deployment evidence.
+Source symbols and named tests are bound to commit `d30e0250fdce4017920c7f9c41c1e2067124d23b`. The full typecheck and focused schema, session-store, restart, query, and debug-CLI tests passed in isolated Docker. A broader 66-test selection passed 65 tests; the remaining real yielded-Bash timeout test could not access systemd isolation inside the worker and is unrelated to the schema or observation changes. This specification does not claim a complete root suite, Pibo2, browser, real-provider, or deployment evidence for this candidate.
 
 # Related concepts
 

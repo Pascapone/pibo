@@ -1,0 +1,225 @@
+{
+  "piboSessionId": "ps_5d168a03-61f8-4322-a1ba-3c3aef662691",
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "nativeSessionId": "c94350c6-cb65-4173-b96a-9c994f0d1ad0",
+  "runtimeBindingState": "bound",
+  "events": [
+    {
+      "created_at": "2026-09-05T20:30:25.442Z",
+      "type": "execution_result",
+      "event_id": "6be78f69-fd56-423f-8430-3f7cca842d57",
+      "stream_id": 988002,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:30:12.107Z",
+      "type": "message_finished",
+      "event_id": "web-mtou72t9-67230dd4-e5c4-40c3-a7d9-349f72f017be",
+      "stream_id": 988001,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T20:30:12.092Z",
+      "type": "assistant_message",
+      "event_id": "web-mtou72t9-67230dd4-e5c4-40c3-a7d9-349f72f017be",
+      "stream_id": 988000,
+      "preview_text": "SLOT-DONE-B"
+    },
+    {
+      "created_at": "2026-09-05T20:30:12.081Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtou72t9-67230dd4-e5c4-40c3-a7d9-349f72f017be",
+      "stream_id": 987999,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T20:30:10.955Z",
+      "type": "message_started",
+      "event_id": "web-mtou72t9-67230dd4-e5c4-40c3-a7d9-349f72f017be",
+      "stream_id": 987998,
+      "preview_text": "Reply exactly SLOT-DONE-B without tools."
+    },
+    {
+      "created_at": "2026-09-05T20:30:10.944Z",
+      "type": "message_finished",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987997,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-05T20:30:10.931Z",
+      "type": "assistant_message",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987996,
+      "preview_text": "SLOT-DONE-A"
+    },
+    {
+      "created_at": "2026-09-05T20:30:10.920Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987995,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T20:30:10.854Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987994,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-05T20:30:10.824Z",
+      "type": "thinking_started",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987993,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-05T20:30:10.163Z",
+      "type": "tool_execution_finished",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987992,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:30:06.117Z",
+      "type": "tool_execution_started",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987991,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:30:06.107Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987990,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-05T20:30:06.036Z",
+      "type": "tool_call",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987989,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:30:05.669Z",
+      "type": "tool_call",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987988,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-05T20:30:05.650Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987987,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-05T20:30:05.108Z",
+      "type": "execution_result",
+      "event_id": "47cda145-3446-46ca-9baf-b2218e2d4a2c",
+      "stream_id": 987986,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:30:04.909Z",
+      "type": "message_queued",
+      "event_id": "web-mtou72t9-67230dd4-e5c4-40c3-a7d9-349f72f017be",
+      "stream_id": 987985,
+      "preview_text": "Reply exactly SLOT-DONE-B without tools."
+    },
+    {
+      "created_at": "2026-09-05T20:30:04.902Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_b3fe8a1d-f24d-466f-a524-571632273f74",
+      "stream_id": 987984,
+      "preview_text": "Reply exactly SLOT-DONE-B without tools."
+    },
+    {
+      "created_at": "2026-09-05T20:30:04.729Z",
+      "type": "thinking_started",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987983,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-05T20:30:03.177Z",
+      "type": "message_started",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987982,
+      "preview_text": "Performance validation only. Run bash: sleep 4; printf SLOT-QUEUE-A. Then reply exactly SLOT-DONE-A. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-05T20:30:03.158Z",
+      "type": "message_queued",
+      "event_id": "web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc",
+      "stream_id": 987981,
+      "preview_text": "Performance validation only. Run bash: sleep 4; printf SLOT-QUEUE-A. Then reply exactly SLOT-DONE-A. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-05T20:30:03.148Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_44ab14e6-f657-463f-bc57-6a774ba8fa46",
+      "stream_id": 987980,
+      "preview_text": "Performance validation only. Run bash: sleep 4; printf SLOT-QUEUE-A. Then reply exactly SLOT-DONE-A. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-05T20:29:21.805Z",
+      "type": "execution_result",
+      "event_id": "7d70a753-a45a-4869-8806-34c6b806e10c",
+      "stream_id": 987979,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:28:53.269Z",
+      "type": "execution_result",
+      "event_id": "9d0fd3be-a8e9-405f-8030-856e2b6dacc8",
+      "stream_id": 987978,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:28:53.240Z",
+      "type": "execution_result",
+      "event_id": "5d641bb3-3794-43e5-91d2-d3f35024ef02",
+      "stream_id": 987977,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:28:53.215Z",
+      "type": "execution_result",
+      "event_id": "6b91e6a0-8237-437f-b10a-97322b4ded2d",
+      "stream_id": 987976,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:28:53.187Z",
+      "type": "execution_result",
+      "event_id": "3b8df73e-668a-46d5-9d19-6f1510f968ce",
+      "stream_id": 987975,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:28:53.128Z",
+      "type": "execution_result",
+      "event_id": "45f589ab-c88e-48b9-b39c-2767da06bccf",
+      "stream_id": 987974,
+      "preview_text": "status"
+    },
+    {
+      "created_at": "2026-09-05T20:28:53.064Z",
+      "type": "execution_result",
+      "event_id": "6d0d2066-f0f8-4204-a80c-c29c3b6c36d3",
+      "stream_id": 987973,
+      "preview_text": "status"
+    }
+  ],
+  "limited": false,
+  "nextCommands": [
+    "pibo debug events ps_5d168a03-61f8-4322-a1ba-3c3aef662691 show 988002",
+    "pibo debug messages ps_5d168a03-61f8-4322-a1ba-3c3aef662691 show stream:988000 --full",
+    "pibo debug messages ps_5d168a03-61f8-4322-a1ba-3c3aef662691 list"
+  ]
+}

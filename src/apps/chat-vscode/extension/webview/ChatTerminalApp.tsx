@@ -5,7 +5,7 @@ import { getBootstrap, postAction, postMessage, postSession, patchSession, delet
 import { commandActionParams, normalizeDownloadCommandPath } from "../../../chat-ui/src/app-command-actions";
 import { downloadChatFile } from "../../../chat-ui/src/api-chat-files";
 import { createClientTxnId, resolveSessionActiveModelLabel } from "../../../chat-ui/src/app-session-model";
-import { listChatSessionViews, getChatSessionView } from "../../../chat-ui/src/session-views/registry";
+import { getChatSessionView } from "../../../chat-ui/src/session-views/registry";
 import { DEFAULT_CHAT_SESSION_VIEW_ID, type ToolDisplayMode } from "../../../chat-ui/src/session-views/types";
 import { readStoredToolDisplayMode, writeStoredToolDisplayMode } from "../../../chat-ui/src/app-storage";
 import { SessionTracePane } from "../../../chat-ui/src/session-trace-pane";
@@ -58,6 +58,7 @@ export function ChatTerminalApp() {
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [error, setError] = useState<string | null>(null);
 	const [showThinking, setShowThinking] = useState(false);
+	const [debugMode, setDebugMode] = useState(false);
 	const [toolDisplayMode, setToolDisplayMode] = useState<ToolDisplayMode>(readStoredToolDisplayMode);
 
 	const sessionNodes = useMemo<readonly PiboWebSessionNode[]>(() => {
@@ -262,7 +263,6 @@ export function ChatTerminalApp() {
 		return true;
 	}, [slashCommands, selectedPiboSessionId, roomId, refreshBootstrap]);
 
-	const sessionViews = useMemo(() => listChatSessionViews(), []);
 	const currentSessionView = useMemo(() => getChatSessionView(DEFAULT_CHAT_SESSION_VIEW_ID), []);
 
 	if (!bootstrap) {
@@ -339,9 +339,7 @@ export function ChatTerminalApp() {
 					}
 					selectedSessionStatus={selectedSessionNode?.status}
 					sessionViewId={DEFAULT_CHAT_SESSION_VIEW_ID}
-					sessionViews={sessionViews}
 					currentSessionView={currentSessionView}
-					allowedSessionViewIds={["terminal"]}
 					creatingSession={false}
 					showRawEvents={false}
 					showThinking={showThinking}
@@ -352,7 +350,8 @@ export function ChatTerminalApp() {
 					composerText={composerText}
 					composerFocusSignal={composerFocusSignal}
 					onComposerTextChange={setComposerText}
-					onToggleRawEvents={() => undefined}
+					debugMode={debugMode}
+					onToggleDebugMode={() => setDebugMode((current) => !current)}
 					onToggleThinking={() => setShowThinking((v) => !v)}
 					onToggleExpandThinking={() => undefined}
 					onToolDisplayModeChange={(mode) => {
@@ -362,7 +361,6 @@ export function ChatTerminalApp() {
 					onSessionAgentProfileChange={() => undefined}
 					onFork={() => undefined}
 					onOpenSession={(id) => setSelectedPiboSessionId(id)}
-					onSelectSessionView={() => undefined}
 					onCommand={runCommand}
 					onThinkingLevelChange={(level) => void runCommand(`/thinking ${level}`)}
 					onRefreshTrace={refreshTrace}

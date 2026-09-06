@@ -1,0 +1,365 @@
+{
+  "piboSessionId": "ps_dd42a330-f05c-4ac7-8744-0cb7d5377767",
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "nativeSessionId": "c1cd3fa0-fd79-43d0-9482-be21dd67a5bc",
+  "runtimeBindingState": "bound",
+  "events": [
+    {
+      "created_at": "2026-09-06T05:35:33.144Z",
+      "type": "message_finished",
+      "event_id": "web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4",
+      "stream_id": 988046,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T05:35:33.126Z",
+      "type": "assistant_message",
+      "event_id": "web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4",
+      "stream_id": 988045,
+      "preview_text": "1. **Mug** wakes me every morning. It smells of coffee and calm. 2. **Clock** hangs above the sink. It reminds me not to be late. 3. **Door** opens with a soft click. It separates home from the street. 4. **Window** frames the morning sky. Light spills across the floor. 5. **Shoe** waits by the mat. It has dust from yesterday. 6. **Phone** glows beside the bed. It blinks with one new message. 7. **Key** hangs on a bright ring. It opens the front lock. 8. **Backpack** carries lunch and papers. It feels heavy"
+    },
+    {
+      "created_at": "2026-09-06T05:35:33.112Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4",
+      "stream_id": 988044,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T05:35:30.121Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4",
+      "stream_id": 988043,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-06T05:35:13.269Z",
+      "type": "thinking_started",
+      "event_id": "web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4",
+      "stream_id": 988042,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T05:35:12.232Z",
+      "type": "message_started",
+      "event_id": "web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4",
+      "stream_id": 988041,
+      "preview_text": "Write 240 numbered paragraphs about everyday objects. Each paragraph has two short sentences and a bold noun. Use no tools. End with ROOM_EDIT_LIVE_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T05:35:12.220Z",
+      "type": "message_queued",
+      "event_id": "web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4",
+      "stream_id": 988040,
+      "preview_text": "Write 240 numbered paragraphs about everyday objects. Each paragraph has two short sentences and a bold noun. Use no tools. End with ROOM_EDIT_LIVE_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T05:35:12.209Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_9e91c0f4-6077-44bd-89e3-a0bc13ec603b",
+      "stream_id": 988039,
+      "preview_text": "Write 240 numbered paragraphs about everyday objects. Each paragraph has two short sentences and a bold noun. Use no tools. End with ROOM_EDIT_LIVE_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T05:31:46.891Z",
+      "type": "message_finished",
+      "event_id": "web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68",
+      "stream_id": 988038,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T05:31:46.875Z",
+      "type": "assistant_message",
+      "event_id": "web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68",
+      "stream_id": 988037,
+      "preview_text": "1. **Mug** warms my hands during the first sip of morning coffee. 2. **Phone** buzzes with a gentle reminder before sunrise. 3. **Door** opens with a soft scrape into the hallway. 4. **Clock** ticks loudly in the quiet kitchen. 5. **Window** lets in the first pale light of dawn. 6. **Shoe** waits by the mat for the commute. 7. **Backpack** carries lunch, keys, and spare batteries. 8. **Key** turns smoothly in the front lock. 9. **Spoon** stirs cereal into a warm bowl. 10. **Notebook** stores quick notes bes"
+    },
+    {
+      "created_at": "2026-09-06T05:31:46.866Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68",
+      "stream_id": 988036,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T05:31:46.243Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68",
+      "stream_id": 988035,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-06T05:31:42.318Z",
+      "type": "thinking_started",
+      "event_id": "web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68",
+      "stream_id": 988034,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T05:31:41.298Z",
+      "type": "message_started",
+      "event_id": "web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68",
+      "stream_id": 988033,
+      "preview_text": "Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph is one short sentence with a bold noun. Use no tools. End with ROOM_EDIT_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T05:31:41.288Z",
+      "type": "message_queued",
+      "event_id": "web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68",
+      "stream_id": 988032,
+      "preview_text": "Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph is one short sentence with a bold noun. Use no tools. End with ROOM_EDIT_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T05:31:41.281Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_a7407acf-a3b4-4bd9-a19a-245b6f1683e5",
+      "stream_id": 988031,
+      "preview_text": "Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph is one short sentence with a bold noun. Use no tools. End with ROOM_EDIT_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T05:29:30.346Z",
+      "type": "message_finished",
+      "event_id": "web-mtpdgbgt-ef1f8158-642c-4fe6-8f10-8a7a1197c6b2",
+      "stream_id": 988030,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T05:29:30.335Z",
+      "type": "assistant_message",
+      "event_id": "web-mtpdgbgt-ef1f8158-642c-4fe6-8f10-8a7a1197c6b2",
+      "stream_id": 988029,
+      "preview_text": "ROOM_EDIT_QUEUE_COMPLETE"
+    },
+    {
+      "created_at": "2026-09-06T05:29:30.324Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpdgbgt-ef1f8158-642c-4fe6-8f10-8a7a1197c6b2",
+      "stream_id": 988028,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T05:29:29.271Z",
+      "type": "message_started",
+      "event_id": "web-mtpdgbgt-ef1f8158-642c-4fe6-8f10-8a7a1197c6b2",
+      "stream_id": 988027,
+      "preview_text": "Reply exactly ROOM_EDIT_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T05:29:29.262Z",
+      "type": "message_finished",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988026,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T05:29:29.253Z",
+      "type": "assistant_message",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988025,
+      "preview_text": "ROOM_EDIT_TURN_COMPLETE"
+    },
+    {
+      "created_at": "2026-09-06T05:29:29.247Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988024,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T05:29:28.466Z",
+      "type": "tool_execution_finished",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988023,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-06T05:29:08.720Z",
+      "type": "message_queued",
+      "event_id": "web-mtpdgbgt-ef1f8158-642c-4fe6-8f10-8a7a1197c6b2",
+      "stream_id": 988022,
+      "preview_text": "Reply exactly ROOM_EDIT_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T05:29:08.712Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_7ea195a1-1042-41e7-86f5-607a972051bf",
+      "stream_id": 988021,
+      "preview_text": "Reply exactly ROOM_EDIT_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T05:29:08.422Z",
+      "type": "tool_execution_started",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988020,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-06T05:29:08.412Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988019,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T05:29:08.394Z",
+      "type": "tool_call",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988018,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-06T05:29:08.361Z",
+      "type": "tool_call",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988017,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-06T05:29:08.348Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988016,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-06T05:29:08.264Z",
+      "type": "thinking_started",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988015,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T05:29:06.960Z",
+      "type": "message_started",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988014,
+      "preview_text": "Run bash with exactly: sleep 20; echo ROOM_EDIT_TOOL_COMPLETE. Then reply ROOM_EDIT_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T05:29:06.946Z",
+      "type": "message_queued",
+      "event_id": "web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7",
+      "stream_id": 988013,
+      "preview_text": "Run bash with exactly: sleep 20; echo ROOM_EDIT_TOOL_COMPLETE. Then reply ROOM_EDIT_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T05:29:06.935Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_206dcc22-04b6-4499-841a-c2bb20a908ec",
+      "stream_id": 988012,
+      "preview_text": "Run bash with exactly: sleep 20; echo ROOM_EDIT_TOOL_COMPLETE. Then reply ROOM_EDIT_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T05:16:43.420Z",
+      "type": "message_finished",
+      "event_id": "web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31",
+      "stream_id": 987980,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T05:16:43.403Z",
+      "type": "assistant_message",
+      "event_id": "web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31",
+      "stream_id": 987979,
+      "preview_text": "ROOM_EDIT_TARGET_ps_dd42a330-f05c-4ac7-8744-0cb7d5377767"
+    },
+    {
+      "created_at": "2026-09-06T05:16:43.387Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31",
+      "stream_id": 987978,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T05:16:43.288Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31",
+      "stream_id": 987977,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-06T05:16:43.147Z",
+      "type": "thinking_started",
+      "event_id": "web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31",
+      "stream_id": 987976,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T05:16:41.931Z",
+      "type": "message_started",
+      "event_id": "web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31",
+      "stream_id": 987975,
+      "preview_text": "Reply exactly ROOM_EDIT_TARGET_ps_dd42a330-f05c-4ac7-8744-0cb7d5377767. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T05:16:41.913Z",
+      "type": "message_queued",
+      "event_id": "web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31",
+      "stream_id": 987974,
+      "preview_text": "Reply exactly ROOM_EDIT_TARGET_ps_dd42a330-f05c-4ac7-8744-0cb7d5377767. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T05:16:41.898Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_96d72f47-0c68-48ef-a412-8b36b49e7141",
+      "stream_id": 987973,
+      "preview_text": "Reply exactly ROOM_EDIT_TARGET_ps_dd42a330-f05c-4ac7-8744-0cb7d5377767. Use no tools."
+    }
+  ],
+  "limited": false,
+  "nextCommands": [
+    "pibo debug events ps_dd42a330-f05c-4ac7-8744-0cb7d5377767 show 988046",
+    "pibo debug messages ps_dd42a330-f05c-4ac7-8744-0cb7d5377767 show stream:988045 --full",
+    "pibo debug messages ps_dd42a330-f05c-4ac7-8744-0cb7d5377767 list"
+  ]
+}
+piboSessionId: ps_dd42a330-f05c-4ac7-8744-0cb7d5377767
+piSessionId: c1cd3fa0-fd79-43d0-9482-be21dd67a5bc
+runtimeInstanceId: pi
+runtimeAdapterId: pi
+nativeSessionId: c1cd3fa0-fd79-43d0-9482-be21dd67a5bc
+runtimeBindingState: bound
+historySource: product
+title: Untitled Session
+status: done
+statusSource: event-log
+nodeErrors: 0
+
+status	type	title	id	runId	linkedPiboSessionId
+done	user.message	User Message	event:message_queued:web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31
+done	agent.turn	Agent Turn	event:message:web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31
+done	assistant.message	  Agent Message	event:assistant:web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31:assistant:0
+done	user.message	User Message	event:message_queued:web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7
+done	agent.turn	Agent Turn	event:message:web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7
+done	tool.call	  bash	tool-invocation:%5B%22call_DcidvI0mkc6POyINtoX5T2ba%7Cfc_08bb337e19b4c2f5016a9cfa24558487d286989d537076d2ac%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7%5C%22%2C0%5D%22%5D
+done	assistant.message	  Agent Message	event:assistant:web-mtpdga55-ff4590aa-bdb1-4638-859c-c2ce47b9ffb7:assistant:0
+done	user.message	User Message	event:message_queued:web-mtpdgbgt-ef1f8158-642c-4fe6-8f10-8a7a1197c6b2
+done	agent.turn	Agent Turn	event:message:web-mtpdgbgt-ef1f8158-642c-4fe6-8f10-8a7a1197c6b2
+done	assistant.message	  Agent Message	event:assistant:web-mtpdgbgt-ef1f8158-642c-4fe6-8f10-8a7a1197c6b2:assistant:0
+done	user.message	User Message	event:message_queued:web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68
+done	agent.turn	Agent Turn	event:message:web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68
+done	assistant.message	  Agent Message	event:assistant:web-mtpdjl80-601ee6f5-42eb-495f-8d84-31d0183bac68:assistant:0
+done	user.message	User Message	event:message_queued:web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4
+done	agent.turn	Agent Turn	event:message:web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4
+done	assistant.message	  Agent Message	event:assistant:web-mtpdo3zh-7f3485e2-f21e-4aae-80e6-1dc18d4078e4:assistant:0
+nodes: 16
+
+checks: ok
+issues: 0
+
+Next:
+  pibo debug trace ps_dd42a330-f05c-4ac7-8744-0cb7d5377767 show event:message_queued:web-mtpd0b9e-7a453775-ed4b-4684-b343-0cf5d4e53b31
+  pibo debug messages ps_dd42a330-f05c-4ac7-8744-0cb7d5377767 list
+Production gateway status
+  reachable: yes
+  mode: prod
+  runtime sessions: 5
+    ps_dd42a330-f05c-4ac7-8744-0cb7d5377767: processing=false streaming=false queued=0
+    ps_35faab2c-9afe-4390-91ed-9cb9eff08e2a: processing=false streaming=false queued=0
+    ps_10a71024-bc9e-4f36-aee5-e8bdd2a51792: processing=false streaming=false queued=0
+    ps_b4716665-b63c-40d8-86c4-0c5b6d4c0a81: processing=false streaming=false queued=0
+    ps_dcbc8438-b362-4b73-b4cc-d84cf84fbb95: processing=false streaming=false queued=0
+  active yielded runs: 0
+  restart safety: idle
+c486c0f90709f4bc3061f7386cbf02e49c88c690adf490aa99b664a130c12d2c  /root/.pi/agent/sessions/--root-code-pibo--/2026-08-03T20-12-56-900Z_1ee34b5c-4abe-4dbd-b62a-74910f592314.jsonl

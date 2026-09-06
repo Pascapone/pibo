@@ -140,6 +140,24 @@ async function runBootstrapMutationScenario() {
 		const replacedRoom = replaceRoomInBootstrap(withRoom, "room-temp", createdRoom);
 		assert.equal(replacedRoom.selectedRoomId, "room-created");
 		assert.equal(replacedRoom.room.id, "room-created");
+		// Navigation may have removed the temporary row, or already fetched the
+		// real Room. Settlement must retain it once without changing selection.
+		const missingTemporary = replaceRoomInBootstrap(base, "room-temp", createdRoom);
+		assert.equal(missingTemporary.rooms.filter(room => room.id === createdRoom.id).length, 1);
+		assert.equal(missingTemporary.selectedRoomId, base.selectedRoomId);
+		assert.equal(missingTemporary.selectedPiboSessionId, base.selectedPiboSessionId);
+		const newerCreatedRoom = { ...createdRoom, name: "Renamed while POST waited" };
+		const alreadyFetched = { ...base, rooms: [optimisticRoom, newerCreatedRoom, ...base.rooms] };
+		const deduplicated = replaceRoomInBootstrap(alreadyFetched, "room-temp", createdRoom);
+		assert.equal(deduplicated.rooms.filter(room => room.id === createdRoom.id).length, 1);
+		assert.equal(deduplicated.rooms.some(room => room.id === "room-temp"), false);
+		assert.equal(deduplicated.rooms.find(room => room.id === createdRoom.id).name, newerCreatedRoom.name);
+		assert.equal(deduplicated.selectedRoomId, base.selectedRoomId);
+		assert.equal(deduplicated.sessions, base.sessions);
+		const onlyRollback = removeRoomsFromBootstrap(alreadyFetched, new Set(["room-temp"]));
+		assert.equal(onlyRollback.rooms.find(room => room.id === createdRoom.id), newerCreatedRoom);
+		assert.equal(onlyRollback.selectedPiboSessionId, base.selectedPiboSessionId);
+		assert.equal(onlyRollback.sessions, base.sessions);
 		const renamedRoom = updateRoomInBootstrap(replacedRoom, "room-created", (current) => ({ ...current, name: "Renamed Room" }));
 		assert.equal(renamedRoom.room.name, "Renamed Room");
 		const archivedRoom = roomWithArchivedState(createdRoom, true);
