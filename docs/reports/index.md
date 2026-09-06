@@ -78,6 +78,7 @@
 * [Sidebar browser tabs: upstream integration validation](sidebar-browser-tabs-upstream-integration-2026-08-31.md) - Records upstream rebasing, regression coverage, and headful browser validation for the desktop browser&#45;tab workspace&#46;
 * [Signal status reconciliation validation](signal-status-reconcile-load-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Signals Reliability Fix Validation](signals-reliability-fix-validation-2026-05-19.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Terminal initial visibility latency validation — September 5, 2026](terminal-initial-visibility-validation-2026-09-05.md) - Records exact&#45;candidate headful evidence for removing redundant Terminal initialization settlement and a separate viewport&#45;resize defect&#46;
 * [Terminal working animation restoration validation](terminal-working-animation-restoration-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Terminal working indicator validation](terminal-working-indicator-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Unread count index validation — 2026&#45;08&#45;07](unread-count-index-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;

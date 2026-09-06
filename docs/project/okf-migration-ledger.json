@@ -13638,6 +13638,18 @@
       "file_sha256": "77cba43bae901c31af0e132d4d107fc564c02932bb078831f93dff6ce07dbf42",
       "body_sha256": "b2a37c35ae26171de04553aa367712a50d31c49ba4c988347bddce4b92c71c0d",
       "lineage": null
+    },
+    {
+      "path": "docs/reports/terminal-initial-visibility-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 10398,
+      "file_sha256": "75650eb22a5adf36d6cc8e870148d8e348650241d093f90d76e16a419e1e2ce9",
+      "body_sha256": "689aaf29b5d24590f53648ef5984e9178b8107a19913ae348cabe0edf510f939",
+      "lineage": null
     }
   ]
 }
