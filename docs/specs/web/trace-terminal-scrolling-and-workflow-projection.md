@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-06T06:50:16Z"
+  at: "2026-09-06T11:45:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,7 +23,7 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "50ae78c633274ba569a40d7699bcf6672b58e898"
+  commit: "ef2147b50a7e6fdfe24e19d2ff2ab2dc3aeb5f26"
   requirements:
     - id: "WEB-TRACE-VIEWPORT-009"
       status: "implemented"
@@ -79,6 +79,10 @@ traceability:
       sources:
         - path: "src/shared/tool-call-metrics.ts"
           symbol: "ToolCallMetricsCollector"
+        - path: "src/shared/tool-call-token-settings.ts"
+          symbol: "sanitizeToolMetricTokenCalculation"
+        - path: "src/core/user-settings.ts"
+          symbol: "PiboUserSettings"
         - path: "src/agent-runtime/routed-session.ts"
           symbol: "RuntimeRoutedSession"
         - path: "src/data/ingest-service.ts"
@@ -87,6 +91,10 @@ traceability:
           symbol: "SessionTraceHeader"
         - path: "src/apps/chat-ui/src/session-views/compact-terminal/TerminalToolMetrics.tsx"
           symbol: "TerminalToolMetrics"
+        - path: "src/apps/chat-ui/src/tool-metric-settings.ts"
+          symbol: "readStoredToolMetricThresholds"
+        - path: "src/apps/chat-ui/src/settings/DebugSettingsView.tsx"
+          symbol: "DebugSettingsView"
       tests:
         - path: "test/tool-call-metrics.test.mjs"
           name: "durable ingestion retains metrics outside large payloads through restart and timeline compaction"
@@ -94,8 +102,16 @@ traceability:
           name: "metrics survive persistence serialization, live frames, patches and all display modes"
         - path: "test/chat-ui-session-view-toggle-accessibility.test.mjs"
           name: "topbar exposes Debug without duplicate view navigation or Raw Events"
-      public: ["SessionTraceHeader", "CompactTerminalSessionView", "PiboToolExecutionFinishedEvent.toolMetrics"]
-      failures: ["Missing or unmeasurable payload metrics remain unavailable; estimates are never presented as provider usage or billing."]
+        - path: "test/tool-call-metrics.test.mjs"
+          name: "status strip renders estimated tokens, zero, missing values and subsecond duration"
+        - path: "test/tool-call-metrics.test.mjs"
+          name: "character and Tiktoken calculations are selectable, lazy, bounded and honest about unavailable payloads"
+        - path: "test/chat-ui-debug-settings.test.mjs"
+          name: "Debug settings persist validated thresholds and expose the Debug route"
+        - path: "test/base-prompt-web.test.mjs"
+          name: "chat user-settings API validates same-origin mutations and persists sanitized values"
+      public: ["SessionTraceHeader", "CompactTerminalSessionView", "/settings/debug", "pibo.chat.toolMetricThresholds", "PiboUserSettings.toolMetrics.tokenCalculation", "PiboToolExecutionFinishedEvent.toolMetrics"]
+      failures: ["Missing, media, cyclic, over-budget, or oversized Tiktoken payload metrics remain unavailable; calculations are never presented as provider usage or billing; Debug and threshold preferences are browser-local, calculation preferences persist in app user settings, and invalid values fall back to defaults."]
       confidence: "high"
     - id: "WEB-TRACE-PROJECTION-001"
       status: "implemented"
@@ -332,15 +348,27 @@ The [viewport and wheel validation report](/reports/terminal-viewport-and-wheel-
 
 Debug MUST default off and expose a stable accessible toggle name and pressed state beside Thinking on desktop and mobile. Chat Web persists the preference locally and ignores the former Raw Events topbar preference. Debug MUST NOT open the Raw Events inspector or initiate raw-event/payload fetches.
 
-When enabled, Terminal MUST show a compact monospaced status line below each tool invocation: execution time, estimated argument tokens, and estimated result tokens. Output is visually emphasized. The line is independent of expanded details and works in Default and Slim. Intent uses the same metadata when the existing capability gate permits an intent row; this change does not enable unsupported Intent mode. Hide continues to hide tool rows. Debug ungroups exploration/image tools so each invocation retains its own metrics. Disabling Debug restores normal grouping and removes the status lines.
+When enabled, Terminal MUST show a compact monospaced status line below each tool invocation: execution time, argument payload tokens, result payload tokens, and the calculation basis used for that invocation. Output is visually emphasized. The calculation segment displays `chars ÷ <factor>`, `tiktoken · <encoding>`, or `—`. The line is independent of expanded details and works in Default and Slim. Intent uses the same metadata when the existing capability gate permits an intent row; this change does not enable unsupported Intent mode. Hide continues to hide tool rows. Debug ungroups exploration/image tools so each invocation retains its own metrics. Disabling Debug restores normal grouping and removes the status lines.
 
-The runtime collector measures start-to-finish elapsed time with a monotonic clock, keeping only start time and estimated input count for active calls. It measures output once on completion, including failed calls, then releases the entry; turn cleanup clears abandoned entries. Finished-event metadata persists separately from large payloads and survives live frames, stored-history replay, timeline compaction, and row projection.
+The runtime collector measures start-to-finish elapsed time with a monotonic clock. At Tool start it captures the active calculation configuration and stores only that configuration, start time, and input count for the active call. It uses the same captured configuration for the result even if settings change while the Tool runs. It measures output once on completion, including failed calls, then releases the entry; turn cleanup clears abandoned entries. Finished-event metadata persists the method-specific basis separately from large payloads and survives live frames, stored-history replay, timeline compaction, and row projection. Legacy `chars/4` metrics remain readable as character-factor metrics.
 
-Token values MUST carry `≈`: they estimate tool payload size at four characters per token, not model-response usage, billable tokens, or tool-internal model usage. Result-envelope metadata is excluded when a harness supplies `content`. No tokenizer, extra provider request, text scan, or serialized copy is introduced. Structural traversal has a 10,000-visit budget and a depth limit of 64; large strings use their length. Missing starts, legacy calls, media, cyclic or over-budget payloads use `—` for unavailable values rather than zero. The browser formats already-recorded numbers; it does not measure or tokenize payloads while rendering or scrolling.
+Character mode uses the existing bounded structural traversal and divides its character count by a validated factor from 1 through 1,000, default `4`. Character-derived values MUST carry `≈` because they estimate tokens from JavaScript UTF-16 string lengths and lightweight structural overhead. Structural traversal has a 10,000-visit budget and a depth limit of 64; large strings use their length without scanning or copying them.
 
-The status line follows the [Compact Terminal design](/project/design/compact-terminal.md): quiet hairline separation, square geometry, 11px monospaced/tabular metadata, no cards, shadows, polling, or per-row timers. It wraps at narrow widths. Debug in the embedded VS Code Terminal is session-local.
+Tiktoken mode supports `o200k_base`, `cl100k_base`, `p50k_base`, `r50k_base`, `p50k_edit`, and `gpt2`. It lazily loads Tiktoken and its WASM tokenizer only after selection, serializes a measurable payload, and calls the selected encoding once at Tool start and once at Tool finish. Tiktoken mode rejects payloads above 4,000,000 measured or serialized characters before encoding; its counts do not carry `≈`, but they still describe the isolated serialized Tool payload rather than the provider's full request. Switching encodings frees the cached tokenizer before loading the next one.
+
+Both modes exclude result-envelope metadata when a harness supplies `content`. Neither performs an extra provider request nor attributes model-response usage, billable tokens, or Tool-internal model usage. Missing starts, metrics without basis metadata, media, cyclic, over-depth, over-budget, or oversized Tiktoken payloads use `—` for unavailable values rather than zero. The browser formats already-recorded numbers and basis metadata; it does not measure or tokenize payloads while rendering or scrolling.
+
+The status line follows the [Compact Terminal design](/project/design/compact-terminal.md): square geometry, 9px black-weight labels, 11px bold tabular values, no cards, shadows, polling, animation, or per-row timers. It wraps whole metric segments at narrow widths instead of truncating values or basis labels. Debug in the embedded VS Code Terminal is session-local.
+
+The Debug line is a high-contrast signal rail. Normal time uses neon violet, normal input uses electric cyan, normal output uses acid lime, and calculation basis uses cyan metadata so the four columns remain distinguishable from ordinary Terminal prose. Elevated values use neon yellow/amber, high values use fluorescent orange, critical values use hot pink, and unavailable values remain neutral gray. Color supplements the visible number, basis, and `—` state; it is not the sole information channel.
+
+`Settings > Debug` exposes the persisted Debug toggle and three strictly increasing visual thresholds for each metric. Defaults are 1/5/15 seconds for duration, 8k/20k/50k input tokens, and 2k/10k/50k output tokens. Threshold values are validated as positive numbers, stored in browser-local storage, and applied immediately to Terminal rendering. Restoring defaults does not change collected metrics.
+
+The same panel selects future Tool-call calculation independently: character count with a configurable factor or Tiktoken with a supported encoding. The calculation is sanitized and persisted in app user settings. Character mode is the default and keeps factor `4`; Tiktoken selection is explicit because its serialization, text scan, WASM tokenizer, CPU, and memory costs are higher. The panel states that both methods are payload diagnostics rather than provider usage or billing attribution.
 
 Verification for this addition: isolated build and all typechecks passed; 192 focused runtime/trace tests and a separate 296-test UI/metrics run passed (the selections overlap). Browser Use with headful Chromium and CDP passed Default/Slim at 1440×1000 and 390×844, toggle/reload/Hide checks, legacy/media placeholders, Raw Events workspace-tab access, keyboard Space activation, and absence of horizontal overflow or JavaScript exceptions. Enabling Debug caused no raw-event or payload fetch. The browser used deterministic persisted tool-event fixtures; a provider-backed Worker turn failed at authentication, so provider end-to-end and production deployment are not claimed.
+
+Verification for the selectable-calculation refinement: the full build and all package typechecks passed. The focused calculation/API/UI suite passed 11 tests, and the wider Chat UI, metrics, API, and routed-runtime selection passed 327 tests with 322 passed, 0 failed, and 5 skipped. Headful desktop checks saved and reloaded Tiktoken with `p50k_edit`; runtime collection then persisted `tiktoken/p50k_edit`. Headful/CDP checks at desktop and 390×844 rendered character factors, Tiktoken encodings, and legacy `—` bases without rail or document overflow or JavaScript exceptions. These deterministic fixtures and local runtime checks do not claim provider billing parity or production deployment.
 
 ### Requirement: WEB-TRACE-PROJECTION-001
 

@@ -1,5 +1,6 @@
 import { requestJson } from "./api-http";
 import type { ModelDefaults } from "./types";
+import type { ToolMetricTokenCalculation } from "../../../shared/tool-call-token-settings.js";
 
 export type BasePromptMode = "library" | "custom";
 export type BasePromptEffectiveMode = BasePromptMode | "legacy";
@@ -73,6 +74,9 @@ export type UserSettings = {
 	};
 	speech: {
 		providerId: string;
+	};
+	toolMetrics: {
+		tokenCalculation: ToolMetricTokenCalculation;
 	};
 	previewServers: {
 		maxRunningServers: number;

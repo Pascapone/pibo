@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	BookA,
+	Bug,
 	ChevronDown,
 	ChevronRight,
 	Edit3,
@@ -36,6 +37,8 @@ import {
 	shortcutFromKeyboardEvent,
 	writeStoredWebAnnotationToggleShortcut,
 } from "../web-annotation-storage";
+import type { ToolMetricThresholds } from "../tool-metric-settings";
+import { DebugSettingsView } from "./DebugSettingsView";
 import { ProviderSettingsView } from "./ProviderSettingsView";
 import type { SettingsPanel } from "./types";
 
@@ -45,6 +48,10 @@ export function SettingsView({
 	setShowThinking,
 	expandThinking,
 	setExpandThinking,
+	debugMode,
+	onDebugModeChange,
+	toolMetricThresholds,
+	onToolMetricThresholdsChange,
 	modelDefaults,
 	modelCatalog,
 	onModelDefaultsChanged,
@@ -62,6 +69,10 @@ export function SettingsView({
 	setShowThinking: (value: boolean) => void;
 	expandThinking: boolean;
 	setExpandThinking: (value: boolean) => void;
+	debugMode: boolean;
+	onDebugModeChange: (value: boolean) => void;
+	toolMetricThresholds: ToolMetricThresholds;
+	onToolMetricThresholdsChange: (value: ToolMetricThresholds) => void;
 	modelDefaults?: ModelDefaults;
 	modelCatalog?: ModelCatalog;
 	onModelDefaultsChanged: (value: ModelDefaults) => void;
@@ -94,6 +105,23 @@ export function SettingsView({
 					Skills
 				</h1>
 				<UserSkillsSettings skills={userSkills} onSkillChanged={onUserSkillChanged} onSkillRemoved={onUserSkillRemoved} />
+			</div>
+		);
+	}
+
+	if (activePanel === "debug") {
+		return (
+			<div className="overflow-auto p-6 max-[640px]:p-3">
+				<h1 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+					<Bug size={16} />
+					Debug
+				</h1>
+				<DebugSettingsView
+					debugMode={debugMode}
+					onDebugModeChange={onDebugModeChange}
+					thresholds={toolMetricThresholds}
+					onThresholdsChange={onToolMetricThresholdsChange}
+				/>
 			</div>
 		);
 	}

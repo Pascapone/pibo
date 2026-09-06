@@ -43,6 +43,7 @@ export function CompactTerminalSessionView({
 	terminalFullscreen,
 	showThinking,
 	debugMode = false,
+	toolMetricThresholds,
 	expandThinking,
 	toolDisplayMode,
 	sessionAgentProfile,
@@ -274,6 +275,7 @@ export function CompactTerminalSessionView({
 			<TerminalRow
 				row={row}
 				debugMode={debugMode}
+				toolMetricThresholds={toolMetricThresholds}
 				expanded={expandedRows.has(row.id)}
 				focused={focusedNavigationRowId === row.id}
 				piboSessionId={traceView?.piboSessionId ?? ""}
@@ -286,7 +288,7 @@ export function CompactTerminalSessionView({
 				signals={signals}
 			/>
 		</div>
-	), [debugMode, expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, signals, traceView?.piboSessionId]);
+	), [debugMode, expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, signals, toolMetricThresholds, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
 		Footer: isStreaming || showGoalIndicator
@@ -482,6 +484,7 @@ function SessionLinkButton({ children, onClick }: { children: ReactNode; onClick
 function TerminalRow({
 	row,
 	debugMode,
+	toolMetricThresholds,
 	expanded,
 	focused,
 	piboSessionId,
@@ -495,6 +498,7 @@ function TerminalRow({
 }: {
 	row: CompactTerminalRow;
 	debugMode: boolean;
+	toolMetricThresholds: ChatSessionViewProps["toolMetricThresholds"];
 	expanded: boolean;
 	focused: boolean;
 	piboSessionId: string;
@@ -553,7 +557,7 @@ function TerminalRow({
 					signals={signals}
 					onOpenSession={onOpenSession}
 				/>
-				{debugMode && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} /> : null}
+				{debugMode && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
 			</div>
 		);
 	}
@@ -595,7 +599,7 @@ function TerminalRow({
 				<TerminalRowActions row={row} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 			</div>
 			{expanded ? <TerminalDetails row={row} onOpenSession={onOpenSession} /> : null}
-			{debugMode && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} /> : null}
+			{debugMode && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
 		</div>
 	);
 }
