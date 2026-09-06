@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T20:24:05Z"
+  at: "2026-09-05T21:26:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,8 +23,29 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "ba92dedd5453908c01732494b64dbcc4c53b0f20"
+  commit: "bfb31e40143ea149cf77917d787adaf477539f51"
   requirements:
+    - id: "WEB-TRACE-PASSIVE-007"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/session-trace-pane.tsx"
+          symbol: "SessionTracePane"
+        - path: "src/apps/chat-ui/src/api-chat-sessions.ts"
+          symbol: "getSessionStatus"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "createChatWebApp"
+        - path: "src/core/session-router.ts"
+          symbol: "getSessionStatusSnapshot"
+      tests:
+        - path: "test/cold-fork-candidates.test.mjs"
+          name: "passive header status does not activate or retain idle runtimes"
+        - path: "test/chat-ui-terminal-header-usage.test.mjs"
+          name: "Terminal header status is passive and refreshes on session state transitions"
+        - path: "test/web-channel.test.mjs"
+          name: "chat web status refresh returns a snapshot without emitting a new execution result"
+      public: ["GET /api/chat/status?activate=false", "Terminal header usage", "Terminal fork affordances"]
+      failures: ["Inactive runtime usage remains unknown rather than synthesized; authentication and session access checks are unchanged."]
+      confidence: "high"
     - id: "WEB-TRACE-DEBUG-006"
       status: "implemented"
       sources:
@@ -229,7 +250,7 @@ Bounded trace projection, opt-in payload/raw detail, deterministic historical/li
 
 ## Scope
 
-This specification describes implemented behavior at traceability commit `ba92dedd5453908c01732494b64dbcc4c53b0f20`. Earlier Workflow evidence remains scoped to its recorded integration baseline.
+This specification describes implemented behavior at traceability commit `bfb31e40143ea149cf77917d787adaf477539f51`. Earlier Workflow evidence remains scoped to its recorded integration baseline.
 
 ### In scope
 
@@ -379,6 +400,14 @@ Integrated source, focused tests, and scoped headful acceptance verify pending a
 - Compatibility boundary: Kernel remains durable truth; registry additions are read-only Web compatibility extensions.
 - Confidence: **high**
 - Verification follow-up: Headfully inspect waiting, retry, failed, malformed, and human-action states.
+
+### Requirement: WEB-TRACE-PASSIVE-007
+
+Terminal background usage reads SHALL request passive status. `GET /api/chat/status?activate=false` SHALL retain authentication and session access checks, but SHALL neither activate an absent runtime nor extend an idle runtime's eviction timer. When no runtime is present, it SHALL return `{ piboSessionId, runtimeActive: false }`; usage values SHALL remain unavailable. A present runtime SHALL supply its live snapshot. Explicit status requests without this option, including `/status`, SHALL retain their activation behavior.
+
+The header query SHALL refresh on selected Session status transitions as well as its normal polling cadence. The Terminal SHALL defer fork-candidate requests until the loaded trace contains user messages, so opening an empty Session does not start a runtime merely to discover that no fork is available. Persisted fork inspection belongs to [the adapter contract](/specs/runtime/adapter-contract.md).
+
+[Docker tests and headful Pibo2 validation](/reports/idle-session-history-latency-validation-2026-09-05.md) cover passive navigation, exact candidate parity, and real queued turns. This evidence does not claim that all streaming or optimistic-update problems are resolved.
 
 ## Interfaces and ownership
 

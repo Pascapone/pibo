@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-05T10:32:00Z",
+  "generated_at": "2026-09-05T21:29:00Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -17,6 +17,18 @@
     "operational": "directive"
   },
   "records": [
+    {
+      "path": "docs/reports/idle-session-history-latency-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 10936,
+      "file_sha256": "53b87e4bcd179172c6e1a0aa97c33f271569d2ee8da58d3f9a828387f1e6a97b",
+      "body_sha256": "d0d91dfe339a98efa1cd4c70a5d72b85c62ac53b617d7ea3c426f3d38b9d0abb",
+      "lineage": null
+    },
     {
       "path": "docs/legacy/plans/remove-projects-and-make-workflows-session-native.md",
       "state": "conformant",

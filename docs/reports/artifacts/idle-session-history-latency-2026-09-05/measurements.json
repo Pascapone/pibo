@@ -1,0 +1,426 @@
+{
+  "recordedAt": "2026-09-05T21:27:59.361Z",
+  "sourceCommit": "bfb31e40143ea149cf77917d787adaf477539f51",
+  "baseCommit": "b3bda5ef",
+  "packageSha256": "19af74b35d496871e330f8ecefbdfd9124a77fc5dd69a1f95b4a6bad97f6c8e4",
+  "lease": {
+    "id": "lease_d5cd7267256f30593c",
+    "slotId": "slot-01",
+    "holder": "ps_1f203c85-5c7c-46b3-bb1e-0aedc730c3c7",
+    "seedMode": "full",
+    "artifactSha256": "de73277a3ac156b714320e7c326481d17a888826f27f8953503b517599cabaeb",
+    "artifactRuntimePath": "/opt/pibo-candidates/large-session-latency/bfb31e40/runtime",
+    "packageVersion": "1.7.2",
+    "commit": "bfb31e40",
+    "containerName": "pibo-pool-slot-01",
+    "publicUrl": "https://slot-01.pool.pibo2.neuralnexus.me/",
+    "status": "ready",
+    "createdAt": "2026-09-05T21:15:11.576Z",
+    "expiresAt": "2026-09-05T22:00:11.576Z"
+  },
+  "history": {
+    "piboSessionId": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1",
+    "eventCount": 16005,
+    "nativeBytes": 21023113,
+    "nativeSha256": "c486c0f90709f4bc3061f7386cbf02e49c88c690adf490aa99b664a130c12d2c",
+    "baselineRevision": "b601b6e0",
+    "baselineColdForkMs": 4398.7,
+    "baselineWarm": [
+      {
+        "ms": 49.40000009536743,
+        "status": 200,
+        "count": 78,
+        "bytes": 602419,
+        "hash": "cc432307a4a7fb373d087922e091a5630f7446379d2fedee219c5f9bc611c52c"
+      },
+      {
+        "ms": 38.80000019073486,
+        "status": 200,
+        "count": 78,
+        "bytes": 602419,
+        "hash": "cc432307a4a7fb373d087922e091a5630f7446379d2fedee219c5f9bc611c52c"
+      },
+      {
+        "ms": 37.799999713897705,
+        "status": 200,
+        "count": 78,
+        "bytes": 602419,
+        "hash": "cc432307a4a7fb373d087922e091a5630f7446379d2fedee219c5f9bc611c52c"
+      }
+    ],
+    "candidateCold": {
+      "status": 200,
+      "count": 78,
+      "bytes": 602419,
+      "hash": "cc432307a4a7fb373d087922e091a5630f7446379d2fedee219c5f9bc611c52c",
+      "resources": [
+        {
+          "path": "/api/chat/bootstrap",
+          "ms": 932.9000000953674,
+          "bytes": 588038
+        },
+        {
+          "path": "/api/chat/bootstrap",
+          "ms": 877.6999998092651,
+          "bytes": 781041
+        },
+        {
+          "path": "/api/chat/signals/status-events",
+          "ms": 1040,
+          "bytes": 0
+        },
+        {
+          "path": "/api/chat/loops/session-goal",
+          "ms": 20.90000009536743,
+          "bytes": 13
+        },
+        {
+          "path": "/api/chat/status",
+          "ms": 33.19999980926514,
+          "bytes": 81
+        },
+        {
+          "path": "/api/chat/trace/timeline",
+          "ms": 639.0999999046326,
+          "bytes": 189251
+        },
+        {
+          "path": "/api/chat/sessions/ps_069cced9-7902-4b10-8bd6-279d7b98ece1/fork-candidates",
+          "ms": 307.2000002861023,
+          "bytes": 602419
+        }
+      ]
+    },
+    "candidateWarm": {
+      "samples": [
+        {
+          "ms": 35.200000286102295,
+          "status": 200,
+          "count": 78
+        },
+        {
+          "ms": 35.19999980926514,
+          "status": 200,
+          "count": 78
+        },
+        {
+          "ms": 35.80000019073486,
+          "status": 200,
+          "count": 78
+        },
+        {
+          "ms": 34.89999961853027,
+          "status": 200,
+          "count": 78
+        },
+        {
+          "ms": 33.80000019073486,
+          "status": 200,
+          "count": 78
+        }
+      ],
+      "passive": {
+        "piboSessionId": "ps_069cced9-7902-4b10-8bd6-279d7b98ece1",
+        "runtimeActive": false
+      }
+    },
+    "profile": {
+      "at": "2026-09-05T21:16:28.142Z",
+      "readyMs": 781.595905,
+      "page": {
+        "url": "https://slot-01.pool.pibo2.neuralnexus.me/apps/chat/rooms/room_209cf2ff-6b46-4705-a216-a6d2138604bd/sessions/ps_069cced9-7902-4b10-8bd6-279d7b98ece1?view=terminal",
+        "composer": true,
+        "rows": 29,
+        "dom": 2610,
+        "resources": [
+          {
+            "path": "/api/chat/bootstrap",
+            "query": "?piboSessionId=ps_069cced9-7902-4b10-8bd6-279d7b98ece1&roomId=room_209cf2ff-6b46-4705-a216-a6d2138604bd&markRead=true",
+            "ms": 164.40000009536743,
+            "wait": 157,
+            "bytes": 781041,
+            "serverTiming": [
+              {}
+            ]
+          },
+          {
+            "path": "/api/chat/signals/status-events",
+            "query": "",
+            "ms": 281.59999990463257,
+            "wait": 0,
+            "bytes": 0,
+            "serverTiming": []
+          },
+          {
+            "path": "/api/chat/loops/session-goal",
+            "query": "?piboSessionId=ps_069cced9-7902-4b10-8bd6-279d7b98ece1",
+            "ms": 39.30000019073486,
+            "wait": 34.90000009536743,
+            "bytes": 13,
+            "serverTiming": [
+              {}
+            ]
+          },
+          {
+            "path": "/api/chat/status",
+            "query": "?piboSessionId=ps_069cced9-7902-4b10-8bd6-279d7b98ece1&activate=false",
+            "ms": 72.59999990463257,
+            "wait": 67.2999997138977,
+            "bytes": 81,
+            "serverTiming": [
+              {}
+            ]
+          },
+          {
+            "path": "/api/chat/trace/timeline",
+            "query": "?piboSessionId=ps_069cced9-7902-4b10-8bd6-279d7b98ece1&limit=100",
+            "ms": 66.60000038146973,
+            "wait": 58.09999990463257,
+            "bytes": 189251,
+            "serverTiming": [
+              {},
+              {},
+              {},
+              {},
+              {}
+            ]
+          },
+          {
+            "path": "/api/chat/loops/session-goal",
+            "query": "?piboSessionId=ps_069cced9-7902-4b10-8bd6-279d7b98ece1",
+            "ms": 6.800000190734863,
+            "wait": 4.400000095367432,
+            "bytes": 13,
+            "serverTiming": [
+              {}
+            ]
+          }
+        ]
+      },
+      "profileDurationMs": 5756.071,
+      "topSamplesMs": [
+        [
+          "(idle)",
+          4472.9500000000135
+        ],
+        [
+          "(program)",
+          874.4070000000023
+        ],
+        [
+          "(anonymous)",
+          58.26599999999999
+        ],
+        [
+          "(garbage collector)",
+          46.208000000000006
+        ],
+        [
+          "xo",
+          22.429
+        ],
+        [
+          "HNe",
+          21.942000000000004
+        ],
+        [
+          "O2",
+          9.797
+        ],
+        [
+          "Ru",
+          7.161
+        ],
+        [
+          "Kc",
+          6.995
+        ],
+        [
+          "v$",
+          6.974
+        ],
+        [
+          "Ld",
+          6.182
+        ],
+        [
+          "Fu",
+          6.073
+        ],
+        [
+          "Ic",
+          6.037
+        ],
+        [
+          "e",
+          5.446
+        ],
+        [
+          "r",
+          5.397
+        ]
+      ]
+    },
+    "initialRuntimeStatus": "Production gateway status\n  reachable: yes\n  mode: prod\n  runtime sessions: 0\n  active yielded runs: 0\n  restart safety: idle\n"
+  },
+  "creation": {
+    "room": {
+      "id": "room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d",
+      "name": "Large Session Latency Acceptance bfb31e40",
+      "workspace": "/workspace",
+      "type": "chat",
+      "createdAt": "2026-09-05T21:17:10.424Z",
+      "updatedAt": "2026-09-05T21:17:10.424Z",
+      "metadata": {
+        "workspace": "/workspace"
+      }
+    },
+    "roomMs": 13.800000190734863,
+    "a": {
+      "id": "ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b",
+      "piSessionId": "cb33a90b-1dfa-4226-8e80-d44cb22b5add",
+      "runtimeBinding": {
+        "piboSessionId": "ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b",
+        "runtimeInstanceId": "pi",
+        "adapterId": "pi",
+        "nativeSessionId": "cb33a90b-1dfa-4226-8e80-d44cb22b5add",
+        "state": "unbound",
+        "protocol": "pi-sdk",
+        "metadata": {},
+        "revision": 1,
+        "createdAt": "2026-09-05T21:17:10.444Z",
+        "updatedAt": "2026-09-05T21:17:10.444Z"
+      },
+      "channel": "pibo.chat-web",
+      "kind": "chat",
+      "profile": "rt-pi-spark",
+      "workspace": "/workspace",
+      "title": "Untitled Session",
+      "metadata": {
+        "chatRoomId": "room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d",
+        "chatWebSidebarOrder": 1
+      },
+      "activeModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.3-codex-spark"
+      },
+      "createdAt": "2026-09-05T21:17:10.444Z",
+      "updatedAt": "2026-09-05T21:17:10.444Z"
+    },
+    "b": {
+      "id": "ps_16510943-6252-43e4-926f-b644506fa69c",
+      "piSessionId": "7734a06e-70a6-410f-b296-e7461ab2111d",
+      "runtimeBinding": {
+        "piboSessionId": "ps_16510943-6252-43e4-926f-b644506fa69c",
+        "runtimeInstanceId": "pi",
+        "adapterId": "pi",
+        "nativeSessionId": "7734a06e-70a6-410f-b296-e7461ab2111d",
+        "state": "unbound",
+        "protocol": "pi-sdk",
+        "metadata": {},
+        "revision": 1,
+        "createdAt": "2026-09-05T21:17:10.467Z",
+        "updatedAt": "2026-09-05T21:17:10.467Z"
+      },
+      "channel": "pibo.chat-web",
+      "kind": "chat",
+      "profile": "rt-pi-spark",
+      "workspace": "/workspace",
+      "title": "Untitled Session",
+      "metadata": {
+        "chatRoomId": "room_8caab97c-74e0-4ec9-8769-61f9f3e96d9d",
+        "chatWebSidebarOrder": 2
+      },
+      "activeModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.3-codex-spark"
+      },
+      "createdAt": "2026-09-05T21:17:10.467Z",
+      "updatedAt": "2026-09-05T21:17:10.467Z"
+    },
+    "sessionMs": [
+      22.09999990463257,
+      21.5
+    ]
+  },
+  "emptySession": {
+    "network": {
+      "composer": true,
+      "empty": false,
+      "resources": [
+        {
+          "path": "/api/chat/bootstrap",
+          "ms": 498.8999996185303,
+          "bytes": 561165
+        },
+        {
+          "path": "/api/chat/signals/status-events",
+          "ms": 562.1999998092651,
+          "bytes": 0
+        },
+        {
+          "path": "/api/chat/loops/session-goal",
+          "ms": 11.400000095367432,
+          "bytes": 13
+        },
+        {
+          "path": "/api/chat/status",
+          "ms": 23,
+          "bytes": 81
+        },
+        {
+          "path": "/api/chat/trace/timeline",
+          "ms": 260.7000002861023,
+          "bytes": 576
+        },
+        {
+          "path": "/api/chat/loops/session-goal",
+          "ms": 8.399999618530273,
+          "bytes": 13
+        },
+        {
+          "path": "/api/chat/loops/session-goal",
+          "ms": 8.299999713897705,
+          "bytes": 13
+        },
+        {
+          "path": "/api/chat/loops/session-goal",
+          "ms": 8.699999809265137,
+          "bytes": 13
+        }
+      ]
+    },
+    "runtimeStatus": "Production gateway status\n  reachable: yes\n  mode: prod\n  runtime sessions: 0\n  active yielded runs: 0\n  restart safety: idle\n"
+  },
+  "queue": {
+    "predecessorFinished": "2026-09-05T21:21:15.723Z",
+    "queuedStarted": "2026-09-05T21:21:15.734Z",
+    "drainGapMs": 11,
+    "reload": {
+      "composer": true,
+      "first": true,
+      "queued": true,
+      "errorBanner": false
+    },
+    "finalRuntimeStatusAndHistoryHash": "c486c0f90709f4bc3061f7386cbf02e49c88c690adf490aa99b664a130c12d2c  /root/.pi/agent/sessions/--root-code-pibo--/2026-08-03T20-12-56-900Z_1ee34b5c-4abe-4dbd-b62a-74910f592314.jsonl\nProduction gateway status\n  reachable: yes\n  mode: prod\n  runtime sessions: 1\n    ps_eb4a92b9-df92-434b-aabf-9ca9fff7732b: processing=false streaming=false queued=0\n  active yielded runs: 0\n  restart safety: idle\n"
+  },
+  "validation": {
+    "tests": [
+      "ℹ tests 228",
+      "ℹ pass 228",
+      "ℹ fail 0",
+      "ℹ cancelled 0",
+      "ℹ skipped 0",
+      "ℹ duration_ms 42478.892243"
+    ],
+    "typecheck": "\n> @pasko70/pibo@1.7.2 typecheck\n> npm run workflows:typecheck && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && npm run chat-ui:typecheck && npm run context-files-ui:typecheck && npm run vscode:typecheck\n\n\n> @pasko70/pibo@1.7.2 workflows:typecheck\n> npm run typecheck --workspace @pasko70/pibo-workflows\n\n\n> @pasko70/pibo-workflows@0.0.0 typecheck\n> tsc -p tsconfig.json --noEmit\n\n\n> @pasko70/pibo@1.7.2 chat-ui:typecheck\n> tsc -p src/apps/chat-ui/tsconfig.json --noEmit\n\n\n> @pasko70/pibo@1.7.2 context-files-ui:typecheck\n> tsc -p src/apps/context-files-ui/tsconfig.json --noEmit\n\n\n> @pasko70/pibo@1.7.2 vscode:typecheck\n> tsc -p src/apps/chat-vscode/extension/tsconfig.json --noEmit && tsc -p src/apps/chat-vscode/extension/webview/tsconfig.json --noEmit\n\n",
+    "fullRepositorySuite": false
+  },
+  "limits": [
+    "Small observational samples across different revisions and environments, not controlled causal timing estimates.",
+    "Switch probe measures route/sidebar/composer only, not correct Terminal trace readiness.",
+    "Queue text absent on immediate A re-selection is an investigation lead, not a proven defect.",
+    "Pool full seed omitted native transcript; final candidate was seeded with exactly one matching native file before navigation.",
+    "Yielded monitor stopped on PSI pressure; Docker validation process continued through successful chained build/typecheck/tests."
+  ]
+}

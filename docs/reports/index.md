@@ -21,6 +21,7 @@
 * [Failed message signal reconciliation validation — 2026&#45;08&#45;07](failed-message-signal-status-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Full Test Suite Hermeticity Triage — 2026&#45;08&#45;10](full-test-hermeticity-triage-2026-08-10.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Graphlib&#45;Analyse für Pibo Workflow System V1](2026-05-10-workflow-research-graphlib.md) - Preserves the original report body as stable research without promoting historical claims&#46;
+* [Idle Session history latency validation — 2026&#45;09&#45;05](idle-session-history-latency-validation-2026-09-05.md) - Records runtime&#45;free history inspection, passive Terminal status, bounded fork caching, and Docker plus headful Pibo2 performance evidence&#46;
 * [Immediate top trace pagination validation — 2026&#45;08&#45;07](immediate-top-trace-pagination-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Incident 2026&#45;05&#45;16: Chat Web session stuck in partial tool call](incident-2026-05-16-stuck-toolcall-stream.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Ink CLI V2 PTY Smoke Scenarios](ink-cli-v2-pty-smoke-scenarios.md) - Preserves the original report body as stable research without promoting historical claims&#46;
