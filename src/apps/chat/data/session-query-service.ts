@@ -43,7 +43,7 @@ export class ChatSessionQueryService {
 	): ChatWebStoredPiboEvent | undefined {
 		if (session) {
 			const status = statusFromOutputEvent(event);
-			if (status) this.upsertSession(session, status, createdAt);
+			if (status) this.upsertSession(session, status, createdAt, { preserveRuntimeBinding: true });
 			else this.touchSession(session, createdAt);
 		}
 		return undefined;
@@ -51,7 +51,7 @@ export class ChatSessionQueryService {
 
 	private touchSession(session: PiboSession, lastActivityAt: string): void {
 		const roomId = chatRoomIdFromMetadata(session.metadata) ?? "room_default";
-		this.store.sessions.upsertSession({ session, roomId, lastActivityAt });
+		this.store.sessions.upsertSession({ session, roomId, lastActivityAt, preserveRuntimeBinding: true });
 		this.store.navigation.upsertSession({
 			roomId,
 			sessionId: session.id,

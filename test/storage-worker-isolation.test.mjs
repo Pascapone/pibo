@@ -9,6 +9,7 @@ import { BoundedWorkerClient, boundedMessageBytes } from '../dist/data/bounded-w
 import { AsyncChatStorage } from '../dist/data/async-chat-storage.js';
 import { PiboDataStore } from '../dist/data/pibo-store.js';
 import { ChatDataIngestService } from '../dist/data/ingest-service.js';
+import { ChatSessionQueryService } from '../dist/apps/chat/data/session-query-service.js';
 const controlled = new URL('./fixtures/storage-worker/controlled-worker.mjs', import.meta.url);
 
 async function ready(client) {
@@ -95,6 +96,7 @@ test('chat projections do not overwrite a concurrently advanced runtime binding'
     store.sessions.upsertSession({ session: staleSession, roomId: 'room_binding' });
     store.db.prepare("UPDATE session_runtime_bindings SET native_session_id = 'native-live', revision = 9 WHERE pibo_session_id = ?").run(staleSession.id);
     new ChatDataIngestService(store).ingestUserMessageAccepted({ session: staleSession, roomId: 'room_binding', actorId: 'test', text: 'projection', clientTxnId: 'binding-one' });
+    new ChatSessionQueryService(store).recordEvent({ type: 'assistant_message', piboSessionId: staleSession.id, eventId: 'turn-binding', text: 'done', renderSequence: 1 }, staleSession, 1, now);
     const binding = store.db.prepare('SELECT native_session_id, revision FROM session_runtime_bindings WHERE pibo_session_id = ?').get(staleSession.id);
     assert.deepEqual({ ...binding }, { native_session_id: 'native-live', revision: 9 });
   } finally { store.close(); rmSync(root, { recursive: true, force: true }); }
