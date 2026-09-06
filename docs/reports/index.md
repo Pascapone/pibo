@@ -10,6 +10,7 @@
 * [Better Auth SQLite Migration Hardening Validation — 2026&#45;08&#45;20](better-auth-sqlite-migration-hardening-validation-2026-08-20.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Chat Web Session Switch Fast Path Implementation Report](chat-web-session-switch-fast-path-implementation-2026-07-05.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Chat Web live render&#45;order diagnosis — 2026&#45;08&#45;09](chat-web-live-render-order-diagnosis-2026-08-09.md) - Preserves the original report body as stable research without promoting historical claims&#46;
+* [Chat storage isolation: package B validation](performance-scalability-storage-isolation-2026-09-06.md) - Records the bounded worker storage boundary, crash regressions and isolated Pibo2 acceptance&#46;
 * [ChatGPT Subscription Transcription Validation — 2026&#45;08&#45;23](chatgpt-subscription-transcription-validation-2026-08-23.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Code Quality Refactoring Ralph Final Report — 2026&#45;05&#45;27](code-quality-refactor-ralph-final-2026-05-27.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Codex App Server Protocol Checkpoint — 2026&#45;08&#45;15](codex-app-server-protocol-checkpoint-2026-08-15.md) - Preserves the original report body as stable research without promoting historical claims&#46;

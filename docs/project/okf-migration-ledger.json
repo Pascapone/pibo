@@ -30,6 +30,18 @@
       "lineage": null
     },
     {
+      "path": "docs/reports/performance-scalability-storage-isolation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "performance validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 6143,
+      "file_sha256": "0e92d0f980196950765daf01822fe58c821134fb29a25bccff83d852838e8e9a",
+      "body_sha256": "3fda04f9e928e3c51ce0fee50f8b4179e06527664bfa5e24379801a1e3fd2ea0",
+      "lineage": null
+    },
+    {
       "path": "docs/plans/pibo-performance-and-scalability.md",
       "state": "conformant",
       "classification": "performance implementation plan",

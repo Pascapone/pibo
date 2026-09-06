@@ -1,0 +1,52 @@
+{
+  "candidate": {
+    "commit": "051455e5d80ccfe48958e0ff1d998f60e231edf4",
+    "packageSha256": "854cb7629bc149fdbffd857fb5de909f475f9f73064fb15678edb16623c1f5a6",
+    "leaseId": "lease_17f01b253ac81b55f1",
+    "slotId": "slot-01",
+    "seedMode": "full"
+  },
+  "admission": {
+    "status": 200,
+    "browserDurationMs": 78.8,
+    "serverTiming": "chat_lookup;dur=0.00, chat_append;dur=7.42, chat_ingest;dur=0.00, chat_emit;dur=53.18, chat_ack;dur=66.16",
+    "streamId": 987973
+  },
+  "duplicate": {
+    "status": 200,
+    "browserDurationMs": 109.5,
+    "sameStreamId": true,
+    "redispatched": false
+  },
+  "twentyRequestDuplicateBurst": {
+    "statuses": [200],
+    "duplicates": 20,
+    "streamIds": [987973],
+    "p50Ms": 73.3,
+    "p95Ms": 96.5,
+    "p99Ms": 97.8,
+    "maxMs": 97.8
+  },
+  "fiftyRequestStressBeyondProfile": {
+    "statuses": [200],
+    "duplicates": 50,
+    "streamIds": [987973],
+    "p50Ms": 324,
+    "p95Ms": 499.7,
+    "p99Ms": 506.8,
+    "maxMs": 506.8
+  },
+  "storage": {
+    "ready": true,
+    "queueCount": 0,
+    "pendingBytes": 0,
+    "workerBusyTimeoutMs": 10,
+    "journalMode": "wal",
+    "synchronous": 2
+  },
+  "output": {
+    "traceContainsExpectedText": true,
+    "browserContainsExpectedText": true,
+    "runtimeBindingErrorsAfterFix": 0
+  }
+}
