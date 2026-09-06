@@ -2,6 +2,7 @@
 
 ## 2026-09-06
 
+- **Selectable Tool payload calculation**: Added `Settings > Debug` controls for bounded character-count factors or opt-in Tiktoken encodings. Each Tool signal rail now records and displays its calculation basis, while legacy metrics remain readable and provider usage/billing stays distinct. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006) and [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rail).
 - **Configurable Tool Debug thresholds**: Added a dedicated `Settings > Debug` panel with the persisted Debug toggle, validated Time/Input/Output severity thresholds, default restoration, and explicit estimated-token caveats. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006) and [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rail).
 - **High-contrast Tool Debug signals**: Replaced quiet gray Tool metrics with a neon signal rail for rapid scanning: violet Time, cyan Input, lime Output, then yellow, orange, and hot-pink severity escalation. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006) and [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rail); collection and token-estimation behavior are unchanged.
 
