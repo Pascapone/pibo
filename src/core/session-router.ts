@@ -1789,6 +1789,7 @@ export class PiboSessionRouter {
 					return result;
 				},
 				statusResources,
+				getToolMetricTokenCalculation: () => loadPiboUserSettings().toolMetrics.tokenCalculation,
 			},
 		);
 		this.sessions.set(piboSession.id, session);

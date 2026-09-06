@@ -49,12 +49,9 @@ async function renderPanelStates() {
 			annotations,
 			loading: false,
 			error: null,
-			collapsed: false,
 			onRefresh() {},
 			onToggle() {},
 			onClear() {},
-			onCollapse() {},
-			onClose() {},
 		};
 		const render = (selectedIds, overrides = {}) => renderToStaticMarkup(
 			React.createElement(WebAnnotationsSessionPanel, { ...props, selectedIds, ...overrides }),
@@ -63,7 +60,6 @@ async function renderPanelStates() {
 			unselected: render([]),
 			selected: render(["ann_39bc2730-872b-4708-9bb7-675ec0be46b3"]),
 			multiple: render(["ann_71846a12-f77c-43ef-bf7f-1791f145b399"]),
-			collapsed: render([], { collapsed: true }),
 		}));
 	`;
 	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
@@ -112,16 +108,11 @@ test("web annotation attachment selector ordinals distinguish duplicate targets 
 	for (const button of buttons) assert.doesNotMatch(button, /ann_[a-z0-9-]+/);
 });
 
-test("web annotation attachment selectors preserve responsive classes and collapsed behavior", async () => {
-	const { unselected, collapsed } = await panelStatesPromise;
+test("web annotation attachment selectors preserve responsive tab layout", async () => {
+	const { unselected } = await panelStatesPromise;
 	const [button] = toggleButtons(unselected);
 
 	assert.match(button, /class="inline-flex h-8 shrink-0 items-center gap-1 rounded-sm border px-2 text-\[11px\] sm:h-6 sm:px-1\.5 /);
-	assert.match(unselected, /grid-cols-1[^\"]*sm:max-h-56 sm:grid-cols-\[repeat\(auto-fill,minmax\(16rem,1fr\)\)\]/);
-	assert.equal(toggleButtons(collapsed).length, 3);
-	const detailsTag = collapsed.match(/<div[^>]*id="web-annotations-session-panel-details"[^>]*>/)?.[0];
-	assert.ok(detailsTag, "collapsed details region remains mounted");
-	assert.match(detailsTag, /hidden=""/);
-	assert.match(collapsed, /data-pibo-debug="web-annotations-list"/);
-	assert.ok(collapsed.indexOf('aria-pressed="false"') > collapsed.indexOf('id="web-annotations-session-panel-details"'));
+	assert.match(unselected, /grid-cols-1[^\"]*@min-\[560px\]:grid-cols-\[repeat\(auto-fill,minmax\(16rem,1fr\)\)\]/);
+	assert.doesNotMatch(unselected, /web-annotations-session-panel-details|max-h-|overflow-y-auto/);
 });

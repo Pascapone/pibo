@@ -24,6 +24,7 @@ import { isPiboThinkingLevel, type PiboThinkingLevel } from "../core/thinking.js
 import type { PiboPluginRegistry } from "../plugins/registry.js";
 import type { PiboGatewayActionContext } from "../plugins/types.js";
 import { ToolCallMetricsCollector } from "../shared/tool-call-metrics.js";
+import type { ToolMetricTokenCalculation } from "../shared/tool-call-token-settings.js";
 import { AgentRuntimeCapabilityUnavailableError } from "./errors.js";
 import type { AgentRuntimeSemanticEvent } from "./events.js";
 import type {
@@ -119,6 +120,7 @@ export type RuntimeRoutedSessionOptions = {
 	cancelRuntimeAuth?: (input: CancelAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
 	logoutRuntimeAuth?: (input: LogoutAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
 	statusResources?: Pick<PiboSessionStatus, "enabledSkills" | "contextFiles">;
+	getToolMetricTokenCalculation?: () => ToolMetricTokenCalculation;
 };
 
 function errorMessage(error: unknown): string {
@@ -229,7 +231,7 @@ function isSessionOperationResult(value: unknown): value is PiboSessionOperation
 }
 
 export class RuntimeRoutedSession {
-	private readonly toolMetrics = new ToolCallMetricsCollector();
+	private readonly toolMetrics: ToolCallMetricsCollector;
 	/** @deprecated Pi compatibility handle for existing direct test/TUI consumers. */
 	readonly runtime: unknown;
 	private readonly queue: RuntimeRoutedQueueItem[] = [];
@@ -264,6 +266,7 @@ export class RuntimeRoutedSession {
 		private readonly pluginRegistry: PiboPluginRegistry,
 		private readonly options: RuntimeRoutedSessionOptions = {},
 	) {
+		this.toolMetrics = new ToolCallMetricsCollector(options.getToolMetricTokenCalculation);
 		this.runtime = runtimeSession.getNativeCompatibilityHandle?.() ?? runtimeSession;
 		this.primaryModel = runtimeSession.getStatus().activeModel
 			? { ...runtimeSession.getStatus().activeModel! }

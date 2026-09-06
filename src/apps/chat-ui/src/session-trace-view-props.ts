@@ -218,6 +218,7 @@ export function createSessionTraceViewProps(input: {
 	isLoading: boolean;
 	showThinking: boolean;
 	debugMode?: boolean;
+	toolMetricThresholds?: ChatSessionViewProps["toolMetricThresholds"];
 	expandThinking: boolean;
 	toolDisplayMode: ChatSessionViewProps["toolDisplayMode"];
 	selectedSessionProfile: string;
@@ -252,6 +253,7 @@ export function createSessionTraceViewProps(input: {
 		isLoading: input.isLoading,
 		showThinking: input.showThinking,
 		debugMode: input.debugMode,
+		toolMetricThresholds: input.toolMetricThresholds,
 		expandThinking: input.expandThinking,
 		toolDisplayMode: input.toolDisplayMode,
 		sessionAgentProfile: input.selectedSessionProfile,

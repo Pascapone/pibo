@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
-import { BookA, ChevronsDown, ChevronsUp, Plus, RefreshCw, Rows3, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BookA, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import {
 	createWebAnnotationBinding,
 	injectWebAnnotationBinding,
@@ -15,37 +15,28 @@ import {
 	writeStoredWebAnnotationsCdpUrl,
 } from "./web-annotation-storage";
 
-const WEB_ANNOTATIONS_DIALOG_ID = "web-annotations-dialog";
-const WEB_ANNOTATIONS_DETAILS_ID = "web-annotations-session-panel-details";
-
 export function WebAnnotationsSessionPanel({
 	piboSessionId,
 	annotations,
 	selectedIds,
 	loading,
 	error,
-	collapsed,
 	onRefresh,
 	onToggle,
 	onClear,
-	onCollapse,
-	onClose,
 }: {
 	piboSessionId: string | null;
 	annotations: WebAnnotationMessageAttachment[];
 	selectedIds: readonly string[];
 	loading: boolean;
 	error: string | null;
-	collapsed: boolean;
 	onRefresh: () => void;
 	onToggle: (annotationId: string) => void;
 	onClear: () => void;
-	onCollapse: () => void;
-	onClose: () => void;
 }) {
 	if (!piboSessionId) return null;
 	return (
-		<section className="border-t border-slate-800 bg-[#101d22] px-3 py-2 sm:px-4" data-pibo-debug="web-annotations-session-panel" data-pibo-session-id={piboSessionId}>
+		<section className="bg-[#101d22] px-3 py-3 sm:px-4" data-pibo-debug="web-annotations-session-panel" data-pibo-session-id={piboSessionId}>
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				<div className="min-w-0">
 					<div className="flex flex-wrap items-center gap-2">
@@ -61,15 +52,9 @@ export function WebAnnotationsSessionPanel({
 					<button type="button" onClick={onClear} disabled={loading || !annotations.length} title="Clear visible annotations" aria-label="Clear visible annotations" className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-300 hover:border-red-500 hover:text-red-300 disabled:opacity-50 sm:h-7 sm:w-7">
 						<Trash2 size={12} />
 					</button>
-					<button type="button" onClick={onCollapse} title={collapsed ? "Expand annotations panel" : "Collapse annotations panel"} aria-label="Web annotations details" aria-expanded={!collapsed} aria-controls={WEB_ANNOTATIONS_DETAILS_ID} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] sm:h-7 sm:w-7">
-						{collapsed ? <ChevronsUp size={12} /> : <ChevronsDown size={12} />}
-					</button>
-					<button type="button" onClick={onClose} title="Hide annotations panel" aria-label="Hide annotations panel" className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-700 text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] sm:h-7 sm:w-7">
-						<X size={12} />
-					</button>
 				</div>
 			</div>
-			<div id={WEB_ANNOTATIONS_DETAILS_ID} hidden={collapsed}>
+			<div>
 				<div className="text-[11px] text-slate-500">Global annotation list. Selected attachments follow you when switching sessions.</div>
 				{error ? (
 				<div className="rounded-sm border border-red-900 bg-red-950/40 px-3 py-2 text-xs text-red-200" data-pibo-debug="web-annotations-error">{boundedUiText(error, 220)}</div>
@@ -78,7 +63,7 @@ export function WebAnnotationsSessionPanel({
 			) : !annotations.length ? (
 				<div className="rounded-sm border border-slate-800 bg-[#0e1116] px-3 py-2 text-xs text-slate-500" data-pibo-debug="web-annotations-empty">No open annotations for this session.</div>
 			) : (
-				<div className="mt-2 grid max-h-[min(40svh,18rem)] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-56 sm:grid-cols-[repeat(auto-fill,minmax(16rem,1fr))]" data-pibo-debug="web-annotations-list">
+				<div className="mt-2 grid grid-cols-1 gap-2 @min-[560px]:grid-cols-[repeat(auto-fill,minmax(16rem,1fr))]" data-pibo-debug="web-annotations-list">
 					{annotations.map((annotation, annotationIndex) => {
 						const selected = selectedIds.includes(annotation.id);
 						const attachmentTarget = boundedUiText(annotation.primaryTarget || annotation.label || annotation.selector || annotation.targetKind || "target", 64);
@@ -107,54 +92,23 @@ export function WebAnnotationsSessionPanel({
 	);
 }
 
-export function WebAnnotationsEntryPoints({
+export function WebAnnotationsControls({
 	piboSessionId,
 	piboRoomId,
 	disabled,
-	panelVisible,
-	onShowPanel,
-	onHidePanel,
 	onError,
 }: {
 	piboSessionId: string | null;
 	piboRoomId?: string;
 	disabled: boolean;
-	panelVisible: boolean;
-	onShowPanel: () => void;
-	onHidePanel: () => void;
 	onError: (message: string | null) => void;
 }) {
-	const [open, setOpen] = useState(false);
 	const [url, setUrl] = useState("");
 	const [cdpUrl, setCdpUrl] = useState(() => readStoredWebAnnotationsCdpUrl());
 	const [targets, setTargets] = useState<WebAnnotationTargetSummary[]>([]);
 	const [targetsState, setTargetsState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
 	const [busy, setBusy] = useState(false);
 	const [status, setStatus] = useState<{ kind: "info" | "success" | "error"; message: string } | null>(null);
-	const triggerRef = useRef<HTMLButtonElement>(null);
-	const initialFocusRef = useRef<HTMLButtonElement>(null);
-
-	const closeDialog = () => {
-		setOpen(false);
-		triggerRef.current?.focus();
-	};
-
-	useEffect(() => {
-		if (disabled) setOpen(false);
-	}, [disabled]);
-
-	useEffect(() => {
-		if (!open || disabled) return;
-		initialFocusRef.current?.focus();
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key !== "Escape") return;
-			event.preventDefault();
-			closeDialog();
-		};
-		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [open, disabled]);
-
 	useEffect(() => {
 		writeStoredWebAnnotationsCdpUrl(cdpUrl);
 	}, [cdpUrl]);
@@ -183,7 +137,6 @@ export function WebAnnotationsEntryPoints({
 
 	const startCurrentPageAnnotation = async () => {
 		if (!piboSessionId || busy) return;
-		onShowPanel();
 		setBusy(true);
 		setStatus({ kind: "info", message: "Injecting annotation overlay into this Pibo page…" });
 		try {
@@ -210,7 +163,6 @@ export function WebAnnotationsEntryPoints({
 
 	const startUrlAnnotation = async () => {
 		if (!piboSessionId || busy) return;
-		onShowPanel();
 		const targetUrl = url.trim();
 		if (!targetUrl) {
 			setStatus({ kind: "error", message: "URL is required" });
@@ -241,7 +193,6 @@ export function WebAnnotationsEntryPoints({
 
 	const attachTarget = async (target: WebAnnotationTargetSummary) => {
 		if (!piboSessionId || busy) return;
-		onShowPanel();
 		setBusy(true);
 		setStatus({ kind: "info", message: "Binding selected target and injecting overlay…" });
 		try {
@@ -259,41 +210,15 @@ export function WebAnnotationsEntryPoints({
 	};
 
 	return (
-		<div className="relative" data-pibo-debug="web-annotations-entry" data-pibo-session-id={piboSessionId ?? undefined}>
-			<HeaderIconButton
-				buttonRef={triggerRef}
-				onClick={() => {
-					if (disabled) return;
-					setOpen((current) => !current);
-					if (!panelVisible) onShowPanel();
-				}}
-				title={disabled ? "Select an active session to annotate a web page" : panelVisible ? "Web Annotations" : "Show Web Annotations"}
-				ariaLabel="Web Annotations"
-				ariaHaspopup="dialog"
-				ariaExpanded={open}
-				ariaControls={WEB_ANNOTATIONS_DIALOG_ID}
-				disabled={disabled}
-				active={open || panelVisible}
-			>
-				<BookA size={14} />
-			</HeaderIconButton>
-			{open && !disabled ? (
-				<div id={WEB_ANNOTATIONS_DIALOG_ID} className="fixed inset-x-2 bottom-3 z-40 max-h-[calc(100svh-1.5rem)] overflow-y-auto rounded-sm border border-slate-700 bg-[#0e1116] p-3 text-sm shadow-xl sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:bottom-auto sm:mt-2 sm:w-[min(420px,calc(100vw-24px))] sm:max-h-[calc(100svh-5rem)]" role="dialog" aria-label="Web Annotations">
-					<div className="mb-2 flex items-start justify-between gap-3">
+		<section className="border-b border-slate-800 bg-[#0e1116] p-3 text-sm sm:p-4" data-pibo-debug="web-annotations-entry" data-pibo-session-id={piboSessionId ?? undefined}>
+					<div className="mb-2 flex items-start gap-2">
+						<BookA size={15} className="mt-0.5 shrink-0 text-[#11a4d4]" />
 						<div>
 							<div className="text-xs font-bold uppercase tracking-wider text-[#11a4d4]">Web Annotations</div>
 							<div className="mt-1 text-xs text-slate-500">Start an inactive overlay for this Pibo page, or bind a CDP target for external pages.</div>
 						</div>
-						<div className="flex items-center gap-1">
-							<button type="button" onClick={panelVisible ? onHidePanel : onShowPanel} className="rounded-sm p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200" aria-label={panelVisible ? "Hide annotation list" : "Show annotation list"} title={panelVisible ? "Hide annotation list" : "Show annotation list"}>
-								<Rows3 size={14} />
-							</button>
-							<button type="button" onClick={closeDialog} className="rounded-sm p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200" aria-label="Close Web Annotations panel">
-								<X size={14} />
-							</button>
-						</div>
 					</div>
-					<button ref={initialFocusRef} type="button" onClick={() => void startCurrentPageAnnotation()} disabled={busy} className="mb-3 h-10 w-full rounded-sm bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50 sm:h-9" data-pibo-debug="web-annotations-current-page">
+					<button type="button" onClick={() => void startCurrentPageAnnotation()} disabled={busy || disabled} className="mb-3 h-10 w-full rounded-sm bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50 sm:h-9" data-pibo-debug="web-annotations-current-page">
 						Annotate this Pibo page
 					</button>
 					<label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500" htmlFor="web-annotation-url">Annotate URL via CDP</label>
@@ -304,10 +229,10 @@ export function WebAnnotationsEntryPoints({
 							onChange={(event) => setUrl(event.target.value)}
 							onKeyDown={(event) => { if (event.key === "Enter") void startUrlAnnotation(); }}
 							placeholder="http://localhost:5173"
-							disabled={busy}
+							disabled={busy || disabled}
 							className="h-10 min-w-0 rounded-sm border border-slate-700 bg-[#151f24] px-2 text-base text-slate-100 outline-none focus:border-[#11a4d4] disabled:opacity-60 sm:h-9 sm:text-xs"
 						/>
-						<button type="button" onClick={() => void startUrlAnnotation()} disabled={busy || !url.trim()} className="h-10 rounded-sm bg-[#11a4d4] px-3 text-xs font-medium text-white disabled:opacity-50 sm:h-9">
+						<button type="button" onClick={() => void startUrlAnnotation()} disabled={busy || disabled || !url.trim()} className="h-10 rounded-sm bg-[#11a4d4] px-3 text-xs font-medium text-white disabled:opacity-50 sm:h-9">
 							Annotate
 						</button>
 					</div>
@@ -317,16 +242,16 @@ export function WebAnnotationsEntryPoints({
 						value={cdpUrl}
 						onChange={(event) => setCdpUrl(event.target.value)}
 						placeholder="Use gateway default"
-						disabled={busy}
+						disabled={busy || disabled}
 						className="h-10 w-full rounded-sm border border-slate-800 bg-[#151f24] px-2 font-mono text-base text-slate-300 outline-none focus:border-[#11a4d4] disabled:opacity-60 sm:h-8 sm:text-[11px]"
 					/>
 					<div className="mt-3 flex items-center justify-between gap-2">
 						<div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Existing targets</div>
-						<button type="button" onClick={() => void loadTargets()} disabled={busy || targetsState === "loading"} className="inline-flex h-7 items-center gap-1 rounded-sm border border-slate-700 px-2 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
+						<button type="button" onClick={() => void loadTargets()} disabled={busy || disabled || targetsState === "loading"} className="inline-flex h-7 items-center gap-1 rounded-sm border border-slate-700 px-2 text-[11px] text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
 							<RefreshCw size={12} className={targetsState === "loading" ? "animate-spin" : undefined} /> Refresh
 						</button>
 					</div>
-					<div className="mt-2 max-h-[min(34svh,14rem)] overflow-auto rounded-sm border border-slate-800 sm:max-h-56">
+					<div className="mt-2 rounded-sm border border-slate-800">
 						{targetsState === "idle" ? <div className="px-3 py-3 text-xs text-slate-500">Refresh to list reachable browser targets.</div> : null}
 						{targetsState === "loading" ? <div className="px-3 py-3 text-xs text-slate-400">Loading targets…</div> : null}
 						{targetsState === "loaded" && !targets.length ? <div className="px-3 py-3 text-xs text-slate-500">No attachable browser targets found.</div> : null}
@@ -347,54 +272,7 @@ export function WebAnnotationsEntryPoints({
 							{status.message}
 						</div>
 					) : null}
-				</div>
-			) : null}
-		</div>
-	);
-}
-
-function HeaderIconButton({
-	buttonRef,
-	title,
-	ariaLabel,
-	ariaHaspopup,
-	ariaExpanded,
-	ariaControls,
-	disabled,
-	active,
-	onClick,
-	children,
-}: {
-	buttonRef?: Ref<HTMLButtonElement>;
-	title: string;
-	ariaLabel: string;
-	ariaHaspopup?: "dialog";
-	ariaExpanded?: boolean;
-	ariaControls?: string;
-	disabled?: boolean;
-	active: boolean;
-	onClick: () => void;
-	children: ReactNode;
-}) {
-	return (
-		<button
-			ref={buttonRef}
-			type="button"
-			onClick={onClick}
-			disabled={disabled}
-			title={title}
-			aria-label={ariaLabel}
-			aria-haspopup={ariaHaspopup}
-			aria-expanded={ariaExpanded}
-			aria-controls={ariaControls}
-			className={`h-8 w-8 inline-flex items-center justify-center border rounded-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-				active
-					? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#11a4d4]"
-					: "border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
-			}`}
-		>
-			{children}
-		</button>
+		</section>
 	);
 }
 
