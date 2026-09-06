@@ -1,0 +1,35 @@
+Production gateway status
+  reachable: yes
+  mode: prod
+  runtime sessions: 29
+    ps_9ba79944-7764-4fe4-8417-da2a993576d7: processing=false streaming=false queued=0
+    ps_0550fe3b-d80c-4fc1-ac50-71399286d9d5: processing=false streaming=false queued=0
+    ps_bccbc91f-4ac7-45f2-9de9-5d50ecf474b4: processing=false streaming=false queued=0
+    ps_5e1ba5f0-20c7-469f-a7f0-ed63c8ce44cd: processing=false streaming=false queued=0
+    ps_a1b5b7df-41e9-46a7-ae85-4b47f004cd95: processing=false streaming=false queued=0
+    ps_68f71540-5c7b-413f-8768-3d89424d47e8: processing=false streaming=false queued=0
+    ps_845a0aa4-bcca-49a3-83a9-47084ede9968: processing=false streaming=false queued=0
+    ps_f56d06ec-92fa-4d1c-8764-5da2c4288ca1: processing=false streaming=false queued=0
+    ps_47b26710-2212-4e0d-b419-15835c1d6786: processing=false streaming=false queued=0
+    ps_3973c4d8-fe0c-4150-999e-37467afbfa9e: processing=false streaming=false queued=0
+    ps_cce9cbea-22f6-44fb-8e58-70f5333d3053: processing=false streaming=false queued=0
+    ps_f9b87062-b19f-4dae-b533-0505bb7867da: processing=false streaming=false queued=0
+    ps_15becb09-72cd-428d-bef7-820df9f531b5: processing=false streaming=false queued=0
+    ps_561a8408-f7fb-4381-acec-1f9106031137: processing=false streaming=false queued=0
+    ps_f1634715-0f0c-4e80-bd02-dbb0efd6c0d0: processing=false streaming=false queued=0
+    ps_4b17710b-7466-4596-9804-58a048841c61: processing=false streaming=false queued=0
+    ps_d55e56c2-d606-429c-8a12-2ff049c3620d: processing=false streaming=false queued=0
+    ps_8629f257-932e-4912-b668-5964fb7cb762: processing=false streaming=false queued=0
+    ps_fb7e3fe6-24f1-44be-9095-50578715b967: processing=false streaming=false queued=0
+    ps_c7ba2fe7-137b-4e3a-96fa-08545aacf649: processing=false streaming=false queued=0
+    ps_aefc1b54-edec-45ea-a079-1f6b56dfc9aa: processing=false streaming=false queued=0
+    ps_9a212125-4f67-43b5-8220-93046004b458: processing=false streaming=false queued=0
+    ps_547fe57d-94a6-4791-bcca-2c8931dd1cf6: processing=false streaming=false queued=0
+    ps_b973585e-aa33-4eb3-a5c7-a9c657e7f661: processing=false streaming=false queued=0
+    ps_3c1f69a9-b19e-44c0-9b4b-0ceb382c2905: processing=false streaming=false queued=0
+    ps_c2d19e4a-f8b3-475b-8261-6aa02ab40a06: processing=false streaming=false queued=0
+    ps_e56277c5-3662-42eb-8a0c-dec6cdf976b3: processing=false streaming=false queued=0
+    ps_e8075049-3bab-4f9c-9899-2db61cbda4a0: processing=false streaming=false queued=0
+    ps_8905717c-7010-4ae5-90e8-a7f27c944b18: processing=false streaming=false queued=0
+  active yielded runs: 0
+  restart safety: idle

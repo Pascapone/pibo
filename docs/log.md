@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-06
+
+- **Signal projection cost**: Reused already-listed Session records for ancestor depth instead of preparing per-record SQLite queries. Added the [status projection contract](/specs/gateway/web-host-and-channel.md#requirement-wp02-gw-status-006-signal-projection-reuses-its-complete-listed-view) and [local/Pibo2 validation](/reports/gateway-status-scaling-validation-2026-09-06.md), including preserved active-work safety, real streaming, and Queue under status load.
+
 ## 2026-09-05
 
 - **Idle Session history latency**: Added [adapter-owned cold fork inspection](/specs/runtime/adapter-contract.md#requirement-run-spi-005), [bounded Pi history caching](/specs/runtime/pi-adapter.md#requirement-run-pi-005), and [passive Terminal usage reads](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-passive-007). The [validation report](/reports/idle-session-history-latency-validation-2026-09-05.md) records 228 Docker tests, exact candidate parity, headful Pibo2 cold/warm timings, and real Spark queue/reload evidence while keeping broader streaming and optimistic-navigation gaps explicit.
