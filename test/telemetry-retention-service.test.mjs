@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { pruneTelemetryOlderThan, maybeRunTelemetryRetentionMaintenance, isPersistentRetentionDue } from "../dist/apps/chat/telemetry-retention-service.js";
+import { disposeTelemetryRetentionMaintenance, pruneTelemetryOlderThan, maybeRunTelemetryRetentionMaintenance, isPersistentRetentionDue } from "../dist/apps/chat/telemetry-retention-service.js";
 
 function createStore() {
 	const dir = mkdtempSync(join(tmpdir(), "pibo-telemetry-retention-"));
@@ -127,6 +127,32 @@ test("automatic telemetry retention skips while runtime work is active", async (
 		assert.ok(store.telemetry.getTurnTimeline("turn_old"));
 	} finally {
 		store.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("disposing telemetry retention cancels a scheduled database callback", async () => {
+	const { dir, store } = createStore();
+	const state = {};
+	let closed = false;
+	try {
+		seedTelemetry(store);
+		maybeRunTelemetryRetentionMaintenance({
+			state,
+			dataStore: store,
+			settings: { enabled: true, days: 30 },
+			now: new Date("2026-02-15T00:00:00.000Z"),
+			intervalMs: 0,
+			context: { channelContext: { listSessionRuntimeStatuses: () => [] } },
+		});
+		disposeTelemetryRetentionMaintenance(state);
+		store.close();
+		closed = true;
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		assert.equal(state.running, false);
+		assert.equal(state.timer, undefined);
+	} finally {
+		if (!closed) store.close();
 		rmSync(dir, { recursive: true, force: true });
 	}
 });

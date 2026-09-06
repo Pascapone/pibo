@@ -1,3 +1,5 @@
+import { piboHomePath } from "../../core/pibo-home.js";
+import { AsyncChatStorage } from "../../data/async-chat-storage.js";
 import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import { dirname, join } from "node:path";
@@ -112,7 +114,7 @@ import {
 import { inspectPiboContextBuild, type PiboContextBuildRuntimeInfo, type PiboContextBuildSnapshot } from "../../core/context-build.js";
 import { isPiboThinkingLevel } from "../../core/thinking.js";
 import { loadPiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
-import { isTelemetryRetentionMaintenanceDue, maybeRunTelemetryRetentionMaintenance, type TelemetryRetentionMaintenanceState } from "./telemetry-retention-service.js";
+import { disposeTelemetryRetentionMaintenance, isTelemetryRetentionMaintenanceDue, maybeRunTelemetryRetentionMaintenance, type TelemetryRetentionMaintenanceState } from "./telemetry-retention-service.js";
 import { loadModelCatalog } from "./model-catalog.js";
 import { createCustomAgentProfileDefinition, createCustomAgentRuntimeValidationProfile } from "./agent-profiles.js";
 import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../reliability/store.js";
@@ -450,6 +452,7 @@ type ChatWebAppState = {
 	cronStore: PiboCronStore;
 	loopStore: PiboLoopStore;
 	dataStore: PiboDataStore;
+	asyncStorage?: AsyncChatStorage;
 	ingestService: ChatDataIngestService;
 	traceCache: Map<string, PiboSessionTraceView>;
 	traceTimelinePageCache: Map<string, TraceTimelinePage>;
@@ -1126,11 +1129,11 @@ function createWebOutputPersistenceJob(input: {
 	};
 }
 
-function deliverWebOutputPersistenceState(
+async function deliverWebOutputPersistenceState(
 	state: ChatWebAppState,
 	context: PiboWebAppContext,
 	retryContext: OutputPersistenceRetryContext,
-): void {
+): Promise<void> {
 	const persistenceState = parseWebOutputPersistenceState(retryContext.payload);
 	if (!persistenceState) throw new Error("Invalid durable web output persistence state");
 	const session = context.channelContext.getSession(persistenceState.piboSessionId);
@@ -1148,21 +1151,23 @@ function deliverWebOutputPersistenceState(
 		try {
 			if (!delivery.v2) {
 				const createdAt = new Date().toISOString();
-				const ingested = state.ingestService.ingestOutputEvent({
+				const ingestInput = {
 					session,
 					roomId: persistenceState.roomId,
 					actorId: persistenceState.actorId ?? session.id,
 					event: delivery.event,
 					createdAt,
-				});
-				const storedEvent = state.dataStore.eventLog.findByIdempotencyKey(delivery.deliveryId);
-				if (!storedEvent || storedEvent.streamId !== ingested.streamId) {
+				};
+				const asyncIngested = state.asyncStorage ? await state.asyncStorage.ingestOutput(ingestInput) : undefined;
+				const ingested = asyncIngested ?? state.ingestService.ingestOutputEvent(ingestInput);
+				const storedEvent = asyncIngested?.stored ?? state.dataStore.eventLog.findByIdempotencyKey(delivery.deliveryId);
+				if (!storedEvent || (!asyncIngested && "streamId" in storedEvent && storedEvent.streamId !== ingested.streamId)) {
 					throw new Error(`Missing V2 event ${ingested.streamId} for ${delivery.deliveryId}`);
 				}
 				delivery.v2 = {
 					streamId: ingested.streamId,
 					createdAt: storedEvent.createdAt,
-					eventId: eventIdentityForDelivery(delivery.event),
+					eventId: asyncIngested?.stored.eventId ?? eventIdentityForDelivery(delivery.event),
 					duplicate: ingested.duplicate,
 				};
 				checkpoint();
@@ -4461,6 +4466,36 @@ function startChatStreamingFixture(input: {
 	});
 }
 
+async function resolveAdmissionSession(
+	storage: AsyncChatStorage,
+	context: PiboWebAppContext,
+	webSession: PiboWebSession,
+	defaultProfile: string,
+	piboSessionId?: string,
+	requestedRoomId?: string,
+): Promise<{ session: PiboSession; room: PiboRoom }> {
+	if (piboSessionId) {
+		const found = context.channelContext.getSession(piboSessionId);
+		if (!found) throw new PiboWebHttpError("Session not found", 404);
+		const session = canonicalizeSessionProfile(context, found);
+		const roomId = chatRoomIdFromMetadata(session.metadata);
+		const room = await storage.resolveRoom(roomId);
+		if (requestedRoomId && requestedRoomId !== room.id) throw new PiboWebHttpError("Session is not available in this room", 404);
+		if (!roomId) context.channelContext.updateSession?.(session.id, { metadata: withChatRoomId(session.metadata, room.id) });
+		return { session: { ...session, metadata: withChatRoomId(session.metadata, room.id) }, room };
+	}
+	const room = await storage.resolveRoom(requestedRoomId, Boolean(requestedRoomId));
+	const candidates = listSharedSessions(context);
+	const existing = candidates.find(session => !session.parentId && !isChatWebSessionArchived(session) && chatRoomIdFromMetadata(session.metadata) === room.id);
+	if (existing) return { session: existing, room };
+	if (isPiboRoomArchived(room)) {
+		const archived = candidates.find(session => !session.parentId && chatRoomIdFromMetadata(session.metadata) === room.id);
+		if (archived) return { session: archived, room };
+		throw new PiboWebHttpError("Archived room has no sessions", 404);
+	}
+	return { session: createSharedChatSession(context, webSession, defaultProfile, room), room };
+}
+
 async function sendChatMessage(input: {
 	state: ChatWebAppState;
 	context: PiboWebAppContext;
@@ -4469,6 +4504,7 @@ async function sendChatMessage(input: {
 	body: ChatMessageBody;
 	forcedRoomId?: string;
 }): Promise<Response> {
+	try {
 	const startedAt = performance.now();
 	const timings: string[] = [];
 	const timedResponse = (value: Parameters<typeof responseJson>[0]) => responseJson(value, {
@@ -4478,25 +4514,22 @@ async function sendChatMessage(input: {
 	const delivery = normalizeMessageDelivery(input.body.delivery);
 	const clientTxnId = normalizeClientTxnId(input.body.clientTxnId);
 	const requestedRoomId = input.forcedRoomId ?? (typeof input.body.roomId === "string" ? input.body.roomId : undefined);
-	const selectedSession = resolveRequestedSession(
-		input.state,
-		input.context,
-		input.webSession,
-		input.defaultProfile,
-		typeof input.body.piboSessionId === "string" ? input.body.piboSessionId : undefined,
-		requestedRoomId,
-	);
-	const room = ensureSessionRoom(input.state, input.context, selectedSession, input.webSession);
+	const requestedSessionId = typeof input.body.piboSessionId === "string" ? input.body.piboSessionId : undefined;
+	const resolved = input.state.asyncStorage
+		? await resolveAdmissionSession(input.state.asyncStorage, input.context, input.webSession, input.defaultProfile, requestedSessionId, requestedRoomId)
+		: undefined;
+	const selectedSession = resolved?.session ?? resolveRequestedSession(input.state, input.context, input.webSession, input.defaultProfile, requestedSessionId, requestedRoomId);
+	const room = resolved?.room ?? ensureSessionRoom(input.state, input.context, selectedSession, input.webSession);
 	if (requestedRoomId && room.id !== requestedRoomId) {
 		throw new PiboWebHttpError("Session is not available in this room", 404);
 	}
 	if (isPiboRoomArchived(room)) {
 		throw new PiboWebHttpError("Archived rooms are read-only", 403);
 	}
-	input.state.sessionQuery.upsertSession(selectedSession);
+	if (!input.state.asyncStorage) input.state.sessionQuery.upsertSession(selectedSession);
 	const actorId = auditActorIdFor(input.webSession);
 	const lookupStartedAt = performance.now();
-	const duplicate = clientTxnId ? input.state.eventCommands.findByClientTxn(room.id, actorId, clientTxnId) : undefined;
+	const duplicate = clientTxnId && !input.state.asyncStorage ? input.state.eventCommands.findByClientTxn(room.id, actorId, clientTxnId) : undefined;
 	timings.push(`chat_lookup;dur=${(performance.now() - lookupStartedAt).toFixed(2)}`);
 	if (duplicate) return timedResponse({ duplicate: true, event: duplicate });
 	const webAnnotationContext = prepareWebAnnotationAttachments({
@@ -4509,7 +4542,7 @@ async function sendChatMessage(input: {
 		attachmentPaths: input.body.fileAttachmentPaths,
 	});
 	const appendStartedAt = performance.now();
-	const accepted = input.state.eventCommands.appendEvent({
+	const appendInput: ChatEventAppendInput = {
 		roomId: room.id,
 		piboSessionId: selectedSession.id,
 		eventType: "user.message.accepted",
@@ -4535,11 +4568,14 @@ async function sendChatMessage(input: {
 			} : {}),
 			...(clientTxnId ? { clientTxnId } : {}),
 		},
-	});
+	};
+	const admission = input.state.asyncStorage ? await input.state.asyncStorage.admit(appendInput, selectedSession, fileAttachmentContext.messageText) : undefined;
+	const accepted = admission?.event ?? input.state.eventCommands.appendEvent(appendInput);
+	if (admission && !admission.created) return timedResponse({ duplicate: true, event: accepted });
 	timings.push(`chat_append;dur=${(performance.now() - appendStartedAt).toFixed(2)}`);
 	const ingestStartedAt = performance.now();
 	try {
-		input.state.ingestService?.ingestUserMessageAccepted({
+		if (!input.state.asyncStorage) input.state.ingestService?.ingestUserMessageAccepted({
 			session: selectedSession,
 			roomId: room.id,
 			actorId,
@@ -4569,7 +4605,7 @@ async function sendChatMessage(input: {
 		if (!(error instanceof PiboSteeringUnavailableError)) {
 			input.context.channelContext.reportSessionError?.(selectedSession.id, errorMessage, { eventId: messageId, source: "pibo" });
 		}
-		const failed = input.state.eventCommands.appendEvent({
+		const failedInput: ChatEventAppendInput = {
 			roomId: room.id,
 			piboSessionId: selectedSession.id,
 			eventType: "user.message.failed",
@@ -4583,7 +4619,8 @@ async function sendChatMessage(input: {
 				...(clientTxnId ? { clientTxnId } : {}),
 				message: errorMessage,
 			},
-		});
+		};
+		const failed = input.state.asyncStorage ? (await input.state.asyncStorage.append(failedInput)).event : input.state.eventCommands.appendEvent(failedInput);
 		for (const listener of input.state.liveListeners) listener(failed);
 		if (error instanceof PiboSteeringUnavailableError || error instanceof AgentRuntimeBindingMissingError) {
 			throw new PiboWebHttpError(error.message, 409);
@@ -4593,6 +4630,13 @@ async function sendChatMessage(input: {
 	timings.push(`chat_emit;dur=${(performance.now() - emitStartedAt).toFixed(2)}`);
 	markWebAnnotationsAttached(webAnnotationContext);
 	return timedResponse({ output, event: accepted });
+	} catch (error) {
+		const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+		if (code === "room_not_found") throw new PiboWebHttpError("Room not found", 404);
+		if (code === "room_read_only") throw new PiboWebHttpError("Archived rooms are read-only", 403);
+		if (code.startsWith("storage_")) return responseJson({ error: "Storage unavailable; retry with the same client transaction ID.", code, acceptanceUnknown: code === "storage_unknown" || code === "storage_operation_failed" }, { status: 503, headers: { "retry-after": "1" } });
+		throw error;
+	}
 }
 
 
@@ -4623,6 +4667,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		cronStore: createDefaultPiboCronStore({ path: options.cronStorePath }),
 		loopStore: createDefaultPiboLoopStore({ path: options.ralphStorePath }),
 		dataStore,
+		asyncStorage: dataStore.path === ":memory:" ? undefined : new AsyncChatStorage(dataStore.path, options.dataPayloadRootDir ?? piboHomePath("payloads")),
 		ingestService: new ChatDataIngestService(dataStore),
 		traceCache: new Map(),
 		traceTimelinePageCache: new Map(),
@@ -4663,13 +4708,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		name: CHAT_WEB_APP_NAME,
 		mountPath: CHAT_WEB_MOUNT_PATH,
 		apiPrefix: CHAT_WEB_API_PREFIX,
-		dispose() {
+		async dispose() {
 			if (disposed) return;
 			disposed = true;
 			state.unsubscribe?.();
 			state.unsubscribe = undefined;
 			state.subscribedContext = undefined;
 			state.eventLoopDelay.disable();
+			disposeTelemetryRetentionMaintenance(state.telemetryRetentionMaintenance);
 			state.outputPersistenceRetries.dispose();
 			state.workflowService.close();
 			state.agentStore.close();
@@ -4678,6 +4724,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			state.loopStore.close();
 			state.outputCompactor.disposeAll();
 			state.outputRenderSequencer.disposeAll();
+			await state.asyncStorage?.close();
 			state.dataStore.close();
 		},
 		async handleRequest(request, context) {
@@ -6502,7 +6549,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/resources` && request.method === "GET") {
 				await requireSession(request, context);
-				return responseJson({ gateway: serializeGatewayResourceDiagnostics(state) }, { headers: { "cache-control": "no-store" } });
+				return responseJson({
+					gateway: serializeGatewayResourceDiagnostics(state),
+					storage: state.asyncStorage?.status() ?? { ready: true, mode: "in-process" },
+				}, { headers: { "cache-control": "no-store" } });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/trace-at-sequence` && request.method === "POST") {

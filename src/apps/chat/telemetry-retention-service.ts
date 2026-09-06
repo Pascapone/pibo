@@ -28,7 +28,16 @@ export const DEFAULT_TELEMETRY_RETENTION_MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 
 export type TelemetryRetentionMaintenanceState = {
 	lastCheckedAt?: number;
 	running?: boolean;
+	disposed?: boolean;
+	timer?: ReturnType<typeof setTimeout>;
 };
+
+export function disposeTelemetryRetentionMaintenance(state: TelemetryRetentionMaintenanceState): void {
+	state.disposed = true;
+	if (state.timer) clearTimeout(state.timer);
+	state.timer = undefined;
+	state.running = false;
+}
 
 export function pruneTelemetryOlderThan(input: {
 	dataStore: PiboDataStore;
@@ -70,6 +79,7 @@ export function maybeRunTelemetryRetentionMaintenance(input: {
 	intervalMs?: number;
 	onPruned?: (lastPrunedAt: string) => void;
 }): void {
+	if (input.state.disposed) return;
 	if (!input.settings.enabled) return;
 	if (input.state.running) return;
 	const now = input.now ?? new Date();
@@ -82,14 +92,17 @@ export function maybeRunTelemetryRetentionMaintenance(input: {
 	if (hasActiveRuntimeWork(input.context)) return;
 	input.state.lastCheckedAt = now.getTime();
 	input.state.running = true;
-	setTimeout(() => {
+	input.state.timer = setTimeout(() => {
 		try {
+			if (input.state.disposed) return;
 			pruneTelemetryOlderThan({ dataStore: input.dataStore, days: input.settings.days, now, apply: true });
 			input.onPruned?.(now.toISOString());
 		} finally {
+			input.state.timer = undefined;
 			input.state.running = false;
 		}
-	}, 0).unref?.();
+	}, 0);
+	input.state.timer.unref?.();
 }
 
 export function isPersistentRetentionDue(lastPrunedAt: string | undefined, now: Date, intervalMs: number): boolean {

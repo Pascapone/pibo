@@ -3,6 +3,7 @@ import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/eve
 import { outputIdentityFingerprint, outputPartFingerprint } from "../core/output-render-sequence.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { PiboDataStore } from "./pibo-store.js";
+import type { PreparedPayload } from "./payload-store.js";
 import { rootSessionId } from "./session-store.js";
 
 export type UserMessageAcceptedIngestInput = {
@@ -16,6 +17,7 @@ export type UserMessageAcceptedIngestInput = {
 		eventId?: string;
 		createdAt?: string;
 	};
+	preparedPayload?: PreparedPayload;
 };
 
 export type UserMessageAcceptedIngestResult = {
@@ -55,6 +57,7 @@ export class PiboOutputIdentityCollisionError extends Error {
 
 export function outputPersistenceErrorIsRetryable(error: unknown): boolean {
 	if (error instanceof PiboOutputIdentityCollisionError) return false;
+	if (error && typeof error === "object" && "code" in error && error.code === "pibo_output_identity_collision") return false;
 	if (error instanceof AggregateError) {
 		return error.errors.length === 0 || error.errors.some(outputPersistenceErrorIsRetryable);
 	}
@@ -82,10 +85,11 @@ export class ChatDataIngestService {
 			};
 		}
 
+		const now = input.legacyEvent?.createdAt ?? new Date().toISOString();
+		const preparedPayload = input.preparedPayload ?? this.prepareUserMessagePayload(input.text, now);
 		return this.store.transaction(() => {
-			const now = input.legacyEvent?.createdAt ?? new Date().toISOString();
 			this.store.sessions.upsertSession({ session: input.session, roomId: input.roomId, firstMessagePreview: input.text, lastActivityAt: now });
-			const payloadRef = this.writeTextPayloadIfLarge(input.text, now, "chat_message");
+			const payloadRef = preparedPayload ? this.store.payloads.commitPreparedPayload(preparedPayload).id : undefined;
 			const event = this.store.eventLog.appendEvent({
 				sessionId: input.session.id,
 				sessionSequence: this.nextEventSequence(input.session.id),
@@ -139,6 +143,10 @@ export class ChatDataIngestService {
 		});
 	}
 
+	prepareUserMessagePayload(text: string, createdAt: string): PreparedPayload | undefined {
+		return this.prepareTextPayloadIfLarge(text, createdAt, "chat_message");
+	}
+
 	ingestOutputEvent(input: OutputEventIngestInput): OutputEventIngestResult {
 		const event = input.event;
 		const idempotencyKey = outputIdempotencyKey(event);
@@ -185,13 +193,14 @@ export class ChatDataIngestService {
 			}
 		}
 
+		const now = input.createdAt ?? new Date().toISOString();
+		const payload = payloadForOutputEvent(event);
+		const preparedPayload = payload ? this.preparePayloadIfLarge(payload.value, payload.contentType, now, retentionClassForOutputEvent(event)) : undefined;
 		return this.store.transaction(() => {
-			const now = input.createdAt ?? new Date().toISOString();
 			if (input.roomId) {
 				this.store.sessions.upsertSession({ session: input.session, roomId: input.roomId, lastActivityAt: now, status: outputSessionStatus(event) });
 			}
-			const payload = payloadForOutputEvent(event);
-			const payloadRef = payload ? this.writePayloadIfLarge(payload.value, payload.contentType, now, retentionClassForOutputEvent(event)) : undefined;
+			const payloadRef = preparedPayload ? this.store.payloads.commitPreparedPayload(preparedPayload).id : undefined;
 			const storedEvent = this.store.eventLog.appendEvent({
 				sessionId: input.session.id,
 				sessionSequence: this.nextEventSequence(input.session.id),
@@ -293,21 +302,21 @@ export class ChatDataIngestService {
 		return row.next_sequence;
 	}
 
-	private writeTextPayloadIfLarge(text: string, createdAt: string, retentionClass: string): string | undefined {
+	private prepareTextPayloadIfLarge(text: string, createdAt: string, retentionClass: string): PreparedPayload | undefined {
 		if (Buffer.byteLength(text, "utf8") <= INLINE_MESSAGE_PAYLOAD_THRESHOLD_BYTES) return undefined;
-		return this.store.payloads.writePayload({
+		return this.store.payloads.preparePayload({
 			value: text,
 			contentType: "text/plain; charset=utf-8",
 			retentionClass,
 			createdAt,
-		}).id;
+		});
 	}
 
-	private writePayloadIfLarge(value: PiboJsonValue | string, contentType: string, createdAt: string, retentionClass: string): string | undefined {
+	private preparePayloadIfLarge(value: PiboJsonValue | string, contentType: string, createdAt: string, retentionClass: string): PreparedPayload | undefined {
 		const bytes = Buffer.byteLength(typeof value === "string" ? value : JSON.stringify(value), "utf8");
 		const threshold = typeof value === "string" ? INLINE_MESSAGE_PAYLOAD_THRESHOLD_BYTES : INLINE_JSON_PAYLOAD_THRESHOLD_BYTES;
 		if (bytes <= threshold) return undefined;
-		return this.store.payloads.writePayload({ value, contentType, retentionClass, createdAt }).id;
+		return this.store.payloads.preparePayload({ value, contentType, retentionClass, createdAt });
 	}
 
 	private upsertNavigation(session: PiboSession, roomId: string, lastMessagePreview: string | undefined, now: string, status?: string): void {
