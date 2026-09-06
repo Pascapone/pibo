@@ -315,9 +315,9 @@ export function SessionTracePane({
   );
   const terminalUsageQuery = useQuery({
     queryKey: selectedBackendPiboSessionId
-      ? ["chat", "terminal-header-usage", selectedBackendPiboSessionId]
+      ? ["chat", "terminal-header-usage", selectedBackendPiboSessionId, selectedSessionStatus]
       : ["chat", "terminal-header-usage", "idle"],
-    queryFn: () => getSessionStatus(selectedBackendPiboSessionId!),
+    queryFn: () => getSessionStatus(selectedBackendPiboSessionId!, { activate: false }),
     enabled: terminalUsageEnabled,
     refetchInterval: terminalUsageEnabled ? 30_000 : false,
     staleTime: 15_000,
@@ -434,6 +434,8 @@ export function SessionTracePane({
   const forkCandidateRevision = traceUserMessageRevision(currentTraceView);
   const forkCandidateStatusRevision = selectedSessionStatus ?? "unknown";
   const forkCandidatesEnabled = Boolean(selectedBackendPiboSessionId)
+    && forkCandidateRevision !== "none"
+    && forkCandidateRevision !== "0:"
     && forkSupported
     && !selectedRoomArchived
     && (selectedSessionStatus !== "running" || forkWhileRunningSupported);

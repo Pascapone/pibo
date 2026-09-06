@@ -1,0 +1,132 @@
+{
+  "date": "2026-09-05",
+  "baselineCommit": "b601b6e0",
+  "candidateCommit": "8300578c",
+  "packageSha256": "22c2dcff7610879b084fb5739eadac9b213e317b8b007dcff63fc6d76fdecfc3",
+  "baselineStatusMs": [
+    490.80000019073486,
+    449.5,
+    566.0999999046326,
+    920.6999998092651,
+    469.40000009536743
+  ],
+  "candidateStatusMs": [
+    351.40000009536743,
+    72,
+    28.09999990463257,
+    24.700000286102295,
+    28.299999713897705,
+    37.80000019073486
+  ],
+  "candidateFetchedAt": [
+    "2026-09-05T20:28:53.055Z",
+    "2026-09-05T20:28:53.055Z",
+    "2026-09-05T20:28:53.055Z",
+    "2026-09-05T20:28:53.055Z",
+    "2026-09-05T20:28:53.055Z",
+    "2026-09-05T20:28:53.055Z"
+  ],
+  "uiStatus": {
+    "ui": {
+      "at": "2026-09-05T20:29:21.752Z",
+      "mutations": [
+        {
+          "ms": 15.300000190734863,
+          "statusCount": 6
+        },
+        {
+          "ms": 45.5,
+          "statusCount": 7
+        },
+        {
+          "ms": 226.40000009536743,
+          "statusCount": 7
+        }
+      ],
+      "start": 30639.099999904633
+    },
+    "requests": [
+      {
+        "ms": 29.799999713897705,
+        "wait": 27.399999618530273,
+        "start": 1.6000003814697266
+      }
+    ]
+  },
+  "streamingStatus": {
+    "probe": {
+      "at": "2026-09-05T20:30:03.113Z",
+      "start": 71962.90000009537,
+      "status": {
+        "ms": 138.30000019073486,
+        "processing": true,
+        "queued": 1,
+        "quotaAt": "2026-09-05T20:29:23.911Z"
+      }
+    },
+    "status": {
+      "ms": 25,
+      "processing": false,
+      "queue": 0,
+      "quotaAt": "2026-09-05T20:30:05.807Z"
+    },
+    "requests": [
+      {
+        "path": "/api/chat/message",
+        "ms": 64.09999990463257,
+        "wait": 61.40000009536743,
+        "start": 20.300000190734863
+      },
+      {
+        "path": "/api/chat/message",
+        "ms": 30.09999990463257,
+        "wait": 27,
+        "start": 1777.9000000953674
+      },
+      {
+        "path": "/api/chat/action",
+        "ms": 91.90000009536743,
+        "wait": 88.90000009536743,
+        "start": 1916.4000000953674
+      },
+      {
+        "path": "/api/chat/action",
+        "ms": 23.09999990463257,
+        "wait": 20.40000009536743,
+        "start": 22315.900000095367
+      }
+    ],
+    "text": ")\n\u25b8\nContext files (3)\n\u203a\nPerformance validation only. Run bash: sleep 4; printf SLOT-QUEUE-A. Then reply exactly SLOT-DONE-A. Do not read or modify files.\n20:30\n\u203a\nReply exactly SLOT-DONE-B without tools.\n20:30\nStatus\nSession:\nps_5d168a03-61f8-4322-a1ba-3c3aef662691\nCWD:\n/root\nModel:\nopenai-codex/gpt-5.3-codex-spark\nRuntime:\nprocessing\nDisposed:\nno\nQueue:\n1\nProcessing:\nyes\nStreaming:\nyes\nThinking:\nhigh\nFast mode:\noff\nProcessing\nStreaming\nQueued: 1\nContext Usage\n33/128000 tokens (0.0%)\nopenai-codex quota (pro)\n1w limit\n67% left \u00b7 resets Sat 05:32 AM\nGPT-5.3-Codex-Spark 5h limit\n100% left \u00b7 resets Sun 01:20 AM\nGPT-5.3-Codex-Spark 1w limit\n100% left \u00b7 resets Sat 08:20 PM\ngpt-reserve 1w limit\n100% left \u00b7 resets Sat 08:29 PM\n\u25b8\nEnabled tools (4)\n\u25b8\nEnabled skills (0)\n\u25b8\nContext files (3)\n\u2022\nRan sleep 4; printf SLOT-QUEUE-A\n\u2514\nSLOT-QUEUE-A\n\nSLOT-DONE-A\n\n20:30 \u00b7 00:00:07\n\nSLOT-DONE-B\n\n20:30 \u00b7 00:00:01"
+  },
+  "lease": {
+    "id": "lease_be45c89b86d16dc517",
+    "slotId": "slot-01",
+    "holder": "ps_1f203c85-5c7c-46b3-bb1e-0aedc730c3c7",
+    "seedMode": "medium",
+    "artifactSha256": "eadb06a55a6d5138c91bc9a8d605f584bf6be1ad1fc0bce454bd22d7e04da8ac",
+    "artifactRuntimePath": "/opt/pibo-candidates/session-latency/8300578c/runtime",
+    "packageVersion": "1.7.2",
+    "commit": "8300578c",
+    "containerName": "pibo-pool-slot-01",
+    "publicUrl": "https://slot-01.pool.pibo2.neuralnexus.me/",
+    "status": "ready",
+    "createdAt": "2026-09-05T20:27:17.196Z",
+    "expiresAt": "2026-09-05T21:12:17.196Z"
+  },
+  "release": {
+    "id": "lease_be45c89b86d16dc517",
+    "slotId": "slot-01",
+    "holder": "ps_1f203c85-5c7c-46b3-bb1e-0aedc730c3c7",
+    "seedMode": "medium",
+    "artifactSha256": "eadb06a55a6d5138c91bc9a8d605f584bf6be1ad1fc0bce454bd22d7e04da8ac",
+    "artifactRuntimePath": "/opt/pibo-candidates/session-latency/8300578c/runtime",
+    "packageVersion": "1.7.2",
+    "commit": "8300578c",
+    "containerName": "pibo-pool-slot-01",
+    "publicUrl": "https://slot-01.pool.pibo2.neuralnexus.me/",
+    "status": "released",
+    "createdAt": "2026-09-05T20:27:17.196Z",
+    "expiresAt": "2026-09-05T21:12:17.196Z",
+    "releasedAt": "2026-09-05T20:32:33.368Z"
+  }
+}

@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-06T04:10:00Z"
+  at: "2026-09-06T06:54:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -237,6 +237,23 @@ traceability:
         - "Later hydration cannot reverse newer navigation or keep the creation control blocked."
         - "Temporary Room IDs are not backend navigation targets."
       confidence: "high"
+    - id: "WEB-SHELL-CREATE-006"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/App.tsx"
+          symbol: "createSession"
+        - path: "src/apps/chat-ui/src/App.tsx"
+          symbol: "selectSession"
+      tests:
+        - path: "test/chat-ui-optimistic-session-selection.test.mjs"
+          name: "post-create hydration is nonblocking and cannot navigate or report stale errors"
+        - path: "test/chat-ui-session-create-navigation-race.test.mjs"
+          name: "post-create hydration preserves newer Session and Room navigation"
+      public: ["New Session", "/api/chat/sessions", "/api/chat/bootstrap", "Chat Session and Room navigation", "Browser Back"]
+      failures:
+        - "Superseded hydration cannot overwrite newer navigation or display a stale error; owning hydration failures remain reportable."
+        - "Pre-POST optimistic success and rollback behavior remains unchanged."
+      confidence: "high"
 ---
 # Chat Web App Shell, Bootstrap, Navigation, and PWA
 
@@ -246,7 +263,7 @@ Chat API/static registration, bootstrap/navigation composition, route-addressabl
 
 ## Scope
 
-This specification describes implemented behavior at integrated traceability commit `cb4f4e7e6121eab0193ff0db84a1cd938cba219a`.
+This specification describes the integrated Session- and Room-creation behavior at the traceability commit below. Earlier validation in `implementation` retains its original baseline; the scoped evidence below applies specifically to WEB-SHELL-CREATE-006 and WEB-SHELL-ROOM-CREATE-007.
 
 ### In scope
 
@@ -396,6 +413,23 @@ Creation controls MUST release at POST completion rather than wait for navigatio
 - GIVEN a real Room already fetched or a temporary row removed by navigation, WHEN creation settles, THEN the real Room appears once without overwriting newer metadata.
 
 Exact-code Docker and public authenticated/headful Pibo2 evidence is in the [Room creation validation report](/reports/room-creation-ownership-validation-2026-09-06.md). This is scoped Room-creation ownership, not a general assertion about every Room mutation or full accessibility.
+
+### Requirement: WEB-SHELL-CREATE-006: Post-create hydration does not own later navigation
+
+After the Session creation POST succeeds, the client MUST release the creation lock without waiting for bootstrap hydration. The initial successful creation MAY navigate to its persisted Session when the optimistic creation still owns selection. Background hydration MUST NOT perform a second navigation or report an error after its request generation has been superseded.
+
+Selecting a different Session MUST immediately invalidate outstanding bootstrap ownership, without waiting for deferred navigation refresh. Later Session/Room selection, Browser Back after POST, or a second creation MUST remain authoritative when the older hydration completes.
+
+#### Scenarios and boundaries
+
+- GIVEN untouched creation, WHEN POST succeeds while hydration is pending, THEN the persisted Session is selected and New Session becomes available.
+- GIVEN successful creation and pending hydration, WHEN the user selects another Session or Room, uses Browser Back, or creates another Session, THEN releasing the older response preserves the later route and Terminal content.
+- GIVEN a rejected hydration promise, WHEN its generation no longer owns state, THEN it MUST NOT replace the current error. An owning rejection remains reportable.
+- Pre-POST optimistic selection and rollback are unchanged; this requirement does not extend acceptance to arbitrary Room mutation or pre-POST browser-history races.
+
+#### Verification
+
+`App.tsx:createSession` and `selectSession` implement the contract. Named tests above passed in Docker: 21 focused passes with the opt-in browser test separately passing 7/7 twice. Full build and all typechecks passed. Exact-candidate public/authenticated Pibo2 validation passed 14 DOM-action and eight additional trusted-pointer scenarios at desktop/mobile sizes, including real Spark reply content and Browser Back. Hydration rejection has source-test coverage, not an injected remote-error case. See the [creation ownership report](/reports/session-creation-ownership-validation-2026-09-06.md) for frame, request, queue, screenshot, and build evidence; these checks do not establish unrelated shell/PWA acceptance.
 
 ## Interfaces and ownership
 

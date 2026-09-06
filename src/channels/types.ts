@@ -71,7 +71,7 @@ export type PiboChannelContext = {
 	readSessionRuntimeHistory?(piboSessionId: string, input?: { cursor?: string; beforeTimestamp?: string; limit?: number }): Promise<AgentRuntimeHistoryPage>;
 	rebindSessionRuntime?(piboSessionId: string, input: RuntimeSessionBindingRebindInput): Promise<RuntimeSessionBinding>;
 	getSessionRuntimeStatus?(piboSessionId: string): PiboSessionStatus | undefined;
-	getSessionStatusSnapshot?(piboSessionId: string): Promise<PiboSessionStatus>;
+	getSessionStatusSnapshot?(piboSessionId: string, options?: { activate?: boolean }): Promise<PiboSessionStatus | undefined>;
 	getSessionForkCandidates?(piboSessionId: string): Promise<PiboForkCandidate[]>;
 	listSessionRuntimeStatuses?(): PiboSessionStatus[];
 	listRuns?(options?: { includeConsumed?: boolean; includeDetached?: boolean }): PiboRunSnapshot[];

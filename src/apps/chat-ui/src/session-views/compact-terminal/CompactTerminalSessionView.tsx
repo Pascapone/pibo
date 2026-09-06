@@ -28,7 +28,6 @@ const SHOW_LATEST_THRESHOLD_PX = 180;
 const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 4_800;
 const COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX = 800;
 const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
-const INITIAL_BOTTOM_ITEM = { index: "LAST", align: "end" } as const;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
@@ -155,6 +154,8 @@ export function CompactTerminalSessionView({
 	const olderTracePrefetchTopThreshold = toolDisplayMode === "default"
 		? OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX
 		: COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX;
+	// This owns initial positioning too. A second Virtuoso initial-index scroll hides
+	// already-positioned rows until its fixed settlement delay expires.
 	const stickyView = useStickyVirtuoso({
 		itemCount: rows.length,
 		itemKeys: rowKeys,
@@ -332,7 +333,6 @@ export function CompactTerminalSessionView({
 						ref={stickyView.virtuosoRef}
 						data={rows}
 						firstItemIndex={stickyView.firstItemIndex}
-						initialTopMostItemIndex={INITIAL_BOTTOM_ITEM}
 						increaseViewportBy={VIRTUOSO_VIEWPORT}
 						defaultItemHeight={DEFAULT_ROW_HEIGHT_PX}
 						className="min-h-0 h-full overflow-x-hidden font-mono text-[12px] leading-[1.45]"

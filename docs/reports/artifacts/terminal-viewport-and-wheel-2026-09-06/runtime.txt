@@ -1,0 +1,10 @@
+saved: /tmp/viewport-final-desktop.png
+size: 166234
+Production gateway status
+  reachable: yes
+  mode: prod
+  runtime sessions: 2
+    ps_309f16e4-9cf5-4877-90c5-168685086f75: processing=false streaming=false queued=0
+    ps_e76026e5-e324-465e-8538-28ccddf9b49e: processing=false streaming=false queued=0
+  active yielded runs: 0
+  restart safety: idle

@@ -1,0 +1,37 @@
+▶ Terminal preserves follow and reading positions when its viewport shrinks
+  ✔ 1431px retains bottom and detached anchor through external header growth (4633.355366ms)
+  ✖ 390px retains bottom and detached anchor through external header growth (4632.028107ms)
+✖ Terminal preserves follow and reading positions when its viewport shrinks (9354.874028ms)
+ℹ 1431px initial geometry: {"height":595,"scrollHeight":2337,"gap":0,"top":1742,"row":"terminal:assistant:streaming-fixture-9479efa0-30c5-4fc2-9723-e22f679368e8:assistant:0","offset":-1053.3125,"rowHeight":1648.6875,"detached":false}
+ℹ CONTROL ONLY: baseline bottom gap 30px
+ℹ 1431px concurrent wheel scrollTop samples: [1292,1292,1292,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172,1172]; events: [{"deltaY":-120,"top":1292}]
+ℹ 1431px: viewport-only shrink 595→565, bottom gap 30px; detached anchor preserved
+ℹ 390px initial geometry: {"height":525,"scrollHeight":3724,"gap":0,"top":3199,"row":"terminal:assistant:streaming-fixture-0bcca047-6030-4c2b-adad-0ffc794729d9:assistant:0","offset":-2515,"rowHeight":3039.9375,"detached":false}
+ℹ CONTROL ONLY: baseline bottom gap 30px
+ℹ 390px concurrent wheel scrollTop samples: [2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751,2751]; events: [{"deltaY":-120,"top":2751}]
+ℹ tests 3
+ℹ suites 0
+ℹ pass 1
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9455.450708
+
+✖ failing tests:
+
+test at ../tmp/terminal-viewport-no-concurrent-resize.test.mjs:24:12
+✖ 390px retains bottom and detached anchor through external header growth (4632.028107ms)
+  AssertionError [ERR_ASSERTION]: Concurrent header growth must not swallow upward wheel input
+      at TestContext.<anonymous> (file:///tmp/terminal-viewport-no-concurrent-resize.test.mjs:108:12)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///tmp/terminal-viewport-no-concurrent-resize.test.mjs:24:4)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

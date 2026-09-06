@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const execFileAsync = promisify(execFile);
@@ -48,6 +49,22 @@ async function runHeaderUsageScenario() {
 	});
 	return JSON.parse(stdout.trim().split("\n").at(-1));
 }
+
+test("Terminal header status is passive and refreshes on session state transitions", async () => {
+	const pane = await readFile("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8");
+	assert.match(pane, /getSessionStatus\(selectedBackendPiboSessionId!, \{ activate: false \}\)/);
+	assert.match(pane, /forkCandidatesEnabled[\s\S]*?forkCandidateRevision !== "none"[\s\S]*?forkCandidateRevision !== "0:"/);
+	assert.match(pane, /\["chat", "terminal-header-usage", selectedBackendPiboSessionId, selectedSessionStatus\]/);
+	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+		import { getSessionStatus } from "./src/apps/chat-ui/src/api-chat-sessions.ts";
+		const urls = [];
+		globalThis.fetch = async (url) => { urls.push(url); return Response.json({}); };
+		await getSessionStatus("ps_fixture", { activate: false });
+		await getSessionStatus("ps_fixture");
+		console.log(JSON.stringify(urls));
+	`]);
+	assert.deepEqual(JSON.parse(stdout.trim()), ["/api/chat/status?piboSessionId=ps_fixture&activate=false", "/api/chat/status?piboSessionId=ps_fixture"]);
+});
 
 test("Terminal header shows weekly remaining and context consumed with inverse health colors", async () => {
 	const result = await runHeaderUsageScenario();

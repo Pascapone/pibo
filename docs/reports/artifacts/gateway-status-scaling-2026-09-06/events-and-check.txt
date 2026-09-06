@@ -1,0 +1,385 @@
+{
+  "piboSessionId": "ps_9ba79944-7764-4fe4-8417-da2a993576d7",
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "nativeSessionId": "7338213a-aece-4b88-9766-5f63743a551e",
+  "runtimeBindingState": "bound",
+  "events": [
+    {
+      "created_at": "2026-09-06T02:50:04.862Z",
+      "type": "message_finished",
+      "event_id": "web-mtp7rbna-9b4ff9f0-51f1-4f29-a8f5-535f26f72cd8",
+      "stream_id": 988026,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T02:50:04.852Z",
+      "type": "assistant_message",
+      "event_id": "web-mtp7rbna-9b4ff9f0-51f1-4f29-a8f5-535f26f72cd8",
+      "stream_id": 988025,
+      "preview_text": "PB_STATUS_LOAD_QUEUE_COMPLETE"
+    },
+    {
+      "created_at": "2026-09-06T02:50:04.844Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtp7rbna-9b4ff9f0-51f1-4f29-a8f5-535f26f72cd8",
+      "stream_id": 988024,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T02:50:03.742Z",
+      "type": "message_started",
+      "event_id": "web-mtp7rbna-9b4ff9f0-51f1-4f29-a8f5-535f26f72cd8",
+      "stream_id": 988023,
+      "preview_text": "Reply exactly PB_STATUS_LOAD_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T02:50:03.732Z",
+      "type": "message_finished",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988022,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T02:50:03.719Z",
+      "type": "assistant_message",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988021,
+      "preview_text": "PB_STATUS_LOAD_TURN_COMPLETE"
+    },
+    {
+      "created_at": "2026-09-06T02:50:03.710Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988020,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T02:50:02.930Z",
+      "type": "tool_execution_finished",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988019,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-06T02:49:44.414Z",
+      "type": "message_queued",
+      "event_id": "web-mtp7rbna-9b4ff9f0-51f1-4f29-a8f5-535f26f72cd8",
+      "stream_id": 988018,
+      "preview_text": "Reply exactly PB_STATUS_LOAD_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T02:49:44.407Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_b6fa6ff9-a160-4fe1-83df-fdf4689eb466",
+      "stream_id": 988017,
+      "preview_text": "Reply exactly PB_STATUS_LOAD_QUEUE_COMPLETE. Use no tools.",
+      "text": "Reply exactly PB_STATUS_LOAD_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T02:49:42.895Z",
+      "type": "tool_execution_started",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988016,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-06T02:49:42.882Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988015,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T02:49:42.865Z",
+      "type": "tool_call",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988014,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-06T02:49:42.801Z",
+      "type": "tool_call",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988013,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-06T02:49:41.820Z",
+      "type": "message_started",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988012,
+      "preview_text": "Run bash with exactly: sleep 20; echo PB_STATUS_LOAD_TOOL_COMPLETE. Then reply PB_STATUS_LOAD_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T02:49:41.807Z",
+      "type": "message_queued",
+      "event_id": "web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c",
+      "stream_id": 988011,
+      "preview_text": "Run bash with exactly: sleep 20; echo PB_STATUS_LOAD_TOOL_COMPLETE. Then reply PB_STATUS_LOAD_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T02:49:41.796Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_80e8ab53-a370-41cf-b831-ccd9a83918ad",
+      "stream_id": 988010,
+      "preview_text": "Run bash with exactly: sleep 20; echo PB_STATUS_LOAD_TOOL_COMPLETE. Then reply PB_STATUS_LOAD_TURN_COMPLETE. Do not read or modify files.",
+      "text": "Run bash with exactly: sleep 20; echo PB_STATUS_LOAD_TOOL_COMPLETE. Then reply PB_STATUS_LOAD_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T02:46:06.494Z",
+      "type": "message_finished",
+      "event_id": "web-mtp7m7k6-40301371-17d4-408e-ab37-e48ae44dc6b5",
+      "stream_id": 988001,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T02:46:06.481Z",
+      "type": "assistant_message",
+      "event_id": "web-mtp7m7k6-40301371-17d4-408e-ab37-e48ae44dc6b5",
+      "stream_id": 988000,
+      "preview_text": "PB_STATUS_QUEUE_COMPLETE"
+    },
+    {
+      "created_at": "2026-09-06T02:46:06.470Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtp7m7k6-40301371-17d4-408e-ab37-e48ae44dc6b5",
+      "stream_id": 987999,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T02:46:05.499Z",
+      "type": "message_started",
+      "event_id": "web-mtp7m7k6-40301371-17d4-408e-ab37-e48ae44dc6b5",
+      "stream_id": 987998,
+      "preview_text": "Reply exactly PB_STATUS_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T02:46:05.488Z",
+      "type": "message_finished",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987997,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T02:46:05.475Z",
+      "type": "assistant_message",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987996,
+      "preview_text": "PB_STATUS_TURN_COMPLETE"
+    },
+    {
+      "created_at": "2026-09-06T02:46:05.463Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987995,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T02:46:05.403Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987994
+    },
+    {
+      "created_at": "2026-09-06T02:46:05.374Z",
+      "type": "thinking_started",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987993,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T02:46:04.658Z",
+      "type": "tool_execution_finished",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987992,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-06T02:45:45.841Z",
+      "type": "message_queued",
+      "event_id": "web-mtp7m7k6-40301371-17d4-408e-ab37-e48ae44dc6b5",
+      "stream_id": 987991,
+      "preview_text": "Reply exactly PB_STATUS_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T02:45:45.833Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_30251278-9850-45f7-8309-1b3bd3d186e6",
+      "stream_id": 987990,
+      "preview_text": "Reply exactly PB_STATUS_QUEUE_COMPLETE. Use no tools.",
+      "text": "Reply exactly PB_STATUS_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T02:45:44.605Z",
+      "type": "tool_execution_started",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987989,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-06T02:45:44.592Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987988,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T02:45:44.568Z",
+      "type": "tool_call",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987987,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-06T02:45:44.527Z",
+      "type": "tool_call",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987986,
+      "preview_text": "bash",
+      "toolName": "bash"
+    },
+    {
+      "created_at": "2026-09-06T02:45:44.508Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987985
+    },
+    {
+      "created_at": "2026-09-06T02:45:44.196Z",
+      "type": "thinking_started",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987984,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T02:45:42.986Z",
+      "type": "message_started",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987983,
+      "preview_text": "Run bash with exactly: sleep 20; echo PB_STATUS_TOOL_COMPLETE. Then reply PB_STATUS_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T02:45:42.972Z",
+      "type": "message_queued",
+      "event_id": "web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9",
+      "stream_id": 987982,
+      "preview_text": "Run bash with exactly: sleep 20; echo PB_STATUS_TOOL_COMPLETE. Then reply PB_STATUS_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T02:45:42.964Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_b5ef1bf3-2c4d-453c-91f7-bf833c614e76",
+      "stream_id": 987981,
+      "preview_text": "Run bash with exactly: sleep 20; echo PB_STATUS_TOOL_COMPLETE. Then reply PB_STATUS_TURN_COMPLETE. Do not read or modify files.",
+      "text": "Run bash with exactly: sleep 20; echo PB_STATUS_TOOL_COMPLETE. Then reply PB_STATUS_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T02:44:35.500Z",
+      "type": "message_finished",
+      "event_id": "web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764",
+      "stream_id": 987980,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T02:44:35.484Z",
+      "type": "assistant_message",
+      "event_id": "web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764",
+      "stream_id": 987979,
+      "preview_text": "1. **A mug** starts the morning quietly. 2. **A kettle** sings when water boils. 3. **A toaster** browns my bread. 4. **A clock** keeps the day moving. 5. **A pen** writes quick reminders. 6. **A notebook** stores daily thoughts. 7. **A phone** carries every contact. 8. **A chair** holds a tired body. 9. **A backpack** carries books and snacks. 10. **A mirror** shows a busy face. 11. **A blanket** warms winter nights. 12. **A refrigerator** keeps food fresh. 13. **A plate** frames a small meal. 14. **A spoo"
+    },
+    {
+      "created_at": "2026-09-06T02:44:35.474Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764",
+      "stream_id": 987978,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T02:44:34.970Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764",
+      "stream_id": 987977
+    },
+    {
+      "created_at": "2026-09-06T02:44:31.199Z",
+      "type": "thinking_started",
+      "event_id": "web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764",
+      "stream_id": 987976,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T02:44:29.926Z",
+      "type": "message_started",
+      "event_id": "web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764",
+      "stream_id": 987975,
+      "preview_text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_STATUS_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T02:44:29.906Z",
+      "type": "message_queued",
+      "event_id": "web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764",
+      "stream_id": 987974,
+      "preview_text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_STATUS_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T02:44:29.884Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_0d10c38f-61e9-40df-8840-d8d54ca24dcb",
+      "stream_id": 987973,
+      "preview_text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_STATUS_STREAM_COMPLETE.",
+      "text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_STATUS_STREAM_COMPLETE."
+    }
+  ],
+  "limited": false,
+  "nextCommands": [
+    "pibo debug events ps_9ba79944-7764-4fe4-8417-da2a993576d7 show 988026",
+    "pibo debug messages ps_9ba79944-7764-4fe4-8417-da2a993576d7 show stream:988025 --full",
+    "pibo debug messages ps_9ba79944-7764-4fe4-8417-da2a993576d7 list"
+  ]
+}
+piboSessionId: ps_9ba79944-7764-4fe4-8417-da2a993576d7
+piSessionId: 7338213a-aece-4b88-9766-5f63743a551e
+runtimeInstanceId: pi
+runtimeAdapterId: pi
+nativeSessionId: 7338213a-aece-4b88-9766-5f63743a551e
+runtimeBindingState: bound
+historySource: product
+title: Untitled Session
+status: done
+statusSource: event-log
+nodeErrors: 0
+
+status	type	title	id	runId	linkedPiboSessionId
+done	user.message	User Message	event:message_queued:web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764
+done	agent.turn	Agent Turn	event:message:web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764
+done	assistant.message	  Agent Message	event:assistant:web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764:assistant:0
+done	user.message	User Message	event:message_queued:web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9
+done	agent.turn	Agent Turn	event:message:web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9
+done	tool.call	  bash	tool-invocation:%5B%22call_EmlJrweg1gQxxTaEH8nJFizH%7Cfc_02bea780c4cd49c5016a9cd3d87e1887d2b7a8f533fc2a31ca%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9%5C%22%2C0%5D%22%5D
+done	assistant.message	  Agent Message	event:assistant:web-mtp7m5cr-de320c4f-69a7-4954-b40d-1667cbd75ce9:assistant:0
+done	user.message	User Message	event:message_queued:web-mtp7m7k6-40301371-17d4-408e-ab37-e48ae44dc6b5
+done	agent.turn	Agent Turn	event:message:web-mtp7m7k6-40301371-17d4-408e-ab37-e48ae44dc6b5
+done	assistant.message	  Agent Message	event:assistant:web-mtp7m7k6-40301371-17d4-408e-ab37-e48ae44dc6b5:assistant:0
+done	user.message	User Message	event:message_queued:web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c
+done	agent.turn	Agent Turn	event:message:web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c
+done	tool.call	  bash	tool-invocation:%5B%22call_1eLwaDY7ziENEJvqeMPq5p7s%7Cfc_02bea780c4cd49c5016a9cd4c6c8fc87d2b192bfb8901fd8d4%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c%5C%22%2C0%5D%22%5D
+done	assistant.message	  Agent Message	event:assistant:web-mtp7r9n2-10f85381-5d89-49d3-8417-02a4506e1e4c:assistant:0
+done	user.message	User Message	event:message_queued:web-mtp7rbna-9b4ff9f0-51f1-4f29-a8f5-535f26f72cd8
+done	agent.turn	Agent Turn	event:message:web-mtp7rbna-9b4ff9f0-51f1-4f29-a8f5-535f26f72cd8
+done	assistant.message	  Agent Message	event:assistant:web-mtp7rbna-9b4ff9f0-51f1-4f29-a8f5-535f26f72cd8:assistant:0
+nodes: 17
+
+checks: ok
+issues: 0
+
+Next:
+  pibo debug trace ps_9ba79944-7764-4fe4-8417-da2a993576d7 show event:message_queued:web-mtp7kky6-060c14aa-1b1d-4ee4-8eb4-3f6f76997764
+  pibo debug messages ps_9ba79944-7764-4fe4-8417-da2a993576d7 list

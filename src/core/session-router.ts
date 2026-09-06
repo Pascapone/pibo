@@ -1172,16 +1172,39 @@ export class PiboSessionRouter {
 		return status ? this.withPersistedRuntimeBinding(status) : undefined;
 	}
 
-	async getSessionStatusSnapshot(piboSessionId: string): Promise<PiboSessionStatus> {
-		const session = await this.getOrCreateSession(piboSessionId);
+	async getSessionStatusSnapshot(piboSessionId: string, options?: { activate?: boolean }): Promise<PiboSessionStatus | undefined> {
+		const session = options?.activate === false ? this.sessions.get(piboSessionId) : await this.getOrCreateSession(piboSessionId);
+		if (!session) {
+			this.resolvePiboSession(piboSessionId);
+			return undefined;
+		}
 		try {
 			return this.withPersistedRuntimeBinding(await session.getStatusSnapshot());
 		} finally {
-			this.scheduleIdleSessionEvictionIfIdle(piboSessionId);
+			// Passive header polling must neither create nor indefinitely retain a runtime.
+			if (options?.activate !== false) this.scheduleIdleSessionEvictionIfIdle(piboSessionId);
 		}
 	}
 
 	async getSessionForkCandidates(piboSessionId: string): Promise<PiboForkCandidate[]> {
+		const canReadPersisted = () => !this.closing
+			&& !this.quiescingSessions.has(piboSessionId)
+			&& !this.disposingSessions.has(piboSessionId)
+			&& !this.sessions.has(piboSessionId)
+			&& !this.pendingSessions.has(piboSessionId);
+		if (canReadPersisted()) {
+			const record = this.resolvePiboSession(piboSessionId);
+			const binding = this.resolveSessionRuntimeBinding(record);
+			const adapter = this.resolveAgentRuntimeRegistry(binding.runtimeInstanceId).requireAgentRuntimeAdapter(binding.runtimeInstanceId);
+			if (binding.state === "bound" && adapter.descriptor.id === binding.adapterId
+				&& adapter.descriptor.capabilities.lifecycle.fork && adapter.readForkCandidates) {
+				const workspace = record.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace();
+				const candidates = await adapter.readForkCandidates({ binding, workspace });
+				const current = this.resolvePiboSession(piboSessionId);
+				if (candidates !== undefined && canReadPersisted() && current.workspace === record.workspace
+					&& runtimeBindingsEqual(binding, this.resolveSessionRuntimeBinding(current))) return candidates;
+			}
+		}
 		const session = await this.getOrCreateSession(piboSessionId);
 		try {
 			return await session.getForkCandidates();
@@ -2636,15 +2659,15 @@ export class PiboSessionRouter {
 		}
 	}
 
-	private getSubagentDepth(piboSessionId: string): number {
+	private getSubagentDepth(piboSessionId: string, sessionsById?: ReadonlyMap<string, PiboSession>): number {
 		let depth = 0;
-		let current = this.sessionStore.get(piboSessionId);
+		let current = sessionsById ? sessionsById.get(piboSessionId) : this.sessionStore.get(piboSessionId);
 		const seen = new Set<string>();
 		while (current?.parentId) {
 			if (seen.has(current.parentId)) break;
 			seen.add(current.parentId);
 			depth += 1;
-			current = this.sessionStore.get(current.parentId);
+			current = sessionsById ? sessionsById.get(current.parentId) : this.sessionStore.get(current.parentId);
 		}
 		return depth;
 	}
@@ -2917,7 +2940,9 @@ export class PiboSessionRouter {
 
 	private projectKnownSessionSignals(): void {
 		const sessions = this.sessionStore.list?.() ?? [];
-		const depthBySessionId = new Map(sessions.map((session) => [session.id, this.getSubagentDepth(session.id)]));
+		// The complete list is already loaded; avoid an additional store query for every ancestor.
+		const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+		const depthBySessionId = new Map(sessions.map((session) => [session.id, this.getSubagentDepth(session.id, sessionsById)]));
 		sessions.sort((left, right) => (depthBySessionId.get(left.id) ?? 0) - (depthBySessionId.get(right.id) ?? 0));
 		for (const session of sessions) {
 			this.signalRegistry.project({ type: "session_created", session });

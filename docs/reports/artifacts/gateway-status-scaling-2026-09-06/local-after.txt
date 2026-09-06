@@ -1,0 +1,10 @@
+✔ signal snapshots order known parents without rereading each stored Session (38.782193ms)
+✔ listed Session depth matches store traversal for roots, missing parents, and cycles (3.625322ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2571.168833
