@@ -72,7 +72,6 @@ import {
 	resolveOptimisticSessionCreateOutcome,
 	rollbackOptimisticSessionNode,
 	restoreBootstrapSelection,
-	roomWithArchivedState,
 	sessionNodeFromSession,
 	setRoomPinnedInBootstrap,
 	setSessionPinnedInBootstrap,
@@ -129,6 +128,7 @@ import {
 } from "./app-route-selection";
 import { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstrap-error";
 import { errorMessage } from "./error-message";
+import { RoomMutationTracker, type RoomMutationInput } from "./app-room-mutations";
 import { SettingsSidebar } from "./settings/SettingsSidebar";
 import { ResponsiveTabSidebarPanel } from "./responsive-pane-sidebar";
 import { SettingsView } from "./settings/SettingsView";
@@ -380,6 +380,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const showArchivedRef = useRef(showArchived);
 	const sessionListScrollRef = useRef<HTMLDivElement>(null);
 	const bootstrapRef = useRef<BootstrapData | null>(null);
+	const roomMutationGenerationRef = useRef(0);
 	const bootstrapRequestId = useRef(0);
 	const navigationInFlightRef = useRef(new Map<string, Promise<NavigationData>>());
 	const roomSwitchControllerRef = useRef<AbortController | null>(null);
@@ -394,14 +395,15 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
 	const loadingSelectedRoom = Boolean(loadingRoomId && loadingRoomId === selectedRoomId);
 	const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
+	const [roomMutations] = useState(() => new RoomMutationTracker());
 	const overlayCurrentSignals = useCallback((data: BootstrapData): BootstrapData => {
 		const statusSnapshot = sessionStatusSignalsRef.current;
 		const withGlobalStatuses = statusSnapshot ? applySignalStatusSnapshotToBootstrap(data, statusSnapshot) : data;
 		const selectedSnapshot = sessionSignalsRef.current;
-		return data.selectedPiboSessionId && signalSnapshotIncludesSession(selectedSnapshot, data.selectedPiboSessionId)
+		return roomMutations.apply(data.selectedPiboSessionId && signalSnapshotIncludesSession(selectedSnapshot, data.selectedPiboSessionId)
 			? applySignalSnapshotToBootstrap(withGlobalStatuses, selectedSnapshot)
-			: withGlobalStatuses;
-	}, []);
+			: withGlobalStatuses);
+	}, [roomMutations]);
 
 	useEffect(() => {
 		showArchivedRef.current = showArchived;
@@ -762,10 +764,20 @@ export function App({ route }: { route: ChatAppRoute }) {
 			input.force === true ? "force" : "cached",
 			chatSessionNavigationGeneration(queryClient),
 		]);
-		if (input.signal) return loadNavigationQueryData(queryClient, input);
+		const loadCurrentNavigation = async () => {
+			let force = input.force;
+			for (;;) {
+				const generation = roomMutationGenerationRef.current;
+				const data = await loadNavigationQueryData(queryClient, { ...input, force });
+				if (generation === roomMutationGenerationRef.current) return data;
+				// A Room write crossed this read. Keep its navigation intent, but read fresh metadata.
+				force = true;
+			}
+		};
+		if (input.signal) return loadCurrentNavigation();
 		const inFlight = navigationInFlightRef.current.get(key);
 		if (inFlight) return inFlight;
-		const request = loadNavigationQueryData(queryClient, input).finally(() => {
+		const request = loadCurrentNavigation().finally(() => {
 			if (navigationInFlightRef.current.get(key) === request) navigationInFlightRef.current.delete(key);
 		});
 		navigationInFlightRef.current.set(key, request);
@@ -995,9 +1007,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [loadBootstrap, refreshTrace, selectedPiboSessionId, selectedRoomId]);
 
 	const updateBootstrapCache = useCallback((updater: (data: BootstrapData) => BootstrapData) => {
-		setBootstrap((current) => current ? updater(current) : current);
-		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? updater(current) : current);
-	}, [queryClient]);
+		setBootstrap((current) => current ? roomMutations.apply(updater(current)) : current);
+		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? roomMutations.apply(updater(current)) : current);
+	}, [queryClient, roomMutations]);
 	const updateBootstrapCacheForRoom = useCallback((roomId: string, updater: (data: BootstrapData) => BootstrapData) => {
 		setBootstrap((current) => current ? applyBootstrapUpdateForRoom(current, roomId, updater) : current);
 		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) =>
@@ -1469,25 +1481,26 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 	};
 
-	const updateRoom = async (roomId: string, input: { name?: string; topic?: string | null; workspace?: string | null }) => {
-		await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
-		const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
-		updateBootstrapCache((data) => updateRoomInBootstrap(data, roomId, (room) => ({
-			...room,
-			...(input.name !== undefined ? { name: input.name } : {}),
-			...(input.topic !== undefined ? { topic: input.topic ?? undefined } : {}),
-			...(input.workspace !== undefined ? { workspace: input.workspace ?? undefined } : {}),
-			updatedAt: new Date().toISOString(),
-		})));
+	const updateRoom = async (roomId: string, input: RoomMutationInput) => {
+		roomMutationGenerationRef.current += 1;
+		await Promise.all([
+			queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] }),
+			invalidateChatSessionNavigationCache(queryClient),
+		]);
+		const currentRoom = findRoomById(bootstrapRef.current?.rooms ?? [], roomId);
+		if (!currentRoom) return;
+		const mutation = roomMutations.begin(currentRoom, input);
+		updateBootstrapCache((data) => data);
 		try {
 			const { room } = await patchRoom(roomId, input);
-			updateBootstrapCache((data) => updateRoomInBootstrap(data, roomId, () => room));
-			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, roomId, { force: true });
-			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
+			updateBootstrapCache(roomMutations.settle(mutation, room));
 			setError(null);
 		} catch (caught) {
-			restoreBootstrapSnapshot(snapshot);
+			updateBootstrapCache(roomMutations.settle(mutation));
 			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			roomMutationGenerationRef.current += 1;
+			await invalidateChatSessionNavigationCache(queryClient);
 		}
 	};
 
@@ -1521,23 +1534,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 	};
 
 	const setRoomArchived = async (roomId: string, archived: boolean) => {
-		await queryClient.cancelQueries({ queryKey: ["chat", "bootstrap"] });
-		const snapshot = createBootstrapMutationSnapshot(queryClient, bootstrap);
 		if (archived) {
 			setShowArchivedRooms(true);
 			writeStoredShowArchivedRooms(true);
 		}
-		updateBootstrapCache((data) => updateRoomInBootstrap(data, roomId, (room) => roomWithArchivedState(room, archived)));
-		try {
-			const { room } = await patchRoom(roomId, { archived });
-			updateBootstrapCache((data) => updateRoomInBootstrap(data, roomId, () => room));
-			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
-			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
-			setError(null);
-		} catch (caught) {
-			restoreBootstrapSnapshot(snapshot);
-			setError(caught instanceof Error ? caught.message : String(caught));
-		}
+		await updateRoom(roomId, { archived });
 	};
 
 	const runCommand = useCallback(async (text: string) => {
