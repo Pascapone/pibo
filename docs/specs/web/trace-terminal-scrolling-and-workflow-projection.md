@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-06T06:50:16Z"
+  at: "2026-09-06T10:18:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,7 +23,7 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "50ae78c633274ba569a40d7699bcf6672b58e898"
+  commit: "b4ca04bebf2ce81d82c1df0ed155b3f4451b4c9a"
   requirements:
     - id: "WEB-TRACE-VIEWPORT-009"
       status: "implemented"
@@ -94,6 +94,8 @@ traceability:
           name: "metrics survive persistence serialization, live frames, patches and all display modes"
         - path: "test/chat-ui-session-view-toggle-accessibility.test.mjs"
           name: "topbar exposes Debug without duplicate view navigation or Raw Events"
+        - path: "test/tool-call-metrics.test.mjs"
+          name: "status strip renders estimated tokens, zero, missing values and subsecond duration"
       public: ["SessionTraceHeader", "CompactTerminalSessionView", "PiboToolExecutionFinishedEvent.toolMetrics"]
       failures: ["Missing or unmeasurable payload metrics remain unavailable; estimates are never presented as provider usage or billing."]
       confidence: "high"
@@ -338,7 +340,9 @@ The runtime collector measures start-to-finish elapsed time with a monotonic clo
 
 Token values MUST carry `≈`: they estimate tool payload size at four characters per token, not model-response usage, billable tokens, or tool-internal model usage. Result-envelope metadata is excluded when a harness supplies `content`. No tokenizer, extra provider request, text scan, or serialized copy is introduced. Structural traversal has a 10,000-visit budget and a depth limit of 64; large strings use their length. Missing starts, legacy calls, media, cyclic or over-budget payloads use `—` for unavailable values rather than zero. The browser formats already-recorded numbers; it does not measure or tokenize payloads while rendering or scrolling.
 
-The status line follows the [Compact Terminal design](/project/design/compact-terminal.md): quiet hairline separation, square geometry, 11px monospaced/tabular metadata, no cards, shadows, polling, or per-row timers. It wraps at narrow widths. Debug in the embedded VS Code Terminal is session-local.
+The status line follows the [Compact Terminal design](/project/design/compact-terminal.md): square geometry, 9px black-weight labels, 11px bold tabular values, no cards, shadows, polling, animation, or per-row timers. It wraps whole metric segments at narrow widths instead of truncating the values. Debug in the embedded VS Code Terminal is session-local.
+
+The Debug line is a high-contrast signal rail. Normal time uses neon violet, normal input uses electric cyan, and normal output uses acid lime so the three columns remain distinguishable from ordinary Terminal prose. Severity is derived only from the already-recorded value: duration escalates at 1, 5, and 15 seconds; input estimates at 8k, 20k, and 50k tokens; output estimates at 2k, 10k, and 50k tokens. Elevated values use neon yellow/amber, high values use fluorescent orange, critical values use hot pink, and unavailable values remain neutral gray. Color supplements the visible number and `—` state; it is not the sole information channel.
 
 Verification for this addition: isolated build and all typechecks passed; 192 focused runtime/trace tests and a separate 296-test UI/metrics run passed (the selections overlap). Browser Use with headful Chromium and CDP passed Default/Slim at 1440×1000 and 390×844, toggle/reload/Hide checks, legacy/media placeholders, Raw Events workspace-tab access, keyboard Space activation, and absence of horizontal overflow or JavaScript exceptions. Enabling Debug caused no raw-event or payload fetch. The browser used deterministic persisted tool-event fixtures; a provider-backed Worker turn failed at authentication, so provider end-to-end and production deployment are not claimed.
 

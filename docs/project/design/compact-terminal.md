@@ -15,7 +15,7 @@ migration_lineage:
   source_body_sha256: "0faf4abf4a48f79b23f9a9cad421c97fa09519a3d356fc9dafb6be78ff62773b"
 generated:
   by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-08-31T22:47:46Z"
+  at: "2026-09-06T10:18:00Z"
 ---
 # Design System: Pibo Compact Terminal
 **Project ID:** local-reference-pibo-compact-terminal
@@ -219,6 +219,21 @@ Each token within a line carries a tone and optional weight:
 | `yellow` | `#facc15` | Function names, variables |
 | `blue` | `#60a5fa` | Numbers, booleans |
 | `amber` | `#f59e0b` | Reasoning/thinking labels |
+
+### Debug Metric Signal Rail
+
+When Debug is enabled, each tool invocation may expose one flat signal rail immediately below its transcript content. This is the deliberate high-visibility exception to quiet metadata styling: the rail must remain recognizable during rapid scrolling without becoming a card.
+
+- Use three square, adjacent segments: `TIME`, `IN`, and `OUT`.
+- Labels use 9px black-weight uppercase monospaced text with positive tracking. Values use 11px bold tabular monospaced text.
+- Every segment uses a 2px left signal edge and a translucent matching background on the near-black rail. Do not use radius, shadows, glow, animation, or icons.
+- Baseline colors distinguish metric types from ordinary Terminal syntax: Time is neon violet (`#c084fc`), Input is electric cyan (`#00e5ff`), and Output is acid lime (`#a3ff12`).
+- Severity overrides the baseline color: elevated is neon yellow/amber (`#ffe600` / `#ffb000`), high is fluorescent orange (`#ff6b00` / `#ff7a00`), and critical is hot pink (`#ff2bd6`). Unavailable data is neutral gray (`#737373`).
+- Output receives the strongest background tint because excessive result volume is the primary scanning target.
+- Segments wrap as complete units on narrow screens. Never truncate the metric value.
+- Color is supplementary. The visible duration/count and the unavailable marker `—` remain authoritative.
+
+Current display thresholds are intentionally simple and local to presentation: duration escalates at 1, 5, and 15 seconds; estimated input at 8k, 20k, and 50k tokens; estimated output at 2k, 10k, and 50k tokens. They do not alter collection, persistence, billing, or provider usage semantics.
 
 ### Row Action Buttons
 
