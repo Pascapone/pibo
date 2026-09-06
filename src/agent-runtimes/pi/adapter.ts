@@ -49,6 +49,7 @@ import type {
 	LogoutAgentRuntimeAuthInput,
 	OpenAgentRuntimeSessionInput,
 	ReadAgentRuntimeHistoryInput,
+	ResolveAgentRuntimeBindingInput,
 	RuntimeSessionBinding,
 	StartAgentRuntimeAuthInput,
 	ValidateAgentRuntimeProfileInput,
@@ -62,6 +63,7 @@ import {
 import {
 	inspectPiAgentRuntimeHistory,
 	readPiAgentRuntimeHistory,
+	readPiAgentRuntimeForkCandidates,
 } from "./history.js";
 import {
 	historyReconciliationDigest,
@@ -687,6 +689,10 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	async inspectHistory(input: InspectAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryInspection> {
 		return await inspectPiAgentRuntimeHistory(this.instanceId, input);
+	}
+
+	async readForkCandidates(input: ResolveAgentRuntimeBindingInput) {
+		return await readPiAgentRuntimeForkCandidates(input);
 	}
 
 	async readHistory(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage> {

@@ -317,6 +317,7 @@ function compactTraceNode(node: PiboTraceNode, payloadStore: PayloadStore, piboS
 		startedAt: node.startedAt,
 		completedAt: node.completedAt,
 		durationMs: node.durationMs,
+		toolMetrics: node.toolMetrics,
 		orderKey: node.orderKey,
 		depth,
 		hasChildren: node.children.length > 0,

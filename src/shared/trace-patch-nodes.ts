@@ -72,6 +72,10 @@ function traceNodeShallowEqual(left: PiboTraceNode, right: PiboTraceNode): boole
 		left.startedAt === right.startedAt &&
 		left.completedAt === right.completedAt &&
 		left.durationMs === right.durationMs &&
+		left.toolMetrics?.durationMs === right.toolMetrics?.durationMs &&
+		left.toolMetrics?.inputTokens === right.toolMetrics?.inputTokens &&
+		left.toolMetrics?.outputTokens === right.toolMetrics?.outputTokens &&
+		left.toolMetrics?.tokenBasis === right.toolMetrics?.tokenBasis &&
 		left.summary === right.summary &&
 		left.input === right.input &&
 		left.output === right.output &&

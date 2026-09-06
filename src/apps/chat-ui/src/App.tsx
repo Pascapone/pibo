@@ -31,7 +31,7 @@ import { SessionTracePane } from "./session-trace-pane";
 import { SessionSidebar } from "./session-sidebar";
 import { DesktopSessionSidebar, useDesktopSessionSidebar } from "./desktop-session-sidebar";
 import { DESKTOP_COLLAPSED_SIDEBAR_WIDTH } from "./desktop-session-sidebar-model";
-import { getChatSessionView, listChatSessionViews } from "./session-views/registry";
+import { getChatSessionView } from "./session-views/registry";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
 import {
 	clearStoredSelection,
@@ -42,7 +42,7 @@ import {
 	readStoredSessionView,
 	readStoredShowArchivedRooms,
 	readStoredShowArchivedSessions,
-	readStoredShowRawEvents,
+	readStoredDebugMode,
 	readStoredShowThinking,
 	readStoredToolDisplayMode,
 	removeStoredNewSessionProfile,
@@ -54,7 +54,7 @@ import {
 	writeStoredSessionView,
 	writeStoredShowArchivedRooms,
 	writeStoredShowArchivedSessions,
-	writeStoredShowRawEvents,
+	writeStoredDebugMode,
 	writeStoredShowThinking,
 	writeStoredToolDisplayMode,
 } from "./app-storage";
@@ -320,7 +320,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const activeDownloadKeysRef = useRef<Set<string>>(new Set());
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
 	const [expandThinking, setExpandThinking] = useState(readStoredExpandThinking);
-	const [showRawEvents, setShowRawEvents] = useState(readStoredShowRawEvents);
+	const [debugMode, setDebugMode] = useState(readStoredDebugMode);
+	const showRawEvents = false;
+	const toggleDebugMode = () => setDebugMode((current) => {
+		writeStoredDebugMode(!current);
+		return !current;
+	});
 	const [toolDisplayMode, setToolDisplayMode] = useState<ToolDisplayMode>(readStoredToolDisplayMode);
 	const [showArchived, setShowArchived] = useState(readStoredShowArchivedSessions);
 	const [showArchivedRooms, setShowArchivedRooms] = useState(readStoredShowArchivedRooms);
@@ -929,7 +934,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 		});
 	}, [selectedPiboSessionId]);
 
-	const sessionViews = useMemo(() => listChatSessionViews(), []);
 	const currentSessionView = useMemo(() => getChatSessionView(sessionViewId), [sessionViewId]);
 
 	useEffect(() => {
@@ -1648,22 +1652,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setSessionViewId("workflow");
 		navigateToRoute({ area: "sessions", roomId: data.selectedRoomId, piboSessionId: result.session.id }, false, "workflow");
 	}, [loadBootstrap, navigateToRoute]);
-	const selectSessionView = useCallback(
-		(nextViewId: ChatSessionViewId) => {
-			setSessionViewId(nextViewId);
-			if (area !== "sessions") return;
-			navigateToRoute(
-				{
-					area: "sessions",
-					...(selectedRoomId ? { roomId: selectedRoomId } : {}),
-					...(selectedPiboSessionId ? { piboSessionId: selectedPiboSessionId } : {}),
-				},
-				false,
-				nextViewId,
-			);
-		},
-		[area, navigateToRoute, selectedPiboSessionId, selectedRoomId],
-	);
 
 	const sessionGroups = useMemo(() => bootstrap ? splitSessionNodesByArchive(bootstrap.sessions, showArchived) : { active: [], archived: [] }, [bootstrap?.sessions, showArchived]);
 	const visibleActiveSessions = useMemo(
@@ -1978,7 +1966,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 							selectedSessionSignal={selectedSessionSignal}
 							signals={sessionSignals ?? undefined}
 							sessionViewId={sessionViewId}
-							sessionViews={sessionViews}
 							currentSessionView={currentSessionView}
 							containerResponsive
 							creatingSession={creatingSession}
@@ -1994,14 +1981,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 							composerText={composerText}
 							composerFocusSignal={composerFocusSignal}
 							onComposerTextChange={updateComposerText}
-							onToggleRawEvents={() => openDesktopTarget({ kind: "session-tool", tool: "raw-events" })}
+							debugMode={debugMode}
+							onToggleDebugMode={toggleDebugMode}
 							onToggleThinking={() => { const next = !showThinking; setShowThinking(next); writeStoredShowThinking(next); }}
 							onToggleExpandThinking={() => { const next = !expandThinking; setExpandThinking(next); writeStoredExpandThinking(next); }}
 							onToolDisplayModeChange={(mode) => { setToolDisplayMode(mode); writeStoredToolDisplayMode(mode); }}
 							onSessionAgentProfileChange={(profile) => void updateSelectedSessionProfile(profile)}
 							onFork={forkFrom}
 							onOpenSession={openSession}
-							onSelectSessionView={selectSessionView}
 							onCommand={runCommand}
 							onThinkingLevelChange={(level) => void runCommand(`/thinking ${level}`)}
 							onRefreshTrace={refreshSelectedTrace}
@@ -2218,7 +2205,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 						selectedSessionSignal={selectedSessionSignal}
 						signals={sessionSignals ?? undefined}
 						sessionViewId={sessionViewId}
-						sessionViews={sessionViews}
 						currentSessionView={currentSessionView}
 						creatingSession={creatingSession}
 						terminalFullscreen={isTerminalFullscreen}
@@ -2233,11 +2219,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 						composerText={composerText}
 						composerFocusSignal={composerFocusSignal}
 						onComposerTextChange={updateComposerText}
-						onToggleRawEvents={() => {
-							const next = !showRawEvents;
-							setShowRawEvents(next);
-							writeStoredShowRawEvents(next);
-						}}
+						debugMode={debugMode}
+						onToggleDebugMode={toggleDebugMode}
 						onToggleThinking={() => {
 							const next = !showThinking;
 							setShowThinking(next);
@@ -2255,7 +2238,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 						onSessionAgentProfileChange={(profile) => void updateSelectedSessionProfile(profile)}
 						onFork={forkFrom}
 						onOpenSession={openSession}
-						onSelectSessionView={selectSessionView}
 						onCommand={runCommand}
 						onThinkingLevelChange={(level) => void runCommand(`/thinking ${level}`)}
 						onRefreshTrace={refreshSelectedTrace}

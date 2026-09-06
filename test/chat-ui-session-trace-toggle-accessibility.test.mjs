@@ -31,7 +31,7 @@ async function renderSessionTraceHeader({
 			sessionViewId: "trace",
 			sessionViews: [],
 			currentSessionView: { label: "Trace" },
-			showRawEvents: ${JSON.stringify(showRawEvents)},
+			debugMode: ${JSON.stringify(showRawEvents)},
 			showThinking: ${JSON.stringify(showThinking)},
 			expandThinking: ${JSON.stringify(expandThinking)},
 			toolDisplayMode: "default",
@@ -39,7 +39,7 @@ async function renderSessionTraceHeader({
 			onShowWebAnnotationsPanel: noop,
 			onHideWebAnnotationsPanel: noop,
 			onSelectSessionView: noop,
-			onToggleRawEvents: noop,
+			onToggleDebugMode: noop,
 			onToggleThinking: noop,
 			onToggleExpandThinking: noop,
 			onToolDisplayModeChange: noop,
@@ -73,7 +73,8 @@ test("trace header toggle names stay stable across false and true states", async
 	assert.match(collapsed, /data-pibo-context-kind="room"/);
 	assert.match(collapsed, />Room</);
 	assert.match(collapsed, />Test room</);
-	assertToggle(collapsed, { name: "Raw Events", pressed: false, title: "Show Raw Events" });
+	assertToggle(collapsed, { name: "Debug", pressed: false, title: "Enable Debug" });
+	assert.doesNotMatch(collapsed, /aria-label="Raw Events"/);
 	assertToggle(collapsed, { name: "Thinking", pressed: true, title: "Hide Thinking" });
 	assertToggle(collapsed, { name: "Thinking expansion", pressed: false, title: "Expand Thinking" });
 
@@ -82,7 +83,8 @@ test("trace header toggle names stay stable across false and true states", async
 		showThinking: true,
 		expandThinking: true,
 	});
-	assertToggle(expanded, { name: "Raw Events", pressed: true, title: "Hide Raw Events" });
+	assertToggle(expanded, { name: "Debug", pressed: true, title: "Disable Debug" });
+	assert.doesNotMatch(expanded, /aria-label="Raw Events"/);
 	assertToggle(expanded, { name: "Thinking", pressed: true, title: "Hide Thinking" });
 	assertToggle(expanded, { name: "Thinking expansion", pressed: true, title: "Collapse Thinking" });
 });

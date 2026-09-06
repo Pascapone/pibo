@@ -815,6 +815,7 @@ function traceNodeFromEvent(
 				toolCallId: event.toolCallId,
 				toolInvocationOrdinal: event.toolInvocationOrdinal ?? 0,
 				intent: event.intent,
+				toolMetrics: event.type === "tool_execution_finished" ? event.toolMetrics : undefined,
 				type: subagentTool ? "agent.delegation" : "tool.call",
 				title: event.toolName,
 				status:
@@ -1383,6 +1384,7 @@ function thinkingEventNodeId(
 function mergeToolEvent(target: PiboTraceNode, update: PiboTraceNode): void {
 	target.status = update.status;
 	target.intent = update.intent ?? target.intent;
+	target.toolMetrics = update.toolMetrics ?? target.toolMetrics;
 	target.summary = update.summary ?? target.summary;
 	target.input = mergeDelegationInput(target, update);
 	target.output = update.output ?? target.output;

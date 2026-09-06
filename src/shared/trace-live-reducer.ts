@@ -151,6 +151,7 @@ function storedEventFromStreamEvent(
 			toolName: event.toolName,
 			toolInvocationOrdinal: validOrdinal(event.toolInvocationOrdinal) ? event.toolInvocationOrdinal : undefined,
 			result: event.result,
+			toolMetrics: event.toolMetrics,
 			isError: Boolean(event.isError),
 			...(event.intent ? { intent: event.intent } : {}),
 		};

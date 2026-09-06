@@ -24,7 +24,7 @@ export type ChatStreamEvent = { piboSessionId?: string; createdAt?: string; rend
 	| { type: "REASONING_MESSAGE_END"; messageId: string; runId?: string; finalText?: string }
 	| { type: "TOOL_CALL_START"; toolCallId: string; toolName: string; args?: unknown; intent?: string; runId?: string }
 	| { type: "TOOL_CALL_ARGS"; toolCallId: string; toolName?: string; args: unknown; argsComplete: boolean; intent?: string; runId?: string; partialResult?: unknown; sourceEventType?: "tool_call" | "tool_execution_updated" }
-	| { type: "TOOL_CALL_RESULT"; toolCallId: string; toolName?: string; result: unknown; isError: boolean; intent?: string; runId?: string }
+	| { type: "TOOL_CALL_RESULT"; toolMetrics?: import("../../shared/tool-call-metrics.js").ToolCallMetrics; toolCallId: string; toolName?: string; result: unknown; isError: boolean; intent?: string; runId?: string }
 	| { type: "AGENT_DELEGATION"; toolCallId?: string; toolName: string; subagentName: string; childPiboSessionId: string; threadKey?: string }
 	| { type: "EXECUTION_RESULT"; runId?: string; eventId?: string; action: string; result: unknown }
 	| { type: "RUNTIME_APPROVAL_REQUESTED"; runId?: string; request: Extract<PiboOutputEvent, { type: "approval_requested" }>["request"] }
@@ -148,7 +148,7 @@ export function chatStreamFramesFromOutputEvent(
 			break;
 		case "tool_execution_finished":
 			ensureToolCallStarted(frames, state, event.toolCallId, event.toolName, undefined, event.intent, eventId, event.toolInvocationOrdinal);
-			frames.push({ type: "TOOL_CALL_RESULT", toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError, ...(event.intent ? { intent: event.intent } : {}), runId: eventId });
+			frames.push({ type: "TOOL_CALL_RESULT", toolMetrics: event.toolMetrics, toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError, ...(event.intent ? { intent: event.intent } : {}), runId: eventId });
 			break;
 		case "subagent_session":
 			frames.push({

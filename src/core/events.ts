@@ -431,6 +431,7 @@ export type PiboToolExecutionUpdatedEvent = {
 };
 
 export type PiboToolExecutionFinishedEvent = {
+	toolMetrics?: import("../shared/tool-call-metrics.js").ToolCallMetrics;
 	type: "tool_execution_finished";
 	piboSessionId: string;
 	eventId?: string;

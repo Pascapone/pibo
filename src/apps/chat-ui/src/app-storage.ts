@@ -4,6 +4,7 @@ const LAST_SELECTION_STORAGE_KEY = "pibo.chat.lastSelection";
 const SESSION_VIEW_STORAGE_KEY = "pibo.chat.sessionView";
 const COMPOSER_DRAFT_STORAGE_PREFIX = "pibo.chat.composerDraft.";
 const COMPOSER_HISTORY_STORAGE_KEY = "pibo.chat.composerHistory";
+const DEBUG_MODE_STORAGE_KEY = "pibo.chat.debugMode";
 const SHOW_THINKING_STORAGE_KEY = "pibo.chat.showThinking";
 const EXPAND_THINKING_STORAGE_KEY = "pibo.chat.expandThinking";
 const SHOW_RAW_EVENTS_STORAGE_KEY = "pibo.chat.showRawEvents";
@@ -142,6 +143,14 @@ export function writeStoredSessionView(viewId: ChatSessionViewId): void {
 	} catch {
 		// Browser storage can be unavailable in private or locked-down contexts.
 	}
+}
+
+export function readStoredDebugMode(): boolean {
+	return readStoredBoolean(DEBUG_MODE_STORAGE_KEY, false);
+}
+
+export function writeStoredDebugMode(value: boolean): void {
+	writeStoredBoolean(DEBUG_MODE_STORAGE_KEY, value);
 }
 
 export function readStoredShowThinking(): boolean {

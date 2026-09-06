@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:32:00Z"
+  at: "2026-09-05T21:26:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,8 +23,52 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
+  commit: "bfb31e40143ea149cf77917d787adaf477539f51"
   requirements:
+    - id: "WEB-TRACE-PASSIVE-007"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/session-trace-pane.tsx"
+          symbol: "SessionTracePane"
+        - path: "src/apps/chat-ui/src/api-chat-sessions.ts"
+          symbol: "getSessionStatus"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "createChatWebApp"
+        - path: "src/core/session-router.ts"
+          symbol: "getSessionStatusSnapshot"
+      tests:
+        - path: "test/cold-fork-candidates.test.mjs"
+          name: "passive header status does not activate or retain idle runtimes"
+        - path: "test/chat-ui-terminal-header-usage.test.mjs"
+          name: "Terminal header status is passive and refreshes on session state transitions"
+        - path: "test/web-channel.test.mjs"
+          name: "chat web status refresh returns a snapshot without emitting a new execution result"
+      public: ["GET /api/chat/status?activate=false", "Terminal header usage", "Terminal fork affordances"]
+      failures: ["Inactive runtime usage remains unknown rather than synthesized; authentication and session access checks are unchanged."]
+      confidence: "high"
+    - id: "WEB-TRACE-DEBUG-006"
+      status: "implemented"
+      sources:
+        - path: "src/shared/tool-call-metrics.ts"
+          symbol: "ToolCallMetricsCollector"
+        - path: "src/agent-runtime/routed-session.ts"
+          symbol: "RuntimeRoutedSession"
+        - path: "src/data/ingest-service.ts"
+          symbol: "ChatDataIngestService"
+        - path: "src/apps/chat-ui/src/session-trace-header.tsx"
+          symbol: "SessionTraceHeader"
+        - path: "src/apps/chat-ui/src/session-views/compact-terminal/TerminalToolMetrics.tsx"
+          symbol: "TerminalToolMetrics"
+      tests:
+        - path: "test/tool-call-metrics.test.mjs"
+          name: "durable ingestion retains metrics outside large payloads through restart and timeline compaction"
+        - path: "test/tool-call-metrics.test.mjs"
+          name: "metrics survive persistence serialization, live frames, patches and all display modes"
+        - path: "test/chat-ui-session-view-toggle-accessibility.test.mjs"
+          name: "topbar exposes Debug without duplicate view navigation or Raw Events"
+      public: ["SessionTraceHeader", "CompactTerminalSessionView", "PiboToolExecutionFinishedEvent.toolMetrics"]
+      failures: ["Missing or unmeasurable payload metrics remain unavailable; estimates are never presented as provider usage or billing."]
+      confidence: "high"
     - id: "WEB-TRACE-PROJECTION-001"
       status: "implemented"
       sources:
@@ -206,7 +250,7 @@ Bounded trace projection, opt-in payload/raw detail, deterministic historical/li
 
 ## Scope
 
-This specification describes implemented behavior at integrated traceability commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`.
+This specification describes implemented behavior at traceability commit `bfb31e40143ea149cf77917d787adaf477539f51`. Earlier Workflow evidence remains scoped to its recorded integration baseline.
 
 ### In scope
 
@@ -224,7 +268,7 @@ This specification describes implemented behavior at integrated traceability com
 
 ### Routes and state
 
-Summary/timeline are bounded by default; raw event tail and payload chunks/images are explicit opt-in routes. View selection uses a read-only registry.
+Summary/timeline are bounded by default; raw event tail and payload chunks/images are explicit opt-in routes. View selection uses a read-only registry. Terminal, Workflow, Preview, and Raw Events remain available through workspace tabs; their duplicate topbar controls are removed. The topbar instead exposes Debug beside Thinking.
 
 ### Cache, stream, files, and media
 
@@ -247,6 +291,20 @@ Trace cards expose stable IDs/order metadata; sticky scrolling tracks user inten
 Legacy/current runtime turns use stable product identity; workflow UI models accept kernel/XState/UI snapshots while durable truth remains kernel.
 
 ## Requirements and invariants
+
+### Requirement: WEB-TRACE-DEBUG-006
+
+Debug MUST default off and expose a stable accessible toggle name and pressed state beside Thinking on desktop and mobile. Chat Web persists the preference locally and ignores the former Raw Events topbar preference. Debug MUST NOT open the Raw Events inspector or initiate raw-event/payload fetches.
+
+When enabled, Terminal MUST show a compact monospaced status line below each tool invocation: execution time, estimated argument tokens, and estimated result tokens. Output is visually emphasized. The line is independent of expanded details and works in Default and Slim. Intent uses the same metadata when the existing capability gate permits an intent row; this change does not enable unsupported Intent mode. Hide continues to hide tool rows. Debug ungroups exploration/image tools so each invocation retains its own metrics. Disabling Debug restores normal grouping and removes the status lines.
+
+The runtime collector measures start-to-finish elapsed time with a monotonic clock, keeping only start time and estimated input count for active calls. It measures output once on completion, including failed calls, then releases the entry; turn cleanup clears abandoned entries. Finished-event metadata persists separately from large payloads and survives live frames, stored-history replay, timeline compaction, and row projection.
+
+Token values MUST carry `≈`: they estimate tool payload size at four characters per token, not model-response usage, billable tokens, or tool-internal model usage. Result-envelope metadata is excluded when a harness supplies `content`. No tokenizer, extra provider request, text scan, or serialized copy is introduced. Structural traversal has a 10,000-visit budget and a depth limit of 64; large strings use their length. Missing starts, legacy calls, media, cyclic or over-budget payloads use `—` for unavailable values rather than zero. The browser formats already-recorded numbers; it does not measure or tokenize payloads while rendering or scrolling.
+
+The status line follows the [Compact Terminal design](/project/design/compact-terminal.md): quiet hairline separation, square geometry, 11px monospaced/tabular metadata, no cards, shadows, polling, or per-row timers. It wraps at narrow widths. Debug in the embedded VS Code Terminal is session-local.
+
+Verification for this addition: isolated build and all typechecks passed; 192 focused runtime/trace tests and a separate 296-test UI/metrics run passed (the selections overlap). Browser Use with headful Chromium and CDP passed Default/Slim at 1440×1000 and 390×844, toggle/reload/Hide checks, legacy/media placeholders, Raw Events workspace-tab access, keyboard Space activation, and absence of horizontal overflow or JavaScript exceptions. Enabling Debug caused no raw-event or payload fetch. The browser used deterministic persisted tool-event fixtures; a provider-backed Worker turn failed at authentication, so provider end-to-end and production deployment are not claimed.
 
 ### Requirement: WEB-TRACE-PROJECTION-001
 
@@ -342,6 +400,14 @@ Integrated source, focused tests, and scoped headful acceptance verify pending a
 - Compatibility boundary: Kernel remains durable truth; registry additions are read-only Web compatibility extensions.
 - Confidence: **high**
 - Verification follow-up: Headfully inspect waiting, retry, failed, malformed, and human-action states.
+
+### Requirement: WEB-TRACE-PASSIVE-007
+
+Terminal background usage reads SHALL request passive status. `GET /api/chat/status?activate=false` SHALL retain authentication and session access checks, but SHALL neither activate an absent runtime nor extend an idle runtime's eviction timer. When no runtime is present, it SHALL return `{ piboSessionId, runtimeActive: false }`; usage values SHALL remain unavailable. A present runtime SHALL supply its live snapshot. Explicit status requests without this option, including `/status`, SHALL retain their activation behavior.
+
+The header query SHALL refresh on selected Session status transitions as well as its normal polling cadence. The Terminal SHALL defer fork-candidate requests until the loaded trace contains user messages, so opening an empty Session does not start a runtime merely to discover that no fork is available. Persisted fork inspection belongs to [the adapter contract](/specs/runtime/adapter-contract.md).
+
+[Docker tests and headful Pibo2 validation](/reports/idle-session-history-latency-validation-2026-09-05.md) cover passive navigation, exact candidate parity, and real queued turns. This evidence does not claim that all streaming or optimistic-update problems are resolved.
 
 ## Interfaces and ownership
 
