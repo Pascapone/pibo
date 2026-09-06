@@ -14,9 +14,10 @@ export class ChatSessionQueryService {
 		session: PiboSession,
 		status: ChatWebSessionIndexItem["status"] = "idle",
 		lastActivityAt = session.updatedAt,
+		options: { preserveRuntimeBinding?: boolean } = {},
 	): void {
 		const roomId = chatRoomIdFromMetadata(session.metadata) ?? "room_default";
-		this.store.sessions.upsertSession({ session, roomId, status, lastActivityAt });
+		this.store.sessions.upsertSession({ session, roomId, status, lastActivityAt, preserveRuntimeBinding: options.preserveRuntimeBinding });
 		this.upsertNavigation(session, roomId, status, lastActivityAt);
 	}
 

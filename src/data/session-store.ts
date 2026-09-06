@@ -9,6 +9,7 @@ export type SessionUpsertInput = {
 	status?: string;
 	firstMessagePreview?: string;
 	lastActivityAt?: string;
+	preserveRuntimeBinding?: boolean;
 };
 
 export class SessionStore {
@@ -41,7 +42,7 @@ export class SessionStore {
 			now,
 		];
 		const assignments = [
-			"pi_session_id = excluded.pi_session_id",
+			...(input.preserveRuntimeBinding ? [] : ["pi_session_id = excluded.pi_session_id"]),
 			"room_id = excluded.room_id",
 			"root_session_id = excluded.root_session_id",
 			"parent_id = excluded.parent_id",
@@ -63,6 +64,7 @@ export class SessionStore {
 			VALUES (${baseColumns.map(() => "?").join(", ")})
 			ON CONFLICT(id) DO UPDATE SET ${assignments.join(", ")}
 		`).run(...values);
+		if (input.preserveRuntimeBinding) return;
 		const binding = input.session.runtimeBinding
 			?? createLegacyPiRuntimeSessionBinding(input.session.id, input.session.piSessionId, input.session.createdAt);
 		this.db.prepare(`

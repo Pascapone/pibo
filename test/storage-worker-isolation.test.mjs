@@ -86,6 +86,20 @@ test('large payload compression finishes before the short metadata transaction',
   } finally { store.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
+test('chat projections do not overwrite a concurrently advanced runtime binding', () => {
+  const root = mkdtempSync(join(tmpdir(), 'pibo-binding-projection-'));
+  const store = new PiboDataStore(join(root, 'data.sqlite'), { payloadRootDir: join(root, 'payloads') });
+  try {
+    const now = new Date().toISOString();
+    const staleSession = { id: 'ps_binding', piSessionId: 'native-old', channel: 'web', kind: 'chat', profile: 'default', metadata: { chatRoomId: 'room_binding' }, createdAt: now, updatedAt: now };
+    store.sessions.upsertSession({ session: staleSession, roomId: 'room_binding' });
+    store.db.prepare("UPDATE session_runtime_bindings SET native_session_id = 'native-live', revision = 9 WHERE pibo_session_id = ?").run(staleSession.id);
+    new ChatDataIngestService(store).ingestUserMessageAccepted({ session: staleSession, roomId: 'room_binding', actorId: 'test', text: 'projection', clientTxnId: 'binding-one' });
+    const binding = store.db.prepare('SELECT native_session_id, revision FROM session_runtime_bindings WHERE pibo_session_id = ?').get(staleSession.id);
+    assert.deepEqual({ ...binding }, { native_session_id: 'native-live', revision: 9 });
+  } finally { store.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 test('atomic worker admissions have one winner, persist after restart and avoid main-thread lock waiting', { timeout: 15000 }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'pibo-storage-isolation-'));
   const path = join(root, 'data.sqlite'), payloads = join(root, 'payloads');

@@ -88,7 +88,7 @@ export class ChatDataIngestService {
 		const now = input.legacyEvent?.createdAt ?? new Date().toISOString();
 		const preparedPayload = input.preparedPayload ?? this.prepareUserMessagePayload(input.text, now);
 		return this.store.transaction(() => {
-			this.store.sessions.upsertSession({ session: input.session, roomId: input.roomId, firstMessagePreview: input.text, lastActivityAt: now });
+			this.store.sessions.upsertSession({ session: input.session, roomId: input.roomId, firstMessagePreview: input.text, lastActivityAt: now, preserveRuntimeBinding: true });
 			const payloadRef = preparedPayload ? this.store.payloads.commitPreparedPayload(preparedPayload).id : undefined;
 			const event = this.store.eventLog.appendEvent({
 				sessionId: input.session.id,
@@ -198,7 +198,7 @@ export class ChatDataIngestService {
 		const preparedPayload = payload ? this.preparePayloadIfLarge(payload.value, payload.contentType, now, retentionClassForOutputEvent(event)) : undefined;
 		return this.store.transaction(() => {
 			if (input.roomId) {
-				this.store.sessions.upsertSession({ session: input.session, roomId: input.roomId, lastActivityAt: now, status: outputSessionStatus(event) });
+				this.store.sessions.upsertSession({ session: input.session, roomId: input.roomId, lastActivityAt: now, status: outputSessionStatus(event), preserveRuntimeBinding: true });
 			}
 			const payloadRef = preparedPayload ? this.store.payloads.commitPreparedPayload(preparedPayload).id : undefined;
 			const storedEvent = this.store.eventLog.appendEvent({

@@ -56,7 +56,7 @@ function execute(command: ChatStorageCommand): unknown {
 				const concurrent = key ? store.eventLog.findByIdempotencyKey(key) : undefined;
 				if (concurrent) return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!)!, created: false };
 				const event = commands.appendEvent({ ...command.input, createdAt });
-				sessions.upsertSession(command.session);
+				sessions.upsertSession(command.session, "idle", command.session.updatedAt, { preserveRuntimeBinding: true });
 				ingest.ingestUserMessageAccepted({ session: command.session, roomId: room.id, actorId: command.input.actorId ?? "", text: command.text, clientTxnId: command.input.clientTxnId, legacyEvent: event, preparedPayload });
 				return { event, created: true };
 			});
