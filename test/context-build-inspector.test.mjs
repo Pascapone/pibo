@@ -340,7 +340,7 @@ test("context build exposes one shared agent surface and the available name-desc
 	assert.match(delegatedContext.hydratedText, /`worker`.*Implement focused changes and verify them\./s);
 	assert.match(delegatedContext.hydratedText, /pibo_run_wait/);
 	assert.match(delegatedContext.hydratedText, /pibo_agents_observe/);
-	assert.match(delegatedContext.hydratedText, /newest 20 completed assistant messages/);
+	assert.match(delegatedContext.hydratedText, /first equivalent query returns the newest completed assistant messages/);
 	assert.match(delegatedContext.hydratedText, /includeTools: true/);
 	assert.match(delegatedContext.hydratedText, /afterSequence/);
 	assert.equal(toolIds.filter((id) => id.startsWith("tools/pibo_agents_")).length, 3);
