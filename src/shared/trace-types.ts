@@ -24,6 +24,7 @@ export type PiboTraceNode = {
 	messageDeliveryState?: "sending" | import("../data/message-command-store.js").MessageCommandState;
 	toolMetrics?: import("./tool-call-metrics.js").ToolCallMetrics;
 	modelInferences?: import("./model-inference-metrics.js").ModelInferenceRecord[];
+	compactionStats?: import("../core/events.js").PiboCompactionStats;
 	id: string;
 	parentId?: string;
 	entryId?: string;
@@ -67,6 +68,7 @@ export type TracePayloadRef = {
 export type TraceTimelineNode = {
 	toolMetrics?: import("./tool-call-metrics.js").ToolCallMetrics;
 	modelInferences?: import("./model-inference-metrics.js").ModelInferenceRecord[];
+	compactionStats?: import("../core/events.js").PiboCompactionStats;
 	nodeId: string;
 	parentId?: string;
 	piboSessionId: string;

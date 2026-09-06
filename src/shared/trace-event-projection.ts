@@ -963,6 +963,7 @@ function traceNodeFromEvent(
 				input: { reason: event.reason },
 				output: event.result,
 				error: event.errorMessage,
+				compactionStats: event.compactionStats,
 				stableKey: `compaction:${eventInstanceKey}`,
 			};
 		}
@@ -1516,6 +1517,7 @@ function mergeCompactionEvent(target: PiboTraceNode, update: PiboTraceNode): voi
 	target.input = update.input ?? target.input;
 	target.output = update.output ?? target.output;
 	target.error = update.error ?? target.error;
+	target.compactionStats = update.compactionStats ?? target.compactionStats;
 	target.completedAt = update.completedAt ?? target.completedAt;
 }
 

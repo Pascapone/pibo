@@ -89,6 +89,8 @@ export type CompactTerminalDetailItem = {
 export type CompactTerminalRow = {
 	toolMetrics?: import("../shared/tool-call-metrics.js").ToolCallMetrics;
 	modelInferences?: import("../shared/model-inference-metrics.js").ModelInferenceRecord[];
+	compactionStats?: import("../core/events.js").PiboCompactionStats;
+	compactionMarkdown?: string;
 	isToolCall?: boolean;
 	toolCallReference?: CompactTerminalToolCallReference;
 	id: string;
@@ -859,8 +861,15 @@ function createCompactionRow(node: PiboTraceNode): CompactTerminalRow {
 		input: node.input,
 		output: node.output,
 		error: node.error,
-		expandable: node.input !== undefined || node.output !== undefined || Boolean(node.error),
+		compactionStats: node.compactionStats,
+		compactionMarkdown: compactionMarkdown(node.output),
+		expandable: node.status === "error" && (node.input !== undefined || node.output !== undefined || Boolean(node.error)),
 	};
+}
+
+function compactionMarkdown(value: unknown): string | undefined {
+	if (!isRecord(value)) return undefined;
+	return stringValue(value.summary);
 }
 
 function createExecutionCommandRow(node: PiboTraceNode): CompactTerminalRow {

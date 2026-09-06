@@ -322,6 +322,7 @@ function compactTraceNode(node: PiboTraceNode, payloadStore: PayloadStore, piboS
 		durationMs: node.durationMs,
 		toolMetrics: node.toolMetrics,
 		modelInferences: node.modelInferences,
+		compactionStats: node.compactionStats,
 		orderKey: node.orderKey,
 		depth,
 		hasChildren: node.children.length > 0,

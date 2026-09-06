@@ -165,7 +165,7 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 	}
 	if (row.type === "execution_result") return { ...base, type: "execution_result", action: row.preview_text ?? stringAttribute(attributes, "action") ?? "execution", result: inlinePayload ?? null };
 	if (row.type === "compaction_start") return { ...base, type: "compaction_start", compactionIndex: numberAttribute(attributes, "compactionIndex"), reason: stringAttribute(attributes, "reason") ?? row.preview_text ?? "unknown" } as PiboOutputEvent;
-	if (row.type === "compaction_end") return { ...base, type: "compaction_end", compactionIndex: numberAttribute(attributes, "compactionIndex"), reason: stringAttribute(attributes, "reason") ?? row.preview_text ?? "unknown", result: inlinePayload, aborted: booleanAttribute(attributes, "aborted") ?? false, errorMessage: stringAttribute(attributes, "errorMessage") } as PiboOutputEvent;
+	if (row.type === "compaction_end") return { ...base, type: "compaction_end", compactionIndex: numberAttribute(attributes, "compactionIndex"), reason: stringAttribute(attributes, "reason") ?? row.preview_text ?? "unknown", result: inlinePayload, aborted: booleanAttribute(attributes, "aborted") ?? false, errorMessage: stringAttribute(attributes, "errorMessage"), compactionStats: isRecord(attributes.compactionStats) ? attributes.compactionStats : undefined } as PiboOutputEvent;
 	if (row.type === "session_error") {
 		const error = stringAttribute(attributes, "error") ?? row.preview_text ?? "Error";
 		return { ...base, type: "session_error", error, errorDetails: normalizeSessionErrorDetails(error, isRecord(attributes.errorDetails) ? attributes.errorDetails : undefined) } as PiboOutputEvent;

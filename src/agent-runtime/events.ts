@@ -1,4 +1,4 @@
-import type { PiboJsonObject, PiboJsonValue, PiboSessionErrorDetails } from "../core/events.js";
+import type { PiboCompactionStats, PiboJsonObject, PiboJsonValue, PiboSessionErrorDetails } from "../core/events.js";
 
 export type AgentRuntimeUsage = {
 	inputTokens?: number;
@@ -62,7 +62,7 @@ export type AgentRuntimeSemanticEvent =
 	| { type: "plan_updated"; plan: PiboJsonValue }
 	| { type: "diff_updated"; diff: PiboJsonValue }
 	| { type: "compaction_start"; reason: string }
-	| { type: "compaction_end"; reason: string; result?: unknown; aborted: boolean; errorMessage?: string }
+	| { type: "compaction_end"; reason: string; result?: unknown; aborted: boolean; errorMessage?: string; compactionStats?: PiboCompactionStats }
 	| { type: "approval_requested"; request: AgentRuntimeApprovalRequest }
 	| { type: "approval_resolved"; requestId: string; resolution: AgentRuntimeRequestResolution }
 	| { type: "user_input_requested"; request: AgentRuntimeUserInputRequest }

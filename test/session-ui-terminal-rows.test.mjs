@@ -632,6 +632,33 @@ test("intent mode preserves intent when a later conceptual tool row omits it", (
 	assert.equal(rowText(rows[0]), "Reviewing project documentation");
 });
 
+test("completed compaction rows expose persisted segment statistics and Markdown", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("execution.compaction", "compaction-complete", {
+			order: 1,
+			status: "done",
+			output: { summary: "# Compacted context\n\n- Kept decisions", tokensBefore: 90_000 },
+			compactionStats: {
+				toolCallCount: 7,
+				maxToolOutputTokens: 12_345,
+				maxToolOutputTokenBasis: "chars/4",
+				compactionTokens: 90_000,
+			},
+		}),
+	]), { showThinking: false });
+
+	assert.equal(rows.length, 1);
+	assert.equal(rows[0].kind, "execution.compaction");
+	assert.equal(rows[0].expandable, false);
+	assert.deepEqual(rows[0].compactionStats, {
+		toolCallCount: 7,
+		maxToolOutputTokens: 12_345,
+		maxToolOutputTokenBasis: "chars/4",
+		compactionTokens: 90_000,
+	});
+	assert.equal(rows[0].compactionMarkdown, "# Compacted context\n\n- Kept decisions");
+});
+
 test("compact terminal identity does not collapse repeated compactions or unresolved subagents", () => {
 	const rows = buildCompactTerminalRows(traceView([
 		traceNode("execution.compaction", "compaction-1", { order: 1, stableKey: "compaction:active" }),
