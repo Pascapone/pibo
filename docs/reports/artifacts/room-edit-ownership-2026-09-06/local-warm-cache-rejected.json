@@ -1,0 +1,2335 @@
+{
+  "rooms": [
+    {
+      "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+      "name": "Mutation 1788670284364 0",
+      "type": "chat",
+      "createdAt": "2026-09-06T04:51:24.368Z",
+      "updatedAt": "2026-09-06T04:51:24.368Z",
+      "metadata": {}
+    },
+    {
+      "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+      "name": "Mutation 1788670284373 1",
+      "type": "chat",
+      "createdAt": "2026-09-06T04:51:24.377Z",
+      "updatedAt": "2026-09-06T04:51:24.377Z",
+      "metadata": {}
+    }
+  ],
+  "sessions": [
+    "ps_d8a3d8c6-1fb9-47e7-93ab-840293c8028f",
+    "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+    "ps_7c0fa437-2ab5-4148-8b11-1a3704ba0ab5"
+  ],
+  "results": [
+    {
+      "scenario": "rename-session",
+      "expected": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+      "before": {
+        "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+        "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+        "rooms": [
+          {
+            "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+            "state": "idle",
+            "text": "Shared Chat"
+          },
+          {
+            "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+            "state": "idle",
+            "text": "Mutation 1788670284373 1"
+          },
+          {
+            "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+            "state": "selected",
+            "text": "First rename-session"
+          }
+        ]
+      },
+      "after": {
+        "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+        "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+        "rooms": [
+          {
+            "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+            "state": "idle",
+            "text": "Shared Chat"
+          },
+          {
+            "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+            "state": "idle",
+            "text": "Mutation 1788670284373 1"
+          },
+          {
+            "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+            "state": "selected",
+            "text": "Mutation 1788670284364 0"
+          }
+        ]
+      },
+      "details": {
+        "requests": [
+          {
+            "url": "/api/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb",
+            "method": "PATCH",
+            "at": 2640.0999994277954,
+            "body": {
+              "name": "First rename-session",
+              "topic": null,
+              "workspace": null
+            },
+            "response": 2648,
+            "status": 200
+          },
+          {
+            "url": "/api/chat/loops/session-goal?piboSessionId=ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "method": "GET",
+            "at": 2691.5,
+            "response": 2710.800000190735,
+            "status": 200
+          },
+          {
+            "url": "/api/previews?piboSessionId=ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "method": "GET",
+            "at": 2692.0999994277954,
+            "response": 2713.3999996185303,
+            "status": 200
+          },
+          {
+            "url": "/api/chat/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972/fork-candidates",
+            "method": "GET",
+            "at": 2692.699999809265,
+            "response": 2713.699999809265,
+            "status": 200
+          },
+          {
+            "url": "/api/chat/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972/read",
+            "method": "POST",
+            "at": 2696.199999809265,
+            "response": 2714.300000190735,
+            "status": 200
+          }
+        ],
+        "frames": [
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "First rename-session"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          },
+          {
+            "session": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "rooms": [
+              {
+                "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+                "state": "idle",
+                "text": "Shared Chat"
+              },
+              {
+                "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+                "state": "idle",
+                "text": "Mutation 1788670284373 1"
+              },
+              {
+                "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+                "state": "selected",
+                "text": "Mutation 1788670284364 0"
+              }
+            ]
+          }
+        ]
+      },
+      "pass": true,
+      "warmReturn": {
+        "session": "ps_d8a3d8c6-1fb9-47e7-93ab-840293c8028f",
+        "path": "/apps/chat/rooms/room_466ba794-00f5-4872-bc70-535155110cdb/sessions/ps_d8a3d8c6-1fb9-47e7-93ab-840293c8028f",
+        "rooms": [
+          {
+            "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+            "state": "idle",
+            "text": "Shared Chat"
+          },
+          {
+            "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+            "state": "idle",
+            "text": "Mutation 1788670284373 1"
+          },
+          {
+            "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+            "state": "selected",
+            "text": "Mutation 1788670284364 0"
+          }
+        ]
+      },
+      "backend": {
+        "identity": {
+          "userId": "dev-user-001",
+          "email": "dev@pibo.local",
+          "name": "Dev User",
+          "provider": "dev"
+        },
+        "session": {
+          "id": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+          "piSessionId": "eae2e4a9-30ff-43c9-88b5-78a1066aff96",
+          "runtimeBinding": {
+            "piboSessionId": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "runtimeInstanceId": "pi",
+            "adapterId": "pi",
+            "nativeSessionId": "eae2e4a9-30ff-43c9-88b5-78a1066aff96",
+            "state": "bound",
+            "protocol": "pi-sdk",
+            "protocolVersion": "0.85.0",
+            "locator": {
+              "kind": "local-file",
+              "value": "/root/.pi/agent/sessions/--root--/2026-09-06T04-51-24-960Z_eae2e4a9-30ff-43c9-88b5-78a1066aff96.jsonl"
+            },
+            "metadata": {
+              "persistent": true,
+              "intentTracing": false,
+              "nativePresenceExpected": false
+            },
+            "revision": 2,
+            "createdAt": "2026-09-06T04:51:24.398Z",
+            "updatedAt": "2026-09-06T04:51:25.017Z"
+          },
+          "channel": "pibo.chat-web",
+          "kind": "chat",
+          "profile": "base",
+          "workspace": "/root",
+          "title": "Untitled Session",
+          "metadata": {
+            "chatRoomId": "room_466ba794-00f5-4872-bc70-535155110cdb",
+            "chatWebSidebarOrder": 2,
+            "initialModelFallbacks": []
+          },
+          "createdAt": "2026-09-06T04:51:24.398Z",
+          "updatedAt": "2026-09-06T04:51:25.017Z"
+        },
+        "runtimeStatus": {
+          "piboSessionId": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+          "runtimeBinding": {
+            "runtimeInstanceId": "pi",
+            "adapterId": "pi",
+            "nativeSessionId": "eae2e4a9-30ff-43c9-88b5-78a1066aff96",
+            "state": "bound",
+            "protocol": "pi-sdk",
+            "protocolVersion": "0.85.0",
+            "revision": 2
+          },
+          "queuedMessages": 0,
+          "processing": false,
+          "streaming": false,
+          "activeTools": [
+            "read",
+            "bash",
+            "edit",
+            "write",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "enabledTools": [
+            "read",
+            "bash",
+            "edit",
+            "write",
+            "get_goal",
+            "create_goal",
+            "update_goal"
+          ],
+          "enabledSkills": [],
+          "contextFiles": [
+            "Automatic AGENTS.md / CLAUDE.md discovery",
+            "pibo://runtime/session-context.md",
+            ".pibo/context/installed-pibo-tools.md"
+          ],
+          "cwd": "/root",
+          "disposed": false,
+          "thinkingLevel": "medium",
+          "fastMode": false,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 3,
+            "baseDelayMs": 2000,
+            "provider": {
+              "maxRetryDelayMs": 60000
+            }
+          }
+        },
+        "room": {
+          "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+          "name": "First rename-session",
+          "type": "chat",
+          "createdAt": "2026-09-06T04:51:24.368Z",
+          "updatedAt": "2026-09-06T04:51:27.064Z",
+          "metadata": {}
+        },
+        "defaultRoomId": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+        "selectedRoomId": "room_466ba794-00f5-4872-bc70-535155110cdb",
+        "selectedPiboSessionId": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+        "rooms": [
+          {
+            "id": "room_e05d0d34-b99b-47c1-887b-e31e11f294d0",
+            "name": "Mutation 1788670284373 1",
+            "type": "chat",
+            "createdAt": "2026-09-06T04:51:24.377Z",
+            "updatedAt": "2026-09-06T04:51:24.377Z",
+            "metadata": {},
+            "children": []
+          },
+          {
+            "id": "room_466ba794-00f5-4872-bc70-535155110cdb",
+            "name": "First rename-session",
+            "type": "chat",
+            "createdAt": "2026-09-06T04:51:24.368Z",
+            "updatedAt": "2026-09-06T04:51:27.064Z",
+            "metadata": {},
+            "children": []
+          },
+          {
+            "id": "room_11bc7f4b-11a9-4b73-af21-6cf4f925b9f2",
+            "name": "Shared Chat",
+            "type": "chat",
+            "createdAt": "2026-09-06T04:19:59.834Z",
+            "updatedAt": "2026-09-06T04:19:59.834Z",
+            "metadata": {
+              "default": true
+            },
+            "children": []
+          }
+        ],
+        "sessions": [
+          {
+            "piboSessionId": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "piSessionId": "eae2e4a9-30ff-43c9-88b5-78a1066aff96",
+            "runtimeInstanceId": "pi",
+            "runtimeAdapterId": "pi",
+            "runtimeBindingState": "bound",
+            "nativeSessionId": "eae2e4a9-30ff-43c9-88b5-78a1066aff96",
+            "profile": "base",
+            "title": "Untitled Session",
+            "subtitle": "ps_dbda77dd-0870-4159-81b9-8cdc4b20d972",
+            "createdAt": "2026-09-06T04:51:24.398Z",
+            "archived": false,
+            "pinned": false,
+            "sidebarOrder": 2,
+            "status": "idle",
+            "lastActivityAt": "2026-09-06T04:51:25.017Z",
+            "derivedSessions": [],
+            "children": []
+          },
+          {
+            "piboSessionId": "ps_d8a3d8c6-1fb9-47e7-93ab-840293c8028f",
+            "piSessionId": "c7aa84e1-6c30-4425-8e98-b0cdfc05dbd6",
+            "runtimeInstanceId": "pi",
+            "runtimeAdapterId": "pi",
+            "runtimeBindingState": "bound",
+            "nativeSessionId": "c7aa84e1-6c30-4425-8e98-b0cdfc05dbd6",
+            "profile": "base",
+            "title": "Untitled Session",
+            "subtitle": "ps_d8a3d8c6-1fb9-47e7-93ab-840293c8028f",
+            "createdAt": "2026-09-06T04:51:24.386Z",
+            "archived": false,
+            "pinned": false,
+            "sidebarOrder": 1,
+            "status": "idle",
+            "lastActivityAt": "2026-09-06T04:51:24.882Z",
+            "derivedSessions": [],
+            "children": []
+          }
+        ]
+      }
+    }
+  ]
+}

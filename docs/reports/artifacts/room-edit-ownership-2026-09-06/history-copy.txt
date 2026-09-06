@@ -1,0 +1,1 @@
+c486c0f90709f4bc3061f7386cbf02e49c88c690adf490aa99b664a130c12d2c  /root/.pi/agent/sessions/--root-code-pibo--/2026-08-03T20-12-56-900Z_1ee34b5c-4abe-4dbd-b62a-74910f592314.jsonl

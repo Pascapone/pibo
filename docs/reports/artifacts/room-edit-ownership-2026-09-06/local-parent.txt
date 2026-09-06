@@ -1,0 +1,241 @@
+▶ Room edits and archives preserve navigation and newer fields
+  ✖ background-edit (2658.209729ms)
+  ✖ rename-session (2333.450882ms)
+  ✖ rename-room (2317.973587ms)
+  ✖ rename-back (2389.489601ms)
+  ✖ rename-failure (2707.564195ms)
+  ✖ rename-overlap (2518.43961ms)
+  ✖ archive-session (2380.464139ms)
+  ✖ archive-room (2306.6778ms)
+  ✖ warm-session (4377.816325ms)
+  ✖ navigation response crossing a completed Room edit is read again without stealing selection (2752.882771ms)
+  ✖ overlapping rename failures (older response first) (605.163971ms)
+  ✔ overlapping rename failures (newer response first) (902.688424ms)
+✖ Room edits and archives preserve navigation and newer fields (28449.414946ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 1
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28542.82262
+
+✖ failing tests:
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:22:11
+✖ background-edit (2658.209729ms)
+  AssertionError [ERR_ASSERTION]: Room metadata needs no full bootstrap hydration
+
+  1 !== 0
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:60:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:22:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:22:11
+✖ rename-session (2333.450882ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6'
+  - 'ps_a642b9ca-d11e-4a1f-84b6-0b0e8cfe6430'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:52:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:22:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6',
+    expected: 'ps_a642b9ca-d11e-4a1f-84b6-0b0e8cfe6430',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:22:11
+✖ rename-room (2317.973587ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6'
+  - 'ps_ad200f58-5e1c-46e0-9796-d0e10ad2a7ad'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:52:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:22:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6',
+    expected: 'ps_ad200f58-5e1c-46e0-9796-d0e10ad2a7ad',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:22:11
+✖ rename-back (2389.489601ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6'
+  - 'ps_ad200f58-5e1c-46e0-9796-d0e10ad2a7ad'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:52:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:22:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6',
+    expected: 'ps_ad200f58-5e1c-46e0-9796-d0e10ad2a7ad',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:22:11
+✖ rename-failure (2707.564195ms)
+  AssertionError [ERR_ASSERTION]: Room metadata needs no full bootstrap hydration
+
+  1 !== 0
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:60:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:22:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:22:11
+✖ rename-overlap (2518.43961ms)
+  AssertionError [ERR_ASSERTION]: edited field regressed after settlement
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:58:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:22:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:22:11
+✖ archive-session (2380.464139ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6'
+  - 'ps_a642b9ca-d11e-4a1f-84b6-0b0e8cfe6430'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:52:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:22:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6',
+    expected: 'ps_a642b9ca-d11e-4a1f-84b6-0b0e8cfe6430',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:22:11
+✖ archive-room (2306.6778ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6'
+  - 'ps_ad200f58-5e1c-46e0-9796-d0e10ad2a7ad'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:52:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:22:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6',
+    expected: 'ps_ad200f58-5e1c-46e0-9796-d0e10ad2a7ad',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:22:11
+✖ warm-session (4377.816325ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6'
+  - 'ps_a642b9ca-d11e-4a1f-84b6-0b0e8cfe6430'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:52:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:22:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ps_93f5c716-f3f0-4548-a343-127b080e7fe6',
+    expected: 'ps_a642b9ca-d11e-4a1f-84b6-0b0e8cfe6430',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:71:10
+✖ navigation response crossing a completed Room edit is read again without stealing selection (2752.882771ms)
+  AssertionError [ERR_ASSERTION]: crossed read must be refreshed
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:85:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:71:2)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-room-mutation-navigation-race.test.mjs:89:44
+✖ overlapping rename failures (older response first) (605.163971ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'Crossed navigation stays fresh'
+  - 'Second pending edit'
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:98:11)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async TestContext.<anonymous> (file:///workspace/test/chat-ui-room-mutation-navigation-race.test.mjs:89:36)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'Crossed navigation stays fresh',
+    expected: 'Second pending edit',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

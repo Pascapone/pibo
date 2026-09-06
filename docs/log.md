@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-06
+
+- **Room edit ownership**: Added [field-scoped Room edit and navigation guarantees](/specs/web/app-shell-bootstrap-navigation-and-pwa.md#requirement-web-shell-room-update-008-room-edits-preserve-navigation-and-unrelated-state) and the [exact-candidate validation report](/reports/room-edit-ownership-validation-2026-09-06.md) for issue #938. Records the local 29.9-second stale-name reproduction, 30 public desktop/mobile cases, 15–22 ms bounded feedback, real Spark Queue/streaming/workspace checks, and remaining tail Long Tasks. No merge, release, or controller deployment.
+
 ## 2026-09-05
 
 - **Tool-call Debug mode**: Added a persisted Debug toggle beside Thinking, replaced duplicate topbar Raw Events and view controls with workspace-tab navigation, and documented per-invocation duration and explicitly estimated payload-token counts in the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006). Metrics survive live/replay paths without browser tokenization; legacy and unmeasurable values remain unavailable.
