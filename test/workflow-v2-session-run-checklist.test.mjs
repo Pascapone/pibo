@@ -11,7 +11,8 @@ test("normal Session Workflow view fetches inspection only for proven linkage", 
   assert.match(view, /enabled: Boolean\(selectedPiboSessionId && workflowSessionLinked\)/);
   assert.match(view, /retry: false/);
   assert.match(api, /\/sessions\/\$\{encodeURIComponent\(piboSessionId\)\}\/workflow/);
-  assert.match(pane, /workflowSessionLinked \? \["terminal", "workflow"\] : \["terminal"\]/);
+  assert.match(pane, /enabled: Boolean\(selectedPiboSessionId && workflowSessionLinked\)/);
+  assert.match(pane, /workflowSessionLinked,/);
   assert.match(view, /Workflow inspection is requested only for linked Sessions/);
 });
 

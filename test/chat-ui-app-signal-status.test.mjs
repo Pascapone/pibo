@@ -252,7 +252,7 @@ test("app signal status helpers preserve snapshot and patch semantics", async ()
 
 test("optimistic session status updates are not overwritten by the previous signal snapshot", () => {
 	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
-	assert.match(source, /setBootstrap\(\(current\) => current \? updater\(current\) : current\)/);
+	assert.match(source, /setBootstrap\(\(current\) => current \? roomMutations\.apply\(updater\(current\)\) : current\)/);
 	assert.doesNotMatch(source, /setBootstrap\(\(current\) => current \? overlayCurrentSignals\(updater\(current\)\) : current\)/);
 });
 
