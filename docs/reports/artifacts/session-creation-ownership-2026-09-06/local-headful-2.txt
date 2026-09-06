@@ -1,0 +1,22 @@
+▶ post-create hydration preserves newer Session and Room navigation
+  ✔ untouched (1955.229011ms)
+  ✔ session-before-refresh (1725.210589ms)
+  ✔ session-after-refresh (2633.440634ms)
+  ✔ other-room (1767.114103ms)
+  ✔ browser-back (1769.256068ms)
+  ✔ next-create (1692.641994ms)
+✔ post-create hydration preserves newer Session and Room navigation (11728.650778ms)
+ℹ untouched: {"session":"ps_736220a4-f840-47f0-b162-a8d9ecfcfabc","path":"/apps/chat/rooms/room_0a8908a9-36bf-43dd-82e8-f32dad731709/sessions/ps_736220a4-f840-47f0-b162-a8d9ecfcfabc","visible":false}
+ℹ session-before-refresh: {"session":"ps_1c369762-26e2-42c1-9dfc-c283fb5b335f","path":"/apps/chat/rooms/room_0a8908a9-36bf-43dd-82e8-f32dad731709/sessions/ps_1c369762-26e2-42c1-9dfc-c283fb5b335f","visible":true}
+ℹ session-after-refresh: {"session":"ps_1c369762-26e2-42c1-9dfc-c283fb5b335f","path":"/apps/chat/rooms/room_0a8908a9-36bf-43dd-82e8-f32dad731709/sessions/ps_1c369762-26e2-42c1-9dfc-c283fb5b335f","visible":true}
+ℹ other-room: {"session":"ps_5b9b65f7-d03b-4adb-b81c-c4523f9b0386","path":"/apps/chat/rooms/room_aef458f5-b411-4b75-8c8d-543717e5812a/sessions/ps_5b9b65f7-d03b-4adb-b81c-c4523f9b0386","visible":true}
+ℹ browser-back: {"session":"ps_a4d8e888-430e-4cc1-9e0b-5ac4e6799b4b","path":"/apps/chat/rooms/room_0a8908a9-36bf-43dd-82e8-f32dad731709/sessions/ps_a4d8e888-430e-4cc1-9e0b-5ac4e6799b4b","visible":true}
+ℹ next-create: {"session":"ps_69ab1b62-4c34-494c-b73e-f02bf5c4b83c","path":"/apps/chat/rooms/room_0a8908a9-36bf-43dd-82e8-f32dad731709/sessions/ps_69ab1b62-4c34-494c-b73e-f02bf5c4b83c","visible":false}
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11827.655939

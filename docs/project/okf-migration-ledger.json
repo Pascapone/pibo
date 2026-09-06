@@ -13009,9 +13009,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 28362,
-      "file_sha256": "0edddcffd38ee8495e37b97df705f183d627f3884d465334034363e81aec7bd6",
-      "body_sha256": "d81b9004e19528e10b3c8f13e6914203b41dbca84352af415cc8ac7ec348202b",
+      "file_bytes": 30972,
+      "file_sha256": "e0bb7f38a5a9c6f7b46185dee37463b585391e4e92fd750cc1eaf5305b2d928c",
+      "body_sha256": "17fb3e41b76e156ab074cbccaf3dbc9547040958f022f4add413d5a8b26c01c4",
       "lineage": null
     },
     {
@@ -13605,6 +13605,18 @@
       "file_bytes": 560,
       "file_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25",
       "body_sha256": "3777a2123df3d08c4ab9b8e2f4f24cf121ef1f41775a6d5809234bd9cfd38f25"
+    },
+    {
+      "path": "docs/reports/session-creation-ownership-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 11523,
+      "file_sha256": "1d7c964aef491dc2612cfe55d6692ef7fe6171f4f5dbd0104affb0240346345d",
+      "body_sha256": "941c46af97a0982f936434aaccdb0d063ea910532105cea059fc75d158b6cc7e",
+      "lineage": null
     }
   ]
 }

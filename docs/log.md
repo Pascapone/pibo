@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-06
+
+- **Post-create navigation ownership**: Made Session hydration nonblocking after POST and invalidated superseded bootstrap selection immediately. Added the [shell creation contract](/specs/web/app-shell-bootstrap-navigation-and-pwa.md#requirement-web-shell-create-006-post-create-hydration-does-not-own-later-navigation) and [exact-candidate validation](/reports/session-creation-ownership-validation-2026-09-06.md): local regression, 22 public-path desktop/mobile cases, real Spark tool/Queue, and separate unresolved gateway-status scaling evidence.
+
 ## 2026-09-05
 
 - **Tool-call Debug mode**: Added a persisted Debug toggle beside Thinking, replaced duplicate topbar Raw Events and view controls with workspace-tab navigation, and documented per-invocation duration and explicitly estimated payload-token counts in the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006). Metrics survive live/replay paths without browser tokenization; legacy and unmeasurable values remain unavailable.

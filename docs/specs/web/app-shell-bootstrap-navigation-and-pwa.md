@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:32:00Z"
+  at: "2026-09-06T02:10:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,7 +23,7 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed Room, Workflow Session, manual Run Room dialog, and desktop/mobile viewport acceptance passed"
 traceability:
-  commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
+  commit: "029e413afc17ae46c36a7e021ce45610f6ea0ff4"
   requirements:
     - id: "WEB-SHELL-MOUNT-001"
       status: "implemented"
@@ -217,6 +217,23 @@ traceability:
         - "Accessibility/responsive boundary: Source defines focus ownership and responsive sidebars; headful keyboard, pointer, zoom, and reduced-motion validation is mandatory."
         - "Compatibility boundary: Detached-window support is conditional and must degrade to in-shell navigation."
       confidence: "medium"
+    - id: "WEB-SHELL-CREATE-006"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/App.tsx"
+          symbol: "createSession"
+        - path: "src/apps/chat-ui/src/App.tsx"
+          symbol: "selectSession"
+      tests:
+        - path: "test/chat-ui-optimistic-session-selection.test.mjs"
+          name: "post-create hydration is nonblocking and cannot navigate or report stale errors"
+        - path: "test/chat-ui-session-create-navigation-race.test.mjs"
+          name: "post-create hydration preserves newer Session and Room navigation"
+      public: ["New Session", "/api/chat/sessions", "/api/chat/bootstrap", "Chat Session and Room navigation", "Browser Back"]
+      failures:
+        - "Superseded hydration cannot overwrite newer navigation or display a stale error; owning hydration failures remain reportable."
+        - "Pre-POST optimistic success and rollback behavior remains unchanged."
+      confidence: "high"
 ---
 # Chat Web App Shell, Bootstrap, Navigation, and PWA
 
@@ -226,7 +243,7 @@ Chat API/static registration, bootstrap/navigation composition, route-addressabl
 
 ## Scope
 
-This specification describes implemented behavior at integrated traceability commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`.
+This specification traces implemented behavior at `029e413afc17ae46c36a7e021ce45610f6ea0ff4`. Earlier integrated validation in `implementation` retains its original baseline; the post-create ownership evidence below applies specifically to WEB-SHELL-CREATE-006.
 
 ### In scope
 
@@ -361,6 +378,23 @@ upstream/dev refresh source and named-test inspection define the current contrac
 - Compatibility boundary: Detached-window support is conditional and must degrade to in-shell navigation.
 - Confidence: **medium**
 - Verification follow-up: Run the named tests, then use a headful authenticated browser at mobile/desktop widths and installed/standalone display modes.
+
+### Requirement: WEB-SHELL-CREATE-006: Post-create hydration does not own later navigation
+
+After the Session creation POST succeeds, the client MUST release the creation lock without waiting for bootstrap hydration. The initial successful creation MAY navigate to its persisted Session when the optimistic creation still owns selection. Background hydration MUST NOT perform a second navigation or report an error after its request generation has been superseded.
+
+Selecting a different Session MUST immediately invalidate outstanding bootstrap ownership, without waiting for deferred navigation refresh. Later Session/Room selection, Browser Back after POST, or a second creation MUST remain authoritative when the older hydration completes.
+
+#### Scenarios and boundaries
+
+- GIVEN untouched creation, WHEN POST succeeds while hydration is pending, THEN the persisted Session is selected and New Session becomes available.
+- GIVEN successful creation and pending hydration, WHEN the user selects another Session or Room, uses Browser Back, or creates another Session, THEN releasing the older response preserves the later route and Terminal content.
+- GIVEN a rejected hydration promise, WHEN its generation no longer owns state, THEN it MUST NOT replace the current error. An owning rejection remains reportable.
+- Pre-POST optimistic selection and rollback are unchanged; this requirement does not extend acceptance to arbitrary Room mutation or pre-POST browser-history races.
+
+#### Verification
+
+`App.tsx:createSession` and `selectSession` implement the contract. Named tests above passed in Docker: 21 focused passes with the opt-in browser test separately passing 7/7 twice. Full build and all typechecks passed. Exact-candidate public/authenticated Pibo2 validation passed 14 DOM-action and eight additional trusted-pointer scenarios at desktop/mobile sizes, including real Spark reply content and Browser Back. Hydration rejection has source-test coverage, not an injected remote-error case. See the [creation ownership report](/reports/session-creation-ownership-validation-2026-09-06.md) for frame, request, queue, screenshot, and build evidence; these checks do not establish unrelated shell/PWA acceptance.
 
 ## Interfaces and ownership
 
