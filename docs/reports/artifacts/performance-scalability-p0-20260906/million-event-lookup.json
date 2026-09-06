@@ -1,0 +1,71 @@
+{
+  "at": "2026-09-06T21:31:52.733Z",
+  "node": "v24.15.0",
+  "sqlite": "3.51.3",
+  "host": {
+    "cpus": 6,
+    "totalmem": 16720715776
+  },
+  "fixture": {
+    "events": 1000001,
+    "attributesBytes": 995,
+    "databaseBytes": 1604747264
+  },
+  "cache": "Warm synthetic dataset; no OS cache eviction. This is a lookup benchmark, not an HTTP capacity or cold-cache claim.",
+  "pragmas": {
+    "synchronous": {
+      "synchronous": 2
+    },
+    "journalMode": {
+      "journal_mode": "wal"
+    }
+  },
+  "indexedPlan": [
+    {
+      "id": 4,
+      "parent": 0,
+      "notused": 45,
+      "detail": "SEARCH event_log USING INDEX idx_event_log_idempotency (idempotency_key=?)"
+    }
+  ],
+  "oldPlan": [
+    {
+      "id": 5,
+      "parent": 0,
+      "notused": 61,
+      "detail": "SEARCH event_log USING INDEX idx_event_log_room_stream (room_id=?)"
+    }
+  ],
+  "oldHitMs": {
+    "samples": 3,
+    "p50": 8805.039637000002,
+    "p95": 8963.448042999997,
+    "p99": 8963.448042999997,
+    "p999": 8963.448042999997,
+    "max": 8963.448042999997
+  },
+  "oldMissMs": {
+    "samples": 3,
+    "p50": 8783.183457000006,
+    "p95": 8792.071091999998,
+    "p99": 8792.071091999998,
+    "p999": 8792.071091999998,
+    "max": 8792.071091999998
+  },
+  "indexedHitMs": {
+    "samples": 10000,
+    "p50": 0.04063699999824166,
+    "p95": 0.11024700000416487,
+    "p99": 0.1691690000006929,
+    "p999": 3.392112999994424,
+    "max": 20.500446000005468
+  },
+  "indexedMissMs": {
+    "samples": 10000,
+    "p50": 0.03071799999452196,
+    "p95": 0.0803110000124434,
+    "p99": 0.1348639999923762,
+    "p999": 0.2563240000017686,
+    "max": 48.72939599999518
+  }
+}

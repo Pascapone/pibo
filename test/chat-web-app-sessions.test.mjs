@@ -741,3 +741,23 @@ test("Chat Web persists pinning and manual session order without activity-based 
 		harness.cleanup();
 	}
 });
+
+test("Chat Web indexed retries preserve the duplicate response and bounded Server-Timing", async () => {
+	const harness = createHarness();
+	try {
+		const roomResponse = await harness.request('/api/chat/rooms', { method: 'POST', body: JSON.stringify({ name: 'Indexed admission' }) });
+		const { room } = await roomResponse.json();
+		const session = harness.sessions.create({ channel: 'pibo.chat-web', kind: 'chat', profile: 'base', metadata: { chatRoomId: room.id } });
+		const body = { piboSessionId: session.id, roomId: room.id, text: 'index test', clientTxnId: 'indexed-retry' };
+		const first = await harness.request('/api/chat/message', { method: 'POST', body: JSON.stringify(body) });
+		assert.equal(first.status, 200);
+		const accepted = await first.json();
+		assert.match(first.headers.get('server-timing'), /chat_lookup;dur=[\d.]+, chat_append;dur=[\d.]+, chat_ingest;dur=[\d.]+, chat_emit;dur=[\d.]+, chat_ack;dur=[\d.]+/);
+		const retry = await harness.request('/api/chat/message', { method: 'POST', body: JSON.stringify({ ...body, text: 'changed retry' }) });
+		const duplicate = await retry.json();
+		assert.equal(duplicate.duplicate, true);
+		assert.deepEqual(duplicate.event, accepted.event);
+		assert.match(retry.headers.get('server-timing'), /^chat_lookup;dur=[\d.]+, chat_ack;dur=[\d.]+, json_serialize;dur=[\d.]+$/);
+		assert.equal(harness.emitted.filter(event => event.type === 'message').length, 1);
+	} finally { harness.cleanup(); }
+});
