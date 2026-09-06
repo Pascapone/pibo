@@ -13021,9 +13021,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 30972,
-      "file_sha256": "e0bb7f38a5a9c6f7b46185dee37463b585391e4e92fd750cc1eaf5305b2d928c",
-      "body_sha256": "17fb3e41b76e156ab074cbccaf3dbc9547040958f022f4add413d5a8b26c01c4",
+      "file_bytes": 34349,
+      "file_sha256": "3b1a4065cd004799835870e9bd2510da8562408739224545955c041cc5465caf",
+      "body_sha256": "b6e3ad37afccd81d5c7060f3e3d38e286024470176dd6153cc488411e6fb3b81",
       "lineage": null
     },
     {
@@ -13637,6 +13637,18 @@
       "file_bytes": 12620,
       "file_sha256": "77cba43bae901c31af0e132d4d107fc564c02932bb078831f93dff6ce07dbf42",
       "body_sha256": "b2a37c35ae26171de04553aa367712a50d31c49ba4c988347bddce4b92c71c0d",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/room-creation-ownership-validation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "file_bytes": 12442,
+      "file_sha256": "cb28f9f611d60fc96d68508fe9af4cd06d614809404885c38f2fd1ec74f60b69",
+      "body_sha256": "fd5f1a785abb139c3ca8fbc08e675160bd69318154a18eed7310679912b9b4d8",
       "lineage": null
     },
     {

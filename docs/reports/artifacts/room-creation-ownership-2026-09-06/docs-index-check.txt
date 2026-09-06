@@ -1,0 +1,6 @@
+
+> @pasko70/pibo@1.7.2 docs:indexes:check
+> node scripts/generate-okf-indexes.mjs --check
+
+OKF index check: PASS
+Managed indexes: 106; drift: 0

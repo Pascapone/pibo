@@ -1,0 +1,374 @@
+{
+  "piboSessionId": "ps_a619d27c-92ef-4964-ad82-81300ae4b049",
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "nativeSessionId": "1a6914e0-def6-4322-baff-2f6cd7ca2e7d",
+  "runtimeBindingState": "bound",
+  "events": [
+    {
+      "created_at": "2026-09-06T04:03:25.566Z",
+      "type": "message_finished",
+      "event_id": "web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2",
+      "stream_id": 988031,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T04:03:25.553Z",
+      "type": "assistant_message",
+      "event_id": "web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2",
+      "stream_id": 988030,
+      "preview_text": "1. The **clock** keeps perfect time on the wall. 2. A **spoon** stirs sugar into tea. 3. Her **umbrella** waits by the door. 4. The **chair** squeaks when pulled from the table. 5. His **wallet** holds a few scattered receipts. 6. A **window** opens to the warm evening light. 7. The **lamp** casts a soft circle on the desk. 8. The **cup** grows cold beside the laptop. 9. Her **scarf** hangs from the coat rack. 10. The **shoe** dries by the radiator. 11. A **notebook** catches crumbs from the snack tray. 12."
+    },
+    {
+      "created_at": "2026-09-06T04:03:25.544Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2",
+      "stream_id": 988029,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T04:03:24.765Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2",
+      "stream_id": 988028,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-06T04:03:23.553Z",
+      "type": "thinking_started",
+      "event_id": "web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2",
+      "stream_id": 988027,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T04:03:22.844Z",
+      "type": "message_started",
+      "event_id": "web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2",
+      "stream_id": 988026,
+      "preview_text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_ROOM_STREAM_CONFIRMED."
+    },
+    {
+      "created_at": "2026-09-06T04:03:22.828Z",
+      "type": "message_queued",
+      "event_id": "web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2",
+      "stream_id": 988025,
+      "preview_text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_ROOM_STREAM_CONFIRMED."
+    },
+    {
+      "created_at": "2026-09-06T04:03:22.821Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_96058b40-d573-4507-b523-284d7730971d",
+      "stream_id": 988024,
+      "preview_text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_ROOM_STREAM_CONFIRMED."
+    },
+    {
+      "created_at": "2026-09-06T04:00:27.796Z",
+      "type": "message_finished",
+      "event_id": "web-mtpa9t5h-8b491c88-2c09-46f2-9ffa-31a71b656223",
+      "stream_id": 988023,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T04:00:27.787Z",
+      "type": "assistant_message",
+      "event_id": "web-mtpa9t5h-8b491c88-2c09-46f2-9ffa-31a71b656223",
+      "stream_id": 988022,
+      "preview_text": "PB_ROOM_QUEUE_COMPLETE"
+    },
+    {
+      "created_at": "2026-09-06T04:00:27.780Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpa9t5h-8b491c88-2c09-46f2-9ffa-31a71b656223",
+      "stream_id": 988021,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T04:00:26.759Z",
+      "type": "message_started",
+      "event_id": "web-mtpa9t5h-8b491c88-2c09-46f2-9ffa-31a71b656223",
+      "stream_id": 988020,
+      "preview_text": "Reply exactly PB_ROOM_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T04:00:26.751Z",
+      "type": "message_finished",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988019,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T04:00:26.742Z",
+      "type": "assistant_message",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988018,
+      "preview_text": "PB_ROOM_TURN_COMPLETE"
+    },
+    {
+      "created_at": "2026-09-06T04:00:26.735Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988017,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T04:00:25.809Z",
+      "type": "tool_execution_finished",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988016,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-06T04:00:06.139Z",
+      "type": "message_queued",
+      "event_id": "web-mtpa9t5h-8b491c88-2c09-46f2-9ffa-31a71b656223",
+      "stream_id": 988015,
+      "preview_text": "Reply exactly PB_ROOM_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T04:00:06.132Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_dadcab6f-67a7-42c2-9702-1ea55428b423",
+      "stream_id": 988014,
+      "preview_text": "Reply exactly PB_ROOM_QUEUE_COMPLETE. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T04:00:05.753Z",
+      "type": "tool_execution_started",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988013,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-06T04:00:05.743Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988012,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T04:00:05.727Z",
+      "type": "tool_call",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988011,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-06T04:00:05.674Z",
+      "type": "tool_call",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988010,
+      "preview_text": "bash"
+    },
+    {
+      "created_at": "2026-09-06T04:00:05.661Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988009,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-06T04:00:05.555Z",
+      "type": "thinking_started",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988008,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T04:00:04.751Z",
+      "type": "message_started",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988007,
+      "preview_text": "Run bash with exactly: sleep 20; echo PB_ROOM_TOOL_COMPLETE. Then reply PB_ROOM_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T04:00:04.738Z",
+      "type": "message_queued",
+      "event_id": "web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8",
+      "stream_id": 988006,
+      "preview_text": "Run bash with exactly: sleep 20; echo PB_ROOM_TOOL_COMPLETE. Then reply PB_ROOM_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T04:00:04.730Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_249537d2-189b-4a65-b384-b007380249db",
+      "stream_id": 988005,
+      "preview_text": "Run bash with exactly: sleep 20; echo PB_ROOM_TOOL_COMPLETE. Then reply PB_ROOM_TURN_COMPLETE. Do not read or modify files."
+    },
+    {
+      "created_at": "2026-09-06T03:58:41.784Z",
+      "type": "message_finished",
+      "event_id": "web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119",
+      "stream_id": 988004,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T03:58:41.768Z",
+      "type": "assistant_message",
+      "event_id": "web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119",
+      "stream_id": 988003,
+      "preview_text": "1. The **clock** keeps time on the kitchen wall. 2. Her **umbrella** leans by the front door. 3. A **spoon** stirs sugar into warm tea. 4. The **chair** waits beside the reading lamp. 5. The **window** opens to let in cool air. 6. His **keyboard** clacks through late-night notes. 7. A **toothbrush** dries on the bathroom ledge. 8. The **sofa** hugs the cushions after a long day. 9. My **wallet** carries only a few folded bills. 10. The **pillow** gets flatter each morning. 11. A **laptop** glows beside the "
+    },
+    {
+      "created_at": "2026-09-06T03:58:41.758Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119",
+      "stream_id": 988002,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T03:58:39.924Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119",
+      "stream_id": 988001,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-06T03:58:38.325Z",
+      "type": "thinking_started",
+      "event_id": "web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119",
+      "stream_id": 988000,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T03:58:37.061Z",
+      "type": "message_started",
+      "event_id": "web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119",
+      "stream_id": 987999,
+      "preview_text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_ROOM_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T03:58:37.046Z",
+      "type": "message_queued",
+      "event_id": "web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119",
+      "stream_id": 987998,
+      "preview_text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_ROOM_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T03:58:37.039Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_9d5299d1-247c-4d8a-85c3-de56fd8673ea",
+      "stream_id": 987997,
+      "preview_text": "Streaming acceptance. Write 80 numbered paragraphs about everyday objects, separated by blank lines. Each paragraph should be a short sentence with a bold noun. Use no tools. End with PB_ROOM_STREAM_COMPLETE."
+    },
+    {
+      "created_at": "2026-09-06T03:51:15.484Z",
+      "type": "message_finished",
+      "event_id": "web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7",
+      "stream_id": 987980,
+      "preview_text": "message_finished"
+    },
+    {
+      "created_at": "2026-09-06T03:51:15.466Z",
+      "type": "assistant_message",
+      "event_id": "web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7",
+      "stream_id": 987979,
+      "preview_text": "ROOM_TARGET_ps_a619d27c-92ef-4964-ad82-81300ae4b049"
+    },
+    {
+      "created_at": "2026-09-06T03:51:15.454Z",
+      "type": "assistant_usage",
+      "event_id": "web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7",
+      "stream_id": 987978,
+      "preview_text": "assistant_usage"
+    },
+    {
+      "created_at": "2026-09-06T03:51:15.364Z",
+      "type": "thinking_finished",
+      "event_id": "web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7",
+      "stream_id": 987977,
+      "preview_text": null
+    },
+    {
+      "created_at": "2026-09-06T03:51:15.258Z",
+      "type": "thinking_started",
+      "event_id": "web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7",
+      "stream_id": 987976,
+      "preview_text": "thinking_started"
+    },
+    {
+      "created_at": "2026-09-06T03:51:14.080Z",
+      "type": "message_started",
+      "event_id": "web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7",
+      "stream_id": 987975,
+      "preview_text": "Reply exactly ROOM_TARGET_ps_a619d27c-92ef-4964-ad82-81300ae4b049. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T03:51:14.059Z",
+      "type": "message_queued",
+      "event_id": "web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7",
+      "stream_id": 987974,
+      "preview_text": "Reply exactly ROOM_TARGET_ps_a619d27c-92ef-4964-ad82-81300ae4b049. Use no tools."
+    },
+    {
+      "created_at": "2026-09-06T03:51:14.042Z",
+      "type": "user.message.accepted",
+      "event_id": "ce_25e7cd96-349e-4b3c-ab37-8c01b24a2d25",
+      "stream_id": 987973,
+      "preview_text": "Reply exactly ROOM_TARGET_ps_a619d27c-92ef-4964-ad82-81300ae4b049. Use no tools."
+    }
+  ],
+  "limited": false,
+  "nextCommands": [
+    "pibo debug events ps_a619d27c-92ef-4964-ad82-81300ae4b049 show 988031",
+    "pibo debug messages ps_a619d27c-92ef-4964-ad82-81300ae4b049 show stream:988030 --full",
+    "pibo debug messages ps_a619d27c-92ef-4964-ad82-81300ae4b049 list"
+  ]
+}
+piboSessionId: ps_a619d27c-92ef-4964-ad82-81300ae4b049
+piSessionId: 1a6914e0-def6-4322-baff-2f6cd7ca2e7d
+runtimeInstanceId: pi
+runtimeAdapterId: pi
+nativeSessionId: 1a6914e0-def6-4322-baff-2f6cd7ca2e7d
+runtimeBindingState: bound
+historySource: product
+title: Untitled Session
+status: done
+statusSource: event-log
+nodeErrors: 0
+
+status	type	title	id	runId	linkedPiboSessionId
+done	user.message	User Message	event:message_queued:web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7
+done	agent.turn	Agent Turn	event:message:web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7
+done	assistant.message	  Agent Message	event:assistant:web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7:assistant:0
+done	user.message	User Message	event:message_queued:web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119
+done	agent.turn	Agent Turn	event:message:web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119
+done	assistant.message	  Agent Message	event:assistant:web-mtpa7wet-875947c6-6b7c-4c5f-93c5-b3f2cabbc119:assistant:0
+done	user.message	User Message	event:message_queued:web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8
+done	agent.turn	Agent Turn	event:message:web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8
+done	tool.call	  bash	tool-invocation:%5B%22call_9VMkIfbmGROTRZE1wqQJvC5f%7Cfc_0eb7dcc32bf2c75d016a9ce5459ee087d2a2b102c685098fb4%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8%5C%22%2C0%5D%22%5D
+done	assistant.message	  Agent Message	event:assistant:web-mtpa9s2l-4daed8c0-3b93-4797-94da-28fd1bf1bfc8:assistant:0
+done	user.message	User Message	event:message_queued:web-mtpa9t5h-8b491c88-2c09-46f2-9ffa-31a71b656223
+done	agent.turn	Agent Turn	event:message:web-mtpa9t5h-8b491c88-2c09-46f2-9ffa-31a71b656223
+done	assistant.message	  Agent Message	event:assistant:web-mtpa9t5h-8b491c88-2c09-46f2-9ffa-31a71b656223:assistant:0
+done	user.message	User Message	event:message_queued:web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2
+done	agent.turn	Agent Turn	event:message:web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2
+done	assistant.message	  Agent Message	event:assistant:web-mtpae0x2-8078f9f8-c155-48cf-adb8-b1eda91db1b2:assistant:0
+nodes: 16
+
+checks: ok
+issues: 0
+
+Next:
+  pibo debug trace ps_a619d27c-92ef-4964-ad82-81300ae4b049 show event:message_queued:web-mtp9yeku-924cd46d-e511-4c23-869e-90d537d4c5a7
+  pibo debug messages ps_a619d27c-92ef-4964-ad82-81300ae4b049 list
+Production gateway status
+  reachable: yes
+  mode: prod
+  runtime sessions: 15
+    ps_a619d27c-92ef-4964-ad82-81300ae4b049: processing=false streaming=false queued=0
+    ps_a4d55fd4-ed9c-41c7-92ee-9dd32c3c0d3f: processing=false streaming=false queued=0
+    ps_ac261e18-1c7b-4b10-a950-7f7922d35615: processing=false streaming=false queued=0
+    ps_da4bc504-a61d-4e9c-9700-067ad8947b3c: processing=false streaming=false queued=0
+    ps_accad3a3-5288-4c29-8a4f-8e370a2fec6f: processing=false streaming=false queued=0
+    ps_13e9e0a3-64f2-492c-b86d-c6e91e052784: processing=false streaming=false queued=0
+    ps_4cd684fd-d165-49f5-9815-aecd3cf51741: processing=false streaming=false queued=0
+    ps_4e0cf64a-ec7d-40c2-bfae-c45e7412cdeb: processing=false streaming=false queued=0
+    ps_580365cd-bb1e-4099-a1f5-bae3f7c244a7: processing=false streaming=false queued=0
+    ps_92d667fc-210c-4c39-8dd3-cda7e60ba189: processing=false streaming=false queued=0
+    ps_b1344a47-ae2e-4550-8832-f1ee91bc00e0: processing=false streaming=false queued=0
+    ps_d9070ad8-adc7-4bbf-94e9-8401c4fffe30: processing=false streaming=false queued=0
+    ps_3f6a46c8-896a-452f-b3a6-ede8ed803fee: processing=false streaming=false queued=0
+    ps_4b39a967-f213-4a48-b84f-e345bc3dc98b: processing=false streaming=false queued=0
+    ps_485be503-72dd-430b-bade-2ca59aeae3d6: processing=false streaming=false queued=0
+  active yielded runs: 0
+  restart safety: idle

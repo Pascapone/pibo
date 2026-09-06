@@ -9,21 +9,21 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-06T02:10:00Z"
+  at: "2026-09-06T06:57:07Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Integrated App Shell source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
+  baseline_commit: "cb4f4e7e6121eab0193ff0db84a1cd938cba219a"
   package: "WP-06+07-WEB"
   source_evidence: "performed"
   test_execution: "20 focused routed-runtime/UI/manual/header tests passed at final integration; complete root-suite counts remain historical at 14cbaf0f"
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed Room, Workflow Session, manual Run Room dialog, and desktop/mobile viewport acceptance passed"
 traceability:
-  commit: "029e413afc17ae46c36a7e021ce45610f6ea0ff4"
+  commit: "04b93983eb0f853f9d6e704ccbbe2f5bf4d235e1"
   requirements:
     - id: "WEB-SHELL-MOUNT-001"
       status: "implemented"
@@ -217,6 +217,26 @@ traceability:
         - "Accessibility/responsive boundary: Source defines focus ownership and responsive sidebars; headful keyboard, pointer, zoom, and reduced-motion validation is mandatory."
         - "Compatibility boundary: Detached-window support is conditional and must degrade to in-shell navigation."
       confidence: "medium"
+    - id: "WEB-SHELL-ROOM-CREATE-007"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/App.tsx"
+          symbol: "createRoom"
+        - path: "src/apps/chat-ui/src/App.tsx"
+          symbol: "selectRoom"
+        - path: "src/apps/chat-ui/src/app-bootstrap-mutations.ts"
+          symbol: "replaceRoomInBootstrap"
+      tests:
+        - path: "test/chat-ui-room-create-navigation-race.test.mjs"
+          name: "Room creation retains optimistic state and newer navigation"
+        - path: "test/chat-ui-app-bootstrap-mutations.test.mjs"
+          name: "app bootstrap mutation helpers preserve optimistic session and room updates"
+      public: ["New Room", "/api/chat/rooms", "Room/Session navigation", "Browser Back"]
+      failures:
+        - "Failed creation removes only its temporary Room; newer selection and unrelated updates remain intact."
+        - "Later hydration cannot reverse newer navigation or keep the creation control blocked."
+        - "Temporary Room IDs are not backend navigation targets."
+      confidence: "high"
     - id: "WEB-SHELL-CREATE-006"
       status: "implemented"
       sources:
@@ -243,7 +263,7 @@ Chat API/static registration, bootstrap/navigation composition, route-addressabl
 
 ## Scope
 
-This specification traces implemented behavior at `029e413afc17ae46c36a7e021ce45610f6ea0ff4`. Earlier integrated validation in `implementation` retains its original baseline; the post-create ownership evidence below applies specifically to WEB-SHELL-CREATE-006.
+This specification describes the integrated Session- and Room-creation behavior at the traceability commit below. Earlier validation in `implementation` retains its original baseline; the scoped evidence below applies specifically to WEB-SHELL-CREATE-006 and WEB-SHELL-ROOM-CREATE-007.
 
 ### In scope
 
@@ -276,7 +296,7 @@ Authentication and mutation policy are consumed from SPC-SEC-001. Browser storag
 
 ### Accessibility and responsive behavior
 
-Source defines aria-current navigation, keyboard/focus/pointer behavior for mobile navigation, h-dvh shell sizing, a 980px mobile sidebar transition, and reduced-motion suppression. These behaviors are not headfully verified here.
+Source defines aria-current navigation, keyboard/focus/pointer behavior for mobile navigation, h-dvh shell sizing, a 980px mobile sidebar transition, and reduced-motion suppression. General accessibility and platform parity are not established here; scoped desktop/mobile Room-creation pointer evidence is recorded under WEB-SHELL-ROOM-CREATE-007.
 
 ### Compatibility and integration
 
@@ -379,6 +399,21 @@ upstream/dev refresh source and named-test inspection define the current contrac
 - Confidence: **medium**
 - Verification follow-up: Run the named tests, then use a headful authenticated browser at mobile/desktop widths and installed/standalone display modes.
 
+### Requirement: WEB-SHELL-ROOM-CREATE-007: Room creation preserves later navigation
+
+An untouched pending Room creation MUST retain its optimistic Room and local temporary selection. Optimistic insertion MUST NOT rewrite cached persisted selection in a way that makes route reconciliation restore the previous Room.
+
+A later Room/Session selection or Browser Back MUST own navigation. Successful background creation MUST reconcile the real Room without selecting it over that later choice. Failure MUST remove only its temporary Room, preserving unrelated cached changes and any newer selection. When creation still owns selection, failure restores its prior local choice.
+
+Creation controls MUST release at POST completion rather than wait for navigation hydration. Late hydration MUST NOT navigate after a newer request has taken ownership. Temporary Room IDs MUST NOT be sent as navigation targets by selection or focus refresh.
+
+- GIVEN a held successful POST, WHEN the user selects another Room or goes Back, THEN release preserves the selected target's route and visible content.
+- GIVEN a held failed POST after navigation, WHEN failure is delivered, THEN the previous Session does not remount and unrelated data is not rolled back.
+- GIVEN held post-success navigation, WHEN the user starts another Room creation, THEN the new operation can proceed and the first completion cannot reverse it.
+- GIVEN a real Room already fetched or a temporary row removed by navigation, WHEN creation settles, THEN the real Room appears once without overwriting newer metadata.
+
+Exact-code Docker and public authenticated/headful Pibo2 evidence is in the [Room creation validation report](/reports/room-creation-ownership-validation-2026-09-06.md). This is scoped Room-creation ownership, not a general assertion about every Room mutation or full accessibility.
+
 ### Requirement: WEB-SHELL-CREATE-006: Post-create hydration does not own later navigation
 
 After the Session creation POST succeeds, the client MUST release the creation lock without waiting for bootstrap hydration. The initial successful creation MAY navigate to its persisted Session when the optimistic creation still owns selection. Background hydration MUST NOT perform a second navigation or report an error after its request generation has been superseded.
@@ -450,7 +485,9 @@ Deep routes, service-worker controller changes, desktop PWA display modes, and o
 
 ## Verification and traceability
 
-- Source and named-test locators resolve at final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. Source checks and all typechecks passed after integration; the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
+WEB-SHELL-ROOM-CREATE-007 adds 12 focused passes, full build/all typechecks, ten separately enabled headful Docker scenarios, and 22 public desktop/mobile plus three active-work Pibo2 cases at the current traceability commit. The report distinguishes those checks from the older integration evidence above.
+
+- Source and named-test locators resolve at final integrated commit `cb4f4e7e6121eab0193ff0db84a1cd938cba219a`. Source checks and all typechecks passed after integration; the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md).
 - The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0.
 - Headed desktop/mobile Room and Workflow Session views passed. At 1440x1000 and 390x844, document width equaled viewport width; the mobile Run Room dialog at x=38, y=208, width=299, height=317 fit its viewport. Room workspace editing/inheritance, supported manual execution, and real normal and manual `openai-codex` Sessions also succeeded.
 - Raw-IR editing, publish, human-action submission, job controls, desktop PWA, external gateway deployment, and Pibo2 acceptance are not claimed.

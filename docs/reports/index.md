@@ -63,6 +63,7 @@
 * [Report: LangGraph as Reference, XState as Orchestration Model, Pibo&#45;Native Workflow System](2026-05-10-langgraph-xstate-pibo-workflow-plan.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Resource Reaper Home&#45;Scope Validation — 2026&#45;08&#45;20](resource-reaper-home-scope-validation-2026-08-20.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Resource reaper browser profile exemption validation — 2026&#45;08&#45;07](resource-reaper-browser-profile-exemption-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Room creation ownership validation — September 6, 2026](room-creation-ownership-validation-2026-09-06.md) - Records optimistic Room preservation, navigation ownership, selective rollback, and exact&#45;candidate headful Pibo2 acceptance&#46;
 * [Runtime Auth Control Plane Validation](runtime-auth-control-plane-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Runtime Binding Persistence Validation — 2026&#45;08&#45;15](runtime-binding-persistence-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Runtime Portability v4&#46;1 Validation Report](runtime-portability-v4-1-validation-2026-08-20.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;

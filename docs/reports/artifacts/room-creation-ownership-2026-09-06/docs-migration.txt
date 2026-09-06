@@ -1,0 +1,9 @@
+
+> @pasko70/pibo@1.7.2 docs:validate:migration
+> node scripts/validate-okf-docs.mjs --mode migration
+
+OKF migration validation: PASS
+Markdown paths: 771 (git)
+Ledger records: 771
+States: conformant=617 reserved=107 pending=0 host-exception=47
+Errors: 0; warnings: 0
