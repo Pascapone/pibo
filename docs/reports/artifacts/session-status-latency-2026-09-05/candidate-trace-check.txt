@@ -1,0 +1,37 @@
+piboSessionId: ps_5d168a03-61f8-4322-a1ba-3c3aef662691
+piSessionId: c94350c6-cb65-4173-b96a-9c994f0d1ad0
+runtimeInstanceId: pi
+runtimeAdapterId: pi
+nativeSessionId: c94350c6-cb65-4173-b96a-9c994f0d1ad0
+runtimeBindingState: bound
+historySource: product
+title: Untitled Session
+status: done
+statusSource: event-log
+nodeErrors: 0
+
+status	type	title	id	runId	linkedPiboSessionId
+done	execution.command	status	event:execution_result:6d0d2066-f0f8-4204-a80c-c29c3b6c36d3		
+done	execution.command	status	event:execution_result:45f589ab-c88e-48b9-b39c-2767da06bccf		
+done	execution.command	status	event:execution_result:3b8df73e-668a-46d5-9d19-6f1510f968ce		
+done	execution.command	status	event:execution_result:6b91e6a0-8237-437f-b10a-97322b4ded2d		
+done	execution.command	status	event:execution_result:5d641bb3-3794-43e5-91d2-d3f35024ef02		
+done	execution.command	status	event:execution_result:9d0fd3be-a8e9-405f-8030-856e2b6dacc8		
+done	execution.command	status	event:execution_result:7d70a753-a45a-4869-8806-34c6b806e10c		
+done	user.message	User Message	event:message_queued:web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc		
+done	agent.turn	Agent Turn	event:message:web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc		
+done	execution.command	  status	event:execution_result:47cda145-3446-46ca-9baf-b2218e2d4a2c		
+done	tool.call	  bash	tool-invocation:%5B%22call_TmDV4hYMsjgFRblLtNA5emKL%7Cfc_0bb3052e348c46cd016a9c7bcda24887d29ee9b6fd29e4d762%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc%5C%22%2C0%5D%22%5D		
+done	assistant.message	  Agent Message	event:assistant:web-mtou71ii-203d7c27-afe4-4c1f-b24d-53cbf97583cc:assistant:0		
+done	user.message	User Message	event:message_queued:web-mtou72t9-67230dd4-e5c4-40c3-a7d9-349f72f017be		
+done	agent.turn	Agent Turn	event:message:web-mtou72t9-67230dd4-e5c4-40c3-a7d9-349f72f017be		
+done	assistant.message	  Agent Message	event:assistant:web-mtou72t9-67230dd4-e5c4-40c3-a7d9-349f72f017be:assistant:0		
+done	execution.command	status	event:execution_result:6be78f69-fd56-423f-8430-3f7cca842d57		
+nodes: 16
+
+checks: ok
+issues: 0
+
+Next:
+  pibo debug trace ps_5d168a03-61f8-4322-a1ba-3c3aef662691 show event:execution_result:6d0d2066-f0f8-4204-a80c-c29c3b6c36d3
+  pibo debug messages ps_5d168a03-61f8-4322-a1ba-3c3aef662691 list

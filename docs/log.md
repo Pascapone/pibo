@@ -6,8 +6,8 @@
 
 ## 2026-09-05
 
+- **Session status latency**: Published [Docker and headful Pibo2 validation](/reports/session-status-latency-validation-2026-09-05.md) for credential-scoped, bounded provider quota caching; warm status median fell from 490.8 to 28.3 ms in sampled public requests, while the broader large-session and intermittent queue-lag investigation remains open.
 - **Idle Session history latency**: Added [adapter-owned cold fork inspection](/specs/runtime/adapter-contract.md#requirement-run-spi-005), [bounded Pi history caching](/specs/runtime/pi-adapter.md#requirement-run-pi-005), and [passive Terminal usage reads](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-passive-007). The [validation report](/reports/idle-session-history-latency-validation-2026-09-05.md) records 228 Docker tests, exact candidate parity, headful Pibo2 cold/warm timings, and real Spark queue/reload evidence while keeping broader streaming and optimistic-navigation gaps explicit.
-
 - **Tool-call Debug mode**: Added a persisted Debug toggle beside Thinking, replaced duplicate topbar Raw Events and view controls with workspace-tab navigation, and documented per-invocation duration and explicitly estimated payload-token counts in the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006). Metrics survive live/replay paths without browser tokenization; legacy and unmeasurable values remain unavailable.
 
 - **Session Preview auto-open**: Extended [Session Live Previews](/specs/compute/session-live-previews.md#requirement-cmp-preview-006) with an authenticated Session-scoped creation stream so a newly created Preview opens the deduplicated Desktop Preview tab only for the still-selected Pibo Session; background Sessions, mobile layouts, and pre-existing Previews remain non-opening.

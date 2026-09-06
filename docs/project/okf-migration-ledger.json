@@ -13605,6 +13605,15 @@
       "lineage": null
     },
     {
+      "path": "docs/reports/session-status-latency-validation-2026-09-05.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
       "path": "docs/legacy/specs/changes/sidebar-browser-tabs/index.md",
       "state": "reserved",
       "classification": "reserved index/log",
