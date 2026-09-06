@@ -13021,9 +13021,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 31009,
-      "file_sha256": "b78d33a189c5df46b999157525e0c9f71584ede228ea9e3da1bece6b75beea30",
-      "body_sha256": "a0fd520803fc38247a3cc2f1203726fee028d8c391e1c0679cf59715cf3a66c0",
+      "file_bytes": 34349,
+      "file_sha256": "3b1a4065cd004799835870e9bd2510da8562408739224545955c041cc5465caf",
+      "body_sha256": "b6e3ad37afccd81d5c7060f3e3d38e286024470176dd6153cc488411e6fb3b81",
       "lineage": null
     },
     {

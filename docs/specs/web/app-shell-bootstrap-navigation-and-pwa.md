@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-06T06:54:00Z"
+  at: "2026-09-06T06:57:07Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,7 +23,7 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed Room, Workflow Session, manual Run Room dialog, and desktop/mobile viewport acceptance passed"
 traceability:
-  commit: "cb4f4e7e6121eab0193ff0db84a1cd938cba219a"
+  commit: "04b93983eb0f853f9d6e704ccbbe2f5bf4d235e1"
   requirements:
     - id: "WEB-SHELL-MOUNT-001"
       status: "implemented"
