@@ -2636,15 +2636,15 @@ export class PiboSessionRouter {
 		}
 	}
 
-	private getSubagentDepth(piboSessionId: string): number {
+	private getSubagentDepth(piboSessionId: string, sessionsById?: ReadonlyMap<string, PiboSession>): number {
 		let depth = 0;
-		let current = this.sessionStore.get(piboSessionId);
+		let current = sessionsById ? sessionsById.get(piboSessionId) : this.sessionStore.get(piboSessionId);
 		const seen = new Set<string>();
 		while (current?.parentId) {
 			if (seen.has(current.parentId)) break;
 			seen.add(current.parentId);
 			depth += 1;
-			current = this.sessionStore.get(current.parentId);
+			current = sessionsById ? sessionsById.get(current.parentId) : this.sessionStore.get(current.parentId);
 		}
 		return depth;
 	}
@@ -2917,7 +2917,9 @@ export class PiboSessionRouter {
 
 	private projectKnownSessionSignals(): void {
 		const sessions = this.sessionStore.list?.() ?? [];
-		const depthBySessionId = new Map(sessions.map((session) => [session.id, this.getSubagentDepth(session.id)]));
+		// The complete list is already loaded; avoid an additional store query for every ancestor.
+		const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+		const depthBySessionId = new Map(sessions.map((session) => [session.id, this.getSubagentDepth(session.id, sessionsById)]));
 		sessions.sort((left, right) => (depthBySessionId.get(left.id) ?? 0) - (depthBySessionId.get(right.id) ?? 0));
 		for (const session of sessions) {
 			this.signalRegistry.project({ type: "session_created", session });
