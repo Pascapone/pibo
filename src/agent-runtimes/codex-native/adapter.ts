@@ -781,8 +781,10 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		let reboundSettings = false;
 		let phase = "stopping the previous process";
 		try {
-			await previousProcess.close();
+			await previousProcess.stop();
 			this.resourceProcessUnavailable = true;
+			// Generation cleanup may race with exiting MCP children and must not block App Server replacement.
+			void previousProcess.close().catch(() => {});
 			phase = "starting the replacement process";
 			next = await this.reloadProcess();
 			phase = "resuming the native thread";
