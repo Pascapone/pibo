@@ -236,6 +236,52 @@ test("startup recovery terminalizes interrupted yielded-run session state atomic
 	}
 });
 
+test("startup reconciles a durable runtime error without replacing its output identity", async () => {
+	const fixture = await createFixture("pibo-runtime-restart-collision");
+	let reopened;
+	try {
+		const ids = seedInterruptedRuntime(fixture);
+		const event = {
+			type: "session_error", piboSessionId: fixture.session.id, eventId: ids.eventId,
+			error: "Runtime failed before telemetry finished",
+			errorDetails: { category: "runtime", errorClass: "runtime_error", code: "runtime_error", origin: "runtime", severity: "error", retryable: false },
+		};
+		new ChatDataIngestService(fixture.dataStore).ingestOutputEvent({ session: fixture.session, roomId: fixture.roomId, event });
+		const existing = rows(fixture.dataStore.db, "SELECT * FROM event_log WHERE type = 'session_error'");
+		assert.equal(fixture.dataStore.telemetry.getTurn(ids.turnId).status, "running");
+		fixture.dataStore.close();
+		reopened = new PiboDataStore(join(fixture.root, "pibo.sqlite"), { payloadRootDir: join(fixture.root, "payloads") });
+		const sessionStore = new PiboDataSessionStore(reopened);
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			const router = new PiboSessionRouter({ sessionStore, recoverInterruptedRuntimeState: true });
+			try {
+				assert.equal(reopened.telemetry.getTurn(ids.turnId).status, "error");
+				assert.equal(reopened.telemetry.getTurn(ids.turnId).summary, event.error);
+				assert.deepEqual(reopened.telemetry.listOpenPhasesForTurn(ids.turnId), []);
+				assert.deepEqual(reopened.telemetry.listActiveProviderRequestsForTurn(ids.turnId), []);
+				assert.deepEqual(reopened.telemetry.listActiveToolCallsForTurn(ids.turnId), []);
+				assert.equal(reopened.telemetry.getProviderRequest("pr_restart_open").status, "error");
+				assert.equal(reopened.telemetry.getToolCall("call_one").status, "error");
+				assert.equal(reopened.navigation.getSession(fixture.session.id).status, "error");
+				assert.equal(reopened.db.prepare("SELECT status FROM sessions WHERE id = ?").get(fixture.session.id).status, "error");
+				assert.deepEqual(rows(reopened.db, "SELECT * FROM event_log WHERE type = 'session_error' AND event_id = ?", ids.eventId), existing);
+				assert.equal(rows(reopened.db, "SELECT * FROM event_log WHERE type = 'session_error'").length, 2);
+				assert.equal(rows(reopened.db, "SELECT * FROM event_log WHERE type = 'pibo.output.identity_collision'").length, 0);
+				if (attempt === 0) assert.equal(router.snapshotSignalSession(fixture.session.id).sessions[fixture.session.id].localStatus, "error");
+			} finally {
+				await router.disposeAll();
+			}
+		}
+		assert.throws(() => new ChatDataIngestService(reopened).ingestOutputEvent({
+			session: fixture.session, roomId: fixture.roomId, event: { ...event, error: "A genuine conflicting write" },
+		}), { code: "pibo_output_identity_collision" });
+	} finally {
+		reopened?.close();
+		fixture.reliabilityStore.close();
+		await rm(fixture.root, { recursive: true, force: true });
+	}
+});
+
 test("startup recovery aborts non-expired retryable work without changing already-terminal turns", async () => {
 	const fixture = await createFixture("pibo-runtime-restart-retry");
 	try {
