@@ -2117,7 +2117,7 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 		},
 	});
 	assert.equal((await history.read({ limit: 20 })).entries.length, 2);
-	const { channel, baseURL, sessions, emitOutput, dataStorePath } = await startWebHostChannel({
+	const { channel, baseURL, sessions, emitOutputAndDrain, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		async emit(event) {
 			return {
@@ -2164,10 +2164,9 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 		});
 		assert.equal(messageResponse.status, 200);
 		assert.equal((await messageResponse.json()).output.eventId, "stable-Y");
-		emitOutput({ type: "message_started", piboSessionId: branch.id, eventId: "stable-Y", text: "branch prompt", source: "user" });
-		emitOutput({ type: "assistant_message", piboSessionId: branch.id, eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "branch answer" });
-		emitOutput({ type: "message_finished", piboSessionId: branch.id, eventId: "stable-Y", source: "user" });
-		await new Promise((resolve) => setImmediate(resolve));
+		await emitOutputAndDrain({ type: "message_started", piboSessionId: branch.id, eventId: "stable-Y", text: "branch prompt", source: "user" });
+		await emitOutputAndDrain({ type: "assistant_message", piboSessionId: branch.id, eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "branch answer" });
+		await emitOutputAndDrain({ type: "message_finished", piboSessionId: branch.id, eventId: "stable-Y", source: "user" });
 		const db = new DatabaseSync(dataStorePath);
 		try {
 			assert.ok(db.prepare("UPDATE event_log SET created_at = ? WHERE session_id = ? AND event_id = ?")
@@ -9188,6 +9187,10 @@ test("versioned durable admission acknowledges before cold runtime dispatch and 
 		await waitForCondition(()=>dispatches===1,"durable dispatcher did not start");
 		const receiptResponse=await fetch(`${host.baseURL}/api/chat/message-receipts/${result.receipt.id}`,{headers:{"x-test-user":"user-1"}});
 		assert.equal(receiptResponse.status,200);assert.equal((await receiptResponse.json()).receipt.state,"initializing");
+		const pendingTrace=await(await fetch(`${host.baseURL}/api/chat/trace?piboSessionId=${session.id}`,{headers:{"x-test-user":"user-1"}})).json();
+		const pendingUser=flattenTraceResponseNodes(pendingTrace.nodes).find(node=>node.type==="user.message");
+		assert.ok(pendingUser,"accepted message must survive a trace reload before runtime output");
+		assert.equal(pendingUser.eventId,result.receipt.eventId,JSON.stringify({id:pendingUser.id,eventId:pendingUser.eventId,source:pendingUser.source}));
 		unblock();
 		await host.emitOutputAndDrain({type:"message_started",piboSessionId:session.id,eventId:"durable-cold-id",source:"user",text:input.text});
 		await host.emitOutputAndDrain({type:"message_finished",piboSessionId:session.id,eventId:"durable-cold-id",source:"user"});

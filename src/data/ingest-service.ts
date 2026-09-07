@@ -12,6 +12,8 @@ export type UserMessageAcceptedIngestInput = {
 	actorId: string;
 	text: string;
 	clientTxnId?: string;
+	/** Stable Pibo input identity when acceptance precedes runtime output. */
+	eventId?: string;
 	legacyEvent?: {
 		streamId?: number;
 		eventId?: string;
@@ -124,6 +126,7 @@ export class ChatDataIngestService {
 				roomId: input.roomId,
 				sequence: this.nextMessageSequence(input.session.id),
 				role: "user",
+				turnId: input.eventId,
 				actorId: input.actorId,
 				status: "complete",
 				createdAt: now,
@@ -137,7 +140,7 @@ export class ChatDataIngestService {
 				}) as PiboJsonObject,
 			});
 
-			this.upsertNavigation(input.session, input.roomId, previewText(input.text), now, "running");
+			this.upsertNavigation(input.session, input.roomId, previewText(input.text), now, input.eventId ? undefined : "running");
 
 			return { streamId: event.streamId, messageId, duplicate: false };
 		});

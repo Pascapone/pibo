@@ -71,11 +71,14 @@ export class MessageCommandStore {
 		return this.get(id)!;
 	}
 	claim(owner: string, leaseMs: number): MessageCommandClaim | undefined {
+		const candidateSql = `SELECT c.* FROM message_commands c WHERE c.state='accepted' AND NOT EXISTS (SELECT 1 FROM message_commands p WHERE p.session_id=c.session_id AND p.state IN (${active},'interrupted') AND p.stream_id<c.stream_id AND (c.delivery='queue' OR p.delivery='steer')) ORDER BY c.stream_id LIMIT 1`;
+		// Idle polling must not take the SQLite writer lock. The claim transaction rechecks.
+		if (!this.store.db.prepare(candidateSql).get() && !this.store.db.prepare("SELECT 1 FROM message_commands WHERE owner IS NOT NULL AND lease_until <= ? LIMIT 1").get(Date.now())) return undefined;
 		const row = this.store.transaction(() => {
 			const now = Date.now();
 			// Never replay an expired command that may already have reached a provider or tool.
 			this.store.db.prepare(`UPDATE message_commands SET state=CASE WHEN state='waiting_slot' THEN 'accepted' ELSE 'interrupted' END, error=CASE WHEN state='waiting_slot' THEN NULL ELSE 'Runtime ownership expired; execution requires reconciliation.' END, owner=NULL,lease_until=0,updated_at=? WHERE id IN (SELECT id FROM message_commands WHERE owner IS NOT NULL AND lease_until <= ? ORDER BY lease_until LIMIT 100)`).run(now,now);
-			const candidate = this.store.db.prepare(`SELECT c.* FROM message_commands c WHERE c.state='accepted' AND NOT EXISTS (SELECT 1 FROM message_commands p WHERE p.session_id=c.session_id AND p.state IN (${active},'interrupted') AND p.stream_id<c.stream_id AND (c.delivery='queue' OR p.delivery='steer')) ORDER BY c.stream_id LIMIT 1`).get() as Row | undefined;
+			const candidate = this.store.db.prepare(candidateSql).get() as Row | undefined;
 			if (!candidate) return undefined;
 			this.store.db.prepare("UPDATE message_commands SET state='waiting_slot',owner=?,token=token+1,lease_until=?,updated_at=? WHERE id=?").run(owner,now+leaseMs,now,candidate.id);
 			return this.store.db.prepare("SELECT * FROM message_commands WHERE id=?").get(candidate.id) as Row;

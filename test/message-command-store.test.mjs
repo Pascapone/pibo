@@ -24,6 +24,7 @@ test("durable commands commit with admission, deduplicate and reject changed pay
 		assert.equal(new Set(results.map(r=>r.receipt.id)).size,1);
 		const receipt=results[0].receipt;
 		assert.equal(receipt.state,"accepted");
+		assert.equal(store.db.prepare("SELECT status FROM session_navigation WHERE session_id=?").get(session.id).status,"idle");
 		assert.equal(Number(store.db.prepare("SELECT count(*) n FROM message_commands").get().n),1);
 		assert.equal(Number(store.db.prepare("SELECT count(*) n FROM event_log WHERE type='user.message.accepted'").get().n),1);
 		await assert.rejects(storage.admit(input,session,"different",{eventId:"txn",delivery:"queue"}),{code:"command_conflict"});

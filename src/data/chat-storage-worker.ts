@@ -76,8 +76,8 @@ function execute(command: ChatStorageCommand): unknown {
 					return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!)!, created: false, receipt };
 				}
 				const event = commands.appendEvent({ ...command.input, createdAt });
-				sessions.upsertSession(command.session, "idle", command.session.updatedAt, { preserveRuntimeBinding: true });
-				ingest.ingestUserMessageAccepted({ session: command.session, roomId: room.id, actorId: command.input.actorId ?? "", text: command.text, clientTxnId: command.input.clientTxnId, legacyEvent: event, preparedPayload });
+				sessions.upsertSession(command.session, command.durableCommand ? sessions.getSession(command.session.id)?.status ?? "idle" : "idle", command.session.updatedAt, { preserveRuntimeBinding: true });
+				ingest.ingestUserMessageAccepted({ session: command.session, roomId: room.id, actorId: command.input.actorId ?? "", text: command.text, clientTxnId: command.input.clientTxnId, eventId: command.durableCommand?.eventId, legacyEvent: event, preparedPayload });
 				const receipt = preparedCommand && command.durableCommand ? messageCommands.insert({ key:key ?? `chat:command:${command.durableCommand.eventId}`, ...preparedCommand,sessionId:command.session.id,roomId:room.id,eventId:command.durableCommand.eventId,streamId:event.streamId,delivery:command.durableCommand.delivery }) : undefined;
 				return { event, created: true, receipt };
 			});
