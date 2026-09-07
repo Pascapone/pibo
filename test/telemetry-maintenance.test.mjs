@@ -4,7 +4,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {PiboDataStore} from '../dist/data/pibo-store.js';
-import {TelemetryMaintenance} from '../dist/data/telemetry-maintenance.js';
+import {TelemetryMaintenance,TELEMETRY_MAINTENANCE_OWNER_LEASE_MS} from '../dist/data/telemetry-maintenance.js';
 import {AsyncTelemetryMaintenance} from '../dist/data/async-telemetry-maintenance.js';
 const cutoff='2026-02-01T00:00:00Z';
 function fixture(){const root=mkdtempSync(join(tmpdir(),'pibo-maintenance-'));return {root,path:join(root,'data.sqlite'),payloadRootDir:join(root,'payloads')};}
@@ -57,4 +57,28 @@ test('a preview does not restart a persisted maintenance job',async()=>{
  const f=fixture(),store=new PiboDataStore(f.path,{payloadRootDir:f.payloadRootDir});let worker;
  try{seed(store,10);new TelemetryMaintenance(store.db).start(cutoff);worker=new AsyncTelemetryMaintenance(f.path);const preview=await worker.preview(cutoff);assert.ok(preview.some(row=>row.rowsMatched>0));await new Promise(resolve=>setTimeout(resolve,100));assert.equal(new TelemetryMaintenance(store.db).status().deleted,0);}
  finally{await worker?.close();store.close();rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('a scoped job whose owner stopped stepping is reclaimable instead of blocking retention forever',()=>{
+ const f=fixture(),store=new PiboDataStore(f.path,{payloadRootDir:f.payloadRootDir});
+ try{
+  seed(store,10);const maintenance=new TelemetryMaintenance(store.db);
+  maintenance.start(cutoff,'diagnostic');
+  for(let i=0;i<20&&maintenance.status().scanned===0;i++)maintenance.step({rows:4});
+  const progress=maintenance.status();assert.ok(progress.scanned>0);
+  // A live owner keeps the job: another scope must not take it over mid-batch.
+  assert.throws(()=>maintenance.start(cutoff),/Another retention scope/);
+  // The same scope resumes its persisted cursor instead of restarting.
+  const resumed=maintenance.start(cutoff,'diagnostic');assert.equal(resumed.retention_scope,'diagnostic');assert.equal(resumed.scanned,progress.scanned);
+  // One narrow manual prune whose process exited must not disable automatic retention permanently.
+  const deletedBeforeReclaim=maintenance.status().deleted;
+  store.db.prepare('UPDATE telemetry_maintenance_job SET updated_at=? WHERE id=1').run(new Date(Date.now()-TELEMETRY_MAINTENANCE_OWNER_LEASE_MS-1000).toISOString());
+  const reclaimed=maintenance.start(cutoff);
+  assert.equal(reclaimed.retention_scope,null);assert.equal(reclaimed.status,'running');
+  assert.equal(reclaimed.cursor_time,'');assert.equal(reclaimed.cursor_row,0);assert.equal(reclaimed.scanned,0);
+  finish(maintenance);
+  assert.equal(maintenance.status().deleted+deletedBeforeReclaim,10);assert.equal(maintenance.status().protected,1);
+  assert.equal(store.telemetry.getTurnTimeline('turn0'),undefined);
+  assert.ok(store.telemetry.getTurnTimeline('active'));
+ }finally{store.close();rmSync(f.root,{recursive:true,force:true});}
 });

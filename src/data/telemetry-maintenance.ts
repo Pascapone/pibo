@@ -4,6 +4,8 @@ export const TELEMETRY_MAINTENANCE_SCHEMA=`CREATE TABLE IF NOT EXISTS telemetry_
  scanned INTEGER NOT NULL DEFAULT 0,deleted INTEGER NOT NULL DEFAULT 0,protected INTEGER NOT NULL DEFAULT 0,batches INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL
 );`;
 const CLASSES=["live","diagnostic","provider_event","payload_preview","incident"] as const;
+/** A live owner updates the job on every bounded batch, so a stale stamp proves it stopped. */
+export const TELEMETRY_MAINTENANCE_OWNER_LEASE_MS=30_000;
 const TABLES=[
  {name:"telemetry_provider_events",time:"received_at",status:false},
  {name:"telemetry_tool_calls",time:"updated_at",status:true},
@@ -19,7 +21,13 @@ export class TelemetryMaintenance {
  start(cutoff:string,retentionScope?:string):TelemetryMaintenanceStatus {
   if(retentionScope&&!CLASSES.includes(retentionScope as typeof CLASSES[number]))throw Error("Invalid maintenance retention scope");
   if(!Number.isFinite(Date.parse(cutoff)))throw Error("Invalid telemetry cutoff");
-  const existing=this.status();if(existing&&(existing.status==="running"||existing.status==="paused")){if(existing.retention_scope!==(retentionScope??null))throw Error("Another retention scope is already running");return existing;}
+  const existing=this.status();if(existing&&(existing.status==="running"||existing.status==="paused")){
+   if(existing.retention_scope===(retentionScope??null))return existing;
+   // A different scope only conflicts while its owner still steps the job. A persisted job whose
+   // owner stopped updating it is reclaimable, so one narrow manual prune that outlived its process
+   // cannot disable automatic retention permanently.
+   if(Date.now()-Date.parse(existing.updated_at)<TELEMETRY_MAINTENANCE_OWNER_LEASE_MS)throw Error("Another retention scope is already running");
+  }
   this.db.prepare(`INSERT INTO telemetry_maintenance_job(id,cutoff,status,updated_at,retention_scope,class_index) VALUES(1,?,'running',?,?,?)
    ON CONFLICT(id) DO UPDATE SET cutoff=excluded.cutoff,status='running',table_index=0,retention_scope=excluded.retention_scope,class_index=excluded.class_index,cursor_time='',cursor_row=0,scanned=0,deleted=0,protected=0,batches=0,updated_at=excluded.updated_at`).run(cutoff,new Date().toISOString(),retentionScope??null,retentionScope?CLASSES.indexOf(retentionScope as typeof CLASSES[number]):0);return this.status()!;
  }
