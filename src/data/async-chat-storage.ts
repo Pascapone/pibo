@@ -11,16 +11,52 @@ export type AsyncOutputIngestResult = OutputEventIngestResult & {
 
 /** Admission/output writer; bulk reads must use a separate worker connection. */
 export class AsyncChatStorage {
-	private readonly writer: BoundedWorkerClient;
+	private writerClient: BoundedWorkerClient;
 	private reader?: BoundedWorkerClient;
 	private readonly workerUrl: URL;
 	private readonly workerOptions: BoundedWorkerOptions;
+	private closed = false;
+	private writerRestarts = 0;
+	private readerRestarts = 0;
+	private writerRestartAfter = 0;
+	private readerRestartAfter = 0;
 	constructor(path: string, payloadRootDir: string, options: BoundedWorkerOptions = {}) {
 		if (path === ":memory:") throw new Error("Worker storage requires a file-backed database.");
 		// Admission carries the bounded message plus its event projection; account for both in IPC.
 		this.workerOptions = { maxMessageBytes: 4 * 1024 * 1024, reservedControlRequests:8, reservedControlBytes:256*1024, admissionWindowMs:1, ...options, workerOptions: { ...options.workerOptions, workerData: { path, payloadRootDir } } };
 		this.workerUrl = new URL("./chat-storage-worker.js", import.meta.url);
-		this.writer = new BoundedWorkerClient(this.workerUrl, this.workerOptions);
+		this.writerClient = this.startWriter();
+	}
+	/**
+	 * A crashed worker, or one that breached its execution deadline, must not disable durable
+	 * admission permanently. Replacement waits for the failed worker to exit and is bounded to one
+	 * per second, so two writers never own the same SQLite file. Recovery is safe without replay
+	 * protection because callers reconcile the same client transaction ID and admission is
+	 * idempotent by request key.
+	 */
+	private get writer(): BoundedWorkerClient {
+		const status = this.writerClient.status();
+		if (!this.closed && status.closed && status.exited && Date.now() >= this.writerRestartAfter) {
+			this.writerRestarts++;
+			this.writerClient = this.startWriter();
+		}
+		return this.writerClient;
+	}
+	private get readerClient(): BoundedWorkerClient {
+		const status = this.reader?.status();
+		if (!this.reader || (!this.closed && status!.closed && status!.exited && Date.now() >= this.readerRestartAfter)) {
+			if (this.reader) this.readerRestarts++;
+			this.reader = this.startReader();
+		}
+		return this.reader;
+	}
+	private startWriter(): BoundedWorkerClient {
+		this.writerRestartAfter = Date.now() + 1000;
+		return new BoundedWorkerClient(this.workerUrl, this.workerOptions);
+	}
+	private startReader(): BoundedWorkerClient {
+		this.readerRestartAfter = Date.now() + 1000;
+		return new BoundedWorkerClient(this.workerUrl, this.workerOptions);
 	}
 	resolveRoom(roomId?: string, required = false): Promise<PiboRoom> {
 		return this.writer.request({ type: "resolveRoom", roomId, required });
@@ -33,8 +69,7 @@ export class AsyncChatStorage {
 		return this.writer.request({ type: "append", input });
 	}
 	find(roomId: string, actorId: string, clientTxnId: string): Promise<StoredChatEvent | undefined> {
-		this.reader ??= new BoundedWorkerClient(this.workerUrl, this.workerOptions);
-		return this.reader.request({ type: "find", roomId, actorId, clientTxnId }, { priority: "admission" });
+		return this.readerClient.request({ type: "find", roomId, actorId, clientTxnId }, { priority: "admission" });
 	}
 	ingestUser(input: UserMessageAcceptedIngestInput): Promise<UserMessageAcceptedIngestResult> {
 		return this.writer.request({ type: "ingestUser", input });
@@ -52,7 +87,10 @@ export class AsyncChatStorage {
 	status() {
 		const writer = this.writer.status();
 		const reader = this.reader?.status();
-		return { ready: writer.ready && (!reader || reader.ready), closed: writer.closed && (!reader || reader.closed), writer, reader };
+		return { ready: writer.ready && (!reader || reader.ready), closed: writer.closed && (!reader || reader.closed), restarts: { writer: this.writerRestarts, reader: this.readerRestarts }, writer, reader };
 	}
-	async close(): Promise<void> { await Promise.all([this.writer.close(), this.reader?.close()]); }
+	async close(): Promise<void> {
+		this.closed = true;
+		await Promise.all([this.writerClient.close(), this.reader?.close()]);
+	}
 }
